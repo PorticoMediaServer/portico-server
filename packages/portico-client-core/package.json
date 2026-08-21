@@ -1,9 +1,15 @@
 {
-  "name": "@portico/client-core",
+  "name": "@porticomediaserver/client-core",
   "version": "0.1.0",
   "description": "Platform-neutral TypeScript client core for Portico web and native clients.",
   "license": "GPL-3.0-or-later",
   "private": true,
+  "homepage": "https://getportico.tv",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/PorticoMediaServer/portico-server.git",
+    "directory": "packages/portico-client-core"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
@@ -66,6 +72,7 @@
     "dist",
     "docs",
     "fixtures",
+    "LICENSE",
     "README.md"
   ],
   "scripts": {

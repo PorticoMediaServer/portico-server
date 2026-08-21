@@ -1,7 +1,7 @@
 # Native authentication and connection conformance
 
 The machine-readable acceptance fixture is published with Client Core at
-`@portico/client-core/fixtures/native-auth-connection.v1.json`. Native client
+`@porticomediaserver/client-core/fixtures/native-auth-connection.v1.json`. Native client
 repositories should run the same state transitions against their platform
 credential and networking adapters. The fixture describes protocol ownership;
 it does not prescribe Keychain, Keystore, account-container, or navigation UI.

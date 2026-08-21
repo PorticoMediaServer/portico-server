@@ -1,4 +1,4 @@
-# @portico/client-core
+# @porticomediaserver/client-core
 
 Platform-neutral TypeScript client core for Portico.
 
@@ -47,7 +47,7 @@ import {
   createMemorySessionStore,
   createPorticoClient,
   browserPlaybackClientProfile
-} from "@portico/client-core";
+} from "@porticomediaserver/client-core";
 
 const sessionStore = createMemorySessionStore();
 

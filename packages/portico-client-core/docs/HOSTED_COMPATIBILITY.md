@@ -19,7 +19,7 @@ Unknown response properties do not make a compatible document fail. Optional
 capabilities can evolve without creating another API version before release.
 
 The published fixture
-`@portico/client-core/fixtures/hosted-api-v1-conformance.json` is byte-equivalent
+`@porticomediaserver/client-core/fixtures/hosted-api-v1-conformance.json` is byte-equivalent
 to the canonical Cloud fixture under
 `api/openapi/fixtures/hosted-api-v1-conformance.json`. Separate client
 repositories should use the packaged fixture in their compatibility tests.

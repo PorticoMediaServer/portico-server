@@ -1,0 +1,77 @@
+name: Release Client Core
+
+on:
+  push:
+    tags: ['client-core-v[0-9]+.[0-9]+.[0-9]+*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing client-core-v prefixed tag to publish
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: client-core-release-${{ github.ref_name }}${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  package:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: '${{ inputs.tag || github.ref }}'
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: packages/portico-client-core/package-lock.json
+      - name: Verify release identity
+        id: identity
+        env:
+          RELEASE_TAG: '${{ inputs.tag || github.ref_name }}'
+        working-directory: packages/portico-client-core
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          test "$RELEASE_TAG" = "client-core-v$version"
+          test "$(node -p "require('./package.json').name")" = '@porticomediaserver/client-core'
+          echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - run: npm ci --no-audit --no-fund
+        working-directory: packages/portico-client-core
+      - run: npm run release:verify
+        working-directory: packages/portico-client-core
+      - name: Pack and inspect artifact
+        env:
+          VERSION: '${{ steps.identity.outputs.version }}'
+        working-directory: packages/portico-client-core
+        run: |
+          mkdir -p release
+          npm pack --pack-destination release
+          packed="$(find release -maxdepth 1 -name '*.tgz' -type f -print -quit)"
+          test -n "$packed"
+          artifact="release/portico-client-core-$VERSION.tgz"
+          mv "$packed" "$artifact"
+          listing="$(tar -tzf "$artifact")"
+          for required in package/package.json package/LICENSE package/README.md package/dist/index.js package/dist/index.d.ts package/docs/DISTRIBUTION_AND_RELEASE.md package/fixtures/native-auth-connection.v1.json; do
+            grep -Fxq "$required" <<< "$listing"
+          done
+          tar -xOf "$artifact" package/package.json | node -e "let body=''; process.stdin.on('data', chunk => body += chunk); process.stdin.on('end', () => { const pkg=JSON.parse(body); if (pkg.name !== '@porticomediaserver/client-core' || pkg.version !== process.env.VERSION || pkg.license !== 'GPL-3.0-or-later') process.exit(1); });"
+          sha256sum "$artifact" > "$artifact.sha256"
+      - name: Publish immutable GitHub prerelease
+        env:
+          GH_TOKEN: '${{ github.token }}'
+          RELEASE_TAG: '${{ steps.identity.outputs.tag }}'
+          VERSION: '${{ steps.identity.outputs.version }}'
+        working-directory: packages/portico-client-core
+        run: |
+          notes="Verified prerelease of @porticomediaserver/client-core $VERSION. This immutable package is consumed by Portico clients and does not update the Portico Media Server latest-release channel. Complete corresponding source is attached automatically from this tag."
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" "release/portico-client-core-$VERSION.tgz" "release/portico-client-core-$VERSION.tgz.sha256" --clobber
+            gh release edit "$RELEASE_TAG" --prerelease --title "Portico Client Core $VERSION" --notes "$notes"
+          else
+            gh release create "$RELEASE_TAG" "release/portico-client-core-$VERSION.tgz" "release/portico-client-core-$VERSION.tgz.sha256" --verify-tag --prerelease --title "Portico Client Core $VERSION" --notes "$notes"
+          fi

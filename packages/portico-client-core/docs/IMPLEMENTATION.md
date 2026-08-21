@@ -2,7 +2,7 @@
 
 ## Web UI Integration
 
-Portico Web consumes `@portico/client-core` through its runtime and data-source adapters. React owns presentation and browser lifecycle; the shared package owns the transport contract and direct-route policy.
+Portico Web consumes `@porticomediaserver/client-core` through its runtime and data-source adapters. React owns presentation and browser lifecycle; the shared package owns the transport contract and direct-route policy.
 
 Recommended web adapter responsibilities:
 

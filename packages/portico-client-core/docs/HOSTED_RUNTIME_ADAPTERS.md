@@ -1,6 +1,6 @@
 # Hosted Connection Runtime Adapters
 
-`@portico/client-core` keeps Hosted route selection and signature verification platform-neutral. Browsers use standards-based globals by default. React Native and other non-browser clients should pass a `runtime` object to `connectHostedServer` rather than installing global polyfills.
+`@porticomediaserver/client-core` keeps Hosted route selection and signature verification platform-neutral. Browsers use standards-based globals by default. React Native and other non-browser clients should pass a `runtime` object to `connectHostedServer` rather than installing global polyfills.
 
 ## Adapter contract
 
@@ -21,7 +21,7 @@ Every field is optional in browsers. A missing browser global produces a `Hosted
 React Native clients should construct the adapter once in the application infrastructure layer and reuse it for Hosted connections:
 
 ```ts
-import { connectHostedServer, type HostedConnectionRuntimeAdapters } from "@portico/client-core/native";
+import { connectHostedServer, type HostedConnectionRuntimeAdapters } from "@porticomediaserver/client-core/native";
 
 const hostedRuntime: HostedConnectionRuntimeAdapters = {
   fetch: platformFetch,
