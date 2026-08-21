@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM node:24-bookworm-slim AS web-build
+FROM node:26-bookworm-slim AS web-build
 WORKDIR /src
 COPY api/product-language ./api/product-language
 COPY packages/portico-client-core/package*.json ./packages/portico-client-core/
