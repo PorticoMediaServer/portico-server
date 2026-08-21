@@ -60,7 +60,7 @@ jobs:
             grep -Fxq "$required" <<< "$listing"
           done
           tar -xOf "$artifact" package/package.json | node -e "let body=''; process.stdin.on('data', chunk => body += chunk); process.stdin.on('end', () => { const pkg=JSON.parse(body); if (pkg.name !== '@porticomediaserver/client-core' || pkg.version !== process.env.VERSION || pkg.license !== 'GPL-3.0-or-later') process.exit(1); });"
-          sha256sum "$artifact" > "$artifact.sha256"
+          (cd release && sha256sum "portico-client-core-$VERSION.tgz" > "portico-client-core-$VERSION.tgz.sha256")
       - name: Publish immutable GitHub prerelease
         env:
           GH_TOKEN: '${{ github.token }}'
