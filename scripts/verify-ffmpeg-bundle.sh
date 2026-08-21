@@ -38,7 +38,7 @@ if grep -q -- '--enable-nonfree' <<<"$buildconf"; then echo "nonfree FFmpeg buil
 if grep -q -- '--enable-libfdk-aac' <<<"$buildconf"; then echo "libfdk-aac is prohibited by the redistributable build policy" >&2; exit 1; fi
 license_one_line="$(tr '\n' ' ' <<<"$license")"
 grep -Eqi 'GPL version 3|GPLv3|GNU General Public License.*version 3' <<<"$license_one_line"
-for decoder in h264 hevc av1 vp9 mpeg2video vc1 flv aac ac3 eac3 truehd dca flac opus pcm_s16le alac vorbis subrip webvtt ass hdmv_pgs_subtitle dvd_subtitle; do require_entry "$decoders" "$decoder" decoder; done
+for decoder in h264 hevc av1 vp9 mpeg2video vc1 flv aac ac3 eac3 truehd dca flac opus pcm_s16le alac vorbis subrip webvtt ass pgssub dvdsub; do require_entry "$decoders" "$decoder" decoder; done
 for filter in scale format zscale tonemap bwdif yadif subtitles overlay hwupload hwdownload aresample pan loudnorm; do require_entry "$filters" "$filter" filter; done
 for demuxer in mov matroska mpegts hls flv vobsub; do require_entry "$demuxers" "$demuxer" demuxer; done
 for muxer in hls mp4 mpegts; do require_entry "$muxers" "$muxer" muxer; done
