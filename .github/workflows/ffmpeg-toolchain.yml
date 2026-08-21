@@ -72,6 +72,7 @@ jobs:
         run: |
           git clone https://github.com/BtbN/FFmpeg-Builds.git .toolchain/btbn
           git -C .toolchain/btbn checkout "$BTBN_COMMIT"
+          git -C .toolchain/btbn apply "$GITHUB_WORKSPACE/media-toolchain/patches/btbn-gnu-ncurses-mirror.patch"
       - name: Build pinned dependencies and FFmpeg
         working-directory: .toolchain/btbn
         env:

@@ -10,7 +10,8 @@
   "releaseTag": "ffmpeg-8.1.2-portico.1",
   "btbn": {
     "repository": "https://github.com/BtbN/FFmpeg-Builds.git",
-    "commit": "48576f197ad1c2afb2e0b8efe204919a1afbff54"
+    "commit": "48576f197ad1c2afb2e0b8efe204919a1afbff54",
+    "patch": "media-toolchain/patches/btbn-gnu-ncurses-mirror.patch"
   },
   "macosRecipe": {
     "repository": "https://github.com/homebridge/ffmpeg-for-homebridge.git",
