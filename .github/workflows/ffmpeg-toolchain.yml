@@ -21,6 +21,11 @@ on:
         required: true
         type: boolean
         default: false
+      resume_windows_arm64_only:
+        description: Resume an existing draft by rebuilding only Windows ARM64, then validate every target
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -44,6 +49,7 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       tag: ${{ steps.policy.outputs.tag }}
+      container_matrix: ${{ steps.policy.outputs.container_matrix }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - id: policy
@@ -56,6 +62,11 @@ jobs:
           test "$REVISION" = "$expected_revision"
           test "$DEPENDENCY_CACHE_REVISION" = "$expected_cache_revision"
           echo "tag=ffmpeg-${VERSION}-portico.${REVISION}" >> "$GITHUB_OUTPUT"
+          if [[ '${{ inputs.resume_windows_arm64_only }}' == 'true' ]]; then
+            echo 'container_matrix={"include":[{"target":"winarm64","public_target":"windows-arm64"}]}' >> "$GITHUB_OUTPUT"
+          else
+            echo 'container_matrix={"include":[{"target":"linux64","public_target":"linux-x64"},{"target":"linuxarm64","public_target":"linux-arm64"},{"target":"win64","public_target":"windows-x64"},{"target":"winarm64","public_target":"windows-arm64"}]}' >> "$GITHUB_OUTPUT"
+          fi
       - if: inputs.publish
         env: {GH_TOKEN: '${{ github.token }}'}
         run: |
@@ -80,12 +91,7 @@ jobs:
     timeout-minutes: 360
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - {target: linux64, public_target: linux-x64}
-          - {target: linuxarm64, public_target: linux-arm64}
-          - {target: win64, public_target: windows-x64}
-          - {target: winarm64, public_target: windows-arm64}
+      matrix: ${{ fromJSON(needs.policy.outputs.container_matrix) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Recover runner disk space
@@ -97,6 +103,7 @@ jobs:
           git clone https://github.com/BtbN/FFmpeg-Builds.git .toolchain/btbn
           git -C .toolchain/btbn checkout "$BTBN_COMMIT"
           git -C .toolchain/btbn apply "$GITHUB_WORKSPACE/media-toolchain/patches/btbn-gnu-ncurses-mirror.patch"
+          "$GITHUB_WORKSPACE/scripts/patch-btbn-winarm64-system-error.sh" .toolchain/btbn/build.sh
       - name: Authenticate to Portico's builder registry
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.6.0
         with:
@@ -115,7 +122,7 @@ jobs:
           FORCE_REBUILD: '${{ inputs.force_dependency_rebuild }}'
         run: |
           owner="${GITHUB_REPOSITORY_OWNER,,}"
-          patch_sha="$(sha256sum "$GITHUB_WORKSPACE/media-toolchain/patches/btbn-gnu-ncurses-mirror.patch" | cut -d' ' -f1)"
+          patch_sha="$(sha256sum "$GITHUB_WORKSPACE/media-toolchain/patches/btbn-gnu-ncurses-mirror.patch" "$GITHUB_WORKSPACE/scripts/patch-btbn-winarm64-system-error.sh" | sha256sum | cut -d' ' -f1)"
           cache_key="$(printf '%s\n' "$BTBN_COMMIT" "$patch_sha" '${{ matrix.target }}' 'gpl' '8.1' "$DEPENDENCY_CACHE_REVISION" | sha256sum | cut -c1-24)"
           cache_image="ghcr.io/${owner}/portico-ffmpeg-builder:${{ matrix.target }}-${cache_key}"
           expected_image="ghcr.io/btbn/ffmpeg-builds/${{ matrix.target }}-gpl-8.1:latest"
@@ -133,11 +140,26 @@ jobs:
             ./download.sh ${{ matrix.target }} gpl 8.1
           else
             ./makeimage.sh ${{ matrix.target }} gpl 8.1
+            docker tag "$expected_image" "$cache_image"
+            docker push "$cache_image"
+            docker pull "$cache_image"
+            digest="$(docker image inspect "$cache_image" --format '{{index .RepoDigests 0}}' | cut -d@ -f2)"
+            {
+              echo "subject_name=${cache_image}"
+              echo "subject_digest=${digest}"
+            } >> "$GITHUB_OUTPUT"
           fi
           {
             echo "cache_hit=${cache_hit}"
             echo "cache_image=${cache_image}"
           } >> "$GITHUB_OUTPUT"
+      - if: steps.builder.outputs.cache_hit != 'true'
+        name: Attest the dependency image
+        uses: actions/attest-build-provenance@96b4a1ef7235a096b17240c259729fdd70c83d45 # v2.4.0
+        with:
+          subject-name: ${{ steps.builder.outputs.subject_name }}
+          subject-digest: ${{ steps.builder.outputs.subject_digest }}
+          push-to-registry: true
       - name: Build FFmpeg with the pinned dependency image
         working-directory: .toolchain/btbn
         env:
@@ -159,27 +181,6 @@ jobs:
         run: |
           curl --fail --location --retry 3 "https://ffmpeg.org/releases/ffmpeg-${{ inputs.version }}.tar.xz" -o ".toolchain/ffmpeg-${{ inputs.version }}.tar.xz"
           tar -C .toolchain -cJf "portico-ffmpeg-${TOOLCHAIN_TAG}-${{ matrix.public_target }}-source.tar.xz" btbn/.cache/downloads btbn/scripts.d btbn/variants btbn/addins btbn/patches "ffmpeg-${{ inputs.version }}.tar.xz"
-      - if: steps.builder.outputs.cache_hit != 'true'
-        id: publish-builder
-        name: Publish the successful dependency image
-        run: |
-          expected_image="ghcr.io/btbn/ffmpeg-builds/${{ matrix.target }}-gpl-8.1:latest"
-          cache_image="${{ steps.builder.outputs.cache_image }}"
-          docker tag "$expected_image" "$cache_image"
-          docker push "$cache_image"
-          docker pull "$cache_image"
-          digest="$(docker image inspect "$cache_image" --format '{{index .RepoDigests 0}}' | cut -d@ -f2)"
-          {
-            echo "subject_name=${cache_image}"
-            echo "subject_digest=${digest}"
-          } >> "$GITHUB_OUTPUT"
-      - if: steps.builder.outputs.cache_hit != 'true'
-        name: Attest the dependency image
-        uses: actions/attest-build-provenance@96b4a1ef7235a096b17240c259729fdd70c83d45 # v2.4.0
-        with:
-          subject-name: ${{ steps.publish-builder.outputs.subject_name }}
-          subject-digest: ${{ steps.publish-builder.outputs.subject_digest }}
-          push-to-registry: true
       - if: inputs.publish
         env: {GH_TOKEN: '${{ github.token }}'}
         run: gh release upload "$TOOLCHAIN_TAG" portico-ffmpeg-*.tar.xz --clobber
@@ -189,6 +190,7 @@ jobs:
 
   macos-build:
     needs: policy
+    if: ${{ !inputs.resume_windows_arm64_only }}
     runs-on: macos-15
     timeout-minutes: 360
     steps:
@@ -285,7 +287,7 @@ jobs:
 
   finalize:
     needs: [policy, container-builds, macos-build, validate-native]
-    if: inputs.publish
+    if: ${{ always() && inputs.publish && needs.policy.result == 'success' && needs.container-builds.result == 'success' && (needs.macos-build.result == 'success' || needs.macos-build.result == 'skipped') && needs.validate-native.result == 'success' }}
     runs-on: ubuntu-24.04
     steps:
       - env: {GH_TOKEN: '${{ github.token }}'}

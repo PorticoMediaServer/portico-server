@@ -36,6 +36,11 @@ uses an unpinned FFmpeg found on a runner. Windows ARM64 is intentionally a
 limited profile: it must provide the core decode/filter surface, but hardware
 transcoding parity with x64 is not a release requirement.
 
+FFmpeg 8.1.2 also requires a narrowly scoped Windows ARM64 source correction:
+its Graphics Capture filter uses `std::system_error` without directly including
+the standard `<system_error>` header. The pinned BtbN recipe patch adds that
+header; it does not disable the filter or change Portico's licensing profile.
+
 FFprobe is built and shipped beside FFmpeg. It is part of the same upstream
 project and license configuration; including it does not change Portico's
 license or remove functionality.
