@@ -79,7 +79,7 @@ index 586ef02..231bea1 100755
 +
 +  download "https://gitlab.freedesktop.org/freetype/freetype/-/archive/${CURRENT_PACKAGE_VERSION}/freetype-${CURRENT_PACKAGE_VERSION}.tar.gz" "freetype-${CURRENT_PACKAGE_VERSION}.tar.gz"
 +
-+  execute ./autogen.sh
++  execute env LIBTOOLIZE="${WORKSPACE}/bin/libtoolize" ./autogen.sh
 +  execute ./configure --prefix="${WORKSPACE}" --without-harfbuzz --disable-shared --enable-static
 +  execute make -j ${MJOBS}
 +  execute make install
