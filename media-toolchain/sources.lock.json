@@ -7,6 +7,7 @@
     "source": "https://ffmpeg.org/releases/ffmpeg-8.1.2.tar.xz"
   },
   "toolchainRevision": 1,
+  "dependencyCacheRevision": 1,
   "releaseTag": "ffmpeg-8.1.2-portico.1",
   "btbn": {
     "repository": "https://github.com/BtbN/FFmpeg-Builds.git",

@@ -16,9 +16,17 @@ on:
         required: true
         type: boolean
         default: true
+      force_dependency_rebuild:
+        description: Ignore durable builder caches and rebuild every dependency from source
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: write
+  packages: write
+  id-token: write
+  attestations: write
 
 concurrency:
   group: ffmpeg-toolchain
@@ -26,8 +34,10 @@ concurrency:
 
 env:
   TOOLCHAIN_TAG: ffmpeg-${{ inputs.version }}-portico.${{ inputs.revision }}
+  BUILDER_CACHE_RELEASE: ffmpeg-builder-cache
   BTBN_COMMIT: 48576f197ad1c2afb2e0b8efe204919a1afbff54
   MACOS_RECIPE_COMMIT: 4920fab9d6ac56999ce7e961b240659b4da078a5
+  DEPENDENCY_CACHE_REVISION: '1'
 
 jobs:
   policy:
@@ -41,14 +51,28 @@ jobs:
         run: |
           expected_version="$(node -p "require('./media-toolchain/sources.lock.json').ffmpeg.version")"
           expected_revision="$(node -p "require('./media-toolchain/sources.lock.json').toolchainRevision")"
+          expected_cache_revision="$(node -p "require('./media-toolchain/sources.lock.json').dependencyCacheRevision")"
           test "$VERSION" = "$expected_version"
           test "$REVISION" = "$expected_revision"
+          test "$DEPENDENCY_CACHE_REVISION" = "$expected_cache_revision"
           echo "tag=ffmpeg-${VERSION}-portico.${REVISION}" >> "$GITHUB_OUTPUT"
       - if: inputs.publish
         env: {GH_TOKEN: '${{ github.token }}'}
         run: |
-          gh release delete "$TOOLCHAIN_TAG" --cleanup-tag --yes 2>/dev/null || true
-          gh release create "$TOOLCHAIN_TAG" --draft --prerelease --title "Portico FFmpeg ${{ inputs.version }} toolchain revision ${{ inputs.revision }}" --notes "Manually approved, unsigned FFmpeg toolchain for Portico Media Server. This is a component release, not a Portico application release. GPL-compatible builds only; nonfree components are prohibited."
+          if gh release view "$TOOLCHAIN_TAG" --json isDraft --jq .isDraft > .toolchain-release-state 2>/dev/null; then
+            test "$(cat .toolchain-release-state)" = 'true' || {
+              echo "Refusing to overwrite published toolchain release $TOOLCHAIN_TAG. Increment toolchainRevision instead." >&2
+              exit 1
+            }
+          else
+            gh release create "$TOOLCHAIN_TAG" --draft --prerelease --title "Portico FFmpeg ${{ inputs.version }} toolchain revision ${{ inputs.revision }}" --notes "Manually approved, unsigned FFmpeg toolchain for Portico Media Server. This is a component release, not a Portico application release. GPL-compatible builds only; nonfree components are prohibited."
+          fi
+      - name: Ensure the private macOS builder-cache release exists
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          if ! gh release view "$BUILDER_CACHE_RELEASE" >/dev/null 2>&1; then
+            gh release create "$BUILDER_CACHE_RELEASE" --draft --title "Portico FFmpeg builder caches" --notes "Internal workflow storage for reproducible FFmpeg dependency prefixes. This draft is not a distributable Portico release."
+          fi
 
   container-builds:
     needs: policy
@@ -73,14 +97,53 @@ jobs:
           git clone https://github.com/BtbN/FFmpeg-Builds.git .toolchain/btbn
           git -C .toolchain/btbn checkout "$BTBN_COMMIT"
           git -C .toolchain/btbn apply "$GITHUB_WORKSPACE/media-toolchain/patches/btbn-gnu-ncurses-mirror.patch"
-      - name: Build pinned dependencies and FFmpeg
+      - name: Authenticate to Portico's builder registry
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - id: builder
+        name: Restore or build the pinned dependency image
+        working-directory: .toolchain/btbn
+        env:
+          GITHUB_REPOSITORY: btbn/ffmpeg-builds
+          PORTICO_REPOSITORY: '${{ github.repository }}'
+          GH_TOKEN: '${{ github.token }}'
+          GIT_BRANCH_OVERRIDE: n${{ inputs.version }}
+          NOCLEAN: '1'
+          FORCE_REBUILD: '${{ inputs.force_dependency_rebuild }}'
+        run: |
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          patch_sha="$(sha256sum "$GITHUB_WORKSPACE/media-toolchain/patches/btbn-gnu-ncurses-mirror.patch" | cut -d' ' -f1)"
+          cache_key="$(printf '%s\n' "$BTBN_COMMIT" "$patch_sha" '${{ matrix.target }}' 'gpl' '8.1' "$DEPENDENCY_CACHE_REVISION" | sha256sum | cut -c1-24)"
+          cache_image="ghcr.io/${owner}/portico-ffmpeg-builder:${{ matrix.target }}-${cache_key}"
+          expected_image="ghcr.io/btbn/ffmpeg-builds/${{ matrix.target }}-gpl-8.1:latest"
+          base_image="ghcr.io/btbn/ffmpeg-builds/base:latest"
+
+          cache_hit=false
+          if [[ "$FORCE_REBUILD" != 'true' ]] && docker pull "$cache_image"; then
+            gh attestation verify "oci://${cache_image}" --repo "$PORTICO_REPOSITORY" --signer-workflow "$PORTICO_REPOSITORY/.github/workflows/ffmpeg-toolchain.yml"
+            docker tag "$cache_image" "$expected_image"
+            docker tag "$cache_image" "$base_image"
+            cache_hit=true
+          fi
+
+          if [[ "$cache_hit" == 'true' ]]; then
+            ./download.sh ${{ matrix.target }} gpl 8.1
+          else
+            ./makeimage.sh ${{ matrix.target }} gpl 8.1
+          fi
+          {
+            echo "cache_hit=${cache_hit}"
+            echo "cache_image=${cache_image}"
+          } >> "$GITHUB_OUTPUT"
+      - name: Build FFmpeg with the pinned dependency image
         working-directory: .toolchain/btbn
         env:
           GITHUB_REPOSITORY: btbn/ffmpeg-builds
           GIT_BRANCH_OVERRIDE: n${{ inputs.version }}
-          NOCLEAN: '1'
         run: |
-          ./makeimage.sh ${{ matrix.target }} gpl 8.1
           ./build.sh ${{ matrix.target }} gpl 8.1
       - name: Normalize artifact
         run: |
@@ -96,6 +159,27 @@ jobs:
         run: |
           curl --fail --location --retry 3 "https://ffmpeg.org/releases/ffmpeg-${{ inputs.version }}.tar.xz" -o ".toolchain/ffmpeg-${{ inputs.version }}.tar.xz"
           tar -C .toolchain -cJf "portico-ffmpeg-${TOOLCHAIN_TAG}-${{ matrix.public_target }}-source.tar.xz" btbn/.cache/downloads btbn/scripts.d btbn/variants btbn/addins btbn/patches "ffmpeg-${{ inputs.version }}.tar.xz"
+      - if: steps.builder.outputs.cache_hit != 'true'
+        id: publish-builder
+        name: Publish the successful dependency image
+        run: |
+          expected_image="ghcr.io/btbn/ffmpeg-builds/${{ matrix.target }}-gpl-8.1:latest"
+          cache_image="${{ steps.builder.outputs.cache_image }}"
+          docker tag "$expected_image" "$cache_image"
+          docker push "$cache_image"
+          docker pull "$cache_image"
+          digest="$(docker image inspect "$cache_image" --format '{{index .RepoDigests 0}}' | cut -d@ -f2)"
+          {
+            echo "subject_name=${cache_image}"
+            echo "subject_digest=${digest}"
+          } >> "$GITHUB_OUTPUT"
+      - if: steps.builder.outputs.cache_hit != 'true'
+        name: Attest the dependency image
+        uses: actions/attest-build-provenance@96b4a1ef7235a096b17240c259729fdd70c83d45 # v2.4.0
+        with:
+          subject-name: ${{ steps.publish-builder.outputs.subject_name }}
+          subject-digest: ${{ steps.publish-builder.outputs.subject_digest }}
+          push-to-registry: true
       - if: inputs.publish
         env: {GH_TOKEN: '${{ github.token }}'}
         run: gh release upload "$TOOLCHAIN_TAG" portico-ffmpeg-*.tar.xz --clobber
@@ -115,6 +199,26 @@ jobs:
           git -C .toolchain/macos checkout "$MACOS_RECIPE_COMMIT"
           git -C .toolchain/macos apply "$GITHUB_WORKSPACE/media-toolchain/patches/homebridge-sourceforge-download.patch"
           git -C .toolchain/macos apply "$GITHUB_WORKSPACE/media-toolchain/patches/homebridge-gpl-only.patch"
+      - id: macos-cache
+        name: Restore the pinned macOS dependency prefix
+        env:
+          GH_TOKEN: '${{ github.token }}'
+          FORCE_REBUILD: '${{ inputs.force_dependency_rebuild }}'
+        run: |
+          patch_sha="$(shasum -a 256 media-toolchain/patches/homebridge-*.patch | shasum -a 256 | cut -d' ' -f1)"
+          cache_key="$(printf '%s\n' "$MACOS_RECIPE_COMMIT" "$patch_sha" 'macos-arm64' "$DEPENDENCY_CACHE_REVISION" | shasum -a 256 | cut -c1-24)"
+          asset="portico-ffmpeg-builder-macos-arm64-${cache_key}.tar.xz"
+          cache_hit=false
+          mkdir -p .toolchain/cache
+          if [[ "$FORCE_REBUILD" != 'true' ]] && gh release download "$BUILDER_CACHE_RELEASE" --pattern "$asset" --pattern "${asset}.sha256" --dir .toolchain/cache 2>/dev/null; then
+            (cd .toolchain/cache && shasum -a 256 -c "${asset}.sha256")
+            tar -xJf ".toolchain/cache/${asset}" -C .toolchain/macos
+            cache_hit=true
+          fi
+          {
+            echo "asset=${asset}"
+            echo "cache_hit=${cache_hit}"
+          } >> "$GITHUB_OUTPUT"
       - name: Build FFmpeg for Apple Silicon
         working-directory: .toolchain/macos
         env:
@@ -131,6 +235,26 @@ jobs:
           mkdir -p .toolchain/macos/portico-patches
           cp media-toolchain/patches/homebridge-*.patch .toolchain/macos/portico-patches/
           tar -C .toolchain -cJf "portico-ffmpeg-${TOOLCHAIN_TAG}-macos-arm64-source.tar.xz" macos/packages macos/build-ffmpeg macos/README.md macos/package.json macos/portico-patches
+      - if: steps.macos-cache.outputs.cache_hit != 'true'
+        name: Preserve the validated macOS dependency prefix
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          cache_root="$(mktemp -d)"
+          mkdir -p "$cache_root/packages"
+          cp -R .toolchain/macos/workspace "$cache_root/workspace"
+          find .toolchain/macos/packages -maxdepth 1 -name '*.done' -exec cp {} "$cache_root/packages/" \;
+
+          # The cache holds dependency outputs only. FFmpeg itself is always rebuilt.
+          rm -f "$cache_root/workspace/bin/ffmpeg" "$cache_root/workspace/bin/ffprobe" "$cache_root/workspace/bin/ffplay"
+          rm -rf "$cache_root/workspace/include/libavcodec" "$cache_root/workspace/include/libavdevice" "$cache_root/workspace/include/libavfilter" "$cache_root/workspace/include/libavformat" "$cache_root/workspace/include/libavutil" "$cache_root/workspace/include/libpostproc" "$cache_root/workspace/include/libswresample" "$cache_root/workspace/include/libswscale"
+          rm -f "$cache_root/workspace/lib/libav"*.a "$cache_root/workspace/lib/libpostproc"*.a "$cache_root/workspace/lib/libswresample"*.a "$cache_root/workspace/lib/libswscale"*.a
+          rm -f "$cache_root/workspace/lib/pkgconfig/libav"*.pc "$cache_root/workspace/lib/pkgconfig/libpostproc"*.pc "$cache_root/workspace/lib/pkgconfig/libswresample"*.pc "$cache_root/workspace/lib/pkgconfig/libswscale"*.pc
+          rm -rf "$cache_root/workspace/share/ffmpeg"
+          rm -f "$cache_root/workspace/share/man/man1/ffmpeg.1" "$cache_root/workspace/share/man/man1/ffprobe.1" "$cache_root/workspace/share/man/man1/ffplay.1"
+
+          tar -C "$cache_root" -cJf ".toolchain/cache/${{ steps.macos-cache.outputs.asset }}" workspace packages
+          (cd .toolchain/cache && shasum -a 256 "${{ steps.macos-cache.outputs.asset }}" > "${{ steps.macos-cache.outputs.asset }}.sha256")
+          gh release upload "$BUILDER_CACHE_RELEASE" ".toolchain/cache/${{ steps.macos-cache.outputs.asset }}" ".toolchain/cache/${{ steps.macos-cache.outputs.asset }}.sha256" --clobber
       - if: inputs.publish
         env: {GH_TOKEN: '${{ github.token }}'}
         run: gh release upload "$TOOLCHAIN_TAG" portico-ffmpeg-*.tar.xz --clobber
