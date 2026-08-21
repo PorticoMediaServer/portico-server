@@ -1,4 +1,4 @@
-import type { Library } from '@portico/client-core';
+import type { Library } from '@porticomediaserver/client-core';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';

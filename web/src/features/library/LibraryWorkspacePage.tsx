@@ -13,7 +13,7 @@ import {
   type BrowseLibraryRequest,
   type LibraryBrowseCapabilities,
   type SavedView,
-} from '@portico/client-core';
+} from '@porticomediaserver/client-core';
 import {
   ArrowDown,
   Check,

@@ -28,7 +28,7 @@ import {
 	UserRound,
   X,
 } from '#portico-icons';
-import { productMessage, type ProductMessageId } from '@portico/client-core';
+import { productMessage, type ProductMessageId } from '@porticomediaserver/client-core';
 import { type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, NavLink, useLocation, useNavigate, useNavigationType } from 'react-router-dom';

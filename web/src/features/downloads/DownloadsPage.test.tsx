@@ -1,4 +1,4 @@
-import type { DownloadPreparation } from '@portico/client-core';
+import type { DownloadPreparation } from '@porticomediaserver/client-core';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DownloadsPage } from './DownloadsPage';

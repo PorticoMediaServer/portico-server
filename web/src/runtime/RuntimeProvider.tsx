@@ -37,7 +37,7 @@ import {
   type TrustedServerRemovalTombstone,
   type ViewerScope,
   ApiError,
-} from '@portico/client-core';
+} from '@porticomediaserver/client-core';
 import { type ReactNode, useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { HttpPorticoDataSource } from '../data/httpSource';
 import type { PorticoDataSource, Viewer } from '../data/models';

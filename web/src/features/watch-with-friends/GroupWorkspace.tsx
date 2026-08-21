@@ -3,7 +3,7 @@ import type {
   WatchWithFriendsMemberStateRequest,
   WatchWithFriendsSettingsRequest,
   WatchWithFriendsStateRequest,
-} from '@portico/client-core';
+} from '@porticomediaserver/client-core';
 import {
   ArrowDown,
   ArrowUp,

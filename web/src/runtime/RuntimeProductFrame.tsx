@@ -1,5 +1,5 @@
 import { Bookmark, ChevronDown, Home, LibraryBig, LogOut, Menu, Radio, Search, Server, Settings, UserRound } from '#portico-icons';
-import { productMessage } from '@portico/client-core';
+import { productMessage } from '@porticomediaserver/client-core';
 import { createContext, type CSSProperties, lazy, type ReactNode, type RefObject, Suspense, useCallback, useContext, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { AnchoredOverlay } from '../components/overlay/OverlayPortal';
 import { runtimeFrameServerName } from './runtimeFramePolicy';

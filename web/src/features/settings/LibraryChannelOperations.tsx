@@ -1,4 +1,4 @@
-import type { LibraryChannelAggregate, LibraryChannelBlock, LibraryChannelBlockPreset, LibraryChannelConfigurationRequest, LibraryChannelRule } from '@portico/client-core';
+import type { LibraryChannelAggregate, LibraryChannelBlock, LibraryChannelBlockPreset, LibraryChannelConfigurationRequest, LibraryChannelRule } from '@porticomediaserver/client-core';
 import { AlertTriangle, CalendarClock, Pencil, Plus, RefreshCw, RotateCcw, Sparkles, Trash2, TvMinimalPlay, Upload, X } from '#portico-icons';
 import { type ChangeEvent, useCallback, useState } from 'react';
 import { IconButton, PrimaryButton, SecondaryButton } from '../../components/controls/Buttons';

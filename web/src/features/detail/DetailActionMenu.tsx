@@ -10,7 +10,7 @@ import {
   X,
 } from '#portico-icons';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { productMessage } from '@portico/client-core';
+import { productMessage } from '@porticomediaserver/client-core';
 import { useNavigate } from 'react-router-dom';
 import { IconButton, PrimaryButton, SecondaryButton } from '../../components/controls/Buttons';
 import { AnchoredOverlay, ModalOverlay } from '../../components/overlay/OverlayPortal';

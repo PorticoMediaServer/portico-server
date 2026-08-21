@@ -1,4 +1,4 @@
-import type { APIKey, Device, Permissions, PorticoInvite, User, UserCreateRequest, UserPatchRequest } from '@portico/client-core';
+import type { APIKey, Device, Permissions, PorticoInvite, User, UserCreateRequest, UserPatchRequest } from '@porticomediaserver/client-core';
 import { AlertTriangle, Check, Clipboard, KeyRound, Laptop, Pencil, Plus, ShieldCheck, Trash2, X } from '#portico-icons';
 import { useMemo, useState } from 'react';
 import { IconButton, PrimaryButton, SecondaryButton } from '../../components/controls/Buttons';

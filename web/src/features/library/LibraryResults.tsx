@@ -2,7 +2,7 @@ import {
   Check,
   X,
 } from '#portico-icons';
-import { productMessage } from '@portico/client-core';
+import { productMessage } from '@porticomediaserver/client-core';
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { IconButton } from '../../components/controls/Buttons';

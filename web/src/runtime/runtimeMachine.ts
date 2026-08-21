@@ -1,4 +1,4 @@
-import { ApiError, LocalNetworkRouteUnavailableError, NearbyRouteAvailableError, type HostedAccountProfile, type ProductMessageId } from '@portico/client-core';
+import { ApiError, LocalNetworkRouteUnavailableError, NearbyRouteAvailableError, type HostedAccountProfile, type ProductMessageId } from '@porticomediaserver/client-core';
 
 export type RuntimeMode = 'bundled' | 'hosted' | 'fixtures';
 

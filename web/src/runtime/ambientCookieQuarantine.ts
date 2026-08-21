@@ -1,4 +1,4 @@
-import { sameViewerScope, type ViewerScope } from '@portico/client-core';
+import { sameViewerScope, type ViewerScope } from '@porticomediaserver/client-core';
 
 export const AMBIENT_COOKIE_QUARANTINE_KEY = 'portico-ambient-cookie-quarantine-v1';
 export const AMBIENT_COOKIE_RESERVATION_HEAD_KEY = 'portico-ambient-cookie-reservation-head-v1';

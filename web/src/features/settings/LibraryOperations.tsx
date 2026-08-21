@@ -1,4 +1,4 @@
-import type { Job, Library } from '@portico/client-core';
+import type { Job, Library } from '@porticomediaserver/client-core';
 import {
   AlertTriangle,
   Ban,

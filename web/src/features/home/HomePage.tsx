@@ -7,7 +7,7 @@ import {
   type ProductMessagePresentation,
   type ProductMessageVariables,
   type ReservedSurfaceSlot,
-} from '@portico/client-core';
+} from '@porticomediaserver/client-core';
 import { LibraryBig, Plus, RefreshCw, SlidersHorizontal } from '#portico-icons';
 import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';

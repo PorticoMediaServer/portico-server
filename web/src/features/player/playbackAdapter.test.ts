@@ -1,4 +1,4 @@
-import type { PlaybackResponse } from '@portico/client-core';
+import type { PlaybackResponse } from '@porticomediaserver/client-core';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { HttpPorticoDataSource } from '../../data/httpSource';
 

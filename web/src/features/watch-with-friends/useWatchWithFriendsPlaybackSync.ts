@@ -1,4 +1,4 @@
-import { reduceWatchWithFriendsSnapshot, type WatchWithFriendsGroup, type WatchWithFriendsSyncState } from '@portico/client-core';
+import { reduceWatchWithFriendsSnapshot, type WatchWithFriendsGroup, type WatchWithFriendsSyncState } from '@porticomediaserver/client-core';
 import { useCallback, useEffect, useRef } from 'react';
 import { useOptionalPlaybackSession } from '../player/PlayerSurface';
 import { groupIncludesViewer, viewerCanHost, type WatchWithFriendsSource, type WatchWithFriendsViewer } from './watchWithFriendsSource';

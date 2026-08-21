@@ -1,4 +1,4 @@
-import type { PlaybackCommand, PorticoClient } from '@portico/client-core';
+import type { PlaybackCommand, PorticoClient } from '@porticomediaserver/client-core';
 
 type PlaybackCommandClient = Pick<PorticoClient, 'playbackCommand' | 'playbackCommandEventsUrl'>;
 

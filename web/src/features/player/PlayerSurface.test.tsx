@@ -1,4 +1,4 @@
-import { ApiError, type PlaybackResponse, type PlaybackSessionQueueResponse } from '@portico/client-core';
+import { ApiError, type PlaybackResponse, type PlaybackSessionQueueResponse } from '@porticomediaserver/client-core';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';

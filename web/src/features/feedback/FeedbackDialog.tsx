@@ -1,5 +1,5 @@
 import { useEffect, useId, useState } from 'react';
-import { productMessage, type ProductMessageId, type ProductMessagePresentation, type ViewerFeedbackCategory, type ViewerFeedbackKind } from '@portico/client-core';
+import { productMessage, type ProductMessageId, type ProductMessagePresentation, type ViewerFeedbackCategory, type ViewerFeedbackKind } from '@porticomediaserver/client-core';
 import { IconButton } from '../../components/controls/Buttons';
 import { ModalOverlay } from '../../components/overlay/OverlayPortal';
 import { ProductMessageIcon, SemanticProductIcon, productProblem, productText } from '../../components/ProductLanguage';

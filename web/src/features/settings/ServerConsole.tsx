@@ -1,4 +1,4 @@
-import type { LogEvent, SystemDiagnostics, SystemReleaseInfo } from '@portico/client-core';
+import type { LogEvent, SystemDiagnostics, SystemReleaseInfo } from '@porticomediaserver/client-core';
 import { AlertTriangle, CheckCircle2, Clipboard, Database, RefreshCw, Search, Server, TerminalSquare } from '#portico-icons';
 import { useCallback, useMemo, useState } from 'react';
 import { SecondaryButton } from '../../components/controls/Buttons';

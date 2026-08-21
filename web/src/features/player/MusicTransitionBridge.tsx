@@ -8,7 +8,7 @@ import {
   type PlaybackPreparedResponse,
   type PlaybackResponse,
   type PlaybackSessionQueueResponse,
-} from '@portico/client-core';
+} from '@porticomediaserver/client-core';
 import { type RefObject, useEffect, useRef } from 'react';
 import { usePorticoDataSource } from '../../data/DataProvider';
 import type { MusicPlaybackPreferences } from '../../data/models';

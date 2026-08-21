@@ -1,4 +1,4 @@
-import type { FilesystemBrowseResponse } from '@portico/client-core';
+import type { FilesystemBrowseResponse } from '@porticomediaserver/client-core';
 import {
   ArrowUp,
   ChevronRight,

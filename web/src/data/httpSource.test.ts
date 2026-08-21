@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { HostedServicesClient, PorticoClient } from '@portico/client-core';
+import type { HostedServicesClient, PorticoClient } from '@porticomediaserver/client-core';
 import { HttpPorticoDataSource, LocalProfileSelectionRequiredError } from './httpSource';
 import { createBrowserHostedConnectionVault } from '../runtime/hostedConnectionVault';
 import clientCompatibilityFixture from '../../../api/openapi/fixtures/client-compatibility-conformance.json';

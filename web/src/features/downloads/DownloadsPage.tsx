@@ -1,4 +1,4 @@
-import { productMessage, type DownloadPreparation } from '@portico/client-core';
+import { productMessage, type DownloadPreparation } from '@porticomediaserver/client-core';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { PrimaryButton, SecondaryButton } from '../../components/controls/Buttons';
 import { ProductLanguageIcon } from '../../components/product/ProductLanguageIcon';

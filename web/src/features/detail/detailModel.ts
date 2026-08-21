@@ -1,4 +1,4 @@
-import { productMessage, type ProductMessageId } from '@portico/client-core';
+import { productMessage, type ProductMessageId } from '@porticomediaserver/client-core';
 import type { MediaItem, MediaStream } from '../../data/models';
 import { mediaPresentation } from '../catalog/mediaPresentation';
 import type { PlaybackCollectionContext } from '../player/watchNavigation';

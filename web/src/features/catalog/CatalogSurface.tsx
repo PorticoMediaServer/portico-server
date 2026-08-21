@@ -10,7 +10,7 @@ import {
   RefreshCw,
   X,
 } from '#portico-icons';
-import { productMessage, resolveMediaDetailViewModel, resolveMediaViewModel, type ProductContract } from '@portico/client-core';
+import { productMessage, resolveMediaDetailViewModel, resolveMediaViewModel, type ProductContract } from '@porticomediaserver/client-core';
 import { type ReactNode, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useNavigate } from 'react-router-dom';

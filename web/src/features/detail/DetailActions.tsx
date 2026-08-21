@@ -1,5 +1,5 @@
 import { AlertTriangle, CircleCheck, Play, RefreshCw, X } from '#portico-icons';
-import { contextualMediaPlayAction, productMessage } from '@portico/client-core';
+import { contextualMediaPlayAction, productMessage } from '@porticomediaserver/client-core';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { IconButton, PrimaryButton, SecondaryButton } from '../../components/controls/Buttons';

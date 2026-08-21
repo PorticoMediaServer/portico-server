@@ -21,7 +21,7 @@ import {
   type ProductMessageId,
   type ProductMessagePresentation,
   type SemanticIconId,
-} from '@portico/client-core';
+} from '@porticomediaserver/client-core';
 import { type FormEvent, type ReactNode, useEffect, useRef, useState } from 'react';
 import { PrimaryButton, SecondaryButton } from '../components/controls/Buttons';
 import { PasswordInput, PasswordRequirements, validPorticoPassword } from '../components/controls/PasswordInput';

@@ -1,4 +1,4 @@
-import type { HostedServicesClient, PorticoAccountUser, PorticoClient, User, UserPatchRequest } from '@portico/client-core';
+import type { HostedServicesClient, PorticoAccountUser, PorticoClient, User, UserPatchRequest } from '@porticomediaserver/client-core';
 import { describe, expect, it, vi } from 'vitest';
 import { HttpSettingsDataSource } from './HttpSettingsDataSource';
 

@@ -16,7 +16,7 @@ import {
   type ProductMessageId,
   type ProductMessagePresentation,
   type SemanticIconId,
-} from '@portico/client-core';
+} from '@porticomediaserver/client-core';
 
 type StructuredProblem = Error & {
   code?: string;

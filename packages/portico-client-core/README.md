@@ -4,6 +4,11 @@ Platform-neutral TypeScript client core for Portico.
 
 This package is the shared product/API layer for Portico Web and future TypeScript-capable clients. The Portico Server and Portico Cloud OpenAPI documents own every wire shape; this package adds ergonomic request, playback, and connection-policy wrappers without maintaining a second DTO model.
 
+The public Hosted Services contract contains the account, device, server, and
+connection operations needed by public Portico builds. The Hosted Services
+backend, infrastructure, database, deployment system, and operator APIs are
+separate private software and are not included here.
+
 ## What Belongs Here
 
 - API and OpenAPI types.

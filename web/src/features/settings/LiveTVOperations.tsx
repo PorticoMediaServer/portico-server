@@ -1,4 +1,4 @@
-import type { LiveTVSource, LiveTVSourceRequest } from '@portico/client-core';
+import type { LiveTVSource, LiveTVSourceRequest } from '@porticomediaserver/client-core';
 import {
   AlertTriangle,
   Antenna,

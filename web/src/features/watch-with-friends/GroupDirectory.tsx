@@ -1,4 +1,4 @@
-import type { WatchWithFriendsCreateRequest, WatchWithFriendsGroup } from '@portico/client-core';
+import type { WatchWithFriendsCreateRequest, WatchWithFriendsGroup } from '@porticomediaserver/client-core';
 import { LoaderCircle, Plus, RefreshCw, UsersRound } from '#portico-icons';
 import { useEffect, useState, type FormEvent } from 'react';
 import { PrimaryButton, SecondaryButton } from '../../components/controls/Buttons';

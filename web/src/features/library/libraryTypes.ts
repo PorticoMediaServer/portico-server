@@ -11,7 +11,7 @@ import type {
   LibrarySortCapability,
   SavedView,
   SavedViewCreateRequest,
-} from '@portico/client-core';
+} from '@porticomediaserver/client-core';
 import type { MediaItem } from '../../data/models';
 
 export type LibraryWorkspaceKind = LibraryBrowseCapabilities['library']['kind'];

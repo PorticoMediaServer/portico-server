@@ -17,7 +17,7 @@ import {
   type HostedConnectionVault,
   type HostedConnectionVaultStorage,
 } from './hostedConnectionVault';
-import * as ClientCore from '@portico/client-core';
+import * as ClientCore from '@porticomediaserver/client-core';
 import {
   GLOBAL_SIGN_OUT_FENCE_ID,
   markAccountSignedOut,

@@ -1,4 +1,4 @@
-import type { LibraryChannelsGuide } from '@portico/client-core';
+import type { LibraryChannelsGuide } from '@porticomediaserver/client-core';
 import { AlertTriangle, ChevronLeft, ChevronRight, Clock3, Play, Search, TvMinimalPlay } from '#portico-icons';
 import { type ComponentType, useDeferredValue, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';

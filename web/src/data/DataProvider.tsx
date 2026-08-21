@@ -18,7 +18,7 @@ import {
 	type AppEvent,
 	type ProfileTransitionReason,
 	type ViewerScope,
-} from '@portico/client-core';
+} from '@porticomediaserver/client-core';
 import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
 		BrowserAccountRemoval,

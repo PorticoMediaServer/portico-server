@@ -1,4 +1,4 @@
-import type { FilesystemBrowseResponse } from '@portico/client-core';
+import type { FilesystemBrowseResponse } from '@porticomediaserver/client-core';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { FilesystemPickerDialog } from './FilesystemPickerDialog';

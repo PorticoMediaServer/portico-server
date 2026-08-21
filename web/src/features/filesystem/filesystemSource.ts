@@ -1,4 +1,4 @@
-import type { FilesystemBrowseResponse, PorticoClient } from '@portico/client-core';
+import type { FilesystemBrowseResponse, PorticoClient } from '@porticomediaserver/client-core';
 
 export interface FilesystemPickerSource {
   browse(path?: string, signal?: AbortSignal): Promise<FilesystemBrowseResponse>;

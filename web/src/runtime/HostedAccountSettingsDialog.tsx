@@ -1,4 +1,4 @@
-import { createHostedServicesClient, createPorticoClient, type PorticoAccountUser } from '@portico/client-core';
+import { createHostedServicesClient, createPorticoClient, type PorticoAccountUser } from '@porticomediaserver/client-core';
 import { RefreshCw, X } from '#portico-icons';
 import { useCallback, useMemo, useState } from 'react';
 import { IconButton, SecondaryButton } from '../components/controls/Buttons';

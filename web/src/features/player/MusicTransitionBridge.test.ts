@@ -1,4 +1,4 @@
-import type { MediaItem, PlaybackResponse, PlaybackSessionQueueResponse } from '@portico/client-core';
+import type { MediaItem, PlaybackResponse, PlaybackSessionQueueResponse } from '@porticomediaserver/client-core';
 import { describe, expect, it, vi } from 'vitest';
 import { continuePreloadedAudioUntilPrimaryPlays, nextCandidate } from './MusicTransitionBridge';
 

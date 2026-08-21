@@ -52,7 +52,7 @@ import {
   type SearchContract,
   type SearchRequestOptions,
   type DownloadPreparation,
-} from '@portico/client-core';
+} from '@porticomediaserver/client-core';
 import { createBrowserHostedConnectionVault, type HostedConnectionVault } from '../runtime/hostedConnectionVault';
 import type {
   BrowseExpression,
@@ -2017,7 +2017,7 @@ export class HttpPorticoDataSource implements PorticoDataSource {
     return response.items;
   }
 
-  async restorePlayback(signal: AbortSignal, intent?: import('@portico/client-core').PlaybackIntent): Promise<PlaybackRestoreResponse> {
+  async restorePlayback(signal: AbortSignal, intent?: import('@porticomediaserver/client-core').PlaybackIntent): Promise<PlaybackRestoreResponse> {
     const response = await this.client.request<PlaybackRestoreResponse>('/api/playback/active', {
       method: 'POST',
       signal,
@@ -2037,7 +2037,7 @@ export class HttpPorticoDataSource implements PorticoDataSource {
     return this.client.request(`/api/playback-sessions/${encodeURIComponent(sessionId)}/media-grant`, { method: 'POST', signal });
   }
 
-  async renegotiatePlayback(sessionId: string, request: import('@portico/client-core').PlaybackRenegotiationRequest, signal: AbortSignal): Promise<PlaybackResponse> {
+  async renegotiatePlayback(sessionId: string, request: import('@porticomediaserver/client-core').PlaybackRenegotiationRequest, signal: AbortSignal): Promise<PlaybackResponse> {
     return this.playbackAdapter.normalizePlayback(await this.client.renegotiatePlayback(sessionId, request, { signal }));
   }
 

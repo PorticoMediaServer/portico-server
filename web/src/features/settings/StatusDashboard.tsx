@@ -1,4 +1,4 @@
-import type { Job, PlaybackSession, RemoteAccessStatus } from '@portico/client-core';
+import type { Job, PlaybackSession, RemoteAccessStatus } from '@porticomediaserver/client-core';
 import {
   Activity,
   AlertTriangle,

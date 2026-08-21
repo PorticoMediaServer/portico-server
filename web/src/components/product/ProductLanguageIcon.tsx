@@ -1,4 +1,4 @@
-import { semanticIcon, type SemanticIconId } from '@portico/client-core';
+import { semanticIcon, type SemanticIconId } from '@porticomediaserver/client-core';
 import {
   Activity,
   BookOpen,

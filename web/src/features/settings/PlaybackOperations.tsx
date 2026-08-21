@@ -1,4 +1,4 @@
-import type { SystemStorageReport, TranscodeCapacityReport } from '@portico/client-core';
+import type { SystemStorageReport, TranscodeCapacityReport } from '@porticomediaserver/client-core';
 import { AlertTriangle, CheckCircle2, Cpu, Gauge, HardDrive, RefreshCw, ServerCog } from '#portico-icons';
 import { useCallback, useState } from 'react';
 import { SecondaryButton } from '../../components/controls/Buttons';

@@ -68,7 +68,7 @@ import type {
   ViewerScope,
   DownloadPreparation,
   DownloadPreparationUpdateRequest,
-} from '@portico/client-core';
+} from '@porticomediaserver/client-core';
 
 export type LibraryKind = 'movies' | 'tv' | 'anime' | 'music' | 'audiobooks' | 'recorded-tv';
 

@@ -1,5 +1,5 @@
 import { AlertTriangle } from '#portico-icons';
-import { productMessage, type MediaViewModel } from '@portico/client-core';
+import { productMessage, type MediaViewModel } from '@porticomediaserver/client-core';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { SecondaryButton } from '../../components/controls/Buttons';

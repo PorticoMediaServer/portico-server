@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import type { MediaItem } from '@portico/client-core';
+import type { MediaItem } from '@porticomediaserver/client-core';
 import { render } from '@testing-library/react';
 import { createRef } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';

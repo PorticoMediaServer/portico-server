@@ -1,5 +1,5 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
-import { PORTICO_FOUNDATION_COMPATIBILITY } from '@portico/client-core';
+import { PORTICO_FOUNDATION_COMPATIBILITY } from '@porticomediaserver/client-core';
 
 const json = (route: Route, body: unknown, status = 200) => route.fulfill({
   status,

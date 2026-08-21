@@ -1,4 +1,4 @@
-import type { BackupInfo, ScheduledTask, SystemStorageReport } from '@portico/client-core';
+import type { BackupInfo, ScheduledTask, SystemStorageReport } from '@porticomediaserver/client-core';
 import { AlertTriangle, ArchiveRestore, CheckCircle2, Clock3, DatabaseBackup, HardDrive, Play, RefreshCw } from '#portico-icons';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { PrimaryButton, SecondaryButton } from '../../components/controls/Buttons';

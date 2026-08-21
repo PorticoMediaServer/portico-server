@@ -1,4 +1,4 @@
-import { ApiError, createMemorySessionStore, LocalNetworkRouteUnavailableError, NearbyRouteAvailableError } from '@portico/client-core';
+import { ApiError, createMemorySessionStore, LocalNetworkRouteUnavailableError, NearbyRouteAvailableError } from '@porticomediaserver/client-core';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { browserSafeLocalCandidates, browserSafeProbeFetch, extractHostedBootstrapIntent, verifiedLocalLoginRedirect } from './RuntimeProvider';
 import {

@@ -35,7 +35,7 @@ import type {
   UserPreferences,
   UserCreateRequest,
   UserPatchRequest,
-} from '@portico/client-core';
+} from '@porticomediaserver/client-core';
 import type {
   AccountIdentitySnapshot,
   AccountSignedInDevice,

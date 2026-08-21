@@ -1,4 +1,4 @@
-import { type NotificationAudience } from '@portico/client-core';
+import { type NotificationAudience } from '@porticomediaserver/client-core';
 import { SemanticProductIcon, productText } from '../../components/ProductLanguage';
 import { type NotificationState, useNotifications } from './NotificationProvider';
 import { NotificationList } from './NotificationList';

@@ -1,4 +1,4 @@
-import type { DLNAStatus } from '@portico/client-core';
+import type { DLNAStatus } from '@porticomediaserver/client-core';
 import {
   CheckCircle2,
   ExternalLink,

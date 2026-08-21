@@ -1,4 +1,4 @@
-import { TrustedServerPublicationBlockedError } from '@portico/client-core';
+import { TrustedServerPublicationBlockedError } from '@porticomediaserver/client-core';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createHostedConnectionVault, type HostedConnectionVaultStorage } from './hostedConnectionVault';
 import {

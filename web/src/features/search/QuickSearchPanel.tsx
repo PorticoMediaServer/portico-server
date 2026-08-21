@@ -1,5 +1,5 @@
 import { ChevronRight, RefreshCw, Search } from '#portico-icons';
-import { orderSearchGroups, productMessage, resolveSearchResultSemantic, type ProductContract } from '@portico/client-core';
+import { orderSearchGroups, productMessage, resolveSearchResultSemantic, type ProductContract } from '@porticomediaserver/client-core';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ProductLanguageIcon } from '../../components/states/ProductLanguageState';

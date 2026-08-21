@@ -1,4 +1,4 @@
-import { productMessage } from '@portico/client-core';
+import { productMessage } from '@porticomediaserver/client-core';
 import { Component, type ErrorInfo, type ReactNode, createRef } from 'react';
 import { ProductProblemMessage } from './ProductProblemMessage';
 

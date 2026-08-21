@@ -43,7 +43,7 @@ import type {
   UserPreferences,
   UserCreateRequest,
   UserPatchRequest,
-} from '@portico/client-core';
+} from '@porticomediaserver/client-core';
 
 export type SettingsViewer = {
   id: string;

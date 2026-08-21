@@ -15,7 +15,7 @@ import {
 	productMessage,
 	resolveProductProblem,
 	type ProductMessageId,
-} from '@portico/client-core';
+} from '@porticomediaserver/client-core';
 import { type FormEvent, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PrimaryButton, SecondaryButton } from '../../components/controls/Buttons';

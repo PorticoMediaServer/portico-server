@@ -1,4 +1,4 @@
-import { TrustedServerPublicationBlockedError } from '@portico/client-core';
+import { TrustedServerPublicationBlockedError } from '@porticomediaserver/client-core';
 
 const LOCK_PREFIX = 'portico-hosted-account-publication-v1:';
 const AMBIENT_COOKIE_MUTATION_LOCK = 'portico-ambient-cookie-mutation-v1';

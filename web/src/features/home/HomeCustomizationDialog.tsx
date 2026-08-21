@@ -1,5 +1,5 @@
 import { ArrowDown, ArrowUp, Eye, EyeOff, GripVertical, RotateCcw, X } from '#portico-icons';
-import { productMessage, type ProductMessagePresentation } from '@portico/client-core';
+import { productMessage, type ProductMessagePresentation } from '@porticomediaserver/client-core';
 import { useMemo, useState } from 'react';
 import { IconButton, PrimaryButton, SecondaryButton } from '../../components/controls/Buttons';
 import { ModalOverlay } from '../../components/overlay/OverlayPortal';

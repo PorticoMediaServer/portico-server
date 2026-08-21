@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { useEffect } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ApiError, productMessage, type AppEvent } from '@portico/client-core';
+import { ApiError, productMessage, type AppEvent } from '@porticomediaserver/client-core';
 import { DataProvider, useAuthSession, useHome, usePorticoDataSource } from './DataProvider';
 import { FixturePorticoDataSource } from './fixtureSource';
 import type { HomeResult, LocalProfileLoginChallenge, LocalProfileSelection, Viewer } from './models';

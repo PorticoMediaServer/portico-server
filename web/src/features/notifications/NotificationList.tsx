@@ -1,4 +1,4 @@
-import { knownSemanticIconId, productMessage, safeProductMessage, type NotificationAction, type NotificationAudience, type ViewerNotification } from '@portico/client-core';
+import { knownSemanticIconId, productMessage, safeProductMessage, type NotificationAction, type NotificationAudience, type ViewerNotification } from '@porticomediaserver/client-core';
 import { useNavigate } from 'react-router-dom';
 import { ProductMessageIcon, SemanticProductIcon, productText } from '../../components/ProductLanguage';
 import { notificationPresentation, type NotificationState, useNotifications } from './NotificationProvider';

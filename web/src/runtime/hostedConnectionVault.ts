@@ -9,7 +9,7 @@ import {
 	type TrustedServerConnectionAdapter,
 	type TrustedServerConnectionRecord,
 	type TrustedServerRemovalTombstone,
-} from '@portico/client-core';
+} from '@porticomediaserver/client-core';
 
 const DATABASE_NAME = 'portico-hosted-web';
 const DATABASE_VERSION = 3;

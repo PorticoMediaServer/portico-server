@@ -1,4 +1,4 @@
-import { ViewerRuntimeTeardownError, type ViewerScope } from '@portico/client-core';
+import { ViewerRuntimeTeardownError, type ViewerScope } from '@porticomediaserver/client-core';
 import { describe, expect, it, vi } from 'vitest';
 import { scopedDataSource, WebViewerRuntime } from './viewerRuntime';
 

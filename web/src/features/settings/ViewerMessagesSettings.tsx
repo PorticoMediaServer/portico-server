@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { productMessage, type ProductMessagePresentation, type ServerOwnerFeedbackPage, type ServerOwnerFeedbackRecord, type ServerOwnerNotificationRecipientDirectory, type ServerOwnerNoticeRequest, type ViewerFeedbackKind } from '@portico/client-core';
+import { productMessage, type ProductMessagePresentation, type ServerOwnerFeedbackPage, type ServerOwnerFeedbackRecord, type ServerOwnerNotificationRecipientDirectory, type ServerOwnerNoticeRequest, type ViewerFeedbackKind } from '@porticomediaserver/client-core';
 import type { PorticoDataSource } from '../../data/models';
 import { PrimaryButton } from '../../components/controls/Buttons';
 import { ProductMessageIcon, SemanticProductIcon, productProblem, productText } from '../../components/ProductLanguage';

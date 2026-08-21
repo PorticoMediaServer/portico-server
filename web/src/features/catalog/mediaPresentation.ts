@@ -1,4 +1,4 @@
-import { productMessage, type SearchGroupCapability } from '@portico/client-core';
+import { productMessage, type SearchGroupCapability } from '@porticomediaserver/client-core';
 import type { MediaItem } from '../../data/models';
 
 export type CanonicalMediaKind =

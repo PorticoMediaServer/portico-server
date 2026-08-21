@@ -1,4 +1,4 @@
-import { productMessage, viewerPreferenceLimitsV1 } from '@portico/client-core';
+import { productMessage, viewerPreferenceLimitsV1 } from '@porticomediaserver/client-core';
 import {
   AlertTriangle,
   Camera,

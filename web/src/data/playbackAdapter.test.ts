@@ -1,4 +1,4 @@
-import type { PlaybackPreparedResponse, PlaybackResponse } from '@portico/client-core';
+import type { PlaybackPreparedResponse, PlaybackResponse } from '@porticomediaserver/client-core';
 import { describe, expect, it } from 'vitest';
 import { createPlaybackSessionAdapter } from './playbackAdapter';
 

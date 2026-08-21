@@ -1,5 +1,5 @@
 import { ArrowRight, Grid3X3, History, List, Search, Trash2, X } from '#portico-icons';
-import { productMessage, type SearchGroupCapability } from '@portico/client-core';
+import { productMessage, type SearchGroupCapability } from '@porticomediaserver/client-core';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { IconButton, SecondaryButton } from '../../components/controls/Buttons';

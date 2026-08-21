@@ -1,4 +1,4 @@
-import type { WatchWithFriendsGroup } from '@portico/client-core';
+import type { WatchWithFriendsGroup } from '@porticomediaserver/client-core';
 import { renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { WatchWithFriendsSource, WatchWithFriendsViewer } from './watchWithFriendsSource';

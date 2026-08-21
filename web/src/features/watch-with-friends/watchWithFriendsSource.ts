@@ -7,7 +7,7 @@ import type {
   WatchWithFriendsQueueRequest,
   WatchWithFriendsSettingsRequest,
   WatchWithFriendsStateRequest,
-} from '@portico/client-core';
+} from '@porticomediaserver/client-core';
 
 export type WatchConnectionState = 'connecting' | 'live' | 'reconnecting' | 'failed';
 

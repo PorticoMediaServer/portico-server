@@ -1,4 +1,4 @@
-import type { WatchWithFriendsGroup } from '@portico/client-core';
+import type { WatchWithFriendsGroup } from '@porticomediaserver/client-core';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { HttpWatchWithFriendsSource } from './HttpWatchWithFriendsSource';
 import type { WatchWithFriendsClient } from './watchWithFriendsSource';

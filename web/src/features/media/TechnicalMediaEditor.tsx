@@ -1,4 +1,4 @@
-import type { MediaAttachment } from '@portico/client-core';
+import type { MediaAttachment } from '@porticomediaserver/client-core';
 import {
   Download,
   FileText,

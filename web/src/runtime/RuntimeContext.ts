@@ -1,5 +1,5 @@
 import { createContext, useContext } from 'react';
-import type { ProductMessageId, ViewerScope } from '@portico/client-core';
+import type { ProductMessageId, ViewerScope } from '@porticomediaserver/client-core';
 import type { PorticoDataSource, Viewer } from '../data/models';
 import type { WebViewerRuntime } from '../data/viewerRuntime';
 import type { HostedServerSummary, RuntimeConfig, RuntimeState } from './runtimeMachine';

@@ -6,7 +6,7 @@ import {
   type PlaybackIntent,
   type PlaybackPreferencePolicy,
   type ProfileDeviceClassPreferences,
-} from '@portico/client-core';
+} from '@porticomediaserver/client-core';
 
 export type WebNetworkClass = NetworkClass;
 export type WebPlaybackQuality = 'off' | 'automatic' | 'original' | 'high' | 'standard' | 'data-saver';

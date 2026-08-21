@@ -1,4 +1,4 @@
-import type { TrustedServerConnectionRecord } from '@portico/client-core';
+import type { TrustedServerConnectionRecord } from '@porticomediaserver/client-core';
 import { describe, expect, it } from 'vitest';
 import {
   createBrowserHostedConnectionVault,

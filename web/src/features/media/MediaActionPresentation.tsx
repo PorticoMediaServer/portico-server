@@ -22,7 +22,7 @@ import {
   UsersRound,
   WandSparkles,
 } from '#portico-icons';
-import { mediaActionsForSurface, type MediaActionSurface, type PresentedMediaAction } from '@portico/client-core';
+import { mediaActionsForSurface, type MediaActionSurface, type PresentedMediaAction } from '@porticomediaserver/client-core';
 import { useMemo } from 'react';
 import { useAuthSession, useProductContract } from '../../data/DataProvider';
 

@@ -30,7 +30,7 @@
     "preview": "vite preview --host 127.0.0.1 --port 19105"
   },
   "dependencies": {
-    "@portico/client-core": "file:../packages/portico-client-core",
+    "@porticomediaserver/client-core": "file:../packages/portico-client-core",
     "@tanstack/react-query": "5.101.2",
     "hls.js": "^1.6.16",
     "react": "^19.2.3",

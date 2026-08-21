@@ -15,7 +15,7 @@ import {
   type FilterNode,
   type LibraryBrowseCapabilities,
   type SavedView,
-} from '@portico/client-core';
+} from '@porticomediaserver/client-core';
 import { IconButton, PrimaryButton, SecondaryButton } from '../../components/controls/Buttons';
 import { AnchoredOverlay, ModalOverlay } from '../../components/overlay/OverlayPortal';
 import { productLanguageProblem } from '../../components/states/ProductLanguageState';

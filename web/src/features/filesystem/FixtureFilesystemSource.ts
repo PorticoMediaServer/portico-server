@@ -1,4 +1,4 @@
-import type { FilesystemBrowseEntry, FilesystemBrowseResponse, FilesystemRoot } from '@portico/client-core';
+import type { FilesystemBrowseEntry, FilesystemBrowseResponse, FilesystemRoot } from '@porticomediaserver/client-core';
 import { filesystemBreadcrumbs, joinFilesystemPath, stripTrailingPathSeparators } from './filesystemPath';
 import type { FilesystemPickerSource } from './filesystemSource';
 

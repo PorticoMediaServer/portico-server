@@ -1,4 +1,4 @@
-import type { FilesystemBrowseResponse } from '@portico/client-core';
+import type { FilesystemBrowseResponse } from '@porticomediaserver/client-core';
 import { describe, expect, it, vi } from 'vitest';
 import { HttpFilesystemSource } from './HttpFilesystemSource';
 import type { FilesystemClient } from './filesystemSource';

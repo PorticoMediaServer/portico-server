@@ -1,4 +1,4 @@
-import type { MediaItem } from '@portico/client-core';
+import type { MediaItem } from '@porticomediaserver/client-core';
 import { type RefObject, useEffect, useRef } from 'react';
 import { musicAlbum, musicArtist } from './musicPlayback';
 

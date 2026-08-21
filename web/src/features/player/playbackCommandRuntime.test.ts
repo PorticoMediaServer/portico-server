@@ -1,4 +1,4 @@
-import type { PlaybackCommand, PorticoClient } from '@portico/client-core';
+import type { PlaybackCommand, PorticoClient } from '@porticomediaserver/client-core';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   isHistoricalPlaybackCommand,

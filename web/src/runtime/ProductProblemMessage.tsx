@@ -2,7 +2,7 @@ import {
   productMessage,
   type ProductMessageId,
   type ProductMessageVariables,
-} from '@portico/client-core';
+} from '@porticomediaserver/client-core';
 import { SecondaryButton } from '../components/controls/Buttons';
 import { ProductMessageIcon, reviewedProductError } from '../components/ProductLanguage';
 

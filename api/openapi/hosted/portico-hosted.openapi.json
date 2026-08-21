@@ -1,61 +1,82 @@
 {
   "components": {
     "schemas": {
-      "APIContractIdentity": {
+      "DeviceList": {
         "additionalProperties": false,
         "properties": {
-          "digest": {
-            "pattern": "^[a-f0-9]{64}$",
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Device"
+            },
+            "type": "array"
+          },
+          "pageInfo": {
+            "$ref": "#/components/schemas/CursorPageInfo"
+          }
+        },
+        "required": [
+          "items",
+          "pageInfo"
+        ],
+        "type": "object"
+      },
+      "Problem": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
             "type": "string"
           },
-          "digestAlgorithm": {
-            "const": "sha256",
+          "detail": {
             "type": "string"
           },
-          "identity": {
-            "minLength": 1,
+          "details": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "messageId": {
+            "type": "string"
+          },
+          "requestId": {
+            "type": "string"
+          },
+          "status": {
+            "maximum": 599,
+            "minimum": 400,
+            "type": "integer"
+          },
+          "title": {
+            "type": "string"
+          },
+          "type": {
+            "format": "uri",
             "type": "string"
           }
         },
         "required": [
-          "digestAlgorithm",
-          "identity",
-          "digest"
+          "type",
+          "title",
+          "status",
+          "code",
+          "detail",
+          "requestId"
         ],
         "type": "object"
       },
-      "AccessTokenRequest": {
+      "OKResponse": {
         "additionalProperties": false,
         "properties": {
-          "accessToken": {
-            "type": "string"
+          "ok": {
+            "type": "boolean"
           }
         },
         "required": [
-          "accessToken"
+          "ok"
         ],
         "type": "object"
       },
-      "AccountLoginRequest": {
+      "DeleteAccountRequest": {
         "additionalProperties": false,
         "properties": {
-          "deviceName": {
-            "type": "string"
-          },
-          "devicePlatform": {
-            "type": "string"
-          },
-          "installationId": {
-            "description": "Exact client installation identity used to bind device and session credentials.",
-            "maxLength": 128,
-            "minLength": 16,
-            "pattern": "^[A-Za-z0-9._:-]+$",
-            "type": "string"
-          },
-          "login": {
-            "description": "Portico Account username or email address.",
-            "type": "string"
-          },
           "mfaCode": {
             "type": "string"
           },
@@ -70,48 +91,145 @@
           }
         },
         "required": [
-          "login",
-          "password",
-          "installationId"
+          "password"
         ],
         "type": "object"
       },
-      "AccountProfileCreateRequest": {
+      "AccountResponse": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "AccountUpdateRequest": {
         "additionalProperties": false,
         "properties": {
-          "avatarKey": {
-            "maxLength": 256,
-            "pattern": "^[A-Za-z0-9._/-]*$",
+          "email": {
             "type": "string"
           },
-          "name": {
-            "maxLength": 80,
+          "preferences": {
+            "$ref": "#/components/schemas/UserPreferences"
+          },
+          "username": {
+            "description": "Unique, case-insensitive Portico Account username.",
+            "maxLength": 32,
+            "minLength": 3,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{1,30}[A-Za-z0-9]$",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "UserEnvelope": {
+        "additionalProperties": false,
+        "properties": {
+          "user": {
+            "$ref": "#/components/schemas/User"
+          }
+        },
+        "required": [
+          "user"
+        ],
+        "type": "object"
+      },
+      "BinaryResponse": {
+        "format": "binary",
+        "type": "string"
+      },
+      "BinaryUpload": {
+        "additionalProperties": false,
+        "properties": {
+          "file": {
+            "format": "binary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "type": "object"
+      },
+      "PasswordChangeRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "currentPassword": {
+            "maxLength": 72,
             "minLength": 1,
-            "type": "string"
+            "type": "string",
+            "writeOnly": true
           },
-          "restrictions": {
-            "$ref": "#/components/schemas/AccountProfileRestrictions"
+          "newPassword": {
+            "description": "At least 8 characters with an uppercase letter, a lowercase letter, and a number or special character; at most 72 UTF-8 bytes.",
+            "maxLength": 72,
+            "minLength": 8,
+            "type": "string",
+            "writeOnly": true
           }
         },
         "required": [
-          "name",
-          "restrictions"
+          "currentPassword",
+          "newPassword"
         ],
         "type": "object"
       },
-      "AccountProfileDeleteResponse": {
+      "ProfileAdministrationSessionRequest": {
         "additionalProperties": false,
         "properties": {
-          "ok": {
-            "type": "boolean"
+          "emailRecoveryToken": {
+            "maxLength": 256,
+            "minLength": 32,
+            "type": "string",
+            "writeOnly": true
           },
-          "revision": {
-            "type": "integer"
+          "installationId": {
+            "description": "Exact client installation identity used to bind device and session credentials.",
+            "maxLength": 128,
+            "minLength": 16,
+            "pattern": "^[A-Za-z0-9._:-]+$",
+            "type": "string"
+          },
+          "mfaCode": {
+            "pattern": "^[0-9]{6}$",
+            "type": "string",
+            "writeOnly": true
+          },
+          "password": {
+            "maxLength": 72,
+            "minLength": 1,
+            "type": "string",
+            "writeOnly": true
+          },
+          "pin": {
+            "pattern": "^[0-9]{4}$",
+            "type": "string",
+            "writeOnly": true
+          },
+          "recoveryCode": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string",
+            "writeOnly": true
+          },
+          "replacementPin": {
+            "pattern": "^[0-9]{4}$",
+            "type": "string",
+            "writeOnly": true
+          }
+        },
+        "type": "object"
+      },
+      "ProfileAdministrationSessionResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "expiresAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "token": {
+            "type": "string"
           }
         },
         "required": [
-          "ok",
-          "revision"
+          "expiresAt",
+          "token"
         ],
         "type": "object"
       },
@@ -142,6 +260,29 @@
         ],
         "type": "object"
       },
+      "AccountProfileCreateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "avatarKey": {
+            "maxLength": 256,
+            "pattern": "^[A-Za-z0-9._/-]*$",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          },
+          "restrictions": {
+            "$ref": "#/components/schemas/AccountProfileRestrictions"
+          }
+        },
+        "required": [
+          "name",
+          "restrictions"
+        ],
+        "type": "object"
+      },
       "AccountProfileMutationResponse": {
         "additionalProperties": false,
         "properties": {
@@ -155,58 +296,6 @@
         "required": [
           "profile",
           "revision"
-        ],
-        "type": "object"
-      },
-      "AccountProfileProjection": {
-        "additionalProperties": false,
-        "properties": {
-          "accountId": {
-            "type": "string"
-          },
-          "avatar": {
-            "$ref": "#/components/schemas/ProfileAvatar"
-          },
-          "hasPIN": {
-            "type": "boolean"
-          },
-          "id": {
-            "type": "string"
-          },
-          "isAccountAdmin": {
-            "type": "boolean"
-          },
-          "isPrimary": {
-            "type": "boolean"
-          },
-          "name": {
-            "type": "string"
-          },
-          "pinRevision": {
-            "type": "integer"
-          },
-          "policy": {
-            "$ref": "#/components/schemas/AccountProfileRestrictions"
-          },
-          "policyUpdatedAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "sortOrder": {
-            "type": "integer"
-          }
-        },
-        "required": [
-          "accountId",
-          "hasPIN",
-          "id",
-          "isAccountAdmin",
-          "isPrimary",
-          "name",
-          "pinRevision",
-          "policy",
-          "policyUpdatedAt",
-          "sortOrder"
         ],
         "type": "object"
       },
@@ -235,65 +324,63 @@
         ],
         "type": "object"
       },
-      "AccountProfileRestrictions": {
+      "AccountProfileDeleteResponse": {
         "additionalProperties": false,
         "properties": {
-          "allowDownloads": {
+          "ok": {
             "type": "boolean"
           },
-          "allowDvr": {
-            "type": "boolean"
-          },
-          "allowFeedback": {
-            "type": "boolean"
-          },
-          "allowLiveTV": {
-            "type": "boolean"
-          },
-          "allowUnrated": {
-            "type": "boolean"
-          },
-          "allowWatchWithFriends": {
-            "type": "boolean"
-          },
-          "blockedLabels": {
-            "description": "Labels must also be unique after Unicode NFC normalization, trimming, and case folding.",
-            "items": {
-              "maxLength": 128,
-              "minLength": 1,
-              "type": "string"
-            },
-            "maxItems": 64,
-            "type": "array",
-            "uniqueItems": true
-          },
-          "maximumAgeRating": {
-            "oneOf": [
-              {
-                "maximum": 21,
-                "minimum": 0,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "version": {
-            "const": "v1",
-            "type": "string"
+          "revision": {
+            "type": "integer"
           }
         },
         "required": [
-          "version",
-          "maximumAgeRating",
-          "allowUnrated",
-          "blockedLabels",
-          "allowDownloads",
-          "allowLiveTV",
-          "allowDvr",
-          "allowWatchWithFriends",
-          "allowFeedback"
+          "ok",
+          "revision"
+        ],
+        "type": "object"
+      },
+      "PorticoProfile": {
+        "additionalProperties": false,
+        "properties": {
+          "avatar": {
+            "$ref": "#/components/schemas/ProfileAvatar"
+          },
+          "hasPIN": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          },
+          "isAccountAdmin": {
+            "type": "boolean"
+          },
+          "isPrimary": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "pinRevision": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "policy": {
+            "$ref": "#/components/schemas/AccountProfileRestrictions"
+          },
+          "sortOrder": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "hasPIN",
+          "id",
+          "isAccountAdmin",
+          "isPrimary",
+          "name",
+          "pinRevision",
+          "policy",
+          "sortOrder"
         ],
         "type": "object"
       },
@@ -322,6 +409,211 @@
           "expectedRevision",
           "name",
           "restrictions"
+        ],
+        "type": "object"
+      },
+      "ProfilePINClearRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "mfaCode": {
+            "pattern": "^[0-9]{6}$",
+            "type": "string",
+            "writeOnly": true
+          },
+          "password": {
+            "maxLength": 72,
+            "minLength": 1,
+            "type": "string",
+            "writeOnly": true
+          },
+          "recoveryCode": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string",
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "password"
+        ],
+        "type": "object"
+      },
+      "ProfilePINSetRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "mfaCode": {
+            "pattern": "^[0-9]{6}$",
+            "type": "string",
+            "writeOnly": true
+          },
+          "password": {
+            "maxLength": 72,
+            "minLength": 1,
+            "type": "string",
+            "writeOnly": true
+          },
+          "pin": {
+            "pattern": "^[0-9]{4}$",
+            "type": "string",
+            "writeOnly": true
+          },
+          "recoveryCode": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string",
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "password",
+          "pin"
+        ],
+        "type": "object"
+      },
+      "ProfilePINChangeResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "pinRevision": {
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "ok",
+          "pinRevision"
+        ],
+        "type": "object"
+      },
+      "ProfileSelectionAssertionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "installationId": {
+            "description": "Exact client installation identity used to bind device and session credentials.",
+            "maxLength": 128,
+            "minLength": 16,
+            "pattern": "^[A-Za-z0-9._:-]+$",
+            "type": "string"
+          },
+          "pin": {
+            "pattern": "^[0-9]{4}$",
+            "type": "string",
+            "writeOnly": true
+          },
+          "serverId": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "serverId"
+        ],
+        "type": "object"
+      },
+      "HostedProfileSelectionEnvelope": {
+        "additionalProperties": false,
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "accountRevision": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "assertionId": {
+            "type": "string"
+          },
+          "audience": {
+            "const": "portico-media-server",
+            "type": "string"
+          },
+          "deviceId": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "installationId": {
+            "description": "Exact client installation identity used to bind device and session credentials.",
+            "maxLength": 128,
+            "minLength": 16,
+            "pattern": "^[A-Za-z0-9._:-]+$",
+            "type": "string"
+          },
+          "issuedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "pinRevision": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "profileId": {
+            "type": "string"
+          },
+          "profiles": {
+            "items": {
+              "$ref": "#/components/schemas/AccountProfileProjection"
+            },
+            "type": "array"
+          },
+          "serverId": {
+            "type": "string"
+          },
+          "signature": {
+            "type": "string"
+          },
+          "signatureAlgorithm": {
+            "const": "ed25519",
+            "type": "string"
+          },
+          "signatureKeyId": {
+            "type": "string"
+          },
+          "version": {
+            "const": "v1",
+            "type": "string"
+          }
+        },
+        "required": [
+          "accountId",
+          "accountRevision",
+          "assertionId",
+          "audience",
+          "deviceId",
+          "expiresAt",
+          "issuedAt",
+          "pinRevision",
+          "profileId",
+          "profiles",
+          "serverId",
+          "signature",
+          "signatureAlgorithm",
+          "signatureKeyId",
+          "version"
+        ],
+        "type": "object"
+      },
+      "AccountPushSubscriptionRevokeRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "appBundleId": {
+            "type": "string"
+          },
+          "environment": {
+            "type": "string"
+          },
+          "installationId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "appBundleId",
+          "environment"
         ],
         "type": "object"
       },
@@ -401,91 +693,207 @@
         ],
         "type": "object"
       },
-      "AccountPushSubscriptionRevokeRequest": {
+      "ClaimCodeRequest": {
         "additionalProperties": false,
         "properties": {
-          "appBundleId": {
-            "type": "string"
-          },
-          "environment": {
-            "type": "string"
-          },
-          "installationId": {
+          "claimCode": {
             "type": "string"
           }
         },
         "required": [
-          "appBundleId",
-          "environment"
+          "claimCode"
         ],
         "type": "object"
       },
-      "AccountResponse": {
+      "ServerClaimCompletion": {
         "additionalProperties": true,
         "type": "object"
       },
-      "AccountUpdateRequest": {
+      "ServerList": {
         "additionalProperties": false,
         "properties": {
-          "email": {
-            "type": "string"
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Server"
+            },
+            "type": "array"
           },
-          "preferences": {
-            "$ref": "#/components/schemas/UserPreferences"
-          },
-          "username": {
-            "description": "Unique, case-insensitive Portico Account username.",
-            "maxLength": 32,
-            "minLength": 3,
-            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{1,30}[A-Za-z0-9]$",
-            "type": "string"
+          "pageInfo": {
+            "$ref": "#/components/schemas/CursorPageInfo"
           }
         },
+        "required": [
+          "items",
+          "pageInfo"
+        ],
         "type": "object"
       },
-      "AuditEvent": {
+      "Server": {
         "additionalProperties": false,
         "properties": {
-          "action": {
+          "apiContractDigest": {
             "type": "string"
           },
-          "actorId": {
+          "apiContractDigestAlgorithm": {
             "type": "string"
           },
-          "actorType": {
+          "apiContractIdentity": {
             "type": "string"
+          },
+          "assignedHostname": {
+            "type": "string"
+          },
+          "availabilityState": {
+            "type": "string"
+          },
+          "buildChannel": {
+            "type": "string"
+          },
+          "buildCommit": {
+            "type": "string"
+          },
+          "buildNumber": {
+            "type": "string"
+          },
+          "buildTimestamp": {
+            "type": "string"
+          },
+          "capabilities": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "requiredSemantics": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "revision": {
+                  "type": "integer"
+                },
+                "state": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "requiredSemantics",
+                "revision",
+                "state"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "certificateExpiresAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "certificateStatus": {
+            "type": "string"
+          },
+          "compatibilityEnvelopeRevision": {
+            "type": "integer"
           },
           "createdAt": {
             "format": "date-time",
             "type": "string"
           },
+          "forwardCompatibility": {
+            "additionalProperties": false,
+            "properties": {
+              "apiContractDigestMismatch": {
+                "type": "string"
+              },
+              "authorizationOnPartialUpgrade": {
+                "type": "string"
+              },
+              "unknownOptionalCapabilities": {
+                "type": "string"
+              },
+              "unknownRequiredSemantics": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "apiContractDigestMismatch",
+              "authorizationOnPartialUpgrade",
+              "unknownOptionalCapabilities",
+              "unknownRequiredSemantics"
+            ],
+            "type": "object"
+          },
           "id": {
             "type": "string"
           },
-          "requestId": {
+          "lastHeartbeatAt": {
+            "format": "date-time",
             "type": "string"
           },
-          "result": {
+          "name": {
             "type": "string"
           },
-          "targetId": {
+          "ownerUserId": {
             "type": "string"
           },
-          "targetType": {
+          "preferredAuthMode": {
+            "type": "string"
+          },
+          "protocolMaximum": {
+            "type": "integer"
+          },
+          "protocolMinimum": {
+            "type": "integer"
+          },
+          "remoteAccessEnabled": {
+            "type": "boolean"
+          },
+          "requiredSemantics": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "semanticRevisions": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object"
+          },
+          "serverPublicKey": {
+            "type": "string"
+          },
+          "serverPublicKeyFingerprint": {
+            "type": "string"
+          },
+          "softwareVersion": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
             "type": "string"
           }
         },
         "required": [
-          "action",
-          "actorId",
-          "actorType",
+          "assignedHostname",
+          "certificateStatus",
           "createdAt",
           "id",
-          "requestId",
-          "result",
-          "targetId",
-          "targetType"
+          "name",
+          "ownerUserId",
+          "preferredAuthMode",
+          "remoteAccessEnabled",
+          "serverPublicKey",
+          "serverPublicKeyFingerprint",
+          "updatedAt"
         ],
+        "type": "object"
+      },
+      "ServerUpdateRequest": {
+        "additionalProperties": true,
         "type": "object"
       },
       "AuditEventList": {
@@ -508,95 +916,299 @@
         ],
         "type": "object"
       },
-      "BinaryResponse": {
-        "format": "binary",
-        "type": "string"
-      },
-      "BinaryUpload": {
+      "InvitationList": {
         "additionalProperties": false,
         "properties": {
-          "file": {
-            "format": "binary",
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Invitation"
+            },
+            "type": "array"
+          },
+          "pageInfo": {
+            "$ref": "#/components/schemas/CursorPageInfo"
+          }
+        },
+        "required": [
+          "items",
+          "pageInfo"
+        ],
+        "type": "object"
+      },
+      "InvitationRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "deliveryMode": {
+            "enum": [
+              "email",
+              "link"
+            ],
+            "type": "string"
+          },
+          "email": {
+            "format": "email",
+            "type": "string"
+          },
+          "permissionTemplate": {
+            "$ref": "#/components/schemas/PermissionTemplate"
+          },
+          "recipient": {
             "type": "string"
           }
         },
         "required": [
-          "file"
+          "recipient",
+          "permissionTemplate",
+          "deliveryMode"
         ],
         "type": "object"
       },
-      "BuildIdentity": {
+      "Invitation": {
         "additionalProperties": false,
         "properties": {
-          "buildNumber": {
-            "type": "string"
-          },
-          "channel": {
-            "type": "string"
-          },
-          "commit": {
-            "type": "string"
-          },
-          "timestamp": {
+          "acceptedAt": {
             "format": "date-time",
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "version": {
             "type": "string"
-          }
-        },
-        "required": [
-          "version",
-          "buildNumber",
-          "channel",
-          "commit",
-          "timestamp"
-        ],
-        "type": "object"
-      },
-      "CertificateOrder": {
-        "additionalProperties": false,
-        "properties": {
-          "attemptCount": {
-            "type": "integer"
           },
-          "cancelRequested": {
+          "acceptedByUserId": {
+            "type": "string"
+          },
+          "allowSubordinateProfiles": {
             "type": "boolean"
-          },
-          "certificateChainPem": {
-            "type": "string"
           },
           "createdAt": {
             "format": "date-time",
             "type": "string"
           },
-          "csrPem": {
+          "createdByUserId": {
+            "type": "string"
+          },
+          "deliveryMode": {
+            "enum": [
+              "email",
+              "link"
+            ],
+            "type": "string"
+          },
+          "emailDeliveryStatus": {
             "type": "string"
           },
           "expiresAt": {
             "format": "date-time",
             "type": "string"
           },
-          "hostname": {
+          "id": {
+            "type": "string"
+          },
+          "inviteUrl": {
+            "type": "string"
+          },
+          "invitedEmail": {
+            "type": "string"
+          },
+          "permissionTemplate": {
+            "$ref": "#/components/schemas/PermissionTemplate"
+          },
+          "resourceLimits": {
+            "additionalProperties": false,
+            "properties": {
+              "maxActiveDownloads": {
+                "type": "integer"
+              },
+              "maxBandwidthKbps": {
+                "type": "integer"
+              },
+              "maxDvrRules": {
+                "type": "integer"
+              },
+              "maxScheduledRecordings": {
+                "type": "integer"
+              },
+              "maxSimultaneousStreams": {
+                "type": "integer"
+              }
+            },
+            "type": "object"
+          },
+          "revokedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "role": {
+            "const": "user",
+            "type": "string"
+          },
+          "serverId": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "allowSubordinateProfiles",
+          "createdAt",
+          "createdByUserId",
+          "deliveryMode",
+          "expiresAt",
+          "id",
+          "invitedEmail",
+          "permissionTemplate",
+          "resourceLimits",
+          "role",
+          "serverId",
+          "status"
+        ],
+        "type": "object"
+      },
+      "LocalLoginAuthorizeRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "callbackUrl": {
+            "format": "uri",
+            "type": "string"
+          },
+          "installationId": {
+            "description": "Exact client installation identity used to bind device and session credentials.",
+            "maxLength": 128,
+            "minLength": 16,
+            "pattern": "^[A-Za-z0-9._:-]+$",
+            "type": "string"
+          },
+          "localOrigin": {
+            "format": "uri",
+            "type": "string"
+          },
+          "pin": {
+            "pattern": "^[0-9]{4}$",
+            "type": "string",
+            "writeOnly": true
+          },
+          "profileId": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "serverPublicKeyFingerprint": {
+            "type": "string"
+          },
+          "state": {
+            "maxLength": 256,
+            "minLength": 24,
+            "type": "string"
+          }
+        },
+        "required": [
+          "callbackUrl",
+          "localOrigin",
+          "state",
+          "profileId"
+        ],
+        "type": "object"
+      },
+      "LocalLoginAuthorizeResponse": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "MemberList": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/MemberProfile"
+            },
+            "type": "array"
+          },
+          "pageInfo": {
+            "$ref": "#/components/schemas/CursorPageInfo"
+          }
+        },
+        "required": [
+          "items",
+          "pageInfo"
+        ],
+        "type": "object"
+      },
+      "MemberUpdateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "allowSubordinateProfiles": {
+            "type": "boolean"
+          },
+          "permissionTemplate": {
+            "$ref": "#/components/schemas/PermissionTemplate"
+          },
+          "resourceLimits": {
+            "additionalProperties": false,
+            "properties": {
+              "maxActiveDownloads": {
+                "type": "integer"
+              },
+              "maxBandwidthKbps": {
+                "type": "integer"
+              },
+              "maxDvrRules": {
+                "type": "integer"
+              },
+              "maxScheduledRecordings": {
+                "type": "integer"
+              },
+              "maxSimultaneousStreams": {
+                "type": "integer"
+              }
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "allowSubordinateProfiles",
+          "permissionTemplate",
+          "resourceLimits"
+        ],
+        "type": "object"
+      },
+      "Membership": {
+        "additionalProperties": false,
+        "properties": {
+          "allowSubordinateProfiles": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "format": "date-time",
             "type": "string"
           },
           "id": {
             "type": "string"
           },
-          "lastError": {
-            "type": "string"
+          "permissionTemplate": {
+            "$ref": "#/components/schemas/PermissionTemplate"
           },
-          "nextAttemptAt": {
-            "format": "date-time",
-            "type": "string"
+          "resourceLimits": {
+            "additionalProperties": false,
+            "properties": {
+              "maxActiveDownloads": {
+                "type": "integer"
+              },
+              "maxBandwidthKbps": {
+                "type": "integer"
+              },
+              "maxDvrRules": {
+                "type": "integer"
+              },
+              "maxScheduledRecordings": {
+                "type": "integer"
+              },
+              "maxSimultaneousStreams": {
+                "type": "integer"
+              }
+            },
+            "type": "object"
           },
-          "phase": {
-            "type": "string"
-          },
-          "providerOrderId": {
+          "role": {
+            "enum": [
+              "owner",
+              "user"
+            ],
             "type": "string"
           },
           "serverId": {
@@ -605,153 +1217,266 @@
           "status": {
             "type": "string"
           },
-          "updatedAt": {
-            "format": "date-time",
+          "userId": {
             "type": "string"
           }
         },
         "required": [
-          "attemptCount",
+          "allowSubordinateProfiles",
           "createdAt",
-          "hostname",
           "id",
+          "permissionTemplate",
+          "resourceLimits",
+          "role",
           "serverId",
           "status",
-          "updatedAt"
+          "userId"
         ],
         "type": "object"
       },
-      "CertificateOrderRequest": {
+      "RouteFailureRequest": {
         "additionalProperties": true,
         "type": "object"
       },
-      "ClaimCodeRequest": {
+      "RouteDocument": {
         "additionalProperties": false,
         "properties": {
-          "claimCode": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "claimCode"
-        ],
-        "type": "object"
-      },
-      "CompatibilityCapability": {
-        "additionalProperties": false,
-        "properties": {
-          "id": {
-            "pattern": "^[a-z0-9][a-z0-9.-]{0,95}$",
+          "assignedHostname": {
             "type": "string"
           },
-          "requiredSemantics": {
+          "audience": {
+            "type": "string"
+          },
+          "authModes": {
             "items": {
               "type": "string"
             },
-            "type": "array",
-            "uniqueItems": true
+            "type": "array"
           },
-          "revision": {
-            "minimum": 1,
-            "type": "integer"
-          },
-          "state": {
-            "enum": [
-              "available",
-              "requires_configuration",
-              "degraded",
-              "unavailable"
+          "certificate": {
+            "additionalProperties": false,
+            "properties": {
+              "expiresAt": {
+                "format": "date-time",
+                "type": "string"
+              },
+              "status": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "status"
             ],
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "revision",
-          "state",
-          "requiredSemantics"
-        ],
-        "type": "object"
-      },
-      "CompatibilityEnvelope": {
-        "additionalProperties": false,
-        "properties": {
-          "apiContract": {
-            "$ref": "#/components/schemas/APIContractIdentity"
-          },
-          "build": {
-            "$ref": "#/components/schemas/BuildIdentity"
-          },
-          "capabilities": {
-            "items": {
-              "$ref": "#/components/schemas/CompatibilityCapability"
-            },
-            "type": "array",
-            "uniqueItems": true
-          },
-          "envelopeRevision": {
-            "minimum": 1,
-            "type": "integer"
-          },
-          "forwardCompatibility": {
-            "$ref": "#/components/schemas/ForwardCompatibilityPolicy"
-          },
-          "requiredSemantics": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "uniqueItems": true
-          },
-          "semanticRevisions": {
-            "additionalProperties": {
-              "minimum": 1,
-              "type": "integer"
-            },
             "type": "object"
           },
-          "supportedClientProtocol": {
-            "$ref": "#/components/schemas/ProtocolRange"
-          }
-        },
-        "required": [
-          "envelopeRevision",
-          "supportedClientProtocol",
-          "apiContract",
-          "build",
-          "semanticRevisions",
-          "capabilities",
-          "requiredSemantics",
-          "forwardCompatibility"
-        ],
-        "type": "object"
-      },
-      "CursorPageInfo": {
-        "additionalProperties": false,
-        "properties": {
-          "hasMore": {
-            "type": "boolean"
-          },
-          "nextCursor": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "total": {
-            "minimum": 0,
+          "documentVersion": {
             "type": "integer"
+          },
+          "endpointGeneration": {
+            "type": "integer"
+          },
+          "expiresAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "issuedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "membership": {
+            "additionalProperties": false,
+            "properties": {
+              "permissionTemplate": {
+                "$ref": "#/components/schemas/PermissionTemplate"
+              },
+              "role": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "role"
+            ],
+            "type": "object"
+          },
+          "networkHints": {
+            "additionalProperties": false,
+            "properties": {
+              "authoritative": {
+                "type": "boolean"
+              },
+              "source": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "authoritative",
+              "source"
+            ],
+            "type": "object"
+          },
+          "routeAuthority": {
+            "type": "string"
+          },
+          "routes": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "address": {
+                  "type": "string"
+                },
+                "generation": {
+                  "type": "integer"
+                },
+                "host": {
+                  "type": "string"
+                },
+                "lastCheckError": {
+                  "type": "string"
+                },
+                "lastCheckedAt": {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                "quality": {
+                  "type": "string"
+                },
+                "redirectAuthority": {
+                  "type": "string"
+                },
+                "scope": {
+                  "type": "string"
+                },
+                "serverPublicKeyFingerprint": {
+                  "type": "string"
+                },
+                "serverToken": {
+                  "type": "string"
+                },
+                "type": {
+                  "type": "string"
+                },
+                "url": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "quality",
+                "type",
+                "url"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "scope": {
+            "type": "string"
+          },
+          "serverId": {
+            "type": "string"
+          },
+          "serverName": {
+            "type": "string"
+          },
+          "serverPublicKey": {
+            "type": "string"
+          },
+          "serverPublicKeyFingerprint": {
+            "type": "string"
+          },
+          "signature": {
+            "type": "string"
+          },
+          "signatureAlgorithm": {
+            "type": "string"
+          },
+          "signatureKeyId": {
+            "type": "string"
           }
         },
         "required": [
-          "nextCursor",
-          "hasMore"
+          "assignedHostname",
+          "audience",
+          "authModes",
+          "certificate",
+          "documentVersion",
+          "expiresAt",
+          "issuedAt",
+          "membership",
+          "routes",
+          "serverId",
+          "serverName",
+          "serverPublicKey",
+          "serverPublicKeyFingerprint",
+          "signature",
+          "signatureAlgorithm",
+          "signatureKeyId"
         ],
         "type": "object"
       },
-      "DeleteAccountRequest": {
+      "PorticoSessionCreateRequest": {
         "additionalProperties": false,
         "properties": {
+          "selectionEnvelope": {
+            "$ref": "#/components/schemas/HostedProfileSelectionEnvelope"
+          }
+        },
+        "required": [
+          "selectionEnvelope"
+        ],
+        "type": "object"
+      },
+      "PorticoSessionBootstrap": {
+        "additionalProperties": false,
+        "properties": {
+          "accessExpiresAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "accessToken": {
+            "type": "string"
+          },
+          "membership": {
+            "$ref": "#/components/schemas/Membership"
+          },
+          "selectionEnvelope": {
+            "$ref": "#/components/schemas/HostedProfileSelectionEnvelope"
+          },
+          "tokenType": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "accessExpiresAt",
+          "accessToken",
+          "selectionEnvelope",
+          "tokenType"
+        ],
+        "type": "object"
+      },
+      "GenericObject": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "AccountLoginRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "deviceName": {
+            "type": "string"
+          },
+          "devicePlatform": {
+            "type": "string"
+          },
+          "installationId": {
+            "description": "Exact client installation identity used to bind device and session credentials.",
+            "maxLength": 128,
+            "minLength": 16,
+            "pattern": "^[A-Za-z0-9._:-]+$",
+            "type": "string"
+          },
+          "login": {
+            "description": "Portico Account username or email address.",
+            "type": "string"
+          },
           "mfaCode": {
             "type": "string"
           },
@@ -766,40 +1491,390 @@
           }
         },
         "required": [
+          "login",
+          "password",
+          "installationId"
+        ],
+        "type": "object"
+      },
+      "HostedAuthState": {
+        "additionalProperties": false,
+        "properties": {
+          "authenticated": {
+            "type": "boolean"
+          },
+          "device": {
+            "$ref": "#/components/schemas/Device"
+          },
+          "user": {
+            "$ref": "#/components/schemas/User"
+          }
+        },
+        "required": [
+          "authenticated"
+        ],
+        "type": "object"
+      },
+      "MFADisableRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "password": {
+            "maxLength": 72,
+            "minLength": 1,
+            "type": "string",
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "password",
+          "code"
+        ],
+        "type": "object"
+      },
+      "MFAEnableRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "enrollmentToken": {
+            "type": "string",
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "code",
+          "enrollmentToken"
+        ],
+        "type": "object"
+      },
+      "MFAEnableResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "recoveryCodes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "enabled",
+          "recoveryCodes"
+        ],
+        "type": "object"
+      },
+      "MFASetupRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "password": {
+            "maxLength": 72,
+            "minLength": 1,
+            "type": "string",
+            "writeOnly": true
+          }
+        },
+        "required": [
           "password"
         ],
         "type": "object"
       },
-      "Device": {
+      "MFASetupResponse": {
         "additionalProperties": false,
         "properties": {
-          "id": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "enrollmentToken": {
+            "type": "string",
+            "writeOnly": true
+          },
+          "otpauthUrl": {
+            "format": "uri",
             "type": "string"
           },
-          "lastSeenAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "platform": {
-            "type": "string"
-          },
-          "revokedAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "userId": {
+          "secret": {
             "type": "string"
           }
         },
         "required": [
-          "id",
-          "lastSeenAt",
-          "name",
-          "platform",
-          "userId"
+          "secret",
+          "otpauthUrl",
+          "enabled",
+          "enrollmentToken"
+        ],
+        "type": "object"
+      },
+      "MFAStatus": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "PasswordResetCompleteRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "password": {
+            "description": "At least 8 characters with an uppercase letter, a lowercase letter, and a number or special character; at most 72 UTF-8 bytes.",
+            "maxLength": 72,
+            "minLength": 8,
+            "type": "string",
+            "writeOnly": true
+          },
+          "token": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "token",
+          "password"
+        ],
+        "type": "object"
+      },
+      "PasswordResetStartRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "email": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "email"
+        ],
+        "type": "object"
+      },
+      "RegisterAccountRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "email": {
+            "type": "string"
+          },
+          "password": {
+            "description": "At least 8 characters with an uppercase letter, a lowercase letter, and a number or special character; at most 72 UTF-8 bytes.",
+            "maxLength": 72,
+            "minLength": 8,
+            "type": "string",
+            "writeOnly": true
+          },
+          "username": {
+            "description": "Unique, case-insensitive Portico Account username.",
+            "maxLength": 32,
+            "minLength": 3,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{1,30}[A-Za-z0-9]$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email",
+          "username",
+          "password"
+        ],
+        "type": "object"
+      },
+      "NativeSessionCredentials": {
+        "additionalProperties": false,
+        "properties": {
+          "accessExpiresAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "accessToken": {
+            "type": "string"
+          },
+          "device": {
+            "$ref": "#/components/schemas/Device"
+          },
+          "refreshExpiresAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "refreshToken": {
+            "type": "string"
+          },
+          "tokenType": {
+            "type": "string"
+          },
+          "user": {
+            "$ref": "#/components/schemas/User"
+          }
+        },
+        "required": [
+          "accessExpiresAt",
+          "accessToken",
+          "device",
+          "refreshExpiresAt",
+          "refreshToken",
+          "tokenType",
+          "user"
+        ],
+        "type": "object"
+      },
+      "RefreshTokenRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "installationId": {
+            "description": "Exact client installation identity used to bind device and session credentials.",
+            "maxLength": 128,
+            "minLength": 16,
+            "pattern": "^[A-Za-z0-9._:-]+$",
+            "type": "string"
+          },
+          "refreshToken": {
+            "type": "string"
+          },
+          "rotationKey": {
+            "description": "High-entropy idempotency secret persisted before refresh. The exact old token and key recover a committed successor after a crash.",
+            "maxLength": 128,
+            "minLength": 43,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "type": "string",
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "refreshToken",
+          "rotationKey"
+        ],
+        "type": "object"
+      },
+      "DeviceAuthorizationSessionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "appVersion": {
+            "maxLength": 80,
+            "type": "string"
+          },
+          "deviceName": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          },
+          "installationId": {
+            "description": "Exact client installation identity used to bind device and session credentials.",
+            "maxLength": 128,
+            "minLength": 16,
+            "pattern": "^[A-Za-z0-9._:-]+$",
+            "type": "string"
+          },
+          "platform": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "deviceName",
+          "platform"
+        ],
+        "type": "object"
+      },
+      "DeviceAuthorizationSessionCreateResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "authorizationSessionId": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "deviceCode": {
+            "maxLength": 43,
+            "minLength": 43,
+            "type": "string"
+          },
+          "expiresAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "expiresIn": {
+            "maximum": 300,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "interval": {
+            "minimum": 5,
+            "type": "integer"
+          },
+          "status": {
+            "const": "pending",
+            "type": "string"
+          },
+          "userCode": {
+            "description": "Protocol-v1 human authorization code in canonical XXXX-XXXX form. I, L, O, 0, and 1 are never used.",
+            "pattern": "^[A-HJ-KM-NP-Z2-9]{4}-[A-HJ-KM-NP-Z2-9]{4}$",
+            "type": "string"
+          },
+          "verificationUri": {
+            "format": "uri",
+            "type": "string"
+          }
+        },
+        "required": [
+          "authorizationSessionId",
+          "deviceCode",
+          "expiresAt",
+          "expiresIn",
+          "interval",
+          "status",
+          "userCode",
+          "verificationUri"
+        ],
+        "type": "object"
+      },
+      "DeviceAuthorizationSessionStatusResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "authorizationSessionId": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "expiresAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "expiresIn": {
+            "maximum": 300,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "interval": {
+            "minimum": 5,
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "approved"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "authorizationSessionId",
+          "expiresAt",
+          "expiresIn",
+          "interval",
+          "status"
+        ],
+        "type": "object"
+      },
+      "DeviceAuthorizationRedeemResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "accountCredentials": {
+            "$ref": "#/components/schemas/NativeSessionCredentials"
+          },
+          "status": {
+            "const": "redeemed",
+            "type": "string"
+          }
+        },
+        "required": [
+          "accountCredentials",
+          "status"
         ],
         "type": "object"
       },
@@ -905,236 +1980,178 @@
         ],
         "type": "object"
       },
-      "DeviceAuthorizationRedeemResponse": {
+      "HostedHealthResponse": {
         "additionalProperties": false,
         "properties": {
-          "accountCredentials": {
-            "$ref": "#/components/schemas/NativeSessionCredentials"
-          },
-          "status": {
-            "const": "redeemed",
-            "type": "string"
-          }
-        },
-        "required": [
-          "accountCredentials",
-          "status"
-        ],
-        "type": "object"
-      },
-      "DeviceAuthorizationSessionCreateResponse": {
-        "additionalProperties": false,
-        "properties": {
-          "authorizationSessionId": {
-            "maxLength": 128,
-            "minLength": 1,
-            "type": "string"
-          },
-          "deviceCode": {
-            "maxLength": 43,
-            "minLength": 43,
-            "type": "string"
-          },
-          "expiresAt": {
+          "checkedAt": {
             "format": "date-time",
             "type": "string"
           },
-          "expiresIn": {
-            "maximum": 300,
-            "minimum": 0,
+          "checks": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "contractVersion": {
+            "const": 1,
             "type": "integer"
           },
-          "interval": {
-            "minimum": 5,
-            "type": "integer"
-          },
-          "status": {
-            "const": "pending",
+          "kind": {
+            "enum": [
+              "liveness",
+              "readiness",
+              "traffic"
+            ],
             "type": "string"
-          },
-          "userCode": {
-            "description": "Protocol-v1 human authorization code in canonical XXXX-XXXX form. I, L, O, 0, and 1 are never used.",
-            "pattern": "^[A-HJ-KM-NP-Z2-9]{4}-[A-HJ-KM-NP-Z2-9]{4}$",
-            "type": "string"
-          },
-          "verificationUri": {
-            "format": "uri",
-            "type": "string"
-          }
-        },
-        "required": [
-          "authorizationSessionId",
-          "deviceCode",
-          "expiresAt",
-          "expiresIn",
-          "interval",
-          "status",
-          "userCode",
-          "verificationUri"
-        ],
-        "type": "object"
-      },
-      "DeviceAuthorizationSessionRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "appVersion": {
-            "maxLength": 80,
-            "type": "string"
-          },
-          "deviceName": {
-            "maxLength": 80,
-            "minLength": 1,
-            "type": "string"
-          },
-          "installationId": {
-            "description": "Exact client installation identity used to bind device and session credentials.",
-            "maxLength": 128,
-            "minLength": 16,
-            "pattern": "^[A-Za-z0-9._:-]+$",
-            "type": "string"
-          },
-          "platform": {
-            "maxLength": 80,
-            "minLength": 1,
-            "type": "string"
-          }
-        },
-        "required": [
-          "deviceName",
-          "platform"
-        ],
-        "type": "object"
-      },
-      "DeviceAuthorizationSessionStatusResponse": {
-        "additionalProperties": false,
-        "properties": {
-          "authorizationSessionId": {
-            "maxLength": 128,
-            "minLength": 1,
-            "type": "string"
-          },
-          "expiresAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "expiresIn": {
-            "maximum": 300,
-            "minimum": 0,
-            "type": "integer"
-          },
-          "interval": {
-            "minimum": 5,
-            "type": "integer"
           },
           "status": {
             "enum": [
-              "approved"
+              "ok",
+              "ready"
             ],
             "type": "string"
           }
         },
         "required": [
-          "authorizationSessionId",
+          "contractVersion",
+          "kind",
+          "status",
+          "checkedAt"
+        ],
+        "type": "object"
+      },
+      "ObservedPublicIP": {
+        "additionalProperties": false,
+        "properties": {
+          "observedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "publicIp": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "publicIp",
+          "observedAt"
+        ],
+        "type": "object"
+      },
+      "ServerClaimRequest": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "ServerClaim": {
+        "additionalProperties": false,
+        "properties": {
+          "claimId": {
+            "type": "string"
+          },
+          "claimedByUserId": {
+            "type": "string"
+          },
+          "claimedServerId": {
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "expiresAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "serverName": {
+            "type": "string"
+          },
+          "serverPublicKey": {
+            "type": "string"
+          },
+          "serverPublicKeyFingerprint": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "claimId",
+          "createdAt",
           "expiresAt",
-          "expiresIn",
-          "interval",
+          "serverName",
+          "serverPublicKey",
+          "serverPublicKeyFingerprint",
           "status"
         ],
         "type": "object"
       },
-      "DeviceList": {
-        "additionalProperties": false,
-        "properties": {
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/Device"
-            },
-            "type": "array"
-          },
-          "pageInfo": {
-            "$ref": "#/components/schemas/CursorPageInfo"
-          }
-        },
-        "required": [
-          "items",
-          "pageInfo"
-        ],
-        "type": "object"
-      },
-      "DocumentSigningKeySet": {
-        "additionalProperties": false,
-        "properties": {
-          "activeKeyId": {
-            "type": "string"
-          },
-          "keys": {
-            "items": {
-              "additionalProperties": false,
-              "properties": {
-                "algorithm": {
-                  "type": "string"
-                },
-                "keyId": {
-                  "type": "string"
-                },
-                "publicKeyB64": {
-                  "type": "string"
-                },
-                "state": {
-                  "type": "string"
-                }
-              },
-              "required": [
-                "algorithm",
-                "keyId",
-                "publicKeyB64",
-                "state"
-              ],
-              "type": "object"
-            },
-            "type": "array"
-          },
-          "schemaVersion": {
-            "type": "integer"
-          }
-        },
-        "required": [
-          "activeKeyId",
-          "keys",
-          "schemaVersion"
-        ],
-        "type": "object"
-      },
-      "ForwardCompatibilityPolicy": {
-        "additionalProperties": false,
-        "properties": {
-          "apiContractDigestMismatch": {
-            "const": "allow_semantic_overlap",
-            "type": "string"
-          },
-          "authorizationOnPartialUpgrade": {
-            "const": "never_broaden",
-            "type": "string"
-          },
-          "unknownOptionalCapabilities": {
-            "const": "ignore_and_preserve",
-            "type": "string"
-          },
-          "unknownRequiredSemantics": {
-            "const": "reject_actionably",
-            "type": "string"
-          }
-        },
-        "required": [
-          "unknownOptionalCapabilities",
-          "unknownRequiredSemantics",
-          "authorizationOnPartialUpgrade",
-          "apiContractDigestMismatch"
-        ],
-        "type": "object"
-      },
-      "GenericObject": {
+      "CertificateOrderRequest": {
         "additionalProperties": true,
+        "type": "object"
+      },
+      "CertificateOrder": {
+        "additionalProperties": false,
+        "properties": {
+          "attemptCount": {
+            "type": "integer"
+          },
+          "cancelRequested": {
+            "type": "boolean"
+          },
+          "certificateChainPem": {
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "csrPem": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "hostname": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "lastError": {
+            "type": "string"
+          },
+          "nextAttemptAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "phase": {
+            "type": "string"
+          },
+          "providerOrderId": {
+            "type": "string"
+          },
+          "serverId": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "attemptCount",
+          "createdAt",
+          "hostname",
+          "id",
+          "serverId",
+          "status",
+          "updatedAt"
+        ],
         "type": "object"
       },
       "HeartbeatRequest": {
@@ -1368,485 +2385,6 @@
         ],
         "type": "object"
       },
-      "HostedAuthState": {
-        "additionalProperties": false,
-        "properties": {
-          "authenticated": {
-            "type": "boolean"
-          },
-          "device": {
-            "$ref": "#/components/schemas/Device"
-          },
-          "user": {
-            "$ref": "#/components/schemas/User"
-          }
-        },
-        "required": [
-          "authenticated"
-        ],
-        "type": "object"
-      },
-      "HostedHealthResponse": {
-        "additionalProperties": false,
-        "properties": {
-          "checkedAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "checks": {
-            "additionalProperties": {
-              "type": "string"
-            },
-            "type": "object"
-          },
-          "contractVersion": {
-            "const": 1,
-            "type": "integer"
-          },
-          "kind": {
-            "enum": [
-              "liveness",
-              "readiness",
-              "traffic"
-            ],
-            "type": "string"
-          },
-          "status": {
-            "enum": [
-              "ok",
-              "ready"
-            ],
-            "type": "string"
-          }
-        },
-        "required": [
-          "contractVersion",
-          "kind",
-          "status",
-          "checkedAt"
-        ],
-        "type": "object"
-      },
-      "HostedProfileDirectorySnapshot": {
-        "additionalProperties": false,
-        "properties": {
-          "accountId": {
-            "type": "string"
-          },
-          "audience": {
-            "const": "portico-media-server",
-            "type": "string"
-          },
-          "checkedAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "maxAgeSeconds": {
-            "maximum": 300,
-            "minimum": 1,
-            "type": "integer"
-          },
-          "profiles": {
-            "items": {
-              "$ref": "#/components/schemas/AccountProfileProjection"
-            },
-            "type": "array"
-          },
-          "revision": {
-            "minimum": 1,
-            "type": "integer"
-          },
-          "serverId": {
-            "type": "string"
-          },
-          "signature": {
-            "type": "string"
-          },
-          "signatureAlgorithm": {
-            "const": "ed25519",
-            "type": "string"
-          },
-          "signatureKeyId": {
-            "type": "string"
-          },
-          "snapshotId": {
-            "type": "string"
-          },
-          "staleIfErrorSeconds": {
-            "const": 86400,
-            "type": "integer"
-          },
-          "status": {
-            "enum": [
-              "unchanged",
-              "changed"
-            ],
-            "type": "string"
-          },
-          "version": {
-            "const": "v1",
-            "type": "string"
-          }
-        },
-        "required": [
-          "accountId",
-          "audience",
-          "checkedAt",
-          "maxAgeSeconds",
-          "revision",
-          "serverId",
-          "signature",
-          "signatureAlgorithm",
-          "signatureKeyId",
-          "snapshotId",
-          "staleIfErrorSeconds",
-          "status",
-          "version"
-        ],
-        "type": "object"
-      },
-      "HostedProfileDirectorySnapshotRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "accountId": {
-            "maxLength": 200,
-            "minLength": 1,
-            "pattern": "^[A-Za-z0-9._:-]+$",
-            "type": "string"
-          },
-          "knownRevision": {
-            "minimum": 0,
-            "type": "integer"
-          }
-        },
-        "required": [
-          "accountId",
-          "knownRevision"
-        ],
-        "type": "object"
-      },
-      "HostedProfileSelectionEnvelope": {
-        "additionalProperties": false,
-        "properties": {
-          "accountId": {
-            "type": "string"
-          },
-          "accountRevision": {
-            "minimum": 1,
-            "type": "integer"
-          },
-          "assertionId": {
-            "type": "string"
-          },
-          "audience": {
-            "const": "portico-media-server",
-            "type": "string"
-          },
-          "deviceId": {
-            "type": "string"
-          },
-          "expiresAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "installationId": {
-            "description": "Exact client installation identity used to bind device and session credentials.",
-            "maxLength": 128,
-            "minLength": 16,
-            "pattern": "^[A-Za-z0-9._:-]+$",
-            "type": "string"
-          },
-          "issuedAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "pinRevision": {
-            "minimum": 0,
-            "type": "integer"
-          },
-          "profileId": {
-            "type": "string"
-          },
-          "profiles": {
-            "items": {
-              "$ref": "#/components/schemas/AccountProfileProjection"
-            },
-            "type": "array"
-          },
-          "serverId": {
-            "type": "string"
-          },
-          "signature": {
-            "type": "string"
-          },
-          "signatureAlgorithm": {
-            "const": "ed25519",
-            "type": "string"
-          },
-          "signatureKeyId": {
-            "type": "string"
-          },
-          "version": {
-            "const": "v1",
-            "type": "string"
-          }
-        },
-        "required": [
-          "accountId",
-          "accountRevision",
-          "assertionId",
-          "audience",
-          "deviceId",
-          "expiresAt",
-          "issuedAt",
-          "pinRevision",
-          "profileId",
-          "profiles",
-          "serverId",
-          "signature",
-          "signatureAlgorithm",
-          "signatureKeyId",
-          "version"
-        ],
-        "type": "object"
-      },
-      "HostedProfileSelectionExchangeRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "selectionEnvelope": {
-            "$ref": "#/components/schemas/HostedProfileSelectionEnvelope"
-          }
-        },
-        "required": [
-          "selectionEnvelope"
-        ],
-        "type": "object"
-      },
-      "HostedSystemInfo": {
-        "additionalProperties": false,
-        "properties": {
-          "apiVersion": {
-            "const": "v1",
-            "type": "string"
-          },
-          "compatibility": {
-            "$ref": "#/components/schemas/CompatibilityEnvelope"
-          },
-          "directHostnameZone": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "publicBaseUrl": {
-            "type": "string"
-          },
-          "status": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "name",
-          "status",
-          "apiVersion",
-          "compatibility"
-        ],
-        "type": "object"
-      },
-      "Invitation": {
-        "additionalProperties": false,
-        "properties": {
-          "acceptedAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "acceptedByUserId": {
-            "type": "string"
-          },
-          "allowSubordinateProfiles": {
-            "type": "boolean"
-          },
-          "createdAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "createdByUserId": {
-            "type": "string"
-          },
-          "deliveryMode": {
-            "enum": [
-              "email",
-              "link"
-            ],
-            "type": "string"
-          },
-          "emailDeliveryStatus": {
-            "type": "string"
-          },
-          "expiresAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "id": {
-            "type": "string"
-          },
-          "inviteUrl": {
-            "type": "string"
-          },
-          "invitedEmail": {
-            "type": "string"
-          },
-          "permissionTemplate": {
-            "$ref": "#/components/schemas/PermissionTemplate"
-          },
-          "resourceLimits": {
-            "additionalProperties": false,
-            "properties": {
-              "maxActiveDownloads": {
-                "type": "integer"
-              },
-              "maxBandwidthKbps": {
-                "type": "integer"
-              },
-              "maxDvrRules": {
-                "type": "integer"
-              },
-              "maxScheduledRecordings": {
-                "type": "integer"
-              },
-              "maxSimultaneousStreams": {
-                "type": "integer"
-              }
-            },
-            "type": "object"
-          },
-          "revokedAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "role": {
-            "const": "user",
-            "type": "string"
-          },
-          "serverId": {
-            "type": "string"
-          },
-          "status": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "allowSubordinateProfiles",
-          "createdAt",
-          "createdByUserId",
-          "deliveryMode",
-          "expiresAt",
-          "id",
-          "invitedEmail",
-          "permissionTemplate",
-          "resourceLimits",
-          "role",
-          "serverId",
-          "status"
-        ],
-        "type": "object"
-      },
-      "InvitationList": {
-        "additionalProperties": false,
-        "properties": {
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/Invitation"
-            },
-            "type": "array"
-          },
-          "pageInfo": {
-            "$ref": "#/components/schemas/CursorPageInfo"
-          }
-        },
-        "required": [
-          "items",
-          "pageInfo"
-        ],
-        "type": "object"
-      },
-      "InvitationRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "deliveryMode": {
-            "enum": [
-              "email",
-              "link"
-            ],
-            "type": "string"
-          },
-          "email": {
-            "format": "email",
-            "type": "string"
-          },
-          "permissionTemplate": {
-            "$ref": "#/components/schemas/PermissionTemplate"
-          },
-          "recipient": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "recipient",
-          "permissionTemplate",
-          "deliveryMode"
-        ],
-        "type": "object"
-      },
-      "LocalLoginAuthorizeRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "callbackUrl": {
-            "format": "uri",
-            "type": "string"
-          },
-          "installationId": {
-            "description": "Exact client installation identity used to bind device and session credentials.",
-            "maxLength": 128,
-            "minLength": 16,
-            "pattern": "^[A-Za-z0-9._:-]+$",
-            "type": "string"
-          },
-          "localOrigin": {
-            "format": "uri",
-            "type": "string"
-          },
-          "pin": {
-            "pattern": "^[0-9]{4}$",
-            "type": "string",
-            "writeOnly": true
-          },
-          "profileId": {
-            "maxLength": 128,
-            "minLength": 1,
-            "type": "string"
-          },
-          "serverPublicKeyFingerprint": {
-            "type": "string"
-          },
-          "state": {
-            "maxLength": 256,
-            "minLength": 24,
-            "type": "string"
-          }
-        },
-        "required": [
-          "callbackUrl",
-          "localOrigin",
-          "state",
-          "profileId"
-        ],
-        "type": "object"
-      },
-      "LocalLoginAuthorizeResponse": {
-        "additionalProperties": true,
-        "type": "object"
-      },
       "LocalLoginExchangeRequest": {
         "additionalProperties": false,
         "properties": {
@@ -1857,969 +2395,6 @@
         "required": [
           "code"
         ],
-        "type": "object"
-      },
-      "MFADisableRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "code": {
-            "type": "string"
-          },
-          "password": {
-            "maxLength": 72,
-            "minLength": 1,
-            "type": "string",
-            "writeOnly": true
-          }
-        },
-        "required": [
-          "password",
-          "code"
-        ],
-        "type": "object"
-      },
-      "MFAEnableRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "code": {
-            "type": "string"
-          },
-          "enrollmentToken": {
-            "type": "string",
-            "writeOnly": true
-          }
-        },
-        "required": [
-          "code",
-          "enrollmentToken"
-        ],
-        "type": "object"
-      },
-      "MFAEnableResponse": {
-        "additionalProperties": false,
-        "properties": {
-          "enabled": {
-            "type": "boolean"
-          },
-          "recoveryCodes": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          }
-        },
-        "required": [
-          "enabled",
-          "recoveryCodes"
-        ],
-        "type": "object"
-      },
-      "MFASetupRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "password": {
-            "maxLength": 72,
-            "minLength": 1,
-            "type": "string",
-            "writeOnly": true
-          }
-        },
-        "required": [
-          "password"
-        ],
-        "type": "object"
-      },
-      "MFASetupResponse": {
-        "additionalProperties": false,
-        "properties": {
-          "enabled": {
-            "type": "boolean"
-          },
-          "enrollmentToken": {
-            "type": "string",
-            "writeOnly": true
-          },
-          "otpauthUrl": {
-            "format": "uri",
-            "type": "string"
-          },
-          "secret": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "secret",
-          "otpauthUrl",
-          "enabled",
-          "enrollmentToken"
-        ],
-        "type": "object"
-      },
-      "MFAStatus": {
-        "additionalProperties": true,
-        "type": "object"
-      },
-      "MemberList": {
-        "additionalProperties": false,
-        "properties": {
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/MemberProfile"
-            },
-            "type": "array"
-          },
-          "pageInfo": {
-            "$ref": "#/components/schemas/CursorPageInfo"
-          }
-        },
-        "required": [
-          "items",
-          "pageInfo"
-        ],
-        "type": "object"
-      },
-      "MemberProfile": {
-        "additionalProperties": false,
-        "properties": {
-          "allowSubordinateProfiles": {
-            "type": "boolean"
-          },
-          "createdAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "email": {
-            "type": "string"
-          },
-          "id": {
-            "type": "string"
-          },
-          "permissionTemplate": {
-            "$ref": "#/components/schemas/PermissionTemplate"
-          },
-          "profileImageUrl": {
-            "type": "string"
-          },
-          "resourceLimits": {
-            "additionalProperties": false,
-            "properties": {
-              "maxActiveDownloads": {
-                "type": "integer"
-              },
-              "maxBandwidthKbps": {
-                "type": "integer"
-              },
-              "maxDvrRules": {
-                "type": "integer"
-              },
-              "maxScheduledRecordings": {
-                "type": "integer"
-              },
-              "maxSimultaneousStreams": {
-                "type": "integer"
-              }
-            },
-            "type": "object"
-          },
-          "role": {
-            "enum": [
-              "owner",
-              "user"
-            ],
-            "type": "string"
-          },
-          "serverId": {
-            "type": "string"
-          },
-          "status": {
-            "type": "string"
-          },
-          "userId": {
-            "type": "string"
-          },
-          "username": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "allowSubordinateProfiles",
-          "createdAt",
-          "email",
-          "id",
-          "permissionTemplate",
-          "resourceLimits",
-          "role",
-          "serverId",
-          "status",
-          "userId",
-          "username"
-        ],
-        "type": "object"
-      },
-      "MemberUpdateRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "allowSubordinateProfiles": {
-            "type": "boolean"
-          },
-          "permissionTemplate": {
-            "$ref": "#/components/schemas/PermissionTemplate"
-          },
-          "resourceLimits": {
-            "additionalProperties": false,
-            "properties": {
-              "maxActiveDownloads": {
-                "type": "integer"
-              },
-              "maxBandwidthKbps": {
-                "type": "integer"
-              },
-              "maxDvrRules": {
-                "type": "integer"
-              },
-              "maxScheduledRecordings": {
-                "type": "integer"
-              },
-              "maxSimultaneousStreams": {
-                "type": "integer"
-              }
-            },
-            "type": "object"
-          }
-        },
-        "required": [
-          "allowSubordinateProfiles",
-          "permissionTemplate",
-          "resourceLimits"
-        ],
-        "type": "object"
-      },
-      "Membership": {
-        "additionalProperties": false,
-        "properties": {
-          "allowSubordinateProfiles": {
-            "type": "boolean"
-          },
-          "createdAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "id": {
-            "type": "string"
-          },
-          "permissionTemplate": {
-            "$ref": "#/components/schemas/PermissionTemplate"
-          },
-          "resourceLimits": {
-            "additionalProperties": false,
-            "properties": {
-              "maxActiveDownloads": {
-                "type": "integer"
-              },
-              "maxBandwidthKbps": {
-                "type": "integer"
-              },
-              "maxDvrRules": {
-                "type": "integer"
-              },
-              "maxScheduledRecordings": {
-                "type": "integer"
-              },
-              "maxSimultaneousStreams": {
-                "type": "integer"
-              }
-            },
-            "type": "object"
-          },
-          "role": {
-            "enum": [
-              "owner",
-              "user"
-            ],
-            "type": "string"
-          },
-          "serverId": {
-            "type": "string"
-          },
-          "status": {
-            "type": "string"
-          },
-          "userId": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "allowSubordinateProfiles",
-          "createdAt",
-          "id",
-          "permissionTemplate",
-          "resourceLimits",
-          "role",
-          "serverId",
-          "status",
-          "userId"
-        ],
-        "type": "object"
-      },
-      "NativeSessionCredentials": {
-        "additionalProperties": false,
-        "properties": {
-          "accessExpiresAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "accessToken": {
-            "type": "string"
-          },
-          "device": {
-            "$ref": "#/components/schemas/Device"
-          },
-          "refreshExpiresAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "refreshToken": {
-            "type": "string"
-          },
-          "tokenType": {
-            "type": "string"
-          },
-          "user": {
-            "$ref": "#/components/schemas/User"
-          }
-        },
-        "required": [
-          "accessExpiresAt",
-          "accessToken",
-          "device",
-          "refreshExpiresAt",
-          "refreshToken",
-          "tokenType",
-          "user"
-        ],
-        "type": "object"
-      },
-      "OKResponse": {
-        "additionalProperties": false,
-        "properties": {
-          "ok": {
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "ok"
-        ],
-        "type": "object"
-      },
-      "ObservedPublicIP": {
-        "additionalProperties": false,
-        "properties": {
-          "observedAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "publicIp": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "publicIp",
-          "observedAt"
-        ],
-        "type": "object"
-      },
-      "OperatorAlert": {
-        "additionalProperties": false,
-        "properties": {
-          "createdAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "detail": {
-            "type": "string"
-          },
-          "id": {
-            "type": "string"
-          },
-          "metric": {
-            "type": "string"
-          },
-          "severity": {
-            "type": "string"
-          },
-          "threshold": {
-            "type": "integer"
-          },
-          "title": {
-            "type": "string"
-          },
-          "value": {
-            "type": "integer"
-          }
-        },
-        "required": [
-          "createdAt",
-          "detail",
-          "id",
-          "metric",
-          "severity",
-          "threshold",
-          "title",
-          "value"
-        ],
-        "type": "object"
-      },
-      "OperatorAlertList": {
-        "items": {
-          "$ref": "#/components/schemas/OperatorAlert"
-        },
-        "type": "array"
-      },
-      "OperatorEndpointSummary": {
-        "additionalProperties": false,
-        "properties": {
-          "endpointType": {
-            "type": "string"
-          },
-          "host": {
-            "type": "string"
-          },
-          "id": {
-            "type": "string"
-          },
-          "lastCheckStatus": {
-            "type": "string"
-          },
-          "lastCheckedAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "lastReportedAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "port": {
-            "type": "integer"
-          },
-          "scheme": {
-            "type": "string"
-          },
-          "source": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "endpointType",
-          "host",
-          "id",
-          "lastReportedAt",
-          "port",
-          "scheme",
-          "source"
-        ],
-        "type": "object"
-      },
-      "OperatorFleetAggregate": {
-        "additionalProperties": false,
-        "properties": {
-          "offline": {
-            "minimum": 0,
-            "type": "integer"
-          },
-          "online": {
-            "minimum": 0,
-            "type": "integer"
-          },
-          "stale": {
-            "minimum": 0,
-            "type": "integer"
-          },
-          "total": {
-            "minimum": 0,
-            "type": "integer"
-          }
-        },
-        "required": [
-          "total",
-          "online",
-          "stale",
-          "offline"
-        ],
-        "type": "object"
-      },
-      "OperatorHealthResponse": {
-        "additionalProperties": false,
-        "properties": {
-          "alerts": {
-            "items": {
-              "$ref": "#/components/schemas/OperatorAlert"
-            },
-            "type": "array"
-          },
-          "apiVersion": {
-            "const": "v1",
-            "type": "string"
-          },
-          "buildVersion": {
-            "type": "string"
-          },
-          "checkedAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "contractVersion": {
-            "const": 1,
-            "type": "integer"
-          },
-          "derivation": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "directHostnameZone": {
-            "type": "string"
-          },
-          "metrics": {
-            "$ref": "#/components/schemas/OperatorMetrics"
-          },
-          "publicBaseUrl": {
-            "type": "string"
-          },
-          "status": {
-            "enum": [
-              "healthy",
-              "degraded",
-              "critical",
-              "unknown"
-            ],
-            "type": "string"
-          }
-        },
-        "required": [
-          "contractVersion",
-          "status",
-          "derivation",
-          "apiVersion",
-          "buildVersion",
-          "publicBaseUrl",
-          "directHostnameZone",
-          "checkedAt",
-          "metrics",
-          "alerts"
-        ],
-        "type": "object"
-      },
-      "OperatorMetrics": {
-        "additionalProperties": false,
-        "properties": {
-          "activeDevices": {
-            "type": "integer"
-          },
-          "activeMemberships": {
-            "type": "integer"
-          },
-          "activeSessions": {
-            "type": "integer"
-          },
-          "checkedAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "deadReachabilityJobs": {
-            "type": "integer"
-          },
-          "failedCertificateJobs": {
-            "type": "integer"
-          },
-          "failedDnsRecordCount": {
-            "type": "integer"
-          },
-          "failedPushWakes": {
-            "type": "integer"
-          },
-          "oldestCertificateJobAgeSeconds": {
-            "type": "integer"
-          },
-          "oldestPushWakeAgeSeconds": {
-            "type": "integer"
-          },
-          "oldestReachabilityJobAgeSeconds": {
-            "type": "integer"
-          },
-          "pendingCertificateJobs": {
-            "type": "integer"
-          },
-          "pendingClaims": {
-            "type": "integer"
-          },
-          "pendingInvitations": {
-            "type": "integer"
-          },
-          "pendingPushWakes": {
-            "type": "integer"
-          },
-          "pendingReachabilityJobs": {
-            "type": "integer"
-          },
-          "recentCertificateFailures": {
-            "type": "integer"
-          },
-          "recentDnsFailures": {
-            "type": "integer"
-          },
-          "recentLoginFailures": {
-            "type": "integer"
-          },
-          "recentPasswordResetDeliveryFailures": {
-            "type": "integer"
-          },
-          "recentRateLimitHits": {
-            "type": "integer"
-          },
-          "recentRouteRequests": {
-            "type": "integer"
-          },
-          "servers": {
-            "type": "integer"
-          },
-          "staleHeartbeatCount": {
-            "type": "integer"
-          },
-          "users": {
-            "type": "integer"
-          }
-        },
-        "required": [
-          "activeDevices",
-          "activeMemberships",
-          "activeSessions",
-          "checkedAt",
-          "deadReachabilityJobs",
-          "failedCertificateJobs",
-          "failedDnsRecordCount",
-          "failedPushWakes",
-          "oldestCertificateJobAgeSeconds",
-          "oldestPushWakeAgeSeconds",
-          "oldestReachabilityJobAgeSeconds",
-          "pendingCertificateJobs",
-          "pendingClaims",
-          "pendingInvitations",
-          "pendingPushWakes",
-          "pendingReachabilityJobs",
-          "recentCertificateFailures",
-          "recentDnsFailures",
-          "recentLoginFailures",
-          "recentPasswordResetDeliveryFailures",
-          "recentRateLimitHits",
-          "recentRouteRequests",
-          "servers",
-          "staleHeartbeatCount",
-          "users"
-        ],
-        "type": "object"
-      },
-      "OperatorServerDetail": {
-        "additionalProperties": false,
-        "properties": {
-          "endpoints": {
-            "items": {
-              "$ref": "#/components/schemas/OperatorEndpointSummary"
-            },
-            "type": "array"
-          },
-          "events": {
-            "items": {
-              "$ref": "#/components/schemas/AuditEvent"
-            },
-            "type": "array"
-          },
-          "server": {
-            "$ref": "#/components/schemas/OperatorServerSummary"
-          }
-        },
-        "required": [
-          "endpoints",
-          "events",
-          "server"
-        ],
-        "type": "object"
-      },
-      "OperatorServerList": {
-        "additionalProperties": false,
-        "properties": {
-          "aggregates": {
-            "$ref": "#/components/schemas/OperatorFleetAggregate"
-          },
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/OperatorServerSummary"
-            },
-            "type": "array"
-          },
-          "pageInfo": {
-            "$ref": "#/components/schemas/CursorPageInfo"
-          },
-          "total": {
-            "minimum": 0,
-            "type": "integer"
-          }
-        },
-        "required": [
-          "items",
-          "total",
-          "pageInfo",
-          "aggregates"
-        ],
-        "type": "object"
-      },
-      "OperatorServerSummary": {
-        "additionalProperties": false,
-        "properties": {
-          "activeMemberCount": {
-            "type": "integer"
-          },
-          "apiContractDigest": {
-            "type": "string"
-          },
-          "apiContractDigestAlgorithm": {
-            "type": "string"
-          },
-          "apiContractIdentity": {
-            "type": "string"
-          },
-          "assignedHostname": {
-            "type": "string"
-          },
-          "availabilityState": {
-            "type": "string"
-          },
-          "buildChannel": {
-            "type": "string"
-          },
-          "buildCommit": {
-            "type": "string"
-          },
-          "buildNumber": {
-            "type": "string"
-          },
-          "buildTimestamp": {
-            "type": "string"
-          },
-          "capabilities": {
-            "items": {
-              "additionalProperties": false,
-              "properties": {
-                "id": {
-                  "type": "string"
-                },
-                "requiredSemantics": {
-                  "items": {
-                    "type": "string"
-                  },
-                  "type": "array"
-                },
-                "revision": {
-                  "type": "integer"
-                },
-                "state": {
-                  "type": "string"
-                }
-              },
-              "required": [
-                "id",
-                "requiredSemantics",
-                "revision",
-                "state"
-              ],
-              "type": "object"
-            },
-            "type": "array"
-          },
-          "certificateExpiresAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "certificateStatus": {
-            "type": "string"
-          },
-          "compatibilityEnvelopeRevision": {
-            "type": "integer"
-          },
-          "createdAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "endpointCount": {
-            "type": "integer"
-          },
-          "forwardCompatibility": {
-            "additionalProperties": false,
-            "properties": {
-              "apiContractDigestMismatch": {
-                "type": "string"
-              },
-              "authorizationOnPartialUpgrade": {
-                "type": "string"
-              },
-              "unknownOptionalCapabilities": {
-                "type": "string"
-              },
-              "unknownRequiredSemantics": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "apiContractDigestMismatch",
-              "authorizationOnPartialUpgrade",
-              "unknownOptionalCapabilities",
-              "unknownRequiredSemantics"
-            ],
-            "type": "object"
-          },
-          "id": {
-            "type": "string"
-          },
-          "lastHeartbeatAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "ownerEmail": {
-            "type": "string"
-          },
-          "ownerUserId": {
-            "type": "string"
-          },
-          "ownerUsername": {
-            "type": "string"
-          },
-          "protocolMaximum": {
-            "type": "integer"
-          },
-          "protocolMinimum": {
-            "type": "integer"
-          },
-          "reachableEndpointCount": {
-            "type": "integer"
-          },
-          "remoteAccessEnabled": {
-            "type": "boolean"
-          },
-          "requiredSemantics": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "semanticRevisions": {
-            "additionalProperties": {
-              "type": "integer"
-            },
-            "type": "object"
-          },
-          "softwareVersion": {
-            "type": "string"
-          },
-          "updatedAt": {
-            "format": "date-time",
-            "type": "string"
-          }
-        },
-        "required": [
-          "activeMemberCount",
-          "assignedHostname",
-          "availabilityState",
-          "certificateStatus",
-          "createdAt",
-          "endpointCount",
-          "id",
-          "name",
-          "ownerEmail",
-          "ownerUserId",
-          "ownerUsername",
-          "reachableEndpointCount",
-          "remoteAccessEnabled",
-          "updatedAt"
-        ],
-        "type": "object"
-      },
-      "PasswordChangeRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "currentPassword": {
-            "maxLength": 72,
-            "minLength": 1,
-            "type": "string",
-            "writeOnly": true
-          },
-          "newPassword": {
-            "description": "At least 8 characters with an uppercase letter, a lowercase letter, and a number or special character; at most 72 UTF-8 bytes.",
-            "maxLength": 72,
-            "minLength": 8,
-            "type": "string",
-            "writeOnly": true
-          }
-        },
-        "required": [
-          "currentPassword",
-          "newPassword"
-        ],
-        "type": "object"
-      },
-      "PasswordResetCompleteRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "password": {
-            "description": "At least 8 characters with an uppercase letter, a lowercase letter, and a number or special character; at most 72 UTF-8 bytes.",
-            "maxLength": 72,
-            "minLength": 8,
-            "type": "string",
-            "writeOnly": true
-          },
-          "token": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "token",
-          "password"
-        ],
-        "type": "object"
-      },
-      "PasswordResetStartRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "email": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "email"
-        ],
-        "type": "object"
-      },
-      "PermissionTemplate": {
-        "additionalProperties": false,
-        "properties": {
-          "libraryIds": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "maxContentRating": {
-            "type": "string"
-          },
-          "permissions": {
-            "additionalProperties": {
-              "type": "boolean"
-            },
-            "type": "object"
-          }
-        },
         "type": "object"
       },
       "PolicySnapshot": {
@@ -2980,86 +2555,18 @@
         ],
         "type": "object"
       },
-      "PorticoProfile": {
+      "PorticoSessionIntrospectionRequest": {
         "additionalProperties": false,
         "properties": {
-          "avatar": {
-            "$ref": "#/components/schemas/ProfileAvatar"
-          },
-          "hasPIN": {
-            "type": "boolean"
-          },
-          "id": {
-            "type": "string"
-          },
-          "isAccountAdmin": {
-            "type": "boolean"
-          },
-          "isPrimary": {
-            "type": "boolean"
-          },
-          "name": {
-            "type": "string"
-          },
-          "pinRevision": {
-            "minimum": 0,
-            "type": "integer"
-          },
-          "policy": {
-            "$ref": "#/components/schemas/AccountProfileRestrictions"
-          },
-          "sortOrder": {
-            "type": "integer"
-          }
-        },
-        "required": [
-          "hasPIN",
-          "id",
-          "isAccountAdmin",
-          "isPrimary",
-          "name",
-          "pinRevision",
-          "policy",
-          "sortOrder"
-        ],
-        "type": "object"
-      },
-      "PorticoSessionBootstrap": {
-        "additionalProperties": false,
-        "properties": {
-          "accessExpiresAt": {
-            "format": "date-time",
-            "type": "string"
-          },
           "accessToken": {
             "type": "string"
           },
-          "membership": {
-            "$ref": "#/components/schemas/Membership"
-          },
           "selectionEnvelope": {
             "$ref": "#/components/schemas/HostedProfileSelectionEnvelope"
-          },
-          "tokenType": {
-            "type": "string"
           }
         },
         "required": [
-          "accessExpiresAt",
           "accessToken",
-          "selectionEnvelope",
-          "tokenType"
-        ],
-        "type": "object"
-      },
-      "PorticoSessionCreateRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "selectionEnvelope": {
-            "$ref": "#/components/schemas/HostedProfileSelectionEnvelope"
-          }
-        },
-        "required": [
           "selectionEnvelope"
         ],
         "type": "object"
@@ -3093,319 +2600,156 @@
         ],
         "type": "object"
       },
-      "PorticoSessionIntrospectionRequest": {
+      "HostedProfileDirectorySnapshotRequest": {
         "additionalProperties": false,
         "properties": {
-          "accessToken": {
+          "accountId": {
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._:-]+$",
             "type": "string"
           },
+          "knownRevision": {
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "accountId",
+          "knownRevision"
+        ],
+        "type": "object"
+      },
+      "HostedProfileDirectorySnapshot": {
+        "additionalProperties": false,
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "audience": {
+            "const": "portico-media-server",
+            "type": "string"
+          },
+          "checkedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "maxAgeSeconds": {
+            "maximum": 300,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "profiles": {
+            "items": {
+              "$ref": "#/components/schemas/AccountProfileProjection"
+            },
+            "type": "array"
+          },
+          "revision": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "serverId": {
+            "type": "string"
+          },
+          "signature": {
+            "type": "string"
+          },
+          "signatureAlgorithm": {
+            "const": "ed25519",
+            "type": "string"
+          },
+          "signatureKeyId": {
+            "type": "string"
+          },
+          "snapshotId": {
+            "type": "string"
+          },
+          "staleIfErrorSeconds": {
+            "const": 86400,
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "unchanged",
+              "changed"
+            ],
+            "type": "string"
+          },
+          "version": {
+            "const": "v1",
+            "type": "string"
+          }
+        },
+        "required": [
+          "accountId",
+          "audience",
+          "checkedAt",
+          "maxAgeSeconds",
+          "revision",
+          "serverId",
+          "signature",
+          "signatureAlgorithm",
+          "signatureKeyId",
+          "snapshotId",
+          "staleIfErrorSeconds",
+          "status",
+          "version"
+        ],
+        "type": "object"
+      },
+      "HostedProfileSelectionExchangeRequest": {
+        "additionalProperties": false,
+        "properties": {
           "selectionEnvelope": {
             "$ref": "#/components/schemas/HostedProfileSelectionEnvelope"
           }
         },
         "required": [
-          "accessToken",
           "selectionEnvelope"
         ],
         "type": "object"
       },
-      "Problem": {
+      "ServerPushWakeRequest": {
         "additionalProperties": false,
         "properties": {
-          "code": {
+          "idempotencyKey": {
             "type": "string"
           },
-          "detail": {
-            "type": "string"
-          },
-          "details": {
-            "additionalProperties": true,
-            "type": "object"
-          },
-          "messageId": {
-            "type": "string"
-          },
-          "requestId": {
-            "type": "string"
-          },
-          "status": {
-            "maximum": 599,
-            "minimum": 400,
-            "type": "integer"
-          },
-          "title": {
-            "type": "string"
-          },
-          "type": {
-            "format": "uri",
-            "type": "string"
-          }
-        },
-        "required": [
-          "type",
-          "title",
-          "status",
-          "code",
-          "detail",
-          "requestId"
-        ],
-        "type": "object"
-      },
-      "ProfileAdministrationSessionRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "emailRecoveryToken": {
-            "maxLength": 256,
-            "minLength": 32,
-            "type": "string",
-            "writeOnly": true
-          },
-          "installationId": {
-            "description": "Exact client installation identity used to bind device and session credentials.",
-            "maxLength": 128,
-            "minLength": 16,
-            "pattern": "^[A-Za-z0-9._:-]+$",
-            "type": "string"
-          },
-          "mfaCode": {
-            "pattern": "^[0-9]{6}$",
-            "type": "string",
-            "writeOnly": true
-          },
-          "password": {
-            "maxLength": 72,
-            "minLength": 1,
-            "type": "string",
-            "writeOnly": true
-          },
-          "pin": {
-            "pattern": "^[0-9]{4}$",
-            "type": "string",
-            "writeOnly": true
-          },
-          "recoveryCode": {
-            "maxLength": 64,
-            "minLength": 1,
-            "type": "string",
-            "writeOnly": true
-          },
-          "replacementPin": {
-            "pattern": "^[0-9]{4}$",
-            "type": "string",
-            "writeOnly": true
-          }
-        },
-        "type": "object"
-      },
-      "ProfileAdministrationSessionResponse": {
-        "additionalProperties": false,
-        "properties": {
-          "expiresAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "token": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "expiresAt",
-          "token"
-        ],
-        "type": "object"
-      },
-      "ProfileAvatar": {
-        "additionalProperties": false,
-        "properties": {
           "kind": {
-            "enum": [
-              "preset",
-              "custom"
-            ],
             "type": "string"
           },
-          "reference": {
-            "type": "string"
+          "recipientAccountIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           }
         },
         "required": [
+          "idempotencyKey",
           "kind",
-          "reference"
+          "recipientAccountIds"
         ],
         "type": "object"
       },
-      "ProfilePINChangeResponse": {
+      "ServerPushWakeResponse": {
         "additionalProperties": false,
         "properties": {
-          "ok": {
-            "type": "boolean"
+          "accepted": {
+            "type": "integer"
           },
-          "pinRevision": {
-            "minimum": 1,
+          "invalidated": {
+            "type": "integer"
+          },
+          "unavailable": {
             "type": "integer"
           }
         },
         "required": [
-          "ok",
-          "pinRevision"
-        ],
-        "type": "object"
-      },
-      "ProfilePINClearRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "mfaCode": {
-            "pattern": "^[0-9]{6}$",
-            "type": "string",
-            "writeOnly": true
-          },
-          "password": {
-            "maxLength": 72,
-            "minLength": 1,
-            "type": "string",
-            "writeOnly": true
-          },
-          "recoveryCode": {
-            "maxLength": 64,
-            "minLength": 1,
-            "type": "string",
-            "writeOnly": true
-          }
-        },
-        "required": [
-          "password"
-        ],
-        "type": "object"
-      },
-      "ProfilePINSetRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "mfaCode": {
-            "pattern": "^[0-9]{6}$",
-            "type": "string",
-            "writeOnly": true
-          },
-          "password": {
-            "maxLength": 72,
-            "minLength": 1,
-            "type": "string",
-            "writeOnly": true
-          },
-          "pin": {
-            "pattern": "^[0-9]{4}$",
-            "type": "string",
-            "writeOnly": true
-          },
-          "recoveryCode": {
-            "maxLength": 64,
-            "minLength": 1,
-            "type": "string",
-            "writeOnly": true
-          }
-        },
-        "required": [
-          "password",
-          "pin"
-        ],
-        "type": "object"
-      },
-      "ProfileSelectionAssertionRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "installationId": {
-            "description": "Exact client installation identity used to bind device and session credentials.",
-            "maxLength": 128,
-            "minLength": 16,
-            "pattern": "^[A-Za-z0-9._:-]+$",
-            "type": "string"
-          },
-          "pin": {
-            "pattern": "^[0-9]{4}$",
-            "type": "string",
-            "writeOnly": true
-          },
-          "serverId": {
-            "maxLength": 200,
-            "minLength": 1,
-            "type": "string"
-          }
-        },
-        "required": [
-          "serverId"
-        ],
-        "type": "object"
-      },
-      "ProtocolRange": {
-        "additionalProperties": false,
-        "properties": {
-          "maximum": {
-            "minimum": 1,
-            "type": "integer"
-          },
-          "minimum": {
-            "minimum": 1,
-            "type": "integer"
-          }
-        },
-        "required": [
-          "minimum",
-          "maximum"
-        ],
-        "type": "object"
-      },
-      "RefreshTokenRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "installationId": {
-            "description": "Exact client installation identity used to bind device and session credentials.",
-            "maxLength": 128,
-            "minLength": 16,
-            "pattern": "^[A-Za-z0-9._:-]+$",
-            "type": "string"
-          },
-          "refreshToken": {
-            "type": "string"
-          },
-          "rotationKey": {
-            "description": "High-entropy idempotency secret persisted before refresh. The exact old token and key recover a committed successor after a crash.",
-            "maxLength": 128,
-            "minLength": 43,
-            "pattern": "^[A-Za-z0-9_-]+$",
-            "type": "string",
-            "writeOnly": true
-          }
-        },
-        "required": [
-          "refreshToken",
-          "rotationKey"
-        ],
-        "type": "object"
-      },
-      "RegisterAccountRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "email": {
-            "type": "string"
-          },
-          "password": {
-            "description": "At least 8 characters with an uppercase letter, a lowercase letter, and a number or special character; at most 72 UTF-8 bytes.",
-            "maxLength": 72,
-            "minLength": 8,
-            "type": "string",
-            "writeOnly": true
-          },
-          "username": {
-            "description": "Unique, case-insensitive Portico Account username.",
-            "maxLength": 32,
-            "minLength": 3,
-            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{1,30}[A-Za-z0-9]$",
-            "type": "string"
-          }
-        },
-        "required": [
-          "email",
-          "username",
-          "password"
+          "accepted",
+          "invalidated",
+          "unavailable"
         ],
         "type": "object"
       },
@@ -3459,376 +2803,67 @@
         ],
         "type": "object"
       },
-      "RouteDocument": {
+      "DocumentSigningKeySet": {
         "additionalProperties": false,
         "properties": {
-          "assignedHostname": {
+          "activeKeyId": {
             "type": "string"
           },
-          "audience": {
-            "type": "string"
-          },
-          "authModes": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "certificate": {
-            "additionalProperties": false,
-            "properties": {
-              "expiresAt": {
-                "format": "date-time",
-                "type": "string"
-              },
-              "status": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "status"
-            ],
-            "type": "object"
-          },
-          "documentVersion": {
-            "type": "integer"
-          },
-          "endpointGeneration": {
-            "type": "integer"
-          },
-          "expiresAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "issuedAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "membership": {
-            "additionalProperties": false,
-            "properties": {
-              "permissionTemplate": {
-                "$ref": "#/components/schemas/PermissionTemplate"
-              },
-              "role": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "role"
-            ],
-            "type": "object"
-          },
-          "networkHints": {
-            "additionalProperties": false,
-            "properties": {
-              "authoritative": {
-                "type": "boolean"
-              },
-              "source": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "authoritative",
-              "source"
-            ],
-            "type": "object"
-          },
-          "routeAuthority": {
-            "type": "string"
-          },
-          "routes": {
+          "keys": {
             "items": {
               "additionalProperties": false,
               "properties": {
-                "address": {
+                "algorithm": {
                   "type": "string"
                 },
-                "generation": {
-                  "type": "integer"
-                },
-                "host": {
+                "keyId": {
                   "type": "string"
                 },
-                "lastCheckError": {
+                "publicKeyB64": {
                   "type": "string"
-                },
-                "lastCheckedAt": {
-                  "format": "date-time",
-                  "type": "string"
-                },
-                "quality": {
-                  "type": "string"
-                },
-                "redirectAuthority": {
-                  "type": "string"
-                },
-                "scope": {
-                  "type": "string"
-                },
-                "serverPublicKeyFingerprint": {
-                  "type": "string"
-                },
-                "serverToken": {
-                  "type": "string"
-                },
-                "type": {
-                  "type": "string"
-                },
-                "url": {
-                  "type": "string"
-                }
-              },
-              "required": [
-                "quality",
-                "type",
-                "url"
-              ],
-              "type": "object"
-            },
-            "type": "array"
-          },
-          "scope": {
-            "type": "string"
-          },
-          "serverId": {
-            "type": "string"
-          },
-          "serverName": {
-            "type": "string"
-          },
-          "serverPublicKey": {
-            "type": "string"
-          },
-          "serverPublicKeyFingerprint": {
-            "type": "string"
-          },
-          "signature": {
-            "type": "string"
-          },
-          "signatureAlgorithm": {
-            "type": "string"
-          },
-          "signatureKeyId": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "assignedHostname",
-          "audience",
-          "authModes",
-          "certificate",
-          "documentVersion",
-          "expiresAt",
-          "issuedAt",
-          "membership",
-          "routes",
-          "serverId",
-          "serverName",
-          "serverPublicKey",
-          "serverPublicKeyFingerprint",
-          "signature",
-          "signatureAlgorithm",
-          "signatureKeyId"
-        ],
-        "type": "object"
-      },
-      "RouteFailureRequest": {
-        "additionalProperties": true,
-        "type": "object"
-      },
-      "Server": {
-        "additionalProperties": false,
-        "properties": {
-          "apiContractDigest": {
-            "type": "string"
-          },
-          "apiContractDigestAlgorithm": {
-            "type": "string"
-          },
-          "apiContractIdentity": {
-            "type": "string"
-          },
-          "assignedHostname": {
-            "type": "string"
-          },
-          "availabilityState": {
-            "type": "string"
-          },
-          "buildChannel": {
-            "type": "string"
-          },
-          "buildCommit": {
-            "type": "string"
-          },
-          "buildNumber": {
-            "type": "string"
-          },
-          "buildTimestamp": {
-            "type": "string"
-          },
-          "capabilities": {
-            "items": {
-              "additionalProperties": false,
-              "properties": {
-                "id": {
-                  "type": "string"
-                },
-                "requiredSemantics": {
-                  "items": {
-                    "type": "string"
-                  },
-                  "type": "array"
-                },
-                "revision": {
-                  "type": "integer"
                 },
                 "state": {
                   "type": "string"
                 }
               },
               "required": [
-                "id",
-                "requiredSemantics",
-                "revision",
+                "algorithm",
+                "keyId",
+                "publicKeyB64",
                 "state"
               ],
               "type": "object"
             },
             "type": "array"
           },
-          "certificateExpiresAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "certificateStatus": {
-            "type": "string"
-          },
-          "compatibilityEnvelopeRevision": {
+          "schemaVersion": {
             "type": "integer"
-          },
-          "createdAt": {
-            "format": "date-time",
+          }
+        },
+        "required": [
+          "activeKeyId",
+          "keys",
+          "schemaVersion"
+        ],
+        "type": "object"
+      },
+      "HostedSystemInfo": {
+        "additionalProperties": false,
+        "properties": {
+          "apiVersion": {
+            "const": "v1",
             "type": "string"
           },
-          "forwardCompatibility": {
-            "additionalProperties": false,
-            "properties": {
-              "apiContractDigestMismatch": {
-                "type": "string"
-              },
-              "authorizationOnPartialUpgrade": {
-                "type": "string"
-              },
-              "unknownOptionalCapabilities": {
-                "type": "string"
-              },
-              "unknownRequiredSemantics": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "apiContractDigestMismatch",
-              "authorizationOnPartialUpgrade",
-              "unknownOptionalCapabilities",
-              "unknownRequiredSemantics"
-            ],
-            "type": "object"
+          "compatibility": {
+            "$ref": "#/components/schemas/CompatibilityEnvelope"
           },
-          "id": {
-            "type": "string"
-          },
-          "lastHeartbeatAt": {
-            "format": "date-time",
+          "directHostnameZone": {
             "type": "string"
           },
           "name": {
             "type": "string"
           },
-          "ownerUserId": {
-            "type": "string"
-          },
-          "preferredAuthMode": {
-            "type": "string"
-          },
-          "protocolMaximum": {
-            "type": "integer"
-          },
-          "protocolMinimum": {
-            "type": "integer"
-          },
-          "remoteAccessEnabled": {
-            "type": "boolean"
-          },
-          "requiredSemantics": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "semanticRevisions": {
-            "additionalProperties": {
-              "type": "integer"
-            },
-            "type": "object"
-          },
-          "serverPublicKey": {
-            "type": "string"
-          },
-          "serverPublicKeyFingerprint": {
-            "type": "string"
-          },
-          "softwareVersion": {
-            "type": "string"
-          },
-          "updatedAt": {
-            "format": "date-time",
-            "type": "string"
-          }
-        },
-        "required": [
-          "assignedHostname",
-          "certificateStatus",
-          "createdAt",
-          "id",
-          "name",
-          "ownerUserId",
-          "preferredAuthMode",
-          "remoteAccessEnabled",
-          "serverPublicKey",
-          "serverPublicKeyFingerprint",
-          "updatedAt"
-        ],
-        "type": "object"
-      },
-      "ServerClaim": {
-        "additionalProperties": false,
-        "properties": {
-          "claimId": {
-            "type": "string"
-          },
-          "claimedByUserId": {
-            "type": "string"
-          },
-          "claimedServerId": {
-            "type": "string"
-          },
-          "createdAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "expiresAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "serverName": {
-            "type": "string"
-          },
-          "serverPublicKey": {
-            "type": "string"
-          },
-          "serverPublicKeyFingerprint": {
+          "publicBaseUrl": {
             "type": "string"
           },
           "status": {
@@ -3836,88 +2871,11 @@
           }
         },
         "required": [
-          "claimId",
-          "createdAt",
-          "expiresAt",
-          "serverName",
-          "serverPublicKey",
-          "serverPublicKeyFingerprint",
-          "status"
+          "name",
+          "status",
+          "apiVersion",
+          "compatibility"
         ],
-        "type": "object"
-      },
-      "ServerClaimCompletion": {
-        "additionalProperties": true,
-        "type": "object"
-      },
-      "ServerClaimRequest": {
-        "additionalProperties": true,
-        "type": "object"
-      },
-      "ServerList": {
-        "additionalProperties": false,
-        "properties": {
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/Server"
-            },
-            "type": "array"
-          },
-          "pageInfo": {
-            "$ref": "#/components/schemas/CursorPageInfo"
-          }
-        },
-        "required": [
-          "items",
-          "pageInfo"
-        ],
-        "type": "object"
-      },
-      "ServerPushWakeRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "idempotencyKey": {
-            "type": "string"
-          },
-          "kind": {
-            "type": "string"
-          },
-          "recipientAccountIds": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          }
-        },
-        "required": [
-          "idempotencyKey",
-          "kind",
-          "recipientAccountIds"
-        ],
-        "type": "object"
-      },
-      "ServerPushWakeResponse": {
-        "additionalProperties": false,
-        "properties": {
-          "accepted": {
-            "type": "integer"
-          },
-          "invalidated": {
-            "type": "integer"
-          },
-          "unavailable": {
-            "type": "integer"
-          }
-        },
-        "required": [
-          "accepted",
-          "invalidated",
-          "unavailable"
-        ],
-        "type": "object"
-      },
-      "ServerUpdateRequest": {
-        "additionalProperties": true,
         "type": "object"
       },
       "TVSetupGrantRequest": {
@@ -4131,62 +3089,50 @@
         ],
         "type": "object"
       },
-      "User": {
+      "Device": {
         "additionalProperties": false,
         "properties": {
-          "createdAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "email": {
-            "type": "string"
-          },
-          "emailVerifiedAt": {
-            "format": "date-time",
-            "type": "string"
-          },
           "id": {
             "type": "string"
           },
-          "preferences": {
-            "$ref": "#/components/schemas/UserPreferences"
-          },
-          "profileImageUrl": {
+          "lastSeenAt": {
+            "format": "date-time",
             "type": "string"
           },
-          "username": {
+          "name": {
+            "type": "string"
+          },
+          "platform": {
+            "type": "string"
+          },
+          "revokedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "userId": {
             "type": "string"
           }
         },
         "required": [
-          "createdAt",
-          "email",
           "id",
-          "preferences",
-          "username"
+          "lastSeenAt",
+          "name",
+          "platform",
+          "userId"
         ],
         "type": "object"
       },
-      "UserEnvelope": {
+      "CursorPageInfo": {
         "additionalProperties": false,
         "properties": {
-          "user": {
-            "$ref": "#/components/schemas/User"
-          }
-        },
-        "required": [
-          "user"
-        ],
-        "type": "object"
-      },
-      "UserList": {
-        "additionalProperties": false,
-        "properties": {
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/User"
-            },
-            "type": "array"
+          "hasMore": {
+            "type": "boolean"
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "total": {
             "minimum": 0,
@@ -4194,8 +3140,8 @@
           }
         },
         "required": [
-          "items",
-          "total"
+          "nextCursor",
+          "hasMore"
         ],
         "type": "object"
       },
@@ -4308,6 +3254,510 @@
           "timeZone"
         ],
         "type": "object"
+      },
+      "User": {
+        "additionalProperties": false,
+        "properties": {
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "emailVerifiedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "preferences": {
+            "$ref": "#/components/schemas/UserPreferences"
+          },
+          "profileImageUrl": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "createdAt",
+          "email",
+          "id",
+          "preferences",
+          "username"
+        ],
+        "type": "object"
+      },
+      "AccountProfileRestrictions": {
+        "additionalProperties": false,
+        "properties": {
+          "allowDownloads": {
+            "type": "boolean"
+          },
+          "allowDvr": {
+            "type": "boolean"
+          },
+          "allowFeedback": {
+            "type": "boolean"
+          },
+          "allowLiveTV": {
+            "type": "boolean"
+          },
+          "allowUnrated": {
+            "type": "boolean"
+          },
+          "allowWatchWithFriends": {
+            "type": "boolean"
+          },
+          "blockedLabels": {
+            "description": "Labels must also be unique after Unicode NFC normalization, trimming, and case folding.",
+            "items": {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 64,
+            "type": "array",
+            "uniqueItems": true
+          },
+          "maximumAgeRating": {
+            "oneOf": [
+              {
+                "maximum": 21,
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "version": {
+            "const": "v1",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "maximumAgeRating",
+          "allowUnrated",
+          "blockedLabels",
+          "allowDownloads",
+          "allowLiveTV",
+          "allowDvr",
+          "allowWatchWithFriends",
+          "allowFeedback"
+        ],
+        "type": "object"
+      },
+      "ProfileAvatar": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "enum": [
+              "preset",
+              "custom"
+            ],
+            "type": "string"
+          },
+          "reference": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "reference"
+        ],
+        "type": "object"
+      },
+      "AccountProfileProjection": {
+        "additionalProperties": false,
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "avatar": {
+            "$ref": "#/components/schemas/ProfileAvatar"
+          },
+          "hasPIN": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          },
+          "isAccountAdmin": {
+            "type": "boolean"
+          },
+          "isPrimary": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "pinRevision": {
+            "type": "integer"
+          },
+          "policy": {
+            "$ref": "#/components/schemas/AccountProfileRestrictions"
+          },
+          "policyUpdatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "sortOrder": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "accountId",
+          "hasPIN",
+          "id",
+          "isAccountAdmin",
+          "isPrimary",
+          "name",
+          "pinRevision",
+          "policy",
+          "policyUpdatedAt",
+          "sortOrder"
+        ],
+        "type": "object"
+      },
+      "AuditEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "type": "string"
+          },
+          "actorId": {
+            "type": "string"
+          },
+          "actorType": {
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "requestId": {
+            "type": "string"
+          },
+          "result": {
+            "type": "string"
+          },
+          "targetId": {
+            "type": "string"
+          },
+          "targetType": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "action",
+          "actorId",
+          "actorType",
+          "createdAt",
+          "id",
+          "requestId",
+          "result",
+          "targetId",
+          "targetType"
+        ],
+        "type": "object"
+      },
+      "PermissionTemplate": {
+        "additionalProperties": false,
+        "properties": {
+          "libraryIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "maxContentRating": {
+            "type": "string"
+          },
+          "permissions": {
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "type": "object"
+          }
+        },
+        "type": "object"
+      },
+      "MemberProfile": {
+        "additionalProperties": false,
+        "properties": {
+          "allowSubordinateProfiles": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "permissionTemplate": {
+            "$ref": "#/components/schemas/PermissionTemplate"
+          },
+          "profileImageUrl": {
+            "type": "string"
+          },
+          "resourceLimits": {
+            "additionalProperties": false,
+            "properties": {
+              "maxActiveDownloads": {
+                "type": "integer"
+              },
+              "maxBandwidthKbps": {
+                "type": "integer"
+              },
+              "maxDvrRules": {
+                "type": "integer"
+              },
+              "maxScheduledRecordings": {
+                "type": "integer"
+              },
+              "maxSimultaneousStreams": {
+                "type": "integer"
+              }
+            },
+            "type": "object"
+          },
+          "role": {
+            "enum": [
+              "owner",
+              "user"
+            ],
+            "type": "string"
+          },
+          "serverId": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "userId": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "allowSubordinateProfiles",
+          "createdAt",
+          "email",
+          "id",
+          "permissionTemplate",
+          "resourceLimits",
+          "role",
+          "serverId",
+          "status",
+          "userId",
+          "username"
+        ],
+        "type": "object"
+      },
+      "CompatibilityEnvelope": {
+        "additionalProperties": false,
+        "properties": {
+          "apiContract": {
+            "$ref": "#/components/schemas/APIContractIdentity"
+          },
+          "build": {
+            "$ref": "#/components/schemas/BuildIdentity"
+          },
+          "capabilities": {
+            "items": {
+              "$ref": "#/components/schemas/CompatibilityCapability"
+            },
+            "type": "array",
+            "uniqueItems": true
+          },
+          "envelopeRevision": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "forwardCompatibility": {
+            "$ref": "#/components/schemas/ForwardCompatibilityPolicy"
+          },
+          "requiredSemantics": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "uniqueItems": true
+          },
+          "semanticRevisions": {
+            "additionalProperties": {
+              "minimum": 1,
+              "type": "integer"
+            },
+            "type": "object"
+          },
+          "supportedClientProtocol": {
+            "$ref": "#/components/schemas/ProtocolRange"
+          }
+        },
+        "required": [
+          "envelopeRevision",
+          "supportedClientProtocol",
+          "apiContract",
+          "build",
+          "semanticRevisions",
+          "capabilities",
+          "requiredSemantics",
+          "forwardCompatibility"
+        ],
+        "type": "object"
+      },
+      "APIContractIdentity": {
+        "additionalProperties": false,
+        "properties": {
+          "digest": {
+            "pattern": "^[a-f0-9]{64}$",
+            "type": "string"
+          },
+          "digestAlgorithm": {
+            "const": "sha256",
+            "type": "string"
+          },
+          "identity": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "digestAlgorithm",
+          "identity",
+          "digest"
+        ],
+        "type": "object"
+      },
+      "BuildIdentity": {
+        "additionalProperties": false,
+        "properties": {
+          "buildNumber": {
+            "type": "string"
+          },
+          "channel": {
+            "type": "string"
+          },
+          "commit": {
+            "type": "string"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "buildNumber",
+          "channel",
+          "commit",
+          "timestamp"
+        ],
+        "type": "object"
+      },
+      "CompatibilityCapability": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "pattern": "^[a-z0-9][a-z0-9.-]{0,95}$",
+            "type": "string"
+          },
+          "requiredSemantics": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "uniqueItems": true
+          },
+          "revision": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "state": {
+            "enum": [
+              "available",
+              "requires_configuration",
+              "degraded",
+              "unavailable"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "revision",
+          "state",
+          "requiredSemantics"
+        ],
+        "type": "object"
+      },
+      "ForwardCompatibilityPolicy": {
+        "additionalProperties": false,
+        "properties": {
+          "apiContractDigestMismatch": {
+            "const": "allow_semantic_overlap",
+            "type": "string"
+          },
+          "authorizationOnPartialUpgrade": {
+            "const": "never_broaden",
+            "type": "string"
+          },
+          "unknownOptionalCapabilities": {
+            "const": "ignore_and_preserve",
+            "type": "string"
+          },
+          "unknownRequiredSemantics": {
+            "const": "reject_actionably",
+            "type": "string"
+          }
+        },
+        "required": [
+          "unknownOptionalCapabilities",
+          "unknownRequiredSemantics",
+          "authorizationOnPartialUpgrade",
+          "apiContractDigestMismatch"
+        ],
+        "type": "object"
+      },
+      "ProtocolRange": {
+        "additionalProperties": false,
+        "properties": {
+          "maximum": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "minimum": {
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "minimum",
+          "maximum"
+        ],
+        "type": "object"
       }
     },
     "securitySchemes": {
@@ -4320,11 +3770,6 @@
         "in": "cookie",
         "name": "portico_hosted_session",
         "type": "apiKey"
-      },
-      "operatorIdentityBearer": {
-        "bearerFormat": "Individual Portico operator identity or verified OIDC subject",
-        "scheme": "bearer",
-        "type": "http"
       },
       "profileAdminProof": {
         "in": "header",
@@ -4339,8 +3784,8 @@
     }
   },
   "info": {
-    "description": "Direct-access identity, membership, route, DNS, and certificate control plane. This API never proxies or relays media.",
-    "title": "Portico Hosted Services API",
+    "description": "Public contract used by Portico Media Server and first-party clients to connect to the official Portico Hosted Services. Hosted Services implementation and operator APIs are not included.",
+    "title": "Portico Hosted Services Client API",
     "version": "v1"
   },
   "openapi": "3.1.0",
@@ -14032,1187 +13477,6 @@
         "x-portico-runtime-pattern": "/api/network/public-ip"
       }
     },
-    "/api/operator/alerts": {
-      "get": {
-        "operationId": "getOperatorAlerts",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/OperatorAlertList"
-                }
-              }
-            },
-            "description": "Successful response"
-          },
-          "400": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Invalid request"
-          },
-          "401": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Authentication required or credential invalid"
-          },
-          "403": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Authenticated principal is not authorized"
-          },
-          "404": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Resource not found"
-          },
-          "409": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Resource state conflict"
-          },
-          "423": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "HTTP 423"
-          },
-          "429": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Rate limit exceeded"
-          },
-          "500": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Unexpected server error"
-          }
-        },
-        "security": [
-          {
-            "operatorIdentityBearer": []
-          }
-        ],
-        "summary": "List operator alerts",
-        "tags": [
-          "operator"
-        ],
-        "x-portico-audit-policy": "operator_read",
-        "x-portico-auth": "operator",
-        "x-portico-rate-class": "operator",
-        "x-portico-runtime-pattern": "/api/operator/alerts"
-      }
-    },
-    "/api/operator/audit-events": {
-      "get": {
-        "operationId": "listOperatorAuditEvents",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AuditEventList"
-                }
-              }
-            },
-            "description": "Successful response"
-          },
-          "400": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Invalid request"
-          },
-          "401": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Authentication required or credential invalid"
-          },
-          "403": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Authenticated principal is not authorized"
-          },
-          "404": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Resource not found"
-          },
-          "409": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Resource state conflict"
-          },
-          "423": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "HTTP 423"
-          },
-          "429": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Rate limit exceeded"
-          },
-          "500": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Unexpected server error"
-          }
-        },
-        "security": [
-          {
-            "operatorIdentityBearer": []
-          }
-        ],
-        "summary": "List redacted operator audit events",
-        "tags": [
-          "operator"
-        ],
-        "x-portico-audit-policy": "operator_read",
-        "x-portico-auth": "operator",
-        "x-portico-rate-class": "operator",
-        "x-portico-runtime-pattern": "/api/operator/audit-events"
-      }
-    },
-    "/api/operator/health": {
-      "get": {
-        "operationId": "getOperatorHealth",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/OperatorHealthResponse"
-                }
-              }
-            },
-            "description": "Successful response"
-          },
-          "400": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Invalid request"
-          },
-          "401": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Authentication required or credential invalid"
-          },
-          "403": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Authenticated principal is not authorized"
-          },
-          "404": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Resource not found"
-          },
-          "409": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Resource state conflict"
-          },
-          "423": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "HTTP 423"
-          },
-          "429": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Rate limit exceeded"
-          },
-          "500": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Unexpected server error"
-          },
-          "503": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Service temporarily unavailable"
-          }
-        },
-        "security": [
-          {
-            "operatorIdentityBearer": []
-          }
-        ],
-        "summary": "Get operator health",
-        "tags": [
-          "operator"
-        ],
-        "x-portico-audit-policy": "operator_read",
-        "x-portico-auth": "operator",
-        "x-portico-rate-class": "operator",
-        "x-portico-runtime-pattern": "/api/operator/health"
-      }
-    },
-    "/api/operator/metrics": {
-      "get": {
-        "operationId": "getOperatorMetrics",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/OperatorMetrics"
-                }
-              }
-            },
-            "description": "Successful response"
-          },
-          "400": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Invalid request"
-          },
-          "401": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Authentication required or credential invalid"
-          },
-          "403": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Authenticated principal is not authorized"
-          },
-          "404": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Resource not found"
-          },
-          "409": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Resource state conflict"
-          },
-          "423": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "HTTP 423"
-          },
-          "429": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Rate limit exceeded"
-          },
-          "500": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Unexpected server error"
-          }
-        },
-        "security": [
-          {
-            "operatorIdentityBearer": []
-          }
-        ],
-        "summary": "Get operator metrics",
-        "tags": [
-          "operator"
-        ],
-        "x-portico-audit-policy": "operator_read",
-        "x-portico-auth": "operator",
-        "x-portico-rate-class": "operator",
-        "x-portico-runtime-pattern": "/api/operator/metrics"
-      }
-    },
-    "/api/operator/servers": {
-      "get": {
-        "operationId": "listOperatorServers",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "limit",
-            "schema": {
-              "default": 100,
-              "maximum": 250,
-              "minimum": 1,
-              "type": "integer"
-            }
-          },
-          {
-            "in": "query",
-            "name": "cursor",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "count",
-            "schema": {
-              "default": "none",
-              "enum": [
-                "none",
-                "exact"
-              ],
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "q",
-            "schema": {
-              "maxLength": 256,
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/OperatorServerList"
-                }
-              }
-            },
-            "description": "Successful response"
-          },
-          "400": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Invalid request"
-          },
-          "401": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Authentication required or credential invalid"
-          },
-          "403": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Authenticated principal is not authorized"
-          },
-          "404": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Resource not found"
-          },
-          "409": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Resource state conflict"
-          },
-          "423": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "HTTP 423"
-          },
-          "429": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Rate limit exceeded"
-          },
-          "500": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Unexpected server error"
-          }
-        },
-        "security": [
-          {
-            "operatorIdentityBearer": []
-          }
-        ],
-        "summary": "List customer servers for operator support",
-        "tags": [
-          "operator"
-        ],
-        "x-portico-audit-policy": "operator_read",
-        "x-portico-auth": "operator",
-        "x-portico-rate-class": "operator",
-        "x-portico-runtime-pattern": "/api/operator/servers"
-      }
-    },
-    "/api/operator/servers/{serverId}": {
-      "get": {
-        "operationId": "getOperatorServer",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "serverId",
-            "required": true,
-            "schema": {
-              "maxLength": 256,
-              "minLength": 1,
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/OperatorServerDetail"
-                }
-              }
-            },
-            "description": "Successful response"
-          },
-          "400": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Invalid request"
-          },
-          "401": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Authentication required or credential invalid"
-          },
-          "403": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Authenticated principal is not authorized"
-          },
-          "404": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Resource not found"
-          },
-          "409": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Resource state conflict"
-          },
-          "423": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "HTTP 423"
-          },
-          "429": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Rate limit exceeded"
-          },
-          "500": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Unexpected server error"
-          }
-        },
-        "security": [
-          {
-            "operatorIdentityBearer": []
-          }
-        ],
-        "summary": "Get customer server details for operator support",
-        "tags": [
-          "operator"
-        ],
-        "x-portico-audit-policy": "operator_read",
-        "x-portico-auth": "operator",
-        "x-portico-rate-class": "operator",
-        "x-portico-runtime-pattern": "/api/operator/servers/"
-      }
-    },
-    "/api/operator/users/actions": {
-      "post": {
-        "operationId": "applyOperatorUserAction",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/GenericObject"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/OKResponse"
-                }
-              }
-            },
-            "description": "Successful response"
-          },
-          "400": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Invalid request"
-          },
-          "401": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Authentication required or credential invalid"
-          },
-          "403": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Authenticated principal is not authorized"
-          },
-          "404": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Resource not found"
-          },
-          "409": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Resource state conflict"
-          },
-          "423": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "HTTP 423"
-          },
-          "429": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Rate limit exceeded"
-          },
-          "500": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Unexpected server error"
-          }
-        },
-        "security": [
-          {
-            "operatorIdentityBearer": []
-          }
-        ],
-        "summary": "Apply an audited operator account action",
-        "tags": [
-          "operator"
-        ],
-        "x-portico-audit-policy": "operator_mutation",
-        "x-portico-auth": "operator",
-        "x-portico-rate-class": "operator_mutation",
-        "x-portico-runtime-pattern": "/api/operator/users/actions"
-      }
-    },
-    "/api/operator/users/lookup": {
-      "get": {
-        "operationId": "lookupOperatorUser",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/User"
-                }
-              }
-            },
-            "description": "Successful response"
-          },
-          "400": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Invalid request"
-          },
-          "401": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Authentication required or credential invalid"
-          },
-          "403": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Authenticated principal is not authorized"
-          },
-          "404": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Resource not found"
-          },
-          "409": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Resource state conflict"
-          },
-          "423": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "HTTP 423"
-          },
-          "429": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Rate limit exceeded"
-          },
-          "500": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Unexpected server error"
-          }
-        },
-        "security": [
-          {
-            "operatorIdentityBearer": []
-          }
-        ],
-        "summary": "Look up one account for operator support",
-        "tags": [
-          "operator"
-        ],
-        "x-portico-audit-policy": "operator_read",
-        "x-portico-auth": "operator",
-        "x-portico-rate-class": "operator",
-        "x-portico-runtime-pattern": "/api/operator/users/lookup"
-      }
-    },
-    "/api/operator/users/mfa-reset": {
-      "post": {
-        "operationId": "resetOperatorUserMFA",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/GenericObject"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/OKResponse"
-                }
-              }
-            },
-            "description": "Successful response"
-          },
-          "400": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Invalid request"
-          },
-          "401": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Authentication required or credential invalid"
-          },
-          "403": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Authenticated principal is not authorized"
-          },
-          "404": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Resource not found"
-          },
-          "409": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Resource state conflict"
-          },
-          "423": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "HTTP 423"
-          },
-          "429": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Rate limit exceeded"
-          },
-          "500": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Unexpected server error"
-          }
-        },
-        "security": [
-          {
-            "operatorIdentityBearer": []
-          }
-        ],
-        "summary": "Reset account MFA through an audited operator action",
-        "tags": [
-          "operator"
-        ],
-        "x-portico-audit-policy": "operator_mutation",
-        "x-portico-auth": "operator",
-        "x-portico-rate-class": "operator_mutation",
-        "x-portico-runtime-pattern": "/api/operator/users/mfa-reset"
-      }
-    },
-    "/api/operator/users/search": {
-      "get": {
-        "operationId": "searchOperatorUsers",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/UserList"
-                }
-              }
-            },
-            "description": "Successful response"
-          },
-          "400": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Invalid request"
-          },
-          "401": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Authentication required or credential invalid"
-          },
-          "403": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Authenticated principal is not authorized"
-          },
-          "404": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Resource not found"
-          },
-          "409": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Resource state conflict"
-          },
-          "423": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "HTTP 423"
-          },
-          "429": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Rate limit exceeded"
-          },
-          "500": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Unexpected server error"
-          }
-        },
-        "security": [
-          {
-            "operatorIdentityBearer": []
-          }
-        ],
-        "summary": "Search accounts for operator support",
-        "tags": [
-          "operator"
-        ],
-        "x-portico-audit-policy": "operator_read",
-        "x-portico-auth": "operator",
-        "x-portico-rate-class": "operator",
-        "x-portico-runtime-pattern": "/api/operator/users/search"
-      }
-    },
     "/api/server-claims": {
       "post": {
         "operationId": "createServerClaim",
@@ -18834,5 +17098,5 @@
   ],
   "x-portico-generated": true,
   "x-portico-no-relay": true,
-  "x-portico-source": "hosted-runtime-operation-registry"
+  "x-portico-source": "hosted-runtime-public-client-contract"
 }

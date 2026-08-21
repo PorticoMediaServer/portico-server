@@ -8,7 +8,7 @@ import {
 	type ViewerScope,
 	type ViewerSyncLifecycleEvent,
 	viewerCacheKey,
-} from '@portico/client-core';
+} from '@porticomediaserver/client-core';
 
 type RuntimeTaskKind = 'query' | 'mutation';
 type RuntimeTeardownKind = 'query' | 'playback' | 'realtime' | 'artwork' | 'overlay' | 'focus' | 'profile-local';

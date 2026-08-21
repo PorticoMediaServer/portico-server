@@ -1,4 +1,4 @@
-import { productMessage, type SettingsDocument, type SettingsSummaryResponse } from '@portico/client-core';
+import { productMessage, type SettingsDocument, type SettingsSummaryResponse } from '@porticomediaserver/client-core';
 import { AlertTriangle, ChevronRight, RefreshCw, Server } from '#portico-icons';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, NavLink, useParams } from 'react-router-dom';

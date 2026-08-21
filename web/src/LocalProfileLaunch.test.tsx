@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
-import { unrestrictedProfilePolicy } from '@portico/client-core';
+import { unrestrictedProfilePolicy } from '@porticomediaserver/client-core';
 import { App } from './App';
 import { DataProvider, useAuthSession } from './data/DataProvider';
 import { FixturePorticoDataSource } from './data/fixtureSource';

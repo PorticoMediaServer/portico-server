@@ -1,4 +1,4 @@
-import { TrustedServerPublicationBlockedError } from '@portico/client-core';
+import { TrustedServerPublicationBlockedError } from '@porticomediaserver/client-core';
 import type { HostedConnectionVault } from './hostedConnectionVault';
 
 const TOMBSTONE_VERSION = 1 as const;

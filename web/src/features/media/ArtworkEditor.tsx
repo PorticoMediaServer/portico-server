@@ -1,4 +1,4 @@
-import type { MediaImage } from '@portico/client-core';
+import type { MediaImage } from '@porticomediaserver/client-core';
 import { ArrowLeft, ArrowRight, Check, ImageIcon, ImagePlus, Trash2 } from '#portico-icons';
 import { useMemo, useRef, useState } from 'react';
 import { IconButton, SecondaryButton } from '../../components/controls/Buttons';

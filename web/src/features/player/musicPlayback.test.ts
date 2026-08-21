@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { MediaItem } from '@portico/client-core';
+import type { MediaItem } from '@porticomediaserver/client-core';
 import { accountRepeatMode, musicAlbum, musicArtist, normalizeMusicPlaybackPreferences } from './musicPlayback';
 
 describe('music playback preferences', () => {

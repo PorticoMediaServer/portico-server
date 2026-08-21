@@ -1,4 +1,4 @@
-import type { RemoteAccessSettingsPatch, RemoteAccessStatus } from '@portico/client-core';
+import type { RemoteAccessSettingsPatch, RemoteAccessStatus } from '@porticomediaserver/client-core';
 import { CheckCircle2, ExternalLink, Globe2, Link2Off, RefreshCw, ShieldCheck } from '#portico-icons';
 import { useEffect, useState } from 'react';
 import { PrimaryButton, SecondaryButton } from '../../components/controls/Buttons';

@@ -1,4 +1,4 @@
-import { ApiError, type SettingsDocument, type SettingsGroups, type SettingsGroupsUpdate, type SettingsGroupSummary, type SettingsSummaryResponse } from '@portico/client-core';
+import { ApiError, type SettingsDocument, type SettingsGroups, type SettingsGroupsUpdate, type SettingsGroupSummary, type SettingsSummaryResponse } from '@porticomediaserver/client-core';
 import { LockKeyhole, RotateCcw } from '#portico-icons';
 import { useEffect, useMemo, useState } from 'react';
 import { SecondaryButton } from '../../components/controls/Buttons';

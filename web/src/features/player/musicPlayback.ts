@@ -1,4 +1,4 @@
-import type { MediaItem, PlaybackRepeatMode } from '@portico/client-core';
+import type { MediaItem, PlaybackRepeatMode } from '@porticomediaserver/client-core';
 import type { MusicPlaybackPreferences } from '../../data/models';
 
 export const defaultMusicPlaybackPreferences: MusicPlaybackPreferences = {

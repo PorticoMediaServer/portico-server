@@ -1,4 +1,4 @@
-import type { SettingsGroupsUpdate } from '@portico/client-core';
+import type { SettingsGroupsUpdate } from '@porticomediaserver/client-core';
 
 export type WritableSettingsGroup = keyof SettingsGroupsUpdate;
 

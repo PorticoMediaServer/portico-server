@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { productMessage, unrestrictedProfilePolicy, type ProductMessageId, type ProductMessagePresentation, type ServerManagedProfileDirectory } from '@portico/client-core';
+import { productMessage, unrestrictedProfilePolicy, type ProductMessageId, type ProductMessagePresentation, type ServerManagedProfileDirectory } from '@porticomediaserver/client-core';
 import { PrimaryButton, SecondaryButton } from '../../components/controls/Buttons';
 import { PasswordInput } from '../../components/controls/PasswordInput';
 import { ProductMessageIcon, SemanticProductIcon, productProblem, productText } from '../../components/ProductLanguage';

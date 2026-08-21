@@ -1,5 +1,5 @@
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { safeProductMessage, type NotificationAudience, type NotificationInvalidation, type NotificationPage, type NotificationReceiptAction, type ProductMessagePresentation, type ViewerNotification } from '@portico/client-core';
+import { safeProductMessage, type NotificationAudience, type NotificationInvalidation, type NotificationPage, type NotificationReceiptAction, type ProductMessagePresentation, type ViewerNotification } from '@porticomediaserver/client-core';
 import { useAuthSession, usePorticoDataSource } from '../../data/DataProvider';
 import { productProblem, productText } from '../../components/ProductLanguage';
 

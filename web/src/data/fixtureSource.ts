@@ -56,7 +56,7 @@ import {
   type ViewerFeedbackReceipt,
   type ViewerFeedbackSubmission,
   type DownloadPreparation,
-} from '@portico/client-core';
+} from '@porticomediaserver/client-core';
 import type {
   ActionableDVRRecording,
   ActionableDVRRule,
@@ -1967,7 +1967,7 @@ export class FixturePorticoDataSource implements PorticoDataSource {
     if (signal.aborted) throw new DOMException('Request aborted', 'AbortError');
     return [];
   }
-  async restorePlayback(_signal: AbortSignal, _intent?: import('@portico/client-core').PlaybackIntent) { return { active: Boolean(this.fixturePlayback), playback: this.fixturePlayback }; }
+  async restorePlayback(_signal: AbortSignal, _intent?: import('@porticomediaserver/client-core').PlaybackIntent) { return { active: Boolean(this.fixturePlayback), playback: this.fixturePlayback }; }
   async touchPlayback(_sessionId: string, event: PlaybackProgressEvent, _signal?: AbortSignal, _keepalive?: boolean) {
     return {
       accepted: true,
@@ -1979,7 +1979,7 @@ export class FixturePorticoDataSource implements PorticoDataSource {
     };
   }
   async renewPlaybackMediaGrant(_sessionId: string, _signal: AbortSignal) { return { token: 'fixture-media-grant', expiresAt: new Date(Date.now() + 600_000).toISOString() }; }
-  async renegotiatePlayback(sessionId: string, request: import('@portico/client-core').PlaybackRenegotiationRequest, signal: AbortSignal) {
+  async renegotiatePlayback(sessionId: string, request: import('@porticomediaserver/client-core').PlaybackRenegotiationRequest, signal: AbortSignal) {
     if (signal.aborted) throw new DOMException('Request aborted', 'AbortError');
     const current = this.fixturePlayback;
     if (!current || current.sessionId !== sessionId) throw new Error('No fixture playback session is active.');

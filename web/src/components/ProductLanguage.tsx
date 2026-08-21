@@ -41,7 +41,7 @@ import {
   type ProductMessagePresentation,
   type ProductMessageVariables,
   type SemanticIconId,
-} from '@portico/client-core';
+} from '@porticomediaserver/client-core';
 
 const glyphs: Readonly<Record<string, LucideIcon>> = {
   Archive,

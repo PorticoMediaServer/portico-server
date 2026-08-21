@@ -1,4 +1,4 @@
-import { productMessage, type ProductMessageId, type ProductMessageVariables } from '@portico/client-core';
+import { productMessage, type ProductMessageId, type ProductMessageVariables } from '@porticomediaserver/client-core';
 import { productProblem } from '../../components/ProductLanguage';
 
 export function productState(id: ProductMessageId, variables: ProductMessageVariables = {}) {

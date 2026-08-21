@@ -1,5 +1,5 @@
 import { BookOpen, CheckCircle2, FolderHeart, ListMusic, Music2, Radio, RefreshCw, Tv } from '#portico-icons';
-import { productMessage, type ProductMessageId } from '@portico/client-core';
+import { productMessage, type ProductMessageId } from '@porticomediaserver/client-core';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { SecondaryButton } from '../../components/controls/Buttons';

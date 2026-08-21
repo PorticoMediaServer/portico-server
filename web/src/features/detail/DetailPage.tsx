@@ -1,5 +1,5 @@
 import { BookOpen, ChevronRight, Disc3, Film, FolderHeart, LibraryBig, ListMusic, Music2, Radio, RefreshCw, Tv } from '#portico-icons';
-import { productMessage, resolveMediaAvailability } from '@portico/client-core';
+import { productMessage, resolveMediaAvailability } from '@porticomediaserver/client-core';
 import { type CSSProperties, useRef, useState } from 'react';
 import { Link, Navigate, useParams } from 'react-router-dom';
 import { SecondaryButton } from '../../components/controls/Buttons';

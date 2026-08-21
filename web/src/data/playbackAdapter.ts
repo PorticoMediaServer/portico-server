@@ -6,7 +6,7 @@ import {
   type PlaybackProgressInput,
   type PlaybackRestoreResponse,
   type PlaybackResponse,
-} from '@portico/client-core';
+} from '@porticomediaserver/client-core';
 
 /**
  * Owns the Web adapter's session-protocol mapping and ordered progress state.

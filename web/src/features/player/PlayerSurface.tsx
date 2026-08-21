@@ -29,7 +29,7 @@ import {
   type PlaybackSessionQueueRequest,
   type PlaybackSessionQueueResponse,
   type UpNextCountdownState,
-} from '@portico/client-core';
+} from '@porticomediaserver/client-core';
 import type HlsInstance from 'hls.js';
 import { Check, ChevronDown, GripVertical } from '#portico-icons';
 import {

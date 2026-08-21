@@ -1,4 +1,4 @@
-import type { ViewerScope } from '@portico/client-core';
+import type { ViewerScope } from '@porticomediaserver/client-core';
 import { beforeEach, expect, it } from 'vitest';
 import {
   AMBIENT_COOKIE_QUARANTINE_KEY,

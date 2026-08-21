@@ -1,5 +1,5 @@
 import { Check, LockKeyhole, LogOut, X } from '#portico-icons';
-import { type ServerManagedProfileDirectory } from '@portico/client-core';
+import { type ServerManagedProfileDirectory } from '@porticomediaserver/client-core';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { IconButton } from '../../components/controls/Buttons';
 import { PasswordInput } from '../../components/controls/PasswordInput';

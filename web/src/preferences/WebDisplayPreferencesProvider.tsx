@@ -1,5 +1,5 @@
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import type { ServerViewerPreferenceBundle } from '@portico/client-core';
+import type { ServerViewerPreferenceBundle } from '@porticomediaserver/client-core';
 import { useAuthSession, useLiveDataRevision, usePorticoDataSource } from '../data/DataProvider';
 import {
   defaultWebDisplayPreferences,

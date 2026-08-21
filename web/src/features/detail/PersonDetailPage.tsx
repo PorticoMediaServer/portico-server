@@ -1,5 +1,5 @@
 import { RefreshCw, UserRound } from '#portico-icons';
-import { productMessage, type ProductMessagePresentation } from '@portico/client-core';
+import { productMessage, type ProductMessagePresentation } from '@porticomediaserver/client-core';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { SecondaryButton } from '../../components/controls/Buttons';

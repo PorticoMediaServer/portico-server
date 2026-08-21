@@ -3,7 +3,7 @@ import type {
   WatchWithFriendsGroup,
   WatchWithFriendsMember,
   WatchWithFriendsQueueItem,
-} from '@portico/client-core';
+} from '@porticomediaserver/client-core';
 import type {
   WatchConnectionState,
   WatchGroupSubscription,

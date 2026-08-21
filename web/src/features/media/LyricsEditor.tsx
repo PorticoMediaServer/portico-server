@@ -1,4 +1,4 @@
-import type { LyricSearchCandidate, MediaLyric } from '@portico/client-core';
+import type { LyricSearchCandidate, MediaLyric } from '@porticomediaserver/client-core';
 import { CloudDownload, FileMusic, RefreshCw, Search, Trash2, Upload } from '#portico-icons';
 import { useRef, useState } from 'react';
 import { IconButton, PrimaryButton, SecondaryButton } from '../../components/controls/Buttons';

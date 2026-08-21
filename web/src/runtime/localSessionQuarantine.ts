@@ -1,4 +1,4 @@
-import type {ViewerScope} from '@portico/client-core';
+import type {ViewerScope} from '@porticomediaserver/client-core';
 import {
   LEGACY_LOCAL_SESSION_QUARANTINE_KEY,
   ambientCookieRestoreStatus,

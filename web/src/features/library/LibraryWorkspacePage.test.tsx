@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import type { LibraryBrowseCapabilities } from '@portico/client-core';
+import type { LibraryBrowseCapabilities } from '@porticomediaserver/client-core';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import { DataProvider } from '../../data/DataProvider';
