@@ -91,6 +91,9 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "sideEffects": false,
+  "dependencies": {
+    "@babel/runtime": "7.28.4"
+  },
   "devDependencies": {
     "@babel/plugin-transform-modules-commonjs": "7.27.1",
     "openapi-typescript": "7.13.0",
