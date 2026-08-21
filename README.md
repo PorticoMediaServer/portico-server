@@ -20,8 +20,8 @@ Planned packages include:
 | --- | --- | --- |
 | Windows | x64, ARM64 | Installer (`.exe`) and portable archive |
 | macOS | Apple Silicon | Application disk image (`.dmg`) |
-| Debian and Ubuntu | x64, ARM64 | `.deb` and archive |
-| Fedora and related systems | x64, ARM64 | `.rpm` and archive |
+| Debian and Ubuntu | x64, ARM64 | `.deb` and distribution-neutral `.tar.gz` archive |
+| Fedora and related systems | x64, ARM64 | `.rpm` and distribution-neutral `.tar.gz` archive |
 | Docker | amd64, arm64 | Container image from GitHub Container Registry |
 
 Unsigned packages are suitable for early testing. Platform signing and notarization will be introduced before unattended updates are enabled.
@@ -59,7 +59,7 @@ See [BUILDING.md](BUILDING.md) for supported tool versions and complete instruct
 
 Bug reports, feature requests, and thoughtful feedback are welcome through [GitHub Issues](https://github.com/PorticoMediaServer/portico-server/issues).
 
-Portico is not accepting external code contributions or pull requests at this stage. This keeps implementation and release responsibility clear while the foundations are still changing. Please read [CONTRIBUTING.md](CONTRIBUTING.md) before opening an issue.
+Portico does not accept external code contributions. Please read [CONTRIBUTING.md](CONTRIBUTING.md) before opening an issue.
 
 Security problems should be reported privately as described in [SECURITY.md](SECURITY.md).
 

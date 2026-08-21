@@ -8,7 +8,7 @@ Portico is prerelease software. Security fixes are normally provided only in the
 
 Please do not open a public issue for a suspected vulnerability.
 
-Use GitHub's private vulnerability reporting feature from the **Security** tab of the affected Portico repository. Include:
+Use GitHub's private vulnerability reporting feature from the **Security** tab of the affected Portico repository, or email [admin@getportico.tv](mailto:admin@getportico.tv). Include:
 
 - The affected version or commit.
 - The operating system and installation method.

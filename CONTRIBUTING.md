@@ -14,7 +14,7 @@ Please search existing issues first. Include the Portico version, operating syst
 
 ## External code contributions
 
-Portico is not accepting external code contributions or pull requests at this stage. Pull requests may be closed without review.
+Portico does not accept external code contributions. External pull requests will be closed without review.
 
 This is an operating decision, not a limitation of the GPL. You remain free to study, modify, and redistribute the software under its license. Keeping official implementation responsibility with the project owner allows the architecture, security model, and release process to stabilize before a broader contribution model is considered.
 

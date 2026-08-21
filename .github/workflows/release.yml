@@ -208,5 +208,7 @@ jobs:
           body: |
             Portico Media Server is still prerelease-quality software. This release is published as the current development preview so the permanent `/releases/latest` link remains useful.
 
+            Linux downloads include distribution-neutral `.tar.gz` bundles for x64 and ARM64 as well as DEB and RPM packages.
+
             Packages are unsigned. Automatic installation is disabled; verify `checksums.sha256` and install manually.
           files: dist/artifacts/*

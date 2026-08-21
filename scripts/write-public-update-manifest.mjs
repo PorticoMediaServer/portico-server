@@ -8,7 +8,11 @@ const base = `https://github.com/${repository}/releases/download/${tag}`;
 const assets = {
   windowsX64: 'Portico-Media-Server-Windows-x64-Setup.exe',
   windowsArm64: 'Portico-Media-Server-Windows-arm64-Setup.exe',
+  windowsX64Portable: 'Portico-Media-Server-Windows-x64-Portable.zip',
+  windowsArm64Portable: 'Portico-Media-Server-Windows-arm64-Portable.zip',
   macosArm64: 'Portico-Media-Server-macOS-arm64.dmg',
+  linuxX64Archive: 'portico-media-server-linux-x64.tar.gz',
+  linuxArm64Archive: 'portico-media-server-linux-arm64.tar.gz',
   linuxX64Deb: 'portico-media-server-linux-x64.deb',
   linuxArm64Deb: 'portico-media-server-linux-arm64.deb',
   linuxX64Rpm: 'portico-media-server-linux-x64.rpm',

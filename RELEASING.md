@@ -17,7 +17,7 @@ FFmpeg component release, and builds:
 
 - Windows x64 and ARM64 installers plus portable ZIPs;
 - an Apple Silicon macOS DMG;
-- Linux x64 and ARM64 archives, DEB files, and RPM files; and
+- distribution-neutral Linux x64 and ARM64 `.tar.gz` bundles, DEB files, and RPM files; and
 - a Linux amd64/arm64 image in GitHub Container Registry.
 
 It then writes SHA-256 checksums, an SBOM, build provenance, and a small update
