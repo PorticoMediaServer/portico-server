@@ -70,7 +70,11 @@ index 586ef02..231bea1 100755
  
    if build "vid_stab" "1.1.1"; then
  
-@@ -988,0 +997,52 @@ CONFIGURE_OPTIONS+=("--enable-libzimg")
+@@ -985,8 +993,61 @@ if build "zimg" "3.0.5"; then
+ fi
+ 
+ CONFIGURE_OPTIONS+=("--enable-libzimg")
++
 +if build "freetype" "9e9d3b73f31367dbb4261f93c727a277f6632c77"; then
 +
 +  download "https://gitlab.freedesktop.org/freetype/freetype/-/archive/${CURRENT_PACKAGE_VERSION}/freetype-${CURRENT_PACKAGE_VERSION}.tar.gz" "freetype-${CURRENT_PACKAGE_VERSION}.tar.gz"
@@ -123,3 +127,8 @@ index 586ef02..231bea1 100755
 +fi
 +
 +CONFIGURE_OPTIONS+=("--enable-libass")
+ 
+ ##
+ ## audio library
+ ##
+ 
