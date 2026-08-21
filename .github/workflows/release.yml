@@ -48,6 +48,7 @@ jobs:
   tests:
     needs: identity
     uses: ./.github/workflows/reusable-release-tests.yml
+    with: {source_ref: '${{ needs.identity.outputs.tag }}'}
 
   web:
     needs: [identity, tests]

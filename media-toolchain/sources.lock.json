@@ -7,11 +7,15 @@
     "source": "https://ffmpeg.org/releases/ffmpeg-8.1.2.tar.xz"
   },
   "toolchainRevision": 1,
+  "dependencyCacheRevision": 1,
   "releaseTag": "ffmpeg-8.1.2-portico.1",
   "btbn": {
     "repository": "https://github.com/BtbN/FFmpeg-Builds.git",
     "commit": "48576f197ad1c2afb2e0b8efe204919a1afbff54",
-    "patch": "media-toolchain/patches/btbn-gnu-ncurses-mirror.patch"
+    "patches": [
+      "media-toolchain/patches/btbn-gnu-ncurses-mirror.patch",
+      "scripts/patch-btbn-winarm64-system-error.sh"
+    ]
   },
   "macosRecipe": {
     "repository": "https://github.com/homebridge/ffmpeg-for-homebridge.git",

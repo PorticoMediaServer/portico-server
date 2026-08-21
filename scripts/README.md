@@ -11,7 +11,11 @@ small, reviewable building blocks used by that workflow.
 - `package-windows.sh` creates a portable ZIP and unsigned NSIS installer.
 - `package-macos.sh` creates an unsigned Apple Silicon application DMG.
 - `normalize-ffmpeg-bundle.sh` creates a consistent component layout.
+- `patch-btbn-winarm64-system-error.sh` applies the pinned FFmpeg 8.1.2
+  Windows ARM64 standard-header correction to the BtbN recipe.
 - `verify-ffmpeg-bundle.sh` enforces the GPL/no-nonfree and capability policy.
+- `install-qualified-ffmpeg.sh` downloads and validates the exact locked toolchain
+  used by CI and release qualification.
 - `write-public-update-manifest.mjs` emits machine-readable download metadata.
 
 Release engineers should use the GitHub workflows rather than assembling a
