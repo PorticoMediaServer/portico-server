@@ -1,0 +1,38 @@
+{
+  "fixtureVersion": 1,
+  "system": {
+    "name": "Portico",
+    "status": "ok",
+    "apiVersion": "v1",
+    "compatibility": {
+      "envelopeRevision": 1,
+      "supportedClientProtocol": { "minimum": 1, "maximum": 1 },
+      "apiContract": {
+        "digestAlgorithm": "sha256",
+        "identity": "apps/portico-cloud/api/openapi/portico-hosted.openapi.json+apps/portico-server/api/openapi/openapi.yaml+apps/portico-server/api/openapi/portico-server.openapi.json",
+        "digest": "33e17683ba7d56442d93f58766834ae624ccac6f525e89bc68548729e7137bcd"
+      },
+      "build": { "version": "0.0.0-development", "buildNumber": "0", "channel": "development", "commit": "UNSTAMPED_DEVELOPMENT", "timestamp": null },
+      "semanticRevisions": { "externalAction": 1, "paginationCursor": 1, "playback": 1, "problemRecoveryAction": 1, "product": 1, "viewerProfileAuthority": 1 },
+      "capabilities": [
+        { "id": "account", "revision": 1, "state": "available", "requiredSemantics": ["product"] },
+        { "id": "auth", "revision": 1, "state": "available", "requiredSemantics": ["product"] },
+        { "id": "certificates", "revision": 1, "state": "available", "requiredSemantics": ["product"] },
+        { "id": "device-authorization", "revision": 1, "state": "available", "requiredSemantics": ["product"] },
+        { "id": "devices", "revision": 1, "state": "available", "requiredSemantics": ["product"] },
+        { "id": "memberships", "revision": 1, "state": "available", "requiredSemantics": ["product"] },
+        { "id": "network", "revision": 1, "state": "available", "requiredSemantics": ["product"] },
+        { "id": "notifications", "revision": 1, "state": "available", "requiredSemantics": ["product"] },
+        { "id": "operator", "revision": 1, "state": "available", "requiredSemantics": ["product"] },
+        { "id": "profiles", "revision": 1, "state": "available", "requiredSemantics": ["product"] },
+        { "id": "routes", "revision": 1, "state": "available", "requiredSemantics": ["product"] },
+        { "id": "servers", "revision": 1, "state": "available", "requiredSemantics": ["product"] },
+        { "id": "system", "revision": 1, "state": "available", "requiredSemantics": ["product"] },
+        { "id": "tv-setup", "revision": 1, "state": "available", "requiredSemantics": ["product"] }
+      ],
+      "requiredSemantics": ["product", "viewerProfileAuthority", "playback", "problemRecoveryAction", "externalAction", "paginationCursor"],
+      "forwardCompatibility": { "unknownOptionalCapabilities": "ignore_and_preserve", "unknownRequiredSemantics": "reject_actionably", "authorizationOnPartialUpgrade": "never_broaden", "apiContractDigestMismatch": "allow_semantic_overlap" }
+    }
+  },
+  "allowUnknownResponseProperties": true
+}

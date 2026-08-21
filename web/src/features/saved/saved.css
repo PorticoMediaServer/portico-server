@@ -1,0 +1,1191 @@
+.portico-saved-page,
+.portico-saved-detail {
+  min-height: 100vh;
+  background: linear-gradient(180deg, #0b2135 0, #07141f 410px, var(--projector) 760px);
+}
+
+.portico-saved-header {
+  min-height: 92px;
+  display: flex;
+  align-items: flex-start;
+  gap: 24px;
+}
+
+.portico-saved-header > div {
+  min-width: 0;
+}
+
+.portico-saved-header h1 {
+  margin: 3px 0 0;
+  color: var(--silver);
+  font-size: var(--type-title);
+  letter-spacing: -0.04em;
+}
+
+.portico-saved-header > div > p:last-child {
+  margin: 9px 0 0;
+  color: var(--silver-dim);
+  font-size: var(--type-body);
+}
+
+.portico-saved-header > .button {
+  margin-left: auto;
+  margin-bottom: 3px;
+  flex: 0 0 auto;
+}
+
+.portico-saved-tabs {
+  min-height: 46px;
+  margin-top: 0;
+  display: flex;
+  align-items: flex-end;
+  gap: 28px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--line-soft);
+  scrollbar-width: none;
+}
+
+.portico-saved-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.portico-saved-tabs button {
+  min-height: 46px;
+  padding: 0 1px;
+  position: relative;
+  flex: 0 0 auto;
+  color: var(--silver-dim);
+  background: transparent;
+  border: 0;
+  font: inherit;
+  font-size: var(--type-supporting);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.portico-saved-tabs button::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  bottom: -1px;
+  left: 0;
+  height: 2px;
+  background: transparent;
+}
+
+.portico-saved-tabs button:hover,
+.portico-saved-tabs button.active {
+  color: var(--silver);
+}
+
+.portico-saved-tabs button.active::after {
+  background: var(--screen-blue-strong);
+}
+
+.portico-saved-content {
+  padding: 34px 0 120px;
+}
+
+.saved-state {
+  min-height: 300px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: var(--silver-dim);
+  text-align: center;
+}
+
+.saved-state > svg {
+  width: 30px;
+  height: 30px;
+  margin-bottom: 15px;
+  color: var(--screen-blue-strong);
+  stroke-width: 1.6;
+}
+
+.saved-state.error > svg {
+  color: #e88189;
+}
+
+.saved-state strong {
+  color: var(--silver-soft);
+  font-size: var(--type-body);
+}
+
+.saved-state p {
+  max-width: 460px;
+  margin: 7px 0 16px;
+  font-size: var(--type-supporting);
+  line-height: 1.55;
+}
+
+.portico-saved-media-groups > section + section {
+  margin-top: 52px;
+}
+
+.portico-saved-media-groups .section-heading {
+  margin-bottom: 17px;
+}
+
+.portico-saved-media-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 30px 16px;
+}
+
+.portico-saved-media-grid.square {
+  grid-template-columns: repeat(auto-fill, minmax(176px, 1fr));
+}
+
+.portico-saved-media-grid.poster > .catalog-card,
+.portico-saved-media-grid.poster > .media-card-shell {
+  max-width: 210px;
+}
+
+.portico-saved-media-grid.square > .catalog-card,
+.portico-saved-media-grid.square > .media-card-shell {
+  max-width: 250px;
+}
+
+.portico-saved-selection {
+  position: fixed;
+  z-index: calc(var(--layer-popover) - 2);
+  right: 24px;
+  bottom: 26px;
+  left: calc(var(--sidebar-width) + 24px);
+  min-height: 66px;
+  padding: 10px 11px 10px 17px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--silver-soft);
+  background: rgba(13, 27, 38, 0.98);
+  border: 1px solid rgba(133, 190, 229, 0.38);
+  border-radius: 10px;
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.5);
+}
+
+.portico-saved-selection > div:first-child {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: baseline;
+  column-gap: 6px;
+}
+
+.portico-saved-selection > div:first-child strong {
+  font-size: var(--type-body);
+}
+
+.portico-saved-selection > div:first-child span,
+.portico-saved-selection > div:first-child button {
+  color: var(--silver-dim);
+  font-size: var(--type-caption);
+}
+
+.portico-saved-selection > div:first-child button {
+  grid-column: 1 / -1;
+  width: fit-content;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  color: var(--screen-blue-strong);
+  font: inherit;
+  cursor: pointer;
+}
+
+.portico-saved-selection > .button {
+  margin-left: auto;
+}
+
+.portico-saved-notice {
+  min-height: 44px;
+  margin-bottom: 20px;
+  padding: 10px 13px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--silver-soft);
+  background: rgba(24, 54, 43, 0.68);
+  border: 1px solid rgba(83, 190, 141, 0.3);
+  border-radius: 8px;
+  font-size: var(--type-supporting);
+}
+
+.portico-saved-notice.error {
+  background: rgba(54, 27, 30, 0.72);
+  border-color: rgba(225, 104, 112, 0.32);
+}
+
+.portico-saved-notice.conflict {
+  background: rgba(57, 43, 21, 0.74);
+  border-color: rgba(224, 168, 76, 0.35);
+}
+
+.portico-saved-notice button {
+  min-height: 32px;
+  margin-left: auto;
+  padding: 0 9px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--screen-blue-strong);
+  background: transparent;
+  border: 0;
+  font: inherit;
+  font-size: var(--type-supporting);
+  cursor: pointer;
+}
+
+.portico-saved-notice button svg {
+  width: 16px;
+}
+
+.portico-saved-resource-list {
+  overflow: hidden;
+  border-top: 1px solid var(--line-soft);
+}
+
+.portico-saved-resource-list > a {
+  min-height: 96px;
+  padding: 15px 14px;
+  display: grid;
+  grid-template-columns: 54px minmax(180px, 1fr) auto 20px;
+  align-items: center;
+  gap: 16px;
+  color: var(--silver-soft);
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.portico-saved-resource-list > a:hover,
+.portico-saved-resource-list > a:focus-visible {
+  background: rgba(55, 142, 195, 0.055);
+}
+
+.portico-saved-resource-icon,
+.portico-saved-detail-icon {
+  display: grid;
+  place-items: center;
+  color: #94d2fa;
+  background: #14283a;
+  border: 1px solid rgba(134, 194, 234, 0.22);
+  border-radius: 8px;
+}
+
+.portico-saved-resource-icon {
+  width: 50px;
+  height: 58px;
+}
+
+.portico-saved-resource-icon svg {
+  width: 22px;
+}
+
+.portico-saved-resource-icon.collection,
+.portico-saved-detail-icon.collection {
+  color: #b9a9f5;
+  background: #211f39;
+  border-color: rgba(183, 165, 242, 0.22);
+}
+
+.portico-saved-resource-icon.view,
+.portico-saved-detail-icon.view {
+  color: #7dd9b0;
+  background: #142f2a;
+  border-color: rgba(104, 212, 164, 0.22);
+}
+
+.portico-saved-resource-copy {
+  min-width: 0;
+  display: grid;
+}
+
+.portico-saved-resource-copy strong {
+  overflow: hidden;
+  color: var(--silver);
+  font-size: var(--type-body);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.portico-saved-resource-copy small {
+  margin-top: 6px;
+  overflow: hidden;
+  color: var(--silver-dim);
+  font-size: var(--type-supporting);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.portico-saved-resource-access {
+  min-width: 88px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  color: var(--silver-muted);
+  font-size: var(--type-supporting);
+}
+
+.portico-saved-resource-access svg,
+.portico-saved-resource-list > a > svg {
+  width: 16px;
+}
+
+.portico-saved-resource-list > a > svg {
+  color: var(--silver-muted);
+}
+
+.portico-saved-dialog {
+  width: min(560px, calc(100vw - 28px));
+  overflow: hidden;
+  color: var(--silver-soft);
+  background: #101a23;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.62);
+}
+
+.portico-saved-editor.has-sharing {
+  width: min(720px, calc(100vw - 28px));
+}
+
+.portico-saved-dialog > header {
+  min-height: 84px;
+  padding: 16px 18px 15px 22px;
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.portico-saved-dialog > header > div {
+  min-width: 0;
+}
+
+.portico-saved-dialog > header p,
+.portico-saved-dialog > header h2 {
+  margin: 0;
+}
+
+.portico-saved-dialog > header p {
+  color: var(--screen-blue-strong);
+  font-size: var(--type-caption);
+  font-weight: 600;
+}
+
+.portico-saved-dialog > header h2 {
+  margin-top: 3px;
+  overflow: hidden;
+  font-size: var(--type-heading);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.portico-saved-dialog > header > .icon-button {
+  margin-left: auto;
+}
+
+.portico-saved-editor-fields {
+  max-height: min(66vh, 640px);
+  padding: 20px 22px;
+  display: grid;
+  gap: 18px;
+  overflow-y: auto;
+}
+
+.portico-saved-editor-fields > label:not(.portico-saved-pin),
+.portico-saved-editor-choice {
+  display: grid;
+  gap: 8px;
+}
+
+.portico-saved-editor-fields > label > span,
+.portico-saved-editor-choice > span {
+  color: var(--silver-dim);
+  font-size: var(--type-supporting);
+  font-weight: 600;
+}
+
+.portico-saved-editor-fields > label > span small {
+  margin-left: 5px;
+  color: var(--silver-muted);
+  font-weight: 450;
+}
+
+.portico-saved-editor-fields input:not([type='checkbox']),
+.portico-saved-editor-fields textarea {
+  width: 100%;
+  padding: 11px 12px;
+  color: var(--silver);
+  background: #09131b;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  outline: 0;
+  font: inherit;
+  font-size: var(--type-body);
+  resize: vertical;
+}
+
+.portico-saved-editor-fields input:focus,
+.portico-saved-editor-fields textarea:focus {
+  border-color: rgba(137, 202, 246, 0.54);
+}
+
+.portico-saved-editor-choice .select-menu,
+.portico-saved-editor-choice .select-trigger {
+  width: 100%;
+}
+
+.portico-saved-visibility > p {
+  margin: -2px 0 0;
+  color: var(--silver-muted);
+  font-size: var(--type-supporting);
+}
+
+.portico-saved-visibility-value {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  gap: 9px;
+  padding: 0 13px;
+  color: var(--silver-soft);
+  background: #09131b;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  font-size: var(--type-body);
+  font-weight: 600;
+}
+
+.portico-saved-visibility-value svg {
+  width: 17px;
+  height: 17px;
+  color: var(--silver-muted);
+}
+
+.portico-saved-sharing {
+  padding-top: 20px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.portico-saved-sharing > header {
+  display: flex;
+  align-items: flex-start;
+  gap: 18px;
+}
+
+.portico-saved-sharing > header > div {
+  min-width: 0;
+}
+
+.portico-saved-sharing > header strong,
+.portico-saved-share-row > strong,
+.portico-saved-candidate-list strong {
+  color: var(--silver-soft);
+  font-size: var(--type-body);
+}
+
+.portico-saved-sharing > header p {
+  max-width: 54ch;
+  margin: 5px 0 0;
+  color: var(--silver-dim);
+  font-size: var(--type-supporting);
+  line-height: 1.5;
+}
+
+.portico-saved-sharing > header > span {
+  margin-left: auto;
+  flex: 0 0 auto;
+  color: var(--silver-muted);
+  font-size: var(--type-supporting);
+}
+
+.portico-saved-share-list {
+  margin-top: 15px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.portico-saved-share-row {
+  min-height: 66px;
+  padding: 9px 0;
+  display: grid;
+  grid-template-columns: 38px minmax(120px, 1fr) 174px 38px;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.portico-saved-share-avatar {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  color: var(--silver-soft);
+  background: #192c3d;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: var(--type-supporting);
+  font-weight: 700;
+}
+
+.portico-saved-share-row .select-menu,
+.portico-saved-share-row .select-trigger {
+  width: 100%;
+}
+
+.portico-saved-share-row .select-trigger {
+  min-width: 0;
+  height: 48px;
+}
+
+.portico-saved-share-row .select-trigger small {
+  font-size: var(--type-supporting);
+}
+
+.portico-saved-share-empty {
+  min-height: 92px;
+  margin-top: 15px;
+  padding: 16px 0;
+  display: grid;
+  grid-template-columns: 34px 1fr;
+  align-content: center;
+  column-gap: 12px;
+  border-top: 1px solid var(--line-soft);
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.portico-saved-share-empty > svg {
+  width: 22px;
+  height: 22px;
+  grid-row: 1 / 3;
+  color: var(--silver-muted);
+}
+
+.portico-saved-share-empty > span {
+  color: var(--silver-soft);
+  font-size: var(--type-supporting);
+  font-weight: 600;
+}
+
+.portico-saved-share-empty > p {
+  margin: 3px 0 0;
+  color: var(--silver-muted);
+  font-size: var(--type-supporting);
+}
+
+.portico-saved-share-discovery {
+  margin-top: 20px;
+}
+
+.portico-saved-share-discovery > label {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--silver-dim);
+  font-size: var(--type-supporting);
+  font-weight: 600;
+}
+
+.portico-saved-share-search {
+  min-height: 46px;
+  padding: 0 8px 0 12px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  background: #09131b;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+}
+
+.portico-saved-share-search:focus-within {
+  border-color: rgba(137, 202, 246, 0.54);
+}
+
+.portico-saved-share-search > svg {
+  width: 18px;
+  flex: 0 0 auto;
+  color: var(--silver-muted);
+}
+
+.portico-saved-editor-fields .portico-saved-share-search > input {
+  min-width: 0;
+  padding: 0;
+  flex: 1;
+  background: transparent;
+  border: 0;
+  outline: 0;
+}
+
+.portico-saved-share-search .icon-button {
+  width: 34px;
+  height: 34px;
+  border-color: transparent;
+  background: transparent;
+}
+
+.portico-saved-share-state,
+.portico-saved-share-more {
+  min-height: 54px;
+  padding: 11px 2px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--silver-dim);
+  font-size: var(--type-supporting);
+}
+
+.portico-saved-share-state > svg {
+  width: 17px;
+  flex: 0 0 auto;
+  color: var(--silver-muted);
+}
+
+.portico-saved-share-state.error {
+  color: #f2a0a6;
+}
+
+.portico-saved-share-state.error > svg {
+  color: #e88189;
+}
+
+.portico-saved-share-state button {
+  margin-left: auto;
+  padding: 6px 0;
+  color: var(--screen-blue-strong);
+  background: transparent;
+  border: 0;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.portico-saved-candidate-list {
+  max-height: 226px;
+  overflow-y: auto;
+  border-top: 1px solid var(--line-soft);
+}
+
+.portico-saved-candidate-list > button {
+  width: 100%;
+  min-height: 58px;
+  padding: 9px 2px;
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--line-soft);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.portico-saved-candidate-list > button:hover,
+.portico-saved-candidate-list > button:focus-visible {
+  background: rgba(55, 142, 195, 0.055);
+}
+
+.portico-saved-candidate-list > button > span:last-child {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--screen-blue-strong);
+  font-size: var(--type-supporting);
+  font-weight: 600;
+}
+
+.portico-saved-candidate-list > button > span:last-child svg {
+  width: 16px;
+}
+
+.portico-saved-share-more {
+  min-height: 40px;
+  padding-top: 8px;
+  color: var(--silver-muted);
+}
+
+.portico-saved-pin {
+  min-height: 62px;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+}
+
+.portico-saved-pin > span {
+  display: grid;
+}
+
+.portico-saved-pin strong {
+  color: var(--silver-soft);
+  font-size: var(--type-supporting);
+}
+
+.portico-saved-pin small {
+  margin-top: 3px;
+  color: var(--silver-muted);
+  font-size: var(--type-caption);
+  font-weight: 450;
+}
+
+.portico-saved-dialog-error {
+  margin: 0;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #f2a0a6;
+  background: rgba(59, 27, 30, 0.72);
+  border: 1px solid rgba(222, 99, 108, 0.3);
+  border-radius: 7px;
+  font-size: var(--type-supporting);
+}
+
+.portico-saved-dialog-error svg {
+  width: 17px;
+}
+
+.portico-saved-dialog > footer {
+  min-height: 72px;
+  padding: 13px 20px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 9px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.portico-saved-delete > p {
+  margin: 0;
+  padding: 22px;
+  color: var(--silver-dim);
+  font-size: var(--type-body);
+  line-height: 1.55;
+}
+
+.portico-saved-delete > .portico-saved-dialog-error {
+  margin: 0 22px 18px;
+}
+
+.portico-saved-breadcrumbs {
+  min-height: 74px;
+  padding-top: 34px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--silver-dim);
+  font-size: var(--type-supporting);
+}
+
+.portico-saved-breadcrumbs svg {
+  width: 15px;
+  color: var(--silver-muted);
+}
+
+.portico-saved-detail-header {
+  min-height: 196px;
+  padding: 30px 0 36px;
+  display: grid;
+  grid-template-columns: 82px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 24px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.portico-saved-detail-icon {
+  width: 82px;
+  height: 96px;
+  border-radius: 10px;
+}
+
+.portico-saved-detail-icon svg {
+  width: 32px;
+}
+
+.portico-saved-detail-header > div:nth-child(2) {
+  min-width: 0;
+}
+
+.portico-saved-detail-header p,
+.portico-saved-detail-header h1 {
+  margin: 0;
+}
+
+.portico-saved-detail-header > div:nth-child(2) > p:first-child {
+  color: var(--screen-blue-strong);
+  font-size: var(--type-supporting);
+  font-weight: 600;
+}
+
+.portico-saved-detail-header h1 {
+  margin-top: 4px;
+  overflow: hidden;
+  color: var(--silver);
+  font-size: clamp(34px, 4vw, 54px);
+  letter-spacing: -0.045em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.portico-saved-detail-header > div:nth-child(2) > span,
+.portico-saved-detail-header > div:nth-child(2) > p:last-child:not(:first-child) {
+  display: block;
+  margin-top: 8px;
+  color: var(--silver-dim);
+  font-size: var(--type-supporting);
+}
+
+.portico-saved-detail-header > div:nth-child(2) > p:last-child:not(:first-child) {
+  max-width: 66ch;
+  line-height: 1.55;
+}
+
+.portico-saved-detail-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.portico-saved-detail > .portico-saved-notice {
+  margin-top: 22px;
+  margin-bottom: 0;
+}
+
+.portico-saved-pagination {
+  min-height: 76px;
+  margin-bottom: 120px;
+  padding: 16px 2px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  color: var(--silver-dim);
+  border-top: 1px solid var(--line-soft);
+  font-size: var(--type-supporting);
+}
+
+.portico-saved-pagination strong {
+  color: var(--silver-soft);
+  font-weight: 600;
+}
+
+.portico-playlist-order {
+  margin: 30px 0 120px;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--line-soft);
+}
+
+.portico-saved-detail.has-pagination .portico-playlist-order {
+  margin-bottom: 0;
+}
+
+.portico-playlist-order > li {
+  min-height: 90px;
+  padding: 9px 8px 9px 10px;
+  display: grid;
+  grid-template-columns: 32px 34px 52px minmax(180px, 1fr) 90px auto;
+  align-items: center;
+  gap: 13px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.portico-playlist-order > li:hover,
+.portico-playlist-order > li:focus-within {
+  background: rgba(55, 142, 195, 0.045);
+}
+
+.portico-playlist-order > li.selected {
+  background: rgba(55, 142, 195, 0.08);
+}
+
+.portico-playlist-order .selection-check {
+  position: static;
+  transform: none;
+  opacity: .64;
+  pointer-events: auto;
+}
+
+.portico-playlist-order > li:hover .selection-check,
+.portico-playlist-order > li:focus-within .selection-check,
+.portico-playlist-order .selection-check.selected {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.portico-playlist-index,
+.portico-playlist-duration {
+  color: var(--silver-muted);
+  font-size: var(--type-supporting);
+  text-align: center;
+}
+
+.portico-playlist-art {
+  width: 48px;
+  height: 64px;
+  display: block;
+  overflow: hidden;
+  border: 1px solid var(--line-soft);
+  border-radius: 4px;
+}
+
+.portico-playlist-art.square {
+  height: 48px;
+}
+
+.portico-playlist-art > * {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.portico-playlist-order > li > a {
+  min-width: 0;
+  display: grid;
+}
+
+.portico-playlist-order > li > a strong,
+.portico-playlist-order > li > a small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.portico-playlist-order > li > a strong {
+  color: var(--silver-soft);
+  font-size: var(--type-body);
+}
+
+.portico-playlist-order > li > a small {
+  margin-top: 5px;
+  color: var(--silver-dim);
+  font-size: var(--type-supporting);
+}
+
+.portico-playlist-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.portico-playlist-actions .icon-button {
+  border-color: transparent;
+  background: transparent;
+}
+
+.portico-saved-detail > .portico-saved-media-groups {
+  margin-top: 30px;
+  padding-bottom: 120px;
+}
+
+.portico-saved-detail.has-pagination > .portico-saved-media-groups {
+  padding-bottom: 0;
+}
+
+.portico-saved-back {
+  width: fit-content;
+  min-height: 40px;
+  margin: 12px auto 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--screen-blue-strong);
+  font-size: var(--type-supporting);
+}
+
+.portico-saved-back svg {
+  width: 16px;
+}
+
+@media (max-width: 860px) {
+  .portico-saved-selection {
+    left: 20px;
+  }
+
+  .portico-saved-detail-header {
+    grid-template-columns: 68px minmax(0, 1fr);
+  }
+
+  .portico-saved-detail-icon {
+    width: 68px;
+    height: 80px;
+  }
+
+  .portico-saved-detail-actions {
+    grid-column: 1 / -1;
+  }
+
+  .portico-playlist-order > li {
+    grid-template-columns: 30px 30px 48px minmax(0, 1fr) auto;
+  }
+
+  .portico-playlist-duration {
+    display: none;
+  }
+}
+
+@media (max-width: 620px) {
+  .portico-saved-page,
+  .portico-saved-detail {
+    background: linear-gradient(180deg, #0b2135 0, var(--projector) 470px);
+  }
+
+  .portico-saved-header {
+    min-height: 126px;
+    padding-top: 32px;
+    align-items: center;
+  }
+
+  .portico-saved-header h1 {
+    font-size: 36px;
+  }
+
+  .portico-saved-header > div > p:last-child,
+  .portico-saved-header .route-context {
+    display: none;
+  }
+
+  .portico-saved-header > .button {
+    min-width: 44px;
+    padding: 0 13px;
+    font-size: var(--type-supporting);
+  }
+
+  .portico-saved-tabs {
+    margin-top: 0;
+    gap: 22px;
+  }
+
+  .portico-saved-content {
+    padding-top: 24px;
+    padding-bottom: 220px;
+  }
+
+  .portico-saved-media-grid,
+  .portico-saved-media-grid.square {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 26px 12px;
+  }
+
+  .portico-saved-selection {
+    right: 10px;
+    bottom: 76px;
+    left: 10px;
+    min-height: 62px;
+    padding-left: 12px;
+  }
+
+  .portico-saved-selection > .button {
+    min-width: 44px;
+    padding: 0 11px;
+    font-size: var(--type-caption);
+  }
+
+  .portico-saved-resource-list > a {
+    min-height: 86px;
+    padding: 12px 4px;
+    grid-template-columns: 46px minmax(0, 1fr) 18px;
+    gap: 12px;
+  }
+
+  .portico-saved-resource-icon {
+    width: 44px;
+    height: 52px;
+  }
+
+  .portico-saved-resource-access {
+    display: none;
+  }
+
+  .portico-saved-dialog > footer .button {
+    flex: 1;
+  }
+
+  .portico-saved-breadcrumbs {
+    min-height: 58px;
+    padding-top: 18px;
+  }
+
+  .portico-saved-detail-header {
+    min-height: 0;
+    padding: 18px 0 28px;
+    grid-template-columns: 58px minmax(0, 1fr);
+    gap: 15px;
+  }
+
+  .portico-saved-detail-icon {
+    width: 58px;
+    height: 70px;
+  }
+
+  .portico-saved-detail-header h1 {
+    font-size: 32px;
+  }
+
+  .portico-saved-detail-actions {
+    overflow-x: auto;
+  }
+
+  .portico-saved-detail-actions .button {
+    flex: 0 0 auto;
+  }
+
+  .portico-playlist-order {
+    margin-top: 22px;
+    margin-bottom: 220px;
+  }
+
+  .portico-playlist-order > li {
+    min-height: 84px;
+    padding: 9px 0;
+    grid-template-columns: 28px 42px minmax(0, 1fr) auto;
+    gap: 10px;
+  }
+
+  .portico-playlist-index {
+    display: none;
+  }
+
+  .portico-playlist-art {
+    width: 42px;
+    height: 58px;
+  }
+
+  .portico-playlist-art.square {
+    height: 42px;
+  }
+
+  .portico-playlist-actions .icon-button:nth-child(-n + 2) {
+    display: none;
+  }
+
+  .portico-playlist-actions {
+    gap: 0;
+  }
+
+  .portico-playlist-actions .icon-button {
+    width: 34px;
+    height: 34px;
+  }
+
+  .portico-saved-detail > .portico-saved-media-groups {
+    padding-bottom: 220px;
+  }
+
+  .portico-saved-detail.has-pagination > .portico-saved-media-groups {
+    padding-bottom: 0;
+  }
+
+  .portico-saved-pagination {
+    min-height: 92px;
+    margin-bottom: 220px;
+    padding: 16px 0;
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .portico-saved-pagination .button {
+    width: 100%;
+  }
+}

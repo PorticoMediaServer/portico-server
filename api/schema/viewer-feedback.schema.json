@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://portico.media/schema/viewer-feedback.schema.json",
+  "title": "Portico V1 Viewer Feedback Submission",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "kind", "category", "message", "context"],
+  "properties": {
+    "version": { "const": "v1" },
+    "kind": { "enum": ["general", "playback", "media", "quality"] },
+    "category": {
+      "enum": [
+        "wont-play",
+        "buffering",
+        "playback-stopped",
+        "wrong-video",
+        "wrong-audio",
+        "wrong-subtitles",
+        "incorrect-media-information",
+        "higher-quality-request",
+        "other"
+      ]
+    },
+    "message": { "type": "string", "maxLength": 1000 },
+    "context": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["deviceClass", "platform", "appVersion"],
+      "properties": {
+        "mediaId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "playbackSessionId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "deviceClass": { "enum": ["web", "mobile", "television"] },
+        "platform": { "type": "string", "pattern": "^[a-z][a-z0-9.-]*$", "maxLength": 64 },
+        "appVersion": { "type": "string", "minLength": 1, "maxLength": 64 }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "kind": { "enum": ["media", "quality"] } }, "required": ["kind"] },
+      "then": { "properties": { "context": { "required": ["deviceClass", "platform", "appVersion", "mediaId"] } } }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "playback" } }, "required": ["kind"] },
+      "then": { "properties": { "context": { "required": ["deviceClass", "platform", "appVersion", "playbackSessionId"] } } }
+    },
+    {
+      "if": {
+        "anyOf": [
+          { "properties": { "kind": { "const": "general" } }, "required": ["kind"] },
+          { "properties": { "category": { "const": "other" } }, "required": ["category"] }
+        ]
+      },
+      "then": { "properties": { "message": { "type": "string", "pattern": ".*\\S.*", "maxLength": 1000 } } }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "general" } }, "required": ["kind"] },
+      "then": { "properties": { "category": { "const": "other" } } }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "quality" } }, "required": ["kind"] },
+      "then": { "properties": { "category": { "enum": ["higher-quality-request", "other"] } } }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "media" } }, "required": ["kind"] },
+      "then": { "properties": { "category": { "enum": ["wrong-video", "wrong-audio", "wrong-subtitles", "incorrect-media-information", "other"] } } }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "playback" } }, "required": ["kind"] },
+      "then": { "properties": { "category": { "enum": ["wont-play", "buffering", "playback-stopped", "wrong-video", "wrong-audio", "wrong-subtitles", "other"] } } }
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "policy": "Manual approval only. Portico does not automatically change or rebuild its qualified FFmpeg toolchain.",
+  "ffmpeg": {
+    "version": "8.1.2",
+    "tag": "n8.1.2",
+    "source": "https://ffmpeg.org/releases/ffmpeg-8.1.2.tar.xz"
+  },
+  "toolchainRevision": 1,
+  "releaseTag": "ffmpeg-8.1.2-portico.1",
+  "btbn": {
+    "repository": "https://github.com/BtbN/FFmpeg-Builds.git",
+    "commit": "48576f197ad1c2afb2e0b8efe204919a1afbff54"
+  },
+  "macosRecipe": {
+    "repository": "https://github.com/homebridge/ffmpeg-for-homebridge.git",
+    "commit": "4920fab9d6ac56999ce7e961b240659b4da078a5",
+    "patch": "media-toolchain/patches/homebridge-gpl-only.patch"
+  },
+  "requiredConfigure": ["--enable-gpl", "--enable-version3"],
+  "prohibitedConfigure": ["--enable-nonfree", "--enable-libfdk-aac"]
+}

@@ -1,0 +1,76 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  server:
+    name: Server tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - run: go vet ./...
+      - run: go test ./... -count=1
+
+  web:
+    name: Web and client core
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            packages/portico-client-core/package-lock.json
+            web/package-lock.json
+      - run: npm --prefix packages/portico-client-core ci --no-audit --no-fund
+      - run: npm --prefix packages/portico-client-core test
+      - run: npm --prefix web ci --no-audit --no-fund
+      - run: npm --prefix web run typecheck
+      - run: npm --prefix web run lint
+      - run: npm --prefix web test -- --maxWorkers=1
+      - run: npm --prefix web run build
+      - run: npm --prefix web run verify:bundle
+
+  compile:
+    name: Compile ${{ matrix.target }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {target: linux-x64, goos: linux, goarch: amd64, output: portico-media-server}
+          - {target: linux-arm64, goos: linux, goarch: arm64, output: portico-media-server}
+          - {target: windows-x64, goos: windows, goarch: amd64, output: portico-media-server.exe}
+          - {target: windows-arm64, goos: windows, goarch: arm64, output: portico-media-server.exe}
+          - {target: macos-arm64, goos: darwin, goarch: arm64, output: portico-media-server}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with: {go-version-file: go.mod, cache-dependency-path: go.sum}
+      - run: mkdir -p dist && GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} CGO_ENABLED=0 go build -trimpath -o dist/${{ matrix.output }} ./cmd/porticod
+      - run: test -s dist/${{ matrix.output }}
+
+  container-build:
+    name: Containerized server build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - run: docker build --target server-build --build-arg VERSION=0.0.0 --build-arg BUILD_NUMBER=${{ github.run_number }} --build-arg COMMIT=${{ github.sha }} --build-arg BUILT_AT=2026-01-01T00:00:00Z --build-arg TARGETARCH=amd64 -f Dockerfile .

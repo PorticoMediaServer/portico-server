@@ -1,0 +1,24 @@
+.modal-backdrop:has(> .profile-switcher-dialog) { background: var(--page-glow), var(--page); }
+.profile-switcher-dialog { width: min(920px, calc(100vw - 40px)); padding: 30px; border: 1px solid var(--line-strong); border-radius: 13px; background: #0e151c; box-shadow: 0 26px 70px rgba(0,0,0,.58); }
+.profile-switcher-dialog.required { margin: auto; }
+.profile-switcher-dialog > header { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 22px; }
+.profile-switcher-dialog > header p { margin: 0 0 3px; color: var(--screen-blue); font-size: var(--type-caption); font-weight: 700; text-transform: uppercase; letter-spacing: .08em; }
+.profile-switcher-dialog > header h2 { margin: 0; font-size: clamp(26px, 4vw, 38px); }
+.profile-switcher-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 14px; }
+.profile-switcher-grid > button { min-width: 0; padding: 12px 10px 14px; display: grid; justify-items: center; gap: 6px; border: 1px solid transparent; border-radius: 12px; color: var(--silver); background: transparent; text-align: center; transition: border-color .15s ease, background .15s ease, transform .15s ease; }
+.profile-switcher-grid > button:not(:disabled):hover, .profile-switcher-grid > button:not(:disabled):focus-visible, .profile-switcher-grid > button.selected { border-color: color-mix(in srgb, var(--screen-blue) 65%, var(--line)); background: rgba(55, 142, 195,.08); transform: translateY(-2px); }
+.profile-switcher-grid > button.current { opacity: .72; }
+.profile-switcher-grid strong, .profile-switcher-grid small { width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.profile-switcher-grid small { color: var(--silver-muted); font-size: var(--type-caption); }
+.profile-switcher-avatar { position: relative; width: 104px; aspect-ratio: 1; display: grid; place-items: center; overflow: hidden; border: 2px solid var(--line); border-radius: 50%; color: var(--silver); background: linear-gradient(145deg, #183044, #0d1821); font-size: 32px; font-weight: 700; }
+.profile-switcher-avatar > img { width: 100%; height: 100%; object-fit: cover; }
+.profile-switcher-lock, .profile-switcher-current { position: absolute; right: 2px; bottom: 2px; width: 26px; height: 26px; display: grid; place-items: center; border: 2px solid #0e151c; border-radius: 50%; background: #16232e; }
+.profile-switcher-lock svg, .profile-switcher-current svg { width: 14px; }
+.profile-switcher-current { color: #061018; background: var(--healthy); }
+.profile-switcher-pin { margin-top: 20px; padding-top: 18px; display: grid; grid-template-columns: 1fr 120px auto; align-items: end; gap: 12px; border-top: 1px solid var(--line-soft); }
+.profile-switcher-pin > div { display: grid; gap: 3px; }
+.profile-switcher-pin small { color: var(--silver-muted); }
+.profile-switcher-pin input { min-height: 44px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; color: var(--silver); background: var(--recess); font: inherit; font-size: 20px; letter-spacing: .25em; text-align: center; }
+.profile-switcher-error { margin-top: 18px; display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--danger); }
+.profile-switcher-loading { min-height: 180px; display: grid; place-items: center; color: var(--silver-muted); }
+@media (max-width: 600px) { .profile-switcher-dialog { width: 100%; min-height: 62dvh; align-self: end; padding: 20px 16px calc(20px + env(safe-area-inset-bottom)); border-radius: 18px 18px 0 0; } .profile-switcher-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .profile-switcher-avatar { width: 86px; } .profile-switcher-pin { grid-template-columns: 1fr; } }

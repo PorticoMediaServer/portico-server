@@ -1,0 +1,64 @@
+{
+  "keyIdDerived": "ed25519-tB_YlPluyK3KGahf",
+  "policyCanonicalPayloadB64": "cG9ydGljby1zaWduZWQtZG9jdW1lbnQ6cG9saWN5LXNuYXBzaG90OnYxCnsiYXVkaWVuY2UiOiJwb3J0aWNvLW1lZGlhLXNlcnZlciIsImRlbGV0ZWRBY2NvdW50VG9tYnN0b25lcyI6W10sImV4cGlyZXNBdCI6IjIwMjYtMDctMDlUMTI6MTA6MDBaIiwiaXNzdWVkQXQiOiIyMDI2LTA3LTA5VDEyOjAwOjAwWiIsIm1lbWJlcnMiOltdLCJtaW5pbXVtU2VydmVyVmVyc2lvbiI6IjAuMS4wIiwicGVuZGluZ0ludml0ZXMiOltdLCJzZXJ2ZXJJZCI6InNydl9maXh0dXJlIiwic2lnbmF0dXJlQWxnb3JpdGhtIjoiZWQyNTUxOSIsInNpZ25hdHVyZUtleUlkIjoiZWQyNTUxOS10Ql9ZbFBsdXlLM0tHYWhmIiwic25hcHNob3RJZCI6InBvbGljeV9maXh0dXJlIiwidmVyc2lvbiI6MX0=",
+  "policySnapshot": {
+    "audience": "portico-media-server",
+    "snapshotId": "policy_fixture",
+    "version": 1,
+    "serverId": "srv_fixture",
+    "members": [],
+    "pendingInvites": [],
+    "deletedAccountTombstones": [],
+    "issuedAt": "2026-07-09T12:00:00Z",
+    "expiresAt": "2026-07-09T12:10:00Z",
+    "minimumServerVersion": "0.1.0",
+    "signatureAlgorithm": "ed25519",
+    "signatureKeyId": "ed25519-tB_YlPluyK3KGahf",
+    "signature": "fhGhi7zgxbLkeKyutQuUN7M2G3wwco17LdFZG-eWw2Dll4kb70zhNtg847kc6zJUHM7uJGxRP-EtLR5UYicJDA"
+  },
+  "publicKeyB64": "4v4qObcyZkKCfW2C1JdiLNbCl/54Jw6qQ2sB8Ia288s=",
+  "routeCanonicalPayloadB64": "cG9ydGljby1zaWduZWQtZG9jdW1lbnQ6cm91dGUtZG9jdW1lbnQ6djEKeyJhc3NpZ25lZEhvc3RuYW1lIjoiZml4dHVyZS5kaXJlY3QuZ2V0cG9ydGljby50diIsImF1ZGllbmNlIjoicG9ydGljby1tZWRpYS1zZXJ2ZXIiLCJhdXRoTW9kZXMiOlsicG9ydGljbyJdLCJjZXJ0aWZpY2F0ZSI6eyJleHBpcmVzQXQiOiIyMDI2LTEwLTA3VDEyOjAwOjAwWiIsInN0YXR1cyI6ImFjdGl2ZSJ9LCJkb2N1bWVudFZlcnNpb24iOjEsImV4cGlyZXNBdCI6IjIwMjYtMDctMDlUMTI6MDU6MDAuMTIzWiIsImlzc3VlZEF0IjoiMjAyNi0wNy0wOVQxMjowMDowMC4xMjNaIiwibWVtYmVyc2hpcCI6eyJwZXJtaXNzaW9uVGVtcGxhdGUiOnsibGlicmFyeUlkcyI6WyJsaWJfbW92aWVzIl0sInBlcm1pc3Npb25zIjp7ImRvd25sb2FkIjp0cnVlLCJwbGF5Ijp0cnVlfX0sInJvbGUiOiJvd25lciJ9LCJyb3V0ZXMiOlt7Imhvc3QiOiJmaXh0dXJlLmRpcmVjdC5nZXRwb3J0aWNvLnR2IiwibGFzdENoZWNrRXJyb3IiOiJMYXN0IHByb2JlIHJlY292ZXJlZCBhZnRlciBhIHRlbXBvcmFyeSB0aW1lb3V0LiIsImxhc3RDaGVja2VkQXQiOiIyMDI2LTA3LTA5VDEyOjAwOjAwWiIsInF1YWxpdHkiOiJyZWFjaGFibGUiLCJ0eXBlIjoicHVibGljX2RpcmVjdCIsInVybCI6Imh0dHBzOi8vZml4dHVyZS5kaXJlY3QuZ2V0cG9ydGljby50djo0NDMifV0sInNlcnZlcklkIjoic3J2X2ZpeHR1cmUiLCJzZXJ2ZXJOYW1lIjoiRml4dHVyZSBTZXJ2ZXIiLCJzZXJ2ZXJQdWJsaWNLZXkiOiJ1d1c2bW5WRFh0QWRudU5YUVRoR2ZCMjNVWmd3aHRWMkM1MTFoMXRIYjFrPSIsInNlcnZlclB1YmxpY0tleUZpbmdlcnByaW50Ijoic2hhMjU2OjhJcjlQTWdTYVUzZHNUZDN5MHV0aTlTSm01SU8tNG4xWThpUjZFMmNWSTQiLCJzaWduYXR1cmVBbGdvcml0aG0iOiJlZDI1NTE5Iiwic2lnbmF0dXJlS2V5SWQiOiJlZDI1NTE5LXRCX1lsUGx1eUszS0dhaGYifQ==",
+  "routeDocument": {
+    "documentVersion": 1,
+    "audience": "portico-media-server",
+    "serverId": "srv_fixture",
+    "serverName": "Fixture Server",
+    "assignedHostname": "fixture.direct.getportico.tv",
+    "issuedAt": "2026-07-09T12:00:00.123Z",
+    "expiresAt": "2026-07-09T12:05:00.123Z",
+    "serverPublicKey": "uwW6mnVDXtAdnuNXQThGfB23UZgwhtV2C511h1tHb1k=",
+    "serverPublicKeyFingerprint": "sha256:8Ir9PMgSaU3dsTd3y0uti9SJm5IO-4n1Y8iR6E2cVI4",
+    "authModes": [
+      "portico"
+    ],
+    "routes": [
+      {
+        "type": "public_direct",
+        "url": "https://fixture.direct.getportico.tv:443",
+        "host": "fixture.direct.getportico.tv",
+        "quality": "reachable",
+        "lastCheckedAt": "2026-07-09T12:00:00Z",
+        "lastCheckError": "Last probe recovered after a temporary timeout."
+      }
+    ],
+    "certificate": {
+      "status": "active",
+      "expiresAt": "2026-10-07T12:00:00Z"
+    },
+    "membership": {
+      "role": "owner",
+      "permissionTemplate": {
+        "libraryIds": [
+          "lib_movies"
+        ],
+        "permissions": {
+          "download": true,
+          "play": true
+        }
+      }
+    },
+    "signatureAlgorithm": "ed25519",
+    "signatureKeyId": "ed25519-tB_YlPluyK3KGahf",
+    "signature": "mt_oe2UlQkOPp0GlmTnAs0ZR3V_DRZ4D73vJyWBuNc4jV9eYtnd0jRAxIhiRT-lB1wf7rqhYB9Dyr9_TFv4bDw"
+  }
+}

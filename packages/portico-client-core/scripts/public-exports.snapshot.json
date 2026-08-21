@@ -1,0 +1,16 @@
+{
+  "rootExportCount": 314,
+  "rootExportSha256": "a932347a37dd5b771e2b816a796ecba1585e806a78639b988787d5efed6caccf",
+  "subpaths": [
+    ".",
+    "./browser",
+    "./core",
+    "./fixtures/hosted-api-v1-conformance.json",
+    "./fixtures/native-auth-connection.v1.json",
+    "./hosted-openapi-types",
+    "./local-discovery",
+    "./native",
+    "./openapi-types",
+    "./types"
+  ]
+}

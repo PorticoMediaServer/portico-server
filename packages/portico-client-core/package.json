@@ -1,0 +1,99 @@
+{
+  "name": "@portico/client-core",
+  "version": "0.1.0",
+  "description": "Platform-neutral TypeScript client core for Portico web and native clients.",
+  "license": "GPL-3.0-or-later",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "react-native": "./dist/native.js",
+  "types": "./dist/index.d.ts",
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "npm@11.6.2",
+  "exports": {
+    ".": {
+      "react-native": {
+        "types": "./dist/native.d.ts",
+        "default": "./dist/native.js"
+      },
+      "browser": {
+        "types": "./dist/browser.d.ts",
+        "default": "./dist/browser.js"
+      },
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./core": {
+      "types": "./dist/core.d.ts",
+      "default": "./dist/core.js"
+    },
+    "./browser": {
+      "types": "./dist/browser.d.ts",
+      "default": "./dist/browser.js"
+    },
+    "./native": {
+      "types": "./dist/native.d.ts",
+      "react-native": "./dist/native.js",
+      "default": "./dist/native.js"
+    },
+    "./types": {
+      "types": "./dist/types.d.ts",
+      "default": "./dist/types.js"
+    },
+    "./openapi-types": {
+      "types": "./dist/openapi-types.d.ts",
+      "default": "./dist/openapi-types.js"
+    },
+    "./hosted-openapi-types": {
+      "types": "./dist/hosted-openapi-types.d.ts",
+      "default": "./dist/hosted-openapi-types.js"
+    },
+    "./local-discovery": {
+      "types": "./dist/localDiscovery.d.ts",
+      "default": "./dist/localDiscovery.js"
+    },
+    "./fixtures/native-auth-connection.v1.json": {
+      "default": "./fixtures/native-auth-connection.v1.json"
+    },
+    "./fixtures/hosted-api-v1-conformance.json": {
+      "default": "./fixtures/hosted-api-v1-conformance.json"
+    }
+  },
+  "files": [
+    "dist",
+    "docs",
+    "fixtures",
+    "README.md"
+  ],
+  "scripts": {
+    "api:types": "npm run api:types:server && npm run api:types:hosted",
+    "api:types:server": "openapi-typescript ../../api/openapi/portico-server.openapi.json -o src/openapi-types.ts",
+    "api:types:hosted": "openapi-typescript ../../api/openapi/hosted/portico-hosted.openapi.json -o src/hosted-openapi-types.ts",
+    "product-language:generate": "node ./scripts/generate-product-language.mjs",
+    "product-language:generate:all": "node ./scripts/generate-product-language.mjs",
+    "product-language:generate:client": "node ./scripts/generate-product-language.mjs --client-only",
+    "product-language:check": "node ./scripts/generate-product-language.mjs --client-only --check",
+    "product-language:check:all": "node ./scripts/generate-product-language.mjs --check",
+    "api:types:check": "node ./scripts/verify-api-types.mjs",
+    "build": "npm run product-language:check && tsc -p tsconfig.json",
+    "lint": "tsc -p tsconfig.json --noEmit --noFallthroughCasesInSwitch --noImplicitReturns",
+    "coverage": "node --experimental-test-coverage --test --test-coverage-include='dist/**/*.js' --test-coverage-exclude='dist/*openapi-types.js' --test-coverage-exclude='dist/productLanguage.generated.js' --test-coverage-lines=80 --test-coverage-branches=65 --test-coverage-functions=60 tests/*.test.mjs",
+    "audit:verify": "node ./scripts/verify-dependency-audit.mjs",
+    "rebuild": "npm run clean && npm run product-language:check && tsc -p tsconfig.json",
+    "clean": "node ./scripts/clean.mjs",
+    "exports:check": "node ./scripts/verify-public-exports.mjs",
+    "release:verify": "node ./scripts/verify-release.mjs",
+    "prepack": "npm run rebuild",
+    "test": "npm run build && node --test tests/*.test.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "sideEffects": false,
+  "devDependencies": {
+    "@babel/plugin-transform-modules-commonjs": "7.27.1",
+    "openapi-typescript": "7.13.0",
+    "typescript": "^5.9.3"
+  }
+}

@@ -1,0 +1,188 @@
+/* Cross-surface legibility and responsive contracts. Feature-specific styling stays in app.css. */
+.button {
+  min-height: 44px;
+}
+
+.nav-item.compact {
+  height: 44px;
+}
+
+.quick-search-submit,
+.quick-search-clear {
+  width: 40px;
+  height: 40px;
+}
+
+.section-controls .icon-button {
+  width: 40px;
+  height: 40px;
+}
+
+/* Route transitions stay observable in the normal-motion branch and settle
+   immediately when either browser or product preferences request reduction. */
+@media (prefers-reduced-motion: no-preference) {
+  .route-surface.route-entering {
+    will-change: opacity;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .route-surface.route-entering {
+    opacity: 1;
+    animation: none !important;
+  }
+}
+
+[data-reduce-motion='true'] .route-surface.route-entering,
+html[data-portico-reduce-motion='true'] .route-surface.route-entering {
+  opacity: 1;
+  animation: none !important;
+}
+
+@media (min-width: 1120px) {
+  .settings-nav {
+    max-height: calc(100vh - 125px);
+  }
+
+  .shell:has(.player-contract.dock) .settings-nav {
+    max-height: calc(100vh - 105px - var(--mini-player-height) - 20px);
+  }
+}
+
+@media (min-width: 1120px) and (max-width: 1300px) {
+  .settings-layout {
+    display: grid;
+    grid-template-columns: 210px minmax(0, 1fr);
+    gap: 32px;
+  }
+
+  .settings-nav {
+    position: sticky;
+    top: 105px;
+    max-height: calc(100vh - 125px);
+    margin: 0;
+    padding: 0 20px 0 0;
+    display: block;
+    overflow-x: visible;
+    overflow-y: auto;
+    border-right: 1px solid var(--line);
+    border-bottom: 0;
+  }
+
+  .shell:has(.player-contract.dock) .settings-nav {
+    max-height: calc(100vh - 105px - var(--mini-player-height) - 20px);
+  }
+
+  .settings-nav h2 {
+    display: block;
+  }
+
+  .settings-nav a {
+    min-height: 42px;
+    padding: 9px 12px;
+    display: flex;
+    border-left: 2px solid transparent;
+    border-bottom: 0;
+  }
+
+  .settings-nav a.active {
+    border-left: 2px solid var(--screen-blue);
+    border-bottom: 0;
+    background: rgba(55, 142, 195, 0.08);
+  }
+}
+
+@media (max-width: 620px) {
+  .topbar {
+    height: 66px;
+  }
+
+  .topbar .icon-button,
+  .profile-button {
+    width: 44px;
+    height: 44px;
+  }
+
+  .topbar-search,
+  .global-search {
+    width: 46px;
+    height: 46px;
+  }
+
+  .quick-search-submit {
+    width: 44px;
+    height: 44px;
+    flex: 0 0 44px;
+  }
+
+  .profile-button {
+    min-width: 44px;
+  }
+
+  .avatar {
+    width: 36px;
+    height: 36px;
+  }
+
+  .standard-page,
+  .settings-page {
+    padding-top: 90px;
+  }
+
+  .az-rail {
+    top: 66px;
+  }
+}
+
+/* Stable chrome and contextual controls. Full-bleed artwork remains untouched. */
+.shell.has-connection-warning :is(.standard-page, .settings-page, .portico-settings-page) {
+  padding-top: calc(104px + var(--context-chrome-height));
+}
+
+.shell.has-connection-warning :is(.home-hero, .detail-identity, .artist-hero, .episode-detail-hero) {
+  padding-top: calc(140px + var(--context-chrome-height));
+}
+
+.library-pivots,
+.live-tabs {
+  position: sticky;
+  z-index: calc(var(--layer-navigation) - 1);
+  top: var(--chrome-safe-offset);
+  background: transparent;
+  -webkit-backdrop-filter: blur(18px);
+  backdrop-filter: blur(18px);
+}
+
+.library-workspace-toolbar,
+.live-toolbar {
+  position: sticky;
+  z-index: calc(var(--layer-navigation) - 1);
+  top: calc(var(--chrome-safe-offset) + 46px);
+  padding-block: 8px;
+  background: var(--projector);
+}
+
+@media (min-width: 1121px) {
+  .settings-nav { top: var(--chrome-safe-offset); }
+}
+
+@media (min-width: 1381px) {
+  .portico-settings-nav { top: var(--chrome-safe-offset); }
+}
+
+@media (max-width: 620px) {
+  .shell.has-connection-warning :is(.standard-page, .settings-page, .portico-settings-page) {
+    padding-top: calc(var(--chrome-safe-offset) + 24px);
+  }
+
+  .shell.has-connection-warning :is(.home-hero, .detail-identity, .artist-hero, .episode-detail-hero) {
+    padding-top: calc(122px + var(--context-chrome-height));
+  }
+
+  .library-workspace-toolbar,
+  .live-toolbar {
+    top: calc(var(--chrome-safe-offset) + 46px);
+    margin-inline: -18px;
+    padding-inline: 18px;
+  }
+}

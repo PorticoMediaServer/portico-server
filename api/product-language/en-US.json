@@ -1,0 +1,5140 @@
+{
+  "revision": "v1",
+  "locale": "en-US",
+  "fallbackLocale": "en-US",
+  "iconFamily": "lucide",
+  "icons": {
+    "action.close": {
+      "glyph": "X",
+      "label": "Close"
+    },
+    "action.collection": {
+      "glyph": "Library",
+      "label": "Add to collection"
+    },
+    "action.delete": {
+      "glyph": "Trash2",
+      "label": "Delete"
+    },
+    "action.download": {
+      "glyph": "Download",
+      "label": "Download"
+    },
+    "action.favorite": {
+      "glyph": "Heart",
+      "label": "Favorite"
+    },
+    "action.home": {
+      "glyph": "Home",
+      "label": "Home"
+    },
+    "action.mark-read": {
+      "glyph": "CheckCheck",
+      "label": "Mark as read"
+    },
+    "action.open": {
+      "glyph": "ArrowRight",
+      "label": "Open"
+    },
+    "action.metadata": {
+      "glyph": "Pencil",
+      "label": "Edit media"
+    },
+    "action.optimize": {
+      "glyph": "Gauge",
+      "label": "Optimize media"
+    },
+    "action.play": {
+      "glyph": "Play",
+      "label": "Play"
+    },
+    "action.playlist": {
+      "glyph": "ListMusic",
+      "label": "Add to playlist"
+    },
+    "action.queue": {
+      "glyph": "ListPlus",
+      "label": "Add to queue"
+    },
+    "action.rating": {
+      "glyph": "Star",
+      "label": "Rate"
+    },
+    "action.reaction": {
+      "glyph": "ThumbsUp",
+      "label": "React"
+    },
+    "action.refresh": {
+      "glyph": "RotateCw",
+      "label": "Refresh"
+    },
+    "action.report": {
+      "glyph": "Flag",
+      "label": "Report a problem"
+    },
+    "action.retry": {
+      "glyph": "RefreshCw",
+      "label": "Try again"
+    },
+    "action.save": {
+      "glyph": "Bookmark",
+      "label": "Save"
+    },
+    "action.search": {
+      "glyph": "Search",
+      "label": "Search"
+    },
+    "action.sign-in": {
+      "glyph": "LogIn",
+      "label": "Sign in"
+    },
+    "action.try-nearby": {
+      "glyph": "Wifi",
+      "label": "Try nearby connection"
+    },
+    "action.watchlist": {
+      "glyph": "BookmarkPlus",
+      "label": "Watchlist"
+    },
+    "action.watched": {
+      "glyph": "CircleCheck",
+      "label": "Watched"
+    },
+    "status.download": {
+      "glyph": "DownloadCloud",
+      "label": "Download status"
+    },
+    "status.empty": {
+      "glyph": "Inbox",
+      "label": "No items"
+    },
+    "status.error": {
+      "glyph": "CircleX",
+      "label": "Error"
+    },
+    "status.feedback": {
+      "glyph": "MessageSquareWarning",
+      "label": "Feedback"
+    },
+    "status.library": {
+      "glyph": "LibraryBig",
+      "label": "Library"
+    },
+    "status.library-channel": {
+      "glyph": "TvMinimalPlay",
+      "label": "Library Channel"
+    },
+    "status.live-tv": {
+      "glyph": "Radio",
+      "label": "Live TV"
+    },
+    "status.loading": {
+      "glyph": "LoaderCircle",
+      "label": "Loading"
+    },
+    "status.locked": {
+      "glyph": "LockKeyhole",
+      "label": "Locked"
+    },
+    "status.notification": {
+      "glyph": "Bell",
+      "label": "Notification"
+    },
+    "status.offline": {
+      "glyph": "WifiOff",
+      "label": "Offline"
+    },
+    "status.playback": {
+      "glyph": "CirclePlay",
+      "label": "Playback"
+    },
+    "status.profile": {
+      "glyph": "CircleUserRound",
+      "label": "Profile"
+    },
+    "status.rate-limited": {
+      "glyph": "Timer",
+      "label": "Temporarily unavailable"
+    },
+    "status.server": {
+      "glyph": "ServerOff",
+      "label": "Server unavailable"
+    },
+    "status.success": {
+      "glyph": "CircleCheck",
+      "label": "Success"
+    },
+    "status.warning": {
+      "glyph": "TriangleAlert",
+      "label": "Warning"
+    },
+    "action.chapters": {
+      "glyph": "BookOpen",
+      "label": "Chapters"
+    },
+    "action.cancel": {
+      "glyph": "X",
+      "label": "Cancel"
+    },
+    "action.collapse": {
+      "glyph": "ChevronDown",
+      "label": "Collapse"
+    },
+    "action.exit-fullscreen": {
+      "glyph": "Minimize2",
+      "label": "Exit fullscreen"
+    },
+    "action.forward": {
+      "glyph": "FastForward",
+      "label": "Forward"
+    },
+    "action.fullscreen": {
+      "glyph": "Maximize2",
+      "label": "Fullscreen"
+    },
+    "action.lyrics": {
+      "glyph": "Mic2",
+      "label": "Lyrics"
+    },
+    "action.move-down": {
+      "glyph": "ArrowDown",
+      "label": "Move down"
+    },
+    "action.move-up": {
+      "glyph": "ArrowUp",
+      "label": "Move up"
+    },
+    "action.mute": {
+      "glyph": "VolumeX",
+      "label": "Mute"
+    },
+    "action.next": {
+      "glyph": "SkipForward",
+      "label": "Next"
+    },
+    "action.pause": {
+      "glyph": "Pause",
+      "label": "Pause"
+    },
+    "action.player-queue": {
+      "glyph": "ListMusic",
+      "label": "Queue"
+    },
+    "action.prepare-download": {
+      "glyph": "DownloadCloud",
+      "label": "Prepare download"
+    },
+    "action.previous": {
+      "glyph": "SkipBack",
+      "label": "Previous"
+    },
+    "action.remove-download": {
+      "glyph": "Trash2",
+      "label": "Remove download"
+    },
+    "action.remove-queue": {
+      "glyph": "Trash2",
+      "label": "Remove from queue"
+    },
+    "action.repeat": {
+      "glyph": "Repeat",
+      "label": "Repeat"
+    },
+    "action.repeat-one": {
+      "glyph": "Repeat1",
+      "label": "Repeat one"
+    },
+    "action.replay": {
+      "glyph": "RotateCcw",
+      "label": "Replay"
+    },
+    "action.rewind": {
+      "glyph": "Rewind",
+      "label": "Rewind"
+    },
+    "action.resume": {
+      "glyph": "Play",
+      "label": "Resume"
+    },
+    "action.settings": {
+      "glyph": "Settings2",
+      "label": "Playback settings"
+    },
+    "action.shuffle": {
+      "glyph": "Shuffle",
+      "label": "Shuffle"
+    },
+    "action.subtitles": {
+      "glyph": "Captions",
+      "label": "Subtitles"
+    },
+    "action.technical-stats": {
+      "glyph": "Activity",
+      "label": "Technical stats"
+    },
+    "action.unmute": {
+      "glyph": "Volume2",
+      "label": "Unmute"
+    },
+    "action.volume": {
+      "glyph": "Volume2",
+      "label": "Volume"
+    },
+    "status.audiobook": {
+      "glyph": "BookOpen",
+      "label": "Audiobook"
+    },
+    "status.music": {
+      "glyph": "Music2",
+      "label": "Music"
+    },
+    "status.preparation": {
+      "glyph": "WandSparkles",
+      "label": "Version preparation"
+    },
+    "status.storage": {
+      "glyph": "HardDrive",
+      "label": "Storage"
+    },
+    "action.archive": {
+      "glyph": "Archive",
+      "label": "Archive"
+    },
+    "action.mark-unread": {
+      "glyph": "Mail",
+      "label": "Mark as unread"
+    },
+    "action.message": {
+      "glyph": "MessageSquare",
+      "label": "Send message"
+    },
+    "action.pin": {
+      "glyph": "KeyRound",
+      "label": "Profile PIN"
+    },
+    "action.quality": {
+      "glyph": "BadgeCheck",
+      "label": "Request higher quality"
+    },
+    "action.resolve": {
+      "glyph": "CircleCheckBig",
+      "label": "Resolve"
+    },
+    "action.sign-out": {
+      "glyph": "LogOut",
+      "label": "Sign out"
+    },
+    "action.switch-server": {
+      "glyph": "ArrowLeft",
+      "label": "Switch server"
+    },
+    "status.account": {
+      "glyph": "CircleUserRound",
+      "label": "Account"
+    },
+    "status.preferences": {
+      "glyph": "SlidersHorizontal",
+      "label": "Preferences"
+    },
+    "status.watch-with-friends": {
+      "glyph": "Users",
+      "label": "Watch With Friends"
+    },
+    "action.record": {
+      "glyph": "CircleDot",
+      "label": "Record"
+    },
+    "action.people": {
+      "glyph": "UsersRound",
+      "label": "Watch with friends"
+    },
+    "action.restart": {
+      "glyph": "RotateCcw",
+      "label": "Play from beginning"
+    }
+  },
+  "messages": {
+    "destination.library": {
+      "text": "library"
+    },
+    "destination.details": {
+      "text": "details"
+    },
+    "destination.person": {
+      "text": "person"
+    },
+    "destination.settings": {
+      "text": "settings"
+    },
+    "destination.saved-media": {
+      "text": "saved media"
+    },
+    "destination.watch-with-friends": {
+      "text": "Watch With Friends"
+    },
+    "destination.live-tv": {
+      "text": "Live TV"
+    },
+    "destination.search": {
+      "text": "search"
+    },
+    "destination.libraries": {
+      "text": "libraries"
+    },
+    "destination.home": {
+      "text": "home"
+    },
+    "navigation.home": {
+      "text": "Home"
+    },
+    "navigation.libraries": {
+      "text": "Libraries"
+    },
+    "navigation.live-tv": {
+      "text": "Live TV"
+    },
+    "navigation.search": {
+      "text": "Search"
+    },
+    "navigation.saved": {
+      "text": "Saved"
+    },
+    "navigation.primary-label": {
+      "text": "Primary navigation"
+    },
+    "navigation.skip-content": {
+      "text": "Skip to content"
+    },
+    "navigation.open": {
+      "text": "Open navigation"
+    },
+    "navigation.close": {
+      "text": "Close navigation"
+    },
+    "navigation.expand": {
+      "text": "Expand navigation"
+    },
+    "navigation.collapse": {
+      "text": "Collapse navigation"
+    },
+    "navigation.pinned-libraries": {
+      "text": "Pinned libraries"
+    },
+    "navigation.manage": {
+      "text": "Manage"
+    },
+    "navigation.library-options": {
+      "text": "Library options for {title}"
+    },
+    "navigation.move-up": {
+      "text": "Move up"
+    },
+    "navigation.move-down": {
+      "text": "Move down"
+    },
+    "navigation.unpin": {
+      "text": "Unpin from sidebar"
+    },
+    "navigation.unavailable": {
+      "title": "Navigation unavailable",
+      "body": "Portico couldn't load this navigation right now. Try again.",
+      "icon": "status.server"
+    },
+    "saved.views": {
+      "text": "Saved views"
+    },
+    "action.dismiss": {
+      "text": "Dismiss"
+    },
+    "action.close": {
+      "text": "Close"
+    },
+    "action.close-analysis-options": {
+      "text": "Close analysis options"
+    },
+    "action.close-media-options": {
+      "text": "Close {mode} options"
+    },
+    "action.more-for": {
+      "text": "More actions for {title}"
+    },
+    "action.clear-selection": {
+      "text": "Clear selection"
+    },
+    "action.cancel-selection": {
+      "text": "Cancel selection"
+    },
+    "action.close-home-customization": {
+      "text": "Close Home customization"
+    },
+    "action.move-row-up": {
+      "text": "Move {title} up"
+    },
+    "action.move-row-down": {
+      "text": "Move {title} down"
+    },
+    "action.reset-layout": {
+      "text": "Reset layout"
+    },
+    "action.save-layout": {
+      "text": "Save layout"
+    },
+    "action.add-first-library": {
+      "text": "Add first library"
+    },
+    "action.add-collection": {
+      "text": "Add to collection"
+    },
+    "action.add-favorite": {
+      "text": "Add to favorites"
+    },
+    "action.add-playlist": {
+      "text": "Add to playlist"
+    },
+    "action.add-queue": {
+      "text": "Add to queue"
+    },
+    "action.add-watchlist": {
+      "text": "Add to watchlist"
+    },
+    "action.analyze-media": {
+      "text": "Analyze media"
+    },
+    "action.delete-media": {
+      "text": "Delete media"
+    },
+    "action.download": {
+      "text": "Download"
+    },
+    "action.edit-metadata": {
+      "text": "Edit metadata"
+    },
+    "action.go-home": {
+      "text": "Go to Home"
+    },
+    "action.like": {
+      "text": "Like"
+    },
+    "action.dislike": {
+      "text": "Dislike"
+    },
+    "action.clear-filters": {
+      "text": "Clear filters"
+    },
+    "action.clear-filter": {
+      "text": "Clear filter"
+    },
+    "action.clear-history": {
+      "text": "Clear"
+    },
+    "action.clear-search": {
+      "text": "Clear search"
+    },
+    "action.cancel": {
+      "text": "Cancel"
+    },
+    "action.apply": {
+      "text": "Apply"
+    },
+    "action.add-condition": {
+      "text": "Condition"
+    },
+    "action.add-group": {
+      "text": "Group"
+    },
+    "action.add-sort": {
+      "text": "Add another sort"
+    },
+    "action.create-version": {
+      "text": "Create"
+    },
+    "action.customize": {
+      "text": "Customize"
+    },
+    "action.customize-home": {
+      "text": "Customize Home"
+    },
+    "action.load-more": {
+      "text": "Load more"
+    },
+    "action.load-more-group": {
+      "text": "More {group}"
+    },
+    "action.remove-like": {
+      "text": "Remove like"
+    },
+    "action.remove-dislike": {
+      "text": "Remove dislike"
+    },
+    "action.mark-read": {
+      "text": "Mark as read"
+    },
+    "action.open": {
+      "text": "Open"
+    },
+    "action.open-destination": {
+      "text": "Open {destination}"
+    },
+    "action.open-libraries": {
+      "text": "Open libraries"
+    },
+    "action.mark-watched": {
+      "text": "Mark as watched"
+    },
+    "action.mark-unwatched": {
+      "text": "Mark as unwatched"
+    },
+    "action.optimize-media": {
+      "text": "Optimize media"
+    },
+    "action.play": {
+      "text": "Play"
+    },
+    "action.play-version": {
+      "text": "Play version"
+    },
+    "action.watch-live": {
+      "text": "Watch live"
+    },
+    "action.play-season": {
+      "text": "Play season"
+    },
+    "action.play-artist": {
+      "text": "Play artist"
+    },
+    "action.play-album": {
+      "text": "Play album"
+    },
+    "action.play-track": {
+      "text": "Play track"
+    },
+    "action.play-author": {
+      "text": "Play author"
+    },
+    "action.play-audiobook": {
+      "text": "Play audiobook"
+    },
+    "action.resume-audiobook": {
+      "text": "Resume audiobook"
+    },
+    "action.play-series": {
+      "text": "Play series"
+    },
+    "action.play-recording": {
+      "text": "Play recording"
+    },
+    "action.resume-recording": {
+      "text": "Resume recording"
+    },
+    "action.play-collection": {
+      "text": "Play collection"
+    },
+    "action.play-playlist": {
+      "text": "Play playlist"
+    },
+    "action.play-item": {
+      "text": "Play {title}"
+    },
+    "action.open-item": {
+      "text": "Open {title}"
+    },
+    "action.play-episode": {
+      "text": "Play {episodeCode}"
+    },
+    "action.play-next": {
+      "text": "Play next"
+    },
+    "action.play-next-episode": {
+      "text": "Play next episode"
+    },
+    "action.play-from-beginning": {
+      "text": "Play from beginning"
+    },
+    "action.resume-item": {
+      "text": "Resume {title}"
+    },
+    "action.resume-episode": {
+      "text": "Resume {episodeCode}"
+    },
+    "action.resume": {
+      "text": "Resume"
+    },
+    "action.rate": {
+      "text": "Rate"
+    },
+    "action.react": {
+      "text": "React"
+    },
+    "action.refresh-metadata": {
+      "text": "Refresh metadata"
+    },
+    "action.remove-favorite": {
+      "text": "Remove from favorites"
+    },
+    "action.remove-watchlist": {
+      "text": "Remove from watchlist"
+    },
+    "action.reload": {
+      "text": "Reload"
+    },
+    "action.report-problem": {
+      "text": "Report a problem"
+    },
+    "action.retry": {
+      "text": "Try again"
+    },
+    "action.sign-in": {
+      "text": "Sign in"
+    },
+    "action.try-nearby": {
+      "text": "Try nearby connection"
+    },
+    "action.stream-inspection": {
+      "text": "Stream inspection"
+    },
+    "action.full-media-analysis": {
+      "text": "Full media analysis"
+    },
+    "action.switch-server": {
+      "text": "Switch server"
+    },
+    "action.view-all": {
+      "text": "View all"
+    },
+    "action.save-view": {
+      "text": "Save view"
+    },
+    "action.dismiss-status": {
+      "text": "Dismiss operation status"
+    },
+    "action.watch-with-friends": {
+      "text": "Watch with friends"
+    },
+    "auth.invalid-credentials": {
+      "title": "We couldn't sign you in",
+      "body": "Check your username or email and password, then try again.",
+      "icon": "status.locked",
+      "tone": "error",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "auth.local-profile-pin-invalid": {
+      "title": "That PIN isn't correct",
+      "body": "Try the four-digit PIN again.",
+      "icon": "status.locked",
+      "tone": "error",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "auth.profile-not-available": {
+      "title": "Profile unavailable",
+      "body": "This profile can't use the selected server.",
+      "icon": "status.profile",
+      "tone": "warning",
+      "actions": [
+        "action.switch-server"
+      ]
+    },
+    "auth.profile-not-found": {
+      "title": "Profile not found",
+      "body": "This profile may have been removed. Choose another profile and try again.",
+      "icon": "status.profile",
+      "tone": "warning"
+    },
+    "auth.profile-limit-reached": {
+      "title": "Profile limit reached",
+      "body": "This account already has the maximum number of profiles. Remove one before adding another.",
+      "icon": "status.profile",
+      "tone": "warning"
+    },
+    "auth.primary-profile-required": {
+      "title": "Use the main profile",
+      "body": "Only the main profile can make this account change.",
+      "icon": "status.locked",
+      "tone": "warning"
+    },
+    "auth.primary-profile-pin-required": {
+      "title": "Protect the main profile first",
+      "body": "Add a four-digit PIN to the main profile before creating another profile.",
+      "icon": "status.locked",
+      "tone": "warning"
+    },
+    "auth.invalid-profile-restrictions": {
+      "title": "Check the profile restrictions",
+      "body": "One or more profile restrictions aren't valid. Review them and try again.",
+      "icon": "status.profile",
+      "tone": "warning"
+    },
+    "auth.invalid-profile": {
+      "title": "Check the profile details",
+      "body": "Enter a valid profile name and choose an available avatar.",
+      "icon": "status.profile",
+      "tone": "warning"
+    },
+    "auth.profile-conflict": {
+      "title": "Profile changed elsewhere",
+      "body": "Reload the profile, then make your change again.",
+      "icon": "status.profile",
+      "tone": "warning",
+      "actions": [
+        "action.reload"
+      ]
+    },
+    "auth.profile-pin-invalid": {
+      "title": "That PIN isn't correct",
+      "body": "Try the four-digit PIN again.",
+      "icon": "status.locked",
+      "tone": "error",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "auth.profile-pin-retry-later": {
+      "title": "Wait a moment",
+      "body": "For your security, wait a moment before trying the profile PIN again.",
+      "icon": "status.rate-limited",
+      "tone": "warning",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "auth.profile-admin-step-up-required": {
+      "title": "Unlock the main profile",
+      "body": "Enter the main profile PIN before changing profiles or their restrictions.",
+      "icon": "status.locked",
+      "tone": "neutral"
+    },
+    "auth.profile-admin-step-up-expired": {
+      "title": "Profile administration locked",
+      "body": "Unlock the main profile again to continue making changes.",
+      "icon": "status.locked",
+      "tone": "neutral"
+    },
+    "auth.profile-admin-recovery-required": {
+      "title": "Verify this account",
+      "body": "Use multi-factor authentication or a fresh email recovery link to unlock profile administration.",
+      "icon": "status.locked",
+      "tone": "warning"
+    },
+    "auth.profile-pin-required": {
+      "title": "Enter the profile PIN",
+      "body": "{profileName} is protected by a four-digit PIN.",
+      "icon": "status.locked",
+      "tone": "neutral"
+    },
+    "auth.profile-selection-required": {
+      "title": "Who's watching?",
+      "body": "Choose a profile to continue.",
+      "icon": "status.profile",
+      "tone": "neutral"
+    },
+    "auth.profile-selection-failed": {
+      "title": "Profile couldn't open",
+      "body": "Portico couldn't open this profile. Choose it again or try another profile.",
+      "icon": "status.profile",
+      "tone": "error",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "auth.profile-temporarily-locked": {
+      "title": "Profile temporarily locked",
+      "body": "Too many incorrect PIN attempts were made. Wait until the lock expires, then try again.",
+      "icon": "status.rate-limited",
+      "tone": "warning",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "auth.device-session-required": {
+      "title": "Sign in on this device",
+      "body": "This profile action needs an active sign-in on this device.",
+      "icon": "status.locked",
+      "tone": "warning",
+      "actions": [
+        "action.sign-in"
+      ]
+    },
+    "auth.session-expired": {
+      "title": "Sign in again",
+      "body": "Your session has expired. Sign in again to continue.",
+      "icon": "status.locked",
+      "tone": "warning",
+      "actions": [
+        "action.sign-in"
+      ]
+    },
+    "auth.sign-out-storage-warning": {
+      "title": "Saved sign-in data needs attention",
+      "body": "Portico signed you out, but couldn't remove every saved credential from this device. Close the app or browser, then sign out again when device storage is available.",
+      "icon": "status.warning",
+      "tone": "warning"
+    },
+    "connection.not-saved": {
+      "title": "Connection wasn't saved",
+      "body": "You're connected for this session, but Portico couldn't save the connection on this device. You'll need to reconnect next time.",
+      "icon": "status.warning",
+      "tone": "warning"
+    },
+    "connection.local-network-unavailable": {
+      "title": "Local connection unavailable",
+      "body": "Portico couldn't reach this server on your local network. If your browser asks, allow local network access and try again.",
+      "icon": "status.offline",
+      "tone": "warning",
+      "actions": [
+        "action.try-nearby"
+      ]
+    },
+    "connection.nearby-available": {
+      "title": "Public connection unavailable",
+      "body": "Portico couldn't reach this server through its public address. You can try a nearby connection on this network instead.",
+      "icon": "status.offline",
+      "tone": "warning",
+      "actions": [
+        "action.try-nearby"
+      ]
+    },
+    "download.failed": {
+      "title": "Download failed",
+      "body": "Portico couldn't hand this file to your browser. Try again.",
+      "icon": "status.download",
+      "tone": "error",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "download.preparing": {
+      "title": "Preparing download",
+      "body": "Portico is preparing the selected quality for this device.",
+      "icon": "status.download",
+      "tone": "neutral"
+    },
+    "download.storage-full": {
+      "title": "Not enough storage",
+      "body": "Free some space or lower your download storage limit, then try again.",
+      "icon": "status.download",
+      "tone": "warning"
+    },
+    "feedback.disabled": {
+      "title": "Messages aren't available",
+      "body": "The owner of this server has turned off viewer messages.",
+      "icon": "status.feedback",
+      "tone": "neutral"
+    },
+    "feedback.duplicate": {
+      "title": "Message already sent",
+      "body": "A recent message already describes this problem. The server owner can still see it.",
+      "icon": "status.feedback",
+      "tone": "neutral"
+    },
+    "feedback.rate-limited": {
+      "title": "Try again later",
+      "body": "Too many messages were sent recently. Wait a while, then try again.",
+      "icon": "status.rate-limited",
+      "tone": "warning"
+    },
+    "feedback.sent": {
+      "title": "Message sent",
+      "body": "The server owner will see your message in Portico.",
+      "icon": "status.success",
+      "tone": "success"
+    },
+    "home.label": {
+      "text": "Home"
+    },
+    "home.continue-watching": {
+      "text": "Continue Watching"
+    },
+    "home.hero-placeholder": {
+      "text": "Your next title will appear here as this server builds its library and activity."
+    },
+    "home.row-loading": {
+      "text": "Loading {rowTitle}"
+    },
+    "home.row-empty": {
+      "text": "Nothing is ready for this row yet."
+    },
+    "home.row-unavailable": {
+      "title": "{rowTitle} is unavailable",
+      "body": "Portico couldn't refresh this Home row. Try again without losing the other rows.",
+      "icon": "status.error",
+      "tone": "error",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "home.row-partial": {
+      "title": "More titles are unavailable",
+      "body": "Portico couldn't continue {rowTitle}. The titles already loaded are still available.",
+      "icon": "status.warning",
+      "tone": "warning",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "home.loading": {
+      "title": "Loading Home",
+      "body": "Portico is getting this profile's Home rows ready.",
+      "icon": "status.loading",
+      "tone": "neutral"
+    },
+    "home.unavailable": {
+      "title": "Home couldn't load",
+      "body": "Portico couldn't load Home from this server. Try again.",
+      "icon": "status.error",
+      "tone": "error",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "home.libraries-loading": {
+      "title": "Checking your libraries",
+      "body": "Portico is reading the media available to this account.",
+      "icon": "status.loading",
+      "tone": "neutral"
+    },
+    "home.libraries-unavailable": {
+      "title": "Libraries couldn't be checked",
+      "body": "Portico couldn't determine which libraries are available to this account.",
+      "icon": "status.error",
+      "tone": "error",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "home.first-library-label": {
+      "text": "Start with a library"
+    },
+    "home.first-library-title": {
+      "text": "Bring your media into Portico."
+    },
+    "home.first-library-body": {
+      "text": "Choose a media type and one or more folders on this server. Portico will keep the files where they are and queue the first scan."
+    },
+    "home.no-shared-libraries": {
+      "text": "This server has no available libraries."
+    },
+    "home.building-title": {
+      "text": "Your Home screen is taking shape."
+    },
+    "home.library-ready-singular": {
+      "text": "{count} library is available. Rows will appear as scans finish and playback activity begins."
+    },
+    "home.library-ready-plural": {
+      "text": "{count} libraries are available. Rows will appear as scans finish and playback activity begins."
+    },
+    "home.preferences-unavailable": {
+      "title": "Saved Home layout unavailable",
+      "body": "Your saved Home layout couldn't be loaded. Default rows are shown.",
+      "icon": "status.warning",
+      "tone": "warning",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "home.saved-update-failed": {
+      "title": "Saved media wasn't changed",
+      "body": "Portico couldn't update this item. Its previous saved state is still in place.",
+      "icon": "status.error",
+      "tone": "error"
+    },
+    "home.customize-title": {
+      "text": "Customize Home"
+    },
+    "home.customize-body": {
+      "text": "Choose which rows appear and where they live."
+    },
+    "home.row-shown": {
+      "text": "Shown"
+    },
+    "home.row-hidden": {
+      "text": "Hidden"
+    },
+    "home.row-always-shown": {
+      "text": "Always shown"
+    },
+    "home.preferences-save-failed": {
+      "title": "Home layout wasn't saved",
+      "body": "Portico couldn't save this Home layout. Your previous layout is still in place.",
+      "icon": "status.error",
+      "tone": "error"
+    },
+    "library.empty": {
+      "title": "Nothing here yet",
+      "body": "This library doesn't have any matching media.",
+      "icon": "status.library",
+      "tone": "neutral"
+    },
+    "library.loading": {
+      "title": "Loading library",
+      "body": "Portico is checking the media available to this profile.",
+      "icon": "status.loading",
+      "tone": "neutral"
+    },
+    "library.load-failed": {
+      "title": "Library couldn't load",
+      "body": "Portico couldn't load this library from the server. Try again.",
+      "icon": "status.library",
+      "tone": "error",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "library.results-updating": {
+      "title": "Updating results",
+      "body": "Portico is refreshing this library view.",
+      "icon": "status.loading",
+      "tone": "neutral"
+    },
+    "library.filter-invalid": {
+      "title": "This filter link is invalid",
+      "body": "Clear the unsupported filter definition before browsing this library.",
+      "icon": "status.warning",
+      "tone": "warning",
+      "actions": [
+        "action.clear-filter"
+      ]
+    },
+    "library.filtered-empty": {
+      "title": "No items match these filters",
+      "body": "Remove a filter or change this view to broaden the results.",
+      "icon": "status.empty",
+      "tone": "neutral",
+      "actions": [
+        "action.clear-filters"
+      ]
+    },
+    "library.facet-loading": {
+      "title": "Loading choices",
+      "body": "Portico is getting the available values from this server.",
+      "icon": "status.loading",
+      "tone": "neutral"
+    },
+    "library.facet-unavailable": {
+      "title": "Choices couldn't be loaded",
+      "body": "Portico couldn't load the available values from this server.",
+      "icon": "status.error",
+      "tone": "error",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "library.facet-empty": {
+      "title": "No choices are available",
+      "body": "This server didn't return any values for this filter.",
+      "icon": "status.empty",
+      "tone": "neutral"
+    },
+    "library.conditions-empty": {
+      "title": "No conditions in this group",
+      "body": "Add a condition or nested group to build this filter.",
+      "icon": "status.empty",
+      "tone": "neutral"
+    },
+    "library.no-pivots": {
+      "title": "No library views are available",
+      "body": "This server did not declare a browseable view for {libraryName}.",
+      "icon": "status.library",
+      "tone": "neutral"
+    },
+    "library.selection-label": {
+      "text": "{count} selected items"
+    },
+    "library.selection-count": {
+      "text": "{count} selected"
+    },
+    "action.library-settings": {
+      "text": "Library settings"
+    },
+    "library.alpha-label": {
+      "text": "Jump by title"
+    },
+    "library.applied-filters-label": {
+      "text": "Applied filters"
+    },
+    "library.custom-filters": {
+      "text": "Custom filters"
+    },
+    "library.dismiss-saved-view": {
+      "text": "Dismiss saved view"
+    },
+    "library.filter-label": {
+      "text": "Filter"
+    },
+    "library.quick-all": {
+      "text": "All items"
+    },
+    "library.quick-available": {
+      "text": "Available"
+    },
+    "library.quick-favorites": {
+      "text": "Favorites"
+    },
+    "library.quick-in-progress": {
+      "text": "In progress"
+    },
+    "library.quick-played": {
+      "text": "Played"
+    },
+    "library.quick-unplayed": {
+      "text": "Unplayed"
+    },
+    "library.quick-unwatched": {
+      "text": "Unwatched"
+    },
+    "library.quick-watched": {
+      "text": "Watched"
+    },
+    "library.quick-missing": {
+      "text": "Missing"
+    },
+    "library.quick-watchlist": {
+      "text": "Watchlist"
+    },
+    "library.result-count-single": {
+      "text": "1 result"
+    },
+    "library.result-loaded-single": {
+      "text": "1 result loaded"
+    },
+    "library.results-count": {
+      "text": "{count} results"
+    },
+    "library.results-label": {
+      "text": "results"
+    },
+    "library.results-loaded": {
+      "text": "{count} results loaded"
+    },
+    "library.route-context": {
+      "text": "{libraryName} library"
+    },
+    "library.saved-view-notice": {
+      "text": "Saved {title}"
+    },
+    "library.view-label": {
+      "text": "{view} view"
+    },
+    "library.view-compact-grid": {
+      "text": "Compact grid"
+    },
+    "library.view-facets": {
+      "text": "Facets"
+    },
+    "library.view-grid": {
+      "text": "Grid"
+    },
+    "library.view-list": {
+      "text": "List"
+    },
+    "library.view-shelves": {
+      "text": "Shelves"
+    },
+    "library.view-table": {
+      "text": "Table"
+    },
+    "library.views-label": {
+      "text": "{libraryName} views"
+    },
+    "library.jump-beginning": {
+      "text": "Jump to beginning"
+    },
+    "library.jump-letter": {
+      "text": "Jump to {letter}"
+    },
+    "library.selected-label": {
+      "text": "selected"
+    },
+    "library.control-sort": {
+      "text": "Sort"
+    },
+    "library.control-value": {
+      "text": "Value"
+    },
+    "library.control-values": {
+      "text": "Values"
+    },
+    "library.control-field": {
+      "text": "Field"
+    },
+    "library.control-condition": {
+      "text": "Condition"
+    },
+    "library.select-value": {
+      "text": "Select a value"
+    },
+    "library.sort-expensive": {
+      "text": "May take longer"
+    },
+    "library.filter-values-separated": {
+      "text": "Values, separated by commas"
+    },
+    "library.filter-date-value": {
+      "text": "Date or date-time"
+    },
+    "library.filter-date-example": {
+      "text": "2026-07-11"
+    },
+    "library.filter-exclude": {
+      "text": "Exclude"
+    },
+    "library.filter-remove-condition": {
+      "text": "Remove condition"
+    },
+    "library.filter-match": {
+      "text": "Match"
+    },
+    "library.filter-group-logic": {
+      "text": "Group match logic"
+    },
+    "library.filter-match-all": {
+      "text": "All"
+    },
+    "library.filter-match-any": {
+      "text": "Any"
+    },
+    "library.filter-conditions-suffix": {
+      "text": "of these conditions"
+    },
+    "library.filter-exclude-group": {
+      "text": "Exclude group"
+    },
+    "library.filter-remove-group": {
+      "text": "Remove group"
+    },
+    "library.sort-order-title": {
+      "text": "Sort order"
+    },
+    "library.sort-order-body": {
+      "text": "Earlier rows take priority. Portico adds its stable tie-breaker automatically."
+    },
+    "library.sort-remove": {
+      "text": "Remove {sort} sort"
+    },
+    "library.refine-title": {
+      "text": "Refine {pivot}"
+    },
+    "library.condition-budget": {
+      "text": "{count} of {maximum} available conditions"
+    },
+    "library.filters-title": {
+      "text": "Filters"
+    },
+    "library.filters-body": {
+      "text": "Build precise groups using only fields and operators supported by this server."
+    },
+    "library.save-title": {
+      "text": "Save this view"
+    },
+    "library.save-close": {
+      "text": "Close save view"
+    },
+    "library.save-name": {
+      "text": "Name"
+    },
+    "library.save-name-example": {
+      "text": "For example, Unwatched 4K movies"
+    },
+    "library.save-pin": {
+      "text": "Pin this view to the library"
+    },
+    "library.save-failed": {
+      "title": "View wasn't saved",
+      "body": "Portico couldn't save this library view. Try again.",
+      "icon": "status.error",
+      "tone": "error",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "library.more-filters": {
+      "text": "More filters"
+    },
+    "library.more-filters-count": {
+      "text": "More filters ({count})"
+    },
+    "library.technical-table-label": {
+      "text": "Library technical table"
+    },
+    "library.column-select": {
+      "text": "Select"
+    },
+    "library.column-title": {
+      "text": "Title"
+    },
+    "library.column-year": {
+      "text": "Year"
+    },
+    "library.column-duration": {
+      "text": "Duration"
+    },
+    "library.column-availability": {
+      "text": "Availability"
+    },
+    "library.column-actions": {
+      "text": "Actions"
+    },
+    "library.select-item": {
+      "text": "Select {title}"
+    },
+    "library.deselect-item": {
+      "text": "Deselect {title}"
+    },
+    "value.yes": {
+      "text": "Yes"
+    },
+    "value.no": {
+      "text": "No"
+    },
+    "live-tv.guide-unavailable": {
+      "title": "Guide unavailable",
+      "body": "Portico couldn't load guide information from this server. Live channels may still be available.",
+      "icon": "status.live-tv",
+      "tone": "warning",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "library-channel.degraded": {
+      "title": "Channel schedule needs attention",
+      "body": "{channelName} is using fallback programming because some scheduled media is unavailable.",
+      "icon": "status.library-channel",
+      "tone": "warning"
+    },
+    "library-channel.generation-lease-expired": {
+      "title": "Channel schedule update timed out",
+      "body": "Portico kept the last working schedule and will try to update this Library Channel again.",
+      "icon": "status.library-channel",
+      "tone": "warning"
+    },
+    "library-channel.generation-failed": {
+      "title": "Channel schedule couldn't update",
+      "body": "Portico kept the last working schedule and will try this Library Channel again.",
+      "icon": "status.library-channel",
+      "tone": "warning"
+    },
+    "library-channel.generation-no-playable-schedule": {
+      "title": "No playable schedule was created",
+      "body": "Portico kept the last working schedule because the current channel rules did not select any playable media.",
+      "icon": "status.library-channel",
+      "tone": "warning"
+    },
+    "library-channel.generation-in-progress": {
+      "title": "Channel schedule is already updating",
+      "body": "Portico is already generating this Library Channel schedule. Try again shortly.",
+      "icon": "status.library-channel",
+      "tone": "neutral",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "library-channel.generation-timeout": {
+      "title": "Channel schedule update took too long",
+      "body": "Portico stopped this update before it could affect the working schedule. Try again.",
+      "icon": "status.library-channel",
+      "tone": "warning",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "library-channel.health-regeneration-required": {
+      "title": "Channel schedule is updating",
+      "body": "This Library Channel changed and needs a refreshed schedule.",
+      "icon": "status.library-channel",
+      "tone": "neutral"
+    },
+    "library-channel.health-schedule-warnings": {
+      "title": "Channel schedule needs attention",
+      "body": "Some parts of this Library Channel are using fallback programming.",
+      "icon": "status.library-channel",
+      "tone": "warning"
+    },
+    "library-channel.logo-processing-overhead": {
+      "title": "On-screen logos require transcoding",
+      "body": "Adding a logo to the video creates extra processing work while viewers are watching this Library Channel.",
+      "icon": "status.library-channel",
+      "tone": "warning"
+    },
+    "library-channel.no-applicable-defaults": {
+      "title": "No default channels are ready yet",
+      "body": "The requested default channels do not have enough playable media on this server.",
+      "icon": "status.library-channel",
+      "tone": "neutral"
+    },
+    "library-channel.revision-conflict": {
+      "title": "This channel changed elsewhere",
+      "body": "Reload the Library Channel before saving your changes.",
+      "icon": "status.library-channel",
+      "tone": "warning",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "library-channel.explainer": {
+      "title": "Library Channels",
+      "body": "Library Channels present media on this server in a classic TV experience.",
+      "icon": "status.library-channel",
+      "tone": "neutral"
+    },
+    "library-channel.program-unavailable": {
+      "title": "Program unavailable",
+      "body": "This scheduled program is no longer available.",
+      "icon": "status.library-channel",
+      "tone": "neutral"
+    },
+    "library-channel.program-restricted": {
+      "title": "Program unavailable to this profile",
+      "body": "This part of the schedule is hidden by the account or profile policy.",
+      "icon": "status.locked",
+      "tone": "neutral"
+    },
+    "library-channel.slate": {
+      "title": "Programming resumes soon",
+      "body": "This Library Channel is between scheduled programs.",
+      "icon": "status.library-channel",
+      "tone": "neutral"
+    },
+    "library-channel.warning-no-playable-candidates": {
+      "title": "No playable media matched",
+      "body": "Part of this Library Channel is using fallback programming because no playable media matched its rules.",
+      "icon": "status.library-channel",
+      "tone": "warning"
+    },
+    "notification.empty": {
+      "title": "You're all caught up",
+      "body": "New notifications will appear here.",
+      "icon": "status.notification",
+      "tone": "neutral"
+    },
+    "notification.load-failed": {
+      "title": "Notifications couldn't load",
+      "body": "Portico couldn't load notifications from this server. Try again.",
+      "icon": "status.notification",
+      "tone": "error",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "playback.capacity-reached": {
+      "title": "No stream is available",
+      "body": "This account has reached the server's active-stream limit. Stop another stream or try again later.",
+      "icon": "status.playback",
+      "tone": "warning",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "playback.failed": {
+      "title": "Playback stopped",
+      "body": "Portico couldn't continue playing this item. Try again or report the problem from Portico.",
+      "icon": "status.playback",
+      "tone": "error",
+      "actions": [
+        "action.retry",
+        "action.report-problem"
+      ]
+    },
+    "playback.unavailable": {
+      "title": "Playback unavailable",
+      "body": "The server can't provide a playable version of this item right now.",
+      "icon": "status.playback",
+      "tone": "warning",
+      "actions": [
+        "action.retry",
+        "action.report-problem"
+      ]
+    },
+    "problem.cloud-unavailable": {
+      "title": "Portico Account services unavailable",
+      "body": "Portico couldn't reach account services. Check your connection and try again.",
+      "icon": "status.offline",
+      "tone": "warning",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "problem.connection-failed": {
+      "title": "Connection failed",
+      "body": "Portico couldn't establish a secure connection. Check your network and try again.",
+      "icon": "status.offline",
+      "tone": "error",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "problem.forbidden": {
+      "title": "This isn't available to your profile",
+      "body": "Your account or profile doesn't have access to this item or action.",
+      "icon": "status.locked",
+      "tone": "warning"
+    },
+    "problem.invalid-request": {
+      "title": "Check the highlighted information",
+      "body": "Some information is missing or invalid. Review it and try again.",
+      "icon": "status.error",
+      "tone": "warning"
+    },
+    "problem.not-found": {
+      "title": "Item not found",
+      "body": "This item may have been moved, removed, or is no longer available to your profile.",
+      "icon": "status.empty",
+      "tone": "neutral"
+    },
+    "problem.offline": {
+      "title": "You're offline",
+      "body": "Reconnect to the network and try again. Downloaded media remains available.",
+      "icon": "status.offline",
+      "tone": "warning",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "problem.rate-limited": {
+      "title": "Try again shortly",
+      "body": "Portico is temporarily limiting this request. Wait a moment, then try again.",
+      "icon": "status.rate-limited",
+      "tone": "warning",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "problem.profile-request-failed": {
+      "title": "Profile request failed",
+      "body": "Portico couldn't complete this profile change. Try again.",
+      "icon": "status.profile",
+      "tone": "error",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "problem.request-failed": {
+      "title": "Portico couldn't complete this request",
+      "body": "Something interrupted the request before it could finish. Try again.",
+      "icon": "status.error",
+      "tone": "error",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "problem.request-verification-failed": {
+      "title": "Request needs to be tried again",
+      "body": "Portico refreshed this browser's request protection. Try the action again.",
+      "icon": "status.warning",
+      "tone": "warning",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "problem.server-unavailable": {
+      "title": "Server unavailable",
+      "body": "Portico couldn't reach {serverName}. Your Portico Account remains signed in.",
+      "icon": "status.server",
+      "tone": "warning",
+      "actions": [
+        "action.retry",
+        "action.switch-server"
+      ]
+    },
+    "problem.timeout": {
+      "title": "The request took too long",
+      "body": "The server didn't respond in time. Try again.",
+      "icon": "status.offline",
+      "tone": "warning",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "search.no-results": {
+      "title": "No results",
+      "body": "Try another title, person, or keyword.",
+      "icon": "action.search",
+      "tone": "neutral"
+    },
+    "search.filtered-empty": {
+      "title": "No results match these filters",
+      "body": "Clear the filters or return to Best match to broaden this search.",
+      "icon": "action.search",
+      "tone": "neutral",
+      "actions": [
+        "action.clear-filters"
+      ]
+    },
+    "search.page": {
+      "title": "Search",
+      "body": "Movies, shows, people, episodes, music, audiobooks, and live TV",
+      "icon": "action.search",
+      "tone": "neutral"
+    },
+    "search.input-placeholder": {
+      "text": "Search {serverName}"
+    },
+    "search.default-server-name": {
+      "text": "your server"
+    },
+    "search.input-label": {
+      "text": "Search library"
+    },
+    "search.quick-input-label": {
+      "text": "Quick search"
+    },
+    "search.open-full": {
+      "text": "Open full search"
+    },
+    "search.submit-hint": {
+      "text": "Enter"
+    },
+    "search.control-library": {
+      "text": "Library"
+    },
+    "search.control-sort": {
+      "text": "Sort"
+    },
+    "search.control-order": {
+      "text": "Order"
+    },
+    "search.result-types-label": {
+      "text": "Result types"
+    },
+    "search.result-view-label": {
+      "text": "Result view"
+    },
+    "search.grid-view-label": {
+      "text": "Grid view"
+    },
+    "search.list-view-label": {
+      "text": "List view"
+    },
+    "search.results-count": {
+      "text": "{count} results"
+    },
+    "search.all-libraries": {
+      "text": "All libraries"
+    },
+    "search.order-ascending": {
+      "text": "Ascending"
+    },
+    "search.order-descending": {
+      "text": "Descending"
+    },
+    "search.scope-hidden": {
+      "text": "{groups} {verb} hidden for this sort."
+    },
+    "search.recent-title": {
+      "text": "Recently searched"
+    },
+    "search.recent-body": {
+      "text": "Searches saved for this viewing profile."
+    },
+    "search.start-title": {
+      "text": "Search your server"
+    },
+    "search.start-body": {
+      "text": "Enter a movie, show, person, episode, artist, album, audiobook, or channel."
+    },
+    "search.quick-results": {
+      "text": "Results"
+    },
+    "search.quick-browse": {
+      "text": "Browse your server"
+    },
+    "search.quick-full-hint": {
+      "text": "Enter for full search"
+    },
+    "search.quick-start": {
+      "text": "Start typing to search."
+    },
+    "search.quick-empty": {
+      "text": "No results on {serverName}."
+    },
+    "search.view-all": {
+      "text": "View all results"
+    },
+    "search.view-all-query": {
+      "text": "View all results for “{query}”"
+    },
+    "search.history-empty": {
+      "title": "No recent searches",
+      "body": "Searches you submit will appear here for this profile.",
+      "icon": "action.search",
+      "tone": "neutral"
+    },
+    "search.loading": {
+      "title": "Searching",
+      "body": "Portico is checking the media available to this profile.",
+      "icon": "status.loading",
+      "tone": "neutral"
+    },
+    "search.group-unavailable": {
+      "title": "Some results are unavailable",
+      "body": "Portico couldn't load this result group. The other search results are still available.",
+      "icon": "status.error",
+      "tone": "warning",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "search.group-timeout": {
+      "title": "Some results took too long",
+      "body": "This result group didn't finish in time. The other search results are still available.",
+      "icon": "status.offline",
+      "tone": "warning",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "search.offline": {
+      "title": "Search is offline",
+      "body": "Reconnect to this Portico server, then try your search again.",
+      "icon": "status.offline",
+      "tone": "warning",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "search.people-empty": {
+      "title": "No people found",
+      "body": "Try another cast or crew name.",
+      "icon": "status.profile",
+      "tone": "neutral"
+    },
+    "media.detail-loading": {
+      "title": "Loading details",
+      "body": "Portico is getting this item's information from the server.",
+      "icon": "status.loading",
+      "tone": "neutral"
+    },
+    "media.detail-unavailable": {
+      "title": "Details unavailable",
+      "body": "Portico couldn't load this item's details. Try again.",
+      "icon": "status.error",
+      "tone": "error",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "media.detail-offline": {
+      "title": "Details are offline",
+      "body": "Reconnect to this Portico server to load this item's details.",
+      "icon": "status.offline",
+      "tone": "warning",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "media.children-empty": {
+      "title": "Nothing here yet",
+      "body": "This part of the library doesn't contain any visible media.",
+      "icon": "status.empty",
+      "tone": "neutral"
+    },
+    "media.children-unavailable-title": {
+      "text": "{section} aren’t available"
+    },
+    "media.availability-partial-title": {
+      "text": "Some versions are unavailable"
+    },
+    "media.availability-unavailable-title": {
+      "text": "Source unavailable"
+    },
+    "media.availability-partial-count-single": {
+      "text": "{available} of {files} catalogued file is available. Portico will use an available version for playback."
+    },
+    "media.availability-partial-count-plural": {
+      "text": "{available} of {files} catalogued files are available. Portico will use an available version for playback."
+    },
+    "media.availability-partial-generic": {
+      "text": "At least one catalogued version is missing. Portico will use an available version for playback."
+    },
+    "media.availability-unreachable-count-single": {
+      "text": "{missing} of {files} catalogued file cannot be reached by this server."
+    },
+    "media.availability-unreachable-count-plural": {
+      "text": "{missing} of {files} catalogued files cannot be reached by this server."
+    },
+    "media.availability-unreachable": {
+      "text": "This server cannot reach a playable source file for this item."
+    },
+    "media.empty-show": {
+      "text": "No seasons are available for this show."
+    },
+    "media.empty-season": {
+      "text": "No episodes are available for this season."
+    },
+    "media.empty-artist": {
+      "text": "No albums are available for this artist."
+    },
+    "media.empty-album": {
+      "text": "No tracks are available for this album."
+    },
+    "media.empty-author": {
+      "text": "No audiobooks are available for this author."
+    },
+    "media.empty-audiobook": {
+      "text": "No chapters are available for this audiobook."
+    },
+    "media.chapters-title": {
+      "text": "Chapters"
+    },
+    "media.chapter-list-label": {
+      "text": "{title} chapters"
+    },
+    "media.chapter-start-label": {
+      "text": "Starts"
+    },
+    "action.play-chapter": {
+      "text": "Play {chapter}"
+    },
+    "media.empty-series": {
+      "text": "No audiobooks are available for this series."
+    },
+    "media.empty-collection": {
+      "text": "This collection is empty."
+    },
+    "media.empty-playlist": {
+      "text": "This playlist is empty."
+    },
+    "media.empty-channel": {
+      "text": "No programming information is available for this channel."
+    },
+    "media.empty-included": {
+      "text": "No included media is available."
+    },
+    "media.runtime-unavailable": {
+      "text": "Runtime unavailable"
+    },
+    "media.people-credits": {
+      "text": "Credits"
+    },
+    "media.people-narrators": {
+      "text": "Narrators & contributors"
+    },
+    "media.people-cast-crew": {
+      "text": "Cast & Crew"
+    },
+    "media.credit-count-single": {
+      "text": "{count} credit"
+    },
+    "media.credit-count": {
+      "text": "{count} credits"
+    },
+    "media.item-count-single": {
+      "text": "{count} item"
+    },
+    "media.item-count": {
+      "text": "{count} items"
+    },
+    "media.available": {
+      "text": "Available"
+    },
+    "media.partially-available": {
+      "text": "Partially available"
+    },
+    "media.unavailable": {
+      "text": "Unavailable"
+    },
+    "media.stream-video": {
+      "text": "Video"
+    },
+    "media.stream-audio": {
+      "text": "Audio"
+    },
+    "media.stream-subtitles": {
+      "text": "Subtitles"
+    },
+    "media.file-count-single": {
+      "text": "{count} file"
+    },
+    "media.file-count": {
+      "text": "{count} files"
+    },
+    "media.missing-count": {
+      "text": "{count} missing"
+    },
+    "media.information-title": {
+      "text": "Versions & media information"
+    },
+    "media.edition-label": {
+      "text": "Edition"
+    },
+    "media.availability-label": {
+      "text": "Availability"
+    },
+    "media.source-files-label": {
+      "text": "Source files"
+    },
+    "media.job-queued": {
+      "text": "Queued for server processing"
+    },
+    "media.selection-updated": {
+      "text": "{action} updated for {count} selected items."
+    },
+    "media.selection-partial": {
+      "text": "{updated} updated; {failed} still selected for retry."
+    },
+    "media.stream-inspection-body": {
+      "text": "Read container, codec, audio, and subtitle information with a quick server-side probe."
+    },
+    "media.full-analysis-body": {
+      "text": "Perform the complete server media-analysis pass, including any configured derived data."
+    },
+    "media.download-version-title": {
+      "text": "Download version"
+    },
+    "media.optimized-versions-title": {
+      "text": "Optimized versions"
+    },
+    "media.default-version": {
+      "text": "Default"
+    },
+    "media.download-not-allowed": {
+      "text": "Your account can inspect available versions but cannot download media from this server."
+    },
+    "person.breadcrumb-label": {
+      "text": "Person detail"
+    },
+    "person.kind-label": {
+      "text": "Person"
+    },
+    "person.known-for": {
+      "text": "Known for {title}"
+    },
+    "person.credits-label": {
+      "text": "Credits"
+    },
+    "person.credits-title": {
+      "text": "Movies & shows"
+    },
+    "person.credits-count": {
+      "text": "{count} credits"
+    },
+    "media.watched": {
+      "text": "Watched"
+    },
+    "media.resume-from": {
+      "text": "Resume from {time}"
+    },
+    "media.hierarchy-label": {
+      "text": "Media hierarchy"
+    },
+    "media.episode-code": {
+      "text": "S{seasonNumber} E{episodeNumber}"
+    },
+    "media.episode-number": {
+      "text": "Episode {episodeNumber}"
+    },
+    "media.episode-label": {
+      "text": "Episode"
+    },
+    "media.unknown-artist": {
+      "text": "Unknown artist"
+    },
+    "media.track-list-label": {
+      "text": "{title} tracks"
+    },
+    "media.track-number-label": {
+      "text": "Track number"
+    },
+    "media.column-name": {
+      "text": "Name"
+    },
+    "media.column-artist": {
+      "text": "Artist"
+    },
+    "media.column-time": {
+      "text": "Time"
+    },
+    "media.column-actions": {
+      "text": "Actions"
+    },
+    "media.seasons-title": {
+      "text": "Seasons"
+    },
+    "media.episodes-title": {
+      "text": "Episodes"
+    },
+    "media.albums-title": {
+      "text": "Albums"
+    },
+    "media.tracks-title": {
+      "text": "Tracks"
+    },
+    "media.audiobooks-title": {
+      "text": "Audiobooks"
+    },
+    "media.included-title": {
+      "text": "Included media"
+    },
+    "media.playlist-title": {
+      "text": "Playlist"
+    },
+    "media.programming-title": {
+      "text": "Programming"
+    },
+    "media.season-selector-label": {
+      "text": "Season"
+    },
+    "media.season-count-single": {
+      "text": "{count} season"
+    },
+    "media.season-count": {
+      "text": "{count} seasons"
+    },
+    "media.episode-count-single": {
+      "text": "{count} episode"
+    },
+    "media.episode-count": {
+      "text": "{count} episodes"
+    },
+    "media.release-count-single": {
+      "text": "{count} release"
+    },
+    "media.release-count": {
+      "text": "{count} releases"
+    },
+    "media.track-count-single": {
+      "text": "{count} track"
+    },
+    "media.track-count": {
+      "text": "{count} tracks"
+    },
+    "media.audiobook-count-single": {
+      "text": "{count} audiobook"
+    },
+    "media.audiobook-count": {
+      "text": "{count} audiobooks"
+    },
+    "media.chapter-count-single": {
+      "text": "{count} chapter"
+    },
+    "media.chapter-count": {
+      "text": "{count} chapters"
+    },
+    "media.program-count-single": {
+      "text": "{count} program"
+    },
+    "media.program-count": {
+      "text": "{count} programs"
+    },
+    "media.queue-updated": {
+      "title": "Playback queue updated",
+      "body": "{mediaTitle} is in the playback queue.",
+      "icon": "status.success",
+      "tone": "success"
+    },
+    "media.action-pending": {
+      "title": "Queuing {action}",
+      "body": "Portico is sending this request to the server.",
+      "icon": "status.loading",
+      "tone": "neutral"
+    },
+    "media.action-queued": {
+      "title": "{action} queued",
+      "body": "The server accepted this media operation.",
+      "icon": "status.success",
+      "tone": "success"
+    },
+    "media.action-failed": {
+      "title": "{action} failed",
+      "body": "Portico couldn't complete this media action. Try again.",
+      "icon": "status.error",
+      "tone": "error"
+    },
+    "media.versions-loading": {
+      "title": "Loading media versions",
+      "body": "Portico is checking the versions available from this server.",
+      "icon": "status.loading",
+      "tone": "neutral"
+    },
+    "media.versions-empty": {
+      "title": "No versions are available",
+      "body": "This server doesn't have a usable version for this item.",
+      "icon": "status.empty",
+      "tone": "neutral"
+    },
+    "media.version-unavailable": {
+      "text": "Unavailable"
+    },
+    "media.version-ready": {
+      "text": "Ready"
+    },
+    "media.download-preparing": {
+      "title": "Preparing {version}",
+      "body": "Portico is creating a secure one-use browser download.",
+      "icon": "status.loading",
+      "tone": "neutral"
+    },
+    "media.download-sent": {
+      "title": "Download sent to browser",
+      "body": "Your browser received the {version} download.",
+      "icon": "status.success",
+      "tone": "success"
+    },
+    "media.removal-incomplete": {
+      "title": "Media removal was incomplete",
+      "body": "{removed} removed; {failed} could not be removed.",
+      "icon": "status.error",
+      "tone": "error"
+    },
+    "media.removed": {
+      "title": "Removed from Portico",
+      "body": "The selected media was removed.",
+      "icon": "status.success",
+      "tone": "success"
+    },
+    "state.loading": {
+      "title": "Loading",
+      "body": "Portico is getting this ready.",
+      "icon": "status.loading",
+      "tone": "neutral"
+    },
+    "state.opening": {
+      "text": "Opening {destination}"
+    },
+    "state.saving": {
+      "text": "Saving…"
+    },
+    "state.loading-more": {
+      "title": "Loading more",
+      "body": "Portico is continuing this list.",
+      "icon": "status.loading",
+      "tone": "neutral"
+    },
+    "action.cancel-recording": {
+      "text": "Cancel recording"
+    },
+    "action.delete-recording": {
+      "text": "Delete recording"
+    },
+    "action.edit-recording": {
+      "text": "Edit recording"
+    },
+    "action.enable-recording-rule": {
+      "text": "Enable recording rule"
+    },
+    "action.disable-recording-rule": {
+      "text": "Disable recording rule"
+    },
+    "action.create-channel": {
+      "text": "Create Library Channel"
+    },
+    "action.create-rule": {
+      "text": "Create recording rule"
+    },
+    "action.delete-channel": {
+      "text": "Delete channel"
+    },
+    "action.record-once": {
+      "text": "Record this program"
+    },
+    "action.record-series": {
+      "text": "Record this series"
+    },
+    "action.regenerate-schedule": {
+      "text": "Update schedule"
+    },
+    "action.restore-all-channels": {
+      "text": "Add all default channels"
+    },
+    "action.restore-recommended-channels": {
+      "text": "Add recommended channels"
+    },
+    "action.save-channel": {
+      "text": "Save channel"
+    },
+    "action.save-rule": {
+      "text": "Save recording rule"
+    },
+    "live-tv.source-label": {
+      "text": "Source"
+    },
+    "live-tv.choose-source": {
+      "title": "Choose a source",
+      "body": "Select the Live TV source you want to watch.",
+      "icon": "status.live-tv",
+      "tone": "neutral"
+    },
+    "live-tv.tab.guide": {
+      "text": "Guide"
+    },
+    "live-tv.tab.channels": {
+      "text": "Channels"
+    },
+    "live-tv.tab.dvr": {
+      "text": "DVR"
+    },
+    "live-tv.tab.library-channels": {
+      "text": "Library Channels"
+    },
+    "live-tv.loading": {
+      "title": "Loading Live TV",
+      "body": "Portico is loading channels and guide information.",
+      "icon": "status.loading",
+      "tone": "neutral"
+    },
+    "live-tv.empty": {
+      "title": "No Live TV channels",
+      "body": "No Live TV channels are available to this profile.",
+      "icon": "status.live-tv",
+      "tone": "neutral"
+    },
+    "live-tv.filter-empty": {
+      "title": "No programs match",
+      "body": "Clear a filter or choose another time to see more of the guide.",
+      "icon": "status.empty",
+      "tone": "neutral"
+    },
+    "live-tv.offline": {
+      "title": "Live TV is offline",
+      "body": "Portico can't reach the tuner or guide provider. Recorded and library media remain available.",
+      "icon": "status.offline",
+      "tone": "warning",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "live-tv.program-unavailable": {
+      "title": "Program unavailable",
+      "body": "This program ended, moved, or is no longer in the current guide.",
+      "icon": "status.live-tv",
+      "tone": "neutral"
+    },
+    "live-tv.channel-busy": {
+      "title": "All tuners are busy",
+      "body": "Another live stream or recording is using every available tuner. Try again after one finishes.",
+      "icon": "status.warning",
+      "tone": "warning",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "dvr.loading": {
+      "title": "Loading DVR",
+      "body": "Portico is loading this profile's recordings, rules, and conflicts.",
+      "icon": "status.loading",
+      "tone": "neutral"
+    },
+    "dvr.empty": {
+      "title": "No recordings yet",
+      "body": "Choose a program in the Live TV guide to record it.",
+      "icon": "status.live-tv",
+      "tone": "neutral"
+    },
+    "dvr.rules-empty": {
+      "title": "No recording rules",
+      "body": "Series rules you create from the guide will appear here.",
+      "icon": "status.empty",
+      "tone": "neutral"
+    },
+    "dvr.conflict": {
+      "title": "Recording conflict",
+      "body": "This time needs {demand} tuners, but the source provides {capacity}. Change a priority or cancel another recording.",
+      "icon": "status.warning",
+      "tone": "warning"
+    },
+    "dvr.guide-missing": {
+      "title": "Guide data is missing",
+      "body": "Portico cannot schedule new recordings until this Live TV source has current guide data.",
+      "icon": "status.warning",
+      "tone": "warning"
+    },
+    "dvr.guide-source-offline": {
+      "title": "Live TV source is offline",
+      "body": "Portico cannot reach this source. Existing recordings remain available.",
+      "icon": "status.offline",
+      "tone": "warning"
+    },
+    "dvr.guide-stale": {
+      "title": "Guide data is out of date",
+      "body": "Portico will keep existing schedules, but new program times may be incomplete until the guide refreshes.",
+      "icon": "status.warning",
+      "tone": "warning"
+    },
+    "dvr.revision-conflict": {
+      "title": "This recording changed elsewhere",
+      "body": "Reload DVR before making this change again.",
+      "icon": "status.warning",
+      "tone": "warning",
+      "actions": [
+        "action.reload"
+      ]
+    },
+    "dvr.recording-failed": {
+      "title": "Recording failed",
+      "body": "Portico couldn't complete this recording. Try recording the next showing.",
+      "icon": "status.error",
+      "tone": "error"
+    },
+    "dvr.recording-scheduled": {
+      "text": "Recording scheduled.",
+      "icon": "status.success",
+      "tone": "success"
+    },
+    "dvr.series-recording-scheduled": {
+      "text": "Series recording scheduled.",
+      "icon": "status.success",
+      "tone": "success"
+    },
+    "dvr.rule-updated": {
+      "text": "Recording rule updated.",
+      "icon": "status.success",
+      "tone": "success"
+    },
+    "dvr.rule-deleted": {
+      "text": "Recording rule deleted.",
+      "icon": "status.success",
+      "tone": "success"
+    },
+    "dvr.recording-cancelled": {
+      "text": "Recording cancelled.",
+      "icon": "status.success",
+      "tone": "success"
+    },
+    "dvr.recording-deleted": {
+      "text": "Recording deleted.",
+      "icon": "status.success",
+      "tone": "success"
+    },
+    "dvr.storage-pressure": {
+      "title": "Recording storage is running low",
+      "body": "Upcoming recordings may fail while recording storage remains low.",
+      "icon": "status.warning",
+      "tone": "warning"
+    },
+    "dvr.storage-full": {
+      "title": "Recording storage is full",
+      "body": "Portico can't start another recording while recording storage is full.",
+      "icon": "status.error",
+      "tone": "error"
+    },
+    "library-channel.default-disabled-no-playable-media": {
+      "title": "Channel added but turned off",
+      "body": "This default channel does not have enough playable matching media yet. Add matching media, then turn it on.",
+      "icon": "status.library-channel",
+      "tone": "neutral"
+    },
+    "library-channel.loading": {
+      "title": "Loading Library Channels",
+      "body": "Portico is loading channels made from this server's library.",
+      "icon": "status.loading",
+      "tone": "neutral"
+    },
+    "library-channel.empty": {
+      "title": "No Library Channels",
+      "body": "No Library Channels are available to this profile.",
+      "icon": "status.library-channel",
+      "tone": "neutral"
+    },
+    "library-channel.filter-empty": {
+      "title": "No Library Channels match",
+      "body": "Clear the filter to see all available Library Channels.",
+      "icon": "status.empty",
+      "tone": "neutral"
+    },
+    "library-channel.load-failed": {
+      "title": "Library Channels couldn't load",
+      "body": "Portico couldn't load Library Channels from this server. Try again.",
+      "icon": "status.library-channel",
+      "tone": "error",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "library-channel.playback-capacity": {
+      "title": "Channel is starting soon",
+      "body": "The server is busy preparing another Library Channel stream. Try again in a moment.",
+      "icon": "status.rate-limited",
+      "tone": "warning",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "action.back-to-portico": {
+      "text": "Back to Portico"
+    },
+    "action.download-all-episodes": {
+      "text": "Download all episodes"
+    },
+    "action.download-next-episode": {
+      "text": "Download next episode"
+    },
+    "action.pause": {
+      "text": "Pause"
+    },
+    "action.play-now": {
+      "text": "Play now"
+    },
+    "action.prepare-download": {
+      "text": "Prepare download"
+    },
+    "action.remove-download": {
+      "text": "Remove download"
+    },
+    "action.replay": {
+      "text": "Replay"
+    },
+    "action.still-watching": {
+      "text": "I'm still watching"
+    },
+    "action.stop-autoplay": {
+      "text": "Stop autoplay"
+    },
+    "action.close-player": {
+      "text": "Close player"
+    },
+    "action.close-download-options": {
+      "text": "Close download options"
+    },
+    "action.close-playback-diagnostics": {
+      "text": "Close playback diagnostics"
+    },
+    "action.close-queue": {
+      "text": "Close queue"
+    },
+    "action.collapse-player": {
+      "text": "Collapse player"
+    },
+    "action.dismiss-playback-message": {
+      "text": "Dismiss playback message"
+    },
+    "action.dismiss-skip-prompt": {
+      "text": "Dismiss skip {segment} prompt"
+    },
+    "action.expand-player": {
+      "text": "Expand player"
+    },
+    "action.exit-fullscreen": {
+      "text": "Exit fullscreen"
+    },
+    "action.forward-seconds": {
+      "text": "Forward {seconds} seconds"
+    },
+    "action.fullscreen": {
+      "text": "Fullscreen"
+    },
+    "action.move-queue-earlier": {
+      "text": "Move {title} earlier"
+    },
+    "action.move-queue-later": {
+      "text": "Move {title} later"
+    },
+    "action.mute": {
+      "text": "Mute"
+    },
+    "action.next-item": {
+      "text": "Next item"
+    },
+    "action.previous-item": {
+      "text": "Previous item"
+    },
+    "action.reload-queue": {
+      "text": "Reload queue"
+    },
+    "action.remove-from-queue": {
+      "text": "Remove {title} from queue"
+    },
+    "action.repeat-all": {
+      "text": "Repeat all"
+    },
+    "action.repeat-off": {
+      "text": "Repeat off"
+    },
+    "action.repeat-one": {
+      "text": "Repeat one"
+    },
+    "action.rewind-seconds": {
+      "text": "Rewind {seconds} seconds"
+    },
+    "action.show-technical-stats": {
+      "text": "Show technical stats"
+    },
+    "action.shuffle": {
+      "text": "Shuffle"
+    },
+    "action.skip-segment": {
+      "text": "Skip {segment}"
+    },
+    "action.unmute": {
+      "text": "Unmute"
+    },
+    "download.ready": {
+      "title": "Download ready",
+      "body": "The selected quality is ready for this device.",
+      "icon": "status.download",
+      "tone": "success",
+      "actions": [
+        "action.download",
+        "action.remove-download"
+      ]
+    },
+    "download.paused": {
+      "title": "Download paused",
+      "body": "Preparation is paused. Resume it when you are ready.",
+      "icon": "status.download",
+      "tone": "neutral",
+      "actions": [
+        "action.resume",
+        "action.cancel"
+      ]
+    },
+    "download.cancelled": {
+      "title": "Download cancelled",
+      "body": "Preparation stopped. You can retry or remove it from the queue.",
+      "icon": "status.download",
+      "tone": "neutral",
+      "actions": [
+        "action.retry",
+        "action.remove-download"
+      ]
+    },
+    "download.browser-started": {
+      "title": "Sent to browser",
+      "body": "Your browser is handling the file. Portico cannot confirm transfer progress or completion.",
+      "icon": "status.download",
+      "tone": "success"
+    },
+    "download.options-loading": {
+      "title": "Loading download options",
+      "body": "Portico is checking the original and prepared qualities available to this profile.",
+      "icon": "status.loading",
+      "tone": "neutral"
+    },
+    "download.options-failed": {
+      "title": "Download options couldn't load",
+      "body": "Portico couldn't load download options from this server. Try again.",
+      "icon": "status.download",
+      "tone": "error",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "download.options-empty": {
+      "title": "No download versions are available",
+      "body": "This item doesn't currently have an original or prepared version this profile can download.",
+      "icon": "status.empty",
+      "tone": "neutral"
+    },
+    "download.forbidden": {
+      "title": "Downloads aren't available to this profile",
+      "body": "This profile can inspect versions but doesn't have permission to download media from this server.",
+      "icon": "status.locked",
+      "tone": "warning"
+    },
+    "download.queue-loading": {
+      "title": "Loading downloads",
+      "body": "Portico is restoring the durable preparation queue.",
+      "icon": "status.loading",
+      "tone": "neutral"
+    },
+    "download.queue-failed": {
+      "title": "Downloads couldn't load",
+      "body": "Portico couldn't reach this server's download queue. Check the connection and try again.",
+      "icon": "status.offline",
+      "tone": "error",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "download.queue-empty": {
+      "title": "No downloads yet",
+      "body": "Choose Download on a movie, episode, season, track, or audiobook to prepare it here.",
+      "icon": "status.empty",
+      "tone": "neutral"
+    },
+    "download.original": {
+      "text": "Original"
+    },
+    "download.batch-started": {
+      "title": "Downloads added",
+      "body": "{accepted} items were added to the queue. {rejected} could not be prepared.",
+      "icon": "status.download",
+      "tone": "success"
+    },
+    "download.next-started": {
+      "title": "Next episode added",
+      "body": "The next available episode was added to Downloads.",
+      "icon": "status.download",
+      "tone": "success"
+    },
+    "download.page-eyebrow": {
+      "text": "Offline media"
+    },
+    "download.page-title": {
+      "text": "Downloads"
+    },
+    "download.page-description": {
+      "title": "Downloads",
+      "body": "Prepared versions stay in this durable queue across restarts. Browser transfer storage and limits remain under your browser and operating system.",
+      "icon": "status.storage",
+      "tone": "neutral"
+    },
+    "download.storage-usage": {
+      "text": "Prepared storage usage"
+    },
+    "download.storage-known": {
+      "text": "known prepared storage"
+    },
+    "download.storage-measuring-one": {
+      "text": "known prepared storage · 1 size still being measured"
+    },
+    "download.storage-measuring-many": {
+      "text": "known prepared storage · {count} sizes still being measured"
+    },
+    "download.size-estimated": {
+      "text": "about {size}"
+    },
+    "download.progress-percent": {
+      "text": "{progress}%"
+    },
+    "download.preparation-progress": {
+      "text": "{progress}% prepared"
+    },
+    "download.dialog-title": {
+      "text": "Download version"
+    },
+    "download.option-default": {
+      "text": "Default"
+    },
+    "download.option-unavailable": {
+      "text": "Unavailable"
+    },
+    "download.profile-video-kbps": {
+      "text": "{height}p · {bitrate} Kbps video"
+    },
+    "playback.preparing": {
+      "title": "Preparing playback",
+      "body": "Portico is authorizing and preparing this item for the current device and connection.",
+      "icon": "status.playback",
+      "tone": "neutral"
+    },
+    "playback.buffering": {
+      "title": "Buffering",
+      "body": "Portico is waiting for enough media to continue playback.",
+      "icon": "status.playback",
+      "tone": "neutral"
+    },
+    "playback.reconnecting": {
+      "title": "Reconnecting",
+      "body": "Portico is restoring the playback connection without losing your place.",
+      "icon": "status.playback",
+      "tone": "neutral"
+    },
+    "playback.up-next-countdown": {
+      "title": "Up next",
+      "body": "Playing in {seconds} {unit}",
+      "icon": "status.playback",
+      "tone": "neutral"
+    },
+    "playback.up-next-countdown-one": {
+      "title": "Up next",
+      "body": "Playing in 1 second",
+      "icon": "status.playback",
+      "tone": "neutral"
+    },
+    "playback.up-next-countdown-many": {
+      "title": "Up next",
+      "body": "Playing in {seconds} seconds",
+      "icon": "status.playback",
+      "tone": "neutral"
+    },
+    "playback.up-next-ready": {
+      "title": "Up next",
+      "body": "Ready to play",
+      "icon": "status.playback",
+      "tone": "neutral"
+    },
+    "playback.up-next": {
+      "title": "Up next",
+      "body": "The next item is ready to play.",
+      "icon": "status.playback",
+      "tone": "neutral",
+      "actions": [
+        "action.play-now",
+        "action.cancel",
+        "action.replay"
+      ]
+    },
+    "playback.up-next-failed": {
+      "title": "Up next isn't ready",
+      "body": "Portico couldn't prepare the next item. Try again or replay the current item.",
+      "icon": "status.playback",
+      "tone": "warning",
+      "actions": [
+        "action.retry",
+        "action.replay"
+      ]
+    },
+    "playback.autoplay-cancelled": {
+      "title": "Automatic playback cancelled",
+      "body": "The next item remains ready until you choose to play it or leave the player.",
+      "icon": "status.playback",
+      "tone": "neutral",
+      "actions": [
+        "action.play-next",
+        "action.replay"
+      ]
+    },
+    "playback.complete": {
+      "title": "You're all caught up",
+      "body": "Playback is complete.",
+      "icon": "status.playback",
+      "tone": "success",
+      "actions": [
+        "action.replay",
+        "action.close-player"
+      ]
+    },
+    "playback.direct-play": {
+      "title": "Direct Play",
+      "body": "This device can play the source without conversion.",
+      "icon": "status.playback",
+      "tone": "neutral"
+    },
+    "playback.direct-stream": {
+      "title": "Direct Stream",
+      "body": "The server is repackaging the source without converting compatible video.",
+      "icon": "status.playback",
+      "tone": "neutral"
+    },
+    "playback.transcode": {
+      "title": "Transcoding",
+      "body": "The server is creating a compatible stream for this device and connection.",
+      "icon": "status.playback",
+      "tone": "neutral"
+    },
+    "playback.still-watching": {
+      "title": "Still watching?",
+      "body": "Automatic playback is paused until you confirm.",
+      "icon": "status.playback",
+      "tone": "neutral",
+      "actions": [
+        "action.still-watching",
+        "action.cancel"
+      ]
+    },
+    "playback.remote-stopped": {
+      "title": "Playback stopped",
+      "body": "Playback was stopped from another authorized Portico device.",
+      "icon": "status.warning",
+      "tone": "warning"
+    },
+    "playback.recovery-network-stopped": {
+      "title": "Playback stopped",
+      "body": "The stream stopped responding after several reconnect attempts. Play the title again to start a new session.",
+      "icon": "status.warning",
+      "tone": "warning"
+    },
+    "playback.recovery-decode-stopped": {
+      "title": "Playback stopped",
+      "body": "The browser could not continue decoding this stream. Play the title again to start a new session.",
+      "icon": "status.warning",
+      "tone": "warning"
+    },
+    "playback.queue-update-failed": {
+      "title": "Queue update failed",
+      "body": "The queue could not be updated. Try again.",
+      "icon": "status.warning",
+      "tone": "warning"
+    },
+    "playback.queue-changed": {
+      "title": "Queue changed",
+      "body": "Queue changed on another device. Review the latest queue and try again.",
+      "icon": "status.warning",
+      "tone": "warning"
+    },
+    "playback.queue-changed-reload": {
+      "title": "Queue changed",
+      "body": "Queue changed on another device. Reload the queue before making more changes.",
+      "icon": "status.warning",
+      "tone": "warning",
+      "actions": [
+        "action.reload-queue"
+      ]
+    },
+    "playback.queue-refresh-failed": {
+      "title": "Queue refresh failed",
+      "body": "The queue could not be refreshed. Check the connection and try again.",
+      "icon": "status.warning",
+      "tone": "warning",
+      "actions": [
+        "action.reload-queue"
+      ]
+    },
+    "playback.closed-captions": {
+      "text": "Closed captions"
+    },
+    "playback.subtitle-number": {
+      "text": "Subtitle {number}"
+    },
+    "playback.queue-title": {
+      "text": "Queue"
+    },
+    "playback.version-title": {
+      "text": "Play version"
+    },
+    "playback.version-description": {
+      "text": "Choose which available version to play. Portico will still select the best compatible stream for this device."
+    },
+    "playback.queue-count-one": {
+      "text": "1 item"
+    },
+    "playback.queue-count-many": {
+      "text": "{count} items"
+    },
+    "playback.queue-now-playing": {
+      "text": "Now playing"
+    },
+    "playback.queue-empty": {
+      "title": "Queue empty",
+      "body": "Nothing else is queued.",
+      "icon": "status.empty",
+      "tone": "neutral"
+    },
+    "playback.live": {
+      "text": "Live"
+    },
+    "playback.watching-now": {
+      "text": "Watching now"
+    },
+    "playback.position": {
+      "text": "Playback position"
+    },
+    "playback.diagnostics-title": {
+      "text": "Playback diagnostics"
+    },
+    "playback.diagnostics-playback": {
+      "text": "Playback"
+    },
+    "playback.diagnostics-format": {
+      "text": "Format"
+    },
+    "playback.diagnostics-quality": {
+      "text": "Quality"
+    },
+    "playback.diagnostics-audio": {
+      "text": "Audio"
+    },
+    "playback.diagnostics-rate": {
+      "text": "Rate"
+    },
+    "playback.diagnostics-position": {
+      "text": "Position"
+    },
+    "playback.diagnostics-decision": {
+      "text": "Decision"
+    },
+    "playback.diagnostics-direct": {
+      "text": "Direct"
+    },
+    "playback.diagnostics-default": {
+      "text": "Default"
+    },
+    "playback.transport-controls": {
+      "text": "Transport controls"
+    },
+    "playback.utilities": {
+      "text": "Playback utilities"
+    },
+    "playback.menu-volume": {
+      "text": "Volume"
+    },
+    "playback.menu-lyrics": {
+      "text": "Lyrics"
+    },
+    "playback.menu-subtitles": {
+      "text": "Subtitles"
+    },
+    "playback.menu-chapters": {
+      "text": "Chapters"
+    },
+    "playback.menu-settings": {
+      "text": "Playback settings"
+    },
+    "playback.menu-queue": {
+      "text": "Queue"
+    },
+    "playback.subtitles-off": {
+      "text": "Off"
+    },
+    "playback.subtitle-track": {
+      "text": "Subtitle track"
+    },
+    "playback.subtitle-text-size": {
+      "text": "Text size"
+    },
+    "playback.subtitle-background": {
+      "text": "Background"
+    },
+    "playback.option-small": {
+      "text": "Small"
+    },
+    "playback.option-medium": {
+      "text": "Medium"
+    },
+    "playback.option-large": {
+      "text": "Large"
+    },
+    "playback.option-none": {
+      "text": "None"
+    },
+    "playback.option-subtle": {
+      "text": "Subtle"
+    },
+    "playback.option-solid": {
+      "text": "Solid"
+    },
+    "playback.chapter-count-one": {
+      "text": "1 chapter"
+    },
+    "playback.chapter-count-many": {
+      "text": "{count} chapters"
+    },
+    "playback.chapter-number": {
+      "text": "Chapter {number}"
+    },
+    "playback.setting-quality": {
+      "text": "Quality"
+    },
+    "playback.setting-audio": {
+      "text": "Audio"
+    },
+    "playback.setting-speed": {
+      "text": "Playback speed"
+    },
+    "playback.setting-autoplay": {
+      "text": "Autoplay next item"
+    },
+    "playback.setting-sleep-timer": {
+      "text": "Sleep timer"
+    },
+    "playback.speed-normal": {
+      "text": "Normal"
+    },
+    "playback.sleep-off": {
+      "text": "Off"
+    },
+    "playback.sleep-end": {
+      "text": "End of current item"
+    },
+    "playback.sleep-15-minutes": {
+      "text": "15 minutes"
+    },
+    "playback.sleep-30-minutes": {
+      "text": "30 minutes"
+    },
+    "playback.sleep-45-minutes": {
+      "text": "45 minutes"
+    },
+    "playback.sleep-60-minutes": {
+      "text": "60 minutes"
+    },
+    "playback.sleep-continues": {
+      "text": "Playback continues until you stop it."
+    },
+    "playback.sleep-stops-after-current": {
+      "text": "Stops after the current item."
+    },
+    "playback.sleep-stops-in": {
+      "text": "Stops in {duration}."
+    },
+    "playback.now-playing": {
+      "text": "Now playing {title}"
+    },
+    "playback.route-failed": {
+      "title": "Connection lost",
+      "body": "Portico lost its route to this server. Check the connection and try again.",
+      "icon": "status.offline",
+      "tone": "error",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "playback.source-failed": {
+      "title": "Source unavailable",
+      "body": "The media source for this title is not available right now.",
+      "icon": "status.playback",
+      "tone": "warning",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "playback.transcode-failed": {
+      "title": "Playback conversion failed",
+      "body": "The server could not prepare a compatible stream for this device.",
+      "icon": "status.playback",
+      "tone": "error",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "playback.decode-failed": {
+      "title": "This stream could not be played",
+      "body": "The browser could not decode the stream that the server provided.",
+      "icon": "status.playback",
+      "tone": "error",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "playback.start-failed": {
+      "title": "Playback could not start",
+      "body": "Portico could not prepare this title. Check the server connection and try again.",
+      "icon": "status.playback",
+      "tone": "error",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "watch-with-friends.reconnecting": {
+      "title": "Reconnecting to the group",
+      "body": "Playback is paused while Portico restores the group's authoritative controls.",
+      "icon": "status.playback",
+      "tone": "warning"
+    },
+    "watch-with-friends.revision-conflict": {
+      "title": "The group changed",
+      "body": "Portico kept the host's newest playback state. Your controls will refresh automatically.",
+      "icon": "status.playback",
+      "tone": "neutral"
+    },
+    "action.archive": {
+      "text": "Archive"
+    },
+    "action.back": {
+      "text": "Back"
+    },
+    "action.clear-all": {
+      "text": "Clear all"
+    },
+    "action.clearing-history": {
+      "text": "Clearing…"
+    },
+    "action.customize-rows": {
+      "text": "Customize rows"
+    },
+    "action.delete-account": {
+      "text": "Delete Portico Account"
+    },
+    "action.deleting-account": {
+      "text": "Deleting account…"
+    },
+    "action.done": {
+      "text": "Done"
+    },
+    "action.add-profile": {
+      "text": "Add profile"
+    },
+    "action.add-pin": {
+      "text": "Add PIN"
+    },
+    "action.mark-unread": {
+      "text": "Mark as unread"
+    },
+    "action.move-profile-down": {
+      "text": "Move {profileName} down"
+    },
+    "action.move-profile-up": {
+      "text": "Move {profileName} up"
+    },
+    "action.open-profile": {
+      "text": "Open profile"
+    },
+    "action.opening-profile": {
+      "text": "Opening…"
+    },
+    "action.remove-profile": {
+      "text": "Remove profile"
+    },
+    "action.remove-pin": {
+      "text": "Remove PIN"
+    },
+    "action.request-higher-quality": {
+      "text": "Request higher quality"
+    },
+    "action.resolve": {
+      "text": "Resolve"
+    },
+    "action.respond": {
+      "text": "Send response"
+    },
+    "action.send-message": {
+      "text": "Send message"
+    },
+    "action.send-notice": {
+      "text": "Send notice"
+    },
+    "action.sending-message": {
+      "text": "Sending…"
+    },
+    "action.save-changes": {
+      "text": "Save changes"
+    },
+    "action.save-pin": {
+      "text": "Save PIN"
+    },
+    "action.saving": {
+      "text": "Saving…"
+    },
+    "action.reset": {
+      "text": "Reset"
+    },
+    "action.sign-out": {
+      "text": "Sign out"
+    },
+    "action.unlock": {
+      "text": "Unlock"
+    },
+    "action.remember-profile": {
+      "text": "Remember this profile"
+    },
+    "action.revoke-profile-trust": {
+      "text": "Revoke automatic opening"
+    },
+    "account.delete-confirmation": {
+      "text": "Type DELETE to confirm"
+    },
+    "account.delete-description": {
+      "title": "Delete Portico Account",
+      "body": "Permanently delete your Portico Account, profiles, and Cloud-held account data. Media on servers is not deleted.",
+      "icon": "action.delete",
+      "tone": "warning"
+    },
+    "account.delete-failed": {
+      "title": "Account wasn't deleted",
+      "body": "Portico couldn't delete your account. Try again.",
+      "icon": "status.account",
+      "tone": "error",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "account.delete-owned-servers": {
+      "title": "Owned servers need attention",
+      "body": "Delete, transfer, or disconnect every server you own before deleting your Portico Account.",
+      "icon": "status.warning",
+      "tone": "warning"
+    },
+    "account.delete-password-invalid": {
+      "title": "Password wasn't accepted",
+      "body": "Enter your current Portico Account password to continue.",
+      "icon": "status.locked",
+      "tone": "error"
+    },
+    "account.delete-password-label": {
+      "text": "Current Portico Account password"
+    },
+    "account.delete-mfa-label": {
+      "text": "Authenticator or recovery code"
+    },
+    "account.delete-mfa-description": {
+      "text": "Required only when two-factor authentication is enabled."
+    },
+    "account.delete-ready": {
+      "title": "Delete this Portico Account?",
+      "body": "This cannot be undone. You will be signed out on this browser after the account is deleted.",
+      "icon": "status.warning",
+      "tone": "warning"
+    },
+    "account.deleted": {
+      "title": "Portico Account deleted",
+      "body": "This browser has been signed out and its saved access has been cleared.",
+      "icon": "status.success",
+      "tone": "success"
+    },
+    "account.load-failed": {
+      "title": "Account couldn't load",
+      "body": "Portico couldn't load your account details. Try again.",
+      "icon": "status.account",
+      "tone": "error",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "account.mfa-required": {
+      "title": "Verification required",
+      "body": "Enter a multi-factor authentication code to continue this account change.",
+      "icon": "status.locked",
+      "tone": "warning"
+    },
+    "account.mfa-invalid": {
+      "title": "Verification code wasn't accepted",
+      "body": "Check the authenticator or recovery code and try again.",
+      "icon": "status.locked",
+      "tone": "warning"
+    },
+    "account.invalid-display-name": {
+      "title": "Check the profile name",
+      "body": "Enter a valid profile name and try again.",
+      "icon": "status.profile",
+      "tone": "warning"
+    },
+    "account.save-failed": {
+      "title": "Account change wasn't saved",
+      "body": "Review the account information and try again.",
+      "icon": "status.account",
+      "tone": "error",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "account.saved": {
+      "title": "Account updated",
+      "body": "Your account changes were saved.",
+      "icon": "status.success",
+      "tone": "success"
+    },
+    "auth.primary-profile-pin-in-use": {
+      "title": "Keep the main profile PIN",
+      "body": "The main profile must keep its PIN while other profiles exist.",
+      "icon": "status.locked",
+      "tone": "warning"
+    },
+    "auth.profiles-managed-by-portico-account": {
+      "title": "Manage profiles through Portico Account",
+      "body": "These profiles and their PINs are owned by your Portico Account, not by this server.",
+      "icon": "status.profile",
+      "tone": "neutral"
+    },
+    "auth.automatic-profile-trust-required": {
+      "title": "Choose who's watching",
+      "body": "This device no longer has permission to open the last profile automatically.",
+      "icon": "status.profile",
+      "tone": "neutral"
+    },
+    "auth.automatic-profile-trust-failed": {
+      "title": "This profile wasn't remembered",
+      "body": "You can keep using the profile now, but this device will ask who is watching next time.",
+      "icon": "status.profile",
+      "tone": "warning"
+    },
+    "auth.client-update-required": {
+      "title": "Update Portico",
+      "body": "This version of Portico can’t complete sign in. Update the app, then try again.",
+      "icon": "status.warning",
+      "tone": "warning",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "auth.server-update-required": {
+      "title": "Server update required",
+      "body": "This version of Portico Server can’t connect to the app. Ask the server owner to update it.",
+      "icon": "status.warning",
+      "tone": "warning",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "feedback.category.buffering": {
+      "text": "It keeps buffering"
+    },
+    "feedback.category.higher-quality-request": {
+      "text": "Request higher quality"
+    },
+    "feedback.category.incorrect-media-information": {
+      "text": "Incorrect title or information"
+    },
+    "feedback.category.message-owner": {
+      "text": "Message to the server owner"
+    },
+    "feedback.category.other": {
+      "text": "Something else"
+    },
+    "feedback.category.playback-stopped": {
+      "text": "Playback stopped"
+    },
+    "feedback.category.quality-other": {
+      "text": "Another quality issue"
+    },
+    "feedback.category.wont-play": {
+      "text": "It won't play"
+    },
+    "feedback.category.wrong-audio": {
+      "text": "Wrong audio"
+    },
+    "feedback.category.wrong-subtitles": {
+      "text": "Wrong subtitles"
+    },
+    "feedback.category.wrong-video": {
+      "text": "Wrong video"
+    },
+    "feedback.checking": {
+      "title": "Checking message availability",
+      "body": "Portico is checking whether this profile can contact the server owner.",
+      "icon": "status.loading",
+      "tone": "neutral"
+    },
+    "feedback.conflict": {
+      "title": "This viewer message changed elsewhere",
+      "body": "Reload the latest message before changing its status or sending a response.",
+      "icon": "status.feedback",
+      "tone": "warning",
+      "actions": [
+        "action.reload"
+      ]
+    },
+    "feedback.dismissed": {
+      "title": "Message dismissed",
+      "body": "This message was removed from the server owner's active list.",
+      "icon": "status.feedback",
+      "tone": "neutral"
+    },
+    "feedback.empty": {
+      "title": "No viewer messages",
+      "body": "New viewer messages and problem reports will appear here.",
+      "icon": "status.feedback",
+      "tone": "neutral"
+    },
+    "feedback.invalid": {
+      "title": "Check your message",
+      "body": "Choose a message type and make sure the information fits the available fields, then try again.",
+      "icon": "status.feedback",
+      "tone": "warning"
+    },
+    "feedback.load-failed": {
+      "title": "Viewer messages couldn't load",
+      "body": "Portico couldn't load viewer messages. Try again.",
+      "icon": "status.feedback",
+      "tone": "error",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "feedback.loading": {
+      "title": "Loading viewer messages",
+      "body": "Portico is loading messages sent to this server.",
+      "icon": "status.loading",
+      "tone": "neutral"
+    },
+    "feedback.message-label": {
+      "text": "Your message"
+    },
+    "feedback.message-placeholder": {
+      "text": "Briefly describe what you noticed."
+    },
+    "feedback.message-placeholder-general": {
+      "text": "What would you like the server owner to know?"
+    },
+    "feedback.not-allowed": {
+      "title": "This message type isn't available",
+      "body": "This profile isn't allowed to send this type of message.",
+      "icon": "status.feedback",
+      "tone": "neutral"
+    },
+    "feedback.diagnostic.delivery": {
+      "text": "Delivery"
+    },
+    "feedback.diagnostic.device": {
+      "text": "Device"
+    },
+    "feedback.diagnostic.duplicates": {
+      "text": "Duplicates"
+    },
+    "feedback.diagnostic.media": {
+      "text": "Media"
+    },
+    "feedback.empty-filter": {
+      "title": "No {status} viewer messages",
+      "body": "Messages matching this filter will appear here.",
+      "icon": "status.feedback",
+      "tone": "neutral"
+    },
+    "feedback.kind.general": {
+      "text": "Message"
+    },
+    "feedback.kind.media": {
+      "text": "Media problem"
+    },
+    "feedback.kind.playback": {
+      "text": "Playback problem"
+    },
+    "feedback.kind.quality": {
+      "text": "Quality request"
+    },
+    "feedback.no-message": {
+      "text": "No additional message was included."
+    },
+    "feedback.private-response-label": {
+      "text": "Private response"
+    },
+    "feedback.private-response-placeholder": {
+      "text": "Optional response shown in this account's notifications"
+    },
+    "feedback.privacy": {
+      "text": "Portico includes the media ID and basic playback context when relevant, never raw logs or file paths. Messages are retained for up to {retentionDays} days."
+    },
+    "feedback.resolved": {
+      "title": "Message resolved",
+      "body": "The server owner marked this message as resolved.",
+      "icon": "status.success",
+      "tone": "success"
+    },
+    "feedback.response-failed": {
+      "title": "Response wasn't sent",
+      "body": "The viewer has not been notified. Try sending the response again.",
+      "icon": "status.feedback",
+      "tone": "error",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "feedback.response-sent": {
+      "title": "Response sent",
+      "body": "The viewer will see your response in their notifications.",
+      "icon": "status.success",
+      "tone": "success"
+    },
+    "feedback.status.dismissed": {
+      "text": "Dismissed"
+    },
+    "feedback.status.all": {
+      "text": "All"
+    },
+    "feedback.status.new": {
+      "text": "New"
+    },
+    "feedback.status.read": {
+      "text": "Read"
+    },
+    "feedback.status.resolved": {
+      "text": "Resolved"
+    },
+    "feedback.status-updated": {
+      "title": "Message status updated",
+      "body": "The viewer message now uses the selected status.",
+      "icon": "status.success",
+      "tone": "success"
+    },
+    "feedback.viewer-messages-title": {
+      "text": "Viewer messages"
+    },
+    "feedback.viewer-messages-description": {
+      "text": "Messages, problem reports, and quality requests sent to this server."
+    },
+    "feedback.viewer-messages-page-description": {
+      "text": "Review viewer feedback and send private operational notices."
+    },
+    "feedback.viewer-messages-unavailable": {
+      "title": "Viewer messages are unavailable",
+      "body": "Reconnect to this server and try again.",
+      "icon": "status.feedback",
+      "tone": "error",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "feedback.reporter.hosted": {
+      "text": "Portico Account member"
+    },
+    "feedback.reporter.local": {
+      "text": "Local account"
+    },
+    "feedback.what-happened": {
+      "text": "What happened?"
+    },
+    "feedback.owner-context": {
+      "text": "Server owner"
+    },
+    "feedback.improvement-context": {
+      "text": "Help improve this server"
+    },
+    "feedback.heading.message": {
+      "text": "Send a message"
+    },
+    "feedback.heading.quality": {
+      "text": "Request higher quality"
+    },
+    "feedback.heading.quality-media": {
+      "text": "Request higher quality for {mediaTitle}"
+    },
+    "feedback.heading.report": {
+      "text": "Report a problem"
+    },
+    "feedback.heading.report-media": {
+      "text": "Report a problem with {mediaTitle}"
+    },
+    "feedback.close-label": {
+      "text": "Close message dialog"
+    },
+    "auth.server-session-load-failed": {
+      "title": "Couldn't connect to this server",
+      "body": "Portico couldn't open your session. Check the connection and try again.",
+      "icon": "status.server",
+      "tone": "error",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "auth.browser-accounts-load-failed": {
+      "title": "Browser accounts couldn't load",
+      "body": "Portico couldn't read the accounts remembered on this browser. Try again.",
+      "icon": "status.account",
+      "tone": "error",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "auth.account-switch-failed": {
+      "title": "Account couldn't open",
+      "body": "The current account is still active. Try opening the other account again.",
+      "icon": "status.account",
+      "tone": "error",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "auth.sign-in-failed": {
+      "title": "Sign-in didn't finish",
+      "body": "Your account wasn't opened. Check the details and try again.",
+      "icon": "status.account",
+      "tone": "error",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "auth.owner-setup-failed": {
+      "title": "Server owner wasn't created",
+      "body": "The server is still waiting for its owner account. Review the details and try again.",
+      "icon": "status.account",
+      "tone": "error",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "auth.portico-setup-failed": {
+      "title": "Portico Account setup didn't start",
+      "body": "No account changes were made. Check the connection and try again.",
+      "icon": "status.account",
+      "tone": "error",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "settings.load-failed": {
+      "title": "{sectionName} is unavailable",
+      "body": "Portico couldn't load this information. Try again.",
+      "icon": "status.error",
+      "tone": "error",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "settings.action-failed": {
+      "title": "That change didn't finish",
+      "body": "Portico couldn't {actionName}. Nothing was changed. Try again.",
+      "icon": "status.error",
+      "tone": "error",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "settings.title": {
+      "text": "Settings"
+    },
+    "settings.label.server": {
+      "text": "Server"
+    },
+    "settings.no-server-connected": {
+      "text": "No server connected"
+    },
+    "auth.authority.local": {
+      "text": "Server Only Authentication"
+    },
+    "auth.authority.hosted": {
+      "text": "Portico Account"
+    },
+    "settings.section.account": {
+      "text": "Account"
+    },
+    "settings.section.playback": {
+      "text": "Playback"
+    },
+    "settings.section.downloads": {
+      "text": "Downloads"
+    },
+    "settings.section.accessibility": {
+      "text": "Accessibility"
+    },
+    "settings.account.server-description": {
+      "text": "Choose another server shared with this account"
+    },
+    "settings.value.connected": {
+      "text": "Connected"
+    },
+    "settings.value.unavailable": {
+      "text": "Unavailable"
+    },
+    "settings.value.automatic": {
+      "text": "Automatic"
+    },
+    "settings.value.system-setting": {
+      "text": "System setting"
+    },
+    "preferences.seek-interval-label": {
+      "text": "Skip interval"
+    },
+    "preferences.seek-interval-description": {
+      "text": "Changes the back and forward controls in the player."
+    },
+    "preferences.cellular-streaming-label": {
+      "text": "Stream on cellular"
+    },
+    "preferences.cellular-streaming-description": {
+      "text": "When disabled, starting a stream on cellular data is blocked."
+    },
+    "preferences.playback-quality-label": {
+      "text": "Playback quality"
+    },
+    "preferences.playback-quality-description": {
+      "text": "Portico automatically chooses the best format for this device."
+    },
+    "preferences.download-wifi-only-label": {
+      "text": "Download on Wi-Fi only"
+    },
+    "preferences.download-wifi-only-description": {
+      "text": "Prevents new background downloads from using cellular data."
+    },
+    "preferences.download-storage-limit-label": {
+      "text": "Download storage limit"
+    },
+    "preferences.download-storage-limit-description": {
+      "text": "Limits how much storage Portico can reserve for downloaded media on this device."
+    },
+    "preferences.download-delete-watched-label": {
+      "text": "Delete watched downloads"
+    },
+    "preferences.download-delete-watched-description": {
+      "text": "Removes completed downloads after this profile finishes watching them."
+    },
+    "preferences.download-next-episode-label": {
+      "text": "Download next episode"
+    },
+    "preferences.download-next-episode-description": {
+      "text": "After a downloaded episode is watched, add the next available episode on this device."
+    },
+    "preferences.accessibility-motion-label": {
+      "text": "Reduced motion"
+    },
+    "preferences.accessibility-motion-description": {
+      "text": "Motion preferences follow the Apple system accessibility setting."
+    },
+    "preferences.accessibility-captions-label": {
+      "text": "Caption appearance"
+    },
+    "preferences.accessibility-captions-description": {
+      "text": "Subtitle appearance follows the caption style configured on this Apple device."
+    },
+    "catalog.action-failed": {
+      "title": "That library change didn't finish",
+      "body": "Portico couldn't {actionName}. Nothing was changed. Try again.",
+      "icon": "status.library",
+      "tone": "error",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "catalog.operation-queue-failed": {
+      "title": "{operationName} wasn't queued",
+      "body": "The server did not start this operation. Try again.",
+      "icon": "status.library",
+      "tone": "error",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "media.load-failed": {
+      "title": "{featureName} is unavailable",
+      "body": "Portico couldn't load this media information. Try again.",
+      "icon": "status.library",
+      "tone": "error",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "media.update-failed": {
+      "title": "{featureName} wasn't updated",
+      "body": "Review the media information and try again.",
+      "icon": "status.library",
+      "tone": "error",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "media.search-failed": {
+      "title": "{featureName} search is unavailable",
+      "body": "Portico couldn't search this source. Try again.",
+      "icon": "status.library",
+      "tone": "error",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "live-tv.load-failed": {
+      "title": "{featureName} couldn't load",
+      "body": "Portico couldn't load this Live TV information. Try again.",
+      "icon": "status.live-tv",
+      "tone": "error",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "live-tv.action-failed": {
+      "title": "That Live TV change didn't finish",
+      "body": "Portico couldn't {actionName}. Nothing was changed. Try again.",
+      "icon": "status.live-tv",
+      "tone": "error",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "watch-with-friends.load-failed": {
+      "title": "Watch Together couldn't load",
+      "body": "Portico couldn't open this watch room. Try again.",
+      "icon": "status.profile",
+      "tone": "error",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "watch-with-friends.action-failed": {
+      "title": "That Watch Together action didn't finish",
+      "body": "Portico couldn't {actionName}. Try again.",
+      "icon": "status.profile",
+      "tone": "error",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "watch-with-friends.connection-failed": {
+      "title": "Watch Together was disconnected",
+      "body": "Live room updates stopped. Reconnect before continuing together.",
+      "icon": "status.offline",
+      "tone": "warning",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "search.load-failed": {
+      "title": "Search is unavailable",
+      "body": "Portico couldn't search this server. Try again.",
+      "icon": "action.search",
+      "tone": "error",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "search.more-failed": {
+      "title": "More results couldn't load",
+      "body": "The results already shown are still available. Try loading more again.",
+      "icon": "action.search",
+      "tone": "error",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "notification.account-audience": {
+      "text": "Account"
+    },
+    "notification.description": {
+      "text": "Updates from this server and replies to messages you've sent."
+    },
+    "notification.fallback-title": {
+      "text": "Notification"
+    },
+    "notification.for-you-audience": {
+      "text": "For you"
+    },
+    "notification.inbox-context": {
+      "text": "Inbox"
+    },
+    "notification.loading": {
+      "title": "Loading notifications",
+      "body": "Portico is checking this profile's inbox.",
+      "icon": "status.loading",
+      "tone": "neutral"
+    },
+    "notification.notice-sent": {
+      "title": "Operational notice sent",
+      "body": "The selected recipient will see the notice in Portico.",
+      "icon": "status.success",
+      "tone": "success"
+    },
+    "notification.owner-notice-title": {
+      "text": "Send an operational notice"
+    },
+    "notification.owner-notice-description": {
+      "text": "Send a private plain-text notification to one viewing profile or Portico account."
+    },
+    "notification.owner-notice-privacy": {
+      "text": "The recipient sees this message and its severity. Portico does not attach server logs, file paths, or other account details."
+    },
+    "notification.recipients-loading": {
+      "title": "Loading message recipients",
+      "body": "Portico is loading the profiles and accounts that can receive a notice.",
+      "icon": "status.loading",
+      "tone": "neutral"
+    },
+    "notification.recipients-empty": {
+      "title": "No message recipients",
+      "body": "Active profiles and accounts will appear here.",
+      "icon": "status.empty",
+      "tone": "neutral"
+    },
+    "notification.send-failed": {
+      "title": "Notice wasn't sent",
+      "body": "No recipient was notified. Review the notice and try again.",
+      "icon": "status.notification",
+      "tone": "error",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "notification.notice.audience-label": {
+      "text": "Audience"
+    },
+    "notification.notice.audience-profile": {
+      "text": "Viewing profile"
+    },
+    "notification.notice.audience-account-admin": {
+      "text": "Portico account"
+    },
+    "notification.notice.profile-label": {
+      "text": "Profile"
+    },
+    "notification.notice.account-label": {
+      "text": "Account"
+    },
+    "notification.notice.choose-profile": {
+      "text": "Choose a profile"
+    },
+    "notification.notice.choose-account": {
+      "text": "Choose an account"
+    },
+    "notification.notice.severity-label": {
+      "text": "Severity"
+    },
+    "notification.notice.severity-information": {
+      "text": "Information"
+    },
+    "notification.notice.severity-warning": {
+      "text": "Warning"
+    },
+    "notification.notice.severity-error": {
+      "text": "Error"
+    },
+    "notification.notice.message-label": {
+      "text": "Message"
+    },
+    "notification.account-authority.hosted": {
+      "text": "Portico Account"
+    },
+    "notification.account-authority.local": {
+      "text": "Local account"
+    },
+    "notification.recipients-failed": {
+      "title": "Notice recipients couldn't load",
+      "body": "Portico couldn't load the people who can receive this notice. Try again.",
+      "icon": "status.notification",
+      "tone": "error",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "notification.mark-all-read": {
+      "text": "Mark all read"
+    },
+    "notification.title": {
+      "text": "Notifications"
+    },
+    "notification.unread-label": {
+      "text": "Notifications, {count} unread"
+    },
+    "notification.account-security": {
+      "title": "Account security update",
+      "body": "Review an important change to your Portico Account.",
+      "icon": "status.locked",
+      "tone": "warning"
+    },
+    "notification.archive-failed": {
+      "title": "Notification wasn't archived",
+      "body": "The notification is still in your inbox. Try again.",
+      "icon": "status.notification",
+      "tone": "error",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "notification.download-failed": {
+      "title": "Download failed",
+      "body": "A download couldn't finish on this device.",
+      "icon": "status.download",
+      "tone": "error"
+    },
+    "notification.download-ready": {
+      "title": "Download ready",
+      "body": "Your download is ready to watch offline.",
+      "icon": "status.download",
+      "tone": "success"
+    },
+    "notification.dvr-conflict": {
+      "title": "Recording conflict",
+      "body": "Two recordings need the same tuner or storage at the same time.",
+      "icon": "status.warning",
+      "tone": "warning"
+    },
+    "notification.dvr-recording-failed": {
+      "title": "Recording failed",
+      "body": "A scheduled recording couldn't be completed.",
+      "icon": "status.error",
+      "tone": "error"
+    },
+    "notification.feedback-received": {
+      "title": "New viewer message",
+      "body": "A viewer sent a message to the server owner.",
+      "icon": "status.feedback",
+      "tone": "neutral"
+    },
+    "notification.feedback-updated": {
+      "title": "Server owner response",
+      "body": "The server owner responded to one of your messages.",
+      "icon": "status.feedback",
+      "tone": "neutral"
+    },
+    "notification.library-channel-degraded": {
+      "title": "Library Channel needs attention",
+      "body": "A Library Channel is using fallback programming.",
+      "icon": "status.library-channel",
+      "tone": "warning"
+    },
+    "notification.membership-changed": {
+      "title": "Server access changed",
+      "body": "The server owner changed this account's access.",
+      "icon": "status.server",
+      "tone": "neutral"
+    },
+    "notification.offline": {
+      "title": "Notifications are offline",
+      "body": "Reconnect to refresh notifications. Already loaded notifications remain available.",
+      "icon": "status.offline",
+      "tone": "warning"
+    },
+    "notification.receipt-failed": {
+      "title": "Notification change wasn't saved",
+      "body": "The notification may still appear unread. Refresh and try again.",
+      "icon": "status.notification",
+      "tone": "error",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "notification.receipt-conflict": {
+      "title": "Notifications changed elsewhere",
+      "body": "Refresh your notifications before making that change again.",
+      "icon": "status.notification",
+      "tone": "warning",
+      "actions": [
+        "action.reload"
+      ]
+    },
+    "notification.server-message": {
+      "title": "Message from your server owner",
+      "body": "Open the notification to read the message.",
+      "icon": "status.notification",
+      "tone": "neutral"
+    },
+    "profiles.created": {
+      "title": "Profile created",
+      "body": "The new profile is ready to use.",
+      "icon": "status.success",
+      "tone": "success"
+    },
+    "profiles.choose-title": {
+      "text": "Choose a profile"
+    },
+    "profiles.choose-description": {
+      "text": "A profile keeps viewing history and preferences separate for each person."
+    },
+    "profiles.label.profile": {
+      "text": "Profile"
+    },
+    "profiles.label.account-login": {
+      "text": "Account login"
+    },
+    "profiles.label.account-password": {
+      "text": "Account password"
+    },
+    "profiles.label.portico-account-password": {
+      "text": "Portico Account password"
+    },
+    "profiles.label.profile-pin": {
+      "text": "Profile PIN"
+    },
+    "profiles.label.optional-pin": {
+      "text": "Optional four-digit PIN"
+    },
+    "profiles.label.new-name": {
+      "text": "New profile name"
+    },
+    "profiles.loading": {
+      "title": "Loading profiles",
+      "body": "Portico is loading the profiles for this account.",
+      "icon": "status.loading",
+      "tone": "neutral"
+    },
+    "profiles.management-unlocked": {
+      "title": "Profile management unlocked",
+      "body": "You can manage profiles for the next few minutes.",
+      "icon": "status.success",
+      "tone": "success"
+    },
+    "profiles.management-expired": {
+      "title": "Profile management locked",
+      "body": "Your confirmation expired. Confirm the primary profile again to continue.",
+      "icon": "status.locked",
+      "tone": "warning"
+    },
+    "profiles.manage-title": {
+      "text": "Manage profiles"
+    },
+    "profiles.manage-description": {
+      "text": "Primary-profile confirmation is required before changing profiles or PINs."
+    },
+    "profiles.confirm-primary-title": {
+      "text": "Confirm the primary profile"
+    },
+    "profiles.confirm-primary-local": {
+      "text": "Enter its PIN, or the local account password if it has no PIN."
+    },
+    "profiles.confirm-primary-hosted": {
+      "text": "Enter its PIN, or your Portico Account password if it has no PIN."
+    },
+    "profiles.opened": {
+      "title": "Profile opened",
+      "body": "Viewing is now using the selected profile.",
+      "icon": "status.success",
+      "tone": "success"
+    },
+    "profiles.order-saved": {
+      "title": "Profile order saved",
+      "body": "The profile chooser will use the new order.",
+      "icon": "status.success",
+      "tone": "success"
+    },
+    "profiles.pin-removed": {
+      "title": "Profile PIN removed",
+      "body": "This profile no longer asks for a PIN.",
+      "icon": "status.success",
+      "tone": "success"
+    },
+    "profiles.pin-saved": {
+      "title": "Profile PIN saved",
+      "body": "The new four-digit PIN is active.",
+      "icon": "status.success",
+      "tone": "success"
+    },
+    "profiles.removed": {
+      "title": "Profile removed",
+      "body": "The profile is no longer available on this account.",
+      "icon": "status.success",
+      "tone": "success"
+    },
+    "profiles.remove-confirmation-local": {
+      "text": "This removes {profileName} and its saved preferences from this server. It cannot be undone."
+    },
+    "profiles.remove-confirmation-hosted": {
+      "text": "This removes {profileName} from your Portico Account and connected servers. It cannot be undone."
+    },
+    "profiles.remembered": {
+      "title": "Profile remembered",
+      "body": "This browser can open this profile automatically while its trust remains valid.",
+      "icon": "status.success",
+      "tone": "success"
+    },
+    "profiles.trust-revoked": {
+      "title": "Automatic profile opening revoked",
+      "body": "This browser must verify the profile again before opening it automatically.",
+      "icon": "status.success",
+      "tone": "success"
+    },
+    "profiles.status.current": {
+      "text": "Current"
+    },
+    "profiles.status.no-pin": {
+      "text": "No PIN"
+    },
+    "profiles.status.pin-protected": {
+      "text": "PIN protected"
+    },
+    "profiles.status.primary": {
+      "text": "Primary profile"
+    },
+    "profiles.selection-title": {
+      "text": "Profile selection"
+    },
+    "profiles.selection-description": {
+      "text": "Choose what happens after this account is opened on this browser."
+    },
+    "profiles.selection-when-open": {
+      "text": "When Portico opens"
+    },
+    "profiles.selection-behavior-description": {
+      "text": "Last used opens the most recent profile. Ask every time always shows profile choices."
+    },
+    "profiles.selection-last-used": {
+      "text": "Open last used profile"
+    },
+    "profiles.selection-ask": {
+      "text": "Ask every time"
+    },
+    "profiles.remember-title": {
+      "text": "Remember this profile"
+    },
+    "profiles.remember-description": {
+      "text": "Allows this exact profile and browser installation to reopen its current server session without asking for the profile PIN. Changing the PIN or revoking access invalidates it."
+    },
+    "operational-alerts.explainer": {
+      "title": "Operational alerts",
+      "body": "Choose which server health and maintenance events should create owner alerts.",
+      "icon": "status.warning",
+      "tone": "neutral"
+    },
+    "preferences.card-size-description": {
+      "text": "Scale poster and album cards while preserving the selected library layout."
+    },
+    "preferences.card-size-label": {
+      "text": "Card size"
+    },
+    "preferences.clock-description": {
+      "text": "Use the system clock or force 12-hour or 24-hour time."
+    },
+    "preferences.clock-label": {
+      "text": "Clock"
+    },
+    "preferences.clock-option-12-hour": {
+      "text": "12-hour"
+    },
+    "preferences.clock-option-24-hour": {
+      "text": "24-hour"
+    },
+    "preferences.clock-option-system": {
+      "text": "System default"
+    },
+    "preferences.crossfade-description": {
+      "text": "Overlap consecutive tracks by this many seconds."
+    },
+    "preferences.crossfade-label": {
+      "text": "Crossfade"
+    },
+    "preferences.default-speed-description": {
+      "text": "Speed used when a new video or audiobook starts."
+    },
+    "preferences.default-speed-label": {
+      "text": "Default playback speed"
+    },
+    "preferences.diagnostics-description": {
+      "text": "Expose technical playback details for troubleshooting in the web player."
+    },
+    "preferences.diagnostics-label": {
+      "text": "Playback diagnostics"
+    },
+    "preferences.gapless-description": {
+      "text": "Remove silence between supported consecutive tracks."
+    },
+    "preferences.gapless-label": {
+      "text": "Gapless playback"
+    },
+    "preferences.hidden-count": {
+      "text": "{count} hidden"
+    },
+    "preferences.history-clear-confirmation": {
+      "text": "Deletes plays and resume positions for this account. This cannot be undone."
+    },
+    "preferences.history-clear-label": {
+      "text": "Clear watch history"
+    },
+    "preferences.history-cleared": {
+      "title": "Watch history cleared",
+      "body": "Recorded plays and resume positions were removed from this account.",
+      "icon": "status.success",
+      "tone": "success"
+    },
+    "preferences.history-description": {
+      "text": "Permanent controls for recorded playback history."
+    },
+    "preferences.history-title": {
+      "text": "Watch history"
+    },
+    "preferences.home-layout-description": {
+      "text": "Control row visibility and priority using the rows currently published by this server."
+    },
+    "preferences.home-layout-saved": {
+      "title": "Home layout saved",
+      "body": "Your Home rows were updated for this profile.",
+      "icon": "status.success",
+      "tone": "success"
+    },
+    "preferences.home-layout-title": {
+      "text": "Home layout"
+    },
+    "preferences.home-order-custom": {
+      "text": "custom order"
+    },
+    "preferences.home-order-server": {
+      "text": "server order"
+    },
+    "preferences.home-rows-count": {
+      "text": "{count} Home rows available"
+    },
+    "preferences.home-rows-loading": {
+      "text": "Loading Home rows"
+    },
+    "preferences.include-watch-with-friends-description": {
+      "text": "Allow this profile to appear in Watch With Friends discovery and joining."
+    },
+    "preferences.include-watch-with-friends-label": {
+      "text": "Watch With Friends discovery"
+    },
+    "preferences.language-progress-description": {
+      "text": "Track choices and watched-state thresholds shared across Portico applications."
+    },
+    "preferences.language-progress-title": {
+      "text": "Language and progress"
+    },
+    "preferences.libraries-empty": {
+      "title": "No libraries are available",
+      "body": "Libraries shared with this account will appear here.",
+      "icon": "status.empty",
+      "tone": "neutral"
+    },
+    "preferences.libraries-load-failed": {
+      "title": "Libraries couldn't load",
+      "body": "Portico couldn't read the libraries available to this account. Try again.",
+      "icon": "status.preferences",
+      "tone": "error",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "preferences.libraries-loading": {
+      "title": "Loading libraries",
+      "body": "Reading the libraries available to this account.",
+      "icon": "status.loading",
+      "tone": "neutral"
+    },
+    "preferences.library-item-count": {
+      "text": "{count} {unit}"
+    },
+    "preferences.library-status-available": {
+      "text": "Available"
+    },
+    "preferences.library-status-pinned": {
+      "text": "Pinned"
+    },
+    "preferences.load-failed": {
+      "title": "Preferences couldn't load",
+      "body": "Portico couldn't load the saved preferences. Try again.",
+      "icon": "status.preferences",
+      "tone": "error",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "preferences.loading-personal": {
+      "title": "Loading personal preferences",
+      "body": "Portico is loading the choices saved for this profile.",
+      "icon": "status.loading",
+      "tone": "neutral"
+    },
+    "preferences.loading-search": {
+      "title": "Loading search history preferences",
+      "body": "Portico is loading the recent-search choices saved for this profile.",
+      "icon": "status.loading",
+      "tone": "neutral"
+    },
+    "preferences.loading-web-appearance": {
+      "title": "Loading web appearance",
+      "body": "Portico is loading this browser's appearance preferences.",
+      "icon": "status.loading",
+      "tone": "neutral"
+    },
+    "preferences.loading-web-player": {
+      "title": "Loading web player preferences",
+      "body": "Portico is loading this browser's playback preferences.",
+      "icon": "status.loading",
+      "tone": "neutral"
+    },
+    "preferences.locale-description": {
+      "text": "Language and regional formatting code."
+    },
+    "preferences.locale-label": {
+      "text": "Locale"
+    },
+    "preferences.music-autoplay-description": {
+      "text": "Continue with related tracks after the queue ends."
+    },
+    "preferences.music-autoplay-label": {
+      "text": "Autoplay"
+    },
+    "preferences.music-description": {
+      "text": "Defaults applied when a new music queue starts."
+    },
+    "preferences.music-title": {
+      "text": "Music"
+    },
+    "preferences.option-large": {
+      "text": "Large"
+    },
+    "preferences.option-medium": {
+      "text": "Medium"
+    },
+    "preferences.option-none": {
+      "text": "None"
+    },
+    "preferences.option-normal": {
+      "text": "Normal"
+    },
+    "preferences.option-original": {
+      "text": "Original"
+    },
+    "preferences.option-english": {
+      "text": "English"
+    },
+    "preferences.option-french": {
+      "text": "French"
+    },
+    "preferences.option-spanish": {
+      "text": "Spanish"
+    },
+    "preferences.option-off": {
+      "text": "Off"
+    },
+    "preferences.option-small": {
+      "text": "Small"
+    },
+    "preferences.option-solid": {
+      "text": "Solid"
+    },
+    "preferences.option-subtle": {
+      "text": "Subtle"
+    },
+    "preferences.pause-history-description": {
+      "text": "Do not record new plays or resume positions for this profile."
+    },
+    "preferences.pause-history-label": {
+      "text": "Pause watch history"
+    },
+    "preferences.personal-playback-audio-description": {
+      "text": "Language code used when a matching track exists."
+    },
+    "preferences.personal-playback-audio-label": {
+      "text": "Preferred audio"
+    },
+    "preferences.personal-playback-subtitles-description": {
+      "text": "Language code used when subtitles are selected."
+    },
+    "preferences.personal-playback-subtitles-label": {
+      "text": "Preferred subtitles"
+    },
+    "preferences.pinned-libraries-description": {
+      "text": "Choose the libraries kept within immediate reach in the main navigation."
+    },
+    "preferences.pinned-libraries-title": {
+      "text": "Pinned libraries"
+    },
+    "preferences.playback-autoplay-description": {
+      "text": "Begin the next episode or queue item when the current item finishes."
+    },
+    "preferences.playback-autoplay-label": {
+      "text": "Autoplay next item"
+    },
+    "preferences.recent-search-remove": {
+      "text": "Remove {query} from recent searches"
+    },
+    "preferences.recent-search-saved-count": {
+      "text": "{count} saved"
+    },
+    "preferences.recent-searches-empty": {
+      "text": "No saved searches"
+    },
+    "preferences.recent-searches-title": {
+      "text": "Recent searches"
+    },
+    "preferences.reduce-motion-description": {
+      "text": "Remove nonessential transitions and animated movement in the web application."
+    },
+    "preferences.reduce-motion-label": {
+      "text": "Reduce motion"
+    },
+    "preferences.region-format-description": {
+      "text": "Display formatting shared by Portico applications."
+    },
+    "preferences.region-format-title": {
+      "text": "Region and format"
+    },
+    "preferences.search-history-description": {
+      "text": "Private recent searches used for faster return visits in the web application."
+    },
+    "preferences.search-history-loading-description": {
+      "text": "Private recent searches stored with this web profile."
+    },
+    "preferences.search-history-title": {
+      "text": "Search history"
+    },
+    "preferences.search-remember-description": {
+      "text": "Keep recent search terms with this profile. Search results and media activity are not stored here."
+    },
+    "preferences.search-remember-label": {
+      "text": "Remember recent searches"
+    },
+    "preferences.seconds-option": {
+      "text": "{seconds} seconds"
+    },
+    "preferences.show-activity-description": {
+      "text": "Allow your activity and presence to appear in member-facing surfaces."
+    },
+    "preferences.show-activity-label": {
+      "text": "Show activity to members"
+    },
+    "preferences.skip-back-description": {
+      "text": "Seconds moved by the player's backward skip control."
+    },
+    "preferences.skip-back-label": {
+      "text": "Skip backward"
+    },
+    "preferences.skip-forward-description": {
+      "text": "Seconds moved by the player's forward skip control."
+    },
+    "preferences.skip-forward-label": {
+      "text": "Skip forward"
+    },
+    "preferences.skip-prompts-description": {
+      "text": "Offer skip actions when intro, recap, or credits markers are available."
+    },
+    "preferences.skip-prompts-label": {
+      "text": "Skip prompts"
+    },
+    "preferences.started-threshold-description": {
+      "text": "Progress required before an item appears in Continue Watching."
+    },
+    "preferences.started-threshold-label": {
+      "text": "Started threshold"
+    },
+    "preferences.subtitle-background-description": {
+      "text": "Contrast surface shown behind subtitle text."
+    },
+    "preferences.subtitle-background-label": {
+      "text": "Subtitle background"
+    },
+    "preferences.subtitle-size-description": {
+      "text": "Relative subtitle text size without changing the rest of the interface."
+    },
+    "preferences.subtitle-size-label": {
+      "text": "Subtitle size"
+    },
+    "preferences.subtitles-lyrics-description": {
+      "text": "Text presentation used by the web player."
+    },
+    "preferences.subtitles-lyrics-title": {
+      "text": "Subtitles and lyrics"
+    },
+    "preferences.synced-lyrics-description": {
+      "text": "Show synchronized lyric timing when the active track provides it."
+    },
+    "preferences.synced-lyrics-label": {
+      "text": "Synced lyrics"
+    },
+    "preferences.time-zone-description": {
+      "text": "IANA time zone used for dates and scheduled media."
+    },
+    "preferences.time-zone-label": {
+      "text": "Time zone"
+    },
+    "preferences.unsaved": {
+      "text": "Unsaved changes"
+    },
+    "preferences.up-next-description": {
+      "text": "Delay before autoplay begins. Choose Off to wait for an explicit selection."
+    },
+    "preferences.up-next-label": {
+      "text": "Up Next countdown"
+    },
+    "preferences.up-to-date": {
+      "text": "Settings are up to date"
+    },
+    "preferences.visibility-description": {
+      "text": "Control how this server uses and shares your activity."
+    },
+    "preferences.visibility-title": {
+      "text": "History and visibility"
+    },
+    "preferences.watched-threshold-description": {
+      "text": "Progress required before an item is marked watched."
+    },
+    "preferences.watched-threshold-label": {
+      "text": "Watched threshold"
+    },
+    "preferences.web-appearance-description": {
+      "text": "Backdrop, density, and motion for the Portico web application."
+    },
+    "preferences.web-appearance-loading-description": {
+      "text": "Backdrop, density, motion, navigation, and Home layout for this browser."
+    },
+    "preferences.web-appearance-title": {
+      "text": "Web appearance"
+    },
+    "preferences.web-backdrop-description": {
+      "text": "Show contextual artwork behind Home and media detail surfaces."
+    },
+    "preferences.web-backdrop-label": {
+      "text": "Backdrop artwork"
+    },
+    "preferences.web-player-controls-description": {
+      "text": "Skip intervals and automatic playback behavior in this browser."
+    },
+    "preferences.web-player-controls-title": {
+      "text": "Web player controls"
+    },
+    "preferences.web-player-description": {
+      "text": "Controls, playback behavior, subtitles, and lyrics in this browser."
+    },
+    "preferences.web-player-title": {
+      "text": "Web player"
+    },
+    "preferences.conflict": {
+      "title": "These preferences changed elsewhere",
+      "body": "Reload the latest preferences, then make your change again.",
+      "icon": "status.preferences",
+      "tone": "warning",
+      "actions": [
+        "action.reload"
+      ]
+    },
+    "preferences.invalid": {
+      "title": "Check these preferences",
+      "body": "One or more choices aren't available. Review them and try again.",
+      "icon": "status.preferences",
+      "tone": "warning"
+    },
+    "preferences.request-failed": {
+      "title": "Preferences couldn't be updated",
+      "body": "Review your choices and try again.",
+      "icon": "status.preferences",
+      "tone": "error",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "preferences.saved": {
+      "title": "Preferences saved",
+      "body": "Your choices will follow this profile on this server.",
+      "icon": "status.success",
+      "tone": "success"
+    },
+    "preferences.unsupported-version": {
+      "title": "Update Portico to change these preferences",
+      "body": "This app doesn't understand the server's current preference format.",
+      "icon": "status.preferences",
+      "tone": "warning"
+    },
+    "action.back-to-details": {
+      "text": "Back to details"
+    },
+    "action.beginning": {
+      "text": "Beginning"
+    },
+    "action.join-group": {
+      "text": "Join"
+    },
+    "action.leave-group": {
+      "text": "Leave"
+    },
+    "action.start-watch-group": {
+      "text": "Start a new group"
+    },
+    "action.pause-download": {
+      "text": "Pause {title}"
+    },
+    "action.resume-download": {
+      "text": "Resume downloading {title}"
+    },
+    "action.play-offline": {
+      "text": "Play {title} offline"
+    },
+    "action.retry-download": {
+      "text": "Retry {title}"
+    },
+    "action.delete-device-download": {
+      "text": "Delete {title} from this {device}"
+    },
+    "action.close-downloads": {
+      "text": "Close downloads"
+    },
+    "action.picture-in-picture": {
+      "text": "Picture in Picture"
+    },
+    "download.action-label": {
+      "text": "Download {label}{sizeSuffix}"
+    },
+    "download.to-device": {
+      "text": "Download to this {device}"
+    },
+    "download.checking-versions": {
+      "text": "Checking available versions…"
+    },
+    "download.starting": {
+      "text": "Starting download…"
+    },
+    "download.added-title": {
+      "text": "Added to Downloads"
+    },
+    "download.added-body": {
+      "text": "Portico will continue the transfer in the background."
+    },
+    "download.device-read-failed": {
+      "title": "Downloads couldn't load",
+      "body": "Portico couldn't read the downloads stored on this device.",
+      "icon": "status.download",
+      "tone": "error",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "download.not-allowed": {
+      "title": "Downloads aren't available to this account",
+      "body": "This account isn't allowed to download this title.",
+      "icon": "status.locked",
+      "tone": "warning"
+    },
+    "download.version-unavailable": {
+      "title": "Download unavailable",
+      "body": "No downloadable version is currently available.",
+      "icon": "status.download",
+      "tone": "warning"
+    },
+    "download.start-failed": {
+      "title": "Download couldn't start",
+      "body": "Portico couldn't add this title to Downloads. Try again.",
+      "icon": "status.download",
+      "tone": "error",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "download.change-failed": {
+      "title": "Download couldn't be changed",
+      "body": "Portico couldn't complete that download action. Try again.",
+      "icon": "status.download",
+      "tone": "error",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "download.device-title": {
+      "text": "Downloads"
+    },
+    "download.device-eyebrow": {
+      "text": "Available without a server"
+    },
+    "download.device-reading": {
+      "text": "Reading downloads on this {device}…"
+    },
+    "download.device-unavailable": {
+      "title": "Downloads unavailable",
+      "body": "Downloads are not available on this device.",
+      "icon": "status.download",
+      "tone": "neutral"
+    },
+    "download.device-empty": {
+      "title": "No downloads on this device",
+      "body": "Media downloaded to this device will appear here and remain available without a server connection.",
+      "icon": "status.empty",
+      "tone": "neutral"
+    },
+    "download.device-empty-offline": {
+      "title": "No offline downloads",
+      "body": "No completed downloads are available on this device.",
+      "icon": "status.empty",
+      "tone": "neutral"
+    },
+    "download.available-count": {
+      "text": "{count} available offline"
+    },
+    "download.stored-on-device": {
+      "text": "{size} stored on this {device}"
+    },
+    "download.available-offline": {
+      "text": "Available offline"
+    },
+    "download.downloaded": {
+      "text": "Downloaded"
+    },
+    "download.loading-offline": {
+      "text": "Loading offline copy…"
+    },
+    "download.offline-playback-failed": {
+      "title": "Offline playback stopped",
+      "body": "Portico couldn't play this downloaded file.",
+      "icon": "status.playback",
+      "tone": "error"
+    },
+    "download.size-unavailable": {
+      "text": "Size unavailable"
+    },
+    "download.progress-accessibility": {
+      "text": "{progress} percent downloaded"
+    },
+    "download.status-complete": {
+      "text": "Available offline · {size}"
+    },
+    "download.status-downloading": {
+      "text": "Downloading · {progress}%{sizeSuffix}"
+    },
+    "download.status-queued": {
+      "text": "Queued"
+    },
+    "download.status-preparing": {
+      "text": "Preparing"
+    },
+    "download.status-paused": {
+      "text": "Paused · {progress}%"
+    },
+    "download.status-expired": {
+      "text": "Authorization expired"
+    },
+    "download.status-unavailable": {
+      "text": "Version unavailable"
+    },
+    "download.status-removing": {
+      "text": "Removing from this device…"
+    },
+    "playback.queue-up-next": {
+      "text": "Up next"
+    },
+    "playback.queue-then": {
+      "text": "Then"
+    },
+    "playback.position-of": {
+      "text": "{position} of {duration}"
+    },
+    "playback.casting-to": {
+      "text": "Casting to {device}"
+    },
+    "playback.cast-device-default": {
+      "text": "Google Cast device"
+    },
+    "playback.quality-option": {
+      "text": "Quality · {option}"
+    },
+    "playback.audio-option": {
+      "text": "Audio · {option}"
+    },
+    "playback.subtitle-option": {
+      "text": "Subtitles · {option}"
+    },
+    "playback.chapter-option": {
+      "text": "{number} · {chapter}"
+    },
+    "playback.speed-option": {
+      "text": "{rate}× speed"
+    },
+    "playback.selected-option": {
+      "text": "Selected · {option}"
+    },
+    "playback.interruption-resume-failed": {
+      "title": "Playback couldn't resume",
+      "body": "Portico couldn't resume after the audio interruption. Try again.",
+      "icon": "status.playback",
+      "tone": "warning",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "watch-with-friends.title": {
+      "text": "Watch With Friends"
+    },
+    "watch-with-friends.description": {
+      "text": "Watch in sync with people on this server."
+    },
+    "watch-with-friends.active-groups": {
+      "text": "Active groups"
+    },
+    "watch-with-friends.creating": {
+      "text": "Creating…"
+    },
+    "watch-with-friends.joining": {
+      "text": "Joining…"
+    },
+    "watch-with-friends.group-name": {
+      "text": "{title} together"
+    },
+    "watch-with-friends.join-label": {
+      "text": "Join {groupName}"
+    },
+    "watch-with-friends.member-summary": {
+      "text": "{title} · {count} {people} · Hosted by {host}"
+    },
+    "watch-with-friends.person-one": {
+      "text": "person"
+    },
+    "watch-with-friends.person-many": {
+      "text": "people"
+    },
+    "watch-with-friends.no-active-groups": {
+      "title": "No active groups",
+      "body": "Start a group when you're ready to watch together.",
+      "icon": "status.watch-with-friends",
+      "tone": "neutral"
+    },
+    "watch-with-friends.unavailable": {
+      "title": "Group unavailable",
+      "body": "This Watch With Friends session is no longer available. Playback has stopped on this device.",
+      "icon": "status.watch-with-friends",
+      "tone": "warning",
+      "actions": [
+        "action.retry",
+        "action.close-player"
+      ]
+    },
+    "watch-with-friends.profile-unavailable": {
+      "title": "Watch With Friends unavailable",
+      "body": "This profile can't use Watch With Friends on this server.",
+      "icon": "status.locked",
+      "tone": "warning"
+    },
+    "watch-with-friends.create-failed": {
+      "title": "Group couldn't be created",
+      "body": "Portico couldn't start this Watch With Friends group. Try again.",
+      "icon": "status.watch-with-friends",
+      "tone": "error",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "watch-with-friends.join-failed": {
+      "title": "Group couldn't be joined",
+      "body": "Portico couldn't join this Watch With Friends group. Try again.",
+      "icon": "status.watch-with-friends",
+      "tone": "error",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "watch-with-friends.session-ended": {
+      "title": "Watch With Friends ended",
+      "body": "The host ended this session. Playback has stopped on this device.",
+      "icon": "status.watch-with-friends",
+      "tone": "neutral"
+    },
+    "watch-with-friends.command-failed": {
+      "title": "Group control wasn't sent",
+      "body": "Portico couldn't send that command to the group. Playback remains on the host's latest state.",
+      "icon": "status.watch-with-friends",
+      "tone": "warning",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "watch-with-friends.advance-failed": {
+      "title": "The group couldn't advance",
+      "body": "Portico couldn't ask the group to play the next title. Playback remains stopped.",
+      "icon": "status.watch-with-friends",
+      "tone": "warning",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "watch-with-friends.connected-count": {
+      "text": "{count} watching"
+    },
+    "watch-with-friends.role-host": {
+      "text": "You're the host"
+    },
+    "watch-with-friends.role-shared": {
+      "text": "Shared controls"
+    },
+    "watch-with-friends.role-participant": {
+      "text": "Host controls playback"
+    },
+    "watch-with-friends.waiting-host": {
+      "text": "Waiting for the host"
+    },
+    "live-tv.restricted": {
+      "title": "Live TV access is restricted",
+      "body": "This profile does not have access to Live TV.",
+      "icon": "status.warning",
+      "tone": "warning"
+    },
+    "dvr.restricted": {
+      "title": "DVR access is restricted",
+      "body": "This profile does not have access to recordings or recording rules.",
+      "icon": "status.warning",
+      "tone": "warning"
+    },
+    "dvr.unavailable": {
+      "title": "DVR is unavailable",
+      "body": "Portico couldn't load this profile's DVR information. Try again.",
+      "icon": "status.offline",
+      "tone": "warning",
+      "actions": [
+        "action.retry"
+      ]
+    },
+    "dvr.schedule-empty": {
+      "title": "Nothing is scheduled",
+      "body": "Choose a future program in the guide or create a recording rule.",
+      "icon": "status.empty",
+      "tone": "neutral"
+    },
+    "dvr.issues-empty": {
+      "title": "No DVR issues",
+      "body": "This profile has no recording failures or scheduling conflicts.",
+      "icon": "status.empty",
+      "tone": "neutral"
+    },
+    "destination.collections": {
+      "text": "Collections"
+    },
+    "destination.playlists": {
+      "text": "Playlists"
+    },
+    "destination.audiobooks": {
+      "text": "Audiobooks"
+    },
+    "destination.recorded-tv": {
+      "text": "Recorded TV"
+    },
+    "destination.music": {
+      "text": "Music"
+    },
+    "destination.movies": {
+      "text": "Movies"
+    },
+    "destination.tv-shows": {
+      "text": "TV Shows"
+    },
+    "action.scroll-left": {
+      "text": "Scroll left"
+    },
+    "action.scroll-right": {
+      "text": "Scroll right"
+    },
+    "media.not-rated": {
+      "text": "Not rated"
+    },
+    "media.artwork-unavailable": {
+      "text": "{title} artwork unavailable"
+    },
+    "media.actions-label": {
+      "text": "{title} actions"
+    },
+    "media.kind.media": {
+      "text": "Media"
+    },
+    "media.kind.show": {
+      "text": "TV show"
+    },
+    "media.kind.movie": {
+      "text": "Movie"
+    },
+    "media.kind.season": {
+      "text": "Season"
+    },
+    "media.kind.episode": {
+      "text": "Episode"
+    },
+    "media.kind.artist": {
+      "text": "Artist"
+    },
+    "media.kind.album": {
+      "text": "Album"
+    },
+    "media.kind.track": {
+      "text": "Track"
+    },
+    "media.kind.author": {
+      "text": "Author"
+    },
+    "media.kind.audiobook": {
+      "text": "Audiobook"
+    },
+    "media.kind.audiobook-series": {
+      "text": "Audiobook series"
+    },
+    "media.kind.recording": {
+      "text": "DVR recording"
+    },
+    "media.kind.channel": {
+      "text": "Live channel"
+    },
+    "media.kind.collection": {
+      "text": "Collection"
+    },
+    "media.kind.playlist": {
+      "text": "Playlist"
+    },
+    "media.kind.category": {
+      "text": "Category"
+    },
+    "person.fallback-name": {
+      "text": "Person"
+    },
+    "media.season-number": {
+      "text": "Season {seasonNumber}"
+    },
+    "media.specials-label": {
+      "text": "Specials"
+    },
+    "media.disc-track": {
+      "text": "Disc {discNumber} · Track {trackNumber}"
+    },
+    "media.track-number": {
+      "text": "Track {trackNumber}"
+    },
+    "media.narrated-by": {
+      "text": "Narrated by {narrator}"
+    },
+    "media.series-book": {
+      "text": "{series} · Book {bookNumber}"
+    },
+    "media.critic-score": {
+      "text": "{score}% critics"
+    },
+    "media.size-unavailable": {
+      "text": "Size unavailable"
+    },
+    "account.create-intro": {
+      "text": "Your Portico Account lets you share and access media with friends."
+    },
+    "account.create-title": {
+      "text": "Create a Portico Account"
+    },
+    "auth.password.requirement.minimum-length": {
+      "text": "At least 8 characters"
+    },
+    "auth.password.requirement.uppercase": {
+      "text": "An uppercase letter"
+    },
+    "auth.password.requirement.lowercase": {
+      "text": "A lowercase letter"
+    },
+    "auth.password.requirement.number-or-special": {
+      "text": "A number or special character"
+    },
+    "auth.password.show": {
+      "text": "Show password"
+    },
+    "auth.password.hide": {
+      "text": "Hide password"
+    },
+    "auth.password.strength.weak": {
+      "text": "Weak"
+    },
+    "auth.password.strength.medium": {
+      "text": "Medium"
+    },
+    "auth.password.strength.strong": {
+      "text": "Strong"
+    }
+  }
+}

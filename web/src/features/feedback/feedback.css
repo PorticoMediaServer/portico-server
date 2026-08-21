@@ -1,0 +1,26 @@
+.feedback-dialog { width: min(560px, 100%); overflow: hidden; border: 1px solid var(--line-strong); border-radius: 12px; background: #121a22; }
+.feedback-dialog > header { min-height: 78px; padding: 18px 20px; display: flex; align-items: center; border-bottom: 1px solid var(--line); }
+.feedback-dialog > header > div { min-width: 0; }
+.feedback-dialog header p, .feedback-dialog header h2 { margin: 0; }
+.feedback-dialog header p { margin-bottom: 4px; color: var(--screen-blue-strong); font-size: var(--type-caption); font-weight: 700; }
+.feedback-dialog header h2 { font-size: 22px; }
+.feedback-dialog header .icon-button { margin-left: auto; }
+.feedback-dialog form { padding: 20px; }
+.feedback-dialog label { display: grid; gap: 7px; margin-bottom: 17px; color: var(--silver-soft); font-size: var(--type-supporting); font-weight: 700; }
+.feedback-dialog select, .feedback-dialog textarea { width: 100%; border: 1px solid var(--line); border-radius: 8px; color: var(--silver); background: #0b1218; font: inherit; font-weight: 400; }
+.feedback-dialog select { height: 44px; padding: 0 11px; }
+.feedback-dialog textarea { min-height: 132px; padding: 11px; resize: vertical; line-height: 1.5; }
+.feedback-dialog select:focus, .feedback-dialog textarea:focus { outline: 2px solid var(--focus); outline-offset: 1px; border-color: var(--line-strong); }
+.feedback-count { margin-top: -12px; color: var(--silver-muted); font-size: var(--type-caption); text-align: right; }
+.feedback-privacy { margin: 16px 0 0; color: var(--silver-muted); font-size: var(--type-caption); line-height: 1.55; }
+.feedback-error { margin: 12px 0 0; color: var(--record); font-size: var(--type-supporting); }
+.feedback-dialog footer { margin-top: 20px; display: flex; justify-content: flex-end; gap: 8px; }
+.feedback-state { min-height: 280px; padding: 32px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 9px; color: var(--silver-dim); text-align: center; }
+.feedback-state > svg { width: 27px; color: var(--silver-muted); }
+.feedback-state.success > svg { color: var(--healthy); }
+.feedback-state strong { color: var(--silver); font-size: 18px; }
+.feedback-state p { max-width: 390px; margin: 0; font-size: var(--type-supporting); line-height: 1.55; }
+.feedback-state .button { margin-top: 8px; }
+@media (max-width: 620px) {
+  .feedback-dialog { width: 100%; max-height: 100%; border: 0; border-radius: 0; }
+}

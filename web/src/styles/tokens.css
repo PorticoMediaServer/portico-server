@@ -1,0 +1,91 @@
+@font-face {
+  font-family: 'Portico Sans';
+  src: url('/fonts/manrope-400.ttf') format('truetype');
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Portico Sans';
+  src: url('/fonts/manrope-500.ttf') format('truetype');
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Portico Sans';
+  src: url('/fonts/manrope-600.ttf') format('truetype');
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Portico Sans';
+  src: url('/fonts/manrope-700.ttf') format('truetype');
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+}
+
+:root {
+  color: #f4f7fa;
+  background: #070b10;
+  font-family: 'Portico Sans', 'Avenir Next', Avenir, ui-sans-serif, sans-serif;
+  font-synthesis: none;
+
+  --projector: #070b10;
+  --recess: #0a1017;
+  --slate: #101820;
+  --slate-raised: #151f29;
+  --slate-bright: #1a2632;
+  --screen-blue: #378ec3;
+  --screen-blue-strong: #70bce8;
+  --screen-blue-deep: #286f9d;
+  --page-blue-glow: radial-gradient(ellipse 84% 52% at 50% -12%, rgba(27, 76, 108, .34), transparent 74%);
+  --silver: #f4f7fa;
+  --silver-soft: #c7d0d8;
+  --silver-dim: #98a5b1;
+  /* Normal-size caption text must remain WCAG AA on every approved dark surface. */
+  --silver-muted: #8f9ca6;
+  --tuner-amber: #d7a34d;
+  --healthy: #62c9a7;
+  --record: #ed5b67;
+
+  --line: rgba(197, 218, 235, 0.14);
+  --line-soft: rgba(197, 218, 235, 0.08);
+  --line-strong: rgba(112, 188, 232, 0.3);
+  --focus-ring: 0 0 0 3px rgba(55, 142, 195, 0.4);
+
+  --type-caption: 14px;
+  --type-supporting: 16px;
+  --type-body: 16px;
+  --type-title: 32px;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+
+  --radius-control: 8px;
+  --radius-surface: 10px;
+  --radius-overlay: 12px;
+
+  --layer-navigation: 50;
+  --layer-player: 120;
+  --layer-selection: 140;
+  --layer-popover: 500;
+  --layer-dialog: 600;
+  --layer-floating: 700;
+  --mini-player-height: 124px;
+  --top-chrome-height: 98px;
+  --context-chrome-height: 0px;
+  --chrome-safe-offset: calc(var(--top-chrome-height) + var(--context-chrome-height) + 12px);
+  --motion-fast: 120ms;
+  --motion-route: 160ms;
+  --motion-ease-out: cubic-bezier(.2, .7, .2, 1);
+}

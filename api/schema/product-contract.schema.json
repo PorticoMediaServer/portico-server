@@ -1,0 +1,711 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://portico.media/schema/product-contract.schema.json",
+  "title": "Portico Product Contract",
+  "description": "Canonical cross-platform library hierarchy, browse and search vocabulary, query limits, actions, and server capabilities.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "apiVersion",
+    "actionRevision",
+    "language",
+    "libraryKinds",
+    "entityKinds",
+    "entitySemantics",
+    "artworkRoles",
+    "browseFields",
+    "browseSorts",
+    "browseOperators",
+    "presentationFields",
+    "queryLimits",
+    "search",
+    "mediaActions",
+    "eventTransports",
+    "applicationEvents",
+    "longPoll",
+    "serverCapabilities",
+    "compatibility"
+  ],
+  "properties": {
+    "apiVersion": {
+      "type": "string",
+      "const": "v1"
+    },
+    "actionRevision": {
+      "type": "string",
+      "const": "v1"
+    },
+    "language": { "$ref": "#/$defs/productLanguageReference" },
+    "libraryKinds": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/libraryKind" }
+    },
+    "entityKinds": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/canonicalIdentifier" },
+      "uniqueItems": true
+    },
+    "entitySemantics": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/entitySemantic" }
+    },
+    "artworkRoles": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/artworkRoleSemantic" }
+    },
+    "browseFields": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/fieldCapability" }
+    },
+    "browseSorts": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/sortCapability" }
+    },
+    "browseOperators": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/operatorCapability" }
+    },
+    "presentationFields": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/canonicalIdentifier" },
+      "uniqueItems": true
+    },
+    "queryLimits": { "$ref": "#/$defs/queryLimits" },
+    "search": { "$ref": "#/$defs/searchContract" },
+    "mediaActions": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/mediaActionCapability" },
+      "uniqueItems": true
+    },
+    "eventTransports": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "enum": ["sse", "long-poll"] },
+      "uniqueItems": true
+    },
+    "applicationEvents": { "$ref": "#/$defs/applicationEventCapabilities" },
+    "longPoll": { "$ref": "#/$defs/longPollCapabilities" },
+    "serverCapabilities": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9.-]*$"
+      },
+      "uniqueItems": true
+    },
+    "compatibility": { "$ref": "#/$defs/compatibilityEnvelope" }
+  },
+  "$defs": {
+    "compatibilityEnvelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["envelopeRevision", "supportedClientProtocol", "apiContract", "build", "semanticRevisions", "capabilities", "requiredSemantics", "forwardCompatibility"],
+      "properties": {
+        "envelopeRevision": { "type": "integer", "minimum": 1 },
+        "supportedClientProtocol": { "type": "object", "additionalProperties": false, "required": ["minimum", "maximum"], "properties": { "minimum": { "type": "integer", "minimum": 1 }, "maximum": { "type": "integer", "minimum": 1 } } },
+        "apiContract": { "type": "object", "additionalProperties": false, "required": ["digestAlgorithm", "identity", "digest"], "properties": { "digestAlgorithm": { "const": "sha256" }, "identity": { "type": "string", "minLength": 1 }, "digest": { "type": "string", "pattern": "^[a-f0-9]{64}$" } } },
+        "build": { "type": "object", "additionalProperties": false, "required": ["version", "buildNumber", "channel", "commit", "timestamp"], "properties": { "version": { "type": "string", "minLength": 1 }, "buildNumber": { "type": "string", "minLength": 1 }, "channel": { "type": "string", "minLength": 1 }, "commit": { "type": "string", "minLength": 1 }, "timestamp": { "type": ["string", "null"], "format": "date-time" } } },
+        "semanticRevisions": { "type": "object", "minProperties": 1, "additionalProperties": { "type": "integer", "minimum": 1 } },
+        "capabilities": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/compatibilityCapability" } },
+        "requiredSemantics": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+        "forwardCompatibility": { "type": "object", "additionalProperties": false, "required": ["unknownOptionalCapabilities", "unknownRequiredSemantics", "authorizationOnPartialUpgrade", "apiContractDigestMismatch"], "properties": { "unknownOptionalCapabilities": { "const": "ignore_and_preserve" }, "unknownRequiredSemantics": { "const": "reject_actionably" }, "authorizationOnPartialUpgrade": { "const": "never_broaden" }, "apiContractDigestMismatch": { "const": "allow_semantic_overlap" } } }
+      }
+    },
+    "compatibilityCapability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "revision", "state", "requiredSemantics"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9.-]{0,95}$" },
+        "revision": { "type": "integer", "minimum": 1 },
+        "state": { "enum": ["available", "requires_configuration", "degraded", "unavailable"] },
+        "requiredSemantics": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } }
+      }
+    },
+    "applicationEventCapabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["revision", "eventTypes", "tags", "authoritativeResetErrorCodes", "longPollResetField"],
+      "properties": {
+        "revision": { "const": "v1" },
+        "eventTypes": { "type": "array", "items": { "enum": ["data.changed", "library.scan.completed"] }, "uniqueItems": true },
+        "tags": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+        "authoritativeResetErrorCodes": { "type": "array", "items": { "enum": ["invalid_poll_cursor"] }, "uniqueItems": true },
+        "longPollResetField": { "const": "resetRequired" }
+      }
+    },
+    "longPollCapabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["defaultWaitSeconds", "maximumWaitSeconds", "maximumConcurrentStreams"],
+      "properties": {
+        "defaultWaitSeconds": { "const": 20 },
+        "maximumWaitSeconds": { "const": 25 },
+        "maximumConcurrentStreams": { "const": 4 }
+      }
+    },
+    "productLanguageReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["revision", "defaultLocale", "supportedLocales", "endpointTemplate", "iconFamily"],
+      "properties": {
+        "revision": { "const": "v1" },
+        "defaultLocale": { "type": "string", "minLength": 2 },
+        "supportedLocales": { "type": "array", "items": { "type": "string", "minLength": 2 }, "minItems": 1, "uniqueItems": true },
+        "endpointTemplate": { "const": "/api/product-language/{locale}" },
+        "iconFamily": { "const": "lucide" }
+      }
+    },
+    "canonicalIdentifier": {
+      "type": "string",
+      "pattern": "^[a-z][A-Za-z0-9-]*$"
+    },
+    "searchContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["revision", "endpoint", "groupOrder", "groups", "sorts", "filters", "facetMode", "limits", "cursor", "resultSemantics"],
+      "properties": {
+        "revision": { "const": "v1" },
+        "endpoint": { "const": "/api/search" },
+        "groupOrder": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+        "groups": { "type": "array", "items": { "$ref": "#/$defs/searchGroupCapability" } },
+        "sorts": { "type": "array", "items": { "$ref": "#/$defs/searchSortCapability" } },
+        "filters": { "type": "array", "items": { "$ref": "#/$defs/searchFilterCapability" } },
+        "facetMode": { "const": "none" },
+        "limits": { "$ref": "#/$defs/searchLimits" },
+        "cursor": { "$ref": "#/$defs/searchCursorSemantics" },
+        "resultSemantics": { "$ref": "#/$defs/searchResultSemantics" }
+      }
+    },
+    "searchGroupCapability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title", "entityKind", "resultKinds", "supportsLibraryScope", "sorts"],
+      "properties": {
+        "id": { "enum": ["movies", "shows", "episodes", "people", "music", "audiobooks", "live-tv"] },
+        "title": { "type": "string", "minLength": 1 },
+        "entityKind": { "enum": ["movie", "show", "episode", "person", "track", "book", "live-channel"] },
+        "resultKinds": { "type": "array", "items": { "type": "string" }, "minItems": 1, "uniqueItems": true },
+        "supportsLibraryScope": { "type": "boolean" },
+        "sorts": { "type": "array", "items": { "enum": ["relevance", "title", "releaseYear", "dateAdded"] }, "minItems": 1, "uniqueItems": true }
+      }
+    },
+    "searchSortCapability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "label", "directions", "defaultDirection", "applicableGroups"],
+      "properties": {
+        "id": { "enum": ["relevance", "title", "releaseYear", "dateAdded"] },
+        "label": { "type": "string", "minLength": 1 },
+        "directions": { "type": "array", "items": { "enum": ["asc", "desc"] }, "minItems": 1, "uniqueItems": true },
+        "defaultDirection": { "enum": ["asc", "desc"] },
+        "applicableGroups": { "type": "array", "items": { "type": "string" }, "minItems": 1, "uniqueItems": true }
+      }
+    },
+    "searchFilterCapability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "label", "valueType", "multiple"],
+      "properties": {
+        "id": { "enum": ["entityKinds", "libraryIds", "group"] },
+        "label": { "type": "string", "minLength": 1 },
+        "valueType": { "enum": ["enum", "identity"] },
+        "multiple": { "type": "boolean" },
+        "allowedValues": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+        "source": { "$ref": "#/$defs/searchFilterSource" }
+      }
+    },
+    "searchFilterSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["endpoint", "valueField", "labelField"],
+      "properties": {
+        "endpoint": { "type": "string", "pattern": "^/api/" },
+        "valueField": { "type": "string", "minLength": 1 },
+        "labelField": { "type": "string", "minLength": 1 }
+      }
+    },
+    "searchLimits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["minimumQueryLength", "maximumQueryLength", "defaultGroupLimit", "maximumGroupLimit", "quickInitialGroupLimit", "quickMaximumGroups", "quickMaximumItemsPerGroup", "fullDefaultGroupLimit"],
+      "properties": {
+        "minimumQueryLength": { "type": "integer", "minimum": 1 },
+        "maximumQueryLength": { "type": "integer", "minimum": 1 },
+        "defaultGroupLimit": { "type": "integer", "minimum": 1 },
+        "maximumGroupLimit": { "type": "integer", "minimum": 1 },
+        "quickInitialGroupLimit": { "type": "integer", "minimum": 1 },
+        "quickMaximumGroups": { "type": "integer", "minimum": 1 },
+        "quickMaximumItemsPerGroup": { "type": "integer", "minimum": 1 },
+        "fullDefaultGroupLimit": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "searchCursorSemantics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "opaque", "requiresSingleGroup", "principalBound", "scopeFields", "ttlSeconds", "expiredErrorCode", "invalidErrorCode"],
+      "properties": {
+        "mode": { "const": "independent-group" },
+        "opaque": { "const": true },
+        "requiresSingleGroup": { "const": true },
+        "principalBound": { "const": true },
+        "scopeFields": { "type": "array", "items": { "enum": ["query", "group", "libraryIds", "sort", "direction"] }, "uniqueItems": true },
+        "ttlSeconds": { "type": "integer", "minimum": 60 },
+        "expiredErrorCode": { "const": "cursor_expired" },
+        "invalidErrorCode": { "const": "invalid_cursor" }
+      }
+    },
+    "searchResultSemantics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["destinationSource", "hierarchySource", "artworkRoleSource", "kindMappings"],
+      "properties": {
+        "destinationSource": { "const": "entitySemantics.defaultDestination" },
+        "hierarchySource": { "const": "entitySemantics.parentKinds+childKinds+childOrder" },
+        "artworkRoleSource": { "const": "entitySemantics.primaryArtworkRole" },
+        "kindMappings": { "type": "array", "items": { "$ref": "#/$defs/searchResultKindMapping" }, "minItems": 1 }
+      }
+    },
+    "searchResultKindMapping": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["resultKind", "entityKind"],
+      "properties": {
+        "resultKind": { "type": "string", "minLength": 1 },
+        "entityKind": { "$ref": "#/$defs/canonicalIdentifier" }
+      }
+    },
+    "mediaActionCapability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "mutating", "bulkSupported", "presentation", "command", "confirmation", "invalidates"],
+      "properties": {
+        "id": {
+          "enum": [
+            "play",
+            "play.from-beginning",
+            "download",
+            "queue.add",
+            "watchlist.add",
+            "watchlist.remove",
+            "favorite.add",
+            "favorite.remove",
+            "watched.set",
+            "watched.mark",
+            "watched.unmark",
+            "reaction.set",
+            "rating.set",
+            "collection.add",
+            "playlist.add",
+            "watch-with-friends.start",
+            "metadata.edit",
+            "metadata.refresh",
+            "media.analyze",
+            "media.optimize",
+            "media.delete",
+            "live.play",
+            "dvr.record",
+            "dvr.record-series",
+            "dvr.play",
+            "dvr.cancel",
+            "dvr.delete",
+            "dvr.edit",
+            "dvr.enable",
+            "dvr.disable",
+            "dvr.rule.create",
+            "feedback.report-problem",
+            "feedback.request-higher-quality"
+          ]
+        },
+        "mutating": { "type": "boolean" },
+        "bulkSupported": { "type": "boolean" },
+        "presentation": { "$ref": "#/$defs/mediaActionPresentation" },
+        "command": { "$ref": "#/$defs/mediaActionCommand" },
+        "confirmation": { "$ref": "#/$defs/mediaActionConfirmation" },
+        "invalidates": {
+          "type": "array",
+          "items": { "type": "string" },
+          "uniqueItems": true
+        }
+      }
+    },
+    "mediaActionPresentation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["labelMessageId", "iconId", "group", "priority", "surfaces"],
+      "properties": {
+        "labelMessageId": { "type": "string", "pattern": "^action\\.[a-z0-9.-]+$" },
+        "iconId": { "type": "string", "pattern": "^action\\.[a-z0-9.-]+$" },
+        "group": { "enum": ["playback", "recording", "saved", "state", "administration", "feedback"] },
+        "priority": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "surfaces": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "enum": ["web", "mobile", "television", "web-admin"] },
+          "uniqueItems": true
+        }
+      }
+    },
+    "mediaActionCommand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "execution", "resultHandling"],
+      "properties": {
+        "kind": { "enum": ["api", "client-flow"] },
+        "execution": { "enum": ["single", "per-item", "selection"] },
+        "method": { "enum": ["GET", "POST", "PATCH", "DELETE"] },
+        "pathTemplate": { "type": "string" },
+        "staticBody": { "type": "object" },
+        "requiredInputs": {
+          "type": "array",
+          "items": { "type": "string" },
+          "uniqueItems": true
+        },
+        "flowId": { "type": "string", "minLength": 1 },
+        "resultHandling": { "enum": ["json", "job", "playback-session", "download-grant", "flow"] }
+      }
+    },
+    "mediaActionConfirmation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["required", "tone"],
+      "properties": {
+        "required": { "type": "boolean" },
+        "tone": { "enum": ["none", "destructive"] }
+      }
+    },
+    "entitySemantic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "container", "playable", "parentKinds", "childKinds", "childOrder", "defaultDestination", "primaryArtworkRole"],
+      "properties": {
+        "id": { "$ref": "#/$defs/canonicalIdentifier" },
+        "container": { "type": "boolean" },
+        "playable": { "type": "boolean" },
+        "parentKinds": { "type": "array", "items": { "$ref": "#/$defs/canonicalIdentifier" }, "uniqueItems": true },
+        "childKinds": { "type": "array", "items": { "$ref": "#/$defs/canonicalIdentifier" }, "uniqueItems": true },
+        "childOrder": { "type": "array", "items": { "$ref": "#/$defs/canonicalIdentifier" }, "uniqueItems": true },
+        "defaultDestination": { "enum": ["detail", "children", "series-detail"] },
+        "primaryArtworkRole": { "$ref": "#/$defs/canonicalIdentifier" }
+      }
+    },
+    "artworkRoleSemantic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "aspectRatio", "fit", "purpose"],
+      "properties": {
+        "id": { "enum": ["poster", "square", "backdrop", "thumb", "logo", "banner"] },
+        "aspectRatio": { "type": "number", "exclusiveMinimum": 0 },
+        "fit": { "enum": ["cover", "contain"] },
+        "purpose": { "type": "string", "minLength": 1 }
+      }
+    },
+    "libraryKind": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "label", "description", "pivots", "sortOrder"],
+      "properties": {
+        "id": {
+          "enum": ["movies", "tv", "anime", "music", "audiobooks", "recorded-tv"]
+        },
+        "label": { "type": "string", "minLength": 1 },
+        "description": { "type": "string", "minLength": 1 },
+        "pivots": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/pivot" }
+        },
+        "sortOrder": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "pivot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "label",
+        "entityKinds",
+        "defaultView",
+        "supportedViews",
+        "defaultSort",
+        "browseSupported",
+        "endpointTemplate",
+        "presentationFields"
+      ],
+      "properties": {
+        "id": {
+          "enum": [
+            "discover",
+            "movies",
+            "shows",
+            "episodes",
+            "collections",
+            "categories",
+            "artists",
+            "albums",
+            "tracks",
+            "playlists",
+            "genres",
+            "authors",
+            "books",
+            "series",
+            "recordings",
+            "schedule"
+          ]
+        },
+        "label": { "type": "string", "minLength": 1 },
+        "entityKinds": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/canonicalIdentifier" },
+          "uniqueItems": true
+        },
+        "defaultView": { "$ref": "#/$defs/viewMode" },
+        "supportedViews": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/viewMode" },
+          "uniqueItems": true
+        },
+        "defaultSort": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 3,
+          "items": { "$ref": "#/$defs/sort" }
+        },
+        "browseSupported": { "type": "boolean" },
+        "endpointTemplate": {
+          "type": "string",
+          "pattern": "^/api/"
+        },
+        "presentationFields": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/canonicalIdentifier" },
+          "uniqueItems": true
+        }
+      }
+    },
+    "viewMode": {
+      "enum": ["shelves", "grid", "compact-grid", "list", "table", "facets", "timeline"]
+    },
+    "fieldCapability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "label", "valueType", "operators", "controlHint", "complexity", "cost"],
+      "properties": {
+        "id": { "$ref": "#/$defs/canonicalIdentifier" },
+        "label": { "type": "string", "minLength": 1 },
+        "valueType": {
+          "enum": ["boolean", "enum", "number", "string", "date", "duration", "identity-set"]
+        },
+        "operators": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/operator" },
+          "uniqueItems": true
+        },
+        "applicableKinds": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/canonicalIdentifier" },
+          "uniqueItems": true
+        },
+        "caseSensitive": { "type": "boolean" },
+        "allowedValues": {
+          "type": "array",
+          "items": { "type": "string" },
+          "uniqueItems": true
+        },
+        "facetSource": { "$ref": "#/$defs/facetSource" },
+        "controlHint": { "enum": ["toggle", "select", "number-range", "date-range", "facet-multi-select", "text"] },
+        "complexity": { "enum": ["quick", "standard", "advanced"] },
+        "cost": { "enum": ["indexed", "indexed-join"] }
+      }
+    },
+    "facetSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["endpointTemplate", "filterField", "filterPrefix", "valueField", "labelField", "countField"],
+      "properties": {
+        "endpointTemplate": { "type": "string", "pattern": "^/api/" },
+        "filterField": { "type": "string" },
+        "filterPrefix": { "type": "string" },
+        "valueField": { "type": "string" },
+        "labelField": { "type": "string" },
+        "countField": { "type": "string" }
+      }
+    },
+    "sortCapability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "label", "directions", "defaultDirection", "expensive"],
+      "properties": {
+        "id": { "$ref": "#/$defs/canonicalIdentifier" },
+        "label": { "type": "string", "minLength": 1 },
+        "directions": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "enum": ["asc", "desc"] },
+          "uniqueItems": true
+        },
+        "defaultDirection": { "enum": ["asc", "desc"] },
+        "applicableKinds": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/canonicalIdentifier" },
+          "uniqueItems": true
+        },
+        "expensive": { "type": "boolean" }
+      }
+    },
+    "operatorCapability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "valueTypes"],
+      "properties": {
+        "id": { "$ref": "#/$defs/operator" },
+        "valueTypes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "enum": ["boolean", "enum", "number", "string", "date", "duration", "identity-set", "presence"]
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "operator": {
+      "enum": [
+        "equals",
+        "not-equals",
+        "contains",
+        "not-contains",
+        "starts-with",
+        "in",
+        "not-in",
+        "less-than",
+        "at-most",
+        "greater-than",
+        "at-least",
+        "between",
+        "is",
+        "contains-any",
+        "contains-all",
+        "is-present",
+        "is-missing"
+      ]
+    },
+    "queryLimits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["maximumDepth", "maximumClauses", "maximumBytes", "defaultLimit", "maximumLimit", "cursorTtlSeconds"],
+      "properties": {
+        "maximumDepth": { "type": "integer", "minimum": 1, "maximum": 8 },
+        "maximumClauses": { "type": "integer", "minimum": 1, "maximum": 100 },
+        "maximumBytes": { "type": "integer", "minimum": 1024, "maximum": 65536 },
+        "defaultLimit": { "type": "integer", "minimum": 1, "maximum": 200 },
+        "maximumLimit": { "type": "integer", "minimum": 1, "maximum": 200 },
+        "cursorTtlSeconds": { "type": "integer", "minimum": 60, "maximum": 86400 }
+      }
+    },
+    "sort": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["field", "direction"],
+      "properties": {
+        "field": { "$ref": "#/$defs/canonicalIdentifier" },
+        "direction": { "enum": ["asc", "desc"] }
+      }
+    },
+    "browseRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pivot"],
+      "properties": {
+        "pivot": { "$ref": "#/$defs/canonicalIdentifier" },
+        "query": { "$ref": "#/$defs/expression" },
+        "sort": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 3,
+          "items": { "$ref": "#/$defs/sort" }
+        },
+        "presentation": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "fields": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/canonicalIdentifier" },
+              "uniqueItems": true
+            }
+          }
+        },
+        "cursor": { "type": "string", "minLength": 1, "maxLength": 4096 },
+        "limit": { "type": "integer", "minimum": 1, "maximum": 200 }
+      }
+    },
+    "expression": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["all"],
+          "properties": {
+            "all": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "$ref": "#/$defs/expression" }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["any"],
+          "properties": {
+            "any": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "$ref": "#/$defs/expression" }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["not"],
+          "properties": {
+            "not": { "$ref": "#/$defs/expression" }
+          }
+        },
+        { "$ref": "#/$defs/predicate" }
+      ]
+    },
+    "predicate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["field", "operator", "value"],
+      "properties": {
+        "field": { "$ref": "#/$defs/canonicalIdentifier" },
+        "operator": { "$ref": "#/$defs/operator" },
+        "value": {
+          "oneOf": [
+            { "type": "string" },
+            { "type": "number" },
+            { "type": "boolean" },
+            {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "oneOf": [
+                  { "type": "string" },
+                  { "type": "number" },
+                  { "type": "boolean" }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

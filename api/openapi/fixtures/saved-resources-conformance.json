@@ -1,0 +1,34 @@
+{
+  "contractRevision": "v1",
+  "playlistEntry": {
+    "requiredFields": ["entryId", "media", "position"],
+    "positionBase": 0
+  },
+  "playlistMutation": {
+    "addField": "addMediaIds",
+    "removeField": "removeEntryIds",
+    "orderField": "orderEntryIds",
+    "revisionField": "expectedUpdatedAt"
+  },
+  "itemPaging": [
+    {
+      "kind": "playlist",
+      "method": "get",
+      "path": "/playlists/{playlistId}/items",
+      "responseSchema": "PlaylistEntryPage"
+    },
+    {
+      "kind": "collection",
+      "method": "get",
+      "path": "/collections/{collectionId}/items",
+      "responseSchema": "SavedMediaPage"
+    },
+    {
+      "kind": "view",
+      "method": "post",
+      "path": "/saved-views/{savedViewId}/browse",
+      "requestSchema": "SavedViewBrowseRequest",
+      "responseSchema": "BrowseLibraryResponse"
+    }
+  ]
+}

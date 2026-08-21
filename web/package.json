@@ -1,0 +1,53 @@
+{
+  "name": "@portico/web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "packageManager": "npm@11.6.2",
+  "imports": {
+    "#portico-icons": "./src/icons/PorticoIcons.tsx"
+  },
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 19105",
+    "typecheck": "tsc -b",
+    "lint": "biome check",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "test:e2e:playback": "node ./scripts/run-playback-e2e.mjs",
+    "test:watch": "vitest",
+    "build": "npm run typecheck && vite build && node ./scripts/write-runtime-config.mjs bundled",
+    "build:hosted": "npm run typecheck && vite build --mode hosted && node ./scripts/write-runtime-config.mjs hosted",
+    "performance:bundle": "node ./scripts/verify-performance-budget.mjs",
+    "verify:fonts": "node --input-type=module -e \"import { existsSync, readFileSync, statSync } from 'node:fs'; import { join } from 'node:path'; const roots = [join(process.cwd(), 'public', 'fonts')]; if (process.argv.includes('--built')) roots.push(join(process.cwd(), 'dist', 'fonts')); const files = ['manrope-400.ttf', 'manrope-500.ttf', 'manrope-600.ttf', 'manrope-700.ttf', 'OFL.txt', 'README.md']; for (const root of roots) { for (const file of files) { const path = join(root, file); if (!existsSync(path) || statSync(path).size === 0) throw new Error('Missing Web font distribution file: ' + path); } const notice = readFileSync(join(root, 'OFL.txt'), 'utf8'); if (!notice.includes('SIL OPEN FONT LICENSE Version 1.1')) throw new Error('Manrope OFL notice is incomplete: ' + join(root, 'OFL.txt')); }\"",
+    "verify:fonts:built": "npm run verify:fonts -- -- --built",
+    "product-language:inventory": "node ./scripts/check-product-language-inventory.mjs",
+    "verify:product-language": "node ./scripts/verify-product-language-surfaces.mjs",
+    "verify:bundle": "npm run verify:fonts:built && node ./scripts/verify-production-bundle.mjs",
+    "verify:hosted": "npm run build:hosted && PORTICO_EXPECT_RUNTIME_MODE=hosted npm run verify:bundle",
+    "preview": "vite preview --host 127.0.0.1 --port 19105"
+  },
+  "dependencies": {
+    "@portico/client-core": "file:../packages/portico-client-core",
+    "@tanstack/react-query": "5.101.2",
+    "hls.js": "^1.6.16",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3",
+    "react-router-dom": "^7.18.1"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.16",
+    "@playwright/test": "^1.59.1",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.1.2",
+    "jsdom": "^29.1.1",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.0",
+    "vitest": "^4.1.7"
+  }
+}

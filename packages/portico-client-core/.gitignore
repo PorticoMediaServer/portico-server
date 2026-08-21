@@ -1,0 +1,10 @@
+dist/
+node_modules/
+coverage/
+*.tsbuildinfo
+*.log
+.env
+.env.*
+!.env.example
+!.env.sample
+!.env.template

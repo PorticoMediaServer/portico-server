@@ -1,0 +1,25 @@
+[Unit]
+Description=Portico Media Server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=portico
+Group=portico
+Environment=PORTICO_ADDR=0.0.0.0:32500
+Environment=PORTICO_APP_DATA=/var/lib/portico-media-server
+Environment=PORTICO_WEB_DIST=/usr/lib/portico-media-server/web
+Environment=PORTICO_FFMPEG_PATH=/usr/lib/portico-media-server/bin/ffmpeg
+Environment=PORTICO_FFPROBE_PATH=/usr/lib/portico-media-server/bin/ffprobe
+ExecStart=/usr/lib/portico-media-server/portico-media-server
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/portico-media-server
+
+[Install]
+WantedBy=multi-user.target

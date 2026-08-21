@@ -1,0 +1,722 @@
+.filesystem-picker-dialog {
+  width: min(1040px, 100%);
+  height: min(760px, calc(100vh - 44px));
+  min-height: 560px;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-overlay);
+  color: var(--silver);
+  background: var(--recess);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.34);
+}
+
+.filesystem-picker-header {
+  min-height: 82px;
+  padding: 17px 20px;
+  display: flex;
+  align-items: flex-start;
+  gap: 18px;
+  border-bottom: 1px solid var(--line);
+  background: var(--slate);
+}
+
+.filesystem-picker-header > div {
+  min-width: 0;
+  flex: 1;
+}
+
+.filesystem-picker-header h1 {
+  margin: 0;
+  color: var(--silver);
+  font-size: 22px;
+  line-height: 1.25;
+  letter-spacing: -0.025em;
+}
+
+.filesystem-picker-header p {
+  margin: 5px 0 0;
+  color: var(--silver-dim);
+  font-size: var(--type-supporting);
+  line-height: 1.45;
+}
+
+.filesystem-picker-header > .icon-button {
+  margin-left: auto;
+}
+
+.filesystem-path-form {
+  min-height: 83px;
+  padding: 12px 20px;
+  display: grid;
+  grid-template-columns: 1fr;
+  align-content: center;
+  gap: 6px;
+  border-bottom: 1px solid var(--line);
+  background: #0b1218;
+}
+
+.filesystem-path-form > label,
+.filesystem-new-folder > label {
+  color: var(--silver-soft);
+  font-size: var(--type-caption);
+  font-weight: 700;
+}
+
+.filesystem-path-form > div,
+.filesystem-new-folder > div {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.filesystem-path-form input,
+.filesystem-new-folder input {
+  min-width: 0;
+  height: 42px;
+  padding: 0 12px;
+  flex: 1;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  outline: 0;
+  color: var(--silver);
+  background: #060b10;
+  font: 500 var(--type-supporting) 'Portico Sans', sans-serif;
+}
+
+.filesystem-path-form input {
+  font-variant-ligatures: none;
+}
+
+.filesystem-path-form input:hover,
+.filesystem-new-folder input:hover {
+  border-color: var(--line-strong);
+}
+
+.filesystem-path-form input:focus-visible,
+.filesystem-new-folder input:focus-visible {
+  border-color: var(--screen-blue);
+  box-shadow: var(--focus-ring);
+}
+
+.filesystem-path-form input::placeholder,
+.filesystem-new-folder input::placeholder {
+  color: var(--silver-muted);
+}
+
+.filesystem-inline-error {
+  margin: 0;
+  color: #ffabb2;
+  font-size: var(--type-caption);
+  line-height: 1.4;
+}
+
+.filesystem-picker-body {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+}
+
+.filesystem-roots {
+  min-width: 0;
+  min-height: 0;
+  padding: 12px 10px;
+  overflow-y: auto;
+  border-right: 1px solid var(--line);
+  background: #080e13;
+}
+
+.filesystem-roots > header {
+  min-height: 38px;
+  padding: 0 8px 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 1px solid var(--line-soft);
+  color: var(--silver-dim);
+  font-size: var(--type-caption);
+  font-weight: 700;
+}
+
+.filesystem-roots > header svg {
+  width: 17px;
+  height: 17px;
+}
+
+.filesystem-roots > div {
+  margin-top: 7px;
+  display: grid;
+  gap: 3px;
+}
+
+.filesystem-roots > div > button {
+  min-width: 0;
+  min-height: 58px;
+  padding: 8px 10px;
+  display: grid;
+  align-content: center;
+  gap: 3px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+  color: var(--silver-dim);
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.filesystem-roots > div > button:hover {
+  color: var(--silver);
+  background: rgba(197, 218, 235, 0.05);
+}
+
+.filesystem-roots > div > button.selected {
+  border-color: rgba(55, 142, 195, 0.28);
+  color: var(--silver);
+  background: rgba(55, 142, 195, 0.08);
+}
+
+.filesystem-roots > div > button:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
+}
+
+.filesystem-roots button span,
+.filesystem-roots button small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.filesystem-roots button span {
+  font-size: var(--type-supporting);
+  font-weight: 700;
+}
+
+.filesystem-roots button small {
+  color: var(--silver-muted);
+  font-size: var(--type-caption);
+}
+
+.filesystem-roots > p {
+  margin: 22px 8px;
+  color: var(--silver-muted);
+  font-size: var(--type-caption);
+  line-height: 1.45;
+}
+
+.filesystem-directory {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--projector);
+}
+
+.filesystem-location-bar {
+  min-height: 54px;
+  padding: 7px 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid var(--line-soft);
+  background: #0a1117;
+}
+
+.filesystem-location-bar > nav {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.filesystem-location-bar > nav > span {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+}
+
+.filesystem-location-bar > nav svg {
+  width: 14px;
+  height: 14px;
+  color: var(--silver-muted);
+}
+
+.filesystem-location-bar nav button {
+  min-height: 36px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--silver-dim);
+  background: transparent;
+  font: inherit;
+  font-size: var(--type-caption);
+  cursor: pointer;
+}
+
+.filesystem-location-bar nav button:hover:not(:disabled) {
+  color: var(--silver);
+  background: var(--slate);
+}
+
+.filesystem-location-bar nav button[aria-current='location'] {
+  color: var(--silver);
+  font-weight: 700;
+}
+
+.filesystem-location-bar nav button:disabled {
+  cursor: default;
+}
+
+.filesystem-location-bar > div {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.filesystem-location-bar .button {
+  min-height: 38px;
+  padding: 0 11px;
+  font-size: var(--type-caption);
+}
+
+.filesystem-current-path {
+  min-width: 0;
+  min-height: 68px;
+  padding: 10px 16px;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 11px;
+  border-bottom: 1px solid var(--line-soft);
+  background: #0c141b;
+}
+
+.filesystem-current-path > svg {
+  width: 23px;
+  height: 23px;
+  color: var(--screen-blue-strong);
+}
+
+.filesystem-current-path > span {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.filesystem-current-path strong,
+.filesystem-current-path span span,
+.filesystem-picker-footer strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.filesystem-current-path strong {
+  color: var(--silver);
+  font-size: var(--type-body);
+}
+
+.filesystem-current-path span span {
+  color: var(--silver-dim);
+  font-size: var(--type-caption);
+}
+
+.filesystem-current-path > small {
+  color: var(--silver-muted);
+  font-size: var(--type-caption);
+  white-space: nowrap;
+}
+
+.filesystem-new-folder {
+  min-width: 0;
+  padding: 12px 16px;
+  display: grid;
+  gap: 7px;
+  border-bottom: 1px solid var(--line);
+  background: var(--slate);
+}
+
+.filesystem-new-folder .button {
+  min-height: 42px;
+}
+
+.filesystem-notice {
+  min-height: 60px;
+  margin: 10px 12px 0;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  border: 1px solid rgba(237, 91, 103, 0.3);
+  border-radius: var(--radius-control);
+  color: #ffabb2;
+  background: rgba(237, 91, 103, 0.07);
+}
+
+.filesystem-notice.permission,
+.filesystem-notice.offline {
+  border-color: rgba(215, 163, 77, 0.3);
+  color: var(--tuner-amber);
+  background: rgba(215, 163, 77, 0.07);
+}
+
+.filesystem-notice > svg {
+  width: 21px;
+  height: 21px;
+  flex: 0 0 auto;
+}
+
+.filesystem-notice > span {
+  min-width: 0;
+  flex: 1;
+  display: grid;
+  gap: 2px;
+}
+
+.filesystem-notice strong {
+  color: currentColor;
+  font-size: var(--type-supporting);
+}
+
+.filesystem-notice span span {
+  color: var(--silver-soft);
+  font-size: var(--type-caption);
+  line-height: 1.4;
+}
+
+.filesystem-notice .button {
+  min-height: 38px;
+  padding: 0 11px;
+  font-size: var(--type-caption);
+}
+
+.filesystem-folder-list {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  overflow-y: auto;
+  outline: 0;
+}
+
+.filesystem-folder-row > button {
+  width: 100%;
+  min-height: 62px;
+  padding: 8px 14px;
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) auto 18px;
+  align-items: center;
+  gap: 10px;
+  border: 0;
+  border-bottom: 1px solid var(--line-soft);
+  color: var(--silver-soft);
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.filesystem-folder-row > button:hover:not(:disabled),
+.filesystem-folder-row > button:focus-visible {
+  color: var(--silver);
+  background: rgba(55, 142, 195, 0.07);
+}
+
+.filesystem-folder-row > button:focus-visible {
+  outline: 2px solid var(--screen-blue);
+  outline-offset: -2px;
+}
+
+.filesystem-folder-row > button:disabled {
+  color: var(--silver-muted);
+  cursor: not-allowed;
+  opacity: 0.72;
+}
+
+.filesystem-folder-icon {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  color: var(--screen-blue-strong);
+}
+
+.filesystem-folder-row > button:disabled .filesystem-folder-icon {
+  color: var(--tuner-amber);
+}
+
+.filesystem-folder-icon svg {
+  width: 22px;
+  height: 22px;
+}
+
+.filesystem-folder-row > button > span:nth-child(2) {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.filesystem-folder-row > button strong,
+.filesystem-folder-row > button span span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.filesystem-folder-row > button strong {
+  font-size: var(--type-supporting);
+}
+
+.filesystem-folder-row > button span span,
+.filesystem-folder-row > button > small {
+  color: var(--silver-muted);
+  font-size: var(--type-caption);
+}
+
+.filesystem-folder-row > button > small {
+  white-space: nowrap;
+}
+
+.filesystem-folder-row > button > svg {
+  width: 17px;
+  height: 17px;
+  color: var(--silver-muted);
+}
+
+.filesystem-state {
+  min-height: 230px;
+  padding: 32px 24px;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  color: var(--silver-muted);
+  text-align: center;
+}
+
+.filesystem-state > svg {
+  width: 30px;
+  height: 30px;
+}
+
+.filesystem-state > strong {
+  margin-top: 13px;
+  color: var(--silver);
+  font-size: 18px;
+}
+
+.filesystem-state > p {
+  max-width: 440px;
+  margin: 7px 0 14px;
+  color: var(--silver-dim);
+  font-size: var(--type-supporting);
+  line-height: 1.55;
+}
+
+.filesystem-state.permission > svg,
+.filesystem-state.offline > svg {
+  color: var(--tuner-amber);
+}
+
+.filesystem-state.failure > svg {
+  color: var(--record);
+}
+
+.filesystem-state.empty > svg {
+  color: var(--silver-muted);
+}
+
+.filesystem-loading-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  color: var(--silver-soft);
+  background: rgba(7, 11, 16, 0.82);
+  font-size: var(--type-supporting);
+  font-weight: 700;
+}
+
+.filesystem-picker-footer {
+  min-height: 74px;
+  padding: 12px 20px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-top: 1px solid var(--line);
+  background: var(--slate);
+}
+
+.filesystem-picker-footer > div {
+  min-width: 0;
+  flex: 1;
+  display: grid;
+  gap: 3px;
+}
+
+.filesystem-picker-footer > div > span {
+  color: var(--silver-muted);
+  font-size: var(--type-caption);
+}
+
+.filesystem-picker-footer strong {
+  color: var(--silver-soft);
+  font-size: var(--type-supporting);
+  font-weight: 600;
+}
+
+.filesystem-picker-footer .button {
+  min-height: 42px;
+}
+
+.filesystem-spin {
+  animation: filesystem-spin 850ms linear infinite;
+}
+
+@keyframes filesystem-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (max-width: 760px) {
+  .filesystem-picker-dialog {
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .filesystem-picker-header {
+    min-height: 76px;
+    padding: 14px 16px;
+  }
+
+  .filesystem-picker-header h1 {
+    font-size: 20px;
+  }
+
+  .filesystem-picker-header p {
+    font-size: var(--type-caption);
+  }
+
+  .filesystem-path-form {
+    padding: 10px 14px;
+  }
+
+  .filesystem-picker-body {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .filesystem-roots {
+    padding: 7px 10px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .filesystem-roots > header {
+    display: none;
+  }
+
+  .filesystem-roots > div {
+    margin: 0;
+    display: flex;
+    gap: 5px;
+  }
+
+  .filesystem-roots > div > button {
+    width: 170px;
+    min-height: 52px;
+    flex: 0 0 auto;
+  }
+
+  .filesystem-roots > p {
+    margin: 7px 4px;
+  }
+
+  .filesystem-location-bar {
+    padding: 6px 9px;
+  }
+
+  .filesystem-location-bar .button {
+    width: 40px;
+    padding: 0;
+    font-size: 0;
+  }
+
+  .filesystem-location-bar .button svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  .filesystem-current-path {
+    padding: 9px 12px;
+  }
+
+  .filesystem-new-folder {
+    padding: 11px 12px;
+  }
+
+  .filesystem-picker-footer {
+    padding: 10px 12px;
+  }
+
+  .filesystem-picker-footer > div {
+    display: none;
+  }
+
+  .filesystem-picker-footer .button {
+    flex: 1;
+  }
+}
+
+@media (max-width: 470px) {
+  .filesystem-path-form > div,
+  .filesystem-new-folder > div {
+    align-items: stretch;
+    flex-wrap: wrap;
+  }
+
+  .filesystem-path-form input,
+  .filesystem-new-folder input {
+    flex: 1 1 100%;
+  }
+
+  .filesystem-path-form .button {
+    margin-left: auto;
+  }
+
+  .filesystem-current-path {
+    grid-template-columns: 30px minmax(0, 1fr);
+  }
+
+  .filesystem-current-path > small {
+    display: none;
+  }
+
+  .filesystem-folder-row > button {
+    grid-template-columns: 32px minmax(0, 1fr) 16px;
+  }
+
+  .filesystem-folder-row > button > small {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .filesystem-spin {
+    animation-duration: 2.4s;
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "waivers": [
+    {
+      "advisory": "1138808",
+      "package": "image-size",
+      "scope": "build/dev",
+      "reason": "Metro 0.87.0 resolves image-size 1.2.1; the registry's latest 2.0.2 release remains within the affected range and no fixed registry release is available for Metro's image inspection dependency.",
+      "mitigation": "The dependency path is build/dev-only (metro -> image-size), Metro is pinned to the isolated Client Core 0.87.0 verification line, Client Core packages exclude devDependencies, and the exact-scope audit is rerun before release. This exception expires for mandatory review rather than becoming a package-wide suppression.",
+      "owner": "Client Core release engineering",
+      "expiresAt": "2026-11-17T00:00:00Z"
+    },
+    {
+      "advisory": "1138809",
+      "package": "image-size",
+      "scope": "build/dev",
+      "reason": "Metro 0.87.0 resolves image-size 1.2.1; the registry's latest 2.0.2 release remains within the affected range and no fixed registry release is available for Metro's image inspection dependency.",
+      "mitigation": "The dependency path is build/dev-only (metro -> image-size), Metro is pinned to the isolated Client Core 0.87.0 verification line, Client Core packages exclude devDependencies, and the exact-scope audit is rerun before release. This exception expires for mandatory review rather than becoming a package-wide suppression.",
+      "owner": "Client Core release engineering",
+      "expiresAt": "2026-11-17T00:00:00Z"
+    }
+  ]
+}

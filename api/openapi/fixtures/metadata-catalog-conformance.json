@@ -1,0 +1,28 @@
+{
+  "revision": "w4-m4-v1",
+  "fields": [
+    {"source":"local.title","normalized":"title","shape":"value","browse":true,"search":true,"detail":true,"recommendation":false},
+    {"source":"provider.alternate_title","normalized":"alternateTitle","shape":"relationship-or-value","browse":true,"search":true,"detail":true,"recommendation":true},
+    {"source":"local.original_title","normalized":"originalTitle","shape":"value","browse":true,"search":true,"detail":true,"recommendation":true},
+    {"source":"provider.language","normalized":"language","shape":"relationship","browse":true,"search":true,"detail":true,"recommendation":true},
+    {"source":"provider.status","normalized":"status","shape":"relationship-or-value","browse":true,"search":true,"detail":true,"recommendation":true},
+    {"source":"provider.certification","normalized":"regionalCertification","shape":"relationship","browse":true,"search":true,"detail":true,"recommendation":true},
+    {"source":"local.content_rating","normalized":"contentRating","shape":"value","browse":true,"search":true,"detail":true,"recommendation":true},
+    {"source":"provider.studio","normalized":"studio","shape":"relationship","browse":true,"search":true,"detail":true,"recommendation":true},
+    {"source":"provider.company","normalized":"company","shape":"relationship","browse":true,"search":true,"detail":true,"recommendation":true},
+    {"source":"provider.network","normalized":"network","shape":"relationship","browse":true,"search":true,"detail":true,"recommendation":true},
+    {"source":"provider.country","normalized":"country","shape":"relationship","browse":true,"search":true,"detail":true,"recommendation":true},
+    {"source":"provider.keyword","normalized":"keyword","shape":"relationship","browse":true,"search":true,"detail":true,"recommendation":true},
+    {"source":"provider.collection","normalized":"collection","shape":"relationship","browse":true,"search":true,"detail":true,"recommendation":true},
+    {"source":"provider.franchise","normalized":"franchise","shape":"relationship","browse":true,"search":true,"detail":true,"recommendation":true},
+    {"source":"provider.creator","normalized":"creator","shape":"relationship","browse":true,"search":true,"detail":true,"recommendation":true},
+    {"source":"provider.person_credit","normalized":"credit","shape":"relationship","browse":true,"search":true,"detail":true,"recommendation":true},
+    {"source":"local.author","normalized":"author","shape":"value-or-relationship","browse":true,"search":true,"detail":true,"recommendation":true},
+    {"source":"local.narrator","normalized":"narrator","shape":"value-or-relationship","browse":true,"search":true,"detail":true,"recommendation":true},
+    {"source":"local.series","normalized":"series","shape":"value-or-relationship","browse":true,"search":true,"detail":true,"recommendation":true},
+    {"source":"local.community_rating","normalized":"communityRating","shape":"value","browse":true,"search":false,"detail":true,"recommendation":true},
+    {"source":"provider.critic_rating","normalized":"criticRating","shape":"value","browse":true,"search":false,"detail":true,"recommendation":true},
+    {"source":"provider.audience_rating","normalized":"audienceRating","shape":"value","browse":true,"search":false,"detail":true,"recommendation":true},
+    {"source":"media_provider_ids.accepted","normalized":"acceptedProviderIdentity","shape":"provider-qualified-identity","browse":true,"search":true,"detail":true,"recommendation":true}
+  ]
+}

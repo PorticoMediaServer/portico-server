@@ -1,0 +1,47 @@
+{
+  "apiVersion": "v1",
+  "actionRevision": "v1",
+  "libraryKinds": [
+    { "id": "movies", "pivots": ["discover", "movies", "collections", "categories"] },
+    { "id": "tv", "pivots": ["discover", "shows", "episodes", "collections", "categories"] },
+    { "id": "anime", "pivots": ["discover", "shows", "episodes", "collections", "categories"] },
+    { "id": "music", "pivots": ["discover", "artists", "albums", "tracks", "playlists", "genres"] },
+    { "id": "audiobooks", "pivots": ["discover", "authors", "books", "series", "collections"] },
+    { "id": "recorded-tv", "pivots": ["recordings", "shows", "schedule", "categories"] }
+  ],
+  "invalidRequests": [
+    { "name": "unknown-pivot", "expectedStatus": 422, "expectedCode": "unsupported_pivot" },
+    { "name": "unknown-filter-field", "expectedStatus": 422, "expectedCode": "unsupported_field" },
+    { "name": "filter-field-not-valid-for-pivot", "expectedStatus": 422, "expectedCode": "unsupported_field_for_pivot" },
+    { "name": "entity-kind-not-valid-for-pivot", "expectedStatus": 422, "expectedCode": "unsupported_value_for_pivot" },
+    { "name": "invalid-filter-operator", "expectedStatus": 422, "expectedCode": "unsupported_operator" },
+    { "name": "sort-not-valid-for-pivot", "expectedStatus": 422, "expectedCode": "unsupported_sort" },
+    { "name": "alpha-seek-with-cursor", "expectedStatus": 422, "expectedCode": "seek_with_cursor" },
+    { "name": "alpha-seek-with-non-title-sort", "expectedStatus": 422, "expectedCode": "seek_requires_title_sort" },
+    { "name": "alpha-seek-with-descending-title", "expectedStatus": 422, "expectedCode": "seek_requires_title_sort" },
+    { "name": "cursor-wrong-principal", "expectedStatus": 400, "expectedCode": "invalid_cursor" },
+    { "name": "cursor-wrong-query", "expectedStatus": 400, "expectedCode": "invalid_cursor" },
+    { "name": "cursor-expired", "expectedStatus": 400, "expectedCode": "cursor_expired" }
+  ],
+  "permissionReductions": [
+    { "name": "library-not-shared", "expectedStatus": 404, "resourceHidden": true },
+    { "name": "content-label-restricted", "expectedStatus": 200, "restrictedItemsAbsent": true },
+    { "name": "source-paths-not-admin", "expectedStatus": 403, "sensitiveFieldsAbsent": true }
+  ],
+  "actionRules": {
+    "absenceIsAuthoritative": true,
+    "playRequires": "playMedia and an available playable source",
+    "downloadRequires": "downloadMedia and downloadable media",
+    "metadataEditRequires": "editMetadata",
+    "deleteRequires": "deleteMedia",
+    "bulkActionsMustBePresentOnEverySelectedItem": true,
+    "apiBulkExecution": "per-item",
+    "clientFlowsOwnSelectionUI": true
+  },
+  "navigationOwnership": {
+    "primaryDestinationsAndVisualPlacement": "application",
+    "inSectionTabsAndComposition": "server",
+    "serverDrivenPrimaryNavigationManifest": false,
+    "requiredSectionTabsAreHideable": false
+  }
+}

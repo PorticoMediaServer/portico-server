@@ -1,0 +1,48 @@
+{
+  "keyIdDerived": "ed25519-wHQqeXvVN0N48mo3",
+  "publicKeyB64": "W2SJycf9Dc9QVF58FkiG70BJHsBsfxsSMEF5foEXU14=",
+  "routeCanonicalPayloadB64": "cG9ydGljby1zaWduZWQtZG9jdW1lbnQ6cm91dGUtZG9jdW1lbnQ6djEKeyJhc3NpZ25lZEhvc3RuYW1lIjoidW5pY29kZS1maXh0dXJlLmRpcmVjdC5nZXRwb3J0aWNvLnR2IiwiYXVkaWVuY2UiOiJwb3J0aWNvLW1lZGlhLXNlcnZlciIsImF1dGhNb2RlcyI6WyJwb3J0aWNvIl0sImNlcnRpZmljYXRlIjp7ImV4cGlyZXNBdCI6IjIwMjYtMTAtMTFUMTI6MDA6MDBaIiwic3RhdHVzIjoiYWN0aXZlIn0sImRvY3VtZW50VmVyc2lvbiI6MSwiZXhwaXJlc0F0IjoiMjAyNi0wNy0xM1QxMjowNTowMC4xMjNaIiwiaXNzdWVkQXQiOiIyMDI2LTA3LTEzVDEyOjAwOjAwLjEyM1oiLCJtZW1iZXJzaGlwIjp7InBlcm1pc3Npb25UZW1wbGF0ZSI6eyJsaWJyYXJ5SWRzIjpbImxpYl9jaW7DqW1hIl0sInBlcm1pc3Npb25zIjp7ImRvd25sb2FkIjp0cnVlLCJwbGF5Ijp0cnVlfX0sInJvbGUiOiJvd25lciJ9LCJyb3V0ZXMiOlt7Imhvc3QiOiJ1bmljb2RlLWZpeHR1cmUuZGlyZWN0LmdldHBvcnRpY28udHYiLCJsYXN0Q2hlY2tFcnJvciI6IkzDrW5lYSBcdTIwMjggcGFyYWdyYXBoIFx1MjAyOSDpm6ogXCJxdW90ZWRcIiBcXCBzbGFzaCIsImxhc3RDaGVja2VkQXQiOiIyMDI2LTA3LTEzVDEyOjAwOjAwWiIsInF1YWxpdHkiOiJyZWFjaGFibGUiLCJ0eXBlIjoicHVibGljX2RpcmVjdCIsInVybCI6Imh0dHBzOi8vdW5pY29kZS1maXh0dXJlLmRpcmVjdC5nZXRwb3J0aWNvLnR2OjQ0MyJ9XSwic2VydmVySWQiOiJzcnZfdW5pY29kZV9maXh0dXJlIiwic2VydmVyTmFtZSI6IkNpbsOpbWEgPFBvcnRpY28+ICYg6ZuqIiwic2VydmVyUHVibGljS2V5IjoiNFFpOFMreUxMUVBpdy93UUVmM2d5anB1M2VUdFZhNHczcVFlMTNaSURhcz0iLCJzZXJ2ZXJQdWJsaWNLZXlGaW5nZXJwcmludCI6InNoYTI1Njo2bGd4YUMxTkItakVndjBUUUZ4TGhoZ0pMNlVxc1dmQkNXcGhISVFhWXhjIiwic2lnbmF0dXJlQWxnb3JpdGhtIjoiZWQyNTUxOSIsInNpZ25hdHVyZUtleUlkIjoiZWQyNTUxOS13SFFxZVh2Vk4wTjQ4bW8zIn0=",
+  "routeDocument": {
+    "documentVersion": 1,
+    "audience": "portico-media-server",
+    "serverId": "srv_unicode_fixture",
+    "serverName": "Cinéma \u003cPortico\u003e \u0026 雪",
+    "assignedHostname": "unicode-fixture.direct.getportico.tv",
+    "issuedAt": "2026-07-13T12:00:00.123Z",
+    "expiresAt": "2026-07-13T12:05:00.123Z",
+    "serverPublicKey": "4Qi8S+yLLQPiw/wQEf3gyjpu3eTtVa4w3qQe13ZIDas=",
+    "serverPublicKeyFingerprint": "sha256:6lgxaC1NB-jEgv0TQFxLhhgJL6UqsWfBCWphHIQaYxc",
+    "authModes": [
+      "portico"
+    ],
+    "routes": [
+      {
+        "type": "public_direct",
+        "url": "https://unicode-fixture.direct.getportico.tv:443",
+        "host": "unicode-fixture.direct.getportico.tv",
+        "quality": "reachable",
+        "lastCheckedAt": "2026-07-13T12:00:00Z",
+        "lastCheckError": "Línea \u2028 paragraph \u2029 雪 \"quoted\" \\ slash"
+      }
+    ],
+    "certificate": {
+      "status": "active",
+      "expiresAt": "2026-10-11T12:00:00Z"
+    },
+    "membership": {
+      "role": "owner",
+      "permissionTemplate": {
+        "libraryIds": [
+          "lib_cinéma"
+        ],
+        "permissions": {
+          "download": true,
+          "play": true
+        }
+      }
+    },
+    "signatureAlgorithm": "ed25519",
+    "signatureKeyId": "ed25519-wHQqeXvVN0N48mo3",
+    "signature": "fH3F7kl_Evr-uJvKyxvtdSZDVoirVtJUKF5m-v13yWvM4XL-4K2sl0XkfYnPreQCi3xY-3npkayGm-z5zm50DA"
+  }
+}

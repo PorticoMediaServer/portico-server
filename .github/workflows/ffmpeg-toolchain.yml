@@ -1,0 +1,164 @@
+name: Qualified FFmpeg toolchain
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Approved stable FFmpeg version from media-toolchain/sources.lock.json
+        required: true
+        default: '8.1.2'
+      revision:
+        description: Approved Portico toolchain revision
+        required: true
+        default: '1'
+      publish:
+        description: Publish the qualified artifacts as a toolchain prerelease
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ffmpeg-toolchain
+  cancel-in-progress: false
+
+env:
+  TOOLCHAIN_TAG: ffmpeg-${{ inputs.version }}-portico.${{ inputs.revision }}
+  BTBN_COMMIT: 48576f197ad1c2afb2e0b8efe204919a1afbff54
+  MACOS_RECIPE_COMMIT: 4920fab9d6ac56999ce7e961b240659b4da078a5
+
+jobs:
+  policy:
+    runs-on: ubuntu-24.04
+    outputs:
+      tag: ${{ steps.policy.outputs.tag }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - id: policy
+        env: {VERSION: '${{ inputs.version }}', REVISION: '${{ inputs.revision }}'}
+        run: |
+          expected_version="$(node -p "require('./media-toolchain/sources.lock.json').ffmpeg.version")"
+          expected_revision="$(node -p "require('./media-toolchain/sources.lock.json').toolchainRevision")"
+          test "$VERSION" = "$expected_version"
+          test "$REVISION" = "$expected_revision"
+          echo "tag=ffmpeg-${VERSION}-portico.${REVISION}" >> "$GITHUB_OUTPUT"
+      - if: inputs.publish
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          gh release delete "$TOOLCHAIN_TAG" --cleanup-tag --yes 2>/dev/null || true
+          gh release create "$TOOLCHAIN_TAG" --draft --prerelease --title "Portico FFmpeg ${{ inputs.version }} toolchain revision ${{ inputs.revision }}" --notes "Manually approved, unsigned FFmpeg toolchain for Portico Media Server. This is a component release, not a Portico application release. GPL-compatible builds only; nonfree components are prohibited."
+
+  container-builds:
+    needs: policy
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {target: linux64, public_target: linux-x64}
+          - {target: linuxarm64, public_target: linux-arm64}
+          - {target: win64, public_target: windows-x64}
+          - {target: winarm64, public_target: windows-arm64}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Recover runner disk space
+        run: |
+          sudo rm -rf /opt/ghc /usr/local/.ghcup /usr/local/lib/android
+          docker system prune --all --force
+      - name: Check out the pinned build recipe
+        run: |
+          git clone https://github.com/BtbN/FFmpeg-Builds.git .toolchain/btbn
+          git -C .toolchain/btbn checkout "$BTBN_COMMIT"
+      - name: Build pinned dependencies and FFmpeg
+        working-directory: .toolchain/btbn
+        env:
+          GITHUB_REPOSITORY: btbn/ffmpeg-builds
+          GIT_BRANCH_OVERRIDE: n${{ inputs.version }}
+          NOCLEAN: '1'
+        run: |
+          ./makeimage.sh ${{ matrix.target }} gpl 8.1
+          ./build.sh ${{ matrix.target }} gpl 8.1
+      - name: Normalize artifact
+        run: |
+          mkdir -p .toolchain/extracted
+          artifact="$(find .toolchain/btbn/artifacts -type f \( -name '*.zip' -o -name '*.tar.xz' \) -print -quit)"
+          case "$artifact" in
+            *.zip) unzip -q "$artifact" -d .toolchain/extracted ;;
+            *.tar.xz) tar -xJf "$artifact" -C .toolchain/extracted ;;
+          esac
+          ./scripts/normalize-ffmpeg-bundle.sh .toolchain/extracted '${{ matrix.public_target }}' .toolchain/normalized "BtbN/FFmpeg-Builds@$BTBN_COMMIT"
+          tar -C .toolchain/normalized -cJf "portico-ffmpeg-${TOOLCHAIN_TAG}-${{ matrix.public_target }}.tar.xz" .
+      - name: Capture corresponding source
+        run: |
+          curl --fail --location --retry 3 "https://ffmpeg.org/releases/ffmpeg-${{ inputs.version }}.tar.xz" -o ".toolchain/ffmpeg-${{ inputs.version }}.tar.xz"
+          tar -C .toolchain -cJf "portico-ffmpeg-${TOOLCHAIN_TAG}-${{ matrix.public_target }}-source.tar.xz" btbn/.cache/downloads btbn/scripts.d btbn/variants btbn/addins btbn/patches "ffmpeg-${{ inputs.version }}.tar.xz"
+      - if: inputs.publish
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: gh release upload "$TOOLCHAIN_TAG" portico-ffmpeg-*.tar.xz --clobber
+      - if: ${{ !inputs.publish }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with: {name: 'ffmpeg-${{ matrix.public_target }}', path: 'portico-ffmpeg-*.tar.xz', if-no-files-found: error}
+
+  macos-build:
+    needs: policy
+    runs-on: macos-15
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Check out and patch the pinned recipe
+        run: |
+          git clone https://github.com/homebridge/ffmpeg-for-homebridge.git .toolchain/macos
+          git -C .toolchain/macos checkout "$MACOS_RECIPE_COMMIT"
+          git -C .toolchain/macos apply "$GITHUB_WORKSPACE/media-toolchain/patches/homebridge-gpl-only.patch"
+      - name: Build FFmpeg for Apple Silicon
+        working-directory: .toolchain/macos
+        env:
+          FFMPEG_VERSION: '${{ inputs.version }}'
+          EXTRA_VERSION: portico-macos-arm64
+          SKIPINSTALL: 'yes'
+          VERBOSE: 'yes'
+        run: ./build-ffmpeg --build --enable-gpl
+      - name: Normalize and validate artifact
+        run: |
+          ./scripts/normalize-ffmpeg-bundle.sh .toolchain/macos/workspace macos-arm64 .toolchain/normalized "homebridge/ffmpeg-for-homebridge@$MACOS_RECIPE_COMMIT with Portico GPL-only patch"
+          ./scripts/verify-ffmpeg-bundle.sh .toolchain/normalized full
+          tar -C .toolchain/normalized -cJf "portico-ffmpeg-${TOOLCHAIN_TAG}-macos-arm64.tar.xz" .
+          tar -C .toolchain -cJf "portico-ffmpeg-${TOOLCHAIN_TAG}-macos-arm64-source.tar.xz" macos/packages macos/build-ffmpeg macos/LICENSE
+      - if: inputs.publish
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: gh release upload "$TOOLCHAIN_TAG" portico-ffmpeg-*.tar.xz --clobber
+      - if: ${{ !inputs.publish }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with: {name: ffmpeg-macos-arm64, path: 'portico-ffmpeg-*.tar.xz', if-no-files-found: error}
+
+  validate-native:
+    needs: [policy, container-builds]
+    if: inputs.publish
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: ubuntu-24.04, target: linux-x64, profile: full}
+          - {os: ubuntu-24.04-arm, target: linux-arm64, profile: limited}
+          - {os: windows-2025, target: windows-x64, profile: full}
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - env: {GH_TOKEN: '${{ github.token }}'}
+        run: gh release download "$TOOLCHAIN_TAG" --pattern "portico-ffmpeg-${TOOLCHAIN_TAG}-${{ matrix.target }}.tar.xz" --dir .toolchain
+      - shell: bash
+        run: |
+          mkdir -p .toolchain/extracted
+          tar -xJf .toolchain/*.tar.xz -C .toolchain/extracted
+          ./scripts/verify-ffmpeg-bundle.sh .toolchain/extracted '${{ matrix.profile }}'
+
+  finalize:
+    needs: [policy, container-builds, macos-build, validate-native]
+    if: inputs.publish
+    runs-on: ubuntu-24.04
+    steps:
+      - env: {GH_TOKEN: '${{ github.token }}'}
+        run: gh release edit "$TOOLCHAIN_TAG" --draft=false --prerelease

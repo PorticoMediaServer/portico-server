@@ -1,0 +1,37 @@
+# macOS and local editor noise
+.DS_Store
+/Project Architecture
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+!.env.sample
+!.env.template
+
+# Local runtime state
+/var/
+/Server/var/
+*.db
+*.sqlite
+*.sqlite3
+*.log
+!**/QA Evidence/**/*.log
+
+# Web dependencies and generated output
+/web/node_modules/
+/web/dist/
+/web/playwright-report/
+/web/test-results/
+/web/coverage/
+/web/*.tsbuildinfo
+
+# Go and release build output
+/porticod
+/test-results/
+/coverage/
+/dist/*
+!/dist/README.md
+!/dist/deploy/
+/dist/deploy/*
+!/dist/deploy/README.md

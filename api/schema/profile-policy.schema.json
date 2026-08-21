@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://portico.media/schema/profile-policy.schema.json",
+  "title": "Portico V1 Profile Policy",
+  "description": "Portable account-owner restrictions that may only reduce a server membership envelope.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version", "maximumAgeRating", "allowUnrated", "blockedLabels", "allowDownloads",
+    "allowLiveTV", "allowDvr", "allowWatchWithFriends", "allowFeedback"
+  ],
+  "properties": {
+    "version": { "const": "v1" },
+    "maximumAgeRating": {
+      "oneOf": [
+        { "type": "integer", "minimum": 0, "maximum": 21 },
+        { "type": "null" }
+      ]
+    },
+    "allowUnrated": { "type": "boolean" },
+    "blockedLabels": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1, "maxLength": 128 },
+      "maxItems": 64,
+      "uniqueItems": true
+    },
+    "allowDownloads": { "type": "boolean" },
+    "allowLiveTV": { "type": "boolean" },
+    "allowDvr": { "type": "boolean" },
+    "allowWatchWithFriends": { "type": "boolean" },
+    "allowFeedback": { "type": "boolean" }
+  }
+}

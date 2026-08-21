@@ -1,0 +1,94 @@
+{
+  "schemaVersion": 1,
+  "credentialStates": ["signed_out", "active", "refreshing", "revoked", "expired"],
+  "flows": {
+    "localNativeSession": {
+      "create": "POST /api/auth/sessions",
+      "refresh": "POST /api/auth/sessions/refresh",
+      "revoke": "POST /api/auth/sessions/revoke",
+      "refreshOwner": "selected-server",
+      "persistBeforeUse": true
+    },
+    "hostedAccountSession": {
+      "create": "POST /api/auth/sessions",
+      "refresh": "POST /api/auth/sessions/refresh",
+      "revoke": "POST /api/auth/sessions/revoke",
+      "refreshOwner": "hosted-services",
+      "persistBeforeUse": true
+    },
+    "porticoServerSession": {
+      "bootstrap": "POST /api/account/servers/{serverId}/sessions",
+      "handshake": "POST /api/auth/portico/handshakes",
+      "create": "POST /api/auth/portico/sessions",
+      "refresh": "POST /api/auth/sessions/refresh",
+      "revoke": "POST /api/auth/sessions/revoke",
+      "refreshOwner": "selected-server",
+      "persistAfterBootstrap": true
+    },
+    "tvPairing": {
+      "start": "POST /api/auth/tv-setup/sessions",
+      "authorize": "POST /api/auth/tv-setup/grants",
+      "redeem": "POST /api/auth/tv-setup/redeem",
+      "persistRedeemedCredentials": true
+    }
+  },
+  "bootstrapOrder": [
+    "verify-signed-route-document",
+    "verify-route-health-identity",
+    "check-server-api",
+    "verify-server-signed-attachment-handshake",
+    "issue-server-scoped-session",
+    "exchange-hosted-bootstrap-inside-authenticated-encryption",
+    "assert-final-me-authority-account-server-profile",
+    "check-product-contract",
+    "stage-runtime-fence",
+    "publish-active-server-credentials",
+    "resolve-atomic-durable-save",
+    "publish-candidate-runtime"
+  ],
+  "routePolicy": {
+    "preference": ["verified-last-known-lan", "verified-last-known-direct", "verified-fresh-hosted-route"],
+    "requiredIdentityFields": ["serverId", "serverPublicKey", "serverPublicKeyFingerprint"],
+    "failClosedQualities": ["identity_mismatch", "tls_failed", "stale", "http_failed", "failed"]
+  },
+  "refreshPolicy": {
+    "singleFlight": true,
+    "maxAutomaticRetries": 1,
+    "durableBeforeRetry": true,
+    "terminalCodes": ["invalid_refresh_token", "refresh_token_reuse", "membership_inactive", "server_not_found", "server_session_revoked", "account_disabled", "device_not_allowed"],
+    "transientStatuses": [408, 429, 500, 502, 503, 504],
+    "terminalAction": "clear-active-server-credentials",
+    "transientAction": "preserve-active-server-credentials"
+  },
+  "switchPolicy": {
+    "provisionalInMemory": true,
+    "candidateVerificationIsolated": true,
+    "runtimeFenceBeforeCredentialPublication": true,
+    "durableOnlyAfterBootstrap": true,
+    "restorePreviousOnFailure": true,
+    "activeCredentialPublicationFailure": "rollback-fatal",
+    "atomicDurableFailure": "memory-only-with-warning",
+    "uncertainDurableFailure": "rollback-or-fail-closed",
+    "publishRuntimeAfterDurableResolution": true,
+    "latestChoiceWins": true,
+    "authorizationRevisionSource": "final-auth-me"
+  },
+  "securityInvariants": [
+    "access-and-refresh-tokens-never-appear-in-url",
+    "route-document-signature-is-verified-before-probe",
+    "route-health-must-match-server-id-and-fingerprint",
+    "hosted-bootstrap-and-server-credentials-use-authenticated-encryption-on-every-route",
+    "attachment-handshake-is-bound-to-server-key-route-origin-client-key-and-client-address",
+    "hosted-bootstrap-is-never-installed-in-the-selected-server-session-store",
+    "rotated-refresh-token-is-durable-before-request-retry",
+    "refresh-and-revoke-requests-are-never-recursively-refreshed",
+    "only-explicit-server-scoped-revocation-clears-active-server-credentials",
+    "hosted-outage-preserves-account-and-trusted-server-records",
+    "trusted-server-records-are-keyed-by-account-and-server",
+    "final-me-must-match-authority-account-server-profile",
+    "old-runtime-is-fenced-before-candidate-credential-publication",
+    "uncertain-durable-writes-rollback-or-fail-closed",
+    "credential-cleanup-uncertainty-is-typed-and-fail-closed",
+    "superseded-server-and-profile-choices-never-publish"
+  ]
+}

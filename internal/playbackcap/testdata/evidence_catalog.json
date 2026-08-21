@@ -1,0 +1,107 @@
+{
+  "schemaVersion": 1,
+  "owner": "Portico playback capability contract",
+  "reviewedAt": "2026-08-06",
+  "policy": "Static entries authorize only a deliberately transcoded H.264 Main, yuv420p, SDR, 1080p30 plus AAC-LC stereo baseline. Bounded Portico Web bands may deliver that exact baseline through Portico's managed HLS player; this is not a claim of native browser HLS support. Rich codecs, HDR, Dolby Vision, multichannel, passthrough and object audio require authenticated runtime or native evidence.",
+  "references": [
+    {
+      "id": "chromium-media-capabilities",
+      "families": ["chromium"],
+      "versionBounds": "120-159; unknown versions use the same progressive-only codec floor",
+      "claim": "Codec support and smooth/power-efficient decode are runtime questions; bounded Portico Web entries authorize only the managed H.264/AAC HLS baseline and do not claim native HLS, HDR, HEVC, AV1, or hardware decode.",
+      "limitations": "OS codec installation, GPU, driver, build flags and MSE implementation vary.",
+      "runtimeGaps": ["MediaCapabilities.decodingInfo for exact content type", "MediaSource.isTypeSupported", "video.canPlayType", "measured decoder failure"],
+      "urls": ["https://developer.chrome.com/docs/web-platform/media-capabilities"]
+    },
+    {
+      "id": "edge-h264-platform-path",
+      "families": ["edge"],
+      "versionBounds": "120-159; unknown versions use progressive-only fallback",
+      "claim": "H.264 playback is supported through platform or software decode paths, but an Edge version does not establish native HLS or optional codecs.",
+      "limitations": "Windows codec extensions, hardware acceleration and GPU drivers change the effective tuple.",
+      "runtimeGaps": ["MediaCapabilities.decodingInfo", "MediaSource.isTypeSupported", "video.canPlayType", "edge://media-internals equivalent client telemetry"],
+      "urls": ["https://learn.microsoft.com/en-us/troubleshoot/microsoft-edge/development/video-playback-issues"]
+    },
+    {
+      "id": "firefox-platform-codecs",
+      "families": ["firefox"],
+      "versionBounds": "120-159; unknown versions use progressive-only fallback",
+      "claim": "Effective H.264/AAC playback depends on operating-system codec availability; Firefox version alone does not authorize HLS or optional formats.",
+      "limitations": "Distribution packaging and OS codecs vary, especially on Linux.",
+      "runtimeGaps": ["MediaCapabilities.decodingInfo", "MediaSource.isTypeSupported", "video.canPlayType", "actual playback failure telemetry"],
+      "urls": ["https://support.mozilla.org/en-US/kb/audio-and-video-firefox"]
+    },
+    {
+      "id": "apple-hls-authoring",
+      "families": ["safari", "avkit"],
+      "versionBounds": "Safari/iOS/iPadOS/tvOS 17-19",
+      "claim": "Apple frameworks natively support HLS; the authoring specification supports H.264 and AAC stereo and WebVTT delivery.",
+      "limitations": "HEVC, AV1, HDR, Dolby Vision and multichannel/output-route support varies by hardware and attached output.",
+      "runtimeGaps": ["AVAsset playable and media-selection inspection", "VideoToolbox hardware decode", "HDR display mode", "audio route/channel layout", "Dolby Vision profile support"],
+      "urls": ["https://developer.apple.com/documentation/http-live-streaming/hls-authoring-specification-for-apple-devices/", "https://developer.apple.com/documentation/http-live-streaming/hls-authoring-specification-for-apple-devices-appendixes"]
+    },
+    {
+      "id": "android-media3-formats",
+      "families": ["media3"],
+      "versionBounds": "Android/Android TV 10-16",
+      "claim": "Media3 supports progressive MP4/M4A/MP3 and HLS MPEG-TS or fMP4 with WebVTT; elementary-stream decode remains platform-dependent.",
+      "limitations": "Media3 delegates sample decoding to Android platform decoders by default, so OS version does not prove a device decoder.",
+      "runtimeGaps": ["MediaCodecList exact profile/level", "MediaCodec performance points", "display HDR types", "AudioManager route encodings and channels", "Media3 decoder initialization result"],
+      "urls": ["https://developer.android.com/media/media3/exoplayer/supported-formats", "https://developer.android.com/media/platform/supported-formats"]
+    },
+    {
+      "id": "amazon-fire-tv-device-specs",
+      "families": ["fire-tv"],
+      "versionBounds": "Fire OS 7-8 and 14; other/Vega versions use conservative fallback",
+      "claim": "Published Fire TV model specifications include H.264/AAC playback at or above Portico's baseline.",
+      "limitations": "Fire OS version is not a device model; codec, HDR, resolution and audio-route capabilities vary materially by model. Vega OS is a separate runtime.",
+      "runtimeGaps": ["Build.MODEL mapping", "MediaCodec profile/level", "HDR display types", "audio route passthrough", "Vega player capability contract"],
+      "urls": ["https://developer.amazon.com/docs/device-specs/device-specifications-comparison-table.html", "https://developer.amazon.com/docs/device-specs/identify-fire-tv-devices.html"]
+    },
+    {
+      "id": "roku-streaming-specifications",
+      "families": ["roku"],
+      "versionBounds": "Roku OS 11-14; 15.x remains beta/unbounded until reviewed",
+      "claim": "Roku documents MP4 H.264/AAC and HLS delivery; the static tuple remains below documented codec ceilings.",
+      "limitations": "Codec/profile ceilings, multichannel AAC, HDR, Dolby Vision, captions and audio output vary by Roku model. Roku OS 15.3 was beta at review time.",
+      "runtimeGaps": ["roDeviceInfo model and decode capabilities", "GetAudioDecodeInfo", "GetVideoDecodeInfo", "display mode and HDR", "actual audio output route"],
+      "urls": ["https://developer.roku.com/dev/docs/media", "https://developer.roku.com/dev/docs/release-notes"]
+    },
+    {
+      "id": "google-cast-supported-media",
+      "families": ["cast"],
+      "versionBounds": "No synthetic version band; device-independent fallback only",
+      "claim": "Google documents H.264/AAC MP4 support across Cast receivers, with device-specific ceilings.",
+      "limitations": "The submitted client version is not a Cast hardware generation. Codec/HDR/Dolby Vision capabilities differ across Chromecast, Nest, Google TV and custom receivers.",
+      "runtimeGaps": ["Cast canDisplayType for exact MIME/codec tuple", "receiver device model", "HDR and Dolby Vision", "audio route and Atmos"],
+      "urls": ["https://developers.google.com/cast/docs/media"]
+    },
+    {
+      "id": "samsung-tv-model-year-specs",
+      "families": ["tizen"],
+      "versionBounds": "Samsung TV model years 2019-2026 (not Tizen API versions)",
+      "claim": "Samsung's 2019 and 2026 TV specifications include H.264/AAC at or above the static baseline; Samsung documents HLS delivery.",
+      "limitations": "Model year is only a coarse band. Panel resolution, HDR, Dolby formats, decoder limits, MSE versus AVPlay and regional audio support vary.",
+      "runtimeGaps": ["model group", "AVPlay getStreamingProperty", "isHdrTvSupport", "panel resolution", "audio codec/output support"],
+      "urls": ["https://developer.samsung.com/smarttv/develop/specifications/media-specifications/2019-tv-video-specifications.html", "https://developer.samsung.com/smarttv/develop/specifications/media-specifications/2026-tv-video-specifications.html", "https://developer.samsung.com/smarttv/develop/guides/multimedia/adaptive-streaming.html"]
+    },
+    {
+      "id": "lg-webos-version-specs",
+      "families": ["webos"],
+      "versionBounds": "webOS TV 4.0-6.0 and 22-26",
+      "claim": "LG's versioned TV specifications include MP4 H.264/AAC, HLS and WebVTT at or above the static baseline.",
+      "limitations": "Ultra-HD, HDR and optional audio formats vary by model; webOS version does not identify panel or attached audio route.",
+      "runtimeGaps": ["deviceinfo panel capability", "mediaOption/player probes", "HDR type", "audio route/channels", "codec-specific playback result"],
+      "urls": ["https://webostv.developer.lge.com/develop/specifications", "https://webostv.developer.lge.com/develop/specifications/video-audio-260", "https://webostv.developer.lge.com/develop/specifications/streaming-protocol-drm"]
+    },
+    {
+      "id": "dlna-sink-negotiation",
+      "families": ["dlna"],
+      "versionBounds": "Unversioned best effort",
+      "claim": "DLNA is kept progressive-only and low-confidence; no arbitrary renderer is assumed to support adaptive HLS.",
+      "limitations": "A family label is not a renderer profile and cannot prove even the baseline tuple on every device.",
+      "runtimeGaps": ["device description", "ConnectionManager GetProtocolInfo", "declared DLNA profile IDs", "per-renderer playback success cache"],
+      "urls": ["https://www.dlna.org/guidelines/"]
+    }
+  ]
+}

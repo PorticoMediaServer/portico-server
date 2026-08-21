@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://portico.media/schema/viewer-notification.schema.json",
+  "title": "Portico V1 Viewer Notification",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "recipient", "kind", "severity", "messageId", "iconId", "interpolation", "actions", "createdAt"],
+  "properties": {
+    "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "recipient": { "$ref": "#/$defs/recipient" },
+    "kind": {
+      "enum": [
+        "account.security",
+        "download.ready",
+        "download.failed",
+        "dvr.conflict",
+        "dvr.recording-failed",
+        "feedback.received",
+        "feedback.updated",
+        "library-channel.degraded",
+        "membership.changed",
+        "server.message"
+      ]
+    },
+    "severity": { "enum": ["informational", "success", "warning", "error"] },
+    "messageId": { "type": "string", "pattern": "^[a-z][a-z0-9.-]*$" },
+    "iconId": { "type": "string", "pattern": "^[a-z][a-z0-9.-]*$" },
+    "interpolation": {
+      "type": "object",
+      "propertyNames": { "pattern": "^[A-Za-z][A-Za-z0-9.-]*$", "maxLength": 64 },
+      "additionalProperties": { "type": "string", "maxLength": 256 },
+      "maxProperties": 16
+    },
+    "actions": {
+      "type": "array",
+      "maxItems": 3,
+      "items": {
+              "type": "object",
+              "propertyNames": { "pattern": "^[A-Za-z][A-Za-z0-9.-]*$", "maxLength": 64 },
+        "additionalProperties": false,
+        "required": ["id", "labelMessageId", "kind", "target", "parameters"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1, "maxLength": 64 },
+          "labelMessageId": { "type": "string", "pattern": "^action\\.[a-z0-9.-]+$" },
+          "kind": { "enum": ["navigate", "command"] },
+          "target": { "type": "string", "pattern": "^[a-z][a-z0-9.-]*$" },
+          "parameters": {
+            "type": "object",
+            "additionalProperties": { "type": "string", "maxLength": 256 },
+            "maxProperties": 12
+          }
+        }
+      }
+    },
+    "content": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["body"],
+      "properties": {
+        "title": { "type": "string", "maxLength": 120 },
+        "body": { "type": "string", "minLength": 1, "maxLength": 2000 }
+      }
+    },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "readAt": { "type": ["string", "null"], "format": "date-time" },
+    "archivedAt": { "type": ["string", "null"], "format": "date-time" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "kind": { "const": "server.message" } }, "required": ["kind"] },
+      "then": { "required": ["content"] }
+    }
+  ],
+  "$defs": {
+    "recipient": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["authority", "accountId", "serverId", "audience"],
+      "properties": {
+        "authority": { "enum": ["hosted", "local"] },
+        "accountId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "serverId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "profileId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "audience": { "enum": ["profile", "account-admin"] }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "audience": { "const": "profile" } }, "required": ["audience"] },
+          "then": { "required": ["profileId"] }
+        },
+        {
+          "if": { "properties": { "audience": { "const": "account-admin" } }, "required": ["audience"] },
+          "then": { "not": { "required": ["profileId"] } }
+        }
+      ]
+    }
+  }
+}
