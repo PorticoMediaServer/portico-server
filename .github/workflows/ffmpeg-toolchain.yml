@@ -35,7 +35,7 @@ jobs:
     outputs:
       tag: ${{ steps.policy.outputs.tag }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - id: policy
         env: {VERSION: '${{ inputs.version }}', REVISION: '${{ inputs.revision }}'}
         run: |
@@ -63,7 +63,7 @@ jobs:
           - {target: win64, public_target: windows-x64}
           - {target: winarm64, public_target: windows-arm64}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Recover runner disk space
         run: |
           sudo rm -rf /opt/ghc /usr/local/.ghcup /usr/local/lib/android
@@ -108,7 +108,7 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 360
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Check out and patch the pinned recipe
         run: |
           git clone https://github.com/homebridge/ffmpeg-for-homebridge.git .toolchain/macos
@@ -150,7 +150,7 @@ jobs:
           - {os: windows-2025, target: windows-x64, profile: full}
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - env: {GH_TOKEN: '${{ github.token }}'}
         run: gh release download "$TOOLCHAIN_TAG" --pattern "portico-ffmpeg-${TOOLCHAIN_TAG}-${{ matrix.target }}.tar.xz" --dir .toolchain
       - shell: bash
