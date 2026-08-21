@@ -112,6 +112,7 @@ jobs:
         run: |
           git clone https://github.com/homebridge/ffmpeg-for-homebridge.git .toolchain/macos
           git -C .toolchain/macos checkout "$MACOS_RECIPE_COMMIT"
+          git -C .toolchain/macos apply "$GITHUB_WORKSPACE/media-toolchain/patches/homebridge-sourceforge-download.patch"
           git -C .toolchain/macos apply "$GITHUB_WORKSPACE/media-toolchain/patches/homebridge-gpl-only.patch"
       - name: Build FFmpeg for Apple Silicon
         working-directory: .toolchain/macos
