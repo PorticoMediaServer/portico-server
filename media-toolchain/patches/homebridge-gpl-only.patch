@@ -70,16 +70,14 @@ index 586ef02..231bea1 100755
  
    if build "vid_stab" "1.1.1"; then
  
-@@ -985,8 +993,61 @@ if build "zimg" "3.0.5"; then
+@@ -985,8 +993,59 @@ if build "zimg" "3.0.5"; then
  fi
  
  CONFIGURE_OPTIONS+=("--enable-libzimg")
 +
-+if build "freetype" "9e9d3b73f31367dbb4261f93c727a277f6632c77"; then
++if build "freetype" "2.14.3"; then
 +
-+  download "https://gitlab.freedesktop.org/freetype/freetype/-/archive/${CURRENT_PACKAGE_VERSION}/freetype-${CURRENT_PACKAGE_VERSION}.tar.gz" "freetype-${CURRENT_PACKAGE_VERSION}.tar.gz"
-+
-+  execute env LIBTOOLIZE="${WORKSPACE}/bin/libtoolize" ./autogen.sh
++  download "https://downloads.sourceforge.net/project/freetype/freetype2/${CURRENT_PACKAGE_VERSION}/freetype-${CURRENT_PACKAGE_VERSION}.tar.xz" "freetype-${CURRENT_PACKAGE_VERSION}.tar.xz"
 +  execute ./configure --prefix="${WORKSPACE}" --without-harfbuzz --disable-shared --enable-static
 +  execute make -j ${MJOBS}
 +  execute make install
