@@ -23,6 +23,12 @@ jobs:
         with:
           go-version-file: go.mod
           cache-dependency-path: go.sum
+      - name: Install FFmpeg test dependency
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends ffmpeg
+          ffmpeg -version
+          ffprobe -version
       - run: go vet ./...
       - run: go test ./... -count=1
 
