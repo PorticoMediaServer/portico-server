@@ -16,14 +16,10 @@ Please search existing issues first. Include the Portico version, operating syst
 
 Portico does not accept external code contributions. External pull requests will be closed without review.
 
-This is an operating decision, not a limitation of the GPL. You remain free to study, modify, and redistribute the software under its license. Keeping official implementation responsibility with the project owner allows the architecture, security model, and release process to stabilize before a broader contribution model is considered.
+This is an operating decision, not a limitation of the GPL. You remain free to study, modify, and redistribute the software under its license.
 
 If you have already developed a potential fix, describe the diagnosis and approach in an issue without attaching code that you expect the official project to merge.
 
 ## Security issues
 
 Do not report suspected vulnerabilities in a public issue. Follow [SECURITY.md](SECURITY.md) instead.
-
-## Community conduct
-
-Be patient, specific, and respectful. The project may decline requests that do not fit its direction, cannot be supported safely, or would impose an unsustainable maintenance burden.
