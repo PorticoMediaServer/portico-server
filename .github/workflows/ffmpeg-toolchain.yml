@@ -128,7 +128,9 @@ jobs:
           ./scripts/normalize-ffmpeg-bundle.sh .toolchain/macos/workspace macos-arm64 .toolchain/normalized "homebridge/ffmpeg-for-homebridge@$MACOS_RECIPE_COMMIT with Portico GPL-only patch"
           ./scripts/verify-ffmpeg-bundle.sh .toolchain/normalized full
           tar -C .toolchain/normalized -cJf "portico-ffmpeg-${TOOLCHAIN_TAG}-macos-arm64.tar.xz" .
-          tar -C .toolchain -cJf "portico-ffmpeg-${TOOLCHAIN_TAG}-macos-arm64-source.tar.xz" macos/packages macos/build-ffmpeg macos/LICENSE
+          mkdir -p .toolchain/macos/portico-patches
+          cp media-toolchain/patches/homebridge-*.patch .toolchain/macos/portico-patches/
+          tar -C .toolchain -cJf "portico-ffmpeg-${TOOLCHAIN_TAG}-macos-arm64-source.tar.xz" macos/packages macos/build-ffmpeg macos/README.md macos/package.json macos/portico-patches
       - if: inputs.publish
         env: {GH_TOKEN: '${{ github.token }}'}
         run: gh release upload "$TOOLCHAIN_TAG" portico-ffmpeg-*.tar.xz --clobber
