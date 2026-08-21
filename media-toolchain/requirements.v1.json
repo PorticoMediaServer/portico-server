@@ -13,7 +13,7 @@
     {"id":"encode.h264","kind":"encoder","required":true,"acceptable":["libx264"]},
     {"id":"encode.hevc","kind":"encoder","required":true,"acceptable":["libx265"]},
     {"id":"encode.av1","kind":"encoder","required":false,"acceptable":["libsvtav1","libaom-av1"]},
-    {"id":"audio.core","kind":"decoder","required":true,"acceptable":["aac","ac3","eac3","truehd","dts","flac","opus","pcm_s16le","alac","vorbis"]},
+    {"id":"audio.core","kind":"decoder","required":true,"acceptable":["aac","ac3","eac3","truehd","dca","flac","opus","pcm_s16le","alac","vorbis"]},
     {"id":"subtitle.text","kind":"decoder","required":true,"acceptable":["subrip","webvtt","ass"]},
     {"id":"subtitle.bitmap","kind":"decoder","required":true,"acceptable":["hdmv_pgs_subtitle","dvd_subtitle"]},
     {"id":"container.core","kind":"demuxer","required":true,"acceptable":["mov","matroska","mpegts","hls","flv","vobsub"]},

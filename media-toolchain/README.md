@@ -11,9 +11,11 @@ The pinned version, upstream recipes, and Portico revision are recorded in
 1. verifies that its requested version exactly matches the lock;
 2. builds Linux x64/ARM64 and Windows x64/ARM64 with the pinned BtbN recipe;
 3. builds Apple Silicon macOS with the pinned Homebridge recipe and Portico's
-   GPL-only patch;
-4. rejects `--enable-nonfree`, requires GPL version 3, and checks FFprobe plus
-   the playback/transcoding features in `scripts/verify-ffmpeg-bundle.sh`;
+   GPL-only patch, including the pinned FreeType, FriBidi, HarfBuzz, and libass
+   stack required for server-side subtitle rendering;
+4. rejects `--enable-nonfree` and `--enable-libfdk-aac`, requires GPL version 3,
+   and checks FFprobe plus the codec, subtitle, HDR, container, protocol, and
+   playback/transcoding features in `scripts/verify-ffmpeg-bundle.sh`;
 5. publishes binaries, license files, build identity, and corresponding source
    archives in a versioned FFmpeg prerelease.
 
