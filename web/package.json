@@ -31,7 +31,7 @@
   },
   "dependencies": {
     "@porticomediaserver/client-core": "file:../packages/portico-client-core",
-    "@tanstack/react-query": "5.101.2",
+    "@tanstack/react-query": "5.101.4",
     "hls.js": "^1.6.16",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
