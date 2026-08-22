@@ -104,6 +104,7 @@ jobs:
           git -C .toolchain/btbn checkout "$BTBN_COMMIT"
           git -C .toolchain/btbn apply "$GITHUB_WORKSPACE/media-toolchain/patches/btbn-gnu-ncurses-mirror.patch"
           "$GITHUB_WORKSPACE/scripts/patch-btbn-winarm64-system-error.sh" .toolchain/btbn/build.sh
+          "$GITHUB_WORKSPACE/scripts/patch-btbn-direct-registry-export.sh" .toolchain/btbn/makeimage.sh
       - name: Authenticate to Portico's builder registry
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.6.0
         with:
@@ -114,7 +115,6 @@ jobs:
         name: Restore or build the pinned dependency image
         working-directory: .toolchain/btbn
         env:
-          GITHUB_REPOSITORY: btbn/ffmpeg-builds
           PORTICO_REPOSITORY: '${{ github.repository }}'
           GH_TOKEN: '${{ github.token }}'
           GIT_BRANCH_OVERRIDE: n${{ inputs.version }}
@@ -122,11 +122,13 @@ jobs:
           FORCE_REBUILD: '${{ inputs.force_dependency_rebuild }}'
         run: |
           owner="${GITHUB_REPOSITORY_OWNER,,}"
-          patch_sha="$(sha256sum "$GITHUB_WORKSPACE/media-toolchain/patches/btbn-gnu-ncurses-mirror.patch" "$GITHUB_WORKSPACE/scripts/patch-btbn-winarm64-system-error.sh" | sha256sum | cut -d' ' -f1)"
+          patch_sha="$(sha256sum "$GITHUB_WORKSPACE/media-toolchain/patches/btbn-gnu-ncurses-mirror.patch" "$GITHUB_WORKSPACE/scripts/patch-btbn-winarm64-system-error.sh" "$GITHUB_WORKSPACE/scripts/patch-btbn-direct-registry-export.sh" | sha256sum | cut -d' ' -f1)"
           cache_key="$(printf '%s\n' "$BTBN_COMMIT" "$patch_sha" '${{ matrix.target }}' 'gpl' '8.1' "$DEPENDENCY_CACHE_REVISION" | sha256sum | cut -c1-24)"
-          cache_image="ghcr.io/${owner}/portico-ffmpeg-builder:${{ matrix.target }}-${cache_key}"
-          expected_image="ghcr.io/btbn/ffmpeg-builds/${{ matrix.target }}-gpl-8.1:latest"
-          base_image="ghcr.io/btbn/ffmpeg-builds/base:latest"
+          cache_subject="ghcr.io/${owner}/portico-ffmpeg-builder"
+          cache_image="${cache_subject}:${{ matrix.target }}-${cache_key}"
+          recipe_repository="${GITHUB_REPOSITORY,,}"
+          expected_image="ghcr.io/${recipe_repository}/${{ matrix.target }}-gpl-8.1:latest"
+          base_image="ghcr.io/${recipe_repository}/base:latest"
 
           cache_hit=false
           if [[ "$FORCE_REBUILD" != 'true' ]] && docker pull "$cache_image"; then
@@ -139,13 +141,21 @@ jobs:
           if [[ "$cache_hit" == 'true' ]]; then
             ./download.sh ${{ matrix.target }} gpl 8.1
           else
-            ./makeimage.sh ${{ matrix.target }} gpl 8.1
-            docker tag "$expected_image" "$cache_image"
-            docker push "$cache_image"
-            docker pull "$cache_image"
-            digest="$(docker image inspect "$cache_image" --format '{{index .RepoDigests 0}}' | cut -d@ -f2)"
+            metadata_file="$RUNNER_TEMP/portico-ffmpeg-builder-${{ matrix.target }}.json"
+            PORTICO_CACHE_IMAGE="$cache_image" PORTICO_CACHE_METADATA="$metadata_file" ./makeimage.sh ${{ matrix.target }} gpl 8.1
+            digest="$(jq -r '."containerimage.digest"' "$metadata_file")"
+            [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+            for attempt in 1 2 3; do
+              docker pull "${cache_subject}@${digest}" && break
+              test "$attempt" -lt 3
+              sleep $((attempt * 10))
+            done
+            image_id="$(docker image inspect "${cache_subject}@${digest}" --format '{{.Id}}')"
+            docker tag "$image_id" "$cache_image"
+            docker tag "$cache_image" "$expected_image"
+            docker tag "$cache_image" "$base_image"
             {
-              echo "subject_name=${cache_image}"
+              echo "subject_name=${cache_subject}"
               echo "subject_digest=${digest}"
             } >> "$GITHUB_OUTPUT"
           fi
@@ -163,7 +173,6 @@ jobs:
       - name: Build FFmpeg with the pinned dependency image
         working-directory: .toolchain/btbn
         env:
-          GITHUB_REPOSITORY: btbn/ffmpeg-builds
           GIT_BRANCH_OVERRIDE: n${{ inputs.version }}
         run: |
           ./build.sh ${{ matrix.target }} gpl 8.1
