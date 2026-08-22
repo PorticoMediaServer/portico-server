@@ -13,6 +13,9 @@ small, reviewable building blocks used by that workflow.
 - `normalize-ffmpeg-bundle.sh` creates a consistent component layout.
 - `patch-btbn-winarm64-system-error.sh` applies the pinned FFmpeg 8.1.2
   Windows ARM64 standard-header correction to the BtbN recipe.
+- `patch-btbn-direct-registry-export.sh` makes the large pinned dependency
+  image export directly to Portico's private registry instead of relying on a
+  fragile local Docker image load.
 - `verify-ffmpeg-bundle.sh` enforces the GPL/no-nonfree and capability policy.
 - `install-qualified-ffmpeg.sh` downloads and validates the exact locked toolchain
   used by CI and release qualification.
