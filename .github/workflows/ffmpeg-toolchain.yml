@@ -286,8 +286,20 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - env: {GH_TOKEN: '${{ github.token }}'}
-        run: gh release download "$TOOLCHAIN_TAG" --pattern "portico-ffmpeg-${TOOLCHAIN_TAG}-${{ matrix.target }}.tar.xz" --dir .toolchain
+      - name: Download the draft toolchain artifact
+        shell: bash
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          artifact="portico-ffmpeg-${TOOLCHAIN_TAG}-${{ matrix.target }}.tar.xz"
+          mkdir -p .toolchain
+          for attempt in 1 2 3 4 5; do
+            if gh release download "$TOOLCHAIN_TAG" --repo "$GITHUB_REPOSITORY" --pattern "$artifact" --dir .toolchain; then
+              break
+            fi
+            test "$attempt" -lt 5
+            sleep $((attempt * 5))
+          done
+          test -s ".toolchain/$artifact"
       - shell: bash
         run: |
           mkdir -p .toolchain/extracted
