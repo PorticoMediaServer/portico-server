@@ -23,6 +23,7 @@ describe('Web element parity preview', () => {
     expect(screen.getByRole('heading', { name: 'Component states' })).toBeInTheDocument();
     expect(screen.getByLabelText('Invalid')).toHaveAttribute('aria-invalid', 'true');
     expect(screen.getByLabelText('Disabled')).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Focus action' })).toHaveClass('is-focus');
     expect(screen.getByRole('button', { name: 'Disabled action' })).toBeDisabled();
 
     window.location.hash = '#auth';
