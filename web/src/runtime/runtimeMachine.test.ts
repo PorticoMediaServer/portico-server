@@ -81,6 +81,29 @@ describe('Portico web runtime state machine', () => {
     expect(recovery.recoveryActions).not.toContain('sign-in');
   });
 
+  it('carries automatic Hosted availability timing only when the read caller explicitly opts in', () => {
+    const automatic = runtimeReducer(initialRuntimeState(), {
+      type: 'FAILURE',
+      classification: 'membership',
+      hosted: true,
+      automaticAvailabilityRetry: true,
+      availabilityRetryAfterMs: 9_000,
+    });
+    expect(automatic).toMatchObject({
+      id: 'runtime-recovery',
+      classification: 'membership',
+      automaticAvailabilityRetry: true,
+      availabilityRetryAfterMs: 9_000,
+    });
+
+    const security = runtimeReducer(initialRuntimeState(), {
+      type: 'FAILURE',
+      classification: 'route-security',
+      hosted: true,
+    });
+    expect(security).not.toHaveProperty('automaticAvailabilityRetry', true);
+  });
+
   it('offers nearby routing only as an explicit recovery action', () => {
     const recovery = runtimeReducer(initialRuntimeState(), {
       type: 'FAILURE',
@@ -187,6 +210,15 @@ describe('runtime configuration and credential boundaries', () => {
     const invite = extractHostedBootstrapIntent('https://web.getportico.tv/invites/invite-secret');
     expect(invite.intent.inviteId).toBe('invite-secret');
     expect(invite.safeUrl).toBe('/');
+
+    const device = extractHostedBootstrapIntent('https://web.getportico.tv/device#code=abcd-efgh');
+    expect(device.intent).toMatchObject({ deviceAuthorizationRequested: true, deviceAuthorizationCode: 'ABCD-EFGH' });
+    expect(device.safeUrl).toBe('/device');
+    expect(device.safeUrl).not.toContain('ABCD-EFGH');
+
+    const genericDevice = extractHostedBootstrapIntent('https://web.getportico.tv/authorize-device#code=JKMN-PQRS&provider=apple&nativeReturn=1');
+    expect(genericDevice.intent).toMatchObject({ genericDeviceAuthorizationRequested: true, genericDeviceAuthorizationCode: 'JKMN-PQRS', genericDeviceAuthorizationProvider: 'apple', genericDeviceAuthorizationNativeReturn: true });
+    expect(genericDevice.safeUrl).toBe('/authorize-device');
   });
 
   it('captures and scrubs a local-server Portico Account handoff', () => {

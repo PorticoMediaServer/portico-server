@@ -4,7 +4,7 @@ import { useRef, useState } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { useRuntime } from './RuntimeContext';
 import { extractHostedBootstrapIntent, extractPorticoLoginResult, RuntimeProvider } from './RuntimeProvider';
-import { RuntimeSurface } from './RuntimeSurface';
+import { consumeNativeDeviceSSOAutoStart, nativeDeviceAuthorizationCompletionURL, RuntimeSurface } from './RuntimeSurface';
 import type { HostedServerSummary, RuntimeConfig } from './runtimeMachine';
 import { DataProvider, useAuthSession, usePorticoDataSource } from '../data/DataProvider';
 import { FixturePorticoDataSource } from '../data/fixtureSource';
@@ -351,6 +351,118 @@ afterEach(() => {
 });
 
 describe('RuntimeProvider', () => {
+  it('uses a one-shot native SSO sentinel and one fixed completion callback', () => {
+    expect(consumeNativeDeviceSSOAutoStart('apple', 'JKMN-PQRS')).toBe(true);
+    expect(consumeNativeDeviceSSOAutoStart('apple', 'JKMN-PQRS')).toBe(false);
+    expect(consumeNativeDeviceSSOAutoStart('google', 'JKMN-PQRS')).toBe(true);
+    expect(nativeDeviceAuthorizationCompletionURL(true)).toBe('portico://device-authorization-complete');
+    expect(nativeDeviceAuthorizationCompletionURL(false)).toBeUndefined();
+  });
+
+  it('keeps a TV code out of requests and authorizes the same setup session after explicit server selection', async () => {
+    window.history.replaceState(null, '', '/device#code=ABCD-EFGH');
+    const requests: Array<{ url: string; body?: Record<string, unknown> }> = [];
+    const fetchMock = vi.fn((input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      const body = init?.body ? JSON.parse(String(init.body)) as Record<string, unknown> : undefined;
+      requests.push({ url, body });
+      if (url.endsWith('/api/system')) return Promise.resolve(response(hostedSystem));
+      if (url.endsWith('/api/auth/me')) return Promise.resolve(response({ authenticated: true, user: { id: 'user-1', username: 'owner', email: 'owner@example.test', displayName: 'Owner' } }));
+      if (url.includes('/api/account/servers?')) return Promise.resolve(response({ items: [hostedServer('server-1', 'Family Room')], pageInfo: { hasMore: false } }));
+      if (url.endsWith('/api/tv-setup/preview')) return Promise.resolve(response({ setupSessionId: 'tvsu-one', code: 'ABCD-EFGH', status: 'pending', deviceName: 'Living Room TV', platform: 'tvOS', appVersion: '1.0', expiresAt: new Date(Date.now() + 60_000).toISOString() }));
+      if (url.endsWith('/api/tv-setup/grants')) return Promise.resolve(response({ setupSessionId: 'tvsu-one', status: 'grant_ready', serverId: 'server-1', serverUrl: 'https://server.test', encryptedGrant: {}, expiresAt: new Date(Date.now() + 60_000).toISOString() }, true, 201));
+      return Promise.reject(new Error(`Unexpected request: ${url}`));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<RuntimeProvider config={hostedConfig}><RuntimeHarness /></RuntimeProvider>);
+
+    expect(await screen.findByText('Living Room TV')).toBeInTheDocument();
+    expect(window.location.pathname).toBe('/device');
+    expect(window.location.hash).toBe('');
+    expect(requests.every((request) => !request.url.includes('ABCD-EFGH'))).toBe(true);
+    fireEvent.click(screen.getByRole('radio', { name: /Family Room/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Connect TV' }));
+    expect(await screen.findByRole('heading', { name: 'TV connected' })).toBeInTheDocument();
+    expect(requests.find((request) => request.url.endsWith('/api/tv-setup/grants'))?.body).toEqual({ code: 'ABCD-EFGH', setupSessionId: 'tvsu-one', serverId: 'server-1' });
+  });
+
+  it('keeps generic limited-input authorization separate from TV setup', async () => {
+    window.history.replaceState(null, '', '/authorize-device#code=JKMN-PQRS');
+    const requests: Array<{ url: string; body?: Record<string, unknown> }> = [];
+    const fetchMock = vi.fn((input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      const body = init?.body ? JSON.parse(String(init.body)) as Record<string, unknown> : undefined;
+      requests.push({ url, body });
+      if (url.endsWith('/api/system')) return Promise.resolve(response(hostedSystem));
+      if (url.endsWith('/api/auth/me')) return Promise.resolve(response({ authenticated: true, user: { id: 'user-1', username: 'owner', email: 'owner@example.test', displayName: 'Owner' } }));
+      if (url.endsWith('/api/device-authorizations/preview')) return Promise.resolve(response({ status: 'pending', deviceName: 'Streaming Stick', platform: 'limited-tv', expiresAt: new Date(Date.now() + 60_000).toISOString() }));
+      if (url.endsWith('/api/device-authorizations')) return Promise.resolve(response({ status: 'approved', deviceName: 'Streaming Stick', platform: 'limited-tv', expiresAt: new Date(Date.now() + 60_000).toISOString() }));
+      return Promise.reject(new Error(`Unexpected request: ${url}`));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    render(<RuntimeProvider config={hostedConfig}><RuntimeHarness /></RuntimeProvider>);
+    expect(await screen.findByText('Streaming Stick')).toBeInTheDocument();
+    expect(requests.some((request) => request.url.includes('/api/tv-setup/'))).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: 'Approve device' }));
+    expect(await screen.findByRole('heading', { name: 'Device connected' })).toBeInTheDocument();
+    expect(requests.find((request) => request.url.endsWith('/api/device-authorizations'))?.body).toEqual({ userCode: 'JKMN-PQRS', decision: 'approve' });
+  });
+
+  it('discards a late TV preview after the displayed code changes', async () => {
+    window.history.replaceState(null, '', '/device');
+    const firstPreview = deferred<Response>();
+    const fetchMock = vi.fn((input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith('/api/system')) return Promise.resolve(response(hostedSystem));
+      if (url.endsWith('/api/auth/me')) return Promise.resolve(response({ authenticated: true, user: { id: 'user-1', username: 'owner', email: 'owner@example.test', displayName: 'Owner' } }));
+      if (url.includes('/api/account/servers?')) return Promise.resolve(response({ items: [hostedServer('server-1', 'Family Room')], pageInfo: { hasMore: false } }));
+      if (url.endsWith('/api/tv-setup/preview')) return firstPreview.promise;
+      return Promise.reject(new Error(`Unexpected request: ${url}`));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    render(<RuntimeProvider config={hostedConfig}><RuntimeHarness /></RuntimeProvider>);
+    const input = await screen.findByLabelText('Device code');
+    fireEvent.change(input, { target: { value: 'ABCD-EFGH' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Review request' }));
+    fireEvent.change(input, { target: { value: 'JKMN-PQRS' } });
+    await act(async () => firstPreview.resolve(response({ setupSessionId: 'stale-session', code: 'ABCD-EFGH', status: 'pending', deviceName: 'Wrong TV', platform: 'tvOS', expiresAt: new Date(Date.now() + 60_000).toISOString() })));
+    expect(screen.queryByText('Wrong TV')).not.toBeInTheDocument();
+    expect(input).toHaveValue('JKMN-PQRS');
+  });
+
+  it('discards late generic previews and decisions after the code changes', async () => {
+    window.history.replaceState(null, '', '/authorize-device');
+    const stalePreview = deferred<Response>();
+    const decision = deferred<Response>();
+    const fetchMock = vi.fn((input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/api/system')) return Promise.resolve(response(hostedSystem));
+      if (url.endsWith('/api/auth/me')) return Promise.resolve(response({ authenticated: true, user: { id: 'user-1', username: 'owner', email: 'owner@example.test', displayName: 'Owner' } }));
+      if (url.endsWith('/api/device-authorizations/preview')) {
+        const requestBody = init?.body ? JSON.parse(String(init.body)) as { userCode?: string } : undefined;
+        return requestBody?.userCode === 'ABCD-EFGH' ? stalePreview.promise : Promise.resolve(response({ status: 'pending', deviceName: 'Current Stick', platform: 'limited-tv', expiresAt: new Date(Date.now() + 60_000).toISOString() }));
+      }
+      if (url.endsWith('/api/device-authorizations')) return decision.promise;
+      return Promise.reject(new Error(`Unexpected request: ${url}`));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    render(<RuntimeProvider config={hostedConfig}><RuntimeHarness /></RuntimeProvider>);
+    const input = await screen.findByLabelText('Device code');
+    fireEvent.change(input, { target: { value: 'ABCD-EFGH' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Review request' }));
+    fireEvent.change(input, { target: { value: 'JKMN-PQRS' } });
+    await act(async () => stalePreview.resolve(response({ status: 'pending', deviceName: 'Wrong Stick', platform: 'limited-tv', expiresAt: new Date(Date.now() + 60_000).toISOString() })));
+    expect(screen.queryByText('Wrong Stick')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Review request' }));
+    expect(await screen.findByText('Current Stick')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Approve device' }));
+    fireEvent.change(input, { target: { value: 'RSTU-VWXY' } });
+    await act(async () => decision.resolve(response({ status: 'approved', deviceName: 'Current Stick', platform: 'limited-tv', expiresAt: new Date(Date.now() + 60_000).toISOString() })));
+    expect(screen.queryByRole('heading', { name: 'Device connected' })).not.toBeInTheDocument();
+    expect(input).toHaveValue('RSTU-VWXY');
+  });
+
   it('recognizes and removes the server-issued claim page code', () => {
     expect(extractHostedBootstrapIntent('https://web.getportico.tv/claim?code=SETUP123&serverName=Family%20Room&returnUrl=http%3A%2F%2Flocalhost%3A32500%2F%3FporticoSetup%3Dcontinue')).toEqual({
       intent: { claimCode: 'SETUP123', claimServerName: 'Family Room', claimReturnUrl: 'http://localhost:32500/?porticoSetup=continue' },
@@ -409,6 +521,17 @@ describe('RuntimeProvider', () => {
 
     expect(await screen.findByRole('heading', { name: 'Continue setting up your server “Family Room”' })).toBeInTheDocument();
     expect(screen.getByText('Sign in or create a Portico Account to continue with server setup.')).toBeInTheDocument();
+    const google = screen.getByRole('link', { name: 'Sign in with Google' });
+    const apple = screen.getByRole('link', { name: 'Sign in with Apple' });
+    expect(new URL(google.getAttribute('href')!)).toMatchObject({
+      origin: 'https://api.getportico.tv',
+      pathname: '/api/auth/sso/google/start',
+    });
+    expect(new URL(apple.getAttribute('href')!)).toMatchObject({
+      origin: 'https://api.getportico.tv',
+      pathname: '/api/auth/sso/apple/start',
+    });
+    expect(new URL(google.getAttribute('href')!).searchParams.get('returnTo')).toBe(window.location.href);
     expect(document.querySelector('.runtime-state-icon')).toBeNull();
     expect(window.location.pathname).toBe('/');
     expect(window.location.search).toBe('');
@@ -611,6 +734,8 @@ describe('RuntimeProvider', () => {
     expect(screen.getByRole('button', { name: /Portico Account/ })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /Use Server Authentication Only/ }));
     expect(screen.getByRole('button', { name: 'Create This Server owner' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Terms of Use' })).toHaveAttribute('href', 'https://getportico.tv/terms/');
+    expect(screen.getByRole('link', { name: 'Privacy Policy' })).toHaveAttribute('href', 'https://getportico.tv/privacy/');
     expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(String(fetchMock.mock.calls[0][0])).toContain('/api/system');
     expect(String(fetchMock.mock.calls[1][0])).toContain('/api/auth/capabilities');
@@ -630,6 +755,8 @@ describe('RuntimeProvider', () => {
     expect(await screen.findByRole('heading', { name: 'Sign in to Family Media' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Sign in with This Server/ })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Continue with Portico Account' })).toHaveAttribute('href', expect.stringContaining('/api/auth/portico/start'));
+    expect(screen.getByRole('link', { name: 'Terms of Use' })).toHaveAttribute('href', 'https://getportico.tv/terms/');
+    expect(screen.getByRole('link', { name: 'Privacy Policy' })).toHaveAttribute('href', 'https://getportico.tv/privacy/');
     expect(fetchMock).toHaveBeenCalledTimes(5);
   });
 
@@ -675,6 +802,8 @@ describe('RuntimeProvider', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Sign in with This Server' }));
     expect(await screen.findByRole('heading', { name: ClientCore.productMessage('auth.profile-selection-required').title })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /Kids.*PIN required/ }));
+    expect(screen.getByRole('link', { name: 'Terms of Use' })).toHaveAttribute('href', 'https://getportico.tv/terms/');
+    expect(screen.getByRole('link', { name: 'Privacy Policy' })).toHaveAttribute('href', 'https://getportico.tv/privacy/');
     const pinInput = screen.getByLabelText('Kids profile PIN');
     const openProfile = screen.getByRole('button', { name: 'Open profile' });
     fireEvent.change(pinInput, { target: { value: '123' } });
@@ -871,7 +1000,8 @@ describe('RuntimeProvider', () => {
 
     expect(await screen.findByRole('heading', { name: ClientCore.productMessage('problem.cloud-unavailable').title })).toBeInTheDocument();
     expect(screen.queryByText(ClientCore.productMessage('auth.session-expired').body!)).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument();
+    expect(screen.getByText('Portico couldn’t reach account services. It will keep trying automatically.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument();
   });
 
 	it('recovers the short-lived local-server handoff after the sensitive fragment is scrubbed and the page reloads', async () => {

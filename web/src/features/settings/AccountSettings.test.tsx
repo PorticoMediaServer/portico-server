@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import { FixtureSettingsDataSource } from './FixtureSettingsDataSource';
@@ -251,8 +251,24 @@ describe('personal account and security Settings', () => {
     const source = new FixtureSettingsDataSource();
     vi.spyOn(source, 'porticoMFAStatus').mockRejectedValue(new Error('Portico Account security did not answer.'));
     render(<AccountSettings viewer={porticoViewer} source={source} />);
-    expect(await screen.findByText('Portico Account security is unavailable')).toBeInTheDocument();
-    expect(screen.getByText("Portico couldn't load this information. Try again.")).toBeInTheDocument();
+    expect(await screen.findByText('Portico Account services unavailable')).toBeInTheDocument();
+    expect(screen.getByText('Portico couldn’t reach account services. It will keep trying automatically.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument();
     expect(screen.queryByText('Portico Account security did not answer.')).not.toBeInTheDocument();
+  });
+
+  it('automatically reloads a transient Portico signed-in-device read', async () => {
+    vi.useFakeTimers();
+    const source = new FixtureSettingsDataSource();
+    const devices = vi.spyOn(source, 'signedInDevices').mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    render(<AccountSettings viewer={porticoViewer} source={source} />);
+    await act(async () => Promise.resolve());
+    expect(screen.getByText('Portico Account services unavailable')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument();
+    act(() => vi.advanceTimersByTime(5_000));
+    await act(async () => Promise.resolve());
+    expect(devices).toHaveBeenCalledTimes(2);
+    vi.useRealTimers();
+    expect(await screen.findByText('Living Room TV')).toBeInTheDocument();
   });
 });

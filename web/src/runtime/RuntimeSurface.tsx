@@ -22,12 +22,13 @@ import {
   type ProductMessagePresentation,
   type SemanticIconId,
 } from '@porticomediaserver/client-core';
-import { type FormEvent, type ReactNode, useEffect, useRef, useState } from 'react';
+import { type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { PrimaryButton, SecondaryButton } from '../components/controls/Buttons';
 import { PasswordInput, PasswordRequirements, validPorticoPassword } from '../components/controls/PasswordInput';
 import { productText } from '../components/ProductLanguage';
 import type { HostedServerSummary } from './runtimeMachine';
 import { useRuntime } from './RuntimeContext';
+import { useHostedAvailabilityRetry } from './hostedAvailability';
 
 const profileSelectionRequired = productMessage('auth.profile-selection-required');
 
@@ -67,6 +68,27 @@ function ProductProblem({ presentation }: { presentation: ProductMessagePresenta
     <ProductStatusIcon icon={presentation.icon} />
     <span><strong>{presentation.title}</strong>{presentation.body && <small>{presentation.body}</small>}</span>
   </div>;
+}
+
+function AccountLegalLinks() {
+  return <p className="runtime-account-legal">By continuing, you agree to Portico’s <a href="https://getportico.tv/terms/" target="_blank" rel="noreferrer">Terms of Use</a> and acknowledge the <a href="https://getportico.tv/privacy/" target="_blank" rel="noreferrer">Privacy Policy</a>.</p>;
+}
+
+const NATIVE_DEVICE_AUTHORIZATION_COMPLETION_URL = 'portico://device-authorization-complete';
+const NATIVE_DEVICE_SSO_GUARD_PREFIX = 'portico.hosted.native-device-sso-start.v1:';
+
+export function consumeNativeDeviceSSOAutoStart(provider: 'google' | 'apple', code: string): boolean {
+  if (typeof window === 'undefined' || !normalizeDeviceCode(code)) return false;
+  const key = `${NATIVE_DEVICE_SSO_GUARD_PREFIX}${provider}:${normalizeDeviceCode(code)}`;
+  try {
+    if (window.sessionStorage.getItem(key) === 'started') return false;
+    window.sessionStorage.setItem(key, 'started');
+    return true;
+  } catch { return false; }
+}
+
+export function nativeDeviceAuthorizationCompletionURL(nativeReturn: boolean): string | undefined {
+  return nativeReturn ? NATIVE_DEVICE_AUTHORIZATION_COMPLETION_URL : undefined;
 }
 
 function RuntimePanel({ title, children, icon, wide = false, embedded = false }: { title: string; children: ReactNode; icon?: ReactNode; wide?: boolean; embedded?: boolean }) {
@@ -144,21 +166,204 @@ function HostedSignIn() {
     }
   };
   const claimSetup = runtime.hasServerClaimIntent;
+  const deviceSetup = runtime.hasDeviceAuthorizationIntent;
   const claimServerName = runtime.serverClaimName;
-  const title = mode === 'register' ? (claimSetup ? (claimServerName ? `Create an account to continue setting up “${claimServerName}”` : 'Create an account to continue') : productText('account.create-title')) : mode === 'request-reset' ? 'Recover your Portico Account' : mode === 'complete-reset' ? 'Choose a new password' : runtime.mfaRequired ? (claimServerName ? `Verify your sign-in for “${claimServerName}”` : 'Verify your sign-in') : claimSetup ? (claimServerName ? `Continue setting up your server “${claimServerName}”` : 'Continue setting up your server') : 'Sign in to Portico';
-  const intro = mode === 'register' ? (claimSetup ? 'Create a Portico Account to continue with server setup.' : productText('account.create-intro')) : mode === 'request-reset' ? 'Enter your account email. If it matches an account, Portico will send a secure recovery link.' : mode === 'complete-reset' ? 'Choose a new password for your Portico Account. The recovery token has already been removed from the address bar.' : runtime.mfaRequired ? 'Enter the code from your authenticator, or use one of your recovery codes.' : claimSetup ? 'Sign in or create a Portico Account to continue with server setup.' : 'Sign in using your Portico Account credentials.';
+  const title = mode === 'register' ? (deviceSetup ? 'Create an account to connect your device' : claimSetup ? (claimServerName ? `Create an account to continue setting up “${claimServerName}”` : 'Create an account to continue') : productText('account.create-title')) : mode === 'request-reset' ? 'Recover your Portico Account' : mode === 'complete-reset' ? 'Choose a new password' : runtime.mfaRequired ? (claimServerName ? `Verify your sign-in for “${claimServerName}”` : 'Verify your sign-in') : deviceSetup ? 'Sign in to connect your device' : claimSetup ? (claimServerName ? `Continue setting up your server “${claimServerName}”` : 'Continue setting up your server') : 'Sign in to Portico';
+  const intro = mode === 'register' ? (deviceSetup ? 'Create a Portico Account, then review the device before granting access.' : claimSetup ? 'Create a Portico Account to continue with server setup.' : productText('account.create-intro')) : mode === 'request-reset' ? 'Enter your account email. If it matches an account, Portico will send a secure recovery link.' : mode === 'complete-reset' ? 'Choose a new password for your Portico Account. The recovery token has already been removed from the address bar.' : runtime.mfaRequired ? 'Enter the code from your authenticator, or use one of your recovery codes.' : deviceSetup ? 'Sign in or create an account, then confirm the device requesting access.' : claimSetup ? 'Sign in or create a Portico Account to continue with server setup.' : 'Sign in using your Portico Account credentials.';
+  const showIdentityProviders = (mode === 'sign-in' || mode === 'register') && !runtime.mfaRequired;
+  const identityProviderURL = (provider: 'google' | 'apple') => {
+    const target = new URL(`/api/auth/sso/${provider}/start`, runtime.config.hostedApiBaseUrl);
+    if (typeof window !== 'undefined') target.searchParams.set('returnTo', `${window.location.origin}${window.location.pathname}${window.location.search}`);
+    return target.toString();
+  };
+  useEffect(() => {
+    const provider = runtime.deviceAuthorizationProvider;
+    const code = runtime.deviceAuthorizationCode;
+    if (mode !== 'sign-in' || runtime.mfaRequired || !runtime.nativeDeviceAuthorizationReturn || !provider || !code) return;
+    if (!consumeNativeDeviceSSOAutoStart(provider, code)) return;
+    window.location.assign(identityProviderURL(provider));
+  }, [mode, runtime.deviceAuthorizationCode, runtime.deviceAuthorizationProvider, runtime.mfaRequired, runtime.nativeDeviceAuthorizationReturn]);
   if (resetSent) return <RuntimePanel title="Check your email"><p className="runtime-intro">If an account matches <strong>{email}</strong>, recovery instructions are on the way. The link expires and can be used only once.</p><div className="runtime-actions"><PrimaryButton onClick={() => changeMode('sign-in')}><ArrowLeft /> Back to sign in</PrimaryButton><SecondaryButton disabled={runtime.busy} onClick={() => setResetSent(false)}>Send again</SecondaryButton></div></RuntimePanel>;
   return <RuntimePanel title={title}>
     <p className="runtime-intro">{intro}</p>
+    {showIdentityProviders && <>
+      <div className="runtime-identity-providers" aria-label="Continue with a sign-in provider">
+        <a className="runtime-identity-provider google" href={identityProviderURL('google')}>
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path fill="#4285F4" d="M21.6 12.23c0-.71-.06-1.4-.18-2.07H12v3.92h5.38a4.6 4.6 0 0 1-2 3.02v2.54h3.24c1.9-1.75 2.98-4.33 2.98-7.41Z"/><path fill="#34A853" d="M12 22c2.7 0 4.98-.9 6.63-2.36l-3.24-2.54c-.9.6-2.05.96-3.39.96-2.61 0-4.82-1.76-5.61-4.13H3.04v2.62A10 10 0 0 0 12 22Z"/><path fill="#FBBC05" d="M6.39 13.93A6 6 0 0 1 6.08 12c0-.67.11-1.33.31-1.93V7.45H3.04A10 10 0 0 0 2 12c0 1.64.39 3.19 1.04 4.55l3.35-2.62Z"/><path fill="#EA4335" d="M12 5.94c1.47 0 2.79.5 3.83 1.5l2.87-2.87A9.63 9.63 0 0 0 12 2a10 10 0 0 0-8.96 5.45l3.35 2.62C7.18 7.7 9.39 5.94 12 5.94Z"/></svg>
+          <span>Sign in with Google</span>
+        </a>
+        <a className="runtime-identity-provider apple" href={identityProviderURL('apple')}>
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path fill="currentColor" d="M16.77 12.53c-.02-2.24 1.83-3.33 1.91-3.38a4.08 4.08 0 0 0-3.21-1.74c-1.35-.14-2.66.81-3.35.81-.7 0-1.76-.8-2.9-.78a4.26 4.26 0 0 0-3.58 2.18c-1.55 2.68-.4 6.62 1.09 8.79.75 1.06 1.62 2.25 2.76 2.21 1.12-.05 1.54-.71 2.89-.71 1.34 0 1.73.71 2.9.68 1.2-.02 1.96-1.06 2.68-2.13a8.75 8.75 0 0 0 1.23-2.49 3.86 3.86 0 0 1-2.42-3.44Zm-2.18-6.55a3.9 3.9 0 0 0 .9-2.8 4 4 0 0 0-2.6 1.33 3.73 3.73 0 0 0-.92 2.7 3.3 3.3 0 0 0 2.62-1.23Z"/></svg>
+          <span>Sign in with Apple</span>
+        </a>
+      </div>
+      <div className="runtime-identity-divider"><span>{mode === 'register' ? 'or create an account with email' : 'or sign in with email'}</span></div>
+    </>}
     <form onSubmit={submit}>
-      {mode === 'register' && <label><span>Username</span><input autoFocus autoCapitalize="none" autoComplete="username" minLength={3} maxLength={32} pattern="[A-Za-z0-9][A-Za-z0-9._-]{1,30}[A-Za-z0-9]" value={username} onChange={(event) => setUsername(event.target.value)} required /><small>3–32 letters, numbers, periods, underscores, or hyphens.</small></label>}
-      {mode !== 'complete-reset' && <label><span>{mode === 'sign-in' ? 'Username or email' : 'Email'}</span><input autoFocus={mode !== 'register'} type={mode === 'sign-in' ? 'text' : 'email'} autoCapitalize="none" autoComplete="username" value={email} onChange={(event) => setEmail(event.target.value)} required /></label>}
-      {(mode === 'sign-in' || mode === 'register' || mode === 'complete-reset') && <label><span>{mode === 'complete-reset' ? 'New password' : 'Password'}</span><PasswordInput aria-label={mode === 'complete-reset' ? 'New password' : 'Password'} autoComplete={mode === 'sign-in' ? 'current-password' : 'new-password'} minLength={mode === 'sign-in' ? undefined : 8} maxLength={72} value={password} onChange={(event) => setPassword(event.target.value)} required aria-describedby={mode !== 'sign-in' ? 'runtime-password-requirements' : undefined} />{mode !== 'sign-in' && <PasswordRequirements id="runtime-password-requirements" value={password} />}</label>}
+      {mode === 'register' && <label><span>Username</span><input autoFocus autoCapitalize="none" autoComplete="username" placeholder="Choose a username" minLength={3} maxLength={32} pattern="[A-Za-z0-9][A-Za-z0-9._-]{1,30}[A-Za-z0-9]" value={username} onChange={(event) => setUsername(event.target.value)} required /><small>3–32 letters, numbers, periods, underscores, or hyphens.</small></label>}
+      {mode !== 'complete-reset' && <label><span>{mode === 'sign-in' ? 'Username or email' : 'Email'}</span><input autoFocus={mode !== 'register'} type={mode === 'sign-in' ? 'text' : 'email'} autoCapitalize="none" autoComplete="username" placeholder={mode === 'sign-in' ? 'Username or email' : 'you@example.com'} value={email} onChange={(event) => setEmail(event.target.value)} required /></label>}
+      {(mode === 'sign-in' || mode === 'register' || mode === 'complete-reset') && <label><span>{mode === 'complete-reset' ? 'New password' : 'Password'}</span><PasswordInput aria-label={mode === 'complete-reset' ? 'New password' : 'Password'} placeholder={mode === 'complete-reset' ? 'Create a new password' : mode === 'register' ? 'Create a secure password' : 'Password'} autoComplete={mode === 'sign-in' ? 'current-password' : 'new-password'} minLength={mode === 'sign-in' ? undefined : 8} maxLength={72} value={password} onChange={(event) => setPassword(event.target.value)} required aria-describedby={mode !== 'sign-in' ? 'runtime-password-requirements' : undefined} />{mode !== 'sign-in' && <PasswordRequirements id="runtime-password-requirements" value={password} />}</label>}
       {mode === 'sign-in' && runtime.mfaRequired && <div className="runtime-mfa"><label><span>{useRecoveryCode ? 'Recovery code' : 'Verification code'}</span><input autoFocus inputMode={useRecoveryCode ? 'text' : 'numeric'} autoComplete="one-time-code" value={useRecoveryCode ? recoveryCode : mfaCode} onChange={(event) => useRecoveryCode ? setRecoveryCode(event.target.value) : setMfaCode(event.target.value.replace(/\s/g, ''))} required /></label><button type="button" className="runtime-text-action" onClick={() => { setUseRecoveryCode((value) => !value); setMfaCode(''); setRecoveryCode(''); }}>{useRecoveryCode ? 'Use an authenticator code' : 'Use a recovery code'}</button></div>}
       {canonicalNotice && <p className="runtime-message warning" role="alert"><ProductStatusIcon icon={canonicalNotice.icon} /><span><strong>{canonicalNotice.title}</strong>{canonicalNotice.body}</span></p>}
       {error && <ProductProblem presentation={error} />}
       <PrimaryButton type="submit" disabled={runtime.busy || (mode === 'sign-in' && runtime.mfaRequired && !(useRecoveryCode ? recoveryCode.trim() : mfaCode.trim()))}>{runtime.busy ? <><LoaderCircle className="runtime-spinner" /> Please wait…</> : mode === 'register' ? 'Create account' : mode === 'request-reset' ? 'Send recovery email' : mode === 'complete-reset' ? 'Update password' : runtime.mfaRequired ? 'Verify and sign in' : 'Sign in'}</PrimaryButton>
       {mode === 'sign-in' ? <div className="runtime-form-links"><button type="button" className="runtime-text-action" onClick={() => changeMode('request-reset')}>Forgot password?</button><button type="button" className="runtime-text-action" onClick={() => changeMode('register')}>Create an account</button></div> : mode !== 'complete-reset' && <button type="button" className="runtime-text-action runtime-back-link" onClick={() => changeMode('sign-in')}><ArrowLeft /> Back to sign in</button>}
+    </form>
+    {(mode === 'sign-in' || mode === 'register') && <AccountLegalLinks />}
+  </RuntimePanel>;
+}
+
+function normalizeDeviceCode(value: string): string {
+  const raw = value.toUpperCase().replace(/[^A-HJ-KM-NP-Z2-9]/g, '').slice(0, 8);
+  return raw.length > 4 ? `${raw.slice(0, 4)}-${raw.slice(4)}` : raw;
+}
+
+type DeviceRequestTicket = { version: number; code: string; controller: AbortController };
+
+function useDeviceRequestFence(initialCode: string) {
+  const codeRef = useRef(normalizeDeviceCode(initialCode));
+  const versionRef = useRef(0);
+  const controllerRef = useRef<AbortController | undefined>(undefined);
+  useEffect(() => () => controllerRef.current?.abort(), []);
+  return {
+    begin(code: string): DeviceRequestTicket {
+      controllerRef.current?.abort();
+      const controller = new AbortController();
+      controllerRef.current = controller;
+      versionRef.current += 1;
+      return { version: versionRef.current, code, controller };
+    },
+    invalidate(nextCode: string) {
+      codeRef.current = nextCode;
+      versionRef.current += 1;
+      controllerRef.current?.abort();
+      controllerRef.current = undefined;
+    },
+    current(ticket: DeviceRequestTicket) {
+      return !ticket.controller.signal.aborted && ticket.version === versionRef.current && ticket.code === codeRef.current;
+    },
+  };
+}
+
+function cleanRequestAbort(reason: unknown): boolean {
+  return reason instanceof DOMException && reason.name === 'AbortError';
+}
+
+function DeviceAuthorization() {
+  const runtime = useRuntime();
+  const deviceState = runtime.state.id === 'device-authorization' ? runtime.state : undefined;
+  if (deviceState?.mode === 'generic') return <GenericDeviceAuthorization initialCode={deviceState.initialCode} nativeReturn={deviceState.nativeReturn === true} />;
+  return <TVDeviceAuthorization initialCode={deviceState?.initialCode} servers={deviceState?.servers ?? []} />;
+}
+
+function TVDeviceAuthorization({ initialCode = '', servers }: { initialCode?: string; servers: HostedServerSummary[] }) {
+  const runtime = useRuntime();
+  const [code, setCode] = useState(normalizeDeviceCode(initialCode));
+  const [preview, setPreview] = useState<{ deviceName: string; platform: string; appVersion?: string }>();
+  const [previewContract, setPreviewContract] = useState<Awaited<ReturnType<typeof runtime.previewTVSetup>>>();
+  const [selectedServerId, setSelectedServerId] = useState('');
+  const [connected, setConnected] = useState(false);
+  const [error, setError] = useState<ProductMessagePresentation>();
+  const [busy, setBusy] = useState(false);
+  const requestFence = useDeviceRequestFence(initialCode);
+  const valid = code.replace('-', '').length === 8;
+  const previewMatchesCode = Boolean(preview && previewContract && normalizeDeviceCode(previewContract.code) === normalizeDeviceCode(code));
+  const review = async () => {
+    const requestCode = normalizeDeviceCode(code);
+    if (requestCode.replace('-', '').length !== 8) return;
+    const ticket = requestFence.begin(requestCode);
+    setBusy(true); setError(undefined);
+    try {
+      const result = await runtime.previewTVSetup(requestCode, ticket.controller.signal);
+      if (!requestFence.current(ticket)) return;
+      if (normalizeDeviceCode(result.code) !== requestCode) throw new TypeError('Portico returned a preview for a different TV setup code.');
+      setPreview(result);
+      setPreviewContract(result);
+    }
+    catch (reason) { if (requestFence.current(ticket) && !cleanRequestAbort(reason)) { setPreview(undefined); setPreviewContract(undefined); setError(canonicalProblem(reason)); } }
+    finally { if (requestFence.current(ticket)) setBusy(false); }
+  };
+  const authorize = async () => {
+    const requestCode = normalizeDeviceCode(code);
+    if (!previewContract || !selectedServerId || normalizeDeviceCode(previewContract.code) !== requestCode) return;
+    const ticket = requestFence.begin(requestCode);
+    setBusy(true); setError(undefined);
+    try {
+      await runtime.authorizeTVSetup(previewContract, selectedServerId, ticket.controller.signal);
+      if (!requestFence.current(ticket)) return;
+      setConnected(true);
+    } catch (reason) { if (requestFence.current(ticket) && !cleanRequestAbort(reason)) setError(canonicalProblem(reason)); }
+    finally { if (requestFence.current(ticket)) setBusy(false); }
+  };
+  useEffect(() => { if (valid && initialCode) void review(); }, []);
+  if (connected) return <RuntimePanel title="TV connected" icon={<ShieldCheck />}>
+    <p className="runtime-intro">Return to your TV. Portico will finish signing in automatically.</p>
+  </RuntimePanel>;
+  return <RuntimePanel title="Connect a device">
+    <p className="runtime-intro">Enter the eight-character code shown on your TV, or review the code filled in from its QR code.</p>
+    <form onSubmit={(event) => { event.preventDefault(); void (previewMatchesCode ? authorize() : review()); }}>
+      <label><span>Device code</span><input autoFocus={!initialCode} inputMode="text" autoComplete="one-time-code" autoCapitalize="characters" spellCheck={false} placeholder="XXXX-XXXX" minLength={9} maxLength={9} pattern="[A-HJ-KM-NP-Z2-9]{4}-[A-HJ-KM-NP-Z2-9]{4}" value={code} onChange={(event) => { const nextCode = normalizeDeviceCode(event.target.value); requestFence.invalidate(nextCode); setCode(nextCode); setBusy(false); setPreview(undefined); setPreviewContract(undefined); setSelectedServerId(''); setError(undefined); }} required /></label>
+      {previewMatchesCode && <div className="runtime-device-review"><strong>{preview!.deviceName}</strong><span>{[preview!.platform, preview!.appVersion].filter(Boolean).join(' · ')}</span><p>Confirm this is your TV, then choose the Portico server it should open.</p></div>}
+      {previewMatchesCode && <div className="runtime-device-servers" role="radiogroup" aria-label="Portico server">{servers.map((server) => {
+        const eligible = server.remoteAccessEnabled && server.preferredAuthMode === 'portico';
+        return <button key={server.id} type="button" role="radio" aria-checked={selectedServerId === server.id} disabled={!eligible || busy} onClick={() => setSelectedServerId(server.id)}><Server /><span><strong>{server.name}</strong><small>{eligible ? 'Available' : 'Portico Account remote access required'}</small></span></button>;
+      })}</div>}
+      {previewMatchesCode && servers.length === 0 && <p className="runtime-message warning">This account does not have a Portico server available for TV access.</p>}
+      {error && <ProductProblem presentation={error} />}
+      <div className="runtime-actions"><PrimaryButton type="submit" disabled={busy || !valid || (previewMatchesCode && !selectedServerId)}>{busy ? <><LoaderCircle className="runtime-spinner" /> Please wait…</> : previewMatchesCode ? 'Connect TV' : 'Review request'}</PrimaryButton></div>
+    </form>
+  </RuntimePanel>;
+}
+
+function GenericDeviceAuthorization({ initialCode = '', nativeReturn = false }: { initialCode?: string; nativeReturn?: boolean }) {
+  const runtime = useRuntime();
+  const [code, setCode] = useState(normalizeDeviceCode(initialCode));
+  const [preview, setPreview] = useState<{ deviceName: string; platform: string; appVersion?: string }>();
+  const [previewedCode, setPreviewedCode] = useState('');
+  const [finished, setFinished] = useState<'approved' | 'denied'>();
+  const [error, setError] = useState<ProductMessagePresentation>();
+  const [busy, setBusy] = useState(false);
+  const requestFence = useDeviceRequestFence(initialCode);
+  const valid = code.replace('-', '').length === 8;
+  const previewMatchesCode = Boolean(preview && previewedCode === normalizeDeviceCode(code));
+  const review = async () => {
+    const requestCode = normalizeDeviceCode(code);
+    if (requestCode.replace('-', '').length !== 8) return;
+    const ticket = requestFence.begin(requestCode);
+    setBusy(true); setError(undefined);
+    try {
+      const result = await runtime.previewGenericDeviceAuthorization(requestCode, ticket.controller.signal);
+      if (!requestFence.current(ticket)) return;
+      setPreview(result); setPreviewedCode(requestCode);
+    }
+    catch (reason) { if (requestFence.current(ticket) && !cleanRequestAbort(reason)) { setPreview(undefined); setPreviewedCode(''); setError(canonicalProblem(reason)); } }
+    finally { if (requestFence.current(ticket)) setBusy(false); }
+  };
+  const decide = async (decision: 'approve' | 'deny') => {
+    const requestCode = normalizeDeviceCode(code);
+    if (!preview || previewedCode !== requestCode) return;
+    const ticket = requestFence.begin(requestCode);
+    setBusy(true); setError(undefined);
+    try {
+      const result = await runtime.decideGenericDeviceAuthorization(requestCode, decision, ticket.controller.signal);
+      if (requestFence.current(ticket)) {
+        setFinished(result.status);
+        const completionURL = nativeDeviceAuthorizationCompletionURL(nativeReturn && result.status === 'approved');
+        if (completionURL) window.location.assign(completionURL);
+      }
+    }
+    catch (reason) { if (requestFence.current(ticket) && !cleanRequestAbort(reason)) setError(canonicalProblem(reason)); }
+    finally { if (requestFence.current(ticket)) setBusy(false); }
+  };
+  useEffect(() => { if (valid && initialCode) void review(); }, []);
+  if (finished) return <RuntimePanel title={finished === 'approved' ? 'Device connected' : 'Request denied'} icon={<ShieldCheck />}><p className="runtime-intro">{finished === 'approved' ? 'Return to your device. Portico will finish signing in automatically.' : 'The device was not granted access.'}</p></RuntimePanel>;
+  return <RuntimePanel title="Authorize a device">
+    <p className="runtime-intro">Enter the eight-character code shown on your device, then confirm the request before granting access.</p>
+    <form onSubmit={(event) => { event.preventDefault(); void (previewMatchesCode ? decide('approve') : review()); }}>
+      <label><span>Device code</span><input autoFocus={!initialCode} inputMode="text" autoComplete="one-time-code" autoCapitalize="characters" spellCheck={false} placeholder="XXXX-XXXX" minLength={9} maxLength={9} pattern="[A-HJ-KM-NP-Z2-9]{4}-[A-HJ-KM-NP-Z2-9]{4}" value={code} onChange={(event) => { const nextCode = normalizeDeviceCode(event.target.value); requestFence.invalidate(nextCode); setCode(nextCode); setBusy(false); setPreview(undefined); setPreviewedCode(''); setError(undefined); }} required /></label>
+      {previewMatchesCode && <div className="runtime-device-review"><strong>{preview!.deviceName}</strong><span>{[preview!.platform, preview!.appVersion].filter(Boolean).join(' · ')}</span><p>Confirm this is the device requesting access before you continue.</p></div>}
+      {error && <ProductProblem presentation={error} />}
+      <div className="runtime-actions"><PrimaryButton type="submit" disabled={busy || !valid}>{busy ? <><LoaderCircle className="runtime-spinner" /> Please wait…</> : previewMatchesCode ? 'Approve device' : 'Review request'}</PrimaryButton>{previewMatchesCode && <SecondaryButton disabled={busy} onClick={() => void decide('deny')}>Deny</SecondaryButton>}</div>
     </form>
   </RuntimePanel>;
 }
@@ -250,20 +455,32 @@ function ProfileSelection() {
 
 function RuntimeRecovery({ embedded = false }: { embedded?: boolean }) {
   const runtime = useRuntime();
-  if (runtime.state.id !== 'runtime-recovery') return null;
-  const serverName = runtime.state.serverName || 'this server';
-  const copy = productMessage(runtime.state.messageId, { serverName });
-  const needsSignIn = runtime.state.recoveryActions.includes('sign-in');
-  return <RuntimePanel title={copy.title ?? 'Portico'} icon={<ProductStatusIcon icon={copy.icon} />} embedded={embedded}>
-    <p className="runtime-intro">{copy.body ?? copy.text}</p>
+  const recovery = runtime.state.id === 'runtime-recovery' ? runtime.state : undefined;
+  const availabilityReason = useMemo(() => recovery?.automaticAvailabilityRetry ? {
+    retryAfterMs: recovery.availabilityRetryAfterMs,
+    retryAt: recovery.availabilityRetryAt,
+  } : undefined, [recovery?.automaticAvailabilityRetry, recovery?.availabilityRetryAfterMs, recovery?.availabilityRetryAt]);
+  const availability = useHostedAvailabilityRetry({
+    enabled: recovery?.automaticAvailabilityRetry === true,
+    reason: availabilityReason,
+    retry: runtime.retry,
+  });
+  if (!recovery) return null;
+  const serverName = recovery.serverName || 'this server';
+  const copy = productMessage(recovery.messageId, { serverName });
+  const needsSignIn = recovery.recoveryActions.includes('sign-in');
+  const title = availability.automatic ? availability.copy.title : copy.title ?? 'Portico';
+  const body = availability.automatic ? availability.copy.body : copy.body ?? copy.text;
+  return <RuntimePanel title={title} icon={<ProductStatusIcon icon={copy.icon} />} embedded={embedded}>
+    <p className="runtime-intro">{body}</p>
     <div className="runtime-actions">
       {needsSignIn && <PrimaryButton onClick={() => void runtime.hostedLogout()}><LogIn /> Sign in again</PrimaryButton>}
-      {runtime.state.recoveryActions.includes('try-nearby') && <PrimaryButton onClick={() => void runtime.tryNearbyConnection()}><Wifi /> Try nearby connection</PrimaryButton>}
-      {!needsSignIn && runtime.state.recoveryActions.includes('retry') && <PrimaryButton onClick={runtime.retry}><RefreshCw /> Try again</PrimaryButton>}
-      {runtime.state.recoveryActions.includes('reselect-server') && <SecondaryButton onClick={runtime.reselectServer}><ArrowLeft /> Choose another server</SecondaryButton>}
-      {runtime.state.recoveryActions.includes('refresh-memberships') && <SecondaryButton onClick={() => void runtime.refreshMemberships().catch(() => undefined)}><RefreshCw /> Refresh servers</SecondaryButton>}
-      {runtime.state.recoveryActions.includes('continue-account') && <SecondaryButton onClick={() => void runtime.continueWithHostedAccount()}><ArrowRight /> Continue to Portico</SecondaryButton>}
-      {!needsSignIn && runtime.state.recoveryActions.includes('sign-out') && <button type="button" className="runtime-text-action" onClick={() => void runtime.hostedLogout()}>Sign out</button>}
+      {recovery.recoveryActions.includes('try-nearby') && <PrimaryButton onClick={() => void runtime.tryNearbyConnection()}><Wifi /> Try nearby connection</PrimaryButton>}
+      {!needsSignIn && !availability.automatic && recovery.recoveryActions.includes('retry') && <PrimaryButton onClick={runtime.retry}><RefreshCw /> Try again</PrimaryButton>}
+      {recovery.recoveryActions.includes('reselect-server') && <SecondaryButton onClick={runtime.reselectServer}><ArrowLeft /> Choose another server</SecondaryButton>}
+      {!availability.automatic && recovery.recoveryActions.includes('refresh-memberships') && <SecondaryButton onClick={() => void runtime.refreshMemberships().catch(() => undefined)}><RefreshCw /> Refresh servers</SecondaryButton>}
+      {recovery.recoveryActions.includes('continue-account') && <SecondaryButton onClick={() => void runtime.continueWithHostedAccount()}><ArrowRight /> Continue to Portico</SecondaryButton>}
+      {!needsSignIn && recovery.recoveryActions.includes('sign-out') && <button type="button" className="runtime-text-action" onClick={() => void runtime.hostedLogout()}>Sign out</button>}
     </div>
   </RuntimePanel>;
 }
@@ -279,6 +496,8 @@ export function RuntimeSurface({ embedded = false }: { embedded?: boolean }) {
       return <RuntimeProgress title="Opening Portico" body="Checking your Portico Account session…" kind="account" embedded={embedded} />;
     case 'hosted-sign-in':
       return <HostedSignIn />;
+    case 'device-authorization':
+      return <DeviceAuthorization />;
     case 'server-memberships':
       return <RuntimeProgress title="Finding your servers" body="Loading servers shared with your Portico Account…" kind="memberships" embedded={embedded} />;
     case 'no-memberships':

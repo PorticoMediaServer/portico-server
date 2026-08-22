@@ -1054,6 +1054,46 @@ test("library sources use opaque cursor pagination", async () => {
   assert.equal(response.pageInfo.hasMore, false);
 });
 
+test("managed remote storage methods preserve owner input and encoded routes", async () => {
+  const calls = [];
+  const source = {
+    kind: "webdav",
+    name: "Cloud Movies",
+    endpoint: "https://dav.example.test/media",
+    root: "Movies",
+    analysisMode: "basic",
+    username: "owner",
+    password: "write-only-secret"
+  };
+  const client = createPorticoClient({
+    apiBaseUrl: "https://server.example",
+    transport: { fetch: async (input, init = {}) => {
+      calls.push({ input: String(input), init });
+      if (init.method === "DELETE") return new Response(null, { status: 204 });
+      if (String(input).endsWith("/inventory")) return jsonResponse({ id: "job-1", type: "library_scan", status: "queued", title: "Remote inventory", progress: 0, priority: 0, createdAt: "2026-08-22T12:00:00Z", updatedAt: "2026-08-22T12:00:00Z" }, { status: 202 });
+      if (init.method === "POST") return jsonResponse({ id: "source-1", libraryId: "lib movies", kind: "webdav", name: "Cloud Movies", endpoint: source.endpoint, root: "Movies", health: "unknown", inventoryStatus: "never", objects: 0, missingObjects: 0, credentialPresent: true, updatedAt: "2026-08-22T12:00:00Z" }, { status: 201 });
+      return jsonResponse({ items: [], total: 0, limit: 0 });
+    } }
+  });
+
+  await client.remoteStorageSources("lib movies");
+  await client.createRemoteStorageSource("lib movies", source);
+  await client.updateRemoteStorageSourceAnalysisMode("lib movies", "source/1", { analysisMode: "file_list_only" });
+  await client.inventoryRemoteStorageSource("lib movies", "source/1");
+  await client.deleteRemoteStorageSource("lib movies", "source/1");
+
+  assert.equal(calls[0].input, "https://server.example/api/libraries/lib%20movies/remote-storage-sources");
+  assert.equal(calls[1].init.method, "POST");
+  assert.equal(calls[1].init.body, JSON.stringify(source));
+  assert.equal(calls[2].input, "https://server.example/api/libraries/lib%20movies/remote-storage-sources/source%2F1");
+  assert.equal(calls[2].init.method, "PATCH");
+  assert.equal(calls[2].init.body, JSON.stringify({ analysisMode: "file_list_only" }));
+  assert.equal(calls[3].input, "https://server.example/api/libraries/lib%20movies/remote-storage-sources/source%2F1/inventory");
+  assert.equal(calls[3].init.method, "POST");
+  assert.equal(calls[4].input, "https://server.example/api/libraries/lib%20movies/remote-storage-sources/source%2F1");
+  assert.equal(calls[4].init.method, "DELETE");
+});
+
 test("auth me forwards abort signals", async () => {
   const calls = [];
   const client = createPorticoClient({
@@ -2706,7 +2746,7 @@ test("documented resource URL helpers do not leak account credentials", () => {
   assert.equal(client.logsStreamUrl(), "https://server.example/api/logs/stream");
 });
 
-test("public metadata and TV setup methods use documented API paths", async () => {
+test("public metadata and live TV methods use documented API paths", async () => {
   const calls = [];
   const client = createPorticoClient({
     apiBaseUrl: "https://server.example",
@@ -2716,43 +2756,10 @@ test("public metadata and TV setup methods use documented API paths", async () =
     transport: {
       fetch: async (input, init) => {
         calls.push({ input: String(input), init });
-        if (String(input).endsWith("/api/auth/tv-setup/redeem")) {
-          return jsonResponse({
-            tokenType: "Bearer",
-            accessToken: "tv-access",
-            accessExpiresAt: "2026-01-01T00:15:00Z",
-            refreshToken: "tv-refresh",
-            refreshExpiresAt: "2026-01-31T00:00:00Z",
-            authority: "local",
-            accountId: "account-1",
-            serverId: "server-1",
-            profileId: "profile-1",
-            authorizationRevision: "1",
-            user: {},
-            device: {}
-          });
-        }
         return jsonResponse({
           ok: true,
           items: [],
           authenticated: true,
-          setupSessionId: "setup1",
-          code: "ABCD-EFGH",
-          status: "grant_ready",
-          protocolVersion: 1,
-          service: "_portico-setup._tcp.local.",
-          devicePublicKey: "pub",
-          deviceName: "TV",
-          platform: "tv",
-          expiresAt: "2026-01-01T00:00:00Z",
-          pollIntervalSeconds: 2,
-          encryptedGrant: {
-            version: 1,
-            algorithm: "X25519-HKDF-SHA256-AESGCM",
-            serverPublicKey: "server",
-            nonce: "nonce",
-            ciphertext: "ciphertext"
-          },
           sessionId: "live1",
           media: { id: "chan1", title: "Channel", type: "live_channel", state: {} },
           sourceUrl: "/api/live-tv/streams/chan1",
@@ -2780,10 +2787,6 @@ test("public metadata and TV setup methods use documented API paths", async () =
   await client.branding();
   await client.localization();
   await client.remoteAccessHealth();
-  await client.createTVSetupSession({ installationId: "tv-installation-0001", devicePublicKey: "pub", platform: "tvos" });
-  await client.tvSetupSession("setup 1");
-  await client.authorizeTVSetupGrant({ code: "ABCD-EFGH" });
-  await client.redeemTVSetupGrant({ setupSessionId: "setup1", grantSecret: "secret" });
   await client.openLiveTvStream("chan1", { intent: { networkClass: "wifi", qualityProfile: "high" } });
   await client.closeLiveTvStream("chan1", "live1");
   await client.playDvrRecording("rec 1", { startSeconds: 42 });
@@ -2793,22 +2796,15 @@ test("public metadata and TV setup methods use documented API paths", async () =
     "https://server.example/api/branding",
     "https://server.example/api/localization",
     "https://server.example/api/remote-access/health",
-    "https://server.example/api/auth/tv-setup/sessions",
-    "https://server.example/api/auth/tv-setup/sessions/setup%201",
-    "https://server.example/api/auth/tv-setup/grants",
-    "https://server.example/api/auth/tv-setup/redeem",
     "https://server.example/api/live-tv/streams/chan1/open",
     "https://server.example/api/live-tv/streams/chan1/close",
     "https://server.example/api/dvr/recordings/rec%201/playback"
   ]);
-  assert.equal(calls[4].init.method, "POST");
-  assert.equal(calls[4].init.headers["X-Portico-CSRF"], "csrf-local");
-  assert.equal(JSON.parse(calls[4].init.body).platform, "tvos");
-  assert.equal(JSON.parse(calls[8].init.body).clientProfile.maxAudioChannels, 6);
-  assert.equal(JSON.parse(calls[8].init.body).clientInstanceId, "test-client");
-  assert.deepEqual(JSON.parse(calls[8].init.body).intent, { networkClass: "wifi", qualityProfile: "high" });
-  assert.equal(JSON.parse(calls[9].init.body).sessionId, "live1");
-  assert.deepEqual(JSON.parse(calls[10].init.body), {
+  assert.equal(JSON.parse(calls[4].init.body).clientProfile.maxAudioChannels, 6);
+  assert.equal(JSON.parse(calls[4].init.body).clientInstanceId, "test-client");
+  assert.deepEqual(JSON.parse(calls[4].init.body).intent, { networkClass: "wifi", qualityProfile: "high" });
+  assert.equal(JSON.parse(calls[5].init.body).sessionId, "live1");
+  assert.deepEqual(JSON.parse(calls[6].init.body), {
     startSeconds: 42,
     clientInstanceId: "test-client",
     clientProfile: { platform: "tv-test", supportsHls: true, maxAudioChannels: 6 }

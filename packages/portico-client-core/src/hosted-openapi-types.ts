@@ -38,6 +38,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/account/identities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List identity providers linked to the current Portico Account */
+        get: operations["listAccountIdentities"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/account/me": {
         parameters: {
             query?: never;
@@ -715,6 +732,59 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/auth/sso/apple/notifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Process a signed Apple account-change notification */
+        post: operations["processAppleAccountNotification"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/sso/{provider}/callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Complete Google authorization-code sign-in */
+        get: operations["completeSSOAuthorization"];
+        put?: never;
+        /** Complete Apple form-post authorization-code sign-in */
+        post: operations["completeSSOFormAuthorization"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/sso/{provider}/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Start Google or Apple authorization-code sign-in */
+        get: operations["startSSOAuthorization"];
+        put?: never;
+        /** Start same-origin Google or Apple identity linking */
+        post: operations["startSSOIdentityLink"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/device-authorization/sessions": {
         parameters: {
             query?: never;
@@ -877,6 +947,176 @@ export interface paths {
         };
         /** Get the request's observed public IP */
         get: operations["getObservedPublicIP"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/operator/alerts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List operator alerts */
+        get: operations["getOperatorAlerts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/operator/audit-events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List redacted operator audit events */
+        get: operations["listOperatorAuditEvents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/operator/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get operator health */
+        get: operations["getOperatorHealth"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/operator/metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get operator metrics */
+        get: operations["getOperatorMetrics"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/operator/servers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List customer servers for operator support */
+        get: operations["listOperatorServers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/operator/servers/{serverId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get customer server details for operator support */
+        get: operations["getOperatorServer"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/operator/users/actions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Apply an audited operator account action */
+        post: operations["applyOperatorUserAction"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/operator/users/lookup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Look up one account for operator support */
+        get: operations["lookupOperatorUser"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/operator/users/mfa-reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reset account MFA through an audited operator action */
+        post: operations["resetOperatorUserMFA"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/operator/users/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Search accounts for operator support */
+        get: operations["searchOperatorUsers"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1293,6 +1533,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/tv-setup/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Preview an active TV setup request by its displayed code */
+        post: operations["previewTVSetupSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/tv-setup/sessions": {
         parameters: {
             query?: never;
@@ -1348,68 +1605,34 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        DeviceList: {
-            items: components["schemas"]["Device"][];
-            pageInfo: components["schemas"]["CursorPageInfo"];
+        APIContractIdentity: {
+            digest: string;
+            /** @constant */
+            digestAlgorithm: "sha256";
+            identity: string;
         };
-        Problem: {
-            code: string;
-            detail: string;
-            details?: {
-                [key: string]: unknown;
-            };
-            messageId?: string;
-            requestId: string;
-            status: number;
-            title: string;
-            /** Format: uri */
-            type: string;
+        AccessTokenRequest: {
+            accessToken: string;
         };
-        OKResponse: {
-            ok: boolean;
-        };
-        DeleteAccountRequest: {
+        AccountLoginRequest: {
+            deviceName?: string;
+            devicePlatform?: string;
+            /** @description Exact client installation identity used to bind device and session credentials. */
+            installationId: string;
+            /** @description Portico Account username or email address. */
+            login: string;
             mfaCode?: string;
             password: string;
             recoveryCode?: string;
         };
-        AccountResponse: {
-            [key: string]: unknown;
+        AccountProfileCreateRequest: {
+            avatarKey?: string;
+            name: string;
+            restrictions: components["schemas"]["AccountProfileRestrictions"];
         };
-        AccountUpdateRequest: {
-            email?: string;
-            preferences?: components["schemas"]["UserPreferences"];
-            /** @description Unique, case-insensitive Portico Account username. */
-            username?: string;
-        };
-        UserEnvelope: {
-            user: components["schemas"]["User"];
-        };
-        /** Format: binary */
-        BinaryResponse: string;
-        BinaryUpload: {
-            /** Format: binary */
-            file: string;
-        };
-        PasswordChangeRequest: {
-            currentPassword: string;
-            /** @description At least 8 characters with an uppercase letter, a lowercase letter, and a number or special character; at most 72 UTF-8 bytes. */
-            newPassword: string;
-        };
-        ProfileAdministrationSessionRequest: {
-            emailRecoveryToken?: string;
-            /** @description Exact client installation identity used to bind device and session credentials. */
-            installationId?: string;
-            mfaCode?: string;
-            password?: string;
-            pin?: string;
-            recoveryCode?: string;
-            replacementPin?: string;
-        };
-        ProfileAdministrationSessionResponse: {
-            /** Format: date-time */
-            expiresAt: string;
-            token: string;
+        AccountProfileDeleteResponse: {
+            ok: boolean;
+            revision: number;
         };
         AccountProfileDirectory: {
             accountId: string;
@@ -1417,24 +1640,12 @@ export interface components {
             revision: number;
             total: number;
         };
-        AccountProfileCreateRequest: {
-            avatarKey?: string;
-            name: string;
-            restrictions: components["schemas"]["AccountProfileRestrictions"];
-        };
         AccountProfileMutationResponse: {
             profile: components["schemas"]["PorticoProfile"];
             revision: number;
         };
-        AccountProfileReorderRequest: {
-            expectedRevision: number;
-            profileIds: string[];
-        };
-        AccountProfileDeleteResponse: {
-            ok: boolean;
-            revision: number;
-        };
-        PorticoProfile: {
+        AccountProfileProjection: {
+            accountId: string;
             avatar?: components["schemas"]["ProfileAvatar"];
             hasPIN: boolean;
             id: string;
@@ -1443,63 +1654,32 @@ export interface components {
             name: string;
             pinRevision: number;
             policy: components["schemas"]["AccountProfileRestrictions"];
+            /** Format: date-time */
+            policyUpdatedAt: string;
             sortOrder: number;
+        };
+        AccountProfileReorderRequest: {
+            expectedRevision: number;
+            profileIds: string[];
+        };
+        AccountProfileRestrictions: {
+            allowDownloads: boolean;
+            allowDvr: boolean;
+            allowFeedback: boolean;
+            allowLiveTV: boolean;
+            allowUnrated: boolean;
+            allowWatchWithFriends: boolean;
+            /** @description Labels must also be unique after Unicode NFC normalization, trimming, and case folding. */
+            blockedLabels: string[];
+            maximumAgeRating: number | null;
+            /** @constant */
+            version: "v1";
         };
         AccountProfileUpdateRequest: {
             avatarKey?: string;
             expectedRevision: number;
             name: string;
             restrictions: components["schemas"]["AccountProfileRestrictions"];
-        };
-        ProfilePINClearRequest: {
-            mfaCode?: string;
-            password: string;
-            recoveryCode?: string;
-        };
-        ProfilePINSetRequest: {
-            mfaCode?: string;
-            password: string;
-            pin: string;
-            recoveryCode?: string;
-        };
-        ProfilePINChangeResponse: {
-            ok: boolean;
-            pinRevision: number;
-        };
-        ProfileSelectionAssertionRequest: {
-            /** @description Exact client installation identity used to bind device and session credentials. */
-            installationId?: string;
-            pin?: string;
-            serverId: string;
-        };
-        HostedProfileSelectionEnvelope: {
-            accountId: string;
-            accountRevision: number;
-            assertionId: string;
-            /** @constant */
-            audience: "portico-media-server";
-            deviceId: string;
-            /** Format: date-time */
-            expiresAt: string;
-            /** @description Exact client installation identity used to bind device and session credentials. */
-            installationId?: string;
-            /** Format: date-time */
-            issuedAt: string;
-            pinRevision: number;
-            profileId: string;
-            profiles: components["schemas"]["AccountProfileProjection"][];
-            serverId: string;
-            signature: string;
-            /** @constant */
-            signatureAlgorithm: "ed25519";
-            signatureKeyId: string;
-            /** @constant */
-            version: "v1";
-        };
-        AccountPushSubscriptionRevokeRequest: {
-            appBundleId: string;
-            environment: string;
-            installationId?: string;
         };
         AccountPushSubscriptionReceipt: {
             appBundleId: string;
@@ -1521,335 +1701,115 @@ export interface components {
             installationId?: string;
             provider: string;
         };
-        ClaimCodeRequest: {
-            claimCode: string;
+        AccountPushSubscriptionRevokeRequest: {
+            appBundleId: string;
+            environment: string;
+            installationId?: string;
         };
-        ServerClaimCompletion: {
+        AccountResponse: {
             [key: string]: unknown;
         };
-        ServerList: {
-            items: components["schemas"]["Server"][];
-            pageInfo: components["schemas"]["CursorPageInfo"];
+        AccountUpdateRequest: {
+            email?: string;
+            preferences?: components["schemas"]["UserPreferences"];
+            /** @description Unique, case-insensitive Portico Account username. */
+            username?: string;
         };
-        Server: {
-            apiContractDigest?: string;
-            apiContractDigestAlgorithm?: string;
-            apiContractIdentity?: string;
-            assignedHostname: string;
-            availabilityState?: string;
-            buildChannel?: string;
-            buildCommit?: string;
-            buildNumber?: string;
-            buildTimestamp?: string;
-            capabilities?: {
-                id: string;
-                requiredSemantics: string[];
-                revision: number;
-                state: string;
-            }[];
-            /** Format: date-time */
-            certificateExpiresAt?: string;
-            certificateStatus: string;
-            compatibilityEnvelopeRevision?: number;
+        AuditEvent: {
+            action: string;
+            actorId: string;
+            actorType: string;
             /** Format: date-time */
             createdAt: string;
-            forwardCompatibility?: {
-                apiContractDigestMismatch: string;
-                authorizationOnPartialUpgrade: string;
-                unknownOptionalCapabilities: string;
-                unknownRequiredSemantics: string;
-            };
             id: string;
-            /** Format: date-time */
-            lastHeartbeatAt?: string;
-            name: string;
-            ownerUserId: string;
-            preferredAuthMode: string;
-            protocolMaximum?: number;
-            protocolMinimum?: number;
-            remoteAccessEnabled: boolean;
-            requiredSemantics?: string[];
-            semanticRevisions?: {
-                [key: string]: number;
-            };
-            serverPublicKey: string;
-            serverPublicKeyFingerprint: string;
-            softwareVersion?: string;
-            /** Format: date-time */
-            updatedAt: string;
-        };
-        ServerUpdateRequest: {
-            [key: string]: unknown;
+            requestId: string;
+            result: string;
+            targetId: string;
+            targetType: string;
         };
         AuditEventList: {
             items: components["schemas"]["AuditEvent"][];
             total: number;
         };
-        InvitationList: {
-            items: components["schemas"]["Invitation"][];
-            pageInfo: components["schemas"]["CursorPageInfo"];
+        /** Format: binary */
+        BinaryResponse: string;
+        BinaryUpload: {
+            /** Format: binary */
+            file: string;
         };
-        InvitationRequest: {
-            /** @enum {string} */
-            deliveryMode: "email" | "link";
-            /** Format: email */
-            email?: string;
-            permissionTemplate: components["schemas"]["PermissionTemplate"];
-            recipient: string;
-        };
-        Invitation: {
+        BuildIdentity: {
+            buildNumber: string;
+            channel: string;
+            commit: string;
             /** Format: date-time */
-            acceptedAt?: string;
-            acceptedByUserId?: string;
-            allowSubordinateProfiles: boolean;
-            /** Format: date-time */
-            createdAt: string;
-            createdByUserId: string;
-            /** @enum {string} */
-            deliveryMode: "email" | "link";
-            emailDeliveryStatus?: string;
-            /** Format: date-time */
-            expiresAt: string;
-            id: string;
-            inviteUrl?: string;
-            invitedEmail: string;
-            permissionTemplate: components["schemas"]["PermissionTemplate"];
-            resourceLimits: {
-                maxActiveDownloads?: number;
-                maxBandwidthKbps?: number;
-                maxDvrRules?: number;
-                maxScheduledRecordings?: number;
-                maxSimultaneousStreams?: number;
-            };
-            /** Format: date-time */
-            revokedAt?: string;
-            /** @constant */
-            role: "user";
-            serverId: string;
-            status: string;
+            timestamp: string | null;
+            version: string;
         };
-        LocalLoginAuthorizeRequest: {
-            /** Format: uri */
-            callbackUrl: string;
-            /** @description Exact client installation identity used to bind device and session credentials. */
-            installationId?: string;
-            /** Format: uri */
-            localOrigin: string;
-            pin?: string;
-            profileId: string;
-            serverPublicKeyFingerprint?: string;
-            state: string;
-        };
-        LocalLoginAuthorizeResponse: {
-            [key: string]: unknown;
-        };
-        MemberList: {
-            items: components["schemas"]["MemberProfile"][];
-            pageInfo: components["schemas"]["CursorPageInfo"];
-        };
-        MemberUpdateRequest: {
-            allowSubordinateProfiles: boolean;
-            permissionTemplate: components["schemas"]["PermissionTemplate"];
-            resourceLimits: {
-                maxActiveDownloads?: number;
-                maxBandwidthKbps?: number;
-                maxDvrRules?: number;
-                maxScheduledRecordings?: number;
-                maxSimultaneousStreams?: number;
-            };
-        };
-        Membership: {
-            allowSubordinateProfiles: boolean;
+        CertificateOrder: {
+            attemptCount: number;
+            cancelRequested?: boolean;
+            certificateChainPem?: string;
             /** Format: date-time */
             createdAt: string;
+            csrPem?: string;
+            /** Format: date-time */
+            expiresAt?: string;
+            hostname: string;
             id: string;
-            permissionTemplate: components["schemas"]["PermissionTemplate"];
-            resourceLimits: {
-                maxActiveDownloads?: number;
-                maxBandwidthKbps?: number;
-                maxDvrRules?: number;
-                maxScheduledRecordings?: number;
-                maxSimultaneousStreams?: number;
-            };
-            /** @enum {string} */
-            role: "owner" | "user";
+            lastError?: string;
+            /** Format: date-time */
+            nextAttemptAt?: string;
+            phase?: string;
+            providerOrderId?: string;
             serverId: string;
             status: string;
-            userId: string;
+            /** Format: date-time */
+            updatedAt: string;
         };
-        RouteFailureRequest: {
+        CertificateOrderRequest: {
             [key: string]: unknown;
         };
-        RouteDocument: {
-            assignedHostname: string;
-            audience: string;
-            authModes: string[];
-            certificate: {
-                /** Format: date-time */
-                expiresAt?: string;
-                status: string;
+        ClaimCodeRequest: {
+            claimCode: string;
+        };
+        CompatibilityCapability: {
+            id: string;
+            requiredSemantics: string[];
+            revision: number;
+            /** @enum {string} */
+            state: "available" | "requires_configuration" | "degraded" | "unavailable";
+        };
+        CompatibilityEnvelope: {
+            apiContract: components["schemas"]["APIContractIdentity"];
+            build: components["schemas"]["BuildIdentity"];
+            capabilities: components["schemas"]["CompatibilityCapability"][];
+            envelopeRevision: number;
+            forwardCompatibility: components["schemas"]["ForwardCompatibilityPolicy"];
+            requiredSemantics: string[];
+            semanticRevisions: {
+                [key: string]: number;
             };
-            documentVersion: number;
-            endpointGeneration?: number;
-            /** Format: date-time */
-            expiresAt: string;
-            /** Format: date-time */
-            issuedAt: string;
-            membership: {
-                permissionTemplate?: components["schemas"]["PermissionTemplate"];
-                role: string;
-            };
-            networkHints?: {
-                authoritative: boolean;
-                source: string;
-            };
-            routeAuthority?: string;
-            routes: {
-                address?: string;
-                generation?: number;
-                host?: string;
-                lastCheckError?: string;
-                /** Format: date-time */
-                lastCheckedAt?: string;
-                quality: string;
-                redirectAuthority?: string;
-                scope?: string;
-                serverPublicKeyFingerprint?: string;
-                serverToken?: string;
-                type: string;
-                url: string;
-            }[];
-            scope?: string;
-            serverId: string;
-            serverName: string;
-            serverPublicKey: string;
-            serverPublicKeyFingerprint: string;
-            signature: string;
-            signatureAlgorithm: string;
-            signatureKeyId: string;
+            supportedClientProtocol: components["schemas"]["ProtocolRange"];
         };
-        PorticoSessionCreateRequest: {
-            selectionEnvelope: components["schemas"]["HostedProfileSelectionEnvelope"];
+        CursorPageInfo: {
+            hasMore: boolean;
+            nextCursor: string | null;
+            total?: number;
         };
-        PorticoSessionBootstrap: {
-            /** Format: date-time */
-            accessExpiresAt: string;
-            accessToken: string;
-            membership?: components["schemas"]["Membership"];
-            selectionEnvelope: components["schemas"]["HostedProfileSelectionEnvelope"];
-            tokenType: string;
-        };
-        GenericObject: {
-            [key: string]: unknown;
-        };
-        AccountLoginRequest: {
-            deviceName?: string;
-            devicePlatform?: string;
-            /** @description Exact client installation identity used to bind device and session credentials. */
-            installationId: string;
-            /** @description Portico Account username or email address. */
-            login: string;
+        DeleteAccountRequest: {
             mfaCode?: string;
             password: string;
             recoveryCode?: string;
         };
-        HostedAuthState: {
-            authenticated: boolean;
-            device?: components["schemas"]["Device"];
-            user?: components["schemas"]["User"];
-        };
-        MFADisableRequest: {
-            code: string;
-            password: string;
-        };
-        MFAEnableRequest: {
-            code: string;
-            enrollmentToken: string;
-        };
-        MFAEnableResponse: {
-            enabled: boolean;
-            recoveryCodes: string[];
-        };
-        MFASetupRequest: {
-            password: string;
-        };
-        MFASetupResponse: {
-            enabled: boolean;
-            enrollmentToken: string;
-            /** Format: uri */
-            otpauthUrl: string;
-            secret: string;
-        };
-        MFAStatus: {
-            [key: string]: unknown;
-        };
-        PasswordResetCompleteRequest: {
-            /** @description At least 8 characters with an uppercase letter, a lowercase letter, and a number or special character; at most 72 UTF-8 bytes. */
-            password: string;
-            token: string;
-        };
-        PasswordResetStartRequest: {
-            email: string;
-        };
-        RegisterAccountRequest: {
-            email: string;
-            /** @description At least 8 characters with an uppercase letter, a lowercase letter, and a number or special character; at most 72 UTF-8 bytes. */
-            password: string;
-            /** @description Unique, case-insensitive Portico Account username. */
-            username: string;
-        };
-        NativeSessionCredentials: {
+        Device: {
+            id: string;
             /** Format: date-time */
-            accessExpiresAt: string;
-            accessToken: string;
-            device: components["schemas"]["Device"];
-            /** Format: date-time */
-            refreshExpiresAt: string;
-            refreshToken: string;
-            tokenType: string;
-            user: components["schemas"]["User"];
-        };
-        RefreshTokenRequest: {
-            /** @description Exact client installation identity used to bind device and session credentials. */
-            installationId?: string;
-            refreshToken: string;
-            /** @description High-entropy idempotency secret persisted before refresh. The exact old token and key recover a committed successor after a crash. */
-            rotationKey: string;
-        };
-        DeviceAuthorizationSessionRequest: {
-            appVersion?: string;
-            deviceName: string;
-            /** @description Exact client installation identity used to bind device and session credentials. */
-            installationId?: string;
+            lastSeenAt: string;
+            name: string;
             platform: string;
-        };
-        DeviceAuthorizationSessionCreateResponse: {
-            authorizationSessionId: string;
-            deviceCode: string;
             /** Format: date-time */
-            expiresAt: string;
-            expiresIn: number;
-            interval: number;
-            /** @constant */
-            status: "pending";
-            /** @description Protocol-v1 human authorization code in canonical XXXX-XXXX form. I, L, O, 0, and 1 are never used. */
-            userCode: string;
-            /** Format: uri */
-            verificationUri: string;
-        };
-        DeviceAuthorizationSessionStatusResponse: {
-            authorizationSessionId: string;
-            /** Format: date-time */
-            expiresAt: string;
-            expiresIn: number;
-            interval: number;
-            /** @enum {string} */
-            status: "approved";
-        };
-        DeviceAuthorizationRedeemResponse: {
-            accountCredentials: components["schemas"]["NativeSessionCredentials"];
-            /** @constant */
-            status: "redeemed";
+            revokedAt?: string;
+            userId: string;
         };
         DeviceAuthorizationDecisionRequest: {
             /** @enum {string} */
@@ -1879,63 +1839,87 @@ export interface components {
             /** @constant */
             status: "pending";
         };
-        HostedHealthResponse: {
-            /** Format: date-time */
-            checkedAt: string;
-            checks?: {
-                [key: string]: string;
-            };
+        DeviceAuthorizationRedeemResponse: {
+            accountCredentials: components["schemas"]["NativeSessionCredentials"];
             /** @constant */
-            contractVersion: 1;
-            /** @enum {string} */
-            kind: "liveness" | "readiness" | "traffic";
-            /** @enum {string} */
-            status: "ok" | "ready";
+            status: "redeemed";
         };
-        ObservedPublicIP: {
-            /** Format: date-time */
-            observedAt: string;
-            publicIp: string;
-        };
-        ServerClaimRequest: {
-            [key: string]: unknown;
-        };
-        ServerClaim: {
-            claimId: string;
-            claimedByUserId?: string;
-            claimedServerId?: string;
-            /** Format: date-time */
-            createdAt: string;
+        DeviceAuthorizationSessionCreateResponse: {
+            authorizationSessionId: string;
+            deviceCode: string;
             /** Format: date-time */
             expiresAt: string;
-            serverName: string;
-            serverPublicKey: string;
-            serverPublicKeyFingerprint: string;
-            status: string;
+            expiresIn: number;
+            interval: number;
+            /** @constant */
+            status: "pending";
+            /** @description Protocol-v1 human authorization code in canonical XXXX-XXXX form. I, L, O, 0, and 1 are never used. */
+            userCode: string;
+            /** Format: uri */
+            verificationUri: string;
         };
-        CertificateOrderRequest: {
-            [key: string]: unknown;
+        DeviceAuthorizationSessionRequest: {
+            appVersion?: string;
+            deviceName: string;
+            /** @description Exact client installation identity used to bind device and session credentials. */
+            installationId?: string;
+            platform: string;
         };
-        CertificateOrder: {
-            attemptCount: number;
-            cancelRequested?: boolean;
-            certificateChainPem?: string;
+        DeviceAuthorizationSessionStatusResponse: {
+            authorizationSessionId: string;
+            /** Format: date-time */
+            expiresAt: string;
+            expiresIn: number;
+            interval: number;
+            /** @enum {string} */
+            status: "approved";
+        };
+        DeviceList: {
+            items: components["schemas"]["Device"][];
+            pageInfo: components["schemas"]["CursorPageInfo"];
+        };
+        DocumentSigningKeySet: {
+            activeKeyId: string;
+            keys: {
+                algorithm: string;
+                keyId: string;
+                publicKeyB64: string;
+                state: string;
+            }[];
+            schemaVersion: number;
+        };
+        ExternalIdentity: {
+            accountId: string;
             /** Format: date-time */
             createdAt: string;
-            csrPem?: string;
+            email?: string;
             /** Format: date-time */
-            expiresAt?: string;
-            hostname: string;
+            emailDisabledAt?: string;
+            emailVerified: boolean;
             id: string;
-            lastError?: string;
+            issuer: string;
             /** Format: date-time */
-            nextAttemptAt?: string;
-            phase?: string;
-            providerOrderId?: string;
-            serverId: string;
-            status: string;
+            lastLoginAt?: string;
+            privateEmail: boolean;
+            provider: string;
             /** Format: date-time */
-            updatedAt: string;
+            revokedAt?: string;
+        };
+        ExternalIdentityList: {
+            identities: components["schemas"]["ExternalIdentity"][];
+        };
+        ForwardCompatibilityPolicy: {
+            /** @constant */
+            apiContractDigestMismatch: "allow_semantic_overlap";
+            /** @constant */
+            authorizationOnPartialUpgrade: "never_broaden";
+            /** @constant */
+            unknownOptionalCapabilities: "ignore_and_preserve";
+            /** @constant */
+            unknownRequiredSemantics: "reject_actionably";
+        };
+        GenericObject: {
+            [key: string]: unknown;
         };
         HeartbeatRequest: {
             apiContractDigest: string;
@@ -1993,8 +1977,401 @@ export interface components {
             stateChanged: boolean;
             topologyChanged: boolean;
         };
+        HostedAuthState: {
+            authenticated: boolean;
+            device?: components["schemas"]["Device"];
+            user?: components["schemas"]["User"];
+        };
+        HostedHealthResponse: {
+            /** Format: date-time */
+            checkedAt: string;
+            checks?: {
+                [key: string]: string;
+            };
+            /** @constant */
+            contractVersion: 1;
+            /** @enum {string} */
+            kind: "liveness" | "readiness" | "traffic";
+            /** @enum {string} */
+            status: "ok" | "ready";
+        };
+        HostedProfileDirectorySnapshot: {
+            accountId: string;
+            /** @constant */
+            audience: "portico-media-server";
+            /** Format: date-time */
+            checkedAt: string;
+            maxAgeSeconds: number;
+            profiles?: components["schemas"]["AccountProfileProjection"][];
+            revision: number;
+            serverId: string;
+            signature: string;
+            /** @constant */
+            signatureAlgorithm: "ed25519";
+            signatureKeyId: string;
+            snapshotId: string;
+            /** @constant */
+            staleIfErrorSeconds: 86400;
+            /** @enum {string} */
+            status: "unchanged" | "changed";
+            /** @constant */
+            version: "v1";
+        };
+        HostedProfileDirectorySnapshotRequest: {
+            accountId: string;
+            knownRevision: number;
+        };
+        HostedProfileSelectionEnvelope: {
+            accountId: string;
+            accountRevision: number;
+            assertionId: string;
+            /** @constant */
+            audience: "portico-media-server";
+            deviceId: string;
+            /** Format: date-time */
+            expiresAt: string;
+            /** @description Exact client installation identity used to bind device and session credentials. */
+            installationId?: string;
+            /** Format: date-time */
+            issuedAt: string;
+            pinRevision: number;
+            profileId: string;
+            profiles: components["schemas"]["AccountProfileProjection"][];
+            serverId: string;
+            signature: string;
+            /** @constant */
+            signatureAlgorithm: "ed25519";
+            signatureKeyId: string;
+            /** @constant */
+            version: "v1";
+        };
+        HostedProfileSelectionExchangeRequest: {
+            selectionEnvelope: components["schemas"]["HostedProfileSelectionEnvelope"];
+        };
+        HostedSystemInfo: {
+            /** @constant */
+            apiVersion: "v1";
+            compatibility: components["schemas"]["CompatibilityEnvelope"];
+            directHostnameZone?: string;
+            name: string;
+            publicBaseUrl?: string;
+            status: string;
+        };
+        Invitation: {
+            /** Format: date-time */
+            acceptedAt?: string;
+            acceptedByUserId?: string;
+            allowSubordinateProfiles: boolean;
+            /** Format: date-time */
+            createdAt: string;
+            createdByUserId: string;
+            /** @enum {string} */
+            deliveryMode: "email" | "link";
+            emailDeliveryStatus?: string;
+            /** Format: date-time */
+            expiresAt: string;
+            id: string;
+            inviteUrl?: string;
+            invitedEmail?: string;
+            invitedUsername?: string;
+            permissionTemplate: components["schemas"]["PermissionTemplate"];
+            resourceLimits: {
+                maxActiveDownloads?: number;
+                maxBandwidthKbps?: number;
+                maxDvrRules?: number;
+                maxScheduledRecordings?: number;
+                maxSimultaneousStreams?: number;
+            };
+            /** Format: date-time */
+            revokedAt?: string;
+            /** @constant */
+            role: "user";
+            serverId: string;
+            status: string;
+        };
+        InvitationList: {
+            items: components["schemas"]["Invitation"][];
+            pageInfo: components["schemas"]["CursorPageInfo"];
+        };
+        InvitationRequest: {
+            /** @enum {string} */
+            deliveryMode: "email" | "link";
+            /** Format: email */
+            email?: string;
+            permissionTemplate: components["schemas"]["PermissionTemplate"];
+            recipient: string;
+        };
+        LocalLoginAuthorizeRequest: {
+            /** Format: uri */
+            callbackUrl: string;
+            /** @description Exact client installation identity used to bind device and session credentials. */
+            installationId?: string;
+            /** Format: uri */
+            localOrigin: string;
+            pin?: string;
+            profileId: string;
+            serverPublicKeyFingerprint?: string;
+            state: string;
+        };
+        LocalLoginAuthorizeResponse: {
+            [key: string]: unknown;
+        };
         LocalLoginExchangeRequest: {
             code: string;
+        };
+        MFADisableRequest: {
+            code: string;
+            password: string;
+        };
+        MFAEnableRequest: {
+            code: string;
+            enrollmentToken: string;
+        };
+        MFAEnableResponse: {
+            enabled: boolean;
+            recoveryCodes: string[];
+        };
+        MFASetupRequest: {
+            password: string;
+        };
+        MFASetupResponse: {
+            enabled: boolean;
+            enrollmentToken: string;
+            /** Format: uri */
+            otpauthUrl: string;
+            secret: string;
+        };
+        MFAStatus: {
+            [key: string]: unknown;
+        };
+        MemberList: {
+            items: components["schemas"]["MemberProfile"][];
+            pageInfo: components["schemas"]["CursorPageInfo"];
+        };
+        MemberProfile: {
+            allowSubordinateProfiles: boolean;
+            /** Format: date-time */
+            createdAt: string;
+            id: string;
+            permissionTemplate: components["schemas"]["PermissionTemplate"];
+            profileImageUrl?: string;
+            resourceLimits: {
+                maxActiveDownloads?: number;
+                maxBandwidthKbps?: number;
+                maxDvrRules?: number;
+                maxScheduledRecordings?: number;
+                maxSimultaneousStreams?: number;
+            };
+            /** @enum {string} */
+            role: "owner" | "user";
+            serverId: string;
+            status: string;
+            userId: string;
+            username: string;
+        };
+        MemberUpdateRequest: {
+            allowSubordinateProfiles: boolean;
+            permissionTemplate: components["schemas"]["PermissionTemplate"];
+            resourceLimits: {
+                maxActiveDownloads?: number;
+                maxBandwidthKbps?: number;
+                maxDvrRules?: number;
+                maxScheduledRecordings?: number;
+                maxSimultaneousStreams?: number;
+            };
+        };
+        Membership: {
+            allowSubordinateProfiles: boolean;
+            /** Format: date-time */
+            createdAt: string;
+            id: string;
+            permissionTemplate: components["schemas"]["PermissionTemplate"];
+            resourceLimits: {
+                maxActiveDownloads?: number;
+                maxBandwidthKbps?: number;
+                maxDvrRules?: number;
+                maxScheduledRecordings?: number;
+                maxSimultaneousStreams?: number;
+            };
+            /** @enum {string} */
+            role: "owner" | "user";
+            serverId: string;
+            status: string;
+            userId: string;
+        };
+        NativeSessionCredentials: {
+            /** Format: date-time */
+            accessExpiresAt: string;
+            accessToken: string;
+            device: components["schemas"]["Device"];
+            /** Format: date-time */
+            refreshExpiresAt: string;
+            refreshToken: string;
+            tokenType: string;
+            user: components["schemas"]["User"];
+        };
+        OKResponse: {
+            ok: boolean;
+        };
+        ObservedPublicIP: {
+            /** Format: date-time */
+            observedAt: string;
+            publicIp: string;
+        };
+        OperatorAlert: {
+            /** Format: date-time */
+            createdAt: string;
+            detail: string;
+            id: string;
+            metric: string;
+            severity: string;
+            threshold: number;
+            title: string;
+            value: number;
+        };
+        OperatorAlertList: components["schemas"]["OperatorAlert"][];
+        OperatorEndpointSummary: {
+            endpointType: string;
+            host: string;
+            id: string;
+            lastCheckStatus?: string;
+            /** Format: date-time */
+            lastCheckedAt?: string;
+            /** Format: date-time */
+            lastReportedAt: string;
+            port: number;
+            scheme: string;
+            source: string;
+        };
+        OperatorFleetAggregate: {
+            offline: number;
+            online: number;
+            stale: number;
+            total: number;
+        };
+        OperatorHealthResponse: {
+            alerts: components["schemas"]["OperatorAlert"][];
+            /** @constant */
+            apiVersion: "v1";
+            buildVersion: string;
+            /** Format: date-time */
+            checkedAt: string;
+            /** @constant */
+            contractVersion: 1;
+            derivation: string[];
+            directHostnameZone: string;
+            metrics: components["schemas"]["OperatorMetrics"];
+            publicBaseUrl: string;
+            /** @enum {string} */
+            status: "healthy" | "degraded" | "critical" | "unknown";
+        };
+        OperatorMetrics: {
+            activeDevices: number;
+            activeMemberships: number;
+            activeSessions: number;
+            /** Format: date-time */
+            checkedAt: string;
+            deadReachabilityJobs: number;
+            failedCertificateJobs: number;
+            failedDnsRecordCount: number;
+            failedPushWakes: number;
+            oldestCertificateJobAgeSeconds: number;
+            oldestPushWakeAgeSeconds: number;
+            oldestReachabilityJobAgeSeconds: number;
+            pendingCertificateJobs: number;
+            pendingClaims: number;
+            pendingInvitations: number;
+            pendingPushWakes: number;
+            pendingReachabilityJobs: number;
+            recentCertificateFailures: number;
+            recentDnsFailures: number;
+            recentLoginFailures: number;
+            recentPasswordResetDeliveryFailures: number;
+            recentRateLimitHits: number;
+            recentRouteRequests: number;
+            servers: number;
+            staleHeartbeatCount: number;
+            users: number;
+        };
+        OperatorServerDetail: {
+            endpoints: components["schemas"]["OperatorEndpointSummary"][];
+            events: components["schemas"]["AuditEvent"][];
+            server: components["schemas"]["OperatorServerSummary"];
+        };
+        OperatorServerList: {
+            aggregates: components["schemas"]["OperatorFleetAggregate"];
+            items: components["schemas"]["OperatorServerSummary"][];
+            pageInfo: components["schemas"]["CursorPageInfo"];
+            total: number;
+        };
+        OperatorServerSummary: {
+            activeMemberCount: number;
+            apiContractDigest?: string;
+            apiContractDigestAlgorithm?: string;
+            apiContractIdentity?: string;
+            assignedHostname: string;
+            availabilityState: string;
+            buildChannel?: string;
+            buildCommit?: string;
+            buildNumber?: string;
+            buildTimestamp?: string;
+            capabilities?: {
+                id: string;
+                requiredSemantics: string[];
+                revision: number;
+                state: string;
+            }[];
+            /** Format: date-time */
+            certificateExpiresAt?: string;
+            certificateStatus: string;
+            compatibilityEnvelopeRevision?: number;
+            /** Format: date-time */
+            createdAt: string;
+            endpointCount: number;
+            forwardCompatibility?: {
+                apiContractDigestMismatch: string;
+                authorizationOnPartialUpgrade: string;
+                unknownOptionalCapabilities: string;
+                unknownRequiredSemantics: string;
+            };
+            id: string;
+            /** Format: date-time */
+            lastHeartbeatAt?: string;
+            name: string;
+            ownerEmail: string;
+            ownerUserId: string;
+            ownerUsername: string;
+            protocolMaximum?: number;
+            protocolMinimum?: number;
+            reachableEndpointCount: number;
+            remoteAccessEnabled: boolean;
+            requiredSemantics?: string[];
+            semanticRevisions?: {
+                [key: string]: number;
+            };
+            softwareVersion?: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        PasswordChangeRequest: {
+            currentPassword: string;
+            /** @description At least 8 characters with an uppercase letter, a lowercase letter, and a number or special character; at most 72 UTF-8 bytes. */
+            newPassword: string;
+        };
+        PasswordResetCompleteRequest: {
+            /** @description At least 8 characters with an uppercase letter, a lowercase letter, and a number or special character; at most 72 UTF-8 bytes. */
+            password: string;
+            token: string;
+        };
+        PasswordResetStartRequest: {
+            email: string;
+        };
+        PermissionTemplate: {
+            libraryIds?: string[];
+            maxContentRating?: string;
+            permissions?: {
+                [key: string]: boolean;
+            };
         };
         PolicySnapshot: {
             audience: string;
@@ -2037,8 +2414,26 @@ export interface components {
             /** @enum {string} */
             status: "applied" | "failed";
         };
-        PorticoSessionIntrospectionRequest: {
+        PorticoProfile: {
+            avatar?: components["schemas"]["ProfileAvatar"];
+            hasPIN: boolean;
+            id: string;
+            isAccountAdmin: boolean;
+            isPrimary: boolean;
+            name: string;
+            pinRevision: number;
+            policy: components["schemas"]["AccountProfileRestrictions"];
+            sortOrder: number;
+        };
+        PorticoSessionBootstrap: {
+            /** Format: date-time */
+            accessExpiresAt: string;
             accessToken: string;
+            membership?: components["schemas"]["Membership"];
+            selectionEnvelope: components["schemas"]["HostedProfileSelectionEnvelope"];
+            tokenType: string;
+        };
+        PorticoSessionCreateRequest: {
             selectionEnvelope: components["schemas"]["HostedProfileSelectionEnvelope"];
         };
         PorticoSessionIntrospection: {
@@ -2049,44 +2444,81 @@ export interface components {
             member: components["schemas"]["MemberProfile"];
             selectionEnvelope: components["schemas"]["HostedProfileSelectionEnvelope"];
         };
-        HostedProfileDirectorySnapshotRequest: {
-            accountId: string;
-            knownRevision: number;
-        };
-        HostedProfileDirectorySnapshot: {
-            accountId: string;
-            /** @constant */
-            audience: "portico-media-server";
-            /** Format: date-time */
-            checkedAt: string;
-            maxAgeSeconds: number;
-            profiles?: components["schemas"]["AccountProfileProjection"][];
-            revision: number;
-            serverId: string;
-            signature: string;
-            /** @constant */
-            signatureAlgorithm: "ed25519";
-            signatureKeyId: string;
-            snapshotId: string;
-            /** @constant */
-            staleIfErrorSeconds: 86400;
-            /** @enum {string} */
-            status: "unchanged" | "changed";
-            /** @constant */
-            version: "v1";
-        };
-        HostedProfileSelectionExchangeRequest: {
+        PorticoSessionIntrospectionRequest: {
+            accessToken: string;
             selectionEnvelope: components["schemas"]["HostedProfileSelectionEnvelope"];
         };
-        ServerPushWakeRequest: {
-            idempotencyKey: string;
-            kind: string;
-            recipientAccountIds: string[];
+        Problem: {
+            code: string;
+            detail: string;
+            details?: {
+                [key: string]: unknown;
+            };
+            messageId?: string;
+            requestId: string;
+            status: number;
+            title: string;
+            /** Format: uri */
+            type: string;
         };
-        ServerPushWakeResponse: {
-            accepted: number;
-            invalidated: number;
-            unavailable: number;
+        ProfileAdministrationSessionRequest: {
+            emailRecoveryToken?: string;
+            /** @description Exact client installation identity used to bind device and session credentials. */
+            installationId?: string;
+            mfaCode?: string;
+            password?: string;
+            pin?: string;
+            recoveryCode?: string;
+            replacementPin?: string;
+        };
+        ProfileAdministrationSessionResponse: {
+            /** Format: date-time */
+            expiresAt: string;
+            token: string;
+        };
+        ProfileAvatar: {
+            /** @enum {string} */
+            kind: "preset" | "custom";
+            reference: string;
+        };
+        ProfilePINChangeResponse: {
+            ok: boolean;
+            pinRevision: number;
+        };
+        ProfilePINClearRequest: {
+            mfaCode?: string;
+            password: string;
+            recoveryCode?: string;
+        };
+        ProfilePINSetRequest: {
+            mfaCode?: string;
+            password: string;
+            pin: string;
+            recoveryCode?: string;
+        };
+        ProfileSelectionAssertionRequest: {
+            /** @description Exact client installation identity used to bind device and session credentials. */
+            installationId?: string;
+            pin?: string;
+            serverId: string;
+        };
+        ProtocolRange: {
+            maximum: number;
+            minimum: number;
+        };
+        RefreshTokenRequest: {
+            /** @description Exact client installation identity used to bind device and session credentials. */
+            installationId?: string;
+            refreshToken: string;
+            /** @description High-entropy idempotency secret persisted before refresh. The exact old token and key recover a committed successor after a crash. */
+            rotationKey: string;
+        };
+        RegisterAccountRequest: {
+            email: string;
+            /** @description At least 8 characters with an uppercase letter, a lowercase letter, and a number or special character; at most 72 UTF-8 bytes. */
+            password: string;
+            /** @description Unique, case-insensitive Portico Account username. */
+            username: string;
         };
         RepairSignalResponse: {
             host?: string;
@@ -2104,29 +2536,144 @@ export interface components {
             routeType?: string;
             status?: string;
         };
-        DocumentSigningKeySet: {
-            activeKeyId: string;
-            keys: {
-                algorithm: string;
-                keyId: string;
-                publicKeyB64: string;
+        RouteDocument: {
+            assignedHostname: string;
+            audience: string;
+            authModes: string[];
+            certificate: {
+                /** Format: date-time */
+                expiresAt?: string;
+                status: string;
+            };
+            documentVersion: number;
+            endpointGeneration?: number;
+            /** Format: date-time */
+            expiresAt: string;
+            /** Format: date-time */
+            issuedAt: string;
+            membership: {
+                permissionTemplate?: components["schemas"]["PermissionTemplate"];
+                role: string;
+            };
+            networkHints?: {
+                authoritative: boolean;
+                source: string;
+            };
+            routeAuthority?: string;
+            routes: {
+                address?: string;
+                generation?: number;
+                host?: string;
+                lastCheckError?: string;
+                /** Format: date-time */
+                lastCheckedAt?: string;
+                quality: string;
+                redirectAuthority?: string;
+                scope?: string;
+                serverPublicKeyFingerprint?: string;
+                serverToken?: string;
+                type: string;
+                url: string;
+            }[];
+            scope?: string;
+            serverId: string;
+            serverName: string;
+            serverPublicKey: string;
+            serverPublicKeyFingerprint: string;
+            signature: string;
+            signatureAlgorithm: string;
+            signatureKeyId: string;
+        };
+        RouteFailureRequest: {
+            [key: string]: unknown;
+        };
+        Server: {
+            apiContractDigest?: string;
+            apiContractDigestAlgorithm?: string;
+            apiContractIdentity?: string;
+            assignedHostname: string;
+            availabilityState?: string;
+            buildChannel?: string;
+            buildCommit?: string;
+            buildNumber?: string;
+            buildTimestamp?: string;
+            capabilities?: {
+                id: string;
+                requiredSemantics: string[];
+                revision: number;
                 state: string;
             }[];
-            schemaVersion: number;
-        };
-        HostedSystemInfo: {
-            /** @constant */
-            apiVersion: "v1";
-            compatibility: components["schemas"]["CompatibilityEnvelope"];
-            directHostnameZone?: string;
+            /** Format: date-time */
+            certificateExpiresAt?: string;
+            certificateStatus: string;
+            compatibilityEnvelopeRevision?: number;
+            /** Format: date-time */
+            createdAt: string;
+            forwardCompatibility?: {
+                apiContractDigestMismatch: string;
+                authorizationOnPartialUpgrade: string;
+                unknownOptionalCapabilities: string;
+                unknownRequiredSemantics: string;
+            };
+            id: string;
+            /** Format: date-time */
+            lastHeartbeatAt?: string;
             name: string;
-            publicBaseUrl?: string;
+            ownerUserId: string;
+            preferredAuthMode: string;
+            protocolMaximum?: number;
+            protocolMinimum?: number;
+            remoteAccessEnabled: boolean;
+            requiredSemantics?: string[];
+            semanticRevisions?: {
+                [key: string]: number;
+            };
+            serverPublicKey: string;
+            serverPublicKeyFingerprint: string;
+            softwareVersion?: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        ServerClaim: {
+            claimId: string;
+            claimedByUserId?: string;
+            claimedServerId?: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            expiresAt: string;
+            serverName: string;
+            serverPublicKey: string;
+            serverPublicKeyFingerprint: string;
             status: string;
+        };
+        ServerClaimCompletion: {
+            [key: string]: unknown;
+        };
+        ServerClaimRequest: {
+            [key: string]: unknown;
+        };
+        ServerList: {
+            items: components["schemas"]["Server"][];
+            pageInfo: components["schemas"]["CursorPageInfo"];
+        };
+        ServerPushWakeRequest: {
+            idempotencyKey: string;
+            kind: string;
+            recipientAccountIds: string[];
+        };
+        ServerPushWakeResponse: {
+            accepted: number;
+            invalidated: number;
+            unavailable: number;
+        };
+        ServerUpdateRequest: {
+            [key: string]: unknown;
         };
         TVSetupGrantRequest: {
             /** @description Canonical protocol-v1 XXXX-XXXX setup code. */
             code: string;
-            devicePublicKey: string;
+            devicePublicKey?: string;
             serverId: string;
             setupSessionId: string;
         };
@@ -2144,6 +2691,21 @@ export interface components {
             serverUrl: string;
             setupSessionId: string;
             status: string;
+        };
+        TVSetupPreviewRequest: {
+            /** @description Canonical protocol-v1 XXXX-XXXX setup code. */
+            code: string;
+        };
+        TVSetupPreviewResponse: {
+            appVersion?: string;
+            code: string;
+            deviceName: string;
+            /** Format: date-time */
+            expiresAt: string;
+            platform: string;
+            setupSessionId: string;
+            /** @constant */
+            status: "pending";
         };
         TVSetupSessionRequest: {
             appVersion: string;
@@ -2180,20 +2742,23 @@ export interface components {
             setupSessionId: string;
             status: string;
         };
-        Device: {
+        User: {
+            /** Format: date-time */
+            createdAt: string;
+            email: string;
+            /** Format: date-time */
+            emailVerifiedAt?: string;
             id: string;
-            /** Format: date-time */
-            lastSeenAt: string;
-            name: string;
-            platform: string;
-            /** Format: date-time */
-            revokedAt?: string;
-            userId: string;
+            preferences: components["schemas"]["UserPreferences"];
+            profileImageUrl?: string;
+            username: string;
         };
-        CursorPageInfo: {
-            hasMore: boolean;
-            nextCursor: string | null;
-            total?: number;
+        UserEnvelope: {
+            user: components["schemas"]["User"];
+        };
+        UserList: {
+            items: components["schemas"]["User"][];
+            total: number;
         };
         UserPreferences: {
             audioLanguage: string;
@@ -2220,137 +2785,6 @@ export interface components {
             sidebarOrder: string[];
             subtitleLanguage: string;
             timeZone: string;
-        };
-        User: {
-            /** Format: date-time */
-            createdAt: string;
-            email: string;
-            /** Format: date-time */
-            emailVerifiedAt?: string;
-            id: string;
-            preferences: components["schemas"]["UserPreferences"];
-            profileImageUrl?: string;
-            username: string;
-        };
-        AccountProfileRestrictions: {
-            allowDownloads: boolean;
-            allowDvr: boolean;
-            allowFeedback: boolean;
-            allowLiveTV: boolean;
-            allowUnrated: boolean;
-            allowWatchWithFriends: boolean;
-            /** @description Labels must also be unique after Unicode NFC normalization, trimming, and case folding. */
-            blockedLabels: string[];
-            maximumAgeRating: number | null;
-            /** @constant */
-            version: "v1";
-        };
-        ProfileAvatar: {
-            /** @enum {string} */
-            kind: "preset" | "custom";
-            reference: string;
-        };
-        AccountProfileProjection: {
-            accountId: string;
-            avatar?: components["schemas"]["ProfileAvatar"];
-            hasPIN: boolean;
-            id: string;
-            isAccountAdmin: boolean;
-            isPrimary: boolean;
-            name: string;
-            pinRevision: number;
-            policy: components["schemas"]["AccountProfileRestrictions"];
-            /** Format: date-time */
-            policyUpdatedAt: string;
-            sortOrder: number;
-        };
-        AuditEvent: {
-            action: string;
-            actorId: string;
-            actorType: string;
-            /** Format: date-time */
-            createdAt: string;
-            id: string;
-            requestId: string;
-            result: string;
-            targetId: string;
-            targetType: string;
-        };
-        PermissionTemplate: {
-            libraryIds?: string[];
-            maxContentRating?: string;
-            permissions?: {
-                [key: string]: boolean;
-            };
-        };
-        MemberProfile: {
-            allowSubordinateProfiles: boolean;
-            /** Format: date-time */
-            createdAt: string;
-            email: string;
-            id: string;
-            permissionTemplate: components["schemas"]["PermissionTemplate"];
-            profileImageUrl?: string;
-            resourceLimits: {
-                maxActiveDownloads?: number;
-                maxBandwidthKbps?: number;
-                maxDvrRules?: number;
-                maxScheduledRecordings?: number;
-                maxSimultaneousStreams?: number;
-            };
-            /** @enum {string} */
-            role: "owner" | "user";
-            serverId: string;
-            status: string;
-            userId: string;
-            username: string;
-        };
-        CompatibilityEnvelope: {
-            apiContract: components["schemas"]["APIContractIdentity"];
-            build: components["schemas"]["BuildIdentity"];
-            capabilities: components["schemas"]["CompatibilityCapability"][];
-            envelopeRevision: number;
-            forwardCompatibility: components["schemas"]["ForwardCompatibilityPolicy"];
-            requiredSemantics: string[];
-            semanticRevisions: {
-                [key: string]: number;
-            };
-            supportedClientProtocol: components["schemas"]["ProtocolRange"];
-        };
-        APIContractIdentity: {
-            digest: string;
-            /** @constant */
-            digestAlgorithm: "sha256";
-            identity: string;
-        };
-        BuildIdentity: {
-            buildNumber: string;
-            channel: string;
-            commit: string;
-            /** Format: date-time */
-            timestamp: string | null;
-            version: string;
-        };
-        CompatibilityCapability: {
-            id: string;
-            requiredSemantics: string[];
-            revision: number;
-            /** @enum {string} */
-            state: "available" | "requires_configuration" | "degraded" | "unavailable";
-        };
-        ForwardCompatibilityPolicy: {
-            /** @constant */
-            apiContractDigestMismatch: "allow_semantic_overlap";
-            /** @constant */
-            authorizationOnPartialUpgrade: "never_broaden";
-            /** @constant */
-            unknownOptionalCapabilities: "ignore_and_preserve";
-            /** @constant */
-            unknownRequiredSemantics: "reject_actionably";
-        };
-        ProtocolRange: {
-            maximum: number;
-            minimum: number;
         };
     };
     responses: never;
@@ -2475,6 +2909,98 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OKResponse"];
+                };
+            };
+            /** @description Invalid request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Authentication required or credential invalid */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Authenticated principal is not authorized */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource state conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description HTTP 423 */
+            423: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unexpected server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    listAccountIdentities: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExternalIdentityList"];
                 };
             };
             /** @description Invalid request */
@@ -7847,6 +8373,486 @@ export interface operations {
             };
         };
     };
+    processAppleAccountNotification: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GenericObject"];
+            };
+        };
+        responses: {
+            /** @description HTTP 204 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OKResponse"];
+                };
+            };
+            /** @description Invalid request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Authentication required or credential invalid */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Authenticated principal is not authorized */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource state conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description HTTP 423 */
+            423: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unexpected server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    completeSSOAuthorization: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HostedAuthState"];
+                };
+            };
+            /** @description Invalid request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Authentication required or credential invalid */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Authenticated principal is not authorized */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource state conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description HTTP 423 */
+            423: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unexpected server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    completeSSOFormAuthorization: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GenericObject"];
+            };
+        };
+        responses: {
+            /** @description Successful response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HostedAuthState"];
+                };
+            };
+            /** @description Invalid request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Authentication required or credential invalid */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Authenticated principal is not authorized */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource state conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description HTTP 423 */
+            423: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unexpected server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    startSSOAuthorization: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GenericObject"];
+                };
+            };
+            /** @description Invalid request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Authentication required or credential invalid */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Authenticated principal is not authorized */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource state conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description HTTP 423 */
+            423: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unexpected server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    startSSOIdentityLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GenericObject"];
+            };
+        };
+        responses: {
+            /** @description Successful response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GenericObject"];
+                };
+            };
+            /** @description Invalid request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Authentication required or credential invalid */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Authenticated principal is not authorized */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource state conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description HTTP 423 */
+            423: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unexpected server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     createDeviceAuthorizationSession: {
         parameters: {
             query?: never;
@@ -8898,6 +9904,950 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ObservedPublicIP"];
+                };
+            };
+            /** @description Invalid request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Authentication required or credential invalid */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Authenticated principal is not authorized */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource state conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description HTTP 423 */
+            423: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unexpected server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getOperatorAlerts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperatorAlertList"];
+                };
+            };
+            /** @description Invalid request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Authentication required or credential invalid */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Authenticated principal is not authorized */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource state conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description HTTP 423 */
+            423: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unexpected server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    listOperatorAuditEvents: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditEventList"];
+                };
+            };
+            /** @description Invalid request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Authentication required or credential invalid */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Authenticated principal is not authorized */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource state conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description HTTP 423 */
+            423: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unexpected server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getOperatorHealth: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperatorHealthResponse"];
+                };
+            };
+            /** @description Invalid request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Authentication required or credential invalid */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Authenticated principal is not authorized */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource state conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description HTTP 423 */
+            423: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unexpected server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Service temporarily unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getOperatorMetrics: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperatorMetrics"];
+                };
+            };
+            /** @description Invalid request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Authentication required or credential invalid */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Authenticated principal is not authorized */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource state conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description HTTP 423 */
+            423: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unexpected server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    listOperatorServers: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string;
+                count?: "none" | "exact";
+                q?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperatorServerList"];
+                };
+            };
+            /** @description Invalid request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Authentication required or credential invalid */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Authenticated principal is not authorized */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource state conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description HTTP 423 */
+            423: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unexpected server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getOperatorServer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                serverId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperatorServerDetail"];
+                };
+            };
+            /** @description Invalid request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Authentication required or credential invalid */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Authenticated principal is not authorized */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource state conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description HTTP 423 */
+            423: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unexpected server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    applyOperatorUserAction: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GenericObject"];
+            };
+        };
+        responses: {
+            /** @description Successful response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OKResponse"];
+                };
+            };
+            /** @description Invalid request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Authentication required or credential invalid */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Authenticated principal is not authorized */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource state conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description HTTP 423 */
+            423: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unexpected server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    lookupOperatorUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["User"];
+                };
+            };
+            /** @description Invalid request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Authentication required or credential invalid */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Authenticated principal is not authorized */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource state conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description HTTP 423 */
+            423: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unexpected server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    resetOperatorUserMFA: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GenericObject"];
+            };
+        };
+        responses: {
+            /** @description Successful response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OKResponse"];
+                };
+            };
+            /** @description Invalid request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Authentication required or credential invalid */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Authenticated principal is not authorized */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource state conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description HTTP 423 */
+            423: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unexpected server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    searchOperatorUsers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserList"];
                 };
             };
             /** @description Invalid request */
@@ -11246,6 +13196,111 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TVSetupGrantResponse"];
+                };
+            };
+            /** @description Invalid request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Authentication required or credential invalid */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Authenticated principal is not authorized */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource state conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description HTTP 423 */
+            423: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unexpected server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Service temporarily unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    previewTVSetupSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TVSetupPreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TVSetupPreviewResponse"];
                 };
             };
             /** @description Invalid request */

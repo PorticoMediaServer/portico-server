@@ -12,6 +12,7 @@
   },
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 19105",
+    "dev:element-preview": "VITE_PORTICO_ELEMENT_PREVIEW=true vite --host 127.0.0.1 --port 19127",
     "typecheck": "tsc -b",
     "lint": "biome check",
     "test": "vitest run",
@@ -20,6 +21,7 @@
     "test:watch": "vitest",
     "build": "npm run typecheck && vite build && node ./scripts/write-runtime-config.mjs bundled",
     "build:hosted": "npm run typecheck && vite build --mode hosted && node ./scripts/write-runtime-config.mjs hosted",
+    "build:element-preview": "npm run typecheck && VITE_PORTICO_ELEMENT_PREVIEW=true vite build --mode preview",
     "performance:bundle": "node ./scripts/verify-performance-budget.mjs",
     "verify:fonts": "node --input-type=module -e \"import { existsSync, readFileSync, statSync } from 'node:fs'; import { join } from 'node:path'; const roots = [join(process.cwd(), 'public', 'fonts')]; if (process.argv.includes('--built')) roots.push(join(process.cwd(), 'dist', 'fonts')); const files = ['manrope-400.ttf', 'manrope-500.ttf', 'manrope-600.ttf', 'manrope-700.ttf', 'OFL.txt', 'README.md']; for (const root of roots) { for (const file of files) { const path = join(root, file); if (!existsSync(path) || statSync(path).size === 0) throw new Error('Missing Web font distribution file: ' + path); } const notice = readFileSync(join(root, 'OFL.txt'), 'utf8'); if (!notice.includes('SIL OPEN FONT LICENSE Version 1.1')) throw new Error('Manrope OFL notice is incomplete: ' + join(root, 'OFL.txt')); }\"",
     "verify:fonts:built": "npm run verify:fonts -- -- --built",

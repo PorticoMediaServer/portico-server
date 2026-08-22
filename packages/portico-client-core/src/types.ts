@@ -12,6 +12,8 @@ export type HostedTVSetupSessionRequest = HostedSchema<"TVSetupSessionRequest">;
 export type HostedTVSetupSession = HostedSchema<"TVSetupSessionResponse">;
 export type HostedTVSetupGrantRequest = HostedSchema<"TVSetupGrantRequest">;
 export type HostedTVSetupGrantResponse = HostedSchema<"TVSetupGrantResponse">;
+export type HostedTVSetupPreviewRequest = HostedSchema<"TVSetupPreviewRequest">;
+export type HostedTVSetupPreviewResponse = HostedSchema<"TVSetupPreviewResponse">;
 
 // Generic limited-input device authorization follows RFC 8628 polling and
 // terminal-state semantics while redeeming a Hosted Portico Account credential
@@ -156,12 +158,6 @@ export type PublicLoginUser = MainSchema<"PublicLoginUser">;
 export type QuickConnectStartResponse = MainSchema<"QuickConnectStartResponse">;
 export type QuickConnectStatusResponse = MainSchema<"QuickConnectStatus">;
 export type QuickConnectRequest = MainSchema<"QuickConnectRequest">;
-export type TVSetupSessionRequest = MainSchema<"TVSetupSessionRequest">;
-export type TVSetupEncryptedGrant = MainSchema<"TVSetupEncryptedGrant">;
-export type TVSetupSession = MainSchema<"TVSetupSession">;
-export type TVSetupGrantRequest = MainSchema<"TVSetupGrantRequest">;
-export type TVSetupGrantResponse = MainSchema<"TVSetupGrantResponse">;
-export type TVSetupRedeemRequest = MainSchema<"TVSetupRedeemRequest">;
 export type SystemIdentity = MainSchema<"SystemIdentity">;
 export type SystemStatusResponse = MainSchema<"SystemStatus">;
 export type ConnectionUrl = MainSchema<"ConnectionURL">;
@@ -180,6 +176,11 @@ export type DLNALibraryExposure = MainSchema<"DLNALibraryExposure">;
 export type DLNAStatus = MainSchema<"DLNAStatus">;
 export type LibraryScanSummary = MainSchema<"LibraryScanSummary">;
 export type Library = MainSchema<"Library">;
+export type RemoteStorageAnalysisMode = "file_list_only" | "basic" | "complete";
+export type RemoteStorageAnalysisModeRequest = { analysisMode: RemoteStorageAnalysisMode };
+export type RemoteStorageSourceRequest = Omit<MainSchema<"RemoteStorageSourceRequest">, "analysisMode"> & { analysisMode?: RemoteStorageAnalysisMode };
+export type RemoteStorageSource = Omit<MainSchema<"RemoteStorageSource">, "analysisMode"> & { analysisMode: RemoteStorageAnalysisMode };
+export type RemoteStorageSourceListResponse = Omit<MainSchema<"RemoteStorageSourceListResponse">, "items"> & { items: RemoteStorageSource[] };
 export type LibraryNavigationPreferences = MainSchema<"LibraryNavigationPreferences">;
 export type LibraryNavigationPreferencesRequest = MainSchema<"LibraryNavigationPreferencesRequest">;
 export type ProductContract = MainSchema<"ProductContract">;

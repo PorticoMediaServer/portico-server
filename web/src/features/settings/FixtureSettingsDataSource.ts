@@ -82,14 +82,14 @@ function settingGroups() {
   return {
     server: { friendlyName: 'EhlerFlix Test', operatorNote: 'Primary Portico review server.' },
     library: {
-      scanAutomatically: true, scanOnFilesystemChanges: true, analyzeOnScan: true, emptyTrashAfterScan: false,
+      scanAutomatically: true, scanOnFilesystemChanges: true, analysisTier: 'basic', analyzeOnScan: true, emptyTrashAfterScan: false,
       allowMediaDeletion: false, trashRetentionDays: 30, generateVideoPreview: 'scheduled', chapterThumbnailMode: 'chapters',
       trickplayOnScan: true, trickplayIntervalSeconds: 10, trickplayTileWidth: 240, trickplayMaxTiles: 1000,
     },
     metadataAgents: {
-      movies: 'TMDB', tv: 'TMDB', anime: 'AniList', music: 'MusicBrainz', localNFO: true, embeddedTags: true,
+      movies: 'TMDB', moviesFallback: 'TVDB', tv: 'TMDB', tvFallback: 'TVDB', anime: 'AniList', music: 'MusicBrainz', localNFO: true, embeddedTags: true,
       cacheOriginalArtwork: true, metadataLanguage: 'en-CA', refreshDays: 30,
-      tmdbReadAccessToken: { present: true }, tmdbAPIKey: { present: false },
+      tmdbReadAccessToken: { present: true }, tmdbAPIKey: { present: false }, tvdbAPIKey: { present: false },
     },
     languages: { audio: 'en', subtitle: 'en', subtitleMode: 'foreignAudio', preferForcedSubs: true },
     transcoder: {
@@ -487,6 +487,13 @@ export class FixtureSettingsDataSource implements SettingsDataSource {
   }
   updateLibrary(id: string, input: LibraryMutationInput): Promise<Library> { const index = this.operations.libraries.findIndex((item) => item.id === id); const updated = { ...this.operations.libraries[index], ...input } as Library; this.operations.libraries[index] = updated; return Promise.resolve(structuredClone(updated)); }
   deleteLibrary(id: string): Promise<void> { this.operations.libraries = this.operations.libraries.filter((item) => item.id !== id); return Promise.resolve(); }
+  remoteStorageSources(): Promise<import('@porticomediaserver/client-core').RemoteStorageSource[]> { return Promise.resolve([]); }
+  createRemoteStorageSource(id: string, input: import('@porticomediaserver/client-core').RemoteStorageSourceRequest): Promise<import('@porticomediaserver/client-core').RemoteStorageSource> {
+    return Promise.resolve({ id: `fixture-remote-${Date.now()}`, libraryId: id, kind: input.kind, name: input.name, endpoint: input.kind === 'webdav' ? input.endpoint : undefined, root: input.root, analysisMode: input.analysisMode ?? 'basic', health: 'unknown', inventoryStatus: 'never', objects: 0, missingObjects: 0, credentialPresent: input.kind === 'rclone' || Boolean(input.password), updatedAt: now() });
+  }
+  deleteRemoteStorageSource(): Promise<void> { return Promise.resolve(); }
+  updateRemoteStorageSourceAnalysisMode(id: string, sourceId: string, analysisMode: import('@porticomediaserver/client-core').RemoteStorageAnalysisMode): Promise<import('@porticomediaserver/client-core').RemoteStorageSource> { return Promise.resolve({ id: sourceId, libraryId: id, kind: 'webdav', name: 'Fixture remote', analysisMode, health: 'unknown', inventoryStatus: 'never', objects: 0, missingObjects: 0, credentialPresent: false, updatedAt: now() }); }
+  inventoryRemoteStorageSource(id: string): Promise<Job> { return Promise.resolve(job(`inventory-${id}`, 'Remote inventory queued', 'queued', 0, 0)); }
   libraryScanOperations(id: string): Promise<LibraryScanOperationsResponse> {
     const libraryItem = this.operations.libraries.find((item) => item.id === id);
     const summary = libraryItem?.scanSummary;

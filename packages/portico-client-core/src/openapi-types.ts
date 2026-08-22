@@ -1297,80 +1297,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/auth/tv-setup/grants": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Authorize a Nearby TV Setup session
-         * @description Authenticated mobile request that creates an encrypted, one-time setup grant for the selected TV. The mobile bearer token is never included in the grant.
-         */
-        post: operations["postAuthTvSetupGrants"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/auth/tv-setup/redeem": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Redeem a Nearby TV Setup grant or recover its committed device session within five minutes */
-        post: operations["postAuthTvSetupRedeem"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/auth/tv-setup/sessions": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Create a Nearby TV Setup session
-         * @description Creates a short-lived unauthenticated TV setup session with sparse setup metadata. The response is safe to show on TV or advertise over local discovery.
-         */
-        post: operations["postAuthTvSetupSessions"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/auth/tv-setup/sessions/{setupSessionId}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Poll Nearby TV Setup session status */
-        get: operations["getAuthTvSetupSessionsSetupSessionId"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/backups": {
         parameters: {
             query?: never;
@@ -2332,6 +2258,60 @@ export interface paths {
          * @description Queues an LRCLIB lookup job for tracks in the selected music library that do not already have uploaded, sidecar, or provider lyrics.
          */
         post: operations["postLibrariesIdLyrics"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/libraries/{id}/remote-storage-sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List managed remote storage sources */
+        get: operations["getLibrariesIdRemoteStorageSources"];
+        put?: never;
+        /** Create a managed rclone or WebDAV source */
+        post: operations["postLibrariesIdRemoteStorageSources"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/libraries/{id}/remote-storage-sources/{sourceId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get managed remote storage status */
+        get: operations["getLibrariesIdRemoteStorageSourcesSourceId"];
+        put?: never;
+        post?: never;
+        /** Remove a managed remote storage source */
+        delete: operations["deleteLibrariesIdRemoteStorageSourcesSourceId"];
+        options?: never;
+        head?: never;
+        /** Update remote scan depth */
+        patch: operations["patchLibrariesIdRemoteStorageSourcesSourceId"];
+        trace?: never;
+    };
+    "/libraries/{id}/remote-storage-sources/{sourceId}/inventory": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Queue remote inventory and catalog reconciliation */
+        post: operations["postLibrariesIdRemoteStorageSourcesSourceIdInventory"];
         delete?: never;
         options?: never;
         head?: never;
@@ -7992,6 +7972,8 @@ export interface components {
         };
         LibrarySettings: {
             allowMediaDeletion?: boolean;
+            /** @enum {string} */
+            analysisTier?: "file_list_only" | "basic" | "complete" | "custom";
             analyzeOnScan?: boolean;
             chapterThumbnailMode?: string;
             emptyTrashAfterScan?: boolean;
@@ -8034,6 +8016,9 @@ export interface components {
         };
         LibraryStorageSource: {
             /** @enum {string} */
+            backendKind?: "filesystem" | "rclone" | "webdav";
+            backendRoot?: string;
+            /** @enum {string} */
             circuitState: "closed" | "open" | "half_open";
             /** @enum {string} */
             classification: "local" | "network" | "fuse" | "unknown";
@@ -8046,6 +8031,7 @@ export interface components {
             /** @enum {string} */
             health: "unknown" | "healthy" | "degraded" | "offline" | "stalled";
             id: string;
+            inventoryComplete?: boolean;
             /** Format: date-time */
             lastFailureAt?: string;
             /** Format: date-time */
@@ -8836,14 +8822,19 @@ export interface components {
             localNFO?: boolean;
             metadataLanguage?: string;
             /** @enum {string} */
-            movies?: "TMDB" | "None";
+            movies?: "TMDB" | "TVDB" | "None";
+            /** @enum {string} */
+            moviesFallback?: "TMDB" | "TVDB" | "None";
             /** @enum {string} */
             music?: "MusicBrainz" | "None";
             refreshDays?: number;
             tmdbAPIKey?: components["schemas"]["SettingsSecretState"];
             tmdbReadAccessToken?: components["schemas"]["SettingsSecretState"];
             /** @enum {string} */
-            tv?: "TMDB" | "None";
+            tv?: "TMDB" | "TVDB" | "None";
+            /** @enum {string} */
+            tvFallback?: "TMDB" | "TVDB" | "None";
+            tvdbAPIKey?: components["schemas"]["SettingsSecretState"];
         };
         MetadataAgentSettingsUpdate: {
             /** @enum {string} */
@@ -8853,14 +8844,19 @@ export interface components {
             localNFO?: boolean;
             metadataLanguage?: string;
             /** @enum {string} */
-            movies?: "TMDB" | "None";
+            movies?: "TMDB" | "TVDB" | "None";
+            /** @enum {string} */
+            moviesFallback?: "TMDB" | "TVDB" | "None";
             /** @enum {string} */
             music?: "MusicBrainz" | "None";
             refreshDays?: number;
             tmdbAPIKey?: components["schemas"]["SettingsSecretChange"];
             tmdbReadAccessToken?: components["schemas"]["SettingsSecretChange"];
             /** @enum {string} */
-            tv?: "TMDB" | "None";
+            tv?: "TMDB" | "TVDB" | "None";
+            /** @enum {string} */
+            tvFallback?: "TMDB" | "TVDB" | "None";
+            tvdbAPIKey?: components["schemas"]["SettingsSecretChange"];
         };
         MetadataHealthActionRequest: {
             /** @enum {string} */
@@ -10598,6 +10594,53 @@ export interface components {
             stale: boolean;
             status: string;
         };
+        RemoteStorageSource: {
+            /** @enum {string} */
+            analysisMode: "file_list_only" | "basic" | "complete";
+            credentialPresent: boolean;
+            endpoint?: string;
+            /** @enum {string} */
+            health: "unknown" | "healthy" | "degraded" | "offline" | "stalled";
+            id: string;
+            inventoryStatus: string;
+            /** @enum {string} */
+            kind: "rclone" | "webdav";
+            libraryId: string;
+            missingObjects: number;
+            name: string;
+            objects: number;
+            root?: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        RemoteStorageSourceListResponse: {
+            items: components["schemas"]["RemoteStorageSource"][];
+            limit: number;
+            total: number;
+        };
+        RemoteStorageSourcePatchRequest: {
+            /** @enum {string} */
+            analysisMode: "file_list_only" | "basic" | "complete";
+        };
+        RemoteStorageSourceRequest: {
+            /**
+             * @description Basic queues bounded range probes after inventory and is recommended for remote sources. File List Only performs no media-object content reads during scans. Complete additionally permits deep analysis.
+             * @default basic
+             * @enum {string}
+             */
+            analysisMode: "file_list_only" | "basic" | "complete";
+            /** Format: uri */
+            endpoint?: string;
+            /** @enum {string} */
+            kind: "rclone" | "webdav";
+            name: string;
+            password?: string;
+            rcloneBinaryPath?: string;
+            rcloneConfig?: string;
+            rcloneRemoteName?: string;
+            root?: string;
+            username?: string;
+        };
         /** @description Canonical media-agnostic playback policy. Protocol-specific controls are additive nested extensions and never replace these required delivery fields. */
         ResolvedPlaybackPolicy: {
             allowHdr: boolean;
@@ -11432,74 +11475,6 @@ export interface components {
             serverMonotonicHint?: string;
             /** Format: int64 */
             serverUnixMillis: number;
-        };
-        TVSetupEncryptedGrant: {
-            /** @enum {string} */
-            algorithm: "X25519-HKDF-SHA256-AESGCM";
-            ciphertext: string;
-            nonce: string;
-            serverPublicKey: string;
-            /** @example 1 */
-            version: number;
-        };
-        TVSetupGrantRequest: {
-            /** @description Canonical protocol-v1 code. The runtime also normalizes lowercase, ordinary spaces, and at most one dash. */
-            code: string;
-            devicePublicKey?: string;
-            setupSessionId?: string;
-        };
-        TVSetupGrantResponse: {
-            encryptedGrant: components["schemas"]["TVSetupEncryptedGrant"];
-            /** Format: date-time */
-            expiresAt: string;
-            setupSessionId: string;
-            /** @enum {string} */
-            status: "grant_ready";
-        };
-        TVSetupRedeemRequest: {
-            appVersion?: string;
-            deviceName?: string;
-            grantSecret: string;
-            platform?: string;
-            setupSessionId: string;
-        };
-        TVSetupSession: {
-            appVersion?: string;
-            /** @enum {string} */
-            authModeHint: "unknown" | "local" | "portico-account";
-            /** @description Protocol-v1 XXXX-XXXX setup code. */
-            code: string;
-            deviceName: string;
-            devicePublicKey: string;
-            encryptedGrant?: components["schemas"]["TVSetupEncryptedGrant"];
-            /** Format: uri */
-            endpointUrl?: string;
-            /** Format: date-time */
-            expiresAt: string;
-            platform: string;
-            pollIntervalSeconds: number;
-            /** @enum {integer} */
-            protocolVersion: 1;
-            serverHint?: string;
-            /** @example _portico-setup._tcp.local. */
-            service: string;
-            setupSessionId: string;
-            /** @enum {string} */
-            status: "pending" | "grant_ready" | "redeemed" | "expired";
-        };
-        TVSetupSessionRequest: {
-            appVersion?: string;
-            /** @enum {string} */
-            authModeHint?: "unknown" | "local" | "portico-account";
-            deviceName?: string;
-            /** @description Base64url encoded ephemeral TV setup public key. */
-            devicePublicKey: string;
-            /** Format: uri */
-            endpointUrl?: string;
-            /** @description Optional, non-secret app-installation metadata used for continuity and diagnostics. It is never authentication proof. */
-            installationId?: string;
-            platform?: string;
-            serverHint?: string;
         };
         TelemetryMetricStatus: {
             reason?: string;
@@ -19760,376 +19735,6 @@ export interface operations {
             };
         };
     };
-    postAuthTvSetupGrants: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["TVSetupGrantRequest"];
-            };
-        };
-        responses: {
-            /** @description Encrypted TV setup grant created */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TVSetupGrantResponse"];
-                };
-            };
-            /** @description 400 Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Error"];
-                };
-            };
-            /** @description 401 Unauthorized */
-            401: components["responses"]["Unauthorized"];
-            /** @description 403 Forbidden */
-            403: components["responses"]["Forbidden"];
-            /** @description 404 Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Error"];
-                };
-            };
-            /** @description 405 Method Not Allowed */
-            405: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Error"];
-                };
-            };
-            /** @description 409 Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Error"];
-                };
-            };
-            /** @description 429 Too Many Requests */
-            429: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Error"];
-                };
-            };
-            /** @description 500 Internal Server Error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Error"];
-                };
-            };
-        };
-    };
-    postAuthTvSetupRedeem: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["TVSetupRedeemRequest"];
-            };
-        };
-        responses: {
-            /** @description TV native credentials created */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["NativeSessionCredentials"];
-                };
-            };
-            /** @description 400 Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Error"];
-                };
-            };
-            /** @description 401 Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Error"];
-                };
-            };
-            /** @description 403 Forbidden */
-            403: components["responses"]["Forbidden"];
-            /** @description 404 Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Error"];
-                };
-            };
-            /** @description 405 Method Not Allowed */
-            405: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Error"];
-                };
-            };
-            /** @description 409 Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Error"];
-                };
-            };
-            /** @description 429 Too Many Requests */
-            429: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Error"];
-                };
-            };
-            /** @description 500 Internal Server Error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Error"];
-                };
-            };
-        };
-    };
-    postAuthTvSetupSessions: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["TVSetupSessionRequest"];
-            };
-        };
-        responses: {
-            /** @description TV setup session created */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TVSetupSession"];
-                };
-            };
-            /** @description 400 Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Error"];
-                };
-            };
-            /** @description 401 Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Error"];
-                };
-            };
-            /** @description 403 Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Error"];
-                };
-            };
-            /** @description 404 Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Error"];
-                };
-            };
-            /** @description 405 Method Not Allowed */
-            405: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Error"];
-                };
-            };
-            /** @description 409 Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Error"];
-                };
-            };
-            /** @description 429 Too Many Requests */
-            429: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Error"];
-                };
-            };
-            /** @description 500 Internal Server Error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Error"];
-                };
-            };
-            /** @description The active setup-code namespace could not be allocated within the bounded retry budget. */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Error"];
-                };
-            };
-        };
-    };
-    getAuthTvSetupSessionsSetupSessionId: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                setupSessionId: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Sanitized TV setup session status */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TVSetupSession"];
-                };
-            };
-            /** @description 400 Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Error"];
-                };
-            };
-            /** @description 401 Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Error"];
-                };
-            };
-            /** @description 403 Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Error"];
-                };
-            };
-            /** @description 404 Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Error"];
-                };
-            };
-            /** @description 405 Method Not Allowed */
-            405: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Error"];
-                };
-            };
-            /** @description 409 Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Error"];
-                };
-            };
-            /** @description 429 Too Many Requests */
-            429: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Error"];
-                };
-            };
-            /** @description 500 Internal Server Error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Error"];
-                };
-            };
-        };
-    };
     getBackups: {
         parameters: {
             query?: never;
@@ -26780,6 +26385,580 @@ export interface operations {
         responses: {
             /** @description Missing lyrics fetch job queued */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Job"];
+                };
+            };
+            /** @description 400 Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 401 Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 403 Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 404 Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 405 Method Not Allowed */
+            405: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 409 Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 429 Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 500 Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getLibrariesIdRemoteStorageSources: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Remote storage sources */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RemoteStorageSourceListResponse"];
+                };
+            };
+            /** @description 400 Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 401 Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 403 Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 404 Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 405 Method Not Allowed */
+            405: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 409 Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 429 Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 500 Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    postLibrariesIdRemoteStorageSources: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RemoteStorageSourceRequest"];
+            };
+        };
+        responses: {
+            /** @description Created source with write-only credentials omitted */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RemoteStorageSource"];
+                };
+            };
+            /** @description 400 Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 401 Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 403 Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 404 Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 405 Method Not Allowed */
+            405: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 409 Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 429 Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 500 Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getLibrariesIdRemoteStorageSourcesSourceId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                sourceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Remote storage source */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RemoteStorageSource"];
+                };
+            };
+            /** @description 400 Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 401 Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 403 Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 404 Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 405 Method Not Allowed */
+            405: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 409 Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 429 Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 500 Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    deleteLibrariesIdRemoteStorageSourcesSourceId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                sourceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 400 Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 401 Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 403 Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 404 Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 405 Method Not Allowed */
+            405: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 409 Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 429 Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 500 Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    patchLibrariesIdRemoteStorageSourcesSourceId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                sourceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RemoteStorageSourcePatchRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated remote storage source */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RemoteStorageSource"];
+                };
+            };
+            /** @description 400 Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 401 Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 403 Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 404 Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 405 Method Not Allowed */
+            405: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 409 Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 429 Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 500 Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    postLibrariesIdRemoteStorageSourcesSourceIdInventory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                sourceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Inventory queued */
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };

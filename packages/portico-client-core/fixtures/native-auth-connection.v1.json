@@ -24,12 +24,6 @@
       "revoke": "POST /api/auth/sessions/revoke",
       "refreshOwner": "selected-server",
       "persistAfterBootstrap": true
-    },
-    "tvPairing": {
-      "start": "POST /api/auth/tv-setup/sessions",
-      "authorize": "POST /api/auth/tv-setup/grants",
-      "redeem": "POST /api/auth/tv-setup/redeem",
-      "persistRedeemedCredentials": true
     }
   },
   "bootstrapOrder": [

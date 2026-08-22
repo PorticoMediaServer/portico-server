@@ -15,7 +15,12 @@ export type SettingsFieldDefinition = {
   max?: number;
   step?: number;
   unit?: string;
+  defaultValue?: string | boolean | number;
+  warningByValue?: Record<string, string>;
+  visibleWhen?: SettingsVisibilityCondition;
 };
+
+export type SettingsVisibilityCondition = { settingsKey: WritableSettingsGroup; field: string; equals: string | boolean };
 
 export type SettingsFieldGroup = {
   id: string;
@@ -24,6 +29,7 @@ export type SettingsFieldGroup = {
   description?: string;
   settingsKey: WritableSettingsGroup;
   fields: SettingsFieldDefinition[];
+  visibleWhen?: SettingsVisibilityCondition;
 };
 
 const yesNo = (field: string, label: string, description: string): SettingsFieldDefinition => ({ field, label, description, kind: 'toggle' });
@@ -47,16 +53,39 @@ export const serverSettingFieldGroups: Record<string, SettingsFieldGroup[]> = {
       id: 'library-scanning', capabilityId: 'library-settings', title: 'Library scanning', settingsKey: 'library', fields: [
         yesNo('scanAutomatically', 'Automatic scans', 'Schedule library scans without requiring a manual request.'),
         yesNo('scanOnFilesystemChanges', 'Check folders for changes', 'Use bounded adaptive checks to detect changes without relying on fragile recursive filesystem watchers.'),
-        yesNo('analyzeOnScan', 'Analyze media during scans', 'Probe new files for streams, duration, and playback compatibility.'),
+        {
+          ...choice('analysisTier', 'Analysis tier', 'Inventory always completes first, and background analysis yields to playback. Basic adds technical facts and representative thumbnails. Complete enables deep whole-file compute such as sonic analysis, loudness, and intro/credit detection. Custom uses the controls below.', [option('file_list_only', 'File List Only'), option('basic', 'Basic (recommended)'), option('complete', 'Complete'), option('custom', 'Custom')]),
+          defaultValue: 'basic',
+          warningByValue: {
+            complete: 'Complete can use significantly more storage for generated thumbnails, chapter imagery, trickplay, and analysis artifacts.',
+            custom: 'Custom is for advanced users. Depending on what you enable, generated files can use significantly more storage and scanning can create substantially more disk I/O.',
+          },
+        },
         yesNo('emptyTrashAfterScan', 'Empty trash after scans', 'Remove missing entries after a completed scan instead of retaining them.'),
         yesNo('allowMediaDeletion', 'Allow file deletion', 'Permit the server owner to delete source files through Portico.'),
         number('trashRetentionDays', 'Trash retention', 'Number of days missing media stays recoverable.', 'days', 0, 365),
       ],
     },
     {
-      id: 'library-previews', capabilityId: 'library-settings', title: 'Previews and trickplay', settingsKey: 'library', fields: [
+      id: 'library-analysis-no-reads', capabilityId: 'library-settings', title: 'No media-content reads', description: 'Listing and catalog work only. Portico does not read media content in this category.', settingsKey: 'library', visibleWhen: { settingsKey: 'library', field: 'analysisTier', equals: 'custom' }, fields: [],
+    },
+    {
+      id: 'library-analysis-targeted', capabilityId: 'library-settings', title: 'Targeted reads', description: 'Bounded seeks for embedded tags, stream facts, embedded covers, and representative thumbnails.', settingsKey: 'library', visibleWhen: { settingsKey: 'library', field: 'analysisTier', equals: 'custom' }, fields: [
+        yesNo('probeStreams', 'Probe stream details', 'Read bounded portions of new files for streams, duration, and playback compatibility.'),
+        yesNo('generateThumbnails', 'Representative thumbnails', 'Read targeted portions of video files to create one representative image.'),
+        yesNo('detectChapterSegments', 'Chapter and segment markers', 'Inspect container chapter data for named segments such as intros and credits.'),
+        yesNo('extractEmbeddedCovers', 'Embedded cover art', 'Read embedded artwork from supported audio and audiobook containers.'),
+      ],
+    },
+    {
+      id: 'library-analysis-sustained', capabilityId: 'library-settings', title: 'Sustained/full-file reads', description: 'Whole-file or long-running reads for loudness, sonic fingerprinting, trickplay, chapter imagery, and intro/credit/deep detection.', settingsKey: 'library', visibleWhen: { settingsKey: 'library', field: 'analysisTier', equals: 'custom' }, fields: [
         text('generateVideoPreview', 'Video preview policy', 'Controls when video preview clips are generated.', 'scheduled'),
         text('chapterThumbnailMode', 'Chapter thumbnails', 'Controls chapter thumbnail generation for video media.', 'chapters'),
+        yesNo('chapterThumbnails', 'Generate chapter imagery', 'Create still images for chapter navigation.'),
+        yesNo('generateTrickplayPreviews', 'Generate trickplay previews', 'Create timeline preview tiles from sustained video reads.'),
+        yesNo('analyzeAudio', 'Loudness analysis', 'Read audio streams to calculate normalization and loudness data.'),
+        yesNo('sonicFingerprinting', 'Sonic fingerprinting', 'Analyze audio content for similarity and matching features.'),
+        yesNo('extractEmbeddedAttachments', 'Embedded attachments', 'Extract supported fonts and other attachments from media containers.'),
         yesNo('trickplayOnScan', 'Generate trickplay on scan', 'Create timeline preview tiles as new video is added.'),
         number('trickplayIntervalSeconds', 'Trickplay interval', 'Seconds between generated timeline preview frames.', 'seconds', 1, 120),
         number('trickplayTileWidth', 'Trickplay tile width', 'Pixel width of each generated timeline frame.', 'px', 80, 640),
@@ -65,8 +94,10 @@ export const serverSettingFieldGroups: Record<string, SettingsFieldGroup[]> = {
     },
     {
       id: 'metadata-providers', capabilityId: 'metadata-agents', title: 'Metadata providers', settingsKey: 'metadataAgents', fields: [
-        choice('movies', 'Movies', 'Primary metadata provider for movie libraries.', [option('TMDB'), option('None')]),
-        choice('tv', 'TV', 'Primary metadata provider for television libraries.', [option('TMDB'), option('None')]),
+        choice('movies', 'Movies', 'Primary metadata provider for movie libraries.', [option('TMDB'), option('TVDB', 'TheTVDB'), option('None')]),
+        choice('moviesFallback', 'Movie fallback', 'Used only when the primary provider returns no confident movie match.', [option('TVDB', 'TheTVDB'), option('TMDB'), option('None')]),
+        choice('tv', 'TV', 'Primary metadata provider for television libraries.', [option('TMDB'), option('TVDB', 'TheTVDB'), option('None')]),
+        choice('tvFallback', 'TV fallback', 'Used only when the primary provider returns no confident television match.', [option('TVDB', 'TheTVDB'), option('TMDB'), option('None')]),
         choice('anime', 'Anime', 'Primary metadata provider for anime libraries.', [option('AniList'), option('TMDB'), option('None')]),
         choice('music', 'Music', 'Primary metadata provider for music libraries.', [option('MusicBrainz'), option('None')]),
         yesNo('localNFO', 'Read local NFO files', 'Use adjacent NFO files when present.'),
@@ -80,6 +111,7 @@ export const serverSettingFieldGroups: Record<string, SettingsFieldGroup[]> = {
       id: 'metadata-credentials', capabilityId: 'metadata-agents', title: 'Provider credentials', description: 'Existing credentials are never returned by the server.', settingsKey: 'metadataAgents', fields: [
         { field: 'tmdbReadAccessToken', label: 'TMDB read access token override', description: 'Optional advanced override. Portico includes TMDB metadata access by default.', kind: 'secret' },
         { field: 'tmdbAPIKey', label: 'TMDB API key override', description: 'Optional advanced API-key override. Portico includes TMDB metadata access by default.', kind: 'secret' },
+        { field: 'tvdbAPIKey', label: 'TheTVDB API key override', description: 'Optional project-key override. Portico includes TheTVDB metadata access by default.', kind: 'secret' },
       ],
     },
   ],

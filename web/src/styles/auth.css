@@ -52,9 +52,16 @@
 .auth-panel form { min-width: 0; display: grid; gap: 16px; }
 .auth-panel label { min-width: 0; display: grid; gap: 7px; color: var(--silver-soft); font-size: var(--type-supporting); font-weight: 600; }
 .auth-panel label > small { color: var(--silver-dim); font-size: var(--type-caption); font-weight: 400; line-height: 1.5; }
-.auth-panel input { width: 100%; min-width: 0; max-width: 100%; min-height: 47px; padding: 0 13px; border: 1px solid var(--line); border-radius: var(--radius-control); color: var(--silver); background: #070d13; }
-.auth-panel input:hover { border-color: rgba(112, 188, 232, .24); }
+.auth-panel input { width: 100%; min-width: 0; max-width: 100%; min-height: 47px; padding: 0 15px; border: 1px solid var(--portico-control-border); border-radius: var(--radius-control); color: var(--silver); background: var(--portico-control-fill); }
+.auth-panel input::placeholder { color: var(--portico-control-placeholder); opacity: 1; }
+.auth-panel input:hover { border-color: var(--portico-control-border-hover); background: var(--portico-control-fill-hover); }
+.auth-panel input:focus-visible { border-color: var(--portico-control-focus); outline: 1px solid var(--portico-control-focus); outline-offset: -1px; background: var(--portico-control-fill-hover); }
+.auth-panel input[aria-invalid='true'] { border-color: var(--portico-control-invalid); outline: 1px solid var(--portico-control-invalid); outline-offset: -1px; }
+.auth-panel input:disabled { opacity: .55; cursor: not-allowed; }
 .auth-panel .button { min-height: 46px; }
+.auth-panel .button.primary { border-color: var(--portico-action-fill); color: var(--portico-action-ink); background: var(--portico-action-fill); background-image: none; box-shadow: none; }
+.auth-panel .button.primary:hover { border-color: var(--portico-action-fill-hover); background: var(--portico-action-fill-hover); background-image: none; }
+.auth-panel .button.primary:active { border-color: var(--screen-blue-deep); background: var(--screen-blue-deep); background-image: none; }
 .auth-panel form > .button,
 .auth-portico-button { width: 100%; }
 .auth-portico-button { display: flex; align-items: center; justify-content: center; gap: 8px; }
@@ -80,6 +87,10 @@
 .auth-demo-credentials code { display: block; width: max-content; max-width: 100%; padding: 4px 7px; overflow-wrap: anywhere; border-radius: 5px; color: var(--silver); background: rgba(0, 0, 0, .22); font: inherit; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; user-select: all; }
 .auth-security-note { margin: 22px 0 0; padding-top: 15px; display: flex; align-items: center; gap: 7px; border-top: 1px solid var(--line-soft); color: var(--silver-muted); font-size: var(--type-caption); line-height: 1.45; }
 .auth-security-note svg { width: 15px; flex: 0 0 auto; color: var(--healthy); }
+.auth-account-legal { margin: 11px 0 0; color: var(--silver-muted); font-size: var(--type-caption); line-height: 1.55; }
+.auth-account-legal a { color: var(--portico-link); font-weight: 600; text-decoration: none; }
+.auth-account-legal a:hover { color: var(--silver-soft); text-decoration-color: currentColor; }
+.auth-account-legal a:focus-visible { border-radius: 2px; outline: 2px solid var(--screen-blue-strong); outline-offset: 3px; }
 .auth-method-error { min-height: 74px; padding: 12px; display: flex; align-items: flex-start; gap: 10px; border: 1px solid rgba(237, 91, 103, .28); border-radius: var(--radius-control); background: rgba(237, 91, 103, .05); }
 .auth-method-error > svg { width: 19px; margin-top: 2px; flex: 0 0 auto; color: var(--record); }
 .auth-method-error > span { display: grid; }

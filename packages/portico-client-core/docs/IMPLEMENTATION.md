@@ -116,7 +116,7 @@ Platform-specific code must continue to own:
 - Offline/download storage.
 - Push notifications and device permissions.
 
-TV and mobile clients should use the shared Nearby TV Setup methods rather than re-declaring request and response shapes locally. The server client exposes `createTVSetupSession`, `tvSetupSession`, `authorizeTVSetupGrant`, and `redeemTVSetupGrant` for Local Auth. The Hosted Services client exposes `createTVSetupSession`, scoped-secret `tvSetupSession`, `authorizeTVSetupGrant`, and `redeemTVSetupSession` so a signed-out TV can display a code before choosing a server. Both implementations create protocol-v1 `XXXX-XXXX` codes from `ABCDEFGHJKMNPQRSTUVWXYZ23456789`; clients normalize lowercase, ordinary spaces, and at most one dash but reject every other shape. Binary, HLS, image, and Server-Sent Event routes should be consumed through the shared URL helpers so hosted/Portico tokens are applied consistently.
+TV and mobile clients should use the Hosted Services Nearby TV Setup methods rather than re-declaring request and response shapes locally. Hosted Services is the sole TV activation-code authority: its client exposes `createTVSetupSession`, scoped-secret `tvSetupSession`, `authorizeTVSetupGrant`, and `redeemTVSetupSession` so a signed-out TV can display one code before choosing a server. The local server does not issue or advertise a second, indistinguishable TV setup ticket. Protocol-v1 uses `XXXX-XXXX` codes from `ABCDEFGHJKMNPQRSTUVWXYZ23456789`; clients normalize lowercase, ordinary spaces, and at most one dash but reject every other shape. Binary, HLS, image, and Server-Sent Event routes should be consumed through the shared URL helpers so hosted/Portico tokens are applied consistently.
 
 ## Security Notes
 

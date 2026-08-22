@@ -16,17 +16,24 @@ import {
 	resolveProductProblem,
 	type ProductMessageId,
 } from '@porticomediaserver/client-core';
-import { type FormEvent, useEffect, useRef, useState } from 'react';
+import { type FormEvent, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PrimaryButton, SecondaryButton } from '../../components/controls/Buttons';
 import { PasswordInput, PasswordRequirements, validPorticoPassword } from '../../components/controls/PasswordInput';
 import { reviewedProductErrorText } from '../../components/ProductLanguage';
 import { useAuthSession } from '../../data/DataProvider';
 import { useOptionalRuntime } from '../../runtime/RuntimeContext';
+import { automaticHostedAvailabilityRetry, useHostedAvailabilityRetry } from '../../runtime/hostedAvailability';
 import './browser-accounts.css';
 
 function AuthBrand() {
   return <img className="auth-wordmark" src="/brand/portico-wordmark-white.svg" alt="Portico" />;
+}
+
+function AccountLegalNotice() {
+	return <p className="auth-account-legal">
+		By continuing, you agree to Portico’s <a href="https://getportico.tv/terms/" target="_blank" rel="noreferrer">Terms of Use</a> and acknowledge the <a href="https://getportico.tv/privacy/" target="_blank" rel="noreferrer">Privacy Policy</a>.
+	</p>;
 }
 
 function ServerIdentity({ serverName, detail }: { serverName: string; detail: string }) {
@@ -188,6 +195,7 @@ export function LocalProfileSelectionSurface({ serverName }: { serverName: strin
 				<PrimaryButton type="submit" disabled={auth.busy || pin.length !== 4}>{auth.busy ? 'Opening…' : 'Open profile'}</PrimaryButton>
 			</form>}
 			<div className="account-chooser-actions"><button className="auth-text-button" type="button" disabled={auth.busy} onClick={auth.cancelLocalProfileLogin}><ArrowLeft /> Back to sign in</button></div>
+			<AccountLegalNotice />
 		</section>
 	</main>;
 }
@@ -239,6 +247,7 @@ export function SignInSurface({ serverName, addingAccount = false }: { serverNam
       </form>}
       {!localEnabled && !porticoEnabled && <div className="auth-method-error" role="alert"><AlertTriangle /><span><strong>No sign-in method is available</strong><p>Ask the server owner to finish setup or restore a supported sign-in method.</p></span></div>}
       <p className="auth-security-note"><ShieldCheck /> Credentials are sent only to {porticoEnabled && !localEnabled ? 'Portico over HTTPS' : 'this server'}.</p>
+	  <AccountLegalNotice />
 	  {addingAccount && <button className="auth-text-button auth-cancel-add" type="button" disabled={auth.busy} onClick={auth.cancelAddAccount}><ArrowLeft /> Back to Portico</button>}
     </section>
   </main>;
@@ -253,8 +262,17 @@ export function SetupSurface({ serverName }: { serverName: string }) {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [localOnlyAcknowledged, setLocalOnlyAcknowledged] = useState(false);
   const [error, setError] = useState('');
+  const [setupStatusFailure, setSetupStatusFailure] = useState<unknown>();
   const [setupCheckRevision, setSetupCheckRevision] = useState(0);
-  const setupStatusFailures = useRef(0);
+  const setupAvailability = useHostedAvailabilityRetry({
+    enabled: mode === 'portico' && Boolean(error) && automaticHostedAvailabilityRetry(setupStatusFailure),
+    reason: setupStatusFailure,
+    retry: () => {
+      setError('');
+      setSetupStatusFailure(undefined);
+      setSetupCheckRevision((current) => current + 1);
+    },
+  });
   useEffect(() => {
     if (mode !== 'portico') return;
     let active = true;
@@ -263,7 +281,7 @@ export function SetupSurface({ serverName }: { serverName: string }) {
       try {
         const status = await auth.porticoSetupStatus();
         if (!active) return;
-        setupStatusFailures.current = 0;
+        setSetupStatusFailure(undefined);
         if (!status.setupRequired && status.porticoConnected) {
           window.location.replace('/api/auth/portico/start?returnUrl=/');
           return;
@@ -275,11 +293,7 @@ export function SetupSurface({ serverName }: { serverName: string }) {
         retryTimer = window.setTimeout(check, 1_000);
       } catch (reason) {
         if (!active) return;
-        setupStatusFailures.current += 1;
-        if (setupStatusFailures.current < 3) {
-          retryTimer = window.setTimeout(check, 1_500);
-          return;
-        }
+        setSetupStatusFailure(reason);
         setError(setupClaimErrorText(reason));
       }
     };
@@ -333,7 +347,7 @@ export function SetupSurface({ serverName }: { serverName: string }) {
       </div>
       {mode === 'portico' && <div className={`setup-portico-progress${error ? ' error' : ''}`} aria-live="polite">
         {!error && <><LoaderCircle className="runtime-spinner" /><p><strong>Finishing server setup…</strong><small>Portico is activating this server and creating your local owner profile. Remote Access will be checked separately.</small></p></>}
-        {error && <><div className="auth-error" role="alert"><AlertTriangle />{error}</div><div className="runtime-footer-actions"><SecondaryButton onClick={() => { setupStatusFailures.current = 0; setError(''); setSetupCheckRevision((current) => current + 1); }}><RefreshCw /> Try again</SecondaryButton><button type="button" className="auth-text-button" onClick={() => { window.history.replaceState(null, '', '/'); setMode('choose'); setError(''); }}>Account options</button></div></>}
+        {error && <><div className="auth-error" role="alert"><AlertTriangle /><span><strong>{setupAvailability.automatic ? setupAvailability.copy.title : 'Portico couldn’t finish setup'}</strong><small>{setupAvailability.automatic ? setupAvailability.copy.body : error}</small></span></div><div className="runtime-footer-actions">{!setupAvailability.automatic && <SecondaryButton onClick={() => { setSetupStatusFailure(undefined); setError(''); setSetupCheckRevision((current) => current + 1); }}><RefreshCw /> Try again</SecondaryButton>}<button type="button" className="auth-text-button" onClick={() => { window.history.replaceState(null, '', '/'); setMode('choose'); setSetupStatusFailure(undefined); setError(''); }}>Account options</button></div></>}
       </div>}
       {mode === 'choose' && <div className="setup-mode-grid">
         <button type="button" disabled={auth.busy} onClick={() => void startPorticoSetup()}><span className="setup-mode-icon"><Globe2 /></span><span><span className="setup-mode-title"><strong>Use A Portico Account</strong><em>Recommended</em></span><small>Using a Portico Account allows you to easily set up and access your server remotely for free, invite other users, and use multiple Portico servers - all in one place. This option provides automatic network setup, including secure remote access to your server.</small><small className="setup-mode-guidance">Use this option if you want a seamless experience across Portico, or if you're not sure which is right for you.</small></span><ArrowRight /></button>
@@ -350,7 +364,7 @@ export function SetupSurface({ serverName }: { serverName: string }) {
         <label className="local-only-acknowledgement"><input type="checkbox" checked={localOnlyAcknowledged} onChange={(event) => setLocalOnlyAcknowledged(event.target.checked)} required /><span>I understand that This Server credentials are managed here and do not create a Portico Account.</span></label>
         {error && <p className="auth-error" role="alert"><AlertTriangle />{error}</p>}
         <PrimaryButton type="submit" disabled={auth.busy || !setupServerName.trim() || !localOnlyAcknowledged || !details.username.trim() || !validPorticoPassword(details.password) || details.password !== confirmPassword}>{auth.busy ? 'Creating owner…' : 'Create This Server owner'}</PrimaryButton>
-      </form></>}
+      </form><AccountLegalNotice /></>}
     </section>
   </main>;
 }

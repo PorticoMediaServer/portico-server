@@ -65,7 +65,8 @@ export function HostedAccountSettingsDialog({ onDismiss }: { onDismiss: () => vo
     if (signal.aborted) throw signal.reason;
     return accountViewer(parseAccountUser(response.user));
   }, [hosted]);
-  const query = useSettingsQuery(load, source, revision);
+  const query = useSettingsQuery(load, source, revision, { automaticHostedRetry: true });
+  const availability = query.hostedAvailability;
 
   return <ModalOverlay className="portico-settings-dialog runtime-account-settings-dialog" labelledBy="runtime-account-settings-title" onDismiss={onDismiss}>
     <header>
@@ -77,9 +78,13 @@ export function HostedAccountSettingsDialog({ onDismiss }: { onDismiss: () => vo
     </header>
     <div className="runtime-account-settings-content">
       {query.status === 'loading' && <SettingsLoading label="Loading Portico Account settings" />}
-      {query.status === 'error' && <SettingsError title="Account settings are unavailable" message="Portico couldn’t load your account settings right now." onRetry={() => setRevision((value) => value + 1)} />}
+      {query.status === 'error' && <SettingsError
+        title={availability.automatic ? availability.copy.title : 'Account settings are unavailable'}
+        message={availability.automatic ? availability.copy.body : 'Portico couldn’t load your account settings right now.'}
+        onRetry={availability.automatic ? undefined : () => setRevision((value) => value + 1)}
+      />}
       {query.status === 'success' && query.data && <AccountSettings viewer={query.data} source={source} />}
     </div>
-    {query.status === 'error' && <footer><SecondaryButton onClick={() => setRevision((value) => value + 1)}><RefreshCw /> Try again</SecondaryButton></footer>}
+    {query.status === 'error' && !availability.automatic && <footer><SecondaryButton onClick={() => setRevision((value) => value + 1)}><RefreshCw /> Try again</SecondaryButton></footer>}
   </ModalOverlay>;
 }

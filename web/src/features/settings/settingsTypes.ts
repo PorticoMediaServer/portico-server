@@ -25,6 +25,9 @@ import type {
   PorticoInvite,
   RemoteAccessSettingsPatch,
   RemoteAccessStatus,
+  RemoteStorageSource,
+  RemoteStorageAnalysisMode,
+  RemoteStorageSourceRequest,
   RestoreBackupResponse,
   ScheduledTask,
   ScheduledTaskRunResponse,
@@ -305,6 +308,11 @@ export interface SettingsDataSource {
   createLibrary(input: LibraryMutationInput, signal: AbortSignal): Promise<Library>;
   updateLibrary(id: string, input: LibraryMutationInput, signal: AbortSignal): Promise<Library>;
   deleteLibrary(id: string, signal: AbortSignal): Promise<void>;
+  remoteStorageSources(id: string, signal: AbortSignal): Promise<RemoteStorageSource[]>;
+  createRemoteStorageSource(id: string, input: RemoteStorageSourceRequest, signal: AbortSignal): Promise<RemoteStorageSource>;
+  deleteRemoteStorageSource(id: string, sourceId: string, signal: AbortSignal): Promise<void>;
+  updateRemoteStorageSourceAnalysisMode(id: string, sourceId: string, analysisMode: RemoteStorageAnalysisMode, signal: AbortSignal): Promise<RemoteStorageSource>;
+  inventoryRemoteStorageSource(id: string, sourceId: string, signal: AbortSignal): Promise<Job>;
   libraryScanOperations(id: string, signal: AbortSignal): Promise<LibraryScanOperationsResponse>;
   libraryScanReview(id: string, cursor: string | undefined, signal: AbortSignal): Promise<LibraryScanReviewResponse>;
   updateLibraryStorageClassification(libraryId: string, sourceId: string, classification: 'local' | 'network' | 'fuse' | 'unknown', signal: AbortSignal): Promise<LibraryStorageSource>;

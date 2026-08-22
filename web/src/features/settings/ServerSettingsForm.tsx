@@ -1,6 +1,6 @@
 import { ApiError, type SettingsDocument, type SettingsGroups, type SettingsGroupsUpdate, type SettingsGroupSummary, type SettingsSummaryResponse } from '@porticomediaserver/client-core';
 import { LockKeyhole, RotateCcw } from '#portico-icons';
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { SecondaryButton } from '../../components/controls/Buttons';
 import { reviewedProductErrorText } from '../../components/ProductLanguage';
 import {
@@ -41,7 +41,7 @@ function capabilityFor(group: SettingsFieldGroup, summary: SettingsSummaryRespon
 function fieldValue(document: SettingsDocument, draft: SettingsDraft, group: SettingsFieldGroup, field: SettingsFieldDefinition): unknown {
   const pending = draft[group.settingsKey];
   if (hasOwn(pending, field.field)) return pending?.[field.field];
-  return groupRecord(document.groups, group.settingsKey)[field.field];
+  return groupRecord(document.groups, group.settingsKey)[field.field] ?? field.defaultValue;
 }
 
 function stringValue(value: unknown): string {
@@ -117,6 +117,15 @@ function isGroupVisible(group: SettingsFieldGroup, document: SettingsDocument, s
   return Boolean(document.groups[group.settingsKey] || capabilityFor(group, summary));
 }
 
+function visibilityMatches(condition: SettingsFieldDefinition['visibleWhen'], document: SettingsDocument, draft: SettingsDraft): boolean {
+  if (!condition) return true;
+  const pending = draft[condition.settingsKey];
+  const value = hasOwn(pending, condition.field)
+    ? pending?.[condition.field]
+    : groupRecord(document.groups, condition.settingsKey)[condition.field];
+  return value === condition.equals;
+}
+
 export function ServerSettingsForm({ section, document, summary, viewer, source, onDocumentChange, onReload }: {
   section: string;
   document: SettingsDocument;
@@ -131,7 +140,7 @@ export function ServerSettingsForm({ section, document, summary, viewer, source,
   const [error, setError] = useState('');
   const [fieldErrors, setFieldErrors] = useState<Map<string, string>>(() => new Map());
   const { busy, run } = useAbortableMutation();
-  const groups = useMemo(() => (serverSettingFieldGroups[section] ?? []).filter((group) => isGroupVisible(group, document, summary)), [document, section, summary]);
+  const groups = useMemo(() => (serverSettingFieldGroups[section] ?? []).filter((group) => isGroupVisible(group, document, summary) && visibilityMatches(group.visibleWhen, document, draft)), [document, draft, section, summary]);
   const dirty = changedFieldCount(draft) > 0;
 
   useEffect(() => {
@@ -191,11 +200,12 @@ export function ServerSettingsForm({ section, document, summary, viewer, source,
       return <SettingsGroup key={group.id} title={group.title} description={group.description}>
         {capability?.requiresPorticoClaim && !capability.configured && <InlineNotice tone="info">Claim this server with a Portico account before changing this group.</InlineNotice>}
         {capability?.requiresRuntimeDependency && !capability.configured && <InlineNotice tone="warn">A required server dependency is not currently available.</InlineNotice>}
-        {group.fields.map((field) => {
+        {group.fields.filter((field) => visibilityMatches(field.visibleWhen, document, draft)).map((field) => {
           const value = fieldValue(document, draft, group, field);
           const restartRequired = document.restartRequiredFields.includes(`${group.settingsKey}.${field.field}`);
           const fieldKey = `${group.settingsKey}.${field.field}`;
           const fieldError = fieldErrors.get(fieldKey);
+          const warning = field.warningByValue?.[String(value)];
           const indicator = restartRequired ? <span className="portico-setting-restart">Restart</span> : undefined;
           let control;
           if (field.kind === 'toggle') {
@@ -221,7 +231,7 @@ export function ServerSettingsForm({ section, document, summary, viewer, source,
           } else {
             control = <TextControl label={field.label} value={stringValue(value)} disabled={readOnly} placeholder={field.placeholder} multiline={field.kind === 'textarea'} onChange={(next) => update(group.settingsKey, field.field, next)} />;
           }
-          return <SettingRow key={`${group.id}-${field.field}`} label={field.label} description={field.description} indicator={indicator}>{readOnly && field.kind === 'secret' ? <ReadOnlyValue>Restricted</ReadOnlyValue> : control}</SettingRow>;
+          return <Fragment key={`${group.id}-${field.field}`}><SettingRow label={field.label} description={field.description} indicator={indicator}>{readOnly && field.kind === 'secret' ? <ReadOnlyValue>Restricted</ReadOnlyValue> : control}</SettingRow>{warning && <InlineNotice tone="warn"><strong>Storage and I/O warning.</strong> {warning}</InlineNotice>}</Fragment>;
         })}
         {readOnly && <div className="portico-settings-readonly-note"><LockKeyhole />{capability?.implemented === false ? 'This server does not currently provide this settings group.' : 'Your account can view this group but cannot change it.'}</div>}
       </SettingsGroup>;

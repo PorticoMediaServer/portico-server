@@ -82,6 +82,17 @@ describe('MediaMetadataEditor metadata locks', () => {
     expect(within(dialog).getByRole('region', { name: 'Current metadata sources' })).toHaveTextContent('harbour');
   });
 
+  it('links TheTVDB attribution alongside a TheTVDB-derived identity', async () => {
+    const source = new FixturePorticoDataSource();
+    const item: MediaItem = { ...editableMedia(), providerIds: [{ provider: 'tvdb', externalType: 'movie', externalId: '42', confidence: 1, source: 'provider' }] };
+    vi.spyOn(source as PorticoDataSource, 'media').mockResolvedValue(item);
+    render(<DataProvider source={source}><MediaMetadataEditor mediaIds={[item.id]} initialItems={[item]} onDismiss={() => undefined} /></DataProvider>);
+
+    const dialog = await screen.findByRole('dialog', { name: 'Edit metadata' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Matching' }));
+    expect(within(dialog).getByRole('link', { name: 'TheTVDB' })).toHaveAttribute('href', 'https://thetvdb.com/');
+  });
+
   it('saves artwork, tag-family, and cast locks through the canonical metadata patch', async () => {
     const source = new FixturePorticoDataSource();
     const item = editableMedia();

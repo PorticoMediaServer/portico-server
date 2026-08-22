@@ -67,6 +67,7 @@ import {
   SignedOutAccountRestoreBlockedError,
 } from './signedOutAccountLedger';
 import { ambientCookieRestoreStatus } from './ambientCookieQuarantine';
+import { automaticHostedAvailabilityRetry } from './hostedAvailability';
 
 function profileSelectionMessageId(reason: unknown): ProductMessageId {
   const candidate = reason as { messageId?: unknown; code?: unknown } | undefined;
@@ -106,6 +107,22 @@ function classifyHostedSessionCheckFailure(reason: unknown): 'session-expired' |
   ].includes(reason.code) ? 'session-expired' : 'hosted-session';
 }
 
+function hostedAvailabilityRetryFields(reason: unknown): {
+  automaticAvailabilityRetry?: boolean;
+  availabilityRetryAfterMs?: number;
+  availabilityRetryAt?: string;
+} {
+  if (!automaticHostedAvailabilityRetry(reason)) return {};
+  const candidate = reason as { retryAfterMs?: unknown; retryAt?: unknown };
+  return {
+    automaticAvailabilityRetry: true,
+    ...(typeof candidate.retryAfterMs === 'number' && Number.isFinite(candidate.retryAfterMs)
+      ? { availabilityRetryAfterMs: candidate.retryAfterMs }
+      : {}),
+    ...(typeof candidate.retryAt === 'string' ? { availabilityRetryAt: candidate.retryAt } : {}),
+  };
+}
+
 export type HostedLocalLoginIntent = {
   serverId: string;
   serverName: string;
@@ -122,6 +139,12 @@ type HostedBootstrapIntent = {
   claimServerName?: string;
   claimReturnUrl?: string;
   resetToken?: string;
+  deviceAuthorizationRequested?: boolean;
+  deviceAuthorizationCode?: string;
+  genericDeviceAuthorizationRequested?: boolean;
+  genericDeviceAuthorizationCode?: string;
+  genericDeviceAuthorizationProvider?: 'google' | 'apple';
+  genericDeviceAuthorizationNativeReturn?: boolean;
   localLogin?: HostedLocalLoginIntent;
 };
 
@@ -129,6 +152,9 @@ const LOCAL_LOGIN_HANDOFF_STORAGE_KEY = 'portico.hosted.local-login-handoff.v1';
 const LOCAL_LOGIN_HANDOFF_RECOVERY_TTL_MS = 5 * 60 * 1000;
 const SERVER_CLAIM_HANDOFF_STORAGE_KEY = 'portico.hosted.server-claim-handoff.v1';
 const SERVER_CLAIM_HANDOFF_RECOVERY_TTL_MS = 10 * 60 * 1000;
+const DEVICE_AUTHORIZATION_HANDOFF_STORAGE_KEY = 'portico.hosted.device-authorization-handoff.v1';
+const DEVICE_AUTHORIZATION_HANDOFF_RECOVERY_TTL_MS = 10 * 60 * 1000;
+const GENERIC_DEVICE_AUTHORIZATION_HANDOFF_STORAGE_KEY = 'portico.hosted.generic-device-authorization-handoff.v1';
 
 type StoredLocalLoginHandoff = {
   version: 1;
@@ -418,6 +444,21 @@ export function extractHostedBootstrapIntent(value: string): { intent: HostedBoo
   };
   const fragment = url.hash.startsWith('#') ? url.hash.slice(1) : url.hash;
   if (fragment) {
+    if (url.pathname === '/device' || url.pathname === '/authorize-device') {
+      const rawCode = new URLSearchParams(fragment).get('code')?.trim().toUpperCase() ?? '';
+      const compactCode = rawCode.replace(/-/g, '');
+      if (/^[A-HJ-KM-NP-Z2-9]{8}$/.test(compactCode)) {
+        const formatted = `${compactCode.slice(0, 4)}-${compactCode.slice(4)}`;
+        if (url.pathname === '/device') intent.deviceAuthorizationCode = formatted;
+        else intent.genericDeviceAuthorizationCode = formatted;
+      }
+      if (url.pathname === '/authorize-device') {
+        const provider = new URLSearchParams(fragment).get('provider');
+        if (provider === 'google' || provider === 'apple') intent.genericDeviceAuthorizationProvider = provider;
+        if (new URLSearchParams(fragment).get('nativeReturn') === '1') intent.genericDeviceAuthorizationNativeReturn = true;
+      }
+      url.hash = '';
+    }
     const handoff = new URL(fragment.startsWith('/') ? fragment : `/${fragment}`, url.origin);
     if (handoff.pathname === '/local-login') {
       const serverId = handoff.searchParams.get('serverId')?.trim() ?? '';
@@ -441,6 +482,8 @@ export function extractHostedBootstrapIntent(value: string): { intent: HostedBoo
       url.hash = '';
     }
   }
+  if (url.pathname === '/device') intent.deviceAuthorizationRequested = true;
+  if (url.pathname === '/authorize-device') intent.genericDeviceAuthorizationRequested = true;
   ['invite', 'claim', 'resetToken', 'token'].forEach((key) => url.searchParams.delete(key));
   if (intent.claimCode && url.pathname === '/claim') {
     url.searchParams.delete('code');
@@ -449,6 +492,59 @@ export function extractHostedBootstrapIntent(value: string): { intent: HostedBoo
   }
   if (intent.inviteId || intent.claimCode || intent.resetToken) url.pathname = '/';
   return { intent, safeUrl: `${url.pathname}${url.search}${url.hash}` };
+}
+
+function saveRecoverableDeviceAuthorization(code: string): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.sessionStorage.setItem(DEVICE_AUTHORIZATION_HANDOFF_STORAGE_KEY, JSON.stringify({
+      version: 1,
+      expiresAt: Date.now() + DEVICE_AUTHORIZATION_HANDOFF_RECOVERY_TTL_MS,
+      code,
+    }));
+  } catch { /* Same-tab SSO recovery is best effort. */ }
+}
+
+function loadRecoverableDeviceAuthorization(): string | undefined {
+  if (typeof window === 'undefined') return undefined;
+  try {
+    const record = JSON.parse(window.sessionStorage.getItem(DEVICE_AUTHORIZATION_HANDOFF_STORAGE_KEY) ?? 'null') as { version?: unknown; expiresAt?: unknown; code?: unknown } | null;
+    if (!record || record.version !== 1 || typeof record.expiresAt !== 'number' || record.expiresAt <= Date.now() || typeof record.code !== 'string') {
+      window.sessionStorage.removeItem(DEVICE_AUTHORIZATION_HANDOFF_STORAGE_KEY);
+      return undefined;
+    }
+    return record.code;
+  } catch {
+    try { window.sessionStorage.removeItem(DEVICE_AUTHORIZATION_HANDOFF_STORAGE_KEY); } catch { /* Storage remains unavailable. */ }
+    return undefined;
+  }
+}
+
+function clearRecoverableDeviceAuthorization(): void {
+  if (typeof window === 'undefined') return;
+  try { window.sessionStorage.removeItem(DEVICE_AUTHORIZATION_HANDOFF_STORAGE_KEY); } catch { /* Storage remains unavailable. */ }
+}
+
+function recoverGenericDeviceAuthorization(intent: HostedBootstrapIntent): void {
+  if (typeof window === 'undefined' || !intent.genericDeviceAuthorizationRequested) return;
+  try {
+    if (intent.genericDeviceAuthorizationCode) {
+      window.sessionStorage.setItem(GENERIC_DEVICE_AUTHORIZATION_HANDOFF_STORAGE_KEY, JSON.stringify({ version: 1, expiresAt: Date.now() + DEVICE_AUTHORIZATION_HANDOFF_RECOVERY_TTL_MS, code: intent.genericDeviceAuthorizationCode, provider: intent.genericDeviceAuthorizationProvider, nativeReturn: intent.genericDeviceAuthorizationNativeReturn === true }));
+      return;
+    }
+    const record = JSON.parse(window.sessionStorage.getItem(GENERIC_DEVICE_AUTHORIZATION_HANDOFF_STORAGE_KEY) ?? 'null') as { version?: unknown; expiresAt?: unknown; code?: unknown; provider?: unknown; nativeReturn?: unknown } | null;
+    if (record?.version === 1 && typeof record.expiresAt === 'number' && record.expiresAt > Date.now() && typeof record.code === 'string') {
+      intent.genericDeviceAuthorizationCode = record.code;
+      if (record.provider === 'google' || record.provider === 'apple') intent.genericDeviceAuthorizationProvider = record.provider;
+      if (record.nativeReturn === true) intent.genericDeviceAuthorizationNativeReturn = true;
+    }
+    else window.sessionStorage.removeItem(GENERIC_DEVICE_AUTHORIZATION_HANDOFF_STORAGE_KEY);
+  } catch { /* Same-tab SSO recovery is best effort. */ }
+}
+
+function clearRecoverableGenericDeviceAuthorization(): void {
+  if (typeof window === 'undefined') return;
+  try { window.sessionStorage.removeItem(GENERIC_DEVICE_AUTHORIZATION_HANDOFF_STORAGE_KEY); } catch { /* Storage remains unavailable. */ }
 }
 
 function validServerSetupReturnUrl(value: unknown): value is string {
@@ -582,6 +678,11 @@ function loadRecoverableServerClaim(): Pick<HostedBootstrapIntent, 'claimCode' |
 
 function recoverHostedBootstrapIntent(value: string): { intent: HostedBootstrapIntent; safeUrl: string } {
   const extracted = extractHostedBootstrapIntent(value);
+  if (extracted.intent.deviceAuthorizationRequested) {
+    if (extracted.intent.deviceAuthorizationCode) saveRecoverableDeviceAuthorization(extracted.intent.deviceAuthorizationCode);
+    else extracted.intent.deviceAuthorizationCode = loadRecoverableDeviceAuthorization();
+  }
+  recoverGenericDeviceAuthorization(extracted.intent);
   if (extracted.intent.claimCode) saveRecoverableServerClaim(extracted.intent);
   else if (new URL(value, 'https://web.getportico.tv').pathname === '/claim') clearRecoverableServerClaim();
   else Object.assign(extracted.intent, loadRecoverableServerClaim());
@@ -1297,6 +1398,9 @@ export function RuntimeProvider({
               : reason instanceof LocalNetworkRouteUnavailableError
               ? { messageId: 'connection.local-network-unavailable' as const }
               : {}),
+          ...(reason instanceof HostedContinuationError && reason.phase === 'profile-directory'
+            ? hostedAvailabilityRetryFields(reason.reason)
+            : {}),
           serverName: summary.name,
           selectedServer: summary,
           servers: summaries,
@@ -1408,7 +1512,7 @@ export function RuntimeProvider({
     } catch (reason) {
       if (generation !== hostedAccountGeneration.current) throw reason;
       if (retainingActiveRuntime) setConnectionWarning('problem.cloud-unavailable');
-      else dispatch({ type: 'FAILURE', classification: classifyRuntimeFailure(reason, 'membership'), hosted: true });
+      else dispatch({ type: 'FAILURE', classification: classifyRuntimeFailure(reason, 'membership'), hosted: true, ...hostedAvailabilityRetryFields(reason) });
       throw reason;
     } finally {
       if (generation === hostedAccountGeneration.current) setBusy(false);
@@ -1534,6 +1638,27 @@ export function RuntimeProvider({
     return false;
   };
 
+  const openPendingDeviceAuthorization = async (): Promise<boolean> => {
+    const intent = bootstrapIntent.current;
+    if (intent.genericDeviceAuthorizationRequested) {
+      dispatch({ type: 'DEVICE_AUTHORIZATION', mode: 'generic', initialCode: intent.genericDeviceAuthorizationCode, nativeReturn: intent.genericDeviceAuthorizationNativeReturn, servers: [] });
+      return true;
+    }
+    if (!intent.deviceAuthorizationRequested) return false;
+    let response = await withCancellableRuntimeDeadline(12_000, 'Portico could not load your servers in time.', (signal) => hostedClient.servers({ limit: 100 }, { signal }));
+    const servers = [...response.items];
+    const cursors = new Set<string>();
+    while (response.pageInfo?.hasMore) {
+      const cursor = response.pageInfo.nextCursor;
+      if (!cursor || cursors.has(cursor)) throw new Error('Portico returned an incomplete server list.');
+      cursors.add(cursor);
+      response = await withCancellableRuntimeDeadline(12_000, 'Portico could not finish loading your servers in time.', (signal) => hostedClient.servers({ limit: 100, cursor }, { signal }));
+      servers.push(...response.items);
+    }
+    dispatch({ type: 'DEVICE_AUTHORIZATION', mode: 'tv', initialCode: intent.deviceAuthorizationCode, servers: mergeServerSummaries(servers, []) });
+    return true;
+  };
+
   const completePendingLocalLogin = async (selectedProfileId?: string, pin?: string): Promise<boolean> => {
     const intent = bootstrapIntent.current.localLogin;
     if (!intent) return false;
@@ -1619,6 +1744,7 @@ export function RuntimeProvider({
         serverName: localLogin?.serverName,
         hosted: true,
         continueAccount: true,
+        ...(reason.phase === 'profile-directory' ? hostedAvailabilityRetryFields(reason.reason) : {}),
       });
       return;
     }
@@ -1626,6 +1752,7 @@ export function RuntimeProvider({
       type: 'FAILURE',
       classification: classifyRuntimeFailure(reason, 'membership'),
       hosted: true,
+      ...hostedAvailabilityRetryFields(reason),
     });
   };
 
@@ -1948,7 +2075,7 @@ export function RuntimeProvider({
         const account = await withAbortableDeadline(controller.signal, rememberedAccount ? 3500 : 12_000, 'Portico Account sign-in did not answer in time.', (signal) => hostedClient.me({ signal }));
         if (!active || hostedGeneration !== hostedAccountGeneration.current) return;
         if (!account.authenticated || !account.user) {
-          if (rememberedAccount && !bootstrapIntent.current.inviteId && !bootstrapIntent.current.claimCode && !bootstrapIntent.current.localLogin
+          if (rememberedAccount && !bootstrapIntent.current.inviteId && !bootstrapIntent.current.claimCode && !bootstrapIntent.current.localLogin && !bootstrapIntent.current.deviceAuthorizationRequested && !bootstrapIntent.current.genericDeviceAuthorizationRequested
             && await openRememberedConnections(rememberedAccount, hostedGeneration)) return;
           dispatch({
             type: 'HOSTED_SIGN_IN_REQUIRED',
@@ -1967,6 +2094,7 @@ export function RuntimeProvider({
         }
         const activeAccount = await rememberHostedAccount(account);
         try {
+          if (await openPendingDeviceAuthorization()) return;
           if (await completePendingLocalLogin()) return;
           if (await applyPendingMembershipIntent()) return;
           await loadMemberships(hostedGeneration, activeAccount);
@@ -1977,7 +2105,7 @@ export function RuntimeProvider({
         }
       } catch (reason) {
         if (!active || hostedGeneration !== hostedAccountGeneration.current) return;
-        if (rememberedAccount && !bootstrapIntent.current.inviteId && !bootstrapIntent.current.claimCode && !bootstrapIntent.current.localLogin
+        if (rememberedAccount && !bootstrapIntent.current.inviteId && !bootstrapIntent.current.claimCode && !bootstrapIntent.current.localLogin && !bootstrapIntent.current.deviceAuthorizationRequested && !bootstrapIntent.current.genericDeviceAuthorizationRequested
           && await openRememberedConnections(rememberedAccount, hostedGeneration).catch(() => false)) return;
         if (rememberedRestoreBlocked || cleanupPending.length > 0 || reason instanceof SignedOutAccountRestoreBlockedError) {
           dispatch({ type: 'HOSTED_SIGN_IN_REQUIRED', messageId: 'auth.sign-out-storage-warning' });
@@ -1985,7 +2113,7 @@ export function RuntimeProvider({
         }
         const classification = classifyHostedSessionCheckFailure(reason);
         if (classification === 'session-expired') dispatch({ type: 'HOSTED_SIGN_IN_REQUIRED', messageId: 'auth.session-expired' });
-        else dispatch({ type: 'FAILURE', classification, hosted: true });
+        else dispatch({ type: 'FAILURE', classification, hosted: true, ...hostedAvailabilityRetryFields(reason) });
       }
     };
     void bootstrap();
@@ -2009,6 +2137,10 @@ export function RuntimeProvider({
     mfaRequired,
     hasPasswordResetIntent: Boolean(bootstrapIntent.current.resetToken),
     hasServerClaimIntent: Boolean(bootstrapIntent.current.claimCode),
+    hasDeviceAuthorizationIntent: Boolean(bootstrapIntent.current.deviceAuthorizationRequested || bootstrapIntent.current.genericDeviceAuthorizationRequested),
+    deviceAuthorizationProvider: bootstrapIntent.current.genericDeviceAuthorizationProvider,
+    deviceAuthorizationCode: bootstrapIntent.current.genericDeviceAuthorizationCode,
+    nativeDeviceAuthorizationReturn: bootstrapIntent.current.genericDeviceAuthorizationNativeReturn === true,
     serverClaimName: bootstrapIntent.current.claimServerName,
     localLoginServerName: bootstrapIntent.current.localLogin?.serverName,
     retry: () => {
@@ -2116,6 +2248,7 @@ export function RuntimeProvider({
           serverName: summary.name,
           messageId: profileSelectionMessageId(reason),
           hosted: true,
+          ...hostedAvailabilityRetryFields(reason),
         });
       } finally {
         setBusy(false);
@@ -2159,6 +2292,7 @@ export function RuntimeProvider({
         throw reason;
       }
       try {
+        if (await openPendingDeviceAuthorization()) return;
         if (await completePendingLocalLogin()) return;
         if (await applyPendingMembershipIntent()) return;
         await loadMemberships(hostedAccountGeneration.current, activeAccount);
@@ -2213,6 +2347,7 @@ export function RuntimeProvider({
         throw reason;
       }
       try {
+        if (await openPendingDeviceAuthorization()) return;
         if (await completePendingLocalLogin()) return;
         if (await applyPendingMembershipIntent()) return;
         await loadMemberships(hostedAccountGeneration.current, activeAccount);
@@ -2411,6 +2546,34 @@ export function RuntimeProvider({
         setBusy(false);
       }
       await loadMemberships();
+    },
+    previewTVSetup: async (code, signal) => withCancellableRuntimeDeadline(
+      12_000,
+      'Portico could not check this TV setup request in time.',
+      (deadlineSignal) => hostedClient.previewTVSetupSession({ code: code.trim() }, { signal: signal ?? deadlineSignal }),
+    ),
+    authorizeTVSetup: async (preview, serverId, signal) => {
+      const result = await withCancellableRuntimeDeadline(
+        12_000,
+        'Portico could not authorize this TV in time.',
+        (deadlineSignal) => hostedClient.authorizeTVSetupGrant({
+          code: preview.code,
+          setupSessionId: preview.setupSessionId,
+          serverId,
+        }, { signal: signal ?? deadlineSignal }),
+      );
+      delete bootstrapIntent.current.deviceAuthorizationCode;
+      delete bootstrapIntent.current.deviceAuthorizationRequested;
+      clearRecoverableDeviceAuthorization();
+      return result;
+    },
+    previewGenericDeviceAuthorization: async (code, signal) => hostedClient.previewDeviceAuthorization({ userCode: code.trim() }, { signal }),
+    decideGenericDeviceAuthorization: async (code, decision, signal) => {
+      const result = await hostedClient.decideDeviceAuthorization({ userCode: code.trim(), decision }, { signal });
+      delete bootstrapIntent.current.genericDeviceAuthorizationCode;
+      delete bootstrapIntent.current.genericDeviceAuthorizationRequested;
+      clearRecoverableGenericDeviceAuthorization();
+      return result;
     },
     requestPasswordReset: async (email) => {
       setBusy(true);

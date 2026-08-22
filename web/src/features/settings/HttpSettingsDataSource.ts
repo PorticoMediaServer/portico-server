@@ -26,6 +26,9 @@ import {
   type PorticoInvite,
   type RemoteAccessSettingsPatch,
   type RemoteAccessStatus,
+  type RemoteStorageSource,
+  type RemoteStorageAnalysisMode,
+  type RemoteStorageSourceRequest,
   type ScheduledTask,
   type ScheduledTaskRunResponse,
   type ScheduledTaskUpdateRequest,
@@ -350,6 +353,26 @@ export class HttpSettingsDataSource implements SettingsDataSource {
 
   async deleteLibrary(id: string, signal: AbortSignal): Promise<void> {
     await this.client.request<{ ok: boolean }>(`/api/libraries/${encodeURIComponent(id)}`, { method: 'DELETE', signal });
+  }
+
+  async remoteStorageSources(id: string, signal: AbortSignal): Promise<RemoteStorageSource[]> {
+    return (await this.client.remoteStorageSources(id, { signal })).items;
+  }
+
+  createRemoteStorageSource(id: string, input: RemoteStorageSourceRequest, signal: AbortSignal): Promise<RemoteStorageSource> {
+    return this.client.createRemoteStorageSource(id, input, { signal });
+  }
+
+  async deleteRemoteStorageSource(id: string, sourceId: string, signal: AbortSignal): Promise<void> {
+    await this.client.deleteRemoteStorageSource(id, sourceId, { signal });
+  }
+
+  updateRemoteStorageSourceAnalysisMode(id: string, sourceId: string, analysisMode: RemoteStorageAnalysisMode, signal: AbortSignal): Promise<RemoteStorageSource> {
+    return this.client.updateRemoteStorageSourceAnalysisMode(id, sourceId, { analysisMode }, { signal });
+  }
+
+  inventoryRemoteStorageSource(id: string, sourceId: string, signal: AbortSignal): Promise<Job> {
+    return this.client.inventoryRemoteStorageSource(id, sourceId, { signal });
   }
 
   libraryScanOperations(id: string, signal: AbortSignal): Promise<LibraryScanOperationsResponse> {

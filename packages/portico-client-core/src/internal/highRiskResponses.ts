@@ -124,7 +124,7 @@ function playbackResponse(value: unknown): unknown {
 
 function isNativeCredentialPath(pathname: string): boolean {
   return pathname === "/api/auth/sessions" || pathname === "/api/auth/profile-sessions/native" ||
-    pathname === "/api/auth/quick-connect/exchange" || pathname === "/api/auth/tv-setup/redeem";
+    pathname === "/api/auth/quick-connect/exchange";
 }
 
 function nativeCredentials(value: unknown): unknown {

@@ -413,6 +413,102 @@ describe('owner library scan operations', () => {
     expect(await screen.findByText('Movies storage classification saved.')).toBeInTheDocument();
   });
 
+  it('lets the owner add a WebDAV source without retaining credentials in the rendered settings state', async () => {
+    const source = new FixtureSettingsDataSource();
+    const load = vi.spyOn(source, 'remoteStorageSources').mockResolvedValue([]);
+    const create = vi.spyOn(source, 'createRemoteStorageSource').mockResolvedValue({
+      id: 'remote-webdav', libraryId: 'fixture-movies', kind: 'webdav', name: 'Cloud Movies', endpoint: 'https://dav.example.test/media', root: 'Movies',
+      analysisMode: 'basic', health: 'unknown', inventoryStatus: 'never', objects: 0, missingObjects: 0, credentialPresent: true, updatedAt: '2026-08-22T12:00:00Z',
+    });
+    renderOperations({ libraries: [library()], source });
+    fireEvent.click(screen.getByRole('button', { name: 'Show scan details for Movies' }));
+    const remote = await screen.findByRole('region', { name: 'Movies remote storage' });
+    await waitFor(() => expect(load).toHaveBeenCalledWith('fixture-movies', expect.any(AbortSignal)));
+    fireEvent.click(within(remote).getByRole('button', { name: 'Add source' }));
+    const dialog = screen.getByRole('dialog', { name: 'Add remote storage' });
+    expect(within(dialog).getByRole('combobox', { name: 'Remote scan depth' })).toHaveValue('basic');
+    expect(within(dialog).getByText('Recommended for rclone and WebDAV. Adds technical facts and representative thumbnails with bounded reads.')).toBeInTheDocument();
+    fireEvent.change(within(dialog).getByRole('textbox', { name: 'Remote source name' }), { target: { value: 'Cloud Movies' } });
+    fireEvent.change(within(dialog).getByRole('textbox', { name: 'WebDAV endpoint' }), { target: { value: 'https://dav.example.test/media' } });
+    fireEvent.change(within(dialog).getByRole('textbox', { name: 'WebDAV root' }), { target: { value: 'Movies' } });
+    fireEvent.change(within(dialog).getByRole('textbox', { name: 'WebDAV username' }), { target: { value: 'owner' } });
+    fireEvent.change(within(dialog).getByLabelText('WebDAV password'), { target: { value: 'write-only-secret' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Add source' }));
+
+    await waitFor(() => expect(create).toHaveBeenCalledWith('fixture-movies', {
+      kind: 'webdav', name: 'Cloud Movies', endpoint: 'https://dav.example.test/media', root: 'Movies', analysisMode: 'basic', username: 'owner', password: 'write-only-secret',
+    }, expect.any(AbortSignal)));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Add remote storage' })).not.toBeInTheDocument());
+    expect(within(remote).getByText('Cloud Movies')).toBeInTheDocument();
+    expect(remote).not.toHaveTextContent('owner');
+    expect(remote).not.toHaveTextContent('write-only-secret');
+  });
+
+  it('validates rclone input, queues inventory, and requires confirmation before removal', async () => {
+    const source = new FixtureSettingsDataSource();
+    const remoteSource = {
+      id: 'remote-rclone', libraryId: 'fixture-movies', kind: 'rclone' as const, name: 'Archive remote', root: 'Movies',
+      analysisMode: 'file_list_only' as const, health: 'healthy' as const, inventoryStatus: 'complete', objects: 12500, missingObjects: 2, credentialPresent: true, updatedAt: '2026-08-22T12:00:00Z',
+    };
+    vi.spyOn(source, 'remoteStorageSources').mockResolvedValue([remoteSource]);
+    const inventory = vi.spyOn(source, 'inventoryRemoteStorageSource');
+    const updateMode = vi.spyOn(source, 'updateRemoteStorageSourceAnalysisMode').mockImplementation(async (id, sourceId, analysisMode) => ({ ...remoteSource, id: sourceId, libraryId: id, analysisMode }));
+    const remove = vi.spyOn(source, 'deleteRemoteStorageSource');
+    renderOperations({ libraries: [library()], source });
+    fireEvent.click(screen.getByRole('button', { name: 'Show scan details for Movies' }));
+    const remote = await screen.findByRole('region', { name: 'Movies remote storage' });
+    expect(within(remote).getByText('12,500 · 2 missing')).toBeInTheDocument();
+    const depth = within(remote).getByRole('combobox', { name: 'Scan depth for Archive remote' });
+    expect(depth).toHaveValue('file_list_only');
+    fireEvent.change(depth, { target: { value: 'complete' } });
+    await waitFor(() => expect(updateMode).toHaveBeenCalledWith('fixture-movies', 'remote-rclone', 'complete', expect.any(AbortSignal)));
+    expect(await within(remote).findByText('Archive remote scan depth updated to complete.')).toBeInTheDocument();
+    fireEvent.click(within(remote).getByRole('button', { name: 'Scan' }));
+    await waitFor(() => expect(inventory).toHaveBeenCalledWith('fixture-movies', 'remote-rclone', expect.any(AbortSignal)));
+
+    fireEvent.click(within(remote).getByRole('button', { name: 'Remove Archive remote' }));
+    expect(within(remote).getByText(/Portico will delete its saved connection, not remote files/)).toBeInTheDocument();
+    expect(remove).not.toHaveBeenCalled();
+    fireEvent.click(within(remote).getByRole('button', { name: 'Remove source' }));
+    await waitFor(() => expect(remove).toHaveBeenCalledWith('fixture-movies', 'remote-rclone', expect.any(AbortSignal)));
+    expect(within(remote).queryByText('Archive remote')).not.toBeInTheDocument();
+  });
+
+  it('submits an isolated rclone configuration and clears it when creation fails', async () => {
+    const source = new FixtureSettingsDataSource();
+    vi.spyOn(source, 'remoteStorageSources').mockResolvedValue([]);
+    const create = vi.spyOn(source, 'createRemoteStorageSource').mockRejectedValue(new Error('The selected executable did not identify itself as rclone.'));
+    renderOperations({ libraries: [library()], source });
+    fireEvent.click(screen.getByRole('button', { name: 'Show scan details for Movies' }));
+    const remote = await screen.findByRole('region', { name: 'Movies remote storage' });
+    fireEvent.click(within(remote).getByRole('button', { name: 'Add source' }));
+    const dialog = screen.getByRole('dialog', { name: 'Add remote storage' });
+    fireEvent.click(within(dialog).getByRole('radio', { name: /rclone/ }));
+    fireEvent.change(within(dialog).getByRole('textbox', { name: 'Remote source name' }), { target: { value: 'Archive remote' } });
+    fireEvent.change(within(dialog).getByRole('textbox', { name: 'rclone binary path' }), { target: { value: '/opt/portico/bin/rclone' } });
+    fireEvent.change(within(dialog).getByRole('textbox', { name: 'rclone remote name' }), { target: { value: 'archive' } });
+    fireEvent.change(within(dialog).getByRole('textbox', { name: 'rclone root' }), { target: { value: 'Movies' } });
+    fireEvent.change(within(dialog).getByRole('textbox', { name: 'rclone config' }), { target: { value: '[archive]\ntype = s3\nsecret_access_key = hidden' } });
+    fireEvent.change(within(dialog).getByRole('combobox', { name: 'Remote scan depth' }), { target: { value: 'file_list_only' } });
+    expect(within(dialog).getByText('Reads no media content during scans. Technical stream data and thumbnails are deferred.')).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Add source' }));
+
+    await waitFor(() => expect(create).toHaveBeenCalledWith('fixture-movies', {
+      kind: 'rclone', name: 'Archive remote', root: 'Movies', analysisMode: 'file_list_only', rcloneBinaryPath: '/opt/portico/bin/rclone', rcloneRemoteName: 'archive', rcloneConfig: '[archive]\ntype = s3\nsecret_access_key = hidden',
+    }, expect.any(AbortSignal)));
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent("Portico couldn't add this rclone source");
+    expect(within(dialog).getByRole('textbox', { name: 'rclone config' })).toHaveValue('');
+  });
+
+  it('does not expose managed remote storage controls to non-owner viewers', async () => {
+    const source = new FixtureSettingsDataSource();
+    const load = vi.spyOn(source, 'remoteStorageSources');
+    renderOperations({ libraries: [library()], source, canManage: false });
+    fireEvent.click(screen.getByRole('button', { name: 'Show scan details for Movies' }));
+    expect(screen.queryByRole('region', { name: 'Movies remote storage' })).not.toBeInTheDocument();
+    expect(load).not.toHaveBeenCalled();
+  });
+
   it('blocks remove-missing when degraded storage cannot prove absence', async () => {
     const configured = {
       ...library(),

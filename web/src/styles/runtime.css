@@ -58,7 +58,23 @@
 .runtime-text-action:hover { color: var(--screen-blue-strong); }
 .runtime-back-link { width: max-content; display: inline-flex; align-items: center; gap: 6px; }
 .runtime-back-link svg { width: 15px; }
-.runtime-form-links { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.runtime-form-links { display: flex; align-items: center; justify-content: center; gap: 20px; }
+.runtime-identity-providers { display: grid; gap: 10px; }
+.runtime-identity-provider { min-height: 48px; padding: 0 16px; display: flex; align-items: center; justify-content: center; gap: 12px; border: 1px solid var(--portico-provider-google-border); border-radius: var(--radius-control); color: var(--portico-provider-google-ink); background: var(--portico-provider-google-fill); font-size: var(--type-supporting); font-weight: 600; text-decoration: none; }
+.runtime-identity-provider:hover { border-color: #c4c7c5; background: #f8f9fa; }
+.runtime-identity-provider:focus-visible { outline: 2px solid var(--screen-blue-strong); outline-offset: 2px; }
+.runtime-identity-provider svg { width: 20px; height: 20px; flex: 0 0 auto; }
+.runtime-identity-provider.apple svg { width: 21px; height: 21px; }
+.runtime-identity-provider.apple { border-color: var(--portico-provider-apple-border); color: var(--portico-provider-apple-ink); background: var(--portico-provider-apple-fill); }
+.runtime-identity-provider.apple:hover { border-color: var(--portico-provider-apple-border); background: #151515; }
+.runtime-account-legal { margin: 18px 0 0; padding-top: 15px; border-top: 1px solid var(--line-soft); color: var(--silver-muted); font-size: var(--type-caption); line-height: 1.55; }
+.runtime-account-legal a { color: var(--portico-link); font-weight: 600; text-decoration: none; }
+.runtime-account-legal a:hover { color: var(--silver-soft); text-decoration-color: currentColor; }
+.runtime-account-legal a:focus-visible { border-radius: 2px; outline: 2px solid var(--screen-blue-strong); outline-offset: 3px; }
+.runtime-identity-divider { height: 42px; display: flex; align-items: center; color: var(--silver-muted); font-size: var(--type-caption); }
+.runtime-identity-divider::before,
+.runtime-identity-divider::after { content: ''; height: 1px; flex: 1; background: var(--line-soft); }
+.runtime-identity-divider span { padding: 0 12px; text-align: center; }
 .runtime-actions,
 .runtime-footer-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; }
 .runtime-footer-actions { margin-top: 18px; padding-top: 15px; border-top: 1px solid var(--line-soft); }
@@ -92,6 +108,16 @@
 .runtime-segmented button.active { border-bottom-color: var(--screen-blue); color: var(--silver); }
 .runtime-membership-form { padding: 15px; border: 1px solid var(--line); border-radius: var(--radius-control); background: #0b1219; }
 .runtime-membership-form > .button { width: max-content; min-width: 150px; }
+.runtime-device-review { padding: 14px 0; display: grid; gap: 4px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.runtime-device-review span, .runtime-device-review p { color: var(--silver-dim); font-size: var(--type-caption); }
+.runtime-device-review p { margin: 5px 0 0; }
+.runtime-device-servers { display: grid; gap: 8px; }
+.runtime-device-servers > button { width: 100%; min-height: 64px; padding: 10px 12px; display: grid; grid-template-columns: 22px minmax(0,1fr); align-items: center; gap: 10px; border: 1px solid var(--line); border-radius: var(--radius-control); color: var(--silver-soft); background: #0b1219; text-align: left; cursor: pointer; }
+.runtime-device-servers > button[aria-checked='true'] { border-color: var(--screen-blue); background: #111c25; }
+.runtime-device-servers > button:disabled { opacity: .5; cursor: not-allowed; }
+.runtime-device-servers > button > svg { width: 18px; color: var(--screen-blue); }
+.runtime-device-servers > button > span { display: grid; gap: 3px; }
+.runtime-device-servers small { color: var(--silver-dim); }
 
 .runtime-server-list { margin: 0 0 18px; display: grid; gap: 8px; }
 .runtime-server-list > button { width: 100%; min-height: 78px; padding: 12px 14px; display: grid; grid-template-columns: 42px minmax(0, 1fr) 20px; align-items: center; gap: 12px; border: 1px solid var(--line); border-radius: var(--radius-control); color: var(--silver-soft); background: #0b1219; text-align: left; cursor: pointer; }

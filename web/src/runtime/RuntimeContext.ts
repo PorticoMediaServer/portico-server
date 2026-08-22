@@ -1,5 +1,5 @@
 import { createContext, useContext } from 'react';
-import type { ProductMessageId, ViewerScope } from '@porticomediaserver/client-core';
+import type { HostedDeviceAuthorizationDecisionResponse, HostedDeviceAuthorizationPreviewResponse, HostedTVSetupGrantResponse, HostedTVSetupPreviewResponse, ProductMessageId, ViewerScope } from '@porticomediaserver/client-core';
 import type { PorticoDataSource, Viewer } from '../data/models';
 import type { WebViewerRuntime } from '../data/viewerRuntime';
 import type { HostedServerSummary, RuntimeConfig, RuntimeState } from './runtimeMachine';
@@ -19,6 +19,10 @@ export type RuntimeContextValue = {
   mfaRequired: boolean;
   hasPasswordResetIntent: boolean;
   hasServerClaimIntent: boolean;
+  hasDeviceAuthorizationIntent: boolean;
+  deviceAuthorizationProvider?: 'google' | 'apple';
+  deviceAuthorizationCode?: string;
+  nativeDeviceAuthorizationReturn: boolean;
   serverClaimName?: string;
   localLoginServerName?: string;
   retry: () => void;
@@ -36,6 +40,10 @@ export type RuntimeContextValue = {
   refreshMemberships: () => Promise<void>;
   claimServer: (claimCode: string) => Promise<void>;
   acceptInvite: (inviteId: string) => Promise<void>;
+  previewTVSetup: (code: string, signal?: AbortSignal) => Promise<HostedTVSetupPreviewResponse>;
+  authorizeTVSetup: (preview: HostedTVSetupPreviewResponse, serverId: string, signal?: AbortSignal) => Promise<HostedTVSetupGrantResponse>;
+  previewGenericDeviceAuthorization: (code: string, signal?: AbortSignal) => Promise<HostedDeviceAuthorizationPreviewResponse>;
+  decideGenericDeviceAuthorization: (code: string, decision: 'approve' | 'deny', signal?: AbortSignal) => Promise<HostedDeviceAuthorizationDecisionResponse>;
   requestPasswordReset: (email: string) => Promise<void>;
   completePasswordReset: (password: string) => Promise<void>;
 };

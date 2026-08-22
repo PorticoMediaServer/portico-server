@@ -175,6 +175,10 @@ import type {
   RemoteAccessHealthResponse,
   RemoteAccessSettingsPatch,
   RemoteAccessStatus,
+  RemoteStorageSource,
+  RemoteStorageAnalysisModeRequest,
+  RemoteStorageSourceListResponse,
+  RemoteStorageSourceRequest,
   RestoreBackupRequest,
   RestoreBackupResponse,
   RestoreUploadedDatabaseInput,
@@ -208,11 +212,6 @@ import type {
   SuccessResponse,
   SystemStorageReport,
   SystemTimeSync,
-  TVSetupGrantRequest,
-  TVSetupGrantResponse,
-  TVSetupRedeemRequest,
-  TVSetupSession,
-  TVSetupSessionRequest,
   TranscodeCapacityReport,
   UpdateMediaRequest,
   User,
@@ -1377,17 +1376,6 @@ export function createPorticoClient(options: PorticoClientOptions = {}) {
       request<QuickConnectRequest>("/api/auth/quick-connect/authorize", { method: "POST", body: { code } }),
     denyQuickConnect: (code: string) =>
       request<QuickConnectRequest>("/api/auth/quick-connect/deny", { method: "POST", body: { code } }),
-    createTVSetupSession: (body: TVSetupSessionRequest) =>
-      request<TVSetupSession>("/api/auth/tv-setup/sessions", { method: "POST", body }),
-    tvSetupSession: (setupSessionId: string) =>
-      request<TVSetupSession>(`/api/auth/tv-setup/sessions/${encodeURIComponent(setupSessionId)}`),
-    authorizeTVSetupGrant: (body: TVSetupGrantRequest) =>
-      request<TVSetupGrantResponse>("/api/auth/tv-setup/grants", { method: "POST", body }),
-    redeemTVSetupGrant: async (body: TVSetupRedeemRequest) => {
-      const created = await request<NativeSessionCredentials>("/api/auth/tv-setup/redeem", { method: "POST", body });
-      await credentials.accept(created);
-      return created;
-    },
     logout: () => request<{ ok: boolean }>("/api/auth/logout", { method: "POST" }),
     apiKeys: (init?: Pick<RequestInit, "signal">) => request<ListResponse<APIKey>>("/api/auth/api-keys", init),
     createAPIKey: (body: { name: string; scopes: string[] }) => request<APIKeyCreateResponse>("/api/auth/api-keys", { method: "POST", body }),
@@ -1553,6 +1541,16 @@ export function createPorticoClient(options: PorticoClientOptions = {}) {
     updateLibrary: (id: string, body: { name: string; type: string; path?: string; paths: string[]; settings?: Record<string, unknown> }) =>
       request<Library>(`/api/libraries/${encodeURIComponent(id)}`, { method: "PATCH", body }),
     deleteLibrary: (id: string) => request<{ ok: boolean }>(`/api/libraries/${encodeURIComponent(id)}`, { method: "DELETE" }),
+    remoteStorageSources: (id: string, init?: Pick<RequestInit, "signal">) =>
+      request<RemoteStorageSourceListResponse>(`/api/libraries/${encodeURIComponent(id)}/remote-storage-sources`, init),
+    createRemoteStorageSource: (id: string, body: RemoteStorageSourceRequest, init?: Pick<RequestInit, "signal">) =>
+      request<RemoteStorageSource>(`/api/libraries/${encodeURIComponent(id)}/remote-storage-sources`, { ...init, method: "POST", body }),
+    deleteRemoteStorageSource: (id: string, sourceId: string, init?: Pick<RequestInit, "signal">) =>
+      request<void>(`/api/libraries/${encodeURIComponent(id)}/remote-storage-sources/${encodeURIComponent(sourceId)}`, { ...init, method: "DELETE" }),
+    updateRemoteStorageSourceAnalysisMode: (id: string, sourceId: string, body: RemoteStorageAnalysisModeRequest, init?: Pick<RequestInit, "signal">) =>
+      request<RemoteStorageSource>(`/api/libraries/${encodeURIComponent(id)}/remote-storage-sources/${encodeURIComponent(sourceId)}`, { ...init, method: "PATCH", body }),
+    inventoryRemoteStorageSource: (id: string, sourceId: string, init?: Pick<RequestInit, "signal">) =>
+      request<Job>(`/api/libraries/${encodeURIComponent(id)}/remote-storage-sources/${encodeURIComponent(sourceId)}/inventory`, { ...init, method: "POST" }),
     libraryBrowseCapabilities: (id: string, init?: Pick<RequestInit, "signal">) =>
       request<LibraryBrowseCapabilities>(`/api/libraries/${encodeURIComponent(id)}/browse-capabilities`, init),
     libraryPivotBrowseCapabilities: (id: string, pivot: string, init?: Pick<RequestInit, "signal">) =>
@@ -2457,8 +2455,10 @@ export function createHostedServicesClient(options: HostedServicesClientOptions 
       request<import("./types.js").HostedTVSetupSession>(`/api/tv-setup/sessions/${encodeURIComponent(setupSessionId)}`, {
         headers: { "X-Portico-TV-Setup-Poll-Secret": pollSecret }
       }),
-    authorizeTVSetupGrant: (body: import("./types.js").HostedTVSetupGrantRequest) =>
-      request<import("./types.js").HostedTVSetupGrantResponse>("/api/tv-setup/grants", { method: "POST", body }),
+    previewTVSetupSession: (body: import("./types.js").HostedTVSetupPreviewRequest, init?: RequestSignal) =>
+      request<import("./types.js").HostedTVSetupPreviewResponse>("/api/tv-setup/preview", { ...init, method: "POST", body }),
+    authorizeTVSetupGrant: (body: import("./types.js").HostedTVSetupGrantRequest, init?: RequestSignal) =>
+      request<import("./types.js").HostedTVSetupGrantResponse>("/api/tv-setup/grants", { ...init, method: "POST", body }),
     redeemTVSetupSession: (setupSessionId: string, pollSecret: string) =>
       request<{ ok: boolean }>(`/api/tv-setup/sessions/${encodeURIComponent(setupSessionId)}/redeem`, {
         method: "POST",
@@ -2470,10 +2470,10 @@ export function createHostedServicesClient(options: HostedServicesClientOptions 
       request<import("./types.js").HostedDeviceAuthorizationStatus>(`/api/device-authorization/sessions/${encodeURIComponent(authorizationSessionId)}`, {
         headers: { "X-Portico-Device-Code": deviceCode }
       }),
-    previewDeviceAuthorization: (body: import("./types.js").HostedDeviceAuthorizationPreviewRequest) =>
-      request<import("./types.js").HostedDeviceAuthorizationPreviewResponse>("/api/device-authorizations/preview", { method: "POST", body }),
-    decideDeviceAuthorization: (body: import("./types.js").HostedDeviceAuthorizationDecisionRequest) =>
-      request<import("./types.js").HostedDeviceAuthorizationDecisionResponse>("/api/device-authorizations", { method: "POST", body }),
+    previewDeviceAuthorization: (body: import("./types.js").HostedDeviceAuthorizationPreviewRequest, init?: RequestSignal) =>
+      request<import("./types.js").HostedDeviceAuthorizationPreviewResponse>("/api/device-authorizations/preview", { ...init, method: "POST", body }),
+    decideDeviceAuthorization: (body: import("./types.js").HostedDeviceAuthorizationDecisionRequest, init?: RequestSignal) =>
+      request<import("./types.js").HostedDeviceAuthorizationDecisionResponse>("/api/device-authorizations", { ...init, method: "POST", body }),
     redeemDeviceAuthorizationSession: (authorizationSessionId: string, deviceCode: string) =>
       request<import("./types.js").HostedDeviceAuthorizationRedeemResponse>(`/api/device-authorization/sessions/${encodeURIComponent(authorizationSessionId)}/redeem`, {
         method: "POST",

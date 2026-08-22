@@ -77,7 +77,7 @@ function SignedInDevices({ viewer, source }: { viewer: SettingsViewer; source: S
   const origin = viewerOrigin(viewer);
   const load = useCallback((next: SettingsDataSource, signal: AbortSignal) => next.signedInDevices(origin, signal), [origin]);
   const [revision, setRevision] = useState(0);
-  const query = useSettingsQuery(load, source, revision);
+  const query = useSettingsQuery(load, source, revision, { automaticHostedRetry: origin === 'portico' });
   const mutation = useAbortableMutation();
   const [confirming, setConfirming] = useState('');
   const [feedback, setFeedback] = useState('');
@@ -96,7 +96,11 @@ function SignedInDevices({ viewer, source }: { viewer: SettingsViewer; source: S
   const title = origin === 'portico' ? 'Signed-in devices' : 'Active sessions';
   const description = origin === 'portico' ? 'Devices signed into your Portico Account across all connected servers.' : `Applications currently signed in to ${viewer.serverName}.`;
   if (query.status === 'loading') return <SettingsGroup title={title} description={description}><SettingsLoading label={`Loading ${title.toLocaleLowerCase()}`} /></SettingsGroup>;
-  if (query.status === 'error') return <SettingsGroup title={title} description={description}><SettingsError title={`${title} are unavailable`} message={reviewedProductErrorText(query.error, 'settings.load-failed', { sectionName: title })} onRetry={() => setRevision((current) => current + 1)} /></SettingsGroup>;
+  if (query.status === 'error') return <SettingsGroup title={title} description={description}><SettingsError
+    title={query.hostedAvailability.automatic ? query.hostedAvailability.copy.title : `${title} are unavailable`}
+    message={query.hostedAvailability.automatic ? query.hostedAvailability.copy.body : reviewedProductErrorText(query.error, 'settings.load-failed', { sectionName: title })}
+    onRetry={query.hostedAvailability.automatic ? undefined : () => setRevision((current) => current + 1)}
+  /></SettingsGroup>;
   const devices = query.data;
   return <SettingsGroup title={title} description={description} actions={<SecondaryButton onClick={() => setRevision((current) => current + 1)}><RefreshCw /> Refresh</SecondaryButton>}>
     {(feedback || error) && <InlineNotice tone={error ? 'error' : 'success'}>{error || feedback}</InlineNotice>}
@@ -267,7 +271,7 @@ function MFASettings({ viewer, source }: { viewer: SettingsViewer; source: Setti
   const available = origin === 'portico' && viewer.authProvider !== 'api_key';
   const [revision, setRevision] = useState(0);
   const load = useCallback((next: SettingsDataSource, signal: AbortSignal) => available ? next.porticoMFAStatus(signal) : Promise.resolve(null), [available]);
-  const query = useSettingsQuery<AccountMFAStatus | null>(load, source, revision);
+  const query = useSettingsQuery<AccountMFAStatus | null>(load, source, revision, { automaticHostedRetry: available });
   const mutation = useAbortableMutation();
   const [setup, setSetup] = useState<{ enrollmentToken: string; secret: string; otpauthUrl: string }>();
   const [setupPassword, setSetupPassword] = useState('');
@@ -348,7 +352,11 @@ function MFASettings({ viewer, source }: { viewer: SettingsViewer; source: Setti
     }
   };
   if (query.status === 'loading') return <SettingsGroup title="Two-factor authentication" description="Additional Portico Account sign-in protection."><SettingsLoading label="Checking two-factor authentication" /></SettingsGroup>;
-  if (query.status === 'error') return <SettingsGroup title="Two-factor authentication" description="Additional Portico Account sign-in protection."><SettingsError title="Portico Account security is unavailable" message={reviewedProductErrorText(query.error, 'settings.load-failed', { sectionName: 'Portico Account security' })} onRetry={refresh} /></SettingsGroup>;
+  if (query.status === 'error') return <SettingsGroup title="Two-factor authentication" description="Additional Portico Account sign-in protection."><SettingsError
+    title={query.hostedAvailability.automatic ? query.hostedAvailability.copy.title : 'Portico Account security is unavailable'}
+    message={query.hostedAvailability.automatic ? query.hostedAvailability.copy.body : reviewedProductErrorText(query.error, 'settings.load-failed', { sectionName: 'Portico Account security' })}
+    onRetry={query.hostedAvailability.automatic ? undefined : refresh}
+  /></SettingsGroup>;
   const status = statusOverride ?? query.data;
   if (!status) return null;
   return <SettingsGroup title="Two-factor authentication" description="Protect your Portico Account with time-based codes from an authenticator app." actions={<SecondaryButton disabled={mutation.busy} onClick={() => refresh()}><RefreshCw /> Refresh</SecondaryButton>}>
@@ -716,6 +724,11 @@ export function HelpSettings({ operations }: { operations: SettingsOperationalSn
     <SettingsGroup title="Support" description="Useful destinations and local diagnostic status.">
       <div className="portico-support-links"><a href="https://getportico.tv/docs" target="_blank" rel="noreferrer"><MonitorCog /><span><strong>Documentation</strong><small>Setup, playback, remote access, and administration</small></span><ExternalLink /></a><a href="https://getportico.tv/support" target="_blank" rel="noreferrer"><ShieldCheck /><span><strong>Support</strong><small>Help with this Portico installation</small></span><ExternalLink /></a></div>
       <InlineNotice tone="info">Server diagnostics are available under This Server when you need them.</InlineNotice>
+    </SettingsGroup>
+    <SettingsGroup title="Data sources and open-source components" description="Attribution and licensing for services and software used by Portico.">
+      <SettingRow label="TMDB" description="Movie and television metadata and artwork."><span className="portico-setting-readonly portico-attribution"><a href="https://www.themoviedb.org/" target="_blank" rel="noreferrer"><img src="/provider-logos/tmdb-blue-short.svg" alt="The Movie Database (TMDB)" /><ExternalLink /></a><small>This product uses the TMDB API but is not endorsed or certified by TMDB.</small></span></SettingRow>
+      <SettingRow label="TheTVDB" description="Optional movie and television metadata and artwork."><span className="portico-setting-readonly portico-attribution"><a href="https://thetvdb.com/" target="_blank" rel="noreferrer">Metadata provided by TheTVDB <ExternalLink /></a></span></SettingRow>
+      <SettingRow label="FFmpeg and FFprobe" description="Media inspection, streaming, and conversion."><span className="portico-setting-readonly portico-attribution"><a href="https://ffmpeg.org/legal.html" target="_blank" rel="noreferrer">FFmpeg legal and licensing information <ExternalLink /></a><small>Portico release bundles are built with GPL and version-3 licensing enabled, without nonfree components. Matching source archives and notices accompany each release.</small></span></SettingRow>
     </SettingsGroup>
   </div>;
 }
