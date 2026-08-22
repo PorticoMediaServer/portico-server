@@ -24,7 +24,8 @@ jobs:
         env: {GH_TOKEN: '${{ github.token }}'}
         run: ./scripts/install-qualified-ffmpeg.sh linux-x64
       - run: go vet ./...
-      - run: go test ./... -count=1
+      - name: Run the full server suite
+        run: go test ./... -count=1 -timeout=20m
       - run: GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -o /tmp/portico-media-server ./cmd/porticod
       - run: /tmp/portico-media-server build-identity
 
