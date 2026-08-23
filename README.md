@@ -1,8 +1,30 @@
-# Portico Media Server
+<div align="center">
+  <a href="https://getportico.tv">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/PorticoMediaServer/getportico-tv/main/public/brand/portico-wordmark-white.svg">
+      <img src="https://raw.githubusercontent.com/PorticoMediaServer/getportico-tv/main/public/brand/portico-wordmark-black.svg" alt="Portico" width="420">
+    </picture>
+  </a>
 
-> This is the primary repository for Portico. Visit [getportico.tv](https://getportico.tv) for downloads, documentation, and project news.
+  <h1>Portico Media Server</h1>
 
-Portico is a free personal media server that turns your media collection into a refined streaming experience across all of your devices.
+  <p><strong>Portico is a free personal media server that turns your media collection into a refined streaming experience across all of your devices.</strong></p>
+
+  <p>
+    <a href="https://getportico.tv">Website</a> ·
+    <a href="https://github.com/PorticoMediaServer/portico-server/releases">Releases</a> ·
+    <a href="https://github.com/PorticoMediaServer/portico-server/issues">Report an issue</a>
+  </p>
+
+  <p>
+    <a href="LICENSE"><img alt="GPL-3.0-or-later" src="https://img.shields.io/badge/license-GPL--3.0--or--later-59636e?style=flat-square"></a>
+    <img alt="Prerelease software" src="https://img.shields.io/badge/status-prerelease-e09f3e?style=flat-square">
+  </p>
+</div>
+
+---
+
+This is the primary repository for Portico. Visit [getportico.tv](https://getportico.tv) for downloads, documentation, and project news.
 
 Portico Media Server organizes and streams the movies, television, music, and other media you already own. The project is being developed in the open and is not yet considered ready for everyday production use.
 
