@@ -8,13 +8,13 @@ import (
 	"testing"
 )
 
-func TestNewSecretKeyProviderUsesMacOSKeychain(t *testing.T) {
+func TestNewSecretKeyProviderUsesPrivateLocalProvider(t *testing.T) {
 	provider := NewSecretKeyProvider(t.TempDir())
-	if got := SecretProviderKindOf(provider); got != SecretProviderKindKeychain {
-		t.Fatalf("provider kind = %q, want %q", got, SecretProviderKindKeychain)
+	if got := SecretProviderKindOf(provider); got != SecretProviderKindLocal {
+		t.Fatalf("provider kind = %q, want %q", got, SecretProviderKindLocal)
 	}
-	if _, ok := provider.(*keychainSecretKeyProvider); !ok {
-		t.Fatalf("provider type = %T, want *keychainSecretKeyProvider", provider)
+	if _, ok := provider.(*LocalSecretKeyProvider); !ok {
+		t.Fatalf("provider type = %T, want *LocalSecretKeyProvider", provider)
 	}
 }
 

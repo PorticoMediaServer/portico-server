@@ -5,7 +5,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"database/sql"
-	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"encoding/xml"
@@ -27,6 +26,9 @@ import (
 )
 
 const liveTVLifecycleReapInterval = 10 * time.Second
+
+var errLiveTVSourceHasRecordings = errors.New("Live TV source has retained DVR recordings")
+var errLiveTVSourceInUse = errors.New("Live TV source is in use")
 
 // runLiveTVLifecycleReaper makes client abandonment a supervised lifecycle
 // transition rather than relying on another HTTP request to discover it. The
@@ -369,6 +371,14 @@ func (s *Server) handleLiveTVSourceRoute(w http.ResponseWriter, r *http.Request,
 			}
 			source, err := s.deleteLiveTVSource(sourceID)
 			if err != nil {
+				if errors.Is(err, errLiveTVSourceInUse) {
+					writeProductError(w, http.StatusConflict, "live_tv_source_in_use", "Live TV is currently using this source. Stop playback and try again.")
+					return
+				}
+				if errors.Is(err, errLiveTVSourceHasRecordings) {
+					writeProductError(w, http.StatusConflict, "live_tv_source_has_recordings", "This source has DVR recordings. Disable it to preserve those recordings, or delete the recordings before removing the source.")
+					return
+				}
 				if errors.Is(err, sql.ErrNoRows) {
 					writeError(w, http.StatusNotFound, "live_tv_source_not_found", "Live TV source was not found.")
 					return
@@ -859,6 +869,24 @@ func (s *Server) deleteLiveTVSource(id string) (LiveTVSource, error) {
 		return LiveTVSource{}, err
 	}
 	if err := s.withUserTxTagged(context.Background(), []string{"live-tv", "dvr"}, func(tx *sql.Tx) error {
+		cutoff := time.Now().UTC().Add(-liveTVAllocationStaleAfter).Format(time.RFC3339)
+		if _, err := pruneStaleLiveTVTunerAllocationsTx(tx, cutoff); err != nil {
+			return err
+		}
+		var activeAllocations int
+		if err := tx.QueryRow(`SELECT COUNT(*) FROM live_tv_tuner_allocations WHERE source_id = ?`, id).Scan(&activeAllocations); err != nil {
+			return err
+		}
+		if activeAllocations > 0 {
+			return errLiveTVSourceInUse
+		}
+		var retainedRecordings int
+		if err := tx.QueryRow(`SELECT COUNT(*) FROM live_tv_recordings WHERE source_id = ?`, id).Scan(&retainedRecordings); err != nil {
+			return err
+		}
+		if retainedRecordings > 0 {
+			return errLiveTVSourceHasRecordings
+		}
 		if _, err := tx.Exec(`DELETE FROM live_tv_channel_search WHERE source_id = ?`, id); err != nil {
 			return err
 		}
@@ -4230,7 +4258,7 @@ func liveTVHLSPlaybackURL(channelID, qualityID string) string {
 
 func liveTVPlaybackResources(channelID, selectedQuality string, qualities []Quality) []PlaybackResource {
 	selectedQuality = normalizeLiveTVQualityID(selectedQuality)
-	resources := []PlaybackResource{{
+	return []PlaybackResource{{
 		ID:           randomID("pres"),
 		SourceURL:    liveTVHLSPlaybackURL(channelID, selectedQuality),
 		StreamFormat: "hls",
@@ -4238,20 +4266,6 @@ func liveTVPlaybackResources(channelID, selectedQuality string, qualities []Qual
 		SubtitleMode: "off",
 		Default:      true,
 	}}
-	for _, quality := range qualities {
-		qualityID := normalizeLiveTVQualityID(quality.ID)
-		if !quality.Available || qualityID == selectedQuality {
-			continue
-		}
-		resources = append(resources, PlaybackResource{
-			ID:           randomID("pres"),
-			SourceURL:    liveTVHLSPlaybackURL(channelID, qualityID),
-			StreamFormat: "hls",
-			QualityID:    qualityID,
-			SubtitleMode: "off",
-		})
-	}
-	return resources
 }
 
 func normalizeLiveTVQualityID(value string) string {
@@ -4380,7 +4394,7 @@ func (s *Server) handleLiveTVHLS(w http.ResponseWriter, r *http.Request, user Us
 			return
 		}
 		if !transcode {
-			rewriteLiveTVHLS(w, r, channel.ID, channel.streamURL, source.UserAgent)
+			s.rewriteLiveTVHLS(w, r, channel.ID, channel.streamURL, channel.streamURL, source.UserAgent)
 			return
 		}
 		s.handleLiveTVTranscodeManifest(w, r, user, channel, source)
@@ -4405,14 +4419,13 @@ func (s *Server) handleLiveTVHLS(w http.ResponseWriter, r *http.Request, user Us
 			writeError(w, http.StatusNotFound, "hls_item_not_found", "The Live TV HLS item is not available.")
 			return
 		}
-		encodedURI := r.URL.Query().Get("uri")
-		if encodedURI == "" {
-			writeError(w, http.StatusBadRequest, "bad_hls_uri", "HLS item URI is missing.")
+		if len(parts) != 2 {
+			writeError(w, http.StatusBadRequest, "bad_hls_reference", "The HLS item reference is missing.")
 			return
 		}
-		rawURI, err := decodeHLSURI(encodedURI)
-		if err != nil {
-			writeError(w, http.StatusBadRequest, "bad_hls_uri", "HLS item URI is invalid.")
+		rawURI, ok := s.resolveLiveTVHLSReference(channel.ID, channel.streamURL, r.URL.Query().Get("ref"), mediaGrantFromRequest(r))
+		if !ok {
+			writeError(w, http.StatusGone, "hls_reference_expired", "Reload the Live TV playlist to continue.")
 			return
 		}
 		approval, _, err := approveLiveTVEndpoint(channel.streamURL, "hls-child")
@@ -4424,7 +4437,7 @@ func (s *Server) handleLiveTVHLS(w http.ResponseWriter, r *http.Request, user Us
 			writeError(w, http.StatusBadRequest, "unsafe_stream_url", "The provider stream URL is not allowed.")
 			return
 		}
-		proxyOrRewriteLiveTVHLSItem(w, r, liveTVHLSItemBinding{channelID: channel.ID, approval: approval}, rawURI, source.UserAgent)
+		s.proxyOrRewriteLiveTVHLSItem(w, r, liveTVHLSItemBinding{channelID: channel.ID, sourceURL: channel.streamURL, approval: approval}, rawURI, source.UserAgent)
 	default:
 		writeError(w, http.StatusNotFound, "not_found", "Live TV HLS route was not found.")
 	}
@@ -4441,7 +4454,7 @@ func (s *Server) liveTVRequestRequiresTranscode(r *http.Request, channel liveTVP
 	return mode == "transcode_required" || mode == "transcode", nil
 }
 
-func rewriteLiveTVHLS(w http.ResponseWriter, r *http.Request, channelID string, playlistURL string, userAgent string) {
+func (s *Server) rewriteLiveTVHLS(w http.ResponseWriter, r *http.Request, channelID string, sourceURL string, playlistURL string, userAgent string) {
 	ctx, cancel := context.WithTimeout(r.Context(), 25*time.Second)
 	defer cancel()
 	text, err := fetchLiveTVText(ctx, playlistURL, liveTVMaxPlaylistBytes, userAgent)
@@ -4449,7 +4462,9 @@ func rewriteLiveTVHLS(w http.ResponseWriter, r *http.Request, channelID string, 
 		writeError(w, http.StatusBadGateway, "hls_fetch_failed", "Unable to load the provider playlist.")
 		return
 	}
-	rewritten, err := rewriteHLSPlaylist(channelID, playlistURL, text, r.URL.Query().Get("quality"), playbackURLMediaGrant(r))
+	rewritten, err := rewriteHLSPlaylist(channelID, playlistURL, text, r.URL.Query().Get("quality"), func(resolved string, qualityID string) string {
+		return s.issueLiveTVHLSReference(channelID, sourceURL, resolved, qualityID, mediaGrantFromRequest(r))
+	})
 	if err != nil {
 		writeError(w, http.StatusBadGateway, "hls_rewrite_failed", "Unable to prepare the provider playlist.")
 		return
@@ -4465,9 +4480,9 @@ func playbackURLMediaGrant(r *http.Request) string {
 	return ""
 }
 
-func proxyOrRewriteLiveTVHLSItem(w http.ResponseWriter, r *http.Request, binding liveTVHLSItemBinding, itemURL string, userAgent string) {
+func (s *Server) proxyOrRewriteLiveTVHLSItem(w http.ResponseWriter, r *http.Request, binding liveTVHLSItemBinding, itemURL string, userAgent string) {
 	if isHLSURL(itemURL) {
-		rewriteLiveTVHLS(w, r, binding.channelID, itemURL, userAgent)
+		s.rewriteLiveTVHLS(w, r, binding.channelID, binding.sourceURL, itemURL, userAgent)
 		return
 	}
 	proxyCachedLiveTVHLSItem(w, r, binding, itemURL, userAgent)
@@ -5217,15 +5232,19 @@ func (s *Server) proxyLiveTVLogo(w http.ResponseWriter, r *http.Request, upstrea
 	_, _ = w.Write(data)
 }
 
-func rewriteHLSPlaylist(channelID string, baseURL string, text string, qualityID string, accessToken string) (string, error) {
+type liveTVHLSItemURLBuilder func(resolved string, qualityID string) string
+
+func rewriteHLSPlaylist(channelID string, baseURL string, text string, qualityID string, itemURL liveTVHLSItemURLBuilder) (string, error) {
 	base, err := validateExternalURL(baseURL)
 	if err != nil {
 		return "", err
 	}
-	accessToken = strings.TrimSpace(accessToken)
+	if itemURL == nil {
+		return "", errors.New("HLS item URL builder is required")
+	}
 	qualityID = normalizeLiveTVQualityID(qualityID)
 	if qualityID != "" && qualityID != "auto" && strings.Contains(text, "#EXT-X-STREAM-INF") {
-		return rewriteFilteredHLSMasterPlaylist(channelID, base, text, qualityID, accessToken)
+		return rewriteFilteredHLSMasterPlaylist(channelID, base, text, qualityID, itemURL)
 	}
 	var out strings.Builder
 	scanner := bufio.NewScanner(strings.NewReader(text))
@@ -5237,7 +5256,7 @@ func rewriteHLSPlaylist(channelID string, baseURL string, text string, qualityID
 			continue
 		}
 		if strings.HasPrefix(line, "#EXT-X-MAP:") || strings.HasPrefix(line, "#EXT-X-MEDIA:") || strings.HasPrefix(line, "#EXT-X-I-FRAME-STREAM-INF:") {
-			out.WriteString(rewriteHLSURILine(channelID, base, line, qualityID, accessToken))
+			out.WriteString(rewriteHLSURILine(base, line, qualityID, itemURL))
 			out.WriteByte('\n')
 			continue
 		}
@@ -5250,15 +5269,7 @@ func rewriteHLSPlaylist(channelID string, baseURL string, text string, qualityID
 		if err != nil {
 			return "", err
 		}
-		out.WriteString("/api/live-tv/hls/")
-		out.WriteString(url.PathEscape(channelID))
-		out.WriteString("/item?uri=")
-		out.WriteString(encodeHLSURI(resolved))
-		if qualityID != "" {
-			out.WriteString("&quality=")
-			out.WriteString(url.QueryEscape(qualityID))
-		}
-		_ = accessToken
+		out.WriteString(itemURL(resolved, qualityID))
 		out.WriteByte('\n')
 	}
 	if err := scanner.Err(); err != nil {
@@ -5267,14 +5278,14 @@ func rewriteHLSPlaylist(channelID string, baseURL string, text string, qualityID
 	return out.String(), nil
 }
 
-func rewriteFilteredHLSMasterPlaylist(channelID string, base *url.URL, text string, qualityID string, accessToken string) (string, error) {
+func rewriteFilteredHLSMasterPlaylist(channelID string, base *url.URL, text string, qualityID string, itemURL liveTVHLSItemURLBuilder) (string, error) {
 	lines, err := scanHLSLines(text)
 	if err != nil {
 		return "", err
 	}
 	variants := hlsMasterVariants(lines)
 	if len(variants) == 0 {
-		return rewriteHLSPlaylist(channelID, base.String(), text, "auto", accessToken)
+		return rewriteHLSPlaylist(channelID, base.String(), text, "auto", itemURL)
 	}
 	selected := selectHLSVariant(variants, qualityID)
 	var out strings.Builder
@@ -5282,13 +5293,13 @@ func rewriteFilteredHLSMasterPlaylist(channelID string, base *url.URL, text stri
 		line := lines[i]
 		if variant, ok := variantStartingAt(variants, i); ok {
 			if variant.uriIndex == selected.uriIndex {
-				out.WriteString(rewriteHLSURILine(channelID, base, line, qualityID, accessToken))
+				out.WriteString(rewriteHLSURILine(base, line, qualityID, itemURL))
 				out.WriteByte('\n')
 				resolved, err := resolveProviderURL(base, lines[variant.uriIndex])
 				if err != nil {
 					return "", err
 				}
-				out.WriteString(liveTVHLSItemURL(channelID, resolved, qualityID, accessToken))
+				out.WriteString(itemURL(resolved, qualityID))
 				out.WriteByte('\n')
 			}
 			i = variant.uriIndex
@@ -5299,7 +5310,7 @@ func rewriteFilteredHLSMasterPlaylist(channelID string, base *url.URL, text stri
 			continue
 		}
 		if strings.HasPrefix(line, "#EXT-X-MAP:") || strings.HasPrefix(line, "#EXT-X-MEDIA:") || strings.HasPrefix(line, "#EXT-X-I-FRAME-STREAM-INF:") {
-			out.WriteString(rewriteHLSURILine(channelID, base, line, qualityID, accessToken))
+			out.WriteString(rewriteHLSURILine(base, line, qualityID, itemURL))
 			out.WriteByte('\n')
 			continue
 		}
@@ -5312,7 +5323,7 @@ func rewriteFilteredHLSMasterPlaylist(channelID string, base *url.URL, text stri
 		if err != nil {
 			return "", err
 		}
-		out.WriteString(liveTVHLSItemURL(channelID, resolved, qualityID, accessToken))
+		out.WriteString(itemURL(resolved, qualityID))
 		out.WriteByte('\n')
 	}
 	return out.String(), nil
@@ -5461,7 +5472,7 @@ func hlsAttributeValue(line string, name string) string {
 	return rest[:end]
 }
 
-func rewriteHLSURILine(channelID string, base *url.URL, line string, qualityID string, accessToken string) string {
+func rewriteHLSURILine(base *url.URL, line string, qualityID string, itemURL liveTVHLSItemURLBuilder) string {
 	const marker = `URI="`
 	start := strings.Index(line, marker)
 	if start < 0 {
@@ -5477,17 +5488,8 @@ func rewriteHLSURILine(channelID string, base *url.URL, line string, qualityID s
 	if err != nil {
 		return line
 	}
-	replacement := liveTVHLSItemURL(channelID, resolved, qualityID, accessToken)
+	replacement := itemURL(resolved, qualityID)
 	return line[:start] + replacement + line[start+end:]
-}
-
-func liveTVHLSItemURL(channelID string, resolved string, qualityID string, accessToken string) string {
-	out := "/api/live-tv/hls/" + url.PathEscape(channelID) + "/item?uri=" + encodeHLSURI(resolved)
-	if qualityID != "" {
-		out += "&quality=" + url.QueryEscape(qualityID)
-	}
-	_ = accessToken
-	return out
 }
 
 func resolveProviderURL(base *url.URL, value string) (string, error) {
@@ -5520,18 +5522,6 @@ func isHLSURL(value string) bool {
 		return strings.Contains(strings.ToLower(value), ".m3u8")
 	}
 	return strings.Contains(strings.ToLower(parsed.Path), ".m3u8")
-}
-
-func encodeHLSURI(value string) string {
-	return base64.RawURLEncoding.EncodeToString([]byte(value))
-}
-
-func decodeHLSURI(value string) (string, error) {
-	bytes, err := base64.RawURLEncoding.DecodeString(value)
-	if err != nil {
-		return "", err
-	}
-	return string(bytes), nil
 }
 
 func fetchLiveTVText(ctx context.Context, rawURL string, maxBytes int64, userAgent string) (string, error) {

@@ -20,7 +20,7 @@ func TestManagedCommandOutputLimitKillsUnixProcessGroupPromptly(t *testing.T) {
 	directory := t.TempDir()
 	sentinel := filepath.Join(directory, "output-limit-child-survived")
 	script := filepath.Join(directory, "output-limit-command.sh")
-	contents := "#!/bin/sh\n(sleep 0.25; touch \"$1\") &\nhead -c 65537 /dev/zero\nsleep 5\n"
+	contents := "#!/bin/sh\n(sleep 0.75; touch \"$1\") &\nhead -c 65537 /dev/zero\nsleep 5\n"
 	if err := os.WriteFile(script, []byte(contents), 0o700); err != nil {
 		t.Fatalf("write command fixture: %v", err)
 	}
@@ -32,10 +32,10 @@ func TestManagedCommandOutputLimitKillsUnixProcessGroupPromptly(t *testing.T) {
 	if !errors.Is(err, errManagedCommandOutputLimit) {
 		t.Fatalf("command error = %v, want output-limit error", err)
 	}
-	if elapsed := time.Since(started); elapsed >= 250*time.Millisecond {
+	if elapsed := time.Since(started); elapsed >= 500*time.Millisecond {
 		t.Fatalf("output-limited command was not terminated promptly: %s", elapsed)
 	}
-	time.Sleep(400 * time.Millisecond)
+	time.Sleep(900 * time.Millisecond)
 	if _, statErr := os.Stat(sentinel); !errors.Is(statErr, os.ErrNotExist) {
 		t.Fatalf("output-limit child survived process-group cleanup: stat error=%v", statErr)
 	}

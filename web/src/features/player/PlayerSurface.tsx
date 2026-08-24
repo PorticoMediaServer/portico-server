@@ -226,6 +226,7 @@ export function PlaybackSessionProvider({ children }: { children: ReactNode }) {
   const operationRef = useRef(0);
   const controllerRef = useRef<AbortController | undefined>(undefined);
   const renegotiationControllerRef = useRef<AbortController | undefined>(undefined);
+  const grantRenewalRef = useRef<{ sessionId: string; promise: Promise<void> } | undefined>(undefined);
   const startingMediaRef = useRef('');
   const retryRef = useRef<({ kind: 'media'; mediaId: string; options: PlaybackStartOptions } | { kind: 'live'; channelId: string } | { kind: 'library-channel'; channelId: string } | { kind: 'dvr'; recordingId: string }) | undefined>(undefined);
   const restoreAttemptedRef = useRef(false);
@@ -387,11 +388,11 @@ export function PlaybackSessionProvider({ children }: { children: ReactNode }) {
             durationSeconds: Number.isFinite(media?.duration) ? media?.duration : undefined,
           }, controller.signal);
         } catch { /* the replacement session remains actionable if the final progress event misses */ }
-        await source.stopPlayback(current.sessionId, controller.signal);
-        setPlayback(undefined);
-        replaceQueue(undefined);
       }
       markMeaningfulInteraction();
+      // The server commits replacement only after the candidate has a sealed
+      // plan and grant. Keep the current player/session intact until that
+      // succeeds so a failed prepare never destroys usable playback.
       const value = await source.startPlayback(mediaId, { ...options, intent: options.intent ?? deliveryIntent() }, controller.signal);
       if (operationRef.current === operation && !controller.signal.aborted) acceptPlayback(value, 'start');
     } catch (reason) {
@@ -424,12 +425,6 @@ export function PlaybackSessionProvider({ children }: { children: ReactNode }) {
     setPostPlay({ phase: 'inactive' });
     preparedNextRef.current = undefined;
     try {
-      const current = playbackRef.current;
-      if (current) {
-        try { await source.stopPlayback(current.sessionId, controller.signal); } catch { /* the new live session remains independently actionable */ }
-        setPlayback(undefined);
-        replaceQueue(undefined);
-      }
       const value = await source.startLiveTVPlayback(channelId, controller.signal);
       if (operationRef.current === operation && !controller.signal.aborted) {
         acceptPlayback(value, 'start');
@@ -465,12 +460,6 @@ export function PlaybackSessionProvider({ children }: { children: ReactNode }) {
     setPostPlay({ phase: 'inactive' });
     preparedNextRef.current = undefined;
     try {
-      const current = playbackRef.current;
-      if (current) {
-        try { await source.stopPlayback(current.sessionId, controller.signal); } catch { /* the DVR session remains independently actionable */ }
-        setPlayback(undefined);
-        replaceQueue(undefined);
-      }
       const value = await source.startDVRPlayback(recordingId, controller.signal);
       if (operationRef.current === operation && !controller.signal.aborted) {
         acceptPlayback(value, 'start');
@@ -506,12 +495,6 @@ export function PlaybackSessionProvider({ children }: { children: ReactNode }) {
     setPostPlay({ phase: 'inactive' });
     preparedNextRef.current = undefined;
     try {
-      const current = playbackRef.current;
-      if (current) {
-        try { await source.stopPlayback(current.sessionId, controller.signal); } catch { /* the Library Channel session remains independently actionable */ }
-        setPlayback(undefined);
-        replaceQueue(undefined);
-      }
       const value = await source.startLibraryChannelPlayback(channelId, controller.signal);
       if (operationRef.current === operation && !controller.signal.aborted) {
         acceptPlayback(value, 'start');
@@ -529,6 +512,52 @@ export function PlaybackSessionProvider({ children }: { children: ReactNode }) {
     }
   }, [acceptPlayback, replaceQueue, setPlayback, source]);
 
+  const renewGrant = useCallback(async () => {
+    const current = playbackRef.current;
+    if (!current) return;
+    if (grantRenewalRef.current?.sessionId === current.sessionId) return grantRenewalRef.current.promise;
+    const revision = current.playbackRevision;
+    const generation = current.generation;
+    const promise = (async () => {
+      let lastFailure: unknown;
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        const active = playbackRef.current;
+        if (active?.sessionId !== current.sessionId || active.playbackRevision !== revision || active.generation !== generation) return;
+        try {
+          const controller = new AbortController();
+          const mediaGrant = await source.renewPlaybackMediaGrant(current.sessionId, controller.signal);
+          const latest = playbackRef.current;
+          if (latest?.sessionId === current.sessionId && latest.playbackRevision === revision && latest.generation === generation) {
+            setPlayback({ ...latest, mediaGrant });
+            setAdapterRecoveryGeneration((value) => value + 1);
+            setFailure(undefined);
+            setError(undefined);
+            setStatus('ready');
+          }
+          return;
+        } catch (reason) {
+          lastFailure = reason;
+          if (attempt === 0) {
+            setStatus('recovering');
+            await new Promise((resolve) => window.setTimeout(resolve, 1_500));
+          }
+        }
+      }
+      const latest = playbackRef.current;
+      if (latest?.sessionId !== current.sessionId || latest.playbackRevision !== revision || latest.generation !== generation) return;
+      const nextFailure = playbackFailure(lastFailure, 'route');
+      if (nextFailure) {
+        setFailure(nextFailure);
+        setError(nextFailure.message);
+        setStatus('failed');
+      }
+    })().finally(() => {
+      if (grantRenewalRef.current?.promise === promise) grantRenewalRef.current = undefined;
+    });
+    grantRenewalRef.current = { sessionId: current.sessionId, promise };
+    return promise;
+  }, [setPlayback, source]);
+
   const retry = useCallback(async () => {
     const current = retryRef.current;
     if (!current) return;
@@ -538,13 +567,7 @@ export function PlaybackSessionProvider({ children }: { children: ReactNode }) {
       setFailure(undefined);
       setError(undefined);
       try {
-        const active = playbackRef.current;
-        if (!active) return;
-        const controller = new AbortController();
-        const mediaGrant = await source.renewPlaybackMediaGrant(active.sessionId, controller.signal);
-        if (playbackRef.current?.sessionId !== active.sessionId) return;
-        setPlayback({ ...active, mediaGrant });
-        setAdapterRecoveryGeneration((generation) => generation + 1);
+        await renewGrant();
       } catch (reason) {
         const nextFailure = playbackFailure(reason, 'route');
         if (nextFailure) {
@@ -559,7 +582,7 @@ export function PlaybackSessionProvider({ children }: { children: ReactNode }) {
     else if (current.kind === 'library-channel') await startLibraryChannel(current.channelId);
     else if (current.kind === 'dvr') await startDVR(current.recordingId);
     else await start(current.mediaId, current.options);
-  }, [setPlayback, source, start, startDVR, startLibraryChannel, startLive]);
+  }, [renewGrant, start, startDVR, startLibraryChannel, startLive]);
 
   const touch = useCallback(async (event: PlaybackProgressInput, keepalive = false) => {
     const current = playbackRef.current;
@@ -621,40 +644,6 @@ export function PlaybackSessionProvider({ children }: { children: ReactNode }) {
 
   const dismissInterruption = useCallback(() => setInterruption(undefined), []);
 
-  const renewGrant = useCallback(async () => {
-    const current = playbackRef.current;
-    if (!current) return;
-    let lastFailure: unknown;
-    for (let attempt = 0; attempt < 2; attempt += 1) {
-      if (playbackRef.current?.sessionId !== current.sessionId) return;
-      try {
-        const controller = new AbortController();
-        const mediaGrant = await source.renewPlaybackMediaGrant(current.sessionId, controller.signal);
-        if (playbackRef.current?.sessionId === current.sessionId) {
-          setPlayback({ ...current, mediaGrant });
-          setAdapterRecoveryGeneration((generation) => generation + 1);
-          setFailure(undefined);
-          setError(undefined);
-          setStatus('ready');
-        }
-        return;
-      } catch (reason) {
-        lastFailure = reason;
-        if (attempt === 0) {
-          setStatus('recovering');
-          await new Promise((resolve) => window.setTimeout(resolve, 1_500));
-        }
-      }
-    }
-    if (playbackRef.current?.sessionId !== current.sessionId) return;
-    const nextFailure = playbackFailure(lastFailure, 'route');
-    if (nextFailure) {
-      setFailure(nextFailure);
-      setError(nextFailure.message);
-      setStatus('failed');
-    }
-  }, [setPlayback, source]);
-
   const renegotiate = useCallback(async (request: Omit<PlaybackRenegotiationRequest, 'requestId' | 'expectedRevision' | 'clientProfile'>): Promise<PlaybackResponse | undefined> => {
     const current = playbackRef.current;
     if (!current) return;
@@ -665,6 +654,8 @@ export function PlaybackSessionProvider({ children }: { children: ReactNode }) {
     setFailure(undefined);
     setError(undefined);
     try {
+      if (grantRenewalRef.current?.sessionId === current.sessionId) await grantRenewalRef.current.promise;
+      if (controller.signal.aborted || playbackRef.current?.sessionId !== current.sessionId) return;
       const value = await source.renegotiatePlayback(current.sessionId, {
         ...request,
         requestId: `web-${globalThis.crypto.randomUUID()}`,
@@ -690,14 +681,8 @@ export function PlaybackSessionProvider({ children }: { children: ReactNode }) {
     if (!current || !runtime) throw new Error('No active playback route is available to recover.');
     await runtime.recoverActiveRoute();
     if (playbackRef.current?.sessionId !== current.sessionId) return;
-    const controller = new AbortController();
-    const mediaGrant = await source.renewPlaybackMediaGrant(current.sessionId, controller.signal);
-    if (playbackRef.current?.sessionId !== current.sessionId) return;
-    setPlayback({ ...current, mediaGrant });
-    setAdapterRecoveryGeneration((generation) => generation + 1);
-    setFailure(undefined);
-    setError(undefined);
-  }, [runtime, setPlayback, source]);
+    await renewGrant();
+  }, [renewGrant, runtime]);
 
   const handoff = useCallback(async (request: PlaybackHandoffRequest): Promise<PlaybackResponse | undefined> => {
     const current = playbackRef.current;
@@ -2270,6 +2255,14 @@ function SourceSelectionBridge({ quality, audioStreamId, subtitleId }: { quality
         }
         hls = new Hls({
           enableWorker: true,
+          xhrSetup: (request) => {
+            // HLS media grants are HttpOnly cookies. Route changes may move the
+            // active server between approved origins, so every manifest,
+            // subtitle, initialization, and media-segment request must carry
+            // the sealed viewer credential rather than relying on Fetch's
+            // same-origin default.
+            request.withCredentials = true;
+          },
           backBufferLength: 90,
           fragLoadingMaxRetry: 6,
           fragLoadingRetryDelay: 250,

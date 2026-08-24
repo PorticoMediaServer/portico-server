@@ -56,6 +56,7 @@ const problemCodeMessages: Readonly<Record<string, ProductMessageId>> = Object.f
   invalid_email_or_password: "auth.invalid-credentials",
   interactive_session_required: "auth.device-session-required",
   invalid_password: "account.delete-password-invalid",
+  reauthentication_required: "account.delete-reauthentication-required",
   invalid_preferences: "preferences.invalid",
   invalid_profile: "auth.invalid-profile",
   invalid_profile_policy: "auth.invalid-profile-restrictions",

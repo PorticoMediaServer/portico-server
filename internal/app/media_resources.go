@@ -32,13 +32,49 @@ type mediaResourceGovernor struct {
 	networkUsed       int
 	backgroundCPUUsed int
 	diskReservedBytes map[string]int64
+	nextBackgroundID  uint64
+	backgroundCancels map[uint64]context.CancelCauseFunc
 }
 
 func newMediaResourceGovernor() *mediaResourceGovernor {
 	return &mediaResourceGovernor{
-		cpuCapacity:     max(2, runtime.NumCPU()/2),
-		diskCapacity:    16,
-		networkCapacity: 32,
+		cpuCapacity:       max(2, runtime.NumCPU()/2),
+		diskCapacity:      16,
+		networkCapacity:   32,
+		backgroundCancels: map[uint64]context.CancelCauseFunc{},
+	}
+}
+
+func (governor *mediaResourceGovernor) registerBackgroundContext(ctx context.Context) (context.Context, func()) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	operationCtx, cancel := context.WithCancelCause(ctx)
+	governor.mu.Lock()
+	governor.nextBackgroundID++
+	id := governor.nextBackgroundID
+	governor.backgroundCancels[id] = cancel
+	governor.mu.Unlock()
+	var once sync.Once
+	return operationCtx, func() {
+		once.Do(func() {
+			governor.mu.Lock()
+			delete(governor.backgroundCancels, id)
+			governor.mu.Unlock()
+			cancel(context.Canceled)
+		})
+	}
+}
+
+func (governor *mediaResourceGovernor) preemptBackgroundForPlayback() {
+	governor.mu.Lock()
+	cancels := make([]context.CancelCauseFunc, 0, len(governor.backgroundCancels))
+	for _, cancel := range governor.backgroundCancels {
+		cancels = append(cancels, cancel)
+	}
+	governor.mu.Unlock()
+	for _, cancel := range cancels {
+		cancel(errRemoteStoragePreempted)
 	}
 }
 
@@ -100,6 +136,9 @@ func (governor *mediaResourceGovernor) acquireContext(ctx context.Context, reque
 		}
 		select {
 		case <-ctx.Done():
+			if cause := context.Cause(ctx); cause != nil {
+				return nil, cause
+			}
 			return nil, ctx.Err()
 		case <-ticker.C:
 		}

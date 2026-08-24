@@ -8,6 +8,7 @@ import {
   browserPlaybackClientProfile,
   CredentialCleanupUncertainError,
   connectHostedServer,
+  discoverHostedServerRoute,
   createHostedConnectionRuntime,
   createHostedServicesClient,
   createMemorySessionStore,
@@ -100,7 +101,9 @@ const clientAttachmentRuntime = createAttachmentRuntime("2026-05-23T00:01:00Z");
 
 function signedRouteDocument(document) {
   const unsigned = {
+    kind: "route-document",
     documentVersion: 1,
+    endpointGeneration: 1,
     audience: "portico-media-server",
     signatureAlgorithm: "ed25519",
     signatureKeyId: hostedDocumentTestKeyId,
@@ -390,6 +393,54 @@ test("concurrent 401 responses share one refresh, await durable rotation, and re
   assert.equal(savedSession.accessToken, "access-new");
   assert.equal(savedSession.refreshToken, "refresh-new");
   assert.equal(savedSession.serverId, "server-1");
+  assert.equal(sessionStore.get().accessToken, "access-new");
+});
+
+test("one caller aborting does not cancel a shared credential refresh", async () => {
+  const sessionStore = createMemorySessionStore({
+    apiBaseUrl: "https://server.example",
+    accessToken: "access-old",
+    refreshToken: "refresh-old"
+  });
+  const controller = new AbortController();
+  let releaseRefresh;
+  const refreshGate = new Promise((resolve) => { releaseRefresh = resolve; });
+  let announceRefresh;
+  const refreshStarted = new Promise((resolve) => { announceRefresh = resolve; });
+  let refreshCalls = 0;
+  const client = createPorticoClient({
+    sessionStore,
+    transport: {
+      fetch: async (input, init) => {
+        const url = String(input);
+        if (url.endsWith("/api/auth/sessions/refresh")) {
+          refreshCalls++;
+          announceRefresh();
+          await refreshGate;
+          if (init.signal?.aborted) throw init.signal.reason;
+          return jsonResponse({
+            tokenType: "Bearer", accessToken: "access-new", refreshToken: "refresh-new",
+            accessExpiresAt: "2026-07-11T01:00:00Z", refreshExpiresAt: "2026-08-11T00:00:00Z",
+            user: {}, device: {}
+          });
+        }
+        if (init.headers.Authorization === "Bearer access-old") {
+          return jsonResponse({code: "token_expired", detail: "Expired"}, {status: 401});
+        }
+        return jsonResponse({setupRequired: false});
+      }
+    }
+  });
+
+  const first = client.request("/api/system", {signal: controller.signal});
+  const second = client.request("/api/system?waiter=two");
+  await refreshStarted;
+  controller.abort(new Error("caller stopped waiting"));
+  releaseRefresh();
+
+  await assert.rejects(first);
+  await second;
+  assert.equal(refreshCalls, 1);
   assert.equal(sessionStore.get().accessToken, "access-new");
 });
 
@@ -1054,6 +1105,46 @@ test("library sources use opaque cursor pagination", async () => {
   assert.equal(response.pageInfo.hasMore, false);
 });
 
+test("managed remote storage methods preserve owner input and encoded routes", async () => {
+  const calls = [];
+  const source = {
+    kind: "webdav",
+    name: "Cloud Movies",
+    endpoint: "https://dav.example.test/media",
+    root: "Movies",
+    analysisMode: "basic",
+    username: "owner",
+    password: "write-only-secret"
+  };
+  const client = createPorticoClient({
+    apiBaseUrl: "https://server.example",
+    transport: { fetch: async (input, init = {}) => {
+      calls.push({ input: String(input), init });
+      if (init.method === "DELETE") return new Response(null, { status: 204 });
+      if (String(input).endsWith("/inventory")) return jsonResponse({ id: "job-1", type: "library_scan", status: "queued", title: "Remote inventory", progress: 0, priority: 0, createdAt: "2026-08-22T12:00:00Z", updatedAt: "2026-08-22T12:00:00Z" }, { status: 202 });
+      if (init.method === "POST") return jsonResponse({ id: "source-1", libraryId: "lib movies", kind: "webdav", name: "Cloud Movies", endpoint: source.endpoint, root: "Movies", health: "unknown", inventoryStatus: "never", objects: 0, missingObjects: 0, credentialPresent: true, updatedAt: "2026-08-22T12:00:00Z" }, { status: 201 });
+      return jsonResponse({ items: [], total: 0, limit: 0 });
+    } }
+  });
+
+  await client.remoteStorageSources("lib movies");
+  await client.createRemoteStorageSource("lib movies", source);
+  await client.updateRemoteStorageSourceAnalysisMode("lib movies", "source/1", { analysisMode: "file_list_only" });
+  await client.inventoryRemoteStorageSource("lib movies", "source/1");
+  await client.deleteRemoteStorageSource("lib movies", "source/1");
+
+  assert.equal(calls[0].input, "https://server.example/api/libraries/lib%20movies/remote-storage-sources");
+  assert.equal(calls[1].init.method, "POST");
+  assert.equal(calls[1].init.body, JSON.stringify(source));
+  assert.equal(calls[2].input, "https://server.example/api/libraries/lib%20movies/remote-storage-sources/source%2F1");
+  assert.equal(calls[2].init.method, "PATCH");
+  assert.equal(calls[2].init.body, JSON.stringify({ analysisMode: "file_list_only" }));
+  assert.equal(calls[3].input, "https://server.example/api/libraries/lib%20movies/remote-storage-sources/source%2F1/inventory");
+  assert.equal(calls[3].init.method, "POST");
+  assert.equal(calls[4].input, "https://server.example/api/libraries/lib%20movies/remote-storage-sources/source%2F1");
+  assert.equal(calls[4].init.method, "DELETE");
+});
+
 test("auth me forwards abort signals", async () => {
   const calls = [];
   const client = createPorticoClient({
@@ -1518,6 +1609,31 @@ test("caller cancellation reaches the shared transport and rejects promptly", as
   assert.equal(requestSignal.aborted, true);
 });
 
+test("caller cancellation reaches media and diagnostics mutations", async () => {
+	for (const invoke of [
+		(client, signal) => client.uploadClientLogs({ events: [] }, { signal }),
+		(client, signal) => client.deleteMediaImage("movie-1", "poster-1", 7, { signal }),
+		(client, signal) => client.updateSubtitle("movie-1", "subtitle-1", { offsetMs: 250 }, { signal }),
+	]) {
+		let requestSignal;
+		const controller = new AbortController();
+		const client = createPorticoClient({
+			apiBaseUrl: "https://server.example",
+			transport: {
+				fetch: async (_input, init) => {
+					requestSignal = init.signal;
+					return new Promise(() => {});
+				}
+			}
+		});
+		const pending = invoke(client, controller.signal);
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		controller.abort();
+		await assert.rejects(pending, { name: "AbortError" });
+		assert.equal(requestSignal.aborted, true);
+	}
+});
+
 test("transport deadline covers a response body that never resolves", async () => {
   const body = new ReadableStream({ start() {} });
   const client = createPorticoClient({
@@ -1567,6 +1683,94 @@ test("Hosted safe-read retry budget is bounded and mutations are ambiguous on ti
     (error) => error instanceof PorticoTransportError && isAmbiguousPorticoError(error) && !isRetryablePorticoError(error)
   );
   assert.equal(mutationAttempts, 1);
+});
+
+test("Hosted safe reads honor Retry-After without waiting beyond the request deadline", async () => {
+  let attempts = 0;
+  const hosted = createHostedServicesClient({
+    hostedApiBaseUrl: "https://api.example",
+    requestTimeoutMs: 250,
+    retryBudget: 1,
+    retryDelaysMs: [0],
+    transport: {
+      fetch: async () => {
+        attempts++;
+        if (attempts === 1) {
+          return new Response(JSON.stringify({ code: "busy", message: "try again" }), {
+            status: 429,
+            headers: { "Content-Type": "application/json", "Retry-After": "0.02" }
+          });
+        }
+        return jsonResponse({ ok: true });
+      }
+    }
+  });
+
+  const startedAt = Date.now();
+  assert.deepEqual(await hosted.request("/api/system"), { ok: true });
+  assert.equal(attempts, 2);
+  assert.ok(Date.now() - startedAt >= 15, "the retry must not run before Retry-After");
+
+  attempts = 0;
+  const deadlineBound = createHostedServicesClient({
+    hostedApiBaseUrl: "https://api.example",
+    requestTimeoutMs: 50,
+    retryBudget: 1,
+    retryDelaysMs: [0],
+    transport: {
+      fetch: async () => {
+        attempts++;
+        return new Response(JSON.stringify({ code: "busy", message: "try again" }), {
+          status: 429,
+          headers: { "Content-Type": "application/json", "Retry-After": "10" }
+        });
+      }
+    }
+  });
+  await assert.rejects(
+    deadlineBound.request("/api/system"),
+    error => error instanceof ApiError && error.status === 429 && error.retryAfterMs === 10_000
+  );
+  assert.equal(attempts, 1, "a retry scheduled beyond the deadline must be returned to the caller");
+});
+
+test("callers cannot override the credential policy for local or Hosted requests", async () => {
+  const localCalls = [];
+  const local = createPorticoClient({
+    apiBaseUrl: "https://server.example",
+    transport: {
+      fetch: async (_input, init) => {
+        localCalls.push(init);
+        return jsonResponse({ ok: true });
+      }
+    }
+  });
+
+  await local.request("/api/system", { credentials: "omit" });
+  await local.request("/api/health", { authorization: { mode: "anonymous" }, credentials: "include" });
+  assert.equal(localCalls[0].credentials, "include");
+  assert.equal(localCalls[1].credentials, "omit");
+
+  const hostedCalls = [];
+  const hosted = createHostedServicesClient({
+    hostedApiBaseUrl: "https://api.example",
+    transport: {
+      fetch: async (_input, init) => {
+        hostedCalls.push(init);
+        return jsonResponse({ ok: true });
+      }
+    }
+  });
+
+  await hosted.request("/api/system", { credentials: "omit" });
+  assert.equal(hostedCalls[0].credentials, "include");
+});
+
+test("retry and ambiguity classification fails closed for ordinary errors", () => {
+  assert.equal(isRetryablePorticoError(new Error("temporary-looking failure")), false);
+  assert.equal(isAmbiguousPorticoError(new Error("unknown result")), false);
+  assert.equal(isRetryablePorticoError({ retryable: true }), true);
+  assert.equal(isAmbiguousPorticoError({ ambiguous: true }), true);
 });
 
 test("form uploads avoid JSON content-type and keep CSRF", async () => {
@@ -2022,8 +2226,8 @@ test("hosted connector avoids routes currently under repair", () => {
   assert.equal(routeIsUsableCandidate(failedRoute), false);
   assert.equal(routeIsUsableCandidate(staleRoute), false);
   assert.equal(routeIsUsableCandidate(checkingRoute), true);
-  assert.equal(preferredRoute({ routes: [repairingRoute, failedRoute, staleRoute, checkingRoute] }).url, "https://checking.example");
-  assert.equal(preferredRoute({ routes: [repairingRoute, failedRoute, staleRoute] }), undefined);
+  assert.equal(preferredRoute({ kind: "route-document", documentVersion: 1, endpointGeneration: 1, routes: [repairingRoute, failedRoute, staleRoute, checkingRoute] }).url, "https://checking.example");
+  assert.equal(preferredRoute({ kind: "route-document", documentVersion: 1, endpointGeneration: 1, routes: [repairingRoute, failedRoute, staleRoute] }), undefined);
 });
 
 test("Hosted document key sets retain staged rotation keys and fail closed", () => {
@@ -2092,9 +2296,30 @@ test("Hosted route verification runs entirely through injected binary and Ed2551
   assert.deepEqual(calls, ["base64", "base64", "base64", "text", "ed25519"]);
 });
 
-test("Client Core verifies the canonical Cloud signing fixture with adjacent last-check keys", async () => {
+test("Hosted route verification and raw route helpers reject a wrong document kind", async () => {
+  const wrongKind = signedRouteDocument({
+    kind: "policy-snapshot",
+    serverId: "srv_wrong_kind",
+    serverName: "Wrong kind",
+    issuedAt: "2026-05-23T00:00:00Z",
+    expiresAt: "2026-05-23T00:05:00Z",
+    authModes: ["portico"],
+    certificate: { status: "valid" },
+    membership: { role: "owner" },
+    routes: []
+  });
+  await assert.rejects(
+    verifyHostedRouteDocument(wrongKind, "srv_wrong_kind", {[hostedDocumentTestKeyId]: hostedDocumentTestPublicKey}, new Date("2026-05-23T00:01:00Z"), clientAttachmentRuntime),
+    /kind/i
+  );
+  assert.throws(() => routesForConnection(wrongKind), /kind/i);
+  assert.throws(() => preferredRoute(wrongKind), /kind/i);
+});
+
+test("Client Core verifies the canonical Hosted signing fixture without private reachability diagnostics", async () => {
   const fixture = JSON.parse(readFileSync("fixtures/signing/document-signing-fixture.json", "utf8"));
-  assert.equal(fixture.routeDocument.routes[0].lastCheckError.length > 0, true);
+  assert.equal(fixture.routeDocument.kind, "route-document");
+  assert.equal(Object.hasOwn(fixture.routeDocument.routes[0], "lastCheckError"), false);
   assert.equal(fixture.routeDocument.routes[0].lastCheckedAt.length > 0, true);
   await verifyHostedRouteDocument(
     fixture.routeDocument,
@@ -2107,8 +2332,8 @@ test("Client Core verifies the canonical Cloud signing fixture with adjacent las
 test("Client Core verifies Hosted canonical UTF-8, HTML-sensitive text, and Unicode separators", async () => {
   const fixture = JSON.parse(readFileSync("fixtures/signing/document-signing-adversarial-fixture.json", "utf8"));
   assert.match(fixture.routeDocument.serverName, /Cinéma <Portico> & 雪/);
-  assert.match(fixture.routeDocument.routes[0].lastCheckError, /\u2028/);
-  assert.match(fixture.routeDocument.routes[0].lastCheckError, /\u2029/);
+  assert.equal(fixture.routeDocument.kind, "route-document");
+  assert.equal(Object.hasOwn(fixture.routeDocument.routes[0], "lastCheckError"), false);
   await verifyHostedRouteDocument(
     fixture.routeDocument,
     fixture.routeDocument.serverId,
@@ -2274,6 +2499,9 @@ test("hosted connector prefers healthy LAN routes before public direct routes", 
   const insecureLan = { type: "lan_ip_encoded", url: "http://10-0-0-6.ptc.direct.example", quality: "reported" };
 
   assert.deepEqual(routesForConnection({
+    kind: "route-document",
+    documentVersion: 1,
+    endpointGeneration: 1,
     authModes: ["portico"],
     routes: [checkingPublic, rawLan, reachablePublic, encodedLan, staleLan, insecureLan, verifiedFallback]
   }).map((route) => route.url), [
@@ -2284,6 +2512,9 @@ test("hosted connector prefers healthy LAN routes before public direct routes", 
     "https://checking.example"
   ]);
   assert.deepEqual(routesForConnection({
+    kind: "route-document",
+    documentVersion: 1,
+    endpointGeneration: 1,
     authModes: ["portico"],
     routes: [checkingPublic, rawLan, reachablePublic, encodedLan, staleLan, insecureLan, verifiedFallback]
   }, "public-first").map((route) => route.url), [
@@ -2357,6 +2588,51 @@ test("hosted connector retries transient route verification before failing", asy
   assert.equal(sessionSet.apiBaseUrl, "https://retry.direct.getportico.tv");
   assert.equal(sessionSet.bootstrapAccessToken, undefined);
   assert.equal(sessionSet.refreshToken, undefined);
+});
+
+test("route-failure reporting sends only opaque bounded evidence and deduplicates a route generation", async () => {
+  const reports = [];
+  const document = signedRouteDocument({
+    endpointGeneration: 23,
+    serverId: "srv_private_failure",
+    serverName: "Private failure",
+    assignedHostname: "private-failure.direct.getportico.tv",
+    issuedAt: "2026-05-23T00:00:00Z",
+    expiresAt: "2026-05-23T00:05:00Z",
+    authModes: ["portico"],
+    certificate: {status: "valid"},
+    membership: {role: "owner"},
+    routes: [{
+      type: "public_direct",
+      url: "https://private-failure.direct.getportico.tv:32500",
+      host: "private-failure.direct.getportico.tv",
+      address: "203.0.113.222",
+      quality: "reachable"
+    }]
+  });
+  const options = {
+    hostedClient: {
+      routes: async () => document,
+      reportRouteFailure: async (_serverId, body) => { reports.push(structuredClone(body)); return {ok: true, matched: true}; }
+    },
+    routeProbeFetch: async () => { throw new TypeError("raw TLS failure at 203.0.113.222"); },
+    retryDelaysMs: [],
+    routePreference: "public-only",
+    trustedHostedDocumentKeys: {[hostedDocumentTestKeyId]: hostedDocumentTestPublicKey},
+    runtime: clientAttachmentRuntime,
+    now: () => new Date("2026-05-23T00:01:00Z")
+  };
+  const server = {...testServerIdentity(), id: "srv_private_failure", name: "Private failure", preferredAuthMode: "portico"};
+  await assert.rejects(discoverHostedServerRoute(server, options), /secure connection/i);
+  await new Promise(resolve => setImmediate(resolve));
+  await assert.rejects(discoverHostedServerRoute(server, options), /secure connection/i);
+  await new Promise(resolve => setImmediate(resolve));
+
+  assert.deepEqual(reports, [{routeType: "public_direct", endpointGeneration: 23, category: "transport_failed"}]);
+  const encoded = JSON.stringify(reports);
+  for (const privateValue of ["private-failure.direct.getportico.tv", "203.0.113.222", "raw TLS failure", "https://"]) {
+    assert.equal(encoded.includes(privateValue), false);
+  }
 });
 
 test("hosted connector never retries route-document integrity failures", async () => {
@@ -2706,7 +2982,7 @@ test("documented resource URL helpers do not leak account credentials", () => {
   assert.equal(client.logsStreamUrl(), "https://server.example/api/logs/stream");
 });
 
-test("public metadata and TV setup methods use documented API paths", async () => {
+test("public metadata and live TV methods use documented API paths", async () => {
   const calls = [];
   const client = createPorticoClient({
     apiBaseUrl: "https://server.example",
@@ -2716,43 +2992,10 @@ test("public metadata and TV setup methods use documented API paths", async () =
     transport: {
       fetch: async (input, init) => {
         calls.push({ input: String(input), init });
-        if (String(input).endsWith("/api/auth/tv-setup/redeem")) {
-          return jsonResponse({
-            tokenType: "Bearer",
-            accessToken: "tv-access",
-            accessExpiresAt: "2026-01-01T00:15:00Z",
-            refreshToken: "tv-refresh",
-            refreshExpiresAt: "2026-01-31T00:00:00Z",
-            authority: "local",
-            accountId: "account-1",
-            serverId: "server-1",
-            profileId: "profile-1",
-            authorizationRevision: "1",
-            user: {},
-            device: {}
-          });
-        }
         return jsonResponse({
           ok: true,
           items: [],
           authenticated: true,
-          setupSessionId: "setup1",
-          code: "ABCD-EFGH",
-          status: "grant_ready",
-          protocolVersion: 1,
-          service: "_portico-setup._tcp.local.",
-          devicePublicKey: "pub",
-          deviceName: "TV",
-          platform: "tv",
-          expiresAt: "2026-01-01T00:00:00Z",
-          pollIntervalSeconds: 2,
-          encryptedGrant: {
-            version: 1,
-            algorithm: "X25519-HKDF-SHA256-AESGCM",
-            serverPublicKey: "server",
-            nonce: "nonce",
-            ciphertext: "ciphertext"
-          },
           sessionId: "live1",
           media: { id: "chan1", title: "Channel", type: "live_channel", state: {} },
           sourceUrl: "/api/live-tv/streams/chan1",
@@ -2770,7 +3013,7 @@ test("public metadata and TV setup methods use documented API paths", async () =
           subtitleStreams: [],
           chapters: [],
           queue: [],
-          resources: []
+          resources: [{id: "live-active", sourceUrl: "/api/live-tv/streams/chan1", streamFormat: "hls", default: true}]
         });
       }
     }
@@ -2780,10 +3023,6 @@ test("public metadata and TV setup methods use documented API paths", async () =
   await client.branding();
   await client.localization();
   await client.remoteAccessHealth();
-  await client.createTVSetupSession({ installationId: "tv-installation-0001", devicePublicKey: "pub", platform: "tvos" });
-  await client.tvSetupSession("setup 1");
-  await client.authorizeTVSetupGrant({ code: "ABCD-EFGH" });
-  await client.redeemTVSetupGrant({ setupSessionId: "setup1", grantSecret: "secret" });
   await client.openLiveTvStream("chan1", { intent: { networkClass: "wifi", qualityProfile: "high" } });
   await client.closeLiveTvStream("chan1", "live1");
   await client.playDvrRecording("rec 1", { startSeconds: 42 });
@@ -2793,22 +3032,15 @@ test("public metadata and TV setup methods use documented API paths", async () =
     "https://server.example/api/branding",
     "https://server.example/api/localization",
     "https://server.example/api/remote-access/health",
-    "https://server.example/api/auth/tv-setup/sessions",
-    "https://server.example/api/auth/tv-setup/sessions/setup%201",
-    "https://server.example/api/auth/tv-setup/grants",
-    "https://server.example/api/auth/tv-setup/redeem",
     "https://server.example/api/live-tv/streams/chan1/open",
     "https://server.example/api/live-tv/streams/chan1/close",
     "https://server.example/api/dvr/recordings/rec%201/playback"
   ]);
-  assert.equal(calls[4].init.method, "POST");
-  assert.equal(calls[4].init.headers["X-Portico-CSRF"], "csrf-local");
-  assert.equal(JSON.parse(calls[4].init.body).platform, "tvos");
-  assert.equal(JSON.parse(calls[8].init.body).clientProfile.maxAudioChannels, 6);
-  assert.equal(JSON.parse(calls[8].init.body).clientInstanceId, "test-client");
-  assert.deepEqual(JSON.parse(calls[8].init.body).intent, { networkClass: "wifi", qualityProfile: "high" });
-  assert.equal(JSON.parse(calls[9].init.body).sessionId, "live1");
-  assert.deepEqual(JSON.parse(calls[10].init.body), {
+  assert.equal(JSON.parse(calls[4].init.body).clientProfile.maxAudioChannels, 6);
+  assert.equal(JSON.parse(calls[4].init.body).clientInstanceId, "test-client");
+  assert.deepEqual(JSON.parse(calls[4].init.body).intent, { networkClass: "wifi", qualityProfile: "high" });
+  assert.equal(JSON.parse(calls[5].init.body).sessionId, "live1");
+  assert.deepEqual(JSON.parse(calls[6].init.body), {
     startSeconds: 42,
     clientInstanceId: "test-client",
     clientProfile: { platform: "tv-test", supportsHls: true, maxAudioChannels: 6 }
@@ -2841,7 +3073,7 @@ test("playback methods inject provided playback profile and accept canonical arr
           subtitleStreams: [],
           chapters: [],
           queue: [],
-          resources: []
+          resources: [{id: "movie-active", sourceUrl: "/api/media/m1/stream", streamFormat: "http", default: true}]
         });
       }
     }
@@ -3022,7 +3254,7 @@ test("playbackSourceFor selects a server-issued HLS audio resource", () => {
   const source = playbackSourceFor({
     sessionId: "s1",
     media: { id: "m1", title: "Movie", type: "movie", state: {} },
-    sourceUrl: "/opaque/audio-main",
+    sourceUrl: "/opaque/audio-commentary?rendition=commentary",
     streamFormat: "hls",
     directPlay: false,
     decision: { mode: "direct_stream", reason: "", requiresTranscode: true, isProxied: true, isServerCached: true },
@@ -3032,11 +3264,10 @@ test("playbackSourceFor selects a server-issued HLS audio resource", () => {
     chapters: [],
     queue: [],
     resources: [
-      { id: "main", sourceUrl: "/opaque/audio-main", streamFormat: "hls", qualityId: "original", audioStreamId: "audio_main", subtitleMode: "off" },
-      { id: "commentary", sourceUrl: "/opaque/audio-commentary?authorization=opaque", streamFormat: "hls", qualityId: "original", audioStreamId: "audio_commentary", subtitleMode: "off" }
+      { id: "commentary", sourceUrl: "/opaque/audio-commentary?rendition=commentary", streamFormat: "hls", qualityId: "original", audioStreamId: "audio_commentary", subtitleMode: "off", default: true }
     ]
   }, (path) => `https://server.example${path}`, { streamFormat: "hls", quality: "original", audioStreamId: "audio_commentary" });
-  assert.equal(source, "https://server.example/opaque/audio-commentary?authorization=opaque");
+  assert.equal(source, "https://server.example/opaque/audio-commentary?rendition=commentary");
 });
 
 test("playbackSourceFor selects the exact server-issued subtitle resource", () => {
@@ -3053,8 +3284,7 @@ test("playbackSourceFor selects the exact server-issued subtitle resource", () =
     chapters: [],
     queue: [],
     resources: [
-      { id: "burn", sourceUrl: "/opaque/subtitle-burn", streamFormat: "hls", qualityId: "original", subtitleStreamId: "burn", subtitleMode: "burn_in" },
-      { id: "text", sourceUrl: "/opaque/subtitle-text", streamFormat: "hls", qualityId: "original", subtitleStreamId: "sidecar", subtitleMode: "text" }
+      { id: "text", sourceUrl: "/opaque/subtitle-text", streamFormat: "hls", qualityId: "original", subtitleStreamId: "sidecar", subtitleMode: "text", default: true }
     ]
   }, (path) => `https://server.example${path}`, { streamFormat: "hls", quality: "original", burnInSubtitleId: "burn", textSubtitleId: "sidecar" });
   assert.equal(source, "https://server.example/opaque/subtitle-text");
@@ -3889,4 +4119,60 @@ test("normalizePlaybackResponse tolerates missing arrays", () => {
   assert.deepEqual(normalized.queue, []);
   assert.equal(normalized.repeatMode, "off");
   assert.equal(normalized.queueRevision, 0);
+});
+
+test("download and Watch With Friends lifecycle requests forward cancellation signals", async () => {
+  const calls = [];
+  const client = createPorticoClient({
+    apiBaseUrl: "https://server.example",
+    transport: {
+      fetch: (url, init) => new Promise((resolve, reject) => {
+        calls.push({ url: String(url), init });
+        init.signal?.addEventListener("abort", () => reject(init.signal.reason ?? new DOMException("Aborted", "AbortError")), { once: true });
+      })
+    }
+  });
+  const controller = new AbortController();
+  const signal = controller.signal;
+
+  const pending = [
+    client.downloadOptions("media-1", { signal }),
+    client.watchWithFriendsGroup("group-1", { signal }),
+    client.leaveWatchWithFriendsGroup("group-1", { signal }),
+    client.updateWatchWithFriendsMemberState("group-1", { state: "paused", positionSeconds: 12 }, { signal }),
+  ];
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(calls.length, 4);
+  controller.abort();
+  await Promise.allSettled(pending);
+  assert.equal(calls.every(call => call.init.signal?.aborted === true), true);
+});
+
+test("library scan client exposes the durable operation lifecycle and required modes", async () => {
+  const calls = [];
+  const client = createPorticoClient({
+    apiBaseUrl: "https://server.example",
+    transport: {
+      fetch: async (url, init = {}) => {
+        calls.push({ url: String(url), init });
+        return jsonResponse({});
+      }
+    }
+  });
+
+  await client.scanLibrary("library/1", { mode: "quick" });
+  await client.libraryScanOperations("library/1");
+  await client.libraryScanReview("library/1", { limit: 25, cursor: "next page" });
+  await client.libraryScanRuns("library/1", { limit: 10 });
+  await client.cancelLibraryScan("library/1");
+  await client.retryLibraryScan("library/1", { runId: "run-7" });
+
+  assert.equal(calls[0].url.endsWith("/api/libraries/library%2F1/scan"), true);
+  assert.equal(calls[0].init.body, JSON.stringify({ mode: "quick" }));
+  assert.equal(calls[1].url.endsWith("/api/libraries/library%2F1/scan-operations"), true);
+  assert.equal(calls[2].url.includes("/scan-review?limit=25&cursor=next+page"), true);
+  assert.equal(calls[3].url.endsWith("/scan-runs?limit=10"), true);
+  assert.equal(calls[4].url.endsWith("/scan/cancel"), true);
+  assert.equal(calls[5].url.endsWith("/scan/retry"), true);
+  assert.equal(calls[5].init.body, JSON.stringify({ runId: "run-7" }));
 });

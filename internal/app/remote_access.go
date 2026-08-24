@@ -154,6 +154,7 @@ type RemoteAccessClaim struct {
 	StartedAt        string `json:"startedAt"`
 	HostedReady      bool   `json:"hostedReady"`
 	LocalOwnerUserID string `json:"localOwnerUserId,omitempty"`
+	ServerName       string `json:"serverName,omitempty"`
 }
 
 type RemoteAccessMember struct {
@@ -181,8 +182,12 @@ type RemotePolicySync struct {
 }
 
 type RemotePolicySnapshot struct {
+	Kind                     string                          `json:"kind"`
 	Audience                 string                          `json:"audience"`
 	SnapshotID               string                          `json:"snapshotId"`
+	Generation               int64                           `json:"generation,omitempty"`
+	Digest                   string                          `json:"digest"`
+	PolicyDigest             string                          `json:"policyDigest"`
 	Version                  int                             `json:"version"`
 	ServerID                 string                          `json:"serverId"`
 	Members                  []RemoteAccessMember            `json:"members"`
@@ -200,7 +205,6 @@ type RemoteDeletedAccountTombstone struct {
 }
 
 type RemotePermissionTemplate struct {
-	LibraryIDs       []string        `json:"libraryIds,omitempty"`
 	Permissions      map[string]bool `json:"permissions,omitempty"`
 	MaxContentRating string          `json:"maxContentRating,omitempty"`
 }
@@ -457,12 +461,13 @@ func isLocalSetupHost(host string) bool {
 	return ip != nil && (ip.IsPrivate() || ip.IsLinkLocalUnicast())
 }
 
-func remoteAccessClaimHTTPClient() *http.Client {
+func hostedServicesHTTPClient() *http.Client {
 	return &http.Client{
-		// Claim operation keys, bearers, and response receipts are all
+		Timeout: 12 * time.Second,
+		// Operation keys, bearers, and response receipts are all
 		// credentials. Do not let net/http forward them to a redirect target.
 		CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
-			return errors.New("Hosted Services claim request redirected")
+			return errors.New("Hosted Services request redirected")
 		},
 	}
 }
@@ -505,7 +510,7 @@ func (s *Server) startHostedClaim(ctx context.Context, settings RemoteAccessSett
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Idempotency-Key", operationKey)
-	resp, err := remoteAccessClaimHTTPClient().Do(req)
+	resp, err := hostedServicesHTTPClient().Do(req)
 	if err != nil {
 		return RemoteAccessClaim{}, "", err
 	}
@@ -533,8 +538,8 @@ func (s *Server) startHostedClaim(ctx context.Context, settings RemoteAccessSett
 	if hostedClaim.ClaimID == "" || hostedClaim.ClaimCode == "" || hostedClaim.ClaimToken == "" || hostedClaim.LostResponseReceipt == "" {
 		return RemoteAccessClaim{}, "", errors.New("Hosted Services claim response missing claim credentials or response receipt")
 	}
-	if hostedClaim.ClaimURL != "" && strings.Contains(hostedClaim.ClaimURL, hostedClaim.ClaimToken) {
-		return RemoteAccessClaim{}, "", errors.New("Hosted Services claim URL must not contain the claim token")
+	if err := validateHostedClaimURL(settings.HostedBaseURL, hostedClaim.ClaimURL, hostedClaim.ClaimCode); err != nil {
+		return RemoteAccessClaim{}, "", fmt.Errorf("Hosted Services claim URL is invalid: %w", err)
 	}
 	return RemoteAccessClaim{
 		ClaimID:     hostedClaim.ClaimID,
@@ -545,7 +550,39 @@ func (s *Server) startHostedClaim(ctx context.Context, settings RemoteAccessSett
 		StartedAt:   time.Now().UTC().Format(time.RFC3339),
 		ExpiresAt:   hostedClaim.ExpiresAt,
 		HostedReady: true,
+		ServerName:  systemIdentity.FriendlyName,
 	}, hostedClaim.LostResponseReceipt, nil
+}
+
+func validateHostedClaimURL(hostedBaseURL, rawClaimURL, claimCode string) error {
+	expected, err := url.Parse(porticoHostedWebBaseURL(hostedBaseURL))
+	if err != nil || expected.Scheme == "" || expected.Host == "" {
+		return errors.New("expected Web origin is unavailable")
+	}
+	claimURL, err := url.Parse(strings.TrimSpace(rawClaimURL))
+	if err != nil || claimURL.Scheme == "" || claimURL.Host == "" {
+		return errors.New("claim URL is not absolute")
+	}
+	if claimURL.User != nil || claimURL.Fragment != "" || !sameHTTPOrigin(claimURL, expected) {
+		return errors.New("claim URL origin is not trusted")
+	}
+	if claimURL.Path != "/claim" {
+		return errors.New("claim URL path is not trusted")
+	}
+	query := claimURL.Query()
+	codes, ok := query["code"]
+	if !ok || len(codes) != 1 || strings.TrimSpace(codes[0]) != strings.TrimSpace(claimCode) {
+		return errors.New("claim URL code does not match the response")
+	}
+	for key, values := range query {
+		if key != "code" && key != "serverName" {
+			return errors.New("claim URL contains an unexpected parameter")
+		}
+		if len(values) != 1 {
+			return errors.New("claim URL contains duplicate parameters")
+		}
+	}
+	return nil
 }
 
 func (s *Server) persistRemoteAccessClaimStart(claim RemoteAccessClaim, claimReceipt string, settings RemoteAccessSettings) error {
@@ -637,7 +674,7 @@ func (s *Server) cancelHostedClaim(ctx context.Context, settings RemoteAccessSet
 	}
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Authorization", "Bearer "+claim.ClaimToken)
-	resp, err := remoteAccessClaimHTTPClient().Do(req)
+	resp, err := hostedServicesHTTPClient().Do(req)
 	if err != nil {
 		return err
 	}
@@ -1047,7 +1084,7 @@ func (s *Server) remoteAccessStatus() (RemoteAccessStatus, error) {
 		LocalTLSPortMatchesPublic:  localTLSPort > 0 && localTLSPort == settings.ManualPublicPort,
 		LocalTLSError:              localTLSError,
 		PorticoMembers:             members,
-		PolicySync:                 remotePolicySyncStatus(settings, members),
+		PolicySync:                 remotePolicySyncStatus(settings, members, s.loadRemotePolicyState(), time.Now().UTC()),
 		Claim:                      claim,
 		PorticoConnected:           settings.ServerID != "" && settings.ClaimStatus == "claimed",
 		GeneratedAt:                time.Now().UTC().Format(time.RFC3339),
@@ -1085,29 +1122,32 @@ func remoteAccessClaimPollProblem(err error) string {
 	return "Portico could not refresh the claim status. The claim will be checked again."
 }
 
-func remotePolicySyncStatus(settings RemoteAccessSettings, members []RemoteAccessMember) RemotePolicySync {
+func remotePolicySyncStatus(settings RemoteAccessSettings, members []RemoteAccessMember, policy remotePolicyState, now time.Time) RemotePolicySync {
 	if settings.ServerID == "" || settings.ClaimStatus != "claimed" {
 		return RemotePolicySync{Status: "local_only", Note: "This server is not connected to Portico, so Portico membership policy is not synced."}
 	}
-	var latest time.Time
-	for _, member := range members {
-		if parsed, err := time.Parse(time.RFC3339, member.LastSyncedAt); err == nil && parsed.After(latest) {
-			latest = parsed
-		}
-	}
-	if latest.IsZero() {
+	issuedAt, issuedErr := time.Parse(time.RFC3339Nano, strings.TrimSpace(policy.IssuedAt))
+	if issuedErr != nil || strings.TrimSpace(policy.SnapshotID) == "" {
 		return RemotePolicySync{Status: "missing", MemberCount: len(members), Stale: true, Note: "No Portico Account policy snapshot has been applied yet."}
 	}
-	stale := time.Since(latest) > 24*time.Hour
-	status := "current"
+	continuity := remotePolicyContinuity(policy, now)
+	stale := continuity != "valid"
+	status := continuity
 	note := "Portico Account membership policy has been applied to this server."
-	if stale {
-		status = "stale"
-		note = "Portico Account membership policy has not synced in more than 24 hours."
+	switch continuity {
+	case "grace":
+		note = "Portico Account services are unavailable. Existing sessions have bounded access while policy reconciliation continues."
+	case "hard-expired-draining":
+		note = "Portico Account policy has expired. Only already-established playback may finish while reconciliation continues."
+	case "hard-expired":
+		note = "Portico Account policy has expired. Hosted-member access requires policy reconciliation."
+	case "unknown":
+		status = "missing"
+		note = "Portico Account policy timing is unavailable and must be reconciled."
 	}
 	return RemotePolicySync{
 		Status:       status,
-		LastSyncedAt: latest.UTC().Format(time.RFC3339),
+		LastSyncedAt: issuedAt.UTC().Format(time.RFC3339),
 		MemberCount:  len(members),
 		Stale:        stale,
 		Note:         note,
@@ -1181,7 +1221,7 @@ func (s *Server) pollHostedClaim(ctx context.Context, claim RemoteAccessClaim, s
 	}
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("X-Portico-Claim-Receipt", claimReceipt)
-	resp, err := remoteAccessClaimHTTPClient().Do(req)
+	resp, err := hostedServicesHTTPClient().Do(req)
 	if err != nil {
 		return claim, settings, err
 	}
@@ -1283,7 +1323,7 @@ func (s *Server) acknowledgeHostedClaimResult(ctx context.Context, claim RemoteA
 	}
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("X-Portico-Claim-Receipt", claimReceipt)
-	resp, err := remoteAccessClaimHTTPClient().Do(req)
+	resp, err := hostedServicesHTTPClient().Do(req)
 	if err != nil {
 		return err
 	}
@@ -1329,7 +1369,7 @@ func (s *Server) hostedClaimResultAcknowledged(ctx context.Context, claim Remote
 	}
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("X-Portico-Claim-Receipt", claimReceipt)
-	resp, err := remoteAccessClaimHTTPClient().Do(req)
+	resp, err := hostedServicesHTTPClient().Do(req)
 	if err != nil {
 		return false, err
 	}
@@ -1355,8 +1395,7 @@ func (s *Server) saveRemoteAccessClaimActivation(activation remoteAccessClaimAct
 	if err != nil {
 		return err
 	}
-	_, err = s.execUserWrite(context.Background(), `INSERT INTO settings (key, value_json, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at = excluded.updated_at`, remoteAccessClaimActivationKey, string(bytes), time.Now().UTC().Format(time.RFC3339))
-	return err
+	return s.saveSecretSetting(remoteAccessClaimActivationKey, string(bytes))
 }
 
 func (s *Server) reconcileRemoteAccessClaimActivation() error {
@@ -1364,16 +1403,17 @@ func (s *Server) reconcileRemoteAccessClaimActivation() error {
 	if err != nil {
 		return err
 	}
-	raw, ok := all[remoteAccessClaimActivationKey].(map[string]any)
-	if !ok {
+	if _, ok := all[remoteAccessClaimActivationKey]; !ok {
 		return nil
 	}
-	bytes, err := json.Marshal(raw)
+	plaintext, err := s.secretSettingWithError(remoteAccessClaimActivationKey)
 	if err != nil {
+		// Preserve the journal when its envelope cannot be opened. Removing it
+		// would turn a recoverable key/provider outage into credential loss.
 		return err
 	}
 	var activation remoteAccessClaimActivation
-	if err := json.Unmarshal(bytes, &activation); err != nil {
+	if err := json.Unmarshal([]byte(plaintext), &activation); err != nil {
 		return err
 	}
 	if activation.Claim.Status != "claimed" || activation.Settings.ServerID == "" || activation.ServerCredential == "" {
@@ -1556,11 +1596,26 @@ func (s *Server) sendRemoteAccessHeartbeat(ctx context.Context, settings RemoteA
 }
 
 type remoteAccessHeartbeatOptions struct {
-	SyncPolicy bool
+	SyncPolicy     bool
+	SuppressRepair bool
 }
 
 type remoteAccessCertificateOptions struct {
 	Force bool
+}
+
+type remoteAccessRepairSignal struct {
+	RepairRequested         bool   `json:"repairRequested"`
+	Reason                  string `json:"reason"`
+	Status                  string `json:"status"`
+	RouteType               string `json:"routeType"`
+	Host                    string `json:"host"`
+	LastRequestedAt         string `json:"lastRequestedAt"`
+	HostedServicesReachable bool   `json:"hostedServicesReachable"`
+	PublicRouteStatus       string `json:"publicRouteStatus"`
+	PublicRouteError        string `json:"publicRouteError"`
+	PublicRouteCheckedAt    string `json:"publicRouteCheckedAt"`
+	PublicRouteHost         string `json:"publicRouteHost"`
 }
 
 func (s *Server) sendRemoteAccessHeartbeatWithOptions(ctx context.Context, settings RemoteAccessSettings, options remoteAccessHeartbeatOptions) error {
@@ -1580,6 +1635,11 @@ func (s *Server) sendRemoteAccessHeartbeatWithOptions(ctx context.Context, setti
 		serverName = systemIdentity.FriendlyName
 	}
 	compatibility := s.compatibilityEnvelope()
+	policyState := s.loadRemotePolicyState()
+	policyDigest := ""
+	if digest, digestErr := normalizedSHA256Digest(policyState.PolicyDigest); digestErr == nil {
+		policyDigest = digest
+	}
 	payload := map[string]any{
 		"serverId":                      settings.ServerID,
 		"serverName":                    serverName,
@@ -1607,6 +1667,7 @@ func (s *Server) sendRemoteAccessHeartbeatWithOptions(ctx context.Context, setti
 		"preferredAuthMode":             settings.PreferredRemoteAuthMode,
 		"lastReachabilityTestResult":    settings.LastReachabilityResult,
 		"lanEndpointCandidates":         s.lanEndpointCandidates(settings),
+		"policyDigest":                  policyDigest,
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {
@@ -1622,7 +1683,7 @@ func (s *Server) sendRemoteAccessHeartbeatWithOptions(ctx context.Context, setti
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Authorization", "Bearer "+credential)
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := hostedServicesHTTPClient().Do(req)
 	if err != nil {
 		return err
 	}
@@ -1632,16 +1693,23 @@ func (s *Server) sendRemoteAccessHeartbeatWithOptions(ctx context.Context, setti
 		return err
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("Hosted Services heartbeat returned %s", resp.Status)
+		return &hostedHTTPError{
+			StatusCode: resp.StatusCode,
+			Status:     resp.Status,
+			RetryAfter: parseHostedRetryAfter(resp.Header.Get("Retry-After"), time.Now()),
+		}
 	}
 	var response struct {
-		AssignedHostname    string `json:"assignedHostname"`
-		RemoteAccessEnabled *bool  `json:"remoteAccessEnabled,omitempty"`
-		PublicIP            string `json:"publicIp,omitempty"`
-		LeaseSeconds        int64  `json:"leaseSeconds,omitempty"`
-		RepairPollSeconds   int64  `json:"repairPollSeconds,omitempty"`
-		StateChanged        bool   `json:"stateChanged,omitempty"`
-		TopologyChanged     bool   `json:"topologyChanged,omitempty"`
+		AssignedHostname    string                    `json:"assignedHostname"`
+		RemoteAccessEnabled *bool                     `json:"remoteAccessEnabled,omitempty"`
+		PublicIP            string                    `json:"publicIp,omitempty"`
+		LeaseSeconds        int64                     `json:"leaseSeconds,omitempty"`
+		RepairPollSeconds   int64                     `json:"repairPollSeconds,omitempty"`
+		StateChanged        bool                      `json:"stateChanged,omitempty"`
+		TopologyChanged     bool                      `json:"topologyChanged,omitempty"`
+		Repair              *remoteAccessRepairSignal `json:"repair,omitempty"`
+		PolicyDigest        string                    `json:"policyDigest,omitempty"`
+		PolicyChanged       bool                      `json:"policyChanged,omitempty"`
 	}
 	if len(bytes.TrimSpace(responseBytes)) > 0 {
 		if err := json.Unmarshal(responseBytes, &response); err != nil {
@@ -1674,9 +1742,14 @@ func (s *Server) sendRemoteAccessHeartbeatWithOptions(ctx context.Context, setti
 		now := time.Now().UTC().Format(time.RFC3339)
 		if settings.LastPublicIPAddress != "" && settings.LastPublicIPAddress != publicIP {
 			settings.LastRouteRepairAt = now
-			settings.LastRouteRepairReason = "hosted_public_ip_changed"
 			settings.LastReachabilityCheckAt = now
-			settings.LastReachabilityResult = "repair_hosted_public_ip_changed"
+			// Preserve the more actionable local topology-change cause when this
+			// heartbeat was sent by the local network monitor. Otherwise record the
+			// public-address change first observed by Hosted Services.
+			if settings.LastRouteRepairReason != "network_changed" {
+				settings.LastRouteRepairReason = "hosted_public_ip_changed"
+				settings.LastReachabilityResult = "repair_hosted_public_ip_changed"
+			}
 		}
 		settings.LastPublicIPAddress = publicIP
 		settings.LastPublicIPCheckAt = now
@@ -1696,6 +1769,9 @@ func (s *Server) sendRemoteAccessHeartbeatWithOptions(ctx context.Context, setti
 			}
 		}
 	}
+	if response.Repair != nil {
+		updateRemoteAccessPublicRouteDiagnostics(&settings, response.Repair.PublicRouteStatus, response.Repair.PublicRouteError, response.Repair.PublicRouteCheckedAt)
+	}
 	settings.LastHeartbeatAt = time.Now().UTC().Format(time.RFC3339)
 	settings.LastHeartbeatError = ""
 	if settings.LastHostedRemoteAccessState == "" {
@@ -1704,7 +1780,28 @@ func (s *Server) sendRemoteAccessHeartbeatWithOptions(ctx context.Context, setti
 	if err := s.saveRemoteAccessSettings(settings); err != nil {
 		return err
 	}
-	if options.SyncPolicy {
+	if response.Repair != nil && response.Repair.RepairRequested && !options.SuppressRepair {
+		signal := *response.Repair
+		s.startOwnedAsync("remote-access-heartbeat-repair", func(ctx context.Context) {
+			current, loadErr := s.remoteAccessSettings()
+			if loadErr != nil {
+				s.recordLog("warn", "Remote access heartbeat repair state reload failed", map[string]string{"error": loadErr.Error()})
+				return
+			}
+			if _, repairErr := s.handleRemoteAccessRepairSignal(ctx, current, signal, false); repairErr != nil {
+				s.recordLog("warn", "Remote access heartbeat repair failed", map[string]string{"error": repairErr.Error()})
+			}
+		})
+	}
+	now := time.Now().UTC()
+	responsePolicyDigest, responseDigestErr := normalizedSHA256Digest(response.PolicyDigest)
+	hasAuthoritativePolicyDigest := responseDigestErr == nil
+	localPolicyAbsent := strings.TrimSpace(policyState.SnapshotID) == "" || policyDigest == ""
+	policyRenewalDue := remotePolicyRenewalDue(policyState, now)
+	knownDigestSync := hasAuthoritativePolicyDigest && (response.PolicyChanged || !strings.EqualFold(responsePolicyDigest, policyDigest) || policyRenewalDue)
+	unknownDigestSync := !hasAuthoritativePolicyDigest && (localPolicyAbsent || policyRenewalDue) && s.claimUnknownPolicySyncAttempt(now)
+	shouldSyncPolicy := options.SyncPolicy && (knownDigestSync || unknownDigestSync)
+	if shouldSyncPolicy {
 		s.startOwnedAsync("remote-policy-heartbeat-sync", func(ctx context.Context) {
 			syncCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
 			defer cancel()
@@ -1712,8 +1809,29 @@ func (s *Server) sendRemoteAccessHeartbeatWithOptions(ctx context.Context, setti
 				s.recordLog("warn", "Portico account member sync after heartbeat failed", map[string]string{"error": err.Error()})
 			}
 		})
+	} else if options.SyncPolicy && policyState.AckPending {
+		s.startOwnedAsync("remote-policy-heartbeat-ack", func(ctx context.Context) {
+			ackCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
+			defer cancel()
+			if err := s.retryRemotePolicyAck(ackCtx, settings, credential); err != nil {
+				s.recordLog("warn", "Portico policy snapshot ack retry failed", map[string]string{"snapshotId": policyState.SnapshotID, "error": err.Error()})
+			}
+		})
 	}
 	return nil
+}
+
+func (s *Server) claimUnknownPolicySyncAttempt(now time.Time) bool {
+	const cooldown = 5 * time.Minute
+	for {
+		next := s.remotePolicyNextUnknownSyncUnix.Load()
+		if next > now.Unix() {
+			return false
+		}
+		if s.remotePolicyNextUnknownSyncUnix.CompareAndSwap(next, now.Add(cooldown).Unix()) {
+			return true
+		}
+	}
 }
 
 func (s *Server) syncRemoteAccessMembers(ctx context.Context, settings RemoteAccessSettings, credential string) error {
@@ -1744,24 +1862,64 @@ func (s *Server) syncRemoteAccessPolicySnapshot(ctx context.Context, settings Re
 	if err := validateRemotePolicyMembershipAuthority(snapshot.Members); err != nil {
 		return fmt.Errorf("Hosted Services policy snapshot authority was rejected: %w", err)
 	}
+	snapshotDigest, err := normalizedSHA256Digest(snapshot.Digest)
+	if err != nil {
+		return fmt.Errorf("Hosted Services policy snapshot digest was rejected: %w", err)
+	}
+	policyDigest, err := normalizedSHA256Digest(snapshot.PolicyDigest)
+	if err != nil {
+		return fmt.Errorf("Hosted Services policy snapshot revision was rejected: %w", err)
+	}
 	if err := s.replaceRemoteAccessMembers(normalizeRemoteAccessMemberProfileURLs(settings.HostedBaseURL, snapshot.Members)); err != nil {
 		return err
 	}
 	if err := s.applyRemoteDeletedAccountTombstones(snapshot.DeletedAccountTombstones); err != nil {
 		return err
 	}
-	if err := s.saveRemotePolicyState(remotePolicyState{SnapshotID: snapshot.SnapshotID, IssuedAt: snapshot.IssuedAt}); err != nil {
+	policyState := remotePolicyState{
+		SnapshotID: snapshot.SnapshotID, SnapshotDigest: snapshotDigest, Generation: snapshot.Generation,
+		IssuedAt: snapshot.IssuedAt, ExpiresAt: snapshot.ExpiresAt, PolicyDigest: policyDigest, AckPending: true,
+	}
+	if err := s.saveRemotePolicyState(policyState); err != nil {
+		return err
+	}
+	if err := s.ackRemotePolicyState(ctx, settings, credential, policyState); err != nil {
+		s.recordLog("warn", "Portico policy snapshot ack failed", map[string]string{"snapshotId": snapshot.SnapshotID, "error": err.Error()})
+		return nil
+	}
+	policyState.AckPending = false
+	return s.saveRemotePolicyState(policyState)
+}
+
+func (s *Server) retryRemotePolicyAck(ctx context.Context, settings RemoteAccessSettings, credential string) error {
+	s.remotePolicySyncMu.Lock()
+	defer s.remotePolicySyncMu.Unlock()
+	state := s.loadRemotePolicyState()
+	if !state.AckPending {
+		return nil
+	}
+	if err := s.ackRemotePolicyState(ctx, settings, credential, state); err != nil {
+		return err
+	}
+	state.AckPending = false
+	return s.saveRemotePolicyState(state)
+}
+
+func (s *Server) ackRemotePolicyState(ctx context.Context, settings RemoteAccessSettings, credential string, state remotePolicyState) error {
+	if strings.TrimSpace(state.SnapshotID) == "" {
+		return errors.New("policy snapshot ID is missing")
+	}
+	snapshotDigest, err := normalizedSHA256Digest(state.SnapshotDigest)
+	if err != nil {
 		return err
 	}
 	ackBody, _ := json.Marshal(map[string]string{
-		"snapshotId": snapshot.SnapshotID,
+		"snapshotId": state.SnapshotID,
+		"digest":     snapshotDigest,
 		"status":     "applied",
 	})
 	ackEndpoint := strings.TrimRight(settings.HostedBaseURL, "/") + "/api/servers/" + url.PathEscape(settings.ServerID) + "/policy-sync-ack"
-	if err := s.hostedJSON(ctx, http.MethodPost, ackEndpoint, credential, ackBody, nil); err != nil {
-		s.recordLog("warn", "Portico policy snapshot ack failed", map[string]string{"snapshotId": snapshot.SnapshotID, "error": err.Error()})
-	}
-	return nil
+	return s.hostedJSON(ctx, http.MethodPost, ackEndpoint, credential, ackBody, nil)
 }
 
 func validateRemotePolicyMembershipAuthority(members []RemoteAccessMember) error {
@@ -2070,12 +2228,16 @@ func (s *Server) finalizeRemoteAccessCertificate(ctx context.Context, settings R
 		ExpiresAt           string `json:"expiresAt"`
 	}
 	var finalized certificateOrderResult
-	if err := s.hostedJSON(ctx, http.MethodPost, finalizeEndpoint, credential, nil, &finalized); err != nil {
+	finalizeDigest := sha256.Sum256([]byte(settings.ServerID + "\n" + orderID + "\nfinalize"))
+	finalizeKey := "certificate-finalize-" + hex.EncodeToString(finalizeDigest[:16])
+	metadata, err := s.hostedJSONWithIdempotencyMetadata(ctx, http.MethodPost, finalizeEndpoint, credential, nil, &finalized, finalizeKey)
+	if err != nil {
 		return err
 	}
 	pollEndpoint := strings.TrimSuffix(finalizeEndpoint, "/finalize")
 	pollCtx, cancel := context.WithTimeout(ctx, 10*time.Minute)
 	defer cancel()
+	pollAttempt := 0
 	for finalized.Status != "valid" || strings.TrimSpace(finalized.CertificateChainPEM) == "" {
 		switch finalized.Status {
 		case "pending", "queued", "leased", "finalizing", "":
@@ -2084,16 +2246,24 @@ func (s *Server) finalizeRemoteAccessCertificate(ctx context.Context, settings R
 		default:
 			return fmt.Errorf("certificate order returned unsupported status %s", finalized.Status)
 		}
-		timer := time.NewTimer(time.Second)
+		delay := remoteAccessCertificatePollInterval(orderID, pollAttempt, metadata.RetryAfter)
+		timer := time.NewTimer(delay)
 		select {
 		case <-pollCtx.Done():
 			timer.Stop()
 			return fmt.Errorf("wait for certificate order: %w", pollCtx.Err())
 		case <-timer.C:
 		}
-		if err := s.hostedJSON(pollCtx, http.MethodGet, pollEndpoint, credential, nil, &finalized); err != nil {
+		metadata, err = s.hostedJSONWithMetadata(pollCtx, http.MethodGet, pollEndpoint, credential, nil, &finalized)
+		if err != nil {
+			var hostedErr *hostedHTTPError
+			if errors.As(err, &hostedErr) && (hostedErr.StatusCode == http.StatusRequestTimeout || hostedErr.StatusCode == http.StatusTooManyRequests || hostedErr.StatusCode >= 500) {
+				pollAttempt++
+				continue
+			}
 			return err
 		}
+		pollAttempt++
 	}
 	if err := validateCertificateChainForPrivateKeyAndHostname([]byte(finalized.CertificateChainPEM), privateKey, certificateHostname); err != nil {
 		return err
@@ -2113,6 +2283,32 @@ func (s *Server) finalizeRemoteAccessCertificate(ctx context.Context, settings R
 	}
 	s.configureRemoteTLS(settings)
 	return nil
+}
+
+func remoteAccessCertificatePollInterval(orderID string, attempt int, retryAfter time.Duration) time.Duration {
+	if attempt < 0 {
+		attempt = 0
+	}
+	if attempt > 5 {
+		attempt = 5
+	}
+	base := 5 * time.Second * time.Duration(1<<attempt)
+	if base > 30*time.Second {
+		base = 30 * time.Second
+	}
+	digest := sha256.Sum256([]byte(orderID + "\n" + strconv.Itoa(attempt)))
+	offsetPercent := int(digest[0]%21) - 10
+	delay := base + (base * time.Duration(offsetPercent) / 100)
+	if retryAfter > delay {
+		delay = retryAfter
+	}
+	if delay < 5*time.Second {
+		return 5 * time.Second
+	}
+	if delay > time.Minute {
+		return time.Minute
+	}
+	return delay
 }
 
 func remoteAccessCertificateHostname(assignedHostname string) string {
@@ -2360,6 +2556,15 @@ func (s *Server) hostedJSON(ctx context.Context, method, endpoint, bearer string
 }
 
 func (s *Server) hostedJSONWithIdempotency(ctx context.Context, method, endpoint, bearer string, body []byte, out any, idempotencyKey string) error {
+	_, err := s.hostedJSONRequest(ctx, method, endpoint, bearer, body, out, 15*time.Second, idempotencyKey)
+	return err
+}
+
+func (s *Server) hostedJSONWithMetadata(ctx context.Context, method, endpoint, bearer string, body []byte, out any) (hostedResponseMetadata, error) {
+	return s.hostedJSONRequest(ctx, method, endpoint, bearer, body, out, 15*time.Second, "")
+}
+
+func (s *Server) hostedJSONWithIdempotencyMetadata(ctx context.Context, method, endpoint, bearer string, body []byte, out any, idempotencyKey string) (hostedResponseMetadata, error) {
 	return s.hostedJSONRequest(ctx, method, endpoint, bearer, body, out, 15*time.Second, idempotencyKey)
 }
 
@@ -2369,6 +2574,7 @@ type hostedHTTPError struct {
 	Code       string
 	Detail     string
 	MessageID  string
+	RetryAfter time.Duration
 }
 
 func (e *hostedHTTPError) Error() string {
@@ -2376,10 +2582,16 @@ func (e *hostedHTTPError) Error() string {
 }
 
 func (s *Server) hostedJSONWithTimeout(ctx context.Context, method, endpoint, bearer string, body []byte, out any, timeout time.Duration) error {
-	return s.hostedJSONRequest(ctx, method, endpoint, bearer, body, out, timeout, "")
+	_, err := s.hostedJSONRequest(ctx, method, endpoint, bearer, body, out, timeout, "")
+	return err
 }
 
-func (s *Server) hostedJSONRequest(ctx context.Context, method, endpoint, bearer string, body []byte, out any, timeout time.Duration, idempotencyKey string) error {
+type hostedResponseMetadata struct {
+	RetryAfter time.Duration
+}
+
+func (s *Server) hostedJSONRequest(ctx context.Context, method, endpoint, bearer string, body []byte, out any, timeout time.Duration, idempotencyKey string) (hostedResponseMetadata, error) {
+	metadata := hostedResponseMetadata{}
 	requestCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	var reader io.Reader
@@ -2388,22 +2600,22 @@ func (s *Server) hostedJSONRequest(ctx context.Context, method, endpoint, bearer
 	}
 	req, err := http.NewRequestWithContext(requestCtx, method, endpoint, reader)
 	if err != nil {
-		return err
+		return metadata, err
 	}
 	endpointURL, err := url.Parse(endpoint)
 	if err != nil || endpointURL.Scheme == "" || endpointURL.Host == "" {
-		return errors.New("Hosted request endpoint is not a valid origin")
+		return metadata, errors.New("Hosted request endpoint is not a valid origin")
 	}
 	settings, settingsErr := s.remoteAccessSettings()
 	if settingsErr != nil {
-		return fmt.Errorf("load Hosted authority: %w", settingsErr)
+		return metadata, fmt.Errorf("load Hosted authority: %w", settingsErr)
 	}
 	configuredURL, parseErr := url.Parse(strings.TrimSpace(settings.HostedBaseURL))
 	if parseErr != nil || !sameHTTPOrigin(endpointURL, configuredURL) {
-		return errors.New("Hosted request endpoint is outside the configured authority")
+		return metadata, errors.New("Hosted request endpoint is outside the configured authority")
 	}
 	if err := s.validateRemoteAccessSettings(settings); err != nil {
-		return fmt.Errorf("Hosted request authority is not approved: %w", err)
+		return metadata, fmt.Errorf("Hosted request authority is not approved: %w", err)
 	}
 	req.Header.Set("Accept", "application/json")
 	if body != nil {
@@ -2416,29 +2628,23 @@ func (s *Server) hostedJSONRequest(ctx context.Context, method, endpoint, bearer
 		req.Header.Set("Idempotency-Key", idempotencyKey)
 	}
 	client := &http.Client{Timeout: timeout}
-	client.CheckRedirect = func(next *http.Request, via []*http.Request) error {
-		if len(via) >= 5 {
-			return errors.New("Hosted request redirect limit exceeded")
-		}
-		if !sameHTTPOrigin(next.URL, endpointURL) {
-			// Never carry a server credential to a different origin, even if a
-			// future transport or proxy would otherwise preserve the header.
-			next.Header.Del("Authorization")
-			return errors.New("Hosted request redirect changed authority")
-		}
-		return nil
+	client.CheckRedirect = func(_ *http.Request, _ []*http.Request) error {
+		// Hosted endpoints are canonical API routes. Following even a same-origin
+		// redirect makes one-time operations and credential delivery ambiguous.
+		return errors.New("Hosted Services request redirected")
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return err
+		return metadata, err
 	}
 	defer resp.Body.Close()
+	metadata.RetryAfter = parseHostedRetryAfter(resp.Header.Get("Retry-After"), time.Now())
 	responseBytes, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 	if err != nil {
-		return err
+		return metadata, err
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		hostedErr := &hostedHTTPError{StatusCode: resp.StatusCode, Status: resp.Status}
+		hostedErr := &hostedHTTPError{StatusCode: resp.StatusCode, Status: resp.Status, RetryAfter: metadata.RetryAfter}
 		var problem struct {
 			Code      string `json:"code"`
 			Detail    string `json:"detail"`
@@ -2449,12 +2655,45 @@ func (s *Server) hostedJSONRequest(ctx context.Context, method, endpoint, bearer
 			hostedErr.Detail = strings.TrimSpace(problem.Detail)
 			hostedErr.MessageID = strings.TrimSpace(problem.MessageID)
 		}
-		return hostedErr
+		return metadata, hostedErr
 	}
 	if out != nil {
-		return json.Unmarshal(responseBytes, out)
+		return metadata, json.Unmarshal(responseBytes, out)
 	}
-	return nil
+	return metadata, nil
+}
+
+func parseHostedRetryAfter(value string, now time.Time) time.Duration {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return 0
+	}
+	if seconds, err := strconv.ParseFloat(value, 64); err == nil && seconds >= 0 {
+		delay := time.Duration(seconds * float64(time.Second))
+		if delay > time.Hour {
+			return time.Hour
+		}
+		return delay
+	}
+	if retryAt, err := http.ParseTime(value); err == nil {
+		delay := retryAt.Sub(now)
+		if delay < 0 {
+			return 0
+		}
+		if delay > time.Hour {
+			return time.Hour
+		}
+		return delay
+	}
+	return 0
+}
+
+func hostedRetryAfter(err error) time.Duration {
+	var hostedErr *hostedHTTPError
+	if errors.As(err, &hostedErr) {
+		return hostedErr.RetryAfter
+	}
+	return 0
 }
 
 func sameHTTPOrigin(a, b *url.URL) bool {
@@ -2484,7 +2723,6 @@ func (s *Server) runRemoteAccessHeartbeat(ctx context.Context) {
 	timer := time.NewTimer(0)
 	defer timer.Stop()
 	consecutiveFailures := 0
-	firstRun := true
 	var lastHeartbeat time.Time
 	for {
 		select {
@@ -2492,22 +2730,12 @@ func (s *Server) runRemoteAccessHeartbeat(ctx context.Context) {
 			return
 		case <-timer.C:
 		}
-		nextInterval := s.remoteAccessRepairPollInterval()
-		if leaseInterval := s.remoteAccessLeaseInterval(); leaseInterval < nextInterval {
-			nextInterval = leaseInterval
-		}
+		nextInterval := s.remoteAccessLeaseInterval()
 		settings, err := s.remoteAccessSettings()
 		if err == nil && settings.Enabled && settings.ClaimStatus == "claimed" && settings.ServerID != "" {
 			now := time.Now().UTC()
-			heartbeatAlreadySent := false
-			if repaired, repairErr := s.checkRemoteAccessRepairSignalAndRepair(ctx); repairErr != nil {
-				s.recordLog("warn", "Remote access repair signal check failed", map[string]string{"error": repairErr.Error()})
-			} else if repaired {
-				heartbeatAlreadySent = true
-				lastHeartbeat = now
-				if refreshed, loadErr := s.remoteAccessSettings(); loadErr == nil {
-					settings = refreshed
-				}
+			if lastHeartbeat.IsZero() && settings.LastHeartbeatAt != "" {
+				lastHeartbeat, _ = time.Parse(time.RFC3339, settings.LastHeartbeatAt)
 			}
 			repairReason := ""
 			signature := s.remoteAccessNetworkSignature()
@@ -2526,34 +2754,41 @@ func (s *Server) runRemoteAccessHeartbeat(ctx context.Context) {
 				settings.LastReachabilityCheckAt = now.Format(time.RFC3339)
 				settings.LastReachabilityResult = "repair_" + repairReason
 			}
-			heartbeatDue := firstRun || lastHeartbeat.IsZero() || now.Sub(lastHeartbeat) >= s.remoteAccessLeaseInterval() || repairReason != "" || consecutiveFailures > 0
-			if heartbeatAlreadySent {
-				consecutiveFailures = 0
-			} else if !heartbeatDue {
-				// The Hosted lease is still current. Repair polling stays independent
-				// and conditional, avoiding redundant heartbeat and public-IP calls.
+			heartbeatDue := lastHeartbeat.IsZero() || now.Sub(lastHeartbeat) >= s.remoteAccessLeaseInterval() || repairReason != "" || consecutiveFailures > 0
+			if !heartbeatDue {
+				// The Hosted lease is still current. Any pending repair directive
+				// arrives in the next heartbeat response without a separate poll.
 			} else if err := s.sendRemoteAccessHeartbeatWithOptions(ctx, settings, remoteAccessHeartbeatOptions{SyncPolicy: true}); err != nil {
 				consecutiveFailures++
 				settings.LastReachabilityCheckAt = now.Format(time.RFC3339)
 				settings.LastReachabilityResult = "heartbeat_failed"
-				settings.LastHeartbeatError = err.Error()
+				settings.LastHeartbeatError = remoteAccessFailureCode(err)
 				_ = s.saveRemoteAccessSettings(settings)
 				s.recordLog("warn", "Remote access heartbeat failed", map[string]string{"error": err.Error()})
 				nextInterval = remoteAccessFailureRetryInterval(consecutiveFailures)
+				if retryAfter := hostedRetryAfter(err); retryAfter > nextInterval {
+					nextInterval = retryAfter
+				}
 			} else {
 				consecutiveFailures = 0
 				lastHeartbeat = now
-				if !firstRun {
-					if updated, renewErr := s.ensureRemoteAccessCertificateFresh(ctx, settings); renewErr != nil {
-						s.recordLog("warn", "Remote access certificate renewal failed", map[string]string{"error": renewErr.Error()})
-					} else {
-						settings = updated
-						s.configureRemoteTLS(settings)
+				if refreshed, loadErr := s.remoteAccessSettings(); loadErr == nil {
+					settings = refreshed
+				}
+				previousCertificateStatus, previousCertificateExpiry := settings.CertificateStatus, settings.CertificateExpiresAt
+				if updated, renewErr := s.ensureRemoteAccessCertificateFresh(ctx, settings); renewErr != nil {
+					s.recordLog("warn", "Remote access certificate renewal failed", map[string]string{"error": renewErr.Error()})
+				} else {
+					settings = updated
+					s.configureRemoteTLS(settings)
+					if settings.CertificateStatus != previousCertificateStatus || settings.CertificateExpiresAt != previousCertificateExpiry {
+						if publishErr := s.sendRemoteAccessHeartbeatWithOptions(ctx, settings, remoteAccessHeartbeatOptions{SyncPolicy: false}); publishErr != nil {
+							s.recordLog("warn", "Remote access certificate publication heartbeat failed", map[string]string{"error": publishErr.Error()})
+						}
 					}
 				}
 			}
 		}
-		firstRun = false
 		timer.Reset(jitterRemoteAccessInterval(nextInterval))
 	}
 }
@@ -2561,7 +2796,7 @@ func (s *Server) runRemoteAccessHeartbeat(ctx context.Context) {
 func (s *Server) remoteAccessLeaseInterval() time.Duration {
 	seconds := s.remoteAccessLeaseSeconds.Load()
 	if seconds < 60 || seconds > 3600 {
-		return 5 * time.Minute
+		return 10 * time.Minute
 	}
 	// Hosted returns the lease lifetime, not the instant at which it should be
 	// renewed. Renew at two-thirds of that lifetime so jitter and a transient
@@ -2599,7 +2834,7 @@ func jitterRemoteAccessInterval(base time.Duration) time.Duration {
 	return interval
 }
 
-func (s *Server) runRemoteAccessPublicIPMonitor(ctx context.Context) {
+func (s *Server) runRemoteAccessNetworkMonitor(ctx context.Context) {
 	timer := time.NewTimer(time.Second)
 	defer timer.Stop()
 	for {
@@ -2609,18 +2844,24 @@ func (s *Server) runRemoteAccessPublicIPMonitor(ctx context.Context) {
 		case <-timer.C:
 		}
 		nextInterval := 10 * time.Second
-		changed, err := s.checkRemoteAccessPublicIPAndRepair(ctx)
+		changed, err := s.checkRemoteAccessNetworkAndRefresh(ctx)
 		if err != nil {
-			s.recordLog("warn", "Remote access public IP monitor failed", map[string]string{"error": err.Error()})
+			s.recordLog("warn", "Remote access network monitor failed", map[string]string{"error": err.Error()})
 			nextInterval = 20 * time.Second
 		} else if changed {
+			// Re-sample promptly once after a transition so a multi-step interface
+			// reconfiguration settles quickly without polling Hosted Services.
 			nextInterval = 2 * time.Second
 		}
 		timer.Reset(jitterRemoteAccessInterval(nextInterval))
 	}
 }
 
-func (s *Server) checkRemoteAccessPublicIPAndRepair(ctx context.Context) (bool, error) {
+func (s *Server) checkRemoteAccessNetworkAndRefresh(ctx context.Context) (bool, error) {
+	return s.checkRemoteAccessNetworkSignatureAndRefresh(ctx, s.remoteAccessNetworkSignature())
+}
+
+func (s *Server) checkRemoteAccessNetworkSignatureAndRefresh(ctx context.Context, signature string) (bool, error) {
 	settings, err := s.remoteAccessSettings()
 	if err != nil {
 		return false, err
@@ -2631,61 +2872,33 @@ func (s *Server) checkRemoteAccessPublicIPAndRepair(ctx context.Context) (bool, 
 	if s.secretSetting(remoteAccessCredentialKey) == "" {
 		return false, nil
 	}
-	publicIP, err := s.queryHostedObservedPublicIP(ctx, settings)
-	if err != nil {
-		return false, err
-	}
-	if publicIP == "" || publicIP == settings.LastPublicIPAddress {
-		if publicIP != "" && settings.LastPublicIPCheckAt == "" {
-			settings.LastPublicIPCheckAt = time.Now().UTC().Format(time.RFC3339)
-			_ = s.saveRemoteAccessSettings(settings)
-		}
+	signature = strings.TrimSpace(signature)
+	if signature == "" || signature == settings.LastNetworkSignature {
 		return false, nil
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
-	previousIP := settings.LastPublicIPAddress
-	settings.LastPublicIPAddress = publicIP
-	settings.LastPublicIPCheckAt = now
-	settings.LastRouteRepairAt = now
-	if previousIP == "" {
-		settings.LastRouteRepairReason = "public_ip_discovered"
-		settings.LastReachabilityResult = "repair_public_ip_discovered"
-	} else {
-		settings.LastRouteRepairReason = "public_ip_changed"
-		settings.LastReachabilityResult = "repair_public_ip_changed"
+	if settings.LastNetworkSignature == "" {
+		// Establish a local baseline without creating a Hosted request at startup.
+		// The heartbeat manager independently sends the initial lease heartbeat.
+		settings.LastNetworkSignature = signature
+		return false, s.saveRemoteAccessSettings(settings)
 	}
+	settings.LastNetworkSignature = signature
+	settings.LastNetworkChangeAt = now
+	settings.LastRouteRepairAt = now
+	settings.LastRouteRepairReason = "network_changed"
+	settings.LastReachabilityResult = "repair_network_changed"
 	settings.LastReachabilityCheckAt = now
 	if err := s.saveRemoteAccessSettings(settings); err != nil {
 		return false, err
 	}
 	if err := s.sendRemoteAccessHeartbeatWithOptions(ctx, settings, remoteAccessHeartbeatOptions{SyncPolicy: false}); err != nil {
-		settings.LastHeartbeatError = err.Error()
+		settings.LastHeartbeatError = remoteAccessFailureCode(err)
 		_ = s.saveRemoteAccessSettings(settings)
 		return true, err
 	}
-	s.recordLog("info", "Remote access public IP change pushed to Hosted Services", map[string]string{"reason": settings.LastRouteRepairReason})
+	s.recordLog("info", "Remote access network change pushed to Hosted Services", map[string]string{"reason": settings.LastRouteRepairReason})
 	return true, nil
-}
-
-func (s *Server) runRemoteAccessRepairSignalMonitor(ctx context.Context) {
-	timer := time.NewTimer(2 * time.Second)
-	defer timer.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-timer.C:
-		}
-		nextInterval := 3 * time.Second
-		repaired, err := s.checkRemoteAccessRepairSignalAndRepair(ctx)
-		if err != nil {
-			s.recordLog("warn", "Remote access repair signal monitor failed", map[string]string{"error": err.Error()})
-			nextInterval = 15 * time.Second
-		} else if repaired {
-			nextInterval = 2 * time.Second
-		}
-		timer.Reset(nextInterval)
-	}
 }
 
 func (s *Server) checkRemoteAccessRepairSignalAndRepair(ctx context.Context) (bool, error) {
@@ -2700,19 +2913,7 @@ func (s *Server) checkRemoteAccessRepairSignalAndRepair(ctx context.Context) (bo
 	if credential == "" {
 		return false, nil
 	}
-	var signal struct {
-		RepairRequested         bool   `json:"repairRequested"`
-		Reason                  string `json:"reason"`
-		Status                  string `json:"status"`
-		RouteType               string `json:"routeType"`
-		Host                    string `json:"host"`
-		LastRequestedAt         string `json:"lastRequestedAt"`
-		HostedServicesReachable bool   `json:"hostedServicesReachable"`
-		PublicRouteStatus       string `json:"publicRouteStatus"`
-		PublicRouteError        string `json:"publicRouteError"`
-		PublicRouteCheckedAt    string `json:"publicRouteCheckedAt"`
-		PublicRouteHost         string `json:"publicRouteHost"`
-	}
+	var signal remoteAccessRepairSignal
 	endpoint := strings.TrimRight(settings.HostedBaseURL, "/") + "/api/servers/" + url.PathEscape(settings.ServerID) + "/repair-signal"
 	unchanged, err := s.fetchRemoteAccessRepairSignal(ctx, endpoint, credential, &signal)
 	if err != nil {
@@ -2727,16 +2928,28 @@ func (s *Server) checkRemoteAccessRepairSignalAndRepair(ctx context.Context) (bo
 	if !signal.RepairRequested {
 		return false, nil
 	}
-	if publicIP, ipErr := s.queryHostedObservedPublicIP(ctx, settings); ipErr != nil {
-		s.recordLog("warn", "Remote access repair signal public IP refresh failed", map[string]string{"error": ipErr.Error()})
-	} else if publicIP != "" {
-		settings.LastPublicIPAddress = publicIP
-		settings.LastPublicIPCheckAt = time.Now().UTC().Format(time.RFC3339)
-		// Certificate provisioning intentionally reloads authoritative settings
-		// after entering its process-wide singleflight. Persist the newly observed
-		// network state first so that reload cannot restore a stale public address.
-		if err := s.saveRemoteAccessSettings(settings); err != nil {
-			return false, err
+	return s.handleRemoteAccessRepairSignal(ctx, settings, signal, true)
+}
+
+func (s *Server) handleRemoteAccessRepairSignal(ctx context.Context, settings RemoteAccessSettings, signal remoteAccessRepairSignal, refreshPublicIP bool) (bool, error) {
+	if updateRemoteAccessPublicRouteDiagnostics(&settings, signal.PublicRouteStatus, signal.PublicRouteError, signal.PublicRouteCheckedAt) {
+		_ = s.saveRemoteAccessSettings(settings)
+	}
+	if !signal.RepairRequested {
+		return false, nil
+	}
+	if refreshPublicIP {
+		if publicIP, ipErr := s.queryHostedObservedPublicIP(ctx, settings); ipErr != nil {
+			s.recordLog("warn", "Remote access repair signal public IP refresh failed", map[string]string{"error": ipErr.Error()})
+		} else if publicIP != "" {
+			settings.LastPublicIPAddress = publicIP
+			settings.LastPublicIPCheckAt = time.Now().UTC().Format(time.RFC3339)
+			// Certificate provisioning intentionally reloads authoritative settings
+			// after entering its process-wide singleflight. Persist the newly observed
+			// network state first so that reload cannot restore a stale public address.
+			if err := s.saveRemoteAccessSettings(settings); err != nil {
+				return false, err
+			}
 		}
 	}
 	if remoteAccessRepairSignalNeedsCertificateRenewal(signal.Status, signal.Reason) {
@@ -2762,8 +2975,8 @@ func (s *Server) checkRemoteAccessRepairSignalAndRepair(ctx context.Context) (bo
 	if err := s.saveRemoteAccessSettings(settings); err != nil {
 		return false, err
 	}
-	if err := s.sendRemoteAccessHeartbeatWithOptions(ctx, settings, remoteAccessHeartbeatOptions{SyncPolicy: false}); err != nil {
-		settings.LastHeartbeatError = err.Error()
+	if err := s.sendRemoteAccessHeartbeatWithOptions(ctx, settings, remoteAccessHeartbeatOptions{SyncPolicy: false, SuppressRepair: true}); err != nil {
+		settings.LastHeartbeatError = remoteAccessFailureCode(err)
 		_ = s.saveRemoteAccessSettings(settings)
 		return true, err
 	}
@@ -2797,7 +3010,7 @@ func (s *Server) fetchRemoteAccessRepairSignal(ctx context.Context, endpoint, cr
 	if etag != "" {
 		req.Header.Set("If-None-Match", etag)
 	}
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := hostedServicesHTTPClient().Do(req)
 	if err != nil {
 		return false, err
 	}
@@ -2828,7 +3041,7 @@ func remoteAccessRepairSignalNeedsCertificateRenewal(status string, reason strin
 
 func updateRemoteAccessPublicRouteDiagnostics(settings *RemoteAccessSettings, status string, errorMessage string, checkedAt string) bool {
 	status = strings.TrimSpace(status)
-	errorMessage = strings.TrimSpace(errorMessage)
+	errorMessage = remoteAccessDiagnosticCode(errorMessage)
 	checkedAt = strings.TrimSpace(checkedAt)
 	if status == "" {
 		return false
@@ -2876,6 +3089,65 @@ func remoteAccessFailureRetryInterval(failures int) time.Duration {
 	return 5 * time.Minute
 }
 
+// Remote-access diagnostics are persisted into settings and returned by the
+// settings/status APIs. Keep them as stable product codes so upstream URLs,
+// addresses, certificate subjects, and transport implementation details do
+// not become account-visible data.
+func remoteAccessFailureCode(err error) string {
+	if err == nil {
+		return ""
+	}
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
+		return "hosted_timeout"
+	}
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		return "hosted_timeout"
+	}
+	var unknownAuthority x509.UnknownAuthorityError
+	var hostnameError x509.HostnameError
+	var certificateInvalid x509.CertificateInvalidError
+	if errors.As(err, &unknownAuthority) || errors.As(err, &hostnameError) || errors.As(err, &certificateInvalid) {
+		return "tls_verification_failed"
+	}
+	var responseError *hostedHTTPError
+	if errors.As(err, &responseError) {
+		switch responseError.StatusCode {
+		case http.StatusUnauthorized, http.StatusForbidden:
+			return "hosted_authorization_failed"
+		case http.StatusTooManyRequests:
+			return "hosted_rate_limited"
+		default:
+			if responseError.StatusCode >= 500 {
+				return "hosted_unavailable"
+			}
+			return "hosted_request_rejected"
+		}
+	}
+	message := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(message, "redirect"):
+		return "hosted_redirect_rejected"
+	case strings.Contains(message, "connection refused"):
+		return "hosted_connection_refused"
+	case strings.Contains(message, "no such host"), strings.Contains(message, "network is unreachable"):
+		return "hosted_network_unreachable"
+	default:
+		return "hosted_request_failed"
+	}
+}
+
+func remoteAccessDiagnosticCode(value string) string {
+	switch strings.TrimSpace(value) {
+	case "tls_verification_failed", "network_timeout", "connection_refused", "network_unreachable", "unexpected_http_status", "request_failed", "client_route_verification_failed":
+		return strings.TrimSpace(value)
+	case "":
+		return ""
+	default:
+		return "route_verification_failed"
+	}
+}
+
 func remoteAccessPublicIPCheckDue(settings RemoteAccessSettings, now time.Time, interval time.Duration) bool {
 	if settings.LastPublicIPAddress == "" || settings.LastPublicIPCheckAt == "" {
 		return true
@@ -2899,7 +3171,7 @@ func (s *Server) queryHostedObservedPublicIP(ctx context.Context, settings Remot
 	if credential := s.secretSetting(remoteAccessCredentialKey); credential != "" {
 		req.Header.Set("Authorization", "Bearer "+credential)
 	}
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := hostedServicesHTTPClient().Do(req)
 	if err != nil {
 		return "", err
 	}
@@ -3551,7 +3823,7 @@ func (s *Server) provisionPorticoProfileTx(tx *sql.Tx, member RemoteAccessMember
 		if role == "owner" {
 			role = "user"
 		}
-		permissions, libraryIDs, maxContentRating, policyErr := s.permissionsFromRemoteTemplateTx(tx, role, member.PermissionTemplate)
+		permissions, _, maxContentRating, policyErr := s.permissionsFromRemoteTemplateTx(tx, role, member.PermissionTemplate)
 		if policyErr != nil {
 			return "", policyErr
 		}
@@ -3581,11 +3853,9 @@ func (s *Server) provisionPorticoProfileTx(tx *sql.Tx, member RemoteAccessMember
 		if err != nil {
 			return existingID, err
 		}
-		if existingAuthOrigin == "portico" && existingRole != "owner" {
-			if err = replaceUserLibraries(tx, existingID, libraryIDs, now); err != nil {
-				return existingID, err
-			}
-		}
+		// Hosted owns generic grants and limits only. Library access is a
+		// server-local assignment, so every policy refresh preserves mappings
+		// already held by an existing local profile.
 		return existingID, nil
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
@@ -3821,28 +4091,15 @@ func (s *Server) permissionsFromRemoteTemplateTx(tx *sql.Tx, role string, templa
 	if len(template.Permissions) > 0 {
 		permissions = sanitizePermissions(template.Permissions, role)
 	}
-	var libraryIDs []string
-	var err error
-	if len(template.LibraryIDs) > 0 {
-		libraryIDs, err = cleanLibraryIDsTx(tx, template.LibraryIDs)
-		if err != nil {
-			return nil, nil, "", err
-		}
-	} else {
-		libraryIDs, err = allLibraryIDsTx(tx)
-		if err != nil {
-			return nil, nil, "", err
-		}
-	}
 	maxContentRating := ""
 	if role != "owner" {
 		maxContentRating = normalizeMaxContentRating(template.MaxContentRating)
 	}
-	return permissions, libraryIDs, maxContentRating, nil
+	return permissions, []string{}, maxContentRating, nil
 }
 
 func remotePermissionTemplatePresent(template RemotePermissionTemplate) bool {
-	return len(template.LibraryIDs) > 0 || len(template.Permissions) > 0 || strings.TrimSpace(template.MaxContentRating) != ""
+	return len(template.Permissions) > 0 || strings.TrimSpace(template.MaxContentRating) != ""
 }
 
 func cleanLibraryIDsTx(tx *sql.Tx, input []string) ([]string, error) {
@@ -4081,7 +4338,7 @@ func (s *Server) validateRemoteAccessSettings(settings RemoteAccessSettings) err
 
 func validateRemoteAccessSettings(settings RemoteAccessSettings) error {
 	parsed, err := url.Parse(settings.HostedBaseURL)
-	if err != nil || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+	if err != nil || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" || (parsed.Path != "" && parsed.Path != "/") || parsed.RawPath != "" {
 		return errors.New("hostedBaseUrl must be an origin without credentials, query, or fragment")
 	}
 	if parsed.Scheme != "https" && !(parsed.Scheme == "http" && isLoopbackHost(parsed.Hostname())) {

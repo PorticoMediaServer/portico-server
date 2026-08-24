@@ -695,6 +695,9 @@ func x265ColorParams(transfer string, v mediafacts.Video) string {
 func containerVideoArgs(p playbackplan.Plan, codec string, copy bool) []string {
 	c := token(codec)
 	if token(p.Container) == "mp4" && (c == "hevc" || c == "h265") {
+		if p.Color != nil && token(p.Color.Output) == "dolby_vision" && token(p.Color.Action) == "preserve" {
+			return []string{"-tag:v", "dvh1"}
+		}
 		return []string{"-tag:v", "hvc1"}
 	}
 	if copy && p.SegmentFormat == "mpegts" {

@@ -21,7 +21,7 @@ import {
 import { RemoteAccessSettingsPanel } from './RemoteAccessSettings';
 import { ServerConsole } from './ServerConsole';
 import { ServerSettingsForm } from './ServerSettingsForm';
-import { SettingsError, SettingsLoading, SettingsSaveCoordinator, useSettingsNavigationGuard } from './SettingsControls';
+import { InlineNotice, SettingsError, SettingsLoading, SettingsSaveCoordinator, useSettingsNavigationGuard } from './SettingsControls';
 import { useSettingsQuery } from './settingsHooks';
 import {
   personalSettingsSections,
@@ -67,7 +67,11 @@ function OperationState({ state, retry, label, children }: { state: ReturnType<t
   if (state.status === 'loading') return <SettingsLoading label={`Loading ${label}`} />;
   if (state.status === 'error') return <SettingsError title={`${label} are unavailable`} message={reviewedProductErrorText(state.error, 'settings.load-failed', { sectionName: label })} onRetry={retry} />;
   if (!state.data) return null;
-  return children(state.data);
+  const failures = Object.keys(state.data.failures ?? {});
+  const panelNames: Record<string, string> = {
+    libraries: 'libraries', users: 'people', devices: 'devices', apiKeys: 'API keys', tasks: 'scheduled tasks', backups: 'backups', sessions: 'sessions', release: 'release information', diagnostics: 'diagnostics', capabilities: 'capabilities', storage: 'storage', porticoInvites: 'Hosted invitations',
+  };
+  return <>{failures.length > 0 && <InlineNotice tone="warn" action={<button type="button" className="portico-settings-inline-action" onClick={retry}>Retry</button>}>Some {label} panels are unavailable: {failures.map((failure) => panelNames[failure] ?? 'one panel').join(', ')}. Healthy panels remain available; unavailable values are not treated as empty success.</InlineNotice>}{children(state.data)}</>;
 }
 
 function ServerSection({ section, workspace, viewer, source, filesystemSource, operations, canManageServerSettings, onWorkspaceChange, onWorkspaceReload, onOperationsReload }: {
@@ -84,7 +88,7 @@ function ServerSection({ section, workspace, viewer, source, filesystemSource, o
 }) {
   if (section === 'status') return <StatusDashboard source={source} viewer={viewer} />;
   const form = canManageServerSettings && workspace ? <ServerSettingsForm section={section} document={workspace.document} summary={workspace.summary} viewer={viewer} source={source} onDocumentChange={onWorkspaceChange} onReload={onWorkspaceReload} /> : null;
-  if (section === 'media') return <div className="portico-settings-content">{form}<OperationState state={operations} retry={onOperationsReload} label="library administration tools">{(data) => <LibraryOperations
+  if (section === 'media') return <div className="portico-settings-content">{form}<OperationState state={operations} retry={onOperationsReload} label="library administration tools">{(data) => data.failures?.libraries ? <SettingsError title="Libraries are unavailable" message="The library panel could not be refreshed. No empty library result is being inferred." onRetry={onOperationsReload} /> : <LibraryOperations
     libraries={data.libraries}
     source={source}
     filesystemSource={filesystemSource}
@@ -96,8 +100,8 @@ function ServerSection({ section, workspace, viewer, source, filesystemSource, o
   if (section === 'live') return <div className="portico-settings-content"><LiveTVOperations source={source} viewer={viewer} /><LibraryChannelOperations source={source} viewer={viewer} />{form}</div>;
   if (section === 'connectivity') return <div className="portico-settings-content"><RemoteAccessSettingsPanel source={source} viewer={viewer} />{form}<DLNAOperations source={source} viewer={viewer} /></div>;
   if (section === 'people') return <div className="portico-settings-content">{form}<OperationState state={operations} retry={onOperationsReload} label="people and access data">{(data) => <PeopleOperations operations={data} source={source} onChanged={onOperationsReload} />}</OperationState></div>;
-  if (section === 'maintenance') return <div className="portico-settings-content">{form}<OperationState state={operations} retry={onOperationsReload} label="maintenance data">{(data) => <MaintenanceOperations tasks={data.tasks} backups={data.backups} storage={data.storage} source={source} onChanged={onOperationsReload} />}</OperationState></div>;
-  if (section === 'diagnostics') return <div className="portico-settings-content">{form}<OperationState state={operations} retry={onOperationsReload} label="diagnostic data">{(data) => <ServerConsole source={source} diagnostics={data.diagnostics} release={data.release} />}</OperationState></div>;
+  if (section === 'maintenance') return <div className="portico-settings-content">{form}<OperationState state={operations} retry={onOperationsReload} label="maintenance data">{(data) => <MaintenanceOperations tasks={data.tasks} backups={data.backups} storage={data.storage} release={data.failures?.release ? undefined : data.release} failures={data.failures} source={source} onChanged={onOperationsReload} />}</OperationState></div>;
+  if (section === 'diagnostics') return <div className="portico-settings-content">{form}<OperationState state={operations} retry={onOperationsReload} label="diagnostic data">{(data) => data.failures?.diagnostics ? <SettingsError title="Server diagnostics are unavailable" message="The diagnostics panel could not be refreshed. Other available diagnostic data remains visible above." onRetry={onOperationsReload} /> : <ServerConsole source={source} diagnostics={data.diagnostics} release={data.failures?.release ? undefined : data.release} />}</OperationState></div>;
   return form;
 }
 
@@ -105,7 +109,7 @@ function PersonalSection({ section, viewer, source, productSource, operations, o
   if (section === 'appearance' || section === 'personal-playback' || section === 'privacy') return <PersonalPreferencesSettings section={section} source={source} />;
   if (section === 'account') return <AccountSettings viewer={viewer} source={source} />;
   if (section === 'profiles') return productSource ? <ProfilesSettings source={productSource} /> : <SettingsError title="Profiles are unavailable" message="Reconnect to this server and try again." onRetry={() => window.location.reload()} />;
-  if (section === 'help') return <OperationState state={operations} retry={onOperationsReload} label="Help & About details">{(data) => <HelpSettings operations={data} />}</OperationState>;
+  if (section === 'help') return <OperationState state={operations} retry={onOperationsReload} label="Help & About details">{(data) => data.failures?.release ? <SettingsError title="Server release information is unavailable" message="Portico could not refresh the installed release details." onRetry={onOperationsReload} /> : <HelpSettings operations={data} />}</OperationState>;
   return <div className="portico-settings-state error"><AlertTriangle /><strong>This settings link is invalid</strong><p>Choose a section from the settings navigation.</p><Link className="button secondary" to="/settings/account">Open account settings</Link></div>;
 }
 
@@ -170,7 +174,7 @@ export function SettingsPage({ source, productSource, viewer, filesystemSource }
       <SettingsNavigation current={section} capabilities={capabilities} access={access} canManageViewerMessages={canManageViewerMessages} />
       <section className="portico-settings-workspace" aria-label={`${title} settings`}>
         {isServer && currentWorkspace && workspace.status === 'error' && <div className="portico-settings-inline-error"><AlertTriangle />Unable to refresh the settings document. Showing the last loaded revision.<button type="button" onClick={() => setWorkspaceRevision((current) => current + 1)}><RefreshCw /> Retry</button></div>}
-        {isViewerMessages && productSource ? <ViewerMessagesSettings source={productSource} /> : isViewerMessages ? <SettingsError title={viewerMessagesUnavailable.title ?? productText('feedback.viewer-messages-title')} message={viewerMessagesUnavailable.body ?? productText('problem.request-failed')} onRetry={() => window.location.reload()} /> : canRenderServerSection ? <ServerSection section={section} workspace={currentWorkspace} viewer={viewer} source={source} filesystemSource={filesystemSource} operations={operations} canManageServerSettings={access.canManageServer} onWorkspaceChange={(document) => setWorkspaceOverride((current) => current ? { ...current, document } : currentWorkspace ? { document, summary: currentWorkspace.summary } : { document, summary: { generatedAt: new Date().toISOString(), groups: [], statusCards: [] } })} onWorkspaceReload={() => { setWorkspaceOverride(null); setWorkspaceRevision((current) => current + 1); }} onOperationsReload={() => setOperationsRevision((current) => current + 1)} /> : !isServer ? <PersonalSection section={section} viewer={viewer} source={source} productSource={productSource} operations={operations} onOperationsReload={() => setOperationsRevision((current) => current + 1)} /> : null}
+        {isViewerMessages && productSource ? <ViewerMessagesSettings source={productSource} /> : isViewerMessages ? <SettingsError title={viewerMessagesUnavailable.title ?? productText('feedback.viewer-messages-title')} message={viewerMessagesUnavailable.body ?? productText('problem.request-failed')} onRetry={() => window.location.reload()} /> : canRenderServerSection ? <ServerSection section={section} workspace={currentWorkspace} viewer={viewer} source={source} filesystemSource={filesystemSource} operations={operations} canManageServerSettings={access.canManageServer} onWorkspaceChange={(document) => setWorkspaceOverride((current) => current ? { ...current, document } : currentWorkspace ? { document, summary: currentWorkspace.summary } : { document, summary: { generatedAt: new Date().toISOString(), groups: [], statusCards: [] } })} onWorkspaceReload={() => { /* Keep the current document mounted while the fresh revision loads so dirty patches survive a conflict reload. */ setWorkspaceRevision((current) => current + 1); }} onOperationsReload={() => setOperationsRevision((current) => current + 1)} /> : !isServer ? <PersonalSection section={section} viewer={viewer} source={source} productSource={productSource} operations={operations} onOperationsReload={() => setOperationsRevision((current) => current + 1)} /> : null}
       </section>
     </div></SettingsSaveCoordinator>
   </div>;

@@ -167,7 +167,7 @@ func newLogger(cfg config.Config) (*slog.Logger, func()) {
 				cfg.FFprobePath,
 				cfg.FPcalcPath,
 			},
-			SensitiveValues: []string{cfg.TMDBReadAccessToken, cfg.TMDBAPIKey, cfg.AcoustIDAPIKey},
+			SensitiveValues: []string{cfg.TMDBReadAccessToken, cfg.TMDBAPIKey, cfg.TVDBAPIKey, cfg.AcoustIDAPIKey},
 		},
 	)), closeLog
 }

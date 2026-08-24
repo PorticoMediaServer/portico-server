@@ -25,6 +25,9 @@ import type {
   PorticoInvite,
   RemoteAccessSettingsPatch,
   RemoteAccessStatus,
+  RemoteStorageSource,
+  RemoteStorageAnalysisMode,
+  RemoteStorageSourceRequest,
   RestoreBackupResponse,
   ScheduledTask,
   ScheduledTaskRunResponse,
@@ -47,6 +50,8 @@ import type {
 
 export type SettingsViewer = {
   id: string;
+  /** Stable selected-server identity used to fence drafts; never a credential. */
+  serverId?: string;
   displayName: string;
   email: string;
   role: 'owner' | 'user';
@@ -186,6 +191,8 @@ export type SettingsOperationalSnapshot = {
   capabilities: ServerCapabilitiesResponse;
   storage: SystemStorageReport;
   porticoInvites?: PorticoInvite[];
+  /** Independent panel failures; a missing panel is never represented as healthy data. */
+  failures?: Partial<Record<'libraries' | 'users' | 'devices' | 'apiKeys' | 'tasks' | 'backups' | 'sessions' | 'release' | 'diagnostics' | 'capabilities' | 'storage' | 'porticoInvites', string>>;
 };
 
 export type SettingsOperationalScope = 'media' | 'people' | 'maintenance' | 'diagnostics' | 'help';
@@ -230,7 +237,6 @@ export type PorticoMemberInviteInput = {
   email?: string;
   role: 'user';
   permissionTemplate: {
-    libraryIds: string[];
     permissions: Permissions;
     maxContentRating?: string;
   };
@@ -305,6 +311,11 @@ export interface SettingsDataSource {
   createLibrary(input: LibraryMutationInput, signal: AbortSignal): Promise<Library>;
   updateLibrary(id: string, input: LibraryMutationInput, signal: AbortSignal): Promise<Library>;
   deleteLibrary(id: string, signal: AbortSignal): Promise<void>;
+  remoteStorageSources(id: string, signal: AbortSignal): Promise<RemoteStorageSource[]>;
+  createRemoteStorageSource(id: string, input: RemoteStorageSourceRequest, signal: AbortSignal): Promise<RemoteStorageSource>;
+  deleteRemoteStorageSource(id: string, sourceId: string, signal: AbortSignal): Promise<void>;
+  updateRemoteStorageSourceAnalysisMode(id: string, sourceId: string, analysisMode: RemoteStorageAnalysisMode, signal: AbortSignal): Promise<RemoteStorageSource>;
+  inventoryRemoteStorageSource(id: string, sourceId: string, signal: AbortSignal): Promise<Job>;
   libraryScanOperations(id: string, signal: AbortSignal): Promise<LibraryScanOperationsResponse>;
   libraryScanReview(id: string, cursor: string | undefined, signal: AbortSignal): Promise<LibraryScanReviewResponse>;
   updateLibraryStorageClassification(libraryId: string, sourceId: string, classification: 'local' | 'network' | 'fuse' | 'unknown', signal: AbortSignal): Promise<LibraryStorageSource>;
@@ -344,6 +355,7 @@ export interface SettingsDataSource {
   porticoMFAStatus(signal: AbortSignal): Promise<AccountMFAStatus>;
   startPorticoMFA(password: string, signal: AbortSignal): Promise<AccountMFASetup>;
   enablePorticoMFA(input: { code: string; enrollmentToken: string }, signal: AbortSignal): Promise<AccountMFAEnableResult>;
+  rotatePorticoMFARecoveryCodes(code: string, signal: AbortSignal): Promise<AccountMFAEnableResult>;
   disablePorticoMFA(input: { password: string; code: string }, signal: AbortSignal): Promise<void>;
   revokeSignedInDevice(origin: AccountOrigin, id: string, signal: AbortSignal): Promise<void>;
   clearWatchHistory(signal: AbortSignal): Promise<void>;

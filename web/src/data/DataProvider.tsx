@@ -157,11 +157,13 @@ type CanonicalIdentityError = Error & {
 	retryAfter?: string;
 	retryAt?: string;
 	retryAfterMs?: number;
+	retryable?: boolean;
+	ambiguous?: boolean;
 };
 
 function canonicalIdentityError(reason: unknown, fallback: ProductMessageId = 'problem.request-failed'): CanonicalIdentityError {
 	const candidate = reason && typeof reason === 'object'
-		? reason as { code?: unknown; messageId?: unknown; status?: unknown; detail?: unknown; details?: unknown; requestId?: unknown; retryAfter?: unknown; retryAt?: unknown; retryAfterMs?: unknown }
+		? reason as { code?: unknown; messageId?: unknown; status?: unknown; detail?: unknown; details?: unknown; requestId?: unknown; retryAfter?: unknown; retryAt?: unknown; retryAfterMs?: unknown; retryable?: unknown; ambiguous?: unknown }
 		: undefined;
 	const resolved = candidate ? resolveProductProblem({
 		...(typeof candidate.code === 'string' ? { code: candidate.code } : {}),
@@ -185,6 +187,8 @@ function canonicalIdentityError(reason: unknown, fallback: ProductMessageId = 'p
 		...(typeof candidate?.retryAfter === 'string' ? { retryAfter: candidate.retryAfter } : {}),
 		...(typeof candidate?.retryAt === 'string' ? { retryAt: candidate.retryAt } : {}),
 		...(typeof candidate?.retryAfterMs === 'number' ? { retryAfterMs: candidate.retryAfterMs } : {}),
+		...(typeof candidate?.retryable === 'boolean' ? { retryable: candidate.retryable } : {}),
+		...(typeof candidate?.ambiguous === 'boolean' ? { ambiguous: candidate.ambiguous } : {}),
 	});
 }
 
@@ -1558,10 +1562,10 @@ export function useMediaMutations() {
     setRating: (id: string, rating: number) => source.setRating(id, rating, new AbortController().signal),
     setWatched: (id: string, watched: boolean) => source.setWatched(id, watched, new AbortController().signal),
     updateMetadata: (ids: string[], patch: Parameters<PorticoDataSource['updateMediaMetadata']>[1]) => source.updateMediaMetadata(ids, patch, new AbortController().signal),
-    uploadArtwork: (id: string, type: string, file: File) => source.uploadMediaImage(id, type, file, new AbortController().signal),
-    deleteArtwork: (id: string, imageId: string) => source.deleteMediaImage(id, imageId, new AbortController().signal),
-    setPreferredArtwork: (id: string, imageId: string) => source.setPreferredMediaImage(id, imageId, new AbortController().signal),
-    reorderArtwork: (id: string, imageIds: string[]) => source.reorderMediaImages(id, imageIds, new AbortController().signal),
+    uploadArtwork: (id: string, type: string, file: File, expectedRevision: number) => source.uploadMediaImage(id, type, file, expectedRevision, new AbortController().signal),
+    deleteArtwork: (id: string, imageId: string, expectedRevision: number) => source.deleteMediaImage(id, imageId, expectedRevision, new AbortController().signal),
+    setPreferredArtwork: (id: string, imageId: string, expectedRevision: number) => source.setPreferredMediaImage(id, imageId, expectedRevision, new AbortController().signal),
+    reorderArtwork: (id: string, imageIds: string[], expectedRevision: number) => source.reorderMediaImages(id, imageIds, expectedRevision, new AbortController().signal),
     uploadSubtitle: (id: string, file: File, language: string, label: string) => source.uploadSubtitle(id, file, language, label, new AbortController().signal),
     updateSubtitle: (id: string, streamId: string, offsetMs: number) => source.updateSubtitle(id, streamId, offsetMs, new AbortController().signal),
     deleteSubtitle: (id: string, streamId: string) => source.deleteSubtitle(id, streamId, new AbortController().signal),
@@ -1571,7 +1575,7 @@ export function useMediaMutations() {
     applyLyrics: (id: string, candidate: Parameters<PorticoDataSource['applyLyrics']>[1]) => source.applyLyrics(id, candidate, new AbortController().signal),
     deleteLyrics: (id: string, lyricId: string) => source.deleteLyrics(id, lyricId, new AbortController().signal),
     searchMatches: (id: string, query: string) => source.searchMediaMatches(id, query, new AbortController().signal),
-    applyMatch: (id: string, candidate: Parameters<PorticoDataSource['applyMediaMatch']>[1]) => source.applyMediaMatch(id, candidate, new AbortController().signal),
+    applyMatch: (id: string, candidate: Parameters<PorticoDataSource['applyMediaMatch']>[1], expectedRevision: number) => source.applyMediaMatch(id, candidate, expectedRevision, new AbortController().signal),
     deleteMedia: (id: string, input: Parameters<PorticoDataSource['deleteMedia']>[1]) => source.deleteMedia(id, input, new AbortController().signal),
   }), [source]);
 }

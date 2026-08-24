@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "tv.getportico.android",
+      "sha256_cert_fingerprints": [
+        "39:6A:F5:26:92:B2:5E:B1:F1:FF:08:1B:FC:EC:26:41:63:A6:EC:28:AD:EA:73:CA:F7:18:10:97:06:96:5F:9D"
+      ]
+    }
+  }
+]

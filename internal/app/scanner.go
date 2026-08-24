@@ -52,7 +52,7 @@ type scannerDirectoryCheckpoint struct {
 type libraryRuntimeSettings struct {
 	ScanOnFilesystemChanges bool
 	ScanAutomatically       bool
-	AnalyzeOnScan           bool
+	AnalysisTier            string
 	EmptyTrashAfterScan     bool
 	AllowMediaDeletion      bool
 	TrashRetentionDays      int
@@ -77,6 +77,7 @@ type scannerMediaFile struct {
 	EpisodeEnd            int
 	IndexNumber           int
 	SourcePath            string
+	ScanRoot              string
 	DisplayPath           string
 	SourceType            string
 	FileSize              int64
@@ -88,6 +89,8 @@ type scannerMediaFile struct {
 	ExtraKind             string
 	LocalMetadata         scannerLocalMetadata
 	LocalNFOEnabled       bool
+	ReadExternalSidecars  bool
+	DiscoverLocalArtwork  bool
 	ParentShowMetadata    scannerLocalMetadata
 	ParentSeasonMetadata  scannerLocalMetadata
 	ParentArtistMetadata  scannerLocalMetadata
@@ -190,6 +193,7 @@ var (
 	videoExtensions = map[string]bool{
 		".3g2": true, ".3gp": true, ".asf": true, ".avi": true, ".divx": true, ".dv": true, ".f4v": true, ".flv": true, ".m2ts": true, ".m2v": true, ".m4v": true, ".mkv": true, ".mov": true, ".mp4": true, ".mpeg": true, ".mpg": true, ".mts": true, ".mxf": true, ".ogm": true, ".rm": true, ".rmvb": true, ".ts": true, ".vob": true, ".webm": true, ".wmv": true, ".wtv": true,
 	}
+	strmExtensions  = map[string]bool{".strm": true}
 	audioExtensions = map[string]bool{
 		".aac": true, ".aiff": true, ".alac": true, ".ape": true, ".caf": true, ".dff": true, ".dsf": true, ".flac": true, ".m4a": true, ".mka": true, ".mp3": true, ".mpc": true, ".oga": true, ".ogg": true, ".opus": true, ".ra": true, ".tta": true, ".wav": true, ".wma": true, ".wv": true,
 	}
@@ -210,6 +214,14 @@ const (
 	scannerCheckpointCommitBatch = 32
 	scannerChangeWatchInterval   = 30 * time.Second
 )
+
+const (
+	scannerSubtitleSidecarLimit int64 = 8 << 20
+	scannerLyricsSidecarLimit   int64 = 512 << 10
+	scannerLocalMetadataLimit   int64 = 4 << 20
+)
+
+var errScannerSidecarTooLarge = errors.New("scanner sidecar exceeds the supported size limit")
 
 var errLibraryFingerprintBudgetExceeded = errors.New("library fingerprint media file budget exceeded")
 
@@ -489,7 +501,7 @@ func (s *Server) librarySettings() libraryRuntimeSettings {
 	return libraryRuntimeSettings{
 		ScanOnFilesystemChanges: settingBool(group, "scanOnFilesystemChanges", true),
 		ScanAutomatically:       settingBool(group, "scanAutomatically", true),
-		AnalyzeOnScan:           settingBool(group, "analyzeOnScan", true),
+		AnalysisTier:            normalizeAnalysisTier(settingString(group, "analysisTier", "")),
 		EmptyTrashAfterScan:     settingBool(group, "emptyTrashAfterScan", false),
 		AllowMediaDeletion:      settingBool(group, "allowMediaDeletion", false),
 		TrashRetentionDays:      max(0, settingInt(group, "trashRetentionDays", 30)),
@@ -499,10 +511,89 @@ func (s *Server) librarySettings() libraryRuntimeSettings {
 func (s *Server) libraryRuntimeSettingsFor(library Library) libraryRuntimeSettings {
 	settings := s.librarySettings()
 	settings.ScanAutomatically = librarySettingBool(library, "scanAutomatically", settings.ScanAutomatically)
-	settings.AnalyzeOnScan = librarySettingBool(library, "analyzeOnScan", settings.AnalyzeOnScan)
+	if rawTier := settingString(library.Settings, "analysisTier", ""); rawTier != "" {
+		settings.AnalysisTier = normalizeAnalysisTier(rawTier)
+	}
 	settings.EmptyTrashAfterScan = librarySettingBool(library, "emptyTrashAfterScan", settings.EmptyTrashAfterScan)
 	settings.TrashRetentionDays = max(0, librarySettingInt(library, "trashRetentionDays", settings.TrashRetentionDays))
 	return settings
+}
+
+// libraryAnalysisSettingsFor resolves the server's canonical library analysis
+// profile and then applies the library's explicit overrides. The Web settings
+// surface writes the canonical group, while library-specific APIs write the
+// override map; scan and analysis workers must observe the same effective
+// profile regardless of which owner surface made the change.
+func (s *Server) libraryAnalysisSettingsFor(library Library) map[string]any {
+	resolved := map[string]any{}
+	if settings, err := s.loadSettings(); err == nil {
+		if group, ok := settings["library"].(map[string]any); ok {
+			for key, value := range group {
+				resolved[key] = value
+			}
+		}
+	}
+	for key, value := range library.Settings {
+		resolved[key] = value
+	}
+	return resolved
+}
+
+const (
+	analysisTierFileListOnly = "file_list_only"
+	analysisTierBasic        = "basic"
+	analysisTierComplete     = "complete"
+	analysisTierCustom       = "custom"
+)
+
+func normalizeAnalysisTier(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case analysisTierFileListOnly:
+		return analysisTierFileListOnly
+	case analysisTierComplete:
+		return analysisTierComplete
+	case analysisTierCustom:
+		return analysisTierCustom
+	case analysisTierBasic:
+		return analysisTierBasic
+	default:
+		return analysisTierBasic
+	}
+}
+
+type libraryScanContentPolicy struct {
+	ReadLocalMetadata        bool
+	ReadExternalSidecars     bool
+	DiscoverLocalArtwork     bool
+	ReadEmbeddedTags         bool
+	FetchDescriptiveMetadata bool
+	ProbeStreams             bool
+}
+
+func scanContentPolicy(tier string, settings map[string]any) libraryScanContentPolicy {
+	tier = normalizeAnalysisTier(tier)
+	switch tier {
+	case analysisTierFileListOnly:
+		return libraryScanContentPolicy{}
+	case analysisTierCustom:
+		return libraryScanContentPolicy{
+			ReadLocalMetadata:        settingBool(settings, "readLocalMetadata", false),
+			ReadExternalSidecars:     settingBool(settings, "readExternalSubtitlesAndLyrics", false),
+			DiscoverLocalArtwork:     settingBool(settings, "discoverLocalArtwork", false),
+			ReadEmbeddedTags:         settingBool(settings, "readEmbeddedTags", false),
+			FetchDescriptiveMetadata: settingBool(settings, "fetchDescriptiveMetadata", false),
+			ProbeStreams:             settingBool(settings, "probeStreams", false),
+		}
+	default:
+		return libraryScanContentPolicy{
+			ReadLocalMetadata:        true,
+			ReadExternalSidecars:     true,
+			DiscoverLocalArtwork:     true,
+			ReadEmbeddedTags:         true,
+			FetchDescriptiveMetadata: true,
+			ProbeStreams:             true,
+		}
+	}
 }
 
 func (s *Server) libraryKnownMediaFileCountExceedsFingerprintBudget(libraryID string) bool {
@@ -871,7 +962,12 @@ func (s *Server) performLibraryScanWithMode(ctx context.Context, library Library
 	// avoids a full settings-table query and JSON decode for every discovered
 	// file (and a second copy for every music track).
 	metadataSettings := s.metadataAgentSettings()
-	rootEvidence := s.inspectLibraryRootsWithContext(ctx, library)
+	localRootEvidence := s.inspectLibraryRootsWithContext(ctx, library)
+	remoteRootEvidence, err := s.remoteLibraryRootEvidence(ctx, library.ID)
+	if err != nil {
+		return result, err
+	}
+	rootEvidence := append(localRootEvidence, remoteRootEvidence...)
 	mode = normalizeScanMode(mode)
 	run, err := s.beginLibraryScanRun(ctx, library, jobID, mode, rootEvidence)
 	if err != nil {
@@ -900,8 +996,8 @@ func (s *Server) performLibraryScanWithMode(ctx context.Context, library Library
 			warnings = append(warnings, fmt.Sprintf("%s: %s", root.ConfiguredPath, root.ErrorClass))
 		}
 	}
-	roots := healthyScanRoots(rootEvidence)
-	if len(roots) == 0 {
+	roots := healthyScanRoots(localRootEvidence)
+	if len(roots) == 0 && len(remoteRootEvidence) == 0 {
 		return result, errors.New("no readable library folders were found")
 	}
 	checkpoints, err := s.loadLibraryScanDirectoryCheckpoints(ctx, library.ID)
@@ -913,9 +1009,17 @@ func (s *Server) performLibraryScanWithMode(ctx context.Context, library Library
 		return result, err
 	}
 	checkpointMode := mode != "force_full" && mode != "remove_missing" && len(checkpoints) > 0 && !s.libraryHasUnassignedMediaDirectories(ctx, library.ID)
+	contentPolicy := scanContentPolicy(librarySettings.AnalysisTier, s.libraryAnalysisSettingsFor(library))
 
 	now := time.Now().UTC().Format(time.RFC3339)
 	scanGeneration := continuation.ScanGeneration
+	if len(remoteRootEvidence) > 0 {
+		remoteResult, err := s.scanRemoteStorageSources(ctx, library, run, scanGeneration, now)
+		if err != nil {
+			return result, err
+		}
+		mergeLibraryScanResult(&result, remoteResult)
+	}
 	pending := make([]scannerMediaFile, 0, scannerWriteBatchSize)
 	pendingPaths := make([]scannerPathCandidate, 0, scannerReconcileBatchSize)
 	directorySignatures := map[string]string{}
@@ -936,9 +1040,55 @@ func (s *Server) performLibraryScanWithMode(ctx context.Context, library Library
 		batch := pending
 		pending = make([]scannerMediaFile, 0, scannerWriteBatchSize)
 		_ = s.setJobProgress(jobID, "running", 58, fmt.Sprintf("Writing media index (%d discovered).", discoveredCount))
-		_, indexed, metadataQueued, analysisQueued, err := s.writeScannedMediaBatch(ctx, library, batch, now, scanGeneration, librarySettings.AnalyzeOnScan)
-		if err != nil {
+		// Commit path-derived inventory before any source-content, embedded-tag,
+		// NFO, subtitle, lyric, or artwork read. Promotion into the public media
+		// catalog remains atomic after enrichment, preserving move reconciliation
+		// and never publishing a destructive half-enriched projection.
+		if err := s.persistScannerInventoryBatch(ctx, library.ID, batch, now, scanGeneration); err != nil {
 			return err
+		}
+		metadataQueued, analysisQueued, indexed := 0, 0, 0
+		if librarySettings.AnalysisTier != analysisTierFileListOnly {
+			for index := range batch {
+				root, ok := storageRootForPath(roots, batch[index].SourcePath)
+				if !ok {
+					return errors.New("discovered media escaped admitted storage roots")
+				}
+				if err := s.boundedStorageIO(ctx, storageRequestForRoot(root, "scanner basic enrichment"), func() error {
+					info, _ := os.Stat(batch[index].SourcePath)
+					batch[index].ContentFingerprint = scannerContentFingerprint(batch[index].SourcePath, info)
+					batch[index].LocalNFOEnabled = contentPolicy.ReadLocalMetadata && metadataSettings.LocalNFO
+					batch[index].ReadExternalSidecars = contentPolicy.ReadExternalSidecars
+					batch[index].DiscoverLocalArtwork = contentPolicy.DiscoverLocalArtwork
+					if batch[index].LocalNFOEnabled {
+						batch[index].LocalMetadata = scannerMetadataForLocalMode(mergeScannerMetadata(batch[index].LocalMetadata, localMetadataForMediaFile(batch[index].SourcePath, batch[index].ScanRoot)), localMetadataModeForLibrary(library))
+					}
+					if library.Type == "audiobook" && batch[index].LocalNFOEnabled {
+						batch[index].LocalMetadata = scannerMetadataForLocalMode(mergeScannerMetadata(batch[index].LocalMetadata, audiobookLocalMetadataForFile(batch[index].SourcePath, batch[index].ScanRoot)), localMetadataModeForLibrary(library))
+					}
+					if library.Type == "music" {
+						customMetadataSettings := metadataSettings
+						customMetadataSettings.EmbeddedTags = metadataSettings.EmbeddedTags && contentPolicy.ReadEmbeddedTags
+						batch[index] = s.enrichScannedMusicFileWithSettings(ctx, batch[index], library, customMetadataSettings)
+					}
+					batch[index].FilesystemPrepared = false
+					return nil
+				}); err != nil {
+					return err
+				}
+			}
+			_, indexed, metadataQueued, analysisQueued, err = s.writeScannedMediaBatch(ctx, library, batch, now, scanGeneration, contentPolicy.FetchDescriptiveMetadata, contentPolicy.ProbeStreams)
+			if err != nil {
+				return err
+			}
+		} else {
+			for index := range batch {
+				batch[index].FilesystemPrepared = true
+			}
+			_, indexed, _, _, err = s.writeScannedMediaBatch(ctx, library, batch, now, scanGeneration, false, false)
+			if err != nil {
+				return err
+			}
 		}
 		result.FilesIndexed += indexed
 		result.MetadataRefreshQueued += metadataQueued
@@ -984,11 +1134,8 @@ func (s *Server) performLibraryScanWithMode(ctx context.Context, library Library
 			}
 			var file scannerMediaFile
 			if err := s.boundedStorageIO(ctx, storageRequestForRoot(root, "scanner media lookup"), func() error {
-				file = scannerFileForPath(library, root.real, candidate.Path, metadataSettings.LocalNFO)
+				file = scannerFileForPath(library, root.real, candidate.Path, false, false)
 				file.QuickSignature = candidate.QuickSignature
-				if library.Type == "music" {
-					file = s.enrichScannedMusicFileWithSettings(ctx, file, library, metadataSettings)
-				}
 				return nil
 			}); err != nil {
 				return err
@@ -1268,7 +1415,7 @@ func (s *Server) performLibraryScanWithMode(ctx context.Context, library Library
 		warnings = append(warnings, "Media-like files not accepted by this library type: "+strings.Join(parts, ", "))
 	}
 
-	result.AbsenceAuthoritative = result.DegradedRoots == 0 && len(roots) == len(rootEvidence)
+	result.AbsenceAuthoritative = result.DegradedRoots == 0 && len(roots) == len(localRootEvidence)
 	result.CleanupAllowed = result.AbsenceAuthoritative
 	if result.AbsenceAuthoritative {
 		_ = s.setJobProgress(jobID, "running", 84, "Reconciling missing media.")
@@ -1278,6 +1425,9 @@ func (s *Server) performLibraryScanWithMode(ctx context.Context, library Library
 				return result, err
 			}
 		} else if result.MissingMarked, err = s.reconcileScannedMedia(ctx, library.ID, now, scanGeneration); err != nil {
+			return result, err
+		}
+		if err := s.pruneScannerInventory(ctx, library.ID, scanGeneration, checkpointMode, changedDirectories, scannerRemovedDirectories(checkpoints, visitedDirectories)); err != nil {
 			return result, err
 		}
 	} else {
@@ -1309,6 +1459,36 @@ func (s *Server) performLibraryScanWithMode(ctx context.Context, library Library
 	}
 	s.queueLibraryReadModelRepair(library.ID)
 	return result, nil
+}
+
+func (s *Server) pruneScannerInventory(ctx context.Context, libraryID, scanGeneration string, checkpointMode bool, changedDirectories map[string]bool, removedDirectories []string) error {
+	if strings.TrimSpace(libraryID) == "" || strings.TrimSpace(scanGeneration) == "" {
+		return nil
+	}
+	return s.withBackgroundTxTagged(ctx, []string{"scanner_inventory"}, func(tx *sql.Tx) error {
+		if !checkpointMode {
+			_, err := tx.Exec(`DELETE FROM scanner_inventory_entries WHERE library_id = ? AND scan_generation <> ?`, libraryID, scanGeneration)
+			return err
+		}
+		directories := make(map[string]bool, len(changedDirectories)+len(removedDirectories))
+		for directory := range changedDirectories {
+			directories[filepath.Clean(directory)] = true
+		}
+		for _, directory := range removedDirectories {
+			directories[filepath.Clean(directory)] = true
+		}
+		for directory := range directories {
+			prefix := escapeSQLLike(directory+string(filepath.Separator)) + "%"
+			if _, err := tx.Exec(`
+				DELETE FROM scanner_inventory_entries
+				WHERE library_id = ? AND scan_generation <> ?
+					AND (path = ? OR path LIKE ? ESCAPE '\')`,
+				libraryID, scanGeneration, directory, prefix); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 func knownMediaLikeExtension(ext string) bool {
@@ -1642,7 +1822,7 @@ func (s *Server) markUnchangedScannedPaths(ctx context.Context, libraryID string
 	return unchanged, err
 }
 
-func (s *Server) writeScannedMediaBatch(ctx context.Context, library Library, batch []scannerMediaFile, now string, scanGeneration string, enqueueAnalysis bool) (map[string]bool, int, int, int, error) {
+func (s *Server) writeScannedMediaBatch(ctx context.Context, library Library, batch []scannerMediaFile, now string, scanGeneration string, allowMetadata, enqueueAnalysis bool) (map[string]bool, int, int, int, error) {
 	batchSeen := map[string]bool{}
 	indexed := 0
 	metadataQueued := 0
@@ -1663,7 +1843,7 @@ func (s *Server) writeScannedMediaBatch(ctx context.Context, library Library, ba
 		}
 	}
 	metadataProvider := normalizedMetadataProvider(settingString(library.Settings, "metadataProvider", ""))
-	enqueueMetadata := metadataProvider != "local" && metadataProvider != "none"
+	enqueueMetadata := allowMetadata && metadataProvider != "local" && metadataProvider != "none"
 	subtitleReplacements := make([]scannerSubtitleReplacement, 0, len(batch))
 	wasNew := make([]bool, len(batch))
 	// Resolve opaque identities and allocate stable public subtitle IDs before
@@ -1675,6 +1855,9 @@ func (s *Server) writeScannedMediaBatch(ctx context.Context, library Library, ba
 		attemptWasNew := make([]bool, len(batch))
 		attemptReplacements := make([]scannerSubtitleReplacement, 0, len(batch))
 		for index := range attemptBatch {
+			if err := ensureRemoteScannerSourceTx(tx, attemptBatch[index]); err != nil {
+				return err
+			}
 			file, err := resolveScannedIdentity(tx, attemptBatch[index], now, scanGeneration)
 			if err != nil {
 				return err
@@ -1732,6 +1915,9 @@ func (s *Server) writeScannedMediaBatch(ctx context.Context, library Library, ba
 		localAnalysisQueued := 0
 		for index := range batch {
 			file := batch[index]
+			if err := ensureRemoteScannerSourceTx(tx, file); err != nil {
+				return err
+			}
 			if err := ctx.Err(); err != nil {
 				return err
 			}
@@ -1801,7 +1987,7 @@ func (s *Server) writeScannedMediaBatch(ctx context.Context, library Library, ba
 					}
 				}
 			}
-			if enqueueAnalysis && settingBool(library.Settings, "probeStreams", true) && scannerAnalysisEligible(file) {
+			if enqueueAnalysis && scannerAnalysisEligible(file) {
 				revision := scannerAnalysisSourceRevision(file)
 				queued, err := enqueueScannerBacklogTx(tx, library.ID, file.ID, scannerBacklogAnalysis, revision, now)
 				if err != nil {
@@ -1823,12 +2009,61 @@ func (s *Server) writeScannedMediaBatch(ctx context.Context, library Library, ba
 	return batchSeen, indexed, metadataQueued, analysisQueued, nil
 }
 
+func ensureRemoteScannerSourceTx(tx *sql.Tx, file scannerMediaFile) error {
+	if file.SourceType != "rclone" && file.SourceType != "webdav" && !strings.HasPrefix(file.SourcePath, "portico-storage://") {
+		return nil
+	}
+	locator, err := url.Parse(file.SourcePath)
+	if err != nil || locator.Scheme != "portico-storage" || strings.TrimSpace(locator.Host) == "" {
+		return errRemoteStorageSourceRemoved
+	}
+	var exists int
+	if err := tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM storage_sources WHERE id=? AND backend_kind IN ('rclone','webdav'))`, locator.Host).Scan(&exists); err != nil {
+		return err
+	}
+	if exists != 1 {
+		return errRemoteStorageSourceRemoved
+	}
+	return nil
+}
+
+func (s *Server) persistScannerInventoryBatch(ctx context.Context, libraryID string, batch []scannerMediaFile, now, scanGeneration string) error {
+	if strings.TrimSpace(libraryID) == "" || strings.TrimSpace(scanGeneration) == "" || len(batch) == 0 {
+		return nil
+	}
+	return s.withBackgroundTxTagged(ctx, []string{"scanner_inventory"}, func(tx *sql.Tx) error {
+		for _, file := range batch {
+			if strings.TrimSpace(file.SourcePath) == "" {
+				continue
+			}
+			if _, err := tx.Exec(`
+				INSERT INTO scanner_inventory_entries (
+					library_id, path, scan_generation, size_bytes, mod_time, quick_signature,
+					media_type, source_type, discovered_at, updated_at
+				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+				ON CONFLICT(library_id, path) DO UPDATE SET
+					scan_generation=excluded.scan_generation,
+					size_bytes=excluded.size_bytes,
+					mod_time=excluded.mod_time,
+					quick_signature=excluded.quick_signature,
+					media_type=excluded.media_type,
+					source_type=excluded.source_type,
+					updated_at=excluded.updated_at`,
+				libraryID, file.SourcePath, scanGeneration, file.FileSize, file.FileModTime,
+				file.QuickSignature, file.Type, firstNonEmpty(file.SourceType, "local"), now, now); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
 func scannerAnalysisEligible(file scannerMediaFile) bool {
 	if strings.TrimSpace(file.ID) == "" || strings.TrimSpace(file.SourcePath) == "" {
 		return false
 	}
 	switch strings.ToLower(strings.TrimSpace(file.SourceType)) {
-	case "disc-image", "dvd-structure", "bluray-structure":
+	case "disc-image", "dvd-structure", "bluray-structure", "strm":
 		return false
 	default:
 		return true
@@ -1882,6 +2117,8 @@ func (s *Server) automaticMetadataRefreshSupported(item MediaItem) bool {
 	switch s.metadataProviderForItem(item) {
 	case "tmdb":
 		return tmdbSearchType(item.Type) != ""
+	case "tvdb":
+		return tvdbSearchType(item.Type) != ""
 	case "anilist":
 		return item.Type == "anime"
 	case "musicbrainz":
@@ -1994,15 +2231,25 @@ func resolvedLibraryRoots(paths []string) ([]scanRoot, error) {
 	return roots, nil
 }
 
-func scannerFileForPath(library Library, root, path string, localNFOEnabled bool) scannerMediaFile {
+func scannerFileForPath(library Library, root, path string, localNFOEnabled, allowMediaContentRead bool) scannerMediaFile {
 	if logical, ok := logicalDiscSourceForPath(library, root, path); ok {
 		return logical
 	}
 	rel, _ := filepath.Rel(root, path)
 	ext := strings.ToLower(filepath.Ext(path))
+	sourceType := ""
+	if strmExtensions[ext] {
+		sourceType = "strm"
+	}
 	base := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
 	info, _ := os.Stat(path)
-	contentFingerprint := scannerContentFingerprint(path, info)
+	contentFingerprint := ""
+	// STRM is a private locator descriptor, not media content. Scans derive its
+	// identity from the local name/stat revision and only an authorized playback
+	// request may open it. Higher scan tiers therefore do not fingerprint it.
+	if allowMediaContentRead && sourceType != "strm" {
+		contentFingerprint = scannerContentFingerprint(path, info)
+	}
 	version := parseMediaVersionInfo(path)
 	id := scannedID("scan", filepath.Join(library.ID, cleanMediaTitle(base)))
 	mediaType := library.Type
@@ -2014,7 +2261,7 @@ func scannerFileForPath(library Library, root, path string, localNFOEnabled bool
 	localMode := localMetadataModeForLibrary(library)
 	local := scannerLocalMetadata{}
 	if localNFOEnabled {
-		local = localMetadataForMediaFile(path)
+		local = localMetadataForMediaFile(path, root)
 	}
 	local = scannerMetadataForLocalMode(local, localMode)
 
@@ -2038,7 +2285,7 @@ func scannerFileForPath(library Library, root, path string, localNFOEnabled bool
 			episodeIdentity = "unmatched:" + strings.ToLower(cleanMediaTitle(base))
 		}
 		id = scannedID("scan_episode", filepath.Join(library.ID, showTitle, strconv.Itoa(seasonNumber), episodeIdentity))
-		return scannerMediaFile{ID: id, FileID: scannerFileID(id, path), LibraryID: library.ID, ParentScannerKey: seasonScannerKey, ParentTitle: parentTitle, GrandparentScannerKey: showScannerKey, GrandparentTitle: showTitle, Type: mediaType, Title: title, SortTitle: sortableTitle(title), SeasonNumber: seasonNumber, EpisodeNumber: episodeNumber, EpisodeEnd: episodeInfo.EpisodeEnd, IndexNumber: indexNumber, SourcePath: path, FileSize: fileSize(info), FileModTime: fileModTime(info), ContentFingerprint: contentFingerprint, Version: version, ArtSeed: strings.TrimPrefix(ext, "."), LocalMetadata: local, LocalNFOEnabled: localNFOEnabled}
+		return scannerMediaFile{ID: id, FileID: scannerFileID(id, path), LibraryID: library.ID, ParentScannerKey: seasonScannerKey, ParentTitle: parentTitle, GrandparentScannerKey: showScannerKey, GrandparentTitle: showTitle, Type: mediaType, Title: title, SortTitle: sortableTitle(title), SeasonNumber: seasonNumber, EpisodeNumber: episodeNumber, EpisodeEnd: episodeInfo.EpisodeEnd, IndexNumber: indexNumber, SourcePath: path, ScanRoot: root, SourceType: sourceType, FileSize: fileSize(info), FileModTime: fileModTime(info), ContentFingerprint: contentFingerprint, Version: version, ArtSeed: strings.TrimPrefix(ext, "."), LocalMetadata: local, LocalNFOEnabled: localNFOEnabled}
 	case "movie":
 		if local.Year == 0 {
 			local.Year = movieYearFromName(base)
@@ -2051,7 +2298,7 @@ func scannerFileForPath(library Library, root, path string, localNFOEnabled bool
 			parentScannerKey := scannedID("scan_movie", movieScannerIdentity(library.ID, cleanMediaTitle(parentTitle), local.Year))
 			indexNumber = extraSortOrder(extraKind)
 			id = scannedID("scan_extra", filepath.Join(library.ID, parentTitle, extraKind, title))
-			return scannerMediaFile{ID: id, FileID: scannerFileID(id, path), LibraryID: library.ID, ParentScannerKey: parentScannerKey, Type: mediaType, Title: title, SortTitle: sortableTitle(title), IndexNumber: indexNumber, SourcePath: path, FileSize: fileSize(info), FileModTime: fileModTime(info), ContentFingerprint: contentFingerprint, Version: version, ArtSeed: extraKind, ExtraKind: extraKind, LocalMetadata: local, LocalNFOEnabled: localNFOEnabled}
+			return scannerMediaFile{ID: id, FileID: scannerFileID(id, path), LibraryID: library.ID, ParentScannerKey: parentScannerKey, Type: mediaType, Title: title, SortTitle: sortableTitle(title), IndexNumber: indexNumber, SourcePath: path, ScanRoot: root, SourceType: sourceType, FileSize: fileSize(info), FileModTime: fileModTime(info), ContentFingerprint: contentFingerprint, Version: version, ArtSeed: extraKind, ExtraKind: extraKind, LocalMetadata: local, LocalNFOEnabled: localNFOEnabled}
 		}
 		id = scannedID("scan_movie", movieScannerIdentity(library.ID, title, local.Year))
 	case "music":
@@ -2062,9 +2309,11 @@ func scannerFileForPath(library Library, root, path string, localNFOEnabled bool
 		albumScannerKey := scannedID("scan_album", filepath.Join(artistScannerKey, albumTitle))
 		indexNumber = trackNumberFromName(base)
 		id = scannedID("scan_track", filepath.Join(library.ID, artist, albumTitle, strconv.Itoa(indexNumber), title))
-		return scannerMediaFile{ID: id, FileID: scannerFileID(id, path), LibraryID: library.ID, ParentScannerKey: albumScannerKey, ParentTitle: albumTitle, GrandparentScannerKey: artistScannerKey, GrandparentTitle: artist, Type: mediaType, Title: title, SortTitle: sortableTitle(title), Artist: artist, IndexNumber: indexNumber, SourcePath: path, FileSize: fileSize(info), FileModTime: fileModTime(info), ContentFingerprint: contentFingerprint, Version: version, ArtSeed: strings.TrimPrefix(ext, "."), LocalMetadata: local, LocalNFOEnabled: localNFOEnabled}
+		return scannerMediaFile{ID: id, FileID: scannerFileID(id, path), LibraryID: library.ID, ParentScannerKey: albumScannerKey, ParentTitle: albumTitle, GrandparentScannerKey: artistScannerKey, GrandparentTitle: artist, Type: mediaType, Title: title, SortTitle: sortableTitle(title), Artist: artist, IndexNumber: indexNumber, SourcePath: path, ScanRoot: root, SourceType: sourceType, FileSize: fileSize(info), FileModTime: fileModTime(info), ContentFingerprint: contentFingerprint, Version: version, ArtSeed: strings.TrimPrefix(ext, "."), LocalMetadata: local, LocalNFOEnabled: localNFOEnabled}
 	case "audiobook":
-		local = scannerMetadataForLocalMode(mergeScannerMetadata(local, audiobookLocalMetadataForFile(path)), localMode)
+		if allowMediaContentRead {
+			local = scannerMetadataForLocalMode(mergeScannerMetadata(local, audiobookLocalMetadataForFile(path, root)), localMode)
+		}
 		mediaType = "audiobook"
 		folderAuthor, folderTitle := audiobookAuthorTitleFromPath(rel, title)
 		if local.Artist == "" {
@@ -2079,7 +2328,7 @@ func scannerFileForPath(library Library, root, path string, localNFOEnabled bool
 		id = scannedID("scan_audiobook", filepath.Join(library.ID, firstNonEmpty(local.Artist, folderAuthor), title))
 	}
 
-	return scannerMediaFile{ID: id, FileID: scannerFileID(id, path), LibraryID: library.ID, ParentID: parentID, Type: mediaType, Title: title, SortTitle: sortableTitle(title), IndexNumber: indexNumber, SourcePath: path, FileSize: fileSize(info), FileModTime: fileModTime(info), ContentFingerprint: contentFingerprint, Version: version, ArtSeed: strings.TrimPrefix(ext, "."), LocalMetadata: local, LocalNFOEnabled: localNFOEnabled}
+	return scannerMediaFile{ID: id, FileID: scannerFileID(id, path), LibraryID: library.ID, ParentID: parentID, Type: mediaType, Title: title, SortTitle: sortableTitle(title), IndexNumber: indexNumber, SourcePath: path, ScanRoot: root, SourceType: sourceType, FileSize: fileSize(info), FileModTime: fileModTime(info), ContentFingerprint: contentFingerprint, Version: version, ArtSeed: strings.TrimPrefix(ext, "."), LocalMetadata: local, LocalNFOEnabled: localNFOEnabled}
 }
 
 // scannerContentFingerprint is deliberately independent of a file's name and
@@ -3549,6 +3798,7 @@ var (
 	scannerSidecarReadDir  = os.ReadDir
 	scannerSidecarReadFile = os.ReadFile
 	scannerSidecarStat     = os.Stat
+	scannerSidecarEvalPath = filepath.EvalSymlinks
 	scannerPublishArtifact = publishPrivateArtifact
 )
 
@@ -3566,14 +3816,23 @@ func (s *Server) prepareScannedMediaFilesystem(file scannerMediaFile) (scannerMe
 		file.ParentAlbumMetadata = albumLocalMetadataForFile(file)
 	}
 
-	if file.SourcePath != "" && (file.Type == "movie" || file.Type == "episode" || file.Type == "audiobook") {
+	if file.ReadExternalSidecars && file.SourcePath != "" && (file.Type == "movie" || file.Type == "episode" || file.Type == "audiobook") {
 		candidates, err := scannerSidecarCandidatesStrict(file.SourcePath, sidecarSubtitleExtensions)
 		if err != nil {
 			return file, fmt.Errorf("discover sidecar subtitles: %w", err)
 		}
 		for _, candidate := range candidates {
-			contents, err := scannerSidecarReadFile(candidate)
+			candidate, err = resolveScannerPathWithinRoot(scannerRootForFile(file), candidate)
 			if err != nil {
+				s.log.Warn("sidecar subtitle skipped", "path", candidate, "error", err)
+				continue
+			}
+			contents, err := readScannerSidecarFile(candidate, scannerSubtitleSidecarLimit)
+			if err != nil {
+				if errors.Is(err, errScannerSidecarTooLarge) {
+					s.log.Warn("sidecar subtitle skipped", "path", candidate, "error", err)
+					continue
+				}
 				return file, fmt.Errorf("read sidecar subtitle %q: %w", candidate, err)
 			}
 			if len(contents) == 0 {
@@ -3594,21 +3853,27 @@ func (s *Server) prepareScannedMediaFilesystem(file scannerMediaFile) (scannerMe
 		}
 	}
 
-	if file.SourcePath != "" && file.Type == "track" {
+	if file.ReadExternalSidecars && file.SourcePath != "" && file.Type == "track" {
 		candidates, err := scannerSidecarCandidatesStrict(file.SourcePath, sidecarLyricExtensions)
 		if err != nil {
 			return file, fmt.Errorf("discover sidecar lyrics: %w", err)
 		}
 		for _, candidate := range candidates {
-			contents, err := scannerSidecarReadFile(candidate)
+			candidate, err = resolveScannerPathWithinRoot(scannerRootForFile(file), candidate)
 			if err != nil {
+				s.log.Warn("sidecar lyric skipped", "path", candidate, "error", err)
+				continue
+			}
+			contents, err := readScannerSidecarFile(candidate, scannerLyricsSidecarLimit)
+			if err != nil {
+				if errors.Is(err, errScannerSidecarTooLarge) {
+					s.log.Warn("sidecar lyric skipped", "path", candidate, "error", err)
+					continue
+				}
 				return file, fmt.Errorf("read sidecar lyric %q: %w", candidate, err)
 			}
 			if len(contents) == 0 {
 				continue
-			}
-			if len(contents) > 512*1024 {
-				contents = contents[:512*1024]
 			}
 			format := strings.TrimPrefix(strings.ToLower(filepath.Ext(candidate)), ".")
 			file.PreparedLyrics = append(file.PreparedLyrics, scannerPreparedLyric{
@@ -3621,23 +3886,74 @@ func (s *Server) prepareScannedMediaFilesystem(file scannerMediaFile) (scannerMe
 		}
 	}
 
-	file.ExistingLocalImages = map[string]bool{}
-	imageProbe := file
-	imageProbe.ID = firstNonEmpty(imageProbe.ID, "scanner-self")
-	imageProbe.ParentID = firstNonEmpty(imageProbe.ParentID, "scanner-parent")
-	imageProbe.GrandparentID = firstNonEmpty(imageProbe.GrandparentID, "scanner-grandparent")
-	for _, candidate := range localImageCandidatesForScannedFile(imageProbe) {
-		_, err := scannerSidecarStat(candidate.Path)
-		if err == nil {
-			file.ExistingLocalImages[filepath.Clean(candidate.Path)] = true
-			continue
-		}
-		if !errors.Is(err, fs.ErrNotExist) {
-			return file, fmt.Errorf("inspect local artwork %q: %w", candidate.Path, err)
+	if file.DiscoverLocalArtwork {
+		file.ExistingLocalImages = map[string]bool{}
+		imageProbe := file
+		imageProbe.ID = firstNonEmpty(imageProbe.ID, "scanner-self")
+		imageProbe.ParentID = firstNonEmpty(imageProbe.ParentID, "scanner-parent")
+		imageProbe.GrandparentID = firstNonEmpty(imageProbe.GrandparentID, "scanner-grandparent")
+		for _, candidate := range localImageCandidatesForScannedFile(imageProbe) {
+			_, err := resolveScannerPathWithinRoot(scannerRootForFile(file), candidate.Path)
+			if err == nil {
+				file.ExistingLocalImages[filepath.Clean(candidate.Path)] = true
+				continue
+			}
+			if !errors.Is(err, fs.ErrNotExist) {
+				return file, fmt.Errorf("inspect local artwork %q: %w", candidate.Path, err)
+			}
 		}
 	}
 	file.FilesystemPrepared = true
 	return file, nil
+}
+
+func scannerRootForFile(file scannerMediaFile) string {
+	if strings.TrimSpace(file.ScanRoot) != "" {
+		return file.ScanRoot
+	}
+	return filepath.Dir(file.SourcePath)
+}
+
+func resolveScannerPathWithinRoot(root, path string) (string, error) {
+	root = strings.TrimSpace(root)
+	path = strings.TrimSpace(path)
+	if root == "" || path == "" {
+		return "", errors.New("scanner path has no trusted library root")
+	}
+	resolvedRoot, err := scannerSidecarEvalPath(root)
+	if err != nil {
+		return "", err
+	}
+	resolvedPath, err := scannerSidecarEvalPath(path)
+	if err != nil {
+		return "", err
+	}
+	info, err := scannerSidecarStat(resolvedPath)
+	if err != nil {
+		return "", err
+	}
+	if !info.Mode().IsRegular() || !pathInsideRoot(resolvedPath, resolvedRoot) {
+		return "", errors.New("scanner sidecar escaped its library root")
+	}
+	return resolvedPath, nil
+}
+
+func readScannerSidecarFile(path string, limit int64) ([]byte, error) {
+	info, err := scannerSidecarStat(path)
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() || info.Size() < 0 || info.Size() > limit {
+		return nil, errScannerSidecarTooLarge
+	}
+	contents, err := scannerSidecarReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(contents)) > limit {
+		return nil, errScannerSidecarTooLarge
+	}
+	return contents, nil
 }
 
 func scannerSidecarCandidatesStrict(mediaPath string, extensions map[string]bool) ([]string, error) {
@@ -4281,6 +4597,7 @@ func (s *Server) markMissingScannedMediaFilesBatch(ctx context.Context, libraryI
 			FROM media_files
 			WHERE library_id = ?
 				AND available = 1
+				AND source_type NOT IN ('rclone','webdav')
 				AND COALESCE(scan_generation, '') <> ?
 			ORDER BY id ASC
 			LIMIT ?`, libraryID, scanGeneration, limit)
@@ -4364,6 +4681,9 @@ func shouldSkipScanDir(name string) bool {
 
 func isMediaFileForLibrary(libraryType, path string) bool {
 	ext := strings.ToLower(filepath.Ext(path))
+	if strmExtensions[ext] {
+		return true
+	}
 	switch libraryType {
 	case "music":
 		return audioExtensions[ext]
@@ -4570,51 +4890,55 @@ func (opfLocalMetadataProvider) Read(path string) (scannerLocalMetadata, bool) {
 	return readOPF(path)
 }
 
-func localMetadataForMediaFile(path string) scannerLocalMetadata {
-	return firstLocalMetadataFromProviders(path, nfoLocalMetadataProvider{})
+func localMetadataForMediaFile(path, root string) scannerLocalMetadata {
+	return firstLocalMetadataFromProviders(path, root, nfoLocalMetadataProvider{})
 }
 
 func showLocalMetadataForFile(file scannerMediaFile) scannerLocalMetadata {
 	showDir := filepath.Dir(filepath.Dir(file.SourcePath))
 	if strings.Contains(strings.ToLower(filepath.Base(filepath.Dir(file.SourcePath))), "season") || seasonFolderPattern.MatchString(filepath.Base(filepath.Dir(file.SourcePath))) || strings.EqualFold(filepath.Base(filepath.Dir(file.SourcePath)), "Specials") {
-		return firstLocalMetadataFromPaths(filepath.Join(showDir, "tvshow.nfo"), filepath.Join(showDir, "show.nfo"))
+		return firstLocalMetadataFromPaths(file.ScanRoot, filepath.Join(showDir, "tvshow.nfo"), filepath.Join(showDir, "show.nfo"))
 	}
-	return firstLocalMetadataFromPaths(filepath.Join(filepath.Dir(file.SourcePath), "tvshow.nfo"), filepath.Join(filepath.Dir(file.SourcePath), "show.nfo"))
+	return firstLocalMetadataFromPaths(file.ScanRoot, filepath.Join(filepath.Dir(file.SourcePath), "tvshow.nfo"), filepath.Join(filepath.Dir(file.SourcePath), "show.nfo"))
 }
 
 func seasonLocalMetadataForFile(file scannerMediaFile) scannerLocalMetadata {
-	return firstLocalMetadataFromPaths(filepath.Join(filepath.Dir(file.SourcePath), "season.nfo"))
+	return firstLocalMetadataFromPaths(file.ScanRoot, filepath.Join(filepath.Dir(file.SourcePath), "season.nfo"))
 }
 
 func albumLocalMetadataForFile(file scannerMediaFile) scannerLocalMetadata {
-	return firstLocalMetadataFromPaths(filepath.Join(filepath.Dir(file.SourcePath), "album.nfo"))
+	return firstLocalMetadataFromPaths(file.ScanRoot, filepath.Join(filepath.Dir(file.SourcePath), "album.nfo"))
 }
 
 func artistLocalMetadataForFile(file scannerMediaFile) scannerLocalMetadata {
 	artistDir := filepath.Dir(filepath.Dir(file.SourcePath))
-	return firstLocalMetadataFromPaths(filepath.Join(artistDir, "artist.nfo"))
+	return firstLocalMetadataFromPaths(file.ScanRoot, filepath.Join(artistDir, "artist.nfo"))
 }
 
-func audiobookLocalMetadataForFile(path string) scannerLocalMetadata {
-	return firstLocalMetadataFromProviders(path, opfLocalMetadataProvider{})
+func audiobookLocalMetadataForFile(path, root string) scannerLocalMetadata {
+	return firstLocalMetadataFromProviders(path, root, opfLocalMetadataProvider{})
 }
 
-func firstLocalMetadataFromPaths(paths ...string) scannerLocalMetadata {
-	return firstLocalMetadataFromCandidatePaths(nfoLocalMetadataProvider{}, paths...)
+func firstLocalMetadataFromPaths(root string, paths ...string) scannerLocalMetadata {
+	return firstLocalMetadataFromCandidatePaths(root, nfoLocalMetadataProvider{}, paths...)
 }
 
-func firstLocalMetadataFromProviders(path string, providers ...LocalMetadataProvider) scannerLocalMetadata {
+func firstLocalMetadataFromProviders(path, root string, providers ...LocalMetadataProvider) scannerLocalMetadata {
 	for _, provider := range providers {
-		if metadata := firstLocalMetadataFromCandidatePaths(provider, provider.CandidatePaths(path)...); metadata.Source != "" {
+		if metadata := firstLocalMetadataFromCandidatePaths(root, provider, provider.CandidatePaths(path)...); metadata.Source != "" {
 			return metadata
 		}
 	}
 	return scannerLocalMetadata{}
 }
 
-func firstLocalMetadataFromCandidatePaths(provider LocalMetadataProvider, paths ...string) scannerLocalMetadata {
+func firstLocalMetadataFromCandidatePaths(root string, provider LocalMetadataProvider, paths ...string) scannerLocalMetadata {
 	for _, path := range paths {
-		if metadata, ok := provider.Read(path); ok {
+		resolved, err := resolveScannerPathWithinRoot(root, path)
+		if err != nil {
+			continue
+		}
+		if metadata, ok := provider.Read(resolved); ok {
 			return metadata
 		}
 	}
@@ -4653,7 +4977,7 @@ func nfoCandidatePaths(path string) []string {
 }
 
 func readNFO(path string) (scannerLocalMetadata, bool) {
-	bytes, err := os.ReadFile(path)
+	bytes, err := readBoundedRegularFile(path, scannerLocalMetadataLimit)
 	if err != nil || len(bytes) == 0 {
 		return scannerLocalMetadata{}, false
 	}
@@ -4695,9 +5019,8 @@ func readNFO(path string) (scannerLocalMetadata, bool) {
 			continue
 		}
 		candidate := filepath.Clean(filepath.Join(filepath.Dir(path), filepath.FromSlash(thumb)))
-		rel, relErr := filepath.Rel(filepath.Dir(path), candidate)
-		info, statErr := os.Stat(candidate)
-		if relErr != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || statErr != nil || !info.Mode().IsRegular() {
+		_, candidateErr := resolveScannerPathWithinRoot(filepath.Dir(path), candidate)
+		if candidateErr != nil {
 			metadata.People[index].ImageURL = ""
 			continue
 		}
@@ -4781,7 +5104,7 @@ type opfManifestItem struct {
 }
 
 func readOPF(path string) (scannerLocalMetadata, bool) {
-	bytes, err := os.ReadFile(path)
+	bytes, err := readBoundedRegularFile(path, scannerLocalMetadataLimit)
 	if err != nil || len(bytes) == 0 {
 		return scannerLocalMetadata{}, false
 	}
@@ -4876,8 +5199,8 @@ func resolveOPFRelativePath(opfPath, href string) string {
 	}
 	dir := filepath.Dir(opfPath)
 	candidate := filepath.Clean(filepath.Join(dir, filepath.FromSlash(href)))
-	rel, err := filepath.Rel(dir, candidate)
-	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+	_, err := resolveScannerPathWithinRoot(dir, candidate)
+	if err != nil {
 		return ""
 	}
 	return candidate
@@ -5031,6 +5354,9 @@ func providerExternalType(provider, mediaType string) string {
 	}
 	if provider == "tmdb" {
 		return tmdbSearchType(mediaType)
+	}
+	if provider == "tvdb" {
+		return tvdbSearchType(mediaType)
 	}
 	return ""
 }

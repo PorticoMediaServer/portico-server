@@ -71,7 +71,7 @@ describe('operational Settings surfaces', () => {
     const source = new FixtureSettingsDataSource();
     const operations = await source.settingsOperations();
     operations.porticoInvites = [{
-      id: 'invite-delivery-problem', serverId: 'fixture-server', invitedEmail: 'friend@example.test', deliveryMode: 'email', role: 'user', status: 'pending', emailDeliveryStatus: 'dead-letter', permissionTemplate: { libraryIds: [], permissions: {} }, resourceLimits: {}, allowSubordinateProfiles: true, createdByUserId: 'fixture-owner', createdAt: '2026-08-18T12:00:00Z', expiresAt: '2026-08-25T12:00:00Z',
+      id: 'invite-delivery-problem', serverId: 'fixture-server', invitedEmail: 'friend@example.test', deliveryMode: 'email', role: 'user', status: 'pending', emailDeliveryStatus: 'dead-letter', permissionTemplate: { permissions: {} }, resourceLimits: {}, allowSubordinateProfiles: true, createdByUserId: 'fixture-owner', createdAt: '2026-08-18T12:00:00Z', expiresAt: '2026-08-25T12:00:00Z',
     }];
     const resend = vi.spyOn(source, 'resendPorticoMemberInvite');
     render(<PeopleOperations operations={operations} source={source} onChanged={() => undefined} />);

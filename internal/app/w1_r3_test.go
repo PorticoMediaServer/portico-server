@@ -109,6 +109,15 @@ func TestW1R3ActiveKeyVariantsDoNotOverDeduplicate(t *testing.T) {
 	if probeAgain.ID != probe.ID {
 		t.Fatalf("same analysis variant did not deduplicate: first=%#v again=%#v", probe, probeAgain)
 	}
+	newRevision, err := server.createJobForWithMetadata("media_analyze", "Probe changed source.", "media", "movie_variants", map[string]string{
+		"analysisMode": "probe", "sourceRevision": "revision-b",
+	})
+	if err != nil {
+		t.Fatalf("create changed-source analysis: %v", err)
+	}
+	if newRevision.ID == probe.ID || newRevision.ActiveKey == probe.ActiveKey {
+		t.Fatalf("changed source revision was over-deduplicated: old=%#v new=%#v", probe, newRevision)
+	}
 
 	standard, err := server.createJobForWithMetadata("optimize_version", "720p optimized version.", "media", "movie_variants", map[string]string{"profile": "720p-medium"})
 	if err != nil {

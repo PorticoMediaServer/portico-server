@@ -24,12 +24,6 @@
       "revoke": "POST /api/auth/sessions/revoke",
       "refreshOwner": "selected-server",
       "persistAfterBootstrap": true
-    },
-    "tvPairing": {
-      "start": "POST /api/auth/tv-setup/sessions",
-      "authorize": "POST /api/auth/tv-setup/grants",
-      "redeem": "POST /api/auth/tv-setup/redeem",
-      "persistRedeemedCredentials": true
     }
   },
   "bootstrapOrder": [
@@ -55,7 +49,7 @@
     "singleFlight": true,
     "maxAutomaticRetries": 1,
     "durableBeforeRetry": true,
-    "terminalCodes": ["invalid_refresh_token", "refresh_token_reuse", "membership_inactive", "server_not_found", "server_session_revoked", "account_disabled", "device_not_allowed"],
+    "terminalCodes": ["credential_revoked", "refresh_reused", "account_deleted", "profile_deleted", "membership_removed"],
     "transientStatuses": [408, 429, 500, 502, 503, 504],
     "terminalAction": "clear-active-server-credentials",
     "transientAction": "preserve-active-server-credentials"

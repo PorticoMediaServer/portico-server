@@ -97,24 +97,28 @@ export type RuntimeState =
   | (RuntimeStateBase & { id: 'checking-local-server'; serverName: string })
   | (RuntimeStateBase & { id: 'hosted-account-session' })
   | (RuntimeStateBase & { id: 'hosted-sign-in'; messageId?: ProductMessageId })
+  | (RuntimeStateBase & { id: 'sso-onboarding' })
+  | (RuntimeStateBase & { id: 'device-authorization'; mode: 'tv' | 'generic'; initialCode?: string; nativeReturn?: boolean; servers: HostedServerSummary[] })
   | (RuntimeStateBase & { id: 'server-memberships' })
   | (RuntimeStateBase & { id: 'no-memberships' })
   | (RuntimeStateBase & { id: 'server-selection'; servers: HostedServerSummary[] })
   | (RuntimeStateBase & { id: 'profile-selection'; servers: HostedServerSummary[]; selectedServer: HostedServerSummary; profiles: HostedAccountProfile[]; messageId?: ProductMessageId })
   | (RuntimeStateBase & { id: 'route-discovery'; servers: HostedServerSummary[]; selectedServer: HostedServerSummary })
-  | (RuntimeStateBase & { id: 'runtime-recovery'; classification: RuntimeFailureClassification; messageId: ProductMessageId; serverName?: string; selectedServer?: HostedServerSummary; servers?: HostedServerSummary[] })
+  | (RuntimeStateBase & { id: 'runtime-recovery'; classification: RuntimeFailureClassification; messageId: ProductMessageId; serverName?: string; selectedServer?: HostedServerSummary; servers?: HostedServerSummary[]; automaticAvailabilityRetry?: boolean; availabilityRetryAfterMs?: number; availabilityRetryAt?: string })
   | (RuntimeStateBase & { id: 'server-ready'; mode: RuntimeMode; serverName: string });
 
 export type RuntimeEvent =
   | { type: 'CHECK_LOCAL'; serverName?: string }
   | { type: 'CHECK_HOSTED_SESSION' }
   | { type: 'HOSTED_SIGN_IN_REQUIRED'; messageId?: ProductMessageId }
+  | { type: 'SSO_ONBOARDING' }
+  | { type: 'DEVICE_AUTHORIZATION'; mode: 'tv' | 'generic'; initialCode?: string; nativeReturn?: boolean; servers: HostedServerSummary[] }
   | { type: 'LOAD_MEMBERSHIPS' }
   | { type: 'MEMBERSHIPS_READY'; servers: HostedServerSummary[] }
   | { type: 'SELECT_SERVER'; server: HostedServerSummary; servers: HostedServerSummary[] }
   | { type: 'PROFILE_SELECTION_REQUIRED'; server: HostedServerSummary; servers: HostedServerSummary[]; profiles: HostedAccountProfile[]; messageId?: ProductMessageId }
   | { type: 'READY'; mode: RuntimeMode; serverName: string }
-  | { type: 'FAILURE'; classification: RuntimeFailureClassification; messageId?: ProductMessageId; serverName?: string; selectedServer?: HostedServerSummary; servers?: HostedServerSummary[]; hosted?: boolean; continueAccount?: boolean; nearbyAvailable?: boolean }
+  | { type: 'FAILURE'; classification: RuntimeFailureClassification; messageId?: ProductMessageId; serverName?: string; selectedServer?: HostedServerSummary; servers?: HostedServerSummary[]; hosted?: boolean; continueAccount?: boolean; nearbyAvailable?: boolean; automaticAvailabilityRetry?: boolean; availabilityRetryAfterMs?: number; availabilityRetryAt?: string }
   | { type: 'RESTART' };
 
 function state(id: RuntimeState['id'], overrides: Record<string, unknown> = {}): RuntimeState {
@@ -133,6 +137,10 @@ export function runtimeReducer(_current: RuntimeState, event: RuntimeEvent): Run
       return state('hosted-account-session');
     case 'HOSTED_SIGN_IN_REQUIRED':
       return state('hosted-sign-in', { messageId: event.messageId, recoveryActions: ['sign-in'] });
+    case 'SSO_ONBOARDING':
+      return state('sso-onboarding');
+    case 'DEVICE_AUTHORIZATION':
+      return state('device-authorization', { mode: event.mode, initialCode: event.initialCode, nativeReturn: event.nativeReturn, servers: event.servers });
     case 'LOAD_MEMBERSHIPS':
       return state('server-memberships', { retryable: true, recoveryActions: ['retry', 'sign-out'] });
     case 'MEMBERSHIPS_READY':
@@ -162,6 +170,9 @@ export function runtimeReducer(_current: RuntimeState, event: RuntimeEvent): Run
         serverName: event.serverName,
         selectedServer: event.selectedServer,
         servers: event.servers,
+        automaticAvailabilityRetry: event.automaticAvailabilityRetry,
+        availabilityRetryAfterMs: event.availabilityRetryAfterMs,
+        availabilityRetryAt: event.availabilityRetryAt,
       });
     }
     case 'RESTART':
@@ -224,7 +235,8 @@ export function resolveRuntimeConfig(environment: Record<string, string | boolea
   const mode: RuntimeMode = configuredMode as RuntimeMode || (development ? 'fixtures' : 'bundled');
   if (!development && mode === 'fixtures') throw new Error('Fixture data is disabled in production builds.');
 
-  const hostedApiBaseUrl = String(environment.VITE_PORTICO_HOSTED_API_URL || 'https://api.getportico.tv').replace(/\/+$/, '');
+  const defaultHostedApiBaseUrl = mode === 'hosted' ? 'https://web.getportico.tv' : 'https://api.getportico.tv';
+  const hostedApiBaseUrl = String(environment.VITE_PORTICO_HOSTED_API_URL || defaultHostedApiBaseUrl).replace(/\/+$/, '');
   const hostedUrl = new URL(hostedApiBaseUrl);
   const developmentLoopback = development && hostedUrl.protocol === 'http:' && ['127.0.0.1', 'localhost', '[::1]'].includes(hostedUrl.hostname);
   if (mode === 'hosted' && hostedUrl.protocol !== 'https:' && !developmentLoopback) throw new Error('Hosted mode requires an HTTPS Hosted Services origin.');

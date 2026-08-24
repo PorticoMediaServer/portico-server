@@ -175,6 +175,17 @@ func TestCompileUsesOnlyVerifiedDolbyVisionFallback(t *testing.T) {
 	}
 }
 
+func TestDolbyVisionMP4CopyUsesDVH1SampleEntry(t *testing.T) {
+	plan := playbackplan.Plan{Container: "mp4", Color: &playbackplan.ColorDecision{Input: "dolby_vision", Output: "dolby_vision", Action: "preserve"}}
+	if got := strings.Join(containerVideoArgs(plan, "hevc", true), " "); got != "-tag:v dvh1" {
+		t.Fatalf("Dolby Vision MP4 tag args = %q", got)
+	}
+	plan.Color.Output = "pq"
+	if got := strings.Join(containerVideoArgs(plan, "hevc", true), " "); got != "-tag:v hvc1" {
+		t.Fatalf("HDR10 HEVC MP4 tag args = %q", got)
+	}
+}
+
 func TestCompileBitmapSubtitleUsesExactOverlayGraph(t *testing.T) {
 	f := exactFacts()
 	f.Video[0].FieldOrder = "progressive"

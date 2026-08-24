@@ -16,10 +16,11 @@ const initial: RestoreWorkflowResponse = {
 };
 
 describe('supervised restore status polling', () => {
-	it('shows the updater as visible, disabled, and unavailable without a mutation', () => {
+	it('shows truthful update availability without rendering a dead mutation control', () => {
 		render(<MaintenanceOperations tasks={[]} backups={[]} storage={{ totalBytes: 0, categories: [], generatedAt: new Date().toISOString() }} source={{} as SettingsDataSource} onChanged={vi.fn()} />);
-		expect(screen.getByRole('button', { name: /update/i })).toBeDisabled();
-		expect(screen.getByText('This feature is not yet available.')).toBeInTheDocument();
+		expect(screen.queryByRole('button', { name: /update/i })).not.toBeInTheDocument();
+		expect(screen.getByText('Updates unavailable')).toBeInTheDocument();
+		expect(screen.getByText(/Use the documented update procedure/)).toBeInTheDocument();
 	});
 
   it('keeps the out-of-band capability across tokenless nonterminal responses', async () => {

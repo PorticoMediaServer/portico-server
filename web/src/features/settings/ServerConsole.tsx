@@ -20,7 +20,17 @@ function logText(event: LogEvent): string {
   return `${event.time} ${event.level.toUpperCase()} ${event.message}${fields ? ` ${fields}` : ''}`;
 }
 
-export function ServerConsole({ source, diagnostics, release }: { source: SettingsDataSource; diagnostics: SystemDiagnostics; release: SystemReleaseInfo }) {
+function diagnosticsFreshness(value: string): { label: string; stale: boolean } {
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) return { label: 'Freshness unavailable', stale: true };
+  const age = Math.max(0, Date.now() - timestamp);
+  return {
+    label: `${Math.floor(age / 60_000)}m ago · generated ${new Date(timestamp).toLocaleTimeString()}`,
+    stale: age > 5 * 60_000,
+  };
+}
+
+export function ServerConsole({ source, diagnostics, release }: { source: SettingsDataSource; diagnostics: SystemDiagnostics; release?: SystemReleaseInfo }) {
   const [revision, setRevision] = useState(0);
   const [level, setLevel] = useState<'all' | LogEvent['level']>('all');
   const [query, setQuery] = useState('');
@@ -32,6 +42,7 @@ export function ServerConsole({ source, diagnostics, release }: { source: Settin
     const needle = query.trim().toLocaleLowerCase();
     return !needle || logText(event).toLocaleLowerCase().includes(needle);
   }) : [], [level, logs, query]);
+  const diagnosticFreshness = diagnosticsFreshness(diagnostics.generatedAt);
 
   const copy = async () => {
     setCopyState('');
@@ -44,10 +55,11 @@ export function ServerConsole({ source, diagnostics, release }: { source: Settin
   };
 
   return <div className="portico-server-console">
+    <p className={`portico-status-freshness${diagnosticFreshness.stale ? ' stale' : ''}`} data-testid="diagnostics-freshness"><strong>{diagnosticFreshness.stale ? 'Stale diagnostics' : 'Current diagnostics'}</strong><span>{diagnosticFreshness.label}</span>{diagnosticFreshness.stale && <span>Refresh the Diagnostics section for current values.</span>}</p>
     <SettingsGroup title="Server health" description="Runtime, database, and packaged dependency checks from this server.">
       <div className="portico-diagnostic-summary">
         <div><span className={diagnostics.databaseReady ? 'healthy' : 'danger'}>{diagnostics.databaseReady ? <CheckCircle2 /> : <AlertTriangle />}</span><span><strong>Database</strong><small>{diagnostics.databaseReady ? `${diagnostics.sqlite.journalMode} · ${bytes(diagnostics.sqlite.databaseBytes)}` : diagnostics.sqlite.lastError || 'Database is not ready'}</small></span></div>
-        <div><span className={diagnostics.webDistReady ? 'healthy' : 'danger'}>{diagnostics.webDistReady ? <CheckCircle2 /> : <AlertTriangle />}</span><span><strong>Web application</strong><small>{diagnostics.webDistReady ? `Portico ${release.version} · API ${release.apiVersion}` : 'The packaged web distribution is unavailable'}</small></span></div>
+        <div><span className={diagnostics.webDistReady ? 'healthy' : 'danger'}>{diagnostics.webDistReady ? <CheckCircle2 /> : <AlertTriangle />}</span><span><strong>Web application</strong><small>{diagnostics.webDistReady ? (release ? `Portico ${release.version} · API ${release.apiVersion}` : 'Ready · release details unavailable') : 'The packaged web distribution is unavailable'}</small></span></div>
         <div><span className={diagnostics.resources.status === 'normal' ? 'healthy' : 'warn'}>{diagnostics.resources.status === 'normal' ? <CheckCircle2 /> : <AlertTriangle />}</span><span><strong>Workload</strong><small>{diagnostics.resources.status} · {diagnostics.resources.runningBackgroundJobs} running · {diagnostics.resources.queuedBackgroundJobs} queued</small></span></div>
         <div><span className={diagnostics.sqliteHealth.status === 'healthy' ? 'healthy' : 'danger'}>{diagnostics.sqliteHealth.status === 'healthy' ? <Database /> : <AlertTriangle />}</span><span><strong>SQLite health</strong><small>{diagnostics.sqliteHealth.status} · probe {diagnostics.sqliteHealth.lastProbeDurationMillis} ms</small></span></div>
       </div>
@@ -63,8 +75,8 @@ export function ServerConsole({ source, diagnostics, release }: { source: Settin
       {logs.status === 'success' && filtered.length > 0 && <div className="portico-console-events" role="log" aria-label="Server events">{filtered.map((event) => <article className={event.level} key={event.id}><time dateTime={event.time}>{new Date(event.time).toLocaleString()}</time><strong>{event.level}</strong><p>{event.message}</p>{Object.keys(event.fields ?? {}).length > 0 && <dl>{Object.entries(event.fields ?? {}).map(([key, value]) => <div key={key}><dt>{key}</dt><dd>{value}</dd></div>)}</dl>}</article>)}</div>}
     </section>
 
-    <SettingsGroup title="Release" description="Installed server and runtime information.">
-      <div className="portico-release-grid"><div><Server /><span><strong>Portico {release.version}</strong><small>{release.installMethod} · {release.goos}/{release.goarch}</small></span></div><div><RefreshCw /><span><strong>Updater unavailable</strong><small>This feature is not yet available.</small></span></div><div><Database /><span><strong>Database migration</strong><small>{release.migrationStatus}</small></span></div></div>
-    </SettingsGroup>
+    {release ? <SettingsGroup title="Release" description="Installed server and runtime information.">
+      <div className="portico-release-grid"><div><Server /><span><strong>Portico {release.version}</strong><small>{release.installMethod} · {release.goos}/{release.goarch}</small></span></div><div><RefreshCw /><span><strong>Update path</strong><small>Unavailable for this installation · state {release.updateStatus}</small></span></div><div><Database /><span><strong>Database migration</strong><small>{release.migrationStatus}</small></span></div></div>
+    </SettingsGroup> : <SettingsGroup title="Release" description="Installed server and runtime information."><div className="portico-settings-state error"><AlertTriangle /><strong>Release information is unavailable</strong><p>Diagnostics remain available. Retry to refresh this independent panel.</p></div></SettingsGroup>}
   </div>;
 }

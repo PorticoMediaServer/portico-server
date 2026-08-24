@@ -57,6 +57,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   const statesRef = useRef({ profile, accountAdmin });
   const loadGenerations = useRef<Record<NotificationAudience, number>>({ profile: 0, 'account-admin': 0 });
   const activeLoads = useRef<Record<NotificationAudience, AudienceLoadOperation | undefined>>({ profile: undefined, 'account-admin': undefined });
+  const mutationChains = useRef<Record<NotificationAudience, Promise<void>>>({ profile: Promise.resolve(), 'account-admin': Promise.resolve() });
   statesRef.current = { profile, accountAdmin };
   const profileRecipientKey = profile.page ? recipientKey(profile.page) : '';
   const accountAdminRecipientKey = accountAdmin?.page ? recipientKey(accountAdmin.page) : '';
@@ -180,33 +181,51 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   }, [accountAdminRecipientKey, auth.status, auth.viewer?.authenticated, auth.viewerScopeKey, isAccountAdmin, loadAudience, profileRecipientKey, source]);
 
   const mutate = useCallback(async (audience: NotificationAudience, ids: string[], action: NotificationReceiptAction) => {
-    const state = audience === 'profile' ? statesRef.current.profile : statesRef.current.accountAdmin;
-    if (!state?.page || ids.length === 0) return;
-    const controller = new AbortController();
-    try {
-      await source.updateViewerNotificationReceipts(audience, {
-        recipient: state.page.recipient,
-        notificationIds: ids,
-        action,
-        expectedRevision: state.page.revision,
-      }, controller.signal);
-      await loadAudience(audience);
-    } catch (reason) {
-      await loadAudience(audience).catch(() => undefined);
-      setAudienceError(audience, productProblem(reason));
-      throw reason;
-    }
+    if (ids.length === 0) return;
+    const scheduled = mutationChains.current[audience].catch(() => undefined).then(async () => {
+      const state = audience === 'profile' ? statesRef.current.profile : statesRef.current.accountAdmin;
+      if (!state?.page) return;
+      const controller = new AbortController();
+      try {
+        const result = await source.updateViewerNotificationReceipts(audience, {
+          recipient: state.page.recipient,
+          notificationIds: ids,
+          action,
+          expectedRevision: state.page.revision,
+        }, controller.signal);
+        const nextState = { ...state, page: { ...state.page, revision: result.revision, unreadCount: result.unreadCount } };
+        if (audience === 'profile') statesRef.current.profile = nextState;
+        else statesRef.current.accountAdmin = nextState;
+        await loadAudience(audience);
+      } catch (reason) {
+        await loadAudience(audience).catch(() => undefined);
+        setAudienceError(audience, productProblem(reason));
+        throw reason;
+      }
+    });
+    mutationChains.current[audience] = scheduled.then(() => undefined, () => undefined);
+    return scheduled;
   }, [loadAudience, setAudienceError, source]);
 
   const markAllRead = useCallback(async (audience: NotificationAudience) => {
-    const controller = new AbortController();
-    try {
-      await source.markAllViewerNotificationsRead(audience, controller.signal);
-      await loadAudience(audience);
-    } catch (reason) {
-      setAudienceError(audience, productProblem(reason));
-      throw reason;
-    }
+    const scheduled = mutationChains.current[audience].catch(() => undefined).then(async () => {
+      const state = audience === 'profile' ? statesRef.current.profile : statesRef.current.accountAdmin;
+      if (!state?.page) return;
+      const controller = new AbortController();
+      try {
+        const result = await source.markAllViewerNotificationsRead(audience, controller.signal);
+        const nextState = { ...state, page: { ...state.page, revision: result.revision, unreadCount: result.unreadCount } };
+        if (audience === 'profile') statesRef.current.profile = nextState;
+        else statesRef.current.accountAdmin = nextState;
+        await loadAudience(audience);
+      } catch (reason) {
+        await loadAudience(audience).catch(() => undefined);
+        setAudienceError(audience, productProblem(reason));
+        throw reason;
+      }
+    });
+    mutationChains.current[audience] = scheduled.then(() => undefined, () => undefined);
+    return scheduled;
   }, [loadAudience, setAudienceError, source]);
 
   const value = useMemo<NotificationContextValue>(() => ({

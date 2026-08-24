@@ -25,7 +25,7 @@ async function hashTree(directory, relative = '') {
 const buildId = process.env.PORTICO_WEB_BUILD_ID || `sha256-${(await hashTree(dist)).slice(0, 24)}`;
 const config = {
   mode,
-  hostedApiBaseUrl: 'https://api.getportico.tv',
+  hostedApiBaseUrl: mode === 'hosted' ? 'https://web.getportico.tv' : 'https://api.getportico.tv',
   routeProbeTimeoutMs: 3500,
   buildId,
 };

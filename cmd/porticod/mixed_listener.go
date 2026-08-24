@@ -39,6 +39,8 @@ type protocolMux struct {
 	listener               net.Listener
 	done                   chan struct{}
 	close                  sync.Once
+	fatalMu                sync.RWMutex
+	fatalErr               error
 	http                   *connectionListener
 	tls                    *connectionListener
 	classifySlots          chan struct{}
@@ -58,11 +60,12 @@ type protocolMux struct {
 }
 
 type connectionListener struct {
-	addr   net.Addr
-	conns  chan net.Conn
-	done   chan struct{}
-	parent <-chan struct{}
-	close  sync.Once
+	addr        net.Addr
+	conns       chan net.Conn
+	done        chan struct{}
+	parent      <-chan struct{}
+	parentError func() error
+	close       sync.Once
 }
 
 type bufferedConn struct {
@@ -130,28 +133,58 @@ func newProtocolMuxWithLimits(listener net.Listener, observer func(protocolMuxDi
 		classifiers:     map[net.Conn]struct{}{},
 		observer:        observer,
 	}
-	mux.http = newConnectionListener(listener.Addr(), mux.done)
-	mux.tls = newConnectionListener(listener.Addr(), mux.done)
+	mux.http = newConnectionListener(listener.Addr(), mux.done, mux.parentAcceptError)
+	mux.tls = newConnectionListener(listener.Addr(), mux.done, mux.parentAcceptError)
 	go mux.accept()
 	return mux
 }
 
-func newConnectionListener(addr net.Addr, parent <-chan struct{}) *connectionListener {
-	return &connectionListener{
+func newConnectionListener(addr net.Addr, parent <-chan struct{}, parentError ...func() error) *connectionListener {
+	listener := &connectionListener{
 		addr:   addr,
 		conns:  make(chan net.Conn, protocolConnectionLimit),
 		done:   make(chan struct{}),
 		parent: parent,
 	}
+	if len(parentError) > 0 {
+		listener.parentError = parentError[0]
+	}
+	return listener
 }
 
 func (m *protocolMux) accept() {
 	defer close(m.done)
+	backoff := time.Duration(0)
 	for {
 		connection, err := m.listener.Accept()
 		if err != nil {
+			if errors.Is(err, net.ErrClosed) {
+				return
+			}
+			if netErr, ok := err.(net.Error); ok && (netErr.Timeout() || netErr.Temporary()) {
+				if backoff == 0 {
+					backoff = 5 * time.Millisecond
+				} else {
+					backoff *= 2
+				}
+				if backoff > time.Second {
+					backoff = time.Second
+				}
+				timer := time.NewTimer(backoff)
+				select {
+				case <-timer.C:
+					continue
+				case <-m.done:
+					timer.Stop()
+					return
+				}
+			}
+			m.fatalMu.Lock()
+			m.fatalErr = err
+			m.fatalMu.Unlock()
 			return
 		}
+		backoff = 0
 		m.accepted.Add(1)
 		select {
 		case m.connectionSlots <- struct{}{}:
@@ -187,6 +220,16 @@ func (m *protocolMux) accept() {
 			_ = connection.Close()
 		}
 	}
+}
+
+func (m *protocolMux) parentAcceptError() error {
+	m.fatalMu.RLock()
+	err := m.fatalErr
+	m.fatalMu.RUnlock()
+	if err != nil {
+		return err
+	}
+	return net.ErrClosed
 }
 
 func (m *protocolMux) recordAdmissionRejection() {
@@ -271,6 +314,9 @@ func (l *connectionListener) Accept() (net.Conn, error) {
 	case <-l.done:
 		return nil, net.ErrClosed
 	case <-l.parent:
+		if l.parentError != nil {
+			return nil, l.parentError()
+		}
 		return nil, net.ErrClosed
 	}
 }

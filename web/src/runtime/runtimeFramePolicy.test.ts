@@ -19,7 +19,7 @@ describe('runtimeUsesProductFrame', () => {
     state({ id: 'hosted-account-session' }),
     state({ id: 'server-memberships' }),
     state({ id: 'route-discovery', servers: [], selectedServer: server }),
-    state({ id: 'runtime-recovery', classification: 'server-offline', messageId: 'problem.server-unavailable' }),
+    state({ id: 'runtime-recovery', classification: 'server-offline', messageId: 'problem.server-unavailable', selectedServer: server }),
   ])('keeps ordinary connection state $id inside the product frame', (runtimeState) => {
     expect(runtimeUsesProductFrame(runtimeState)).toBe(true);
   });
@@ -29,6 +29,7 @@ describe('runtimeUsesProductFrame', () => {
     state({ id: 'profile-selection', servers: [], selectedServer: server, profiles: [] }),
     state({ id: 'runtime-recovery', classification: 'session-expired', messageId: 'auth.session-expired' }),
     state({ id: 'runtime-recovery', classification: 'route-security', messageId: 'problem.connection-failed' }),
+    state({ id: 'runtime-recovery', classification: 'server-offline', messageId: 'problem.server-unavailable' }),
   ])('keeps identity or security state $id outside the cosmetic product frame', (runtimeState) => {
     expect(runtimeUsesProductFrame(runtimeState)).toBe(false);
   });

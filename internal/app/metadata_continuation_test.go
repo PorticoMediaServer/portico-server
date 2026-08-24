@@ -32,7 +32,12 @@ func newMetadataContinuationTestDB(t *testing.T) *sql.DB {
 		db.Close()
 		t.Fatal("metadata continuation schema marker missing")
 	}
-	if _, err = db.Exec(string(contents[index:])); err != nil {
+	continuationSchema := string(contents[index:])
+	const nextMarker = "-- First-class remote storage catalog."
+	if nextIndex := strings.Index(continuationSchema, nextMarker); nextIndex >= 0 {
+		continuationSchema = continuationSchema[:nextIndex]
+	}
+	if _, err = db.Exec(continuationSchema); err != nil {
 		db.Close()
 		t.Fatalf("apply continuation schema: %v", err)
 	}

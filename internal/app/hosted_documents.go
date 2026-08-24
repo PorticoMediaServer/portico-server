@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"crypto/ed25519"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,15 +15,45 @@ import (
 )
 
 const (
-	hostedDocumentAudience   = "portico-media-server"
-	hostedSignatureAlgorithm = "ed25519"
-	hostedDocumentClockSkew  = time.Minute
-	maximumPolicyLifetime    = 20 * time.Minute
+	hostedDocumentAudience    = "portico-media-server"
+	hostedSignatureAlgorithm  = "ed25519"
+	hostedPolicyKind          = "policy-snapshot"
+	hostedDocumentClockSkew   = time.Minute
+	maximumPolicyLifetime     = 7 * 24 * time.Hour
+	hostedPolicyRenewalWindow = 24 * time.Hour
+	hostedPolicyGracePeriod   = 24 * time.Hour
+	hostedPolicyPlaybackDrain = 4 * time.Hour
 )
 
 type remotePolicyState struct {
-	SnapshotID string `json:"snapshotId"`
-	IssuedAt   string `json:"issuedAt"`
+	SnapshotID     string `json:"snapshotId"`
+	SnapshotDigest string `json:"snapshotDigest,omitempty"`
+	Generation     int64  `json:"generation,omitempty"`
+	IssuedAt       string `json:"issuedAt"`
+	ExpiresAt      string `json:"expiresAt,omitempty"`
+	PolicyDigest   string `json:"policyDigest,omitempty"`
+	AckPending     bool   `json:"ackPending,omitempty"`
+}
+
+func normalizedSHA256Digest(value string) (string, error) {
+	value = strings.ToLower(strings.TrimSpace(value))
+	decoded, err := hex.DecodeString(value)
+	if err != nil || len(decoded) != sha256.Size {
+		return "", errors.New("SHA-256 digest is invalid")
+	}
+	return value, nil
+}
+
+func (s *Server) loadRemotePolicyState() remotePolicyState {
+	stored := strings.TrimSpace(s.secretSetting(remoteAccessPolicyStateKey))
+	if stored == "" {
+		return remotePolicyState{}
+	}
+	var state remotePolicyState
+	if json.Unmarshal([]byte(stored), &state) != nil {
+		return remotePolicyState{}
+	}
+	return state
 }
 
 type hostedDocumentSigningKeySet struct {
@@ -166,6 +198,9 @@ func verifyHostedPolicySnapshot(raw json.RawMessage, snapshot RemotePolicySnapsh
 	if strings.TrimSpace(snapshot.SnapshotID) == "" || strings.TrimSpace(snapshot.Signature) == "" {
 		return errors.New("snapshot ID and signature are required")
 	}
+	if snapshot.Kind != hostedPolicyKind {
+		return errors.New("policy document kind is invalid")
+	}
 	if snapshot.Version != 1 {
 		return fmt.Errorf("unsupported policy document version %d", snapshot.Version)
 	}
@@ -177,6 +212,15 @@ func verifyHostedPolicySnapshot(raw json.RawMessage, snapshot RemotePolicySnapsh
 	}
 	if snapshot.ServerID == "" || snapshot.ServerID != expectedServerID {
 		return errors.New("policy subject does not match the claimed server")
+	}
+	if snapshot.Generation < 1 {
+		return errors.New("policy generation is invalid")
+	}
+	if _, err := normalizedSHA256Digest(snapshot.Digest); err != nil {
+		return errors.New("policy snapshot digest is invalid")
+	}
+	if _, err := normalizedSHA256Digest(snapshot.PolicyDigest); err != nil {
+		return errors.New("policy state digest is invalid")
 	}
 	issuedAt, err := time.Parse(time.RFC3339Nano, snapshot.IssuedAt)
 	if err != nil {
@@ -195,7 +239,15 @@ func verifyHostedPolicySnapshot(raw json.RawMessage, snapshot RemotePolicySnapsh
 	if !expiresAt.After(issuedAt) || expiresAt.Sub(issuedAt) > maximumPolicyLifetime {
 		return errors.New("policy validity window is not allowed")
 	}
-	if previous.IssuedAt != "" {
+	if previous.Generation > 0 {
+		if snapshot.Generation < previous.Generation {
+			return errors.New("policy generation is older than the last accepted snapshot")
+		}
+		if snapshot.Generation == previous.Generation &&
+			(snapshot.SnapshotID != previous.SnapshotID || !strings.EqualFold(strings.TrimSpace(snapshot.Digest), strings.TrimSpace(previous.SnapshotDigest))) {
+			return errors.New("policy generation collides with different signed state")
+		}
+	} else if previous.IssuedAt != "" {
 		previousIssuedAt, parseErr := time.Parse(time.RFC3339Nano, previous.IssuedAt)
 		if parseErr == nil && (issuedAt.Before(previousIssuedAt) || issuedAt.Equal(previousIssuedAt) && snapshot.SnapshotID != previous.SnapshotID) {
 			return errors.New("policy is older than the last accepted snapshot")
@@ -221,6 +273,28 @@ func verifyHostedPolicySnapshot(raw json.RawMessage, snapshot RemotePolicySnapsh
 		return errors.New("policy signature is invalid")
 	}
 	return nil
+}
+
+func remotePolicyRenewalDue(state remotePolicyState, now time.Time) bool {
+	expiresAt, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(state.ExpiresAt))
+	return err != nil || !expiresAt.After(now.Add(hostedPolicyRenewalWindow))
+}
+
+func remotePolicyContinuity(state remotePolicyState, now time.Time) string {
+	expiresAt, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(state.ExpiresAt))
+	if err != nil {
+		return "unknown"
+	}
+	if now.Before(expiresAt) {
+		return "valid"
+	}
+	if now.Before(expiresAt.Add(hostedPolicyGracePeriod)) {
+		return "grace"
+	}
+	if now.Before(expiresAt.Add(hostedPolicyGracePeriod + hostedPolicyPlaybackDrain)) {
+		return "hard-expired-draining"
+	}
+	return "hard-expired"
 }
 
 func canonicalHostedDocument(kind string, raw json.RawMessage) ([]byte, error) {

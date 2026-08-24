@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { HostedServicesClient, PorticoClient } from '@porticomediaserver/client-core';
-import { HttpPorticoDataSource, LocalProfileSelectionRequiredError } from './httpSource';
+import { HttpPorticoDataSource, LocalProfileSelectionRequiredError, imagePath } from './httpSource';
 import { createBrowserHostedConnectionVault } from '../runtime/hostedConnectionVault';
 import clientCompatibilityFixture from '../../../api/openapi/fixtures/client-compatibility-conformance.json';
 
@@ -344,6 +344,22 @@ describe('HttpPorticoDataSource', () => {
     expect(url).not.toContain('grant=');
   });
 
+  it('rejects cross-origin download grants and artwork URLs', async () => {
+    const client = {
+      createMediaDownloadGrant: vi.fn().mockResolvedValue({ downloadUrl: 'https://attacker.example/collect?grant=secret' }),
+      resourceUrl: (path: string) => new URL(path, 'https://server.example').toString(),
+    } as unknown as PorticoClient;
+    const source = new HttpPorticoDataSource(client);
+    await expect(source.createMediaDownloadURL('movie-1', 'source', new AbortController().signal))
+      .rejects.toThrow('untrusted download address');
+
+    const resolve = (path: string) => new URL(path, 'https://server.example').toString();
+    expect(imagePath('//evil.example/pixel', 'fallback', resolve)).toBe('fallback');
+    expect(imagePath('http://localhost.evil/pixel', 'fallback', resolve)).toBe('fallback');
+    expect(imagePath('https://server.example/api/media/movie-1/image', 'fallback', resolve))
+      .toBe('https://server.example/api/media/movie-1/image');
+  });
+
   it('maps stored artwork and uses the authenticated media-image operations', async () => {
     const item = {
       id: 'movie/1', type: 'movie', title: 'Arrival', sortTitle: 'Arrival', addedAt: '2026-07-11T00:00:00Z',
@@ -362,20 +378,22 @@ describe('HttpPorticoDataSource', () => {
     const signal = new AbortController().signal;
 
     const detail = await source.media('movie/1', signal);
-    await source.uploadMediaImage('movie/1', 'poster', new File(['image'], 'poster.png', { type: 'image/png' }), signal);
-    await source.deleteMediaImage('movie/1', 'image-1', signal);
-    await source.setPreferredMediaImage('movie/1', 'image-2', signal);
-    await source.reorderMediaImages('movie/1', ['image-2', 'image-1'], signal);
+    await source.uploadMediaImage('movie/1', 'poster', new File(['image'], 'poster.png', { type: 'image/png' }), 4, signal);
+    await source.deleteMediaImage('movie/1', 'image-1', 4, signal);
+    await source.setPreferredMediaImage('movie/1', 'image-2', 4, signal);
+    await source.reorderMediaImages('movie/1', ['image-2', 'image-1'], 4, signal);
 
-    expect(detail.mediaImages).toEqual(item.mediaImages);
+    expect(detail.mediaImages?.[0]).not.toHaveProperty('remoteUrl');
     expect(String(fetchMock.mock.calls[1][0])).toContain('/api/media/movie%2F1/images');
     expect(fetchMock.mock.calls[1][1]).toEqual(expect.objectContaining({ method: 'POST', credentials: 'include', body: expect.any(FormData) }));
     expect((fetchMock.mock.calls[1][1]?.body as FormData).get('type')).toBe('poster');
-    expect(String(fetchMock.mock.calls[2][0])).toContain('/api/media/movie%2F1/images/image-1');
+    expect((fetchMock.mock.calls[1][1]?.body as FormData).get('expectedRevision')).toBe('4');
+    expect(String(fetchMock.mock.calls[2][0])).toContain('/api/media/movie%2F1/images/image-1?expectedRevision=4');
     expect(fetchMock.mock.calls[2][1]).toEqual(expect.objectContaining({ method: 'DELETE', credentials: 'include' }));
     expect(String(fetchMock.mock.calls[3][0])).toContain('/api/media/movie%2F1/images/image-2/preferred');
+    expect(fetchMock.mock.calls[3][1]).toEqual(expect.objectContaining({ body: JSON.stringify({ expectedRevision: 4 }) }));
     expect(String(fetchMock.mock.calls[4][0])).toContain('/api/media/movie%2F1/images/order');
-    expect(fetchMock.mock.calls[4][1]).toEqual(expect.objectContaining({ method: 'POST', body: JSON.stringify({ imageIds: ['image-2', 'image-1'] }) }));
+    expect(fetchMock.mock.calls[4][1]).toEqual(expect.objectContaining({ method: 'POST', body: JSON.stringify({ imageIds: ['image-2', 'image-1'], expectedRevision: 4 }) }));
   });
 
   it('uses the authoritative subtitle, lyrics, and optimized-version contracts', async () => {
@@ -627,9 +645,26 @@ describe('HttpPorticoDataSource', () => {
     expect(directory).toMatchObject({ authority: 'hosted', canManage: true, profiles: [{ id: 'primary' }, { id: 'kids' }] });
     expect(createProfileAdministrationSession).toHaveBeenCalledWith({ pin: '1234' }, { signal });
     expect(createProfile).toHaveBeenCalledWith(expect.objectContaining({ name: 'Guest', restrictions: policy }), { token: 'cloud-proof' }, { signal });
-    expect(switchHostedProfile).toHaveBeenCalledWith('kids', '2468');
+	expect(switchHostedProfile).toHaveBeenCalledWith('kids', '2468', signal);
     expect(selected.viewerScope?.profileId).toBe('kids');
   });
+
+	it('preserves the authoritative viewer scope when account profile fields change', async () => {
+		const fetchMock = vi.fn()
+			.mockResolvedValueOnce(jsonResponse({
+				authenticated: true, setupRequired: false, accountMode: 'local', accountId: 'account-1', serverId: 'server-1', profileId: 'profile-1', authorizationRevision: 'revision-1', serverFriendlyName: 'Family Media',
+				user: { id: 'account-1', displayName: 'Before', email: 'before@example.test', role: 'owner', authOrigin: 'local', authProvider: 'local', permissions: {}, preferences: { sidebarOrder: [] } },
+			}))
+			.mockResolvedValueOnce(jsonResponse({ id: 'account-1', displayName: 'After', email: 'after@example.test', role: 'owner', authOrigin: 'local', authProvider: 'local', permissions: {}, preferences: { sidebarOrder: [] } }));
+		vi.stubGlobal('fetch', fetchMock);
+		const source = new HttpPorticoDataSource();
+		const signal = new AbortController().signal;
+		const before = await source.viewer(signal);
+		const after = await source.updateProfile({ displayName: 'After', email: 'after@example.test' }, signal);
+
+		expect(after.viewerScope).toEqual(before.viewerScope);
+		expect(after.user).toMatchObject({ displayName: 'After', email: 'after@example.test' });
+	});
 
   it('transmits the current account password for Local Auth PIN set and clear operations', async () => {
     const setAccountProfilePIN = vi.fn().mockResolvedValue(undefined);
@@ -667,12 +702,42 @@ describe('HttpPorticoDataSource', () => {
     await source.setAccountProfilePin('kids', { pin: '2468', password: 'current-password', mfaCode: '123456' }, 'primary-proof', signal);
     await source.clearAccountProfilePin('kids', { password: 'current-password', recoveryCode: 'PORTICO-RECOVERY' }, 'primary-proof', signal);
 
-    expect(requestPasswordReset).toHaveBeenCalledWith({ email: 'owner@example.test' });
+	expect(requestPasswordReset).toHaveBeenCalledWith({ email: 'owner@example.test' }, { signal });
     expect(createProfileAdministrationSession).toHaveBeenCalledWith(expect.objectContaining({
       replacementPin: '8642', password: 'current-password', recoveryCode: 'PORTICO-RECOVERY',
     }), { signal });
     expect(setProfilePIN).toHaveBeenCalledWith('kids', { pin: '2468', password: 'current-password', mfaCode: '123456' }, { token: 'primary-proof' }, { signal });
     expect(clearProfilePIN).toHaveBeenCalledWith('kids', { password: 'current-password', recoveryCode: 'PORTICO-RECOVERY' }, { token: 'primary-proof' }, { signal });
+  });
+
+  it('accepts only a strictly local return URL in a Hosted server setup claim', async () => {
+    const request = vi.fn().mockResolvedValue({
+      remoteAccess: {
+        claim: {
+          claimUrl: 'https://web.getportico.tv/claim?code=SETUP123&serverName=Family%20Room&returnUrl=http%3A%2F%2Flocalhost%3A32500%2F%3FporticoSetup%3Dcontinue',
+        },
+      },
+    });
+    const source = new HttpPorticoDataSource({ request } as unknown as PorticoClient);
+    const signal = new AbortController().signal;
+
+    await expect(source.startPorticoSetup('Family Room', signal)).resolves.toMatchObject({
+      claimUrl: expect.stringContaining('returnUrl=http%3A%2F%2Flocalhost%3A32500%2F%3FporticoSetup%3Dcontinue'),
+    });
+    expect(request).toHaveBeenCalledWith('/api/auth/portico-setup/claim/start', {
+      method: 'POST',
+      body: { serverName: 'Family Room' },
+      signal,
+    });
+
+    request.mockResolvedValueOnce({
+      remoteAccess: {
+        claim: {
+          claimUrl: 'https://web.getportico.tv/claim?code=SETUP123&returnUrl=https%3A%2F%2Fevil.example%2F%3FporticoSetup%3Dcontinue',
+        },
+      },
+    });
+    await expect(source.startPorticoSetup('Family Room', signal)).rejects.toThrow('untrusted claim link');
   });
 
   it('uses typed discovery client operations for search history, people, and media children', async () => {

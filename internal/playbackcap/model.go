@@ -166,11 +166,8 @@ func evidenceMaximumAge(source EvidenceSource) time.Duration {
 }
 
 func (t DeliveryTuple) Validate() error {
-	if normalize(t.Protocol) == "" || normalize(t.Container) == "" || normalize(t.Audio.Codec) == "" {
-		return errors.New("protocol, container, and audio codec are required")
-	}
-	if t.Audio.MaxChannels <= 0 {
-		return errors.New("audio channel limit must be positive")
+	if normalize(t.Protocol) == "" || normalize(t.Container) == "" {
+		return errors.New("protocol and container are required")
 	}
 	switch t.Kind {
 	case MediaAudiovisual:
@@ -180,7 +177,19 @@ func (t DeliveryTuple) Validate() error {
 		if t.Video.BitDepth <= 0 || t.Video.MaxWidth <= 0 || t.Video.MaxHeight <= 0 || t.Video.MaxFrameRate <= 0 {
 			return errors.New("audiovisual bit depth, dimensions, and frame rate must be positive")
 		}
+		// Audio is deliberately optional for an audiovisual tuple. A no-audio
+		// tuple is the exact capability evidence required for silent video; it
+		// must not be represented by a dummy AAC stream that the source does not
+		// contain and the executor will not produce.
+		if t.Audio != (Audio{}) {
+			if err := t.Audio.validate(); err != nil {
+				return err
+			}
+		}
 	case MediaAudio:
+		if err := t.Audio.validate(); err != nil {
+			return err
+		}
 		if t.Video != (Video{}) {
 			return errors.New("audio-only tuple cannot declare video capabilities")
 		}
@@ -210,6 +219,16 @@ func (t DeliveryTuple) Validate() error {
 		}
 	default:
 		return errors.New("invalid subtitle mode")
+	}
+	return nil
+}
+
+func (a Audio) validate() error {
+	if normalize(a.Codec) == "" {
+		return errors.New("audio codec is required")
+	}
+	if a.MaxChannels <= 0 {
+		return errors.New("audio channel limit must be positive")
 	}
 	return nil
 }

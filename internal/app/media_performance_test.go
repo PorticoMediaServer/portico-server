@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -136,6 +137,21 @@ func TestMediaResourceGovernorAcquireHonorsCancellation(t *testing.T) {
 	}
 }
 
+func TestMediaResourceGovernorPlaybackPreemptsRegisteredBackgroundWork(t *testing.T) {
+	governor := newMediaResourceGovernor()
+	backgroundCtx, unregister := governor.registerBackgroundContext(context.Background())
+	defer unregister()
+	governor.preemptBackgroundForPlayback()
+	select {
+	case <-backgroundCtx.Done():
+		if !errors.Is(context.Cause(backgroundCtx), errRemoteStoragePreempted) {
+			t.Fatalf("preemption cause = %v", context.Cause(backgroundCtx))
+		}
+	case <-time.After(time.Second):
+		t.Fatal("background analysis was not preempted")
+	}
+}
+
 func TestDueQueuedJobsFairIncludesEveryReadyLane(t *testing.T) {
 	server := newScannerTestServer(t)
 	now := time.Now().UTC()
@@ -204,11 +220,13 @@ func TestTranscodeGenerationRetirementWaitsForReaders(t *testing.T) {
 }
 
 func TestTranscodeManifestReaderUsesProducerNotification(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "index.m3u8")
-	session := &transcodeSession{manifest: path, done: make(chan struct{}), updateCh: make(chan struct{})}
+	dir := t.TempDir()
+	path := filepath.Join(dir, "index.m3u8")
+	session := &transcodeSession{dir: dir, manifest: path, done: make(chan struct{}), updateCh: make(chan struct{})}
 	go func() {
 		time.Sleep(25 * time.Millisecond)
-		_ = os.WriteFile(path, []byte("#EXTM3U\n#EXTINF:4,\nsegment_00000.ts\n"), 0o600)
+		_ = os.WriteFile(filepath.Join(dir, "segment_00000.ts"), []byte("segment"), 0o600)
+		_ = os.WriteFile(path, []byte("#EXTM3U\n#EXT-X-TARGETDURATION:4\n#EXT-X-MEDIA-SEQUENCE:0\n#EXTINF:4,\nsegment_00000.ts\n"), 0o600)
 		session.stateMu.Lock()
 		session.signalUpdateLocked()
 		session.stateMu.Unlock()

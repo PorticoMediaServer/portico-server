@@ -359,6 +359,19 @@ CREATE TABLE scanner_backlog (
     updated_at TEXT NOT NULL,
     UNIQUE(kind, media_id, source_revision)
 );
+CREATE TABLE scanner_inventory_entries (
+    library_id TEXT NOT NULL REFERENCES libraries(id) ON DELETE CASCADE,
+    path TEXT NOT NULL,
+    scan_generation TEXT NOT NULL,
+    size_bytes INTEGER NOT NULL DEFAULT 0 CHECK (size_bytes >= 0),
+    mod_time TEXT NOT NULL DEFAULT '',
+    quick_signature TEXT NOT NULL DEFAULT '',
+    media_type TEXT NOT NULL DEFAULT '',
+    source_type TEXT NOT NULL DEFAULT 'local',
+    discovered_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (library_id, path)
+);
 CREATE TABLE library_category_counts (
     library_id TEXT NOT NULL REFERENCES libraries(id) ON DELETE CASCADE,
     filter TEXT NOT NULL,
@@ -1624,27 +1637,6 @@ CREATE TABLE tmdb_trending_cache (
 			expires_at TEXT NOT NULL,
 			PRIMARY KEY (media_type, time_window)
 		);
-CREATE TABLE tv_setup_sessions (
-    id TEXT PRIMARY KEY,
-    code TEXT NOT NULL,
-    status TEXT NOT NULL,
-    user_id TEXT NOT NULL DEFAULT '',
-    device_public_key TEXT NOT NULL,
-    grant_secret_hash TEXT NOT NULL DEFAULT '',
-    encrypted_grant_json TEXT NOT NULL DEFAULT '',
-    device_name TEXT NOT NULL DEFAULT '',
-    platform TEXT NOT NULL DEFAULT '',
-    app_version TEXT NOT NULL DEFAULT '',
-    server_hint TEXT NOT NULL DEFAULT '',
-    auth_mode_hint TEXT NOT NULL DEFAULT '',
-    endpoint_url TEXT NOT NULL DEFAULT '',
-    client_ip TEXT NOT NULL DEFAULT '',
-    user_agent TEXT NOT NULL DEFAULT '',
-    expires_at TEXT NOT NULL,
-    redeemed_at TEXT NOT NULL DEFAULT '',
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-, installation_id TEXT NOT NULL DEFAULT '', native_refresh_token_id TEXT NOT NULL DEFAULT '');
 CREATE TABLE "user_display_preferences" (
 				profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
 				user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -1988,6 +1980,7 @@ CREATE INDEX idx_library_scan_runs_status ON library_scan_runs(status, updated_a
 CREATE INDEX idx_library_scan_run_roots_source ON library_scan_run_roots(source_id, status, last_progress_at);
 CREATE INDEX idx_scanner_backlog_ready ON scanner_backlog(kind, status, next_run_at, created_at, id);
 CREATE INDEX idx_scanner_backlog_library ON scanner_backlog(library_id, kind, status, created_at, id);
+CREATE INDEX idx_scanner_inventory_generation ON scanner_inventory_entries(library_id, scan_generation, path);
 CREATE INDEX idx_storage_sources_health ON storage_sources(health_state, circuit_state, updated_at, id);
 CREATE INDEX idx_library_source_groups_library ON library_source_groups(library_id, item_count DESC, kind, label);
 CREATE INDEX idx_live_tv_channel_locators_channel
@@ -2234,14 +2227,6 @@ CREATE INDEX idx_settings_quarantine_key
 CREATE INDEX idx_streams_media ON media_streams(media_id);
 CREATE INDEX idx_streams_media_kind ON media_streams(media_id, kind, height, dynamic_range);
 CREATE INDEX idx_tmdb_trending_cache_expires ON tmdb_trending_cache(expires_at);
-CREATE UNIQUE INDEX idx_tv_setup_active_code
-ON tv_setup_sessions(code)
-WHERE status IN ('pending', 'grant_ready');
-CREATE UNIQUE INDEX idx_tv_setup_native_refresh_receipt
-    ON tv_setup_sessions(native_refresh_token_id)
-    WHERE native_refresh_token_id <> '';
-CREATE INDEX idx_tv_setup_sessions_code ON tv_setup_sessions(code, status, expires_at);
-CREATE INDEX idx_tv_setup_sessions_status ON tv_setup_sessions(status, expires_at, created_at);
 CREATE INDEX idx_user_display_preferences_account ON user_display_preferences(user_id, profile_id);
 CREATE INDEX idx_user_display_preferences_user ON user_display_preferences(profile_id, client, view);
 CREATE INDEX idx_user_library_access_library ON user_library_access(library_id);
@@ -4388,3 +4373,49 @@ CREATE TABLE metadata_continuation_items (
     PRIMARY KEY (operation_id,item_key)
 );
 CREATE INDEX idx_metadata_continuation_items_ready ON metadata_continuation_items(operation_id,state,next_retry_at,lease_until,created_at);
+
+-- First-class remote storage catalog. Provider credentials remain in the
+-- platform secret envelope or a mode-restricted rclone config.
+ALTER TABLE storage_sources ADD COLUMN backend_kind TEXT NOT NULL DEFAULT 'filesystem' CHECK (backend_kind IN ('filesystem','rclone','webdav'));
+ALTER TABLE storage_sources ADD COLUMN display_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE storage_sources ADD COLUMN backend_root TEXT NOT NULL DEFAULT '';
+ALTER TABLE storage_sources ADD COLUMN backend_endpoint TEXT NOT NULL DEFAULT '';
+ALTER TABLE storage_sources ADD COLUMN rclone_remote_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE storage_sources ADD COLUMN rclone_installation_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE storage_sources ADD COLUMN inventory_cursor TEXT NOT NULL DEFAULT '';
+ALTER TABLE storage_sources ADD COLUMN inventory_sync_token TEXT NOT NULL DEFAULT '';
+ALTER TABLE storage_sources ADD COLUMN inventory_complete INTEGER NOT NULL DEFAULT 0 CHECK (inventory_complete IN (0,1));
+ALTER TABLE storage_sources ADD COLUMN missing_grace_seconds INTEGER NOT NULL DEFAULT 604800 CHECK (missing_grace_seconds >= 0);
+ALTER TABLE storage_sources ADD COLUMN max_inventory_concurrency INTEGER NOT NULL DEFAULT 1 CHECK (max_inventory_concurrency BETWEEN 1 AND 8);
+ALTER TABLE storage_sources ADD COLUMN max_playback_concurrency INTEGER NOT NULL DEFAULT 4 CHECK (max_playback_concurrency BETWEEN 1 AND 64);
+ALTER TABLE storage_sources ADD COLUMN analysis_mode TEXT NOT NULL DEFAULT 'basic' CHECK (analysis_mode IN ('file_list_only','basic','complete','custom'));
+CREATE TABLE storage_remote_objects (
+    source_id TEXT NOT NULL REFERENCES storage_sources(id) ON DELETE CASCADE,
+    object_path TEXT NOT NULL, object_id TEXT NOT NULL DEFAULT '', revision TEXT NOT NULL,
+    etag TEXT NOT NULL DEFAULT '', content_hash TEXT NOT NULL DEFAULT '', content_type TEXT NOT NULL DEFAULT '',
+    size_bytes INTEGER NOT NULL DEFAULT 0 CHECK (size_bytes >= 0), mod_time TEXT NOT NULL DEFAULT '',
+    first_seen_generation TEXT NOT NULL, last_seen_generation TEXT NOT NULL, missing_since TEXT NOT NULL DEFAULT '', updated_at TEXT NOT NULL,
+    PRIMARY KEY (source_id, object_path)
+);
+CREATE INDEX idx_storage_remote_objects_revision ON storage_remote_objects(source_id, revision, object_path);
+CREATE INDEX idx_storage_remote_objects_missing ON storage_remote_objects(source_id, missing_since, object_path);
+CREATE TABLE storage_inventory_runs (
+    id TEXT PRIMARY KEY, source_id TEXT NOT NULL REFERENCES storage_sources(id) ON DELETE CASCADE,
+    scan_generation TEXT NOT NULL, status TEXT NOT NULL CHECK (status IN ('running','healthy','degraded','failed','cancelled')),
+    cursor TEXT NOT NULL DEFAULT '', sync_token TEXT NOT NULL DEFAULT '', objects_seen INTEGER NOT NULL DEFAULT 0 CHECK (objects_seen >= 0),
+    objects_changed INTEGER NOT NULL DEFAULT 0 CHECK (objects_changed >= 0), absence_authoritative INTEGER NOT NULL DEFAULT 0 CHECK (absence_authoritative IN (0,1)),
+    last_error TEXT NOT NULL DEFAULT '' CHECK (length(last_error) <= 2000), started_at TEXT NOT NULL, updated_at TEXT NOT NULL, completed_at TEXT NOT NULL DEFAULT ''
+);
+CREATE UNIQUE INDEX idx_storage_inventory_runs_one_active ON storage_inventory_runs(source_id) WHERE status = 'running';
+CREATE INDEX idx_storage_inventory_runs_recent ON storage_inventory_runs(source_id, started_at DESC, id);
+CREATE TABLE managed_rclone_installations (
+    id TEXT PRIMARY KEY, binary_path TEXT NOT NULL, binary_version TEXT NOT NULL,
+    binary_sha256 TEXT NOT NULL CHECK (length(binary_sha256) = 64), config_path TEXT NOT NULL,
+    approved_at TEXT NOT NULL, last_validated_at TEXT NOT NULL
+);
+CREATE TABLE storage_source_credentials (
+    source_id TEXT PRIMARY KEY REFERENCES storage_sources(id) ON DELETE CASCADE,
+    username TEXT NOT NULL DEFAULT '',
+    secret_envelope TEXT NOT NULL CHECK (json_valid(secret_envelope) AND json_type(secret_envelope) = 'object'),
+    updated_at TEXT NOT NULL
+);

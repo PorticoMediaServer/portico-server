@@ -91,7 +91,7 @@ func (s *Server) ensureEmbeddedTextSubtitleWebVTT(ctx context.Context, mediaID, 
 	if output, err := managedCommandCombinedOutput(extractCtx, cmd); err != nil {
 		return "", 0, fmt.Errorf("extract embedded subtitle: %w: %s", err, strings.TrimSpace(string(output)))
 	}
-	body, err := os.ReadFile(tempPath)
+	body, err := readBoundedRegularFile(tempPath, playbackSubtitleFileLimit)
 	if err != nil {
 		return "", 0, err
 	}

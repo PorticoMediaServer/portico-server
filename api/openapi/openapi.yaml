@@ -671,131 +671,6 @@ components:
         createdAt:
           type: string
           format: date-time
-    TVSetupSessionRequest:
-      type: object
-      required: [devicePublicKey]
-      properties:
-        devicePublicKey:
-          type: string
-          description: Base64url encoded ephemeral TV setup public key.
-        installationId:
-          type: string
-          minLength: 16
-          maxLength: 128
-          pattern: '^[A-Za-z0-9._:-]+$'
-          description: Optional, non-secret app-installation metadata used for continuity and diagnostics. It is never authentication proof.
-        deviceName:
-          type: string
-        platform:
-          type: string
-        appVersion:
-          type: string
-        serverHint:
-          type: string
-        authModeHint:
-          type: string
-          enum: [unknown, local, portico-account]
-        endpointUrl:
-          type: string
-          format: uri
-    TVSetupEncryptedGrant:
-      type: object
-      required: [version, algorithm, serverPublicKey, nonce, ciphertext]
-      properties:
-        version:
-          type: integer
-          example: 1
-        algorithm:
-          type: string
-          enum: [X25519-HKDF-SHA256-AESGCM]
-        serverPublicKey:
-          type: string
-        nonce:
-          type: string
-        ciphertext:
-          type: string
-    TVSetupSession:
-      type: object
-      required: [setupSessionId, code, status, protocolVersion, service, devicePublicKey, deviceName, platform, authModeHint, expiresAt, pollIntervalSeconds]
-      properties:
-        setupSessionId:
-          type: string
-        code:
-          type: string
-          description: Protocol-v1 XXXX-XXXX setup code.
-          pattern: '^[A-HJ-KM-NP-Z2-9]{4}-[A-HJ-KM-NP-Z2-9]{4}$'
-        status:
-          type: string
-          enum: [pending, grant_ready, redeemed, expired]
-        protocolVersion:
-          type: integer
-          enum: [1]
-        service:
-          type: string
-          example: _portico-setup._tcp.local.
-        devicePublicKey:
-          type: string
-        deviceName:
-          type: string
-        platform:
-          type: string
-        appVersion:
-          type: string
-        serverHint:
-          type: string
-        authModeHint:
-          type: string
-          enum: [unknown, local, portico-account]
-        endpointUrl:
-          type: string
-          format: uri
-        expiresAt:
-          type: string
-          format: date-time
-        pollIntervalSeconds:
-          type: integer
-        encryptedGrant:
-          $ref: "#/components/schemas/TVSetupEncryptedGrant"
-    TVSetupGrantRequest:
-      type: object
-      required: [code]
-      properties:
-        setupSessionId:
-          type: string
-        code:
-          type: string
-          description: Canonical protocol-v1 code. The runtime also normalizes lowercase, ordinary spaces, and at most one dash.
-          pattern: '^[A-HJ-KM-NP-Z2-9]{4}-[A-HJ-KM-NP-Z2-9]{4}$'
-        devicePublicKey:
-          type: string
-    TVSetupGrantResponse:
-      type: object
-      required: [setupSessionId, status, encryptedGrant, expiresAt]
-      properties:
-        setupSessionId:
-          type: string
-        status:
-          type: string
-          enum: [grant_ready]
-        encryptedGrant:
-          $ref: "#/components/schemas/TVSetupEncryptedGrant"
-        expiresAt:
-          type: string
-          format: date-time
-    TVSetupRedeemRequest:
-      type: object
-      required: [setupSessionId, grantSecret]
-      properties:
-        setupSessionId:
-          type: string
-        grantSecret:
-          type: string
-        deviceName:
-          type: string
-        platform:
-          type: string
-        appVersion:
-          type: string
     UserCreateRequest:
       type: object
       additionalProperties: false
@@ -3493,6 +3368,57 @@ components:
         classification:
           type: string
           enum: [local, network, fuse, unknown]
+    RemoteStorageSourceRequest:
+      type: object
+      additionalProperties: false
+      required: [kind, name]
+      properties:
+        kind: { type: string, enum: [rclone, webdav] }
+        name: { type: string, minLength: 1, maxLength: 120 }
+        endpoint: { type: string, format: uri, writeOnly: true }
+        root: { type: string }
+        username: { type: string, writeOnly: true }
+        password: { type: string, writeOnly: true }
+        rcloneBinaryPath: { type: string, writeOnly: true }
+        rcloneRemoteName: { type: string, writeOnly: true }
+        rcloneConfig: { type: string, writeOnly: true }
+        analysisMode:
+          type: string
+          enum: [file_list_only, basic, complete, custom]
+          default: basic
+          description: Basic queues bounded range probes after inventory and is recommended for remote sources. File List Only performs no media-object content reads during scans. Complete permits sustained/full-file reads. Custom performs exactly the enabled library Custom operations.
+    RemoteStorageSourcePatchRequest:
+      type: object
+      additionalProperties: false
+      required: [analysisMode]
+      properties:
+        analysisMode: { type: string, enum: [file_list_only, basic, complete, custom] }
+    RemoteStorageSource:
+      type: object
+      required: [id, libraryId, kind, name, health, inventoryStatus, objects, missingObjects, credentialPresent, analysisMode, updatedAt]
+      properties:
+        id: { type: string }
+        libraryId: { type: string }
+        kind: { type: string, enum: [rclone, webdav] }
+        name: { type: string }
+        endpoint: { type: string }
+        root: { type: string }
+        health: { type: string, enum: [unknown, healthy, degraded, offline, stalled] }
+        inventoryStatus: { type: string }
+        objects: { type: integer, minimum: 0 }
+        missingObjects: { type: integer, minimum: 0 }
+        credentialPresent: { type: boolean }
+        analysisMode: { type: string, enum: [file_list_only, basic, complete, custom] }
+        updatedAt: { type: string, format: date-time }
+    RemoteStorageSourceListResponse:
+      type: object
+      required: [items, total, limit]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/RemoteStorageSource" }
+        total: { type: integer, minimum: 0 }
+        limit: { type: integer, minimum: 0 }
     LibraryScanWarning:
       type: object
       required: [code, severity, message]
@@ -3539,6 +3465,9 @@ components:
         lastSuccessAt: { type: string, format: date-time }
         lastFailureAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
+        backendKind: { type: string, enum: [filesystem, rclone, webdav] }
+        backendRoot: { type: string }
+        inventoryComplete: { type: boolean }
     LibraryScanRootResult:
       type: object
       required: [sourceId, configuredPath, status, directoriesSeen, filesSeen]
@@ -4795,8 +4724,6 @@ components:
           enum: [lrc, txt]
         language:
           type: string
-        path:
-          type: string
         text:
           type: string
         synced:
@@ -4840,10 +4767,6 @@ components:
         source:
           type: string
         provider:
-          type: string
-        path:
-          type: string
-        remoteUrl:
           type: string
         width:
           type: integer
@@ -5415,8 +5338,6 @@ components:
           type: string
         grandparentTitle:
           type: string
-        sourceUrl:
-          type: string
         missing:
           type: boolean
         fileCount:
@@ -5524,7 +5445,12 @@ components:
     UpdateMediaRequest:
       type: object
       description: Partial editable media metadata. Omitted fields are left unchanged.
+      additionalProperties: false
+      required: [expectedRevision]
       properties:
+        expectedRevision:
+          type: integer
+          minimum: 0
         title:
           type: string
         sortTitle:
@@ -5534,8 +5460,6 @@ components:
         edition:
           type: string
         year:
-          type: integer
-        durationSeconds:
           type: integer
         summary:
           type: string
@@ -5589,8 +5513,6 @@ components:
           type: array
           items:
             type: string
-        sourceUrl:
-          type: string
     MatchCandidateReason:
       type: object
       additionalProperties: false
@@ -5609,7 +5531,6 @@ components:
         externalType: { type: string }
         title: { type: string }
         year: { type: integer }
-        posterUrl: { type: string }
         overview: { type: string }
         source: { type: string }
         score: { type: number, format: double }
@@ -5629,11 +5550,12 @@ components:
     ManualMediaMatchRequest:
       type: object
       additionalProperties: false
-      required: [provider, externalId, externalType]
+      required: [provider, externalId, externalType, expectedRevision]
       properties:
         provider: { type: string }
         externalId: { type: string }
         externalType: { type: string }
+        expectedRevision: { type: integer, minimum: 0 }
     DeleteMediaRequest:
       type: object
       additionalProperties: false
@@ -5685,7 +5607,7 @@ components:
     BulkMediaMetadataRequest:
       type: object
       additionalProperties: false
-      required: [mediaIds, patch]
+      required: [mediaIds, expectedRevisions, patch]
       properties:
         mediaIds:
           type: array
@@ -5693,6 +5615,10 @@ components:
           maxItems: 200
           uniqueItems: true
           items: { type: string }
+        expectedRevisions:
+          type: object
+          description: Exact metadata revision for every mediaIds entry.
+          additionalProperties: { type: integer, minimum: 0 }
         patch:
           $ref: "#/components/schemas/UpdateMediaRequest"
     Job:
@@ -6008,7 +5934,10 @@ components:
     PlaybackCapabilityTuple:
       type: object
       additionalProperties: false
-      required: [mediaKind, protocol, container, audio, subtitle]
+      # Audiovisual tuples may omit audio to assert exact silent-video
+      # compatibility. Audio remains required by the mediaKind=audio semantic
+      # validation performed at the application boundary.
+      required: [mediaKind, protocol, container, subtitle]
       properties:
         mediaKind: { type: string, enum: [audio, audiovisual] }
         protocol: { type: string, enum: [http, hls] }
@@ -6016,6 +5945,18 @@ components:
         video: { $ref: "#/components/schemas/PlaybackCapabilityVideo" }
         audio: { $ref: "#/components/schemas/PlaybackCapabilityAudio" }
         subtitle: { $ref: "#/components/schemas/PlaybackCapabilitySubtitle" }
+      allOf:
+        - if:
+            properties: { mediaKind: { const: audiovisual } }
+            required: [mediaKind]
+          then:
+            required: [video]
+        - if:
+            properties: { mediaKind: { const: audio } }
+            required: [mediaKind]
+          then:
+            required: [audio]
+            not: { required: [video] }
     PlaybackCapabilityEvidence:
       type: object
       additionalProperties: false
@@ -7886,7 +7827,20 @@ components:
         trashRetentionDays: { type: integer, minimum: 0 }
         generateVideoPreview: { type: string }
         chapterThumbnailMode: { type: string }
-        analyzeOnScan: { type: boolean }
+        analysisTier: { type: string, enum: [file_list_only, basic, complete, custom] }
+        readLocalMetadata: { type: boolean }
+        readExternalSubtitlesAndLyrics: { type: boolean }
+        discoverLocalArtwork: { type: boolean }
+        fetchDescriptiveMetadata: { type: boolean }
+        probeStreams: { type: boolean }
+        readEmbeddedTags: { type: boolean }
+        readEmbeddedIndexes: { type: boolean }
+        generateRepresentativeThumbnail: { type: boolean }
+        generateTrickplay: { type: boolean }
+        generateChapterThumbnails: { type: boolean }
+        analyzeLoudness: { type: boolean }
+        sonicFingerprinting: { type: boolean }
+        extractAllEmbeddedAttachments: { type: boolean }
         trickplayOnScan: { type: boolean }
         trickplayIntervalSeconds: { type: integer, minimum: 0 }
         trickplayTileWidth: { type: integer, minimum: 1 }
@@ -7923,8 +7877,10 @@ components:
       type: object
       additionalProperties: false
       properties:
-        movies: { type: string, enum: [TMDB, None] }
-        tv: { type: string, enum: [TMDB, None] }
+        movies: { type: string, enum: [TMDB, TVDB, None] }
+        moviesFallback: { type: string, enum: [TMDB, TVDB, None] }
+        tv: { type: string, enum: [TMDB, TVDB, None] }
+        tvFallback: { type: string, enum: [TMDB, TVDB, None] }
         anime: { type: string, enum: [AniList, TMDB, None] }
         music: { type: string, enum: [MusicBrainz, None] }
         localNFO: { type: boolean }
@@ -7934,12 +7890,15 @@ components:
         metadataLanguage: { type: string }
         tmdbReadAccessToken: { $ref: "#/components/schemas/SettingsSecretState" }
         tmdbAPIKey: { $ref: "#/components/schemas/SettingsSecretState" }
+        tvdbAPIKey: { $ref: "#/components/schemas/SettingsSecretState" }
     MetadataAgentSettingsUpdate:
       type: object
       additionalProperties: false
       properties:
-        movies: { type: string, enum: [TMDB, None] }
-        tv: { type: string, enum: [TMDB, None] }
+        movies: { type: string, enum: [TMDB, TVDB, None] }
+        moviesFallback: { type: string, enum: [TMDB, TVDB, None] }
+        tv: { type: string, enum: [TMDB, TVDB, None] }
+        tvFallback: { type: string, enum: [TMDB, TVDB, None] }
         anime: { type: string, enum: [AniList, TMDB, None] }
         music: { type: string, enum: [MusicBrainz, None] }
         localNFO: { type: boolean }
@@ -7949,6 +7908,7 @@ components:
         metadataLanguage: { type: string }
         tmdbReadAccessToken: { $ref: "#/components/schemas/SettingsSecretChange" }
         tmdbAPIKey: { $ref: "#/components/schemas/SettingsSecretChange" }
+        tvdbAPIKey: { $ref: "#/components/schemas/SettingsSecretChange" }
     NetworkSettings:
       type: object
       additionalProperties: false
@@ -8145,7 +8105,7 @@ components:
     SettingsDocument:
       type: object
       additionalProperties: false
-      required: [revision, updatedAt, groups, restartRequired, restartRequiredFields, applyImpact]
+      required: [revision, updatedAt, groups, restartRequired, restartRequiredFields, applyImpact, generation]
       properties:
         revision: { type: string }
         updatedAt: { type: string, format: date-time }
@@ -8159,14 +8119,78 @@ components:
           uniqueItems: true
           items: { type: string }
         applyImpact: { $ref: "#/components/schemas/SettingsApplyImpact" }
+        generation: { $ref: "#/components/schemas/SettingsGeneration" }
+    SettingsGeneration:
+      type: object
+      additionalProperties: false
+      required: [mode, activeRevision, instruction]
+      properties:
+        mode: { type: string, enum: [hot, next-operation, scheduled, restart-required] }
+        activeRevision: { type: string }
+        pendingRevision: { type: string }
+        instruction: { type: string }
+    SettingsRegistryField:
+      type: object
+      additionalProperties: false
+      required: [id, type, validation, outcomeTest, defaultAuthority, saveMode, applicationMode, permission, capability, runtimeConsumer, operationalHealthSource, operationalStatus, secret, secretClassification, redactionBehavior, auditClass, retentionClass, contractRevision]
+      properties:
+        id: { type: string }
+        type: { type: string }
+        validation: { type: string }
+        outcomeTest: { type: string }
+        canonicalDefault: {}
+        defaultAuthority: { type: string }
+        dependencies: { type: array, items: { type: string } }
+        saveMode: { type: string, enum: [autosave, explicit-apply, command, destructive-confirmation] }
+        applicationMode: { type: string, enum: [hot, next-operation, scheduled, restart-required] }
+        permission: { type: string }
+        capability: { type: string }
+        runtimeConsumer: { type: string }
+        operationalHealthSource: { type: string }
+        operationalStatus: { type: string }
+        secret: { type: boolean }
+        secretClassification: { type: string }
+        redactionBehavior: { type: string }
+        auditClass: { type: string }
+        retentionClass: { type: string }
+        contractRevision: { type: string }
+    SettingsRegistryGroup:
+      type: object
+      additionalProperties: false
+      required: [id, ownerScope, permittedOverrideScopes, runtimeConsumer, operationalHealthSource, revision, fields]
+      properties:
+        id: { type: string }
+        ownerScope: { type: string }
+        permittedOverrideScopes: { type: array, items: { type: string } }
+        runtimeConsumer: { type: string }
+        operationalHealthSource: { type: string }
+        revision: { type: integer, minimum: 1 }
+        fields: { type: array, items: { $ref: "#/components/schemas/SettingsRegistryField" } }
+    SettingsRegistryResponse:
+      type: object
+      additionalProperties: false
+      required: [kind, contractId, contractRevision, scope, revision, groups, generatedAt]
+      properties:
+        kind: { type: string, const: settings-registry }
+        contractId: { type: string, const: PC-SETTINGS-OPERATIONS }
+        contractRevision: { type: string, const: settings-operations.v1 }
+        scope: { type: string, const: server }
+        revision: { type: integer, minimum: 1 }
+        groups: { type: array, items: { $ref: "#/components/schemas/SettingsRegistryGroup" } }
+        generatedAt: { type: string, format: date-time }
     SettingsUpdateRequest:
       type: object
       additionalProperties: false
-      required: [expectedRevision, groups]
+      required: [expectedRevision, idempotencyKey, groups]
       properties:
         expectedRevision:
           type: string
           description: Opaque revision returned by GET /settings and mirrored in ETag.
+        idempotencyKey:
+          type: string
+          minLength: 16
+          maxLength: 200
+          description: Required mutation receipt key. Repeating the same key and body returns the same committed outcome; reusing it for different intent is rejected.
         groups: { $ref: "#/components/schemas/SettingsGroupsUpdate" }
     ProblemDetails:
       type: object
@@ -12115,87 +12139,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/QuickConnectRequest"
-  /auth/tv-setup/sessions:
-    post:
-      security: []
-      summary: Create a Nearby TV Setup session
-      description: Creates a short-lived unauthenticated TV setup session with sparse setup metadata. The response is safe to show on TV or advertise over local discovery.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/TVSetupSessionRequest"
-      responses:
-        "201":
-          description: TV setup session created
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/TVSetupSession"
-        "503":
-          description: The active setup-code namespace could not be allocated within the bounded retry budget.
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/Error"
-  /auth/tv-setup/sessions/{setupSessionId}:
-    get:
-      security: []
-      summary: Poll Nearby TV Setup session status
-      parameters:
-        - in: path
-          name: setupSessionId
-          required: true
-          schema:
-            type: string
-      responses:
-        "200":
-          description: Sanitized TV setup session status
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/TVSetupSession"
-  /auth/tv-setup/grants:
-    post:
-      summary: Authorize a Nearby TV Setup session
-      description: Authenticated mobile request that creates an encrypted, one-time setup grant for the selected TV. The mobile bearer token is never included in the grant.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/TVSetupGrantRequest"
-      responses:
-        "201":
-          description: Encrypted TV setup grant created
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/TVSetupGrantResponse"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-  /auth/tv-setup/redeem:
-    post:
-      security: []
-      summary: Redeem a Nearby TV Setup grant or recover its committed device session within five minutes
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/TVSetupRedeemRequest"
-      responses:
-        "200":
-          description: TV native credentials created
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/NativeSessionCredentials"
-        "403":
-          $ref: "#/components/responses/Forbidden"
   /auth/api-keys:
     get:
       summary: List active server-owner API keys
@@ -13234,6 +13177,79 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/LibraryStorageSource" }
+  /libraries/{id}/remote-storage-sources:
+    get:
+      summary: List managed remote storage sources
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Remote storage sources
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RemoteStorageSourceListResponse" }
+    post:
+      summary: Create a managed rclone or WebDAV source
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RemoteStorageSourceRequest" }
+      responses:
+        "201":
+          description: Created source with write-only credentials omitted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RemoteStorageSource" }
+  /libraries/{id}/remote-storage-sources/{sourceId}:
+    get:
+      summary: Get managed remote storage status
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: sourceId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Remote storage source
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RemoteStorageSource" }
+    patch:
+      summary: Update remote scan depth
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: sourceId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RemoteStorageSourcePatchRequest" }
+      responses:
+        "200":
+          description: Updated remote storage source
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RemoteStorageSource" }
+    delete:
+      summary: Remove a managed remote storage source
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: sourceId, in: path, required: true, schema: { type: string } }
+      responses:
+        "204": { description: Removed }
+  /libraries/{id}/remote-storage-sources/{sourceId}/inventory:
+    post:
+      summary: Queue remote inventory and catalog reconciliation
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: sourceId, in: path, required: true, schema: { type: string } }
+      responses:
+        "202":
+          description: Inventory queued
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Job" }
   /libraries/{id}/lyrics:
     post:
       summary: Queue missing lyrics fetch for a music library
@@ -16870,7 +16886,7 @@ paths:
           required: true
           schema:
             type: string
-        - name: uri
+        - name: ref
           in: query
           required: true
           schema:
@@ -17007,6 +17023,18 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SettingsSummaryResponse"
+  /settings/registry:
+    get:
+      operationId: getSettingsRegistry
+      summary: Get the authoritative server settings field registry
+      description: Returns owner scope, validation, runtime consumer, application, capability, secret, audit, retention, and outcome-test metadata for every writable server field.
+      responses:
+        "200":
+          description: Settings field registry
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SettingsRegistryResponse"
   /events:
     get:
       summary: Stream application data-change events with Server-Sent Events

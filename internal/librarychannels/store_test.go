@@ -12,7 +12,6 @@ import (
 	"testing"
 	"time"
 
-
 	"github.com/PorticoMediaServer/portico-server/internal/config"
 	porticodatabase "github.com/PorticoMediaServer/portico-server/internal/database"
 )

@@ -216,6 +216,7 @@ export function MediaActionMenu({
   const [favorite, setFavorite] = useState(target.favorite ?? false);
   const [watched, setWatched] = useState(target.watched ?? false);
   const [reaction, setReaction] = useState(target.reaction ?? '');
+  const [reactionPending, setReactionPending] = useState(false);
   const [userRating, setUserRating] = useState(target.userRating ?? 0);
   const [actionError, setActionError] = useState('');
   const [savedTarget, setSavedTarget] = useState<'playlist' | 'collection'>();
@@ -296,9 +297,11 @@ export function MediaActionMenu({
     }
   };
   const updateReaction = async (value: 'like' | 'dislike') => {
+    if (reactionPending) return;
     const previous = reaction;
     const next = reaction === value ? '' : value;
     setActionError('');
+    setReactionPending(true);
     setReaction(next);
     try {
       const updated = await mediaActions.setReaction(target.id, next);
@@ -307,6 +310,8 @@ export function MediaActionMenu({
     } catch (reason) {
       setReaction(previous);
       setActionError(sharedFailureDetail(reason));
+    } finally {
+      setReactionPending(false);
     }
   };
 
@@ -372,8 +377,8 @@ export function MediaActionMenu({
           {canMarkWatched && action('watched.mark', 'watched.unmark', 'watched.set') && <button type="button" onClick={() => void updateWatched()}><MediaActionIcon action={action('watched.mark', 'watched.unmark', 'watched.set')!} /> {action('watched.mark', 'watched.unmark', 'watched.set')!.label}</button>}
         </div>
         {(canReact || canRate) && <div className="context-section feedback-actions">
-          {canReact && action('reaction.set') && <button type="button" className={reaction === 'like' ? 'selected' : ''} onClick={() => void updateReaction('like')}><MediaActionIcon action={action('reaction.set')!} /> {productMessage(reaction === 'like' ? 'action.remove-like' : 'action.like').text}</button>}
-          {canReact && action('reaction.set') && <button type="button" className={reaction === 'dislike' ? 'selected' : ''} onClick={() => void updateReaction('dislike')}><MediaActionIcon action={action('reaction.set')!} /> {productMessage(reaction === 'dislike' ? 'action.remove-dislike' : 'action.dislike').text}</button>}
+          {canReact && action('reaction.set') && <button type="button" className={reaction === 'like' ? 'selected' : ''} aria-pressed={reaction === 'like'} aria-busy={reactionPending} disabled={reactionPending} onClick={() => void updateReaction('like')}><MediaActionIcon action={action('reaction.set')!} /> {productMessage(reaction === 'like' ? 'action.remove-like' : 'action.like').text}</button>}
+          {canReact && action('reaction.set') && <button type="button" className={reaction === 'dislike' ? 'selected' : ''} aria-pressed={reaction === 'dislike'} aria-busy={reactionPending} disabled={reactionPending} onClick={() => void updateReaction('dislike')}><MediaActionIcon action={action('reaction.set')!} /> {productMessage(reaction === 'dislike' ? 'action.remove-dislike' : 'action.dislike').text}</button>}
           {canRate && action('rating.set') && <button type="button" onClick={() => { closeMenu(); setRatingOpen(true); }}><MediaActionIcon action={action('rating.set')!} /> {action('rating.set')!.label}</button>}
         </div>}
         {(canEditMetadata || canRefresh || canAnalyze) && <div className="context-section owner-actions">

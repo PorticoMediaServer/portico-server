@@ -518,8 +518,8 @@ export class FixturePorticoDataSource implements PorticoDataSource {
     if (existing) return structuredClone(existing);
     const createdAt = '2026-07-01T12:00:00.000Z';
     const images: MediaImage[] = [
-      { id: `${item.id}-poster`, type: 'poster', source: 'provider', provider: 'fixture', remoteUrl: item.poster, width: 1000, height: 1500, sortOrder: 0, preferred: true, createdAt },
-      { id: `${item.id}-backdrop`, type: 'backdrop', source: 'provider', provider: 'fixture', remoteUrl: item.backdrop, width: 1920, height: 1080, sortOrder: 0, preferred: true, createdAt },
+      { id: `${item.id}-poster`, type: 'poster', source: 'provider', provider: 'fixture', width: 1000, height: 1500, sortOrder: 0, preferred: true, createdAt },
+      { id: `${item.id}-backdrop`, type: 'backdrop', source: 'provider', provider: 'fixture', width: 1920, height: 1080, sortOrder: 0, preferred: true, createdAt },
     ];
     this.mediaArtwork.set(item.id, images);
     return structuredClone(images);
@@ -1496,7 +1496,7 @@ export class FixturePorticoDataSource implements PorticoDataSource {
     return this.allItems().filter((item) => ids.includes(item.id));
   }
 
-  async uploadMediaImage(id: string, type: string, _file: File, signal: AbortSignal): Promise<void> {
+  async uploadMediaImage(id: string, type: string, _file: File, _expectedRevision: number, signal: AbortSignal): Promise<void> {
     const item = await this.media(id, signal);
     const imageType = type.trim().toLocaleLowerCase();
     if (!['poster', 'backdrop', 'thumb', 'logo', 'banner', 'disc', 'clearart'].includes(imageType)) throw new Error('Choose a supported artwork type.');
@@ -1506,7 +1506,6 @@ export class FixturePorticoDataSource implements PorticoDataSource {
       type: imageType,
       source: 'manual',
       provider: 'upload',
-      remoteUrl: imageType === 'poster' ? item.poster : item.backdrop,
       width: imageType === 'poster' ? 1200 : 1920,
       height: imageType === 'poster' ? 1800 : 1080,
       sortOrder: 0,
@@ -1516,7 +1515,7 @@ export class FixturePorticoDataSource implements PorticoDataSource {
     this.mediaArtwork.set(id, current);
   }
 
-  async deleteMediaImage(id: string, imageId: string, signal: AbortSignal): Promise<void> {
+  async deleteMediaImage(id: string, imageId: string, _expectedRevision: number, signal: AbortSignal): Promise<void> {
     const item = await this.media(id, signal);
     const current = this.fixtureArtwork(item);
     const image = current.find((candidate) => candidate.id === imageId);
@@ -1524,7 +1523,7 @@ export class FixturePorticoDataSource implements PorticoDataSource {
     this.mediaArtwork.set(id, current.filter((candidate) => candidate.id !== imageId));
   }
 
-  async setPreferredMediaImage(id: string, imageId: string, signal: AbortSignal): Promise<void> {
+  async setPreferredMediaImage(id: string, imageId: string, _expectedRevision: number, signal: AbortSignal): Promise<void> {
     const item = await this.media(id, signal);
     const current = this.fixtureArtwork(item);
     const selected = current.find((image) => image.id === imageId);
@@ -1532,7 +1531,7 @@ export class FixturePorticoDataSource implements PorticoDataSource {
     this.mediaArtwork.set(id, current.map((image) => image.type === selected.type ? { ...image, preferred: image.id === imageId } : image));
   }
 
-  async reorderMediaImages(id: string, imageIds: string[], signal: AbortSignal): Promise<void> {
+  async reorderMediaImages(id: string, imageIds: string[], _expectedRevision: number, signal: AbortSignal): Promise<void> {
     const item = await this.media(id, signal);
     const current = this.fixtureArtwork(item);
     const positions = new Map(imageIds.map((imageId, index) => [imageId, index]));
@@ -1641,12 +1640,12 @@ export class FixturePorticoDataSource implements PorticoDataSource {
     const item = await this.media(id, signal);
     const title = query.trim() || item.title;
     return [
-      { provider: 'tmdb', externalId: `fixture-${id}`, externalType: item.kind, source: 'TMDB', score: 0.97, accepted: true, title, year: item.year, overview: item.summary, posterUrl: item.poster },
-      { provider: 'tvdb', externalId: `fixture-alt-${id}`, externalType: item.kind, source: 'TVDB', score: 0.81, accepted: false, title: `${title} (${item.year})`, year: item.year, overview: 'Alternate catalogue match.', posterUrl: item.poster },
+      { provider: 'tmdb', externalId: `fixture-${id}`, externalType: item.kind, source: 'TMDB', score: 0.97, accepted: true, title, year: item.year, overview: item.summary, reasons: [{ code: 'title_exact', delta: 0.6 }], createdAt: new Date().toISOString() },
+      { provider: 'tvdb', externalId: `fixture-alt-${id}`, externalType: item.kind, source: 'TVDB', score: 0.81, accepted: false, title: `${title} (${item.year})`, year: item.year, overview: 'Alternate catalogue match.', reasons: [{ code: 'title_close', delta: 0.4 }], createdAt: new Date().toISOString() },
     ];
   }
 
-  async applyMediaMatch(id: string, candidate: Pick<MediaMatchCandidate, 'provider' | 'externalId' | 'externalType'>, signal: AbortSignal): Promise<MediaItem> {
+  async applyMediaMatch(id: string, candidate: Pick<MediaMatchCandidate, 'provider' | 'externalId' | 'externalType'>, _expectedRevision: number, signal: AbortSignal): Promise<MediaItem> {
     const item = await this.media(id, signal);
     this.mediaMetadata.set(id, { ...this.mediaMetadata.get(id), summary: `${item.summary ?? ''}`.trim(), tags: [...(item.tags ?? []), candidate.provider.toLocaleUpperCase()] });
     return this.media(id, signal);
@@ -1945,7 +1944,9 @@ export class FixturePorticoDataSource implements PorticoDataSource {
       media: playbackMedia(item), sourceUrl: silentPreview, directPlay: true, streamFormat: 'direct',
       decision: { mode: 'direct_play', reason: 'Fixture preview', reasonCodes: ['exact_tuple'], deliveryProfile: 'video-original', requiresTranscode: false, isProxied: false, isServerCached: false },
       policy: { networkClass: 'local', qualityProfile: 'original', directPlayPolicy: 'prefer', directStreamPolicy: 'allow', transcodePolicy: 'allow', allowHdr: true, deliveryProfile: 'video-original', serverClamps: [] },
-      qualities: [{ id: 'original', label: 'Original', description: 'Fixture preview' }], resources: [], audioStreams: [], subtitleStreams: [], chapters: [],
+      qualities: [{ id: 'original', label: 'Original', description: 'Fixture preview' }],
+      resources: [{ id: `${sessionId}-default`, sourceUrl: silentPreview, streamFormat: 'direct', qualityId: 'original', subtitleMode: 'off', default: true }],
+      audioStreams: [], subtitleStreams: [], chapters: [],
       queue: queueItems.map(playbackMedia), repeatMode, queueRevision: 1, playbackRevision: 1,
       timeline: { type: 'vod', durationSeconds: 1, canPause: true, canSeek: true }, resumePositionSeconds: 0, generation: 1,
     } as PlaybackResponse;

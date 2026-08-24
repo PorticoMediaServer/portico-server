@@ -48,6 +48,7 @@ type liveTVSegmentFlight struct {
 // the channel and to the exact provider authority approved for its manifest.
 type liveTVHLSItemBinding struct {
 	channelID string
+	sourceURL string
 	approval  liveTVEndpointApproval
 }
 

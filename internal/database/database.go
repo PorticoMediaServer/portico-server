@@ -200,6 +200,10 @@ func OpenRuntimeHandle(cfg config.Config) (*sql.DB, error) {
 	return openConfiguredSQLiteHandle(context.Background(), cfg, nil)
 }
 
+func OpenRuntimeHandleContext(ctx context.Context, cfg config.Config) (*sql.DB, error) {
+	return openConfiguredSQLiteHandle(ctx, cfg, nil)
+}
+
 func openConfiguredSQLiteHandle(ctx context.Context, cfg config.Config, reportPhase func(string, string, time.Time, error)) (*sql.DB, error) {
 	return openConfiguredSQLiteHandleContext(ctx, cfg, reportPhase)
 }

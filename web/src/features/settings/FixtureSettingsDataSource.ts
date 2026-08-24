@@ -82,14 +82,14 @@ function settingGroups() {
   return {
     server: { friendlyName: 'EhlerFlix Test', operatorNote: 'Primary Portico review server.' },
     library: {
-      scanAutomatically: true, scanOnFilesystemChanges: true, analyzeOnScan: true, emptyTrashAfterScan: false,
+      scanAutomatically: true, scanOnFilesystemChanges: true, analysisTier: 'basic', emptyTrashAfterScan: false,
       allowMediaDeletion: false, trashRetentionDays: 30, generateVideoPreview: 'scheduled', chapterThumbnailMode: 'chapters',
       trickplayOnScan: true, trickplayIntervalSeconds: 10, trickplayTileWidth: 240, trickplayMaxTiles: 1000,
     },
     metadataAgents: {
-      movies: 'TMDB', tv: 'TMDB', anime: 'AniList', music: 'MusicBrainz', localNFO: true, embeddedTags: true,
+      movies: 'TMDB', moviesFallback: 'TVDB', tv: 'TMDB', tvFallback: 'TVDB', anime: 'AniList', music: 'MusicBrainz', localNFO: true, embeddedTags: true,
       cacheOriginalArtwork: true, metadataLanguage: 'en-CA', refreshDays: 30,
-      tmdbReadAccessToken: { present: true }, tmdbAPIKey: { present: false },
+      tmdbReadAccessToken: { present: true }, tmdbAPIKey: { present: false }, tvdbAPIKey: { present: false },
     },
     languages: { audio: 'en', subtitle: 'en', subtitleMode: 'foreignAudio', preferForcedSubs: true },
     transcoder: {
@@ -138,7 +138,7 @@ function settingGroups() {
 
 function summaryGroups(): SettingsSummaryResponse['groups'] {
   const definitions: Array<[string, string, string]> = [
-    ['server', 'Server identity', 'Name and operator details'], ['updates', 'Updates', 'This feature is not yet available.'],
+    ['server', 'Server identity', 'Name and operator details'],
     ['libraries', 'Libraries', 'Media roots and scans'], ['library-settings', 'Library settings', 'Scanning and preview policy'],
     ['metadata-agents', 'Metadata agents', 'Providers and matching'],
     ['transcoder', 'Transcoder', 'Playback conversion policy'], ['languages', 'Languages', 'Default tracks and subtitles'],
@@ -336,7 +336,7 @@ function operationalSnapshot(): SettingsOperationalSnapshot {
 }
 
 export class FixtureSettingsDataSource implements SettingsDataSource {
-  private document: SettingsDocument = asFixture({ revision: 'fixture-settings-1', updatedAt: now(), groups: settingGroups(), restartRequired: false, restartRequiredFields: [], applyImpact: { changedFields: [], restartRequired: false, restartRequiredFields: [] } });
+  private document: SettingsDocument = asFixture({ revision: 'fixture-settings-1', updatedAt: now(), groups: settingGroups(), restartRequired: false, restartRequiredFields: [], applyImpact: { changedFields: [], restartRequired: false, restartRequiredFields: [] }, generation: { mode: 'next-operation', activeRevision: 'fixture-settings-1', instruction: 'New operations use this committed settings revision.' } });
   private preferencesValue = structuredClone(defaultPreferences);
   private operations = operationalSnapshot();
   private remote = remoteStatus();
@@ -357,7 +357,8 @@ export class FixtureSettingsDataSource implements SettingsDataSource {
   settings(): Promise<SettingsDocument> { return Promise.resolve(structuredClone(this.document)); }
   settingsSummary(): Promise<SettingsSummaryResponse> { return Promise.resolve({ generatedAt: now(), groups: summaryGroups(), statusCards: [] }); }
   updateSettings(input: SettingsUpdateRequest): Promise<SettingsDocument> {
-    this.document = asFixture({ ...this.document, revision: `fixture-settings-${Date.now()}`, updatedAt: now(), groups: { ...this.document.groups, ...input.groups }, applyImpact: { changedFields: Object.entries(input.groups).flatMap(([group, fields]) => Object.keys(fields ?? {}).map((field) => `${group}.${field}`)), restartRequired: false, restartRequiredFields: [] } });
+    const revision = `fixture-settings-${Date.now()}`;
+    this.document = asFixture({ ...this.document, revision, updatedAt: now(), groups: { ...this.document.groups, ...input.groups }, generation: { mode: 'next-operation', activeRevision: revision, instruction: 'New operations use this committed settings revision.' }, applyImpact: { changedFields: Object.entries(input.groups).flatMap(([group, fields]) => Object.keys(fields ?? {}).map((field) => `${group}.${field}`)), restartRequired: false, restartRequiredFields: [] } });
     return Promise.resolve(structuredClone(this.document));
   }
   settingsStatus(): Promise<SettingsStatusSnapshot> {
@@ -487,6 +488,13 @@ export class FixtureSettingsDataSource implements SettingsDataSource {
   }
   updateLibrary(id: string, input: LibraryMutationInput): Promise<Library> { const index = this.operations.libraries.findIndex((item) => item.id === id); const updated = { ...this.operations.libraries[index], ...input } as Library; this.operations.libraries[index] = updated; return Promise.resolve(structuredClone(updated)); }
   deleteLibrary(id: string): Promise<void> { this.operations.libraries = this.operations.libraries.filter((item) => item.id !== id); return Promise.resolve(); }
+  remoteStorageSources(): Promise<import('@porticomediaserver/client-core').RemoteStorageSource[]> { return Promise.resolve([]); }
+  createRemoteStorageSource(id: string, input: import('@porticomediaserver/client-core').RemoteStorageSourceRequest): Promise<import('@porticomediaserver/client-core').RemoteStorageSource> {
+    return Promise.resolve({ id: `fixture-remote-${Date.now()}`, libraryId: id, kind: input.kind, name: input.name, endpoint: input.kind === 'webdav' ? input.endpoint : undefined, root: input.root, analysisMode: input.analysisMode ?? 'basic', health: 'unknown', inventoryStatus: 'never', objects: 0, missingObjects: 0, credentialPresent: input.kind === 'rclone' || Boolean(input.password), updatedAt: now() });
+  }
+  deleteRemoteStorageSource(): Promise<void> { return Promise.resolve(); }
+  updateRemoteStorageSourceAnalysisMode(id: string, sourceId: string, analysisMode: import('@porticomediaserver/client-core').RemoteStorageAnalysisMode): Promise<import('@porticomediaserver/client-core').RemoteStorageSource> { return Promise.resolve({ id: sourceId, libraryId: id, kind: 'webdav', name: 'Fixture remote', analysisMode, health: 'unknown', inventoryStatus: 'never', objects: 0, missingObjects: 0, credentialPresent: false, updatedAt: now() }); }
+  inventoryRemoteStorageSource(id: string): Promise<Job> { return Promise.resolve(job(`inventory-${id}`, 'Remote inventory queued', 'queued', 0, 0)); }
   libraryScanOperations(id: string): Promise<LibraryScanOperationsResponse> {
     const libraryItem = this.operations.libraries.find((item) => item.id === id);
     const summary = libraryItem?.scanSummary;
@@ -523,7 +531,7 @@ export class FixtureSettingsDataSource implements SettingsDataSource {
   createPorticoMemberInvite(): Promise<{ inviteUrl?: string }> { return Promise.resolve({ inviteUrl: 'https://web.getportico.tv/invite?code=fixture' }); }
   resendPorticoMemberInvite(inviteId: string): Promise<PorticoInvite> {
     const existing = this.operations.porticoInvites?.find((invite) => invite.id === inviteId);
-    const resent = { ...(existing ?? {}), id: inviteId, serverId: 'fixture-server', invitedEmail: existing?.invitedEmail ?? 'fixture@example.test', deliveryMode: 'email', role: 'user', status: 'pending', emailDeliveryStatus: 'queued', permissionTemplate: existing?.permissionTemplate ?? { libraryIds: [], permissions: {} }, resourceLimits: existing?.resourceLimits ?? {}, allowSubordinateProfiles: true, createdByUserId: 'fixture-owner', createdAt: existing?.createdAt ?? now(), expiresAt: existing?.expiresAt ?? now() } as PorticoInvite;
+    const resent = { ...(existing ?? {}), id: inviteId, serverId: 'fixture-server', invitedEmail: existing?.invitedEmail ?? 'fixture@example.test', deliveryMode: 'email', role: 'user', status: 'pending', emailDeliveryStatus: 'queued', permissionTemplate: existing?.permissionTemplate ?? { permissions: {} }, resourceLimits: existing?.resourceLimits ?? {}, allowSubordinateProfiles: true, createdByUserId: 'fixture-owner', createdAt: existing?.createdAt ?? now(), expiresAt: existing?.expiresAt ?? now() } as PorticoInvite;
     if (existing) Object.assign(existing, resent);
     return Promise.resolve(structuredClone(resent));
   }
@@ -589,6 +597,11 @@ export class FixtureSettingsDataSource implements SettingsDataSource {
   }
   enablePorticoMFA(): Promise<AccountMFAEnableResult> {
     const recoveryCodes = ['PORTICO-7V9K-2N4Q', 'PORTICO-5M8R-3T6W', 'PORTICO-4X2P-9J7H'];
+    this.accountMFAValue = { enabled: true, setupStarted: false, recoveryCodesSupported: true, recoveryCodesRemaining: recoveryCodes.length };
+    return Promise.resolve({ enabled: true, recoveryCodes });
+  }
+  rotatePorticoMFARecoveryCodes(): Promise<AccountMFAEnableResult> {
+    const recoveryCodes = Array.from({ length: 10 }, (_, index) => `PORTICO-RECOVERY-${String(index + 1).padStart(2, '0')}`);
     this.accountMFAValue = { enabled: true, setupStarted: false, recoveryCodesSupported: true, recoveryCodesRemaining: recoveryCodes.length };
     return Promise.resolve({ enabled: true, recoveryCodes });
   }

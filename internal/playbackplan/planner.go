@@ -152,7 +152,10 @@ func selectStreams(f mediafacts.Facts, sel Selection) (*mediafacts.Video, *media
 		return nil
 	}
 	v, a, s := findV(), findA(), findS()
-	if a == nil {
+	if a == nil && v == nil {
+		return nil, nil, nil, "", fmt.Errorf("selected audio stream not found")
+	}
+	if sel.AudioIndex != nil && a == nil {
 		return nil, nil, nil, "", fmt.Errorf("selected audio stream not found")
 	}
 	if sel.VideoIndex != nil && v == nil {
@@ -189,13 +192,19 @@ func makeCandidate(req Request, f mediafacts.Facts, v *mediafacts.Video, a *medi
 	if seekForcedEncode {
 		videoCopy = false
 	}
-	audioLayout, audioChannels, audioCopy, audioOK := audioRoute(*a, t.Audio)
+	audioLayout, audioChannels, audioCopy, audioOK := "", 0, true, true
+	audioConstraintExceeded := false
+	if a == nil {
+		audioOK = t.Audio == (playbackcap.Audio{})
+	} else {
+		audioLayout, audioChannels, audioCopy, audioOK = audioRoute(*a, t.Audio)
+		audioConstraintExceeded = req.Constraints.MaxAudioBitrate > 0 && (a.Bitrate <= 0 || a.Bitrate > req.Constraints.MaxAudioBitrate)
+		if audioConstraintExceeded {
+			audioCopy = false
+		}
+	}
 	if !audioOK {
 		return candidate{}, false, false, false
-	}
-	audioConstraintExceeded := req.Constraints.MaxAudioBitrate > 0 && (a.Bitrate <= 0 || a.Bitrate > req.Constraints.MaxAudioBitrate)
-	if audioConstraintExceeded {
-		audioCopy = false
 	}
 	color, valid, dvr, tmr := decideColor(v, t.Video, videoCopy, req.DisableToneMapping, req.ToneMapAlgorithm)
 	if !valid {
@@ -231,31 +240,33 @@ func makeCandidate(req Request, f mediafacts.Facts, v *mediafacts.Video, a *medi
 	if videoConstraintExceeded {
 		p.Reasons = append(p.Reasons, ReasonVideoConstraint)
 	}
-	action := Copy
-	if !audioCopy {
-		action = Convert
-	}
-	if audioConstraintExceeded {
-		p.Reasons = append(p.Reasons, ReasonAudioConstraint)
-	}
-	p.Streams = append(p.Streams, StreamAction{a.Index, "audio", action, a.Codec, t.Audio.Codec, a.Layout, audioLayout})
-	p.Audio = AudioDecision{Codec: token(t.Audio.Codec), Layout: audioLayout, Channels: audioChannels, Passthrough: audioCopy, ObjectsPreserved: a.ObjectAudio == "" || (audioCopy && t.Audio.ObjectPassthrough)}
-	timingCopy := audioCopy && containerCopy && p.Protocol == "http"
-	p.Audio.Gapless = decideGapless(*a, timingCopy)
-	switch p.Audio.Gapless.Status {
-	case "preserved":
-		p.Reasons = append(p.Reasons, ReasonGaplessPreserved)
-	case "unverified":
-		p.Reasons = append(p.Reasons, ReasonGaplessUnverified)
-	case "unknown":
-		p.Reasons = append(p.Reasons, ReasonGaplessFactsUnknown)
-	}
-	if p.Audio.Channels < a.Channels {
-		p.Audio.Downmixed = true
-		p.Reasons = append(p.Reasons, ReasonAudioLayoutReduced)
-	}
-	if a.ObjectAudio != "" && !p.Audio.ObjectsPreserved {
-		p.Reasons = append(p.Reasons, ReasonObjectAudioLost)
+	if a != nil {
+		action := Copy
+		if !audioCopy {
+			action = Convert
+		}
+		if audioConstraintExceeded {
+			p.Reasons = append(p.Reasons, ReasonAudioConstraint)
+		}
+		p.Streams = append(p.Streams, StreamAction{a.Index, "audio", action, a.Codec, t.Audio.Codec, a.Layout, audioLayout})
+		p.Audio = AudioDecision{Codec: token(t.Audio.Codec), Layout: audioLayout, Channels: audioChannels, Passthrough: audioCopy, ObjectsPreserved: a.ObjectAudio == "" || (audioCopy && t.Audio.ObjectPassthrough)}
+		timingCopy := audioCopy && containerCopy && p.Protocol == "http"
+		p.Audio.Gapless = decideGapless(*a, timingCopy)
+		switch p.Audio.Gapless.Status {
+		case "preserved":
+			p.Reasons = append(p.Reasons, ReasonGaplessPreserved)
+		case "unverified":
+			p.Reasons = append(p.Reasons, ReasonGaplessUnverified)
+		case "unknown":
+			p.Reasons = append(p.Reasons, ReasonGaplessFactsUnknown)
+		}
+		if p.Audio.Channels < a.Channels {
+			p.Audio.Downmixed = true
+			p.Reasons = append(p.Reasons, ReasonAudioLayoutReduced)
+		}
+		if a.ObjectAudio != "" && !p.Audio.ObjectsPreserved {
+			p.Reasons = append(p.Reasons, ReasonObjectAudioLost)
+		}
 	}
 	subOK := applySubtitle(&p, s, t.Subtitle)
 	if !subOK {
@@ -284,7 +295,10 @@ func makeCandidate(req Request, f mediafacts.Facts, v *mediafacts.Video, a *medi
 	}
 	p.Stages = graph(p, v, a, s)
 	cost := map[Mode]int{DirectPlay: 0, Remux: 1, DirectStream: 2, VideoTranscode: 3}[p.Mode]
-	fidelity := 100 - cost*10 - p.Audio.DownmixPenalty() + audioFidelityScore(*a, p.Audio)
+	fidelity := 100 - cost*10
+	if a != nil {
+		fidelity += audioFidelityScore(*a, p.Audio) - p.Audio.DownmixPenalty()
+	}
 	if color != nil && color.Action != "preserve" {
 		fidelity -= 20
 	}

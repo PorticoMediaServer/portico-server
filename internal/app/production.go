@@ -38,6 +38,7 @@ var (
 	errActiveSessionLimit   = errors.New("active session limit reached")
 	errPlaybackSessionLimit = errors.New("playback session limit reached")
 	errAccessSchedule       = errors.New("access schedule blocked")
+	errDVRRecordingInUse    = errors.New("DVR recording is in use")
 )
 
 func (s *Server) handleSystemDiagnostics(w http.ResponseWriter, r *http.Request, user User) {
@@ -454,11 +455,7 @@ func (s *Server) handleSystemStorageCleanup(w http.ResponseWriter, r *http.Reque
 
 func (s *Server) runSystemStorageCleanup(ctx context.Context, job Job) {
 	removed := map[string]int{}
-	if err := ctx.Err(); err != nil {
-		if s.deferMaintenanceJob(job.ID, err) {
-			return
-		}
-		s.recordLog("info", "Storage cleanup cancelled.", map[string]string{"job": job.ID})
+	if s.stopCancelledStorageCleanup(ctx, job.ID) {
 		return
 	}
 	_ = s.setJobMessage(job.ID, "running", 10, "Applying server storage retention.")
@@ -473,6 +470,9 @@ func (s *Server) runSystemStorageCleanup(ctx context.Context, job Job) {
 	} else {
 		removed["optimized"] = count
 	}
+	if s.stopCancelledStorageCleanup(ctx, job.ID) {
+		return
+	}
 	if count, err := s.pruneOrphanedTranscodeGenerations(6 * time.Hour); err != nil {
 		if s.deferMaintenanceJob(job.ID, err) {
 			return
@@ -483,6 +483,9 @@ func (s *Server) runSystemStorageCleanup(ctx context.Context, job Job) {
 		return
 	} else {
 		removed["transcodes"] = count
+	}
+	if s.stopCancelledStorageCleanup(ctx, job.ID) {
+		return
 	}
 	_ = s.setJobMessage(job.ID, "running", 30, "Applying backup retention.")
 	if count, err := s.pruneDatabaseBackups(s.scheduledTaskSettings().BackupRetentionDays); err != nil && !errors.Is(err, os.ErrNotExist) {
@@ -496,6 +499,9 @@ func (s *Server) runSystemStorageCleanup(ctx context.Context, job Job) {
 	} else {
 		removed["backups"] = count
 	}
+	if s.stopCancelledStorageCleanup(ctx, job.ID) {
+		return
+	}
 	_ = s.setJobMessage(job.ID, "running", 50, "Emptying expired media trash.")
 	if count, err := s.pruneMediaTrash(30); err != nil {
 		if s.deferMaintenanceJob(job.ID, err) {
@@ -507,6 +513,9 @@ func (s *Server) runSystemStorageCleanup(ctx context.Context, job Job) {
 		return
 	} else {
 		removed["mediaTrash"] = count
+	}
+	if s.stopCancelledStorageCleanup(ctx, job.ID) {
+		return
 	}
 	taskSettings := s.scheduledTaskSettings()
 	_ = s.setJobMessage(job.ID, "running", 70, "Applying trickplay retention.")
@@ -521,6 +530,9 @@ func (s *Server) runSystemStorageCleanup(ctx context.Context, job Job) {
 	} else {
 		removed["trickplay"] = count
 	}
+	if s.stopCancelledStorageCleanup(ctx, job.ID) {
+		return
+	}
 	_ = s.setJobMessage(job.ID, "running", 90, "Clearing expired image cache.")
 	if count, err := s.pruneImageCache(); err != nil && !errors.Is(err, os.ErrNotExist) {
 		if s.deferMaintenanceJob(job.ID, err) {
@@ -532,6 +544,9 @@ func (s *Server) runSystemStorageCleanup(ctx context.Context, job Job) {
 		return
 	} else {
 		removed["imageCache"] = count
+	}
+	if s.stopCancelledStorageCleanup(ctx, job.ID) {
+		return
 	}
 	s.libraryChannelPlayoutMu.Lock()
 	before := s.libraryChannelCacheFiles
@@ -546,6 +561,9 @@ func (s *Server) runSystemStorageCleanup(ctx context.Context, job Job) {
 	after := s.libraryChannelCacheFiles
 	s.libraryChannelPlayoutMu.Unlock()
 	removed["libraryChannelSegments"] = max(0, before-after)
+	if s.stopCancelledStorageCleanup(ctx, job.ID) {
+		return
+	}
 	_ = s.setJobMessage(job.ID, "running", 95, "Applying bounded privacy retention.")
 	if err := s.pruneOperationalTables(ctx); err != nil {
 		if s.deferMaintenanceJob(job.ID, err) {
@@ -573,6 +591,14 @@ func (s *Server) runSystemStorageCleanup(ctx context.Context, job Job) {
 	s.clearSystemStorageCache()
 	_ = s.setJobMessage(job.ID, "complete", 100, message)
 	s.recordLog("info", message, metadata)
+}
+
+func (s *Server) stopCancelledStorageCleanup(ctx context.Context, jobID string) bool {
+	if ctx.Err() != nil {
+		s.recordLog("info", "Storage cleanup cancelled.", map[string]string{"job": jobID})
+		return true
+	}
+	return false
 }
 
 func (s *Server) handleTranscodeCapacity(w http.ResponseWriter, r *http.Request, user User) {
@@ -3200,20 +3226,31 @@ func (s *Server) listPlaylistsContext(ctx context.Context, user User, kind strin
 		if err != nil {
 			return nil, err
 		}
+		if playlist.ProfileID != viewerProfileID(user) && !canInteractivelyManageServer(user) {
+			shares = redactPlaylistShareEmails(shares)
+		}
 		playlist.Shares = shares
 		if playlist.Smart {
+			items, err := s.smartPlaylistItemsWithLimitContext(ctx, user, playlist.SmartFilter, playlist.SmartFilter.Limit)
+			if err != nil {
+				return nil, err
+			}
+			playlist.ItemCount = len(items)
 			if includeItems {
-				items, err := s.smartPlaylistItemsWithLimitContext(ctx, user, playlist.SmartFilter, playlist.SmartFilter.Limit)
-				if err != nil {
-					return nil, err
-				}
-				playlist.ItemCount = len(items)
 				playlist.Items = items
 			}
 			continue
 		}
+		viewerScoped := playlist.ProfileID != viewerProfileID(user) && !canInteractivelyManageServer(user)
+		if viewerScoped {
+			count, err := s.playlistVisibleItemCountContext(ctx, viewerProfileID(user), playlist.ID)
+			if err != nil {
+				return nil, err
+			}
+			playlist.ItemCount = count
+		}
 		if includeItems {
-			items, err := s.playlistItemsContext(ctx, viewerProfileID(user), playlist.ID)
+			items, _, _, err := s.playlistVisibleItemsPageContext(ctx, viewerProfileID(user), playlist.ID, maxPlaylistItemsResponse, 0)
 			if err != nil {
 				return nil, err
 			}
@@ -3267,20 +3304,33 @@ func (s *Server) getPlaylistContext(ctx context.Context, user User, playlistID s
 	if err != nil {
 		return Playlist{}, err
 	}
+	if playlist.ProfileID != viewerProfileID(user) && !canInteractivelyManageServer(user) {
+		shares = redactPlaylistShareEmails(shares)
+	}
 	playlist.Shares = shares
-	if includeItems {
-		if playlist.Smart {
-			items, err := s.smartPlaylistItemsContext(ctx, user, playlist.SmartFilter)
+	if !playlist.Smart {
+		viewerScoped := playlist.ProfileID != viewerProfileID(user) && !canInteractivelyManageServer(user)
+		if viewerScoped {
+			count, err := s.playlistVisibleItemCountContext(ctx, viewerProfileID(user), playlist.ID)
+			if err != nil {
+				return Playlist{}, err
+			}
+			playlist.ItemCount = count
+		}
+		if includeItems {
+			items, _, _, err := s.playlistVisibleItemsPageContext(ctx, viewerProfileID(user), playlist.ID, maxPlaylistItemsResponse, 0)
 			if err != nil {
 				return Playlist{}, err
 			}
 			playlist.Items = items
-			playlist.ItemCount = len(playlist.Items)
-		} else {
-			items, err := s.playlistItemsContext(ctx, viewerProfileID(user), playlist.ID)
-			if err != nil {
-				return Playlist{}, err
-			}
+		}
+	} else {
+		items, err := s.smartPlaylistItemsContext(ctx, user, playlist.SmartFilter)
+		if err != nil {
+			return Playlist{}, err
+		}
+		playlist.ItemCount = len(items)
+		if includeItems {
 			playlist.Items = items
 		}
 	}
@@ -3637,6 +3687,14 @@ func (s *Server) playlistSharesContext(ctx context.Context, playlistID string) (
 	return shares, rows.Err()
 }
 
+func redactPlaylistShareEmails(shares []PlaylistShare) []PlaylistShare {
+	redacted := append([]PlaylistShare(nil), shares...)
+	for index := range redacted {
+		redacted[index].Email = ""
+	}
+	return redacted
+}
+
 func (s *Server) replacePlaylistShares(playlistID string, shares []PlaylistShareRequest) error {
 	now := time.Now().UTC().Format(time.RFC3339)
 	seen := map[string]bool{}
@@ -3779,7 +3837,7 @@ func (s *Server) smartPlaylistItemsWithLimitContext(ctx context.Context, user Us
 	items := []MediaItem{}
 	candidateBudget := smartPlaylistCandidateBudget(limit, len(libraryIDs))
 	var err error
-	items, err = s.smartLibraryItemsForLibrariesContext(ctx, user.ID, libraryIDs, filter, candidateBudget)
+	items, err = s.smartLibraryItemsForLibrariesContext(ctx, viewerProfileID(user), libraryIDs, filter, candidateBudget)
 	if err != nil {
 		return nil, err
 	}
@@ -3807,19 +3865,29 @@ func smartPlaylistCacheKey(user User, filter SmartFilter, libraryIDs []string, l
 	normalizedLibraryIDs := append([]string(nil), libraryIDs...)
 	sort.Strings(normalizedLibraryIDs)
 	payload := struct {
-		UserID      string      `json:"userId"`
-		Role        string      `json:"role"`
-		LibraryIDs  []string    `json:"libraryIds"`
-		MaxRating   string      `json:"maxRating"`
-		Filter      SmartFilter `json:"filter"`
-		ResultLimit int         `json:"resultLimit"`
+		UserID               string        `json:"userId"`
+		ProfileID            string        `json:"profileId"`
+		Role                 string        `json:"role"`
+		LibraryIDs           []string      `json:"libraryIds"`
+		MaxRating            string        `json:"maxRating"`
+		MaximumAge           *int          `json:"maximumAge"`
+		AllowUnrated         bool          `json:"allowUnrated"`
+		BlockedProfileLabels []string      `json:"blockedProfileLabels"`
+		TagPolicy            UserTagPolicy `json:"tagPolicy"`
+		Filter               SmartFilter   `json:"filter"`
+		ResultLimit          int           `json:"resultLimit"`
 	}{
-		UserID:      user.ID,
-		Role:        user.Role,
-		LibraryIDs:  normalizedLibraryIDs,
-		MaxRating:   user.MaxContentRating,
-		Filter:      filter,
-		ResultLimit: limit,
+		UserID:               user.ID,
+		ProfileID:            viewerProfileID(user),
+		Role:                 user.Role,
+		LibraryIDs:           normalizedLibraryIDs,
+		MaxRating:            user.MaxContentRating,
+		MaximumAge:           user.MaximumAgeRating,
+		AllowUnrated:         user.AllowUnrated,
+		BlockedProfileLabels: append([]string(nil), user.BlockedProfileLabels...),
+		TagPolicy:            user.TagPolicy,
+		Filter:               filter,
+		ResultLimit:          limit,
 	}
 	data, err := json.Marshal(payload)
 	if err != nil {
@@ -4020,11 +4088,65 @@ func (s *Server) playlistItemsContext(ctx context.Context, userID, playlistID st
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	ids, _, err := s.playlistItemIDsPageContext(ctx, playlistID, maxPlaylistItemsResponse, 0)
-	if err != nil {
-		return nil, err
+	items, _, _, err := s.playlistVisibleItemsPageContext(ctx, userID, playlistID, maxPlaylistItemsResponse, 0)
+	return items, err
+}
+
+func (s *Server) playlistVisibleItemCountContext(ctx context.Context, userID, playlistID string) (int, error) {
+	where := `WHERE EXISTS (SELECT 1 FROM playlist_items membership WHERE membership.playlist_id = ? AND membership.media_id = m.id)`
+	args := []any{playlistID}
+	where, args = s.applyMediaVisibilityRestrictionSQL(userID, where, args)
+	accountID, _ := s.accountAndProfileIDsContext(ctx, userID)
+	where, args = s.applyLibraryCurationRestrictionSQL(ctx, accountID, where, args)
+	var count int
+	err := s.queryUserRow(ctx, `SELECT COUNT(*) FROM media_items m `+where, args...).Scan(&count)
+	return count, err
+}
+
+func (s *Server) playlistVisibleItemsPageContext(ctx context.Context, userID, playlistID string, limit, offset int) ([]MediaItem, int, bool, error) {
+	limit = clampInt(limit, 1, maxPlaylistItemsResponse)
+	offset = max(0, offset)
+	total, err := s.playlistVisibleItemCountContext(ctx, userID, playlistID)
+	if err != nil || offset >= total {
+		return []MediaItem{}, total, false, err
 	}
-	return s.mediaListItemsByOrderedIDsContext(ctx, userID, ids)
+	where := `WHERE membership.playlist_id = ?`
+	args := []any{playlistID}
+	where, args = s.applyMediaVisibilityRestrictionSQL(userID, where, args)
+	accountID, _ := s.accountAndProfileIDsContext(ctx, userID)
+	where, args = s.applyLibraryCurationRestrictionSQL(ctx, accountID, where, args)
+	args = append(args, limit, offset)
+	rows, err := s.queryUserRead(ctx, `
+		SELECT membership.media_id
+		FROM playlist_items membership
+		JOIN media_items m ON m.id = membership.media_id
+		`+where+`
+		ORDER BY membership.sort_order ASC, membership.added_at ASC
+		LIMIT ? OFFSET ?`, args...)
+	if err != nil {
+		return nil, 0, false, err
+	}
+	ids := []string{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			_ = rows.Close()
+			return nil, 0, false, err
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return nil, 0, false, err
+	}
+	if err := rows.Close(); err != nil {
+		return nil, 0, false, err
+	}
+	items, err := s.mediaListItemsByOrderedIDsContext(ctx, userID, ids)
+	if err != nil {
+		return nil, 0, false, err
+	}
+	return items, total, offset+len(ids) < total, nil
 }
 
 func (s *Server) playlistItemsPageContext(ctx context.Context, user User, playlistID string, limit int, offset int) ([]MediaItem, int, bool, error) {
@@ -4053,6 +4175,9 @@ func (s *Server) playlistItemsPageContext(ctx context.Context, user User, playli
 			total = offset + limit + 1
 		}
 		return items[offset:end], total, hasMore, nil
+	}
+	if playlist.ProfileID != viewerProfileID(user) && !canInteractivelyManageServer(user) {
+		return s.playlistVisibleItemsPageContext(ctx, viewerProfileID(user), playlistID, limit, offset)
 	}
 	ids, hasMore, err := s.playlistItemIDsPageContext(ctx, playlistID, limit, offset)
 	if err != nil {
@@ -4521,6 +4646,10 @@ func (s *Server) handleDVRRecordings(w http.ResponseWriter, r *http.Request, use
 				return
 			}
 			if err := s.deleteDVRRecording(recordingID); err != nil {
+				if errors.Is(err, errDVRRecordingInUse) {
+					writeError(w, http.StatusConflict, "dvr_recording_in_use", "This recording is currently playing. Stop playback and try again.")
+					return
+				}
 				if errors.Is(err, sql.ErrNoRows) {
 					writeError(w, http.StatusNotFound, "dvr_recording_not_found", "Recording was not found.")
 					return
@@ -4573,6 +4702,9 @@ func (s *Server) startDVRRecordingPlaybackForRequest(r *http.Request, user User,
 	if req.StartSeconds < 0 {
 		return PlaybackResponse{}, &playbackStartHTTPError{status: http.StatusBadRequest, code: "invalid_start_position", message: "startSeconds must be zero or greater."}
 	}
+	validPlaybackUse := false
+	releasePlaybackUse := s.acquireDVRPlaybackUse(recordingID)
+	defer func() { releasePlaybackUse(validPlaybackUse) }()
 	recording, err := s.getDVRRecordingForUser(user, recordingID)
 	if err != nil {
 		return PlaybackResponse{}, &playbackStartHTTPError{status: http.StatusNotFound, code: "dvr_recording_not_found", message: "Recording was not found."}
@@ -4583,6 +4715,7 @@ func (s *Server) startDVRRecordingPlaybackForRequest(r *http.Request, user User,
 	if !stringSet(dvrRecordingActionsForUser(recording, user))[liveTVActionDVRPlay] {
 		return PlaybackResponse{}, &playbackStartHTTPError{status: http.StatusConflict, code: "dvr_recording_not_playable", message: "Recording is not available for playback."}
 	}
+	validPlaybackUse = true
 	if strings.EqualFold(strings.TrimSpace(recording.Status), "running") {
 		return s.startLiveTVPlaybackForRequest(r, user, recording.ChannelID, req.ClientProfile, req.Intent, req.ClientInstanceID)
 	}
@@ -4619,6 +4752,9 @@ func (s *Server) handleDVRRecordingStream(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusForbidden, "forbidden", "You do not have permission to play DVR recordings.")
 		return
 	}
+	validPlaybackUse := false
+	releasePlaybackUse := s.acquireDVRPlaybackUse(recordingID)
+	defer func() { releasePlaybackUse(validPlaybackUse) }()
 	recording, err := s.getDVRRecordingForUser(user, recordingID)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "dvr_recording_not_found", "Recording was not found.")
@@ -4636,6 +4772,7 @@ func (s *Server) handleDVRRecordingStream(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusConflict, "dvr_recording_not_ready", "Recording is not ready to stream.")
 		return
 	}
+	validPlaybackUse = true
 	if strings.TrimSpace(recording.Path) == "" {
 		writeError(w, http.StatusNotFound, "dvr_recording_file_missing", "Recording file was not found.")
 		return
@@ -4675,6 +4812,9 @@ func (s *Server) handleDVRRecordingHLS(w http.ResponseWriter, r *http.Request, u
 		writeError(w, http.StatusForbidden, "forbidden", "You do not have permission to play DVR recordings.")
 		return
 	}
+	validPlaybackUse := false
+	releasePlaybackUse := s.acquireDVRPlaybackUse(recordingID)
+	defer func() { releasePlaybackUse(validPlaybackUse) }()
 	recording, err := s.getDVRRecordingForUser(user, recordingID)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "dvr_recording_not_found", "Recording was not found.")
@@ -4692,6 +4832,7 @@ func (s *Server) handleDVRRecordingHLS(w http.ResponseWriter, r *http.Request, u
 		writeError(w, http.StatusConflict, "dvr_recording_not_ready", "Recording is not ready to stream.")
 		return
 	}
+	validPlaybackUse = true
 	item, err := s.dvrRecordingTranscodeItem(recording)
 	if err != nil {
 		if errors.Is(err, errDVRRecordingFileMissing) {
@@ -6348,6 +6489,15 @@ func (s *Server) deleteDVRRecording(recordingID string) error {
 	}
 	if !dvrRecordingFinishedStatus(recording.Status) {
 		return errors.New("Only scheduled, completed, or failed recordings can be deleted.")
+	}
+	s.dvrPlaybackMu.Lock()
+	defer s.dvrPlaybackMu.Unlock()
+	inUse, err := s.dvrRecordingInUseLocked(context.Background(), recordingID)
+	if err != nil {
+		return err
+	}
+	if inUse {
+		return errDVRRecordingInUse
 	}
 	if strings.TrimSpace(recording.Path) != "" {
 		if err := removeDVRRecordingFile(recording.Path, s.cfg.AppDataDir); err != nil {

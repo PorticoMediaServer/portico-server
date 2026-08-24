@@ -398,64 +398,6 @@ type QuickConnectRequest struct {
 	CreatedAt       string `json:"createdAt"`
 }
 
-type TVSetupSessionRequest struct {
-	InstallationID  string `json:"installationId,omitempty"`
-	DevicePublicKey string `json:"devicePublicKey"`
-	DeviceName      string `json:"deviceName,omitempty"`
-	Platform        string `json:"platform,omitempty"`
-	AppVersion      string `json:"appVersion,omitempty"`
-	ServerHint      string `json:"serverHint,omitempty"`
-	AuthModeHint    string `json:"authModeHint,omitempty"`
-	EndpointURL     string `json:"endpointUrl,omitempty"`
-}
-
-type TVSetupSessionResponse struct {
-	SetupSessionID      string                 `json:"setupSessionId"`
-	Code                string                 `json:"code"`
-	Status              string                 `json:"status"`
-	ProtocolVersion     int                    `json:"protocolVersion"`
-	Service             string                 `json:"service"`
-	DevicePublicKey     string                 `json:"devicePublicKey"`
-	DeviceName          string                 `json:"deviceName"`
-	Platform            string                 `json:"platform"`
-	AppVersion          string                 `json:"appVersion,omitempty"`
-	ServerHint          string                 `json:"serverHint,omitempty"`
-	AuthModeHint        string                 `json:"authModeHint"`
-	EndpointURL         string                 `json:"endpointUrl,omitempty"`
-	ExpiresAt           string                 `json:"expiresAt"`
-	PollIntervalSeconds int                    `json:"pollIntervalSeconds"`
-	EncryptedGrant      *TVSetupEncryptedGrant `json:"encryptedGrant,omitempty"`
-}
-
-type TVSetupGrantRequest struct {
-	SetupSessionID  string `json:"setupSessionId"`
-	Code            string `json:"code"`
-	DevicePublicKey string `json:"devicePublicKey,omitempty"`
-}
-
-type TVSetupGrantResponse struct {
-	SetupSessionID string                `json:"setupSessionId"`
-	Status         string                `json:"status"`
-	EncryptedGrant TVSetupEncryptedGrant `json:"encryptedGrant"`
-	ExpiresAt      string                `json:"expiresAt"`
-}
-
-type TVSetupRedeemRequest struct {
-	SetupSessionID string `json:"setupSessionId"`
-	GrantSecret    string `json:"grantSecret"`
-	DeviceName     string `json:"deviceName,omitempty"`
-	Platform       string `json:"platform,omitempty"`
-	AppVersion     string `json:"appVersion,omitempty"`
-}
-
-type TVSetupEncryptedGrant struct {
-	Version         int    `json:"version"`
-	Algorithm       string `json:"algorithm"`
-	ServerPublicKey string `json:"serverPublicKey"`
-	Nonce           string `json:"nonce"`
-	Ciphertext      string `json:"ciphertext"`
-}
-
 type SystemIdentityResponse struct {
 	ServerID             string   `json:"serverId"`
 	FriendlyName         string   `json:"friendlyName"`
@@ -734,6 +676,8 @@ type Stream struct {
 	FieldOrder         string  `json:"fieldOrder,omitempty"`
 	DynamicRange       string  `json:"dynamicRange,omitempty"`
 	DolbyVisionProfile string  `json:"dolbyVisionProfile,omitempty"`
+	HLSSampleEntry     string  `json:"-"`
+	DolbyVisionLevel   int     `json:"-"`
 	ExactSeekSafe      bool    `json:"exactSeekSafe,omitempty"`
 	KeyframeEvidenceAt string  `json:"keyframeEvidenceAt,omitempty"`
 }
@@ -1326,9 +1270,10 @@ type MediaMatchSearchResponse struct {
 }
 
 type ManualMediaMatchRequest struct {
-	Provider     string `json:"provider"`
-	ExternalID   string `json:"externalId"`
-	ExternalType string `json:"externalType"`
+	Provider         string `json:"provider"`
+	ExternalID       string `json:"externalId"`
+	ExternalType     string `json:"externalType"`
+	ExpectedRevision *int   `json:"expectedRevision"`
 }
 
 type MediaSegmentRequest struct {
@@ -2772,6 +2717,14 @@ type SettingsDocument struct {
 	RestartRequired       bool                `json:"restartRequired"`
 	RestartRequiredFields []string            `json:"restartRequiredFields"`
 	ApplyImpact           SettingsApplyImpact `json:"applyImpact"`
+	Generation            SettingsGeneration  `json:"generation"`
+}
+
+type SettingsGeneration struct {
+	Mode            string  `json:"mode"`
+	ActiveRevision  string  `json:"activeRevision"`
+	PendingRevision *string `json:"pendingRevision,omitempty"`
+	Instruction     string  `json:"instruction"`
 }
 
 type SettingsApplyImpact struct {

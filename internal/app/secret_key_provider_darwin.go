@@ -52,11 +52,11 @@ type keychainSecretKeyProvider struct {
 	mu      sync.Mutex
 }
 
-// NewSecretKeyProvider uses the macOS login Keychain through the local
-// security tool. The wrapping key is passed on stdin rather than as a process
-// argument, and the Keychain value is a base64 transport of the random key.
+// NewSecretKeyProvider uses a private, mode-restricted key file. Packaged
+// servers can run without an interactive login session, where the `security`
+// command may otherwise wait for Keychain UI that cannot be presented.
 func NewSecretKeyProvider(appDataDir string) SecretKeyProvider {
-	return newKeychainSecretKeyProvider(appDataDir)
+	return NewLocalSecretKeyProvider(filepath.Join(appDataDir, "keys", "hosted-authority.key"))
 }
 
 func newKeychainSecretKeyProvider(appDataDir string) *keychainSecretKeyProvider {

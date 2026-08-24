@@ -45,6 +45,22 @@ func TestAudioOnlyFallbackTuplesMatchWithoutDummyVideo(t *testing.T) {
 	}
 }
 
+func TestSilentVideoRequiresExactNoAudioTuple(t *testing.T) {
+	silent := silentTuple(baselineTuple())
+	if err := silent.Validate(); err != nil {
+		t.Fatalf("exact silent-video tuple was rejected: %v", err)
+	}
+	if !(Resolution{Tuples: []DeliveryTuple{silent}}).Supports(silent) {
+		t.Fatal("exact silent-video tuple did not match itself")
+	}
+	if (Resolution{Tuples: []DeliveryTuple{baselineTuple()}}).Supports(silent) {
+		t.Fatal("audio-bearing capability was treated as exact silent-video evidence")
+	}
+	if (Resolution{Tuples: []DeliveryTuple{silent}}).Supports(baselineTuple()) {
+		t.Fatal("silent-video capability was treated as audio-bearing evidence")
+	}
+}
+
 func TestMediaKindValidationKeepsAudiovisualStrict(t *testing.T) {
 	audio := audioMP3Tuple()
 	audio.Video.Codec = "h264"
@@ -265,7 +281,7 @@ func TestFutureBrowserVersionGetsProgressiveBaselineInsteadOfInventedHLS(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Band != "chromium-unknown-conservative" || len(got.Tuples) != 6 {
+	if got.Band != "chromium-unknown-conservative" || len(got.Tuples) != len(progressiveTuples()) {
 		t.Fatalf("future version inherited rich band: %+v", got)
 	}
 	if got.Supports(hlsTuple()) {

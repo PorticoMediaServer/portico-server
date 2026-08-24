@@ -509,17 +509,12 @@ func (s *Server) issueMediaGrantForPlayback(ctx context.Context, user User, play
 }
 
 func (s *Server) issueLiveMediaGrantForPlayback(ctx context.Context, user User, playbackSessionID, channelID string, decision PlaybackDecision, selectedQuality string, qualities []Quality, revokeExisting bool) (MediaGrant, error) {
-	allowedQualities := []string{}
-	for _, quality := range qualities {
-		if quality.Available {
-			allowedQualities = appendUniqueString(allowedQualities, normalizeLiveTVQualityID(quality.ID))
-		}
-	}
+	selectedQuality = normalizeLiveTVQualityID(selectedQuality)
 	return s.issueMediaGrantBound(ctx, user, playbackSessionID, "live_channel", channelID, true, revokeExisting, mediaGrantDelivery{
 		OperationClasses: []string{"manifest", "segment"},
 		DeliveryMode:     decision.Mode,
-		TranscodeQuality: normalizeLiveTVQualityID(selectedQuality),
-		AllowedQualities: allowedQualities,
+		TranscodeQuality: selectedQuality,
+		AllowedQualities: []string{selectedQuality},
 	})
 }
 

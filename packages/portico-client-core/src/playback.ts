@@ -119,38 +119,21 @@ export function playbackSourceFor(
 ): string {
   void options.baseHref;
   const resources = asArray(playback.resources);
-  const hasStreamSelection = options.streamFormat !== undefined;
-  const hasQualitySelection = options.quality !== undefined;
-  const hasAudioSelection = Object.prototype.hasOwnProperty.call(options, "audioStreamId");
-  const hasBurnInSelection = Object.prototype.hasOwnProperty.call(options, "burnInSubtitleId");
-  const hasTextSelection = Object.prototype.hasOwnProperty.call(options, "textSubtitleId");
-  const hasSubtitleSelection = hasBurnInSelection || hasTextSelection;
-
   if (resources.length === 0) {
-    if (hasStreamSelection || hasQualitySelection || hasAudioSelection || hasSubtitleSelection) {
-      throw new PlaybackResourceUnavailableError();
-    }
-    return resourceUrl(playback.sourceUrl);
+    throw new PlaybackResourceUnavailableError();
   }
 
-  const requestedSubtitle = requestedPlaybackSubtitle(options);
-  const matches = resources.filter((candidate) =>
-    (!hasStreamSelection || candidate.streamFormat === options.streamFormat) &&
-    (!hasQualitySelection || candidate.qualityId === options.quality) &&
-    (!hasAudioSelection || (candidate.audioStreamId ?? "") === (options.audioStreamId ?? "")) &&
-    (!hasSubtitleSelection ||
-      (candidate.subtitleMode ?? "off") === requestedSubtitle.mode &&
-      (candidate.subtitleStreamId ?? "") === requestedSubtitle.id)
-  );
-  const selected = matches.find((candidate) => candidate.default) ?? (matches.length === 1 ? matches[0] : undefined);
+  if (resources.length !== 1 || resources[0]?.default !== true) {
+    throw new PlaybackResourceUnavailableError();
+  }
+
+  // The response already represents the server-selected, sealed plan. UI
+  // choices take effect only through renegotiation, which returns a new active
+  // resource. Re-filtering by local quality/track guesses would manufacture a
+  // second client-side planner.
+  const selected = resources[0];
   if (!selected?.sourceUrl) throw new PlaybackResourceUnavailableError();
   return resourceUrl(selected.sourceUrl);
-}
-
-function requestedPlaybackSubtitle(options: { burnInSubtitleId?: string; textSubtitleId?: string }): { mode: NonNullable<PlaybackResource["subtitleMode"]>; id: string } {
-  if (options.textSubtitleId) return { mode: "text", id: options.textSubtitleId };
-  if (options.burnInSubtitleId) return { mode: "burn_in", id: options.burnInSubtitleId };
-  return { mode: "off", id: "" };
 }
 
 export function defaultPlaybackQuality(playback: PlaybackResponse): string {

@@ -310,6 +310,7 @@ func (s *Server) audiobookFacetPageContext(ctx context.Context, userID, libraryI
 	where := `WHERE entity.library_id = ? AND entity.entity_kind = ? AND lower(m.type) = 'audiobook'`
 	args := []any{libraryID, entityKind}
 	where, args = s.applyMediaVisibilityRestrictionSQL(userID, where, args)
+	where, args = s.applyLibraryCurationRestrictionSQL(ctx, userID, where, args)
 	var total int
 	totalRows, err := s.queryUserRead(ctx, `
 		SELECT COUNT(DISTINCT entity.id)

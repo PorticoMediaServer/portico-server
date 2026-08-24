@@ -24,6 +24,40 @@ func TestResolvePlaybackCapabilitiesUsesOneAuthenticatedTupleSet(t *testing.T) {
 	}
 }
 
+func TestNativeCapabilityEvidencePreservesExactSilentVideoTuple(t *testing.T) {
+	client := playbackcap.Client{Family: "avkit", Version: "18", Platform: "tvos", Device: "Apple TV"}
+	authority := playbackCapabilityAuthority{Source: playbackcap.SourceNativeRuntime, Family: "avkit", Platform: "tvos", DeviceID: "verified-apple-tv", Producer: "portico-native/avkit/tvos", ProducerVersion: playbackCapabilitySchemaV2 + "/18"}
+	raw := PlaybackCapabilityEvidence{
+		ID: "reported-id", Source: "native_runtime", Confidence: "high", Producer: "reported-producer", ReviewedAt: time.Now().UTC().Format(time.RFC3339),
+		Tuples: []PlaybackCapabilityTuple{{
+			MediaKind: "audiovisual", Protocol: "hls", Container: "mp4",
+			Video:    PlaybackCapabilityVideo{Codec: "hevc", Profile: "main10", BitDepth: 10, MaxWidth: 3840, MaxHeight: 2160, MaxFrameRate: 60},
+			Subtitle: PlaybackCapabilitySubtitle{Mode: "none"},
+		}},
+	}
+	normalized, ok := normalizePlaybackCapabilityEvidence(client, playbackCapabilitySchemaV2, authority, raw)
+	if !ok || len(normalized.Tuples) != 1 {
+		t.Fatalf("exact silent-video evidence failed normalization: %#v ok=%v", normalized, ok)
+	}
+	if normalized.Tuples[0].Audio != (playbackcap.Audio{}) {
+		t.Fatalf("normalization invented an audio capability: %#v", normalized.Tuples[0].Audio)
+	}
+}
+
+func TestEstimatedPlaybackFactsAcceptSilentVideo(t *testing.T) {
+	item := MediaItem{
+		ID: "silent-video", SourceURL: "/media/silent-video.mp4", DurationSeconds: 12,
+		Streams: []Stream{{Index: 0, Kind: "video", Codec: "h264", Width: 1280, Height: 720, FrameRate: 30, PixelFormat: "yuv420p"}},
+	}
+	facts, _, err := (&Server{}).estimatedPlaybackFacts(context.Background(), item, "")
+	if err != nil {
+		t.Fatalf("silent-video facts were rejected: %v", err)
+	}
+	if len(facts.Video) != 1 || len(facts.Audio) != 0 {
+		t.Fatalf("estimated facts invented or lost streams: %#v", facts)
+	}
+}
+
 func TestNativeCapabilityAuthorityComesFromVerifiedSessionAndDevice(t *testing.T) {
 	server := newScannerTestServer(t)
 	user := dvrTestUser(t, server)

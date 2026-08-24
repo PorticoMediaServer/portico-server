@@ -34,6 +34,7 @@ export function SettingsRoute({ viewer }: { viewer: Viewer }) {
   }
   const settingsViewer: SettingsViewer = {
     id: user.id,
+    serverId: viewer.viewerScope?.serverId,
     displayName: user.displayName,
     email: user.email,
     role: user.role === 'owner' ? 'owner' : 'user',

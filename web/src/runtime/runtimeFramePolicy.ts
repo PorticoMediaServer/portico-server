@@ -13,7 +13,8 @@ export function runtimeUsesProductFrame(state: RuntimeState): boolean {
     case 'route-discovery':
       return true;
     case 'runtime-recovery':
-      return !['route-security', 'session-expired'].includes(state.classification);
+      return !['route-security', 'session-expired'].includes(state.classification)
+        && Boolean(state.serverName || state.selectedServer);
     default:
       return false;
   }

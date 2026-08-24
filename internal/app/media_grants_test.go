@@ -202,6 +202,18 @@ func TestMediaResourceAuthRejectsLongLivedAccountTokenInQuery(t *testing.T) {
 	}
 }
 
+func TestDirectPlaybackSourceRevisionFence(t *testing.T) {
+	binding := playbackExecutionBinding{SourceRevision: "revision-a"}
+	if !playbackSourceRevisionMatches(binding, "revision-a") {
+		t.Fatal("current direct-play source revision was rejected")
+	}
+	for _, revision := range []string{"", "revision-b"} {
+		if playbackSourceRevisionMatches(binding, revision) {
+			t.Fatalf("stale direct-play plan accepted source revision %q", revision)
+		}
+	}
+}
+
 func TestMediaGrantTransportRejectsQueryAndAcceptsHeaderOrCookie(t *testing.T) {
 	query := httptest.NewRequest(http.MethodGet, "/api/live-tv/hls/channel/playlist.m3u8?media_grant=ptc_mg_query", nil)
 	if token := mediaGrantFromRequest(query); token != "" {

@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -1918,20 +1919,30 @@ func TestRewriteHLSPlaylistCanForceLiveTVQuality(t *testing.T) {
 #EXT-X-STREAM-INF:BANDWIDTH=1200000,RESOLUTION=854x480
 480/index.m3u8
 `
-	rewritten, err := rewriteHLSPlaylist("channel_1", "https://provider.example/live/master.m3u8", playlist, "720p-high", "ptc_clt_test")
+	issued := map[string]string{}
+	rewritten, err := rewriteHLSPlaylist("channel_1", "https://provider.example/live/master.m3u8", playlist, "720p-high", func(resolved string, qualityID string) string {
+		issued[resolved] = qualityID
+		return "/api/live-tv/hls/channel_1/item/opaque-720?quality=" + url.QueryEscape(qualityID)
+	})
 	if err != nil {
 		t.Fatalf("rewrite failed: %v", err)
 	}
 	if strings.Contains(rewritten, "1080/index.m3u8") || strings.Contains(rewritten, "480/index.m3u8") {
 		t.Fatalf("expected only selected variant in playlist:\n%s", rewritten)
 	}
-	if !strings.Contains(rewritten, "uri=aHR0cHM6Ly9wcm92aWRlci5leGFtcGxlL2xpdmUvNzIwL2luZGV4Lm0zdTg") {
-		t.Fatalf("expected selected 720p playlist to be proxied:\n%s", rewritten)
+	if !strings.Contains(rewritten, "/item/opaque-720?quality=720p-high") {
+		t.Fatalf("expected selected 720p playlist to use an opaque server reference:\n%s", rewritten)
 	}
 	if !strings.Contains(rewritten, "quality=720p-high") {
 		t.Fatalf("expected nested playlist to preserve quality selection:\n%s", rewritten)
 	}
 	if strings.Contains(rewritten, "media_grant=") {
 		t.Fatalf("nested playlist exposed the playback media grant:\n%s", rewritten)
+	}
+	if strings.Contains(rewritten, "provider.example") || strings.Contains(rewritten, "aHR0cHM6") {
+		t.Fatalf("nested playlist exposed a raw or reversibly encoded provider URL:\n%s", rewritten)
+	}
+	if issued["https://provider.example/live/720/index.m3u8"] != "720p-high" {
+		t.Fatalf("selected provider URI was not retained server-side: %#v", issued)
 	}
 }

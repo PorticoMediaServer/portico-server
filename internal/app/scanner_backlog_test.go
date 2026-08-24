@@ -90,7 +90,7 @@ func TestScannerBacklogRecoveryRequeuesClaimAndDeduplicatesActiveAnalysis(t *tes
 	}
 }
 
-func TestScannerBacklogKeepsNewerAnalysisRevisionQueuedUntilActiveJobCompletes(t *testing.T) {
+func TestScannerBacklogQueuesNewerAnalysisRevisionBehindDistinctActiveJob(t *testing.T) {
 	server := newScannerTestServer(t)
 	server.cfg.FFprobePath = "true"
 	now := time.Now().UTC().Format(time.RFC3339Nano)
@@ -107,33 +107,34 @@ func TestScannerBacklogKeepsNewerAnalysisRevisionQueuedUntilActiveJobCompletes(t
 	}
 	metadata := representativeFrameAnalysisMetadata()
 	metadata["sourceRevision"] = "revision-1"
-	active, err := server.createJobForWithMetadata("media_analyze", "Existing older analysis.", "media", mediaID, metadata)
+	_, err := server.createJobForWithMetadata("media_analyze", "Existing older analysis.", "media", mediaID, metadata)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if dispatched, err := server.dispatchScannerBacklog(context.Background()); err != nil || dispatched != 0 {
+	if dispatched, err := server.dispatchScannerBacklog(context.Background()); err != nil || dispatched != 1 {
 		t.Fatalf("dispatch behind older revision = %d, err=%v", dispatched, err)
 	}
 	var status string
 	if err := server.db.QueryRow(`SELECT status FROM scanner_backlog WHERE id = 'scanq_newer_analysis'`).Scan(&status); err != nil {
 		t.Fatal(err)
 	}
-	if status != "queued" {
-		t.Fatalf("newer backlog status = %q, expected queued", status)
-	}
-	if _, err := server.db.Exec(`UPDATE jobs SET status = 'complete', active_key = '', updated_at = ? WHERE id = ?`, now, active.ID); err != nil {
-		t.Fatal(err)
-	}
-	if dispatched, err := server.dispatchScannerBacklog(context.Background()); err != nil || dispatched != 1 {
-		t.Fatalf("dispatch newer revision after active completion = %d, err=%v", dispatched, err)
+	if status != "complete" {
+		t.Fatalf("newer backlog status = %q, expected complete transfer", status)
 	}
 	var encoded string
 	if err := server.db.QueryRow(`
 		SELECT metadata_json FROM jobs
-		WHERE type = 'media_analyze' AND resource_id = ? AND status = 'queued'`, mediaID).Scan(&encoded); err != nil {
+		WHERE type = 'media_analyze' AND resource_id = ? AND status = 'queued' AND metadata_json LIKE '%revision-2%'`, mediaID).Scan(&encoded); err != nil {
 		t.Fatal(err)
 	}
 	if got := decodeJobMetadata(encoded)["sourceRevision"]; got != "revision-2" {
 		t.Fatalf("queued analysis sourceRevision = %q, expected revision-2", got)
+	}
+	var jobs int
+	if err := server.db.QueryRow(`SELECT COUNT(*) FROM jobs WHERE type = 'media_analyze' AND resource_id = ?`, mediaID).Scan(&jobs); err != nil {
+		t.Fatal(err)
+	}
+	if jobs != 2 {
+		t.Fatalf("revision-distinct analysis jobs = %d, expected 2", jobs)
 	}
 }

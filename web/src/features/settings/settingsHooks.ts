@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { SettingsDataSource, QueryState } from './settingsTypes';
 import { useOptionalViewerRuntime } from '../../data/DataProvider';
+import { useHostedAvailabilityRetry } from '../../runtime/hostedAvailability';
+import { combineAbortSignals, timeoutSignal } from '../../runtime/abortSignal';
 
 const SETTINGS_QUERY_DEADLINE_MS = 15_000;
 
@@ -8,17 +10,25 @@ export function useSettingsQuery<T>(
   load: (source: SettingsDataSource, signal: AbortSignal) => Promise<T>,
   source: SettingsDataSource,
   revision: number,
-): QueryState<T> {
+  options: { automaticHostedRetry?: boolean } = {},
+): QueryState<T> & { hostedAvailability: ReturnType<typeof useHostedAvailabilityRetry> } {
   const runtime = useOptionalViewerRuntime();
   const [state, setState] = useState<QueryState<T>>({ status: 'loading' });
+  const [automaticRevision, setAutomaticRevision] = useState(0);
+  const retryAutomatically = useCallback(() => setAutomaticRevision((current) => current + 1), []);
+  const hostedAvailability = useHostedAvailabilityRetry({
+    enabled: options.automaticHostedRetry === true && state.status === 'error',
+    reason: state.status === 'error' ? state.error : undefined,
+    retry: retryAutomatically,
+  });
 
   useEffect(() => {
     const controller = new AbortController();
-    const deadline = AbortSignal.timeout(SETTINGS_QUERY_DEADLINE_MS);
-    const querySignal = AbortSignal.any([controller.signal, deadline]);
+    const deadline = timeoutSignal(SETTINGS_QUERY_DEADLINE_MS);
+    const querySignal = combineAbortSignals([controller.signal, deadline]);
     setState({ status: 'loading' });
     const request = runtime
-      ? runtime.run('settings.query', [revision, querySignal], (runtimeSignal) => load(source, AbortSignal.any([querySignal, runtimeSignal])))
+      ? runtime.run('settings.query', [revision, querySignal], (runtimeSignal) => load(source, combineAbortSignals([querySignal, runtimeSignal])))
       : load(source, querySignal);
     request.then(
       (data) => {
@@ -33,9 +43,9 @@ export function useSettingsQuery<T>(
       },
     );
     return () => controller.abort();
-  }, [load, revision, runtime, source]);
+  }, [automaticRevision, load, revision, runtime, source]);
 
-  return state;
+  return Object.assign(state, { hostedAvailability });
 }
 
 export function useAbortableMutation() {
@@ -52,7 +62,7 @@ export function useAbortableMutation() {
     setBusy(true);
     try {
       return await (runtime
-        ? runtime.run('settings.mutation', [controller.signal], (runtimeSignal) => mutation(AbortSignal.any([controller.signal, runtimeSignal])))
+        ? runtime.run('settings.mutation', [controller.signal], (runtimeSignal) => mutation(combineAbortSignals([controller.signal, runtimeSignal])))
         : mutation(controller.signal));
     } finally {
       if (active.current === controller) {

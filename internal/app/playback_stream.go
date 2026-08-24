@@ -60,6 +60,28 @@ func (s *Server) handleMediaStream(w http.ResponseWriter, r *http.Request, user 
 		writeError(w, http.StatusNotFound, "media_not_found", "Media item was not found.")
 		return
 	}
+	// The lightweight authorization seed intentionally omits stream and file
+	// facts. Rehydrate only the fields that participate in the canonical source
+	// revision so this comparison uses the same inputs as session planning.
+	item.Streams, err = s.listStreamsContext(r.Context(), item.ID)
+	if err != nil {
+		writeError(w, http.StatusConflict, "playback_source_changed", "The media source changed after playback was planned. Start playback again.")
+		return
+	}
+	item.MediaFiles = s.primaryMediaFileForPlaybackContext(r.Context(), item.ID, item.SourceURL)
+	binding, err := s.playbackPlanForMediaGrant(r.Context(), r, mediaID)
+	if err != nil {
+		writeError(w, http.StatusForbidden, "playback_plan_required", "This playback resource is not bound to a current server plan.")
+		return
+	}
+	facts, _, err := s.mediaFactsForPlayback(r.Context(), item)
+	if err != nil || !playbackSourceRevisionMatches(binding, facts.Source.Revision) {
+		// Direct byte delivery must obey the same immutable source fence as HLS.
+		// Otherwise a replaced file could execute under a plan that never
+		// admitted its actual stream facts.
+		writeError(w, http.StatusConflict, "playback_source_changed", "The media source changed after playback was planned. Start playback again.")
+		return
+	}
 	sourceURL := strings.TrimSpace(item.SourceURL)
 	if sourceURL == "" {
 		sourceURL = strings.TrimSpace(s.cfg.SampleMediaURL)
@@ -72,6 +94,11 @@ func (s *Server) handleMediaStream(w http.ResponseWriter, r *http.Request, user 
 	if err := s.servePlaybackSource(delivery, r, item, sourceURL); err != nil && !delivery.committed {
 		writePlaybackSourceError(delivery, "media_stream_failed", err)
 	}
+}
+
+func playbackSourceRevisionMatches(binding playbackExecutionBinding, currentRevision string) bool {
+	return strings.TrimSpace(binding.SourceRevision) != "" &&
+		strings.TrimSpace(binding.SourceRevision) == strings.TrimSpace(currentRevision)
 }
 
 const maxConcurrentStreamsPerUser = 32
@@ -234,6 +261,9 @@ func (s *Server) releaseUserDownloadSlot(userID string) {
 }
 
 func (s *Server) servePlaybackSource(w http.ResponseWriter, r *http.Request, item MediaItem, sourceURL string) error {
+	if strings.HasPrefix(strings.TrimSpace(sourceURL), "portico-storage://") {
+		return s.serveRemoteStorageObject(w, r, item, sourceURL)
+	}
 	parsed, err := url.Parse(strings.TrimSpace(sourceURL))
 	if err == nil && (parsed.Scheme == "http" || parsed.Scheme == "https") {
 		return s.proxyRemotePlaybackSource(w, r, item, sourceURL)
@@ -439,13 +469,14 @@ func (s *Server) localDownloadPath(item MediaItem) (string, error) {
 }
 
 type mediaDownloadSource struct {
-	path        string
-	sourceURL   string
-	versionID   string
-	filename    string
-	auditAction string
-	sourceKind  string
-	sizeBytes   int64
+	path           string
+	sourceURL      string
+	sourceRevision string
+	versionID      string
+	filename       string
+	auditAction    string
+	sourceKind     string
+	sizeBytes      int64
 }
 
 func (s *Server) downloadPathForRequest(item MediaItem, profile string) (string, string, string, error) {
@@ -483,6 +514,28 @@ func (s *Server) downloadSourceForRequestContext(ctx context.Context, item Media
 				return mediaDownloadSource{}, err
 			}
 			return mediaDownloadSource{sourceURL: sourceURL, filename: safeDownloadFilename(item.Title, downloadExtensionFromItem(item, sourceURL)), auditAction: "media.downloaded", sourceKind: "remote", sizeBytes: downloadSizeFromItem(item)}, nil
+		}
+		if err == nil && parsed.Scheme == "portico-storage" {
+			sourceID, objectPath, parseErr := parseRemoteStorageLocator(sourceURL)
+			if parseErr != nil {
+				return mediaDownloadSource{}, errUnsupportedPlaybackSource
+			}
+			var size int64
+			var revision string
+			if queryErr := s.queryUserRow(ctx, `
+				SELECT object.size_bytes, object.revision
+				FROM storage_remote_objects object
+				JOIN storage_sources source ON source.id = object.source_id
+				WHERE object.source_id = ? AND object.object_path = ?
+					AND object.missing_since = '' AND source.library_id = ?`,
+				sourceID, objectPath, item.LibraryID).Scan(&size, &revision); queryErr != nil {
+				return mediaDownloadSource{}, errUnsupportedPlaybackSource
+			}
+			return mediaDownloadSource{
+				sourceURL: sourceURL, sourceRevision: revision,
+				filename:    safeDownloadFilename(item.Title, downloadExtensionFromItem(item, objectPath)),
+				auditAction: "media.downloaded", sourceKind: "remote-storage", sizeBytes: size,
+			}, nil
 		}
 		if err == nil && parsed.Scheme != "" {
 			return mediaDownloadSource{}, errUnsupportedPlaybackScheme

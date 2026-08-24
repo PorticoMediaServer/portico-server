@@ -17,6 +17,7 @@ import {
 } from './SettingsControls';
 import { useAbortableMutation, useSettingsQuery } from './settingsHooks';
 import type { SettingsDataSource, SettingsViewer } from './settingsTypes';
+import { trustedSetupClaimURL } from '../../data/httpSource';
 
 const loadRemoteAccess = (source: SettingsDataSource, signal: AbortSignal) => source.remoteAccess(signal);
 
@@ -60,7 +61,12 @@ export function RemoteAccessSettingsPanel({ source, viewer }: { source: Settings
   const value = <K extends keyof RemoteAccessSettingsPatch>(key: K): RemoteAccessSettingsPatch[K] | RemoteAccessStatus['settings'][K] => Object.prototype.hasOwnProperty.call(draft, key) ? draft[key] : settings[key];
   const dirty = (Object.keys(draft) as Array<keyof RemoteAccessSettingsPatch>).some((key) => changed(draft, settings, key));
   const routeHealthy = Boolean(settings.enabled && remote.connectivity.troubleshootingStatus === 'ok');
-  const claimLink = remote.claim?.claimUrl;
+  let claimLink: string | undefined;
+  try {
+    claimLink = remote.claim?.claimUrl ? trustedSetupClaimURL(remote.claim.claimUrl) : undefined;
+  } catch {
+    claimLink = undefined;
+  }
 
   return <div className="portico-settings-form portico-remote-access">
     <div className={`portico-remote-route-summary ${routeHealthy ? 'healthy' : ''}`}><span>{routeHealthy ? <CheckCircle2 /> : <Globe2 />}</span><div><strong>{routeHealthy ? 'Direct remote access is available' : settings.enabled ? 'Direct route is not currently reachable' : 'Remote access is off'}</strong><p>{remote.publicEndpoint.url || remote.connectivity.troubleshootingHint || settings.lastHeartbeatError || settings.routerMappingError || 'No public endpoint is active.'}</p></div><span>{claimed ? 'Claimed' : 'Local only'}</span></div>

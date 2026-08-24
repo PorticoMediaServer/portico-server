@@ -80,11 +80,12 @@ export function RuntimeProductFrame({ children, connected = false }: { children:
     setPresentation(defaultPresentation);
     setConnectedContentActive(false);
   }, [connected]);
-  const serverName = runtimeFrameServerName(runtime.state) ?? 'Portico';
-  const displayName = runtime.restoredPresentation?.displayName || 'Portico';
-  const initial = displayName.trim().slice(0, 1).toLocaleUpperCase() || 'P';
+  const serverName = runtimeFrameServerName(runtime.state);
+  const displayName = runtime.restoredPresentation?.displayName;
+  const accountLabel = displayName || 'Portico Account';
+  const initial = displayName?.trim().slice(0, 1).toLocaleUpperCase();
   const connectedPresentation = connected && connectedContentActive;
-  const accountControlsAvailable = !connectedPresentation && runtime.config.mode === 'hosted' && Boolean(runtime.restoredPresentation);
+  const accountControlsAvailable = !connectedPresentation && runtime.config.mode === 'hosted';
   const activePresentation = connectedPresentation ? presentation : defaultPresentation;
   const pageInactive = activePresentation.pageInert || undefined;
   const dismissProfileMenu = useCallback(() => setProfileMenuOpen(false), []);
@@ -102,7 +103,7 @@ export function RuntimeProductFrame({ children, connected = false }: { children:
             {destinations.map(([messageId, Icon], index) => <span key={messageId} className={`nav-item ${index === 0 ? 'active' : ''}`} aria-disabled="true"><Icon aria-hidden="true" /><span>{productMessage(messageId).text}</span></span>)}
           </nav>
           <div className="sidebar-spacer" />
-          <div className="server-card" aria-disabled="true"><Server aria-hidden="true" /><span><strong>{serverName}</strong><small>Connecting</small></span><span className="health-dot pending" aria-label="Server connection pending" /></div>
+          {serverName && <div className="server-card" aria-disabled="true"><Server aria-hidden="true" /><span><strong>{serverName}</strong><small>Connecting</small></span><span className="health-dot pending" aria-label="Server connection pending" /></div>}
           <span className="nav-item compact" aria-disabled="true"><Settings aria-hidden="true" /><span>Settings</span></span>
         </>}
       </aside>
@@ -111,20 +112,20 @@ export function RuntimeProductFrame({ children, connected = false }: { children:
         <header ref={topbar} className="topbar">
           {!connectedContentActive && <>
             <button type="button" className="icon-button menu-button" disabled aria-label={productMessage('navigation.open').text}><Menu /></button>
-            <div className="topbar-search"><div className="global-search" aria-disabled="true"><Search aria-hidden="true" /><span>{productMessage('search.input-placeholder', { serverName }).text}</span></div></div>
+            <div className="topbar-search"><div className="global-search" aria-disabled="true"><Search aria-hidden="true" /><span>{serverName ? productMessage('search.input-placeholder', { serverName }).text : 'Search Portico'}</span></div></div>
             <div className="toolbar-spacer" />
             <button
               ref={profileButton}
               type="button"
               className="profile-button"
               disabled={!accountControlsAvailable}
-              aria-label={accountControlsAvailable ? `Open profile menu for ${displayName}` : 'Profile unavailable before sign-in'}
+              aria-label={accountControlsAvailable ? `Open account menu for ${accountLabel}` : 'Account menu unavailable'}
               aria-haspopup={accountControlsAvailable ? 'menu' : undefined}
               aria-expanded={accountControlsAvailable ? profileMenuOpen : undefined}
               onClick={() => accountControlsAvailable && setProfileMenuOpen((open) => !open)}
             >
-              <span className="avatar">{runtime.restoredPresentation ? initial : <UserRound aria-hidden="true" />}</span>
-              <span><strong>{displayName}</strong><small>{serverName}</small></span>
+              <span className="avatar">{initial || <UserRound aria-hidden="true" />}</span>
+              <span><strong>{accountLabel}</strong><small>{serverName || 'No server selected'}</small></span>
               {accountControlsAvailable && <ChevronDown aria-hidden="true" />}
             </button>
             {profileMenuOpen && accountControlsAvailable && <AnchoredOverlay
@@ -136,8 +137,8 @@ export function RuntimeProductFrame({ children, connected = false }: { children:
               role="menu"
             >
               <div className="profile-menu-current">
-                <span className="avatar">{initial}</span>
-                <span><strong>{displayName}</strong><small>Portico Account</small></span>
+                <span className="avatar">{initial || <UserRound aria-hidden="true" />}</span>
+                <span><strong>{accountLabel}</strong><small>Portico Account</small></span>
               </div>
               <button type="button" role="menuitem" onClick={openAccountSettings}><Settings /> Account settings</button>
               <button type="button" role="menuitem" onClick={() => { setProfileMenuOpen(false); void runtime.reselectServer(); }}><Server /> Choose another server</button>

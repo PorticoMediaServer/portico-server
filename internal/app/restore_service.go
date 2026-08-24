@@ -1209,7 +1209,6 @@ func (s *Server) invalidateRestoredAuthentication(ctx context.Context) error {
 			`DELETE FROM media_download_grants`,
 			`DELETE FROM local_profile_admin_proofs`,
 			`UPDATE quick_connect_requests SET status = 'expired', updated_at = ? WHERE status IN ('pending', 'approved')`,
-			`UPDATE tv_setup_sessions SET status = 'expired', updated_at = ? WHERE status IN ('pending', 'grant_ready')`,
 			`UPDATE portico_login_requests SET status = 'expired', updated_at = ? WHERE status = 'pending'`,
 		} {
 			var args []any

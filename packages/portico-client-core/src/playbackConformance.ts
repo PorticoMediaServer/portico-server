@@ -49,7 +49,9 @@ function baselineTuples(): PlaybackCapabilityTuple[] {
   const video = {codec: "h264", profile: "high", pixelFormat: "yuv420p", chroma: "4:2:0", dynamicRange: "sdr" as const, bitDepth: 8, maxWidth: 1920, maxHeight: 1080, maxFrameRate: 60};
   const audio = {codec: "aac", layout: "stereo", route: "decode", maxChannels: 2};
   return [
+    {mediaKind: "audiovisual", protocol: "hls", container: "mpegts", video, subtitle: {mode: "none"}},
     {mediaKind: "audiovisual", protocol: "hls", container: "mpegts", video, audio, subtitle: {mode: "none"}},
+    {mediaKind: "audiovisual", protocol: "http", container: "mp4", video, subtitle: {mode: "none"}},
     {mediaKind: "audiovisual", protocol: "http", container: "mp4", video, audio, subtitle: {codec: "webvtt", kind: "text", mode: "native"}},
     {mediaKind: "audio", protocol: "http", container: "m4a", audio, subtitle: {mode: "none"}}
   ];
@@ -59,9 +61,11 @@ function premiumTelevisionTuples(): PlaybackCapabilityTuple[] {
   const tuples = baselineTuples();
   const hevc = {codec: "hevc", profile: "main10", pixelFormat: "yuv420p10le", chroma: "4:2:0", dynamicRange: "dolby_vision" as const, bitDepth: 10, dolbyVisionProfile: 5, maxWidth: 3840, maxHeight: 2160, maxFrameRate: 60};
   tuples.push(
-    {mediaKind: "audiovisual", protocol: "hls", container: "mpegts", video: hevc, audio: {codec: "eac3", layout: "5.1", route: "decode", maxChannels: 6}, subtitle: {codec: "webvtt", kind: "text", mode: "native"}},
-    {mediaKind: "audiovisual", protocol: "hls", container: "mpegts", video: hevc, audio: {codec: "eac3", profile: "joc", layout: "7.1", route: "passthrough", maxChannels: 8, objectPassthrough: true}, subtitle: {codec: "pgs", kind: "bitmap", mode: "burn"}},
-    {mediaKind: "audiovisual", protocol: "hls", container: "mpegts", video: hevc, audio: {codec: "aac", layout: "stereo", route: "decode", maxChannels: 2}, subtitle: {mode: "none"}}
+    // HEVC/HDR HLS is declared only with Portico's CMAF/fMP4 executor path.
+    {mediaKind: "audiovisual", protocol: "hls", container: "mp4", video: hevc, subtitle: {mode: "none"}},
+    {mediaKind: "audiovisual", protocol: "hls", container: "mp4", video: hevc, audio: {codec: "eac3", layout: "5.1", route: "decode", maxChannels: 6}, subtitle: {codec: "webvtt", kind: "text", mode: "native"}},
+    {mediaKind: "audiovisual", protocol: "hls", container: "mp4", video: hevc, audio: {codec: "eac3", profile: "joc", layout: "7.1", route: "passthrough", maxChannels: 8, objectPassthrough: true}, subtitle: {codec: "pgs", kind: "bitmap", mode: "burn"}},
+    {mediaKind: "audiovisual", protocol: "hls", container: "mp4", video: hevc, audio: {codec: "aac", layout: "stereo", route: "decode", maxChannels: 2}, subtitle: {mode: "none"}}
   );
   return tuples;
 }

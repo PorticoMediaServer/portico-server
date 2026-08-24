@@ -678,8 +678,6 @@ func (s *Server) searchMediaGroupContext(ctx context.Context, user User, query s
 		}
 		return nil, err
 	}
-	restrictionSQL, restrictionArgs := s.mediaVisibilityRestrictionSQL(viewerProfileID(user))
-	args = append(args, restrictionArgs...)
 	visibilitySQL := librarySurfaceVisibilityRestrictionSQL("search")
 	keyset, keysetArgs, order := searchMediaOrderAndKeyset(sortSpec, cursor)
 	if keyset != "" {
@@ -694,9 +692,9 @@ func (s *Server) searchMediaGroupContext(ctx context.Context, user User, query s
 			WHERE media_search MATCH ?
 			LIMIT %d
 		) search_rank ON search_rank.media_id = m.id
-		WHERE %s %s %s
+		WHERE %s %s
 		ORDER BY %s
-		LIMIT ?`, searchRelevanceCandidateLimit, strings.Join(where, " AND "), restrictionSQL, visibilitySQL, order), args)
+		LIMIT ?`, searchRelevanceCandidateLimit, strings.Join(where, " AND "), visibilitySQL, order), args)
 	if err != nil {
 		return nil, err
 	}

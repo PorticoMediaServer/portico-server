@@ -48,6 +48,10 @@ test("Apple playback profile exposes explicit AVKit capabilities and route limit
   assert.equal(profile.clientProfile.clientFamily, "avkit");
   assert.equal(profile.clientProfile.capabilityEvidence[0].source, "native_runtime");
   assert.ok(profile.clientProfile.capabilityEvidence[0].tuples.length >= 6);
+  const appleTuples = profile.clientProfile.capabilityEvidence[0].tuples;
+  assert.ok(appleTuples.some(tuple => tuple.mediaKind === "audiovisual" && tuple.video?.codec === "h264" && tuple.audio === undefined));
+  assert.ok(appleTuples.some(tuple => tuple.protocol === "hls" && tuple.container === "mp4" && tuple.video?.codec === "hevc"));
+  assert.equal(appleTuples.some(tuple => tuple.protocol === "hls" && tuple.container === "mpegts" && tuple.video?.codec === "hevc"), false);
   assert.equal(profile.video.maxBitDepth, 10);
   assert.deepEqual(profile.video.dolbyVisionProfiles, ["5", "8"]);
   assert.ok(profile.video.hdrFormats.includes("hdr10"));
@@ -74,6 +78,7 @@ test("day-one capability fixtures are version-banded, evidence-backed, and coher
     assert.deepEqual(built, fixture.wireProfile);
     assert.equal(built.clientProfile.capabilitySchemaVersion, "playback-capability-v2");
     assert.equal(built.clientProfile.capabilityEvidence[0].tuples.length, fixture.facts.evidence.tuples.length);
+    assert.ok(built.clientProfile.capabilityEvidence[0].tuples.some(tuple => tuple.mediaKind === "audiovisual" && tuple.audio === undefined), `${fixture.id} lacks exact silent-video evidence`);
     assert.ok(built.clientProfile.maxWidth > 0);
     assert.ok(built.clientProfile.maxHeight > 0);
     if (!built.clientProfile.supportsHevc) {

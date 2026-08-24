@@ -271,6 +271,7 @@ func jobActiveKeyFor(jobType, resourceType, resourceID string, metadata map[stri
 		parts = append(parts,
 			"mode="+normalizeMediaAnalysisMode(metadata["analysisMode"]),
 			"representativeFrame="+strings.ToLower(strings.TrimSpace(metadata["representativeFrame"])),
+			"sourceRevision="+strings.TrimSpace(metadata["sourceRevision"]),
 		)
 	case "optimize_version":
 		parts = append(parts, "profile="+strings.TrimSpace(metadata["profile"]))

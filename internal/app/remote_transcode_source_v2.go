@@ -262,8 +262,17 @@ func (s *remoteTranscodeSource) Err() error {
 // supervisedRemoteExecFactoryV2 binds the HTTP body to pipe:0 and makes the
 // supervisor generation the sole owner of both process and feeder lifetime.
 func supervisedRemoteExecFactoryV2(sourceRequest remoteTranscodeSourceRequest, build func(context.Context) (*exec.Cmd, error)) transcodeProcessFactoryV2 {
+	return supervisedReaderExecFactoryV2(func(ctx context.Context) (*remoteTranscodeSource, error) {
+		return openRemoteTranscodeSource(ctx, sourceRequest)
+	}, build)
+}
+
+func supervisedReaderExecFactoryV2(open func(context.Context) (*remoteTranscodeSource, error), build func(context.Context) (*exec.Cmd, error)) transcodeProcessFactoryV2 {
 	return func(ctx context.Context) (ffmpegsupervisor.Process, error) {
-		source, err := openRemoteTranscodeSource(ctx, sourceRequest)
+		if open == nil {
+			return nil, errors.New("remote source opener is required")
+		}
+		source, err := open(ctx)
 		if err != nil {
 			return nil, err
 		}

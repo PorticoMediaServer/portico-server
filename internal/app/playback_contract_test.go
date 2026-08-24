@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
@@ -371,6 +372,28 @@ func TestPlaybackRenegotiationValidatesBeforeAdvancingRevision(t *testing.T) {
 	}
 	if !strings.Contains(profileJSON, `"platform":"ios"`) || !strings.Contains(intentJSON, `"networkClass":"wifi"`) || !strings.Contains(intentJSON, `"maxVideoBitrateMbps":12`) {
 		t.Fatalf("canonical playback inputs were not persisted: profile=%s intent=%s", profileJSON, intentJSON)
+	}
+}
+
+func TestExplicitOriginalQualityRejectsVideoConversion(t *testing.T) {
+	if err := validateExplicitPlaybackQuality("video-original", PlaybackDecision{VideoTranscode: true}); !errors.Is(err, errExplicitOriginalPictureUnavailable) {
+		t.Fatalf("explicit Original accepted video conversion: %v", err)
+	}
+	if err := validateExplicitPlaybackQuality("original", PlaybackDecision{RequiresRemux: true, AudioTranscode: true}); err != nil {
+		t.Fatalf("explicit Original rejected picture-preserving conversion: %v", err)
+	}
+	if err := validateExplicitPlaybackQuality("video-standard", PlaybackDecision{VideoTranscode: true}); err != nil {
+		t.Fatalf("named transcoded quality was rejected: %v", err)
+	}
+}
+
+func TestSilentVideoResponseTracksDoNotInventAudio(t *testing.T) {
+	audio, subtitles := playbackResponseTracks(MediaItem{Streams: []Stream{{ID: "v1", Kind: "video", Codec: "h264"}}})
+	if len(audio) != 0 {
+		t.Fatalf("silent-video response invented audio tracks: %#v", audio)
+	}
+	if len(subtitles) != 1 || subtitles[0].ID != "sub_none" {
+		t.Fatalf("subtitle-off selection missing: %#v", subtitles)
 	}
 }
 

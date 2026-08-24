@@ -59,6 +59,27 @@
   --line-strong: rgba(112, 188, 232, 0.3);
   --focus-ring: 0 0 0 3px rgba(55, 142, 195, 0.4);
 
+  /* Canonical cross-platform control contract. */
+  --portico-control-fill: var(--slate);
+  --portico-control-fill-hover: var(--slate-raised);
+  --portico-control-border: var(--line);
+  --portico-control-border-hover: var(--line-strong);
+  --portico-control-focus: #eaf6ff;
+  --portico-control-placeholder: #687581;
+  --portico-control-invalid: var(--record);
+  --portico-action-fill: var(--screen-blue);
+  --portico-action-fill-hover: var(--screen-blue-strong);
+  --portico-action-fill-active: var(--screen-blue-deep);
+  --portico-action-ink: var(--projector);
+  --portico-link: var(--screen-blue-strong);
+  --portico-provider-google-fill: #fff;
+  --portico-provider-google-border: #dadce0;
+  --portico-provider-google-ink: #202124;
+  --portico-provider-apple-fill: #000;
+  --portico-provider-apple-border: #fff;
+  --portico-provider-apple-ink: #fff;
+  --portico-action-focus-halo: 0 0 0 3px var(--portico-control-focus);
+
   --type-caption: 14px;
   --type-supporting: 16px;
   --type-body: 16px;

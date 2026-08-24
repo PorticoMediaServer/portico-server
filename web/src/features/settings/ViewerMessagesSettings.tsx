@@ -4,12 +4,13 @@ import type { PorticoDataSource } from '../../data/models';
 import { PrimaryButton } from '../../components/controls/Buttons';
 import { ProductMessageIcon, SemanticProductIcon, productProblem, productText } from '../../components/ProductLanguage';
 import { InlineNotice, SettingsGroup, SettingsLoading } from './SettingsControls';
+import { combineAbortSignals, timeoutSignal } from '../../runtime/abortSignal';
 
 type FeedbackStatus = 'new' | 'read' | 'resolved' | 'dismissed';
 const SETTINGS_REQUEST_DEADLINE_MS = 15_000;
 
 function boundedSignal(controller: AbortController) {
-  return AbortSignal.any([controller.signal, AbortSignal.timeout(SETTINGS_REQUEST_DEADLINE_MS)]);
+  return combineAbortSignals([controller.signal, timeoutSignal(SETTINGS_REQUEST_DEADLINE_MS)]);
 }
 
 function statusLabel(status: FeedbackStatus) {

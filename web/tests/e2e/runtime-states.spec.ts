@@ -11,7 +11,7 @@ async function useRuntime(page: Page, mode: 'bundled' | 'hosted') {
   await page.addInitScript((runtimeMode) => {
     window.__PORTICO_CONFIG__ = {
       mode: runtimeMode,
-      hostedApiBaseUrl: 'https://api.getportico.tv',
+      hostedApiBaseUrl: runtimeMode === 'hosted' ? 'https://web.getportico.tv' : 'https://api.getportico.tv',
       routeProbeTimeoutMs: 500,
     };
   }, mode);
@@ -20,7 +20,7 @@ async function useRuntime(page: Page, mode: 'bundled' | 'hosted') {
     requiredSemantics: Object.keys(PORTICO_FOUNDATION_COMPATIBILITY.semanticRevisions),
     capabilities: [{ id: 'system', revision: 1, state: 'available', requiredSemantics: ['product'] }],
   };
-  await page.route(mode === 'hosted' ? 'https://api.getportico.tv/api/system' : '**/api/system', (route) => json(route, {
+  await page.route(mode === 'hosted' ? 'https://web.getportico.tv/api/system' : '**/api/system', (route) => json(route, {
     name: 'Portico', status: 'ok', apiVersion: 'v1', compatibility,
   }));
 }
@@ -50,7 +50,7 @@ test('local first-run setup offers Hosted and local-only ownership honestly', as
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'Set Up Your Portico Server' })).toBeVisible();
   await expect(page.getByRole('button', { name: /Portico Account/ })).toBeVisible();
-  await page.getByRole('button', { name: /Server Authentication Only/ }).click();
+  await page.getByRole('button', { name: /Sign in directly to a server/ }).click();
   await expect(page.getByLabel('Username')).toBeVisible();
   await expect(page.getByRole('textbox', { name: 'Password', exact: true })).toHaveAttribute('minlength', '8');
   await expect(page.getByText(/do not create a Portico Account/)).toBeVisible();
@@ -110,8 +110,8 @@ test('local bootstrap failure presents a focused recovery action', async ({ page
 test('Hosted sign-in reveals MFA only after the account requests it', async ({ page }, testInfo) => {
   desktopOnly(testInfo);
   await useRuntime(page, 'hosted');
-  await page.route('https://api.getportico.tv/api/auth/me', (route) => json(route, { authenticated: false }));
-  await page.route('https://api.getportico.tv/api/auth/login', (route) => json(route, {
+  await page.route('https://web.getportico.tv/api/auth/me', (route) => json(route, { authenticated: false }));
+  await page.route('https://web.getportico.tv/api/auth/login', (route) => json(route, {
     type: 'https://getportico.tv/problems/mfa-required',
     code: 'mfa_required',
     detail: 'Enter a verification code to continue.',
@@ -131,7 +131,7 @@ test('Hosted sign-in reveals MFA only after the account requests it', async ({ p
 test('Hosted sign-in stays centered and contained on a phone', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'phone', 'Mobile containment is checked at the phone breakpoint');
   await useRuntime(page, 'hosted');
-  await page.route('https://api.getportico.tv/api/auth/me', (route) => json(route, { authenticated: false }));
+  await page.route('https://web.getportico.tv/api/auth/me', (route) => json(route, { authenticated: false }));
 
   await page.goto('/');
   const heading = page.getByRole('heading', { name: 'Sign in to Portico' });
@@ -162,11 +162,11 @@ test('Hosted sign-in stays centered and contained on a phone', async ({ page }, 
 test('Hosted account without memberships offers claim and invitation recovery', async ({ page }, testInfo) => {
   desktopOnly(testInfo);
   await useRuntime(page, 'hosted');
-  await page.route('https://api.getportico.tv/api/auth/me', (route) => json(route, {
+  await page.route('https://web.getportico.tv/api/auth/me', (route) => json(route, {
     authenticated: true,
     user: { id: 'account-1', email: 'owner@example.com', displayName: 'Owner' },
   }));
-  await page.route('https://api.getportico.tv/api/account/servers*', (route) => json(route, {
+  await page.route('https://web.getportico.tv/api/account/servers*', (route) => json(route, {
     items: [],
     total: 0,
     limit: 50,

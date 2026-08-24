@@ -199,8 +199,10 @@ function appleCapabilityTuples(input: {
   const webvtt = {codec: "webvtt", kind: "text", mode: "native"} as const;
   const h264 = {codec: "h264", profile: "high", pixelFormat: "yuv420p", chroma: "4:2:0", dynamicRange: "sdr", bitDepth: 8, maxWidth, maxHeight, maxFrameRate} as const;
   const tuples: PlaybackCapabilityTuple[] = [
+    {mediaKind: "audiovisual", protocol: "http", container: "mp4", video: h264, subtitle: none},
     {mediaKind: "audiovisual", protocol: "http", container: "mp4", video: h264, audio: stereoAAC, subtitle: none},
     {mediaKind: "audiovisual", protocol: "http", container: "mp4", video: h264, audio: stereoAAC, subtitle: webvtt},
+    {mediaKind: "audiovisual", protocol: "hls", container: "mpegts", video: h264, subtitle: none},
     {mediaKind: "audiovisual", protocol: "hls", container: "mpegts", video: h264, audio: stereoAAC, subtitle: none},
     {mediaKind: "audiovisual", protocol: "hls", container: "mpegts", video: h264, audio: stereoAAC, subtitle: webvtt},
     {mediaKind: "audio", protocol: "http", container: "m4a", audio: stereoAAC, subtitle: none},
@@ -220,7 +222,14 @@ function appleCapabilityTuples(input: {
       bitDepth: maxBitDepth, maxWidth, maxHeight, maxFrameRate,
       ...(dolbyVisionProfile ? {dolbyVisionProfile} : {})
     };
-    tuples.push({mediaKind: "audiovisual", protocol: "http", container: "mp4", video: hevc, audio: stereoAAC, subtitle: none});
+    tuples.push(
+      {mediaKind: "audiovisual", protocol: "http", container: "mp4", video: hevc, subtitle: none},
+      {mediaKind: "audiovisual", protocol: "http", container: "mp4", video: hevc, audio: stereoAAC, subtitle: none},
+      // The planner maps HLS + MP4 to the CMAF/fMP4 segment path required by
+      // AVKit for HEVC, HDR, and Dolby Vision delivery.
+      {mediaKind: "audiovisual", protocol: "hls", container: "mp4", video: hevc, subtitle: none},
+      {mediaKind: "audiovisual", protocol: "hls", container: "mp4", video: hevc, audio: stereoAAC, subtitle: none}
+    );
   }
   if (capabilities.supportsEac3) {
     const channels = Math.min(positiveInteger(capabilities.maxAudioChannels) ?? 2, 8);

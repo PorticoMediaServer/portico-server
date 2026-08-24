@@ -3223,7 +3223,13 @@ export const productLanguageCatalog = {
       "tone": "error"
     },
     "account.delete-password-label": {
-      "text": "Current Portico Account password"
+      "text": "Portico Account password (if set)"
+    },
+    "account.delete-reauthentication-required": {
+      "title": "Sign in again to continue",
+      "body": "Sign out, sign in again with Google or Apple, then return here to delete this account.",
+      "icon": "status.locked",
+      "tone": "warning"
     },
     "account.delete-mfa-label": {
       "text": "Authenticator or recovery code"
@@ -3640,7 +3646,7 @@ export const productLanguageCatalog = {
       "text": "No server connected"
     },
     "auth.authority.local": {
-      "text": "Server Only Authentication"
+      "text": "Direct server sign-in"
     },
     "auth.authority.hosted": {
       "text": "Portico Account"

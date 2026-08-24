@@ -432,6 +432,7 @@ func TestDiscoveryReleaseEndpointsWorkTogether(t *testing.T) {
 func TestConsumerMediaDetailProjectionRemovesPrivateEvidenceAndAdminActions(t *testing.T) {
 	item := MediaItem{
 		ID: "movie_private", Type: "movie", SourceURL: "file:///private/movie.mkv",
+		Artwork:          map[string]string{"source": "tvdb", "posterURL": "https://artworks.thetvdb.com/private-poster.jpg"},
 		ProviderIDs:      []MediaProviderID{{Provider: "tmdb", ExternalID: "1"}},
 		MatchCandidates:  []MatchCandidate{{Provider: "tmdb"}},
 		IdentityEvidence: []IdentityEvidence{{Path: "/private/evidence.nfo"}},
@@ -457,7 +458,7 @@ func TestConsumerMediaDetailProjectionRemovesPrivateEvidenceAndAdminActions(t *t
 		t.Fatal(err)
 	}
 	for _, forbidden := range []string{
-		"file:///private", "/private/", "provider.invalid", "private-group", "private-original", "scanner-type", "private-analysis",
+		"file:///private", "/private/", "provider.invalid", "artworks.thetvdb.com", "private-group", "private-original", "scanner-type", "private-analysis",
 		"private-image-source", "private-image-provider", "private-lyric-source", "private-lyric-provider",
 		"private-segment-source", "private-segment-provider", "private-normalization-source",
 		"metadata.edit", "providerIds", "identityEvidence", "matchCandidates",

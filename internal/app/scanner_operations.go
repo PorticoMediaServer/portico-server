@@ -28,6 +28,39 @@ type StorageSourceClassificationRequest struct {
 	Classification string `json:"classification"`
 }
 
+type RemoteStorageSourceRequest struct {
+	Kind             string `json:"kind"`
+	Name             string `json:"name"`
+	Endpoint         string `json:"endpoint,omitempty"`
+	Root             string `json:"root,omitempty"`
+	Username         string `json:"username,omitempty"`
+	Password         string `json:"password,omitempty"`
+	RcloneBinaryPath string `json:"rcloneBinaryPath,omitempty"`
+	RcloneRemoteName string `json:"rcloneRemoteName,omitempty"`
+	RcloneConfig     string `json:"rcloneConfig,omitempty"`
+	AnalysisMode     string `json:"analysisMode,omitempty"`
+}
+
+type RemoteStorageSourcePatchRequest struct {
+	AnalysisMode string `json:"analysisMode"`
+}
+
+type RemoteStorageSourceResponse struct {
+	ID                string `json:"id"`
+	LibraryID         string `json:"libraryId"`
+	Kind              string `json:"kind"`
+	Name              string `json:"name"`
+	Endpoint          string `json:"endpoint,omitempty"`
+	Root              string `json:"root,omitempty"`
+	Health            string `json:"health"`
+	InventoryStatus   string `json:"inventoryStatus"`
+	Objects           int    `json:"objects"`
+	MissingObjects    int    `json:"missingObjects"`
+	CredentialPresent bool   `json:"credentialPresent"`
+	AnalysisMode      string `json:"analysisMode"`
+	UpdatedAt         string `json:"updatedAt"`
+}
+
 type LibraryScanWarning struct {
 	Code     string `json:"code"`
 	Severity string `json:"severity"`
@@ -57,6 +90,9 @@ type LibraryStorageSource struct {
 	LastSuccessAt        string `json:"lastSuccessAt,omitempty"`
 	LastFailureAt        string `json:"lastFailureAt,omitempty"`
 	UpdatedAt            string `json:"updatedAt"`
+	BackendKind          string `json:"backendKind"`
+	BackendRoot          string `json:"backendRoot,omitempty"`
+	InventoryComplete    bool   `json:"inventoryComplete"`
 }
 
 type LibraryScanRootResult struct {
@@ -285,7 +321,8 @@ func (s *Server) libraryStorageSources(ctx context.Context, libraryID string) ([
 	rows, err := s.queryUserRead(ctx, `
 		SELECT id, configured_path, resolved_path, classification, classification_source,
 			health_state, circuit_state, error_class, error_message, latency_ms,
-			consecutive_failures, last_progress_at, last_success_at, last_failure_at, updated_at
+			consecutive_failures, last_progress_at, last_success_at, last_failure_at, updated_at,
+			backend_kind, backend_root, inventory_complete
 		FROM storage_sources WHERE library_id = ? ORDER BY configured_path, id`, libraryID)
 	if err != nil {
 		return nil, err
@@ -294,13 +331,15 @@ func (s *Server) libraryStorageSources(ctx context.Context, libraryID string) ([
 	sources := []LibraryStorageSource{}
 	for rows.Next() {
 		var source LibraryStorageSource
+		var inventoryComplete int
 		if err := rows.Scan(&source.ID, &source.ConfiguredPath, &source.ResolvedPath,
 			&source.Classification, &source.ClassificationSource, &source.Health,
 			&source.CircuitState, &source.ErrorClass, &source.ErrorMessage, &source.LatencyMS,
 			&source.ConsecutiveFailures, &source.LastProgressAt, &source.LastSuccessAt,
-			&source.LastFailureAt, &source.UpdatedAt); err != nil {
+			&source.LastFailureAt, &source.UpdatedAt, &source.BackendKind, &source.BackendRoot, &inventoryComplete); err != nil {
 			return nil, err
 		}
+		source.InventoryComplete = inventoryComplete == 1
 		sources = append(sources, source)
 	}
 	return sources, rows.Err()
@@ -613,7 +652,7 @@ func (s *Server) retryLibraryScan(ctx context.Context, library Library, runID st
 // handleLibraryScanOperations handles only the scanner management suffixes;
 // returning false leaves unrelated library routes with their existing owner.
 func (s *Server) handleLibraryScanOperations(w http.ResponseWriter, r *http.Request, user User, libraryID string, parts []string) bool {
-	if len(parts) < 2 || (parts[1] != "scan" && parts[1] != "scan-operations" && parts[1] != "scan-review" && parts[1] != "scan-runs" && parts[1] != "storage-sources") {
+	if len(parts) < 2 || (parts[1] != "scan" && parts[1] != "scan-operations" && parts[1] != "scan-review" && parts[1] != "scan-runs" && parts[1] != "storage-sources" && parts[1] != "remote-storage-sources") {
 		return false
 	}
 	if !canInteractivelyManageServer(user) {
@@ -666,6 +705,92 @@ func (s *Server) handleLibraryScanOperations(w http.ResponseWriter, r *http.Requ
 			return true
 		}
 		writeJSON(w, http.StatusOK, ListResponse[LibraryStorageSource]{Items: sources, Total: len(sources), Limit: len(sources)})
+		return true
+	}
+	if parts[1] == "remote-storage-sources" && len(parts) == 2 && r.Method == http.MethodGet {
+		sources, err := s.remoteStorageSources(r.Context(), library.ID)
+		if err != nil {
+			writeDatabaseAccessError(w, err, http.StatusServiceUnavailable, "remote_storage_sources_failed", "Unable to load remote storage sources.")
+			return true
+		}
+		writeJSON(w, http.StatusOK, ListResponse[RemoteStorageSourceResponse]{Items: sources, Total: len(sources), Limit: len(sources)})
+		return true
+	}
+	if parts[1] == "remote-storage-sources" && len(parts) == 2 && r.Method == http.MethodPost {
+		var req RemoteStorageSourceRequest
+		if !decodeJSON(w, r, &req) {
+			return true
+		}
+		source, err := s.createRemoteStorageSource(r.Context(), library.ID, req)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "remote_storage_source_invalid", err.Error())
+			return true
+		}
+		s.recordAudit(r, user, "library.remote_storage_created", "storage_source", source.ID, "info", map[string]string{"kind": source.Kind})
+		writeJSON(w, http.StatusCreated, source)
+		return true
+	}
+	if parts[1] == "remote-storage-sources" && len(parts) == 3 && r.Method == http.MethodGet {
+		source, err := s.remoteStorageSource(r.Context(), library.ID, parts[2])
+		if errors.Is(err, sql.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "storage_source_not_found", "Remote storage source was not found.")
+			return true
+		}
+		if errors.Is(err, errRemoteStorageSourceInUse) {
+			writeError(w, http.StatusConflict, "storage_source_in_use", "This remote storage source is currently in use. Stop playback and try again.")
+			return true
+		}
+		if err != nil {
+			writeDatabaseAccessError(w, err, http.StatusServiceUnavailable, "remote_storage_source_failed", "Unable to load remote storage source.")
+			return true
+		}
+		writeJSON(w, http.StatusOK, source)
+		return true
+	}
+	if parts[1] == "remote-storage-sources" && len(parts) == 3 && r.Method == http.MethodPatch {
+		var req RemoteStorageSourcePatchRequest
+		if !decodeJSON(w, r, &req) {
+			return true
+		}
+		source, err := s.updateRemoteStorageSource(r.Context(), library.ID, parts[2], req)
+		if errors.Is(err, sql.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "storage_source_not_found", "Remote storage source was not found.")
+			return true
+		}
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "remote_storage_source_invalid", err.Error())
+			return true
+		}
+		s.recordAudit(r, user, "library.remote_storage_updated", "storage_source", source.ID, "info", map[string]string{"analysisMode": source.AnalysisMode})
+		writeJSON(w, http.StatusOK, source)
+		return true
+	}
+	if parts[1] == "remote-storage-sources" && len(parts) == 3 && r.Method == http.MethodDelete {
+		err := s.deleteRemoteStorageSource(r.Context(), library.ID, parts[2])
+		if errors.Is(err, sql.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "storage_source_not_found", "Remote storage source was not found.")
+			return true
+		}
+		if err != nil {
+			writeDatabaseAccessError(w, err, http.StatusServiceUnavailable, "remote_storage_delete_failed", "Unable to remove remote storage source.")
+			return true
+		}
+		s.recordAudit(r, user, "library.remote_storage_deleted", "storage_source", parts[2], "warn", map[string]string{})
+		w.WriteHeader(http.StatusNoContent)
+		return true
+	}
+	if parts[1] == "remote-storage-sources" && len(parts) == 4 && parts[3] == "inventory" && r.Method == http.MethodPost {
+		if _, err := s.remoteStorageSource(r.Context(), library.ID, parts[2]); err != nil {
+			writeError(w, http.StatusNotFound, "storage_source_not_found", "Remote storage source was not found.")
+			return true
+		}
+		job, err := s.queueLibraryScan(library, "reconcile", "remote-storage-api", fmt.Sprintf("Remote inventory queued for %s.", library.Name))
+		if err != nil {
+			writeError(w, http.StatusConflict, "remote_inventory_queue_failed", err.Error())
+			return true
+		}
+		s.recordAudit(r, user, "library.remote_inventory_queued", "storage_source", parts[2], "info", map[string]string{"job": job.ID})
+		writeJSON(w, http.StatusAccepted, job)
 		return true
 	}
 	if parts[1] == "scan" && len(parts) == 3 && parts[2] == "cancel" && r.Method == http.MethodPost {

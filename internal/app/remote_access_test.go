@@ -47,7 +47,7 @@ func TestRemoteAccessHostedAuthorityIsEnvironmentPinned(t *testing.T) {
 	if err := production.validateRemoteAccessSettings(settings("https://api.production.example")); err != nil {
 		t.Fatalf("approved production authority rejected: %v", err)
 	}
-	for _, hostedBaseURL := range []string{"https://attacker.example", "https://api.production.example.evil"} {
+	for _, hostedBaseURL := range []string{"https://attacker.example", "https://api.production.example.evil", "https://api.production.example/api"} {
 		if err := production.validateRemoteAccessSettings(settings(hostedBaseURL)); err == nil {
 			t.Fatalf("unapproved production authority %q accepted", hostedBaseURL)
 		}
@@ -68,6 +68,16 @@ func TestRemoteAccessHostedAuthorityIsEnvironmentPinned(t *testing.T) {
 	test := &Server{cfg: config.Config{Environment: "test"}}
 	if err := test.validateRemoteAccessSettings(settings("http://127.0.0.1:8080")); err != nil {
 		t.Fatalf("test loopback authority rejected: %v", err)
+	}
+}
+
+func TestRemoteAccessDiagnosticsDoNotPersistTransportDetails(t *testing.T) {
+	secret := "https://user:password@private.example/owner-path"
+	if got := remoteAccessFailureCode(errors.New("request failed for " + secret)); got != "hosted_request_failed" || strings.Contains(got, secret) {
+		t.Fatalf("failure classification leaked transport detail: %q", got)
+	}
+	if got := remoteAccessDiagnosticCode("certificate mismatch for " + secret); got != "route_verification_failed" || strings.Contains(got, secret) {
+		t.Fatalf("route classification leaked upstream detail: %q", got)
 	}
 }
 
@@ -276,7 +286,9 @@ func TestRemoteAccessStartupHeartbeatDoesNotWaitForCertificateRenewal(t *testing
 		t.Fatalf("save credential: %v", err)
 	}
 
-	srv.StartRemoteAccessManager()
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	go srv.runRemoteAccessHeartbeat(ctx)
 
 	select {
 	case <-heartbeatSeen:
@@ -382,15 +394,190 @@ func TestRemoteAccessHeartbeatRecordsSuccessBeforePolicySync(t *testing.T) {
 	}
 }
 
-func TestRemoteAccessPublicIPMonitorPushesChangeImmediately(t *testing.T) {
+func TestRemoteAccessHeartbeatSkipsPolicySyncWhenDigestMatches(t *testing.T) {
+	const digest = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	var mu sync.Mutex
+	policyRequests := 0
+	hosted := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/api/servers/srv_policy_current/heartbeat" && r.Method == http.MethodPost:
+			var payload map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+				t.Errorf("decode heartbeat: %v", err)
+			}
+			if payload["policyDigest"] != digest {
+				t.Errorf("heartbeat policy digest = %#v", payload["policyDigest"])
+			}
+			writeJSON(w, http.StatusOK, map[string]any{
+				"ok":                  true,
+				"serverId":            "srv_policy_current",
+				"remoteAccessEnabled": true,
+				"policyDigest":        digest,
+				"policyChanged":       false,
+			})
+		case r.URL.Path == "/api/servers/srv_policy_current/policy-snapshot":
+			mu.Lock()
+			policyRequests++
+			mu.Unlock()
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "unexpected policy request"})
+		default:
+			t.Errorf("unexpected hosted request: %s %s", r.Method, r.URL.Path)
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "unexpected request"})
+		}
+	}))
+	t.Cleanup(hosted.Close)
+
+	srv := newRemoteAccessUnitServer(t)
+	settings := RemoteAccessSettings{
+		Enabled:                 true,
+		HostedBaseURL:           hosted.URL,
+		ClaimStatus:             "claimed",
+		ServerID:                "srv_policy_current",
+		PublicPortMode:          "disabled",
+		ManualPublicPort:        32500,
+		PreferredRemoteAuthMode: "portico",
+	}
+	if err := srv.saveRemoteAccessSettings(settings); err != nil {
+		t.Fatal(err)
+	}
+	if err := srv.saveSecretSetting(remoteAccessCredentialKey, "policy-current-credential"); err != nil {
+		t.Fatal(err)
+	}
+	if err := srv.saveRemotePolicyState(remotePolicyState{SnapshotID: "snap_current", Generation: 1, IssuedAt: time.Now().UTC().Format(time.RFC3339Nano), ExpiresAt: time.Now().UTC().Add(7 * 24 * time.Hour).Format(time.RFC3339Nano), PolicyDigest: digest}); err != nil {
+		t.Fatal(err)
+	}
+	if err := srv.sendRemoteAccessHeartbeatWithOptions(context.Background(), settings, remoteAccessHeartbeatOptions{SyncPolicy: true}); err != nil {
+		t.Fatalf("heartbeat: %v", err)
+	}
+	time.Sleep(100 * time.Millisecond)
+	mu.Lock()
+	defer mu.Unlock()
+	if policyRequests != 0 {
+		t.Fatalf("unchanged policy triggered %d snapshot request(s)", policyRequests)
+	}
+}
+
+func TestRemoteAccessHeartbeatOmittedDigestDoesNotRefetchAfterLocalPolicyEvidence(t *testing.T) {
+	const digest = "123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0"
+	var mu sync.Mutex
+	policyRequests := 0
+	hosted := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/api/servers/srv_policy_digest_omitted/heartbeat" && r.Method == http.MethodPost:
+			writeJSON(w, http.StatusOK, map[string]any{
+				"ok": true, "serverId": "srv_policy_digest_omitted", "remoteAccessEnabled": true,
+			})
+		case r.URL.Path == "/api/servers/srv_policy_digest_omitted/policy-snapshot":
+			mu.Lock()
+			policyRequests++
+			mu.Unlock()
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "unexpected policy request"})
+		default:
+			t.Errorf("unexpected hosted request: %s %s", r.Method, r.URL.Path)
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "unexpected request"})
+		}
+	}))
+	t.Cleanup(hosted.Close)
+
+	srv := newRemoteAccessUnitServer(t)
+	settings := RemoteAccessSettings{Enabled: true, HostedBaseURL: hosted.URL, ClaimStatus: "claimed", ServerID: "srv_policy_digest_omitted", PublicPortMode: "disabled", ManualPublicPort: 32500, PreferredRemoteAuthMode: "portico"}
+	if err := srv.saveRemoteAccessSettings(settings); err != nil {
+		t.Fatal(err)
+	}
+	if err := srv.saveSecretSetting(remoteAccessCredentialKey, "policy-digest-omitted-credential"); err != nil {
+		t.Fatal(err)
+	}
+	if err := srv.saveRemotePolicyState(remotePolicyState{SnapshotID: "snap_local_evidence", Generation: 4, IssuedAt: time.Now().UTC().Format(time.RFC3339Nano), ExpiresAt: time.Now().UTC().Add(7 * 24 * time.Hour).Format(time.RFC3339Nano), PolicyDigest: digest}); err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		if err := srv.sendRemoteAccessHeartbeatWithOptions(context.Background(), settings, remoteAccessHeartbeatOptions{SyncPolicy: true}); err != nil {
+			t.Fatalf("heartbeat: %v", err)
+		}
+	}
+	time.Sleep(100 * time.Millisecond)
+	mu.Lock()
+	defer mu.Unlock()
+	if policyRequests != 0 {
+		t.Fatalf("repeated omitted policy digests triggered %d snapshot request(s)", policyRequests)
+	}
+}
+
+func TestRemoteAccessCertificatePollIntervalHasFiveSecondFloorAndBoundedRetryAfter(t *testing.T) {
+	for attempt := 0; attempt < 10; attempt++ {
+		delay := remoteAccessCertificatePollInterval("certord_poll_floor", attempt, 0)
+		if delay < 5*time.Second || delay > time.Minute {
+			t.Fatalf("attempt %d delay=%v outside bounded polling window", attempt, delay)
+		}
+	}
+	if delay := remoteAccessCertificatePollInterval("certord_retry_after", 0, 45*time.Second); delay < 45*time.Second || delay > time.Minute {
+		t.Fatalf("Retry-After delay=%v was not honored within the cap", delay)
+	}
+	if delay := remoteAccessCertificatePollInterval("certord_retry_after_cap", 0, 2*time.Hour); delay != time.Minute {
+		t.Fatalf("oversized Retry-After delay=%v, want one-minute cap", delay)
+	}
+}
+
+func TestRemoteAccessHeartbeatRetriesPendingPolicyAckWithoutRefetch(t *testing.T) {
+	const policyDigest = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	const snapshotDigest = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
+	ackSeen := make(chan map[string]string, 1)
+	hosted := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/api/servers/srv_policy_ack/heartbeat" && r.Method == http.MethodPost:
+			writeJSON(w, http.StatusOK, map[string]any{"ok": true, "serverId": "srv_policy_ack", "remoteAccessEnabled": true, "policyDigest": policyDigest, "policyChanged": false})
+		case r.URL.Path == "/api/servers/srv_policy_ack/policy-sync-ack" && r.Method == http.MethodPost:
+			var ack map[string]string
+			if err := json.NewDecoder(r.Body).Decode(&ack); err != nil {
+				t.Errorf("decode policy ack: %v", err)
+			}
+			ackSeen <- ack
+			writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+		case strings.Contains(r.URL.Path, "policy-snapshot"):
+			t.Errorf("pending ack triggered a policy refetch")
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "unexpected policy request"})
+		default:
+			t.Errorf("unexpected hosted request: %s %s", r.Method, r.URL.Path)
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "unexpected request"})
+		}
+	}))
+	t.Cleanup(hosted.Close)
+
+	srv := newRemoteAccessUnitServer(t)
+	settings := RemoteAccessSettings{Enabled: true, HostedBaseURL: hosted.URL, ClaimStatus: "claimed", ServerID: "srv_policy_ack", PublicPortMode: "disabled", ManualPublicPort: 32500, PreferredRemoteAuthMode: "portico"}
+	if err := srv.saveRemoteAccessSettings(settings); err != nil {
+		t.Fatal(err)
+	}
+	if err := srv.saveSecretSetting(remoteAccessCredentialKey, "policy-ack-credential"); err != nil {
+		t.Fatal(err)
+	}
+	if err := srv.saveRemotePolicyState(remotePolicyState{SnapshotID: "snap_pending", SnapshotDigest: snapshotDigest, Generation: 1, IssuedAt: time.Now().UTC().Format(time.RFC3339Nano), ExpiresAt: time.Now().UTC().Add(7 * 24 * time.Hour).Format(time.RFC3339Nano), PolicyDigest: policyDigest, AckPending: true}); err != nil {
+		t.Fatal(err)
+	}
+	if err := srv.sendRemoteAccessHeartbeatWithOptions(context.Background(), settings, remoteAccessHeartbeatOptions{SyncPolicy: true}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case ack := <-ackSeen:
+		if ack["snapshotId"] != "snap_pending" || ack["digest"] != snapshotDigest || ack["status"] != "applied" {
+			t.Fatalf("policy ack = %#v", ack)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("pending policy ack was not retried")
+	}
+	deadline := time.Now().Add(time.Second)
+	for srv.loadRemotePolicyState().AckPending && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if srv.loadRemotePolicyState().AckPending {
+		t.Fatal("successful policy ack remained pending")
+	}
+}
+
+func TestRemoteAccessNetworkMonitorPushesChangeWithoutPublicIPPoll(t *testing.T) {
 	heartbeatSeen := make(chan map[string]any, 1)
 	hosted := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.URL.Path == "/api/network/public-ip" && r.Method == http.MethodGet:
-			if r.Header.Get("Authorization") != "Bearer server-credential-ip-change" {
-				t.Fatalf("public IP check auth = %q", r.Header.Get("Authorization"))
-			}
-			writeJSON(w, http.StatusOK, map[string]string{"publicIp": "198.51.100.77"})
 		case r.URL.Path == "/api/servers/srv_ip_change/heartbeat" && r.Method == http.MethodPost:
 			if r.Header.Get("Authorization") != "Bearer server-credential-ip-change" {
 				t.Fatalf("heartbeat auth = %q", r.Header.Get("Authorization"))
@@ -425,6 +612,7 @@ func TestRemoteAccessPublicIPMonitorPushesChangeImmediately(t *testing.T) {
 		PreferredRemoteAuthMode: "portico",
 		CertificateStatus:       "valid",
 		LastPublicIPAddress:     "203.0.113.10",
+		LastNetworkSignature:    "hmac-sha256:old",
 		LANDiscoveryEnabled:     false,
 	}
 	if err := srv.saveRemoteAccessSettings(settings); err != nil {
@@ -433,27 +621,134 @@ func TestRemoteAccessPublicIPMonitorPushesChangeImmediately(t *testing.T) {
 	if err := srv.saveSecretSetting(remoteAccessCredentialKey, "server-credential-ip-change"); err != nil {
 		t.Fatalf("save credential: %v", err)
 	}
-	changed, err := srv.checkRemoteAccessPublicIPAndRepair(context.Background())
+	changed, err := srv.checkRemoteAccessNetworkSignatureAndRefresh(context.Background(), "hmac-sha256:new")
 	if err != nil {
-		t.Fatalf("check public IP: %v", err)
+		t.Fatalf("check network signature: %v", err)
 	}
 	if !changed {
-		t.Fatal("expected public IP change to be detected")
+		t.Fatal("expected network change to be detected")
 	}
 	select {
 	case payload := <-heartbeatSeen:
-		if payload["publicIpCandidate"] != "198.51.100.77" {
+		if payload["publicIpCandidate"] != "203.0.113.10" {
 			t.Fatalf("heartbeat public IP candidate = %#v", payload["publicIpCandidate"])
 		}
 	case <-time.After(time.Second):
-		t.Fatal("public IP change did not trigger heartbeat")
+		t.Fatal("network change did not trigger heartbeat")
 	}
 	updated, err := srv.remoteAccessSettings()
 	if err != nil {
 		t.Fatalf("reload settings: %v", err)
 	}
-	if updated.LastPublicIPAddress != "198.51.100.77" || updated.LastRouteRepairReason != "public_ip_changed" || updated.LastHeartbeatAt == "" {
-		t.Fatalf("unexpected public IP repair settings: %#v", updated)
+	if updated.LastPublicIPAddress != "198.51.100.77" || updated.LastNetworkSignature != "hmac-sha256:new" || updated.LastRouteRepairReason != "network_changed" || updated.LastHeartbeatAt == "" {
+		t.Fatalf("unexpected network repair settings: %#v", updated)
+	}
+}
+
+func TestRemoteAccessNetworkMonitorEstablishesBaselineWithoutHostedRequest(t *testing.T) {
+	srv := newRemoteAccessUnitServer(t)
+	settings := RemoteAccessSettings{
+		Enabled:                 true,
+		HostedBaseURL:           "http://127.0.0.1:1",
+		ClaimStatus:             "claimed",
+		ServerID:                "srv_network_baseline",
+		PublicPortMode:          "disabled",
+		ManualPublicPort:        32500,
+		PreferredRemoteAuthMode: "portico",
+	}
+	if err := srv.saveRemoteAccessSettings(settings); err != nil {
+		t.Fatalf("save settings: %v", err)
+	}
+	if err := srv.saveSecretSetting(remoteAccessCredentialKey, "server-credential-network-baseline"); err != nil {
+		t.Fatalf("save credential: %v", err)
+	}
+	changed, err := srv.checkRemoteAccessNetworkSignatureAndRefresh(context.Background(), "hmac-sha256:baseline")
+	if err != nil {
+		t.Fatalf("establish network baseline: %v", err)
+	}
+	if changed {
+		t.Fatal("initial local network baseline should not trigger a Hosted request")
+	}
+	updated, err := srv.remoteAccessSettings()
+	if err != nil {
+		t.Fatalf("reload settings: %v", err)
+	}
+	if updated.LastNetworkSignature != "hmac-sha256:baseline" || updated.LastHeartbeatAt != "" {
+		t.Fatalf("unexpected baseline settings: %#v", updated)
+	}
+}
+
+func TestRemoteAccessHeartbeatCarriesRepairWithoutSeparatePoll(t *testing.T) {
+	heartbeats := make(chan struct{}, 2)
+	hosted := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/servers/srv_heartbeat_repair/heartbeat" || r.Method != http.MethodPost {
+			t.Fatalf("unexpected hosted request: %s %s", r.Method, r.URL.Path)
+		}
+		heartbeats <- struct{}{}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"ok":                  true,
+			"serverId":            "srv_heartbeat_repair",
+			"assignedHostname":    "ptc-heartbeat-repair.direct.getportico.tv",
+			"remoteAccessEnabled": true,
+			"publicIp":            "198.51.100.90",
+			"leaseSeconds":        900,
+			"repair": map[string]any{
+				"hostedServicesReachable": true,
+				"publicRouteStatus":       "failed",
+				"publicRouteError":        "The route could not be reached.",
+				"publicRouteCheckedAt":    time.Now().UTC().Format(time.RFC3339),
+				"repairRequested":         true,
+				"reason":                  "The route could not be reached.",
+				"routeType":               "public_direct",
+				"host":                    "198.51.100.90",
+				"status":                  "failed",
+			},
+		})
+	}))
+	t.Cleanup(hosted.Close)
+
+	srv := newRemoteAccessUnitServer(t)
+	settings := RemoteAccessSettings{
+		Enabled:                 true,
+		HostedBaseURL:           hosted.URL,
+		ClaimStatus:             "claimed",
+		ServerID:                "srv_heartbeat_repair",
+		AssignedHostname:        "ptc-heartbeat-repair.direct.getportico.tv",
+		PublicPortMode:          "manual",
+		ManualPublicPort:        32500,
+		PreferredRemoteAuthMode: "portico",
+		CertificateStatus:       "valid",
+		LastPublicIPAddress:     "198.51.100.90",
+	}
+	if err := srv.saveRemoteAccessSettings(settings); err != nil {
+		t.Fatalf("save settings: %v", err)
+	}
+	if err := srv.saveSecretSetting(remoteAccessCredentialKey, "server-credential-heartbeat-repair"); err != nil {
+		t.Fatalf("save credential: %v", err)
+	}
+	if err := srv.sendRemoteAccessHeartbeatWithOptions(context.Background(), settings, remoteAccessHeartbeatOptions{SyncPolicy: false}); err != nil {
+		t.Fatalf("heartbeat: %v", err)
+	}
+	for count := 0; count < 2; count++ {
+		select {
+		case <-heartbeats:
+		case <-time.After(2 * time.Second):
+			t.Fatalf("heartbeat-carried repair did not complete follow-up heartbeat %d", count+1)
+		}
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		updated, err := srv.remoteAccessSettings()
+		if err != nil {
+			t.Fatalf("reload settings: %v", err)
+		}
+		if updated.LastRouteRepairReason == "hosted_route_failure" && updated.LastHeartbeatAt != "" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("heartbeat repair state was not recorded: %#v", updated)
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }
 
@@ -1233,7 +1528,7 @@ func TestPorticoSessionAttachDoesNotRequireThisServerPassword(t *testing.T) {
 	}
 }
 
-func TestRemoteAccessMemberSyncAppliesInvitePermissionTemplate(t *testing.T) {
+func TestRemoteAccessMemberSyncPreservesLocalLibraryAssignments(t *testing.T) {
 	chdirRepoRoot(t)
 	appDataDir := t.TempDir()
 	db, err := database.Open(config.Config{
@@ -1256,7 +1551,6 @@ func TestRemoteAccessMemberSyncAppliesInvitePermissionTemplate(t *testing.T) {
 		Role:                "user",
 		Status:              "active",
 		PermissionTemplate: RemotePermissionTemplate{
-			LibraryIDs:       []string{"lib_movies", "lib_tv"},
 			MaxContentRating: "PG-13",
 			Permissions: map[string]bool{
 				"playMedia":     true,
@@ -1284,12 +1578,28 @@ func TestRemoteAccessMemberSyncAppliesInvitePermissionTemplate(t *testing.T) {
 	if user.MaxContentRating != "PG-13" {
 		t.Fatalf("max content rating = %q", user.MaxContentRating)
 	}
-	if strings.Join(user.LibraryIDs, ",") != "lib_movies,lib_tv" {
-		t.Fatalf("library template not applied: %#v", user.LibraryIDs)
+	libraries, err := srv.listLibraries()
+	if err != nil || len(libraries) == 0 {
+		t.Fatalf("list local libraries: %v (%#v)", err, libraries)
+	}
+	assigned := libraries[0].ID
+	if _, err := srv.db.Exec(`INSERT INTO user_library_access (user_id, library_id, created_at) VALUES (?, ?, ?)`, user.ID, assigned, time.Now().UTC().Format(time.RFC3339)); err != nil {
+		t.Fatalf("assign local library: %v", err)
+	}
+	if err := srv.replaceRemoteAccessMembers([]RemoteAccessMember{{
+		PorticoMembershipID: "mem_template_viewer", PorticoUserID: "usr_template_viewer",
+		Email: "templated@example.test", DisplayName: "Templated Viewer", Role: "user", Status: "active",
+		PermissionTemplate: RemotePermissionTemplate{MaxContentRating: "G"},
+	}}); err != nil {
+		t.Fatalf("refresh members: %v", err)
+	}
+	user, err = srv.getUser(user.ID)
+	if err != nil || !slices.Contains(user.LibraryIDs, assigned) || len(user.LibraryIDs) != 1 {
+		t.Fatalf("Hosted policy refresh changed server-local library assignment: %#v (err=%v)", user.LibraryIDs, err)
 	}
 }
 
-func TestRemoteAccessMemberSyncEmptyLibraryTemplateGrantsAllLibraries(t *testing.T) {
+func TestRemoteAccessMemberSyncNewMemberStartsWithoutLibraries(t *testing.T) {
 	chdirRepoRoot(t)
 	appDataDir := t.TempDir()
 	db, err := database.Open(config.Config{
@@ -1330,17 +1640,8 @@ func TestRemoteAccessMemberSyncEmptyLibraryTemplateGrantsAllLibraries(t *testing
 	if err != nil {
 		t.Fatalf("get provisioned user: %v", err)
 	}
-	libraries, err := srv.listLibraries()
-	if err != nil {
-		t.Fatalf("list libraries: %v", err)
-	}
-	if len(user.LibraryIDs) != len(libraries) {
-		t.Fatalf("empty library template should expand to all libraries, user=%#v libraries=%#v", user.LibraryIDs, libraries)
-	}
-	for _, library := range libraries {
-		if !slices.Contains(user.LibraryIDs, library.ID) {
-			t.Fatalf("user missing library %q after all-library template: %#v", library.ID, user.LibraryIDs)
-		}
+	if len(user.LibraryIDs) != 0 {
+		t.Fatalf("new Hosted member must start without server-local libraries: %#v", user.LibraryIDs)
 	}
 }
 
@@ -1498,6 +1799,13 @@ func TestCloudBootstrapIsRejectedByNormalServerAPIsWithoutMutatingCachedPrincipa
 				"minimumServerVersion":     "0.1.0",
 			}))
 		case r.URL.Path == "/api/servers/srv_deleted_token/policy-sync-ack" && r.Method == http.MethodPost:
+			var ack map[string]string
+			if err := json.NewDecoder(r.Body).Decode(&ack); err != nil {
+				t.Fatalf("decode policy ack: %v", err)
+			}
+			if ack["digest"] != strings.Repeat("a", 64) || ack["status"] != "applied" {
+				t.Fatalf("policy ack = %#v", ack)
+			}
 			writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 		default:
 			t.Fatalf("unexpected hosted request: %s %s", r.Method, r.URL.Path)
@@ -2022,7 +2330,7 @@ func TestPorticoPrimarySetupClaimCreatesLinkedOwnerWithoutLocalUser(t *testing.T
 		case r.URL.Path == "/api/server-claims" && r.Method == http.MethodPost:
 			writeJSON(w, http.StatusCreated, map[string]any{
 				"claimId":             "claim_setup_owner",
-				"claimCode":           "SETUP123",
+				"claimCode":           "ABCD2345",
 				"claimToken":          "setup-claim-token",
 				"lostResponseReceipt": claimReceipt,
 				"claimUrl":            hostedClaimURL(r),
@@ -2146,6 +2454,7 @@ func TestPorticoPrimarySetupClaimCreatesLinkedOwnerWithoutLocalUser(t *testing.T
 	}
 
 	request := httptest.NewRequest(http.MethodPost, "http://localhost:32500/api/auth/portico-setup/claim/start", strings.NewReader(`{"serverName":"Setup Server"}`))
+	request.RemoteAddr = "127.0.0.1:41234"
 	request.Header.Set("Content-Type", "application/json")
 	response := httptest.NewRecorder()
 	srv.handlePorticoSetupClaimStart(response, request)
@@ -2171,6 +2480,7 @@ func TestPorticoPrimarySetupClaimCreatesLinkedOwnerWithoutLocalUser(t *testing.T
 	}
 
 	statusRequest := httptest.NewRequest(http.MethodGet, "http://localhost:32500/api/auth/portico-setup/status", nil)
+	statusRequest.RemoteAddr = "[::1]:41235"
 	statusResponse := httptest.NewRecorder()
 	srv.handlePorticoSetupStatus(statusResponse, statusRequest)
 	if statusResponse.Code != http.StatusOK {
@@ -2202,6 +2512,31 @@ func TestPorticoPrimarySetupClaimCreatesLinkedOwnerWithoutLocalUser(t *testing.T
 	}
 	if user.Role != "owner" || user.AuthOrigin != "portico" || user.PorticoUserID != "usr_setup_owner" || user.HasLocalPassword {
 		t.Fatalf("unexpected linked owner profile: %#v", user)
+	}
+}
+
+func TestPorticoSetupRoutesRequireActualLoopbackPeer(t *testing.T) {
+	srv := &Server{}
+	for _, test := range []struct {
+		method string
+		path   string
+		call   func(http.ResponseWriter, *http.Request)
+	}{
+		{http.MethodPost, "/api/auth/portico-setup/claim/start", srv.handlePorticoSetupClaimStart},
+		{http.MethodGet, "/api/auth/portico-setup/status", srv.handlePorticoSetupStatus},
+	} {
+		request := httptest.NewRequest(test.method, "http://localhost:32500"+test.path, nil)
+		request.RemoteAddr = "192.168.1.50:54321"
+		request.Header.Set("Origin", "http://localhost:32500")
+		request.Header.Set("X-Forwarded-For", "127.0.0.1")
+		response := httptest.NewRecorder()
+		test.call(response, request)
+		if response.Code != http.StatusForbidden {
+			t.Fatalf("%s from LAN peer status = %d body=%s", test.path, response.Code, response.Body.String())
+		}
+		if strings.Contains(response.Body.String(), "claimCode") {
+			t.Fatalf("%s exposed claim details to LAN peer: %s", test.path, response.Body.String())
+		}
 	}
 }
 
@@ -2238,7 +2573,7 @@ func TestRemoteAccessStatusCompletesClaimAndSendsHeartbeat(t *testing.T) {
 		case r.URL.Path == "/api/server-claims" && r.Method == http.MethodPost:
 			writeJSON(w, http.StatusCreated, map[string]any{
 				"claimId":             "claim_hosted_done",
-				"claimCode":           "WXYZ9876",
+				"claimCode":           "ABCD2345",
 				"claimToken":          "hosted-claim-token-done",
 				"lostResponseReceipt": claimReceipt,
 				"claimUrl":            hostedClaimURL(r),
@@ -3443,6 +3778,29 @@ func hostedClaimURL(r *http.Request) string {
 	return "http://" + r.Host + "/claim?code=ABCD2345"
 }
 
+func TestValidateHostedClaimURLRejectsUntrustedNavigation(t *testing.T) {
+	base := "https://api.getportico.tv"
+	valid := "https://web.getportico.tv/claim?code=ABCD2345&serverName=Living+Room"
+	if err := validateHostedClaimURL(base, valid, "ABCD2345"); err != nil {
+		t.Fatalf("valid claim URL: %v", err)
+	}
+	for _, candidate := range []string{
+		"https://evil.example/claim?code=ABCD2345",
+		"https://web.getportico.tv.evil.example/claim?code=ABCD2345",
+		"https://user@web.getportico.tv/claim?code=ABCD2345",
+		"https://web.getportico.tv/other?code=ABCD2345",
+		"https://web.getportico.tv/claim?code=WRONG123",
+		"https://web.getportico.tv/claim?code=ABCD2345&code=ABCD2345",
+		"https://web.getportico.tv/claim?code=ABCD2345&token=secret",
+		"https://web.getportico.tv/claim?code=ABCD2345#fragment",
+		"javascript:alert(1)",
+	} {
+		if err := validateHostedClaimURL(base, candidate, "ABCD2345"); err == nil {
+			t.Fatalf("untrusted claim URL accepted: %s", candidate)
+		}
+	}
+}
+
 func certificateForCSR(t *testing.T, csrPEM string, expiresAt time.Time) string {
 	t.Helper()
 	return certificateForCSRWithDNSNames(t, csrPEM, nil, expiresAt)
@@ -3596,9 +3954,24 @@ func testHostedDocumentPublicKeys() map[string]string {
 func signedTestPolicySnapshot(t *testing.T, document map[string]any) map[string]any {
 	t.Helper()
 	now := time.Now().UTC()
+	if _, ok := document["kind"]; !ok {
+		document["kind"] = hostedPolicyKind
+	}
+	if _, ok := document["version"]; !ok {
+		document["version"] = 1
+	}
+	if _, ok := document["generation"]; !ok {
+		document["generation"] = 1
+	}
 	document["audience"] = hostedDocumentAudience
 	document["signatureAlgorithm"] = hostedSignatureAlgorithm
 	document["signatureKeyId"] = testHostedDocumentKeyID
+	if _, ok := document["digest"]; !ok {
+		document["digest"] = strings.Repeat("a", 64)
+	}
+	if _, ok := document["policyDigest"]; !ok {
+		document["policyDigest"] = strings.Repeat("b", 64)
+	}
 	if _, ok := document["issuedAt"]; !ok {
 		document["issuedAt"] = now.Format(time.RFC3339Nano)
 	}
@@ -3661,6 +4034,13 @@ func TestRemoteAccessClaimActivationJournalRecoversAfterRestartWindow(t *testing
 	if err := srv.saveRemoteAccessClaimActivation(activation); err != nil {
 		t.Fatal(err)
 	}
+	var rawJournal string
+	if err := srv.db.QueryRow(`SELECT value_json FROM settings WHERE key = ?`, remoteAccessClaimActivationKey).Scan(&rawJournal); err != nil {
+		t.Fatalf("read raw activation journal: %v", err)
+	}
+	if strings.Contains(rawJournal, activation.ServerCredential) {
+		t.Fatalf("raw activation journal exposed server credential: %s", rawJournal)
+	}
 	// Simulate a crash immediately after journaling the Hosted result.
 	restarted := &Server{cfg: srv.cfg, db: srv.db, log: srv.log}
 	status, err := restarted.remoteAccessStatus()
@@ -3693,7 +4073,7 @@ func TestPorticoSetupClaimMissingTokenStartsFreshOperation(t *testing.T) {
 		switch {
 		case r.URL.Path == "/api/server-claims":
 			operation = r.Header.Get("Idempotency-Key")
-			writeJSON(w, http.StatusCreated, map[string]any{"claimId": "fresh", "claimCode": "FRESH123", "claimToken": "fresh-token", "lostResponseReceipt": claimReceipt, "claimUrl": "https://web.example/claim", "status": "pending", "expiresAt": time.Now().Add(time.Hour).UTC().Format(time.RFC3339)})
+			writeJSON(w, http.StatusCreated, map[string]any{"claimId": "fresh", "claimCode": "FRESH123", "claimToken": "fresh-token", "lostResponseReceipt": claimReceipt, "claimUrl": "http://" + r.Host + "/claim?code=FRESH123", "status": "pending", "expiresAt": time.Now().Add(time.Hour).UTC().Format(time.RFC3339)})
 		case r.URL.Path == "/api/server-claims/fresh/result":
 			if r.Header.Get("X-Portico-Claim-Receipt") != claimReceipt || r.Header.Get("Authorization") != "" {
 				t.Fatalf("claim result headers receipt=%q authorization=%q", r.Header.Get("X-Portico-Claim-Receipt"), r.Header.Get("Authorization"))
@@ -3781,7 +4161,7 @@ func TestPorticoSetupExpiredClaimDoesNotReplayOperation(t *testing.T) {
 	hosted := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/api/server-claims" {
 			operation = r.Header.Get("Idempotency-Key")
-			writeJSON(w, http.StatusCreated, map[string]any{"claimId": "new", "claimCode": "NEW12345", "claimToken": "new-token", "lostResponseReceipt": claimReceipt, "claimUrl": "https://web.example/claim", "status": "pending", "expiresAt": time.Now().Add(time.Hour).UTC().Format(time.RFC3339)})
+			writeJSON(w, http.StatusCreated, map[string]any{"claimId": "new", "claimCode": "NEW12345", "claimToken": "new-token", "lostResponseReceipt": claimReceipt, "claimUrl": "http://" + r.Host + "/claim?code=NEW12345", "status": "pending", "expiresAt": time.Now().Add(time.Hour).UTC().Format(time.RFC3339)})
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"status": "pending"})

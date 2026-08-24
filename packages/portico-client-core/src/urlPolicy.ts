@@ -62,7 +62,14 @@ export function isValidPorticoServerPublicKeyFingerprint(value: unknown): value 
 
 function isLocalNetworkHost(hostname: string): boolean {
   const host = hostname.toLowerCase().replace(/^\[|\]$/g, "");
-  if (host === "localhost" || host.endsWith(".local") || host === "::1" || host.startsWith("fe80:")) return true;
+  if (
+    host === "localhost" ||
+    host.endsWith(".local") ||
+    host === "::1" ||
+    host.startsWith("fe80:") ||
+    /^(?:fc|fd)[0-9a-f]{2}:/u.test(host)
+  )
+    return true;
   const octets = host.split(".").map(Number);
   if (octets.length !== 4 || octets.some(value => !Number.isInteger(value) || value < 0 || value > 255)) return false;
   return octets[0] === 10 || octets[0] === 127 || octets[0] === 169 && octets[1] === 254 ||

@@ -39,9 +39,13 @@ function durableAdapter(initial = connection()) {
 
 test("purpose-specific URL policy preserves clean LAN HTTP but rejects it for public trust", () => {
   assert.equal(validatePorticoUrl("http://192.168.1.20:32500", "lan-server-route"), "http://192.168.1.20:32500");
+  assert.equal(validatePorticoUrl("http://[fd12:3456:789a::20]:32500", "lan-server-route"), "http://[fd12:3456:789a::20]:32500");
+  assert.equal(validatePorticoUrl("http://[fc00::20]:32500", "lan-server-route"), "http://[fc00::20]:32500");
   assert.equal(porticoRouteTransport("http://192.168.1.20:32500", "lan-server-route"), "lan-http");
+  assert.equal(porticoRouteTransport("http://[fd12:3456:789a::20]:32500", "lan-server-route"), "lan-http");
   assert.equal(porticoRouteTransport("https://home.example:32500", "trusted-server-route"), "https");
   assert.throws(() => validatePorticoUrl("http://192.168.1.20:32500", "trusted-server-route"), /HTTPS/);
+  assert.throws(() => validatePorticoUrl("http://[fbff::20]:32500", "lan-server-route"), /clean/);
   assert.throws(() => validatePorticoUrl("http://user@192.168.1.20", "lan-server-route"), /clean/);
   assert.throws(() => validatePorticoUrl("https://home.example/api?token=x", "trusted-server-route"), /clean/);
   assert.equal(validatePorticoUrl("/api/media/file?grant=opaque", "download-grant", {trustedOrigin: "https://home.example"}), "/api/media/file?grant=opaque");

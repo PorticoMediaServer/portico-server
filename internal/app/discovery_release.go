@@ -834,6 +834,7 @@ func consumerMediaDetailProjection(item MediaItem, user User) MediaItem {
 	}
 	canViewSourcePaths := canInteractivelyManageServer(user)
 	item.SourceURL = ""
+	item.Artwork = nil
 	item.ProviderIDs = nil
 	item.MatchCandidates = nil
 	item.IdentityEvidence = nil

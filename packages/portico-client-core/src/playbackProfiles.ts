@@ -26,7 +26,8 @@ export type PlaybackCapabilityTuple = {
   protocol: "http" | "hls";
   container: string;
   video?: {codec: string; profile?: string; level?: string; tag?: string; pixelFormat?: string; chroma?: string; dynamicRange?: "sdr" | "pq" | "hlg" | "hdr10plus" | "dolby_vision"; bitDepth: number; dolbyVisionProfile?: number; maxWidth: number; maxHeight: number; maxFrameRate: number};
-  audio: {codec: string; profile?: string; layout?: string; route?: string; maxChannels: number; objectPassthrough?: boolean};
+  /** Omitted only for an exact silent-video capability tuple. */
+  audio?: {codec: string; profile?: string; layout?: string; route?: string; maxChannels: number; objectPassthrough?: boolean};
   subtitle: {codec?: string; kind?: "text" | "bitmap"; mode: "none" | "native" | "convert" | "burn"};
 };
 
@@ -75,7 +76,7 @@ export function playbackCapabilityProfile(facts: PlaybackCapabilityFacts): Versi
     capabilitySchemaVersion: PLAYBACK_CAPABILITY_CONTRACT_VERSION,
     clientFamily: facts.family,
     clientVersion: facts.clientVersion,
-    capabilityEvidence: [{...facts.evidence, tuples: facts.evidence.tuples.map(tuple => ({...tuple, video: tuple.video ? {...tuple.video} : undefined, audio: {...tuple.audio}, subtitle: {...tuple.subtitle}}))}],
+    capabilityEvidence: [{...facts.evidence, tuples: facts.evidence.tuples.map(tuple => ({...tuple, video: tuple.video ? {...tuple.video} : undefined, audio: tuple.audio ? {...tuple.audio} : undefined, subtitle: {...tuple.subtitle}}))}],
     device: facts.device,
     platform: facts.platform,
     supportsHls: facts.supportsHls,
@@ -219,12 +220,17 @@ function browserCapabilityTuples(input: {containers: readonly string[]; videoCod
   const tuples: PlaybackCapabilityTuple[] = [];
   const noSubtitle = { mode: "none" } as const;
   const textSubtitle = { codec: "webvtt", kind: "text", mode: "native" } as const;
-  const addAudiovisual = (protocol: "http" | "hls", container: string, video: NonNullable<PlaybackCapabilityTuple["video"]>, audio: PlaybackCapabilityTuple["audio"]) => {
-    tuples.push({ mediaKind: "audiovisual", protocol, container, video, audio, subtitle: noSubtitle });
-    tuples.push({ mediaKind: "audiovisual", protocol, container, video, audio, subtitle: textSubtitle });
+  const addAudiovisual = (protocol: "http" | "hls", container: string, video: NonNullable<PlaybackCapabilityTuple["video"]>, audio?: PlaybackCapabilityTuple["audio"]) => {
+    // A silent source is an exact audiovisual capability, not an AAC source
+    // with a missing stream. Keep its tuple independent of audio support.
+    tuples.push({ mediaKind: "audiovisual", protocol, container, video, subtitle: noSubtitle });
+    if (audio) {
+      tuples.push({ mediaKind: "audiovisual", protocol, container, video, audio, subtitle: noSubtitle });
+      tuples.push({ mediaKind: "audiovisual", protocol, container, video, audio, subtitle: textSubtitle });
+    }
   };
-  if (input.containers.includes("mp4") && input.videoCodecs.includes("h264") && input.audioCodecs.includes("aac")) {
-    const audio = { codec: "aac", profile: "lc", layout: "stereo", route: "decode", maxChannels: 2 } as const;
+  if (input.containers.includes("mp4") && input.videoCodecs.includes("h264")) {
+    const audio = input.audioCodecs.includes("aac") ? { codec: "aac", profile: "lc", layout: "stereo", route: "decode", maxChannels: 2 } as const : undefined;
     for (const profile of ["baseline", "main", "high"] as const) {
       const video = { codec: "h264", profile, pixelFormat: "yuv420p", chroma: "4:2:0", dynamicRange: "sdr", bitDepth: 8, maxWidth: input.maxWidth, maxHeight: input.maxHeight, maxFrameRate: 60 } as const;
       addAudiovisual("http", "mp4", video, audio);
@@ -233,8 +239,9 @@ function browserCapabilityTuples(input: {containers: readonly string[]; videoCod
       if (input.supportsHls) addAudiovisual("hls", "mpegts", video, audio);
     }
   }
-  if (input.containers.includes("webm") && input.videoCodecs.includes("vp9") && input.audioCodecs.includes("opus")) {
-    addAudiovisual("http", "webm", { codec: "vp9", pixelFormat: "yuv420p", chroma: "4:2:0", dynamicRange: "sdr", bitDepth: 8, maxWidth: input.maxWidth, maxHeight: input.maxHeight, maxFrameRate: 60 }, { codec: "opus", layout: "stereo", route: "decode", maxChannels: 2 });
+  if (input.containers.includes("webm") && input.videoCodecs.includes("vp9")) {
+    const audio = input.audioCodecs.includes("opus") ? { codec: "opus", layout: "stereo", route: "decode", maxChannels: 2 } as const : undefined;
+    addAudiovisual("http", "webm", { codec: "vp9", pixelFormat: "yuv420p", chroma: "4:2:0", dynamicRange: "sdr", bitDepth: 8, maxWidth: input.maxWidth, maxHeight: input.maxHeight, maxFrameRate: 60 }, audio);
   }
   if (input.audioCodecs.includes("mp3")) tuples.push({ mediaKind: "audio", protocol: "http", container: "mp3", audio: { codec: "mp3", layout: "stereo", route: "decode", maxChannels: 2 }, subtitle: { mode: "none" } });
   return tuples;
@@ -258,14 +265,16 @@ function validateCapabilityFacts(facts: PlaybackCapabilityFacts): void {
     throw new TypeError("Authoritative runtime evidence requires a producer version.");
   }
   for (const tuple of evidence.tuples) {
-    if (!tuple.container.trim() || !tuple.audio.codec.trim() || tuple.audio.maxChannels < 1) throw new TypeError("Playback capability tuple is invalid.");
+    if (!tuple.protocol.trim() || !tuple.container.trim()) throw new TypeError("Playback capability tuple is invalid.");
     if (tuple.mediaKind === "audio") {
+      if (!tuple.audio || !tuple.audio.codec.trim() || tuple.audio.maxChannels < 1) throw new TypeError("Audio-only tuples require bounded audio facts.");
       if (tuple.video || tuple.subtitle.mode !== "none") throw new TypeError("Audio-only tuples cannot declare video or subtitles.");
     } else if (!tuple.video || tuple.video.bitDepth < 1 || tuple.video.maxWidth < 1 || tuple.video.maxHeight < 1 || tuple.video.maxFrameRate <= 0) {
       throw new TypeError("Audiovisual tuples require bounded video facts.");
     }
+    if (tuple.audio && (!tuple.audio.codec.trim() || tuple.audio.maxChannels < 1)) throw new TypeError("Playback capability audio facts are invalid.");
     if (tuple.video?.dolbyVisionProfile && tuple.video.dynamicRange !== "dolby_vision") throw new TypeError("Dolby Vision profiles require a Dolby Vision tuple.");
-    if (tuple.audio.objectPassthrough && tuple.audio.route !== "passthrough") throw new TypeError("Object audio requires passthrough.");
+    if (tuple.audio?.objectPassthrough && tuple.audio.route !== "passthrough") throw new TypeError("Object audio requires passthrough.");
     if (tuple.subtitle.mode === "none" ? Boolean(tuple.subtitle.codec || tuple.subtitle.kind) : !tuple.subtitle.codec || !tuple.subtitle.kind) throw new TypeError("Subtitle tuple is incoherent.");
   }
 }

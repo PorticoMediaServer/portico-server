@@ -16,6 +16,39 @@ import (
 	"time"
 )
 
+const (
+	dvrMinimumRecordingDuration = time.Second
+	dvrMinimumRecordingBytes    = int64(1024)
+	dvrPlaybackRetentionGrace   = 10 * time.Minute
+)
+
+func (s *Server) acquireDVRPlaybackUse(recordingID string) func(bool) {
+	recordingID = strings.TrimSpace(recordingID)
+	if recordingID == "" {
+		return func(bool) {}
+	}
+	s.dvrPlaybackMu.Lock()
+	if s.dvrPlaybackActive == nil {
+		s.dvrPlaybackActive = map[string]int{}
+		s.dvrPlaybackLastSeen = map[string]time.Time{}
+	}
+	s.dvrPlaybackActive[recordingID]++
+	s.dvrPlaybackMu.Unlock()
+	return func(retainGrace bool) {
+		s.dvrPlaybackMu.Lock()
+		s.dvrPlaybackActive[recordingID]--
+		if s.dvrPlaybackActive[recordingID] <= 0 {
+			delete(s.dvrPlaybackActive, recordingID)
+		}
+		if retainGrace {
+			s.dvrPlaybackLastSeen[recordingID] = time.Now().UTC()
+		} else if s.dvrPlaybackActive[recordingID] == 0 {
+			delete(s.dvrPlaybackLastSeen, recordingID)
+		}
+		s.dvrPlaybackMu.Unlock()
+	}
+}
+
 func (s *Server) runDVRScheduler(ctx context.Context) {
 	if err := s.reconcileDVRStateAfterRestart(ctx, time.Now().UTC()); err != nil {
 		s.log.Warn("DVR startup reconciliation failed", "error", err)
@@ -119,6 +152,11 @@ func (s *Server) reconcileDVRStateAfterRestart(ctx context.Context, now time.Tim
 			// before changing the row. Recover that fenced artifact after a crash;
 			// never interpret it as proof of successful completion.
 			if incompletePath, ok := dvrIncompletePathFromLeaseWorkingPath(candidate.path); ok {
+				if _, statErr := os.Stat(incompletePath); errors.Is(statErr, os.ErrNotExist) {
+					if workingInfo, workingErr := os.Stat(candidate.path); workingErr == nil && workingInfo.Mode().IsRegular() && workingInfo.Size() >= 376 && s.probeDVRPartialMedia(candidate.path) {
+						_ = os.Rename(candidate.path, incompletePath)
+					}
+				}
 				if info, statErr := os.Stat(incompletePath); statErr == nil && info.Mode().IsRegular() && info.Size() > 0 {
 					if _, updateErr := s.execBackgroundWrite(ctx, `
 						UPDATE live_tv_recordings SET status = 'incomplete', path = ?, size_bytes = ?,
@@ -193,6 +231,55 @@ func (s *Server) reconcileDVRStateAfterRestart(ctx context.Context, now time.Tim
 			return err
 		}
 		s.recordLog("info", "DVR recording queued to resume after restart.", map[string]string{"recording": candidate.id})
+	}
+	// Completion and catalog import are deliberately separate transactions so a
+	// media-index failure cannot roll a valid recording back to running. Repair
+	// the small crash window idempotently on startup and every scheduler pass.
+	if err := s.reconcileCompletedDVRMedia(ctx, nowText); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *Server) reconcileCompletedDVRMedia(ctx context.Context, importedAt string) error {
+	rows, err := s.queryBackgroundRead(ctx, `
+		SELECT r.id
+		FROM live_tv_recordings r
+		LEFT JOIN dvr_recording_media mapping ON mapping.recording_id = r.id
+		WHERE lower(r.status) IN ('complete', 'completed')
+			AND r.path <> '' AND mapping.recording_id IS NULL
+		ORDER BY r.updated_at ASC, r.id ASC
+		LIMIT 100`)
+	if err != nil {
+		return err
+	}
+	ids := []string{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return err
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	for _, id := range ids {
+		recording, loadErr := s.getDVRRecording(id)
+		if loadErr != nil {
+			s.log.Warn("DVR catalog reconciliation could not reload recording", "recording", id, "error", loadErr)
+			continue
+		}
+		if importErr := s.importDVRRecordingMedia(recording, importedAt); importErr != nil {
+			s.log.Warn("DVR catalog reconciliation deferred recording import", "recording", id, "error", importErr)
+			continue
+		}
+		s.recordLog("info", "DVR recording restored to the media catalog.", map[string]string{"recording": id})
 	}
 	return nil
 }
@@ -380,8 +467,21 @@ func (s *Server) pruneExpiredDVRRecordings() (int, error) {
 		if !removeIDs[candidate.id] {
 			continue
 		}
+		s.dvrPlaybackMu.Lock()
+		inUse, err := s.dvrRecordingInUseLocked(context.Background(), candidate.id)
+		if err != nil {
+			s.dvrPlaybackMu.Unlock()
+			return removed, err
+		}
+		if inUse {
+			s.dvrPlaybackMu.Unlock()
+			// Retention is periodic, so skipping is a durable pending-delete state:
+			// the same candidate will be reconsidered after playback ends.
+			continue
+		}
 		if candidate.path != "" {
 			if err := removeDVRRecordingFile(candidate.path, s.cfg.AppDataDir); err != nil {
+				s.dvrPlaybackMu.Unlock()
 				return removed, err
 			}
 		}
@@ -395,12 +495,61 @@ func (s *Server) pruneExpiredDVRRecordings() (int, error) {
 			return execErr
 		})
 		if err != nil {
+			s.dvrPlaybackMu.Unlock()
 			return removed, err
 		}
 		affected, _ := result.RowsAffected()
 		removed += int(affected)
+		s.dvrPlaybackMu.Unlock()
 	}
 	return removed, nil
+}
+
+func (s *Server) dvrRecordingInUse(ctx context.Context, recordingID string) (bool, error) {
+	s.dvrPlaybackMu.Lock()
+	defer s.dvrPlaybackMu.Unlock()
+	return s.dvrRecordingInUseLocked(ctx, recordingID)
+}
+
+// dvrRecordingInUseLocked requires dvrPlaybackMu. Retention holds that lock
+// through file and database deletion, making admission and deletion atomic.
+func (s *Server) dvrRecordingInUseLocked(ctx context.Context, recordingID string) (bool, error) {
+	now := time.Now().UTC()
+	activeRequests := s.dvrPlaybackActive[recordingID]
+	lastSeen := s.dvrPlaybackLastSeen[recordingID]
+	if activeRequests == 0 && !lastSeen.IsZero() && now.Sub(lastSeen) >= dvrPlaybackRetentionGrace {
+		delete(s.dvrPlaybackLastSeen, recordingID)
+	}
+	if activeRequests > 0 || !lastSeen.IsZero() && now.Sub(lastSeen) < dvrPlaybackRetentionGrace {
+		return true, nil
+	}
+	var active int
+	err := s.queryBackgroundRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1
+			FROM dvr_recording_media mapping
+			JOIN playback_sessions session ON session.media_id = mapping.media_id
+			WHERE mapping.recording_id = ?
+				AND session.ended_at = '' AND lower(session.state) <> 'stopped'
+		)`, recordingID).Scan(&active)
+	if err != nil || active != 0 {
+		return active != 0, err
+	}
+	var mediaID string
+	if err := s.queryBackgroundRow(ctx, `SELECT media_id FROM dvr_recording_media WHERE recording_id = ?`, recordingID).Scan(&mediaID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return false, nil
+		}
+		return false, err
+	}
+	s.transcodeMu.Lock()
+	defer s.transcodeMu.Unlock()
+	for _, session := range s.transcodes {
+		if session != nil && session.mediaID == mediaID && !session.snapshot().stopped {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func dvrRecordingsOverSeriesCaps(candidates []dvrCleanupCandidate) map[string]bool {
@@ -659,6 +808,10 @@ func (s *Server) runDVRRecording(parentCtx context.Context, id, leaseToken strin
 		return
 	}
 	duration := time.Until(end)
+	if duration < dvrMinimumRecordingDuration {
+		s.failDVRRecordingLease(id, leaseToken, "", errors.New("recording window elapsed before enough media could be captured"))
+		return
+	}
 	outputPath, err := s.dvrOutputPath(recording, start)
 	if err != nil {
 		s.failDVRRecordingLease(id, leaseToken, "", err)
@@ -738,7 +891,6 @@ func (s *Server) runDVRRecording(parentCtx context.Context, id, leaseToken strin
 		return
 	}
 	if affected, _ := result.RowsAffected(); affected != 1 {
-		_ = os.Remove(outputPath)
 		return
 	}
 
@@ -771,7 +923,29 @@ func (s *Server) runDVRRecording(parentCtx context.Context, id, leaseToken strin
 		s.failDVRRecordingLease(id, leaseToken, workingPath, err)
 		return
 	}
+	if !info.Mode().IsRegular() || info.Size() < dvrMinimumRecordingBytes {
+		s.failDVRRecordingLease(id, leaseToken, workingPath, errors.New("recording output did not contain valid media bytes"))
+		return
+	}
 	if !s.heartbeatLiveTVTunerAllocationLease(parentCtx, "dvr_recording", id, leaseToken) {
+		// FFmpeg has already exited successfully and the artifact has been
+		// statted. Losing the allocation fence here means another owner may now
+		// control the row, so do not mark it complete; retain the bytes under the
+		// recovery-only name and let the fenced repair pass reconcile the row.
+		if incompletePath, ok := dvrIncompletePathFromLeaseWorkingPath(workingPath); ok {
+			if renameErr := os.Rename(workingPath, incompletePath); renameErr == nil {
+				completed = true
+				s.log.Warn("DVR lease was lost after recording completed; retained output for recovery", "recording", id, "path", incompletePath)
+				return
+			} else {
+				// Do not delete a successfully recorded artifact merely because the
+				// recovery rename also encountered a transient filesystem failure.
+				completed = true
+				s.log.Error("DVR lease and recovery rename failed after recording completed", "recording", id, "path", workingPath, "error", renameErr)
+				return
+			}
+		}
+		completed = true
 		return
 	}
 	if err := os.Rename(workingPath, outputPath); err != nil {
@@ -959,7 +1133,7 @@ func dvrRecordingFFmpegArgs(streamURL string, duration time.Duration, outputPath
 	if parsed, err := url.Parse(strings.TrimSpace(streamURL)); err == nil && (parsed.Scheme == "http" || parsed.Scheme == "https") {
 		args = append(args, "-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "10")
 	}
-	args = append(args, "-i", streamURL, "-t", fmt.Sprintf("%.0f", duration.Seconds()))
+	args = append(args, "-i", streamURL, "-t", strconv.FormatFloat(duration.Seconds(), 'f', 3, 64))
 	switch normalizeDVRRecordingProfile(recordingProfile) {
 	case "h264-1080p-8m":
 		args = appendDVRH264ProfileArgs(args, 1080, "8M", "16M")
@@ -1192,7 +1366,8 @@ func (s *Server) dvrOutputPath(recording DVRRecording, start time.Time) (string,
 	relativeParts := dvrRecordingPathParts(recording, start, s.dvrTimerDefaults().RecordingPathTemplate)
 	parts = append(parts, relativeParts[:len(relativeParts)-1]...)
 	dir := filepath.Join(parts...)
-	path := filepath.Join(dir, relativeParts[len(relativeParts)-1]+".mp4")
+	filename := relativeParts[len(relativeParts)-1] + "-" + safePathComponent(recording.ID) + ".mp4"
+	path := filepath.Join(dir, filename)
 	clean := filepath.Clean(path)
 	root := filepath.Clean(filepath.Join(s.cfg.AppDataDir, "recordings"))
 	if !strings.HasPrefix(clean, root+string(filepath.Separator)) {

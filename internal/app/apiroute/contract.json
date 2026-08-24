@@ -1747,6 +1747,14 @@
       "BulkMediaMetadataRequest": {
         "additionalProperties": false,
         "properties": {
+          "expectedRevisions": {
+            "additionalProperties": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "description": "Exact metadata revision for every mediaIds entry.",
+            "type": "object"
+          },
           "mediaIds": {
             "items": {
               "type": "string"
@@ -1762,6 +1770,7 @@
         },
         "required": [
           "mediaIds",
+          "expectedRevisions",
           "patch"
         ],
         "type": "object"
@@ -9011,22 +9020,67 @@
           "allowMediaDeletion": {
             "type": "boolean"
           },
-          "analyzeOnScan": {
+          "analysisTier": {
+            "enum": [
+              "file_list_only",
+              "basic",
+              "complete",
+              "custom"
+            ],
+            "type": "string"
+          },
+          "analyzeLoudness": {
             "type": "boolean"
           },
           "chapterThumbnailMode": {
             "type": "string"
           },
+          "discoverLocalArtwork": {
+            "type": "boolean"
+          },
           "emptyTrashAfterScan": {
+            "type": "boolean"
+          },
+          "extractAllEmbeddedAttachments": {
+            "type": "boolean"
+          },
+          "fetchDescriptiveMetadata": {
+            "type": "boolean"
+          },
+          "generateChapterThumbnails": {
+            "type": "boolean"
+          },
+          "generateRepresentativeThumbnail": {
+            "type": "boolean"
+          },
+          "generateTrickplay": {
             "type": "boolean"
           },
           "generateVideoPreview": {
             "type": "string"
           },
+          "probeStreams": {
+            "type": "boolean"
+          },
+          "readEmbeddedIndexes": {
+            "type": "boolean"
+          },
+          "readEmbeddedTags": {
+            "type": "boolean"
+          },
+          "readExternalSubtitlesAndLyrics": {
+            "type": "boolean"
+          },
+          "readLocalMetadata": {
+            "type": "boolean"
+          },
           "scanAutomatically": {
             "type": "boolean"
           },
           "scanOnFilesystemChanges": {
+            "type": "boolean"
+          },
+          "sonicFingerprinting": {
             "type": "boolean"
           },
           "trashRetentionDays": {
@@ -9158,6 +9212,17 @@
       },
       "LibraryStorageSource": {
         "properties": {
+          "backendKind": {
+            "enum": [
+              "filesystem",
+              "rclone",
+              "webdav"
+            ],
+            "type": "string"
+          },
+          "backendRoot": {
+            "type": "string"
+          },
           "circuitState": {
             "enum": [
               "closed",
@@ -9207,6 +9272,9 @@
           },
           "id": {
             "type": "string"
+          },
+          "inventoryComplete": {
+            "type": "boolean"
           },
           "lastFailureAt": {
             "format": "date-time",
@@ -10509,6 +10577,10 @@
       "ManualMediaMatchRequest": {
         "additionalProperties": false,
         "properties": {
+          "expectedRevision": {
+            "minimum": 0,
+            "type": "integer"
+          },
           "externalId": {
             "type": "string"
           },
@@ -10522,7 +10594,8 @@
         "required": [
           "provider",
           "externalId",
-          "externalType"
+          "externalType",
+          "expectedRevision"
         ],
         "type": "object"
       },
@@ -10543,9 +10616,6 @@
             "type": "string"
           },
           "overview": {
-            "type": "string"
-          },
-          "posterUrl": {
             "type": "string"
           },
           "provider": {
@@ -11285,9 +11355,6 @@
           "language": {
             "type": "string"
           },
-          "path": {
-            "type": "string"
-          },
           "preferred": {
             "type": "boolean"
           },
@@ -11296,9 +11363,6 @@
           },
           "rating": {
             "type": "number"
-          },
-          "remoteUrl": {
-            "type": "string"
           },
           "sortOrder": {
             "type": "integer"
@@ -11545,9 +11609,6 @@
           "sortTitle": {
             "type": "string"
           },
-          "sourceUrl": {
-            "type": "string"
-          },
           "state": {
             "$ref": "#/components/schemas/MediaState"
           },
@@ -11648,9 +11709,6 @@
             "type": "string"
           },
           "language": {
-            "type": "string"
-          },
-          "path": {
             "type": "string"
           },
           "provider": {
@@ -12245,6 +12303,15 @@
           "movies": {
             "enum": [
               "TMDB",
+              "TVDB",
+              "None"
+            ],
+            "type": "string"
+          },
+          "moviesFallback": {
+            "enum": [
+              "TMDB",
+              "TVDB",
               "None"
             ],
             "type": "string"
@@ -12269,9 +12336,21 @@
           "tv": {
             "enum": [
               "TMDB",
+              "TVDB",
               "None"
             ],
             "type": "string"
+          },
+          "tvFallback": {
+            "enum": [
+              "TMDB",
+              "TVDB",
+              "None"
+            ],
+            "type": "string"
+          },
+          "tvdbAPIKey": {
+            "$ref": "#/components/schemas/SettingsSecretState"
           }
         },
         "type": "object"
@@ -12302,6 +12381,15 @@
           "movies": {
             "enum": [
               "TMDB",
+              "TVDB",
+              "None"
+            ],
+            "type": "string"
+          },
+          "moviesFallback": {
+            "enum": [
+              "TMDB",
+              "TVDB",
               "None"
             ],
             "type": "string"
@@ -12326,9 +12414,21 @@
           "tv": {
             "enum": [
               "TMDB",
+              "TVDB",
               "None"
             ],
             "type": "string"
+          },
+          "tvFallback": {
+            "enum": [
+              "TMDB",
+              "TVDB",
+              "None"
+            ],
+            "type": "string"
+          },
+          "tvdbAPIKey": {
+            "$ref": "#/components/schemas/SettingsSecretChange"
           }
         },
         "type": "object"
@@ -14209,6 +14309,47 @@
       },
       "PlaybackCapabilityTuple": {
         "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "mediaKind": {
+                  "const": "audiovisual"
+                }
+              },
+              "required": [
+                "mediaKind"
+              ]
+            },
+            "then": {
+              "required": [
+                "video"
+              ]
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "mediaKind": {
+                  "const": "audio"
+                }
+              },
+              "required": [
+                "mediaKind"
+              ]
+            },
+            "then": {
+              "not": {
+                "required": [
+                  "video"
+                ]
+              },
+              "required": [
+                "audio"
+              ]
+            }
+          }
+        ],
         "properties": {
           "audio": {
             "$ref": "#/components/schemas/PlaybackCapabilityAudio"
@@ -14242,7 +14383,6 @@
           "mediaKind",
           "protocol",
           "container",
-          "audio",
           "subtitle"
         ],
         "type": "object"
@@ -18944,6 +19084,190 @@
         ],
         "type": "object"
       },
+      "RemoteStorageSource": {
+        "additionalProperties": false,
+        "properties": {
+          "analysisMode": {
+            "enum": [
+              "file_list_only",
+              "basic",
+              "complete",
+              "custom"
+            ],
+            "type": "string"
+          },
+          "credentialPresent": {
+            "type": "boolean"
+          },
+          "endpoint": {
+            "type": "string"
+          },
+          "health": {
+            "enum": [
+              "unknown",
+              "healthy",
+              "degraded",
+              "offline",
+              "stalled"
+            ],
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "inventoryStatus": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "rclone",
+              "webdav"
+            ],
+            "type": "string"
+          },
+          "libraryId": {
+            "type": "string"
+          },
+          "missingObjects": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "objects": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "root": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "libraryId",
+          "kind",
+          "name",
+          "health",
+          "inventoryStatus",
+          "objects",
+          "missingObjects",
+          "credentialPresent",
+          "analysisMode",
+          "updatedAt"
+        ],
+        "type": "object",
+        "x-portico-audience": "viewer"
+      },
+      "RemoteStorageSourceListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RemoteStorageSource"
+            },
+            "type": "array"
+          },
+          "limit": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "total": {
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit"
+        ],
+        "type": "object",
+        "x-portico-audience": "viewer"
+      },
+      "RemoteStorageSourcePatchRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "analysisMode": {
+            "enum": [
+              "file_list_only",
+              "basic",
+              "complete",
+              "custom"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "analysisMode"
+        ],
+        "type": "object"
+      },
+      "RemoteStorageSourceRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "analysisMode": {
+            "default": "basic",
+            "description": "Basic queues bounded range probes after inventory and is recommended for remote sources. File List Only performs no media-object content reads during scans. Complete permits sustained/full-file reads. Custom performs exactly the enabled library Custom operations.",
+            "enum": [
+              "file_list_only",
+              "basic",
+              "complete",
+              "custom"
+            ],
+            "type": "string"
+          },
+          "endpoint": {
+            "format": "uri",
+            "type": "string",
+            "writeOnly": true
+          },
+          "kind": {
+            "enum": [
+              "rclone",
+              "webdav"
+            ],
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 120,
+            "minLength": 1,
+            "type": "string"
+          },
+          "password": {
+            "type": "string",
+            "writeOnly": true
+          },
+          "rcloneBinaryPath": {
+            "type": "string",
+            "writeOnly": true
+          },
+          "rcloneConfig": {
+            "type": "string",
+            "writeOnly": true
+          },
+          "rcloneRemoteName": {
+            "type": "string",
+            "writeOnly": true
+          },
+          "root": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string",
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "kind",
+          "name"
+        ],
+        "type": "object"
+      },
       "ResolvedPlaybackPolicy": {
         "additionalProperties": false,
         "description": "Canonical media-agnostic playback policy. Protocol-specific controls are additive nested extensions and never replace these required delivery fields.",
@@ -21116,6 +21440,9 @@
           "applyImpact": {
             "$ref": "#/components/schemas/SettingsApplyImpact"
           },
+          "generation": {
+            "$ref": "#/components/schemas/SettingsGeneration"
+          },
           "groups": {
             "$ref": "#/components/schemas/SettingsGroups"
           },
@@ -21145,10 +21472,40 @@
           "groups",
           "restartRequired",
           "restartRequiredFields",
-          "applyImpact"
+          "applyImpact",
+          "generation"
         ],
         "type": "object",
         "x-portico-audience": "management"
+      },
+      "SettingsGeneration": {
+        "additionalProperties": false,
+        "properties": {
+          "activeRevision": {
+            "type": "string"
+          },
+          "instruction": {
+            "type": "string"
+          },
+          "mode": {
+            "enum": [
+              "hot",
+              "next-operation",
+              "scheduled",
+              "restart-required"
+            ],
+            "type": "string"
+          },
+          "pendingRevision": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "mode",
+          "activeRevision",
+          "instruction"
+        ],
+        "type": "object"
       },
       "SettingsGroupSummary": {
         "properties": {
@@ -21307,6 +21664,194 @@
         },
         "type": "object"
       },
+      "SettingsRegistryField": {
+        "additionalProperties": false,
+        "properties": {
+          "applicationMode": {
+            "enum": [
+              "hot",
+              "next-operation",
+              "scheduled",
+              "restart-required"
+            ],
+            "type": "string"
+          },
+          "auditClass": {
+            "type": "string"
+          },
+          "canonicalDefault": {},
+          "capability": {
+            "type": "string"
+          },
+          "contractRevision": {
+            "type": "string"
+          },
+          "defaultAuthority": {
+            "type": "string"
+          },
+          "dependencies": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "id": {
+            "type": "string"
+          },
+          "operationalHealthSource": {
+            "type": "string"
+          },
+          "operationalStatus": {
+            "type": "string"
+          },
+          "outcomeTest": {
+            "type": "string"
+          },
+          "permission": {
+            "type": "string"
+          },
+          "redactionBehavior": {
+            "type": "string"
+          },
+          "retentionClass": {
+            "type": "string"
+          },
+          "runtimeConsumer": {
+            "type": "string"
+          },
+          "saveMode": {
+            "enum": [
+              "autosave",
+              "explicit-apply",
+              "command",
+              "destructive-confirmation"
+            ],
+            "type": "string"
+          },
+          "secret": {
+            "type": "boolean"
+          },
+          "secretClassification": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "validation": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "validation",
+          "outcomeTest",
+          "defaultAuthority",
+          "saveMode",
+          "applicationMode",
+          "permission",
+          "capability",
+          "runtimeConsumer",
+          "operationalHealthSource",
+          "operationalStatus",
+          "secret",
+          "secretClassification",
+          "redactionBehavior",
+          "auditClass",
+          "retentionClass",
+          "contractRevision"
+        ],
+        "type": "object"
+      },
+      "SettingsRegistryGroup": {
+        "additionalProperties": false,
+        "properties": {
+          "fields": {
+            "items": {
+              "$ref": "#/components/schemas/SettingsRegistryField"
+            },
+            "type": "array"
+          },
+          "id": {
+            "type": "string"
+          },
+          "operationalHealthSource": {
+            "type": "string"
+          },
+          "ownerScope": {
+            "type": "string"
+          },
+          "permittedOverrideScopes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "revision": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "runtimeConsumer": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "ownerScope",
+          "permittedOverrideScopes",
+          "runtimeConsumer",
+          "operationalHealthSource",
+          "revision",
+          "fields"
+        ],
+        "type": "object"
+      },
+      "SettingsRegistryResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "contractId": {
+            "const": "PC-SETTINGS-OPERATIONS",
+            "type": "string"
+          },
+          "contractRevision": {
+            "const": "settings-operations.v1",
+            "type": "string"
+          },
+          "generatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/SettingsRegistryGroup"
+            },
+            "type": "array"
+          },
+          "kind": {
+            "const": "settings-registry",
+            "type": "string"
+          },
+          "revision": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "scope": {
+            "const": "server",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "contractId",
+          "contractRevision",
+          "scope",
+          "revision",
+          "groups",
+          "generatedAt"
+        ],
+        "type": "object",
+        "x-portico-audience": "management"
+      },
       "SettingsSecretChange": {
         "additionalProperties": false,
         "description": "Supply either a non-blank replacement or remove=true. Existing secret material is never returned.",
@@ -21373,10 +21918,17 @@
           },
           "groups": {
             "$ref": "#/components/schemas/SettingsGroupsUpdate"
+          },
+          "idempotencyKey": {
+            "description": "Required mutation receipt key. Repeating the same key and body returns the same committed outcome; reusing it for different intent is rejected.",
+            "maxLength": 200,
+            "minLength": 16,
+            "type": "string"
           }
         },
         "required": [
           "expectedRevision",
+          "idempotencyKey",
           "groups"
         ],
         "type": "object"
@@ -22068,236 +22620,6 @@
         "type": "object",
         "x-portico-audience": "management"
       },
-      "TVSetupEncryptedGrant": {
-        "properties": {
-          "algorithm": {
-            "enum": [
-              "X25519-HKDF-SHA256-AESGCM"
-            ],
-            "type": "string"
-          },
-          "ciphertext": {
-            "type": "string"
-          },
-          "nonce": {
-            "type": "string"
-          },
-          "serverPublicKey": {
-            "type": "string"
-          },
-          "version": {
-            "example": 1,
-            "type": "integer"
-          }
-        },
-        "required": [
-          "version",
-          "algorithm",
-          "serverPublicKey",
-          "nonce",
-          "ciphertext"
-        ],
-        "type": "object"
-      },
-      "TVSetupGrantRequest": {
-        "properties": {
-          "code": {
-            "description": "Canonical protocol-v1 code. The runtime also normalizes lowercase, ordinary spaces, and at most one dash.",
-            "pattern": "^[A-HJ-KM-NP-Z2-9]{4}-[A-HJ-KM-NP-Z2-9]{4}$",
-            "type": "string"
-          },
-          "devicePublicKey": {
-            "type": "string"
-          },
-          "setupSessionId": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "code"
-        ],
-        "type": "object"
-      },
-      "TVSetupGrantResponse": {
-        "additionalProperties": false,
-        "properties": {
-          "encryptedGrant": {
-            "$ref": "#/components/schemas/TVSetupEncryptedGrant"
-          },
-          "expiresAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "setupSessionId": {
-            "type": "string"
-          },
-          "status": {
-            "enum": [
-              "grant_ready"
-            ],
-            "type": "string"
-          }
-        },
-        "required": [
-          "setupSessionId",
-          "status",
-          "encryptedGrant",
-          "expiresAt"
-        ],
-        "type": "object",
-        "x-portico-audience": "viewer"
-      },
-      "TVSetupRedeemRequest": {
-        "properties": {
-          "appVersion": {
-            "type": "string"
-          },
-          "deviceName": {
-            "type": "string"
-          },
-          "grantSecret": {
-            "type": "string"
-          },
-          "platform": {
-            "type": "string"
-          },
-          "setupSessionId": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "setupSessionId",
-          "grantSecret"
-        ],
-        "type": "object"
-      },
-      "TVSetupSession": {
-        "additionalProperties": false,
-        "properties": {
-          "appVersion": {
-            "type": "string"
-          },
-          "authModeHint": {
-            "enum": [
-              "unknown",
-              "local",
-              "portico-account"
-            ],
-            "type": "string"
-          },
-          "code": {
-            "description": "Protocol-v1 XXXX-XXXX setup code.",
-            "pattern": "^[A-HJ-KM-NP-Z2-9]{4}-[A-HJ-KM-NP-Z2-9]{4}$",
-            "type": "string"
-          },
-          "deviceName": {
-            "type": "string"
-          },
-          "devicePublicKey": {
-            "type": "string"
-          },
-          "encryptedGrant": {
-            "$ref": "#/components/schemas/TVSetupEncryptedGrant"
-          },
-          "endpointUrl": {
-            "format": "uri",
-            "type": "string"
-          },
-          "expiresAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "platform": {
-            "type": "string"
-          },
-          "pollIntervalSeconds": {
-            "type": "integer"
-          },
-          "protocolVersion": {
-            "enum": [
-              1
-            ],
-            "type": "integer"
-          },
-          "serverHint": {
-            "type": "string"
-          },
-          "service": {
-            "example": "_portico-setup._tcp.local.",
-            "type": "string"
-          },
-          "setupSessionId": {
-            "type": "string"
-          },
-          "status": {
-            "enum": [
-              "pending",
-              "grant_ready",
-              "redeemed",
-              "expired"
-            ],
-            "type": "string"
-          }
-        },
-        "required": [
-          "setupSessionId",
-          "code",
-          "status",
-          "protocolVersion",
-          "service",
-          "devicePublicKey",
-          "deviceName",
-          "platform",
-          "authModeHint",
-          "expiresAt",
-          "pollIntervalSeconds"
-        ],
-        "type": "object",
-        "x-portico-audience": "viewer"
-      },
-      "TVSetupSessionRequest": {
-        "properties": {
-          "appVersion": {
-            "type": "string"
-          },
-          "authModeHint": {
-            "enum": [
-              "unknown",
-              "local",
-              "portico-account"
-            ],
-            "type": "string"
-          },
-          "deviceName": {
-            "type": "string"
-          },
-          "devicePublicKey": {
-            "description": "Base64url encoded ephemeral TV setup public key.",
-            "type": "string"
-          },
-          "endpointUrl": {
-            "format": "uri",
-            "type": "string"
-          },
-          "installationId": {
-            "description": "Optional, non-secret app-installation metadata used for continuity and diagnostics. It is never authentication proof.",
-            "maxLength": 128,
-            "minLength": 16,
-            "pattern": "^[A-Za-z0-9._:-]+$",
-            "type": "string"
-          },
-          "platform": {
-            "type": "string"
-          },
-          "serverHint": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "devicePublicKey"
-        ],
-        "type": "object"
-      },
       "TelemetryMetricStatus": {
         "additionalProperties": false,
         "properties": {
@@ -22768,6 +23090,7 @@
         "type": "object"
       },
       "UpdateMediaRequest": {
+        "additionalProperties": false,
         "description": "Partial editable media metadata. Omitted fields are left unchanged.",
         "properties": {
           "artSeed": {
@@ -22791,13 +23114,14 @@
           "criticRating": {
             "type": "integer"
           },
-          "durationSeconds": {
-            "type": "integer"
-          },
           "edition": {
             "type": "string"
           },
           "episodeNumber": {
+            "type": "integer"
+          },
+          "expectedRevision": {
+            "minimum": 0,
             "type": "integer"
           },
           "genres": {
@@ -22839,9 +23163,6 @@
           "sortTitle": {
             "type": "string"
           },
-          "sourceUrl": {
-            "type": "string"
-          },
           "studio": {
             "type": "string"
           },
@@ -22870,6 +23191,9 @@
             "type": "integer"
           }
         },
+        "required": [
+          "expectedRevision"
+        ],
         "type": "object"
       },
       "User": {
@@ -34123,500 +34447,6 @@
         ]
       }
     },
-    "/auth/tv-setup/grants": {
-      "post": {
-        "description": "Authenticated mobile request that creates an encrypted, one-time setup grant for the selected TV. The mobile bearer token is never included in the grant.",
-        "operationId": "postAuthTvSetupGrants",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/TVSetupGrantRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TVSetupGrantResponse"
-                }
-              }
-            },
-            "description": "Encrypted TV setup grant created"
-          },
-          "400": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "400 Bad Request"
-          },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "401 Unauthorized"
-          },
-          "403": {
-            "$ref": "#/components/responses/Forbidden",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "403 Forbidden"
-          },
-          "404": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "404 Not Found"
-          },
-          "405": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "405 Method Not Allowed"
-          },
-          "409": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "409 Conflict"
-          },
-          "429": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "429 Too Many Requests"
-          },
-          "500": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "500 Internal Server Error"
-          }
-        },
-        "summary": "Authorize a Nearby TV Setup session",
-        "x-portico-audience": "viewer",
-        "x-portico-audit-event": "api.postAuthTvSetupGrants",
-        "x-portico-auth": "session",
-        "x-portico-permission": "authenticated",
-        "x-portico-rate-policy": "auth-sensitive",
-        "x-portico-runtime-registered": true,
-        "x-portico-surfaces": [
-          "web",
-          "mobile",
-          "television"
-        ]
-      }
-    },
-    "/auth/tv-setup/redeem": {
-      "post": {
-        "operationId": "postAuthTvSetupRedeem",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/TVSetupRedeemRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/NativeSessionCredentials"
-                }
-              }
-            },
-            "description": "TV native credentials created"
-          },
-          "400": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "400 Bad Request"
-          },
-          "401": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "401 Unauthorized"
-          },
-          "403": {
-            "$ref": "#/components/responses/Forbidden",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "403 Forbidden"
-          },
-          "404": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "404 Not Found"
-          },
-          "405": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "405 Method Not Allowed"
-          },
-          "409": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "409 Conflict"
-          },
-          "429": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "429 Too Many Requests"
-          },
-          "500": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "500 Internal Server Error"
-          }
-        },
-        "security": [],
-        "summary": "Redeem a Nearby TV Setup grant or recover its committed device session within five minutes",
-        "x-portico-audience": "viewer",
-        "x-portico-audit-event": "api.postAuthTvSetupRedeem",
-        "x-portico-auth": "public",
-        "x-portico-permission": "public",
-        "x-portico-rate-policy": "auth-sensitive",
-        "x-portico-runtime-registered": true,
-        "x-portico-surfaces": [
-          "web",
-          "mobile",
-          "television"
-        ]
-      }
-    },
-    "/auth/tv-setup/sessions": {
-      "post": {
-        "description": "Creates a short-lived unauthenticated TV setup session with sparse setup metadata. The response is safe to show on TV or advertise over local discovery.",
-        "operationId": "postAuthTvSetupSessions",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/TVSetupSessionRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TVSetupSession"
-                }
-              }
-            },
-            "description": "TV setup session created"
-          },
-          "400": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "400 Bad Request"
-          },
-          "401": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "401 Unauthorized"
-          },
-          "403": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "403 Forbidden"
-          },
-          "404": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "404 Not Found"
-          },
-          "405": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "405 Method Not Allowed"
-          },
-          "409": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "409 Conflict"
-          },
-          "429": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "429 Too Many Requests"
-          },
-          "500": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "500 Internal Server Error"
-          },
-          "503": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "The active setup-code namespace could not be allocated within the bounded retry budget."
-          }
-        },
-        "security": [],
-        "summary": "Create a Nearby TV Setup session",
-        "x-portico-audience": "viewer",
-        "x-portico-audit-event": "api.postAuthTvSetupSessions",
-        "x-portico-auth": "public",
-        "x-portico-permission": "public",
-        "x-portico-rate-policy": "auth-sensitive",
-        "x-portico-runtime-registered": true,
-        "x-portico-surfaces": [
-          "web",
-          "mobile",
-          "television"
-        ]
-      }
-    },
-    "/auth/tv-setup/sessions/{setupSessionId}": {
-      "get": {
-        "operationId": "getAuthTvSetupSessionsSetupSessionId",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "setupSessionId",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TVSetupSession"
-                }
-              }
-            },
-            "description": "Sanitized TV setup session status"
-          },
-          "400": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "400 Bad Request"
-          },
-          "401": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "401 Unauthorized"
-          },
-          "403": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "403 Forbidden"
-          },
-          "404": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "404 Not Found"
-          },
-          "405": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "405 Method Not Allowed"
-          },
-          "409": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "409 Conflict"
-          },
-          "429": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "429 Too Many Requests"
-          },
-          "500": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "500 Internal Server Error"
-          }
-        },
-        "security": [],
-        "summary": "Poll Nearby TV Setup session status",
-        "x-portico-audience": "viewer",
-        "x-portico-audit-event": "none",
-        "x-portico-auth": "public",
-        "x-portico-permission": "public",
-        "x-portico-rate-policy": "auth-sensitive",
-        "x-portico-runtime-registered": true,
-        "x-portico-surfaces": [
-          "web",
-          "mobile",
-          "television"
-        ]
-      }
-    },
     "/backups": {
       "get": {
         "operationId": "getBackups",
@@ -43244,6 +43074,751 @@
         ]
       }
     },
+    "/libraries/{id}/remote-storage-sources": {
+      "get": {
+        "operationId": "getLibrariesIdRemoteStorageSources",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RemoteStorageSourceListResponse"
+                }
+              }
+            },
+            "description": "Remote storage sources"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "400 Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "401 Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "403 Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "404 Not Found"
+          },
+          "405": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "405 Method Not Allowed"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "409 Conflict"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "429 Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "500 Internal Server Error"
+          }
+        },
+        "summary": "List managed remote storage sources",
+        "x-portico-audience": "viewer",
+        "x-portico-audit-event": "none",
+        "x-portico-auth": "session",
+        "x-portico-permission": "authenticated",
+        "x-portico-rate-policy": "interactive-read",
+        "x-portico-runtime-registered": true,
+        "x-portico-surfaces": [
+          "web",
+          "mobile",
+          "television"
+        ]
+      },
+      "post": {
+        "operationId": "postLibrariesIdRemoteStorageSources",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RemoteStorageSourceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RemoteStorageSource"
+                }
+              }
+            },
+            "description": "Created source with write-only credentials omitted"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "400 Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "401 Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "403 Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "404 Not Found"
+          },
+          "405": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "405 Method Not Allowed"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "409 Conflict"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "429 Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "500 Internal Server Error"
+          }
+        },
+        "summary": "Create a managed rclone or WebDAV source",
+        "x-portico-audience": "management",
+        "x-portico-audit-event": "api.postLibrariesIdRemoteStorageSources",
+        "x-portico-auth": "session",
+        "x-portico-permission": "manage-libraries",
+        "x-portico-rate-policy": "state-mutation",
+        "x-portico-runtime-registered": true,
+        "x-portico-surfaces": [
+          "web-admin"
+        ]
+      }
+    },
+    "/libraries/{id}/remote-storage-sources/{sourceId}": {
+      "delete": {
+        "operationId": "deleteLibrariesIdRemoteStorageSourcesSourceId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sourceId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Removed"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "400 Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "401 Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "403 Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "404 Not Found"
+          },
+          "405": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "405 Method Not Allowed"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "409 Conflict"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "429 Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "500 Internal Server Error"
+          }
+        },
+        "summary": "Remove a managed remote storage source",
+        "x-portico-audience": "management",
+        "x-portico-audit-event": "api.deleteLibrariesIdRemoteStorageSourcesSourceId",
+        "x-portico-auth": "session",
+        "x-portico-permission": "manage-libraries",
+        "x-portico-rate-policy": "state-mutation",
+        "x-portico-runtime-registered": true,
+        "x-portico-surfaces": [
+          "web-admin"
+        ]
+      },
+      "get": {
+        "operationId": "getLibrariesIdRemoteStorageSourcesSourceId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sourceId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RemoteStorageSource"
+                }
+              }
+            },
+            "description": "Remote storage source"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "400 Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "401 Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "403 Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "404 Not Found"
+          },
+          "405": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "405 Method Not Allowed"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "409 Conflict"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "429 Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "500 Internal Server Error"
+          }
+        },
+        "summary": "Get managed remote storage status",
+        "x-portico-audience": "viewer",
+        "x-portico-audit-event": "none",
+        "x-portico-auth": "session",
+        "x-portico-permission": "authenticated",
+        "x-portico-rate-policy": "interactive-read",
+        "x-portico-runtime-registered": true,
+        "x-portico-surfaces": [
+          "web",
+          "mobile",
+          "television"
+        ]
+      },
+      "patch": {
+        "operationId": "patchLibrariesIdRemoteStorageSourcesSourceId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sourceId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RemoteStorageSourcePatchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RemoteStorageSource"
+                }
+              }
+            },
+            "description": "Updated remote storage source"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "400 Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "401 Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "403 Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "404 Not Found"
+          },
+          "405": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "405 Method Not Allowed"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "409 Conflict"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "429 Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "500 Internal Server Error"
+          }
+        },
+        "summary": "Update remote scan depth",
+        "x-portico-audience": "management",
+        "x-portico-audit-event": "api.patchLibrariesIdRemoteStorageSourcesSourceId",
+        "x-portico-auth": "session",
+        "x-portico-permission": "manage-libraries",
+        "x-portico-rate-policy": "state-mutation",
+        "x-portico-runtime-registered": true,
+        "x-portico-surfaces": [
+          "web-admin"
+        ]
+      }
+    },
+    "/libraries/{id}/remote-storage-sources/{sourceId}/inventory": {
+      "post": {
+        "operationId": "postLibrariesIdRemoteStorageSourcesSourceIdInventory",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sourceId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Job"
+                }
+              }
+            },
+            "description": "Inventory queued"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "400 Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "401 Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "403 Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "404 Not Found"
+          },
+          "405": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "405 Method Not Allowed"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "409 Conflict"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "429 Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "500 Internal Server Error"
+          }
+        },
+        "summary": "Queue remote inventory and catalog reconciliation",
+        "x-portico-audience": "management",
+        "x-portico-audit-event": "api.postLibrariesIdRemoteStorageSourcesSourceIdInventory",
+        "x-portico-auth": "session",
+        "x-portico-permission": "manage-libraries",
+        "x-portico-rate-policy": "state-mutation",
+        "x-portico-runtime-registered": true,
+        "x-portico-surfaces": [
+          "web-admin"
+        ]
+      }
+    },
     "/libraries/{id}/scan": {
       "post": {
         "description": "Queues one coalesced library-level operation. remove_missing requires confirmedRunId from the latest /scan-review response; the server rejects stale, degraded, or non-authoritative reconciliation evidence.",
@@ -46127,7 +46702,7 @@
           },
           {
             "in": "query",
-            "name": "uri",
+            "name": "ref",
             "required": true,
             "schema": {
               "type": "string"
@@ -66037,6 +66612,114 @@
         "x-portico-auth": "session",
         "x-portico-permission": "manage-server",
         "x-portico-rate-policy": "state-mutation",
+        "x-portico-runtime-registered": true,
+        "x-portico-surfaces": [
+          "web-admin"
+        ]
+      }
+    },
+    "/settings/registry": {
+      "get": {
+        "description": "Returns owner scope, validation, runtime consumer, application, capability, secret, audit, retention, and outcome-test metadata for every writable server field.",
+        "operationId": "getSettingsRegistry",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsRegistryResponse"
+                }
+              }
+            },
+            "description": "Settings field registry"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "400 Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "401 Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "403 Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "404 Not Found"
+          },
+          "405": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "405 Method Not Allowed"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "409 Conflict"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "429 Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "500 Internal Server Error"
+          }
+        },
+        "summary": "Get the authoritative server settings field registry",
+        "x-portico-audience": "management",
+        "x-portico-audit-event": "none",
+        "x-portico-auth": "session",
+        "x-portico-permission": "manage-server",
+        "x-portico-rate-policy": "interactive-read",
         "x-portico-runtime-registered": true,
         "x-portico-surfaces": [
           "web-admin"

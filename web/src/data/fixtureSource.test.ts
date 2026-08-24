@@ -89,19 +89,19 @@ describe('FixturePorticoDataSource', () => {
     const signal = new AbortController().signal;
     const item = (await source.browseLibrary(input(), signal)).items[0];
 
-    await source.uploadMediaImage(item.id, 'poster', new File(['image'], 'poster.png', { type: 'image/png' }), signal);
+    await source.uploadMediaImage(item.id, 'poster', new File(['image'], 'poster.png', { type: 'image/png' }), 1, signal);
     let detail = await source.media(item.id, signal);
     const uploaded = detail.mediaImages?.find((image) => image.source === 'manual');
     const provider = detail.mediaImages?.find((image) => image.type === 'poster' && image.source === 'provider');
     expect(uploaded).toMatchObject({ type: 'poster', provider: 'upload', preferred: true });
     expect(provider?.preferred).toBe(false);
 
-    await source.setPreferredMediaImage(item.id, provider!.id, signal);
-    await source.reorderMediaImages(item.id, [uploaded!.id, provider!.id], signal);
+    await source.setPreferredMediaImage(item.id, provider!.id, 1, signal);
+    await source.reorderMediaImages(item.id, [uploaded!.id, provider!.id], 1, signal);
     detail = await source.media(item.id, signal);
     expect(detail.mediaImages?.find((image) => image.id === provider!.id)).toMatchObject({ preferred: true, sortOrder: 1 });
 
-    await source.deleteMediaImage(item.id, uploaded!.id, signal);
+    await source.deleteMediaImage(item.id, uploaded!.id, 1, signal);
     detail = await source.media(item.id, signal);
     expect(detail.mediaImages?.some((image) => image.id === uploaded!.id)).toBe(false);
   });

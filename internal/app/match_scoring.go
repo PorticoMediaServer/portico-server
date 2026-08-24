@@ -26,6 +26,11 @@ type CandidateScore struct {
 type scoreReason = ScoreReason
 type candidateScore = CandidateScore
 
+const (
+	automaticMatchMinimumScore  = 85.0
+	automaticMatchMinimumMargin = 12.0
+)
+
 func (s *CandidateScore) add(code string, delta float64, detail string) {
 	if code == "" || delta == 0 {
 		return
@@ -36,6 +41,48 @@ func (s *CandidateScore) add(code string, delta float64, detail string) {
 
 func (s CandidateScore) accepted(threshold float64) bool {
 	return s.Score >= threshold
+}
+
+// automaticMetadataMatchAccepted implements the PC-METADATA automatic
+// acceptance floor. Scores in this package use a 0..100 scale, so the
+// contract's 0.85 confidence and 0.12 margin are represented as 85 and 12.
+// Popularity may break a tie, but is deliberately not an identity signal.
+func automaticMetadataMatchAccepted(best CandidateScore, nextIncompatible *CandidateScore) bool {
+	if best.Score < automaticMatchMinimumScore || metadataScoreHasHardContradiction(best) || metadataStrongSignalCount(best) < 2 {
+		return false
+	}
+	return nextIncompatible == nil || best.Score-nextIncompatible.Score >= automaticMatchMinimumMargin
+}
+
+func metadataScoreHasHardContradiction(score CandidateScore) bool {
+	for _, reason := range score.Reasons {
+		if strings.Contains(reason.Code, "conflict") || strings.Contains(reason.Code, "wrong_kind") {
+			return true
+		}
+	}
+	return false
+}
+
+func metadataStrongSignalCount(score CandidateScore) int {
+	signals := map[string]bool{}
+	for _, reason := range score.Reasons {
+		code := strings.ToLower(strings.TrimSpace(reason.Code))
+		switch {
+		case (code == "title_exact" || code == "title_similar") && reason.Delta >= 55:
+			signals["title"] = true
+		case code == "year_exact" || code == "year_near" || code == "evidence_year_exact" || code == "evidence_year_near":
+			signals["year"] = true
+		case strings.Contains(code, "season_number_exact") || strings.Contains(code, "episode_number_exact"):
+			signals["hierarchy"] = true
+		case strings.Contains(code, "track_number_exact"):
+			signals["track"] = true
+		case strings.Contains(code, "parent_title_exact") || strings.Contains(code, "album_title_exact"):
+			signals["parent"] = true
+		case strings.Contains(code, "grandparent_title_exact") || strings.Contains(code, "artist_exact") || strings.Contains(code, "album_artist_exact"):
+			signals["creator"] = true
+		}
+	}
+	return len(signals)
 }
 
 func (s CandidateScore) reasonCodesJSON() string {

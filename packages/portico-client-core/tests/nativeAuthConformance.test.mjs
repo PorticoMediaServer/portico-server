@@ -58,7 +58,9 @@ function hostedProfileBinding(serverId, installationId = "installation-test") {
 
 function routeDocument(serverId, routes) {
   return {
+    kind: "route-document",
     documentVersion: 1,
+    endpointGeneration: 1,
     audience: "portico-media-server",
     signatureAlgorithm: "ed25519",
     signatureKeyId: "fixture-key",
@@ -97,7 +99,7 @@ function attachmentLocalClient(store, serverId, issued, overrides = {}) {
 test("published native auth fixture is complete and security-preserving", () => {
   assert.equal(fixture.schemaVersion, 1);
   assert.deepEqual(Object.keys(fixture.flows).sort(), [
-    "hostedAccountSession", "localNativeSession", "porticoServerSession", "tvPairing"
+    "hostedAccountSession", "localNativeSession", "porticoServerSession"
   ]);
   assert.equal(fixture.refreshPolicy.singleFlight, true);
   assert.equal(fixture.refreshPolicy.maxAutomaticRetries, 1);
@@ -152,22 +154,6 @@ test("local native creation is durable and restores after an app restart", async
     url: "https://local.example/api/auth/me",
     authorization: "Bearer local-access"
   }]);
-});
-
-test("TV grant redemption persists credentials before returning to the app", async () => {
-  let saved;
-  const client = createPorticoClient({
-    apiBaseUrl: "https://tv-server.example",
-    credentialAdapter: {
-      save: async (session) => { saved = structuredClone(session); },
-      clear: async () => {}
-    },
-    transport: { fetch: async () => jsonResponse(credentials("tv-access", "tv-refresh")) }
-  });
-  await client.redeemTVSetupGrant({ setupSessionId: "setup-1", grantSecret: "grant-secret" });
-  assert.equal(saved.apiBaseUrl, "https://tv-server.example");
-  assert.equal(saved.accessToken, "tv-access");
-  assert.equal(saved.refreshToken, "tv-refresh");
 });
 
 test("one-time Portico bootstrap never falls back to a Hosted server refresh", async () => {

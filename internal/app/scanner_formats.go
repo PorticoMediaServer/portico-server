@@ -47,7 +47,7 @@ func logicalDiscSourceForPath(library Library, root, path string) (scannerMediaF
 	return scannerMediaFile{
 		ID: id, FileID: scannerFileID(id, path), LibraryID: library.ID,
 		Type: "movie", Title: title, SortTitle: sortableTitle(title),
-		SourcePath: path, DisplayPath: path, SourceType: kind,
+		SourcePath: path, ScanRoot: root, DisplayPath: path, SourceType: kind,
 		FileSize: fileSize(info), FileModTime: fileModTime(info),
 		Version: version, ArtSeed: container, LocalMetadata: local,
 	}, true

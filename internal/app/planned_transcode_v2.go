@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -174,15 +176,17 @@ func (s *Server) acquirePlannedTranscodeAdmission(key string, generation int, se
 // absent from the persisted playback plan. Hardware must be the exact plan
 // produced from verified probe evidence; this adapter never guesses a device.
 type plannedVODHLSRequest struct {
-	Item            MediaItem
-	Binding         playbackExecutionBinding
-	Identity        plannedTranscodeIdentity
-	GenerationRoot  string
-	SegmentSeconds  int
-	StartNumber     int
-	Hardware        *playbackhw.Plan
-	RemoteSource    bool
-	ResolveSubtitle func(context.Context, MediaItem, playbackplan.Plan) (string, error)
+	Item             MediaItem
+	Binding          playbackExecutionBinding
+	Identity         plannedTranscodeIdentity
+	GenerationRoot   string
+	SegmentSeconds   int
+	StartNumber      int
+	Hardware         *playbackhw.Plan
+	RemoteSource     bool
+	SourcePath       string
+	RemoteObjectPath string
+	ResolveSubtitle  func(context.Context, MediaItem, playbackplan.Plan) (string, error)
 }
 
 // plannedVODHLSCommand is safe to hand to the shared FFmpeg supervisor. Args
@@ -253,7 +257,20 @@ func (s *Server) compilePlannedVODHLS(ctx context.Context, req plannedVODHLSRequ
 		return plannedVODHLSCommand{}, fmt.Errorf("%w: source identity changed", errPlannedTranscode)
 	}
 	sourcePath := "pipe:0"
-	if !req.RemoteSource {
+	if req.RemoteSource && strings.TrimSpace(req.SourcePath) != "" {
+		parsed, parseErr := url.Parse(strings.TrimSpace(req.SourcePath))
+		hostname := ""
+		if parsed != nil {
+			hostname = parsed.Hostname()
+		}
+		ip := net.ParseIP(hostname)
+		port, portErr := strconv.Atoi(parsed.Port())
+		pathParts := strings.Split(strings.Trim(parsed.EscapedPath(), "/"), "/")
+		if parseErr != nil || parsed.Scheme != "http" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" || ip == nil || !ip.IsLoopback() || portErr != nil || port < 1024 || port > 65535 || len(pathParts) != 1 || !strings.HasPrefix(pathParts[0], "probe_") || len(pathParts[0]) < 20 {
+			return plannedVODHLSCommand{}, fmt.Errorf("%w: remote VOD transport must be an opaque loopback capability", errPlannedTranscode)
+		}
+		sourcePath = parsed.String()
+	} else if !req.RemoteSource {
 		var ok bool
 		sourcePath, ok = localPathFromSourceURL(req.Item.SourceURL)
 		if !ok || !filepath.IsAbs(sourcePath) {
@@ -294,6 +311,12 @@ func (s *Server) compilePlannedVODHLS(ctx context.Context, req plannedVODHLSRequ
 	if err != nil {
 		return plannedVODHLSCommand{}, fmt.Errorf("%w: %v", errPlannedTranscode, err)
 	}
+	generationOwned := true
+	defer func() {
+		if generationOwned {
+			_ = os.RemoveAll(generationDir)
+		}
+	}()
 	ext := ".ts"
 	initFilename := ""
 	if plan.SegmentFormat == "fmp4" {
@@ -310,6 +333,17 @@ func (s *Server) compilePlannedVODHLS(ctx context.Context, req plannedVODHLSRequ
 	if err != nil {
 		return plannedVODHLSCommand{}, fmt.Errorf("%w: %v", errPlannedTranscode, err)
 	}
+	if req.RemoteSource && sourcePath != "pipe:0" {
+		demuxer, demuxErr := remoteMediaDemuxer(req.RemoteObjectPath)
+		if demuxErr != nil {
+			return plannedVODHLSCommand{}, fmt.Errorf("%w: remote media format is not approved", errPlannedTranscode)
+		}
+		compiled.Args, err = forceFFmpegInputDemuxer(compiled.Args, sourcePath, demuxer)
+		if err != nil {
+			return plannedVODHLSCommand{}, fmt.Errorf("%w: %v", errPlannedTranscode, err)
+		}
+	}
+	generationOwned = false
 	return plannedVODHLSCommand{
 		ExecutablePath: executablePath, Args: append([]string(nil), compiled.Args...), GenerationDir: generationDir,
 		ManifestPath: manifest, SegmentPattern: segments, InitFilename: initFilename,
@@ -317,6 +351,19 @@ func (s *Server) compilePlannedVODHLS(ctx context.Context, req plannedVODHLSRequ
 		MediaFactsDigest: factsDigest, UsesHardware: compiled.UsesHardware,
 		PredictedBytes: predictedPlaybackOutputBytes(plan, facts),
 	}, nil
+}
+
+func forceFFmpegInputDemuxer(args []string, sourcePath, demuxer string) ([]string, error) {
+	for index := 0; index+1 < len(args); index++ {
+		if args[index] == "-i" && args[index+1] == sourcePath {
+			result := make([]string, 0, len(args)+2)
+			result = append(result, args[:index]...)
+			result = append(result, "-rw_timeout", "30000000", "-f", demuxer)
+			result = append(result, args[index:]...)
+			return result, nil
+		}
+	}
+	return nil, errors.New("compiled FFmpeg graph did not contain the approved remote input")
 }
 
 func exactSidecarSubtitlePath(item MediaItem, plan playbackplan.Plan) (string, error) {
@@ -575,9 +622,14 @@ func (s *Server) ensurePlannedVODHLSSession(ctx context.Context, userID string, 
 	if err != nil {
 		return nil, err
 	}
-	remoteRequest, remoteSource, err := remoteTranscodeRequestForItem(item, sourcePath)
-	if err != nil {
-		return nil, err
+	storageRemote := strings.HasPrefix(strings.TrimSpace(sourcePath), "portico-storage://")
+	remoteRequest := remoteTranscodeSourceRequest{}
+	remoteSource := storageRemote
+	if !storageRemote {
+		remoteRequest, remoteSource, err = remoteTranscodeRequestForItem(item, sourcePath)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if !remoteSource {
 		parsed, ok := localPathFromSourceURL(sourcePath)
@@ -605,13 +657,39 @@ func (s *Server) ensurePlannedVODHLSSession(ctx context.Context, userID string, 
 	if err := s.reconcilePlannedVODGenerationDirectory(generationDir); err != nil {
 		return nil, err
 	}
+	transcodeInputURL := ""
+	remoteObjectPath := ""
+	closeStorageTransport := func() {}
+	storageTransportOwned := false
+	if storageRemote {
+		_, remoteObjectPath, err = parseRemoteStorageLocator(sourcePath)
+		if err != nil {
+			return nil, err
+		}
+		transcodeInputURL, closeStorageTransport, err = s.startRemoteStoragePlaybackTransport(s.backgroundCtx, item, sourcePath)
+		if err != nil {
+			return nil, err
+		}
+		storageTransportOwned = true
+		defer func() {
+			if storageTransportOwned {
+				closeStorageTransport()
+			}
+		}()
+	}
 	command, err := s.compilePlannedVODHLS(admissionCtx, plannedVODHLSRequest{
 		Item: item, Binding: binding, Identity: identity, GenerationRoot: root, SegmentSeconds: hlsSegmentSeconds,
-		StartNumber: startSeconds / hlsSegmentSeconds, Hardware: binding.HardwarePlan, RemoteSource: remoteSource,
+		StartNumber: startSeconds / hlsSegmentSeconds, Hardware: binding.HardwarePlan, RemoteSource: remoteSource, SourcePath: transcodeInputURL, RemoteObjectPath: remoteObjectPath,
 	})
 	if err != nil {
 		return nil, err
 	}
+	generationOwned := true
+	defer func() {
+		if generationOwned {
+			_ = os.RemoveAll(command.GenerationDir)
+		}
+	}()
 	admissionRelease, err := s.acquirePlannedTranscodeAdmission(key, binding.Generation, settings, command.UsesHardware, background)
 	if err != nil {
 		return nil, err
@@ -634,7 +712,23 @@ func (s *Server) ensurePlannedVODHLSSession(ctx context.Context, userID string, 
 			return nil, err
 		}
 	}
-	resourceRelease, acquired := s.mediaResourceGovernor().tryAcquire(mediaResourceRequest{cpu: 1, disk: 2, background: background})
+	governor := s.mediaResourceGovernor()
+	request := mediaResourceRequest{cpu: 1, disk: 2, background: background}
+	var resourceRelease func()
+	var acquired bool
+	if !background {
+		governor.preemptBackgroundForPlayback()
+		admissionBaseCtx := s.backgroundCtx
+		if admissionBaseCtx == nil {
+			admissionBaseCtx = context.Background()
+		}
+		admissionCtx, admissionCancel := context.WithTimeout(admissionBaseCtx, 2*time.Second)
+		resourceRelease, err = governor.acquireContext(admissionCtx, request)
+		admissionCancel()
+		acquired = err == nil
+	} else {
+		resourceRelease, acquired = governor.tryAcquire(request)
+	}
 	if !acquired {
 		diskRelease()
 		if lease != nil {
@@ -645,6 +739,7 @@ func (s *Server) ensurePlannedVODHLSSession(ctx context.Context, userID string, 
 	var combinedReleaseOnce sync.Once
 	combinedResourceRelease := func() {
 		combinedReleaseOnce.Do(func() {
+			closeStorageTransport()
 			resourceRelease()
 			diskRelease()
 			admissionRelease()
@@ -694,8 +789,11 @@ func (s *Server) ensurePlannedVODHLSSession(ctx context.Context, userID string, 
 		cmd.Stderr = diagnosticRecorder
 		return cmd, nil
 	})
-	if remoteSource {
-		processFactory = supervisedRemoteExecFactoryV2(remoteRequest, func(processCtx context.Context) (*exec.Cmd, error) {
+	if remoteSource && !storageRemote {
+		open := func(processCtx context.Context) (*remoteTranscodeSource, error) {
+			return openRemoteTranscodeSource(processCtx, remoteRequest)
+		}
+		processFactory = supervisedReaderExecFactoryV2(open, func(processCtx context.Context) (*exec.Cmd, error) {
 			cmd := exec.CommandContext(processCtx, command.ExecutablePath, command.Args...)
 			cmd.Dir = command.GenerationDir
 			cmd.Stderr = diagnosticRecorder
@@ -714,6 +812,8 @@ func (s *Server) ensurePlannedVODHLSSession(ctx context.Context, userID string, 
 		}
 		return nil, err
 	}
+	generationOwned = false
+	storageTransportOwned = false
 	admissionOwned = false
 	session.supervised = &handle
 	s.transcodeMu.Lock()

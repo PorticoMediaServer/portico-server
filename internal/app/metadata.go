@@ -182,7 +182,9 @@ type tmdbCreditPerson struct {
 
 type metadataAgentSettings struct {
 	Movies               string
+	MoviesFallback       string
 	TV                   string
+	TVFallback           string
 	Anime                string
 	Music                string
 	LocalNFO             bool
@@ -495,6 +497,8 @@ var (
 	errProviderResponseTooLarge  = errors.New("provider response exceeded its maximum size")
 	errProviderResponseMalformed = errors.New("provider response was malformed")
 	errTMDBCredentialsMissing    = errors.New("TMDB credentials are not configured")
+	errTVDBCredentialsMissing    = errors.New("TheTVDB credentials are not configured")
+	errNoMetadataMatch           = errors.New("no confident metadata match was found")
 )
 
 type providerResponseError struct {
@@ -693,6 +697,8 @@ var (
 	aniListLastRequest     time.Time
 	tmdbThrottleMu         sync.Mutex
 	tmdbLastRequest        time.Time
+	tvdbThrottleMu         sync.Mutex
+	tvdbLastRequest        time.Time
 	acoustIDThrottleMu     sync.Mutex
 	acoustIDLastRequest    time.Time
 )
@@ -724,6 +730,7 @@ type MetadataSaver interface {
 }
 
 type tmdbMetadataProvider struct{}
+type tvdbMetadataProvider struct{}
 type aniListMetadataProvider struct{}
 type musicBrainzMetadataProvider struct{}
 type sqliteMetadataSaver struct{}
@@ -745,6 +752,16 @@ func (tmdbMetadataProvider) Supports(item MediaItem) bool {
 
 func (tmdbMetadataProvider) Refresh(ctx context.Context, server *Server, item MediaItem) (MediaItem, error) {
 	return server.refreshMediaMetadataFromTMDB(ctx, item)
+}
+
+func (tvdbMetadataProvider) ID() string { return "tvdb" }
+
+func (tvdbMetadataProvider) Supports(item MediaItem) bool {
+	return tvdbSearchType(item.Type) != ""
+}
+
+func (tvdbMetadataProvider) Refresh(ctx context.Context, server *Server, item MediaItem) (MediaItem, error) {
+	return server.refreshMediaMetadataFromTVDB(ctx, item)
 }
 
 func (aniListMetadataProvider) ID() string { return "anilist" }
@@ -771,6 +788,8 @@ func (s *Server) metadataProviderByID(id string) (MetadataProvider, bool) {
 	switch normalizedMetadataProvider(id) {
 	case "tmdb":
 		return tmdbMetadataProvider{}, true
+	case "tvdb":
+		return tvdbMetadataProvider{}, true
 	case "anilist":
 		return aniListMetadataProvider{}, true
 	case "musicbrainz":
@@ -957,10 +976,9 @@ func (s *Server) libraryMetadataRefreshItemsPage(ctx context.Context, libraryID 
 	if hasMore {
 		items = items[:limit]
 	}
-	items, err = s.filterAutomaticMetadataRefreshItemsContext(ctx, items, false)
-	if err != nil {
-		return nil, false, err
-	}
+	// Preserve the raw page so an unsupported page still advances the durable
+	// cursor. The runner classifies unsupported items as skipped; filtering here
+	// could otherwise turn a non-terminal page into a false end-of-scan.
 	return items, hasMore, nil
 }
 
@@ -1442,7 +1460,31 @@ func (s *Server) refreshMediaMetadata(ctx context.Context, item MediaItem) (Medi
 			}
 		}
 	}
-	return provider.Refresh(ctx, s, item)
+	updated, err := provider.Refresh(ctx, s, item)
+	if err == nil {
+		return updated, nil
+	}
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return MediaItem{}, err
+	}
+	primaryErr := err
+	for _, fallbackID := range s.metadataFallbackProvidersForItem(item) {
+		if fallbackID == providerID {
+			continue
+		}
+		fallback, ok := s.metadataProviderByID(fallbackID)
+		if !ok || !fallback.Supports(item) {
+			continue
+		}
+		updated, fallbackErr := fallback.Refresh(ctx, s, item)
+		if fallbackErr == nil {
+			return updated, nil
+		}
+		if errors.Is(fallbackErr, context.Canceled) || errors.Is(fallbackErr, context.DeadlineExceeded) {
+			return MediaItem{}, fallbackErr
+		}
+	}
+	return MediaItem{}, primaryErr
 }
 
 func (s *Server) searchMediaMatchCandidates(ctx context.Context, userID, mediaID, query string) ([]MatchCandidate, error) {
@@ -1494,6 +1536,8 @@ func (s *Server) searchMediaMatchCandidatesWithOptions(ctx context.Context, user
 			language = normalizeMetadataLanguage(languageOverride)
 		}
 		_, err = s.searchTMDBCandidates(ctx, item, mediaType, titles, s.tmdbSearchYearForItem(searchItem), language)
+	case "tvdb":
+		err = s.searchTVDBCandidates(ctx, item, searchItem, languageOverride)
 	case "musicbrainz":
 		err = s.searchMusicBrainzCandidates(ctx, item, searchItem)
 	case "anilist":
@@ -1617,6 +1661,12 @@ func (s *Server) applyManualMediaMatch(ctx context.Context, userID, mediaID stri
 	if err != nil {
 		return MediaItem{}, err
 	}
+	if req.ExpectedRevision == nil || *req.ExpectedRevision < 0 {
+		return MediaItem{}, errors.New("expectedRevision is required and must be zero or greater")
+	}
+	if item.MetadataRevision != *req.ExpectedRevision {
+		return MediaItem{}, fmt.Errorf("%w: media %s expected %d, found %d", errMetadataRevisionConflict, item.ID, *req.ExpectedRevision, item.MetadataRevision)
+	}
 	provider := normalizedMetadataProvider(req.Provider)
 	externalID := strings.TrimSpace(req.ExternalID)
 	externalType := strings.TrimSpace(req.ExternalType)
@@ -1626,6 +1676,8 @@ func (s *Server) applyManualMediaMatch(ctx context.Context, userID, mediaID stri
 	switch provider {
 	case "tmdb":
 		return s.applyManualTMDBMatch(ctx, userID, item, externalID, externalType)
+	case "tvdb":
+		return s.applyManualTVDBMatch(ctx, userID, item, externalID, externalType)
 	case "musicbrainz":
 		return s.applyManualMusicBrainzMatch(ctx, userID, item, externalID, externalType)
 	case "anilist":
@@ -1676,12 +1728,13 @@ func (s *Server) applyManualAniListMatch(ctx context.Context, userID string, ite
 }
 
 func (s *Server) applyManualTMDBMatch(ctx context.Context, userID string, item MediaItem, externalID, externalType string) (MediaItem, error) {
-	mediaType := strings.TrimSpace(externalType)
-	if mediaType == "" {
-		mediaType = tmdbSearchType(item.Type)
-	}
-	if mediaType == "" {
+	expectedType := tmdbSearchType(item.Type)
+	if expectedType == "" {
 		return MediaItem{}, errors.New("TMDB matching is only available for movies, shows, seasons, and episodes")
+	}
+	mediaType := firstNonEmpty(strings.TrimSpace(externalType), expectedType)
+	if mediaType != expectedType {
+		return MediaItem{}, fmt.Errorf("TMDB externalType %q does not match %s item identity %q", mediaType, item.Type, expectedType)
 	}
 	id, err := strconv.Atoi(externalID)
 	if err != nil || id <= 0 {
@@ -1927,7 +1980,7 @@ func (s *Server) refreshMediaMetadataFromTMDB(ctx context.Context, item MediaIte
 		return MediaItem{}, err
 	}
 	if result.ID == 0 {
-		return MediaItem{}, errors.New("no TMDB match was found")
+		return MediaItem{}, fmt.Errorf("%w: TMDB returned no match", errNoMetadataMatch)
 	}
 	if details, err := s.tmdbDetails(ctx, mediaType, result.ID, language); err == nil && details.ID != 0 {
 		result = mergeTMDBSearchResult(result, details)
@@ -2657,10 +2710,11 @@ func (s *Server) resolveTMDBResult(ctx context.Context, item MediaItem, mediaTyp
 		result, err := s.tmdbDetails(ctx, mediaType, id, language)
 		if err == nil && result.ID != 0 {
 			score := tmdbResultCandidateScore(result, item, queryTitles, year)
-			_ = s.recordMatchCandidate(item.ID, "tmdb", strconv.Itoa(result.ID), mediaType, "provider-id", score, score.accepted(50), strings.Join(queryTitles, " | "), result)
-			if score.accepted(50) {
-				return result, "provider-id", nil
-			}
+			// A syntactically valid, accepted typed identity outranks a fresh
+			// popularity/name search. Descriptive disagreement is retained in the
+			// score reasons for diagnostics; it does not silently replace identity.
+			_ = s.recordMatchCandidate(item.ID, "tmdb", strconv.Itoa(result.ID), mediaType, "provider-id", score, true, strings.Join(queryTitles, " | "), result)
+			return result, "provider-id", nil
 		}
 	}
 	result, err := s.searchTMDBCandidates(ctx, item, mediaType, queryTitles, year, language)
@@ -3122,12 +3176,14 @@ func (s *Server) tmdbSeasonDetails(ctx context.Context, showID, seasonNumber int
 func (s *Server) metadataAgentSettings() metadataAgentSettings {
 	settings, err := s.loadSettings()
 	if err != nil {
-		return metadataAgentSettings{Movies: "TMDB", TV: "TMDB", Anime: "AniList", Music: "MusicBrainz", LocalNFO: true, EmbeddedTags: true, RefreshDays: 7}
+		return metadataAgentSettings{Movies: "TMDB", MoviesFallback: "TVDB", TV: "TMDB", TVFallback: "TVDB", Anime: "AniList", Music: "MusicBrainz", LocalNFO: true, EmbeddedTags: true, RefreshDays: 7}
 	}
 	group, _ := settings["metadataAgents"].(map[string]any)
 	return metadataAgentSettings{
 		Movies:               settingString(group, "movies", "TMDB"),
+		MoviesFallback:       settingString(group, "moviesFallback", "TVDB"),
 		TV:                   settingString(group, "tv", "TMDB"),
+		TVFallback:           settingString(group, "tvFallback", "TVDB"),
 		Anime:                settingString(group, "anime", "AniList"),
 		Music:                settingString(group, "music", "MusicBrainz"),
 		LocalNFO:             settingBool(group, "localNFO", true),
@@ -3158,6 +3214,8 @@ func (s *Server) metadataProviderFor(mediaType string) string {
 		return "musicbrainz"
 	case "anilist":
 		return "anilist"
+	case "tvdb", "thetvdb":
+		return "tvdb"
 	case "local", "none":
 		return "none"
 	default:
@@ -3166,6 +3224,9 @@ func (s *Server) metadataProviderFor(mediaType string) string {
 }
 
 func (s *Server) metadataProviderForItem(item MediaItem) string {
+	if provider := s.manuallySelectedMetadataProvider(item); provider != "" && s.metadataProviderSupportsItem(provider, item) {
+		return provider
+	}
 	if library, err := s.getLibrary(item.LibraryID); err == nil {
 		disabled := metadataProviderSet(metadataProviderListFromSetting(library.Settings["disabledMetadataProviders"]))
 		providerOrder := metadataProviderListFromSetting(library.Settings["metadataProviderOrder"])
@@ -3187,6 +3248,9 @@ func (s *Server) metadataProviderForItem(item MediaItem) string {
 			if provider == "tmdb" && !s.tmdbConfigured() {
 				return "none"
 			}
+			if provider == "tvdb" && !s.tvdbConfigured() {
+				return "none"
+			}
 			if !disabled[provider] && (provider == "none" || s.metadataProviderSupportsItem(provider, item)) {
 				return provider
 			}
@@ -3196,11 +3260,72 @@ func (s *Server) metadataProviderForItem(item MediaItem) string {
 	if provider == "tmdb" && !s.tmdbConfigured() {
 		return "none"
 	}
+	if provider == "tvdb" && !s.tvdbConfigured() {
+		return "none"
+	}
 	return provider
+}
+
+func (s *Server) manuallySelectedMetadataProvider(item MediaItem) string {
+	var provider string
+	err := s.queryUserRow(context.Background(), `
+		SELECT provider
+		FROM media_provider_ids
+		WHERE media_id = ? AND status = 'accepted' AND source = 'manual-match'
+		ORDER BY updated_at DESC
+		LIMIT 1`, item.ID).Scan(&provider)
+	if err != nil {
+		return ""
+	}
+	return normalizedMetadataProvider(provider)
+}
+
+func (s *Server) metadataFallbackProvidersForItem(item MediaItem) []string {
+	// An explicit per-library order is authoritative as an ordered chain. The
+	// first usable provider is primary and later usable entries are fallbacks;
+	// server defaults are never appended to that explicit chain.
+	if library, err := s.getLibrary(item.LibraryID); err == nil {
+		order := metadataProviderListFromSetting(library.Settings["metadataProviderOrder"])
+		if len(order) > 0 {
+			disabled := metadataProviderSet(metadataProviderListFromSetting(library.Settings["disabledMetadataProviders"]))
+			primary := s.metadataProviderForItem(item)
+			seenPrimary := false
+			seen := map[string]bool{primary: true}
+			fallbacks := make([]string, 0, len(order))
+			for _, provider := range order {
+				provider = normalizedMetadataProvider(provider)
+				if provider == primary && !seenPrimary {
+					seenPrimary = true
+					continue
+				}
+				if !seenPrimary || seen[provider] || disabled[provider] || provider == "" || provider == "default" || provider == "local" || provider == "none" || !s.metadataProviderSupportsItem(provider, item) {
+					continue
+				}
+				seen[provider] = true
+				fallbacks = append(fallbacks, provider)
+			}
+			return fallbacks
+		}
+	}
+	settings := s.metadataAgentSettings()
+	fallback := settings.TVFallback
+	if item.Type == "movie" {
+		fallback = settings.MoviesFallback
+	} else if item.Type != "show" && item.Type != "season" && item.Type != "episode" {
+		return nil
+	}
+	provider := normalizedMetadataProvider(fallback)
+	if provider == "none" || provider == "local" || provider == "" || !s.metadataProviderSupportsItem(provider, item) {
+		return nil
+	}
+	return []string{provider}
 }
 
 func (s *Server) metadataProviderSupportsItem(provider string, item MediaItem) bool {
 	if provider == "tmdb" && !s.tmdbConfigured() {
+		return false
+	}
+	if provider == "tvdb" && !s.tvdbConfigured() {
 		return false
 	}
 	resolved, ok := s.metadataProviderByID(provider)
@@ -4088,6 +4213,8 @@ func normalizedMetadataProvider(value string) string {
 		return "default"
 	case "tmdb", "the movie database":
 		return "tmdb"
+	case "tvdb", "thetvdb", "the tvdb", "the tv database":
+		return "tvdb"
 	case "anilist", "ani list":
 		return "anilist"
 	case "musicbrainz", "music brainz":
@@ -4246,18 +4373,28 @@ func (s *Server) searchTMDBCandidates(ctx context.Context, item MediaItem, media
 
 func bestTMDBResult(results []tmdbSearchResult, item MediaItem, queryTitles []string, year int) tmdbSearchResult {
 	var best tmdbSearchResult
-	bestScore := -1.0
+	var bestScore candidateScore
+	var runnerScore *candidateScore
+	hasBest := false
 	for _, result := range results {
 		if result.ID == 0 {
 			continue
 		}
 		score := tmdbResultCandidateScore(result, item, queryTitles, year)
-		if score.Score > bestScore || (score.Score == bestScore && result.Popularity > best.Popularity) {
+		if !hasBest || score.Score > bestScore.Score || (score.Score == bestScore.Score && result.Popularity > best.Popularity) {
+			if hasBest && result.ID != best.ID {
+				previous := bestScore
+				runnerScore = &previous
+			}
 			best = result
-			bestScore = score.Score
+			bestScore = score
+			hasBest = true
+		} else if result.ID != best.ID && (runnerScore == nil || score.Score > runnerScore.Score) {
+			candidate := score
+			runnerScore = &candidate
 		}
 	}
-	if bestScore < 35 {
+	if !hasBest || !automaticMetadataMatchAccepted(bestScore, runnerScore) {
 		return tmdbSearchResult{}
 	}
 	return best

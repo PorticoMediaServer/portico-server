@@ -1,4 +1,4 @@
-import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { ServerViewerPreferenceBundle } from '@porticomediaserver/client-core';
 import { useAuthSession, useLiveDataRevision, usePorticoDataSource } from '../data/DataProvider';
 import {
@@ -6,6 +6,7 @@ import {
   normalizeWebDisplayPreferences,
   type WebDisplayPreferences,
 } from './webDisplayPreferences';
+import { combineAbortSignals, timeoutSignal } from '../runtime/abortSignal';
 
 type PreferenceScope = 'profile-server' | 'profile-device-class' | 'account-server-installation';
 
@@ -26,7 +27,7 @@ const LOCAL_PREFERENCES_KEY = 'portico.web.installation-preferences.v1';
 const PREFERENCE_REQUEST_DEADLINE_MS = 15_000;
 
 function preferenceRequestSignal(signal: AbortSignal) {
-  return AbortSignal.any([signal, AbortSignal.timeout(PREFERENCE_REQUEST_DEADLINE_MS)]);
+  return combineAbortSignals([signal, timeoutSignal(PREFERENCE_REQUEST_DEADLINE_MS)]);
 }
 
 function installationPreferences() {
@@ -118,11 +119,26 @@ export function WebDisplayPreferencesProvider({ children }: { children: ReactNod
   const [error, setError] = useState<Error>();
   const [revision, setRevision] = useState(0);
   const liveRevision = useLiveDataRevision(['display-preferences', 'settings']);
+  const bundleRef = useRef<ServerViewerPreferenceBundle | undefined>(undefined);
+  const preferencesRef = useRef(preferences);
+  const writeChain = useRef<Promise<void>>(Promise.resolve());
+
+  useEffect(() => { bundleRef.current = bundle; }, [bundle]);
+  useEffect(() => { preferencesRef.current = preferences; }, [preferences]);
+
+  const enqueueWrite = useCallback(<T,>(operation: () => Promise<T>): Promise<T> => {
+    const scheduled = writeChain.current.catch(() => undefined).then(operation);
+    writeChain.current = scheduled.then(() => undefined, () => undefined);
+    return scheduled;
+  }, []);
 
   const load = useCallback(async (signal: AbortSignal) => {
     const response = await source.viewerPreferences(preferenceRequestSignal(signal));
+    bundleRef.current = response;
     setBundle(response);
-    setPreferences(viewPreferences(response));
+    const nextPreferences = viewPreferences(response);
+    preferencesRef.current = nextPreferences;
+    setPreferences(nextPreferences);
     setError(undefined);
     setStatus('ready');
     return response;
@@ -147,60 +163,80 @@ export function WebDisplayPreferencesProvider({ children }: { children: ReactNod
   }, [auth.status, auth.viewer?.authenticated, auth.viewerScopeKey, revision, liveRevision, load]);
 
   const patchScope = useCallback(async (scope: PreferenceScope, changes: Record<string, unknown>) => {
-    if (!bundle) throw new Error('Preferences are still loading.');
-    const document = scope === 'profile-server' ? bundle.profileServer : scope === 'profile-device-class' ? bundle.profileDeviceClass : bundle.accountServerInstallation;
-    const controller = new AbortController();
-    setBusy(true);
-    setError(undefined);
-    try {
-      await source.patchViewerPreference(scope, document.revision, changes, preferenceRequestSignal(controller.signal));
-      await load(controller.signal);
-    } catch (reason) {
-      const nextError = reason instanceof Error ? reason : new Error('Preferences could not be saved.');
-      setError(nextError);
-      setStatus('error');
-      if ((reason as { status?: number }).status === 409) await load(controller.signal).catch(() => undefined);
-      throw nextError;
-    } finally {
-      setBusy(false);
-    }
-  }, [bundle, load, source]);
+    return enqueueWrite(async () => {
+      const current = bundleRef.current;
+      if (!current) throw new Error('Preferences are still loading.');
+      const document = scope === 'profile-server' ? current.profileServer : scope === 'profile-device-class' ? current.profileDeviceClass : current.accountServerInstallation;
+      const controller = new AbortController();
+      setBusy(true);
+      setError(undefined);
+      try {
+        await source.patchViewerPreference(scope, document.revision, changes, preferenceRequestSignal(controller.signal));
+        await load(controller.signal);
+      } catch (reason) {
+        const nextError = reason instanceof Error ? reason : new Error('Preferences could not be saved.');
+        setError(nextError);
+        setStatus('error');
+        if ((reason as { status?: number }).status === 409) await load(controller.signal).catch(() => undefined);
+        throw nextError;
+      } finally {
+        setBusy(false);
+      }
+    });
+  }, [enqueueWrite, load, source]);
 
   const patch = useCallback(async (next: Partial<WebDisplayPreferences>) => {
-    if (!bundle) throw new Error('Preferences are still loading.');
-    const previous = preferences;
-    const optimistic = normalizeWebDisplayPreferences({ ...preferences, ...next });
-    const { server, device } = scopeChanges(next);
-    setPreferences(optimistic);
-    setBusy(true);
-    setError(undefined);
-    const controller = new AbortController();
-    try {
-      let working = bundle;
-      if (Object.keys(server).length) {
-        const document = await source.patchViewerPreference('profile-server', working.profileServer.revision, server, preferenceRequestSignal(controller.signal));
-        working = { ...working, profileServer: document as typeof working.profileServer };
+    return enqueueWrite(async () => {
+      const current = bundleRef.current;
+      if (!current) throw new Error('Preferences are still loading.');
+      const previous = preferencesRef.current;
+      const optimistic = normalizeWebDisplayPreferences({ ...previous, ...next });
+      const { server, device } = scopeChanges(next);
+      preferencesRef.current = optimistic;
+      setPreferences(optimistic);
+      setBusy(true);
+      setError(undefined);
+      const controller = new AbortController();
+      try {
+        let working = current;
+        if (Object.keys(server).length) {
+          const document = await source.patchViewerPreference('profile-server', working.profileServer.revision, server, preferenceRequestSignal(controller.signal));
+          working = { ...working, profileServer: document as typeof working.profileServer };
+        }
+        if (Object.keys(device).length) {
+          const document = await source.patchViewerPreference('profile-device-class', working.profileDeviceClass.revision, device, preferenceRequestSignal(controller.signal));
+          working = { ...working, profileDeviceClass: document as typeof working.profileDeviceClass };
+        }
+        if ('reduceMotion' in next || 'playbackDiagnostics' in next) {
+          try {
+            localStorage.setItem(LOCAL_PREFERENCES_KEY, JSON.stringify({
+              reduceMotion: optimistic.reduceMotion,
+              playbackDiagnostics: optimistic.playbackDiagnostics,
+            }));
+          } catch {
+            // Server preferences remain authoritative when browser storage is
+            // blocked or over quota.
+          }
+        }
+        await load(controller.signal);
+      } catch (reason) {
+        const nextError = reason instanceof Error ? reason : new Error('Preferences could not be saved.');
+        let reconciled = false;
+        try {
+          await load(controller.signal);
+          reconciled = true;
+        } catch {
+          preferencesRef.current = previous;
+          setPreferences(previous);
+        }
+        setError(nextError);
+        if (!reconciled) setStatus('error');
+        throw nextError;
+      } finally {
+        setBusy(false);
       }
-      if (Object.keys(device).length) {
-        const document = await source.patchViewerPreference('profile-device-class', working.profileDeviceClass.revision, device, preferenceRequestSignal(controller.signal));
-        working = { ...working, profileDeviceClass: document as typeof working.profileDeviceClass };
-      }
-      if ('reduceMotion' in next || 'playbackDiagnostics' in next) localStorage.setItem(LOCAL_PREFERENCES_KEY, JSON.stringify({
-        reduceMotion: optimistic.reduceMotion,
-        playbackDiagnostics: optimistic.playbackDiagnostics,
-      }));
-      await load(controller.signal);
-    } catch (reason) {
-      setPreferences(previous);
-      const nextError = reason instanceof Error ? reason : new Error('Preferences could not be saved.');
-      setError(nextError);
-      setStatus('error');
-      if ((reason as { status?: number }).status === 409) await load(controller.signal).catch(() => undefined);
-      throw nextError;
-    } finally {
-      setBusy(false);
-    }
-  }, [bundle, load, preferences, source]);
+    });
+  }, [enqueueWrite, load, source]);
 
   const value = useMemo<WebDisplayPreferencesContextValue>(() => ({
     preferences,

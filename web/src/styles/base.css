@@ -53,6 +53,19 @@ input,
 select,
 textarea {
   font: inherit;
+  font-synthesis: none;
+}
+
+:where(input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']):not([type='file']), select, textarea) {
+  border-color: var(--portico-control-border);
+  color: var(--silver);
+  background: var(--portico-control-fill);
+  line-height: 1.25;
+}
+
+:where(input, textarea)::placeholder {
+  color: var(--portico-control-placeholder);
+  opacity: 1;
 }
 
 button {
@@ -116,9 +129,16 @@ a:focus-visible,
 input:focus-visible,
 select:focus-visible,
 textarea:focus-visible {
-  outline: 1px solid rgba(222, 235, 244, 0.5);
+  border-color: var(--portico-control-focus);
+  outline: 1px solid var(--portico-control-focus);
   outline-offset: -1px;
   box-shadow: none;
+}
+
+input[aria-invalid='true'],
+select[aria-invalid='true'],
+textarea[aria-invalid='true'] {
+  border-color: var(--portico-control-invalid);
 }
 
 input:is([type='checkbox'], [type='radio'], [type='range']):focus-visible {

@@ -110,6 +110,9 @@ func routeAuditRequired(route apiroute.Route) bool {
 // and central audit-attempt policy.
 func (s *Server) enforceRoutePolicy(w http.ResponseWriter, r *http.Request, user User) bool {
 	route, ok := apiroute.RouteFromRequest(r)
+	if isPorticoPrincipal(user) && !s.enforceHostedPolicyContinuity(w, r, route, ok) {
+		return false
+	}
 	if !ok {
 		// Direct maintenance/test adapters are not generated API routes. Preserve
 		// the older API-key limiter for those deliberately narrow call paths.
@@ -147,6 +150,33 @@ func (s *Server) enforceRoutePolicy(w http.ResponseWriter, r *http.Request, user
 		})
 	}
 	return true
+}
+
+func (s *Server) enforceHostedPolicyContinuity(w http.ResponseWriter, r *http.Request, route apiroute.Route, routeKnown bool) bool {
+	state := remotePolicyContinuity(s.loadRemotePolicyState(), time.Now().UTC())
+	if state == "valid" {
+		return true
+	}
+	method := http.MethodGet
+	if r != nil {
+		method = r.Method
+	}
+	readOnly := method == http.MethodGet || method == http.MethodHead || method == http.MethodOptions
+	mediaDelivery := routeKnown && route.RatePolicy == "media-delivery"
+	playbackOperation := routeKnown && route.Permission == "play-media"
+	switch state {
+	case "grace":
+		if readOnly || mediaDelivery || playbackOperation {
+			return true
+		}
+	case "hard-expired-draining":
+		if mediaDelivery {
+			return true
+		}
+	}
+	w.Header().Set("Retry-After", "300")
+	writeProductError(w, http.StatusServiceUnavailable, "policy_reconciliation_required", "Portico Account policy must be reconciled before this operation can continue.")
+	return false
 }
 
 func itoa(value int) string {

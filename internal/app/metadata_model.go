@@ -4,11 +4,14 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 )
 
 type metadataSourceKind string
+
+const automaticMetadataMinimumScore = 0.85
 
 const (
 	metadataSourceManual   metadataSourceKind = "manual"
@@ -50,6 +53,9 @@ func upsertMediaProviderIdentityTx(tx *sql.Tx, mediaID, provider, externalID, ex
 	if mediaID == "" || provider == "" || externalID == "" {
 		return nil
 	}
+	if validateTypedProviderIdentity(provider, externalID, externalType) != nil {
+		return nil
+	}
 	if confidence < 0 {
 		confidence = 0
 	} else if confidence > 1 {
@@ -69,7 +75,7 @@ func upsertMediaProviderIdentityTx(tx *sql.Tx, mediaID, provider, externalID, ex
 		return err
 	}
 	status := metadataIdentityCandidate
-	if errors.Is(err, sql.ErrNoRows) || acceptedID == externalID {
+	if (errors.Is(err, sql.ErrNoRows) && confidence >= automaticMetadataMinimumScore) || acceptedID == externalID {
 		status = metadataIdentityAccepted
 	} else if explicitAcceptance {
 		if _, err := tx.Exec(`
@@ -105,6 +111,26 @@ func upsertMediaProviderIdentityTx(tx *sql.Tx, mediaID, provider, externalID, ex
 		now, acceptedAt, strings.TrimSpace(acceptedByUserID), now, now)
 	if err != nil {
 		return fmt.Errorf("upsert metadata provider identity: %w", err)
+	}
+	return nil
+}
+
+func validateTypedProviderIdentity(provider, externalID, externalType string) error {
+	switch provider {
+	case "tmdb":
+		if id, err := strconv.Atoi(externalID); err != nil || id <= 0 {
+			return fmt.Errorf("TMDB external ID must be a positive integer")
+		}
+		if !oneOfString(externalType, "movie", "tv") {
+			return fmt.Errorf("TMDB external type %q is not supported", externalType)
+		}
+	case "tvdb":
+		if id, err := strconv.Atoi(externalID); err != nil || id <= 0 {
+			return fmt.Errorf("TheTVDB external ID must be a positive integer")
+		}
+		if !oneOfString(externalType, "movie", "series") {
+			return fmt.Errorf("TheTVDB external type %q is not supported", externalType)
+		}
 	}
 	return nil
 }

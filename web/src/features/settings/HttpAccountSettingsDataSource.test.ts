@@ -70,14 +70,18 @@ describe('HttpSettingsDataSource account contracts', () => {
       .mockResolvedValueOnce({ secret: 'SETUPKEY', otpauthUrl: 'otpauth://totp/Portico:test?secret=SETUPKEY', enrollmentToken: 'short-lived-token' })
       .mockResolvedValueOnce({ enabled: true, recoveryCodes: ['one', 'two'] })
       .mockResolvedValueOnce({ ok: true });
-    const source = new HttpSettingsDataSource({} as PorticoClient, { request: hostedRequest } as unknown as HostedServicesClient);
+    const rotateMFARecoveryCodes = vi.fn().mockResolvedValue({ enabled: true, recoveryCodes: ['replacement-one', 'replacement-two'] });
+    const source = new HttpSettingsDataSource({} as PorticoClient, { request: hostedRequest, rotateMFARecoveryCodes } as unknown as HostedServicesClient);
     const signal = new AbortController().signal;
 
     await source.changePorticoPassword({ currentPassword: 'current', newPassword: 'a-long-new-password' }, signal);
     expect(await source.porticoMFAStatus(signal)).toEqual({ enabled: false, setupStarted: false, recoveryCodesSupported: true, recoveryCodesRemaining: 0 });
     expect(await source.startPorticoMFA('current', signal)).toEqual({ enrollmentToken: 'short-lived-token', secret: 'SETUPKEY', otpauthUrl: 'otpauth://totp/Portico:test?secret=SETUPKEY' });
     expect(await source.enablePorticoMFA({ code: '123456', enrollmentToken: 'short-lived-token' }, signal)).toEqual({ enabled: true, recoveryCodes: ['one', 'two'] });
+    expect(await source.rotatePorticoMFARecoveryCodes('654321', signal)).toEqual({ enabled: true, recoveryCodes: ['replacement-one', 'replacement-two'] });
     await source.disablePorticoMFA({ password: 'current', code: '654321' }, signal);
+
+    expect(rotateMFARecoveryCodes).toHaveBeenCalledWith({ code: '654321' }, { signal });
 
     expect(hostedRequest.mock.calls.map(([path]) => path)).toEqual([
       '/api/account/me/password',
@@ -127,8 +131,8 @@ describe('HttpSettingsDataSource account contracts', () => {
     ]);
     await source.revokeSignedInDevice('portico', 'device-active', signal);
 
-    expect(devices).toHaveBeenCalledWith({ limit: 100, count: 'exact' });
-    expect(revokeDevice).toHaveBeenCalledWith('device-active');
+    expect(devices).toHaveBeenCalledWith({ limit: 100, count: 'exact' }, { signal });
+    expect(revokeDevice).toHaveBeenCalledWith('device-active', { signal });
   });
 
   it('preserves server-local session management for Local Auth settings', async () => {
@@ -182,13 +186,14 @@ describe('HttpSettingsDataSource account contracts', () => {
     expect(hostedRequest).toHaveBeenNthCalledWith(1, '/api/account/servers/server-1/members/membership-1', expect.objectContaining({
       method: 'PATCH',
       body: {
-        permissionTemplate: { libraryIds: ['movies'], permissions: { download: true }, maxContentRating: 'PG-13' },
+        permissionTemplate: { permissions: { download: true }, maxContentRating: 'PG-13' },
       },
       signal,
     }));
     expect(hostedRequest).toHaveBeenNthCalledWith(2, '/api/account/servers/server-1/members/membership-1', expect.objectContaining({ method: 'DELETE', signal }));
-    expect(request).toHaveBeenNthCalledWith(1, '/api/remote-access/policy-sync', { method: 'POST', signal });
+    expect(request).toHaveBeenNthCalledWith(1, '/api/users/local-profile', { method: 'PATCH', body: { libraryIds: ['movies'] }, signal });
     expect(request).toHaveBeenNthCalledWith(2, '/api/remote-access/policy-sync', { method: 'POST', signal });
+    expect(request).toHaveBeenNthCalledWith(3, '/api/remote-access/policy-sync', { method: 'POST', signal });
   });
 
   it('creates Portico Account invitations directly through Hosted authority', async () => {
@@ -204,7 +209,7 @@ describe('HttpSettingsDataSource account contracts', () => {
       recipient: 'member@example.test',
       email: 'member@example.test',
       role: 'user' as const,
-      permissionTemplate: { libraryIds: ['movies'], permissions: { download: true } },
+	  permissionTemplate: { permissions: { download: true } },
 	  deliveryMode: 'email' as const,
     };
 

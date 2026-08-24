@@ -222,12 +222,12 @@ func TestMetadataRefreshUpdatesMediaFromTMDBSearch(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
 		case "/search/movie":
-			_, _ = w.Write([]byte(`{"results":[{"id":42,"title":"Meridian Drift","release_date":"2026-02-14","overview":"Updated TMDB overview.","vote_average":8.4,"genre_ids":[878,12],"poster_path":"/poster.jpg","backdrop_path":"/backdrop.jpg"}]}`))
+			_, _ = w.Write([]byte(`{"results":[{"id":42,"title":"The Meridian Job","release_date":"2025-02-14","overview":"Updated TMDB overview.","vote_average":8.4,"genre_ids":[878,12],"poster_path":"/poster.jpg","backdrop_path":"/backdrop.jpg"}]}`))
 		case "/movie/42":
 			if got := r.URL.Query().Get("append_to_response"); got != "credits,alternative_titles,keywords,release_dates,content_ratings,external_ids,images" {
 				t.Fatalf("append_to_response = %q", got)
 			}
-			_, _ = w.Write([]byte(`{"id":42,"title":"Meridian Drift","release_date":"2026-02-14","overview":"Updated TMDB overview.","vote_average":8.4,"genre_ids":[878,12],"poster_path":"/poster.jpg","backdrop_path":"/backdrop.jpg","credits":{"cast":[{"id":100,"name":"Ari Vega","character":"Captain Sol","profile_path":"/ari.jpg","order":0}],"crew":[{"id":200,"name":"Noor Patel","job":"Director","department":"Directing","profile_path":"/noor.jpg"}]}}`))
+			_, _ = w.Write([]byte(`{"id":42,"title":"The Meridian Job","release_date":"2025-02-14","overview":"Updated TMDB overview.","vote_average":8.4,"genre_ids":[878,12],"poster_path":"/poster.jpg","backdrop_path":"/backdrop.jpg","credits":{"cast":[{"id":100,"name":"Ari Vega","character":"Captain Sol","profile_path":"/ari.jpg","order":0}],"crew":[{"id":200,"name":"Noor Patel","job":"Director","department":"Directing","profile_path":"/noor.jpg"}]}}`))
 		default:
 			t.Fatalf("unexpected TMDB path: %s", r.URL.Path)
 		}
@@ -854,7 +854,7 @@ func TestMetadataRefreshCanUseConfiguredTMDBAPIKey(t *testing.T) {
 			t.Fatalf("api_key = %q", got)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"results":[{"id":42,"title":"Meridian Drift","release_date":"2026-02-14","overview":"Updated from API key."}]}`))
+		_, _ = w.Write([]byte(`{"results":[{"id":42,"title":"The Meridian Job","release_date":"2025-02-14","overview":"Updated from API key."}]}`))
 	}))
 	defer tmdb.Close()
 
@@ -884,7 +884,7 @@ func TestMetadataRefreshCanUseConfiguredTMDBReadAccessToken(t *testing.T) {
 			t.Fatalf("Authorization = %q", r.Header.Get("Authorization"))
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"results":[{"id":42,"title":"Meridian Drift","release_date":"2026-02-14","overview":"Updated from read token."}]}`))
+		_, _ = w.Write([]byte(`{"results":[{"id":42,"title":"The Meridian Job","release_date":"2025-02-14","overview":"Updated from read token."}]}`))
 	}))
 	defer tmdb.Close()
 
@@ -914,7 +914,7 @@ func TestMetadataRefreshUsesRuntimeOwnerTMDBReadAccessToken(t *testing.T) {
 			t.Fatalf("unexpected TMDB api_key query")
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"results":[{"id":42,"title":"Meridian Drift","release_date":"2026-02-14","overview":"Updated from runtime owner credential."}]}`))
+		_, _ = w.Write([]byte(`{"results":[{"id":42,"title":"The Meridian Job","release_date":"2025-02-14","overview":"Updated from runtime owner credential."}]}`))
 	}))
 	defer tmdb.Close()
 
@@ -1058,6 +1058,9 @@ func TestMetadataRefreshRespectsLockedFields(t *testing.T) {
 	defer tmdb.Close()
 
 	_, _, server := newDiscoveryTestServer(t, config.Config{TMDBAPIKey: "test-api-key", TMDBBaseURL: tmdb.URL})
+	if err := server.upsertMediaProviderID("movie_meridian", "tmdb", "42", "movie", 1, "accepted-test-identity"); err != nil {
+		t.Fatalf("seed accepted provider identity: %v", err)
+	}
 	before, err := server.getMediaDetail("", "movie_meridian")
 	if err != nil {
 		t.Fatalf("load media: %v", err)
@@ -1475,15 +1478,15 @@ func TestAudiobookMetadataFromTagsExtractsBookSpecificFields(t *testing.T) {
 	}
 }
 
-func TestMetadataRefreshIgnoresStaleTMDBProviderIDWhenFilenameDisagrees(t *testing.T) {
-	var searchYear string
+func TestMetadataRefreshPreservesAcceptedTypedTMDBIdentityWhenFilenameDisagrees(t *testing.T) {
+	searchRequests := 0
 	tmdb := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
 		case "/movie/1239561":
 			_, _ = w.Write([]byte(`{"id":1239561,"title":"Waffle F1 - The Movie","release_date":"2022-01-01","popularity":0.4}`))
 		case "/search/movie":
-			searchYear = r.URL.Query().Get("year")
+			searchRequests++
 			_, _ = w.Write([]byte(`{"results":[{"id":911430,"title":"F1 The Movie","release_date":"2025-06-25","overview":"Racing drama.","popularity":350.0}]}`))
 		case "/movie/911430":
 			_, _ = w.Write([]byte(`{"id":911430,"title":"F1 The Movie","release_date":"2025-06-25","overview":"Racing drama.","popularity":350.0}`))
@@ -1508,11 +1511,31 @@ func TestMetadataRefreshIgnoresStaleTMDBProviderIDWhenFilenameDisagrees(t *testi
 	if err != nil {
 		t.Fatalf("refresh metadata: %v", err)
 	}
-	if after.Title != "F1 The Movie" || after.Year != 2025 {
-		t.Fatalf("stale provider id was trusted: title=%q year=%d", after.Title, after.Year)
+	if after.Title != "Waffle F1 - The Movie" || after.Year != 2022 {
+		t.Fatalf("accepted typed provider identity was displaced: title=%q year=%d", after.Title, after.Year)
 	}
-	if searchYear != "2025" {
-		t.Fatalf("search year = %q, expected filename year 2025", searchYear)
+	if searchRequests != 0 {
+		t.Fatalf("accepted typed provider identity triggered %d name searches", searchRequests)
+	}
+}
+
+func TestAutomaticMetadataMatchRequiresSignalsThresholdAndMargin(t *testing.T) {
+	item := MediaItem{Title: "Meridian", Year: 2025}
+	confident := tmdbResultCandidateScore(tmdbSearchResult{ID: 1, Title: "Meridian", ReleaseDate: "2025-01-01"}, item, []string{"Meridian"}, 2025)
+	if !automaticMetadataMatchAccepted(confident, nil) {
+		t.Fatalf("exact title/year score should be accepted: %#v", confident)
+	}
+	oneSignal := tmdbResultCandidateScore(tmdbSearchResult{ID: 1, Title: "Meridian"}, item, []string{"Meridian"}, 0)
+	if automaticMetadataMatchAccepted(oneSignal, nil) {
+		t.Fatalf("one strong signal was accepted: %#v", oneSignal)
+	}
+	ambiguous := confident
+	if automaticMetadataMatchAccepted(confident, &ambiguous) {
+		t.Fatal("candidate without the required incompatible-candidate margin was accepted")
+	}
+	contradictory := tmdbResultCandidateScore(tmdbSearchResult{ID: 1, Title: "Meridian", ReleaseDate: "1995-01-01", Popularity: 1000}, item, []string{"Meridian"}, 2025)
+	if automaticMetadataMatchAccepted(contradictory, nil) {
+		t.Fatalf("hard year contradiction was accepted: %#v", contradictory)
 	}
 }
 
@@ -1535,9 +1558,10 @@ func TestManualTMDBMatchAppliesSelectedCandidateEvenWhenTitleDisagrees(t *testin
 		t.Fatalf("seed stale title: %v", err)
 	}
 	after, err := server.applyManualMediaMatch(context.Background(), "", before.ID, ManualMediaMatchRequest{
-		Provider:     "tmdb",
-		ExternalID:   "911430",
-		ExternalType: "movie",
+		Provider:         "tmdb",
+		ExternalID:       "911430",
+		ExternalType:     "movie",
+		ExpectedRevision: &before.MetadataRevision,
 	})
 	if err != nil {
 		t.Fatalf("apply manual match: %v", err)
@@ -1639,6 +1663,39 @@ func TestMetadataRepairListsStaleProviderIDsAndQueuesRematch(t *testing.T) {
 	}
 	if projectedRevision != revision {
 		t.Fatalf("facet revision = %d, canonical revision = %d", projectedRevision, revision)
+	}
+}
+
+func TestPublicMetadataEditRequiresRevisionAndRejectsTechnicalTruth(t *testing.T) {
+	serverURL, db := newAuthTestServerWithDB(t)
+	jar, _ := cookiejar.New(nil)
+	client := &http.Client{Jar: jar}
+	loginUser(t, client, serverURL)
+
+	var revision, duration int
+	var sourceURL string
+	if err := db.QueryRow(`SELECT metadata_revision, duration_seconds, source_url FROM media_items WHERE id = 'movie_meridian'`).Scan(&revision, &duration, &sourceURL); err != nil {
+		t.Fatalf("load canonical metadata: %v", err)
+	}
+	status, body := doJSON(t, client, http.MethodPatch, serverURL+"/api/media/movie_meridian", map[string]any{"title": "No Fence"}, nil)
+	if status != http.StatusBadRequest || !strings.Contains(body, "metadata_revision_required") {
+		t.Fatalf("unfenced edit status=%d body=%s", status, body)
+	}
+	status, body = doJSON(t, client, http.MethodPatch, serverURL+"/api/media/movie_meridian", map[string]any{"expectedRevision": revision, "durationSeconds": duration + 60}, nil)
+	if status != http.StatusBadRequest || !strings.Contains(body, "metadata_technical_field") {
+		t.Fatalf("duration edit status=%d body=%s", status, body)
+	}
+	status, body = doJSON(t, client, http.MethodPatch, serverURL+"/api/media/movie_meridian", map[string]any{"expectedRevision": revision, "sourceUrl": "https://attacker.invalid/stream"}, nil)
+	if status != http.StatusBadRequest || !strings.Contains(body, "metadata_technical_field") {
+		t.Fatalf("source edit status=%d body=%s", status, body)
+	}
+	var afterDuration int
+	var afterSource string
+	if err := db.QueryRow(`SELECT duration_seconds, source_url FROM media_items WHERE id = 'movie_meridian'`).Scan(&afterDuration, &afterSource); err != nil {
+		t.Fatal(err)
+	}
+	if afterDuration != duration || afterSource != sourceURL {
+		t.Fatalf("technical truth changed: duration %d→%d source %q→%q", duration, afterDuration, sourceURL, afterSource)
 	}
 }
 
@@ -2433,10 +2490,24 @@ func TestMetadataProviderSelectionUsesLibraryOverride(t *testing.T) {
 func TestMetadataProviderSelectionUsesLibraryOrderAndDisabledProviders(t *testing.T) {
 	server := newScannerTestServer(t)
 	server.cfg.TMDBAPIKey = "runtime-owner-api-key"
+	server.cfg.TVDBAPIKey = "runtime-owner-tvdb-key"
+	if _, err := server.db.Exec(`UPDATE libraries SET settings_json = ? WHERE id = ?`, `{"metadataProviderOrder":"TMDB, TVDB"}`, "lib_movies"); err != nil {
+		t.Fatalf("save ordered fallback chain: %v", err)
+	}
+	item, err := server.getMediaDetail("", "movie_meridian")
+	if err != nil {
+		t.Fatalf("load movie with ordered fallback: %v", err)
+	}
+	if provider := server.metadataProviderForItem(item); provider != "tmdb" {
+		t.Fatalf("primary provider = %s, expected tmdb", provider)
+	}
+	if fallbacks := server.metadataFallbackProvidersForItem(item); len(fallbacks) != 1 || fallbacks[0] != "tvdb" {
+		t.Fatalf("ordered fallbacks = %#v, expected [tvdb]", fallbacks)
+	}
 	if _, err := server.db.Exec(`UPDATE libraries SET settings_json = ? WHERE id = ?`, `{"metadataProviderOrder":"MusicBrainz, Local Media Assets, TMDB","disabledMetadataProviders":"local"}`, "lib_movies"); err != nil {
 		t.Fatalf("save library provider order: %v", err)
 	}
-	item, err := server.getMediaDetail("", "movie_meridian")
+	item, err = server.getMediaDetail("", "movie_meridian")
 	if err != nil {
 		t.Fatalf("load movie: %v", err)
 	}

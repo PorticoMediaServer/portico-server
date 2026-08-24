@@ -17,6 +17,13 @@ configuration. Applicable notices and license texts are included with each
 package. The corresponding source archive is attached to the matching FFmpeg
 toolchain release in this GitHub repository.
 
+## Metadata services
+
+Portico includes intentionally distributed application credentials for TMDB
+and TheTVDB. They identify Portico to those metadata services and are not user
+or server secrets. Owners may configure their own credentials. The server UI
+includes the providers' required attribution and direct links.
+
 Portico's web interface includes Manrope under the SIL Open Font License 1.1.
 The font license is included beside the distributed font files.
 

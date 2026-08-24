@@ -117,7 +117,10 @@ function validateRouteURL(route: HostedRouteEntry, lan: boolean): string | undef
 
 const defaultHostedConnectionRetryDelaysMs = [2500, 5000, 7500];
 const maxPendingRouteFailureReports = 8;
+const routeFailureReportCooldownMs = 30_000;
+const maxRememberedRouteFailureReports = 128;
 let pendingRouteFailureReports = 0;
+const recentRouteFailureReports = new Map<string, number>();
 
 export async function connectHostedServer(server: HostedServer, options: HostedServerConnectorOptions): Promise<AuthMeResponse> {
   throwIfConnectionAborted(options.signal);
@@ -547,7 +550,7 @@ export async function verifyHostedRouteDocument(
   runtimeAdapters: HostedConnectionRuntimeAdapters | ResolvedHostedConnectionRuntimeAdapters = {}
 ): Promise<void> {
   const runtime = createHostedConnectionRuntime(runtimeAdapters);
-  if (document.documentVersion !== 1) throw new Error("The route document version is not supported.");
+  assertRouteDocumentEnvelope(document);
   if (document.audience !== "portico-media-server") throw new Error("The route document was issued for a different product.");
   if (document.serverId !== expectedServerId) throw new Error("The route document identifies a different server.");
 	if (!document.serverPublicKey?.trim() || !isValidPorticoServerPublicKeyFingerprint(document.serverPublicKeyFingerprint)) throw new Error("The route document omits the server identity key.");
@@ -631,7 +634,7 @@ function sortJSONValue(value: unknown): unknown {
   return Object.fromEntries(Object.entries(value as Record<string, unknown>)
     // Hosted Services canonicalizes JSON object keys by raw lexical byte
     // order. localeCompare is environment-sensitive and orders some adjacent
-    // ASCII keys differently (for example lastCheckedAt/lastCheckError), which
+	// ASCII keys differently (for example host/quality), which
     // invalidates otherwise-correct signed route documents.
     .sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0)
     .map(([key, nested]) => [key, sortJSONValue(nested)]));
@@ -771,6 +774,7 @@ function presentationText(presentation: { title?: string; body?: string; text?: 
 }
 
 export function preferredRoute(document: HostedRouteDocument): HostedRouteEntry | undefined {
+  assertRouteDocumentEnvelope(document);
   try {
     return routesForConnection(document)[0];
   } catch {
@@ -779,6 +783,7 @@ export function preferredRoute(document: HostedRouteDocument): HostedRouteEntry 
 }
 
 export function routesForConnection(document: HostedRouteDocument, preference: HostedRoutePreference = "lan-first"): HostedRouteEntry[] {
+  assertRouteDocumentEnvelope(document);
   const authModes = Array.isArray(document.authModes) ? document.authModes : ["portico"];
   if (authModes.includes("local") || !authModes.includes("portico")) {
     throw new Error("This server uses This Server sign-in and cannot be opened from a hosted Portico client.");
@@ -812,13 +817,21 @@ export function routesForConnection(document: HostedRouteDocument, preference: H
       ?? document.routes.find((route) => route.quality === "http_failed" || route.quality === "failed");
     if (hardFailure?.quality === "identity_mismatch") throw new Error("The selected route reported the wrong server identity. Do not continue until the server fingerprint matches.");
     if (hardFailure?.quality === "tls_failed") throw new Error("The selected route failed TLS verification. Waiting for certificate or DNS repair.");
-    if (hardFailure?.quality === "stale") throw new Error("This server has not reported a fresh route recently. Waiting for Portico to receive a new heartbeat.");
-    if (hardFailure?.quality === "http_failed" || hardFailure?.quality === "failed") {
-      throw new Error(hardFailure.lastCheckError ? `Remote Access health check failed: ${hardFailure.lastCheckError}. Waiting for route repair.` : "Remote Access health check failed. Waiting for route repair.");
-    }
+		if (hardFailure?.quality === "stale") throw new Error("This server has not reported a fresh route recently. Waiting for Portico to receive a new heartbeat.");
+		if (hardFailure?.quality === "http_failed" || hardFailure?.quality === "failed") {
+			throw new Error("Remote Access health check failed. Waiting for route repair.");
+		}
     throw new Error("No route is published for this server yet. Waiting for the local server to heartbeat.");
   }
   return unique;
+}
+
+function assertRouteDocumentEnvelope(document: HostedRouteDocument): asserts document is HostedRouteDocument & {endpointGeneration: number} {
+  if (document.kind !== "route-document") throw new Error("The route document kind is invalid.");
+  if (document.documentVersion !== 1) throw new Error("The route document version is not supported.");
+  if (!Number.isSafeInteger(document.endpointGeneration) || (document.endpointGeneration ?? 0) <= 0) {
+    throw new Error("The route document endpoint generation is invalid.");
+  }
 }
 
 function hostedConnectionErrorIsRetryable(error: unknown): boolean {
@@ -896,7 +909,7 @@ async function verifyRoute(route: HostedRouteEntry, document: HostedRouteDocumen
     const detail = controller.signal.aborted
       ? "The route health check timed out."
       : error instanceof TypeError ? "The client could not establish a secure connection." : "The health request failed.";
-    void reportRouteFailure(route, document, options, detail);
+    void reportRouteFailure(route, document, options, "transport_failed");
     if ((options.routePreference === "public-first" || options.routePreference === "lan-only") && isLANRoute(route) && error instanceof TypeError) {
       throw new LocalNetworkRouteUnavailableError({ cause: error });
     }
@@ -908,30 +921,30 @@ async function verifyRoute(route: HostedRouteEntry, document: HostedRouteDocumen
   throwIfConnectionAborted(options.signal);
   assertRouteHealthResponseNotRedirected(response, base);
   if (response.status === 401 || response.status === 403) {
-    void reportRouteFailure(route, document, options, `Remote Access health verification returned HTTP ${response.status}.`);
+    void reportRouteFailure(route, document, options, "http_failed");
     throw new Error("This route candidate did not authorize its health check.");
   }
   if (!response.ok) {
-    void reportRouteFailure(route, document, options, `Remote Access health verification returned HTTP ${response.status}.`);
+    void reportRouteFailure(route, document, options, "http_failed");
     throw new Error(`Remote Access health verification failed with HTTP ${response.status}. Check the local server Remote Access status.`);
   }
   let health: HostedRouteHealthEvidence;
   try {
     health = decodeRouteHealth(await response.json());
   } catch {
-    void reportRouteFailure(route, document, options, "The selected route returned invalid health evidence.");
+    void reportRouteFailure(route, document, options, "invalid_health");
     throw new Error("The selected route returned invalid health evidence.");
   }
   if (health.serverId !== document.serverId) {
-    void reportRouteFailure(route, document, options, "The selected route returned the wrong server identity.");
+    void reportRouteFailure(route, document, options, "identity_mismatch");
     throw new Error("The selected route returned the wrong server identity. Do not continue until DNS points to the expected Portico server.");
   }
   if (health.serverPublicKeyFingerprint !== document.serverPublicKeyFingerprint) {
-    void reportRouteFailure(route, document, options, "The selected route did not match the expected server fingerprint.");
+    void reportRouteFailure(route, document, options, "identity_mismatch");
     throw new Error("The selected route did not match the expected server key fingerprint. Do not continue until the owner verifies the server identity.");
   }
   if (health.remoteAccessEnabled === false) {
-    void reportRouteFailure(route, document, options, "Remote Access is disabled on the selected server route.");
+    void reportRouteFailure(route, document, options, "remote_access_disabled");
     throw new Error("Remote Access is disabled on the selected server route. Enable Remote Access on the local server before connecting.");
   }
 }
@@ -962,22 +975,31 @@ export function assertRouteHealthResponseNotRedirected(response: Response, expec
   }
 }
 
-async function reportRouteFailure(route: HostedRouteEntry, document: HostedRouteDocument, options: HostedServerRouteDiscoveryOptions, error: string): Promise<void> {
+type RouteFailureCategory = "transport_failed" | "http_failed" | "invalid_health" | "identity_mismatch" | "remote_access_disabled";
+
+async function reportRouteFailure(route: HostedRouteEntry, document: HostedRouteDocument, options: HostedServerRouteDiscoveryOptions, category: RouteFailureCategory): Promise<void> {
   if (!isPublicDirectRoute(route) && !isIPEncodedPublicRoute(route)) return;
   if (options.signal?.aborted) return;
   if (pendingRouteFailureReports >= maxPendingRouteFailureReports) return;
+  const endpointGeneration = document.endpointGeneration;
+  if (!Number.isSafeInteger(endpointGeneration) || (endpointGeneration ?? 0) <= 0) return;
+  const runtime = createHostedConnectionRuntime(options.runtime);
+  const now = runtime.now().getTime();
+  const reportKey = `${document.serverId}\n${endpointGeneration}\n${route.type}`;
+  const lastReportedAt = recentRouteFailureReports.get(reportKey);
+  if (lastReportedAt !== undefined && now-lastReportedAt < routeFailureReportCooldownMs) return;
+  recentRouteFailureReports.set(reportKey, now);
+  if (recentRouteFailureReports.size > maxRememberedRouteFailureReports) {
+    const oldest = [...recentRouteFailureReports.entries()].sort((left, right) => left[1]-right[1])[0];
+    if (oldest) recentRouteFailureReports.delete(oldest[0]);
+  }
   pendingRouteFailureReports += 1;
   try {
-    const runtime = createHostedConnectionRuntime(options.runtime);
-    let timeout: unknown;
-    await Promise.race([options.hostedClient.reportRouteFailure(document.serverId, {
+    await options.hostedClient.reportRouteFailure(document.serverId, {
       routeType: route.type,
-      routeUrl: route.url,
-      host: route.host,
-      address: route.address,
-      error
-    }), new Promise<void>(resolve => { timeout = runtime.setTimeout(resolve, 750); })]);
-    if (timeout !== undefined) runtime.clearTimeout(timeout as ReturnType<typeof setTimeout>);
+      endpointGeneration: endpointGeneration as number,
+      category
+    });
   } catch {
     // Failure reporting should never hide the original connection problem.
   } finally {

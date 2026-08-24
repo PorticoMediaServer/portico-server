@@ -80,12 +80,63 @@ func TestReadTranscodeManifestContextHonorsRequestCancellation(t *testing.T) {
 	}
 }
 
+func TestGeneratedHLSManifestValidationFencesStructureAndFiles(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "init.mp4"), []byte("init"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "segment_00000.m4s"), []byte("segment"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	session := &transcodeSession{dir: dir}
+	valid := "#EXTM3U\n#EXT-X-VERSION:7\n#EXT-X-TARGETDURATION:4\n#EXT-X-MEDIA-SEQUENCE:0\n#EXT-X-MAP:URI=\"init.mp4\"\n#EXTINF:4.000,\nsegment_00000.m4s\n"
+	if err := validateGeneratedHLSManifest(session, valid); err != nil {
+		t.Fatalf("valid generated manifest rejected: %v", err)
+	}
+	for name, manifest := range map[string]string{
+		"duration over target": strings.Replace(valid, "#EXTINF:4.000", "#EXTINF:5.000", 1),
+		"missing segment":      strings.Replace(valid, "segment_00000.m4s", "segment_00001.m4s", 1),
+		"traversal":            strings.Replace(valid, "segment_00000.m4s", "../segment_00000.m4s", 1),
+		"missing extinf":       strings.Replace(valid, "#EXTINF:4.000,\n", "", 1),
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := validateGeneratedHLSManifest(session, manifest); err == nil {
+				t.Fatal("invalid generated manifest was accepted")
+			}
+		})
+	}
+}
+
+func TestGeneratedHLSBandwidthUsesProducedSegmentBytes(t *testing.T) {
+	dir := t.TempDir()
+	manifest := filepath.Join(dir, "index.m3u8")
+	text := "#EXTM3U\n#EXT-X-TARGETDURATION:4\n#EXT-X-MEDIA-SEQUENCE:0\n#EXTINF:4.0,\nsegment_00000.ts\n#EXTINF:2.0,\nsegment_00001.ts\n"
+	if err := os.WriteFile(manifest, []byte(text), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "segment_00000.ts"), make([]byte, 1_000), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "segment_00001.ts"), make([]byte, 1_000), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	measured := measureGeneratedHLSBandwidth(&transcodeSession{dir: dir, manifest: manifest})
+	if measured.PeakBitsPerSecond != 4_000 || measured.AverageBitsPerSecond != 2_667 {
+		t.Fatalf("measured bandwidth = %#v", measured)
+	}
+	item := MediaItem{ID: "movie", Streams: []Stream{{ID: "v", Kind: "video", Codec: "h264", Width: 1280, Height: 720, Bitrate: 9_000_000}}}
+	master := buildMediaHLSMasterManifestWithBandwidth(item, item.ID, "original", "", 0, "", "", true, "", "", text, measured)
+	if !strings.Contains(master, "BANDWIDTH=4000,AVERAGE-BANDWIDTH=2667") {
+		t.Fatalf("master did not use measured generated output bandwidth:\n%s", master)
+	}
+}
+
 func TestBuildMediaHLSMasterManifestAdvertisesSidecarTextSubtitle(t *testing.T) {
 	item := MediaItem{
 		ID:              "movie",
 		DurationSeconds: 120,
 		Streams: []Stream{
-			{ID: "v1", Kind: "video", Codec: "h264", Width: 1920, Height: 1080, Bitrate: 4_000_000},
+			{ID: "v1", Kind: "video", Codec: "h264", Profile: "high", Width: 1920, Height: 1080, FrameRate: 23.976, DynamicRange: "sdr", Bitrate: 4_000_000},
 			{ID: "a1", Kind: "audio", Codec: "aac", Bitrate: 160_000},
 			{ID: "sub1", Kind: "subtitle", Codec: "webvtt", Language: "eng", DisplayTitle: "English", SourceURL: "/api/media/movie/subtitles/sub1"},
 		},
@@ -103,11 +154,58 @@ func TestBuildMediaHLSMasterManifestAdvertisesSidecarTextSubtitle(t *testing.T) 
 	if !strings.Contains(manifest, "audioStream=a1") {
 		t.Fatalf("master manifest did not preserve selected audio stream:\n%s", manifest)
 	}
+	for _, want := range []string{`BANDWIDTH=`, `AVERAGE-BANDWIDTH=`, `CODECS="avc1.640028,mp4a.40.2"`, `RESOLUTION=1920x1080`, `FRAME-RATE=23.976`, `VIDEO-RANGE=SDR`, `FORCED=NO`, `CLOSED-CAPTIONS=NONE`} {
+		if !strings.Contains(manifest, want) {
+			t.Fatalf("master manifest missing required attribute %q:\n%s", want, manifest)
+		}
+	}
 	if strings.Contains(manifest, "media_grant=") {
 		t.Fatalf("master manifest exposed a media grant:\n%s", manifest)
 	}
 	if strings.Contains(manifest, "start=") || strings.Contains(manifest, "_porticoSeek=") {
 		t.Fatalf("master manifest retained legacy seek-offset state:\n%s", manifest)
+	}
+}
+
+func TestHLSSegmentContentTypesDistinguishInitializationMedia(t *testing.T) {
+	for name, want := range map[string]string{
+		"segment_00001.ts":  "video/mp2t",
+		"segment_00001.m4s": "video/iso.segment",
+		"init.mp4":          "video/mp4",
+	} {
+		if got := hlsSegmentContentType(name); got != want {
+			t.Fatalf("hlsSegmentContentType(%q) = %q, want %q", name, got, want)
+		}
+	}
+}
+
+func TestBuildMediaHLSMasterManifestWithoutSubtitleStillPublishesVariant(t *testing.T) {
+	item := MediaItem{ID: "silent", Streams: []Stream{{ID: "v1", Kind: "video", Codec: "h264", Width: 1280, Height: 720, FrameRate: 30, Bitrate: 2_000_000}}}
+	manifest := buildMediaHLSMasterManifest(item, item.ID, "original", "", 0, "", "", true, "", "", "#EXTM3U\n#EXT-X-ENDLIST\n")
+	if !strings.Contains(manifest, "#EXT-X-STREAM-INF:") || !strings.Contains(manifest, "/api/media/silent/hls/variant.m3u8?quality=original") {
+		t.Fatalf("master manifest did not publish its sole variant:\n%s", manifest)
+	}
+	if strings.Contains(manifest, "TYPE=SUBTITLES") || strings.Contains(manifest, `SUBTITLES="subs"`) {
+		t.Fatalf("master manifest invented a subtitle group:\n%s", manifest)
+	}
+	if strings.Contains(manifest, "mp4a") {
+		t.Fatalf("silent-video master manifest invented an audio codec:\n%s", manifest)
+	}
+}
+
+func TestBuildMediaHLSMasterManifestAdvertisesEncodedGeometry(t *testing.T) {
+	item := MediaItem{ID: "movie", Streams: []Stream{
+		{ID: "v1", Kind: "video", Codec: "hevc", Profile: "main10", Width: 1920, Height: 1080, FrameRate: 60, DynamicRange: "pq", Bitrate: 8_000_000},
+		{ID: "a1", Kind: "audio", Codec: "dts", Bitrate: 768_000},
+	}}
+	manifest := buildMediaHLSMasterManifest(item, item.ID, "720p-medium", "", 0, "transcode", "a1", false, "", "", "#EXTM3U\n#EXT-X-ENDLIST\n")
+	for _, want := range []string{`RESOLUTION=1280x720`, `CODECS="avc1.640028,mp4a.40.2"`, `VIDEO-RANGE=SDR`} {
+		if !strings.Contains(manifest, want) {
+			t.Fatalf("encoded master manifest missing %q:\n%s", want, manifest)
+		}
+	}
+	if strings.Contains(manifest, "hvc1") || strings.Contains(manifest, "VIDEO-RANGE=PQ") {
+		t.Fatalf("encoded master manifest advertised source encoding facts:\n%s", manifest)
 	}
 }
 
@@ -121,7 +219,10 @@ func TestBuildStaticMediaHLSManifestUsesAbsoluteSegmentTimeline(t *testing.T) {
 			{ID: "a1", Kind: "audio", Codec: "aac", Channels: 2, Bitrate: 160_000},
 		},
 	}
-	manifest := server.buildStaticMediaHLSManifest(item, item.ID, "original", "", 0, "", "", true, "ptc_clt_test")
+	manifest, err := server.buildStaticMediaHLSManifest(item, item.ID, "original", "", 0, "", "", true, "ptc_clt_test")
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, want := range []string{
 		"#EXT-X-MEDIA-SEQUENCE:0",
 		"#EXT-X-PLAYLIST-TYPE:VOD",
@@ -149,7 +250,10 @@ func TestBuildStaticMediaHLSManifestIgnoresResumeOffsetAndPublishesFullTimeline(
 			{ID: "a1", Kind: "audio", Codec: "aac", Channels: 2, Bitrate: 160_000},
 		},
 	}
-	manifest := server.buildStaticMediaHLSManifest(item, item.ID, "720p-high", "", 42, "", "", false, "ptc_clt_seek")
+	manifest, err := server.buildStaticMediaHLSManifest(item, item.ID, "720p-high", "", 42, "", "", false, "ptc_clt_seek")
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, want := range []string{
 		"#EXT-X-MEDIA-SEQUENCE:0",
 		"#EXTINF:4.000,\n/api/media/movie_seek_hls/hls/segment?quality=720p-high&name=segment_00000.ts",
@@ -164,6 +268,21 @@ func TestBuildStaticMediaHLSManifestIgnoresResumeOffsetAndPublishesFullTimeline(
 	}
 	if strings.Contains(manifest, "start=42") {
 		t.Fatalf("full-timeline manifest should not carry a resume offset:\n%s", manifest)
+	}
+}
+
+func TestBuildStaticMediaHLSManifestRejectsUnboundedDuration(t *testing.T) {
+	server := &Server{}
+	item := MediaItem{
+		ID:              "movie_unbounded_duration",
+		DurationSeconds: maximumStaticHLSDurationSeconds + 1,
+	}
+	manifest, err := server.buildStaticMediaHLSManifest(item, item.ID, "original", "", 0, "", "", true, "ptc_clt_test")
+	if err == nil {
+		t.Fatal("expected oversized media duration to be rejected")
+	}
+	if manifest != "" {
+		t.Fatalf("expected no manifest for oversized duration, got %d bytes", len(manifest))
 	}
 }
 
@@ -373,6 +492,29 @@ func TestSourcePathForHLSTranscodeAllowsValidatedRemoteSources(t *testing.T) {
 	}
 }
 
+func TestSourcePathForHLSTranscodeAllowsCatalogBoundRemoteStorage(t *testing.T) {
+	server := newScannerTestServer(t)
+	library, err := server.createLibrary(CreateLibraryRequest{Name: "Cloud", Type: "movie", Paths: []string{t.TempDir()}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	if _, err := server.db.Exec(`INSERT INTO storage_sources(id,library_id,configured_path,classification,classification_source,backend_kind,display_name,created_at,updated_at) VALUES('storage-cloud',?,'webdav://cloud','network','owner','webdav','Cloud',?,?)`, library.ID, now, now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := server.db.Exec(`INSERT INTO storage_remote_objects(source_id,object_path,revision,size_bytes,first_seen_generation,last_seen_generation,updated_at) VALUES('storage-cloud','Movies/Film.mkv','rev-1',42,'gen-1','gen-1',?)`, now); err != nil {
+		t.Fatal(err)
+	}
+	item := MediaItem{ID: "movie-cloud", LibraryID: library.ID, SourceURL: "portico-storage://storage-cloud/Movies/Film.mkv"}
+	if got, err := server.sourcePathForHLSTranscode(item); err != nil || got != item.SourceURL {
+		t.Fatalf("source=%q err=%v", got, err)
+	}
+	item.LibraryID = "another-library"
+	if _, err := server.sourcePathForHLSTranscode(item); err == nil {
+		t.Fatal("cross-library remote storage locator was accepted")
+	}
+}
+
 func TestSourcePathForHLSTranscodeAllowsHDHomeRunLiveSources(t *testing.T) {
 	server := newScannerTestServer(t)
 	item := MediaItem{ID: "live_chan", Type: "live_channel", Labels: []string{"hdhomerun"}, SourceURL: "http://192.168.1.50:5004/auto/v1"}
@@ -436,6 +578,21 @@ func TestDirectStreamRemuxAvailableForOriginalHEVC(t *testing.T) {
 	}
 	if !directStreamRemuxNeedsHVC1Tag(item) {
 		t.Fatalf("expected HEVC remux to use hvc1 MP4 tagging")
+	}
+}
+
+func TestDolbyVisionHLSUsesExplicitDVH1SampleEntryAndCodec(t *testing.T) {
+	item := MediaItem{Streams: []Stream{{Kind: "video", Codec: "hevc", DolbyVisionProfile: "8", DolbyVisionLevel: 6, HLSSampleEntry: "dvh1", Width: 3840, Height: 2160}}}
+	if got := directStreamRemuxVideoTag(item); got != "dvh1" {
+		t.Fatalf("Dolby Vision remux sample entry = %q", got)
+	}
+	video := item.Streams[0]
+	if got := hlsCodecListForStream(video, video.Codec, "eac3"); got != "dvh1.08.06,ec-3" {
+		t.Fatalf("Dolby Vision HLS CODECS = %q", got)
+	}
+	video.HLSSampleEntry = ""
+	if got := hlsCodecListForStream(video, video.Codec, "eac3"); got != "" {
+		t.Fatalf("unverified Dolby Vision sample entry advertised as %q", got)
 	}
 }
 
@@ -909,11 +1066,17 @@ func TestMediaHLSRouteServesNormalizedDirectStreamManifest(t *testing.T) {
 		t.Fatalf("HLS manifest status=%d body=%s", rec.Code, rec.Body.String())
 	}
 	body := rec.Body.String()
-	if !strings.Contains(body, "/api/media/movie_route_shifted_pts/hls/segment?quality=original&directStream=1") || strings.Contains(body, "start=") {
-		t.Fatalf("manifest did not retain the plan-bound remux mode or retained a caller-forced offset:\n%s", body)
+	if !strings.Contains(body, "/api/media/movie_route_shifted_pts/hls/variant.m3u8?quality=original&directStream=1") || !strings.Contains(body, "#EXT-X-STREAM-INF:") || strings.Contains(body, "start=") {
+		t.Fatalf("master did not retain the plan-bound remux variant or retained a caller-forced offset:\n%s", body)
 	}
 	if strings.Contains(body, server.cfg.TranscodeDir) || strings.Contains(body, "shifted-pts.mkv") {
 		t.Fatalf("manifest leaked local paths:\n%s", body)
+	}
+	variantReq := mediaGrantRequest(http.MethodGet, "/api/media/movie_route_shifted_pts/hls/variant.m3u8?quality=original&directStream=1&start=2", grant.Token)
+	variantRec := httptest.NewRecorder()
+	server.handleMediaHLSManifest(variantRec, variantReq, user, "movie_route_shifted_pts", false)
+	if variantRec.Code != http.StatusOK || !strings.Contains(variantRec.Body.String(), "/api/media/movie_route_shifted_pts/hls/segment?quality=original&directStream=1") || strings.Contains(variantRec.Body.String(), "start=") {
+		t.Fatalf("variant did not retain the plan-bound remux segments: status=%d body=%s", variantRec.Code, variantRec.Body.String())
 	}
 
 	segmentReq := mediaGrantRequest(http.MethodGet, "/api/media/movie_route_shifted_pts/hls/segment?quality=original&directStream=1&start=2&name=segment_00000.ts", grant.Token)
@@ -1952,6 +2115,33 @@ func TestBackgroundTranscodeSlotsAreBounded(t *testing.T) {
 		t.Fatalf("foreground playback transcode should not be blocked by another user's background prewarm slot")
 	}
 	server.transcodeMu.Unlock()
+}
+
+func TestServerShutdownStopsAndJoinsLegacyTranscodes(t *testing.T) {
+	cmd := exec.Command("sleep", "30")
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan struct{})
+	go func() {
+		_ = cmd.Wait()
+		close(done)
+	}()
+	session := &transcodeSession{cmd: cmd, done: done, updateCh: make(chan struct{})}
+	server := &Server{transcodes: map[string]*transcodeSession{"legacy": session}}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := server.shutdownLegacyTranscodes(ctx); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-done:
+	default:
+		t.Fatal("legacy transcode was not joined before shutdown returned")
+	}
+	if len(server.transcodes) != 0 {
+		t.Fatal("legacy transcode remained published after shutdown")
+	}
 }
 
 func TestForegroundSeekSupersedesStaleProducerWithoutTouchingOtherPlayback(t *testing.T) {

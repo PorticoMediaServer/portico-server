@@ -66,6 +66,8 @@ var providerArtworkHTTPClient = &http.Client{
 	},
 }
 
+var errMediaTreeNotFullyVisible = errors.New("media tree contains items outside the profile's access")
+
 type sessionCreateOptions struct {
 	TrustDevice             bool
 	ProfileID               string
@@ -100,13 +102,16 @@ type Server struct {
 	dbWriteScheduler                     sqliteWriteScheduler
 	dvrAllocationMu                      sync.Mutex
 	dvrActiveWorkers                     atomic.Int32
+	dvrPlaybackMu                        sync.Mutex
+	dvrPlaybackActive                    map[string]int
+	dvrPlaybackLastSeen                  map[string]time.Time
 	sqliteMetricsMu                      sync.Mutex
 	sqliteMetrics                        SQLiteDiagnostics
 	sqliteHealthMu                       sync.Mutex
 	sqliteHealth                         SQLiteHealthDiagnostic
 	sqliteHealthProbe                    func(context.Context) error
 	sqliteWatchdogOnce                   sync.Once
-	sqliteDBOpener                       func(config.Config) (*sql.DB, error)
+	sqliteDBOpener                       func(context.Context, config.Config) (*sql.DB, error)
 	sqliteRecycleRunning                 atomic.Bool
 	sqliteRecycleMu                      sync.Mutex
 	sqliteLastRecycleAttempt             time.Time
@@ -161,6 +166,10 @@ type Server struct {
 	metadataHealthCache                  map[string]metadataHealthCacheEntry
 	metadataHealthRefreshMu              sync.Mutex
 	metadataHealthRefreshes              map[string]chan struct{}
+	tvdbTokenMu                          sync.Mutex
+	tvdbToken                            string
+	tvdbTokenExpiresAt                   time.Time
+	tvdbTokenCredentialHash              [32]byte
 	categoryCacheMu                      sync.Mutex
 	categoryCache                        map[string]categoryCacheEntry
 	categoryInFlight                     map[string]chan struct{}
@@ -168,6 +177,8 @@ type Server struct {
 	artworkIngestInFlight                map[string]*artworkIngestCall
 	artworkTransformInFlight             map[string]*artworkTransformCall
 	artworkWorkSlots                     chan struct{}
+	metadataArtworkCommitMu              sync.Mutex
+	metadataArtworkCommitLocks           map[string]*metadataArtworkCommitLock
 	readModelRepairMu                    sync.Mutex
 	readModelRepairs                     map[string]chan struct{}
 	workloadMu                           sync.Mutex
@@ -247,6 +258,8 @@ type Server struct {
 	mediaGrantCache                      map[string]verifiedMediaGrantSnapshot
 	mediaGrantCacheCounters              mediaGrantCacheCounters
 	mediaGrantTerminalProbe              func(context.Context, string, mediaGrantScope) (mediaGrantTerminalState, error)
+	liveTVHLSReferenceMu                 sync.Mutex
+	liveTVHLSReferences                  map[string]liveTVHLSReference
 	requestPrincipalCacheMu              sync.Mutex
 	requestPrincipalCache                map[string]verifiedRequestPrincipalSnapshot
 	requestPrincipalCacheHits            atomic.Uint64
@@ -282,6 +295,7 @@ type Server struct {
 	jobWakeForTests                      func()
 	testAfterDatabaseClose               func()
 	transcodeMu                          sync.Mutex
+	transcodeClosing                     bool
 	plannedTranscodeClaims               map[string]plannedTranscodeAdmissionClaim
 	plannedTranscodeStarts               map[string]chan struct{}
 	transcodes                           map[string]*transcodeSession
@@ -307,13 +321,13 @@ type Server struct {
 	apiKeyUsagePending                   map[string]time.Time
 	routeLimiter                         boundedWindowRateLimiter
 	quickConnectLimiter                  boundedWindowRateLimiter
-	tvSetupLimiter                       boundedWindowRateLimiter
 	quickConnectEntropy                  io.Reader
 	nativeCredentialEntropy              io.Reader
 	nativeExchangeAfterCommit            func() error
 	nativeExchangeAfterDeviceUpsert      func() error
 	remoteTLSMu                          sync.Mutex
 	remotePolicySyncMu                   sync.Mutex
+	remotePolicyNextUnknownSyncUnix      atomic.Int64
 	remoteAccessSignalMu                 sync.Mutex
 	remoteAccessRepairEndpoint           string
 	remoteAccessRepairETag               string
@@ -883,7 +897,7 @@ func newServer(cfg config.Config, db *sql.DB, log *slog.Logger, startBackground 
 		cfg:                         cfg,
 		secretProvider:              NewSecretKeyProvider(cfg.AppDataDir),
 		db:                          db,
-		sqliteDBOpener:              database.OpenRuntimeHandle,
+		sqliteDBOpener:              database.OpenRuntimeHandleContext,
 		startedAt:                   time.Now().UTC(),
 		startupPhases:               map[string]startupPhaseState{},
 		log:                         log,
@@ -932,6 +946,7 @@ func newServer(cfg config.Config, db *sql.DB, log *slog.Logger, startBackground 
 		scheduledJobs:               map[string]bool{},
 		scheduledJobReservationAt:   map[string]time.Time{},
 		presenceTouches:             map[string]time.Time{},
+		liveTVHLSReferences:         map[string]liveTVHLSReference{},
 		jobWake:                     make(chan struct{}, 1),
 		jobRuns:                     map[string]struct{}{},
 		jobWorkerID:                 randomID("worker"),
@@ -1007,7 +1022,7 @@ func (s *Server) ActivateRuntimeGeneration() {
 		s.startBackground("live-tv-lifecycle-reaper", s.runLiveTVLifecycleReaper)
 		s.startBackground("library-channel-maintainer", s.runLibraryChannelMaintenance)
 		s.startBackground("remote-access-heartbeat", s.runRemoteAccessHeartbeat)
-		s.startBackground("remote-access-public-ip-monitor", s.runRemoteAccessPublicIPMonitor)
+		s.startBackground("remote-access-network-monitor", s.runRemoteAccessNetworkMonitor)
 		s.startBackground("remote-tls-listener-repair", s.runRemoteTLSListenerRepair)
 		s.startBackground("api-key-usage-writer", s.runAPIKeyUsageWriter)
 		if optimizedPublicationsReady {
@@ -1507,31 +1522,9 @@ func (s *Server) openSQLiteRuntimeHandleWithTimeout(ctx context.Context) (*sql.D
 	}
 	opener := s.sqliteDBOpener
 	if opener == nil {
-		opener = database.OpenRuntimeHandle
+		opener = database.OpenRuntimeHandleContext
 	}
-	type result struct {
-		db  *sql.DB
-		err error
-	}
-	done := make(chan result)
-	canceled := make(chan struct{})
-	go func() {
-		db, err := opener(s.cfg)
-		select {
-		case done <- result{db: db, err: err}:
-		case <-canceled:
-			if db != nil {
-				_ = db.Close()
-			}
-		}
-	}()
-	select {
-	case res := <-done:
-		return res.db, res.err
-	case <-ctx.Done():
-		close(canceled)
-		return nil, ctx.Err()
-	}
+	return opener(ctx, s.cfg)
 }
 
 func (s *Server) cancelRunningJobsForSQLiteRecycle() {
@@ -1589,9 +1582,6 @@ func (s *Server) pruneOperationalTables(ctx context.Context) error {
 		ctx = context.Background()
 	}
 	now := s.operationalRetentionNow()
-	if err := s.pruneTVSetupSessionsContext(ctx, now); err != nil {
-		return err
-	}
 	retention := s.ownerRetentionSettings()
 	if retention.AuditHistoryDays > 0 {
 		auditCutoff := now.AddDate(0, 0, -retention.AuditHistoryDays).Format(time.RFC3339Nano)
@@ -1913,7 +1903,9 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	// work. In particular, this seals the dispatcher-before-register window so
 	// no newly claimed job can begin using SQLite after the host's join boundary.
 	s.BeginShutdown()
-	if err := s.ffmpegSupervisor.Shutdown(ctx); err != nil {
+	legacyTranscodeErr := s.shutdownLegacyTranscodes(ctx)
+	supervisorErr := s.ffmpegSupervisor.Shutdown(ctx)
+	if err := errors.Join(legacyTranscodeErr, supervisorErr); err != nil {
 		return err
 	}
 	if err := s.restoreBarrier.quiesce(ctx); err != nil {
@@ -1961,6 +1953,9 @@ func (s *Server) Shutdown(ctx context.Context) error {
 
 func (s *Server) BeginShutdown() {
 	s.shutdownOnce.Do(func() {
+		s.transcodeMu.Lock()
+		s.transcodeClosing = true
+		s.transcodeMu.Unlock()
 		s.jobLifecycleMu.Lock()
 		s.jobAdmissionClosed = true
 		s.jobRuntimeActive = false
@@ -3628,7 +3623,7 @@ func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.SetupMode == "local_only" && !req.LocalOnlyAcknowledged {
-		writeError(w, http.StatusBadRequest, "local_only_acknowledgement_required", "This Server Only setup requires acknowledging the owner-managed access limitations.")
+		writeError(w, http.StatusBadRequest, "local_only_acknowledgement_required", "Direct server setup requires acknowledging the owner-managed access limitations.")
 		return
 	}
 	if err := s.saveSetupServerNameContext(r.Context(), req.ServerName); err != nil {
@@ -3711,6 +3706,10 @@ func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handlePorticoSetupClaimStart(w http.ResponseWriter, r *http.Request) {
+	if !setupRequestFromLoopback(r) {
+		writeError(w, http.StatusForbidden, "setup_local_access_required", "Initial server setup is available only on this computer.")
+		return
+	}
 	if r.Method != http.MethodPost {
 		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "Use POST for this endpoint.")
 		return
@@ -3728,6 +3727,20 @@ func (s *Server) handlePorticoSetupClaimStart(w http.ResponseWriter, r *http.Req
 		ServerName string `json:"serverName"`
 	}
 	if !decodeJSON(w, r, &req) {
+		return
+	}
+	requestedName := strings.TrimSpace(req.ServerName)
+	if err := validateSettingFieldPolicy("server", "friendlyName", requestedName); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_server_name", "Server name must be between 1 and 120 characters.")
+		return
+	}
+	if claim := s.currentRemoteAccessClaim(); claim != nil && claim.Status == "pending" && claim.ServerName != "" && claim.ServerName != requestedName {
+		writeJSON(w, http.StatusConflict, map[string]any{
+			"type": "https://portico.media/problems/claim-name-locked", "title": "Server name is locked while setup is pending",
+			"status": http.StatusConflict, "code": "claim_name_locked",
+			"detail":     "Finish or cancel the current Portico Account setup before changing this server name.",
+			"serverName": claim.ServerName,
+		})
 		return
 	}
 	if err := s.saveSetupServerNameContext(r.Context(), req.ServerName); err != nil {
@@ -3751,6 +3764,10 @@ func (s *Server) handlePorticoSetupClaimStart(w http.ResponseWriter, r *http.Req
 }
 
 func (s *Server) handlePorticoSetupStatus(w http.ResponseWriter, r *http.Request) {
+	if !setupRequestFromLoopback(r) {
+		writeError(w, http.StatusForbidden, "setup_local_access_required", "Initial server setup is available only on this computer.")
+		return
+	}
 	if r.Method != http.MethodGet {
 		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "Use GET for this endpoint.")
 		return
@@ -3774,6 +3791,18 @@ func (s *Server) handlePorticoSetupStatus(w http.ResponseWriter, r *http.Request
 		setupRequired, _ = s.inspectSetupRequired(r.Context(), r.URL.Path)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"setupRequired": setupRequired, "remoteAccess": status})
+}
+
+func setupRequestFromLoopback(r *http.Request) bool {
+	if r == nil {
+		return false
+	}
+	host, _, err := net.SplitHostPort(strings.TrimSpace(r.RemoteAddr))
+	if err != nil {
+		return false
+	}
+	address, err := netip.ParseAddr(strings.Trim(host, "[]"))
+	return err == nil && address.IsLoopback()
 }
 
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
@@ -4555,7 +4584,7 @@ func (s *Server) serveHostedProfileImage(w http.ResponseWriter, r *http.Request,
 		return false
 	}
 	req.Header.Set("Authorization", "Bearer "+credential)
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := hostedServicesHTTPClient().Do(req)
 	if err != nil {
 		s.log.Warn("fetch hosted profile image failed", "user", porticoUserID, "error", err)
 		return false
@@ -7658,10 +7687,22 @@ func (s *Server) handleMediaRoute(w http.ResponseWriter, r *http.Request, user U
 		if !decodeJSON(w, r, &req) {
 			return
 		}
-		item, err := s.updateMedia(user.ID, mediaID, req)
+		if req.ExpectedRevision == nil || *req.ExpectedRevision < 0 {
+			writeError(w, http.StatusBadRequest, "metadata_revision_required", "expectedRevision is required and must be zero or greater.")
+			return
+		}
+		if req.DurationSeconds != nil || req.SourceURL != nil {
+			writeError(w, http.StatusBadRequest, "metadata_technical_field", "Descriptive metadata edits cannot change measured duration or source location.")
+			return
+		}
+		item, err := s.updateMedia(viewerProfileID(user), mediaID, req)
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				writeError(w, http.StatusNotFound, "media_not_found", "Media item was not found.")
+				return
+			}
+			if errors.Is(err, errMetadataRevisionConflict) {
+				writeError(w, http.StatusConflict, "metadata_revision_conflict", "Metadata changed on another client. Reload it before saving changes.")
 				return
 			}
 			writeError(w, http.StatusBadRequest, "media_update_failed", err.Error())
@@ -7691,6 +7732,14 @@ func (s *Server) handleMediaRoute(w http.ResponseWriter, r *http.Request, user U
 			writeError(w, http.StatusBadRequest, "confirmation_required", "File deletion requires typing the exact media title.")
 			return
 		}
+		if err := s.authorizeMediaTreeDeletionContext(r.Context(), viewerProfileID(user), mediaID); err != nil {
+			if errors.Is(err, errMediaTreeNotFullyVisible) {
+				writeError(w, http.StatusForbidden, "media_tree_forbidden", "Some items in this media group are outside this profile's access. Use an owner or administrator profile to delete it.")
+				return
+			}
+			writeError(w, http.StatusServiceUnavailable, "media_delete_authorization_failed", "Portico could not verify access to every item in this media group. Try again.")
+			return
+		}
 		result, err := s.deleteMediaItem(mediaID, req)
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
@@ -7716,13 +7765,18 @@ func (s *Server) handleMediaRoute(w http.ResponseWriter, r *http.Request, user U
 				yearOverride = year
 			}
 		}
-		candidates, err := s.searchMediaMatchCandidatesWithOptions(r.Context(), user.ID, mediaID, r.URL.Query().Get("query"), yearOverride, r.URL.Query().Get("language"))
+		candidates, err := s.searchMediaMatchCandidatesWithOptions(r.Context(), viewerProfileID(user), mediaID, r.URL.Query().Get("query"), yearOverride, r.URL.Query().Get("language"))
 		if err != nil {
 			writeError(w, http.StatusBadRequest, "match_search_failed", err.Error())
 			return
 		}
 		if candidates == nil {
 			candidates = []MatchCandidate{}
+		}
+		for index := range candidates {
+			// Provider artwork URLs are transient acquisition inputs and never
+			// enter a browser response.
+			candidates[index].PosterURL = ""
 		}
 		writeJSON(w, http.StatusOK, MediaMatchSearchResponse{Items: candidates})
 		return
@@ -7736,10 +7790,18 @@ func (s *Server) handleMediaRoute(w http.ResponseWriter, r *http.Request, user U
 		if !decodeJSON(w, r, &req) {
 			return
 		}
-		item, err := s.applyManualMediaMatch(r.Context(), user.ID, mediaID, req)
+		if req.ExpectedRevision == nil || *req.ExpectedRevision < 0 {
+			writeError(w, http.StatusBadRequest, "metadata_revision_required", "expectedRevision is required and must be zero or greater.")
+			return
+		}
+		item, err := s.applyManualMediaMatch(r.Context(), viewerProfileID(user), mediaID, req)
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				writeError(w, http.StatusNotFound, "media_not_found", "Media item was not found.")
+				return
+			}
+			if errors.Is(err, errMetadataRevisionConflict) {
+				writeError(w, http.StatusConflict, "metadata_revision_conflict", "Metadata changed on another client. Reload it before applying this match.")
 				return
 			}
 			writeError(w, http.StatusBadRequest, "match_apply_failed", err.Error())
@@ -7864,7 +7926,7 @@ func (s *Server) handleMediaRoute(w http.ResponseWriter, r *http.Request, user U
 		if !decodeJSON(w, r, &req) {
 			return
 		}
-		item, err := s.addMediaSegment(user.ID, mediaID, req)
+		item, err := s.addMediaSegment(viewerProfileID(user), mediaID, req)
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				writeError(w, http.StatusNotFound, "media_not_found", "Media item was not found.")
@@ -7883,7 +7945,7 @@ func (s *Server) handleMediaRoute(w http.ResponseWriter, r *http.Request, user U
 			writeError(w, http.StatusForbidden, "forbidden", "You do not have permission to edit media segments.")
 			return
 		}
-		item, err := s.deleteMediaSegment(user.ID, mediaID, parts[2])
+		item, err := s.deleteMediaSegment(viewerProfileID(user), mediaID, parts[2])
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				writeError(w, http.StatusNotFound, "segment_not_found", "Media segment was not found.")
@@ -8052,7 +8114,7 @@ func (s *Server) handleMediaRoute(w http.ResponseWriter, r *http.Request, user U
 			metadata = map[string]string{"profile": profile}
 		} else if req.Type == "media_analyze" {
 			mode := normalizeMediaAnalysisMode(req.AnalysisMode)
-			metadata = mediaAnalysisMetadata(mode)
+			metadata = s.mediaAnalysisMetadataForItem(r.Context(), item, mode)
 			if mode == mediaAnalysisModeProbe {
 				message = fmt.Sprintf("Media stream analysis queued for %s.", item.Title)
 			}
@@ -8136,8 +8198,9 @@ type bulkMediaJobRequest struct {
 }
 
 type bulkMediaMetadataRequest struct {
-	MediaIDs []string           `json:"mediaIds"`
-	Patch    UpdateMediaRequest `json:"patch"`
+	MediaIDs          []string           `json:"mediaIds"`
+	ExpectedRevisions map[string]int     `json:"expectedRevisions"`
+	Patch             UpdateMediaRequest `json:"patch"`
 }
 
 func (s *Server) handleMediaBulkRoute(w http.ResponseWriter, r *http.Request, user User, parts []string) {
@@ -8242,7 +8305,7 @@ func (s *Server) handleMediaBulkJobs(w http.ResponseWriter, r *http.Request, use
 			metadata = map[string]string{"profile": profile}
 		} else if req.Type == "media_analyze" {
 			mode := normalizeMediaAnalysisMode(req.AnalysisMode)
-			metadata = mediaAnalysisMetadata(mode)
+			metadata = s.mediaAnalysisMetadataForItem(r.Context(), item, mode)
 			if mode == mediaAnalysisModeProbe {
 				message = fmt.Sprintf("Media stream analysis queued for %s.", item.Title)
 			}
@@ -8274,12 +8337,29 @@ func (s *Server) handleMediaBulkMetadata(w http.ResponseWriter, r *http.Request,
 		writeError(w, http.StatusBadRequest, "bulk_metadata_empty", "Choose at least one metadata field to update.")
 		return
 	}
+	if req.Patch.DurationSeconds != nil || req.Patch.SourceURL != nil {
+		writeError(w, http.StatusBadRequest, "metadata_technical_field", "Descriptive metadata edits cannot change measured duration or source location.")
+		return
+	}
+	for _, id := range ids {
+		if revision, ok := req.ExpectedRevisions[id]; !ok || revision < 0 {
+			writeError(w, http.StatusBadRequest, "metadata_revision_required", "expectedRevisions must include a non-negative revision for every media item.")
+			return
+		}
+	}
 	updated := make([]MediaItem, 0, len(ids))
 	for _, id := range ids {
-		item, err := s.updateMediaForMetadata(user.ID, id, req.Patch)
+		patch := req.Patch
+		revision := req.ExpectedRevisions[id]
+		patch.ExpectedRevision = &revision
+		item, err := s.updateMediaForMetadata(viewerProfileID(user), id, patch)
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				writeError(w, http.StatusNotFound, "media_not_found", "One or more media items were not found.")
+				return
+			}
+			if errors.Is(err, errMetadataRevisionConflict) {
+				writeError(w, http.StatusConflict, "metadata_revision_conflict", "Metadata changed on another client. Reload the affected items before saving again.")
 				return
 			}
 			writeError(w, http.StatusBadRequest, "bulk_metadata_failed", err.Error())
@@ -8435,7 +8515,7 @@ func (s *Server) startPlaybackForRequest(r *http.Request, user User, req Playbac
 	}
 	prerollQueue := []MediaItem{}
 	if !req.SkipPreroll && req.StartSeconds <= 0 {
-		if trailer, ok := s.cinemaPrerollFor(user.ID, item); ok {
+		if trailer, ok := s.cinemaPrerollFor(user, item); ok {
 			_ = s.setProgress(viewerProfileID(user), item.ID, max(1, item.State.ProgressSeconds), false)
 			prerollQueue = append(prerollQueue, item)
 			item = trailer
@@ -8546,20 +8626,7 @@ func (s *Server) startPlaybackForRequest(r *http.Request, user User, req Playbac
 	playbackURL = appendMediaGrant(playbackURL, mediaGrant)
 	item.SourceURL = playbackURL
 
-	var audio []Stream
-	var subtitles []Stream
-	for _, stream := range item.Streams {
-		switch stream.Kind {
-		case "audio":
-			audio = append(audio, stream)
-		case "subtitle":
-			subtitles = append(subtitles, stream)
-		}
-	}
-	if len(audio) == 0 {
-		audio = append(audio, Stream{ID: "audio_default", Kind: "audio", Codec: "aac", Language: "English", Channels: 2, DisplayTitle: "English - Stereo"})
-	}
-	subtitles = append([]Stream{{ID: "sub_none", Kind: "subtitle", DisplayTitle: "None"}}, subtitles...)
+	audio, subtitles := playbackResponseTracks(item)
 	audio, subtitles = s.applyLanguagePreferences(user, audio, subtitles)
 	subtitles = playbackSubtitleStreams(item.ID, subtitles)
 	for index := range subtitles {
@@ -8580,7 +8647,14 @@ func (s *Server) startPlaybackForRequest(r *http.Request, user User, req Playbac
 	s.recordLog("info", "Playback started", map[string]string{"user": user.Email, "media": item.Title})
 
 	qualities := playbackQualities(item, decision, policy, s.userCanTranscode(user))
-	resources := playbackResourcesForResponse(item, playbackURL, decision.Protocol, decision, policy, qualities, audio, subtitles, selectedAudioStreamID, selectedSubtitleID, mediaGrant, s.userCanTranscode(user), subtitleMode)
+	activeQualityID := "original"
+	if decision.RequiresTranscode {
+		activeQualityID = strings.TrimSpace(decision.DeliveryProfile)
+		if activeQualityID == "" {
+			activeQualityID = "auto"
+		}
+	}
+	resources := playbackResourcesForResponse(item, playbackURL, decision.Protocol, decision, policy, qualities, audio, subtitles, activeQualityID, selectedAudioStreamID, selectedSubtitleID, mediaGrant, s.userCanTranscode(user), subtitleMode)
 	playback := PlaybackResponse{
 		SessionID:             sessionID,
 		NextEventSequence:     1,
@@ -8813,16 +8887,27 @@ func (s *Server) rememberPreparedPlaybackHandoff(ctx context.Context, prepared p
 		if _, err := tx.ExecContext(ctx, `DELETE FROM playback_prepared_handoffs WHERE expires_at <= ? OR (user_id = ? AND profile_id = ? AND source_session_id = ?)`, now.Format(time.RFC3339Nano), prepared.UserID, prepared.ProfileID, prepared.SessionID); err != nil {
 			return err
 		}
-		_, err := tx.ExecContext(ctx, `
+		result, err := tx.ExecContext(ctx, `
 			INSERT INTO playback_prepared_handoffs (
 				id, user_id, profile_id, source_session_id, client_instance_id, media_id,
 				queue_media_ids_json, source_context_json, queue_revision, playback_revision,
 				state, created_at, expires_at
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'prepared', ?, ?)`,
+			)
+			SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'prepared', ?, ?
+			WHERE EXISTS (
+				SELECT 1 FROM playback_sessions
+				WHERE id = ? AND user_id = ? AND profile_id = ? AND ended_at = '' AND lower(state) <> 'stopped'
+			)`,
 			prepared.ID, prepared.UserID, prepared.ProfileID, prepared.SessionID, prepared.ClientInstanceID, prepared.MediaID,
 			string(queueJSON), string(sourceJSON), prepared.QueueRevision, prepared.PlaybackRevision,
-			now.Format(time.RFC3339Nano), prepared.ExpiresAt.Format(time.RFC3339Nano))
-		return err
+			now.Format(time.RFC3339Nano), prepared.ExpiresAt.Format(time.RFC3339Nano), prepared.SessionID, prepared.UserID, prepared.ProfileID)
+		if err != nil {
+			return err
+		}
+		if rowsAffected(result) != 1 {
+			return sql.ErrNoRows
+		}
+		return nil
 	})
 }
 
@@ -9181,9 +9266,24 @@ func (s *Server) handlePlaybackHandoff(w http.ResponseWriter, r *http.Request, u
 	}
 	_ = s.appendPlaybackSessionHistory(r.Context(), playback.SessionID, currentMediaID)
 	if prepared != nil {
-		if err := s.commitPreparedPlaybackHandoff(r.Context(), *prepared, playback); err != nil {
-			writeError(w, http.StatusInternalServerError, "handoff_commit_failed", "Playback started, but the idempotent handoff receipt could not be recorded. Retry the same request.")
-			return
+		if err := s.commitPreparedPlaybackHandoff(context.Background(), *prepared, playback); err != nil {
+			// Playback is already authoritative. Do not turn a successful handoff
+			// into a client-visible failure (and a duplicate retry) merely because
+			// its receipt hit a transient database error. Reconcile the receipt in
+			// the background; identical retries remain fenced as committing.
+			s.recordLog("warn", "Prepared playback handoff receipt is being reconciled", map[string]string{"prepared": prepared.ID, "session": playback.SessionID})
+			preparedCopy := *prepared
+			playbackCopy := playback
+			go func() {
+				for attempt := 0; attempt < 5; attempt++ {
+					if attempt > 0 {
+						time.Sleep(time.Duration(attempt) * 100 * time.Millisecond)
+					}
+					if s.commitPreparedPlaybackHandoff(context.Background(), preparedCopy, playbackCopy) == nil {
+						return
+					}
+				}
+			}()
 		}
 	}
 	setPlaybackMediaGrantCookie(w, r, playback)
@@ -9901,20 +10001,7 @@ func (s *Server) mediaPlaybackResponseForSession(r *http.Request, user User, ses
 	playbackURL = mediaPlaybackURLForDecision(item.ID, decision)
 	item.SourceURL = playbackURL
 
-	audio := []Stream{}
-	subtitles := []Stream{}
-	for _, stream := range item.Streams {
-		switch stream.Kind {
-		case "audio":
-			audio = append(audio, stream)
-		case "subtitle":
-			subtitles = append(subtitles, stream)
-		}
-	}
-	if len(audio) == 0 {
-		audio = append(audio, Stream{ID: "audio_default", Kind: "audio", Codec: "aac", Language: "English", Channels: 2, DisplayTitle: "English - Stereo"})
-	}
-	subtitles = append([]Stream{{ID: "sub_none", Kind: "subtitle", DisplayTitle: "None"}}, subtitles...)
+	audio, subtitles := playbackResponseTracks(item)
 	audio, subtitles = s.applyLanguagePreferences(user, audio, subtitles)
 	subtitles = playbackSubtitleStreams(item.ID, subtitles)
 	var mediaGrant MediaGrant
@@ -9946,7 +10033,7 @@ func (s *Server) mediaPlaybackResponseForSession(r *http.Request, user User, ses
 	queue = resolvePlayableQueueItems(queue)
 
 	qualities := playbackQualities(item, decision, policy, s.userCanTranscode(user))
-	resources := playbackResourcesForResponse(item, playbackURL, decision.Protocol, decision, policy, qualities, audio, subtitles, selectedAudioStreamID, selectedSubtitleID, mediaGrant, s.userCanTranscode(user), selectedSubtitleMode)
+	resources := playbackResourcesForResponse(item, playbackURL, decision.Protocol, decision, policy, qualities, audio, subtitles, selectedQualityID, selectedAudioStreamID, selectedSubtitleID, mediaGrant, s.userCanTranscode(user), selectedSubtitleMode)
 	playback := PlaybackResponse{
 		SessionID:             sessionID,
 		NextEventSequence:     s.nextPlaybackProgressEventSequence(user, sessionID),
@@ -9960,10 +10047,10 @@ func (s *Server) mediaPlaybackResponseForSession(r *http.Request, user User, ses
 		Policy:                policy,
 		Qualities:             qualities,
 		AudioStreams:          audio,
-		SelectedAudioStreamID: selectedAudioStreamID,
-		SelectedQualityID:     selectedQualityID,
-		SelectedSubtitleID:    selectedSubtitleID,
-		SelectedSubtitleMode:  selectedSubtitleMode,
+		SelectedAudioStreamID: resources[0].AudioStreamID,
+		SelectedQualityID:     resources[0].QualityID,
+		SelectedSubtitleID:    resources[0].SubtitleStreamID,
+		SelectedSubtitleMode:  resources[0].SubtitleMode,
 		SelectedVersionID:     selectedVersionID,
 		SubtitleStreams:       subtitles,
 		Chapters:              s.chaptersForMedia(item.ID),
@@ -9984,9 +10071,35 @@ func isZeroPlaybackClientProfile(profile PlaybackClientProfile) bool {
 	return string(encoded) == "{}"
 }
 
+func playbackResponseTracks(item MediaItem) (audio, subtitles []Stream) {
+	for _, stream := range item.Streams {
+		switch stream.Kind {
+		case "audio":
+			audio = append(audio, stream)
+		case "subtitle":
+			subtitles = append(subtitles, stream)
+		}
+	}
+	// "None" is a real selection state, not media evidence. In contrast, a
+	// missing audio stream is retained exactly so silent video never acquires a
+	// synthetic AAC track in the response or resource matrix.
+	subtitles = append([]Stream{{ID: "sub_none", Kind: "subtitle", DisplayTitle: "None"}}, subtitles...)
+	return audio, subtitles
+}
+
 func isZeroPlaybackIntent(intent PlaybackIntent) bool {
 	encoded, _ := json.Marshal(intent)
 	return string(encoded) == "{}"
+}
+
+var errExplicitOriginalPictureUnavailable = errors.New("original-picture delivery is unavailable for the selected endpoint and route")
+
+func validateExplicitPlaybackQuality(qualityID string, decision PlaybackDecision) error {
+	qualityID = strings.TrimPrefix(strings.TrimPrefix(strings.ToLower(strings.TrimSpace(qualityID)), "video-"), "audio-")
+	if qualityID == "original" && decision.VideoTranscode {
+		return errExplicitOriginalPictureUnavailable
+	}
+	return nil
 }
 
 func (s *Server) buildPlaybackRenegotiationCandidate(ctx context.Context, r *http.Request, user User, mediaID, qualityID, audioID, subtitleID, subtitleMode, versionID string, clientProfile PlaybackClientProfile, intent PlaybackIntent) (MediaItem, PlaybackDecision, ResolvedPlaybackPolicy, error) {
@@ -10039,6 +10152,12 @@ func (s *Server) buildPlaybackRenegotiationCandidate(ctx context.Context, r *htt
 	}
 	if decision.Mode == "unavailable" {
 		return MediaItem{}, PlaybackDecision{}, ResolvedPlaybackPolicy{}, errors.New("the title cannot be delivered within the selected playback policy")
+	}
+	// A named Original selection is an absolute picture-quality request. Audio
+	// conversion, subtitle conversion, and safe repackaging remain possible, but
+	// the server must fail instead of silently substituting a video encode.
+	if err := validateExplicitPlaybackQuality(qualityID, decision); err != nil {
+		return MediaItem{}, PlaybackDecision{}, ResolvedPlaybackPolicy{}, err
 	}
 	if decision.RequiresTranscode && !s.userCanTranscode(user) {
 		return MediaItem{}, PlaybackDecision{}, ResolvedPlaybackPolicy{}, errors.New("the active profile cannot create the compatible stream required for this title")
@@ -10209,12 +10328,18 @@ func playbackQualities(item MediaItem, decision PlaybackDecision, policy Resolve
 	return append(options, transcodeOptions...)
 }
 
-func playbackResourcesForResponse(item MediaItem, sourceURL, streamFormat string, decision PlaybackDecision, policy ResolvedPlaybackPolicy, qualities []Quality, audio, subtitles []Stream, selectedAudioID, selectedSubtitleID string, grant MediaGrant, allowTranscode bool, selectedSubtitleMode ...string) []PlaybackResource {
+func playbackResourcesForResponse(item MediaItem, sourceURL, streamFormat string, decision PlaybackDecision, policy ResolvedPlaybackPolicy, qualities []Quality, audio, subtitles []Stream, selectedQualityID, selectedAudioID, selectedSubtitleID string, grant MediaGrant, allowTranscode bool, selectedSubtitleMode ...string) []PlaybackResource {
 	selectedAudioID = normalizeSelectedAudioStreamID(selectedAudioID)
 	selectedSubtitleID = normalizeBurnInSubtitleID(selectedSubtitleID)
-	defaultQuality := "original"
-	if decision.RequiresTranscode {
-		defaultQuality = "auto"
+	defaultQuality := strings.TrimSpace(selectedQualityID)
+	if defaultQuality == "" {
+		defaultQuality = "original"
+		if decision.RequiresTranscode {
+			defaultQuality = strings.TrimSpace(decision.DeliveryProfile)
+			if defaultQuality == "" {
+				defaultQuality = "auto"
+			}
+		}
 	}
 	mode := ""
 	if len(selectedSubtitleMode) > 0 {
@@ -10224,89 +10349,22 @@ func playbackResourcesForResponse(item MediaItem, sourceURL, streamFormat string
 	if defaultSubtitleMode != "text" && defaultSubtitleMode != "burn_in" {
 		defaultSubtitleMode = "off"
 	}
-	resources := []PlaybackResource{{ID: randomID("pres"), SourceURL: sourceURL, StreamFormat: streamFormat, QualityID: defaultQuality, AudioStreamID: selectedAudioID, SubtitleStreamID: selectedSubtitleID, SubtitleMode: defaultSubtitleMode, Default: true}}
-	// Automatic represents the server's already-resolved delivery decision. When
-	// that decision is direct play/stream, keep the exact same source rather than
-	// manufacturing an HLS transcode merely because the user opened the quality
-	// menu and selected Automatic.
-	if defaultQuality != "auto" {
-		for _, quality := range qualities {
-			if quality.ID == "auto" && quality.Available {
-				resources = append(resources, PlaybackResource{ID: randomID("pres"), SourceURL: sourceURL, StreamFormat: streamFormat, QualityID: "auto", AudioStreamID: selectedAudioID, SubtitleStreamID: selectedSubtitleID, SubtitleMode: defaultSubtitleMode})
-				break
-			}
-		}
-	}
-	for _, subtitle := range subtitles {
-		id := normalizeBurnInSubtitleID(subtitle.ID)
-		if id == "" || strings.TrimSpace(subtitle.SourceURL) == "" {
-			continue
-		}
-		resources = append(resources, PlaybackResource{ID: randomID("pres"), SourceURL: sourceURL, StreamFormat: streamFormat, QualityID: defaultQuality, AudioStreamID: selectedAudioID, SubtitleStreamID: id, SubtitleMode: "text"})
-	}
-	if !allowTranscode || policy.TranscodePolicy == "never" {
-		return resources
-	}
-	audioIDs := []string{""}
-	for _, stream := range audio {
-		if id := normalizeSelectedAudioStreamID(stream.ID); id != "" {
-			audioIDs = appendUniqueString(audioIDs, id)
-		}
-	}
-	type subtitleSelection struct{ id, mode string }
-	subtitleSelections := []subtitleSelection{{mode: "off"}}
-	for _, stream := range subtitles {
-		id := normalizeBurnInSubtitleID(stream.ID)
-		if id == "" {
-			continue
-		}
-		mode := "burn_in"
-		if strings.TrimSpace(stream.SourceURL) != "" {
-			mode = "text"
-		}
-		subtitleSelections = append(subtitleSelections, subtitleSelection{id: id, mode: mode})
-	}
-	seen := map[string]bool{sourceURL: true}
-	for _, quality := range qualities {
-		if !quality.Available {
-			continue
-		}
-		for _, audioID := range audioIDs {
-			for _, subtitle := range subtitleSelections {
-				burnInID := ""
-				if subtitle.mode == "burn_in" {
-					burnInID = subtitle.id
-				}
-				audioMode := ""
-				if audioID != "" {
-					audioMode = "transcode"
-				}
-				resourceQuality := quality.ID
-				if resourceQuality == "auto" {
-					resourceQuality = transcodeQualityForResolvedPolicy(item.Type, policy)
-				}
-				path := appendMediaGrant(mediaPlaybackHLSURLWithOptions(item.ID, resourceQuality, burnInID, audioMode, audioID, false), grant)
-				key := strings.Join([]string{path, quality.ID, audioID, subtitle.id, subtitle.mode}, "|")
-				if seen[key] {
-					continue
-				}
-				seen[key] = true
-				resources = append(resources, PlaybackResource{ID: randomID("pres"), SourceURL: path, StreamFormat: "hls", QualityID: quality.ID, AudioStreamID: audioID, SubtitleStreamID: subtitle.id, SubtitleMode: subtitle.mode})
-			}
-		}
-	}
-	return resources
+	// Publish only the resource executed by this response's sealed plan.
+	// Quality and track alternatives are renegotiation choices, not pre-authorized
+	// URLs that may bypass generation, admission, and grant rotation.
+	return []PlaybackResource{{ID: randomID("pres"), SourceURL: sourceURL, StreamFormat: streamFormat, QualityID: defaultQuality, AudioStreamID: selectedAudioID, SubtitleStreamID: selectedSubtitleID, SubtitleMode: defaultSubtitleMode, Default: true}}
 }
 
 func (s *Server) userCanTranscode(user User) bool {
 	return s.transcodeSettings().Enabled && hasPermission(user, "transcode")
 }
 
-func (s *Server) cinemaPrerollFor(userID string, item MediaItem) (MediaItem, bool) {
+func (s *Server) cinemaPrerollFor(user User, item MediaItem) (MediaItem, bool) {
 	if item.Type != "movie" || item.State.ProgressSeconds > 0 || item.State.Watched || s.extrasSettings().CinemaTrailers <= 0 {
 		return MediaItem{}, false
 	}
-	children, err := s.childrenFor(userID, item)
+	profileID := viewerProfileID(user)
+	children, err := s.childrenFor(profileID, item)
 	if err != nil {
 		return MediaItem{}, false
 	}
@@ -10315,7 +10373,7 @@ func (s *Server) cinemaPrerollFor(userID string, item MediaItem) (MediaItem, boo
 			return child, true
 		}
 	}
-	fallback, err := s.queryMedia(userID, `
+	fallback, err := s.queryMedia(profileID, `
 		LEFT JOIN media_items p ON p.id = m.parent_id
 		WHERE m.library_id = ?
 			AND m.type = 'extra'
@@ -10383,7 +10441,7 @@ func (s *Server) firstPlayableDescendantForPlayback(ctx context.Context, user Us
 				AND m.type IN ('track', 'episode')
 				AND (COALESCE(availability.file_count, 0) = 0 OR COALESCE(availability.missing_file_count, 0) < COALESCE(availability.file_count, 0))
 			ORDER BY d.depth ASC, m.index_number ASC, m.sort_title ASC, m.id ASC
-			LIMIT 1`, item.ID, item.ID)
+			LIMIT 64`, item.ID, item.ID)
 		if err != nil {
 			return MediaItem{}, false
 		}
@@ -10399,11 +10457,13 @@ func (s *Server) firstPlayableDescendantForPlayback(ctx context.Context, user Us
 	if len(ids) == 0 {
 		return MediaItem{}, false
 	}
-	child, err := s.getMediaPlaybackDetailForUser(ctx, user, ids[0])
-	if err != nil || child.ID == "" || child.Missing {
-		return MediaItem{}, false
+	for _, id := range ids {
+		child, err := s.getMediaPlaybackDetailForUser(ctx, user, id)
+		if err == nil && child.ID != "" && !child.Missing {
+			return child, true
+		}
 	}
-	return child, true
+	return MediaItem{}, false
 }
 
 func firstPlayableDescendant(item MediaItem) (MediaItem, bool) {
@@ -10852,7 +10912,7 @@ func (s *Server) handleInstantMix(w http.ResponseWriter, r *http.Request, user U
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), navigationRequestTimeout)
 	defer cancel()
-	items, err := s.instantMixItemsContext(ctx, user.ID, mediaID, limit)
+	items, err := s.instantMixItemsContext(ctx, viewerProfileID(user), mediaID, limit)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			writeError(w, http.StatusNotFound, "media_not_found", "Instant mix seed was not found.")
@@ -11123,6 +11183,10 @@ func (s *Server) handlePlaybackRenegotiation(w http.ResponseWriter, r *http.Requ
 	}
 	_, decision, _, err := s.buildPlaybackRenegotiationCandidate(ctx, r, user, mediaID, quality, audio, subtitle, mode, version, req.ClientProfile, req.Intent)
 	if err != nil {
+		if errors.Is(err, errExplicitOriginalPictureUnavailable) {
+			writeError(w, http.StatusUnprocessableEntity, "explicit_quality_unavailable", "Original picture quality is unavailable for this endpoint and route. Choose Automatic or another quality.")
+			return
+		}
 		writeError(w, http.StatusBadRequest, "renegotiation_failed", err.Error())
 		return
 	}
@@ -12005,7 +12069,7 @@ func (s *Server) handleMediaSubtitleStream(w http.ResponseWriter, r *http.Reques
 	w.Header().Set("Content-Type", "text/vtt; charset=utf-8")
 	w.Header().Set("Cache-Control", "private, max-age=3600")
 	if offsetMs != 0 {
-		data, err := os.ReadFile(path)
+		data, err := s.readPlaybackSubtitleFile(r.Context(), path)
 		if err != nil {
 			writeError(w, http.StatusNotFound, "subtitle_not_found", "Subtitle was not found.")
 			return
@@ -12819,6 +12883,9 @@ func (s *Server) handleMediaImageInfo(w http.ResponseWriter, r *http.Request, us
 		writeError(w, http.StatusNotFound, "image_not_found", "Artwork was not found.")
 		return
 	}
+	if !canInteractivelyManageServer(user) {
+		image.Path = ""
+	}
 	writeJSON(w, http.StatusOK, image)
 }
 
@@ -12991,7 +13058,7 @@ func (s *Server) subtitleStreamPathForBurnIn(mediaID string, streamID string) (s
 	if err != nil || offsetMs == 0 {
 		return path, err
 	}
-	data, err := os.ReadFile(path)
+	data, err := s.readPlaybackSubtitleFile(context.Background(), path)
 	if err != nil {
 		return "", err
 	}
@@ -13499,6 +13566,7 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request, user Use
 	case http.MethodPatch:
 		var req struct {
 			ExpectedRevision string                     `json:"expectedRevision"`
+			IdempotencyKey   string                     `json:"idempotencyKey"`
 			Groups           map[string]json.RawMessage `json:"groups"`
 		}
 		if !decodeJSON(w, r, &req) {
@@ -13513,6 +13581,23 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request, user Use
 			writeError(w, http.StatusBadRequest, "settings_groups_required", "At least one settings group is required.")
 			return
 		}
+		idempotencyKey, idempotencyErr := validateSettingsIdempotencyKey(req.IdempotencyKey)
+		if idempotencyErr != nil {
+			writeError(w, http.StatusBadRequest, "settings_idempotency_key_invalid", idempotencyErr.Error())
+			return
+		}
+		if idempotencyKey == "" {
+			writeError(w, http.StatusBadRequest, "settings_idempotency_key_required", "idempotencyKey is required for settings mutations.")
+			return
+		}
+		fingerprint := ""
+		if idempotencyKey != "" {
+			fingerprint, idempotencyErr = settingsMutationFingerprint(req.ExpectedRevision, req.Groups)
+			if idempotencyErr != nil {
+				writeError(w, http.StatusBadRequest, "settings_idempotency_key_invalid", "Settings request could not be fingerprinted.")
+				return
+			}
+		}
 		now := time.Now().UTC().Format(time.RFC3339Nano)
 		var txStatus int
 		var txCode string
@@ -13520,12 +13605,42 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request, user Use
 		var txDetails map[string]any
 		changedFields := []string{}
 		currentRevision := ""
+		replayed := false
+		receiptKey := ""
+		var replayDocument *SettingsDocument
 		err := s.withUserTxTagged(r.Context(), []string{"settings"}, func(tx *sql.Tx) error {
 			currentSettings, revision, _, err := loadSettingsSnapshotFromQuery(tx.Query(`SELECT key, value_json, updated_at FROM settings ORDER BY key ASC`))
 			if err != nil {
 				return err
 			}
 			currentRevision = revision
+			if idempotencyKey != "" {
+				receiptKey = settingsMutationReceiptKey(user, idempotencyKey)
+				receipt, found, receiptErr := loadSettingsMutationReceipt(tx, receiptKey)
+				if receiptErr != nil {
+					return receiptErr
+				}
+				if found {
+					if receipt.Fingerprint != fingerprint {
+						txStatus = http.StatusConflict
+						txCode = "settings_idempotency_conflict"
+						txMessage = "This idempotency key was already used for a different settings request."
+						return errors.New(txMessage)
+					}
+					// A retry after a lost response is already committed.  Return the
+					// authoritative document without comparing its old expected revision
+					// or applying the patch a second time.
+					currentRevision = receipt.Revision
+					replayed = true
+					if len(receipt.Response) > 0 {
+						var document SettingsDocument
+						if decodeErr := json.Unmarshal(receipt.Response, &document); decodeErr == nil && document.Revision != "" {
+							replayDocument = &document
+						}
+					}
+					return nil
+				}
+			}
 			if req.ExpectedRevision != currentRevision {
 				txStatus = http.StatusConflict
 				txCode = "settings_revision_conflict"
@@ -13559,6 +13674,13 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request, user Use
 					txDetails = map[string]any{"fieldPath": key}
 					return err
 				}
+				if requestedFields == nil {
+					txStatus = http.StatusBadRequest
+					txCode = "invalid_setting_value"
+					txMessage = key + " settings must be a JSON object."
+					txDetails = map[string]any{"fieldPath": key}
+					return errors.New(txMessage)
+				}
 				if key == "metadataAgents" {
 					sanitized, err := s.applyMetadataAgentSecrets(tx, value, now)
 					if err != nil {
@@ -13587,6 +13709,18 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request, user Use
 					changedFields = append(changedFields, key+"."+field)
 				}
 			}
+			if idempotencyKey != "" {
+				// Include the post-write revision in the receipt while still inside
+				// the same transaction as the settings mutation.
+				_, nextRevision, _, revisionErr := loadSettingsSnapshotFromQuery(tx.Query(`SELECT key, value_json, updated_at FROM settings ORDER BY key ASC`))
+				if revisionErr != nil {
+					return revisionErr
+				}
+				currentRevision = nextRevision
+				if err := saveSettingsMutationReceipt(tx, receiptKey, settingsMutationReceipt{Fingerprint: fingerprint, Revision: nextRevision, CreatedAt: now, ExpiresAt: time.Now().UTC().Add(7 * 24 * time.Hour).Format(time.RFC3339Nano)}); err != nil {
+					return err
+				}
+			}
 			return nil
 		})
 		if err != nil {
@@ -13602,8 +13736,13 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request, user Use
 			return
 		}
 		s.invalidateSessionCookieCache()
-		s.recordLog("info", "Server settings saved", map[string]string{"actor": user.Email})
-		s.recordAudit(r, user, "settings.updated", "settings", "", "info", map[string]string{"groups": strings.Join(mapKeysRaw(req.Groups), ",")})
+		if !replayed {
+			s.recordLog("info", "Server settings saved", map[string]string{"actorId": strings.TrimSpace(user.ID)})
+			s.recordAudit(r, user, "settings.updated", "settings", "", "info", map[string]string{
+				"groups": strings.Join(mapKeysRaw(req.Groups), ","), "previousRevision": req.ExpectedRevision,
+				"resultRevision": currentRevision, "idempotency": strconv.FormatBool(idempotencyKey != ""),
+			})
+		}
 		changedFields = uniqueStrings(changedFields)
 		sort.Strings(changedFields)
 		restartFields := changedRestartRequiredSettingFields(changedFields)
@@ -13615,6 +13754,20 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request, user Use
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "settings_failed", "Settings were saved but the updated document could not be loaded.")
 			return
+		}
+		if replayDocument != nil {
+			writeSettingsDocument(w, http.StatusOK, *replayDocument)
+			return
+		}
+		if idempotencyKey != "" {
+			if receiptErr := s.withUserTxTagged(r.Context(), []string{"settings"}, func(tx *sql.Tx) error {
+				return updateSettingsMutationReceiptResponse(tx, receiptKey, document)
+			}); receiptErr != nil {
+				// The durable settings commit is already complete. Do not turn a
+				// successful save into a false failure; retries still reconcile by
+				// the committed revision when a response receipt cannot be extended.
+				s.recordLog("warn", "Settings idempotency response receipt was not persisted", map[string]string{"error": s.sanitizeDiagnosticText(receiptErr.Error(), 240)})
+			}
 		}
 		writeSettingsDocument(w, http.StatusOK, document)
 	default:
@@ -14285,7 +14438,7 @@ func (s *Server) runScheduledTask(taskID string) ([]Job, error) {
 			if !s.mediaAnalysisQueueEnabled(item) {
 				continue
 			}
-			job, err := s.createJobForWithMetadata("media_analyze", fmt.Sprintf("Manual media stream analysis queued for %s.", item.Title), "media", item.ID, mediaAnalysisMetadata(mediaAnalysisModeProbe))
+			job, err := s.createJobForWithMetadata("media_analyze", fmt.Sprintf("Manual media stream analysis queued for %s.", item.Title), "media", item.ID, s.mediaAnalysisMetadataForItem(context.Background(), item, mediaAnalysisModeProbe))
 			if err != nil {
 				return jobs, err
 			}
@@ -14363,11 +14516,13 @@ func (s *Server) handlePersonArtwork(w http.ResponseWriter, r *http.Request, use
 	identitySQL, args := personIdentityPredicateSQL(identity, "p")
 	restrictionSQL, restrictionArgs := s.mediaVisibilityRestrictionSQL(viewerProfileID(user))
 	args = append(args, restrictionArgs...)
+	curationSQL, curationArgs := s.libraryCurationRestrictionSQL(r.Context(), viewerProfileID(user))
+	args = append(args, curationArgs...)
 	rows, err := s.queryUserRead(r.Context(), `
 		SELECT COALESCE(p.image_url, '')
 		FROM media_people p
 		JOIN media_items m ON m.id = p.media_id
-		WHERE `+identitySQL+restrictionSQL+`
+		WHERE `+identitySQL+restrictionSQL+curationSQL+`
 		ORDER BY CASE WHEN trim(p.image_url) <> '' THEN 0 ELSE 1 END, p.sort_order
 		LIMIT 8`, args...)
 	if err != nil {
@@ -14399,6 +14554,7 @@ func (s *Server) getMediaArtworkSeedContext(ctx context.Context, userID, id stri
 		return MediaItem{}, sql.ErrNoRows
 	}
 	where, args := s.applyMediaVisibilityRestrictionSQL(userID, "m.id = ?", []any{id})
+	where, args = s.applyLibraryCurationRestrictionSQL(ctx, userID, where, args)
 	var item MediaItem
 	var genresJSON string
 	var tagsJSON string
@@ -14563,6 +14719,12 @@ func (s *Server) inheritedArtworkItemContext(ctx context.Context, userID string,
 }
 
 func (s *Server) serveArtworkFile(w http.ResponseWriter, r *http.Request, path string) {
+	validatedPath, ok := s.validatedLocalContentPath(r.Context(), path)
+	if !ok {
+		writeError(w, http.StatusNotFound, "artwork_not_found", "Artwork was not found.")
+		return
+	}
+	path = validatedPath
 	width, height, resizeRequested, err := artworkResizeParams(r)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_artwork_size", err.Error())
@@ -14590,6 +14752,53 @@ func (s *Server) serveArtworkFile(w http.ResponseWriter, r *http.Request, path s
 	// If a bounded transform cannot be produced, serve the validated original
 	// instead of decoding/encoding again on the interactive request goroutine.
 	http.ServeFile(w, r, path)
+}
+
+// validatedLocalContentPath is the final authorization boundary for files that
+// were discovered on disk and later persisted in the catalog. It resolves the
+// target and every admitted root at request time so a symlink introduced after
+// a scan cannot turn an artwork route into an arbitrary local-file reader.
+func (s *Server) validatedLocalContentPath(ctx context.Context, path string) (string, bool) {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return "", false
+	}
+	resolvedPath, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return "", false
+	}
+	info, err := os.Stat(resolvedPath)
+	if err != nil || !info.Mode().IsRegular() {
+		return "", false
+	}
+	roots := []string{s.cfg.AppDataDir}
+	rows, err := s.queryUserRead(ctx, `
+		SELECT path FROM library_paths WHERE trim(path) <> ''
+		UNION
+		SELECT path FROM libraries WHERE trim(COALESCE(path, '')) <> ''`)
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var root string
+			if rows.Scan(&root) == nil {
+				roots = append(roots, root)
+			}
+		}
+	}
+	for _, root := range roots {
+		root = strings.TrimSpace(root)
+		if root == "" {
+			continue
+		}
+		resolvedRoot, err := filepath.EvalSymlinks(root)
+		if err != nil {
+			continue
+		}
+		if pathInsideRoot(resolvedPath, resolvedRoot) {
+			return resolvedPath, true
+		}
+	}
+	return "", false
 }
 
 func (s *Server) ensureResizedImageCache(ctx context.Context, sourcePath, cachePath string, width, height int) error {
@@ -14835,6 +15044,13 @@ func providerArtworkURL(artwork map[string]string, kind string) (string, bool) {
 			size = "w1280"
 		}
 		return "https://image.tmdb.org/t/p/" + size + path, true
+	case "tvdb":
+		raw := strings.TrimSpace(artwork["posterURL"])
+		parsed, err := url.Parse(raw)
+		if err != nil || parsed.Scheme != "https" || !strings.EqualFold(parsed.Hostname(), "artworks.thetvdb.com") || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+			return "", false
+		}
+		return parsed.String(), true
 	case "musicbrainz":
 		if id := strings.TrimSpace(artwork["releaseID"]); id != "" {
 			if strings.ContainsAny(id, `/\?&#`) {
@@ -16024,7 +16240,29 @@ func (s *Server) updateLibrary(id string, req UpdateLibraryRequest) (Library, er
 }
 
 func (s *Server) deleteLibrary(id string) error {
+	artifacts, err := s.remoteStorageArtifactsForLibrary(context.Background(), id)
+	if err != nil {
+		return err
+	}
 	if err := s.withUserTxTagged(context.Background(), []string{"home", "libraries", "library-items", "media", "metadata", "search"}, func(tx *sql.Tx) error {
+		now := time.Now().UTC().Format(time.RFC3339Nano)
+		if _, err := tx.Exec(`
+			UPDATE jobs
+			SET cancellation_requested_at = ?,
+				status = CASE WHEN status IN ('queued', 'deferred') THEN 'cancelled' ELSE status END,
+				worker_acknowledged_at = CASE WHEN status IN ('queued', 'deferred') THEN ? ELSE worker_acknowledged_at END,
+				updated_at = ?
+			WHERE resource_type = 'library' AND resource_id = ? AND status NOT IN ('complete', 'failed', 'cancelled')`, now, now, now, id); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(`DELETE FROM identity_reconciliation_reviews WHERE library_or_source_id = ?`, id); err != nil {
+			return err
+		}
+		for _, artifact := range artifacts {
+			if _, err := tx.Exec(`DELETE FROM identity_reconciliation_reviews WHERE library_or_source_id = ?`, artifact.SourceID); err != nil {
+				return err
+			}
+		}
 		if _, err := tx.Exec(`DELETE FROM media_search WHERE media_id IN (SELECT id FROM media_items WHERE library_id = ?)`, id); err != nil {
 			return err
 		}
@@ -16033,6 +16271,13 @@ func (s *Server) deleteLibrary(id string) error {
 		}
 		if _, err := tx.Exec(`DELETE FROM library_paths WHERE library_id = ?`, id); err != nil {
 			return err
+		}
+		for _, artifact := range artifacts {
+			if artifact.InstallationID != "" {
+				if _, err := tx.Exec(`DELETE FROM managed_rclone_installations WHERE id=?`, artifact.InstallationID); err != nil {
+					return err
+				}
+			}
 		}
 		result, err := tx.Exec(`DELETE FROM libraries WHERE id = ?`, id)
 		if err != nil {
@@ -16049,6 +16294,7 @@ func (s *Server) deleteLibrary(id string) error {
 	}); err != nil {
 		return err
 	}
+	s.cleanupRemoteStorageArtifacts(artifacts)
 	s.invalidateHomeCache()
 	return nil
 }
@@ -16156,6 +16402,37 @@ func (s *Server) mediaDeletionItems(id string) ([]MediaItem, error) {
 			SELECT id FROM tree
 		)
 		ORDER BY CASE WHEN m.id = ? THEN 0 ELSE 1 END, m.parent_id, m.title`, []any{id, id})
+}
+
+func (s *Server) authorizeMediaTreeDeletionContext(ctx context.Context, userID, id string) error {
+	const treePredicate = `m.id IN (
+		WITH RECURSIVE tree(id) AS (
+			SELECT id FROM media_items WHERE id = ?
+			UNION ALL
+			SELECT child.id FROM media_items child JOIN tree ON child.parent_id = tree.id
+		)
+		SELECT id FROM tree
+	)`
+	var total int
+	if err := s.queryUserRow(ctx, `
+		SELECT COUNT(*)
+		FROM media_items m
+		WHERE `+treePredicate, id).Scan(&total); err != nil {
+		return err
+	}
+	if total == 0 {
+		return sql.ErrNoRows
+	}
+	where, args := s.applyMediaVisibilityRestrictionSQL(userID, treePredicate, []any{id})
+	where, args = s.applyLibraryCurationRestrictionSQL(ctx, userID, where, args)
+	var visible int
+	if err := s.queryUserRow(ctx, `SELECT COUNT(*) FROM media_items m WHERE `+where, args...).Scan(&visible); err != nil {
+		return err
+	}
+	if visible != total {
+		return errMediaTreeNotFullyVisible
+	}
+	return nil
 }
 
 func (s *Server) optimizedVersionPathsForMediaTree(id string) ([]string, error) {
@@ -16442,22 +16719,26 @@ func encodeLibrarySettings(settings map[string]any) (string, error) {
 		"blockedTags":                     true,
 		"blockedKeywords":                 true,
 		"emptyTrashAfterScan":             true,
-		"analyzeOnScan":                   true,
+		"analysisTier":                    true,
+		"readLocalMetadata":               true,
+		"readExternalSubtitlesAndLyrics":  true,
+		"discoverLocalArtwork":            true,
+		"fetchDescriptiveMetadata":        true,
 		"probeStreams":                    true,
-		"generateThumbnails":              true,
-		"generateTrickplayPreviews":       true,
+		"readEmbeddedTags":                true,
+		"readEmbeddedIndexes":             true,
+		"generateRepresentativeThumbnail": true,
+		"generateTrickplay":               true,
+		"generateChapterThumbnails":       true,
+		"analyzeLoudness":                 true,
+		"extractAllEmbeddedAttachments":   true,
 		"trickplayStorageLocation":        true,
 		"trickplayIntervalSeconds":        true,
 		"trickplayTileWidth":              true,
 		"trickplayMaxTiles":               true,
-		"analyzeAudio":                    true,
 		"sonicFingerprinting":             true,
-		"detectChapterSegments":           true,
-		"extractEmbeddedCovers":           true,
-		"extractEmbeddedAttachments":      true,
 		"fetchMissingLyricsAfterScan":     true,
 		"preferEmbeddedTitles":            true,
-		"chapterThumbnails":               true,
 		"trashRetentionDays":              true,
 		"collectionMode":                  true,
 	}
@@ -20749,6 +21030,7 @@ func (s *Server) getMediaStreamSeedForUser(ctx context.Context, user User, id st
 		return MediaItem{}, sql.ErrNoRows
 	}
 	where, args := s.applyMediaVisibilityRestrictionSQL(viewerProfileID(user), "m.id = ?", []any{id})
+	where, args = s.applyLibraryCurationRestrictionSQL(ctx, viewerProfileID(user), where, args)
 	var item MediaItem
 	var genresJSON string
 	var tagsJSON string
@@ -20776,6 +21058,16 @@ func (s *Server) getMediaStreamSeedForUser(ctx context.Context, user User, id st
 	}
 	if err := s.authorizeMappedDVRMediaForUser(ctx, user, item.ID); err != nil {
 		return MediaItem{}, sql.ErrNoRows
+	}
+	// Resolve STRM only after authorization. The catalog retains the descriptor
+	// path and never projects its potentially signed locator to clients.
+	files := s.primaryMediaFileForPlaybackContext(ctx, item.ID, item.SourceURL)
+	if len(files) > 0 && strings.EqualFold(files[0].SourceType, "strm") {
+		locator, err := s.readSTRMLocator(ctx, files[0].Path)
+		if err != nil {
+			return MediaItem{}, err
+		}
+		item.SourceURL = locator
 	}
 	return item, nil
 }
@@ -20823,6 +21115,7 @@ func (s *Server) getMediaLyricLookupSeedContext(ctx context.Context, userID, id 
 		return MediaItem{}, sql.ErrNoRows
 	}
 	where, args := s.applyMediaVisibilityRestrictionSQL(userID, "m.id = ?", []any{id})
+	where, args = s.applyLibraryCurationRestrictionSQL(ctx, userID, where, args)
 	var item MediaItem
 	var typedMetadataJSON string
 	err := s.queryUserRow(ctx, `
@@ -20861,6 +21154,7 @@ func (s *Server) missingMediaLyricLookupSeedsContext(ctx context.Context, userID
 		m.library_id = ?
 		AND m.type = 'track'
 		AND NOT EXISTS (SELECT 1 FROM media_lyrics ml WHERE ml.media_id = m.id)`, []any{libraryID})
+	where, args = s.applyLibraryCurationRestrictionSQL(ctx, userID, where, args)
 	args = append(args, limit)
 	rows, err := s.queryUserRead(ctx, `
 		SELECT
@@ -20909,6 +21203,8 @@ func (s *Server) getMediaPlaybackDetailForUser(ctx context.Context, user User, i
 	if id == "" {
 		return MediaItem{}, sql.ErrNoRows
 	}
+	where, args := s.applyMediaVisibilityRestrictionSQL(viewerProfileID(user), "m.id = ?", []any{id})
+	where, args = s.applyLibraryCurationRestrictionSQL(ctx, viewerProfileID(user), where, args)
 	query := `
 		SELECT
 			m.id, COALESCE(m.metadata_revision, 0), COALESCE(m.metadata_etag, ''), COALESCE(m.library_id, ''), COALESCE(m.parent_id, ''), m.type, m.title, m.sort_title,
@@ -20928,7 +21224,7 @@ func (s *Server) getMediaPlaybackDetailForUser(ctx context.Context, user User, i
 		LEFT JOIN media_items parent ON parent.id = m.parent_id
 		LEFT JOIN media_items grandparent ON grandparent.id = parent.parent_id
 		LEFT JOIN media_availability availability ON availability.media_id = m.id
-		WHERE m.id = ?
+		WHERE ` + where + `
 		LIMIT 1`
 	var item MediaItem
 	var genresJSON string
@@ -20937,7 +21233,8 @@ func (s *Server) getMediaPlaybackDetailForUser(ctx context.Context, user User, i
 	var artworkJSON string
 	var typedMetadataJSON string
 	var watchlisted, favorite, liked, watched int
-	err := s.queryUserRow(ctx, query, viewerProfileID(user), id).Scan(
+	queryArgs := append([]any{viewerProfileID(user)}, args...)
+	err := s.queryUserRow(ctx, query, queryArgs...).Scan(
 		&item.ID, &item.MetadataRevision, &item.MetadataETag, &item.LibraryID, &item.ParentID, &item.Type, &item.Title, &item.SortTitle,
 		&item.OriginalTitle, &item.Edition, &item.Year, &item.DurationSeconds, &item.Summary, &item.Tagline,
 		&item.ContentRating, &item.CommunityRating, &item.CriticRating, &item.Studio, &item.Network, &item.Country,
@@ -21839,9 +22136,8 @@ func (s *Server) mediaImagePathContext(ctx context.Context, mediaID, imageType s
 		if ctx != nil && ctx.Err() != nil {
 			return "", false
 		}
-		info, err := os.Stat(image.Path)
-		if err == nil && !info.IsDir() {
-			return image.Path, true
+		if path, ok := s.validatedLocalContentPath(ctx, image.Path); ok {
+			return path, true
 		}
 	}
 	return "", false
@@ -22186,6 +22482,8 @@ func providerArtworkURLAllowed(parsed *url.URL, provider string) bool {
 		return host == "coverartarchive.org"
 	case "anilist":
 		return host == "anilist.co" || strings.HasSuffix(host, ".anilist.co")
+	case "tvdb":
+		return host == "artworks.thetvdb.com"
 	default:
 		return false
 	}
@@ -22199,7 +22497,7 @@ func providerArtworkRedirectAllowed(parsed *url.URL) bool {
 	if net.ParseIP(host) != nil {
 		return false
 	}
-	return host == "image.tmdb.org" || host == "coverartarchive.org" || host == "archive.org" || strings.HasSuffix(host, ".archive.org") || host == "anilist.co" || strings.HasSuffix(host, ".anilist.co")
+	return host == "image.tmdb.org" || host == "artworks.thetvdb.com" || host == "coverartarchive.org" || host == "archive.org" || strings.HasSuffix(host, ".archive.org") || host == "anilist.co" || strings.HasSuffix(host, ".anilist.co")
 }
 
 func providerArtworkExtension(contentType, remotePath string) string {
@@ -22688,6 +22986,8 @@ func (s *Server) updateMediaForMetadata(userID, id string, req UpdateMediaReques
 }
 
 func (s *Server) updateMediaWithResponse(userID, id string, req UpdateMediaRequest, detailResponse bool) (MediaItem, error) {
+	releaseMetadataArtwork := s.acquireMetadataArtworkCommitLock(id)
+	defer releaseMetadataArtwork()
 	ctx := context.Background()
 	item, err := s.getMediaContext(ctx, userID, id)
 	if err != nil {
@@ -23468,6 +23768,41 @@ func (s *Server) mediaVisibilityRestrictionSQL(userID string) (string, []any) {
 	appendTermPolicy("accessLabel", tagPolicy.AllowedLabels, true)
 	appendTermPolicy("tag", tagPolicy.BlockedTags, false)
 	appendTermPolicy("accessLabel", tagPolicy.BlockedLabels, false)
+	canBrowseDVR := principal.Permissions["viewDVR"] || principal.Permissions["scheduleDVR"] || principal.Permissions["deleteDVRRecordings"] || principal.Permissions["manageDVR"]
+	if !canBrowseDVR {
+		clauses = append(clauses, `lower(m.type) <> 'recording'`)
+	} else {
+		dvrConditions := []string{
+			`dvr_mapping.media_id = m.id`,
+			`dvr_recording.user_id = ?`,
+			`COALESCE(NULLIF(dvr_recording.profile_id, ''), dvr_recording.user_id) = ?`,
+			`lower(dvr_recording.status) IN ('complete', 'completed')`,
+			`dvr_channel.source_id = dvr_recording.source_id`,
+		}
+		dvrArgs := []any{accountID, profileID}
+		channelPolicy := principal.MembershipEnvelope.ChannelPolicy
+		if len(channelPolicy.AllowedChannelIDs) > 0 {
+			dvrConditions = append(dvrConditions, `dvr_recording.channel_id IN (`+sqlPlaceholders(len(channelPolicy.AllowedChannelIDs))+`)`)
+			for _, channelID := range channelPolicy.AllowedChannelIDs {
+				dvrArgs = append(dvrArgs, channelID)
+			}
+		}
+		if len(channelPolicy.BlockedChannelIDs) > 0 {
+			dvrConditions = append(dvrConditions, `dvr_recording.channel_id NOT IN (`+sqlPlaceholders(len(channelPolicy.BlockedChannelIDs))+`)`)
+			for _, channelID := range channelPolicy.BlockedChannelIDs {
+				dvrArgs = append(dvrArgs, channelID)
+			}
+		}
+		clauses = append(clauses, `(lower(m.type) <> 'recording' OR EXISTS (
+			SELECT 1
+			FROM dvr_recording_media dvr_mapping
+			JOIN live_tv_recordings dvr_recording ON dvr_recording.id = dvr_mapping.recording_id
+			JOIN live_tv_sources dvr_source ON dvr_source.id = dvr_recording.source_id
+			JOIN live_tv_channels dvr_channel ON dvr_channel.id = dvr_recording.channel_id
+			WHERE `+strings.Join(dvrConditions, " AND ")+`
+		))`)
+		args = append(args, dvrArgs...)
+	}
 	if len(clauses) == 0 {
 		return "", nil
 	}
@@ -25009,31 +25344,31 @@ func (s *Server) commitPlaybackSessionReplacement(ctx context.Context, user User
 		return nil
 	}
 	previousSessionIDs := []string{}
-	rows, err := s.queryUserRead(ctx, `
-		SELECT id
-		FROM playback_sessions
-		WHERE profile_id = ? AND client_instance_id = ? AND id <> ? AND ended_at = '' AND state <> 'stopped'`,
-		viewerProfileID(user), clientInstanceID, sessionID)
-	if err != nil {
-		return err
-	}
-	for rows.Next() {
-		var previousSessionID string
-		if err := rows.Scan(&previousSessionID); err != nil {
-			_ = rows.Close()
-			return err
-		}
-		previousSessionIDs = append(previousSessionIDs, previousSessionID)
-	}
-	if err := rows.Close(); err != nil {
-		return err
-	}
-	now := time.Now().UTC().Format(time.RFC3339)
-	if _, err := s.execUserWriteTaggedForViewer(ctx, accountIDForUser(user), viewerProfileID(user), []string{"playback"}, `
+	profileID := viewerProfileID(user)
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	err := s.withPrioritizedTxTaggedForViewer(ctx, sqliteWritePlayback, "playback_replacement_tx", database.UserWriteRetry, accountIDForUser(user), profileID, []string{"playback"}, func(tx *sql.Tx) error {
+		rows, err := tx.Query(`
 		UPDATE playback_sessions
 		SET ended_at = ?, last_seen_at = ?, state = 'stopped'
-		WHERE profile_id = ? AND client_instance_id = ? AND id <> ? AND ended_at = '' AND state <> 'stopped'`,
-		now, now, viewerProfileID(user), clientInstanceID, sessionID); err != nil {
+		WHERE profile_id = ? AND client_instance_id = ? AND id <> ? AND ended_at = '' AND state <> 'stopped'
+			AND rowid < (SELECT rowid FROM playback_sessions WHERE id = ? AND profile_id = ?)
+		RETURNING id`,
+			now, now, profileID, clientInstanceID, sessionID,
+			sessionID, profileID)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var previousSessionID string
+			if err := rows.Scan(&previousSessionID); err != nil {
+				return err
+			}
+			previousSessionIDs = append(previousSessionIDs, previousSessionID)
+		}
+		return rows.Err()
+	})
+	if err != nil {
 		return err
 	}
 	for _, previousSessionID := range previousSessionIDs {
@@ -25876,17 +26211,25 @@ func (s *Server) endPlaybackSession(user User, sessionID string) error {
 	if err != nil {
 		return err
 	}
-	result, err := s.execUserWriteTaggedForViewer(context.Background(), accountIDForUser(user), viewerProfileID(user), []string{"playback"}, `
-		UPDATE playback_sessions
-		SET last_seen_at = ?, ended_at = ?, state = 'stopped'
-		WHERE id = ? AND ended_at = '' AND profile_id = ?`,
-		now, now, sessionID, viewerProfileID(user))
+	err = s.withPlaybackTxTagged(context.Background(), []string{"playback"}, func(tx *sql.Tx) error {
+		result, updateErr := tx.Exec(`
+			UPDATE playback_sessions
+			SET last_seen_at = ?, ended_at = ?, state = 'stopped'
+			WHERE id = ? AND ended_at = '' AND profile_id = ?`, now, now, sessionID, viewerProfileID(user))
+		if updateErr != nil {
+			return updateErr
+		}
+		if rowsAffected(result) != 1 {
+			return sql.ErrNoRows
+		}
+		// Unclaimed preloads are invalid once their source session ends. Preserve
+		// committing/committed rows until expiry so an in-flight handoff can
+		// finish and a lost response can still be retried idempotently.
+		_, deleteErr := tx.Exec(`DELETE FROM playback_prepared_handoffs WHERE source_session_id = ? AND user_id = ? AND profile_id = ? AND state = 'prepared'`, sessionID, accountIDForUser(user), viewerProfileID(user))
+		return deleteErr
+	})
 	if err != nil {
 		return err
-	}
-	count, _ := result.RowsAffected()
-	if count == 0 {
-		return sql.ErrNoRows
 	}
 	s.revokeMediaGrantsForSession(context.Background(), sessionID)
 	s.revokePlaybackContinuation(sessionID)
@@ -28067,6 +28410,7 @@ func (s *Server) settingsDocumentForUser(ctx context.Context, user User, impact 
 		RestartRequired:       impact.RestartRequired,
 		RestartRequiredFields: restartFields,
 		ApplyImpact:           impact,
+		Generation:            SettingsGeneration{Mode: "next-operation", ActiveRevision: revision, Instruction: "New operations use this committed settings revision."},
 	}, nil
 }
 
@@ -28111,6 +28455,7 @@ func changedRestartRequiredSettingFields(changed []string) []string {
 const (
 	tmdbReadAccessTokenSettingKey = "tmdbReadAccessToken"
 	tmdbAPIKeySettingKey          = "tmdbAPIKey"
+	tvdbAPIKeySettingKey          = "tvdbAPIKey"
 )
 
 var secretSettingKeys = map[string]bool{
@@ -28120,6 +28465,7 @@ var secretSettingKeys = map[string]bool{
 	remoteAccessPolicyStateKey:    true,
 	tmdbReadAccessTokenSettingKey: true,
 	tmdbAPIKeySettingKey:          true,
+	tvdbAPIKeySettingKey:          true,
 }
 
 var productOwnedSettingsHiddenFromClient = map[string]bool{
@@ -28137,6 +28483,7 @@ func (s *Server) clientSettings(settings map[string]any) map[string]any {
 	// default and must not immediately render as another removable secret.
 	group["tmdbReadAccessToken"] = map[string]bool{"present": strings.TrimSpace(s.secretSetting(tmdbReadAccessTokenSettingKey)) != ""}
 	group["tmdbAPIKey"] = map[string]bool{"present": strings.TrimSpace(s.secretSetting(tmdbAPIKeySettingKey)) != ""}
+	group["tvdbAPIKey"] = map[string]bool{"present": strings.TrimSpace(s.secretSetting(tvdbAPIKeySettingKey)) != ""}
 	return client
 }
 
@@ -28177,7 +28524,7 @@ func (s *Server) settingsSummary(settings map[string]any) SettingsSummaryRespons
 	groups := []SettingsGroupSummary{
 		settingsGroup("server", "General", "configure", "Server identity and naming.", true, !isWritableSettingGroup("server"), settingDiffersFromDefaults(settings, "server")),
 		settingsGroup("library-settings", "Library Rules", "configure", "Scanner, trash, and deletion safeguards.", true, !isWritableSettingGroup("library"), true),
-		settingsGroup("metadata-agents", "Metadata Sources", "configure", "Remote metadata agents, local metadata, and TMDB credentials.", true, !isWritableSettingGroup("metadataAgents"), settingDiffersFromDefaults(settings, "metadataAgents") || s.tmdbReadAccessToken() != "" || s.tmdbAPIKey() != ""),
+		settingsGroup("metadata-agents", "Metadata Sources", "configure", "Remote metadata agents, local metadata, and provider credential overrides.", true, !isWritableSettingGroup("metadataAgents"), settingDiffersFromDefaults(settings, "metadataAgents") || s.tmdbReadAccessToken() != "" || s.tmdbAPIKey() != "" || strings.TrimSpace(s.secretSetting(tvdbAPIKeySettingKey)) != ""),
 		settingsGroup("transcoder", "Streaming", "configure", "Transcode policy, hardware acceleration, remux, and cache location.", true, !isWritableSettingGroup("transcoder"), settingDiffersFromDefaults(settings, "transcoder")),
 		settingsGroup("remote-access", "Remote Access", "configure", "Portico account link, DNS, TLS, and direct route health.", true, true, remoteAccessClaimed(settings)),
 		settingsGroup("network", "Network", "configure", "Secure connection policy, LAN ranges, and custom access URLs.", true, !isWritableSettingGroup("network"), settingDiffersFromDefaults(settings, "network")),
@@ -28187,7 +28534,6 @@ func (s *Server) settingsSummary(settings map[string]any) SettingsSummaryRespons
 		settingsGroup("optimized-versions", "Version Library", "configure", "Persistent optimized-version generation and retention policy.", true, !isWritableSettingGroup("optimizedVersions"), settingDiffersFromDefaults(settings, "optimizedVersions")),
 		settingsGroup("notifications", "Operational alerts", "configure", "Dashboard health and maintenance alert visibility.", true, !isWritableSettingGroup("notifications"), settingBoolFromDocument(settings, "notifications", "enabled")),
 		settingsGroup("viewer-feedback", "Viewer messages", "configure", "Viewer-to-owner messaging, owner responses, and privacy retention.", true, !isWritableSettingGroup("viewerFeedback"), settingBoolFromDocument(settings, "viewerFeedback", "enabled")),
-		settingsGroup("updates", "Updates", "configure", "This feature is not yet available.", false, true, false),
 		settingsGroup("libraries", "Media Libraries", "operate", "Library instances, paths, scanning, lyrics, and trash.", true, false, true),
 		settingsGroup("live-tv", "Live Channels", "operate", "Live TV sources, guide cache, channel visibility, and provider health.", true, false, true),
 		settingsGroup("dvr", "DVR", "operate", "Recording rules, timers, retention, and recording storage policy.", true, !isWritableSettingGroup("dvr"), settingDiffersFromDefaults(settings, "dvr")),
@@ -28311,8 +28657,12 @@ func (s *Server) applyMetadataAgentSecrets(tx *sql.Tx, raw json.RawMessage, now 
 	if err := s.applySecretChangeField(tx, group, "tmdbAPIKey", tmdbAPIKeySettingKey, now); err != nil {
 		return nil, err
 	}
+	if err := s.applySecretChangeField(tx, group, "tvdbAPIKey", tvdbAPIKeySettingKey, now); err != nil {
+		return nil, err
+	}
 	delete(group, "tmdbReadAccessToken")
 	delete(group, "tmdbAPIKey")
+	delete(group, "tvdbAPIKey")
 	return json.Marshal(group)
 }
 
@@ -29896,18 +30246,31 @@ var writableSettingSchemas = map[string]map[string]settingFieldType{
 		"preserveAllStreams":               settingFieldBool,
 	},
 	"library": {
-		"scanAutomatically":        settingFieldBool,
-		"scanOnFilesystemChanges":  settingFieldBool,
-		"emptyTrashAfterScan":      settingFieldBool,
-		"allowMediaDeletion":       settingFieldBool,
-		"trashRetentionDays":       settingFieldNumber,
-		"generateVideoPreview":     settingFieldString,
-		"chapterThumbnailMode":     settingFieldString,
-		"analyzeOnScan":            settingFieldBool,
-		"trickplayOnScan":          settingFieldBool,
-		"trickplayIntervalSeconds": settingFieldNumber,
-		"trickplayTileWidth":       settingFieldNumber,
-		"trickplayMaxTiles":        settingFieldNumber,
+		"scanAutomatically":               settingFieldBool,
+		"scanOnFilesystemChanges":         settingFieldBool,
+		"emptyTrashAfterScan":             settingFieldBool,
+		"allowMediaDeletion":              settingFieldBool,
+		"trashRetentionDays":              settingFieldNumber,
+		"generateVideoPreview":            settingFieldString,
+		"chapterThumbnailMode":            settingFieldString,
+		"analysisTier":                    settingFieldString,
+		"readLocalMetadata":               settingFieldBool,
+		"readExternalSubtitlesAndLyrics":  settingFieldBool,
+		"discoverLocalArtwork":            settingFieldBool,
+		"fetchDescriptiveMetadata":        settingFieldBool,
+		"probeStreams":                    settingFieldBool,
+		"readEmbeddedTags":                settingFieldBool,
+		"readEmbeddedIndexes":             settingFieldBool,
+		"generateRepresentativeThumbnail": settingFieldBool,
+		"generateTrickplay":               settingFieldBool,
+		"generateChapterThumbnails":       settingFieldBool,
+		"analyzeLoudness":                 settingFieldBool,
+		"sonicFingerprinting":             settingFieldBool,
+		"extractAllEmbeddedAttachments":   settingFieldBool,
+		"trickplayOnScan":                 settingFieldBool,
+		"trickplayIntervalSeconds":        settingFieldNumber,
+		"trickplayTileWidth":              settingFieldNumber,
+		"trickplayMaxTiles":               settingFieldNumber,
 	},
 	"languages": {
 		"audio":            settingFieldString,
@@ -29917,7 +30280,9 @@ var writableSettingSchemas = map[string]map[string]settingFieldType{
 	},
 	"metadataAgents": {
 		"movies":               settingFieldString,
+		"moviesFallback":       settingFieldString,
 		"tv":                   settingFieldString,
+		"tvFallback":           settingFieldString,
 		"anime":                settingFieldString,
 		"music":                settingFieldString,
 		"localNFO":             settingFieldBool,
@@ -30165,8 +30530,12 @@ func validateSettingFieldPolicy(group, field string, value any) error {
 			return fmt.Errorf("%s.%s must be between 0 (forever) and 36500", group, field)
 		}
 	case "metadataAgents.movies", "metadataAgents.tv":
-		if !oneOfString(text, "TMDB", "None") {
-			return fmt.Errorf("%s.%s must be TMDB or None", group, field)
+		if !oneOfString(text, "TMDB", "TVDB", "None") {
+			return fmt.Errorf("%s.%s must be TMDB, TVDB, or None", group, field)
+		}
+	case "metadataAgents.moviesFallback", "metadataAgents.tvFallback":
+		if !oneOfString(text, "TMDB", "TVDB", "None") {
+			return fmt.Errorf("%s.%s must be TMDB, TVDB, or None", group, field)
 		}
 	case "metadataAgents.anime":
 		if !oneOfString(text, "AniList", "TMDB", "None") {
@@ -30269,6 +30638,10 @@ func validateSettingFieldPolicy(group, field string, value any) error {
 	case "library.generateVideoPreview", "library.chapterThumbnailMode":
 		if !oneOfString(strings.ToLower(strings.TrimSpace(text)), "never", "scheduled", "on-scan") {
 			return fmt.Errorf("%s.%s must be never, scheduled, or on-scan", group, field)
+		}
+	case "library.analysisTier":
+		if !oneOfString(strings.ToLower(strings.TrimSpace(text)), analysisTierFileListOnly, analysisTierBasic, analysisTierComplete, analysisTierCustom) {
+			return fmt.Errorf("%s.%s must be file_list_only, basic, complete, or custom", group, field)
 		}
 	case "metadataAgents.metadataLanguage":
 		if !validMetadataLanguageSetting(text) {
@@ -30391,6 +30764,30 @@ func validateSettingGroupPolicy(group string, values map[string]any) error {
 		if strings.EqualFold(strings.TrimSpace(window), "custom") && startOK && endOK && start == end {
 			return fmt.Errorf("%s.endHour must differ from startHour for a custom maintenance window", group)
 		}
+	case "library":
+		if err := validateCustomAnalysisDependencies(values); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateCustomAnalysisDependencies(values map[string]any) error {
+	if !strings.EqualFold(strings.TrimSpace(settingString(values, "analysisTier", analysisTierBasic)), analysisTierCustom) {
+		return nil
+	}
+	probeStreams := settingBool(values, "probeStreams", false)
+	for _, field := range []string{
+		"readEmbeddedTags", "readEmbeddedIndexes", "generateRepresentativeThumbnail",
+		"generateTrickplay", "generateChapterThumbnails", "analyzeLoudness",
+		"sonicFingerprinting", "extractAllEmbeddedAttachments",
+	} {
+		if settingBool(values, field, false) && !probeStreams {
+			return fmt.Errorf("library.%s requires library.probeStreams in Custom", field)
+		}
+	}
+	if settingBool(values, "extractAllEmbeddedAttachments", false) && !settingBool(values, "readEmbeddedIndexes", false) {
+		return errors.New("library.extractAllEmbeddedAttachments requires library.readEmbeddedIndexes in Custom")
 	}
 	return nil
 }

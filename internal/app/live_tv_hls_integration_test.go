@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -183,6 +184,9 @@ func TestLiveTVDockerProviderHLSNestedPlaylistAndSegmentThroughHandler(t *testin
 	if variantPath == "" || !strings.Contains(variantPath, "/api/live-tv/hls/"+channelID+"/item") || strings.Contains(variantPath, "media_grant=") {
 		t.Fatalf("master playlist did not expose a credential-free provider item route:\n%s", masterBody)
 	}
+	if strings.Contains(variantPath, "uri=") || strings.Contains(variantPath, "threadfin") || strings.Contains(variantPath, encodeRawURLForLeakCheck(masterURL)) {
+		t.Fatalf("master playlist exposed the provider URI directly or reversibly:\n%s", masterBody)
+	}
 	if !strings.Contains(variantPath, "quality=source") {
 		t.Fatalf("master playlist did not propagate its grant-bound quality:\n%s", masterBody)
 	}
@@ -193,6 +197,9 @@ func TestLiveTVDockerProviderHLSNestedPlaylistAndSegmentThroughHandler(t *testin
 	segmentPath := firstHLSResourceLine(mediaPlaylistBody)
 	if segmentPath == "" || !strings.Contains(segmentPath, "/api/live-tv/hls/"+channelID+"/item") || strings.Contains(segmentPath, "media_grant=") {
 		t.Fatalf("media playlist did not expose a credential-free provider segment route:\n%s", mediaPlaylistBody)
+	}
+	if strings.Contains(segmentPath, "uri=") || strings.Contains(segmentPath, "threadfin") {
+		t.Fatalf("media playlist exposed the provider segment URI:\n%s", mediaPlaylistBody)
 	}
 	if !strings.Contains(segmentPath, "quality=source") {
 		t.Fatalf("media playlist did not propagate its grant-bound quality:\n%s", mediaPlaylistBody)
@@ -210,6 +217,10 @@ func TestLiveTVDockerProviderHLSNestedPlaylistAndSegmentThroughHandler(t *testin
 			t.Fatalf("provider request chain %q omitted %q", requested, expected)
 		}
 	}
+}
+
+func encodeRawURLForLeakCheck(value string) string {
+	return base64.RawURLEncoding.EncodeToString([]byte(value))
 }
 
 func getLiveTVFixtureResource(t *testing.T, client *http.Client, endpoint string, wantStatus int) string {

@@ -24,6 +24,11 @@ function invitationProjection(invite: PorticoInvite): { label: string; problem: 
   return { label: invite.deliveryMode === 'email' ? 'Sent' : 'Link created', problem: false };
 }
 
+function invitationRecipientLabel(invite: PorticoInvite): string {
+  if (invite.invitedUsername) return `@${invite.invitedUsername}`;
+  return invite.invitedEmail || 'Portico account';
+}
+
 function UserEditor({ user, operations, source, onDismiss, onSaved }: { user?: User; operations: SettingsOperationalSnapshot; source: SettingsDataSource; onDismiss: () => void; onSaved: () => void }) {
   const [username, setUsername] = useState(user?.username || user?.displayName || '');
   const [email, setEmail] = useState(user?.email ?? '');
@@ -61,7 +66,6 @@ function UserEditor({ user, operations, source, onDismiss, onSaved }: { user?: U
 
 function PorticoInviteEditor({ operations, source, onDismiss, onSaved }: { operations: SettingsOperationalSnapshot; source: SettingsDataSource; onDismiss: () => void; onSaved: () => void }) {
   const [email, setEmail] = useState('');
-  const [libraryIds, setLibraryIds] = useState(operations.libraries.map((library) => library.id));
   const [permissions, setPermissions] = useState<Permissions>({});
   const [deliveryMode, setDeliveryMode] = useState<'email' | 'link'>('email');
   const [createdLink, setCreatedLink] = useState('');
@@ -76,7 +80,7 @@ function PorticoInviteEditor({ operations, source, onDismiss, onSaved }: { opera
         recipient,
         email: recipient,
         role: 'user',
-        permissionTemplate: { libraryIds, permissions },
+        permissionTemplate: { permissions },
         deliveryMode,
       }, signal));
       if (deliveryMode === 'link' && created?.inviteUrl) {
@@ -92,14 +96,13 @@ function PorticoInviteEditor({ operations, source, onDismiss, onSaved }: { opera
   return <ModalOverlay labelledBy="portico-invite-editor-title" className="portico-settings-dialog portico-user-dialog" onDismiss={onDismiss}>
     <header><div><h2 id="portico-invite-editor-title">Invite a Portico Account</h2><p>Hosted membership and server access</p></div><IconButton label="Close" onClick={onDismiss}><X /></IconButton></header>
     <div className="portico-settings-dialog-fields">
-      <InlineNotice tone="info">Portico Hosted Services stores this membership. The server will apply it only after the Cloud change succeeds.</InlineNotice>
+      <InlineNotice tone="info">Portico Hosted Services stores generic membership grants only. Assign this member’s server libraries locally after the invitation is accepted.</InlineNotice>
       <label><span>Email</span><TextControl label="Portico Account email" type="email" value={email} onChange={setEmail} /></label>
       <fieldset><legend>Delivery</legend><div className="portico-settings-checkbox-grid">
         <label><input type="radio" name="invite-delivery" checked={deliveryMode === 'email'} onChange={() => setDeliveryMode('email')} /><span>Email the invitation</span></label>
         <label><input type="radio" name="invite-delivery" checked={deliveryMode === 'link'} onChange={() => setDeliveryMode('link')} /><span>Create a link to share yourself</span></label>
       </div></fieldset>
       {createdLink && <InlineNotice tone="success"><span>Invitation link created.</span> <code>{createdLink}</code> <SecondaryButton onClick={() => { void navigator.clipboard.writeText(createdLink).catch(() => setError('The link could not be copied automatically. Select and copy it above.')); }}>Copy link</SecondaryButton></InlineNotice>}
-      <fieldset><legend>Libraries</legend><div className="portico-settings-checkbox-grid">{operations.libraries.map((library) => <label key={library.id}><input type="checkbox" checked={libraryIds.includes(library.id)} onChange={(event) => setLibraryIds((current) => event.target.checked ? [...current, library.id] : current.filter((id) => id !== library.id))} /><span>{library.name}</span></label>)}</div></fieldset>
       <fieldset><legend>Permissions</legend><div className="portico-settings-checkbox-grid">{operations.capabilities.permissionCatalog.map((permission) => <label key={permission}><input type="checkbox" checked={permissions[permission] === true} onChange={(event) => setPermissions((current) => ({ ...current, [permission]: event.target.checked }))} /><span>{permissionLabel(permission)}</span></label>)}</div></fieldset>
       {error && <p className="portico-settings-dialog-error" role="alert"><AlertTriangle />{error}</p>}
     </div>
@@ -121,11 +124,11 @@ function UsersPanel({ operations, source, onChanged }: { operations: SettingsOpe
   const resend = async (invite: PorticoInvite) => {
     setError('');
     try { await mutation.run((signal) => source.resendPorticoMemberInvite(invite.id, signal)); onChanged(); }
-    catch (reason) { setError(reviewedProductErrorText(reason, 'settings.action-failed', { actionName: `retry the invitation to ${invite.invitedEmail}` })); }
+    catch (reason) { setError(reviewedProductErrorText(reason, 'settings.action-failed', { actionName: `retry the invitation to ${invitationRecipientLabel(invite)}` })); }
   };
   return <SettingsGroup title="Members" description="Server-local profiles, linked Portico identities, and library access." actions={<PrimaryButton onClick={() => setEditor(porticoMode ? 'invite' : 'new')}><Plus /> {porticoMode ? 'Invite account' : 'New account'}</PrimaryButton>}>
     {error && <InlineNotice tone="error">{error}</InlineNotice>}
-    <div className="portico-member-list">{operations.users.map((user) => <article key={user.id}><span className="portico-member-avatar">{user.profileImageUrl ? <img src={user.profileImageUrl} alt="" /> : accountUsername(user).slice(0, 1).toLocaleUpperCase()}</span><span><strong>{accountUsername(user)}</strong><small>{user.email} · {user.role} · {user.authOrigin === 'portico' ? 'Portico account' : 'This Server'} · {user.libraryIds.length} {user.libraryIds.length === 1 ? 'library' : 'libraries'}</small></span><div>{user.authOrigin === 'portico' && <span className="portico-settings-capability configured"><ShieldCheck /> Linked</span>}{user.role !== 'owner' && <IconButton label={`Edit ${accountUsername(user)}`} onClick={() => setEditor(user)}><Pencil /></IconButton>}{user.role !== 'owner' && (confirmDelete === user.id ? <div className="portico-inline-confirm"><span>Remove {accountUsername(user)} from this server? Their server access and profile data will be permanently deleted; media files are retained.</span><button type="button" onClick={() => setConfirmDelete('')}>Cancel</button><button type="button" className="danger" disabled={mutation.busy} onClick={() => void remove(user)}>Remove</button></div> : <IconButton label={`Remove ${accountUsername(user)}`} onClick={() => setConfirmDelete(user.id)}><Trash2 /></IconButton>)}</div></article>)}{(operations.porticoInvites ?? []).filter((invite) => invite.status !== 'accepted' && !invite.acceptedAt).map((invite) => { const projection = invitationProjection(invite); return <article key={invite.id}><span className="portico-member-avatar">{invite.invitedEmail.slice(0, 1).toLocaleUpperCase()}</span><span><strong>{invite.invitedEmail}</strong><small>Portico Account invitation · expires {new Date(invite.expiresAt).toLocaleDateString()}</small></span><div><span className={`portico-settings-capability ${projection.problem ? 'unavailable' : 'configured'}`}>{projection.problem ? <AlertTriangle /> : <Check />}{projection.label}</span>{projection.problem && <SecondaryButton disabled={mutation.busy} onClick={() => void resend(invite)}>Retry email</SecondaryButton>}</div></article>; })}</div>
+    <div className="portico-member-list">{operations.users.map((user) => <article key={user.id}><span className="portico-member-avatar">{user.profileImageUrl ? <img src={user.profileImageUrl} alt="" /> : accountUsername(user).slice(0, 1).toLocaleUpperCase()}</span><span><strong>{accountUsername(user)}</strong><small>{user.email} · {user.role} · {user.authOrigin === 'portico' ? 'Portico account' : 'This Server'} · {user.libraryIds.length} {user.libraryIds.length === 1 ? 'library' : 'libraries'}</small></span><div>{user.authOrigin === 'portico' && <span className="portico-settings-capability configured"><ShieldCheck /> Linked</span>}{user.role !== 'owner' && <IconButton label={`Edit ${accountUsername(user)}`} onClick={() => setEditor(user)}><Pencil /></IconButton>}{user.role !== 'owner' && (confirmDelete === user.id ? <div className="portico-inline-confirm"><span>Remove {accountUsername(user)} from this server? Their server access and profile data will be permanently deleted; media files are retained.</span><button type="button" onClick={() => setConfirmDelete('')}>Cancel</button><button type="button" className="danger" disabled={mutation.busy} onClick={() => void remove(user)}>Remove</button></div> : <IconButton label={`Remove ${accountUsername(user)}`} onClick={() => setConfirmDelete(user.id)}><Trash2 /></IconButton>)}</div></article>)}{(operations.porticoInvites ?? []).filter((invite) => invite.status !== 'accepted' && !invite.acceptedAt).map((invite) => { const projection = invitationProjection(invite); const recipient = invitationRecipientLabel(invite); return <article key={invite.id}><span className="portico-member-avatar">{recipient.replace(/^@/, '').slice(0, 1).toLocaleUpperCase()}</span><span><strong>{recipient}</strong><small>Portico Account invitation · expires {new Date(invite.expiresAt).toLocaleDateString()}</small></span><div><span className={`portico-settings-capability ${projection.problem ? 'unavailable' : 'configured'}`}>{projection.problem ? <AlertTriangle /> : <Check />}{projection.label}</span>{projection.problem && <SecondaryButton disabled={mutation.busy} onClick={() => void resend(invite)}>Retry email</SecondaryButton>}</div></article>; })}</div>
     {editor === 'invite' && <PorticoInviteEditor operations={operations} source={source} onDismiss={() => setEditor(null)} onSaved={() => { setEditor(null); onChanged(); }} />}
     {editor && editor !== 'invite' && <UserEditor user={editor === 'new' ? undefined : editor} operations={operations} source={source} onDismiss={() => setEditor(null)} onSaved={() => { setEditor(null); onChanged(); }} />}
   </SettingsGroup>;
@@ -188,6 +191,13 @@ function APIKeysPanel({ keys, scopes, source, onChanged }: { keys: APIKey[]; sco
 }
 
 export function PeopleOperations({ operations, source, onChanged }: { operations: SettingsOperationalSnapshot; source: SettingsDataSource; onChanged: () => void }) {
-  const scopes = useMemo(() => operations.capabilities.permissionCatalog, [operations.capabilities.permissionCatalog]);
-  return <div className="portico-settings-form"><UsersPanel operations={operations} source={source} onChanged={onChanged} /><DevicesPanel devices={operations.devices} source={source} onChanged={onChanged} /><APIKeysPanel keys={operations.apiKeys} scopes={scopes} source={source} onChanged={onChanged} /></div>;
+  const failures = operations.failures ?? {};
+  const scopes = useMemo(() => operations.capabilities?.permissionCatalog ?? [], [operations.capabilities?.permissionCatalog]);
+  const unavailable = (title: string) => <SettingsGroup title={title} description="This panel could not be refreshed independently."><div className="portico-settings-state error"><AlertTriangle /><strong>{title} are unavailable</strong><p>Retry the failed panel before making changes. No empty result is being inferred.</p></div></SettingsGroup>;
+  const usersUnavailable = Boolean(failures.users || failures.libraries || failures.capabilities);
+  return <div className="portico-settings-form">
+    {usersUnavailable ? unavailable('People') : <UsersPanel operations={operations} source={source} onChanged={onChanged} />}
+    {failures.devices ? unavailable('Devices') : <DevicesPanel devices={operations.devices} source={source} onChanged={onChanged} />}
+    {failures.apiKeys || failures.capabilities ? unavailable('API keys') : <APIKeysPanel keys={operations.apiKeys} scopes={scopes} source={source} onChanged={onChanged} />}
+  </div>;
 }

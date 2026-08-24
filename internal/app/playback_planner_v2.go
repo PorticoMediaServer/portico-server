@@ -24,6 +24,13 @@ func (s *Server) planMediaPlayback(ctx context.Context, item MediaItem, profile 
 	if err != nil {
 		return PlaybackDecision{}, err
 	}
+	if _, _, parseErr := parseRemoteStorageLocator(strings.TrimSpace(item.SourceURL)); parseErr == nil {
+		previousStreams := item.Streams
+		item.Streams, _ = s.listStreamsContext(ctx, item.ID)
+		scopePlaybackStreamsToSelectedVersion(&item)
+		selectedAudioID = remapReplacedScannerStream(previousStreams, item.Streams, selectedAudioID, "audio")
+		selectedSubtitleID = remapReplacedScannerStream(previousStreams, item.Streams, selectedSubtitleID, "subtitle")
+	}
 	capabilities, err := resolvePlaybackCapabilities(profile)
 	if err != nil {
 		return PlaybackDecision{}, err
@@ -118,6 +125,39 @@ func (s *Server) planMediaPlayback(ctx context.Context, item MediaItem, profile 
 		decision.IsProxied = true
 	}
 	return decision, nil
+}
+
+func remapReplacedScannerStream(previous, current []Stream, selectedID, kind string) string {
+	selectedID = strings.TrimSpace(selectedID)
+	if selectedID == "" {
+		return ""
+	}
+	for _, stream := range current {
+		if stream.ID == selectedID && stream.Kind == kind {
+			return selectedID
+		}
+	}
+	wasScannerSelection := false
+	for _, stream := range previous {
+		if stream.ID == selectedID && stream.Kind == kind && stream.SourceKind == "scanner" {
+			wasScannerSelection = true
+			break
+		}
+	}
+	if !wasScannerSelection {
+		return selectedID
+	}
+	for _, stream := range current {
+		if stream.Kind == kind && stream.Default {
+			return stream.ID
+		}
+	}
+	for _, stream := range current {
+		if stream.Kind == kind {
+			return stream.ID
+		}
+	}
+	return ""
 }
 
 func playbackPlanModePolicy(policy ResolvedPlaybackPolicy, directStreamRemux bool) ([]playbackplan.Mode, []playbackplan.Mode) {
@@ -282,8 +322,46 @@ func playbackStreamIndex(streams []Stream, id, kind string) (int, bool) {
 
 func (s *Server) mediaFactsForPlayback(ctx context.Context, item MediaItem) (mediafacts.Facts, string, error) {
 	fileID := selectedPlaybackVersionID(item)
-	var raw, digest string
-	if err := s.queryUserRow(ctx, `SELECT facts_json, facts_digest FROM media_analysis_facts WHERE media_id = ? AND media_file_id = ?`, item.ID, fileID).Scan(&raw, &digest); err == nil {
+	if facts, digest, ok := s.persistedPlaybackFacts(ctx, item, fileID); ok {
+		return facts, digest, nil
+	}
+	if _, _, err := parseRemoteStorageLocator(strings.TrimSpace(item.SourceURL)); err == nil {
+		releaseProbeLock := acquireRemotePlaybackProbeLock(item.ID + "\x00" + fileID)
+		defer releaseProbeLock()
+		if facts, digest, ok := s.persistedPlaybackFacts(ctx, item, fileID); ok {
+			return facts, digest, nil
+		}
+		if err := s.probeRemotePlaybackFacts(ctx, item, item.SourceURL); err != nil {
+			return mediafacts.Facts{}, "", fmt.Errorf("%w: remote probe failed: %v", errPlaybackFactsUnavailable, err)
+		}
+		if facts, digest, ok := s.persistedPlaybackFacts(ctx, item, fileID); ok {
+			return facts, digest, nil
+		}
+		return mediafacts.Facts{}, "", errPlaybackFactsUnavailable
+	}
+	return s.estimatedPlaybackFacts(ctx, item, fileID)
+}
+
+func (s *Server) persistedPlaybackFacts(ctx context.Context, item MediaItem, fileID string) (mediafacts.Facts, string, bool) {
+	var raw, digest, storedRevision, storedFingerprint string
+	identityCurrent := true
+	var err error
+	if fileID == "" {
+		err = s.queryUserRow(ctx, `SELECT facts_json, facts_digest FROM media_analysis_facts WHERE media_id = ? AND media_file_id = ''`, item.ID).Scan(&raw, &digest)
+	} else {
+		var currentFingerprint, currentModTime string
+		var currentSize int64
+		err = s.queryUserRow(ctx, `SELECT facts.facts_json, facts.facts_digest, facts.source_revision, facts.source_fingerprint,
+			COALESCE(file.content_fingerprint, ''), COALESCE(file.size_bytes, 0), COALESCE(file.mod_time, '')
+			FROM media_analysis_facts facts JOIN media_files file ON file.id=facts.media_file_id AND file.media_id=facts.media_id
+			WHERE facts.media_id=? AND facts.media_file_id=? AND file.available=1`, item.ID, fileID).
+			Scan(&raw, &digest, &storedRevision, &storedFingerprint, &currentFingerprint, &currentSize, &currentModTime)
+		if err == nil {
+			current := canonicalAnalysisFileIdentity(fileID, currentFingerprint, currentSize, currentModTime)
+			identityCurrent = storedFingerprint == current.Fingerprint && storedRevision == current.revision()
+		}
+	}
+	if err == nil && identityCurrent {
 		var facts mediafacts.Facts
 		if json.Unmarshal([]byte(raw), &facts) == nil {
 			canonical, canonicalErr := facts.Canonical()
@@ -291,11 +369,11 @@ func (s *Server) mediaFactsForPlayback(ctx context.Context, item MediaItem) (med
 			if canonicalErr == nil && digestErr == nil && actualDigest == digest {
 				canonical = augmentPlaybackSubtitleFacts(canonical, item.Streams)
 				actualDigest, _ = canonical.Digest()
-				return canonical, actualDigest, nil
+				return canonical, actualDigest, true
 			}
 		}
 	}
-	return s.estimatedPlaybackFacts(ctx, item, fileID)
+	return mediafacts.Facts{}, "", false
 }
 
 func (s *Server) estimatedPlaybackFacts(ctx context.Context, item MediaItem, fileID string) (mediafacts.Facts, string, error) {
@@ -361,7 +439,7 @@ func (s *Server) estimatedPlaybackFacts(ctx context.Context, item MediaItem, fil
 			facts.Subtitles = append(facts.Subtitles, mediafacts.Subtitle{Index: index, Codec: firstNonEmpty(codec, "unknown"), Kind: playbackSubtitleFactKind(codec), SDH: &sdh, Language: stream.Language, Disposition: disposition, Timing: mediafacts.Timing{DurationConfidence: mediafacts.ConfidenceUnknown}})
 		}
 	}
-	if len(facts.Audio) == 0 {
+	if len(facts.Video) == 0 && len(facts.Audio) == 0 {
 		return mediafacts.Facts{}, "", errPlaybackFactsUnavailable
 	}
 	canonical, err := facts.Canonical()

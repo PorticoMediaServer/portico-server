@@ -31,7 +31,7 @@ Section "Install"
   nsExec::ExecToLog 'sc.exe delete PorticoMediaServer'
   nsExec::ExecToLog 'sc.exe create PorticoMediaServer binPath= "\"$INSTDIR\portico-media-server.exe\"" start= auto DisplayName= "Portico Media Server"'
   nsExec::ExecToLog 'sc.exe description PorticoMediaServer "Portico personal media server"'
-  WriteRegMultiStr HKLM "SYSTEM\CurrentControlSet\Services\PorticoMediaServer" "Environment" "PORTICO_APP_DATA=$PROGRAMDATA\Portico Media Server$\0PORTICO_WEB_DIST=$INSTDIR\web$\0PORTICO_FFMPEG_PATH=$INSTDIR\bin\ffmpeg.exe$\0PORTICO_FFPROBE_PATH=$INSTDIR\bin\ffprobe.exe$\0"
+  WriteRegMultiStr HKLM "SYSTEM\CurrentControlSet\Services\PorticoMediaServer" "Environment" "PORTICO_APP_DATA=$PROGRAMDATA\Portico Media Server$\0PORTICO_WEB_DIST=$INSTDIR\web$\0PORTICO_FFMPEG_PATH=$INSTDIR\bin\ffmpeg.exe$\0PORTICO_FFPROBE_PATH=$INSTDIR\bin\ffprobe.exe$\0PORTICO_ENVIRONMENT=production$\0PORTICO_HOSTED_API_AUTHORITY=https://api.getportico.tv$\0"
   nsExec::ExecToLog 'sc.exe start PorticoMediaServer'
 SectionEnd
 

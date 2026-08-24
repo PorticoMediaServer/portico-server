@@ -64,6 +64,23 @@
 .portico-server-console { display: grid; gap: 25px; }
 .portico-settings-content > .portico-settings-form { display: contents; }
 
+.portico-settings-scope-bar {
+  min-height: 58px;
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-surface);
+  background: #0b1218;
+}
+.portico-settings-scope-bar > span:first-child { min-width: 0; flex: 1; display: grid; gap: 3px; }
+.portico-settings-scope-bar strong { font-size: var(--type-supporting); }
+.portico-settings-scope-bar small { color: var(--silver-dim); font-size: var(--type-caption); }
+.portico-settings-scope-bar code { color: var(--silver-soft); font: inherit; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.portico-settings-scope-bar > span:last-child { flex: 0 0 auto; color: var(--healthy); font-size: var(--type-caption); font-weight: 600; }
+.portico-settings-scope-bar > span:last-child.draft { color: var(--tuner-amber); }
+
 .portico-settings-group {
   overflow: visible;
   border: 1px solid var(--line);
@@ -98,6 +115,8 @@
 }
 
 .portico-setting-row:last-child { border-bottom: 0; }
+.portico-setting-resolution { margin: -8px 22px 12px; padding: 8px 10px; display: flex; flex-wrap: wrap; gap: 8px 18px; border-left: 2px solid var(--line-strong); color: var(--silver-dim); background: rgba(55, 142, 195, .045); font-size: var(--type-caption); }
+.portico-setting-resolution strong { color: var(--silver-muted); font-weight: 600; }
 .portico-setting-copy > div { display: flex; align-items: center; gap: 8px; }
 .portico-setting-copy strong { font-size: var(--type-supporting); }
 .portico-setting-copy p { max-width: 620px; margin: 5px 0 0; color: var(--silver-dim); font-size: var(--type-caption); line-height: 1.55; }
@@ -115,10 +134,18 @@
 .portico-settings-dialog input,
 .portico-settings-dialog textarea,
 .portico-console-search {
-  border: 1px solid var(--line);
+  border: 1px solid var(--portico-control-border);
   border-radius: var(--radius-control);
   color: var(--silver);
-  background: #080e14;
+  background: var(--portico-control-fill);
+}
+
+.portico-setting-control input:hover,
+.portico-setting-control textarea:hover,
+.portico-settings-dialog input:hover,
+.portico-settings-dialog textarea:hover {
+  border-color: var(--portico-control-border-hover);
+  background: var(--portico-control-fill-hover);
 }
 
 .portico-setting-control input,
@@ -217,6 +244,8 @@
   line-height: 1.5;
 }
 .portico-settings-notice > span { min-width: 0; flex: 1; }
+.portico-settings-inline-action { min-height: 32px; padding: 0 9px; border: 1px solid var(--line); border-radius: var(--radius-control); color: var(--silver-soft); background: transparent; font: inherit; font-size: var(--type-caption); cursor: pointer; }
+.portico-settings-inline-action:hover { border-color: var(--line-strong); color: var(--silver); background: rgba(255,255,255,.04); }
 .portico-settings-notice.success { border-color: rgba(98, 201, 167, .28); background: rgba(98, 201, 167, .05); }
 .portico-settings-notice.warn { border-color: rgba(215, 163, 77, .3); background: rgba(215, 163, 77, .055); }
 .portico-settings-notice.error { border-color: rgba(237, 91, 103, .3); background: rgba(237, 91, 103, .05); }
@@ -295,6 +324,10 @@
 .portico-work-list strong { font-size: var(--type-supporting); }
 .portico-health-list small,
 .portico-work-list small { margin-top: 3px; overflow: hidden; color: var(--silver-muted); font-size: var(--type-caption); text-overflow: ellipsis; white-space: nowrap; }
+.portico-work-list .portico-job-meta { color: var(--silver-muted); }
+.portico-status-freshness { margin: -12px 0 0; display: flex; flex-wrap: wrap; align-items: center; gap: 7px; color: var(--silver-muted); font-size: var(--type-caption); }
+.portico-status-freshness.stale { color: var(--tuner-amber); }
+.portico-status-freshness strong { color: inherit; font-weight: 600; }
 .portico-health-list b { margin-left: auto; color: var(--silver-dim); font-size: var(--type-caption); font-weight: 600; text-transform: capitalize; }
 .portico-health-list b.healthy { color: var(--healthy); }
 .portico-job-state { width: 27px; display: grid; place-items: center; color: var(--screen-blue); }
@@ -454,6 +487,50 @@
 .portico-library-storage-sources > label strong { overflow: hidden; color: var(--silver-soft); font-size: var(--type-supporting); text-overflow: ellipsis; white-space: nowrap; }
 .portico-library-storage-sources > label small { color: var(--silver-dim); font-size: var(--type-caption); }
 .portico-library-storage-sources select { width: min(230px, 42%); min-height: 38px; padding: 0 30px 0 10px; border: 1px solid var(--line); border-radius: 7px; color: var(--silver-soft); background: #0b1218; }
+.portico-remote-storage { display: grid; border: 1px solid var(--line-soft); border-radius: 7px; overflow: hidden; background: #0a131a; }
+.portico-remote-storage > header { min-height: 52px; padding: 9px 12px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid var(--line-soft); }
+.portico-remote-storage > header > span { min-width: 0; flex: 1; display: grid; gap: 3px; }
+.portico-remote-storage > header strong { color: var(--silver-soft); font-size: var(--type-supporting); }
+.portico-remote-storage > header small { color: var(--silver-muted); font-size: var(--type-caption); }
+.portico-remote-storage > .portico-settings-notice { margin: 10px 12px 0; }
+.portico-remote-storage-state { min-height: 64px; margin: 0; padding: 14px; display: flex; align-items: center; gap: 9px; color: var(--silver-dim); font-size: var(--type-supporting); }
+.portico-remote-storage-state svg { width: 18px; color: var(--silver-muted); }
+.portico-remote-storage-list { display: grid; }
+.portico-library-list .portico-remote-storage-list > article { min-height: 78px; padding: 11px 12px; display: grid; grid-template-columns: minmax(180px, 1.25fr) minmax(320px, 1.75fr) auto; align-items: center; gap: 14px; border-bottom: 1px solid var(--line-soft); }
+.portico-remote-storage-list > article:last-child { border-bottom: 0; }
+.portico-library-list .portico-remote-storage-identity { min-width: 0; display: flex; align-items: center; gap: 9px; }
+.portico-remote-storage-identity > svg { width: 18px; flex: 0 0 auto; color: var(--screen-blue); }
+.portico-remote-storage-identity > span { min-width: 0; display: grid; gap: 3px; }
+.portico-remote-storage-identity strong,
+.portico-remote-storage-identity small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.portico-remote-storage-identity strong { color: var(--silver-soft); font-size: var(--type-supporting); }
+.portico-remote-storage-identity small { margin: 0; color: var(--silver-dim); font-size: var(--type-caption); }
+.portico-remote-storage-list dl { margin: 0; display: grid; grid-template-columns: repeat(5, minmax(70px, 1fr)); gap: 10px; }
+.portico-remote-storage-list dl > div { min-width: 0; display: grid; gap: 3px; }
+.portico-remote-storage-list dt { color: var(--silver-muted); font-size: var(--type-caption); }
+.portico-remote-storage-list dd { margin: 0; overflow: hidden; color: var(--silver-dim); font-size: var(--type-caption); text-overflow: ellipsis; white-space: nowrap; }
+.portico-remote-storage-list dd svg { width: 13px; margin-right: 4px; vertical-align: -2px; }
+.portico-remote-storage-list dd.healthy { color: var(--healthy); }
+.portico-remote-storage-list dd.warning { color: var(--warning); }
+.portico-remote-storage-mode select { width: 100%; min-height: 30px; padding: 0 25px 0 7px; border: 1px solid var(--line-soft); border-radius: 6px; color: var(--silver-dim); background: #0b1218; font-size: var(--type-caption); }
+.portico-library-list .portico-remote-storage-actions { display: flex; align-items: center; justify-content: flex-end; gap: 7px; }
+.portico-remote-storage-actions .portico-inline-confirm { max-width: 430px; }
+.portico-remote-storage-dialog { width: min(720px, 100%); }
+.portico-settings-dialog-fields > .portico-remote-kind { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.portico-remote-kind > label { min-height: 54px; padding: 9px 10px; display: flex; align-items: flex-start; gap: 9px; border: 1px solid var(--line-soft); border-radius: 7px; background: #0b1218; cursor: pointer; }
+.portico-remote-kind > label:has(input:checked) { border-color: var(--line-strong); background: #101c25; }
+.portico-remote-kind input { margin-top: 3px; accent-color: var(--screen-blue-strong); }
+.portico-remote-kind label > span { display: grid; gap: 2px; }
+.portico-remote-kind label strong { color: var(--silver-soft); font-size: var(--type-supporting); }
+.portico-remote-kind label small { margin: 0; color: var(--silver-dim); font-size: var(--type-caption); font-weight: 400; }
+.portico-settings-dialog-fields > .portico-remote-credential-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.portico-remote-credential-fields > label { display: grid; gap: 7px; }
+.portico-remote-credential-fields > label > span { color: var(--silver-soft); font-size: var(--type-supporting); font-weight: 600; }
+.portico-remote-secret-note { margin: -3px 0 0; color: var(--silver-muted); font-size: var(--type-caption); }
+.portico-remote-storage-dialog textarea { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: var(--type-caption); }
+.portico-settings-dialog-fields > .portico-remote-analysis-mode { display: grid; gap: 7px; }
+.portico-remote-analysis-mode select { width: 100%; min-height: 42px; padding: 0 32px 0 11px; border: 1px solid var(--line); border-radius: var(--radius-control); color: var(--silver-soft); background: #0b1218; }
+.portico-settings-dialog-fields > .portico-remote-analysis-mode > small { margin: 0; color: var(--silver-dim); line-height: 1.45; }
 .portico-library-scan-counts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border: 1px solid var(--line-soft); border-radius: 7px; background: #0b141b; }
 .portico-library-scan-counts > div { min-width: 0; padding: 11px 12px; display: grid; gap: 3px; }
 .portico-library-scan-counts > div + div { border-left: 1px solid var(--line-soft); }
@@ -878,6 +955,16 @@
 .portico-release-grid span { min-width: 0; display: grid; }
 .portico-release-grid strong { font-size: var(--type-supporting); }
 .portico-release-grid small { margin-top: 4px; overflow: hidden; color: var(--silver-dim); font-size: var(--type-caption); text-overflow: ellipsis; white-space: nowrap; }
+.portico-update-status { min-height: 76px; padding: 12px 18px; display: flex; align-items: center; gap: 18px; }
+.portico-update-status > span:first-child { min-width: 0; flex: 1; display: grid; gap: 4px; }
+.portico-update-status strong { color: var(--silver-soft); font-size: var(--type-supporting); }
+.portico-update-status small { color: var(--silver-dim); font-size: var(--type-caption); }
+.portico-attribution { align-items: flex-start; display: grid; gap: 5px; max-width: 620px; white-space: normal; }
+.portico-attribution a { align-items: center; color: var(--silver-soft); display: inline-flex; gap: 6px; text-decoration: underline; text-decoration-color: var(--line-strong); text-underline-offset: 3px; }
+.portico-attribution a:hover { color: var(--silver); }
+.portico-attribution a svg { height: 14px; width: 14px; }
+.portico-attribution a img { display: block; height: 18px; width: auto; }
+.portico-attribution small { color: var(--silver-dim); font-size: var(--type-caption); line-height: 1.45; }
 
 /* Dialogs */
 .portico-settings-dialog { width: min(760px, 100%); max-height: min(860px, calc(100vh - 40px)); display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--line-strong); border-radius: 12px; background: #101820; box-shadow: 0 24px 64px rgba(0, 0, 0, .58); }
@@ -1064,6 +1151,8 @@
   .portico-library-scan-timing { grid-column: 1 / -1; }
   .portico-library-scan-controls { align-items: stretch; flex-wrap: wrap; }
   .portico-library-scan-controls > span { width: 100%; flex-basis: 100%; }
+  .portico-library-list .portico-remote-storage-list > article { grid-template-columns: minmax(180px, 1fr) minmax(300px, 1.5fr); }
+  .portico-library-list .portico-remote-storage-actions { grid-column: 1 / -1; }
 }
 
 @media (max-width: 620px) {
@@ -1082,6 +1171,12 @@
   .portico-library-storage-sources > label { align-items: stretch; flex-direction: column; }
   .portico-library-storage-sources > header small { text-align: left; }
   .portico-library-storage-sources select { width: 100%; }
+  .portico-remote-storage > header { align-items: stretch; flex-direction: column; }
+  .portico-library-list .portico-remote-storage-list > article { grid-template-columns: 1fr; }
+  .portico-remote-storage-list dl { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .portico-library-list .portico-remote-storage-actions { grid-column: auto; justify-content: flex-start; }
+  .portico-settings-dialog-fields > .portico-remote-kind,
+  .portico-settings-dialog-fields > .portico-remote-credential-fields { grid-template-columns: 1fr; }
   .portico-scan-reconciliation-review dl { grid-template-columns: 1fr; }
   .portico-scan-reconciliation-review dl > div:nth-child(even) { border-left: 0; }
   .portico-scan-reconciliation-review dl > div:nth-child(n+2) { border-top: 1px solid var(--line-soft); }

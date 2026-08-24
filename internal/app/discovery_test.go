@@ -635,6 +635,8 @@ func newDiscoveryTestServer(t *testing.T, overrides config.Config) (string, *sql
 		TMDBReadAccessToken:    overrides.TMDBReadAccessToken,
 		TMDBAPIKey:             overrides.TMDBAPIKey,
 		TMDBBaseURL:            overrides.TMDBBaseURL,
+		TVDBAPIKey:             overrides.TVDBAPIKey,
+		TVDBBaseURL:            overrides.TVDBBaseURL,
 		AniListBaseURL:         overrides.AniListBaseURL,
 		MusicBrainzBaseURL:     overrides.MusicBrainzBaseURL,
 		CoverArtArchiveBaseURL: overrides.CoverArtArchiveBaseURL,

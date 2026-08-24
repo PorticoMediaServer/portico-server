@@ -154,6 +154,12 @@ func tupleMatches(have, want DeliveryTuple) bool {
 	if want.Video.DolbyVisionProfile != 0 && want.Video.DolbyVisionProfile != have.Video.DolbyVisionProfile {
 		return false
 	}
+	if want.Audio == (Audio{}) {
+		return have.Audio == (Audio{})
+	}
+	if have.Audio == (Audio{}) {
+		return false
+	}
 	if !sameOrWildcard(have.Audio.Codec, want.Audio.Codec) || !sameOrWildcard(have.Audio.Profile, want.Audio.Profile) || !sameOrWildcard(have.Audio.Layout, want.Audio.Layout) || !sameOrWildcard(have.Audio.Route, want.Audio.Route) || exceeds(want.Audio.MaxChannels, have.Audio.MaxChannels) {
 		return false
 	}

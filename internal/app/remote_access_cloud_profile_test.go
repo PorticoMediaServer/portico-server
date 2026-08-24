@@ -19,7 +19,6 @@ func TestPorticoInviteeProvisioningFromIntrospectionMember(t *testing.T) {
 		Role:        "user",
 		Status:      "active",
 		PermissionTemplate: RemotePermissionTemplate{
-			LibraryIDs: libraryIDs,
 			Permissions: map[string]bool{
 				"playMedia": true,
 				"transcode": true,
@@ -31,5 +30,8 @@ func TestPorticoInviteeProvisioningFromIntrospectionMember(t *testing.T) {
 	}
 	if user.PorticoMembershipID != "mem_debug_invitee" || user.PorticoUserID != "usr_debug_invitee" || user.AuthOrigin != "portico" {
 		t.Fatalf("unexpected provisioned user: %#v", user)
+	}
+	if len(user.LibraryIDs) != 0 {
+		t.Fatalf("new Hosted member must not receive server libraries from Hosted policy: %#v", user.LibraryIDs)
 	}
 }

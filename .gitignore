@@ -28,6 +28,7 @@
 
 # Go and release build output
 /porticod
+/.toolchain/
 /test-results/
 /coverage/
 /dist/*

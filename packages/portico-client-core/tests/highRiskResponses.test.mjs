@@ -20,6 +20,7 @@ test("high-risk credential responses reject missing secrets and invalid dates", 
 
 test("high-risk route responses reject credential-shaped fields without echoing them", () => {
   assert.throws(() => decodeHighRiskResponse("/api/account/servers/server/routes", "GET", {
+    kind: "route-document",
     documentVersion: 1,
     serverId: "server",
     serverName: "Home",
@@ -32,6 +33,20 @@ test("high-risk route responses reject credential-shaped fields without echoing 
     expiresAt: "2026-08-07T00:05:00Z",
     routes: [{type: "public_direct", url: "https://home.example", quality: "healthy", serverToken: "do-not-expose"}]
   }), error => error instanceof TypeError && !error.message.includes("do-not-expose"));
+  assert.throws(() => decodeHighRiskResponse("/api/account/servers/server/routes", "GET", {
+    kind: "policy-snapshot",
+    documentVersion: 1,
+    serverId: "server",
+    serverName: "Home",
+    serverPublicKey: "key",
+    serverPublicKeyFingerprint: "sha256:fingerprint",
+    signature: "signature",
+    signatureAlgorithm: "ed25519",
+    audience: "portico-media-server",
+    issuedAt: "2026-08-07T00:00:00Z",
+    expiresAt: "2026-08-07T00:05:00Z",
+    routes: []
+  }), /kind/i);
 });
 
 test("high-risk grants and playback state reject invalid runtime fields", () => {
@@ -50,6 +65,80 @@ test("high-risk grants and playback state reject invalid runtime fields", () => 
     generation: 1, highestEventSequence: 2, playbackRevision: 1, queueRevision: 1,
     positionSeconds: Number.NaN, sessionId: "session", state: "playing"
   }), /playback continuation position is invalid/);
+});
+
+test("high-risk playback responses require one credential-free default resource", () => {
+  const response = {
+    sessionId: "session", sourceUrl: "/api/media/movie/hls/master.m3u8", directPlay: false,
+    generation: 1, nextEventSequence: 1, playbackRevision: 0, queueRevision: 0,
+    decision: {}, media: {},
+    mediaGrant: {token: "grant", expiresAt: "2099-08-07T00:00:00Z"},
+    continuationCredential: {token: "continuation", origin: "https://server.example", expiresAt: "2099-08-07T00:00:00Z", generation: 1},
+    selectedQualityId: "auto", selectedSubtitleMode: "off",
+    resources: [{id: "active", sourceUrl: "/api/media/movie/hls/master.m3u8", streamFormat: "hls", qualityId: "auto", subtitleMode: "off", default: true}],
+    audioStreams: [], subtitleStreams: [], chapters: [], qualities: [], queue: []
+  };
+  assert.equal(decodeHighRiskResponse("/api/playback-sessions", "POST", response), response);
+  assert.throws(() => decodeHighRiskResponse("/api/playback-sessions", "POST", {
+    ...response,
+    sourceUrl: "/api/media/movie/hls/master.m3u8?media_grant=secret",
+    resources: [{...response.resources[0], sourceUrl: "/api/media/movie/hls/master.m3u8?media_grant=secret"}]
+  }), /playback source URL is invalid/);
+  assert.throws(() => decodeHighRiskResponse("/api/playback-sessions", "POST", {
+    ...response,
+    sourceUrl: "javascript:alert(document.domain)",
+    resources: [{...response.resources[0], sourceUrl: "javascript:alert(document.domain)"}]
+  }), /playback source URL is invalid/);
+  assert.throws(() => decodeHighRiskResponse("/api/playback-sessions", "POST", {
+    ...response,
+    resources: [{...response.resources[0], default: false}]
+  }), /playback default resource is invalid/);
+  assert.throws(() => decodeHighRiskResponse("/api/playback-sessions", "POST", {
+    ...response,
+    resources: [response.resources[0], {...response.resources[0], id: "inactive", default: false}]
+  }), /playback resources are invalid/);
+  assert.throws(() => decodeHighRiskResponse("/api/playback-sessions", "POST", {
+    ...response,
+    selectedQualityId: "original"
+  }), /selectedQualityId does not match/);
+
+  assert.equal(decodeHighRiskResponse("/api/playback/active", "POST", {
+    active: true,
+    playback: response
+  }).playback, response);
+  assert.throws(() => decodeHighRiskResponse("/api/playback/active", "POST", {
+    active: true,
+    playback: {...response, resources: []}
+  }), /resources/);
+  assert.throws(() => decodeHighRiskResponse("/api/playback/active", "POST", {
+    active: false,
+    playback: response
+  }), /inactive/);
+
+  const prepared = {
+    preparedSessionId: "prepared-1",
+    handoffMode: "gapless",
+    preloadPolicy: "metadata",
+    expiresAt: "2099-08-07T00:00:00Z",
+    playbackRevision: 2,
+    queueRevision: 4,
+    queue: [],
+    playback: response
+  };
+  assert.equal(decodeHighRiskResponse("/api/playback-sessions/session/prepare-next", "POST", prepared), prepared);
+  assert.throws(() => decodeHighRiskResponse("/api/playback-sessions/session/prepare-next", "POST", {
+    ...prepared,
+    playback: {...response, sourceUrl: "/api/media/movie/not-the-default"}
+  }), /default resource/);
+
+  for (const path of [
+    "/api/live-tv/play",
+    "/api/live-tv/streams/channel/open",
+    "/api/dvr/recordings/recording/playback",
+    "/api/library-channels/channel/tune"
+  ]) {
+    assert.throws(() => decodeHighRiskResponse(path, "POST", {ok: true}), /playback/);
+  }
 });
 
 test("pagination envelopes enforce bounded arrays and cursors", () => {

@@ -73,7 +73,7 @@ func (s *Server) runAnalysisSourceCommand(
 	stderrLimit int,
 ) (analysisCommandOutput, error) {
 	if err := ctx.Err(); err != nil {
-		return analysisCommandOutput{}, err
+		return analysisCommandOutput{}, analysisContextError(ctx, err)
 	}
 	info, err := s.analysisSourceStat(ctx, sourcePath, operation+" preflight")
 	if err != nil {
@@ -122,7 +122,7 @@ func (s *Server) runAnalysisSourceCommand(
 		return result, errManagedCommandOutputLimit
 	}
 	if err := ctx.Err(); err != nil {
-		return result, err
+		return result, analysisContextError(ctx, err)
 	}
 	if storageErr != nil {
 		return result, redaction.Error(storageErr, sourcePath)
@@ -135,6 +135,50 @@ func (s *Server) runAnalysisSourceCommand(
 			return result, sourceErr
 		}
 		return result, redaction.Error(runErr, sourcePath)
+	}
+	return result, nil
+}
+
+func analysisContextError(ctx context.Context, fallback error) error {
+	if cause := context.Cause(ctx); cause != nil {
+		return cause
+	}
+	return fallback
+}
+
+// runBoundedAnalysisCommand supervises a decoder whose input is not a local
+// filesystem path. Remote storage callers provide their own authenticated,
+// bounded transport and therefore must not enter the local storage-health
+// circuit or perform os.Stat against an opaque locator.
+func runBoundedAnalysisCommand(
+	ctx context.Context,
+	executable string,
+	args []string,
+	dir string,
+	stdoutLimit int,
+	stderrLimit int,
+) (analysisCommandOutput, error) {
+	if err := ctx.Err(); err != nil {
+		return analysisCommandOutput{}, analysisContextError(ctx, err)
+	}
+	stdout := newAnalysisProgressBuffer(stdoutLimit, nil)
+	stderr := newAnalysisProgressBuffer(stderrLimit, nil)
+	cmd := exec.CommandContext(ctx, executable, args...)
+	cmd.Dir = dir
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
+	runErr := managedCommandRun(ctx, cmd)
+	stdoutBytes, stdoutOverflow := stdout.bytes()
+	stderrBytes, stderrOverflow := stderr.bytes()
+	result := analysisCommandOutput{Stdout: stdoutBytes, Stderr: stderrBytes}
+	if stdoutOverflow || stderrOverflow || errors.Is(runErr, errManagedCommandOutputLimit) {
+		return result, errManagedCommandOutputLimit
+	}
+	if err := ctx.Err(); err != nil {
+		return result, analysisContextError(ctx, err)
+	}
+	if runErr != nil {
+		return result, runErr
 	}
 	return result, nil
 }

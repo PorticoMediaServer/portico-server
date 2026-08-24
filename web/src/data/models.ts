@@ -345,6 +345,8 @@ export type MediaItem = {
   tags?: string[];
   labels?: string[];
   lockedFields?: string[];
+  metadataRevision?: number;
+  metadataEtag?: string;
   providerIds?: MediaProviderIdentity[];
   metadataEvidence?: MediaMetadataEvidence;
   parentId?: string;
@@ -604,12 +606,12 @@ export type LibraryBrowseResult = {
 export type SearchResult = MediaItem;
 
 export type MediaMetadataUpdate = {
+  expectedRevision?: number;
   title?: string;
   sortTitle?: string;
   originalTitle?: string;
   edition?: string;
   year?: number;
-  durationSeconds?: number;
   summary?: string;
   tagline?: string;
   contentRating?: string;
@@ -639,7 +641,8 @@ export type MediaMatchCandidate = {
   title?: string;
   year?: number;
   overview?: string;
-  posterUrl?: string;
+  reasons: Array<{ code: string; delta: number; detail?: string }>;
+  createdAt: string;
 };
 
 export type SavedResourceKind = 'playlist' | 'collection' | 'view';
@@ -865,10 +868,10 @@ export interface PorticoDataSource {
   setRating(id: string, rating: number, signal: AbortSignal): Promise<MediaItem>;
   setWatched(id: string, watched: boolean, signal: AbortSignal): Promise<MediaItem>;
   updateMediaMetadata(ids: string[], patch: MediaMetadataUpdate, signal: AbortSignal): Promise<MediaItem[]>;
-  uploadMediaImage(id: string, type: string, file: File, signal: AbortSignal): Promise<void>;
-  deleteMediaImage(id: string, imageId: string, signal: AbortSignal): Promise<void>;
-  setPreferredMediaImage(id: string, imageId: string, signal: AbortSignal): Promise<void>;
-  reorderMediaImages(id: string, imageIds: string[], signal: AbortSignal): Promise<void>;
+  uploadMediaImage(id: string, type: string, file: File, expectedRevision: number, signal: AbortSignal): Promise<void>;
+  deleteMediaImage(id: string, imageId: string, expectedRevision: number, signal: AbortSignal): Promise<void>;
+  setPreferredMediaImage(id: string, imageId: string, expectedRevision: number, signal: AbortSignal): Promise<void>;
+  reorderMediaImages(id: string, imageIds: string[], expectedRevision: number, signal: AbortSignal): Promise<void>;
   uploadSubtitle(id: string, file: File, language: string, label: string, signal: AbortSignal): Promise<void>;
   updateSubtitle(id: string, streamId: string, offsetMs: number, signal: AbortSignal): Promise<void>;
   deleteSubtitle(id: string, streamId: string, signal: AbortSignal): Promise<void>;
@@ -878,7 +881,7 @@ export interface PorticoDataSource {
   applyLyrics(id: string, candidate: Pick<LyricSearchCandidate, 'provider' | 'externalId'>, signal: AbortSignal): Promise<void>;
   deleteLyrics(id: string, lyricId: string, signal: AbortSignal): Promise<void>;
   searchMediaMatches(id: string, query: string, signal: AbortSignal): Promise<MediaMatchCandidate[]>;
-  applyMediaMatch(id: string, candidate: Pick<MediaMatchCandidate, 'provider' | 'externalId' | 'externalType'>, signal: AbortSignal): Promise<MediaItem>;
+  applyMediaMatch(id: string, candidate: Pick<MediaMatchCandidate, 'provider' | 'externalId' | 'externalType'>, expectedRevision: number, signal: AbortSignal): Promise<MediaItem>;
   queueMediaJob(id: string, type: MediaJobType, options: MediaJobOptions, signal: AbortSignal): Promise<MediaJob>;
   mediaDownloadOptions(id: string, signal: AbortSignal): Promise<MediaDownloadOptions>;
   downloadPreparations(signal: AbortSignal): Promise<DownloadPreparation[]>;

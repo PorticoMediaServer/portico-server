@@ -12,6 +12,8 @@ Environment=PORTICO_APP_DATA=/var/lib/portico-media-server
 Environment=PORTICO_WEB_DIST=/usr/lib/portico-media-server/web
 Environment=PORTICO_FFMPEG_PATH=/usr/lib/portico-media-server/bin/ffmpeg
 Environment=PORTICO_FFPROBE_PATH=/usr/lib/portico-media-server/bin/ffprobe
+Environment=PORTICO_ENVIRONMENT=production
+Environment=PORTICO_HOSTED_API_AUTHORITY=https://api.getportico.tv
 ExecStart=/usr/lib/portico-media-server/portico-media-server
 Restart=on-failure
 RestartSec=5

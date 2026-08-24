@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"crypto/tls"
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -10,6 +11,84 @@ import (
 	"testing"
 	"time"
 )
+
+type temporaryAcceptError struct{}
+
+func (temporaryAcceptError) Error() string   { return "temporary accept failure" }
+func (temporaryAcceptError) Timeout() bool   { return false }
+func (temporaryAcceptError) Temporary() bool { return true }
+
+type scriptedAcceptResult struct {
+	connection net.Conn
+	err        error
+}
+
+type scriptedListener struct {
+	results chan scriptedAcceptResult
+	closed  chan struct{}
+}
+
+func newScriptedListener() *scriptedListener {
+	return &scriptedListener{results: make(chan scriptedAcceptResult, 8), closed: make(chan struct{})}
+}
+
+func (l *scriptedListener) Accept() (net.Conn, error) {
+	select {
+	case result := <-l.results:
+		return result.connection, result.err
+	case <-l.closed:
+		return nil, net.ErrClosed
+	}
+}
+func (l *scriptedListener) Close() error {
+	select {
+	case <-l.closed:
+	default:
+		close(l.closed)
+	}
+	return nil
+}
+func (l *scriptedListener) Addr() net.Addr { return dummyAddr("127.0.0.1:32500") }
+
+func TestProtocolMuxRetriesTemporaryAcceptFailure(t *testing.T) {
+	listener := newScriptedListener()
+	mux := newProtocolMux(listener)
+	t.Cleanup(func() { _ = mux.Close() })
+	listener.results <- scriptedAcceptResult{err: temporaryAcceptError{}}
+	server, client := net.Pipe()
+	listener.results <- scriptedAcceptResult{connection: server}
+	defer client.Close()
+	accepted := make(chan net.Conn, 1)
+	go func() {
+		connection, _ := mux.http.Accept()
+		accepted <- connection
+	}()
+	if _, err := client.Write([]byte("G")); err != nil {
+		t.Fatalf("write classification byte: %v", err)
+	}
+	select {
+	case connection := <-accepted:
+		if connection == nil {
+			t.Fatal("temporary accept failure closed the protocol mux")
+		}
+		_ = connection.Close()
+	case <-time.After(time.Second):
+		t.Fatal("protocol mux did not resume after temporary accept failure")
+	}
+}
+
+func TestProtocolMuxPropagatesPermanentAcceptFailure(t *testing.T) {
+	listener := newScriptedListener()
+	mux := newProtocolMux(listener)
+	permanent := errors.New("permanent accept failure")
+	listener.results <- scriptedAcceptResult{err: permanent}
+	if _, err := mux.http.Accept(); !errors.Is(err, permanent) {
+		t.Fatalf("HTTP listener error = %v, want %v", err, permanent)
+	}
+	if _, err := mux.tls.Accept(); !errors.Is(err, permanent) {
+		t.Fatalf("TLS listener error = %v, want %v", err, permanent)
+	}
+}
 
 func TestProtocolMuxClassifiesPlaintextAndTLSConnections(t *testing.T) {
 	mux := &protocolMux{done: make(chan struct{})}

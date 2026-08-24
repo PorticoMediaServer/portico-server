@@ -69,6 +69,15 @@ function sourceFor(value: SettingsStatusSnapshot): SettingsDataSource {
 }
 
 describe('StatusDashboard telemetry presentation', () => {
+  it('does not claim the server is online when a status panel failed', async () => {
+    const value = snapshot('ok', 'Authoritative sample.', 10);
+    value.failures = { remoteAccess: 'Remote access status timed out.' };
+    render(<MemoryRouter><StatusDashboard source={sourceFor(value)} viewer={viewer} /></MemoryRouter>);
+
+    expect(await screen.findByText('Telemetry Test status is partially unavailable')).toBeInTheDocument();
+    expect(screen.queryByText(/is online/i)).not.toBeInTheDocument();
+  });
+
   it.each([
     { status: 'unavailable', label: 'Unavailable', reason: 'CPU collector did not return a sample.', value: 0 },
     { status: 'warming_up', label: 'Warming up', reason: 'Waiting for the first telemetry sample.', value: 0 },

@@ -1528,8 +1528,13 @@ func TestMediaBulkStateAndJobsAreBoundedServerSide(t *testing.T) {
 	}
 
 	var metadataResponse ListResponse[MediaItem]
+	expectedRevisions := make(map[string]int, len(stateResponse.Items))
+	for _, item := range stateResponse.Items {
+		expectedRevisions[item.ID] = item.MetadataRevision
+	}
 	status, body = doJSON(t, client, http.MethodPost, serverURL+"/api/media/bulk/metadata", map[string]any{
-		"mediaIds": ids,
+		"mediaIds":          ids,
+		"expectedRevisions": expectedRevisions,
 		"patch": map[string]any{
 			"tags": []string{"bulk-edited"},
 		},

@@ -112,7 +112,6 @@ func (s *Server) prunePrivacySensitiveOperationalData(ctx context.Context, now t
 			query string
 		}{
 			{"Quick Connect", `DELETE FROM quick_connect_requests WHERE (status <> 'pending' AND updated_at < ?) OR expires_at < ?`},
-			{"TV setup", `DELETE FROM tv_setup_sessions WHERE (status <> 'pending' AND updated_at < ?) OR expires_at < ?`},
 			{"Portico login", `DELETE FROM portico_login_requests WHERE (status <> 'pending' AND updated_at < ?) OR expires_at < ?`},
 		} {
 			if _, err := s.execBackgroundWrite(ctx, cleanup.query, cutoff, cutoff); err != nil {

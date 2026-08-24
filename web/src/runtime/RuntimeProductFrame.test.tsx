@@ -7,7 +7,7 @@ import { FixturePorticoDataSource } from '../data/fixtureSource';
 import { RuntimeProductFrame } from './RuntimeProductFrame';
 
 const runtime = vi.hoisted(() => ({
-  config: { mode: 'hosted', hostedApiBaseUrl: 'https://api.getportico.tv', routeProbeTimeoutMs: 3500, buildId: 'test' },
+  config: { mode: 'hosted', hostedApiBaseUrl: 'https://web.getportico.tv', routeProbeTimeoutMs: 3500, buildId: 'test' },
   state: { id: 'server-ready', startedAt: 0, retryable: false, recoveryActions: [], mode: 'fixtures', serverName: 'Portico Review' },
   restoredPresentation: { accountId: 'fixture-account', displayName: 'Portico Review' },
   connectionWarning: undefined,
@@ -50,7 +50,7 @@ describe('RuntimeProductFrame', () => {
   it('keeps account and server controls available while the selected server is unavailable', async () => {
     render(<MemoryRouter><RuntimeProductFrame><div aria-label="Server recovery" /></RuntimeProductFrame></MemoryRouter>);
 
-    const profileButton = screen.getByRole('button', { name: 'Open profile menu for Portico Review' });
+    const profileButton = screen.getByRole('button', { name: 'Open account menu for Portico Review' });
     expect(profileButton).toBeEnabled();
     fireEvent.click(profileButton);
 
@@ -66,5 +66,15 @@ describe('RuntimeProductFrame', () => {
     fireEvent.click(profileButton);
     fireEvent.click(screen.getByRole('menuitem', { name: 'Sign out' }));
     expect(runtime.hostedLogout).toHaveBeenCalledOnce();
+  });
+
+  it('never fabricates a Portico-named account or server when presentation data is absent', () => {
+    runtime.restoredPresentation = undefined as never;
+    runtime.state = { id: 'runtime-recovery', startedAt: 0, retryable: true, recoveryActions: ['retry', 'sign-out'], classification: 'server-offline', messageId: 'problem.server-unavailable' } as never;
+    const view = render(<MemoryRouter><RuntimeProductFrame><div aria-label="Account recovery" /></RuntimeProductFrame></MemoryRouter>);
+
+    expect(view.container.querySelector('.server-card')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Open account menu for Portico Account' })).toBeEnabled();
+    expect(screen.getByText('No server selected')).toBeInTheDocument();
   });
 });

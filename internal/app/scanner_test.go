@@ -1134,7 +1134,7 @@ func TestLibraryScannerSkipsMetadataRefreshForLocalProvider(t *testing.T) {
 	}
 }
 
-func TestLibraryScannerHonorsAnalyzeOnScanSetting(t *testing.T) {
+func TestLibraryScannerHonorsFileListOnlyTier(t *testing.T) {
 	server := newScannerTestServer(t)
 	ffprobePath := filepath.Join(t.TempDir(), "ffprobe-stub")
 	if err := os.WriteFile(ffprobePath, []byte("#!/bin/sh\nprintf '{}'\n"), 0o700); err != nil {
@@ -1149,7 +1149,7 @@ func TestLibraryScannerHonorsAnalyzeOnScanSetting(t *testing.T) {
 		Name:     "Quiet Analysis",
 		Type:     "movie",
 		Paths:    []string{root},
-		Settings: map[string]any{"analyzeOnScan": false},
+		Settings: map[string]any{"analysisTier": analysisTierFileListOnly},
 	})
 	if err != nil {
 		t.Fatalf("create library: %v", err)
@@ -1173,6 +1173,128 @@ func TestLibraryScannerHonorsAnalyzeOnScanSetting(t *testing.T) {
 	}
 }
 
+func TestScannerFileForPathFileListOnlyDoesNotFingerprintMedia(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "No.Content.Read.2026.mkv")
+	if err := os.WriteFile(path, []byte(strings.Repeat("media", 1024)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	library := Library{ID: "library_file_list_only", Type: "movie", Paths: []string{root}}
+	fileListOnly := scannerFileForPath(library, root, path, false, false)
+	if fileListOnly.ContentFingerprint != "" {
+		t.Fatalf("File List Only fingerprint = %q, expected no media-content fingerprint", fileListOnly.ContentFingerprint)
+	}
+	basic := scannerFileForPath(library, root, path, false, true)
+	if !strings.HasPrefix(basic.ContentFingerprint, "sha256-sampled:") {
+		t.Fatalf("Basic fingerprint = %q, expected sampled content evidence", basic.ContentFingerprint)
+	}
+}
+
+func TestLibraryScannerFileListOnlyNeverReadsSidecarContent(t *testing.T) {
+	server := newScannerTestServer(t)
+	root := t.TempDir()
+	for name, contents := range map[string]string{
+		"No.Content.Read.2026.mkv":    "media",
+		"No.Content.Read.2026.nfo":    "<movie><title>Do not read</title></movie>",
+		"No.Content.Read.2026.en.srt": "1\n00:00:00,000 --> 00:00:01,000\nDo not read\n",
+		"poster.jpg":                  "not-an-image",
+	} {
+		if err := os.WriteFile(filepath.Join(root, name), []byte(contents), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	library, err := server.createLibrary(CreateLibraryRequest{
+		Name: "File List", Type: "movie", Paths: []string{root}, Settings: map[string]any{
+			"analysisTier": analysisTierFileListOnly, "readLocalMetadata": true,
+			"readExternalSubtitlesAndLyrics": true, "discoverLocalArtwork": true,
+			"fetchDescriptiveMetadata": true, "probeStreams": true,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	originalReadFile, originalReadDir := scannerSidecarReadFile, scannerSidecarReadDir
+	defer func() { scannerSidecarReadFile, scannerSidecarReadDir = originalReadFile, originalReadDir }()
+	contentReads := 0
+	scannerSidecarReadFile = func(path string) ([]byte, error) {
+		contentReads++
+		return os.ReadFile(path)
+	}
+	scannerSidecarReadDir = func(path string) ([]os.DirEntry, error) {
+		contentReads++
+		return os.ReadDir(path)
+	}
+	result, err := server.performLibraryScan(library, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if contentReads != 0 || result.AnalysisQueued != 0 || result.MetadataRefreshQueued != 0 {
+		t.Fatalf("File List Only performed content/provider work: reads=%d result=%+v", contentReads, result)
+	}
+}
+
+func TestLibraryScannerCommitsInventoryBeforeBasicSidecarReads(t *testing.T) {
+	server := newScannerTestServer(t)
+	root := t.TempDir()
+	mediaPath := filepath.Join(root, "Inventory.First.2026.mkv")
+	if err := os.WriteFile(mediaPath, []byte("media"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "Inventory.First.2026.en.srt"), []byte("1\n00:00:00,000 --> 00:00:01,000\nHello\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	library, err := server.createLibrary(CreateLibraryRequest{Name: "Inventory First", Type: "movie", Paths: []string{root}, Settings: map[string]any{"analysisTier": analysisTierBasic}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	originalReadFile := scannerSidecarReadFile
+	defer func() { scannerSidecarReadFile = originalReadFile }()
+	inventoryWasDurable := false
+	scannerSidecarReadFile = func(path string) ([]byte, error) {
+		var count int
+		if queryErr := server.db.QueryRow(`SELECT COUNT(*) FROM scanner_inventory_entries WHERE library_id=?`, library.ID).Scan(&count); queryErr != nil {
+			t.Fatalf("query scanner inventory: %v", queryErr)
+		}
+		inventoryWasDurable = count == 1
+		return os.ReadFile(path)
+	}
+	if _, err := server.performLibraryScan(library, ""); err != nil {
+		t.Fatal(err)
+	}
+	if !inventoryWasDurable {
+		t.Fatal("Basic sidecar read began before durable file inventory")
+	}
+}
+
+func TestAuthoritativeFullScanPrunesStaleScannerInventory(t *testing.T) {
+	server := newScannerTestServer(t)
+	root := t.TempDir()
+	mediaPath := filepath.Join(root, "Pruned.Inventory.2026.mkv")
+	if err := os.WriteFile(mediaPath, []byte("media"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	library, err := server.createLibrary(CreateLibraryRequest{Name: "Inventory Pruning", Type: "movie", Paths: []string{root}, Settings: map[string]any{"analysisTier": analysisTierFileListOnly}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := server.performLibraryScanWithMode(context.Background(), library, "", "force_full"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(mediaPath); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := server.performLibraryScanWithMode(context.Background(), library, "", "force_full"); err != nil {
+		t.Fatal(err)
+	}
+	var count int
+	if err := server.db.QueryRow(`SELECT COUNT(*) FROM scanner_inventory_entries WHERE library_id = ?`, library.ID).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("stale scanner inventory rows = %d, want 0", count)
+	}
+}
+
 func TestLibraryScannerHonorsProbeStreamsSetting(t *testing.T) {
 	server := newScannerTestServer(t)
 	ffprobePath := filepath.Join(t.TempDir(), "ffprobe-stub")
@@ -1188,7 +1310,7 @@ func TestLibraryScannerHonorsProbeStreamsSetting(t *testing.T) {
 		Name:     "No Probe",
 		Type:     "movie",
 		Paths:    []string{root},
-		Settings: map[string]any{"probeStreams": false},
+		Settings: map[string]any{"analysisTier": analysisTierCustom, "probeStreams": false},
 	})
 	if err != nil {
 		t.Fatalf("create library: %v", err)
@@ -1209,6 +1331,59 @@ func TestLibraryScannerHonorsProbeStreamsSetting(t *testing.T) {
 	}
 	if analysisJobs != 0 {
 		t.Fatalf("expected no media analysis jobs, got %d", analysisJobs)
+	}
+}
+
+func TestCustomScanContentPolicyEnablesExactlySelectedOperations(t *testing.T) {
+	fileList := scanContentPolicy(analysisTierFileListOnly, map[string]any{
+		"readLocalMetadata": true, "probeStreams": true, "fetchDescriptiveMetadata": true,
+	})
+	if fileList.ReadLocalMetadata || fileList.ReadExternalSidecars || fileList.DiscoverLocalArtwork || fileList.ReadEmbeddedTags || fileList.FetchDescriptiveMetadata || fileList.ProbeStreams {
+		t.Fatalf("File List Only authorized content work: %#v", fileList)
+	}
+	custom := scanContentPolicy(analysisTierCustom, map[string]any{
+		"readLocalMetadata": true,
+		"probeStreams":      true,
+	})
+	if !custom.ReadLocalMetadata || !custom.ProbeStreams {
+		t.Fatalf("selected Custom operations were not enabled: %#v", custom)
+	}
+	if custom.ReadExternalSidecars || custom.DiscoverLocalArtwork || custom.ReadEmbeddedTags || custom.FetchDescriptiveMetadata {
+		t.Fatalf("unselected Custom operations were enabled: %#v", custom)
+	}
+}
+
+func TestSTRMDescriptorNeverReceivesContentFingerprint(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "Remote.Movie.strm")
+	if err := os.WriteFile(path, []byte("https://media.example.test/private-token"), 0o600); err != nil {
+		t.Fatalf("write STRM descriptor: %v", err)
+	}
+	library := Library{ID: "library_strm", Type: "movie"}
+	file := scannerFileForPath(library, root, path, false, true)
+	if file.SourceType != "strm" {
+		t.Fatalf("source type = %q, expected strm", file.SourceType)
+	}
+	if file.ContentFingerprint != "" {
+		t.Fatalf("STRM descriptor received a content fingerprint: %q", file.ContentFingerprint)
+	}
+	if scannerAnalysisEligible(file) {
+		t.Fatal("STRM descriptor was eligible for ordinary media analysis")
+	}
+}
+
+func TestLibraryAnalysisSettingsMergesCanonicalGroupAndLibraryOverrides(t *testing.T) {
+	server := newScannerTestServer(t)
+	if _, err := server.db.Exec(`UPDATE settings SET value_json = ? WHERE key = 'library'`, `{"analysisTier":"custom","probeStreams":true,"fetchDescriptiveMetadata":true}`); err != nil {
+		t.Fatal(err)
+	}
+	library := Library{Settings: map[string]any{"fetchDescriptiveMetadata": false}}
+	settings := server.libraryAnalysisSettingsFor(library)
+	if !settingBool(settings, "probeStreams", false) {
+		t.Fatalf("canonical Custom setting was not inherited: %#v", settings)
+	}
+	if settingBool(settings, "fetchDescriptiveMetadata", true) {
+		t.Fatalf("library-specific override did not win: %#v", settings)
 	}
 }
 
@@ -1522,6 +1697,65 @@ func TestLibraryScannerIngestsTextSidecarSubtitles(t *testing.T) {
 	}
 }
 
+func TestLibraryScannerRejectsSidecarsThatEscapeLibraryThroughSymlinks(t *testing.T) {
+	server := newScannerTestServer(t)
+	root := t.TempDir()
+	outside := t.TempDir()
+	mediaPath := filepath.Join(root, "Escaped Sidecars.mkv")
+	if err := os.WriteFile(mediaPath, []byte("not real video"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	outsideNFO := filepath.Join(outside, "secret.nfo")
+	if err := os.WriteFile(outsideNFO, []byte(`<movie><title>Leaked title</title><plot>Leaked metadata</plot></movie>`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	outsideSubtitle := filepath.Join(outside, "secret.srt")
+	if err := os.WriteFile(outsideSubtitle, []byte("1\n00:00:01,000 --> 00:00:02,000\nLeaked subtitle\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	outsidePoster := filepath.Join(outside, "secret.jpg")
+	if err := os.WriteFile(outsidePoster, []byte("not really an image"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for link, target := range map[string]string{
+		filepath.Join(root, "Escaped Sidecars.nfo"):        outsideNFO,
+		filepath.Join(root, "Escaped Sidecars.en.srt"):     outsideSubtitle,
+		filepath.Join(root, "Escaped Sidecars-poster.jpg"): outsidePoster,
+	} {
+		if err := os.Symlink(target, link); err != nil {
+			t.Skipf("symlinks unavailable: %v", err)
+		}
+	}
+
+	library, err := server.createLibrary(CreateLibraryRequest{Name: "Symlink Safety", Type: "movie", Paths: []string{root}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := server.performLibraryScanWithMode(context.Background(), library, "", "force_full"); err != nil {
+		t.Fatal(err)
+	}
+	items, err := server.queryMedia("", `WHERE m.library_id = ? AND m.type = 'movie'`, []any{library.ID})
+	if err != nil || len(items) != 1 {
+		t.Fatalf("items=%#v err=%v", items, err)
+	}
+	if items[0].Title == "Leaked title" || items[0].Summary != "" {
+		t.Fatalf("escaped NFO was ingested: %#v", items[0])
+	}
+	var sidecarStreams int
+	if err := server.db.QueryRow(`SELECT COUNT(*) FROM media_streams WHERE media_id = ? AND source_kind = 'sidecar'`, items[0].ID).Scan(&sidecarStreams); err != nil {
+		t.Fatal(err)
+	}
+	if sidecarStreams != 0 {
+		t.Fatalf("escaped subtitle created %d sidecar stream(s)", sidecarStreams)
+	}
+	if _, ok := server.validatedLocalContentPath(context.Background(), filepath.Join(root, "Escaped Sidecars-poster.jpg")); ok {
+		t.Fatal("serve-time validation accepted artwork symlink outside the library")
+	}
+	if resolved, ok := server.validatedLocalContentPath(context.Background(), mediaPath); !ok || resolved == "" {
+		t.Fatal("serve-time validation rejected a regular file within the library")
+	}
+}
+
 func containsTestString(values []string, expected string) bool {
 	for _, value := range values {
 		if value == expected {
@@ -1634,7 +1868,7 @@ func TestLibraryScannerBuildsNestedTVHierarchy(t *testing.T) {
 	if showDetail.Summary != "Local show summary." || len(showDetail.Genres) != 1 || showDetail.Genres[0] != "Crime" {
 		t.Fatalf("show local metadata = %+v", showDetail)
 	}
-	if id, ok := server.mediaProviderID(showDetail.ID, "tvdb", ""); !ok || id != "350665" {
+	if id, ok := server.mediaProviderID(showDetail.ID, "tvdb", "series"); !ok || id != "350665" {
 		t.Fatalf("show tvdb provider id = %q ok=%v", id, ok)
 	}
 	seasonDetail, err := server.getMediaDetail("", episodes[1].ParentID)
@@ -2151,7 +2385,7 @@ func TestMusicScanCanKeepFilenameTitleOverEmbeddedTitle(t *testing.T) {
 		"preferEmbeddedTitles": false,
 		// This test invokes analysis directly below; do not race that call with
 		// the scanner's automatic media_analyze dispatch.
-		"analyzeOnScan": false,
+		"analysisTier": analysisTierFileListOnly,
 	}})
 	if err != nil {
 		t.Fatalf("create library: %v", err)
@@ -2936,7 +3170,7 @@ func TestCinemaPrerollSelectsScannedTrailerForFreshMovie(t *testing.T) {
 	if len(movies) != 1 {
 		t.Fatalf("movie count = %d, expected 1", len(movies))
 	}
-	trailer, ok := server.cinemaPrerollFor("", movies[0])
+	trailer, ok := server.cinemaPrerollFor(User{}, movies[0])
 	if !ok || trailer.Type != "extra" || trailer.ArtSeed != "trailer" {
 		t.Fatalf("preroll = %+v, ok=%v", trailer, ok)
 	}

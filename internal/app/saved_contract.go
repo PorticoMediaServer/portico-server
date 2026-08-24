@@ -693,6 +693,15 @@ func (s *Server) listSavedResourcesPage(ctx context.Context, user User, kind, li
 	if err := rows.Err(); err != nil {
 		return nil, nil, false, err
 	}
+	for index := range resources {
+		if resources[index].ProfileID != viewerProfileID(user) && !canInteractivelyManageServer(user) {
+			count, err := s.playlistVisibleItemCountContext(ctx, viewerProfileID(user), resources[index].ID)
+			if err != nil {
+				return nil, nil, false, err
+			}
+			resources[index].ItemCount = count
+		}
+	}
 	hasMore := len(resources) > limit
 	if hasMore {
 		resources = resources[:limit]

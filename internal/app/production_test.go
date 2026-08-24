@@ -794,6 +794,9 @@ func TestPlaylistSharingAllowsServerMembersAndHonorsEditPermission(t *testing.T)
 	if shared.ItemCount != 1 {
 		t.Fatalf("shared playlist item count = %d", shared.ItemCount)
 	}
+	if len(shared.Shares) != 1 || shared.Shares[0].Email != "" {
+		t.Fatalf("shared playlist detail leaked recipient email: %#v", shared.Shares)
+	}
 	status, body = doJSON(t, viewerClient, http.MethodPost, serverURL+"/api/playlists/"+playlist.ID+"/items:batch", PlaylistItemsBatchRequest{AddMediaIDs: []string{"movie_saffron"}}, nil)
 	if status != http.StatusBadRequest || !strings.Contains(body, "cannot edit") {
 		t.Fatalf("viewer readonly add status = %d, body: %s", status, body)
@@ -1311,9 +1314,9 @@ func TestPlaybackActiveRestoreReturnsCurrentSession(t *testing.T) {
 }
 
 func TestPlaybackStartStopsPreviousSessionForSameClientInstance(t *testing.T) {
-	serverURL, db := newAuthTestServerWithDB(t)
-	seedExactPlaybackFactsForFixture(t, &Server{db: db}, "movie_meridian")
-	seedExactPlaybackFactsForFixture(t, &Server{db: db}, "movie_neon")
+	serverURL, db, server := newAuthTestServerWithInstance(t)
+	seedExactPlaybackFactsForFixture(t, server, "movie_meridian")
+	seedExactPlaybackFactsForFixture(t, server, "movie_neon")
 	jar, _ := cookiejar.New(nil)
 	client := &http.Client{Jar: jar}
 	loginUser(t, client, serverURL)
@@ -1348,6 +1351,34 @@ func TestPlaybackStartStopsPreviousSessionForSameClientInstance(t *testing.T) {
 	if status != http.StatusOK || len(targets.Items) != 1 || targets.Items[0].ID != second.SessionID {
 		t.Fatalf("expected only second playback target status=%d body=%s targets=%#v", status, body, targets)
 	}
+
+	// Recreate the interleaving where the earlier inserted start reaches
+	// replacement only after a newer session exists. Timestamps are deliberately
+	// misleading: insertion order is the authoritative concurrency fence, so the
+	// older request must never stop the newer row.
+	if _, err := db.Exec(`
+		UPDATE playback_sessions
+		SET started_at = CASE id WHEN ? THEN ? ELSE ? END, ended_at = '', state = 'playing'
+		WHERE id IN (?, ?)`,
+		first.SessionID, "2026-08-23T10:00:00Z", "2026-08-23T10:00:01Z", first.SessionID, second.SessionID); err != nil {
+		t.Fatalf("prepare concurrent replacement fixture: %v", err)
+	}
+	var userID string
+	if err := db.QueryRow(`SELECT user_id FROM playback_sessions WHERE id = ?`, first.SessionID).Scan(&userID); err != nil {
+		t.Fatalf("load playback owner: %v", err)
+	}
+	user, err := server.getUser(userID)
+	if err != nil {
+		t.Fatalf("load playback owner: %v", err)
+	}
+	if err := server.commitPlaybackSessionReplacement(context.Background(), user, first.SessionID, "web-a"); err != nil {
+		t.Fatalf("commit delayed older replacement: %v", err)
+	}
+	assertCount(t, db, `SELECT COUNT(*) FROM playback_sessions WHERE id = '`+second.SessionID+`' AND ended_at = '' AND state <> 'stopped'`, 1)
+	if err := server.commitPlaybackSessionReplacement(context.Background(), user, second.SessionID, "web-a"); err != nil {
+		t.Fatalf("commit newer replacement: %v", err)
+	}
+	assertCount(t, db, `SELECT COUNT(*) FROM playback_sessions WHERE id = '`+first.SessionID+`' AND state = 'stopped'`, 1)
 }
 
 const playbackProgressTestDurationSeconds = 7200
@@ -3439,7 +3470,7 @@ func TestSQLiteHandleRecycleSwapsNonCorruptHandle(t *testing.T) {
 	server.MarkHTTPReady(serverURL)
 	oldDB := server.dbHandle()
 	openerCalls := 0
-	server.sqliteDBOpener = func(cfg config.Config) (*sql.DB, error) {
+	server.sqliteDBOpener = func(_ context.Context, cfg config.Config) (*sql.DB, error) {
 		openerCalls++
 		return database.OpenRuntimeHandle(cfg)
 	}
@@ -3489,7 +3520,7 @@ func TestSQLiteHandleRecycleSkipsCorruption(t *testing.T) {
 	_, _, server := newDiscoveryTestServer(t, config.Config{})
 	oldDB := server.dbHandle()
 	openerCalls := 0
-	server.sqliteDBOpener = func(cfg config.Config) (*sql.DB, error) {
+	server.sqliteDBOpener = func(_ context.Context, cfg config.Config) (*sql.DB, error) {
 		openerCalls++
 		return database.OpenRuntimeHandle(cfg)
 	}
@@ -3511,7 +3542,7 @@ func TestSQLiteHandleRecycleSkipsCorruption(t *testing.T) {
 
 func TestSQLiteHandleRecycleFailureRecordsSafeState(t *testing.T) {
 	_, _, server := newDiscoveryTestServer(t, config.Config{})
-	server.sqliteDBOpener = func(config.Config) (*sql.DB, error) {
+	server.sqliteDBOpener = func(context.Context, config.Config) (*sql.DB, error) {
 		return nil, errors.New("open runtime handle failed")
 	}
 	server.sqliteHealthMu.Lock()
@@ -3536,17 +3567,15 @@ func TestSQLiteHandleRecycleFailureRecordsSafeState(t *testing.T) {
 	}
 }
 
-func TestSQLiteRuntimeHandleTimeoutClosesLateHandle(t *testing.T) {
+func TestSQLiteRuntimeHandleTimeoutCancelsTheOpenerWithoutLeavingAWorker(t *testing.T) {
 	_, _, server := newDiscoveryTestServer(t, config.Config{})
 	started := make(chan struct{})
-	release := make(chan struct{})
-	opened := make(chan *sql.DB, 1)
-	server.sqliteDBOpener = func(cfg config.Config) (*sql.DB, error) {
+	finished := make(chan struct{})
+	server.sqliteDBOpener = func(ctx context.Context, _ config.Config) (*sql.DB, error) {
 		close(started)
-		<-release
-		db, err := database.OpenRuntimeHandle(cfg)
-		opened <- db
-		return db, err
+		defer close(finished)
+		<-ctx.Done()
+		return nil, ctx.Err()
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Millisecond)
 	defer cancel()
@@ -3563,13 +3592,10 @@ func TestSQLiteRuntimeHandleTimeoutClosesLateHandle(t *testing.T) {
 	if result != nil || !errors.Is(openErr, context.DeadlineExceeded) {
 		t.Fatalf("timed-out runtime open db=%v err=%v", result, openErr)
 	}
-	close(release)
-	late := <-opened
-	if late == nil {
-		t.Fatal("late opener did not return a handle")
-	}
-	if err := late.Ping(); err == nil {
-		t.Fatalf("late handle was not closed after timeout: %v", err)
+	select {
+	case <-finished:
+	case <-time.After(time.Second):
+		t.Fatal("context-aware sqlite opener did not stop after cancellation")
 	}
 }
 
@@ -5461,6 +5487,31 @@ func TestMediaImageUploadServesAndDeletesManualArtwork(t *testing.T) {
 	if imageInfo.ID != uploaded.ID || imageInfo.Type != "poster" || imageInfo.Width != 1 || imageInfo.Height != 1 {
 		t.Fatalf("image info mismatch: %#v", imageInfo)
 	}
+	if imageInfo.Path == "" {
+		t.Fatal("server manager image information omitted its filesystem path")
+	}
+	var viewer User
+	status, infoBody = doJSON(t, client, http.MethodPost, serverURL+"/api/users", UserRequest{
+		Username: "artwork-viewer", Email: "artwork-viewer@example.test", DisplayName: "Artwork Viewer",
+		Password: "Password1234", Role: "user", Permissions: map[string]bool{"playMedia": true, "editMetadata": true}, LibraryIDs: []string{"lib_movies"},
+	}, &viewer)
+	if status != http.StatusCreated {
+		t.Fatalf("create artwork viewer status = %d, body: %s", status, infoBody)
+	}
+	viewerJar, _ := cookiejar.New(nil)
+	viewerClient := &http.Client{Jar: viewerJar}
+	status, infoBody = doJSON(t, viewerClient, http.MethodPost, serverURL+"/api/auth/login", map[string]string{"login": viewer.Username, "password": "Password1234"}, nil)
+	if status != http.StatusOK {
+		t.Fatalf("artwork viewer login status = %d, body: %s", status, infoBody)
+	}
+	var viewerImageInfo MediaImage
+	status, infoBody = doJSON(t, viewerClient, http.MethodGet, serverURL+"/api/media/movie_meridian/images/"+uploaded.ID, nil, &viewerImageInfo)
+	if status != http.StatusOK {
+		t.Fatalf("artwork viewer image info status = %d, body: %s", status, infoBody)
+	}
+	if viewerImageInfo.Path != "" {
+		t.Fatalf("ordinary viewer received server filesystem path %q", viewerImageInfo.Path)
+	}
 	_ = uploadTestArtwork(t, client, serverURL, "movie_meridian", pngBytes)
 	var second MediaItem
 	status, infoBody = doJSON(t, client, http.MethodGet, serverURL+"/api/media/movie_meridian", nil, &second)
@@ -5757,6 +5808,28 @@ func TestUserMaxContentRatingFiltersMediaQueries(t *testing.T) {
 	}
 }
 
+func TestMediaTreeDeletionAuthorizationIncludesRestrictedDescendants(t *testing.T) {
+	server := newScannerTestServer(t)
+	now := time.Now().UTC().Format(time.RFC3339)
+	if _, err := server.db.Exec(`
+		INSERT INTO users (id, username, email, display_name, password_hash, role, permissions_json, preferences_json, max_content_rating, created_at, updated_at)
+		VALUES ('usr_tree_delete', 'tree-delete', 'tree-delete@example.test', 'Tree Delete', 'hash', 'user', '{"deleteMedia":true}', '{}', 'PG', ?, ?)`, now, now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := server.db.Exec(`INSERT INTO user_library_access (user_id, library_id, created_at) VALUES ('usr_tree_delete', 'lib_movies', ?)`, now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := server.db.Exec(`UPDATE media_items SET content_rating='PG' WHERE id='movie_saffron'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := server.db.Exec(`UPDATE media_items SET parent_id='movie_saffron',content_rating='R' WHERE id='movie_meridian'`); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.authorizeMediaTreeDeletionContext(context.Background(), "usr_tree_delete", "movie_saffron"); !errors.Is(err, errMediaTreeNotFullyVisible) {
+		t.Fatalf("tree authorization error = %v, want restricted-descendant rejection", err)
+	}
+}
+
 func TestManualContentRatingUpdateStoresRatingEvidence(t *testing.T) {
 	server := newScannerTestServer(t)
 	rating := "14A"
@@ -5936,6 +6009,35 @@ func TestLibraryCurationFiltersUserFacingMediaQueries(t *testing.T) {
 	}
 	if _, err := server.getMediaDetail(user.ID, "movie_saffron"); err != nil {
 		t.Fatalf("allowed curation media detail should be accessible: %v", err)
+	}
+	for name, lookup := range map[string]func(string) error{
+		"artwork seed": func(id string) error {
+			_, err := server.getMediaArtworkSeedContext(context.Background(), user.ID, id)
+			return err
+		},
+		"subtitle and lyric mutation seed": func(id string) error {
+			_, err := server.getMediaLyricLookupSeedContext(context.Background(), user.ID, id)
+			return err
+		},
+		"playback detail": func(id string) error {
+			_, err := server.getMediaPlaybackDetailForUser(context.Background(), user, id)
+			return err
+		},
+		"stream seed": func(id string) error {
+			_, err := server.getMediaStreamSeedForUser(context.Background(), user, id)
+			return err
+		},
+		"download seed": func(id string) error {
+			_, err := server.getMediaDownloadSeedForUser(context.Background(), user, id)
+			return err
+		},
+	} {
+		if err := lookup("movie_meridian"); !errors.Is(err, sql.ErrNoRows) {
+			t.Fatalf("blocked tag %s err = %v, expected sql.ErrNoRows", name, err)
+		}
+		if err := lookup("movie_saffron"); err != nil {
+			t.Fatalf("allowed curation %s should be accessible: %v", name, err)
+		}
 	}
 
 	searchItems, err := server.searchMedia(user.ID, "Pacific", 20)

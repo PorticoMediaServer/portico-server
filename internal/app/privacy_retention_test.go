@@ -30,7 +30,7 @@ func TestPrivacyRetentionPreservesPlaybackByDefaultAndOwnerCanConfigureCleanup(t
 		}
 	}
 
-	for _, table := range []string{"quick_connect_requests", "tv_setup_sessions", "portico_login_requests"} {
+	for _, table := range []string{"quick_connect_requests", "portico_login_requests"} {
 		insertTransientPrivacyRows(t, db, table, userID, expired, recent)
 	}
 
@@ -51,7 +51,7 @@ func TestPrivacyRetentionPreservesPlaybackByDefaultAndOwnerCanConfigureCleanup(t
 	assertCount(t, db, `SELECT COUNT(*) FROM dashboard_playback_rollups WHERE session_id = 'old-ended'`, 0)
 	assertStringValue(t, db, `SELECT client_ip FROM devices WHERE id = 'stale-device'`, "")
 	assertStringValue(t, db, `SELECT client_ip FROM playback_sessions WHERE id = 'active'`, "203.0.113.12")
-	for _, table := range []string{"quick_connect_requests", "tv_setup_sessions", "portico_login_requests"} {
+	for _, table := range []string{"quick_connect_requests", "portico_login_requests"} {
 		assertCount(t, db, `SELECT COUNT(*) FROM `+table+` WHERE id LIKE 'old-%'`, 1)
 	}
 
@@ -68,7 +68,7 @@ func TestPrivacyRetentionPreservesPlaybackByDefaultAndOwnerCanConfigureCleanup(t
 	assertCount(t, db, `SELECT COUNT(*) FROM dashboard_playback_rollups WHERE session_id = 'old-ended'`, 1)
 	assertStringValue(t, db, `SELECT client_ip FROM devices WHERE id = 'stale-device'`, "")
 	assertStringValue(t, db, `SELECT client_ip FROM devices WHERE id = 'active-device'`, "203.0.113.21")
-	for _, table := range []string{"quick_connect_requests", "tv_setup_sessions", "portico_login_requests"} {
+	for _, table := range []string{"quick_connect_requests", "portico_login_requests"} {
 		assertCount(t, db, `SELECT COUNT(*) FROM `+table+` WHERE id LIKE 'old-%'`, 0)
 		assertCount(t, db, `SELECT COUNT(*) FROM `+table+` WHERE id LIKE 'recent-%'`, 1)
 	}
@@ -299,11 +299,6 @@ func insertTransientPrivacyRows(t *testing.T, db *sql.DB, table, userID, old, re
 			INSERT INTO quick_connect_requests (id, code, secret_hash, status, expires_at, created_at, updated_at)
 			VALUES ('old-quick', '100001', 'old-quick-secret', 'consumed', ?, ?, ?),
 			       ('recent-quick', '100002', 'recent-quick-secret', 'consumed', ?, ?, ?)`, old, old, old, recent, recent, recent)
-	case "tv_setup_sessions":
-		_, err = db.Exec(`
-			INSERT INTO tv_setup_sessions (id, code, status, device_public_key, expires_at, created_at, updated_at)
-			VALUES ('old-tv', '200001', 'redeemed', 'old-key', ?, ?, ?),
-			       ('recent-tv', '200002', 'redeemed', 'recent-key', ?, ?, ?)`, old, old, old, recent, recent, recent)
 	case "portico_login_requests":
 		_, err = db.Exec(`
 			INSERT INTO portico_login_requests (id, state_hash, status, return_url, expires_at, created_at, updated_at)

@@ -200,6 +200,47 @@ func TestAudioOnlyFirstClassAndGapless(t *testing.T) {
 	}
 }
 
+func TestSilentVideoUsesExactNoAudioTuple(t *testing.T) {
+	facts := baseFacts()
+	facts.Audio = nil
+	facts.Subtitles = nil
+	tuple := avTuple("matroska", "h264", "sdr", "", "", 0, playbackcap.Subtitle{Mode: playbackcap.SubtitleNone})
+	tuple.Audio = playbackcap.Audio{}
+	plan, err := Build(Request{
+		Facts:        facts,
+		Capabilities: playbackcap.Resolution{EvidenceID: "silent-video", Tuples: []playbackcap.DeliveryTuple{tuple}},
+		Policy:       MaximumFidelity,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Mode != DirectPlay || plan.MediaKind != playbackcap.MediaAudiovisual {
+		t.Fatalf("silent video was not directly playable: %#v", plan)
+	}
+	if plan.Audio != (AudioDecision{}) {
+		t.Fatalf("silent video invented audio output: %#v", plan.Audio)
+	}
+	for _, stream := range plan.Streams {
+		if stream.Kind == "audio" {
+			t.Fatalf("silent video invented an audio action: %#v", plan.Streams)
+		}
+	}
+
+	withAudio := tuple
+	withAudio.Audio = playbackcap.Audio{Codec: "aac", Layout: "stereo", MaxChannels: 2}
+	plan, err = Build(Request{
+		Facts:        facts,
+		Capabilities: playbackcap.Resolution{EvidenceID: "audio-bearing-only", Tuples: []playbackcap.DeliveryTuple{withAudio}},
+		Policy:       MaximumFidelity,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Mode != Unsupported {
+		t.Fatalf("audio-bearing tuple was reinterpreted as silent capability: %#v", plan)
+	}
+}
+
 func TestSubtitleSemantics(t *testing.T) {
 	r := request(baseFacts(), avTuple("matroska", "h264", "sdr", "aac", "stereo", 2, playbackcap.Subtitle{Codec: "subrip", Kind: "text", Mode: playbackcap.SubtitleNative}))
 	r.Selection.SubtitleIndex = ip(2)

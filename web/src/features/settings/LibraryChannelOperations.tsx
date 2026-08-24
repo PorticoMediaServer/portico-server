@@ -79,7 +79,13 @@ function ChannelEditor({ aggregate: initial, presets, source, onDismiss, onSaved
     setError('');
     try {
       const asset = await mutation.run((signal) => source.uploadLibraryChannelLogo(file, signal));
-      setChannel({ logo: { ...channel.logo, source: 'custom', ref: asset.id, url: asset.url, mimeType: asset.mimeType } });
+      setAggregate((current) => ({
+        ...current,
+        channel: {
+          ...current.channel,
+          logo: { ...current.channel.logo, source: 'custom', ref: asset.id, url: asset.url, mimeType: asset.mimeType },
+        },
+      }));
     } catch (reason) {
       setError(requestError(reason, 'problem.request-failed'));
     } finally {
@@ -189,16 +195,16 @@ export function LibraryChannelOperations({ source, viewer }: { source: SettingsD
     } catch (reason) { setError(requestError(reason, 'problem.request-failed')); }
   };
 
-  const regenerate = async (aggregate: LibraryChannelAggregate) => {
+  const regenerate = async (channel: LibraryChannelAggregate['channel']) => {
     setError(''); setNotice('');
-    try { await mutation.run((signal) => source.regenerateLibraryChannel(aggregate.channel.id, signal)); setNotice(`${aggregate.channel.name} schedule update started.`); setRevision((value) => value + 1); }
+    try { await mutation.run((signal) => source.regenerateLibraryChannel(channel.id, signal)); setNotice(`${channel.name} schedule update started.`); setRevision((value) => value + 1); }
     catch (reason) { setError(requestError(reason, 'problem.request-failed')); }
   };
 
-  const remove = async (aggregate: LibraryChannelAggregate) => {
-    if (!window.confirm(`Delete ${aggregate.channel.name}? This removes its guide and schedule, not library media.`)) return;
+  const remove = async (channel: LibraryChannelAggregate['channel']) => {
+    if (!window.confirm(`Delete ${channel.name}? This removes its guide and schedule, not library media.`)) return;
     setError(''); setNotice('');
-    try { await mutation.run((signal) => source.deleteLibraryChannel(aggregate.channel.id, aggregate.channel.configRevision, signal)); setNotice(`${aggregate.channel.name} deleted.`); setRevision((value) => value + 1); }
+    try { await mutation.run((signal) => source.deleteLibraryChannel(channel.id, channel.configRevision, signal)); setNotice(`${channel.name} deleted.`); setRevision((value) => value + 1); }
     catch (reason) { setError(requestError(reason, 'problem.request-failed')); }
   };
 
@@ -213,7 +219,7 @@ export function LibraryChannelOperations({ source, viewer }: { source: SettingsD
     {channels.status === 'success' && <div className="library-channel-admin-list">{channels.data.items.map((channel) => <article key={channel.id}>
       <span className="library-channel-admin-logo">{channel.logo.url ? <img src={channel.logo.url} alt="" /> : <TvMinimalPlay />}</span>
       <div><strong>{channel.name}</strong><small>{channel.description || 'No description'}</small><span className={channel.healthState}>{channel.enabled ? channel.healthState : 'disabled'} · {channel.generatedThrough ? `scheduled through ${new Date(channel.generatedThrough).toLocaleDateString()}` : 'schedule pending'}</span></div>
-      <div className="library-channel-admin-actions"><IconButton label={`Edit ${channel.name}`} disabled={mutation.busy} onClick={() => void open(channel.id)}><Pencil /></IconButton><IconButton label={`Update ${channel.name} schedule`} disabled={mutation.busy} onClick={() => void (async () => { try { await regenerate(await source.libraryChannel(channel.id, new AbortController().signal)); } catch (reason) { setError(requestError(reason, 'problem.request-failed')); } })()}><RefreshCw /></IconButton><IconButton label={`Delete ${channel.name}`} disabled={mutation.busy} onClick={() => void (async () => { try { await remove(await source.libraryChannel(channel.id, new AbortController().signal)); } catch (reason) { setError(requestError(reason, 'library-channel.load-failed')); } })()}><Trash2 /></IconButton></div>
+      <div className="library-channel-admin-actions"><IconButton label={`Edit ${channel.name}`} disabled={mutation.busy} onClick={() => void open(channel.id)}><Pencil /></IconButton><IconButton label={`Update ${channel.name} schedule`} disabled={mutation.busy} onClick={() => void regenerate(channel)}><RefreshCw /></IconButton><IconButton label={`Delete ${channel.name}`} disabled={mutation.busy} onClick={() => void remove(channel)}><Trash2 /></IconButton></div>
     </article>)}</div>}
     {editor && <ChannelEditor aggregate={editor} presets={templates.status === 'success' ? templates.data.blockPresets : []} source={source} onDismiss={() => setEditor(undefined)} onSaved={(message) => { setEditor(undefined); setNotice(message); setRevision((value) => value + 1); }} />}
   </SettingsGroup>;

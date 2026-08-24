@@ -15,7 +15,12 @@ export type SettingsFieldDefinition = {
   max?: number;
   step?: number;
   unit?: string;
+  defaultValue?: string | boolean | number;
+  warningByValue?: Record<string, string>;
+  visibleWhen?: SettingsVisibilityCondition;
 };
+
+export type SettingsVisibilityCondition = { settingsKey: WritableSettingsGroup; field: string; equals: string | boolean };
 
 export type SettingsFieldGroup = {
   id: string;
@@ -24,6 +29,7 @@ export type SettingsFieldGroup = {
   description?: string;
   settingsKey: WritableSettingsGroup;
   fields: SettingsFieldDefinition[];
+  visibleWhen?: SettingsVisibilityCondition;
 };
 
 const yesNo = (field: string, label: string, description: string): SettingsFieldDefinition => ({ field, label, description, kind: 'toggle' });
@@ -47,14 +53,46 @@ export const serverSettingFieldGroups: Record<string, SettingsFieldGroup[]> = {
       id: 'library-scanning', capabilityId: 'library-settings', title: 'Library scanning', settingsKey: 'library', fields: [
         yesNo('scanAutomatically', 'Automatic scans', 'Schedule library scans without requiring a manual request.'),
         yesNo('scanOnFilesystemChanges', 'Check folders for changes', 'Use bounded adaptive checks to detect changes without relying on fragile recursive filesystem watchers.'),
-        yesNo('analyzeOnScan', 'Analyze media during scans', 'Probe new files for streams, duration, and playback compatibility.'),
+        {
+          ...choice('analysisTier', 'Analysis tier', 'Inventory always completes first, and background analysis yields to playback. Basic adds technical facts and representative thumbnails. Complete enables deep whole-file compute such as sonic analysis, loudness, and intro/credit detection. Custom uses the controls below.', [option('file_list_only', 'File List Only'), option('basic', 'Basic (recommended)'), option('complete', 'Complete'), option('custom', 'Custom')]),
+          defaultValue: 'basic',
+          warningByValue: {
+            complete: 'Complete can perform sustained/full-file reads and may require significantly more storage for generated files.',
+            custom: 'Custom is advanced. Enabled High disk-I/O operations can perform sustained/full-file reads and may require significantly more network bandwidth and storage for generated files.',
+          },
+        },
         yesNo('emptyTrashAfterScan', 'Empty trash after scans', 'Remove missing entries after a completed scan instead of retaining them.'),
         yesNo('allowMediaDeletion', 'Allow file deletion', 'Permit the server owner to delete source files through Portico.'),
         number('trashRetentionDays', 'Trash retention', 'Number of days missing media stays recoverable.', 'days', 0, 365),
       ],
     },
     {
-      id: 'library-previews', capabilityId: 'library-settings', title: 'Previews and trickplay', settingsKey: 'library', fields: [
+      id: 'library-analysis-low-io', capabilityId: 'library-settings', title: 'Low disk I/O', description: 'Directory and small-file reads. Provider requests use network access but do not download media objects.', settingsKey: 'library', visibleWhen: { settingsKey: 'library', field: 'analysisTier', equals: 'custom' }, fields: [
+        yesNo('readLocalMetadata', 'Read local NFO/OPF metadata', 'Reads small owner-authored metadata files. Network I/O: none. Generated storage: low.'),
+        yesNo('readExternalSubtitlesAndLyrics', 'Read subtitle and lyric sidecars', 'Reads small external subtitle and lyric files. Network I/O: none. Generated storage: low for normalized copies.'),
+        yesNo('discoverLocalArtwork', 'Discover local artwork', 'Checks supported local artwork files without reading media content. Network I/O: none. Generated storage: low.'),
+        yesNo('fetchDescriptiveMetadata', 'Contact metadata providers', 'Uses filename and inventory evidence after the catalog commits. Network I/O: low to moderate. Generated storage: low. Provider artwork downloads occur only when the selected tier permits them.'),
+      ],
+    },
+    {
+      id: 'library-analysis-moderate-io', capabilityId: 'library-settings', title: 'Moderate disk I/O', description: 'Bounded targeted media reads. Remote sources can make range requests; enabled operations never authorize whole-object staging.', settingsKey: 'library', visibleWhen: { settingsKey: 'library', field: 'analysisTier', equals: 'custom' }, fields: [
+        yesNo('probeStreams', 'Probe container and streams', 'Required by the other Moderate and High operations. Network I/O: moderate for remote ranges. Generated storage: low.'),
+        yesNo('readEmbeddedTags', 'Read embedded tags', 'Reads bounded embedded descriptive tags when supported. Requires stream probing. Network I/O: moderate for remote ranges. Generated storage: none.'),
+        yesNo('readEmbeddedIndexes', 'Read embedded indexes', 'Reads chapter, cover, and attachment indexes. Requires stream probing. Network I/O: moderate for remote ranges. Generated storage: low.'),
+        yesNo('generateRepresentativeThumbnail', 'Generate one representative thumbnail', 'Creates one representative image. Requires stream probing. Network I/O: moderate for remote ranges. Generated storage: low.'),
+      ],
+    },
+    {
+      id: 'library-analysis-high-io', capabilityId: 'library-settings', title: 'High disk I/O', description: 'Sustained or full-file work. Remote sources may stage whole objects. Network I/O and generated storage can be high; every option requires stream probing.', settingsKey: 'library', visibleWhen: { settingsKey: 'library', field: 'analysisTier', equals: 'custom' }, fields: [
+        yesNo('generateChapterThumbnails', 'Generate chapter thumbnails', 'Creates chapter stills from sustained reads. Network I/O: high for remote media. Generated storage: moderate to high.'),
+        yesNo('generateTrickplay', 'Generate trickplay previews', 'Creates timeline preview tiles from sustained reads. Network I/O: high for remote media. Generated storage: high.'),
+        yesNo('analyzeLoudness', 'Analyze loudness', 'Performs a sustained audio pass for normalization facts. Network I/O: high for remote media. Generated storage: low.'),
+        yesNo('sonicFingerprinting', 'Sonic fingerprinting', 'Performs a full audio-content pass for similarity and matching. Network I/O: high for remote media. Generated storage: moderate.'),
+        yesNo('extractAllEmbeddedAttachments', 'Extract all embedded attachments', 'Extracts supported embedded fonts and attachments. Requires stream probing and embedded indexes. Network I/O: high for remote media. Generated storage: moderate to high.'),
+      ],
+    },
+    {
+      id: 'library-generated-navigation', capabilityId: 'library-settings', title: 'Generated navigation scheduling', description: 'Configure schedules and limits for generated preview navigation. Custom analysis permissions above still control whether source-reading work may run.', settingsKey: 'library', fields: [
         text('generateVideoPreview', 'Video preview policy', 'Controls when video preview clips are generated.', 'scheduled'),
         text('chapterThumbnailMode', 'Chapter thumbnails', 'Controls chapter thumbnail generation for video media.', 'chapters'),
         yesNo('trickplayOnScan', 'Generate trickplay on scan', 'Create timeline preview tiles as new video is added.'),
@@ -65,8 +103,10 @@ export const serverSettingFieldGroups: Record<string, SettingsFieldGroup[]> = {
     },
     {
       id: 'metadata-providers', capabilityId: 'metadata-agents', title: 'Metadata providers', settingsKey: 'metadataAgents', fields: [
-        choice('movies', 'Movies', 'Primary metadata provider for movie libraries.', [option('TMDB'), option('None')]),
-        choice('tv', 'TV', 'Primary metadata provider for television libraries.', [option('TMDB'), option('None')]),
+        choice('movies', 'Movies', 'Primary metadata provider for movie libraries.', [option('TMDB'), option('TVDB', 'TheTVDB'), option('None')]),
+        choice('moviesFallback', 'Movie fallback', 'Used only when the primary provider returns no confident movie match.', [option('TVDB', 'TheTVDB'), option('TMDB'), option('None')]),
+        choice('tv', 'TV', 'Primary metadata provider for television libraries.', [option('TMDB'), option('TVDB', 'TheTVDB'), option('None')]),
+        choice('tvFallback', 'TV fallback', 'Used only when the primary provider returns no confident television match.', [option('TVDB', 'TheTVDB'), option('TMDB'), option('None')]),
         choice('anime', 'Anime', 'Primary metadata provider for anime libraries.', [option('AniList'), option('TMDB'), option('None')]),
         choice('music', 'Music', 'Primary metadata provider for music libraries.', [option('MusicBrainz'), option('None')]),
         yesNo('localNFO', 'Read local NFO files', 'Use adjacent NFO files when present.'),
@@ -80,6 +120,7 @@ export const serverSettingFieldGroups: Record<string, SettingsFieldGroup[]> = {
       id: 'metadata-credentials', capabilityId: 'metadata-agents', title: 'Provider credentials', description: 'Existing credentials are never returned by the server.', settingsKey: 'metadataAgents', fields: [
         { field: 'tmdbReadAccessToken', label: 'TMDB read access token override', description: 'Optional advanced override. Portico includes TMDB metadata access by default.', kind: 'secret' },
         { field: 'tmdbAPIKey', label: 'TMDB API key override', description: 'Optional advanced API-key override. Portico includes TMDB metadata access by default.', kind: 'secret' },
+        { field: 'tvdbAPIKey', label: 'TheTVDB API key override', description: 'Optional project-key override. Portico includes TheTVDB metadata access by default.', kind: 'secret' },
       ],
     },
   ],

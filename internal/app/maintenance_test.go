@@ -1457,17 +1457,24 @@ func TestScheduledMediaAnalysisUsesPerLibraryCadence(t *testing.T) {
 		id        string
 		libraryID string
 		title     string
+		path      string
 	}{
-		{id: "movie_hourly_analysis", libraryID: hourlyLibrary.ID, title: "Hourly Analysis"},
-		{id: "movie_default_analysis", libraryID: defaultLibrary.ID, title: "Default Analysis"},
-		{id: "movie_never_analysis", libraryID: neverLibrary.ID, title: "Never Analysis"},
+		{id: "movie_hourly_analysis", libraryID: hourlyLibrary.ID, title: "Hourly Analysis", path: filepath.Join(t.TempDir(), "hourly.mp4")},
+		{id: "movie_default_analysis", libraryID: defaultLibrary.ID, title: "Default Analysis", path: filepath.Join(t.TempDir(), "default.mp4")},
+		{id: "movie_never_analysis", libraryID: neverLibrary.ID, title: "Never Analysis", path: filepath.Join(t.TempDir(), "never.mp4")},
 	}
 	for _, row := range mediaRows {
 		if _, err := server.db.Exec(`
 			INSERT INTO media_items (id, library_id, type, title, sort_title, source_url, duration_seconds, genres_json, added_at)
 			VALUES (?, ?, 'movie', ?, ?, ?, 0, '[]', ?)`,
-			row.id, row.libraryID, row.title, row.title, filepath.Join(t.TempDir(), row.id+".mp4"), now.Format(time.RFC3339)); err != nil {
+			row.id, row.libraryID, row.title, row.title, row.path, now.Format(time.RFC3339)); err != nil {
 			t.Fatalf("insert media %s: %v", row.id, err)
+		}
+		if _, err := server.db.Exec(`
+			INSERT INTO media_files (id, media_id, library_id, path, source_type, size_bytes, mod_time, available, first_seen_at, last_seen_at, identity_evidence)
+			VALUES (?, ?, ?, ?, 'local', 1, ?, 1, ?, ?, 'scanner:v2:test')`,
+			"file_"+row.id, row.id, row.libraryID, row.path, now.Format(time.RFC3339Nano), now.Format(time.RFC3339), now.Format(time.RFC3339)); err != nil {
+			t.Fatalf("insert media file %s: %v", row.id, err)
 		}
 	}
 	previous := now.Add(-2 * time.Hour).Format(time.RFC3339)

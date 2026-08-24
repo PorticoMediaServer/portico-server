@@ -1,5 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
+export COPYFILE_DISABLE=1
+
+reject_macos_metadata() {
+  local root="$1"
+  local found
+  found="$(find "$root" -type f \( -name '._*' -o -name '.DS_Store' \) -print -quit)"
+  if [[ -n "$found" ]]; then
+    echo "release payload contains forbidden macOS metadata: $found" >&2
+    exit 1
+  fi
+}
 
 if [[ $# -ne 6 ]]; then
   echo "usage: $0 VERSION GOOS GOARCH FFMPEG_ROOT OUTPUT_ROOT BUILD_NUMBER" >&2
@@ -54,3 +65,5 @@ cat > "$OUTPUT_ROOT/release.json" <<EOF
   "signed": false
 }
 EOF
+
+reject_macos_metadata "$OUTPUT_ROOT"

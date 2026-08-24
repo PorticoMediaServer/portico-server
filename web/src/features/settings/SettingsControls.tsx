@@ -197,8 +197,8 @@ export function SettingsLoading({ label = 'Loading settings' }: { label?: string
   return <div className="portico-settings-state" aria-live="polite" aria-busy="true"><RefreshCw className="portico-settings-spinner" /><strong>{label}</strong></div>;
 }
 
-export function SettingsError({ title, message, onRetry }: { title: string; message: string; onRetry: () => void }) {
-  return <div className="portico-settings-state error" role="alert"><AlertTriangle /><strong>{title}</strong><p>{message}</p><SecondaryButton onClick={onRetry}><RefreshCw /> {productText('action.retry')}</SecondaryButton></div>;
+export function SettingsError({ title, message, onRetry }: { title: string; message: string; onRetry?: () => void }) {
+  return <div className="portico-settings-state error" role="alert"><AlertTriangle /><strong>{title}</strong><p>{message}</p>{onRetry && <SecondaryButton onClick={onRetry}><RefreshCw /> {productText('action.retry')}</SecondaryButton>}</div>;
 }
 
 export function InlineNotice({ children, tone = 'info', action }: { children: ReactNode; tone?: 'info' | 'success' | 'warn' | 'error'; action?: ReactNode }) {

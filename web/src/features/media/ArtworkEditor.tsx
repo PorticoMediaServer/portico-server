@@ -22,7 +22,6 @@ function normalizedArtworkType(value: string): ArtworkType | undefined {
 }
 
 function artworkSource(image: MediaImage, fallbackUrl: string | undefined) {
-  if (image.remoteUrl?.startsWith('https://') || image.remoteUrl?.startsWith('http://127.0.0.1')) return image.remoteUrl;
   return image.preferred ? fallbackUrl : undefined;
 }
 

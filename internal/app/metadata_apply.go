@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -52,6 +53,36 @@ type metadataApplyRequest struct {
 type metadataApplyResult struct {
 	Revision int
 	ETag     string
+}
+
+type metadataArtworkCommitLock struct {
+	mu   sync.Mutex
+	refs int
+}
+
+func (s *Server) acquireMetadataArtworkCommitLock(mediaID string) func() {
+	key := strings.TrimSpace(mediaID)
+	s.metadataArtworkCommitMu.Lock()
+	if s.metadataArtworkCommitLocks == nil {
+		s.metadataArtworkCommitLocks = map[string]*metadataArtworkCommitLock{}
+	}
+	lock := s.metadataArtworkCommitLocks[key]
+	if lock == nil {
+		lock = &metadataArtworkCommitLock{}
+		s.metadataArtworkCommitLocks[key] = lock
+	}
+	lock.refs++
+	s.metadataArtworkCommitMu.Unlock()
+	lock.mu.Lock()
+	return func() {
+		lock.mu.Unlock()
+		s.metadataArtworkCommitMu.Lock()
+		lock.refs--
+		if lock.refs == 0 && s.metadataArtworkCommitLocks[key] == lock {
+			delete(s.metadataArtworkCommitLocks, key)
+		}
+		s.metadataArtworkCommitMu.Unlock()
+	}
 }
 
 type metadataIdentityRepairResult struct {
@@ -555,7 +586,11 @@ func applyMetadataUpdateToState(state *metadataCanonicalState, update UpdateMedi
 		state.Year = max(0, *update.Year)
 	}
 	if update.DurationSeconds != nil {
-		state.DurationSeconds = max(0, *update.DurationSeconds)
+		const maximumMetadataDurationSeconds = 31 * 24 * 60 * 60
+		if *update.DurationSeconds < 0 || *update.DurationSeconds > maximumMetadataDurationSeconds {
+			return fmt.Errorf("duration must be between 0 and %d days", maximumMetadataDurationSeconds/(24*60*60))
+		}
+		state.DurationSeconds = *update.DurationSeconds
 	}
 	if update.Summary != nil {
 		state.Summary = strings.TrimSpace(*update.Summary)

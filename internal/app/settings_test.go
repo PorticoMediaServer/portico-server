@@ -23,6 +23,7 @@ func patchSettingsGroups(t *testing.T, client *http.Client, serverURL string, gr
 	var updated SettingsDocument
 	status, body = doJSON(t, client, http.MethodPatch, serverURL+"/api/settings", map[string]any{
 		"expectedRevision": current.Revision,
+		"idempotencyKey":   randomID("settings-test"),
 		"groups":           groups,
 	}, &updated)
 	if status == http.StatusOK && out != nil {
@@ -60,7 +61,7 @@ func TestWritableSettingGroups(t *testing.T) {
 func TestCanonicalSettingRegistryCoversEveryExposedField(t *testing.T) {
 	for group, schema := range writableSettingSchemas {
 		definition, ok := canonicalSettingRegistry[group]
-		if !ok || !definition.Revisioned || definition.Scope != "server-owner" || definition.RuntimeConsumer == "" {
+		if !ok || !definition.Revisioned || definition.Scope != "server" || definition.RuntimeConsumer == "" {
 			t.Fatalf("setting group %s has incomplete canonical registry metadata: %#v", group, definition)
 		}
 		for field := range schema {
@@ -69,7 +70,9 @@ func TestCanonicalSettingRegistryCoversEveryExposedField(t *testing.T) {
 			}
 			metadata, ok := definition.Fields[field]
 			if !ok || metadata.Type == "" || metadata.Validation == "" || metadata.EffectiveValue == "" ||
-				metadata.RuntimeConsumer == "" || metadata.OperationalStatus == "" || metadata.Revision < 1 || metadata.Secret {
+				metadata.RuntimeConsumer == "" || metadata.OperationalStatus == "" || metadata.OutcomeTest == "" ||
+				metadata.SaveMode == "" || metadata.ApplicationMode == "" || metadata.Permission != "manageServer" ||
+				metadata.Capability == "" || metadata.AuditClass == "" || metadata.RetentionClass == "" || metadata.Revision < 1 || metadata.Secret {
 				t.Fatalf("setting %s.%s has incomplete field registry metadata: %#v", group, field, metadata)
 			}
 		}
@@ -79,9 +82,9 @@ func TestCanonicalSettingRegistryCoversEveryExposedField(t *testing.T) {
 			}
 		}
 	}
-	for _, field := range []string{"tmdbReadAccessToken", "tmdbAPIKey"} {
+	for _, field := range []string{"tmdbReadAccessToken", "tmdbAPIKey", "tvdbAPIKey"} {
 		metadata := canonicalSettingRegistry["metadataAgents"].Fields[field]
-		if !metadata.Secret || metadata.Validation == "" || metadata.EffectiveValue == "" || metadata.OperationalStatus != "active" {
+		if !metadata.Secret || metadata.Validation == "" || metadata.EffectiveValue == "" || metadata.OperationalStatus != "supported" {
 			t.Fatalf("secret setting metadataAgents.%s has incomplete field registry metadata: %#v", field, metadata)
 		}
 	}
@@ -472,6 +475,7 @@ func TestSettingsDocumentUsesRevisionETagAndRejectsStaleWrites(t *testing.T) {
 	var updated SettingsDocument
 	status, body := doJSON(t, client, http.MethodPatch, serverURL+"/api/settings", map[string]any{
 		"expectedRevision": original.Revision,
+		"idempotencyKey":   randomID("settings-revision"),
 		"groups": map[string]any{
 			"server": map[string]any{"operatorNote": "Revision-safe"},
 		},
@@ -489,6 +493,7 @@ func TestSettingsDocumentUsesRevisionETagAndRejectsStaleWrites(t *testing.T) {
 
 	status, body = doJSON(t, client, http.MethodPatch, serverURL+"/api/settings", map[string]any{
 		"expectedRevision": original.Revision,
+		"idempotencyKey":   randomID("settings-stale"),
 		"groups":           map[string]any{"server": map[string]any{"operatorNote": "Stale"}},
 	}, nil)
 	if status != http.StatusConflict || !strings.Contains(body, "settings_revision_conflict") {
@@ -519,6 +524,7 @@ func TestConcurrentSettingsWritesFromOneRevisionHaveOneWinnerAndNoLostUpdate(t *
 	write := func(note string, start <-chan struct{}, output chan<- result) {
 		payload, err := json.Marshal(map[string]any{
 			"expectedRevision": original.Revision,
+			"idempotencyKey":   randomID("settings-concurrent"),
 			"groups":           map[string]any{"server": map[string]any{"operatorNote": note}},
 		})
 		if err != nil {
@@ -581,6 +587,40 @@ func TestConcurrentSettingsWritesFromOneRevisionHaveOneWinnerAndNoLostUpdate(t *
 	note, _ := serverGroup["operatorNote"].(string)
 	if status != http.StatusOK || (note != "Concurrent Alpha" && note != "Concurrent Beta") || current.Revision == original.Revision {
 		t.Fatalf("concurrent settings final status=%d note=%q revision=%q body=%s", status, note, current.Revision, body)
+	}
+}
+
+func TestSettingsMutationIdempotencyReceiptReplaysExactOutcome(t *testing.T) {
+	serverURL, _, _ := newDiscoveryTestServer(t, config.Config{})
+	jar, _ := cookiejar.New(nil)
+	client := &http.Client{Jar: jar}
+	loginUser(t, client, serverURL)
+	var original SettingsDocument
+	if status, body := doJSON(t, client, http.MethodGet, serverURL+"/api/settings", nil, &original); status != http.StatusOK {
+		t.Fatalf("load settings status=%d body=%s", status, body)
+	}
+	payload := map[string]any{
+		"expectedRevision": original.Revision,
+		"idempotencyKey":   "settings-receipt-replay-0001",
+		"groups":           map[string]any{"server": map[string]any{"operatorNote": "receipt-safe"}},
+	}
+	var first SettingsDocument
+	status, body := doJSON(t, client, http.MethodPatch, serverURL+"/api/settings", payload, &first)
+	if status != http.StatusOK {
+		t.Fatalf("first settings mutation status=%d body=%s", status, body)
+	}
+	var replay SettingsDocument
+	status, body = doJSON(t, client, http.MethodPatch, serverURL+"/api/settings", payload, &replay)
+	if status != http.StatusOK || replay.Revision != first.Revision || replay.ApplyImpact.ChangedFields[0] != first.ApplyImpact.ChangedFields[0] {
+		t.Fatalf("idempotent replay status=%d body=%s first=%#v replay=%#v", status, body, first, replay)
+	}
+	status, body = doJSON(t, client, http.MethodPatch, serverURL+"/api/settings", map[string]any{
+		"expectedRevision": original.Revision,
+		"idempotencyKey":   payload["idempotencyKey"],
+		"groups":           map[string]any{"server": map[string]any{"operatorNote": "different-intent"}},
+	}, nil)
+	if status != http.StatusConflict || !strings.Contains(body, "settings_idempotency_conflict") {
+		t.Fatalf("idempotency key reuse status=%d body=%s", status, body)
 	}
 }
 
@@ -683,6 +723,19 @@ func TestCanonicalSettingDefaultsPassFieldAndGroupValidation(t *testing.T) {
 	}
 }
 
+func TestSettingsFieldRuntimeContract(t *testing.T) {
+	for group, definition := range canonicalSettingRegistry {
+		for field, metadata := range definition.Fields {
+			if metadata.OutcomeTest == "" || metadata.OutcomeTest != settingGroupOutcomeTest(group) {
+				t.Fatalf("%s.%s does not identify its field outcome evidence: %q", group, field, metadata.OutcomeTest)
+			}
+			if metadata.Permission != "manageServer" || metadata.SaveMode == "" || metadata.ApplicationMode == "" {
+				t.Fatalf("%s.%s has incomplete application contract metadata: %#v", group, field, metadata)
+			}
+		}
+	}
+}
+
 func TestSettingsRejectCrossFieldAndUnboundedValues(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -693,6 +746,8 @@ func TestSettingsRejectCrossFieldAndUnboundedValues(t *testing.T) {
 		{name: "unbounded automatic deletion", group: "optimizedVersions", patch: map[string]any{"autoDelete": true, "retentionDays": 0, "maxPerItem": 0, "maxStorageMB": 0}},
 		{name: "empty custom window", group: "scheduledTasks", patch: map[string]any{"maintenanceWindow": "custom", "startHour": 4, "endHour": 4}},
 		{name: "invalid preview mode", group: "library", patch: map[string]any{"generateVideoPreview": "whenever"}},
+		{name: "custom embedded tags without probe", group: "library", patch: map[string]any{"analysisTier": analysisTierCustom, "probeStreams": false, "readEmbeddedTags": true}},
+		{name: "custom attachments without indexes", group: "library", patch: map[string]any{"analysisTier": analysisTierCustom, "probeStreams": true, "readEmbeddedIndexes": false, "extractAllEmbeddedAttachments": true}},
 		{name: "invalid metadata language", group: "metadataAgents", patch: map[string]any{"metadataLanguage": "not a tag"}},
 		{name: "unsafe DVR template", group: "dvr", patch: map[string]any{"recordingPathTemplate": "../{title}"}},
 	}

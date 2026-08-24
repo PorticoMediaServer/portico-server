@@ -127,6 +127,8 @@ const (
 type mediaAnalysisOptions struct {
 	Mode                       string
 	ProbeStreams               bool
+	ReadEmbeddedTags           bool
+	ReadEmbeddedIndexes        bool
 	ExtractEmbeddedAttachments bool
 	GenerateThumbnails         bool
 	ChapterThumbnails          bool
@@ -150,6 +152,14 @@ func mediaAnalysisMetadata(mode string) map[string]string {
 	return map[string]string{"analysisMode": normalizeMediaAnalysisMode(mode)}
 }
 
+func (s *Server) mediaAnalysisMetadataForItem(ctx context.Context, item MediaItem, mode string) map[string]string {
+	metadata := mediaAnalysisMetadata(mode)
+	if revision, err := s.currentMediaAnalysisSourceRevision(ctx, item); err == nil && strings.TrimSpace(revision) != "" {
+		metadata["sourceRevision"] = revision
+	}
+	return metadata
+}
+
 func representativeFrameAnalysisMetadata() map[string]string {
 	return map[string]string{"analysisMode": mediaAnalysisModeProbe, "representativeFrame": "true"}
 }
@@ -165,28 +175,53 @@ func (s *Server) mediaAnalysisOptions(item MediaItem, mode string) mediaAnalysis
 	mode = normalizeMediaAnalysisMode(mode)
 	full := mode == mediaAnalysisModeFull
 	settings := map[string]any(nil)
+	tier := s.analysisTierForItem(item)
 	if strings.TrimSpace(item.LibraryID) != "" {
 		if library, err := s.getLibrary(item.LibraryID); err == nil {
-			settings = library.Settings
+			settings = s.libraryAnalysisSettingsFor(library)
 		}
 	}
-	probeStreams := settingBool(settings, "probeStreams", true)
+	custom := tier == analysisTierCustom
+	complete := tier == analysisTierComplete
+	customEnabled := func(key string) bool { return custom && settingBool(settings, key, false) }
+	probeStreams := !custom || customEnabled("probeStreams")
+	readEmbeddedIndexes := probeStreams && (!custom || customEnabled("readEmbeddedIndexes"))
+	allowFull := full && (complete || custom)
 	options := mediaAnalysisOptions{
 		Mode:                       mode,
 		ProbeStreams:               probeStreams,
-		ExtractEmbeddedAttachments: full && probeStreams && settingBool(settings, "extractEmbeddedAttachments", true),
-		GenerateThumbnails:         full && probeStreams && settingBool(settings, "generateThumbnails", true),
-		ChapterThumbnails:          full && probeStreams && settingBool(settings, "chapterThumbnails", true),
-		GenerateTrickplay:          full && probeStreams && settingBool(settings, "generateTrickplayPreviews", true),
-		AnalyzeAudio:               full && probeStreams && settingBool(settings, "analyzeAudio", true),
-		SonicFingerprinting:        full && probeStreams && settingBool(settings, "sonicFingerprinting", false),
-		DetectChapterSegments:      probeStreams && settingBool(settings, "detectChapterSegments", true),
-		ExtractEmbeddedCovers:      full && probeStreams && settingBool(settings, "extractEmbeddedCovers", true),
+		ReadEmbeddedTags:           probeStreams && (!custom || customEnabled("readEmbeddedTags")),
+		ReadEmbeddedIndexes:        readEmbeddedIndexes,
+		ExtractEmbeddedAttachments: allowFull && readEmbeddedIndexes && (complete || customEnabled("extractAllEmbeddedAttachments")),
+		GenerateThumbnails:         allowFull && probeStreams && (complete || customEnabled("generateRepresentativeThumbnail")),
+		ChapterThumbnails:          allowFull && readEmbeddedIndexes && (complete || customEnabled("generateChapterThumbnails")),
+		GenerateTrickplay:          allowFull && probeStreams && (complete || customEnabled("generateTrickplay")),
+		AnalyzeAudio:               allowFull && probeStreams && (complete || customEnabled("analyzeLoudness")),
+		SonicFingerprinting:        allowFull && probeStreams && (complete || customEnabled("sonicFingerprinting")),
+		DetectChapterSegments:      allowFull && readEmbeddedIndexes && complete,
+		ExtractEmbeddedCovers:      allowFull && readEmbeddedIndexes && complete,
 	}
 	return options
 }
 
+func (s *Server) analysisTierForItem(item MediaItem) string {
+	if sourceID, _, err := parseRemoteStorageLocator(strings.TrimSpace(item.SourceURL)); err == nil {
+		var mode string
+		if s.queryBackgroundRow(context.Background(), `SELECT analysis_mode FROM storage_sources WHERE id=? AND library_id=?`, sourceID, item.LibraryID).Scan(&mode) == nil {
+			return normalizeAnalysisTier(mode)
+		}
+		return analysisTierFileListOnly
+	}
+	if library, err := s.getLibrary(item.LibraryID); err == nil {
+		return s.libraryRuntimeSettingsFor(library).AnalysisTier
+	}
+	return analysisTierFileListOnly
+}
+
 func (s *Server) mediaAnalysisQueueEnabled(item MediaItem) bool {
+	if s.analysisTierForItem(item) == analysisTierFileListOnly {
+		return false
+	}
 	return s.mediaAnalysisOptions(item, mediaAnalysisModeProbe).ProbeStreams
 }
 
@@ -201,14 +236,34 @@ func (s *Server) runMediaAnalyze(ctx context.Context, job Job) {
 		_ = s.setJobMessage(job.ID, "failed", 100, "Media analysis failed because the media item was not found.")
 		return
 	}
+	// Re-resolve policy after the worker claim and before any media content is
+	// opened. This closes the race where an owner switches a source to File
+	// List Only while a queued analysis job is being admitted.
+	if !s.mediaAnalysisQueueEnabled(item) {
+		_ = s.setJobMessage(job.ID, "complete", 100, "Media analysis skipped because this source is configured for File List Only.")
+		return
+	}
+	if expected := strings.TrimSpace(job.Metadata["sourceRevision"]); expected != "" {
+		current, revisionErr := s.currentMediaAnalysisSourceRevision(ctx, item)
+		if revisionErr != nil || current != expected {
+			_ = s.setJobMessage(job.ID, "complete", 100, "Media analysis skipped because the source changed after it was queued.")
+			return
+		}
+	}
 	options := s.mediaAnalysisOptions(item, mediaAnalysisModeFromJob(job))
+	if options.Mode == mediaAnalysisModeFull && strings.EqualFold(strings.TrimSpace(job.Metadata["tierChained"]), "true") && !s.analysisTierWantsFull(item) {
+		_ = s.setJobMessage(job.ID, "complete", 100, "Complete analysis skipped because this source no longer uses the Complete tier.")
+		return
+	}
 	if options.Mode == mediaAnalysisModeProbe && strings.EqualFold(strings.TrimSpace(job.Metadata["representativeFrame"]), "true") {
-		options.GenerateThumbnails = s.mediaNeedsRepresentativeFrameContext(ctx, item)
+		options.GenerateThumbnails = s.analysisTierWantsRepresentativeThumbnail(item) && s.mediaNeedsRepresentativeFrameContext(ctx, item)
 	}
 	if !options.ProbeStreams {
 		_ = s.setJobMessage(job.ID, "complete", 100, "Media analysis skipped for "+item.Title+" because this library has stream analysis disabled.")
 		return
 	}
+	ctx, unregisterBackground := s.mediaResourceGovernor().registerBackgroundContext(ctx)
+	defer unregisterBackground()
 	resources := mediaResourceRequest{cpu: 1, background: true}
 	if options.Mode == mediaAnalysisModeFull || options.GenerateThumbnails {
 		resources.disk = 1
@@ -222,6 +277,9 @@ func (s *Server) runMediaAnalyze(ctx context.Context, job Job) {
 	}
 	release, err := s.mediaResourceGovernor().acquireContext(ctx, resources)
 	if err != nil {
+		if (errors.Is(err, errRemoteStoragePreempted) || errors.Is(err, errRemoteStorageBusy)) && s.deferAnalysisForPlayback(job.ID) {
+			return
+		}
 		if s.deferMaintenanceJob(job.ID, err) {
 			return
 		}
@@ -230,6 +288,9 @@ func (s *Server) runMediaAnalyze(ctx context.Context, job Job) {
 	}
 	defer release()
 	if err := s.analyzeMediaForItem(ctx, item, options); err != nil {
+		if (errors.Is(err, errRemoteStoragePreempted) || errors.Is(err, errRemoteStorageBusy)) && s.deferAnalysisForPlayback(job.ID) {
+			return
+		}
 		if s.deferMaintenanceJob(job.ID, err) {
 			return
 		}
@@ -238,9 +299,84 @@ func (s *Server) runMediaAnalyze(ctx context.Context, job Job) {
 		s.recordLog("warn", message, map[string]string{"job": job.ID, "media": item.ID})
 		return
 	}
+	if options.Mode == mediaAnalysisModeProbe && s.analysisTierWantsFull(item) {
+		metadata := mediaAnalysisMetadata(mediaAnalysisModeFull)
+		metadata["sourceRevision"] = strings.TrimSpace(job.Metadata["sourceRevision"])
+		metadata["tierChained"] = "true"
+		if _, err := s.createJobForWithMetadata("media_analyze", "Full media analysis queued for "+item.Title+".", "media", item.ID, metadata); err != nil {
+			s.log.Warn("full media analysis queue failed", "media", item.ID, "error", err)
+			if s.deferMaintenanceJob(job.ID, err) {
+				return
+			}
+			_ = s.setJobMessage(job.ID, "failed", 100, "Basic analysis completed, but Portico could not durably queue the Complete stage.")
+			return
+		}
+	}
 	message := "Media analysis completed for " + item.Title + "."
 	_ = s.setJobMessage(job.ID, "complete", 100, message)
 	s.recordLog("info", message, map[string]string{"job": job.ID, "media": item.ID})
+}
+
+func (s *Server) deferAnalysisForPlayback(jobID string) bool {
+	now := time.Now().UTC()
+	next := now.Add(5 * time.Second).Format(time.RFC3339Nano)
+	result, err := s.execBackgroundWrite(context.Background(), `
+		UPDATE jobs
+		SET status='queued', phase='queued', progress=CASE WHEN progress >= 100 THEN 99 ELSE progress END,
+			progress_current=CASE WHEN progress_current >= 100 THEN 99 ELSE progress_current END,
+			message='Analysis paused for playback; it will resume automatically.',
+			next_run_at=?, deferred_until=?, leased_by='', lease_expires_at='',
+			attempt_count=CASE WHEN attempt_count > 0 THEN attempt_count - 1 ELSE 0 END,
+			last_error='', failure_kind='', error_code='', retry_eligible=1, updated_at=?
+		WHERE id=? AND status='running' AND leased_by=? AND cancellation_requested_at=''`,
+		next, next, now.Format(time.RFC3339Nano), jobID, s.jobLeaseOwner(jobID))
+	if err != nil {
+		s.log.Warn("analysis playback preemption defer failed", "job", jobID, "error", err)
+		return false
+	}
+	affected, _ := result.RowsAffected()
+	return affected == 1
+}
+
+func (s *Server) analysisTierWantsRepresentativeThumbnail(item MediaItem) bool {
+	tier := s.analysisTierForItem(item)
+	library, err := s.getLibrary(item.LibraryID)
+	if err != nil {
+		return false
+	}
+	if tier == analysisTierBasic || tier == analysisTierComplete {
+		return true
+	}
+	return tier == analysisTierCustom && settingBool(s.libraryAnalysisSettingsFor(library), "generateRepresentativeThumbnail", false)
+}
+
+func (s *Server) currentMediaAnalysisSourceRevision(ctx context.Context, item MediaItem) (string, error) {
+	fileID := selectedPlaybackVersionID(item)
+	if fileID == "" {
+		item.MediaFiles = s.primaryMediaFileForPlaybackContext(ctx, item.ID, item.SourceURL)
+		fileID = selectedPlaybackVersionID(item)
+	}
+	var path, quickSignature, modTime string
+	var size int64
+	if err := s.queryBackgroundRow(ctx, `SELECT path,size_bytes,mod_time,CASE WHEN identity_evidence LIKE 'scanner:v2:%' THEN substr(identity_evidence,12) ELSE '' END FROM media_files WHERE id=? AND media_id=? AND available=1`, fileID, item.ID).Scan(&path, &size, &modTime, &quickSignature); err != nil {
+		return "", err
+	}
+	return scannerAnalysisSourceRevision(scannerMediaFile{ID: item.ID, FileID: fileID, SourcePath: path, QuickSignature: quickSignature, FileSize: size, FileModTime: modTime}), nil
+}
+
+func (s *Server) analysisTierWantsFull(item MediaItem) bool {
+	if strings.TrimSpace(item.LibraryID) == "" {
+		return false
+	}
+	tier := s.analysisTierForItem(item)
+	if tier == analysisTierComplete {
+		return true
+	}
+	if tier != analysisTierCustom {
+		return false
+	}
+	options := s.mediaAnalysisOptions(item, mediaAnalysisModeFull)
+	return options.ExtractEmbeddedAttachments || options.ChapterThumbnails || options.GenerateTrickplay || options.AnalyzeAudio || options.SonicFingerprinting || options.ExtractEmbeddedCovers
 }
 
 func (s *Server) analyzeMediaForItem(ctx context.Context, item MediaItem, options mediaAnalysisOptions) error {
@@ -248,6 +384,9 @@ func (s *Server) analyzeMediaForItem(ctx context.Context, item MediaItem, option
 }
 
 func (s *Server) analyzeMediaWithFFprobe(ctx context.Context, item MediaItem, options mediaAnalysisOptions) error {
+	if _, _, err := parseRemoteStorageLocator(strings.TrimSpace(item.SourceURL)); err == nil {
+		return s.analyzeRemoteMediaFacts(withRemoteStorageBackgroundRead(ctx), item, item.SourceURL, options)
+	}
 	path, err := s.localSourcePathForTranscode(item)
 	if err != nil {
 		return err
@@ -273,7 +412,10 @@ func (s *Server) analyzeMediaWithFFprobe(ctx context.Context, item MediaItem, op
 	if err := json.Unmarshal(result.Stdout, &payload); err != nil {
 		return err
 	}
-	exactSeekSafe, keyframeEvidenceAt := s.probeExactSeekEvidence(ctx, path, payload)
+	exactSeekSafe, keyframeEvidenceAt := false, ""
+	if options.Mode == mediaAnalysisModeFull {
+		exactSeekSafe, keyframeEvidenceAt = s.probeExactSeekEvidence(ctx, path, payload)
+	}
 	return s.persistFFprobeAnalysis(ctx, item, path, payload, options, exactSeekSafe, keyframeEvidenceAt)
 }
 
@@ -332,9 +474,13 @@ func payloadHasVideoStream(payload ffprobePayload) bool {
 }
 
 func (s *Server) persistFFprobeAnalysis(ctx context.Context, item MediaItem, path string, payload ffprobePayload, options mediaAnalysisOptions, exactSeekSafe bool, keyframeEvidenceAt string) error {
+	return s.persistFFprobeAnalysisInputs(ctx, item, path, path, payload, options, exactSeekSafe, keyframeEvidenceAt)
+}
+
+func (s *Server) persistFFprobeAnalysisInputs(ctx context.Context, item MediaItem, recordPath, analysisPath string, payload ffprobePayload, options mediaAnalysisOptions, exactSeekSafe bool, keyframeEvidenceAt string) error {
 	var analyzedFileID, sourceFingerprint, sourceModTime string
 	var sourceSize int64
-	if err := s.queryUserRow(ctx, `SELECT id, content_fingerprint, size_bytes, mod_time FROM media_files WHERE media_id = ? AND path = ?`, item.ID, path).Scan(&analyzedFileID, &sourceFingerprint, &sourceSize, &sourceModTime); err != nil {
+	if err := s.queryUserRow(ctx, `SELECT id, content_fingerprint, size_bytes, mod_time FROM media_files WHERE media_id = ? AND path = ?`, item.ID, recordPath).Scan(&analyzedFileID, &sourceFingerprint, &sourceSize, &sourceModTime); err != nil {
 		return errors.New("authoritative media file record is unavailable for analysis")
 	}
 	analysisFile := canonicalAnalysisFileIdentity(analyzedFileID, sourceFingerprint, sourceSize, sourceModTime)
@@ -345,7 +491,7 @@ func (s *Server) persistFFprobeAnalysis(ctx context.Context, item MediaItem, pat
 	duration, streams, chapters, attachments := mediaAnalysisFromFFprobe(analysisIdentity, payload)
 	if len(attachments) > 0 && options.ExtractEmbeddedAttachments {
 		var err error
-		attachments, err = s.extractMediaAttachments(ctx, item, path, attachments)
+		attachments, err = s.extractMediaAttachments(ctx, item, analysisPath, attachments)
 		if err != nil {
 			return err
 		}
@@ -398,22 +544,24 @@ func (s *Server) persistFFprobeAnalysis(ctx context.Context, item MediaItem, pat
 				return err
 			}
 		}
-		if _, err := tx.Exec(`DELETE FROM media_attachments WHERE media_id = ?`, item.ID); err != nil {
-			return err
-		}
-		for _, attachment := range attachments {
-			if _, err := tx.Exec(`INSERT INTO media_attachments (id, media_id, stream_id, filename, mime_type, codec, path, size_bytes, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-				attachment.ID, item.ID, attachment.StreamID, attachment.Filename, attachment.MimeType, attachment.Codec, attachment.URL, attachment.SizeBytes, now); err != nil {
+		if options.ReadEmbeddedIndexes {
+			if _, err := tx.Exec(`DELETE FROM media_attachments WHERE media_id = ?`, item.ID); err != nil {
 				return err
 			}
-		}
-		if _, err := tx.Exec(`DELETE FROM media_chapters WHERE media_id = ?`, item.ID); err != nil {
-			return err
-		}
-		for index, chapter := range chapters {
-			if _, err := tx.Exec(`INSERT INTO media_chapters (id, media_id, title, start_seconds, end_seconds, sort_order) VALUES (?, ?, ?, ?, ?, ?)`,
-				chapter.ID, item.ID, chapter.Title, chapter.StartSeconds, chapter.EndSeconds, index); err != nil {
+			for _, attachment := range attachments {
+				if _, err := tx.Exec(`INSERT INTO media_attachments (id, media_id, stream_id, filename, mime_type, codec, path, size_bytes, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+					attachment.ID, item.ID, attachment.StreamID, attachment.Filename, attachment.MimeType, attachment.Codec, attachment.URL, attachment.SizeBytes, now); err != nil {
+					return err
+				}
+			}
+			if _, err := tx.Exec(`DELETE FROM media_chapters WHERE media_id = ?`, item.ID); err != nil {
 				return err
+			}
+			for index, chapter := range chapters {
+				if _, err := tx.Exec(`INSERT INTO media_chapters (id, media_id, title, start_seconds, end_seconds, sort_order) VALUES (?, ?, ?, ?, ?, ?)`,
+					chapter.ID, item.ID, chapter.Title, chapter.StartSeconds, chapter.EndSeconds, index); err != nil {
+					return err
+				}
 			}
 		}
 		if options.DetectChapterSegments {
@@ -426,13 +574,15 @@ func (s *Server) persistFFprobeAnalysis(ctx context.Context, item MediaItem, pat
 		if err := persistPlaybackFacts(tx, item.ID, analysisFile, payload, now); err != nil {
 			return err
 		}
-		return updateAnalyzedMediaFile(tx, item, path, duration, streams, payload)
+		return updateAnalyzedMediaFile(tx, item, recordPath, duration, streams, payload)
 	})
 	if err != nil {
 		return err
 	}
-	if err := s.updateMediaTagsFromFFprobe(ctx, item, payload); err != nil {
-		return err
+	if options.ReadEmbeddedTags {
+		if err := s.updateMediaTagsFromFFprobe(ctx, item, payload); err != nil {
+			return err
+		}
 	}
 	if err := ctx.Err(); err != nil {
 		return err
@@ -441,7 +591,7 @@ func (s *Server) persistFFprobeAnalysis(ctx context.Context, item MediaItem, pat
 		if !s.waitForAnalysisForegroundWindow(ctx) {
 			return ctx.Err()
 		}
-		if err := s.analyzeAudioNormalizationWithFFmpeg(ctx, item, path); err != nil {
+		if err := s.analyzeAudioNormalizationWithFFmpeg(ctx, item, analysisPath); err != nil {
 			s.log.Warn("audio loudness analysis failed", "media", item.ID, "error", err)
 		}
 	}
@@ -453,7 +603,7 @@ func (s *Server) persistFFprobeAnalysis(ctx context.Context, item MediaItem, pat
 			if !s.waitForAnalysisForegroundWindow(ctx) {
 				return ctx.Err()
 			}
-			if err := s.generateMediaThumbnail(ctx, item); err != nil {
+			if err := s.generateMediaThumbnailFromPath(ctx, item, analysisPath); err != nil {
 				s.log.Warn("thumbnail generation failed", "media", item.ID, "error", err)
 			}
 		}
@@ -461,7 +611,7 @@ func (s *Server) persistFFprobeAnalysis(ctx context.Context, item MediaItem, pat
 			if !s.waitForAnalysisForegroundWindow(ctx) {
 				return ctx.Err()
 			}
-			if err := s.generateChapterThumbnails(ctx, item, chapters); err != nil {
+			if err := s.generateChapterThumbnailsFromPath(ctx, item, analysisPath, chapters); err != nil {
 				s.log.Warn("chapter thumbnail generation failed", "media", item.ID, "error", err)
 			}
 		}
@@ -469,7 +619,7 @@ func (s *Server) persistFFprobeAnalysis(ctx context.Context, item MediaItem, pat
 			if !s.waitForAnalysisForegroundWindow(ctx) {
 				return ctx.Err()
 			}
-			if err := s.generateMediaTrickplay(ctx, item, path, duration, streams); err != nil {
+			if err := s.generateMediaTrickplay(ctx, item, analysisPath, duration, streams); err != nil {
 				s.log.Warn("trickplay generation failed", "media", item.ID, "error", err)
 			}
 		}
@@ -481,7 +631,7 @@ func (s *Server) persistFFprobeAnalysis(ctx context.Context, item MediaItem, pat
 		if !s.waitForAnalysisForegroundWindow(ctx) {
 			return ctx.Err()
 		}
-		if err := s.extractEmbeddedCoverImage(ctx, item, path, payload); err != nil {
+		if err := s.extractEmbeddedCoverImage(ctx, item, analysisPath, payload); err != nil {
 			s.log.Warn("embedded cover extraction failed", "media", item.ID, "error", err)
 		}
 	}
@@ -601,11 +751,6 @@ func (s *Server) audioLoudnessAnalysisEnabled(item MediaItem, payload ffprobePay
 	if item.Type != "track" && item.Type != "audiobook" {
 		return false
 	}
-	if strings.TrimSpace(item.LibraryID) != "" {
-		if library, err := s.getLibrary(item.LibraryID); err == nil && !settingBool(library.Settings, "analyzeAudio", true) {
-			return false
-		}
-	}
 	return payloadHasAudioStream(payload)
 }
 
@@ -683,7 +828,7 @@ func (s *Server) chapterThumbnailGenerationEnabled(item MediaItem) bool {
 	if err != nil {
 		return true
 	}
-	return settingBool(library.Settings, "chapterThumbnails", true)
+	return settingBool(library.Settings, "generateChapterThumbnails", true)
 }
 
 func (s *Server) thumbnailGenerationEnabled(item MediaItem) bool {
@@ -691,7 +836,7 @@ func (s *Server) thumbnailGenerationEnabled(item MediaItem) bool {
 	if err != nil {
 		return true
 	}
-	return settingBool(library.Settings, "generateThumbnails", true)
+	return settingBool(library.Settings, "generateRepresentativeThumbnail", true)
 }
 
 func (s *Server) trickplayGenerationEnabled(item MediaItem) bool {
@@ -699,7 +844,7 @@ func (s *Server) trickplayGenerationEnabled(item MediaItem) bool {
 	if err != nil {
 		return true
 	}
-	return settingBool(library.Settings, "generateTrickplayPreviews", true)
+	return settingBool(library.Settings, "generateTrickplay", true)
 }
 
 func (s *Server) shouldDeferAnalysisForForeground() bool {
@@ -1616,6 +1761,10 @@ func (s *Server) generateMediaThumbnail(ctx context.Context, item MediaItem) err
 	if err != nil {
 		return err
 	}
+	return s.generateMediaThumbnailFromPath(ctx, item, path)
+}
+
+func (s *Server) generateMediaThumbnailFromPath(ctx context.Context, item MediaItem, path string) error {
 	if _, err := exec.LookPath(s.cfg.FFmpegPath); err != nil && filepath.Base(s.cfg.FFmpegPath) == s.cfg.FFmpegPath {
 		return errors.New("FFmpeg is not available on PATH")
 	}
@@ -1807,6 +1956,13 @@ func (s *Server) generateChapterThumbnails(ctx context.Context, item MediaItem, 
 	path, err := s.localSourcePathForTranscode(item)
 	if err != nil {
 		return err
+	}
+	return s.generateChapterThumbnailsFromPath(ctx, item, path, chapters)
+}
+
+func (s *Server) generateChapterThumbnailsFromPath(ctx context.Context, item MediaItem, path string, chapters []Chapter) error {
+	if len(chapters) == 0 {
+		return nil
 	}
 	if _, err := exec.LookPath(s.cfg.FFmpegPath); err != nil && filepath.Base(s.cfg.FFmpegPath) == s.cfg.FFmpegPath {
 		return errors.New("FFmpeg is not available on PATH")

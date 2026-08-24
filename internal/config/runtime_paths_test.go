@@ -51,3 +51,18 @@ func TestLoadRuntimePathsRejectsPartialJSONWithoutChangingAuthority(t *testing.T
 		t.Fatal("partial runtime-path document was accepted")
 	}
 }
+
+func TestLoadRuntimePathsAcceptsFreshEmptyPrivateFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "portico.config.json")
+	if err := os.WriteFile(path, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	paths, err := LoadRuntimePaths(path)
+	if err != nil {
+		t.Fatalf("load empty runtime config: %v", err)
+	}
+	if paths != (RuntimePaths{}) {
+		t.Fatalf("empty runtime config loaded unexpected paths: %#v", paths)
+	}
+}

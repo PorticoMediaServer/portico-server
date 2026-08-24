@@ -302,7 +302,7 @@ func TestResolvedDeliveryContradictoryPoliciesNeverTranscode(t *testing.T) {
 	}
 }
 
-func TestTextSubtitleResourceSurvivesTranscodeNeverPolicy(t *testing.T) {
+func TestTextSubtitleChoiceRequiresRenegotiationUnderTranscodeNeverPolicy(t *testing.T) {
 	item := MediaItem{ID: "movie-text-subtitle", Type: "movie"}
 	resources := playbackResourcesForResponse(
 		item,
@@ -313,20 +313,18 @@ func TestTextSubtitleResourceSurvivesTranscodeNeverPolicy(t *testing.T) {
 		[]Quality{{ID: "original", Available: true}},
 		nil,
 		[]Stream{{ID: "sub_text", Kind: "subtitle", SourceURL: "/api/media/movie-text-subtitle/subtitles/sub_text"}},
+		"original",
 		"",
 		"",
 		MediaGrant{},
 		false,
 	)
-	for _, resource := range resources {
-		if resource.SubtitleMode == "text" && resource.SubtitleStreamID == "sub_text" && resource.SourceURL == "/api/media/movie-text-subtitle/stream" {
-			return
-		}
+	if len(resources) != 1 || !resources[0].Default || resources[0].SubtitleMode != "off" {
+		t.Fatalf("response published an unsealed subtitle resource: %#v", resources)
 	}
-	t.Fatalf("text subtitle resource was removed by transcode:never: %#v", resources)
 }
 
-func TestAutomaticQualityPreservesResolvedDirectSource(t *testing.T) {
+func TestQualityOffersDoNotPublishAlternateDirectResources(t *testing.T) {
 	item := MediaItem{
 		ID:   "movie-direct-auto",
 		Type: "movie",
@@ -338,16 +336,9 @@ func TestAutomaticQualityPreservesResolvedDirectSource(t *testing.T) {
 	decision := PlaybackDecision{Mode: "direct_play"}
 	policy := ResolvedPlaybackPolicy{TranscodePolicy: "allow"}
 	qualities := playbackQualities(item, decision, policy, true)
-	resources := playbackResourcesForResponse(item, "/api/media/movie-direct-auto/stream", "http", decision, policy, qualities, nil, nil, "", "", MediaGrant{}, true)
+	resources := playbackResourcesForResponse(item, "/api/media/movie-direct-auto/stream", "http", decision, policy, qualities, nil, nil, "original", "", "", MediaGrant{}, true)
 
-	for _, resource := range resources {
-		if resource.QualityID != "auto" {
-			continue
-		}
-		if resource.SourceURL != "/api/media/movie-direct-auto/stream" || resource.StreamFormat != "http" {
-			t.Fatalf("automatic direct resource changed delivery path: %#v", resource)
-		}
-		return
+	if len(resources) != 1 || !resources[0].Default || resources[0].SourceURL != "/api/media/movie-direct-auto/stream" || resources[0].StreamFormat != "http" {
+		t.Fatalf("response published resources outside the active sealed plan: %#v", resources)
 	}
-	t.Fatalf("automatic direct resource missing: %#v", resources)
 }

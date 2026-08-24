@@ -32,6 +32,7 @@ import {
 import { ChoiceControl, InlineNotice, SettingsGroup } from './SettingsControls';
 import { useAbortableMutation } from './settingsHooks';
 import type { LibraryMutationInput, LibraryScanMode, LibraryScanOperationsResponse, LibraryScanReviewResponse, SettingsDataSource } from './settingsTypes';
+import { RemoteStorageSettings } from './RemoteStorageSettings';
 
 function libraryRoute(library: Library): string {
   return `/library/${encodeURIComponent(library.id)}`;
@@ -857,6 +858,12 @@ export function LibraryOperations({
               </select>
             </label>)}
           </section>}
+          {canManage && <RemoteStorageSettings library={library} source={source} onScanQueued={() => {
+            setExpandedScans((current) => new Set(current).add(library.id));
+            const controller = new AbortController();
+            void refreshScanOperations(controller, [library]);
+            wakeScanPolling.current([library]);
+          }} />}
           {summary?.counts && <div className="portico-library-scan-counts" aria-label="Subordinate scan work">
             <div><span>Files</span><strong>{formatCount(summary.counts.processed ?? summary.counts.discovered)}</strong><small>{formatCount(summary.counts.indexed ?? summary.counts.added)} indexed · {formatCount(summary.counts.unchanged ?? summary.counts.updated)} unchanged · {formatCount(summary.counts.skipped)} skipped</small></div>
             <div><span>Metadata</span><strong>{formatCount(summary.counts.metadataPending)} queued</strong><small>Managed beneath this library operation</small></div>

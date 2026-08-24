@@ -29,27 +29,6 @@ func (s *Server) StartRemoteAccessManager() {
 		return
 	}
 	s.configureRemoteTLS(settings)
-	if settings.Enabled && settings.ClaimStatus == "claimed" && settings.ServerID != "" {
-		s.startOwnedAsync("remote-access-startup-heartbeat", func(ctx context.Context) {
-			if err := s.sendRemoteAccessHeartbeatWithOptions(ctx, settings, remoteAccessHeartbeatOptions{}); err != nil {
-				s.recordLog("warn", "Remote access fast heartbeat at startup failed", map[string]string{"error": err.Error()})
-			} else if refreshed, loadErr := s.remoteAccessSettings(); loadErr == nil {
-				// The heartbeat may rotate a legacy assigned namespace or refresh the
-				// observed public address. Certificate selection and the second
-				// heartbeat must use that authoritative persisted response.
-				settings = refreshed
-			}
-			if updated, renewErr := s.ensureRemoteAccessCertificateFresh(ctx, settings); renewErr == nil {
-				settings = updated
-			} else {
-				s.recordLog("warn", "Remote access certificate renewal at startup failed", map[string]string{"error": renewErr.Error()})
-			}
-			s.configureRemoteTLS(settings)
-			if err := s.sendRemoteAccessHeartbeat(ctx, settings); err != nil {
-				s.recordLog("warn", "Remote access heartbeat at startup failed", map[string]string{"error": err.Error()})
-			}
-		})
-	}
 }
 
 func (s *Server) configureRemoteTLS(settings RemoteAccessSettings) {
@@ -70,7 +49,7 @@ func (s *Server) configureRemoteTLS(settings RemoteAccessSettings) {
 		var replacement *tls.Certificate
 		replacement, err = s.loadRemoteAccessCertificate(settings)
 		if err != nil {
-			errText = err.Error()
+			errText = remoteAccessFailureCode(err)
 		} else {
 			certificate = replacement
 			revision = remoteCertificateRevision(replacement)

@@ -15,6 +15,23 @@ test("Library Channel consumer requests remain separate from tuner Live TV", asy
     apiBaseUrl: "https://server.example",
     transport: { fetch: async (input, init) => {
       calls.push({ input: String(input), init });
+      if (String(input).endsWith("/tune")) return response({
+        sessionId: "library-channel-session",
+        sourceUrl: "/api/library-channels/channel%2Fone/hls/master.m3u8",
+        directPlay: false,
+        generation: 1,
+        nextEventSequence: 1,
+        playbackRevision: 0,
+        queueRevision: 0,
+        decision: {},
+        media: {},
+        mediaGrant: {token: "grant", expiresAt: "2099-08-07T00:00:00Z"},
+        continuationCredential: {token: "continuation", origin: "https://server.example", expiresAt: "2099-08-07T00:00:00Z", generation: 1},
+        selectedQualityId: "automatic",
+        selectedSubtitleMode: "off",
+        resources: [{id: "active", sourceUrl: "/api/library-channels/channel%2Fone/hls/master.m3u8", streamFormat: "hls", qualityId: "automatic", subtitleMode: "off", default: true}],
+        audioStreams: [], subtitleStreams: [], chapters: [], qualities: [], queue: []
+      });
       return response({ sourceType: "library-channel", items: [], total: 0 });
     } }
   });

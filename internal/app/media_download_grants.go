@@ -264,7 +264,7 @@ func downloadGrantVersionFingerprint(mediaID, profile, versionKind, versionID st
 			size = info.Size()
 		}
 	}
-	material := strings.Join([]string{mediaID, profile, versionKind, versionID, location, strconv.FormatInt(size, 10), modTime}, "\x00")
+	material := strings.Join([]string{mediaID, profile, versionKind, versionID, location, source.sourceRevision, strconv.FormatInt(size, 10), modTime}, "\x00")
 	return hashToken(material)
 }
 

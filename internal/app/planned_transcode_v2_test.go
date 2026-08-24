@@ -285,6 +285,21 @@ func TestCompilePlannedVODHLSUsesSealedFactsAndPrivateDeterministicLayout(t *tes
 	if !containsAdjacent(remoteCommand.Args, "-i", "pipe:0") || containsExact(remoteCommand.Args, source) {
 		t.Fatalf("remote command exposed source instead of pipe:0: %#v", remoteCommand.Args)
 	}
+	storageRemote := remote
+	storageRemote.RemoteObjectPath = "Movies/Film.mkv"
+	storageRemote.SourcePath = "http://127.0.0.1:28473/probe_opaque_capability"
+	storageRemoteCommand, err := server.compilePlannedVODHLS(context.Background(), storageRemote)
+	if err != nil {
+		t.Fatalf("compile range-capable storage source: %v", err)
+	}
+	if !containsAdjacent(storageRemoteCommand.Args, "-i", storageRemote.SourcePath) || containsExact(storageRemoteCommand.Args, "pipe:0") {
+		t.Fatalf("storage remote command did not use loopback range transport: %#v", storageRemoteCommand.Args)
+	}
+	unsafeRemote := remote
+	unsafeRemote.SourcePath = "http://198.51.100.10/provider-secret"
+	if _, err := server.compilePlannedVODHLS(context.Background(), unsafeRemote); err == nil || !strings.Contains(err.Error(), "loopback capability") {
+		t.Fatalf("non-loopback transcode transport accepted: %v", err)
+	}
 
 	changed := req
 	changed.Binding.MediaFactsDigest = "mediafacts-v2:sha256:changed"

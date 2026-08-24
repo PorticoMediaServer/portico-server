@@ -53,7 +53,8 @@ if (expectedRuntimeMode) {
 	if (!/^sha256-[a-f0-9]{24,64}$/.test(buildManifest.buildId || '') || !runtimeConfig.includes(`"buildId":"${buildManifest.buildId}"`)) {
 		findings.push('runtime config and immutable build manifest do not share a valid content-hashed build ID');
 	}
-	if (buildManifest.mode !== expectedRuntimeMode || buildManifest.hostedApiBaseUrl !== 'https://api.getportico.tv') {
+	const expectedHostedAPIBaseURL = expectedRuntimeMode === 'hosted' ? 'https://web.getportico.tv' : 'https://api.getportico.tv';
+	if (buildManifest.mode !== expectedRuntimeMode || buildManifest.hostedApiBaseUrl !== expectedHostedAPIBaseURL) {
 		findings.push('build manifest runtime authority does not match the hosted deployment contract');
 	}
 }

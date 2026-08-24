@@ -540,7 +540,15 @@ func (s *Server) queueScheduledMediaAnalysis(now time.Time, runKey string, inter
 		if s.jobAlreadyQueuedTodayFor("media_analyze", "media", item.ID, runKey) {
 			continue
 		}
-		if _, err := s.createJobForWithMetadata("media_analyze", fmt.Sprintf("Scheduled media stream analysis queued for %s.", item.Title), "media", item.ID, representativeFrameAnalysisMetadata()); err != nil {
+		revision, revisionErr := s.currentMediaAnalysisSourceRevision(context.Background(), item)
+		if revisionErr != nil || strings.TrimSpace(revision) == "" {
+			s.releaseScheduledJob("media_analyze", "media", item.ID, runKey)
+			s.log.Warn("scheduled media analysis source revision lookup failed", "media", item.ID, "error", revisionErr)
+			continue
+		}
+		metadata := representativeFrameAnalysisMetadata()
+		metadata["sourceRevision"] = revision
+		if _, err := s.createJobForWithMetadata("media_analyze", fmt.Sprintf("Scheduled media stream analysis queued for %s.", item.Title), "media", item.ID, metadata); err != nil {
 			s.releaseScheduledJob("media_analyze", "media", item.ID, runKey)
 			s.log.Warn("scheduled media analysis queue failed", "media", item.ID, "error", err)
 		}

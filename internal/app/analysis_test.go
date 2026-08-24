@@ -391,8 +391,8 @@ func TestLibraryPreviewGenerationSettings(t *testing.T) {
 		Type:  "movie",
 		Paths: []string{root},
 		Settings: map[string]any{
-			"chapterThumbnails":         false,
-			"generateTrickplayPreviews": false,
+			"generateChapterThumbnails": false,
+			"generateTrickplay":         false,
 		},
 	})
 	if err != nil {
@@ -421,14 +421,14 @@ func TestMediaAnalysisOptionsHonorLibraryFeatureSwitches(t *testing.T) {
 		Type:  "movie",
 		Paths: []string{root},
 		Settings: map[string]any{
-			"generateThumbnails":         false,
-			"chapterThumbnails":          false,
-			"generateTrickplayPreviews":  false,
-			"analyzeAudio":               false,
-			"sonicFingerprinting":        true,
-			"detectChapterSegments":      false,
-			"extractEmbeddedCovers":      false,
-			"extractEmbeddedAttachments": false,
+			"analysisTier":                    analysisTierCustom,
+			"probeStreams":                    true,
+			"generateRepresentativeThumbnail": false,
+			"generateChapterThumbnails":       false,
+			"generateTrickplay":               false,
+			"analyzeLoudness":                 false,
+			"sonicFingerprinting":             true,
+			"extractAllEmbeddedAttachments":   false,
 		},
 	})
 	if err != nil {
@@ -459,6 +459,34 @@ func TestMediaAnalysisOptionsHonorLibraryFeatureSwitches(t *testing.T) {
 	}
 }
 
+func TestFixedAnalysisTiersIgnoreCustomOperationDefaults(t *testing.T) {
+	server := newScannerTestServer(t)
+	root := t.TempDir()
+	completeLibrary, err := server.createLibrary(CreateLibraryRequest{
+		Name: "Complete", Type: "movie", Paths: []string{root}, Settings: map[string]any{"analysisTier": analysisTierComplete},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	complete := server.mediaAnalysisOptions(MediaItem{ID: "complete", Type: "movie", LibraryID: completeLibrary.ID}, mediaAnalysisModeFull)
+	if !complete.ProbeStreams || !complete.ReadEmbeddedTags || !complete.ReadEmbeddedIndexes || !complete.GenerateThumbnails || !complete.ChapterThumbnails || !complete.GenerateTrickplay || !complete.AnalyzeAudio || !complete.SonicFingerprinting || !complete.ExtractEmbeddedAttachments {
+		t.Fatalf("Complete omitted fixed deep-analysis work because Custom defaults are false: %#v", complete)
+	}
+	basicLibrary, err := server.createLibrary(CreateLibraryRequest{
+		Name: "Basic", Type: "movie", Paths: []string{root}, Settings: map[string]any{"analysisTier": analysisTierBasic},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	basic := server.mediaAnalysisOptions(MediaItem{ID: "basic", Type: "movie", LibraryID: basicLibrary.ID}, mediaAnalysisModeFull)
+	if !basic.ProbeStreams || !basic.ReadEmbeddedTags || !basic.ReadEmbeddedIndexes {
+		t.Fatalf("Basic omitted bounded technical facts: %#v", basic)
+	}
+	if basic.GenerateThumbnails || basic.ChapterThumbnails || basic.GenerateTrickplay || basic.AnalyzeAudio || basic.SonicFingerprinting || basic.ExtractEmbeddedAttachments {
+		t.Fatalf("Basic authorized Complete-only work: %#v", basic)
+	}
+}
+
 func TestMediaAnalysisQueueCanBeDisabledPerLibrary(t *testing.T) {
 	server := newScannerTestServer(t)
 	root := t.TempDir()
@@ -466,7 +494,7 @@ func TestMediaAnalysisQueueCanBeDisabledPerLibrary(t *testing.T) {
 		Name:     "Movies",
 		Type:     "movie",
 		Paths:    []string{root},
-		Settings: map[string]any{"probeStreams": false},
+		Settings: map[string]any{"analysisTier": analysisTierCustom, "probeStreams": false},
 	})
 	if err != nil {
 		t.Fatalf("create library: %v", err)

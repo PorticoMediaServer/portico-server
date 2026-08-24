@@ -54,6 +54,29 @@ func TestHostedPolicySnapshotVerifiesCrossServiceFixture(t *testing.T) {
 	})
 }
 
+func TestRemotePolicyContinuityUsesContractWindows(t *testing.T) {
+	now := time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC)
+	state := remotePolicyState{ExpiresAt: now.Add(time.Hour).Format(time.RFC3339Nano)}
+	if got := remotePolicyContinuity(state, now); got != "valid" {
+		t.Fatalf("continuity before expiry = %q", got)
+	}
+	if !remotePolicyRenewalDue(state, now) {
+		t.Fatal("policy inside the 24-hour renewal window was not due")
+	}
+	state.ExpiresAt = now.Add(-time.Hour).Format(time.RFC3339Nano)
+	if got := remotePolicyContinuity(state, now); got != "grace" {
+		t.Fatalf("continuity inside grace = %q", got)
+	}
+	state.ExpiresAt = now.Add(-hostedPolicyGracePeriod - time.Hour).Format(time.RFC3339Nano)
+	if got := remotePolicyContinuity(state, now); got != "hard-expired-draining" {
+		t.Fatalf("continuity inside playback drain = %q", got)
+	}
+	state.ExpiresAt = now.Add(-hostedPolicyGracePeriod - hostedPolicyPlaybackDrain - time.Second).Format(time.RFC3339Nano)
+	if got := remotePolicyContinuity(state, now); got != "hard-expired" {
+		t.Fatalf("continuity after playback drain = %q", got)
+	}
+}
+
 func loadHostedDocumentFixture(t *testing.T) hostedDocumentFixture {
 	t.Helper()
 	path := filepath.Join("testdata", "document-signing-fixture.json")

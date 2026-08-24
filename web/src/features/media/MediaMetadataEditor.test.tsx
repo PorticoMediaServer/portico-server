@@ -25,6 +25,8 @@ function editableMedia(): MediaItem {
     people: [{ name: 'Ari Vega', role: 'Actor', character: 'Captain Sol' }],
     mediaImages: [],
     lockedFields: [],
+    metadataRevision: 7,
+    metadataEtag: 'metadata-lock-fixture-r7',
   };
 }
 
@@ -82,6 +84,17 @@ describe('MediaMetadataEditor metadata locks', () => {
     expect(within(dialog).getByRole('region', { name: 'Current metadata sources' })).toHaveTextContent('harbour');
   });
 
+  it('links TheTVDB attribution alongside a TheTVDB-derived identity', async () => {
+    const source = new FixturePorticoDataSource();
+    const item: MediaItem = { ...editableMedia(), providerIds: [{ provider: 'tvdb', externalType: 'movie', externalId: '42', confidence: 1, source: 'provider' }] };
+    vi.spyOn(source as PorticoDataSource, 'media').mockResolvedValue(item);
+    render(<DataProvider source={source}><MediaMetadataEditor mediaIds={[item.id]} initialItems={[item]} onDismiss={() => undefined} /></DataProvider>);
+
+    const dialog = await screen.findByRole('dialog', { name: 'Edit metadata' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Matching' }));
+    expect(within(dialog).getByRole('link', { name: 'TheTVDB' })).toHaveAttribute('href', 'https://thetvdb.com/');
+  });
+
   it('saves artwork, tag-family, and cast locks through the canonical metadata patch', async () => {
     const source = new FixturePorticoDataSource();
     const item = editableMedia();
@@ -129,7 +142,7 @@ describe('MediaMetadataEditor metadata locks', () => {
     ));
   });
 
-  it('edits and locks technical metadata beside the fields it protects', async () => {
+  it('keeps measured duration out of descriptive edits and locks changed metadata by default', async () => {
     const source = new FixturePorticoDataSource();
     const item = editableEpisode();
     vi.spyOn(source as PorticoDataSource, 'media').mockResolvedValue(item);
@@ -137,26 +150,24 @@ describe('MediaMetadataEditor metadata locks', () => {
     render(<DataProvider source={source}><MediaMetadataEditor mediaIds={[item.id]} initialItems={[item]} onDismiss={() => undefined} /></DataProvider>);
 
     const dialog = await screen.findByRole('dialog', { name: 'Edit metadata' });
-    fireEvent.change(within(dialog).getByDisplayValue('2520'), { target: { value: '2580' } });
+    expect(within(dialog).queryByDisplayValue('2520')).not.toBeInTheDocument();
     fireEvent.change(within(dialog).getByDisplayValue('8.4'), { target: { value: '8.7' } });
     fireEvent.change(within(dialog).getByDisplayValue('92'), { target: { value: '94' } });
     fireEvent.change(within(dialog).getByDisplayValue('8'), { target: { value: '9' } });
     fireEvent.change(within(dialog).getByDisplayValue('15'), { target: { value: '1' } });
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Lock Duration (seconds)' }));
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Lock productionCode' }));
     fireEvent.change(within(dialog).getByDisplayValue('815'), { target: { value: '901' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Save changes' }));
 
     await waitFor(() => expect(update).toHaveBeenCalledWith(
       [item.id],
       expect.objectContaining({
-        durationSeconds: 2580,
+        expectedRevision: 7,
         communityRating: 8.7,
         criticRating: 94,
         seasonNumber: 9,
         episodeNumber: 1,
         typedMetadata: { productionCode: '901', originalAirDate: '2026-05-12' },
-        lockedFields: ['durationSeconds', 'typedMetadata.productionCode'],
+        lockedFields: ['communityRating', 'criticRating', 'seasonNumber', 'episodeNumber', 'typedMetadata'],
       }),
       expect.any(AbortSignal),
     ));

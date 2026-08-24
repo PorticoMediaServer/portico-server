@@ -19,7 +19,7 @@ export function decodeHighRiskResponse(path: string, method: string, value: unkn
   if (isAuthLifecyclePath(pathname, verb)) return authLifecycle(value);
   if (/^\/api\/account\/servers\/[^/]+\/routes$/.test(pathname) && verb === "GET") return routeDocument(value);
   if (pathname.startsWith("/api/watch-with-friends/groups")) return watchWithFriendsResponse(value);
-  if (isPlaybackResponsePath(pathname) && looksLikePlaybackResponse(value)) return playbackResponse(value);
+  if (isPlaybackResponsePath(pathname)) return playbackRouteResponse(pathname, value);
 
   validatePaginationEnvelope(value);
   return value;
@@ -28,9 +28,37 @@ export function decodeHighRiskResponse(path: string, method: string, value: unkn
 function isPlaybackResponsePath(pathname: string): boolean {
   return pathname === "/api/playback-sessions" || pathname === "/api/playback/active" ||
     /^\/api\/playback-sessions\/[^/]+\/(?:handoff|renegotiate|prepare-next)$/.test(pathname) ||
-    /^\/api\/dvr\/recordings\/[^/]+\/play$/.test(pathname) ||
+    /^\/api\/dvr\/recordings\/[^/]+\/(?:play|playback)$/.test(pathname) ||
+    pathname === "/api/live-tv/play" ||
     /^\/api\/live-tv\/streams\/[^/]+\/open$/.test(pathname) ||
     /^\/api\/library-channels\/[^/]+\/tune$/.test(pathname);
+}
+
+function playbackRouteResponse(pathname: string, value: unknown): unknown {
+  if (pathname === "/api/playback/active") {
+    const record = object(value, "playback restore response");
+    if (typeof record.active !== "boolean") throw new TypeError("playback restore state is invalid");
+    if (record.active) {
+      if (!looksLikePlaybackResponse(record.playback)) throw new TypeError("active playback response is missing");
+      playbackResponse(record.playback);
+    } else if (record.playback !== undefined) {
+      throw new TypeError("inactive playback response contains a playback plan");
+    }
+    return value;
+  }
+  if (/^\/api\/playback-sessions\/[^/]+\/prepare-next$/.test(pathname)) {
+    const record = object(value, "prepared playback response");
+    boundedString(record.preparedSessionId, "prepared playback session id", 512);
+    boundedString(record.handoffMode, "prepared playback handoff mode", 64);
+    boundedString(record.preloadPolicy, "prepared playback preload policy", 64);
+    timestamp(record.expiresAt, "prepared playback expiry");
+    nonNegativeInteger(record.playbackRevision, "prepared playback revision");
+    nonNegativeInteger(record.queueRevision, "prepared queue revision");
+    if (!Array.isArray(record.queue) || record.queue.length > 10_000) throw new TypeError("prepared playback queue is invalid");
+    playbackResponse(record.playback);
+    return value;
+  }
+  return playbackResponse(value);
 }
 
 function isAuthLifecyclePath(pathname: string, verb: string): boolean {
@@ -55,12 +83,13 @@ function authLifecycle(value: unknown): unknown {
 function routeDocument(value: unknown): unknown {
   const record = object(value, "Hosted route document");
   rejectTopLevelCredentialFields(record);
+  if (record.kind !== "route-document") throw new TypeError("Hosted route document kind is invalid");
   for (const field of ["serverId", "serverName", "serverPublicKey", "serverPublicKeyFingerprint", "signature", "signatureAlgorithm", "audience"] as const) {
     boundedString(record[field], `Hosted route ${field}`, field === "serverPublicKey" || field === "signature" ? 16_384 : 2_048);
   }
   timestamp(record.issuedAt, "Hosted route issue time");
   timestamp(record.expiresAt, "Hosted route expiry");
-  nonNegativeInteger(record.documentVersion, "Hosted route document version");
+  if (record.documentVersion !== 1) throw new TypeError("Hosted route document version is invalid");
   if (!Array.isArray(record.routes) || record.routes.length > 64) throw new TypeError("Hosted routes are invalid");
   for (const candidate of record.routes) {
     const route = object(candidate, "Hosted route");
@@ -109,7 +138,7 @@ function playbackResponse(value: unknown): unknown {
   // response with an accidental session/token envelope.
   rejectTopLevelCredentialFields(record, ["continuationCredential"]);
   boundedString(record.sessionId, "playback session id", 512);
-  boundedString(record.sourceUrl, "playback source URL", 8_192);
+  const sourceUrl = playbackUrl(record.sourceUrl, "playback source URL");
   if (typeof record.directPlay !== "boolean") throw new TypeError("playback direct-play state is invalid");
   for (const field of ["generation", "nextEventSequence", "playbackRevision", "queueRevision"] as const) nonNegativeInteger(record[field], `playback ${field}`);
   object(record.decision, "playback decision");
@@ -119,12 +148,61 @@ function playbackResponse(value: unknown): unknown {
   for (const field of ["resources", "audioStreams", "subtitleStreams", "chapters", "qualities", "queue"] as const) {
     if (!Array.isArray(record[field]) || record[field].length > 10_000) throw new TypeError(`playback ${field} is invalid`);
   }
+  const resources = record.resources as unknown[];
+  if (resources.length !== 1) throw new TypeError("playback resources are invalid");
+  const ids = new Set<string>();
+  let defaultSource = "";
+  let defaults = 0;
+  for (const value of resources) {
+    const resource = object(value, "playback resource");
+    const id = boundedString(resource.id, "playback resource id", 512);
+    if (ids.has(id)) throw new TypeError("playback resource ids are invalid");
+    ids.add(id);
+    const resourceSource = playbackUrl(resource.sourceUrl, "playback resource URL");
+    boundedString(resource.streamFormat, "playback resource format", 64);
+    if (resource.default === true) {
+      defaults++;
+      defaultSource = resourceSource;
+    } else if (resource.default !== undefined && resource.default !== false) {
+      throw new TypeError("playback resource default is invalid");
+    }
+  }
+  if (defaults !== 1 || defaultSource !== sourceUrl) throw new TypeError("playback default resource is invalid");
+  const active = object(resources[0], "playback resource");
+  for (const [selectionField, resourceField] of [
+    ["selectedQualityId", "qualityId"],
+    ["selectedAudioStreamId", "audioStreamId"],
+    ["selectedSubtitleStreamId", "subtitleStreamId"],
+    ["selectedSubtitleMode", "subtitleMode"],
+  ] as const) {
+    if (record[selectionField] !== undefined && record[selectionField] !== active[resourceField]) {
+      throw new TypeError(`playback ${selectionField} does not match the active resource`);
+    }
+  }
   return value;
+}
+
+function playbackUrl(value: unknown, name: string): string {
+  const candidate = boundedString(value, name, 8_192);
+  let parsed: URL;
+  try {
+    parsed = new URL(candidate, "https://portico.invalid");
+  } catch {
+    throw new TypeError(`${name} is invalid`);
+  }
+  if ((parsed.protocol !== "http:" && parsed.protocol !== "https:") || parsed.username || parsed.password || parsed.hash) {
+    throw new TypeError(`${name} is invalid`);
+  }
+  const credentialParameters = new Set(["access_token", "authorization", "cookie", "download_grant", "jwt", "media_grant", "password", "secret", "token"]);
+  for (const key of parsed.searchParams.keys()) {
+    if (credentialParameters.has(key.toLowerCase())) throw new TypeError(`${name} is invalid`);
+  }
+  return candidate;
 }
 
 function isNativeCredentialPath(pathname: string): boolean {
   return pathname === "/api/auth/sessions" || pathname === "/api/auth/profile-sessions/native" ||
-    pathname === "/api/auth/quick-connect/exchange" || pathname === "/api/auth/tv-setup/redeem";
+    pathname === "/api/auth/quick-connect/exchange";
 }
 
 function nativeCredentials(value: unknown): unknown {

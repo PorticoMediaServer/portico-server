@@ -10,5 +10,7 @@ export PORTICO_APP_DATA="$app_data_dir"
 export PORTICO_WEB_DIST="$resources_dir/web"
 export PORTICO_FFMPEG_PATH="$resources_dir/bin/ffmpeg"
 export PORTICO_FFPROBE_PATH="$resources_dir/bin/ffprobe"
+export PORTICO_ENVIRONMENT="production"
+export PORTICO_HOSTED_API_AUTHORITY="https://api.getportico.tv"
 
 exec "$resources_dir/bin/portico-media-server"

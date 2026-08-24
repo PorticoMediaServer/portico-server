@@ -390,7 +390,7 @@ func (s *Server) handleMediaHLSManifest(w http.ResponseWriter, r *http.Request, 
 		writeError(w, http.StatusForbidden, "playback_plan_mismatch", "Playback resource parameters do not match the authorized server plan.")
 		return
 	}
-	item, err := s.getMediaPlaybackDetail(user.ID, mediaID)
+	item, err := s.getMediaPlaybackDetailForUser(r.Context(), user, mediaID)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "media_not_found", "Media item was not found.")
 		return
@@ -424,27 +424,10 @@ func (s *Server) handleMediaHLSManifest(w http.ResponseWriter, r *http.Request, 
 		writeError(w, http.StatusNotFound, "subtitle_not_found", "Subtitle was not found.")
 		return
 	}
-	if item.DurationSeconds > 0 {
-		manifest := s.buildStaticMediaHLSManifest(item, mediaID, quality, subtitleID, 0, audioMode, audioStreamID, directStream, playbackURLMediaGrant(r))
-		if allowTextSubtitles && textSubtitleID != "" && subtitleID == "" {
-			manifest = buildMediaHLSMasterManifest(item, mediaID, quality, textSubtitleID, 0, audioMode, audioStreamID, directStream, playbackURLMediaGrant(r), "", manifest)
-		}
-		s.startOwnedAsync("hls-transcode-prewarm", func(ctx context.Context) {
-			if _, err := s.ensurePlannedVODHLSSession(ctx, user.ID, item, binding, identity, 0, "", true); err != nil {
-				if !isExpectedBackgroundTranscodeRefusal(err) {
-					s.recordLog("warn", "HLS manifest prewarm failed", map[string]string{"mediaId": item.ID, "quality": quality, "error": err.Error()})
-				}
-			}
-		})
-		w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
-		w.Header().Set("Cache-Control", "no-store")
-		_, _ = w.Write([]byte(manifest))
-		return
-	}
-	// A finite source can be playable before its duration is known. In that
-	// case FFmpeg is the timeline authority: publish its append-only EVENT
-	// playlist, retaining all segments, and allow it to add ENDLIST at EOF.
-	// Never synthesize a VOD duration or expose a rolling live playlist.
+	// FFmpeg is the segment timeline authority for every HLS execution. A
+	// catalog duration is not evidence of actual keyframe boundaries, so never
+	// synthesize EXTINF entries before output exists. Publish only a validated
+	// generated playlist and let the producer add ENDLIST at finite-source EOF.
 	session, err := s.ensurePlannedVODHLSSession(r.Context(), user.ID, item, binding, identity, 0, "", false)
 	if err != nil {
 		writeError(w, http.StatusServiceUnavailable, "transcode_unavailable", err.Error())
@@ -471,8 +454,13 @@ func (s *Server) handleMediaHLSManifest(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 	defer releaseReader()
-	if allowTextSubtitles && textSubtitleID != "" && subtitleID == "" {
-		manifest = buildMediaHLSMasterManifest(item, mediaID, quality, textSubtitleID, 0, audioMode, audioStreamID, directStream, playbackURLMediaGrant(r), "", manifest)
+	if allowTextSubtitles {
+		masterItem, evidenceErr := s.hlsItemWithVerifiedDolbyVisionEvidence(r.Context(), item, directStream)
+		if evidenceErr != nil {
+			writeError(w, http.StatusUnprocessableEntity, "dolby_vision_output_unverified", evidenceErr.Error())
+			return
+		}
+		manifest = buildMediaHLSMasterManifestWithBandwidth(masterItem, mediaID, quality, textSubtitleID, 0, audioMode, audioStreamID, directStream, playbackURLMediaGrant(r), "", manifest, measureGeneratedHLSBandwidth(session))
 	}
 	w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
 	w.Header().Set("Cache-Control", "no-store")
@@ -490,7 +478,7 @@ func (s *Server) handleMediaHLSSubtitlePlaylist(w http.ResponseWriter, r *http.R
 		writeError(w, http.StatusForbidden, "playback_plan_mismatch", "Subtitle resource parameters do not match the authorized server plan.")
 		return
 	}
-	item, err := s.getMediaPlaybackDetail(user.ID, mediaID)
+	item, err := s.getMediaPlaybackDetailForUser(r.Context(), user, mediaID)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "media_not_found", "Media item was not found.")
 		return
@@ -505,9 +493,10 @@ func (s *Server) handleMediaHLSSubtitlePlaylist(w http.ResponseWriter, r *http.R
 		return
 	}
 	duration := max(1, item.DurationSeconds)
-	segmentCount := int(math.Ceil(float64(duration) / float64(hlsSegmentSeconds)))
-	if segmentCount <= 0 {
-		segmentCount = 1
+	segmentCount, err := staticHLSegmentCount(duration)
+	if err != nil {
+		writeError(w, http.StatusUnprocessableEntity, "media_duration_unsupported", err.Error())
+		return
 	}
 	startIndex := 0
 	var playlist strings.Builder
@@ -543,7 +532,7 @@ func (s *Server) handleMediaHLSSubtitleSegment(w http.ResponseWriter, r *http.Re
 		writeError(w, http.StatusForbidden, "playback_plan_mismatch", "Subtitle resource parameters do not match the authorized server plan.")
 		return
 	}
-	item, err := s.getMediaPlaybackDetail(user.ID, mediaID)
+	item, err := s.getMediaPlaybackDetailForUser(r.Context(), user, mediaID)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "media_not_found", "Media item was not found.")
 		return
@@ -599,7 +588,7 @@ func (s *Server) handleMediaHLSSegment(w http.ResponseWriter, r *http.Request, u
 		writeError(w, http.StatusBadRequest, "bad_segment", "HLS segment name is invalid.")
 		return
 	}
-	item, err := s.getMediaPlaybackDetail(user.ID, mediaID)
+	item, err := s.getMediaPlaybackDetailForUser(r.Context(), user, mediaID)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "media_not_found", "Media item was not found.")
 		return
@@ -689,8 +678,10 @@ func hlsSegmentContentType(name string) string {
 	switch {
 	case strings.HasSuffix(name, ".ts"):
 		return "video/mp2t"
-	case strings.HasSuffix(name, ".m4s"), name == "init.mp4":
+	case strings.HasSuffix(name, ".m4s"):
 		return "video/iso.segment"
+	case name == "init.mp4":
+		return "video/mp4"
 	default:
 		return "application/octet-stream"
 	}
@@ -1301,6 +1292,9 @@ func (s *Server) startTranscodeLocked(userID string, item MediaItem, sourcePath 
 }
 
 func (s *Server) startTranscodeLockedWithInputTransport(userID string, item MediaItem, sourcePath string, quality string, settings transcodeSettings, subtitleID string, startSeconds int, audioMode string, audioStreamID string, directStream bool, background bool, inputTransport *dvrInputTransport) (*transcodeSession, error) {
+	if s.transcodeClosing {
+		return nil, errors.New("the server is shutting down")
+	}
 	preset := transcodePresets[quality]
 	if quality == "original" {
 		preset = sourceEquivalentTranscodePreset(item)
@@ -1340,7 +1334,18 @@ func (s *Server) startTranscodeLockedWithInputTransport(userID string, item Medi
 	if item.Type == "live_channel" {
 		resourceRequest.network = 1
 	}
-	resourceRelease, acquired := s.mediaResourceGovernor().tryAcquire(resourceRequest)
+	governor := s.mediaResourceGovernor()
+	var resourceRelease func()
+	var acquired bool
+	if !background {
+		governor.preemptBackgroundForPlayback()
+		admissionCtx, admissionCancel := context.WithTimeout(ctx, 2*time.Second)
+		resourceRelease, err = governor.acquireContext(admissionCtx, resourceRequest)
+		admissionCancel()
+		acquired = err == nil
+	} else {
+		resourceRelease, acquired = governor.tryAcquire(resourceRequest)
+	}
 	if !acquired {
 		return nil, errMediaResourcesBusy
 	}
@@ -1365,6 +1370,12 @@ func (s *Server) startTranscodeLockedWithInputTransport(userID string, item Medi
 	if err != nil {
 		return nil, err
 	}
+	generationOwned := true
+	defer func() {
+		if generationOwned {
+			_ = os.RemoveAll(sessionDir)
+		}
+	}()
 	manifest := filepath.Join(sessionDir, "index.m3u8")
 	segmentPattern := filepath.Join(sessionDir, "segment_%05d.ts")
 	segmentType := "mpegts"
@@ -1450,8 +1461,8 @@ func (s *Server) startTranscodeLockedWithInputTransport(userID string, item Medi
 		if segmentType == "mpegts" {
 			args = append(args, "-bsf:v", "h264_mp4toannexb")
 		}
-		if directStreamRemuxNeedsHVC1Tag(item) {
-			args = append(args, "-tag:v", "hvc1")
+		if videoTag := directStreamRemuxVideoTag(item); videoTag != "" {
+			args = append(args, "-tag:v", videoTag)
 		}
 	} else {
 		args = append(args, videoEncodingArgs(videoEncoder, preset, settings)...)
@@ -1515,6 +1526,7 @@ func (s *Server) startTranscodeLockedWithInputTransport(userID string, item Medi
 		cancel()
 		return nil, err
 	}
+	generationOwned = false
 	cancelOnError = false
 	stdin = nil
 	go monitorTranscodeBuffer(session)
@@ -2014,6 +2026,45 @@ func (s *Server) stopTranscodeSessions(sessions []*transcodeSession) {
 	}
 }
 
+func (s *Server) shutdownLegacyTranscodes(ctx context.Context) error {
+	s.transcodeMu.Lock()
+	sessions := make([]*transcodeSession, 0, len(s.transcodes))
+	for key, session := range s.transcodes {
+		if session != nil && session.supervisor == nil {
+			sessions = append(sessions, session)
+			delete(s.transcodes, key)
+		}
+	}
+	s.transcodeMu.Unlock()
+	if len(sessions) == 0 {
+		return nil
+	}
+	for _, session := range sessions {
+		session.requestStop()
+	}
+	type stopResult struct {
+		session *transcodeSession
+		err     error
+	}
+	results := make(chan stopResult, len(sessions))
+	for _, session := range sessions {
+		go func(session *transcodeSession) {
+			results <- stopResult{session: session, err: session.stopAndWait(1500 * time.Millisecond)}
+		}(session)
+	}
+	var joined error
+	for range sessions {
+		select {
+		case result := <-results:
+			_ = cleanupTranscodeSessionFiles(result.session)
+			joined = errors.Join(joined, result.err)
+		case <-ctx.Done():
+			return errors.Join(ctx.Err(), joined)
+		}
+	}
+	return joined
+}
+
 func (s *Server) noteTranscodeSegmentServed(session *transcodeSession, name string) {
 	session.noteRecoveryProgress()
 	removed, err := cleanupPlayedTranscodeSegments(session, name)
@@ -2413,6 +2464,7 @@ func (s *Server) readTranscodeManifestContext(ctx context.Context, session *tran
 		ctx = context.Background()
 	}
 	deadline := time.Now().Add(transcodeManifestReadTimeout(directStream))
+	var lastManifestErr error
 	for {
 		if err := ctx.Err(); err != nil {
 			return "", err
@@ -2420,16 +2472,25 @@ func (s *Server) readTranscodeManifestContext(ctx context.Context, session *tran
 		bytes, err := os.ReadFile(session.manifest)
 		if err == nil && len(bytes) > 0 {
 			manifest := string(bytes)
-			if transcodeManifestReadyForPlayback(session, manifest, directStream) {
+			lastManifestErr = validateGeneratedHLSManifest(session, manifest)
+			if lastManifestErr == nil && transcodeManifestReadyForPlayback(session, manifest, directStream) {
 				return rewriteMediaHLSManifest(mediaID, quality, subtitleID, startSeconds, audioMode, audioStreamID, directStream, accessToken, manifest), nil
 			}
+		} else if err != nil {
+			lastManifestErr = err
 		}
 		state := session.snapshot()
+		if session.completedSuccessfully() && lastManifestErr != nil {
+			return "", lastManifestErr
+		}
 		if time.Now().After(deadline) {
 			if state.err != nil || state.terminalErr != nil {
 				return "", session.transcodeError()
 			}
-			return "", err
+			if lastManifestErr != nil {
+				return "", lastManifestErr
+			}
+			return "", errors.New("HLS manifest did not become structurally ready")
 		}
 		wait := time.Until(deadline)
 		if wait > time.Second {
@@ -2458,6 +2519,110 @@ func (s *Server) readTranscodeManifestContext(ctx context.Context, session *tran
 		case <-timer.C:
 		}
 	}
+}
+
+func validateGeneratedHLSManifest(session *transcodeSession, manifest string) error {
+	if session == nil || strings.TrimSpace(session.dir) == "" {
+		return errors.New("HLS manifest has no bound output generation")
+	}
+	lines := strings.Split(manifest, "\n")
+	first := ""
+	targetDuration := 0.0
+	mediaSequence := false
+	pendingDuration := 0.0
+	segments := 0
+	seen := map[string]bool{}
+	for _, raw := range lines {
+		line := strings.TrimSpace(raw)
+		if line == "" {
+			continue
+		}
+		if first == "" {
+			first = line
+		}
+		switch {
+		case strings.HasPrefix(line, "#EXT-X-TARGETDURATION:"):
+			value := strings.TrimSpace(strings.TrimPrefix(line, "#EXT-X-TARGETDURATION:"))
+			parsed, err := strconv.ParseFloat(value, 64)
+			if err != nil || !isFinitePositive(parsed) {
+				return errors.New("HLS manifest has an invalid target duration")
+			}
+			targetDuration = parsed
+		case strings.HasPrefix(line, "#EXT-X-MEDIA-SEQUENCE:"):
+			value := strings.TrimSpace(strings.TrimPrefix(line, "#EXT-X-MEDIA-SEQUENCE:"))
+			parsed, err := strconv.ParseInt(value, 10, 64)
+			if err != nil || parsed < 0 {
+				return errors.New("HLS manifest has an invalid media sequence")
+			}
+			mediaSequence = true
+		case strings.HasPrefix(line, "#EXT-X-MAP:"):
+			name, ok := hlsManifestQuotedURI(line)
+			if !ok || name != filepath.Base(name) || name != "init.mp4" {
+				return errors.New("HLS manifest has an invalid initialization segment")
+			}
+			if err := validateGeneratedHLSSegmentFile(session.dir, name); err != nil {
+				return err
+			}
+		case strings.HasPrefix(line, "#EXTINF:"):
+			if pendingDuration > 0 {
+				return errors.New("HLS manifest has consecutive segment durations")
+			}
+			value := strings.TrimPrefix(line, "#EXTINF:")
+			if comma := strings.IndexByte(value, ','); comma >= 0 {
+				value = value[:comma]
+			}
+			parsed, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
+			if err != nil || !isFinitePositive(parsed) {
+				return errors.New("HLS manifest has an invalid segment duration")
+			}
+			pendingDuration = parsed
+		case strings.HasPrefix(line, "#"):
+			continue
+		default:
+			if pendingDuration <= 0 || targetDuration <= 0 || pendingDuration > targetDuration+0.001 {
+				return errors.New("HLS segment duration exceeds or lacks its target duration")
+			}
+			if line != filepath.Base(line) {
+				return errors.New("HLS manifest contains a non-local segment URI")
+			}
+			if _, ok := transcodeSegmentIndex(line); !ok || seen[line] {
+				return errors.New("HLS manifest contains an invalid or duplicate segment")
+			}
+			if err := validateGeneratedHLSSegmentFile(session.dir, line); err != nil {
+				return err
+			}
+			seen[line] = true
+			segments++
+			pendingDuration = 0
+		}
+	}
+	if first != "#EXTM3U" || targetDuration <= 0 || !mediaSequence || segments == 0 || pendingDuration > 0 {
+		return errors.New("HLS manifest is structurally incomplete")
+	}
+	return nil
+}
+
+func hlsManifestQuotedURI(line string) (string, bool) {
+	const marker = `URI="`
+	start := strings.Index(line, marker)
+	if start < 0 {
+		return "", false
+	}
+	start += len(marker)
+	end := strings.IndexByte(line[start:], '"')
+	if end < 0 {
+		return "", false
+	}
+	value := strings.TrimSpace(line[start : start+end])
+	return value, value != ""
+}
+
+func validateGeneratedHLSSegmentFile(dir, name string) error {
+	info, err := os.Stat(filepath.Join(dir, name))
+	if err != nil || info.IsDir() || info.Size() <= 0 {
+		return errors.New("HLS manifest references a missing or empty generated segment")
+	}
+	return nil
 }
 
 func transcodeManifestReadTimeout(directStream bool) time.Duration {
@@ -2567,11 +2732,24 @@ func rewriteMediaHLSManifest(mediaID, quality, subtitleID string, startSeconds i
 	return out.String()
 }
 
-func (s *Server) buildStaticMediaHLSManifest(item MediaItem, mediaID, quality, subtitleID string, startSeconds int, audioMode string, audioStreamID string, directStream bool, accessToken string) string {
+const maximumStaticHLSDurationSeconds = 24 * 60 * 60
+
+func staticHLSegmentCount(duration int) (int, error) {
+	if duration < 1 || duration > maximumStaticHLSDurationSeconds {
+		return 0, fmt.Errorf("HLS playback requires a duration between 1 second and %d hours", maximumStaticHLSDurationSeconds/(60*60))
+	}
+	count := (duration + hlsSegmentSeconds - 1) / hlsSegmentSeconds
+	if count < 1 || count > maximumStaticHLSDurationSeconds/hlsSegmentSeconds {
+		return 0, errors.New("HLS playback duration is outside the supported range")
+	}
+	return count, nil
+}
+
+func (s *Server) buildStaticMediaHLSManifest(item MediaItem, mediaID, quality, subtitleID string, startSeconds int, audioMode string, audioStreamID string, directStream bool, accessToken string) (string, error) {
 	duration := max(1, item.DurationSeconds)
-	segmentCount := int(math.Ceil(float64(duration) / float64(hlsSegmentSeconds)))
-	if segmentCount <= 0 {
-		segmentCount = 1
+	segmentCount, err := staticHLSegmentCount(duration)
+	if err != nil {
+		return "", err
 	}
 	// VOD manifests always describe the complete media timeline. Resume and seek
 	// positions are client concerns; segment demand repositions the producer.
@@ -2607,47 +2785,158 @@ func (s *Server) buildStaticMediaHLSManifest(item MediaItem, mediaID, quality, s
 		out.WriteByte('\n')
 	}
 	out.WriteString("#EXT-X-ENDLIST\n")
-	return out.String()
+	return out.String(), nil
 }
 
 func buildMediaHLSMasterManifest(item MediaItem, mediaID, quality, textSubtitleID string, startSeconds int, audioMode string, audioStreamID string, directStream bool, accessToken, cacheKey, mediaPlaylist string) string {
+	return buildMediaHLSMasterManifestWithBandwidth(item, mediaID, quality, textSubtitleID, startSeconds, audioMode, audioStreamID, directStream, accessToken, cacheKey, mediaPlaylist, hlsBandwidthMeasurement{})
+}
+
+type hlsBandwidthMeasurement struct {
+	PeakBitsPerSecond    int
+	AverageBitsPerSecond int
+}
+
+func measureGeneratedHLSBandwidth(session *transcodeSession) hlsBandwidthMeasurement {
+	if session == nil || strings.TrimSpace(session.manifest) == "" || strings.TrimSpace(session.dir) == "" {
+		return hlsBandwidthMeasurement{}
+	}
+	raw, err := os.ReadFile(session.manifest)
+	if err != nil {
+		return hlsBandwidthMeasurement{}
+	}
+	pendingDuration := 0.0
+	totalDuration := 0.0
+	totalBits := float64(0)
+	peak := float64(0)
+	for _, rawLine := range strings.Split(string(raw), "\n") {
+		line := strings.TrimSpace(rawLine)
+		if strings.HasPrefix(line, "#EXTINF:") {
+			value := strings.TrimPrefix(line, "#EXTINF:")
+			if comma := strings.IndexByte(value, ','); comma >= 0 {
+				value = value[:comma]
+			}
+			pendingDuration, _ = strconv.ParseFloat(strings.TrimSpace(value), 64)
+			continue
+		}
+		if line == "" || strings.HasPrefix(line, "#") || pendingDuration <= 0 || line != filepath.Base(line) {
+			continue
+		}
+		if _, ok := transcodeSegmentIndex(line); !ok {
+			pendingDuration = 0
+			continue
+		}
+		info, statErr := os.Stat(filepath.Join(session.dir, line))
+		if statErr != nil || info.IsDir() || info.Size() <= 0 {
+			pendingDuration = 0
+			continue
+		}
+		bits := float64(info.Size()) * 8
+		rate := bits / pendingDuration
+		if rate > peak {
+			peak = rate
+		}
+		totalBits += bits
+		totalDuration += pendingDuration
+		pendingDuration = 0
+	}
+	if totalDuration <= 0 || peak <= 0 {
+		return hlsBandwidthMeasurement{}
+	}
+	return hlsBandwidthMeasurement{
+		PeakBitsPerSecond:    int(math.Ceil(peak)),
+		AverageBitsPerSecond: int(math.Ceil(totalBits / totalDuration)),
+	}
+}
+
+func buildMediaHLSMasterManifestWithBandwidth(item MediaItem, mediaID, quality, textSubtitleID string, startSeconds int, audioMode string, audioStreamID string, directStream bool, accessToken, cacheKey, mediaPlaylist string, measured hlsBandwidthMeasurement) string {
 	startSeconds = 0
 	cacheKey = ""
 	video := firstStreamOfKind(item.Streams, "video")
+	audio := selectedAudioStreamOrDefault(item, audioStreamID)
 	subtitle := streamByID(item.Streams, textSubtitleID)
 	name := firstNonEmpty(subtitle.DisplayTitle, subtitle.Language, "Subtitles")
 	language := strings.TrimSpace(subtitle.Language)
-	bandwidth := max(1_000_000, video.Bitrate)
-	if audio := firstStreamOfKind(item.Streams, "audio"); audio.Bitrate > 0 {
-		bandwidth += audio.Bitrate
+	averageBandwidth := max(1_000_000, video.Bitrate)
+	if audio.Bitrate > 0 {
+		averageBandwidth += audio.Bitrate
 	}
-	if bandwidth < 10_000 {
-		bandwidth *= 1000
+	if averageBandwidth < 10_000 {
+		averageBandwidth *= 1000
 	}
-	subtitleURI := mediaHLSSubtitlePlaylistRoute(mediaID, textSubtitleID, startSeconds, accessToken, cacheKey)
+	// Source probes expose representative bitrate rather than a measured peak.
+	// Advertise a conservative peak envelope instead of mislabelling an encoder
+	// target as BANDWIDTH; finalized output probing can tighten it later.
+	bandwidth := averageBandwidth + max(1, averageBandwidth/10)
+	if measured.AverageBitsPerSecond > 0 && measured.PeakBitsPerSecond >= measured.AverageBitsPerSecond {
+		averageBandwidth = measured.AverageBitsPerSecond
+		bandwidth = measured.PeakBitsPerSecond
+	}
+	videoCodec := video.Codec
+	videoRange := hlsVideoRange(video)
+	outputWidth, outputHeight := video.Width, video.Height
+	if !directStream {
+		videoCodec = "h264"
+		videoRange = "SDR"
+		outputWidth, outputHeight = hlsTranscodeGeometry(video, quality)
+	}
+	audioCodec := audio.Codec
+	if normalizeTranscodeAudioMode(audioMode) == "transcode" && audio.ID != "" {
+		audioCodec = "aac"
+	}
+	codecs := hlsCodecListForStream(video, videoCodec, audioCodec)
+	subtitleURI := ""
+	if textSubtitleID != "" {
+		subtitleURI = mediaHLSSubtitlePlaylistRoute(mediaID, textSubtitleID, startSeconds, accessToken, cacheKey)
+	}
 	var out strings.Builder
 	out.WriteString("#EXTM3U\n")
 	out.WriteString("#EXT-X-VERSION:7\n")
-	out.WriteString(`#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="subs",NAME="`)
-	out.WriteString(hlsQuoteAttribute(name))
-	out.WriteString(`",DEFAULT=YES,AUTOSELECT=YES`)
-	if language != "" {
-		out.WriteString(`,LANGUAGE="`)
-		out.WriteString(hlsQuoteAttribute(language))
-		out.WriteString(`"`)
+	if subtitleURI != "" {
+		out.WriteString(`#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="subs",NAME="`)
+		out.WriteString(hlsQuoteAttribute(name))
+		out.WriteString(`",DEFAULT=YES,AUTOSELECT=YES,FORCED=`)
+		if subtitle.Forced {
+			out.WriteString("YES")
+		} else {
+			out.WriteString("NO")
+		}
+		if language != "" {
+			out.WriteString(`,LANGUAGE="`)
+			out.WriteString(hlsQuoteAttribute(language))
+			out.WriteString(`"`)
+		}
+		out.WriteString(`,URI="`)
+		out.WriteString(hlsQuoteAttribute(subtitleURI))
+		out.WriteString("\"\n")
 	}
-	out.WriteString(`,URI="`)
-	out.WriteString(hlsQuoteAttribute(subtitleURI))
-	out.WriteString("\"\n")
 	out.WriteString("#EXT-X-STREAM-INF:BANDWIDTH=")
 	out.WriteString(strconv.Itoa(bandwidth))
-	if video.Width > 0 && video.Height > 0 {
-		out.WriteString(",RESOLUTION=")
-		out.WriteString(strconv.Itoa(video.Width))
-		out.WriteString("x")
-		out.WriteString(strconv.Itoa(video.Height))
+	out.WriteString(",AVERAGE-BANDWIDTH=")
+	out.WriteString(strconv.Itoa(averageBandwidth))
+	if codecs != "" {
+		out.WriteString(`,CODECS="`)
+		out.WriteString(hlsQuoteAttribute(codecs))
+		out.WriteString(`"`)
 	}
-	out.WriteString(`,SUBTITLES="subs"`)
+	if outputWidth > 0 && outputHeight > 0 {
+		out.WriteString(",RESOLUTION=")
+		out.WriteString(strconv.Itoa(outputWidth))
+		out.WriteString("x")
+		out.WriteString(strconv.Itoa(outputHeight))
+	}
+	if video.FrameRate > 0 {
+		out.WriteString(",FRAME-RATE=")
+		out.WriteString(strings.TrimRight(strings.TrimRight(strconv.FormatFloat(video.FrameRate, 'f', 3, 64), "0"), "."))
+	}
+	if videoRange != "" {
+		out.WriteString(",VIDEO-RANGE=")
+		out.WriteString(videoRange)
+	}
+	if subtitleURI != "" {
+		out.WriteString(`,SUBTITLES="subs"`)
+	}
+	out.WriteString(",CLOSED-CAPTIONS=NONE")
 	out.WriteByte('\n')
 	out.WriteString(mediaHLSVariantRoute(mediaID, quality, startSeconds, audioMode, audioStreamID, directStream, accessToken))
 	out.WriteByte('\n')
@@ -2655,6 +2944,121 @@ func buildMediaHLSMasterManifest(item MediaItem, mediaID, quality, textSubtitleI
 		out.WriteString("# PORTICO-MEDIA-PLAYLIST-READY\n")
 	}
 	return out.String()
+}
+
+func hlsTranscodeGeometry(video Stream, quality string) (width, height int) {
+	width, height = video.Width, video.Height
+	preset, ok := transcodePresets[normalizeTranscodeQuality(quality)]
+	if !ok || preset.height <= 0 || height <= 0 || width <= 0 || height <= preset.height {
+		return width, height
+	}
+	height = preset.height
+	width = int(math.Round(float64(video.Width) * float64(height) / float64(video.Height)))
+	// FFmpeg scale=-2 rounds the derived axis to a codec-safe even value.
+	if width%2 != 0 {
+		width++
+	}
+	return width, height
+}
+
+func hlsCodecList(videoCodec, videoProfile, audioCodec string) string {
+	var codecs []string
+	switch normalizeCodec(videoCodec) {
+	case "h264", "avc1":
+		switch strings.ToLower(strings.TrimSpace(videoProfile)) {
+		case "baseline", "constrained baseline":
+			codecs = append(codecs, "avc1.42E01F")
+		case "main":
+			codecs = append(codecs, "avc1.4D401F")
+		default:
+			codecs = append(codecs, "avc1.640028")
+		}
+	case "hevc", "h265", "hvc1":
+		if strings.Contains(strings.ToLower(videoProfile), "10") {
+			codecs = append(codecs, "hvc1.2.4.L153.B0")
+		} else {
+			codecs = append(codecs, "hvc1.1.6.L120.B0")
+		}
+	case "vp9", "vp09":
+		codecs = append(codecs, "vp09.00.41.08")
+	case "av1", "av01":
+		codecs = append(codecs, "av01.0.08M.08")
+	}
+	switch normalizeCodec(audioCodec) {
+	case "aac":
+		codecs = append(codecs, "mp4a.40.2")
+	case "ac3":
+		codecs = append(codecs, "ac-3")
+	case "eac3":
+		codecs = append(codecs, "ec-3")
+	case "opus":
+		codecs = append(codecs, "opus")
+	}
+	return strings.Join(codecs, ",")
+}
+
+func hlsCodecListForStream(video Stream, outputVideoCodec, outputAudioCodec string) string {
+	profile, _ := strconv.Atoi(strings.TrimSpace(video.DolbyVisionProfile))
+	if profile > 0 && normalizeCodec(outputVideoCodec) == "hevc" {
+		if video.HLSSampleEntry != "dvh1" || video.DolbyVisionLevel <= 0 {
+			return ""
+		}
+		videoCodec := fmt.Sprintf("dvh1.%02d.%02d", profile, video.DolbyVisionLevel)
+		audioOnly := hlsCodecList("", "", outputAudioCodec)
+		if audioOnly != "" {
+			return videoCodec + "," + audioOnly
+		}
+		return videoCodec
+	}
+	return hlsCodecList(outputVideoCodec, video.Profile, outputAudioCodec)
+}
+
+func (s *Server) hlsItemWithVerifiedDolbyVisionEvidence(ctx context.Context, item MediaItem, directStream bool) (MediaItem, error) {
+	video := firstStreamOfKind(item.Streams, "video")
+	if !directStream || strings.TrimSpace(video.DolbyVisionProfile) == "" {
+		return item, nil
+	}
+	facts, _, err := s.mediaFactsForPlayback(ctx, item)
+	if err != nil {
+		return MediaItem{}, errors.New("Dolby Vision HLS requires current probed sample-entry and profile evidence")
+	}
+	for _, fact := range facts.Video {
+		if fact.Index != video.Index || fact.DolbyVision == nil {
+			continue
+		}
+		dv := fact.DolbyVision
+		if dv.Profile <= 0 || dv.Level <= 0 || !dv.RPUKnown || !dv.RPU || strings.TrimSpace(dv.Evidence) == "" {
+			break
+		}
+		copy := item
+		copy.Streams = append([]Stream(nil), item.Streams...)
+		for index := range copy.Streams {
+			if copy.Streams[index].Kind == "video" && copy.Streams[index].Index == fact.Index {
+				copy.Streams[index].DolbyVisionProfile = strconv.Itoa(dv.Profile)
+				copy.Streams[index].DolbyVisionLevel = dv.Level
+				// The canonical Apple premium HLS remux writes dvh1. The
+				// master describes that generated sample entry, never a generic
+				// HEVC tag or the provider's input sample entry.
+				copy.Streams[index].HLSSampleEntry = "dvh1"
+				return copy, nil
+			}
+		}
+	}
+	return MediaItem{}, errors.New("Dolby Vision HLS output sample-entry or profile evidence is incomplete")
+}
+
+func hlsVideoRange(video Stream) string {
+	rangeValue := strings.ToLower(strings.TrimSpace(video.DynamicRange))
+	transfer := strings.ToLower(strings.TrimSpace(video.ColorTransfer))
+	switch {
+	case rangeValue == "hlg" || strings.Contains(transfer, "arib-std-b67") || strings.Contains(transfer, "hlg"):
+		return "HLG"
+	case rangeValue == "pq", rangeValue == "hdr10", rangeValue == "hdr10plus", rangeValue == "dolby_vision",
+		strings.Contains(transfer, "smpte2084") || strings.Contains(transfer, "pq"):
+		return "PQ"
+	default:
+		return "SDR"
+	}
 }
 
 func rewriteMediaHLSMapLine(mediaID, quality, subtitleID string, startSeconds int, audioMode string, audioStreamID string, directStream bool, accessToken, line string) string {
@@ -2821,6 +3225,20 @@ func (s *Server) sourcePathForHLSTranscode(item MediaItem) (string, error) {
 		return "", errors.New("no media source is available for HLS playback")
 	}
 	parsed, err := url.Parse(sourceURL)
+	if err == nil && parsed.Scheme == "portico-storage" {
+		sourceID, objectPath, parseErr := parseRemoteStorageLocator(sourceURL)
+		if parseErr != nil {
+			return "", parseErr
+		}
+		var exists int
+		if queryErr := s.queryBackgroundRow(context.Background(), `SELECT COUNT(*) FROM storage_remote_objects object JOIN storage_sources source ON source.id=object.source_id WHERE object.source_id=? AND object.object_path=? AND object.missing_since='' AND source.library_id=?`, sourceID, objectPath, item.LibraryID).Scan(&exists); queryErr != nil || exists != 1 {
+			if queryErr != nil {
+				return "", queryErr
+			}
+			return "", errors.New("remote storage source is unavailable")
+		}
+		return sourceURL, nil
+	}
 	if err == nil && (parsed.Scheme == "http" || parsed.Scheme == "https") {
 		if hlsTranscodeAllowsHDHomeRunLAN(item) {
 			validated, err := validateHDHomeRunURL(sourceURL)
@@ -3345,12 +3763,19 @@ func directStreamRemuxUsesFragmentedMP4(item MediaItem) bool {
 }
 
 func directStreamRemuxNeedsHVC1Tag(item MediaItem) bool {
+	return directStreamRemuxVideoTag(item) == "hvc1"
+}
+
+func directStreamRemuxVideoTag(item MediaItem) string {
 	video := firstStreamOfKind(item.Streams, "video")
+	if strings.TrimSpace(video.DolbyVisionProfile) != "" {
+		return "dvh1"
+	}
 	switch normalizeCodec(video.Codec) {
 	case "hevc", "h265":
-		return true
+		return "hvc1"
 	default:
-		return false
+		return ""
 	}
 }
 

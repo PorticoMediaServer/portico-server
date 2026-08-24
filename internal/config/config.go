@@ -20,6 +20,10 @@ const (
 	// secret boundary. Owners may override them.
 	DefaultTMDBReadAccessToken = "eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiI2OGE5Y2M5ZGNhNjJkMDg2ZWEzZWQwNTg1YmMwZDcyYyIsIm5iZiI6MTc3NzU4Njc3MS44MzIsInN1YiI6IjY5ZjNkMjUzMTA2ODk0N2I0NmZiZDUwZiIsInNjb3BlcyI6WyJhcGlfcmVhZCJdLCJ2ZXJzaW9uIjoxfQ.AmRWVmPw6MJOYp5jv83nvOYJUWXRx1YsoEtUDDQht_8" // gitleaks:allow -- intentionally distributed TMDB application credential
 	DefaultTMDBAPIKey          = "68a9cc9dca62d086ea3ed0585bc0d72c"                                                                                                                                                                                                                // gitleaks:allow -- intentionally distributed TMDB application credential
+	// DefaultTVDBAPIKey is Portico's intentionally distributed TheTVDB v4
+	// project key. It identifies the shipped application, not an owner or a
+	// server installation, and is therefore not a secret boundary.
+	DefaultTVDBAPIKey = "a38235b5-2200-4875-9128-08e0c662c54d" // gitleaks:allow -- intentionally distributed TheTVDB application credential
 )
 
 type Config struct {
@@ -60,6 +64,8 @@ type Config struct {
 	TMDBReadAccessToken      string
 	TMDBAPIKey               string
 	TMDBBaseURL              string
+	TVDBAPIKey               string
+	TVDBBaseURL              string
 	AniListBaseURL           string
 	MusicBrainzBaseURL       string
 	CoverArtArchiveBaseURL   string
@@ -119,6 +125,8 @@ func Load() Config {
 		TMDBReadAccessToken:      tmdbReadAccessToken,
 		TMDBAPIKey:               tmdbAPIKey,
 		TMDBBaseURL:              strings.TrimRight(getenv("PORTICO_TMDB_BASE_URL", "https://api.themoviedb.org/3"), "/"),
+		TVDBAPIKey:               strings.TrimSpace(getenv("PORTICO_TVDB_API_KEY", DefaultTVDBAPIKey)),
+		TVDBBaseURL:              strings.TrimRight(getenv("PORTICO_TVDB_BASE_URL", "https://api4.thetvdb.com/v4"), "/"),
 		AniListBaseURL:           strings.TrimRight(getenv("PORTICO_ANILIST_BASE_URL", "https://graphql.anilist.co"), "/"),
 		MusicBrainzBaseURL:       strings.TrimRight(getenv("PORTICO_MUSICBRAINZ_BASE_URL", "https://musicbrainz.org/ws/2"), "/"),
 		CoverArtArchiveBaseURL:   strings.TrimRight(getenv("PORTICO_COVER_ART_ARCHIVE_BASE_URL", "https://coverartarchive.org"), "/"),
@@ -222,6 +230,13 @@ func LoadRuntimePaths(path string) (RuntimePaths, error) {
 			return paths, nil
 		}
 		return paths, err
+	}
+	// The private-path bootstrap creates lifecycle files before SQLite opens so
+	// they cannot inherit unsafe permissions. A fresh install therefore has an
+	// empty config file until the owner changes a runtime path; that file has
+	// the same meaning as an absent config.
+	if len(strings.TrimSpace(string(body))) == 0 {
+		return paths, nil
 	}
 	if err := json.Unmarshal(body, &paths); err != nil {
 		return paths, err

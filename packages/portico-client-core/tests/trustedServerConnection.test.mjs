@@ -32,7 +32,9 @@ function sortJSONValue(value) {
 
 function signedRouteDocument(document) {
   const unsigned = {
+    kind: "route-document",
     documentVersion: 1,
+    endpointGeneration: 1,
     audience: "portico-media-server",
     signatureAlgorithm: "ed25519",
     signatureKeyId: hostedDocumentTestKeyId,
@@ -1383,6 +1385,9 @@ test("discovery-winner publication veto stops the resilient race without cached 
 test("generic auth errors and transient failures are not treated as revocation", () => {
   assert.equal(isTerminalServerAuthorizationFailure(new ApiError(401, "invalid_refresh_token", "Expired.")), false);
   assert.equal(isTerminalServerAuthorizationFailure(new ApiError(503, "temporarily_unavailable", "Offline.")), false);
+  for (const code of ["credential_revoked", "refresh_reused", "account_deleted", "profile_deleted", "membership_removed"]) {
+    assert.equal(isTerminalServerAuthorizationFailure(new ApiError(401, code, "Revoked.")), true, code);
+  }
   assert.equal(isTerminalServerAuthorizationFailure(new ApiError(403, "membership_inactive", "Revoked.")), true);
   assert.equal(isTerminalServerAuthorizationFailure(new TypeError("Network request failed")), false);
 });

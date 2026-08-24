@@ -1,11 +1,11 @@
-import type { BackupInfo, ScheduledTask, SystemStorageReport } from '@porticomediaserver/client-core';
+import type { BackupInfo, ScheduledTask, SystemReleaseInfo, SystemStorageReport } from '@porticomediaserver/client-core';
 import { AlertTriangle, ArchiveRestore, CheckCircle2, Clock3, DatabaseBackup, HardDrive, Play, RefreshCw } from '#portico-icons';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { PrimaryButton, SecondaryButton } from '../../components/controls/Buttons';
 import { reviewedProductErrorText } from '../../components/ProductLanguage';
 import { InlineNotice, SettingsGroup, ToggleControl } from './SettingsControls';
 import { useAbortableMutation } from './settingsHooks';
-import type { RestoreWorkflowResponse, SettingsDataSource } from './settingsTypes';
+import type { RestoreWorkflowResponse, SettingsDataSource, SettingsOperationalSnapshot } from './settingsTypes';
 
 function bytes(value: number): string {
   const units = ['B', 'KB', 'MB', 'GB', 'TB'];
@@ -305,12 +305,23 @@ function StoragePanel({ storage }: { storage: SystemStorageReport }) {
   </SettingsGroup>;
 }
 
-function UpdaterPanel() {
-  return <SettingsGroup title="Server updates" description="Portico will support supervised server updates from this page in a future release.">
-    <div className="portico-settings-actions"><SecondaryButton disabled><RefreshCw /> Update</SecondaryButton><span className="portico-setting-readonly">This feature is not yet available.</span></div>
+function UpdaterPanel({ release }: { release?: SystemReleaseInfo }) {
+  const installMethod = release?.installMethod?.trim() || 'Installation method not reported';
+  const status = release?.updateStatus || 'unavailable';
+  return <SettingsGroup title="Server updates" description="Update controls appear only when this installed distribution advertises a verified updater.">
+    <div className="portico-settings-actions portico-update-status" role="status">
+      <span className="portico-setting-readonly"><strong>Updates unavailable</strong><small>{installMethod} · release state: {status}</small></span>
+      <span className="portico-setting-readonly">Use the documented update procedure for this installation.</span>
+    </div>
   </SettingsGroup>;
 }
 
-export function MaintenanceOperations({ tasks, backups, storage, source, onChanged }: { tasks: ScheduledTask[]; backups: BackupInfo[]; storage: SystemStorageReport; source: SettingsDataSource; onChanged: () => void }) {
-  return <div className="portico-settings-form"><UpdaterPanel /><TasksPanel tasks={tasks} source={source} onChanged={onChanged} /><BackupsPanel backups={backups} source={source} onChanged={onChanged} /><StoragePanel storage={storage} /></div>;
+export function MaintenanceOperations({ tasks, backups, storage, release, failures, source, onChanged }: { tasks: ScheduledTask[]; backups: BackupInfo[]; storage: SystemStorageReport; release?: SystemReleaseInfo; failures?: SettingsOperationalSnapshot['failures']; source: SettingsDataSource; onChanged: () => void }) {
+  const unavailable = (title: string) => <SettingsGroup title={title} description="This panel could not be refreshed independently."><div className="portico-settings-state error"><AlertTriangle /><strong>{title} are unavailable</strong><p>Retry the failed panel before making changes. No empty result is being inferred.</p></div></SettingsGroup>;
+  return <div className="portico-settings-form">
+    {failures?.release ? unavailable('Server updates') : <UpdaterPanel release={release} />}
+    {failures?.tasks ? unavailable('Scheduled tasks') : <TasksPanel tasks={tasks} source={source} onChanged={onChanged} />}
+    {failures?.backups ? unavailable('Backups') : <BackupsPanel backups={backups} source={source} onChanged={onChanged} />}
+    {failures?.storage ? unavailable('Storage') : <StoragePanel storage={storage} />}
+  </div>;
 }

@@ -36,7 +36,7 @@ func (s *Server) resolveAuthorizedDVRLiveTVReference(ctx context.Context, user U
 		return authorizedDVRLiveTVReference{}, errDVRLiveTVReferenceDenied
 	}
 	var sourceEnabled int
-	if err := s.queryUserRow(ctx, `SELECT enabled FROM live_tv_sources WHERE id = ?`, ref.SourceID).Scan(&sourceEnabled); err != nil || sourceEnabled != 1 {
+	if err := s.queryUserRow(ctx, `SELECT enabled FROM live_tv_sources WHERE id = ?`, ref.SourceID).Scan(&sourceEnabled); err != nil || requirePlayableChannel && sourceEnabled != 1 {
 		return authorizedDVRLiveTVReference{}, errDVRLiveTVReferenceDenied
 	}
 	if ref.ChannelID == "" {
@@ -47,7 +47,7 @@ func (s *Server) resolveAuthorizedDVRLiveTVReference(ctx context.Context, user U
 	}
 	var channelSourceID, streamURL string
 	var channelEnabled int
-	if err := s.queryUserRow(ctx, `SELECT source_id, enabled, stream_url FROM live_tv_channels WHERE id = ?`, ref.ChannelID).Scan(&channelSourceID, &channelEnabled, &streamURL); err != nil || channelSourceID != ref.SourceID || channelEnabled != 1 || requirePlayableChannel && strings.TrimSpace(streamURL) == "" {
+	if err := s.queryUserRow(ctx, `SELECT source_id, enabled, stream_url FROM live_tv_channels WHERE id = ?`, ref.ChannelID).Scan(&channelSourceID, &channelEnabled, &streamURL); err != nil || channelSourceID != ref.SourceID || requirePlayableChannel && (channelEnabled != 1 || strings.TrimSpace(streamURL) == "") {
 		return authorizedDVRLiveTVReference{}, errDVRLiveTVReferenceDenied
 	}
 	policy, err := s.userLiveTVChannelPolicyContext(ctx, accountIDForUser(user))

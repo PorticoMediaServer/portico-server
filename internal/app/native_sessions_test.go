@@ -3,7 +3,6 @@ package app
 import (
 	"bytes"
 	"database/sql"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"io"
@@ -144,7 +143,7 @@ func TestNativeSessionRevokeEndpointIsIdempotentAndRevokesAccess(t *testing.T) {
 	assertBearerAuthenticated(t, http.DefaultClient, serverURL, credentials.AccessToken, false)
 }
 
-func TestNativeCredentialEntropyFailureClosesSessionAndTVSetup(t *testing.T) {
+func TestNativeCredentialEntropyFailureClosesSession(t *testing.T) {
 	serverURL, db, server := newAuthTestServerWithInstance(t)
 	server.nativeCredentialEntropy = failingQuickConnectReader{}
 	status, body := doJSON(t, http.DefaultClient, http.MethodPost, serverURL+"/api/auth/sessions", NativeSessionCreateRequest{
@@ -157,12 +156,6 @@ func TestNativeCredentialEntropyFailureClosesSessionAndTVSetup(t *testing.T) {
 	var refreshCount int
 	if err := db.QueryRow(`SELECT COUNT(*) FROM native_refresh_tokens`).Scan(&refreshCount); err != nil || refreshCount != 0 {
 		t.Fatalf("refresh rows after entropy failure=%d err=%v", refreshCount, err)
-	}
-	status, body = doJSON(t, http.DefaultClient, http.MethodPost, serverURL+"/api/auth/tv-setup/sessions", TVSetupSessionRequest{
-		InstallationID: "tv-entropy-fail-0001", DevicePublicKey: validTVSetupPublicKeyForTest(t),
-	}, nil)
-	if status != http.StatusInternalServerError || !strings.Contains(body, "tv_setup_entropy_unavailable") {
-		t.Fatalf("tv setup entropy failure status=%d body=%s", status, body)
 	}
 }
 
@@ -239,7 +232,7 @@ func TestNativeCredentialKeyConcurrentCreationReturnsOneStableKey(t *testing.T) 
 	}
 }
 
-func TestSharedDeviceExchangeReceiptRecoveryRejectsBothFlowsAtTTLBoundary(t *testing.T) {
+func TestQuickConnectExchangeReceiptRecoveryRejectsAtTTLBoundary(t *testing.T) {
 	now := time.Date(2026, time.July, 13, 12, 0, 0, 0, time.UTC)
 	insideBoundary := now.Add(-nativeExchangeReceiptTTL).Add(time.Nanosecond).Format(time.RFC3339Nano)
 	atBoundary := now.Add(-nativeExchangeReceiptTTL).Format(time.RFC3339Nano)
@@ -252,10 +245,6 @@ func TestSharedDeviceExchangeReceiptRecoveryRejectsBothFlowsAtTTLBoundary(t *tes
 	quick := quickConnectConsumeResult{Status: "consumed", ReceiptID: "rft_receipt", ConsumedAt: atBoundary}
 	if err := validateQuickConnectExchangeState(quick, now); !errors.Is(err, errQuickConnectAlreadyUsed) {
 		t.Fatalf("Quick Connect boundary error=%v", err)
-	}
-	tv := tvSetupSessionRecord{Status: "redeemed", NativeRefreshTokenID: "rft_receipt", RedeemedAt: atBoundary}
-	if err := validateTVSetupExchangeState(tv, now); !errors.Is(err, errTVSetupGrantUsed) {
-		t.Fatalf("TV setup boundary error=%v", err)
 	}
 }
 
@@ -409,11 +398,4 @@ func nativeKeyTestServer(t *testing.T) (*Server, string) {
 		t.Fatal(err)
 	}
 	return &Server{cfg: config.Config{AppDataDir: appData}}, filepath.Join(dir, "native-session-hmac.key")
-}
-
-func validTVSetupPublicKeyForTest(t *testing.T) string {
-	t.Helper()
-	bytes := make([]byte, 32)
-	bytes[0] = 9
-	return base64.RawURLEncoding.EncodeToString(bytes)
 }

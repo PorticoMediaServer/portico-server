@@ -87,7 +87,38 @@ func TestPruneExpiredDVRRecordingsDeletesFilesAndRows(t *testing.T) {
 	}, nowText); err != nil {
 		t.Fatalf("import recording media: %v", err)
 	}
+	if _, err := server.deleteLiveTVSource("src_test"); !errors.Is(err, errLiveTVSourceHasRecordings) {
+		t.Fatalf("source deletion with retained recording error = %v", err)
+	}
+	if _, err := os.Stat(recordingPath); err != nil {
+		t.Fatalf("source deletion touched retained recording file: %v", err)
+	}
+	mediaID := dvrRecordingMediaID("rec_old")
+	releasePlaybackUse := server.acquireDVRPlaybackUse("rec_old")
+	releasePlaybackUse(true)
 	removed, err := server.pruneExpiredDVRRecordings()
+	if err != nil {
+		t.Fatalf("prune recently streamed dvr recording: %v", err)
+	}
+	if removed != 0 {
+		t.Fatalf("recently streamed recording was removed: %d", removed)
+	}
+	server.dvrPlaybackMu.Lock()
+	server.dvrPlaybackLastSeen["rec_old"] = time.Now().UTC().Add(-dvrPlaybackRetentionGrace - time.Second)
+	server.dvrPlaybackMu.Unlock()
+	server.transcodes = map[string]*transcodeSession{"active-dvr": {mediaID: mediaID, done: make(chan struct{})}}
+	removed, err = server.pruneExpiredDVRRecordings()
+	if err != nil {
+		t.Fatalf("prune active dvr recording: %v", err)
+	}
+	if removed != 0 {
+		t.Fatalf("active recording was removed: %d", removed)
+	}
+	if _, err := os.Stat(recordingPath); err != nil {
+		t.Fatalf("active recording file was removed: %v", err)
+	}
+	server.transcodes = map[string]*transcodeSession{}
+	removed, err = server.pruneExpiredDVRRecordings()
 	if err != nil {
 		t.Fatalf("prune dvr recordings: %v", err)
 	}
@@ -215,6 +246,43 @@ func TestImportDVRRecordingCreatesRecordedTVLibraryMediaAndSearch(t *testing.T) 
 	}
 	if searchCount != 1 {
 		t.Fatalf("search count = %d, expected 1", searchCount)
+	}
+}
+
+func TestReconcileCompletedDVRMediaRepairsInterruptedCatalogImport(t *testing.T) {
+	server := newScannerTestServer(t)
+	user := dvrTestUser(t, server)
+	now := time.Now().UTC()
+	nowText := now.Format(time.RFC3339)
+	path := filepath.Join(server.cfg.AppDataDir, "recordings", "repair.mp4")
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("recording"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := server.db.Exec(`INSERT INTO live_tv_sources(id,name,type,enabled,created_at,updated_at) VALUES('src_repair','Repair','m3u',1,?,?)`, nowText, nowText); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := server.db.Exec(`
+		INSERT INTO live_tv_recordings(id,user_id,profile_id,source_id,title,status,starts_at,ends_at,path,size_bytes,created_at,updated_at)
+		VALUES('rec_repair',?,?,'src_repair','Recovered recording','complete',?,?,?,?,?,?)`,
+		user.ID, viewerProfileID(user), now.Add(-time.Hour).Format(time.RFC3339), nowText, path, 9, nowText, nowText); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.reconcileCompletedDVRMedia(context.Background(), nowText); err != nil {
+		t.Fatal(err)
+	}
+	var mediaID string
+	if err := server.db.QueryRow(`SELECT media_id FROM dvr_recording_media WHERE recording_id='rec_repair'`).Scan(&mediaID); err != nil {
+		t.Fatalf("missing repaired media mapping: %v", err)
+	}
+	if mediaID != dvrRecordingMediaID("rec_repair") {
+		t.Fatalf("media id=%q", mediaID)
+	}
+	// Reconciliation is intentionally idempotent.
+	if err := server.reconcileCompletedDVRMedia(context.Background(), nowText); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -381,6 +449,14 @@ func TestDeleteDVRRecordingRemovesFinishedRecordingFileAndMedia(t *testing.T) {
 	if err := server.importDVRRecordingMedia(recording, nowText); err != nil {
 		t.Fatalf("import recording media: %v", err)
 	}
+	releasePlayback := server.acquireDVRPlaybackUse(recording.ID)
+	if err := server.deleteDVRRecording(recording.ID); !errors.Is(err, errDVRRecordingInUse) {
+		t.Fatalf("active recording delete error = %v, want in-use conflict", err)
+	}
+	if _, err := os.Stat(recordingPath); err != nil {
+		t.Fatalf("active recording file was touched: %v", err)
+	}
+	releasePlayback(false)
 	if err := server.deleteDVRRecording(recording.ID); err != nil {
 		t.Fatalf("delete recording: %v", err)
 	}
@@ -423,6 +499,28 @@ func TestDeleteDVRRecordingRemovesFinishedRecordingFileAndMedia(t *testing.T) {
 	}
 	if err := server.deleteDVRRecording(running.ID); err == nil || !strings.Contains(err.Error(), "Running recordings") {
 		t.Fatalf("expected running delete error, got %v", err)
+	}
+}
+
+func TestLiveTVSourceDeletionRejectsActiveAllocation(t *testing.T) {
+	server := newScannerTestServer(t)
+	now := time.Now().UTC().Format(time.RFC3339)
+	if _, err := server.db.Exec(`INSERT INTO live_tv_sources (id,name,type,created_at,updated_at) VALUES ('source_active_delete','Active source','m3u',?,?)`, now, now); err != nil {
+		t.Fatal(err)
+	}
+	insertDVRTestChannel(t, server, "source_active_delete", "channel_active_delete", now)
+	if _, err := server.db.Exec(`
+		INSERT INTO live_tv_tuner_allocations
+			(id,source_id,channel_id,allocation_kind,consumer_id,allocation_key,lease_token,acquired_at,heartbeat_at)
+		VALUES ('allocation_active_delete','source_active_delete','channel_active_delete','live_session','session_active_delete','live_session:session_active_delete','lease_active_delete',?,?)`, now, now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := server.deleteLiveTVSource("source_active_delete"); !errors.Is(err, errLiveTVSourceInUse) {
+		t.Fatalf("active source delete error = %v, want in-use conflict", err)
+	}
+	var count int
+	if err := server.db.QueryRow(`SELECT COUNT(*) FROM live_tv_sources WHERE id='source_active_delete'`).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("active source was deleted: count=%d err=%v", count, err)
 	}
 }
 
@@ -1003,7 +1101,7 @@ func TestDVROutputPathHonorsSanitizedTemplate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("output path: %v", err)
 	}
-	expected := filepath.Join(server.cfg.AppDataDir, "recordings", "DailyNews", "channel51", "2026", "EveningNewsUnsafeName-20260504-213045.mp4")
+	expected := filepath.Join(server.cfg.AppDataDir, "recordings", "DailyNews", "channel51", "2026", "EveningNewsUnsafeName-20260504-213045-rec_template.mp4")
 	if path != expected {
 		t.Fatalf("output path = %q, expected %q", path, expected)
 	}
@@ -1093,6 +1191,35 @@ func TestDVRRecordingFFmpegArgsPreserveAllStreams(t *testing.T) {
 	}
 }
 
+func TestDVROutputPathIsUniqueEvenWhenTemplateOmitsRecordingID(t *testing.T) {
+	server := newScannerTestServer(t)
+	start := time.Date(2026, 5, 4, 21, 30, 45, 0, time.UTC)
+	first, err := server.dvrOutputPath(DVRRecording{ID: "rec_first", Title: "News", ChannelID: "channel"}, start)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := server.dvrOutputPath(DVRRecording{ID: "rec_second", Title: "News", ChannelID: "channel"}, start)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first == second || !strings.Contains(first, "rec_first") || !strings.Contains(second, "rec_second") {
+		t.Fatalf("recording paths are not uniquely owned: first=%q second=%q", first, second)
+	}
+}
+
+func TestDVRRecordingDurationDoesNotRoundPositiveCaptureToZero(t *testing.T) {
+	args := dvrRecordingFFmpegArgs("https://example.test/live.m3u8", 1400*time.Millisecond, "/tmp/out.mp4", "copy", true)
+	for index, argument := range args {
+		if argument == "-t" && index+1 < len(args) {
+			if args[index+1] == "0" || args[index+1] == "1" {
+				t.Fatalf("duration was rounded down: %v", args)
+			}
+			return
+		}
+	}
+	t.Fatalf("duration argument missing: %v", args)
+}
+
 type dvrPermissionFixture struct {
 	viewUser         User
 	scheduleUser     User
@@ -1168,6 +1295,44 @@ func seedDVRPermissionFixture(t *testing.T, server *Server) dvrPermissionFixture
 		futureEnd:        now.Add(73 * time.Hour).Format(time.RFC3339),
 		laterFutureStart: now.Add(74 * time.Hour).Format(time.RFC3339),
 		laterFutureEnd:   now.Add(75 * time.Hour).Format(time.RFC3339),
+	}
+}
+
+func TestRecordedTVGenericMediaQueriesRemainProfileScoped(t *testing.T) {
+	server := newScannerTestServer(t)
+	fixture := seedDVRPermissionFixture(t, server)
+	permissionsJSON := `{"playMedia":true,"viewDVR":true}`
+	if _, err := server.db.Exec(`UPDATE users SET permissions_json = ? WHERE id = ?`, permissionsJSON, fixture.viewAndPlayUser.ID); err != nil {
+		t.Fatalf("update account DVR permissions: %v", err)
+	}
+	if _, err := server.db.Exec(`UPDATE profiles SET permissions_json = ? WHERE id = ?`, permissionsJSON, fixture.viewAndPlayUser.ProfileID); err != nil {
+		t.Fatalf("update profile DVR permissions: %v", err)
+	}
+	for _, recordingID := range []string{"rec_player_complete", "rec_other_complete"} {
+		recording, err := server.getDVRRecording(recordingID)
+		if err != nil {
+			t.Fatalf("load recording %s: %v", recordingID, err)
+		}
+		if err := server.importDVRRecordingMedia(recording, time.Now().UTC().Format(time.RFC3339)); err != nil {
+			t.Fatalf("import recording %s: %v", recordingID, err)
+		}
+	}
+	if _, err := server.db.Exec(`UPDATE live_tv_sources SET enabled=0 WHERE id='src_perm'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := server.db.Exec(`UPDATE live_tv_channels SET enabled=0 WHERE id='channel_perm'`); err != nil {
+		t.Fatal(err)
+	}
+
+	items, err := server.queryMediaListItemsContext(context.Background(), fixture.viewAndPlayUser.ProfileID, `
+		WHERE lower(m.type) = 'recording'
+		ORDER BY m.id ASC`, nil)
+	if err != nil {
+		t.Fatalf("query recorded TV through generic media helper: %v", err)
+	}
+	wantID := dvrRecordingMediaID("rec_player_complete")
+	if len(items) != 1 || items[0].ID != wantID {
+		t.Fatalf("generic recorded TV query escaped the active profile: %#v, want %s", items, wantID)
 	}
 }
 
