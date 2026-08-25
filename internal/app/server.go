@@ -69,12 +69,13 @@ var providerArtworkHTTPClient = &http.Client{
 var errMediaTreeNotFullyVisible = errors.New("media tree contains items outside the profile's access")
 
 type sessionCreateOptions struct {
-	TrustDevice             bool
-	ProfileID               string
-	ProfileSelectionGrant   string
-	ProfileSelectionPurpose string
-	BoundDeviceID           string
-	BoundInstallationID     string
+	TrustDevice               bool
+	ProfileID                 string
+	ProfileSelectionGrant     string
+	ProfileSelectionPurpose   string
+	BoundDeviceID             string
+	BoundInstallationID       string
+	ExpectedLocalPasswordHash string
 }
 
 type Server struct {
@@ -143,8 +144,14 @@ type Server struct {
 	mediaStatePresenceCache              map[string]mediaStatePresenceCacheEntry
 	hostedProfileRefreshMu               sync.Mutex
 	hostedProfileRefreshes               map[string]*hostedProfileRefreshCall
+	hostedProfileRefreshSchedulerOnce    sync.Once
+	hostedProfileRefreshQueue            chan string
 	hostedDocumentKeysMu                 sync.RWMutex
 	hostedDocumentPublicKeys             map[string]string
+	hostedDocumentKeySetState            hostedDocumentSigningKeySetState
+	hostedDocumentRevokedKeys            map[string]bool
+	hostedDocumentKeyRefreshMu           sync.Mutex
+	hostedDocumentKeyRefresh             *hostedDocumentKeyRefreshCall
 	porticoAttachmentMu                  sync.Mutex
 	porticoAttachmentHandshakes          map[string]*porticoAttachmentHandshakeState
 	suggestionsCacheMu                   sync.Mutex
@@ -331,8 +338,15 @@ type Server struct {
 	remoteAccessSignalMu                 sync.Mutex
 	remoteAccessRepairEndpoint           string
 	remoteAccessRepairETag               string
+	hostedWakeMu                         sync.Mutex
+	hostedWakePendingRevision            int64
+	hostedWakePendingRepair              bool
+	hostedWakePendingProfiles            map[string]hostedProfileWakeTarget
+	hostedWakeRunning                    bool
+	hostedWakeLimiter                    boundedWindowRateLimiter
 	remoteAccessLeaseSeconds             atomic.Int64
 	remoteAccessRepairPollSeconds        atomic.Int64
+	remoteAccessStartupCohortWindowNanos atomic.Int64
 	remoteTLS                            remoteTLSRuntime
 }
 
@@ -3654,8 +3668,11 @@ func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	passwordHash, err := hashAccountPassword(req.Password)
+	passwordHash, err := hashAccountPassword(r.Context(), kdfAccountSetupHash, req.Password)
 	if err != nil {
+		if writeKDFUnavailable(w, err) {
+			return
+		}
 		writeError(w, http.StatusInternalServerError, "password_hash_failed", "Unable to create owner account.")
 		return
 	}
@@ -3841,19 +3858,28 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 			writeDatabaseAccessError(w, err, http.StatusInternalServerError, "login_failed", "Unable to inspect login credentials.")
 			return
 		}
-		verifyAccountPassword("", req.Password)
+		_, _, kdfErr := verifyAccountPassword(r.Context(), kdfBrowserLoginCompare, "", req.Password)
+		if writeKDFUnavailable(w, kdfErr) {
+			return
+		}
 		s.recordLoginFailure(loginKey)
 		writeError(w, http.StatusUnauthorized, "bad_credentials", "Username/email or password is incorrect.")
 		return
 	}
 	if strings.TrimSpace(passwordHash) == "" {
-		verifyAccountPassword("", req.Password)
+		_, _, kdfErr := verifyAccountPassword(r.Context(), kdfBrowserLoginCompare, "", req.Password)
+		if writeKDFUnavailable(w, kdfErr) {
+			return
+		}
 		s.recordLoginFailure(loginKey)
 		writeError(w, http.StatusUnauthorized, "bad_credentials", "Username/email or password is incorrect.")
 		return
 	}
-	passwordValid, err := s.verifyAndUpgradeLocalPassword(r.Context(), user.ID, passwordHash, req.Password)
+	passwordValid, verifiedPasswordHash, err := s.verifyAndUpgradeLocalPasswordSnapshot(r.Context(), kdfBrowserLoginCompare, user.ID, passwordHash, req.Password)
 	if err != nil {
+		if writeKDFUnavailable(w, err) {
+			return
+		}
 		writeDatabaseAccessError(w, err, http.StatusInternalServerError, "login_failed", "Unable to verify login credentials.")
 		return
 	}
@@ -3862,6 +3888,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "bad_credentials", "Username/email or password is incorrect.")
 		return
 	}
+	passwordHash = verifiedPasswordHash
 	selectionRequired, err := s.accountRequiresExplicitProfileSelectionContext(r.Context(), user.ID)
 	if err != nil {
 		writeDatabaseAccessError(w, err, http.StatusInternalServerError, "login_failed", "Unable to inspect the available profiles.")
@@ -3877,7 +3904,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	applyStoredUserPreferences(&user, preferencesJSON)
 	s.populateUserLibraryIDsContext(r.Context(), &user)
 	s.enrichUserAuthContextContext(r.Context(), &user, "local")
-	sessionToken, err := s.createSessionForProviderWithSessionOptions(w, r, user.ID, "local", sessionCreateOptions{})
+	sessionToken, err := s.createSessionForProviderWithSessionOptions(w, r, user.ID, "local", sessionCreateOptions{ExpectedLocalPasswordHash: passwordHash})
 	if err != nil {
 		if errors.Is(err, errDeviceNotTrusted) {
 			writeError(w, http.StatusForbidden, "device_not_trusted", "This server only allows trusted devices. Ask an owner to approve this device in Settings > Devices.")
@@ -3897,6 +3924,10 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		}
 		if errors.Is(err, errBrowserAccountDisabled) {
 			writeError(w, http.StatusForbidden, "account_disabled", "This account is disabled.")
+			return
+		}
+		if errors.Is(err, errPasswordCredentialChanged) {
+			writeError(w, http.StatusUnauthorized, "credentials_changed", "The account password changed while Portico was signing in. Sign in again.")
 			return
 		}
 		writeError(w, http.StatusInternalServerError, "session_failed", "Unable to create session.")
@@ -4449,8 +4480,11 @@ func (s *Server) handleAccountProfile(w http.ResponseWriter, r *http.Request, us
 			writeDatabaseAccessError(w, err, http.StatusServiceUnavailable, "profile_reauthentication_unavailable", "Unable to verify the current password.")
 			return
 		}
-		valid, err := s.verifyAndUpgradeLocalPassword(r.Context(), accountIDForUser(user), passwordHash, req.CurrentPassword)
+		valid, verifiedPasswordHash, err := s.verifyAndUpgradeLocalPasswordSnapshot(r.Context(), kdfProfileReauthCompare, accountIDForUser(user), passwordHash, req.CurrentPassword)
 		if err != nil {
+			if writeKDFUnavailable(w, err) {
+				return
+			}
 			writeDatabaseAccessError(w, err, http.StatusServiceUnavailable, "profile_reauthentication_unavailable", "Unable to verify the current password.")
 			return
 		}
@@ -4459,19 +4493,37 @@ func (s *Server) handleAccountProfile(w http.ResponseWriter, r *http.Request, us
 			writeProductError(w, http.StatusUnauthorized, "profile_reauthentication_required", "The current account password is incorrect.")
 			return
 		}
+		passwordHash = verifiedPasswordHash
 		s.clearLoginFailures(rateKey)
-		var conflictingID string
-		err = s.queryUserRow(r.Context(), `SELECT id FROM users WHERE lower(email) = lower(?) AND id <> ? LIMIT 1`, email, user.ID).Scan(&conflictingID)
-		if err != nil && !errors.Is(err, sql.ErrNoRows) {
-			writeDatabaseAccessError(w, err, http.StatusInternalServerError, "profile_update_failed", "Unable to validate profile email.")
+		sessionID, err := s.currentSessionIDContext(r.Context(), r, user)
+		if err != nil {
+			writeProductError(w, http.StatusUnauthorized, "interactive_session_required", "Profile updates require a current interactive session.")
 			return
 		}
-		if conflictingID != "" {
+		now := time.Now().UTC()
+		err = s.withUserTxTagged(r.Context(), []string{"users", "sessions", "devices"}, func(tx *sql.Tx) error {
+			if err := validatePasswordSessionTx(tx, accountIDForUser(user), viewerProfileID(user), sessionID, passwordHash, now); err != nil {
+				return err
+			}
+			var conflictingID string
+			err := tx.QueryRow(`SELECT id FROM users WHERE lower(email) = lower(?) AND id <> ? LIMIT 1`, email, user.ID).Scan(&conflictingID)
+			if err != nil && !errors.Is(err, sql.ErrNoRows) {
+				return err
+			}
+			if conflictingID != "" {
+				return errAccountEmailInUse
+			}
+			_, err = tx.Exec(`UPDATE users SET display_name = ?, email = ?, updated_at = ? WHERE id = ? AND COALESCE(disabled_at, '') = ''`, displayName, email, now.Format(time.RFC3339), user.ID)
+			return err
+		})
+		if errors.Is(err, errAccountEmailInUse) {
 			writeError(w, http.StatusConflict, "email_in_use", "Email address is already used by another profile.")
 			return
 		}
-		now := time.Now().UTC().Format(time.RFC3339)
-		_, err = s.execUserWrite(r.Context(), `UPDATE users SET display_name = ?, email = ?, updated_at = ? WHERE id = ?`, displayName, email, now, user.ID)
+		if errors.Is(err, errPasswordCredentialChanged) || errors.Is(err, errPrivilegedSessionChanged) {
+			writeProductError(w, http.StatusUnauthorized, "credentials_changed", "The account authorization changed while Portico was saving this request. Sign in again and retry.")
+			return
+		}
 		if err != nil {
 			writeDatabaseAccessError(w, err, http.StatusInternalServerError, "profile_update_failed", "Unable to update profile.")
 			return
@@ -14007,8 +14059,11 @@ func (s *Server) handleUsers(w http.ResponseWriter, r *http.Request, user User) 
 		if !decodeJSON(w, r, &req) {
 			return
 		}
-		created, err := s.createUser(req.internalRequest())
+		created, err := s.createUserContext(r.Context(), req.internalRequest())
 		if err != nil {
+			if writeKDFUnavailable(w, err) {
+				return
+			}
 			writeError(w, http.StatusBadRequest, "user_create_failed", err.Error())
 			return
 		}
@@ -14056,6 +14111,9 @@ func (s *Server) handleUserRoute(w http.ResponseWriter, r *http.Request, user Us
 		}
 		updated, err := s.updateUserContext(r.Context(), userID, req)
 		if err != nil {
+			if writeKDFUnavailable(w, err) {
+				return
+			}
 			if errors.Is(err, sql.ErrNoRows) {
 				writeError(w, http.StatusNotFound, "user_not_found", "User was not found.")
 				return
@@ -15271,6 +15329,12 @@ func (s *Server) createSessionForProviderWithSessionOptions(w http.ResponseWrite
 	var installationID string
 	_ = s.queryUserRow(ctx, `SELECT COALESCE(installation_id, '') FROM devices WHERE id = ? AND user_id = ?`, deviceID, userID).Scan(&installationID)
 	err := s.withUserTxTagged(ctx, []string{"sessions", "profile_selection_grants"}, func(tx *sql.Tx) error {
+		if expected := strings.TrimSpace(options.ExpectedLocalPasswordHash); expected != "" {
+			var currentPasswordHash string
+			if err := tx.QueryRow(`SELECT COALESCE(password_hash, '') FROM users WHERE id = ? AND COALESCE(disabled_at, '') = ''`, userID).Scan(&currentPasswordHash); err != nil || currentPasswordHash != expected {
+				return errPasswordCredentialChanged
+			}
+		}
 		profileID := requestedProfileID
 		if grant := strings.TrimSpace(options.ProfileSelectionGrant); grant != "" {
 			principal, err := s.consumeProfileSelectionGrantForPurposeTx(tx, grant, userID, provider, options.ProfileSelectionPurpose, deviceID, installationID, now)
@@ -28463,6 +28527,7 @@ var secretSettingKeys = map[string]bool{
 	remoteAccessClaimReceiptKey:   true,
 	remoteAccessCredentialKey:     true,
 	remoteAccessPolicyStateKey:    true,
+	hostedDocumentKeySetStateKey:  true,
 	tmdbReadAccessTokenSettingKey: true,
 	tmdbAPIKeySettingKey:          true,
 	tvdbAPIKeySettingKey:          true,
@@ -29487,6 +29552,13 @@ func (s *Server) getUser(userID string) (User, error) {
 }
 
 func (s *Server) createUser(req UserRequest) (User, error) {
+	return s.createUserContext(context.Background(), req)
+}
+
+func (s *Server) createUserContext(ctx context.Context, req UserRequest) (User, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
 	req.Username = normalizeUsername(req.Username)
 	req.DisplayName = strings.TrimSpace(req.DisplayName)
@@ -29527,7 +29599,7 @@ func (s *Server) createUser(req UserRequest) (User, error) {
 	if err != nil {
 		return User{}, err
 	}
-	passwordHash, err := hashAccountPassword(req.Password)
+	passwordHash, err := hashAccountPassword(ctx, kdfUserCreateHash, req.Password)
 	if err != nil {
 		return User{}, err
 	}
@@ -29562,7 +29634,7 @@ func (s *Server) createUser(req UserRequest) (User, error) {
 		MaxActiveStreams:       maxActiveStreams,
 		RemoteBitrateLimitMbps: remoteBitrateLimitMbps,
 	}
-	if err := s.withUserTxTagged(context.Background(), []string{"users", "account", "profiles", "libraries", "home"}, func(tx *sql.Tx) error {
+	if err := s.withUserTxTagged(ctx, []string{"users", "account", "profiles", "libraries", "home"}, func(tx *sql.Tx) error {
 		if _, err := tx.Exec(`INSERT INTO users (id, username, email, display_name, password_hash, role, auth_origin, permissions_json, preferences_json, max_content_rating, max_active_sessions, max_active_streams, remote_bitrate_limit_mbps, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			user.ID, user.Username, user.Email, user.DisplayName, passwordHash, user.Role, user.AuthOrigin, string(permissionsJSON), string(preferencesJSON), user.MaxContentRating, user.MaxActiveSessions, user.MaxActiveStreams, user.RemoteBitrateLimitMbps, now, now); err != nil {
 			return err
@@ -29606,7 +29678,7 @@ func (s *Server) updateUserContext(ctx context.Context, userID string, req UserP
 		if !validAccountPassword(*req.Password) {
 			return User{}, invalidRequestField("password", strings.ToLower(accountPasswordPolicyMessage))
 		}
-		passwordHash, err = hashAccountPassword(*req.Password)
+		passwordHash, err = hashAccountPassword(ctx, kdfUserUpdateHash, *req.Password)
 		if err != nil {
 			return User{}, err
 		}

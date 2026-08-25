@@ -663,6 +663,7 @@ export function SignInSurface({
 
 export function SetupSurface({ serverName }: { serverName: string }) {
   const auth = useAuthSession();
+  const runtime = useOptionalRuntime();
   const returningFromPortico =
     typeof window !== "undefined" &&
     new URL(window.location.href).searchParams.get("porticoSetup") ===
@@ -716,6 +717,7 @@ export function SetupSurface({ serverName }: { serverName: string }) {
       Boolean(error) &&
       automaticHostedAvailabilityRetry(setupStatusFailure),
     reason: setupStatusFailure,
+    cohort: runtime?.hostedRetryCohort,
     retry: () => {
       setError("");
       setSetupStatusFailure(undefined);

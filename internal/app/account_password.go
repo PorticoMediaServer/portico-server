@@ -62,49 +62,65 @@ func (s *Server) handleAccountPassword(w http.ResponseWriter, r *http.Request, u
 		return
 	}
 	if strings.TrimSpace(currentHash) == "" {
-		verifyAccountPassword("", req.CurrentPassword)
+		_, _, kdfErr := verifyAccountPassword(r.Context(), kdfPasswordChangeCompare, "", req.CurrentPassword)
+		if writeKDFUnavailable(w, kdfErr) {
+			return
+		}
 		s.recordLoginFailure(rateKey)
 		s.recordAudit(r, user, "account.password_change_failed", "user", user.ID, "warn", nil)
 		writeError(w, http.StatusConflict, "local_password_unavailable", "This profile does not have a This Server password.")
 		return
 	}
 
-	currentValid, _ := verifyAccountPassword(currentHash, req.CurrentPassword)
+	currentValid, _, verifiedHash, kdfErr := verifyAccountPasswordSnapshot(r.Context(), kdfPasswordChangeCompare, currentHash, req.CurrentPassword)
+	if writeKDFUnavailable(w, kdfErr) {
+		return
+	}
 	if !currentValid {
 		s.recordLoginFailure(rateKey)
 		s.recordAudit(r, user, "account.password_change_failed", "user", user.ID, "warn", nil)
 		writeError(w, http.StatusUnauthorized, "invalid_credentials", "Current password is incorrect.")
 		return
 	}
+	currentHash = verifiedHash
 	s.clearLoginFailures(rateKey)
-	replacement, err := hashAccountPassword(req.NewPassword)
+	replacement, err := hashAccountPassword(r.Context(), kdfPasswordChangeHash, req.NewPassword)
 	if err != nil {
+		if writeKDFUnavailable(w, err) {
+			return
+		}
 		writeError(w, http.StatusInternalServerError, "password_hash_failed", "Unable to update password.")
 		return
 	}
-	now := time.Now().UTC().Format(time.RFC3339)
+	now := time.Now().UTC()
 	sessionID, err := s.currentSessionIDContext(r.Context(), r, user)
 	if err != nil {
 		writeProductError(w, http.StatusUnauthorized, "interactive_session_required", "Password changes require a current interactive session.")
 		return
 	}
-	var deviceID string
-	if err := s.queryUserRow(r.Context(), `SELECT COALESCE(device_id, '') FROM sessions WHERE id = ? AND user_id = ?`, sessionID, accountIDForUser(user)).Scan(&deviceID); err != nil {
-		writeProductError(w, http.StatusUnauthorized, "interactive_session_required", "Password changes require a current interactive session.")
-		return
-	}
 	err = s.withUserTxTagged(r.Context(), []string{"users", "sessions", "native_refresh_tokens", "api_keys", "devices", "profile-trusts"}, func(tx *sql.Tx) error {
+		if err := validatePasswordSessionTx(tx, accountIDForUser(user), viewerProfileID(user), sessionID, currentHash, now); err != nil {
+			return err
+		}
+		var deviceID string
+		if err := tx.QueryRow(`SELECT COALESCE(device_id, '') FROM sessions WHERE id = ? AND user_id = ?`, sessionID, accountIDForUser(user)).Scan(&deviceID); err != nil {
+			return errPrivilegedSessionChanged
+		}
 		result, err := tx.ExecContext(r.Context(), `
 			UPDATE users SET password_hash = ?, updated_at = ?
-			WHERE id = ? AND password_hash = ?`, replacement, now, accountIDForUser(user), currentHash)
+			WHERE id = ? AND password_hash = ?`, replacement, now.Format(time.RFC3339), accountIDForUser(user), currentHash)
 		if err != nil {
 			return err
 		}
 		if rowsAffected(result) == 0 {
 			return errPasswordChangedConcurrently
 		}
-		return s.revokeAccountAuthorityExceptSessionTx(r.Context(), tx, accountIDForUser(user), sessionID, deviceID, now)
+		return s.revokeAccountAuthorityExceptSessionTx(r.Context(), tx, accountIDForUser(user), sessionID, deviceID, now.Format(time.RFC3339))
 	})
+	if errors.Is(err, errPasswordCredentialChanged) || errors.Is(err, errPrivilegedSessionChanged) {
+		writeError(w, http.StatusUnauthorized, "credentials_changed", "The account authorization changed while Portico was changing the password. Sign in again and retry.")
+		return
+	}
 	if err != nil && !errors.Is(err, errPasswordChangedConcurrently) {
 		writeDatabaseAccessError(w, err, http.StatusInternalServerError, "password_change_failed", "Unable to update password.")
 		return

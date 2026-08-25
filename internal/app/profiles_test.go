@@ -10,6 +10,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -60,23 +61,92 @@ func signedHostedProfileSelectionEnvelope(t *testing.T, privateKey ed25519.Priva
 	return raw
 }
 
-func TestLocalProfilePINHashUsesBcryptCostTen(t *testing.T) {
-	hash, err := hashLocalProfilePIN("1234")
+func TestLocalProfilePINHashUsesConfiguredBcryptCost(t *testing.T) {
+	hash, err := hashLocalProfilePIN(t.Context(), kdfProfilePINSetHash, "1234")
 	if err != nil {
 		t.Fatalf("hash local profile PIN: %v", err)
 	}
 	if cost, err := bcrypt.Cost([]byte(hash)); err != nil || cost != localProfilePINBcryptCost {
 		t.Fatalf("local profile PIN bcrypt cost=%d err=%v", cost, err)
 	}
-	if !verifyLocalProfilePINHash(hash, "1234") || verifyLocalProfilePINHash(hash, "9999") {
+	valid, err := verifyLocalProfilePINHash(t.Context(), kdfProfilePINSelectCompare, hash, "1234")
+	wrong, wrongErr := verifyLocalProfilePINHash(t.Context(), kdfProfilePINSelectCompare, hash, "9999")
+	if !valid || err != nil || wrong || wrongErr != nil {
 		t.Fatal("local profile PIN hash verification did not distinguish valid and invalid PINs")
 	}
-	amplified := strings.Replace(hash, "$10$", "$12$", 1)
-	if verifyLocalProfilePINHash(amplified, "1234") {
+	amplified := strings.Replace(hash, "$08$", "$10$", 1)
+	if valid, err := verifyLocalProfilePINHash(t.Context(), kdfProfilePINSelectCompare, amplified, "1234"); valid || err != nil {
 		t.Fatal("profile PIN verifier accepted an unexpected bcrypt cost")
 	}
-	if _, err := hashLocalProfilePIN("12ab"); !errors.Is(err, errInvalidProfilePIN) {
+	if _, err := hashLocalProfilePIN(t.Context(), kdfProfilePINSetHash, "12ab"); !errors.Is(err, errInvalidProfilePIN) {
 		t.Fatalf("invalid PIN hash error = %v", err)
+	}
+}
+
+func TestProfileSelectionCASCannotGrantAfterConcurrentPINReplacement(t *testing.T) {
+	_, db, server := newAuthTestServerWithInstance(t)
+	account, err := server.createUser(UserRequest{
+		Username: "pin-cas", Email: "pin-cas@example.test", DisplayName: "PIN CAS",
+		Password: "Profile-pin-cas-password1", Role: "user",
+	})
+	if err != nil {
+		t.Fatalf("create account: %v", err)
+	}
+	if err := server.setLocalProfilePINContext(t.Context(), account.ID, account.ID, "1234"); err != nil {
+		t.Fatalf("set original PIN: %v", err)
+	}
+
+	previousAdmission := processKDFAdmission
+	admission := newKDFAdmission(2, 8)
+	processKDFAdmission = admission
+	t.Cleanup(func() { processKDFAdmission = previousAdmission })
+	blockerRelease, err := admission.acquire(t.Context(), kdfLaneCompare)
+	if err != nil {
+		t.Fatalf("occupy compare lane: %v", err)
+	}
+
+	type selectionResult struct {
+		grant ProfileSelectionGrant
+		err   error
+	}
+	result := make(chan selectionResult, 1)
+	now := time.Date(2026, 8, 25, 12, 0, 0, 0, time.UTC)
+	go func() {
+		grant, issueErr := server.issueLocalProfileSelectionGrantForPurposeContext(
+			t.Context(), account.ID, account.ID, "1234", "device-cas", "installation-cas", "native", "proof-cas", now,
+		)
+		result <- selectionResult{grant: grant, err: issueErr}
+	}()
+	deadline := time.Now().Add(time.Second)
+	for {
+		admission.mu.Lock()
+		queued := admission.queuedLocked(kdfLaneCompare)
+		admission.mu.Unlock()
+		if queued == 1 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("selection did not reach admitted bcrypt wait")
+		}
+		runtime.Gosched()
+	}
+
+	// Hashing the authenticated replacement uses the reserved lane and commits
+	// while selection still owns only the old read snapshot.
+	if err := server.setLocalProfilePINContext(t.Context(), account.ID, account.ID, "5678"); err != nil {
+		t.Fatalf("replace PIN while selection waits: %v", err)
+	}
+	blockerRelease()
+	selection := <-result
+	if selection.grant.Token != "" || (!errors.Is(selection.err, errProfilePINBackoff) && !errors.Is(selection.err, errProfilePINLocked)) {
+		t.Fatalf("old PIN crossed replacement CAS: grant=%#v err=%v", selection.grant, selection.err)
+	}
+	var grants int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM profile_selection_grants WHERE account_id = ?`, account.ID).Scan(&grants); err != nil || grants != 0 {
+		t.Fatalf("stale PIN minted grants=%d err=%v", grants, err)
+	}
+	if valid, err := server.verifyLocalProfilePINContext(t.Context(), account.ID, account.ID, "5678", now.Add(2*time.Second)); err != nil || !valid {
+		t.Fatalf("replacement PIN did not recover normally: valid=%v err=%v", valid, err)
 	}
 }
 
@@ -122,7 +192,7 @@ func TestLocalProfilesUseAccountPermissionEnvelopeAndHashedPINs(t *testing.T) {
 		t.Fatalf("read local profile pin credential: %v", err)
 	}
 	if pinHash == "1234" || !validProfilePINBcryptHash(pinHash, localProfilePINBcryptCost) {
-		t.Fatalf("profile PIN was not stored as a cost-10 bcrypt hash: %q", pinHash)
+		t.Fatalf("profile PIN was not stored at configured bcrypt cost %d: %q", localProfilePINBcryptCost, pinHash)
 	}
 	profiles, err := server.listAccountProfilesContext(context.Background(), account.ID)
 	if err != nil || len(profiles) != 2 || !profiles[1].HasPIN || !profiles[1].PINRequired {

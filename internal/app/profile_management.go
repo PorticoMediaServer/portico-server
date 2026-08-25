@@ -188,10 +188,11 @@ func (s *Server) handleAccountProfilePIN(w http.ResponseWriter, r *http.Request,
 		if !decodeJSON(w, r, &request) {
 			return
 		}
-		if !s.requireLocalAccountPasswordReauthentication(w, r, user, request.Password) {
+		expectedHash, sessionID, ok := s.requireLocalAccountPasswordAuthorization(w, r, user, request.Password)
+		if !ok {
 			return
 		}
-		if err := s.setLocalProfilePINContext(r.Context(), accountIDForUser(user), profileID, request.PIN); err != nil {
+		if err := s.setLocalProfilePINAuthorizedContext(r.Context(), accountIDForUser(user), profileID, request.PIN, expectedHash, sessionID); err != nil {
 			s.writeProfileManagementError(w, err)
 			return
 		}
@@ -201,10 +202,11 @@ func (s *Server) handleAccountProfilePIN(w http.ResponseWriter, r *http.Request,
 		if !decodeJSON(w, r, &request) {
 			return
 		}
-		if !s.requireLocalAccountPasswordReauthentication(w, r, user, request.Password) {
+		expectedHash, sessionID, ok := s.requireLocalAccountPasswordAuthorization(w, r, user, request.Password)
+		if !ok {
 			return
 		}
-		if err := s.clearLocalProfilePINContext(r.Context(), accountIDForUser(user), profileID); err != nil {
+		if err := s.clearLocalProfilePINAuthorizedContext(r.Context(), accountIDForUser(user), profileID, expectedHash, sessionID); err != nil {
 			s.writeProfileManagementError(w, err)
 			return
 		}
@@ -215,22 +217,30 @@ func (s *Server) handleAccountProfilePIN(w http.ResponseWriter, r *http.Request,
 }
 
 func (s *Server) requireLocalAccountPasswordReauthentication(w http.ResponseWriter, r *http.Request, user User, password string) bool {
+	_, _, ok := s.requireLocalAccountPasswordAuthorization(w, r, user, password)
+	return ok
+}
+
+func (s *Server) requireLocalAccountPasswordAuthorization(w http.ResponseWriter, r *http.Request, user User, password string) (string, string, bool) {
 	accountID := accountIDForUser(user)
-	var passwordHash string
-	if err := s.queryUserRow(r.Context(), `SELECT COALESCE(password_hash, '') FROM users WHERE id = ?`, accountID).Scan(&passwordHash); err != nil {
-		writeDatabaseAccessError(w, err, http.StatusInternalServerError, "profile_request_failed", "Unable to confirm the account password.")
-		return false
-	}
-	valid, err := s.verifyAndUpgradeLocalPassword(r.Context(), accountID, passwordHash, password)
+	expectedHash, err := s.verifyLocalPasswordSnapshot(r.Context(), kdfProfileReauthCompare, accountID, password)
 	if err != nil {
+		if errors.Is(err, errInvalidCredentials) {
+			writeProductError(w, http.StatusUnauthorized, "invalid_credentials", "Your current account password is incorrect.")
+			return "", "", false
+		}
+		if writeKDFUnavailable(w, err) {
+			return "", "", false
+		}
 		writeDatabaseAccessError(w, err, http.StatusInternalServerError, "profile_request_failed", "Unable to confirm the account password.")
-		return false
+		return "", "", false
 	}
-	if !valid {
-		writeProductError(w, http.StatusUnauthorized, "invalid_credentials", "Your current account password is incorrect.")
-		return false
+	sessionID, err := s.currentSessionIDContext(r.Context(), r, user)
+	if err != nil {
+		writeProductError(w, http.StatusUnauthorized, "interactive_session_required", "Profile management requires a current interactive session.")
+		return "", "", false
 	}
-	return true
+	return expectedHash, sessionID, true
 }
 
 func (s *Server) handleAccountProfileOrder(w http.ResponseWriter, r *http.Request, user User) {
@@ -284,6 +294,7 @@ func (s *Server) handleProfileAdministrationProof(w http.ResponseWriter, r *http
 	profileID := viewerProfileID(user)
 	var pinRequired int
 	var pinRevision int64
+	var passwordHash string
 	if err := s.queryUserRow(r.Context(), `SELECT pin_required, pin_revision FROM profiles WHERE id = ? AND account_id = ? AND is_primary = 1 AND origin = 'local' AND disabled_at = ''`, profileID, accountID).Scan(&pinRequired, &pinRevision); err != nil {
 		s.writeProfileManagementError(w, err)
 		return
@@ -295,16 +306,20 @@ func (s *Server) handleProfileAdministrationProof(w http.ResponseWriter, r *http
 			return
 		}
 	} else {
-		var passwordHash string
 		if err := s.queryUserRow(r.Context(), `SELECT COALESCE(password_hash, '') FROM users WHERE id = ?`, accountID).Scan(&passwordHash); err != nil {
 			s.writeProfileManagementError(w, err)
 			return
 		}
-		valid, _ := verifyAccountPassword(passwordHash, request.Password)
+		valid, _, verifiedHash, verifyErr := verifyAccountPasswordSnapshot(r.Context(), kdfProfileReauthCompare, passwordHash, request.Password)
+		if verifyErr != nil {
+			s.writeProfileManagementError(w, verifyErr)
+			return
+		}
 		if !valid {
 			writeProductError(w, http.StatusUnauthorized, "invalid_credentials", "Your current account password is incorrect.")
 			return
 		}
+		passwordHash = verifiedHash
 	}
 	sessionID, err := s.currentSessionIDContext(r.Context(), r, user)
 	if err != nil {
@@ -317,11 +332,21 @@ func (s *Server) handleProfileAdministrationProof(w http.ResponseWriter, r *http
 		return
 	}
 	now := time.Now().UTC()
-	_, err = s.execUserWrite(r.Context(), `
-		INSERT INTO local_profile_admin_proofs (id, token_hash, account_id, primary_profile_id, session_id, pin_revision, expires_at, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, randomID("pap"), hashToken(rawToken), accountID, profileID, sessionID, pinRevision,
-		now.Add(profileAdministrationProofTTL).Format(time.RFC3339Nano), now.Format(time.RFC3339Nano))
+	err = s.withUserTxTagged(r.Context(), []string{"local_profile_admin_proofs", "users", "sessions", "devices", "profiles"}, func(tx *sql.Tx) error {
+		if err := validatePasswordSessionTx(tx, accountID, profileID, sessionID, passwordHash, now); err != nil {
+			return err
+		}
+		_, err := tx.Exec(`
+			INSERT INTO local_profile_admin_proofs (id, token_hash, account_id, primary_profile_id, session_id, pin_revision, expires_at, created_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, randomID("pap"), hashToken(rawToken), accountID, profileID, sessionID, pinRevision,
+			now.Add(profileAdministrationProofTTL).Format(time.RFC3339Nano), now.Format(time.RFC3339Nano))
+		return err
+	})
 	if err != nil {
+		if errors.Is(err, errPasswordCredentialChanged) || errors.Is(err, errPrivilegedSessionChanged) {
+			s.writeProfileManagementError(w, err)
+			return
+		}
 		writeDatabaseAccessError(w, err, http.StatusInternalServerError, "profile_proof_failed", "Unable to confirm profile management.")
 		return
 	}
@@ -765,7 +790,15 @@ func automaticProfileTrustBindingTx(tx *sql.Tx, rawToken, authority, accountID, 
 }
 
 func (s *Server) writeProfileManagementError(w http.ResponseWriter, err error) {
+	if writeKDFUnavailable(w, err) {
+		return
+	}
 	switch {
+	case errors.Is(err, errPasswordCredentialChanged), errors.Is(err, errPrivilegedSessionChanged):
+		writeProductError(w, http.StatusUnauthorized, "credentials_changed", "The account authorization changed while Portico was saving this request. Sign in again and retry.")
+	case errors.Is(err, errProfilePINConcurrentChange):
+		w.Header().Set("Retry-After", "1")
+		writeProductError(w, http.StatusServiceUnavailable, "profile_request_busy", "This profile changed while Portico was verifying it. Try again shortly.")
 	case errors.Is(err, errProfileNotFound), errors.Is(err, sql.ErrNoRows):
 		writeProductError(w, http.StatusNotFound, "profile_not_found", "Profile not found.")
 	case errors.Is(err, errProfileLimit):

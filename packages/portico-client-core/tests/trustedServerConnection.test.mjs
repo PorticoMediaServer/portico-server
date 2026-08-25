@@ -1265,16 +1265,21 @@ test("cached-winner publication veto stops the resilient race without fallback",
   const active = createMemorySessionStore({ serverId: "before", apiBaseUrl: "https://before.example", accessToken: "before-access" });
   let publicationCalls = 0;
   let mintCalls = 0;
+  let hostedRouteCalls = 0;
+  let hostedCompatibilityCalls = 0;
+  let hostedSigningKeyCalls = 0;
   await assert.rejects(connectResilientHostedServer(
     { ...testServerIdentity(), id: stored.serverId, name: stored.serverName, preferredAuthMode: "portico" },
     {
       accountId: stored.accountId,
       connectionAdapter: connections,
       hostedClient: {
-        routes: async () => { await new Promise(resolve => setTimeout(resolve, 30)); throw new Error("discovery should remain read only"); },
+        checkCompatibility: async () => { hostedCompatibilityCalls += 1; return { apiVersion: "v1" }; },
+        routes: async () => { hostedRouteCalls += 1; await new Promise(resolve => setTimeout(resolve, 30)); throw new Error("discovery should remain read only"); },
+        documentSigningKeys: async () => { hostedSigningKeyCalls += 1; return {}; },
         porticoSession: async () => { mintCalls += 1; throw new Error("must not mint"); }
       },
-      loadTrustedHostedDocumentKeys: async () => ({ [hostedDocumentTestKeyId]: hostedDocumentTestPublicKey }),
+      loadTrustedHostedDocumentKeys: async () => { hostedSigningKeyCalls += 1; return ({ [hostedDocumentTestKeyId]: hostedDocumentTestPublicKey }); },
       runtime: trustedAttachmentRuntime,
       selectionEnvelope: { accountId: stored.accountId, serverId: stored.serverId, profileId: stored.profileId, installationId: "install-1" },
       clientIdentity: { installationId: "install-1", deviceName: "TV", app: "Portico", platform: "tvOS" },
@@ -1296,11 +1301,14 @@ test("cached-winner publication veto stops the resilient race without fallback",
   await new Promise(resolve => setTimeout(resolve, 50));
   assert.equal(publicationCalls, 1);
   assert.equal(mintCalls, 0);
+  assert.equal(hostedRouteCalls, 0);
+  assert.equal(hostedCompatibilityCalls, 0);
+  assert.equal(hostedSigningKeyCalls, 0);
   assert.equal(active.get().accessToken, "before-access");
   assert.deepEqual(connections.values.get(`${stored.accountId}\n${stored.serverId}`), durableBefore);
 });
 
-test("discovery-winner publication veto stops the resilient race without cached fallback", async () => {
+test("Hosted recovery publication veto stops direct-first connection after cached failure", async () => {
   const stored = record({ previousRoute: undefined });
   const connections = adapter([stored]);
   const durableBefore = structuredClone(connections.values.get(`${stored.accountId}\n${stored.serverId}`));
@@ -1364,7 +1372,7 @@ test("discovery-winner publication veto stops the resilient race without cached 
       }),
       runtime: trustedAttachmentRuntime,
       routeProbeFetch: async input => {
-        if (String(input).startsWith(stored.currentRoute.url)) await new Promise(resolve => setTimeout(resolve, 40));
+        if (String(input).startsWith(stored.currentRoute.url)) throw new TypeError("remembered route is offline");
         return jsonResponse({
           serverId: stored.serverId,
           serverPublicKeyFingerprint: stored.serverPublicKeyFingerprint,

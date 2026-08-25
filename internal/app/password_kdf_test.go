@@ -3,6 +3,7 @@ package app
 import (
 	"bytes"
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -35,7 +36,7 @@ func TestAccountPasswordPolicyAndKDF(t *testing.T) {
 		})
 	}
 
-	hash, err := hashAccountPassword("Correct horse battery staple1")
+	hash, err := hashAccountPassword(t.Context(), kdfAccountSetupHash, "Correct horse battery staple1")
 	if err != nil {
 		t.Fatalf("hash current password: %v", err)
 	}
@@ -43,20 +44,20 @@ func TestAccountPasswordPolicyAndKDF(t *testing.T) {
 	if err != nil || cost != currentPasswordBcryptCost {
 		t.Fatalf("current password cost=%d err=%v", cost, err)
 	}
-	if valid, upgrade := verifyAccountPassword(hash, "Correct horse battery staple1"); !valid || upgrade {
+	if valid, upgrade, err := verifyAccountPassword(t.Context(), kdfBrowserLoginCompare, hash, "Correct horse battery staple1"); !valid || upgrade || err != nil {
 		t.Fatalf("current hash valid=%t upgrade=%t", valid, upgrade)
 	}
 	legacyHash, err := bcrypt.GenerateFromPassword([]byte("Correct horse battery staple1"), bcrypt.MinCost)
 	if err != nil {
 		t.Fatalf("hash legacy password: %v", err)
 	}
-	if valid, upgrade := verifyAccountPassword(string(legacyHash), "Correct horse battery staple1"); !valid || !upgrade {
+	if valid, upgrade, err := verifyAccountPassword(t.Context(), kdfBrowserLoginCompare, string(legacyHash), "Correct horse battery staple1"); !valid || !upgrade || err != nil {
 		t.Fatalf("legacy hash valid=%t upgrade=%t", valid, upgrade)
 	}
-	if valid, _ := verifyAccountPassword("", "wrong password"); valid {
+	if valid, _, err := verifyAccountPassword(t.Context(), kdfBrowserLoginCompare, "", "wrong password"); valid || err != nil {
 		t.Fatalf("empty hash authenticated")
 	}
-	if valid, _ := verifyAccountPassword("malformed", "wrong password"); valid {
+	if valid, _, err := verifyAccountPassword(t.Context(), kdfBrowserLoginCompare, "malformed", "wrong password"); valid || err != nil {
 		t.Fatalf("malformed hash authenticated")
 	}
 }
@@ -98,6 +99,17 @@ func TestBrowserAndNativeLoginUpgradeLegacyPasswordCost(t *testing.T) {
 		}
 		return cost
 	}
+	waitForCurrentCost := func() {
+		t.Helper()
+		deadline := time.Now().Add(10 * time.Second)
+		for time.Now().Before(deadline) {
+			if storedCost() == currentPasswordBcryptCost {
+				return
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		t.Fatal("password hash upgrade did not complete")
+	}
 
 	legacyHash := setLegacyHash()
 	request := httptest.NewRequest(http.MethodPost, "/api/auth/login", bytes.NewBufferString(`{"login":"admin","password":"wrong-password"}`))
@@ -119,16 +131,65 @@ func TestBrowserAndNativeLoginUpgradeLegacyPasswordCost(t *testing.T) {
 	if response.Code != http.StatusOK {
 		t.Fatalf("browser login status=%d body=%s", response.Code, response.Body.String())
 	}
-	if cost := storedCost(); cost != currentPasswordBcryptCost {
-		t.Fatalf("browser login upgraded cost=%d", cost)
-	}
+	waitForCurrentCost()
 
 	setLegacyHash()
 	user, err := server.authenticateLocalNativeUser(context.Background(), "admin", password)
 	if err != nil || user.ID != "usr_kdf" {
 		t.Fatalf("native login user=%#v err=%v", user, err)
 	}
-	if cost := storedCost(); cost != currentPasswordBcryptCost {
-		t.Fatalf("native login upgraded cost=%d", cost)
+	waitForCurrentCost()
+}
+
+func TestPasswordVerificationSnapshotFencesSessionIssuance(t *testing.T) {
+	server := newScannerTestServer(t)
+	account, err := server.createUser(UserRequest{
+		Username: "password-cas", Email: "password-cas@example.test", DisplayName: "Password CAS",
+		Password: "Password-cas-original1", Role: "user",
+	})
+	if err != nil {
+		t.Fatalf("create account: %v", err)
+	}
+	verified, err := server.authenticateLocalNativeUser(t.Context(), account.Username, "Password-cas-original1")
+	if err != nil {
+		t.Fatalf("verify original password: %v", err)
+	}
+	if verified.verifiedPasswordHash == "" {
+		t.Fatal("authentication did not carry an exact credential snapshot")
+	}
+	replacement, err := hashAccountPassword(t.Context(), kdfPasswordChangeHash, "Password-cas-replacement2")
+	if err != nil {
+		t.Fatalf("hash replacement: %v", err)
+	}
+	if _, err := server.db.Exec(`UPDATE users SET password_hash = ? WHERE id = ?`, replacement, account.ID); err != nil {
+		t.Fatalf("replace credential: %v", err)
+	}
+
+	request := httptest.NewRequest(http.MethodPost, "/api/auth/native", nil)
+	request.Header.Set("User-Agent", "Portico password CAS test")
+	_, err = server.issueNativeSessionCredentials(request, verified, "local", nativeDeviceDescriptor{
+		InstallationID: "password-cas-native", Name: "CAS", App: "test", Platform: "test",
+	})
+	if !errors.Is(err, errPasswordCredentialChanged) {
+		t.Fatalf("native credential crossed password replacement: %v", err)
+	}
+
+	browserRequest := httptest.NewRequest(http.MethodPost, "/api/auth/login", nil)
+	browserRequest.Header.Set("User-Agent", "Portico password CAS browser test")
+	_, err = server.createSessionForProviderWithSessionOptions(httptest.NewRecorder(), browserRequest, account.ID, "local", sessionCreateOptions{
+		ExpectedLocalPasswordHash: verified.verifiedPasswordHash,
+	})
+	if !errors.Is(err, errPasswordCredentialChanged) {
+		t.Fatalf("browser session crossed password replacement: %v", err)
+	}
+	var sessions, refreshTokens int
+	if err := server.db.QueryRow(`SELECT COUNT(*) FROM sessions WHERE user_id = ?`, account.ID).Scan(&sessions); err != nil {
+		t.Fatalf("count browser sessions: %v", err)
+	}
+	if err := server.db.QueryRow(`SELECT COUNT(*) FROM native_refresh_tokens WHERE user_id = ?`, account.ID).Scan(&refreshTokens); err != nil {
+		t.Fatalf("count native tokens: %v", err)
+	}
+	if sessions != 0 || refreshTokens != 0 {
+		t.Fatalf("stale verification minted sessions=%d refreshTokens=%d", sessions, refreshTokens)
 	}
 }

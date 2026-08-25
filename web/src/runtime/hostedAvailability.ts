@@ -1,7 +1,13 @@
-import { isAmbiguousPorticoError, isRetryablePorticoError, productMessage } from '@porticomediaserver/client-core';
+import { isAmbiguousPorticoError, isRetryablePorticoError, positiveFullJitterDelay, productMessage } from '@porticomediaserver/client-core';
 import { useEffect, useRef, useState } from 'react';
 
 export const HOSTED_AVAILABILITY_RETRY_MS = 5_000;
+
+export function createHostedAvailabilityRetryCohort(): string {
+  const values = new Uint32Array(4);
+  globalThis.crypto.getRandomValues(values);
+  return `page-${Array.from(values, value => value.toString(16).padStart(8, '0')).join('')}`;
+}
 
 type RetryMetadata = {
   retryAfterMs?: unknown;
@@ -32,8 +38,14 @@ function hostedRetryAfterDelay(reason: unknown, now: number): number {
   return Number.isFinite(retryAtMs) ? Math.max(0, retryAtMs - now) : retryAfterMs;
 }
 
-export function hostedAvailabilityRetryDelay(reason: unknown, now = Date.now()): number {
-  return Math.max(HOSTED_AVAILABILITY_RETRY_MS, hostedRetryAfterDelay(reason, now));
+export function hostedAvailabilityRetryDelay(reason: unknown, now = Date.now(), cohort = ''): number {
+  const retryAfter = hostedRetryAfterDelay(reason, now);
+  if (!cohort.trim())
+    return Math.max(HOSTED_AVAILABILITY_RETRY_MS, retryAfter);
+  const spread = cohort.trim()
+    ? positiveFullJitterDelay(HOSTED_AVAILABILITY_RETRY_MS, cohort.trim())
+    : HOSTED_AVAILABILITY_RETRY_MS;
+  return retryAfter > 0 ? retryAfter + spread : spread;
 }
 
 export function hostedAvailabilityCopy(offline: boolean): HostedAvailabilityCopy {
@@ -53,13 +65,18 @@ export function useHostedAvailabilityRetry({
   enabled,
   reason,
   retry,
+  cohort,
 }: {
   enabled: boolean;
   reason: unknown;
   retry: () => void;
+  cohort?: string;
 }): { automatic: boolean; offline: boolean; copy: HostedAvailabilityCopy } {
   const retryRef = useRef(retry);
   retryRef.current = retry;
+  const pageCohortRef = useRef<string | undefined>(undefined);
+  if (pageCohortRef.current === undefined) pageCohortRef.current = createHostedAvailabilityRetryCohort();
+  const retryCohort = cohort?.trim() || pageCohortRef.current;
   const [offline, setOffline] = useState(() => typeof navigator !== 'undefined' && navigator.onLine === false);
   // The runtime provider has already classified the original failure before
   // enabling this hook. `reason` intentionally contains only bounded retry
@@ -84,6 +101,9 @@ export function useHostedAvailabilityRetry({
     let timer: number | undefined;
     let completed = false;
     const scheduledAt = Date.now();
+    // Keep the Retry-After timestamp separate from the bounded jitter window.
+    // A hidden tab waits one fresh bounded interval when it becomes visible;
+    // an explicit provider deadline remains a strict lower bound.
     const retryAfterAt = scheduledAt + hostedRetryAfterDelay(reason, scheduledAt);
     const clear = () => {
       if (timer !== undefined) window.clearTimeout(timer);
@@ -98,14 +118,16 @@ export function useHostedAvailabilityRetry({
     const schedule = () => {
       clear();
       if (completed || document.visibilityState === 'hidden' || navigator.onLine === false) return;
-      timer = window.setTimeout(run, Math.max(HOSTED_AVAILABILITY_RETRY_MS, retryAfterAt - Date.now()));
+      const now = Date.now();
+      // Retry-After is an absolute lower bound. Every initial, online, and
+      // visibility-resume attempt then receives its own positive cohort spread
+      // so a returning browser fleet cannot collapse onto that boundary.
+      const spread = hostedAvailabilityRetryDelay(undefined, now, retryCohort);
+      timer = window.setTimeout(run, Math.max(0, retryAfterAt - now) + spread);
     };
     const resumeOnline = () => {
       if (navigator.onLine === false) return;
-      clear();
-      const remaining = retryAfterAt - Date.now();
-      if (remaining > 0) timer = window.setTimeout(run, remaining);
-      else run();
+      schedule();
     };
     const visibilityChanged = () => {
       if (document.visibilityState === 'hidden') clear();
@@ -121,7 +143,7 @@ export function useHostedAvailabilityRetry({
       window.removeEventListener('offline', clear);
       document.removeEventListener('visibilitychange', visibilityChanged);
     };
-  }, [automatic, reason]);
+  }, [automatic, reason, retryCohort]);
 
   return { automatic, offline, copy: hostedAvailabilityCopy(offline) };
 }

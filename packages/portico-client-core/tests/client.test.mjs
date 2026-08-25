@@ -17,6 +17,10 @@ import {
   defaultPlaybackQuality,
   groupLibraryCategories,
   hostedDirectRouteAllowed,
+  HostedRouteDiscoveryTimeoutError,
+  HostedRouteRetryLaterError,
+  HostedTerminalMutationCommittedError,
+  HostedTerminalMutationUncertainError,
   LocalNetworkRouteUnavailableError,
   NearbyRouteAvailableError,
   preferredRoute,
@@ -31,6 +35,7 @@ import {
   isRetryablePorticoError,
   playbackSourceFor,
   playbackResourceUrl,
+  positiveFullJitterDelay,
   typedFilterForTab
 } from "../dist/index.js";
 import {
@@ -2395,12 +2400,14 @@ test("Hosted connector uses injected fetch, clock, abort, and timer facilities",
   });
 
   assert.equal(sessionSet.apiBaseUrl, "https://runtime.direct.getportico.tv");
-  assert.deepEqual(calls, [
-    ["abort-controller"],
-    ["set-timeout", 3500],
-    ["fetch", "https://runtime.direct.getportico.tv/api/remote-access/health", true],
-    ["clear-timeout", true]
+  assert.deepEqual(calls.map(call => call[0]), [
+    "abort-controller", "set-timeout", "abort-controller", "set-timeout",
+    "fetch", "clear-timeout", "clear-timeout"
   ]);
+  assert.ok(calls[1][1] > 0 && calls[1][1] <= 30_000, "discovery owns a bounded absolute timer");
+  assert.equal(calls[3][1], 3500);
+  assert.deepEqual(calls[4], ["fetch", "https://runtime.direct.getportico.tv/api/remote-access/health", true]);
+  assert.deepEqual(calls.slice(5), [["clear-timeout", true], ["clear-timeout", true]]);
 });
 
 test("Hosted connector clears the provisional session and stops before auth when the server API is incompatible", async () => {
@@ -2588,6 +2595,387 @@ test("hosted connector retries transient route verification before failing", asy
   assert.equal(sessionSet.apiBaseUrl, "https://retry.direct.getportico.tv");
   assert.equal(sessionSet.bootstrapAccessToken, undefined);
   assert.equal(sessionSet.refreshToken, undefined);
+});
+
+test("route discovery owns one three-request retry budget with stable cohort jitter", async () => {
+  const server = { ...testServerIdentity(), id: "srv_three_routes", name: "Three routes", preferredAuthMode: "portico" };
+  const document = signedRouteDocument({
+    serverId: server.id,
+    serverName: server.name,
+    assignedHostname: "three-routes.direct.getportico.tv",
+    issuedAt: "2026-05-23T00:00:00Z",
+    expiresAt: "2026-05-23T00:05:00Z",
+    authModes: ["portico"],
+    certificate: {status: "valid"},
+    membership: {role: "owner"},
+    routes: [{type: "public_direct", url: "https://three-routes.direct.getportico.tv", quality: "reachable"}],
+  });
+  const run = async () => {
+    const requestOptions = [];
+    const waits = [];
+    let calls = 0;
+    const result = await discoverHostedServerRoute(server, {
+      hostedClient: {
+        routes: async (_serverId, init) => {
+          requestOptions.push(init);
+          calls += 1;
+          if (calls < 3) {
+            throw new PorticoTransportError("hosted_transport_failed", "Hosted unavailable", new TypeError("offline"), {method: "GET", retryable: true});
+          }
+          return document;
+        },
+        reportRouteFailure: async () => ({ok: true, matched: true}),
+      },
+      routeProbeFetch: async () => jsonResponse({
+        serverId: server.id,
+        serverPublicKeyFingerprint: testServerPublicKeyFingerprint,
+        remoteAccessEnabled: true,
+      }),
+      retryDelaysMs: [10, 20, 30, 40],
+      retryDelay: async milliseconds => { waits.push(milliseconds); },
+      retryCohort: "persisted-installation-1",
+      trustedHostedDocumentKeys: {[hostedDocumentTestKeyId]: hostedDocumentTestPublicKey},
+      runtime: clientAttachmentRuntime,
+      now: () => new Date("2026-05-23T00:01:00Z"),
+    });
+    assert.equal(result.routeDocument.serverId, server.id);
+    assert.equal(calls, 3);
+    assert.deepEqual(requestOptions.map(init => init.retryBudget), [0, 0, 0]);
+    assert.ok(requestOptions.every(init => Number.isFinite(init.deadlineAt) && init.deadlineAt === requestOptions[0].deadlineAt));
+    return waits;
+  };
+  const first = await run();
+  const restarted = await run();
+  assert.deepEqual(restarted, first);
+  assert.ok(first[0] >= 1 && first[0] <= 10);
+  assert.ok(first[1] >= 1 && first[1] <= 20);
+});
+
+test("route retry full jitter spreads a 100K persisted fleet across the complete cap", () => {
+  const cap = 2500;
+  const bucketWidth = 100;
+  const buckets = Array.from({length: Math.ceil(cap / bucketWidth)}, () => 0);
+  for (let index = 0; index < 100_000; index += 1) {
+    const delay = positiveFullJitterDelay(cap, `installation-${index}:srv-fleet`, 0);
+    assert.ok(delay >= 1 && delay <= cap);
+    buckets[Math.min(buckets.length - 1, Math.floor((delay - 1) / bucketWidth))] += 1;
+  }
+  assert.ok(Math.max(...buckets) < 5000, `largest 100ms retry bucket=${Math.max(...buckets)}`);
+  assert.ok(Math.min(...buckets) > 3000, `smallest 100ms retry bucket=${Math.min(...buckets)}`);
+});
+
+test("an explicit empty retry cohort falls back to persisted installation identity across restarts", async () => {
+  const server = {...testServerIdentity(), id: "srv_empty_cohort", name: "Empty cohort", preferredAuthMode: "portico"};
+  const document = signedRouteDocument({
+    serverId: server.id,
+    serverName: server.name,
+    assignedHostname: "empty-cohort.direct.getportico.tv",
+    issuedAt: "2026-05-23T00:00:00Z",
+    expiresAt: "2026-05-23T00:05:00Z",
+    authModes: ["portico"],
+    certificate: {status: "valid"},
+    membership: {role: "owner"},
+    routes: [{type: "public_direct", url: "https://empty-cohort.direct.getportico.tv", quality: "reachable"}],
+  });
+  const run = async () => {
+    let routeCalls = 0;
+    const waits = [];
+    await connectHostedServer(server, {
+      ...hostedProfileBinding(server.id, "persisted-installation-empty-cohort"),
+      hostedClient: {
+        routes: async () => {
+          routeCalls += 1;
+          if (routeCalls === 1) throw new PorticoTransportError("hosted_transport_failed", "offline", new TypeError("offline"), {method: "GET", retryable: true});
+          return document;
+        },
+        porticoSession: async () => ({accessToken: "access", refreshToken: "refresh", accessExpiresAt: "2026-05-23T01:00:00Z", refreshExpiresAt: "2026-06-23T00:00:00Z"}),
+        reportRouteFailure: async () => ({ok: true, matched: true}),
+      },
+      localClient: compatibleLocalClient(server.id, "https://empty-cohort.direct.getportico.tv"),
+      sessionStore: {set() {}, clear() {}},
+      routeProbeFetch: async () => jsonResponse({serverId: server.id, serverPublicKeyFingerprint: testServerPublicKeyFingerprint, remoteAccessEnabled: true}),
+      retryDelaysMs: [2500],
+      retryDelay: async milliseconds => { waits.push(milliseconds); },
+      retryCohort: "",
+      trustedHostedDocumentKeys: {[hostedDocumentTestKeyId]: hostedDocumentTestPublicKey},
+      runtime: clientAttachmentRuntime,
+      now: () => new Date("2026-05-23T00:01:00Z"),
+    });
+    return waits;
+  };
+  assert.deepEqual(await run(), await run());
+});
+
+test("route discovery never retries terminal Hosted authorization failures", async () => {
+  let calls = 0;
+  await assert.rejects(discoverHostedServerRoute(
+    {...testServerIdentity(), id: "srv_terminal_route", name: "Terminal route", preferredAuthMode: "portico"},
+    {
+      hostedClient: {
+        routes: async () => {
+          calls += 1;
+          throw new ApiError(403, "forbidden", "Forbidden");
+        },
+      },
+      retryDelaysMs: [1, 1],
+      retryDelay: async () => { throw new Error("terminal failures must not schedule a retry"); },
+      trustedHostedDocumentKeys: {[hostedDocumentTestKeyId]: hostedDocumentTestPublicKey},
+      runtime: clientAttachmentRuntime,
+    },
+  ), error => error instanceof ApiError && error.status === 403);
+  assert.equal(calls, 1);
+});
+
+test("route discovery surfaces Retry-After that exceeds the foreground deadline", async () => {
+  let calls = 0;
+  await assert.rejects(discoverHostedServerRoute(
+    {...testServerIdentity(), id: "srv_retry_later", name: "Retry later", preferredAuthMode: "portico"},
+    {
+      hostedClient: {
+        routes: async () => {
+          calls += 1;
+          throw new ApiError(429, "hosted_busy", "Busy", undefined, {retryable: true, retryAfter: "10", retryAfterMs: 10_000});
+        },
+      },
+      retryDelaysMs: [1, 1],
+      retryCohort: "persisted-installation-2",
+      discoveryDeadlineAt: Date.now() + 100,
+      trustedHostedDocumentKeys: {[hostedDocumentTestKeyId]: hostedDocumentTestPublicKey},
+      runtime: clientAttachmentRuntime,
+    },
+  ), error => error instanceof HostedRouteRetryLaterError &&
+    error.retryAfterMs === 10_000 &&
+    !error.message.includes("Hosted Services"));
+  assert.equal(calls, 1);
+});
+
+test("route discovery aborts an in-flight route request at its one absolute deadline", async () => {
+  let calls = 0;
+  await assert.rejects(discoverHostedServerRoute(
+    {...testServerIdentity(), id: "srv_route_deadline", name: "Route deadline", preferredAuthMode: "portico"},
+    {
+      hostedClient: {
+        routes: async (_serverId, init) => {
+          calls += 1;
+          return new Promise((_resolve, reject) => {
+            init.signal.addEventListener("abort", () => reject(init.signal.reason), {once: true});
+          });
+        },
+      },
+      discoveryDeadlineAt: Date.now() + 10,
+      trustedHostedDocumentKeys: {[hostedDocumentTestKeyId]: hostedDocumentTestPublicKey},
+      runtime: clientAttachmentRuntime,
+    },
+  ), HostedRouteDiscoveryTimeoutError);
+  assert.equal(calls, 1);
+});
+
+test("route discovery deadline settles a never-resolving custom retry delay", async () => {
+  let delayStarted = false;
+  await assert.rejects(discoverHostedServerRoute(
+    {...testServerIdentity(), id: "srv_delay_deadline", name: "Delay deadline", preferredAuthMode: "portico"},
+    {
+      hostedClient: {
+        routes: async () => { throw new PorticoTransportError("hosted_transport_failed", "offline", new TypeError("offline"), {method: "GET", retryable: true}); },
+      },
+      retryDelaysMs: [1],
+      retryDelay: async () => { delayStarted = true; return new Promise(() => {}); },
+      discoveryDeadlineAt: Date.now() + 25,
+      trustedHostedDocumentKeys: {[hostedDocumentTestKeyId]: hostedDocumentTestPublicKey},
+      runtime: clientAttachmentRuntime,
+    },
+  ), HostedRouteDiscoveryTimeoutError);
+  assert.equal(delayStarted, true);
+});
+
+test("route discovery caller cancellation settles a custom retry delay and removes its listener", async () => {
+  const controller = new AbortController();
+  let retryStarted;
+  const started = new Promise(resolve => { retryStarted = resolve; });
+  let callerListeners = 0;
+  const originalAdd = controller.signal.addEventListener.bind(controller.signal);
+  const originalRemove = controller.signal.removeEventListener.bind(controller.signal);
+  controller.signal.addEventListener = (...args) => {
+    if (args[0] === "abort") callerListeners += 1;
+    return originalAdd(...args);
+  };
+  controller.signal.removeEventListener = (...args) => {
+    if (args[0] === "abort") callerListeners -= 1;
+    return originalRemove(...args);
+  };
+  const cancellation = new Error("newer server selected");
+  const discovery = discoverHostedServerRoute(
+    {...testServerIdentity(), id: "srv_delay_cancel", name: "Delay cancel", preferredAuthMode: "portico"},
+    {
+      hostedClient: {
+        routes: async () => { throw new PorticoTransportError("hosted_transport_failed", "offline", new TypeError("offline"), {method: "GET", retryable: true}); },
+      },
+      retryDelaysMs: [1000],
+      retryDelay: async () => { retryStarted(); return new Promise(() => {}); },
+      signal: controller.signal,
+      trustedHostedDocumentKeys: {[hostedDocumentTestKeyId]: hostedDocumentTestPublicKey},
+      runtime: clientAttachmentRuntime,
+    },
+  );
+  await started;
+  controller.abort(cancellation);
+  await assert.rejects(discovery, error => error === cancellation);
+  assert.equal(callerListeners, 0);
+});
+
+test("route discovery does not start a queued custom delay after its signal settles", async () => {
+  const cancellation = new Error("connection selection canceled before retry callback");
+  let aborted = false;
+  let abortReason;
+  let delayCalls = 0;
+  const listeners = new Set();
+  const signal = {
+    get aborted() { return aborted; },
+    get reason() { return abortReason; },
+    addEventListener(type, listener) {
+      if (type !== "abort") return;
+      listeners.add(listener);
+      if (!aborted) {
+        aborted = true;
+        abortReason = cancellation;
+        listener.call(signal, new Event("abort"));
+      }
+    },
+    removeEventListener(type, listener) {
+      if (type === "abort") listeners.delete(listener);
+    },
+  };
+  const controller = {
+    signal,
+    abort(reason = new DOMException("Aborted", "AbortError")) {
+      if (aborted) return;
+      aborted = true;
+      abortReason = reason;
+      for (const listener of [...listeners]) listener.call(signal, new Event("abort"));
+    },
+  };
+  await assert.rejects(discoverHostedServerRoute(
+    {...testServerIdentity(), id: "srv_queued_delay_cancel", name: "Queued delay cancel", preferredAuthMode: "portico"},
+    {
+      hostedClient: {
+        routes: async () => { throw new PorticoTransportError("hosted_transport_failed", "offline", new TypeError("offline"), {method: "GET", retryable: true}); },
+      },
+      retryDelaysMs: [1000],
+      retryDelay: async () => { delayCalls += 1; },
+      trustedHostedDocumentKeys: {[hostedDocumentTestKeyId]: hostedDocumentTestPublicKey},
+      runtime: {...clientAttachmentRuntime, createAbortController: () => controller},
+    },
+  ), error => error === cancellation);
+  assert.equal(delayCalls, 0);
+  assert.equal(listeners.size, 0);
+});
+
+test("route discovery clamps oversized deadlines and filters invalid delay caps before slicing", async () => {
+  const server = {...testServerIdentity(), id: "srv_normalized_retry", name: "Normalized retry", preferredAuthMode: "portico"};
+  const document = signedRouteDocument({
+    serverId: server.id, serverName: server.name, assignedHostname: "normalized.direct.getportico.tv",
+    issuedAt: "2026-05-23T00:00:00Z", expiresAt: "2026-05-23T00:05:00Z", authModes: ["portico"],
+    certificate: {status: "valid"}, membership: {role: "owner"},
+    routes: [{type: "public_direct", url: "https://normalized.direct.getportico.tv", quality: "reachable"}],
+  });
+  let calls = 0;
+  const waits = [];
+  const timerDelays = [];
+  const runtime = {
+    ...clientAttachmentRuntime,
+    setTimeout(callback, milliseconds) {
+      timerDelays.push(milliseconds);
+      return setTimeout(callback, milliseconds);
+    },
+    clearTimeout(handle) { clearTimeout(handle); },
+  };
+  await discoverHostedServerRoute(server, {
+    hostedClient: {
+      routes: async () => {
+        calls += 1;
+        if (calls < 3) throw new PorticoTransportError("hosted_transport_failed", "offline", new TypeError("offline"), {method: "GET", retryable: true});
+        return document;
+      },
+    },
+    routeProbeFetch: async () => jsonResponse({serverId: server.id, serverPublicKeyFingerprint: testServerPublicKeyFingerprint, remoteAccessEnabled: true}),
+    retryDelaysMs: [Number.NaN, -5, 10, 20, 30],
+    retryDelay: async milliseconds => { waits.push(milliseconds); },
+    retryCohort: "normalized-installation",
+    discoveryDeadlineAt: Date.now() + 10 * 60_000,
+    trustedHostedDocumentKeys: {[hostedDocumentTestKeyId]: hostedDocumentTestPublicKey},
+    runtime,
+    now: () => new Date("2026-05-23T00:01:00Z"),
+  });
+  assert.equal(calls, 3);
+  assert.equal(waits.length, 2);
+  assert.ok(waits[0] >= 1 && waits[0] <= 10);
+  assert.ok(waits[1] >= 1 && waits[1] <= 20);
+  assert.ok(timerDelays[0] > 0 && timerDelays[0] <= 30_000);
+});
+
+test("route discovery retries transient media-server 503 and 429 responses with Retry-After", async () => {
+  const server = {...testServerIdentity(), id: "srv_probe_retry", name: "Probe retry", preferredAuthMode: "portico"};
+  const document = signedRouteDocument({
+    serverId: server.id, serverName: server.name, assignedHostname: "probe-retry.direct.getportico.tv",
+    issuedAt: "2026-05-23T00:00:00Z", expiresAt: "2026-05-23T00:05:00Z", authModes: ["portico"],
+    certificate: {status: "valid"}, membership: {role: "owner"},
+    routes: [{type: "public_direct", url: "https://probe-retry.direct.getportico.tv", quality: "reachable"}],
+  });
+  for (const status of [503, 429]) {
+    let probes = 0;
+    let routes = 0;
+    const waits = [];
+    const cleanupOrder = [];
+    await discoverHostedServerRoute(server, {
+      hostedClient: {routes: async () => { routes += 1; return document; }},
+      routeProbeFetch: async () => {
+        probes += 1;
+        if (probes === 1) return new Response(new ReadableStream({
+          cancel() { cleanupOrder.push("body-canceled"); },
+        }), {status, headers: {"Retry-After": "0.05"}});
+        return jsonResponse({serverId: server.id, serverPublicKeyFingerprint: testServerPublicKeyFingerprint, remoteAccessEnabled: true});
+      },
+      retryDelaysMs: [100],
+      retryDelay: async milliseconds => {
+        cleanupOrder.push("retry-delay");
+        waits.push(milliseconds);
+      },
+      retryCohort: `probe-${status}`,
+      trustedHostedDocumentKeys: {[hostedDocumentTestKeyId]: hostedDocumentTestPublicKey},
+      runtime: clientAttachmentRuntime,
+      now: () => new Date("2026-05-23T00:01:00Z"),
+    });
+    assert.equal(routes, 2);
+    assert.equal(probes, 2);
+    assert.ok(waits[0] >= 51 && waits[0] <= 150, `status ${status} wait=${waits[0]}`);
+    assert.deepEqual(cleanupOrder, ["body-canceled", "retry-delay"]);
+  }
+});
+
+test("route discovery keeps media-server authorization and identity failures terminal", async () => {
+  const server = {...testServerIdentity(), id: "srv_probe_terminal", name: "Probe terminal", preferredAuthMode: "portico"};
+  const document = signedRouteDocument({
+    serverId: server.id, serverName: server.name, assignedHostname: "probe-terminal.direct.getportico.tv",
+    issuedAt: "2026-05-23T00:00:00Z", expiresAt: "2026-05-23T00:05:00Z", authModes: ["portico"],
+    certificate: {status: "valid"}, membership: {role: "owner"},
+    routes: [{type: "public_direct", url: "https://probe-terminal.direct.getportico.tv", quality: "reachable"}],
+  });
+  for (const response of [
+    () => new Response("forbidden", {status: 403}),
+    () => jsonResponse({serverId: "wrong-server", serverPublicKeyFingerprint: testServerPublicKeyFingerprint, remoteAccessEnabled: true}),
+  ]) {
+    let routes = 0;
+    await assert.rejects(discoverHostedServerRoute(server, {
+      hostedClient: {routes: async () => { routes += 1; return document; }},
+      routeProbeFetch: async () => response(),
+      retryDelaysMs: [100, 100],
+      retryDelay: async () => { throw new Error("terminal probe failures must not retry"); },
+      trustedHostedDocumentKeys: {[hostedDocumentTestKeyId]: hostedDocumentTestPublicKey},
+      runtime: clientAttachmentRuntime,
+      now: () => new Date("2026-05-23T00:01:00Z"),
+    }));
+    assert.equal(routes, 1);
+  }
 });
 
 test("route-failure reporting sends only opaque bounded evidence and deduplicates a route generation", async () => {
@@ -3329,6 +3717,7 @@ test("hosted services client uses hosted CSRF on mutations", async () => {
   assert.equal(calls[0].input, "https://api.example/api/system");
   assert.equal(calls[1].input, "https://api.example/api/auth/login");
   assert.equal(calls[1].init.headers["X-Portico-CSRF"], "hosted-csrf");
+  assert.match(calls[1].init.headers["Idempotency-Key"], /\S{8,}/);
 });
 
 test("hosted account and claim mutations forward cancellation signals", async () => {
@@ -3419,6 +3808,7 @@ test("hosted services client renews stale browser CSRF and retries a rejected mu
   ]);
   assert.equal(calls[1].init.headers["X-Portico-CSRF"], "stale-csrf");
   assert.equal(calls[3].init.headers["X-Portico-CSRF"], "fresh-csrf");
+  assert.equal(calls[3].init.headers["Idempotency-Key"], calls[1].init.headers["Idempotency-Key"]);
   assert.equal(loginAttempts, 2);
 });
 
@@ -3485,6 +3875,169 @@ test("hosted services client confirms account deletion with the current password
   assert.equal(calls[1].init.body, JSON.stringify({ password: "current-password" }));
   assert.equal(calls[1].init.signal.aborted, false);
   assert.equal(calls[1].init.headers["X-Portico-CSRF"], "hosted-csrf");
+  assert.match(calls[1].init.headers["Idempotency-Key"], /\S{8,}/);
+});
+
+test("hosted services client reconciles a lost terminal response by the original idempotency key", async () => {
+  const calls = [];
+  const hosted = createHostedServicesClient({
+    hostedApiBaseUrl: "https://api.example",
+    transport: {
+      fetch: async (input, init) => {
+        calls.push({ input: String(input), init });
+        if (String(input).endsWith("/api/system")) return jsonResponse(hostedSystemFixture);
+        return jsonResponse({
+          outcome: "committed",
+          receipt: {
+            receiptId: "tmr_1",
+            auditEventId: "aud_1",
+            action: "account.deleted",
+            targetType: "user",
+            targetId: "usr_1",
+            actorType: "user",
+            actorId: "usr_1",
+            createdAt: "2026-08-25T12:00:00Z"
+          }
+        });
+      }
+    }
+  });
+
+  const result = await hosted.reconcileAccountTerminalMutation("lost-response-key-1");
+  assert.equal(result.outcome, "committed");
+  assert.equal(calls[1].input, "https://api.example/api/account/terminal-mutations");
+  assert.equal(calls[1].init.method, "GET");
+  assert.equal(calls[1].init.headers["Idempotency-Key"], "lost-response-key-1");
+  assert.throws(
+    () => hosted.reconcileAccountTerminalMutation("bad key"),
+    /valid terminal mutation idempotency key/,
+  );
+});
+
+test("hosted terminal mutations persist before dispatch and reconcile an unknown outcome without replay", async () => {
+  const calls = [];
+  const saved = [];
+  const removed = [];
+  const hosted = createHostedServicesClient({
+    hostedApiBaseUrl: "https://api.example",
+    requestId: () => "terminal-key-1",
+    terminalMutationDurabilityAdapter: {
+      save: async record => saved.push(record),
+      remove: async key => removed.push(key)
+    },
+    transport: {
+      fetch: async (input, init) => {
+        const url = String(input);
+        calls.push({ url, init });
+        if (url.endsWith("/api/system")) return jsonResponse(hostedSystemFixture);
+        if (url.endsWith("/api/account/me")) {
+          return jsonResponse({
+            code: "terminal_mutation_outcome_unknown",
+            detail: "Portico is still confirming this change."
+          }, {
+            status: 503,
+            headers: {
+              "Retry-After": "1",
+              "X-Portico-Terminal-Outcome": "outcome_unknown",
+              "X-Portico-Terminal-Receipt": "tmr_1"
+            }
+          });
+        }
+        if (url.endsWith("/api/account/terminal-mutations")) {
+          return jsonResponse({ outcome: "committed", receipt: { receiptId: "tmr_1" } });
+        }
+        throw new Error(`Unexpected request ${url}`);
+      }
+    }
+  });
+
+  await assert.rejects(
+    hosted.deleteAccount({ password: "secret" }),
+    error =>
+      error instanceof HostedTerminalMutationCommittedError &&
+      error.committed === true &&
+      error.idempotencyKey === "terminal-key-1",
+  );
+  assert.equal(saved.length, 1);
+  assert.equal(saved[0].path, "/api/account/me");
+  assert.deepEqual(removed, ["terminal-key-1"]);
+  assert.equal(calls.filter(call => call.url.endsWith("/api/account/me")).length, 1);
+  const reconciliation = calls.find(call => call.url.endsWith("/api/account/terminal-mutations"));
+  assert.equal(reconciliation.init.headers["Idempotency-Key"], "terminal-key-1");
+});
+
+test("hosted terminal mutation uncertainty retains its durable key when reconciliation is unavailable", async () => {
+  const saved = [];
+  const removed = [];
+  const hosted = createHostedServicesClient({
+    hostedApiBaseUrl: "https://api.example",
+    requestId: () => "terminal-key-2",
+    terminalMutationDurabilityAdapter: {
+      save: async record => saved.push(record),
+      remove: async key => removed.push(key)
+    },
+    transport: {
+      fetch: async (input) => {
+        const url = String(input);
+        if (url.endsWith("/api/system")) return jsonResponse(hostedSystemFixture);
+        if (url.endsWith("/api/account/me")) throw new Error("response lost");
+        if (url.endsWith("/api/account/terminal-mutations")) {
+          return jsonResponse({ code: "receipt_not_found", detail: "Not found." }, { status: 404 });
+        }
+        throw new Error(`Unexpected request ${url}`);
+      }
+    },
+  });
+
+  await assert.rejects(
+    hosted.deleteAccount({ password: "secret" }),
+    error =>
+      error instanceof HostedTerminalMutationUncertainError &&
+      error.ambiguous === true &&
+      error.idempotencyKey === "terminal-key-2",
+  );
+  assert.equal(saved.length, 1);
+  assert.deepEqual(removed, []);
+});
+
+test("hosted profile-image upload uses the same durable terminal reconciliation path", async () => {
+  const calls = [];
+  const saved = [];
+  const removed = [];
+  const hosted = createHostedServicesClient({
+    hostedApiBaseUrl: "https://api.example",
+    requestId: () => "terminal-upload-key",
+    terminalMutationDurabilityAdapter: {
+      save: async record => saved.push(record),
+      remove: async key => removed.push(key),
+    },
+    transport: {
+      fetch: async (input, init) => {
+        const url = String(input);
+        calls.push({ url, init });
+        if (url.endsWith("/api/system")) return jsonResponse(hostedSystemFixture);
+        if (url.endsWith("/api/account/me/image")) {
+          return jsonResponse({ code: "terminal_mutation_outcome_unknown" }, {
+            status: 503,
+            headers: { "X-Portico-Terminal-Outcome": "outcome_unknown" },
+          });
+        }
+        if (url.endsWith("/api/account/terminal-mutations"))
+          return jsonResponse({ outcome: "committed", receipt: { receiptId: "tmr_upload" } });
+        throw new Error(`Unexpected request ${url}`);
+      },
+    },
+  });
+  const form = new FormData();
+  form.set("image", new Blob(["image"]), "avatar.png");
+
+  await assert.rejects(
+    hosted.uploadAccountImage(form),
+    error => error instanceof HostedTerminalMutationCommittedError,
+  );
+  assert.equal(saved[0].path, "/api/account/me/image");
+  assert.deepEqual(removed, ["terminal-upload-key"]);
+  assert.equal(calls.filter(call => call.url.endsWith("/api/account/me/image")).length, 1);
 });
 
 test("hosted services client exposes the complete TV setup flow", async () => {
@@ -3838,6 +4391,36 @@ test("ApiError falls back to response request ID and preserves extension details
     assert.equal(error.detail, "Invalid field");
     assert.equal(error.requestId, "request-from-header");
     assert.deepEqual(error.details, { field: "email" });
+    return true;
+  });
+});
+
+test("ApiError preserves terminal reconciliation headers and marks an unknown outcome ambiguous", async () => {
+  const hosted = createHostedServicesClient({
+    hostedApiBaseUrl: "https://api.example",
+    transport: {
+      fetch: async (input) => {
+        if (String(input).endsWith("/api/system")) return jsonResponse(hostedSystemFixture);
+        return jsonResponse({
+          code: "terminal_mutation_outcome_unknown",
+          detail: "Portico is still confirming this change."
+        }, {
+          status: 503,
+          headers: {
+            "Retry-After": "1",
+            "X-Portico-Terminal-Outcome": "outcome_unknown",
+            "X-Portico-Terminal-Receipt": "tmr_example"
+          }
+        });
+      }
+    }
+  });
+
+  await assert.rejects(hosted.deleteAccount({ password: "secret" }), (error) => {
+    assert.equal(error instanceof ApiError, true);
+    assert.equal(error.ambiguous, true);
+    assert.equal(error.responseHeaders["x-portico-terminal-outcome"], "outcome_unknown");
+    assert.equal(error.responseHeaders["x-portico-terminal-receipt"], "tmr_example");
     return true;
   });
 });

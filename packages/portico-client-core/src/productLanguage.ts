@@ -62,6 +62,9 @@ const problemCodeMessages: Readonly<Record<string, ProductMessageId>> = Object.f
   invalid_profile_policy: "auth.invalid-profile-restrictions",
   invalid_profile_restrictions: "auth.invalid-profile-restrictions",
   invalid_user_field: "problem.invalid-request",
+  hosted_busy: "problem.hosted-busy",
+  rate_limit_unavailable: "problem.hosted-busy",
+  credential_verification_unavailable: "problem.hosted-busy",
   local_profile_pin_invalid: "auth.local-profile-pin-invalid",
   // Library Channel problems are also emitted with messageId by the server.
   // These mappings keep older servers and third-party transports consistent.
@@ -142,6 +145,11 @@ const problemCodeMessages: Readonly<Record<string, ProductMessageId>> = Object.f
   profile_trust_failed: "auth.automatic-profile-trust-failed",
   profiles_managed_by_portico_account: "auth.profiles-managed-by-portico-account",
   hosted_unavailable: "problem.cloud-unavailable",
+  // Authority freshness failures are safe, retryable continuity states. Keep
+  // them in Product Language instead of leaking a generic transport error;
+  // the server remains fail-closed until a fresh signed policy is available.
+  hosted_authority_stale: "problem.cloud-unavailable",
+  hosted_authority_clock_invalid: "problem.server-unavailable",
   rate_limited: "problem.rate-limited",
   recent_reauthentication_required: "auth.session-expired",
   remote_access_disabled: "problem.server-unavailable",

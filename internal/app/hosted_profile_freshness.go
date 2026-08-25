@@ -14,20 +14,23 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 )
 
 const (
-	hostedProfileFreshnessLease     = 5 * time.Minute
-	hostedProfileStaleIfError       = 24 * time.Hour
+	hostedProfileFreshnessLease     = 30 * time.Minute
+	hostedProfileStaleIfError       = maximumPolicyLifetime
 	hostedProfileRefreshRetryBase   = 30 * time.Second
 	hostedProfileRefreshRetryJitter = 30 * time.Second
 	hostedProfileRetryAfterSeconds  = int(hostedProfileRefreshRetryBase / time.Second)
 	hostedProfileRequestTimeout     = 2 * time.Second
-	hostedProfileRefreshAheadBase   = 60 * time.Second
-	hostedProfileRefreshAheadJitter = 30 * time.Second
+	hostedProfileRefreshAheadBase   = 5 * time.Minute
+	hostedProfileRefreshAheadJitter = 2 * time.Minute
 	hostedProfileDirectoryMaxSkew   = 30 * time.Second
 	hostedProfileDirectoryMaxAgeSec = int(hostedProfileFreshnessLease / time.Second)
+	hostedProfileRefreshConcurrency = 4
+	hostedProfileRefreshBacklog     = 64
 )
 
 var (
@@ -211,30 +214,111 @@ func (s *Server) startHostedProfileDirectoryRefresh(accountID string, state host
 	}
 	call := &hostedProfileRefreshCall{done: make(chan struct{})}
 	s.hostedProfileRefreshes[accountID] = call
+	if s.hostedProfileRefreshQueue == nil {
+		s.hostedProfileRefreshQueue = make(chan string, hostedProfileRefreshBacklog)
+	}
+	queue := s.hostedProfileRefreshQueue
 	s.hostedProfileRefreshMu.Unlock()
 
-	started := s.startOwnedAsync("hosted-profile-directory-refresh", func(background context.Context) {
-		refreshCtx, cancel := context.WithTimeout(background, hostedProfileRequestTimeout)
-		defer cancel()
-		call.err = s.refreshHostedProfileDirectoryContext(refreshCtx, accountID, state, stateErr, now)
-		s.hostedProfileRefreshMu.Lock()
-		delete(s.hostedProfileRefreshes, accountID)
-		close(call.done)
-		s.hostedProfileRefreshMu.Unlock()
+	// One scheduler owns a fixed worker set. Requests are represented by an
+	// account ID, so repeated wakes coalesce and a full queue can discard its
+	// oldest pending account instead of creating an unbounded goroutine wave.
+	s.hostedProfileRefreshSchedulerOnce.Do(func() {
+		started := s.startOwnedAsync("hosted-profile-directory-refresh-scheduler", func(background context.Context) {
+			s.hostedProfileRefreshScheduler(background)
+		})
+		if !started {
+			s.hostedProfileRefreshMu.Lock()
+			if s.hostedProfileRefreshes[accountID] == call {
+				delete(s.hostedProfileRefreshes, accountID)
+				call.err = context.Canceled
+				close(call.done)
+			}
+			s.hostedProfileRefreshMu.Unlock()
+		}
 	})
-	if !started {
-		// BeginShutdown closes owned-async admission before the host waits. Do
-		// not strand request-bound callers on a coalesced call that was never
-		// started; publish cancellation through the same completion channel.
-		s.hostedProfileRefreshMu.Lock()
-		if s.hostedProfileRefreshes[accountID] == call {
+
+	s.hostedProfileRefreshMu.Lock()
+	if s.hostedProfileRefreshes[accountID] != call {
+		s.hostedProfileRefreshMu.Unlock()
+		return call
+	}
+	select {
+	case queue <- accountID:
+	default:
+		// The queue stores only pending IDs. Dropping one ID drops the matching
+		// call as well; a later request will enqueue a fresh latest-wins call.
+		var dropped string
+		select {
+		case dropped = <-queue:
+		default:
+		}
+		if dropped != "" {
+			if droppedCall := s.hostedProfileRefreshes[dropped]; droppedCall != nil {
+				delete(s.hostedProfileRefreshes, dropped)
+				droppedCall.err = errHostedProfileDirectoryUnavailable
+				close(droppedCall.done)
+			}
+		}
+		select {
+		case queue <- accountID:
+		default:
 			delete(s.hostedProfileRefreshes, accountID)
-			call.err = context.Canceled
+			call.err = errHostedProfileDirectoryUnavailable
 			close(call.done)
 		}
-		s.hostedProfileRefreshMu.Unlock()
 	}
+	s.hostedProfileRefreshMu.Unlock()
 	return call
+}
+
+func (s *Server) hostedProfileRefreshScheduler(background context.Context) {
+	workers := make(chan struct{}, hostedProfileRefreshConcurrency)
+	var workerWG sync.WaitGroup
+	for {
+		select {
+		case <-background.Done():
+			workerWG.Wait()
+			s.hostedProfileRefreshMu.Lock()
+			for accountID, call := range s.hostedProfileRefreshes {
+				delete(s.hostedProfileRefreshes, accountID)
+				call.err = context.Canceled
+				close(call.done)
+			}
+			s.hostedProfileRefreshMu.Unlock()
+			return
+		case accountID := <-s.hostedProfileRefreshQueue:
+			s.hostedProfileRefreshMu.Lock()
+			call := s.hostedProfileRefreshes[accountID]
+			s.hostedProfileRefreshMu.Unlock()
+			if call == nil {
+				continue
+			}
+			select {
+			case workers <- struct{}{}:
+			case <-background.Done():
+				continue
+			}
+			workerWG.Add(1)
+			go func(accountID string, call *hostedProfileRefreshCall) {
+				defer workerWG.Done()
+				defer func() { <-workers }()
+				// The state is read at dequeue time. This keeps retries and wake
+				// hints latest-wins without retaining per-account goroutines.
+				state, stateErr := s.hostedProfileStateContext(background, accountID)
+				refreshCtx, cancel := context.WithTimeout(background, hostedProfileRequestTimeout)
+				err := s.refreshHostedProfileDirectoryContext(refreshCtx, accountID, state, stateErr, time.Now().UTC())
+				cancel()
+				s.hostedProfileRefreshMu.Lock()
+				if s.hostedProfileRefreshes[accountID] == call {
+					delete(s.hostedProfileRefreshes, accountID)
+					call.err = err
+					close(call.done)
+				}
+				s.hostedProfileRefreshMu.Unlock()
+			}(accountID, call)
+		}
+	}
 }
 
 func (s *Server) refreshHostedProfileDirectoryContext(ctx context.Context, accountID string, previous hostedProfileSnapshotState, previousErr error, now time.Time) error {

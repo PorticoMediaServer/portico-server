@@ -83,6 +83,7 @@ func (s *Server) registerSystemRoutes(reg *apiroute.Registry) {
 }
 
 func (s *Server) registerRemoteAccessRoutes(reg *apiroute.Registry) {
+	reg.Public("/api/remote-access/hosted-wake", s.handleHostedServerWake)
 	reg.Session("/api/remote-access/status", s.withAuth(s.handleRemoteAccessStatus))
 	reg.Session("/api/remote-access/claim/start", s.withAuth(s.handleRemoteAccessClaimStart))
 	reg.Session("/api/remote-access/claim/cancel", s.withAuth(s.handleRemoteAccessClaimCancel))

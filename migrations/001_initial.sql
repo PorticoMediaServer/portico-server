@@ -757,12 +757,19 @@ CREATE TABLE local_profile_admin_proofs (
 );
 CREATE TABLE local_profile_pin_credentials (
     profile_id TEXT PRIMARY KEY REFERENCES profiles(id) ON DELETE CASCADE,
-    pin_hash TEXT NOT NULL CHECK (length(pin_hash) = 60 AND pin_hash GLOB '$2[aby]$10$*'),
+    pin_hash TEXT NOT NULL CHECK (length(pin_hash) = 60 AND pin_hash GLOB '$2[aby]$08$*'),
     failed_attempts INTEGER NOT NULL DEFAULT 0 CHECK (failed_attempts >= 0),
     locked_until TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 , next_attempt_at TEXT NOT NULL DEFAULT '');
+CREATE TABLE hosted_wake_replays (
+    wake_id TEXT PRIMARY KEY,
+    server_id TEXT NOT NULL,
+    received_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL
+);
+CREATE INDEX idx_hosted_wake_replays_expiry ON hosted_wake_replays(expires_at);
 CREATE TABLE localization_options (
 			kind TEXT NOT NULL,
 			id TEXT NOT NULL,

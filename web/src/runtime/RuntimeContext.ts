@@ -14,6 +14,7 @@ export type RuntimeContextValue = {
   expectedViewerScope?: ViewerScope;
   viewerRuntime: WebViewerRuntime;
   connectionWarning?: ProductMessageId;
+  hostedRetryCohort: string;
   dismissConnectionWarning: () => void;
   busy: boolean;
   mfaRequired: boolean;

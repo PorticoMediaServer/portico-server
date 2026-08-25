@@ -4806,6 +4806,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/remote-access/hosted-wake": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Accept a signed Hosted Services convergence hint
+         * @description Verifies a short-lived Hosted signature and schedules an outbound authority refresh. The callback itself grants no authority and does not treat receipt as convergence.
+         */
+        post: operations["postRemoteAccessHostedWake"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/remote-access/members/{id}": {
         parameters: {
             query?: never;
@@ -7262,6 +7282,37 @@ export interface components {
             signatureKeyId: string;
             /** @constant */
             version: "v1";
+        };
+        HostedServerWake: {
+            accountId?: string;
+            /** @constant */
+            audience: "portico-media-server";
+            /** Format: date-time */
+            expiresAt: string;
+            /** Format: date-time */
+            issuedAt: string;
+            /** @constant */
+            kind: "server-wake";
+            /** @enum {string} */
+            reason: "policy_changed" | "authority_changed" | "profile_authority_changed" | "repair_requested" | "route_changed";
+            serverId: string;
+            signature: string;
+            /** @constant */
+            signatureAlgorithm: "ed25519";
+            signatureKeyId: string;
+            /** Format: int64 */
+            targetPolicyRevision: number;
+            /** Format: int64 */
+            targetProfileRevision?: number;
+            /** @constant */
+            version: 1;
+            wakeId: string;
+        };
+        HostedServerWakeAccepted: {
+            /** @constant */
+            accepted: true;
+            /** Format: int64 */
+            targetPolicyRevision: number;
         };
         IOPressureDiagnostics: {
             /** Format: double */
@@ -42643,6 +42694,102 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["GetRemoteAccessHealthResponse"];
+                };
+            };
+            /** @description 400 Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 401 Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 403 Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 404 Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 405 Method Not Allowed */
+            405: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 409 Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 429 Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 500 Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    postRemoteAccessHostedWake: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HostedServerWake"];
+            };
+        };
+        responses: {
+            /** @description Verified wake accepted for asynchronous convergence */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HostedServerWakeAccepted"];
                 };
             };
             /** @description 400 Bad Request */

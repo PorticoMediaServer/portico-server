@@ -141,6 +141,24 @@ test("Hosted compatibility bootstrap is single-flight and cached before ordinary
   assert.equal(calls[0], "https://hosted.example/api/system");
 });
 
+test("Hosted system and signing-key recovery coalesce concurrent callers", async () => {
+  const calls = [];
+  const hosted = createHostedServicesClient({
+    hostedApiBaseUrl: "https://hosted.example",
+    transport: {
+      fetch: async (input) => {
+        const url = String(input);
+        calls.push(url);
+        await new Promise(resolve => setTimeout(resolve, 5));
+        if (url.endsWith("/api/system")) return new Response(JSON.stringify(hostedFixture.system), { headers: { "Content-Type": "application/json" } });
+        return new Response(JSON.stringify({ activeKeyId: "", keys: [] }), { headers: { "Content-Type": "application/json" } });
+      }
+    }
+  });
+  await Promise.all([hosted.documentSigningKeys(), hosted.documentSigningKeys(), hosted.checkCompatibility(), hosted.checkCompatibility()]);
+  assert.deepEqual(calls, ["https://hosted.example/api/system", "https://hosted.example/api/signing-keys"]);
+});
+
 test("Hosted retries safe compatibility and read requests after transient failures", async () => {
   let systemAttempts = 0; let serverAttempts = 0;
   const hosted = createHostedServicesClient({ hostedApiBaseUrl: "https://hosted.example", transport: { fetch: async (input) => {

@@ -2447,6 +2447,64 @@ components:
           format: date-time
         hostedReady:
           type: boolean
+    HostedServerWake:
+      type: object
+      additionalProperties: false
+      required: [kind, version, audience, serverId, targetPolicyRevision, reason, wakeId, issuedAt, expiresAt, signatureAlgorithm, signatureKeyId, signature]
+      properties:
+        kind:
+          type: string
+          const: server-wake
+        version:
+          type: integer
+          const: 1
+        audience:
+          type: string
+          const: portico-media-server
+        serverId:
+          type: string
+        targetPolicyRevision:
+          type: integer
+          format: int64
+          minimum: 1
+        accountId:
+          type: string
+        targetProfileRevision:
+          type: integer
+          format: int64
+          minimum: 1
+        reason:
+          type: string
+          enum: [policy_changed, authority_changed, profile_authority_changed, repair_requested, route_changed]
+        wakeId:
+          type: string
+          minLength: 8
+          maxLength: 128
+        issuedAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+        signatureAlgorithm:
+          type: string
+          const: ed25519
+        signatureKeyId:
+          type: string
+        signature:
+          type: string
+    HostedServerWakeAccepted:
+      type: object
+      additionalProperties: false
+      required: [accepted, targetPolicyRevision]
+      properties:
+        accepted:
+          type: boolean
+          const: true
+        targetPolicyRevision:
+          type: integer
+          format: int64
+          minimum: 1
     RemoteAccessMember:
       type: object
       required: [porticoMembershipId, porticoUserId, email, displayName, role, status, lastSyncedAt]
@@ -11632,6 +11690,27 @@ paths:
                     type: string
                   remoteAccessEnabled:
                     type: boolean
+  /remote-access/hosted-wake:
+    post:
+      security: []
+      x-portico-audience: management
+      x-portico-surfaces: [web-admin]
+      x-portico-rate-policy: state-mutation
+      summary: Accept a signed Hosted Services convergence hint
+      description: Verifies a short-lived Hosted signature and schedules an outbound authority refresh. The callback itself grants no authority and does not treat receipt as convergence.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HostedServerWake"
+      responses:
+        "202":
+          description: Verified wake accepted for asynchronous convergence
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HostedServerWakeAccepted"
   /auth/login:
     post:
       security: []

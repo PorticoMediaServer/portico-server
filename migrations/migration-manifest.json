@@ -4,7 +4,7 @@
   "migrations": [
     {
       "filename": "001_initial.sql",
-      "sha256": "e57b3a04f3872e7e378b93dbbf63cdae458336cf39fab25c6f2945b75c38ccb4"
+      "sha256": "1e5d57b8cd81d45885aa37c85c9c6c116fb40cb6fd772f3bccfb62ae2240b4f3"
     }
   ]
 }

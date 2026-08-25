@@ -1637,6 +1637,15 @@
         "action.switch-server"
       ]
     },
+    "problem.hosted-busy": {
+      "title": "This is taking a little longer",
+      "body": "Portico Account services couldn't finish this request yet. Your account and server are unchanged.",
+      "icon": "status.server",
+      "tone": "neutral",
+      "actions": [
+        "action.retry"
+      ]
+    },
     "problem.timeout": {
       "title": "The request took too long",
       "body": "The server didn't respond in time. Try again.",

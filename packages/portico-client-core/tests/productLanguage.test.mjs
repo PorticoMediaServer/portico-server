@@ -51,6 +51,8 @@ test("discovery failures resolve to shared navigation, search, detail, and feedb
   assert.equal(resolveProductProblem({ code: "navigation_unavailable", status: 503 }).id, "navigation.unavailable");
   assert.equal(resolveProductProblem({ code: "search_history_unavailable", status: 503 }).id, "search.offline");
   assert.equal(resolveProductProblem({ code: "media_children_unavailable", status: 503 }).id, "media.detail-unavailable");
+  assert.equal(resolveProductProblem({ code: "hosted_busy", status: 503 }).id, "problem.hosted-busy");
+  assert.equal(resolveProductProblem({ code: "rate_limit_unavailable", status: 503 }).id, "problem.hosted-busy");
   assert.equal(resolveProductProblem({ code: "feedback_not_allowed", status: 403 }).id, "feedback.disabled");
   assert.equal(resolveProductProblem({ code: "feedback_rate_limited", status: 429 }).id, "feedback.rate-limited");
 });

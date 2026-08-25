@@ -23,6 +23,11 @@ type metadataProviderIdentityProposal struct {
 	ExternalType       string
 	Confidence         float64
 	ExplicitAcceptance bool
+	// ProviderAsserted identifies an external ID stated directly by the
+	// provider payload (for example, a cross-provider ID or a MusicBrainz
+	// release relationship). It may establish the first identity below the
+	// generic fuzzy-match floor, but never displaces a different accepted ID.
+	ProviderAsserted bool
 }
 
 type stagedMetadataImage struct {
@@ -295,10 +300,10 @@ func (s *Server) applyMetadata(ctx context.Context, req metadataApplyRequest) (m
 			return err
 		}
 		for _, identity := range req.Identities {
-			if err := upsertMediaProviderIdentityTx(
+			if err := upsertMediaProviderIdentityTxWithPolicy(
 				tx, req.MediaID, identity.Provider, identity.ExternalID, identity.ExternalType,
 				identity.Confidence, firstNonEmpty(req.Source, string(req.Origin)), identity.ExplicitAcceptance,
-				req.ActorUserID, now,
+				req.ActorUserID, now, identity.ProviderAsserted,
 			); err != nil {
 				return err
 			}

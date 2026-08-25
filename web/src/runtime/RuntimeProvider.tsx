@@ -60,10 +60,12 @@ import {
   type RuntimeConfig,
 } from "./runtimeMachine";
 import { RuntimeContext, type RuntimeContextValue } from "./RuntimeContext";
+import { createHostedAvailabilityRetryCohort } from "./hostedAvailability";
 import {
   hostedCSRFToken,
   rememberHostedCSRFToken,
 } from "./hostedBrowserSecurity";
+import { browserHostedTerminalMutationDurability } from "./hostedTerminalMutationDurability";
 import {
   broadcastAccountFence,
   subscribeAccountFences,
@@ -1319,15 +1321,46 @@ export function RuntimeProvider({
       ),
     [rawConnectionVault],
   );
+  const [hostedRetryCohort, setHostedRetryCohort] = useState(
+    createHostedAvailabilityRetryCohort,
+  );
+  const hostedRetryCohortRef = useRef(hostedRetryCohort);
+  useEffect(() => {
+    let active = true;
+    void connectionVault.installationId().then((value) => {
+      if (active && value) {
+        hostedRetryCohortRef.current = value;
+        setHostedRetryCohort(value);
+      }
+    }).catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [connectionVault]);
   const hostedClient = useMemo(
     () =>
       createHostedServicesClient({
         hostedApiBaseUrl: config.hostedApiBaseUrl,
         csrfToken: hostedCSRFToken,
         onCSRFToken: rememberHostedCSRFToken,
+        // Runtime recovery already owns a visible, cohort-spread retry loop.
+        // Retrying invisibly inside each bootstrap request both multiplies
+        // Hosted load and delays the first useful offline/direct decision.
+        retryBudget: 0,
+        retryCohort: () => hostedRetryCohortRef.current,
+        terminalMutationDurabilityAdapter:
+          browserHostedTerminalMutationDurability,
       }),
     [config.hostedApiBaseUrl],
   );
+  useEffect(() => {
+    if (config.mode !== "hosted") return;
+    // This is a read-only reconciliation pass. Missing or temporarily
+    // unavailable receipts remain in durable storage for the next launch.
+    void hostedClient.reconcilePendingAccountTerminalMutations().catch(
+      () => undefined,
+    );
+  }, [config.mode, hostedClient]);
   const routeAwareTransport = useMemo(
     () => ({
       fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -1768,6 +1801,7 @@ export function RuntimeProvider({
         verifyFetch: browserSafeProbeFetch,
         routeProbeTimeoutMs: config.routeProbeTimeoutMs,
         routePreference,
+        retryCohort: hostedRetryCohortRef.current,
         signal: selection.signal,
         stageCandidate: async (candidate: PreparedTrustedServerConnection) => {
           throwIfSelectionStale(
@@ -2393,6 +2427,7 @@ export function RuntimeProvider({
         verifyFetch: browserSafeProbeFetch,
         routeProbeTimeoutMs: config.routeProbeTimeoutMs,
         routePreference: "lan-first",
+        retryCohort: hostedRetryCohortRef.current,
         stageCandidate: async (candidate: PreparedTrustedServerConnection) => {
           if (!sameViewerScope(candidate.scope, activeScope)) {
             throw new Error(
@@ -3427,6 +3462,24 @@ export function RuntimeProvider({
           return;
         }
       }
+      // A Web restart cannot restore credentials from durable storage by
+      // design. During an already-running tab's bootstrap/reconciliation,
+      // however, an active direct session is process-memory authority: retry
+      // it before Hosted /me and preserve the established viewer if the cloud
+      // control plane is unavailable. Explicit login/claim/device intents
+      // remain Hosted-first.
+      if (
+        rememberedAccount &&
+        activeServerConnection.current?.accountId === rememberedAccount.accountId &&
+        activeHostedAccount.current?.accountId === rememberedAccount.accountId &&
+        !bootstrapIntent.current.inviteId &&
+        !bootstrapIntent.current.claimCode &&
+        !bootstrapIntent.current.localLogin &&
+        !bootstrapIntent.current.deviceAuthorizationRequested &&
+        !bootstrapIntent.current.genericDeviceAuthorizationRequested &&
+        (await openRememberedConnections(rememberedAccount, hostedGeneration).catch(() => false))
+      )
+        return;
       try {
         const account = await withAbortableDeadline(
           controller.signal,
@@ -3553,6 +3606,7 @@ export function RuntimeProvider({
     expectedViewerScope,
     viewerRuntime,
     connectionWarning,
+    hostedRetryCohort,
     dismissConnectionWarning: () => setConnectionWarning(undefined),
     busy,
     mfaRequired,

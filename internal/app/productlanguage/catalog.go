@@ -99,6 +99,8 @@ var problemCodeMessages = map[string]string{
 	"rate_limited":                               "problem.rate-limited",
 	"recent_reauthentication_required":           "auth.session-expired",
 	"hosted_unavailable":                         "problem.cloud-unavailable",
+	"hosted_authority_stale":                     "problem.cloud-unavailable",
+	"hosted_authority_clock_invalid":             "problem.server-unavailable",
 	"csrf_failed":                                "problem.request-verification-failed",
 	"server_unavailable":                         "problem.server-unavailable",
 	"session_expired":                            "auth.session-expired",

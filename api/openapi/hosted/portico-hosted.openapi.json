@@ -1067,6 +1067,18 @@
           "activeKeyId": {
             "type": "string"
           },
+          "expiresAt": {
+            "type": "string"
+          },
+          "fingerprint": {
+            "type": "string"
+          },
+          "generation": {
+            "type": "integer"
+          },
+          "issuedAt": {
+            "type": "string"
+          },
           "keys": {
             "items": {
               "additionalProperties": false,
@@ -1080,7 +1092,16 @@
                 "publicKeyB64": {
                   "type": "string"
                 },
+                "revokedAt": {
+                  "type": "string"
+                },
                 "state": {
+                  "type": "string"
+                },
+                "validFrom": {
+                  "type": "string"
+                },
+                "validUntil": {
                   "type": "string"
                 }
               },
@@ -1100,6 +1121,10 @@
         },
         "required": [
           "activeKeyId",
+          "expiresAt",
+          "fingerprint",
+          "generation",
+          "issuedAt",
           "keys",
           "schemaVersion"
         ],
@@ -1324,6 +1349,12 @@
           "policyDigest": {
             "type": "string"
           },
+          "policyRevision": {
+            "type": "integer"
+          },
+          "policyRoot": {
+            "type": "string"
+          },
           "preferredAuthMode": {
             "type": "string"
           },
@@ -1411,6 +1442,12 @@
             "type": "boolean"
           },
           "policyDigest": {
+            "type": "string"
+          },
+          "policyRevision": {
+            "type": "integer"
+          },
+          "policyRoot": {
             "type": "string"
           },
           "publicIp": {
@@ -2629,6 +2666,57 @@
           "activeSessions": {
             "type": "integer"
           },
+          "admission": {
+            "additionalProperties": false,
+            "properties": {
+              "accepted": {
+                "type": "integer"
+              },
+              "byClass": {
+                "additionalProperties": {
+                  "type": "integer"
+                },
+                "type": "object"
+              },
+              "inFlight": {
+                "type": "integer"
+              },
+              "rejected": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "accepted",
+              "byClass",
+              "inFlight",
+              "rejected"
+            ],
+            "type": "object"
+          },
+          "bcrypt": {
+            "additionalProperties": false,
+            "properties": {
+              "capacity": {
+                "type": "integer"
+              },
+              "inFlight": {
+                "type": "integer"
+              },
+              "maxInFlight": {
+                "type": "integer"
+              },
+              "waiting": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "capacity",
+              "inFlight",
+              "maxInFlight",
+              "waiting"
+            ],
+            "type": "object"
+          },
           "checkedAt": {
             "format": "date-time",
             "type": "string"
@@ -2646,6 +2734,9 @@
             "type": "integer"
           },
           "oldestCertificateJobAgeSeconds": {
+            "type": "integer"
+          },
+          "oldestProfileImageDeletionAgeSeconds": {
             "type": "integer"
           },
           "oldestPushWakeAgeSeconds": {
@@ -2667,6 +2758,60 @@
             "type": "integer"
           },
           "pendingReachabilityJobs": {
+            "type": "integer"
+          },
+          "presenceCapacitySaturations": {
+            "type": "integer"
+          },
+          "profileImageDeletionQueueCapacity": {
+            "type": "integer"
+          },
+          "profileImageDeletionQueueDepth": {
+            "type": "integer"
+          },
+          "profileImageDeletionQueueFailures": {
+            "type": "integer"
+          },
+          "profileImageDeletionQueueOverdue": {
+            "type": "integer"
+          },
+          "reachabilityAsnConcurrencyUnavailable": {
+            "type": "boolean"
+          },
+          "reachabilityDeadLetters": {
+            "type": "integer"
+          },
+          "reachabilityEmptyPolls": {
+            "type": "integer"
+          },
+          "reachabilityLeaseAttempts": {
+            "type": "integer"
+          },
+          "reachabilityLeasedJobs": {
+            "type": "integer"
+          },
+          "reachabilityMaxProbeInFlight": {
+            "type": "integer"
+          },
+          "reachabilityPrefixConcurrencyLimited": {
+            "type": "integer"
+          },
+          "reachabilityProbeAttempts": {
+            "type": "integer"
+          },
+          "reachabilityProbeInFlight": {
+            "type": "integer"
+          },
+          "reachabilityProbeLatencyMilliseconds": {
+            "type": "integer"
+          },
+          "reachabilityProbeResults": {
+            "type": "integer"
+          },
+          "reachabilityProcessingFailures": {
+            "type": "integer"
+          },
+          "reachabilityTargetConcurrencyLimited": {
             "type": "integer"
           },
           "recentCertificateFailures": {
@@ -2701,12 +2846,15 @@
           "activeDevices",
           "activeMemberships",
           "activeSessions",
+          "admission",
+          "bcrypt",
           "checkedAt",
           "deadReachabilityJobs",
           "failedCertificateJobs",
           "failedDnsRecordCount",
           "failedPushWakes",
           "oldestCertificateJobAgeSeconds",
+          "oldestProfileImageDeletionAgeSeconds",
           "oldestPushWakeAgeSeconds",
           "oldestReachabilityJobAgeSeconds",
           "pendingCertificateJobs",
@@ -2714,6 +2862,24 @@
           "pendingInvitations",
           "pendingPushWakes",
           "pendingReachabilityJobs",
+          "presenceCapacitySaturations",
+          "profileImageDeletionQueueCapacity",
+          "profileImageDeletionQueueDepth",
+          "profileImageDeletionQueueFailures",
+          "profileImageDeletionQueueOverdue",
+          "reachabilityAsnConcurrencyUnavailable",
+          "reachabilityDeadLetters",
+          "reachabilityEmptyPolls",
+          "reachabilityLeaseAttempts",
+          "reachabilityLeasedJobs",
+          "reachabilityMaxProbeInFlight",
+          "reachabilityPrefixConcurrencyLimited",
+          "reachabilityProbeAttempts",
+          "reachabilityProbeInFlight",
+          "reachabilityProbeLatencyMilliseconds",
+          "reachabilityProbeResults",
+          "reachabilityProcessingFailures",
+          "reachabilityTargetConcurrencyLimited",
           "recentCertificateFailures",
           "recentDnsFailures",
           "recentLoginFailures",
@@ -2850,6 +3016,12 @@
           "certificateStatus": {
             "type": "string"
           },
+          "checkpointAgeSeconds": {
+            "type": "integer"
+          },
+          "checkpointState": {
+            "type": "string"
+          },
           "compatibilityEnvelopeRevision": {
             "type": "integer"
           },
@@ -2891,6 +3063,13 @@
             "format": "date-time",
             "type": "string"
           },
+          "lastPresenceAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "livePresenceState": {
+            "type": "string"
+          },
           "name": {
             "type": "string"
           },
@@ -2901,6 +3080,13 @@
             "type": "string"
           },
           "ownerUsername": {
+            "type": "string"
+          },
+          "presenceAsOf": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "presenceSource": {
             "type": "string"
           },
           "protocolMaximum": {
@@ -3029,6 +3215,21 @@
           "audience": {
             "type": "string"
           },
+          "chunkCount": {
+            "type": "integer"
+          },
+          "chunkDigest": {
+            "type": "string"
+          },
+          "chunkIndex": {
+            "type": "integer"
+          },
+          "contentRoot": {
+            "type": "string"
+          },
+          "decodedBytes": {
+            "type": "integer"
+          },
           "deletedAccountTombstones": {
             "items": {
               "additionalProperties": false,
@@ -3052,6 +3253,9 @@
           "digest": {
             "type": "string"
           },
+          "encodedBytes": {
+            "type": "integer"
+          },
           "expiresAt": {
             "format": "date-time",
             "type": "string"
@@ -3063,7 +3267,34 @@
             "format": "date-time",
             "type": "string"
           },
+          "itemCount": {
+            "type": "integer"
+          },
           "kind": {
+            "type": "string"
+          },
+          "manifestChunkDecodedBytes": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "manifestChunkEncodedBytes": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "manifestChunkHashes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "manifestDigest": {
+            "type": "string"
+          },
+          "manifestId": {
             "type": "string"
           },
           "members": {
@@ -3082,6 +3313,12 @@
             "type": "array"
           },
           "policyDigest": {
+            "type": "string"
+          },
+          "policyRevision": {
+            "type": "integer"
+          },
+          "policyRoot": {
             "type": "string"
           },
           "serverId": {
@@ -3682,6 +3919,9 @@
             },
             "type": "array"
           },
+          "availabilityState": {
+            "type": "string"
+          },
           "certificate": {
             "additionalProperties": false,
             "properties": {
@@ -3713,6 +3953,10 @@
             "type": "string"
           },
           "kind": {
+            "type": "string"
+          },
+          "lastPresenceAt": {
+            "format": "date-time",
             "type": "string"
           },
           "membership": {
@@ -3783,6 +4027,13 @@
               "source"
             ],
             "type": "object"
+          },
+          "presenceAsOf": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "presenceSource": {
+            "type": "string"
           },
           "routeAuthority": {
             "type": "string"
@@ -4094,6 +4345,10 @@
             "format": "date-time",
             "type": "string"
           },
+          "lastPresenceAt": {
+            "format": "date-time",
+            "type": "string"
+          },
           "name": {
             "type": "string"
           },
@@ -4101,6 +4356,13 @@
             "type": "string"
           },
           "preferredAuthMode": {
+            "type": "string"
+          },
+          "presenceAsOf": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "presenceSource": {
             "type": "string"
           },
           "protocolMaximum": {
@@ -4221,6 +4483,54 @@
         "required": [
           "items",
           "pageInfo"
+        ],
+        "type": "object"
+      },
+      "ServerProfileWakeAckRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "targetProfileRevision": {
+            "type": "integer"
+          },
+          "wakeId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "accountId",
+          "targetProfileRevision",
+          "wakeId"
+        ],
+        "type": "object"
+      },
+      "ServerProfileWakeAckResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "ok": {
+            "type": "boolean"
+          },
+          "serverId": {
+            "type": "string"
+          },
+          "targetProfileRevision": {
+            "type": "integer"
+          },
+          "wakeId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "accountId",
+          "ok",
+          "serverId",
+          "targetProfileRevision",
+          "wakeId"
         ],
         "type": "object"
       },
@@ -4526,6 +4836,63 @@
           "service",
           "setupSessionId",
           "status"
+        ],
+        "type": "object"
+      },
+      "TerminalMutationReceipt": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "type": "string"
+          },
+          "actorId": {
+            "type": "string"
+          },
+          "actorType": {
+            "type": "string"
+          },
+          "auditEventId": {
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "receiptId": {
+            "type": "string"
+          },
+          "targetId": {
+            "type": "string"
+          },
+          "targetType": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "action",
+          "actorId",
+          "actorType",
+          "auditEventId",
+          "createdAt",
+          "receiptId",
+          "targetId",
+          "targetType"
+        ],
+        "type": "object"
+      },
+      "TerminalMutationReceiptResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "outcome": {
+            "type": "string"
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/TerminalMutationReceipt"
+          }
+        },
+        "required": [
+          "outcome",
+          "receipt"
         ],
         "type": "object"
       },
@@ -4900,6 +5267,18 @@
               "minLength": 1,
               "type": "string"
             }
+          },
+          {
+            "description": "Stable caller-generated key required for terminal mutation replay and response-loss reconciliation.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 8,
+              "pattern": "^[A-Za-z0-9._:-]+$",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -4911,7 +5290,25 @@
                 }
               }
             },
-            "description": "Successful response"
+            "description": "Successful response",
+            "headers": {
+              "X-Portico-Terminal-Outcome": {
+                "description": "Committed or outcome_unknown terminal result marker.",
+                "schema": {
+                  "enum": [
+                    "committed",
+                    "outcome_unknown"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Portico-Terminal-Receipt": {
+                "description": "Stable server-derived receipt identifier for reconciliation.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "400": {
             "content": {
@@ -4992,6 +5389,34 @@
               }
             },
             "description": "Unexpected server error"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Service temporarily unavailable",
+            "headers": {
+              "X-Portico-Terminal-Outcome": {
+                "description": "Committed or outcome_unknown terminal result marker.",
+                "schema": {
+                  "enum": [
+                    "committed",
+                    "outcome_unknown"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Portico-Terminal-Receipt": {
+                "description": "Stable server-derived receipt identifier for reconciliation.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -5128,6 +5553,20 @@
     "/api/account/me": {
       "delete": {
         "operationId": "deleteAccount",
+        "parameters": [
+          {
+            "description": "Stable caller-generated key required for terminal mutation replay and response-loss reconciliation.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 8,
+              "pattern": "^[A-Za-z0-9._:-]+$",
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -5147,7 +5586,25 @@
                 }
               }
             },
-            "description": "Successful response"
+            "description": "Successful response",
+            "headers": {
+              "X-Portico-Terminal-Outcome": {
+                "description": "Committed or outcome_unknown terminal result marker.",
+                "schema": {
+                  "enum": [
+                    "committed",
+                    "outcome_unknown"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Portico-Terminal-Receipt": {
+                "description": "Stable server-derived receipt identifier for reconciliation.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "400": {
             "content": {
@@ -5228,6 +5685,34 @@
               }
             },
             "description": "Unexpected server error"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Service temporarily unavailable",
+            "headers": {
+              "X-Portico-Terminal-Outcome": {
+                "description": "Committed or outcome_unknown terminal result marker.",
+                "schema": {
+                  "enum": [
+                    "committed",
+                    "outcome_unknown"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Portico-Terminal-Receipt": {
+                "description": "Stable server-derived receipt identifier for reconciliation.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -5483,6 +5968,20 @@
     "/api/account/me/image": {
       "delete": {
         "operationId": "deleteAccountImage",
+        "parameters": [
+          {
+            "description": "Stable caller-generated key required for terminal mutation replay and response-loss reconciliation.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 8,
+              "pattern": "^[A-Za-z0-9._:-]+$",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -5492,7 +5991,25 @@
                 }
               }
             },
-            "description": "Successful response"
+            "description": "Successful response",
+            "headers": {
+              "X-Portico-Terminal-Outcome": {
+                "description": "Committed or outcome_unknown terminal result marker.",
+                "schema": {
+                  "enum": [
+                    "committed",
+                    "outcome_unknown"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Portico-Terminal-Receipt": {
+                "description": "Stable server-derived receipt identifier for reconciliation.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "400": {
             "content": {
@@ -5573,6 +6090,34 @@
               }
             },
             "description": "Unexpected server error"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Service temporarily unavailable",
+            "headers": {
+              "X-Portico-Terminal-Outcome": {
+                "description": "Committed or outcome_unknown terminal result marker.",
+                "schema": {
+                  "enum": [
+                    "committed",
+                    "outcome_unknown"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Portico-Terminal-Receipt": {
+                "description": "Stable server-derived receipt identifier for reconciliation.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -5705,6 +6250,20 @@
       },
       "post": {
         "operationId": "uploadAccountImage",
+        "parameters": [
+          {
+            "description": "Stable caller-generated key required for terminal mutation replay and response-loss reconciliation.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 8,
+              "pattern": "^[A-Za-z0-9._:-]+$",
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "multipart/form-data": {
@@ -5724,7 +6283,25 @@
                 }
               }
             },
-            "description": "Successful response"
+            "description": "Successful response",
+            "headers": {
+              "X-Portico-Terminal-Outcome": {
+                "description": "Committed or outcome_unknown terminal result marker.",
+                "schema": {
+                  "enum": [
+                    "committed",
+                    "outcome_unknown"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Portico-Terminal-Receipt": {
+                "description": "Stable server-derived receipt identifier for reconciliation.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "400": {
             "content": {
@@ -5805,6 +6382,34 @@
               }
             },
             "description": "Unexpected server error"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Service temporarily unavailable",
+            "headers": {
+              "X-Portico-Terminal-Outcome": {
+                "description": "Committed or outcome_unknown terminal result marker.",
+                "schema": {
+                  "enum": [
+                    "committed",
+                    "outcome_unknown"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Portico-Terminal-Receipt": {
+                "description": "Stable server-derived receipt identifier for reconciliation.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -5828,6 +6433,20 @@
     "/api/account/me/password": {
       "post": {
         "operationId": "changeAccountPassword",
+        "parameters": [
+          {
+            "description": "Stable caller-generated key required for terminal mutation replay and response-loss reconciliation.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 8,
+              "pattern": "^[A-Za-z0-9._:-]+$",
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -5847,7 +6466,25 @@
                 }
               }
             },
-            "description": "Successful response"
+            "description": "Successful response",
+            "headers": {
+              "X-Portico-Terminal-Outcome": {
+                "description": "Committed or outcome_unknown terminal result marker.",
+                "schema": {
+                  "enum": [
+                    "committed",
+                    "outcome_unknown"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Portico-Terminal-Receipt": {
+                "description": "Stable server-derived receipt identifier for reconciliation.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "400": {
             "content": {
@@ -5928,6 +6565,34 @@
               }
             },
             "description": "Unexpected server error"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Service temporarily unavailable",
+            "headers": {
+              "X-Portico-Terminal-Outcome": {
+                "description": "Committed or outcome_unknown terminal result marker.",
+                "schema": {
+                  "enum": [
+                    "committed",
+                    "outcome_unknown"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Portico-Terminal-Receipt": {
+                "description": "Stable server-derived receipt identifier for reconciliation.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -6851,6 +7516,18 @@
             }
           },
           {
+            "description": "Stable caller-generated key required for terminal mutation replay and response-loss reconciliation.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 8,
+              "pattern": "^[A-Za-z0-9._:-]+$",
+              "type": "string"
+            }
+          },
+          {
             "in": "header",
             "name": "X-Portico-Installation-ID",
             "required": false,
@@ -7037,6 +7714,25 @@
               }
             },
             "description": "Unexpected server error",
+            "headers": {
+              "Cache-Control": {
+                "description": "Profile and credential responses are not cacheable.",
+                "schema": {
+                  "const": "no-store",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Service temporarily unavailable",
             "headers": {
               "Cache-Control": {
                 "description": "Profile and credential responses are not cacheable.",
@@ -7541,6 +8237,18 @@
             }
           },
           {
+            "description": "Stable caller-generated key required for terminal mutation replay and response-loss reconciliation.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 8,
+              "pattern": "^[A-Za-z0-9._:-]+$",
+              "type": "string"
+            }
+          },
+          {
             "in": "header",
             "name": "X-Portico-Installation-ID",
             "required": false,
@@ -7746,6 +8454,25 @@
                 }
               }
             }
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Service temporarily unavailable",
+            "headers": {
+              "Cache-Control": {
+                "description": "Profile and credential responses are not cacheable.",
+                "schema": {
+                  "const": "no-store",
+                  "type": "string"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -7777,6 +8504,18 @@
             "schema": {
               "maxLength": 128,
               "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable caller-generated key required for terminal mutation replay and response-loss reconciliation.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 8,
+              "pattern": "^[A-Za-z0-9._:-]+$",
               "type": "string"
             }
           },
@@ -7977,6 +8716,25 @@
               }
             },
             "description": "Unexpected server error",
+            "headers": {
+              "Cache-Control": {
+                "description": "Profile and credential responses are not cacheable.",
+                "schema": {
+                  "const": "no-store",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Service temporarily unavailable",
             "headers": {
               "Cache-Control": {
                 "description": "Profile and credential responses are not cacheable.",
@@ -8248,6 +9006,20 @@
     "/api/account/push-subscriptions/current": {
       "delete": {
         "operationId": "revokeCurrentAccountPushSubscription",
+        "parameters": [
+          {
+            "description": "Stable caller-generated key required for terminal mutation replay and response-loss reconciliation.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 8,
+              "pattern": "^[A-Za-z0-9._:-]+$",
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -8267,7 +9039,25 @@
                 }
               }
             },
-            "description": "Successful response"
+            "description": "Successful response",
+            "headers": {
+              "X-Portico-Terminal-Outcome": {
+                "description": "Committed or outcome_unknown terminal result marker.",
+                "schema": {
+                  "enum": [
+                    "committed",
+                    "outcome_unknown"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Portico-Terminal-Receipt": {
+                "description": "Stable server-derived receipt identifier for reconciliation.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "400": {
             "content": {
@@ -8348,6 +9138,34 @@
               }
             },
             "description": "Unexpected server error"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Service temporarily unavailable",
+            "headers": {
+              "X-Portico-Terminal-Outcome": {
+                "description": "Committed or outcome_unknown terminal result marker.",
+                "schema": {
+                  "enum": [
+                    "committed",
+                    "outcome_unknown"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Portico-Terminal-Receipt": {
+                "description": "Stable server-derived receipt identifier for reconciliation.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -8769,6 +9587,18 @@
               "minLength": 1,
               "type": "string"
             }
+          },
+          {
+            "description": "Stable caller-generated key required for terminal mutation replay and response-loss reconciliation.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 8,
+              "pattern": "^[A-Za-z0-9._:-]+$",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -8780,7 +9610,25 @@
                 }
               }
             },
-            "description": "Successful response"
+            "description": "Successful response",
+            "headers": {
+              "X-Portico-Terminal-Outcome": {
+                "description": "Committed or outcome_unknown terminal result marker.",
+                "schema": {
+                  "enum": [
+                    "committed",
+                    "outcome_unknown"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Portico-Terminal-Receipt": {
+                "description": "Stable server-derived receipt identifier for reconciliation.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "400": {
             "content": {
@@ -8861,6 +9709,34 @@
               }
             },
             "description": "Unexpected server error"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Service temporarily unavailable",
+            "headers": {
+              "X-Portico-Terminal-Outcome": {
+                "description": "Committed or outcome_unknown terminal result marker.",
+                "schema": {
+                  "enum": [
+                    "committed",
+                    "outcome_unknown"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Portico-Terminal-Receipt": {
+                "description": "Stable server-derived receipt identifier for reconciliation.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -9015,6 +9891,18 @@
               "minLength": 1,
               "type": "string"
             }
+          },
+          {
+            "description": "Stable caller-generated key required for terminal mutation replay and response-loss reconciliation.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 8,
+              "pattern": "^[A-Za-z0-9._:-]+$",
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -9036,7 +9924,25 @@
                 }
               }
             },
-            "description": "Successful response"
+            "description": "Successful response",
+            "headers": {
+              "X-Portico-Terminal-Outcome": {
+                "description": "Committed or outcome_unknown terminal result marker.",
+                "schema": {
+                  "enum": [
+                    "committed",
+                    "outcome_unknown"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Portico-Terminal-Receipt": {
+                "description": "Stable server-derived receipt identifier for reconciliation.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "400": {
             "content": {
@@ -9117,6 +10023,34 @@
               }
             },
             "description": "Unexpected server error"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Service temporarily unavailable",
+            "headers": {
+              "X-Portico-Terminal-Outcome": {
+                "description": "Committed or outcome_unknown terminal result marker.",
+                "schema": {
+                  "enum": [
+                    "committed",
+                    "outcome_unknown"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Portico-Terminal-Receipt": {
+                "description": "Stable server-derived receipt identifier for reconciliation.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -9601,6 +10535,18 @@
               "minLength": 1,
               "type": "string"
             }
+          },
+          {
+            "description": "Stable caller-generated key required for terminal mutation replay and response-loss reconciliation.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 8,
+              "pattern": "^[A-Za-z0-9._:-]+$",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -9612,7 +10558,25 @@
                 }
               }
             },
-            "description": "Successful response"
+            "description": "Successful response",
+            "headers": {
+              "X-Portico-Terminal-Outcome": {
+                "description": "Committed or outcome_unknown terminal result marker.",
+                "schema": {
+                  "enum": [
+                    "committed",
+                    "outcome_unknown"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Portico-Terminal-Receipt": {
+                "description": "Stable server-derived receipt identifier for reconciliation.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "400": {
             "content": {
@@ -9693,6 +10657,34 @@
               }
             },
             "description": "Unexpected server error"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Service temporarily unavailable",
+            "headers": {
+              "X-Portico-Terminal-Outcome": {
+                "description": "Committed or outcome_unknown terminal result marker.",
+                "schema": {
+                  "enum": [
+                    "committed",
+                    "outcome_unknown"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Portico-Terminal-Receipt": {
+                "description": "Stable server-derived receipt identifier for reconciliation.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -10160,6 +11152,18 @@
               "minLength": 1,
               "type": "string"
             }
+          },
+          {
+            "description": "Stable caller-generated key required for terminal mutation replay and response-loss reconciliation.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 8,
+              "pattern": "^[A-Za-z0-9._:-]+$",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -10171,7 +11175,25 @@
                 }
               }
             },
-            "description": "Successful response"
+            "description": "Successful response",
+            "headers": {
+              "X-Portico-Terminal-Outcome": {
+                "description": "Committed or outcome_unknown terminal result marker.",
+                "schema": {
+                  "enum": [
+                    "committed",
+                    "outcome_unknown"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Portico-Terminal-Receipt": {
+                "description": "Stable server-derived receipt identifier for reconciliation.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "400": {
             "content": {
@@ -10252,6 +11274,34 @@
               }
             },
             "description": "Unexpected server error"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Service temporarily unavailable",
+            "headers": {
+              "X-Portico-Terminal-Outcome": {
+                "description": "Committed or outcome_unknown terminal result marker.",
+                "schema": {
+                  "enum": [
+                    "committed",
+                    "outcome_unknown"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Portico-Terminal-Receipt": {
+                "description": "Stable server-derived receipt identifier for reconciliation.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -10293,6 +11343,18 @@
               "minLength": 1,
               "type": "string"
             }
+          },
+          {
+            "description": "Stable caller-generated key required for terminal mutation replay and response-loss reconciliation.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 8,
+              "pattern": "^[A-Za-z0-9._:-]+$",
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -10314,7 +11376,25 @@
                 }
               }
             },
-            "description": "Successful response"
+            "description": "Successful response",
+            "headers": {
+              "X-Portico-Terminal-Outcome": {
+                "description": "Committed or outcome_unknown terminal result marker.",
+                "schema": {
+                  "enum": [
+                    "committed",
+                    "outcome_unknown"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Portico-Terminal-Receipt": {
+                "description": "Stable server-derived receipt identifier for reconciliation.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "400": {
             "content": {
@@ -10395,6 +11475,34 @@
               }
             },
             "description": "Unexpected server error"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Service temporarily unavailable",
+            "headers": {
+              "X-Portico-Terminal-Outcome": {
+                "description": "Committed or outcome_unknown terminal result marker.",
+                "schema": {
+                  "enum": [
+                    "committed",
+                    "outcome_unknown"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Portico-Terminal-Receipt": {
+                "description": "Stable server-derived receipt identifier for reconciliation.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -10808,6 +11916,244 @@
         "x-portico-auth": "hosted_account",
         "x-portico-rate-class": "auth",
         "x-portico-runtime-pattern": "/api/account/servers/"
+      }
+    },
+    "/api/account/terminal-mutations": {
+      "get": {
+        "operationId": "getAccountTerminalMutationByKey",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TerminalMutationReceiptResponse"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Authentication required or credential invalid"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Authenticated principal is not authorized"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Resource state conflict"
+          },
+          "423": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "HTTP 423"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Rate limit exceeded"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unexpected server error"
+          }
+        },
+        "security": [
+          {
+            "hostedCookie": []
+          },
+          {
+            "accountBearer": []
+          }
+        ],
+        "summary": "Reconcile a terminal mutation by its original Idempotency-Key",
+        "tags": [
+          "account"
+        ],
+        "x-portico-audit-policy": "none",
+        "x-portico-auth": "hosted_account",
+        "x-portico-rate-class": "account_read",
+        "x-portico-runtime-pattern": "/api/account/terminal-mutations"
+      }
+    },
+    "/api/account/terminal-mutations/{receiptId}": {
+      "get": {
+        "operationId": "getAccountTerminalMutationReceipt",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "receiptId",
+            "required": true,
+            "schema": {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TerminalMutationReceiptResponse"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Authentication required or credential invalid"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Authenticated principal is not authorized"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Resource state conflict"
+          },
+          "423": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "HTTP 423"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Rate limit exceeded"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unexpected server error"
+          }
+        },
+        "security": [
+          {
+            "hostedCookie": []
+          },
+          {
+            "accountBearer": []
+          }
+        ],
+        "summary": "Reconcile one terminal mutation receipt",
+        "tags": [
+          "account"
+        ],
+        "x-portico-audit-policy": "none",
+        "x-portico-auth": "hosted_account",
+        "x-portico-rate-class": "account_read",
+        "x-portico-runtime-pattern": "/api/account/terminal-mutations/"
       }
     },
     "/api/account/users/{userId}/image": {
@@ -11387,6 +12733,20 @@
     "/api/auth/logout": {
       "post": {
         "operationId": "revokeBrowserSession",
+        "parameters": [
+          {
+            "description": "Stable caller-generated key required for terminal mutation replay and response-loss reconciliation.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 8,
+              "pattern": "^[A-Za-z0-9._:-]+$",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -11396,7 +12756,25 @@
                 }
               }
             },
-            "description": "Successful response"
+            "description": "Successful response",
+            "headers": {
+              "X-Portico-Terminal-Outcome": {
+                "description": "Committed or outcome_unknown terminal result marker.",
+                "schema": {
+                  "enum": [
+                    "committed",
+                    "outcome_unknown"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Portico-Terminal-Receipt": {
+                "description": "Stable server-derived receipt identifier for reconciliation.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "400": {
             "content": {
@@ -11477,6 +12855,34 @@
               }
             },
             "description": "Unexpected server error"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Service temporarily unavailable",
+            "headers": {
+              "X-Portico-Terminal-Outcome": {
+                "description": "Committed or outcome_unknown terminal result marker.",
+                "schema": {
+                  "enum": [
+                    "committed",
+                    "outcome_unknown"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Portico-Terminal-Receipt": {
+                "description": "Stable server-derived receipt identifier for reconciliation.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           }
         },
         "security": [],
@@ -11609,6 +13015,20 @@
     "/api/auth/mfa/disable": {
       "post": {
         "operationId": "disableMFA",
+        "parameters": [
+          {
+            "description": "Stable caller-generated key required for terminal mutation replay and response-loss reconciliation.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 8,
+              "pattern": "^[A-Za-z0-9._:-]+$",
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -11628,7 +13048,25 @@
                 }
               }
             },
-            "description": "Successful response"
+            "description": "Successful response",
+            "headers": {
+              "X-Portico-Terminal-Outcome": {
+                "description": "Committed or outcome_unknown terminal result marker.",
+                "schema": {
+                  "enum": [
+                    "committed",
+                    "outcome_unknown"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Portico-Terminal-Receipt": {
+                "description": "Stable server-derived receipt identifier for reconciliation.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "400": {
             "content": {
@@ -11709,6 +13147,34 @@
               }
             },
             "description": "Unexpected server error"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Service temporarily unavailable",
+            "headers": {
+              "X-Portico-Terminal-Outcome": {
+                "description": "Committed or outcome_unknown terminal result marker.",
+                "schema": {
+                  "enum": [
+                    "committed",
+                    "outcome_unknown"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Portico-Terminal-Receipt": {
+                "description": "Stable server-derived receipt identifier for reconciliation.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -11732,6 +13198,20 @@
     "/api/auth/mfa/enable": {
       "post": {
         "operationId": "enableMFA",
+        "parameters": [
+          {
+            "description": "Stable caller-generated key required for terminal mutation replay and response-loss reconciliation.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 8,
+              "pattern": "^[A-Za-z0-9._:-]+$",
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -11751,7 +13231,25 @@
                 }
               }
             },
-            "description": "Successful response"
+            "description": "Successful response",
+            "headers": {
+              "X-Portico-Terminal-Outcome": {
+                "description": "Committed or outcome_unknown terminal result marker.",
+                "schema": {
+                  "enum": [
+                    "committed",
+                    "outcome_unknown"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Portico-Terminal-Receipt": {
+                "description": "Stable server-derived receipt identifier for reconciliation.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "400": {
             "content": {
@@ -11832,6 +13330,34 @@
               }
             },
             "description": "Unexpected server error"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Service temporarily unavailable",
+            "headers": {
+              "X-Portico-Terminal-Outcome": {
+                "description": "Committed or outcome_unknown terminal result marker.",
+                "schema": {
+                  "enum": [
+                    "committed",
+                    "outcome_unknown"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Portico-Terminal-Receipt": {
+                "description": "Stable server-derived receipt identifier for reconciliation.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -11855,6 +13381,20 @@
     "/api/auth/mfa/recovery-codes/rotate": {
       "post": {
         "operationId": "rotateMFARecoveryCodes",
+        "parameters": [
+          {
+            "description": "Stable caller-generated key required for terminal mutation replay and response-loss reconciliation.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 8,
+              "pattern": "^[A-Za-z0-9._:-]+$",
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -11874,7 +13414,25 @@
                 }
               }
             },
-            "description": "Successful response"
+            "description": "Successful response",
+            "headers": {
+              "X-Portico-Terminal-Outcome": {
+                "description": "Committed or outcome_unknown terminal result marker.",
+                "schema": {
+                  "enum": [
+                    "committed",
+                    "outcome_unknown"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Portico-Terminal-Receipt": {
+                "description": "Stable server-derived receipt identifier for reconciliation.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "400": {
             "content": {
@@ -11955,6 +13513,34 @@
               }
             },
             "description": "Unexpected server error"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Service temporarily unavailable",
+            "headers": {
+              "X-Portico-Terminal-Outcome": {
+                "description": "Committed or outcome_unknown terminal result marker.",
+                "schema": {
+                  "enum": [
+                    "committed",
+                    "outcome_unknown"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Portico-Terminal-Receipt": {
+                "description": "Stable server-derived receipt identifier for reconciliation.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -11978,6 +13564,20 @@
     "/api/auth/mfa/setup": {
       "post": {
         "operationId": "setupMFA",
+        "parameters": [
+          {
+            "description": "Stable caller-generated key required for terminal mutation replay and response-loss reconciliation.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 8,
+              "pattern": "^[A-Za-z0-9._:-]+$",
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -11997,7 +13597,25 @@
                 }
               }
             },
-            "description": "Successful response"
+            "description": "Successful response",
+            "headers": {
+              "X-Portico-Terminal-Outcome": {
+                "description": "Committed or outcome_unknown terminal result marker.",
+                "schema": {
+                  "enum": [
+                    "committed",
+                    "outcome_unknown"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Portico-Terminal-Receipt": {
+                "description": "Stable server-derived receipt identifier for reconciliation.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "400": {
             "content": {
@@ -12078,6 +13696,34 @@
               }
             },
             "description": "Unexpected server error"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Service temporarily unavailable",
+            "headers": {
+              "X-Portico-Terminal-Outcome": {
+                "description": "Committed or outcome_unknown terminal result marker.",
+                "schema": {
+                  "enum": [
+                    "committed",
+                    "outcome_unknown"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Portico-Terminal-Receipt": {
+                "description": "Stable server-derived receipt identifier for reconciliation.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -12214,6 +13860,20 @@
     "/api/auth/password-reset/complete": {
       "post": {
         "operationId": "completePasswordReset",
+        "parameters": [
+          {
+            "description": "Stable caller-generated key required for terminal mutation replay and response-loss reconciliation.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 8,
+              "pattern": "^[A-Za-z0-9._:-]+$",
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -12233,7 +13893,25 @@
                 }
               }
             },
-            "description": "Successful response"
+            "description": "Successful response",
+            "headers": {
+              "X-Portico-Terminal-Outcome": {
+                "description": "Committed or outcome_unknown terminal result marker.",
+                "schema": {
+                  "enum": [
+                    "committed",
+                    "outcome_unknown"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Portico-Terminal-Receipt": {
+                "description": "Stable server-derived receipt identifier for reconciliation.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "400": {
             "content": {
@@ -12314,6 +13992,34 @@
               }
             },
             "description": "Unexpected server error"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Service temporarily unavailable",
+            "headers": {
+              "X-Portico-Terminal-Outcome": {
+                "description": "Committed or outcome_unknown terminal result marker.",
+                "schema": {
+                  "enum": [
+                    "committed",
+                    "outcome_unknown"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Portico-Terminal-Receipt": {
+                "description": "Stable server-derived receipt identifier for reconciliation.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           }
         },
         "security": [],
@@ -12678,6 +14384,20 @@
     "/api/auth/sessions/refresh": {
       "post": {
         "operationId": "refreshNativeSession",
+        "parameters": [
+          {
+            "description": "Stable caller-generated key required for terminal mutation replay and response-loss reconciliation.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 8,
+              "pattern": "^[A-Za-z0-9._:-]+$",
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -12697,7 +14417,25 @@
                 }
               }
             },
-            "description": "Successful response"
+            "description": "Successful response",
+            "headers": {
+              "X-Portico-Terminal-Outcome": {
+                "description": "Committed or outcome_unknown terminal result marker.",
+                "schema": {
+                  "enum": [
+                    "committed",
+                    "outcome_unknown"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Portico-Terminal-Receipt": {
+                "description": "Stable server-derived receipt identifier for reconciliation.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "400": {
             "content": {
@@ -12778,6 +14516,34 @@
               }
             },
             "description": "Unexpected server error"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Service temporarily unavailable",
+            "headers": {
+              "X-Portico-Terminal-Outcome": {
+                "description": "Committed or outcome_unknown terminal result marker.",
+                "schema": {
+                  "enum": [
+                    "committed",
+                    "outcome_unknown"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Portico-Terminal-Receipt": {
+                "description": "Stable server-derived receipt identifier for reconciliation.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           }
         },
         "security": [],
@@ -12794,6 +14560,20 @@
     "/api/auth/sessions/revoke": {
       "post": {
         "operationId": "revokeNativeSession",
+        "parameters": [
+          {
+            "description": "Stable caller-generated key required for terminal mutation replay and response-loss reconciliation.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 8,
+              "pattern": "^[A-Za-z0-9._:-]+$",
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -12813,7 +14593,25 @@
                 }
               }
             },
-            "description": "Successful response"
+            "description": "Successful response",
+            "headers": {
+              "X-Portico-Terminal-Outcome": {
+                "description": "Committed or outcome_unknown terminal result marker.",
+                "schema": {
+                  "enum": [
+                    "committed",
+                    "outcome_unknown"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Portico-Terminal-Receipt": {
+                "description": "Stable server-derived receipt identifier for reconciliation.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "400": {
             "content": {
@@ -12894,6 +14692,34 @@
               }
             },
             "description": "Unexpected server error"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Service temporarily unavailable",
+            "headers": {
+              "X-Portico-Terminal-Outcome": {
+                "description": "Committed or outcome_unknown terminal result marker.",
+                "schema": {
+                  "enum": [
+                    "committed",
+                    "outcome_unknown"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Portico-Terminal-Receipt": {
+                "description": "Stable server-derived receipt identifier for reconciliation.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           }
         },
         "security": [],
@@ -16479,25 +18305,15 @@
         "x-portico-runtime-pattern": "/api/operator/servers/"
       }
     },
-    "/api/operator/users/actions": {
-      "post": {
-        "operationId": "applyOperatorUserAction",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/GenericObject"
-              }
-            }
-          },
-          "required": true
-        },
+    "/api/operator/terminal-mutations": {
+      "get": {
+        "operationId": "getOperatorTerminalMutationByKey",
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/OKResponse"
+                  "$ref": "#/components/schemas/TerminalMutationReceiptResponse"
                 }
               }
             },
@@ -16582,6 +18398,308 @@
               }
             },
             "description": "Unexpected server error"
+          }
+        },
+        "security": [
+          {
+            "operatorIdentityBearer": []
+          }
+        ],
+        "summary": "Reconcile a terminal mutation by its original Idempotency-Key",
+        "tags": [
+          "operator"
+        ],
+        "x-portico-audit-policy": "operator_read",
+        "x-portico-auth": "operator",
+        "x-portico-rate-class": "operator",
+        "x-portico-runtime-pattern": "/api/operator/terminal-mutations"
+      }
+    },
+    "/api/operator/terminal-mutations/{receiptId}": {
+      "get": {
+        "operationId": "getOperatorTerminalMutationReceipt",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "receiptId",
+            "required": true,
+            "schema": {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TerminalMutationReceiptResponse"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Authentication required or credential invalid"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Authenticated principal is not authorized"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Resource state conflict"
+          },
+          "423": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "HTTP 423"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Rate limit exceeded"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unexpected server error"
+          }
+        },
+        "security": [
+          {
+            "operatorIdentityBearer": []
+          }
+        ],
+        "summary": "Reconcile one terminal mutation receipt",
+        "tags": [
+          "operator"
+        ],
+        "x-portico-audit-policy": "operator_read",
+        "x-portico-auth": "operator",
+        "x-portico-rate-class": "operator",
+        "x-portico-runtime-pattern": "/api/operator/terminal-mutations/"
+      }
+    },
+    "/api/operator/users/actions": {
+      "post": {
+        "operationId": "applyOperatorUserAction",
+        "parameters": [
+          {
+            "description": "Stable caller-generated key required for terminal mutation replay and response-loss reconciliation.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 8,
+              "pattern": "^[A-Za-z0-9._:-]+$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenericObject"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OKResponse"
+                }
+              }
+            },
+            "description": "Successful response",
+            "headers": {
+              "X-Portico-Terminal-Outcome": {
+                "description": "Committed or outcome_unknown terminal result marker.",
+                "schema": {
+                  "enum": [
+                    "committed",
+                    "outcome_unknown"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Portico-Terminal-Receipt": {
+                "description": "Stable server-derived receipt identifier for reconciliation.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Authentication required or credential invalid"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Authenticated principal is not authorized"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Resource state conflict"
+          },
+          "423": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "HTTP 423"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Rate limit exceeded"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unexpected server error"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Service temporarily unavailable",
+            "headers": {
+              "X-Portico-Terminal-Outcome": {
+                "description": "Committed or outcome_unknown terminal result marker.",
+                "schema": {
+                  "enum": [
+                    "committed",
+                    "outcome_unknown"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Portico-Terminal-Receipt": {
+                "description": "Stable server-derived receipt identifier for reconciliation.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -16712,6 +18830,20 @@
     "/api/operator/users/mfa-reset": {
       "post": {
         "operationId": "resetOperatorUserMFA",
+        "parameters": [
+          {
+            "description": "Stable caller-generated key required for terminal mutation replay and response-loss reconciliation.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 8,
+              "pattern": "^[A-Za-z0-9._:-]+$",
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -16731,7 +18863,25 @@
                 }
               }
             },
-            "description": "Successful response"
+            "description": "Successful response",
+            "headers": {
+              "X-Portico-Terminal-Outcome": {
+                "description": "Committed or outcome_unknown terminal result marker.",
+                "schema": {
+                  "enum": [
+                    "committed",
+                    "outcome_unknown"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Portico-Terminal-Receipt": {
+                "description": "Stable server-derived receipt identifier for reconciliation.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "400": {
             "content": {
@@ -16812,6 +18962,34 @@
               }
             },
             "description": "Unexpected server error"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Service temporarily unavailable",
+            "headers": {
+              "X-Portico-Terminal-Outcome": {
+                "description": "Committed or outcome_unknown terminal result marker.",
+                "schema": {
+                  "enum": [
+                    "committed",
+                    "outcome_unknown"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Portico-Terminal-Receipt": {
+                "description": "Stable server-derived receipt identifier for reconciliation.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -19568,6 +21746,233 @@
         "x-portico-audit-policy": "profile_selection_exchange",
         "x-portico-auth": "server_credential",
         "x-portico-rate-class": "auth",
+        "x-portico-runtime-pattern": "/api/servers/"
+      }
+    },
+    "/api/servers/{serverId}/profile-wake-ack": {
+      "post": {
+        "operationId": "acknowledgeServerProfileWake",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "serverId",
+            "required": true,
+            "schema": {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ServerProfileWakeAckRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServerProfileWakeAckResponse"
+                }
+              }
+            },
+            "description": "Successful response",
+            "headers": {
+              "Cache-Control": {
+                "description": "Profile and credential responses are not cacheable.",
+                "schema": {
+                  "const": "no-store",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Invalid request",
+            "headers": {
+              "Cache-Control": {
+                "description": "Profile and credential responses are not cacheable.",
+                "schema": {
+                  "const": "no-store",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Authentication required or credential invalid",
+            "headers": {
+              "Cache-Control": {
+                "description": "Profile and credential responses are not cacheable.",
+                "schema": {
+                  "const": "no-store",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Authenticated principal is not authorized",
+            "headers": {
+              "Cache-Control": {
+                "description": "Profile and credential responses are not cacheable.",
+                "schema": {
+                  "const": "no-store",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Resource not found",
+            "headers": {
+              "Cache-Control": {
+                "description": "Profile and credential responses are not cacheable.",
+                "schema": {
+                  "const": "no-store",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Resource state conflict",
+            "headers": {
+              "Cache-Control": {
+                "description": "Profile and credential responses are not cacheable.",
+                "schema": {
+                  "const": "no-store",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "423": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "HTTP 423",
+            "headers": {
+              "Cache-Control": {
+                "description": "Profile and credential responses are not cacheable.",
+                "schema": {
+                  "const": "no-store",
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "Minimum seconds before retrying.",
+                "schema": {
+                  "pattern": "^[0-9]+$",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Cache-Control": {
+                "description": "Profile and credential responses are not cacheable.",
+                "schema": {
+                  "const": "no-store",
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "Minimum seconds before retrying.",
+                "schema": {
+                  "pattern": "^[0-9]+$",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unexpected server error",
+            "headers": {
+              "Cache-Control": {
+                "description": "Profile and credential responses are not cacheable.",
+                "schema": {
+                  "const": "no-store",
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "serverBearer": []
+          }
+        ],
+        "summary": "Acknowledge application of an account profile wake",
+        "tags": [
+          "profiles"
+        ],
+        "x-portico-audit-policy": "profile_wake_ack",
+        "x-portico-auth": "server_credential",
+        "x-portico-rate-class": "server",
         "x-portico-runtime-pattern": "/api/servers/"
       }
     },

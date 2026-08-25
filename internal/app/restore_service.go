@@ -266,36 +266,44 @@ func (s *Server) checkRestorePrincipal(w http.ResponseWriter, user User) bool {
 // administration proofs. A local restore always verifies the account password
 // even when the selected primary profile has a PIN. Hosted-origin owners do not
 // have a local secret; W2 must provide a signed recent Hosted step-up proof.
-func (s *Server) verifyRestoreReauthentication(w http.ResponseWriter, r *http.Request, user User, password string) (string, bool) {
+func (s *Server) verifyRestoreReauthenticationSnapshot(w http.ResponseWriter, r *http.Request, user User, password string) (string, string, bool) {
 	if user.AuthOrigin == "portico" || user.AuthProvider == "portico" {
 		writeProductError(w, http.StatusConflict, "restore_hosted_reauthentication_required", "Hosted-origin restore requires the signed recent reauthentication boundary owned by W2.")
-		return "", false
+		return "", "", false
 	}
 	if !user.HasLocalPassword || strings.TrimSpace(password) == "" {
 		writeProductError(w, http.StatusUnauthorized, "restore_reauthentication_required", "Enter the current account password to authorize this restore.")
-		return "", false
+		return "", "", false
 	}
 	accountID := accountIDForUser(user)
 	var passwordHash string
 	if err := s.queryUserRow(r.Context(), `SELECT COALESCE(password_hash, '') FROM users WHERE id = ?`, accountID).Scan(&passwordHash); err != nil {
 		writeDatabaseAccessError(w, err, http.StatusServiceUnavailable, "restore_reauthentication_unavailable", "Portico could not verify the restore authorization.")
-		return "", false
+		return "", "", false
 	}
-	valid, err := s.verifyAndUpgradeLocalPassword(r.Context(), accountID, passwordHash, password)
+	valid, verifiedPasswordHash, err := s.verifyAndUpgradeLocalPasswordSnapshot(r.Context(), kdfRestoreReauthCompare, accountID, passwordHash, password)
 	if err != nil {
+		if writeKDFUnavailable(w, err) {
+			return "", "", false
+		}
 		writeDatabaseAccessError(w, err, http.StatusServiceUnavailable, "restore_reauthentication_unavailable", "Portico could not verify the restore authorization.")
-		return "", false
+		return "", "", false
 	}
 	if !valid {
 		writeProductError(w, http.StatusUnauthorized, "restore_reauthentication_required", "The current account password is incorrect.")
-		return "", false
+		return "", "", false
 	}
 	sessionID, err := s.currentSessionIDContext(r.Context(), r, user)
 	if err != nil {
 		writeProductError(w, http.StatusUnauthorized, "restore_reauthentication_required", "Restore requires a current interactive owner session.")
-		return "", false
+		return "", "", false
 	}
-	return sessionID, true
+	return sessionID, verifiedPasswordHash, true
+}
+
+func (s *Server) verifyRestoreReauthentication(w http.ResponseWriter, r *http.Request, user User, password string) (string, bool) {
+	sessionID, _, ok := s.verifyRestoreReauthenticationSnapshot(w, r, user, password)
+	return sessionID, ok
 }
 
 type restoreStartRequest struct {
@@ -315,7 +323,7 @@ func (s *Server) enqueueExistingRestore(w http.ResponseWriter, r *http.Request, 
 	if !decodeJSON(w, r, &request) {
 		return RestoreBackupResponse{}, false
 	}
-	sessionID, ok := s.verifyRestoreReauthentication(w, r, user, request.Password)
+	sessionID, expectedHash, ok := s.verifyRestoreReauthenticationSnapshot(w, r, user, request.Password)
 	if !ok {
 		return RestoreBackupResponse{}, false
 	}
@@ -344,7 +352,7 @@ func (s *Server) enqueueExistingRestore(w http.ResponseWriter, r *http.Request, 
 		writeRestoreValidationError(w, err)
 		return RestoreBackupResponse{}, false
 	}
-	return s.createRestoreOperation(w, r, user, sessionID, backupName, backupPath, manifest)
+	return s.createRestoreOperationAuthorized(w, r, user, sessionID, expectedHash, backupName, backupPath, manifest)
 }
 
 func (s *Server) enqueueUploadedRestore(w http.ResponseWriter, r *http.Request, user User) (RestoreBackupResponse, bool) {
@@ -372,6 +380,7 @@ func (s *Server) enqueueUploadedRestoreStream(w http.ResponseWriter, r *http.Req
 	var uploadOwnerRelease func()
 	var password string
 	var sessionID string
+	var expectedPasswordHash string
 	var reauthenticated, confirmed, reserved, manifestSeen, databaseSeen, passwordSeen, confirmationSeen, declaredBytesSeen bool
 	var declaredBytes int64
 	var manifest database.BackupManifest
@@ -414,7 +423,7 @@ func (s *Server) enqueueUploadedRestoreStream(w http.ResponseWriter, r *http.Req
 			}
 			password = string(body)
 			var ok bool
-			sessionID, ok = s.verifyRestoreReauthentication(w, r, user, password)
+			sessionID, expectedPasswordHash, ok = s.verifyRestoreReauthenticationSnapshot(w, r, user, password)
 			if !ok {
 				_ = part.Close()
 				return RestoreBackupResponse{}, false
@@ -493,9 +502,12 @@ func (s *Server) enqueueUploadedRestoreStream(w http.ResponseWriter, r *http.Req
 					_ = part.Close()
 					return failUpload("restore_insufficient_space", http.StatusInsufficientStorage, "There is not enough space to stage the database and retain rollback headroom.")
 				}
-				operation, statusToken, uploadOwnerRelease, err = s.reserveUploadedRestore(user, sessionID)
+				operation, statusToken, uploadOwnerRelease, err = s.reserveUploadedRestoreAuthorized(uploadContext, user, sessionID, expectedPasswordHash)
 				if err != nil {
 					_ = part.Close()
+					if errors.Is(err, errPasswordCredentialChanged) || errors.Is(err, errPrivilegedSessionChanged) {
+						return failUpload("restore_reauthentication_required", http.StatusUnauthorized, "The account authorization changed while starting this restore. Sign in again and retry.")
+					}
 					if errors.Is(err, errRestoreBusy) {
 						return failUpload("restore_busy", http.StatusConflict, "Another supervised restore is already in progress.")
 					}
@@ -515,8 +527,11 @@ func (s *Server) enqueueUploadedRestoreStream(w http.ResponseWriter, r *http.Req
 				return failUpload("restore_upload_size_mismatch", http.StatusBadRequest, "The uploaded database did not match its declared size.")
 			}
 			operation.UploadComplete = true
-			if err := s.updateReservedUpload(operation); err != nil {
+			if err := s.updateReservedUploadAuthorized(uploadContext, user, sessionID, expectedPasswordHash, operation); err != nil {
 				_ = part.Close()
+				if errors.Is(err, errPasswordCredentialChanged) || errors.Is(err, errPrivilegedSessionChanged) {
+					return failUpload("restore_reauthentication_required", http.StatusUnauthorized, "The account authorization changed while recording this restore. Sign in again and retry.")
+				}
 				return failUpload("restore_storage_unavailable", http.StatusServiceUnavailable, "The restore upload could not be durably recorded.")
 			}
 		default:
@@ -562,7 +577,10 @@ func (s *Server) enqueueUploadedRestoreStream(w http.ResponseWriter, r *http.Req
 	}
 	operation.Phase, operation.State, operation.Progress = database.RestorePhaseStaged, database.RestorePhaseStaged, 25
 	operation.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
-	if err := s.updateReservedUpload(operation); err != nil {
+	if err := s.updateReservedUploadAuthorized(uploadContext, user, sessionID, expectedPasswordHash, operation); err != nil {
+		if errors.Is(err, errPasswordCredentialChanged) || errors.Is(err, errPrivilegedSessionChanged) {
+			return failUpload("restore_reauthentication_required", http.StatusUnauthorized, "The account authorization changed while recording this restore. Sign in again and retry.")
+		}
 		return failUpload("restore_storage_unavailable", http.StatusServiceUnavailable, "The restore operation could not be durably journaled.")
 	}
 	if s.restoreRuntime() != nil {
@@ -614,6 +632,10 @@ func parseDeclaredRestoreBytes(value string, maximum int64) (int64, error) {
 var errRestoreBusy = errors.New("restore operation is busy")
 
 func (s *Server) reserveUploadedRestore(user User, sessionID string) (database.RestoreOperation, string, func(), error) {
+	return s.reserveUploadedRestoreAuthorized(context.Background(), user, sessionID, "")
+}
+
+func (s *Server) reserveUploadedRestoreAuthorized(ctx context.Context, user User, sessionID, expectedHash string) (database.RestoreOperation, string, func(), error) {
 	var operation database.RestoreOperation
 	statusToken := randomToken()
 	var ownerRelease func()
@@ -646,7 +668,18 @@ func (s *Server) reserveUploadedRestore(user User, sessionID string) (database.R
 			return lockErr
 		}
 		runRestoreUploadReservationAfterOwnerLockHook()
-		if err := database.WriteRestoreOperation(s.cfg.AppDataDir, operation); err != nil {
+		writeOperation := func() error {
+			if expectedHash != "" {
+				return s.withUserTxTagged(ctx, []string{"users", "sessions", "devices"}, func(tx *sql.Tx) error {
+					if err := validatePasswordSessionTx(tx, accountIDForUser(user), viewerProfileID(user), sessionID, expectedHash, now); err != nil {
+						return err
+					}
+					return database.WriteRestoreOperation(s.cfg.AppDataDir, operation)
+				})
+			}
+			return database.WriteRestoreOperation(s.cfg.AppDataDir, operation)
+		}
+		if err := writeOperation(); err != nil {
 			ownerRelease()
 			ownerRelease = nil
 			_ = os.Remove(operation.UploadOwnerLockPath)
@@ -658,6 +691,10 @@ func (s *Server) reserveUploadedRestore(user User, sessionID string) (database.R
 }
 
 func (s *Server) updateReservedUpload(operation database.RestoreOperation) error {
+	return s.updateReservedUploadAuthorized(context.Background(), User{}, operation.SessionID, "", operation)
+}
+
+func (s *Server) updateReservedUploadAuthorized(ctx context.Context, user User, sessionID, expectedHash string, operation database.RestoreOperation) error {
 	return database.WithRestoreOperationLock(s.cfg, func() error {
 		s.restoreOperationMu.Lock()
 		defer s.restoreOperationMu.Unlock()
@@ -672,7 +709,18 @@ func (s *Server) updateReservedUpload(operation database.RestoreOperation) error
 		operation.UploadOwnerLockPath = latest.UploadOwnerLockPath
 		operation.UploadOwnerPID = latest.UploadOwnerPID
 		operation.UploadLeaseUntil = latest.UploadLeaseUntil
-		return database.WriteRestoreOperation(s.cfg.AppDataDir, operation)
+		writeOperation := func() error {
+			if expectedHash != "" {
+				return s.withUserTxTagged(ctx, []string{"users", "sessions", "devices"}, func(tx *sql.Tx) error {
+					if err := validatePasswordSessionTx(tx, accountIDForUser(user), viewerProfileID(user), sessionID, expectedHash, time.Now().UTC()); err != nil {
+						return err
+					}
+					return database.WriteRestoreOperation(s.cfg.AppDataDir, operation)
+				})
+			}
+			return database.WriteRestoreOperation(s.cfg.AppDataDir, operation)
+		}
+		return writeOperation()
 	})
 }
 
@@ -738,6 +786,10 @@ func (s *Server) ensureRestoreSlotLocked() error {
 }
 
 func (s *Server) createRestoreOperation(w http.ResponseWriter, r *http.Request, user User, sessionID, name, source string, manifest database.BackupManifest, optional ...any) (RestoreBackupResponse, bool) {
+	return s.createRestoreOperationAuthorized(w, r, user, sessionID, "", name, source, manifest, optional...)
+}
+
+func (s *Server) createRestoreOperationAuthorized(w http.ResponseWriter, r *http.Request, user User, sessionID, expectedHash, name, source string, manifest database.BackupManifest, optional ...any) (RestoreBackupResponse, bool) {
 	var response RestoreBackupResponse
 	var ok bool
 	if err := database.WithRestoreOperationLock(s.cfg, func() error {
@@ -747,7 +799,7 @@ func (s *Server) createRestoreOperation(w http.ResponseWriter, r *http.Request, 
 			writeProductError(w, http.StatusConflict, "restore_busy", "Another supervised restore is already in progress.")
 			return nil
 		}
-		response, ok = s.createRestoreOperationLocked(w, r, user, sessionID, name, source, manifest, false, database.MigrationIdentity{}, optional...)
+		response, ok = s.createRestoreOperationLocked(w, r, user, sessionID, expectedHash, name, source, manifest, false, database.MigrationIdentity{}, optional...)
 		return nil
 	}); err != nil {
 		writeProductError(w, http.StatusServiceUnavailable, "restore_storage_unavailable", "Portico could not reserve the supervised restore operation.")
@@ -756,7 +808,7 @@ func (s *Server) createRestoreOperation(w http.ResponseWriter, r *http.Request, 
 	return response, ok
 }
 
-func (s *Server) createRestoreOperationLocked(w http.ResponseWriter, r *http.Request, user User, sessionID, name, source string, manifest database.BackupManifest, rawImport bool, importedIdentity database.MigrationIdentity, optional ...any) (RestoreBackupResponse, bool) {
+func (s *Server) createRestoreOperationLocked(w http.ResponseWriter, r *http.Request, user User, sessionID, expectedHash, name, source string, manifest database.BackupManifest, rawImport bool, importedIdentity database.MigrationIdentity, optional ...any) (RestoreBackupResponse, bool) {
 	operationID := ""
 	statusToken := ""
 	stagedPath := ""
@@ -816,8 +868,23 @@ func (s *Server) createRestoreOperationLocked(w http.ResponseWriter, r *http.Req
 			operation.ImportedChecksumSHA256 = validation.ChecksumSHA256
 		}
 	}
-	if err := database.WriteRestoreOperation(s.cfg.AppDataDir, operation); err != nil {
+	writeOperation := func() error {
+		if expectedHash != "" {
+			return s.withUserTxTagged(r.Context(), []string{"users", "sessions", "devices"}, func(tx *sql.Tx) error {
+				if err := validatePasswordSessionTx(tx, accountIDForUser(user), viewerProfileID(user), sessionID, expectedHash, time.Now().UTC()); err != nil {
+					return err
+				}
+				return database.WriteRestoreOperation(s.cfg.AppDataDir, operation)
+			})
+		}
+		return database.WriteRestoreOperation(s.cfg.AppDataDir, operation)
+	}
+	if err := writeOperation(); err != nil {
 		_ = os.Remove(stagedPath)
+		if errors.Is(err, errPasswordCredentialChanged) || errors.Is(err, errPrivilegedSessionChanged) {
+			writeProductError(w, http.StatusUnauthorized, "credentials_changed", "The account authorization changed while Portico was starting this restore. Sign in again and retry.")
+			return RestoreBackupResponse{}, false
+		}
 		writeProductError(w, http.StatusServiceUnavailable, "restore_storage_unavailable", "The restore operation could not be durably journaled.")
 		return RestoreBackupResponse{}, false
 	}

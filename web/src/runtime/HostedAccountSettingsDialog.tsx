@@ -9,6 +9,7 @@ import { SettingsError, SettingsLoading } from '../features/settings/SettingsCon
 import { useSettingsQuery } from '../features/settings/settingsHooks';
 import type { SettingsDataSource, SettingsViewer } from '../features/settings/settingsTypes';
 import { hostedCSRFToken, rememberHostedCSRFToken } from './hostedBrowserSecurity';
+import { browserHostedTerminalMutationDurability } from './hostedTerminalMutationDurability';
 import { useRuntime } from './RuntimeContext';
 import '../features/settings/settings.css';
 
@@ -54,6 +55,7 @@ export function HostedAccountSettingsDialog({ onDismiss }: { onDismiss: () => vo
     hostedApiBaseUrl: runtime.config.hostedApiBaseUrl,
     csrfToken: hostedCSRFToken,
     onCSRFToken: rememberHostedCSRFToken,
+    terminalMutationDurabilityAdapter: browserHostedTerminalMutationDurability,
   }), [runtime.config.hostedApiBaseUrl]);
   const source = useMemo(() => new HttpSettingsDataSource(
     unavailableServerClient,

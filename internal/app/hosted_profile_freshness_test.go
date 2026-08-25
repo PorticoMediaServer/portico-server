@@ -105,7 +105,7 @@ func newHostedFreshnessFixture(t *testing.T) *hostedFreshnessFixture {
 		snapshot := HostedProfileDirectorySnapshot{
 			Version: "v1", SnapshotID: "freshness-snapshot", Audience: hostedDocumentAudience,
 			ServerID: "freshness-server", AccountID: "cloud-freshness-account", Status: fixture.mode,
-			Revision: fixture.revision, CheckedAt: checkedAt.Format(time.RFC3339Nano), MaxAgeSeconds: 300, StaleIfErrorSeconds: 86400,
+			Revision: fixture.revision, CheckedAt: checkedAt.Format(time.RFC3339Nano), MaxAgeSeconds: int(hostedProfileFreshnessLease / time.Second), StaleIfErrorSeconds: int(hostedProfileStaleIfError / time.Second),
 			SignatureAlgorithm: hostedSignatureAlgorithm, SignatureKeyID: testHostedDocumentKeyID,
 		}
 		if fixture.mode == "changed" {
@@ -156,7 +156,7 @@ func TestHostedProfileFreshnessRevokesRemovedProfileAtRequestBoundary(t *testing
 	fixture.mode = "changed"
 	fixture.revision = 2
 	fixture.profiles = []HostedProfileSnapshot{fixture.primary}
-	fixture.expireLease(t, 6*time.Minute)
+	fixture.expireLease(t, hostedProfileFreshnessLease+time.Minute)
 
 	request := httptest.NewRequest(http.MethodGet, "http://portico.test/api/home", nil)
 	_, _, ok, err := fixture.server.userForSessionTokenWithError(request, token)
@@ -185,7 +185,7 @@ func TestHostedProfileFreshnessAppliesPolicyRestrictionWithoutEndingSession(t *t
 	fixture.mode = "changed"
 	fixture.revision = 2
 	fixture.profiles = []HostedProfileSnapshot{restricted, fixture.child}
-	fixture.expireLease(t, 6*time.Minute)
+	fixture.expireLease(t, hostedProfileFreshnessLease+time.Minute)
 
 	request := httptest.NewRequest(http.MethodGet, "http://portico.test/api/home", nil)
 	user, _, ok, err := fixture.server.userForSessionTokenWithError(request, token)
@@ -218,7 +218,7 @@ func TestHostedProfileFreshnessKeepsPrimaryWhenMembershipDisallowsSubprofiles(t 
 	fixture.mode = "changed"
 	fixture.revision = 2
 	fixture.profiles = []HostedProfileSnapshot{fixture.primary, fixture.child}
-	fixture.expireLease(t, 6*time.Minute)
+	fixture.expireLease(t, hostedProfileFreshnessLease+time.Minute)
 
 	request := httptest.NewRequest(http.MethodGet, "http://portico.test/api/home", nil)
 	primary, _, ok, err := fixture.server.userForSessionTokenWithError(request, primaryToken)
@@ -240,7 +240,7 @@ func TestHostedProfileFreshnessKeepsPrimaryWhenMembershipDisallowsSubprofiles(t 
 func TestHostedProfileFreshnessCoalescesConcurrentExpiredRequests(t *testing.T) {
 	fixture := newHostedFreshnessFixture(t)
 	fixture.delay = 100 * time.Millisecond
-	fixture.expireLease(t, 6*time.Minute)
+	fixture.expireLease(t, hostedProfileFreshnessLease+time.Minute)
 
 	const callers = 20
 	start := make(chan struct{})
@@ -293,7 +293,7 @@ func TestHostedProfileFreshnessBoundsTransientOutageWithoutDeletingCredentials(t
 	fixture := newHostedFreshnessFixture(t)
 	token := fixture.insertBrowserSession(t, fixture.account.ID)
 	fixture.mode = "unavailable"
-	fixture.expireLease(t, 6*time.Minute)
+	fixture.expireLease(t, hostedProfileFreshnessLease+time.Minute)
 	request := httptest.NewRequest(http.MethodGet, "http://portico.test/api/home", nil)
 	if _, _, ok, err := fixture.server.userForSessionTokenWithError(request, token); !ok || err != nil {
 		var sessionCount int
@@ -303,7 +303,7 @@ func TestHostedProfileFreshnessBoundsTransientOutageWithoutDeletingCredentials(t
 		t.Fatalf("brief outage should use bounded stale policy: ok=%v err=%v sessions=%d profileDisabled=%q", ok, err, sessionCount, profileDisabled)
 	}
 
-	fixture.expireLease(t, 25*time.Hour)
+	fixture.expireLease(t, hostedProfileFreshnessLease+hostedProfileStaleIfError+time.Hour)
 	if _, _, ok, err := fixture.server.userForSessionTokenWithError(request, token); ok || !errors.Is(err, errHostedProfileDirectoryUnavailable) {
 		t.Fatalf("outage beyond stale bound ok=%v err=%v", ok, err)
 	}
@@ -317,7 +317,7 @@ func TestHostedProfileFreshnessTerminalResponseRevokesAccountImmediately(t *test
 	fixture := newHostedFreshnessFixture(t)
 	token := fixture.insertBrowserSession(t, fixture.account.ID)
 	fixture.mode = "terminal"
-	fixture.expireLease(t, 6*time.Minute)
+	fixture.expireLease(t, hostedProfileFreshnessLease+time.Minute)
 	request := httptest.NewRequest(http.MethodGet, "http://portico.test/api/home", nil)
 	if _, _, ok, err := fixture.server.userForSessionTokenWithError(request, token); ok || !errors.Is(err, errHostedProfileAccessRevoked) {
 		t.Fatalf("terminal freshness response ok=%v err=%v", ok, err)
@@ -359,7 +359,7 @@ func TestHostedProfileFreshnessRevokesRemovedProfileOnNativeRefresh(t *testing.T
 	fixture.mode = "changed"
 	fixture.revision = 2
 	fixture.profiles = []HostedProfileSnapshot{fixture.primary}
-	fixture.expireLease(t, 6*time.Minute)
+	fixture.expireLease(t, hostedProfileFreshnessLease+time.Minute)
 	if _, err := fixture.server.rotateNativeSessionCredentials(request, credentials.RefreshToken, strings.Repeat("A", 43)); err == nil {
 		t.Fatal("native refresh succeeded after Cloud removed the selected profile")
 	}

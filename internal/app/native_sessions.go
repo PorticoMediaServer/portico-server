@@ -106,6 +106,9 @@ func (s *Server) handleNativeSessions(w http.ResponseWriter, r *http.Request) {
 	}
 	user, err := s.authenticateLocalNativeUser(r.Context(), req.Login, req.Password)
 	if err != nil {
+		if writeKDFUnavailable(w, err) {
+			return
+		}
 		s.recordLoginFailure(loginKey)
 		writeError(w, http.StatusUnauthorized, "bad_credentials", "Username/email or password is incorrect.")
 		return
@@ -374,16 +377,22 @@ func (s *Server) authenticateLocalNativeUser(ctx context.Context, login, passwor
 		WHERE lower(username) = ? OR lower(email) = ?
 		ORDER BY CASE WHEN lower(username) = ? THEN 0 ELSE 1 END
 		LIMIT 1`, login, login, login).Scan(&userID, &passwordHash, &disabledAt); err != nil {
-		verifyAccountPassword("", password)
+		_, _, kdfErr := verifyAccountPassword(ctx, kdfNativeLoginCompare, "", password)
+		if kdfErr != nil {
+			return User{}, kdfErr
+		}
 		return User{}, err
 	}
 	if disabledAt != "" {
 		// Run the same expensive password verification as an active account, but
 		// never upgrade a disabled account's hash or reveal the account state.
-		verifyAccountPassword(passwordHash, password)
+		_, _, kdfErr := verifyAccountPassword(ctx, kdfNativeLoginCompare, passwordHash, password)
+		if kdfErr != nil {
+			return User{}, kdfErr
+		}
 		return User{}, errors.New("invalid credentials")
 	}
-	valid, err := s.verifyAndUpgradeLocalPassword(ctx, userID, passwordHash, password)
+	valid, verifiedHash, err := s.verifyAndUpgradeLocalPasswordSnapshot(ctx, kdfNativeLoginCompare, userID, passwordHash, password)
 	if err != nil {
 		return User{}, err
 	}
@@ -395,6 +404,7 @@ func (s *Server) authenticateLocalNativeUser(ctx context.Context, login, passwor
 		return User{}, err
 	}
 	s.enrichUserAuthContext(&user, "local")
+	user.verifiedPasswordHash = verifiedHash
 	return user, nil
 }
 
@@ -472,15 +482,18 @@ func (s *Server) recoverNativeAuthExchangeReceipt(ctx context.Context, kind, pro
 
 func (s *Server) prepareNativeExchangeCredentialTx(tx *sql.Tx, r *http.Request, user User, provider string, descriptor nativeDeviceDescriptor, now time.Time) (nativeCredentialDraft, error) {
 	installationID := normalizeUntrustedNativeInstallationID(descriptor.InstallationID)
-	var disabledAt, role, preferencesJSON string
+	var disabledAt, role, preferencesJSON, currentPasswordHash string
 	var maxActiveSessions int
 	if err := tx.QueryRow(`
-		SELECT COALESCE(disabled_at, ''), role, preferences_json, COALESCE(max_active_sessions, 0)
-		FROM users WHERE id = ?`, user.ID).Scan(&disabledAt, &role, &preferencesJSON, &maxActiveSessions); err != nil {
+		SELECT COALESCE(disabled_at, ''), role, preferences_json, COALESCE(max_active_sessions, 0), COALESCE(password_hash, '')
+		FROM users WHERE id = ?`, user.ID).Scan(&disabledAt, &role, &preferencesJSON, &maxActiveSessions, &currentPasswordHash); err != nil {
 		return nativeCredentialDraft{}, err
 	}
 	if disabledAt != "" {
 		return nativeCredentialDraft{}, errNativeAccountDisabled
+	}
+	if user.verifiedPasswordHash != "" && currentPasswordHash != user.verifiedPasswordHash {
+		return nativeCredentialDraft{}, errPasswordCredentialChanged
 	}
 	profileID := strings.TrimSpace(user.ProfileID)
 	if profileID == "" {
@@ -1210,6 +1223,8 @@ func nativeAccessSessionID(refreshTokenID string) string {
 
 func (s *Server) writeNativeSessionCreationError(w http.ResponseWriter, err error) {
 	switch {
+	case errors.Is(err, errPasswordCredentialChanged):
+		writeError(w, http.StatusUnauthorized, "credentials_changed", "The account password changed while Portico was signing in. Sign in again.")
 	case errors.Is(err, errDeviceNotTrusted):
 		writeError(w, http.StatusForbidden, "device_not_trusted", "This server only allows trusted devices. Ask an owner to approve this device in Settings > Devices.")
 	case errors.Is(err, errDeviceNotAllowed):

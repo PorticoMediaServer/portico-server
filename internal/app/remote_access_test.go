@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"math/big"
@@ -83,9 +84,16 @@ func TestRemoteAccessDiagnosticsDoNotPersistTransportDetails(t *testing.T) {
 
 func TestRemoteAccessLeaseIntervalRenewsBeforeExpiry(t *testing.T) {
 	server := &Server{}
+	if got, want := server.remoteAccessLeaseInterval(), 30*time.Minute; got != want {
+		t.Fatalf("default lease renewal interval = %s, want %s", got, want)
+	}
 	server.remoteAccessLeaseSeconds.Store(900)
 	if got, want := server.remoteAccessLeaseInterval(), 10*time.Minute; got != want {
 		t.Fatalf("lease renewal interval = %s, want %s", got, want)
+	}
+	server.remoteAccessLeaseSeconds.Store(2700)
+	if got, want := server.remoteAccessLeaseInterval(), 30*time.Minute; got != want {
+		t.Fatalf("45-minute lease renewal interval = %s, want %s", got, want)
 	}
 }
 
@@ -288,6 +296,8 @@ func TestRemoteAccessStartupHeartbeatDoesNotWaitForCertificateRenewal(t *testing
 
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
+	// Preserve production fleet spreading while keeping this ordering test fast.
+	srv.remoteAccessStartupCohortWindowNanos.Store(int64(time.Millisecond))
 	go srv.runRemoteAccessHeartbeat(ctx)
 
 	select {
@@ -983,6 +993,39 @@ func TestRemoteAccessMemberSyncAutoProvisionsPorticoProfile(t *testing.T) {
 	}
 }
 
+func TestRemoteAccessFleetCohortDelayIsBoundedAndDistributed(t *testing.T) {
+	const buckets = 10
+	window := 5 * time.Minute
+	counts := [buckets]int{}
+	for index := 0; index < 10_000; index++ {
+		serverID := fmt.Sprintf("srv_cohort_%d", index)
+		delay := remoteAccessFleetCohortDelay(serverID, window)
+		if delay < 0 || delay >= window {
+			t.Fatalf("cohort delay %s is outside [0,%s)", delay, window)
+		}
+		if repeat := remoteAccessFleetCohortDelay(serverID, window); repeat != delay {
+			t.Fatalf("cohort delay changed for %q: %s != %s", serverID, delay, repeat)
+		}
+		counts[int(delay/(window/buckets))]++
+	}
+	for bucket, count := range counts {
+		if count < 850 || count > 1150 {
+			t.Fatalf("startup cohort bucket %d is uneven: %d of 10000 (%v)", bucket, count, counts)
+		}
+	}
+	if remoteAccessFleetCohortDelay("", window) != 0 || remoteAccessFleetCohortDelay("srv", 0) != 0 {
+		t.Fatal("empty cohort inputs must not delay startup")
+	}
+	now := time.Date(2026, 8, 25, 12, 3, 0, 0, time.UTC)
+	if wait := remoteAccessFleetCohortWait("srv_cohort_1", window, now); wait < 0 || wait >= window {
+		t.Fatalf("restart-stable cohort wait %s is outside [0,%s)", wait, window)
+	}
+	retryFloor := 30 * time.Second
+	if retry := remoteAccessRetryCohortDelay("srv_cohort_1", 1, retryFloor); retry < retryFloor || retry >= 2*retryFloor {
+		t.Fatalf("retry cohort delay %s did not preserve floor %s", retry, retryFloor)
+	}
+}
+
 func TestRemoteAccessMemberRevocationInvalidatesLocalSessions(t *testing.T) {
 	srv := newPorticoIdentitySyncTestServer(t)
 	stamp := time.Now().UTC().Format(time.RFC3339)
@@ -1034,6 +1077,68 @@ func TestRemoteAccessMemberRevocationInvalidatesLocalSessions(t *testing.T) {
 	}
 	if sessionCount != 0 {
 		t.Fatalf("revoked member retained %d local sessions", sessionCount)
+	}
+}
+
+func TestRemotePolicySnapshotCheckpointFailureRollsBackAuthorityProjection(t *testing.T) {
+	srv := newPorticoIdentitySyncTestServer(t)
+	stamp := time.Now().UTC().Format(time.RFC3339)
+	insertPorticoIdentityTestUser(t, srv.db, "atomic-owner", "atomic-owner@example.test", "owner", "local", "", "", nil, stamp)
+	var ownerID string
+	if err := srv.db.QueryRow(`SELECT id FROM users WHERE role = 'owner'`).Scan(&ownerID); err != nil {
+		t.Fatalf("load atomic policy owner: %v", err)
+	}
+	owner := RemoteAccessMember{
+		PorticoMembershipID: "mem_atomic_owner", PorticoUserID: "usr_atomic_owner",
+		Email: "atomic-owner@example.test", DisplayName: "Atomic Owner", Role: "owner", Status: "active", LocalUserID: ownerID,
+	}
+	viewer := RemoteAccessMember{
+		PorticoMembershipID: "mem_atomic_viewer", PorticoUserID: "usr_atomic_viewer",
+		Email: "atomic-viewer@example.test", DisplayName: "Atomic Viewer", Role: "user", Status: "active",
+	}
+	if err := srv.replaceRemoteAccessMembers([]RemoteAccessMember{owner, viewer}); err != nil {
+		t.Fatalf("seed atomic policy projection: %v", err)
+	}
+	var viewerID string
+	if err := srv.db.QueryRow(`SELECT local_user_id FROM remote_access_members WHERE portico_membership_id = ?`, viewer.PorticoMembershipID).Scan(&viewerID); err != nil || viewerID == "" {
+		t.Fatalf("load projected viewer: id=%q err=%v", viewerID, err)
+	}
+	now := time.Now().UTC()
+	if _, err := srv.db.Exec(`
+		INSERT INTO sessions (id, user_id, profile_id, token_hash, expires_at, created_at, last_seen_at)
+		VALUES ('sess_atomic_viewer', ?, ?, ?, ?, ?, ?)`, viewerID, viewerID, hashToken("atomic-viewer-token"), now.Add(time.Hour).Format(time.RFC3339), now.Format(time.RFC3339), now.Format(time.RFC3339)); err != nil {
+		t.Fatalf("seed projected viewer session: %v", err)
+	}
+	if _, err := srv.db.Exec(`
+		CREATE TRIGGER fail_remote_policy_checkpoint
+		BEFORE INSERT ON settings
+		WHEN NEW.key = 'remoteAccessPolicyState'
+		BEGIN
+			SELECT RAISE(ABORT, 'injected checkpoint failure');
+		END`); err != nil {
+		t.Fatalf("install checkpoint failure trigger: %v", err)
+	}
+	state := remotePolicyState{
+		SnapshotID: "policy_atomic_failure", SnapshotDigest: strings.Repeat("a", 64), Generation: 2,
+		IssuedAt: now.Format(time.RFC3339Nano), ExpiresAt: now.Add(maximumPolicyLifetime).Format(time.RFC3339Nano),
+		PolicyDigest: strings.Repeat("b", 64), AckPending: true, TrustedTimeFloor: now.Format(time.RFC3339Nano),
+	}
+	if err := srv.applyRemotePolicySnapshotAtomically([]RemoteAccessMember{owner}, nil, state); err == nil {
+		t.Fatal("policy projection committed despite checkpoint persistence failure")
+	}
+	var memberStatus string
+	if err := srv.db.QueryRow(`SELECT status FROM remote_access_members WHERE portico_membership_id = ?`, viewer.PorticoMembershipID).Scan(&memberStatus); err != nil {
+		t.Fatalf("load rolled-back member status: %v", err)
+	}
+	var sessionCount, checkpointCount int
+	if err := srv.db.QueryRow(`SELECT COUNT(*) FROM sessions WHERE id = 'sess_atomic_viewer'`).Scan(&sessionCount); err != nil {
+		t.Fatalf("count rolled-back viewer session: %v", err)
+	}
+	if err := srv.db.QueryRow(`SELECT COUNT(*) FROM settings WHERE key = 'remoteAccessPolicyState'`).Scan(&checkpointCount); err != nil {
+		t.Fatalf("count rolled-back checkpoint: %v", err)
+	}
+	if memberStatus != "active" || sessionCount != 1 || checkpointCount != 0 {
+		t.Fatalf("policy/checkpoint transaction was not atomic: status=%q sessions=%d checkpoints=%d", memberStatus, sessionCount, checkpointCount)
 	}
 }
 
@@ -1333,9 +1438,17 @@ func TestPorticoSessionAttachDoesNotRequireThisServerPassword(t *testing.T) {
 	if err := json.Unmarshal(rawEnvelope, &selectionEnvelope); err != nil {
 		t.Fatalf("decode profile selection envelope: %v", err)
 	}
+	signingKeySet := testHostedDocumentSigningKeySet(t)
 	var introspectSeen bool
 	var introspectionCount int
 	hosted := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/signing-keys" {
+			if r.Method != http.MethodGet {
+				t.Fatalf("signing key lifecycle method = %s", r.Method)
+			}
+			writeJSON(w, http.StatusOK, signingKeySet)
+			return
+		}
 		if r.Header.Get("Authorization") != "Bearer server-credential-plus" {
 			t.Fatalf("hosted auth = %q", r.Header.Get("Authorization"))
 		}
@@ -2325,8 +2438,11 @@ func TestPorticoPrimarySetupClaimCreatesLinkedOwnerWithoutLocalUser(t *testing.T
 	var certificateCSR string
 	var claimAckSeen bool
 	const claimReceipt = "setup-claim-receipt"
+	signingKeySet := testHostedDocumentSigningKeySet(t)
 	hosted := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
+		case r.URL.Path == "/api/signing-keys" && r.Method == http.MethodGet:
+			writeJSON(w, http.StatusOK, signingKeySet)
 		case r.URL.Path == "/api/server-claims" && r.Method == http.MethodPost:
 			writeJSON(w, http.StatusCreated, map[string]any{
 				"claimId":             "claim_setup_owner",
@@ -2568,8 +2684,11 @@ func TestRemoteAccessStatusCompletesClaimAndSendsHeartbeat(t *testing.T) {
 	var certificateFinalizeCount int
 	const claimReceipt = "completed-claim-receipt"
 	certificateProvisioned := make(chan struct{})
+	signingKeySet := testHostedDocumentSigningKeySet(t)
 	hosted := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
+		case r.URL.Path == "/api/signing-keys" && r.Method == http.MethodGet:
+			writeJSON(w, http.StatusOK, signingKeySet)
 		case r.URL.Path == "/api/server-claims" && r.Method == http.MethodPost:
 			writeJSON(w, http.StatusCreated, map[string]any{
 				"claimId":             "claim_hosted_done",
@@ -3949,6 +4068,30 @@ func testHostedDocumentPrivateKey() ed25519.PrivateKey {
 func testHostedDocumentPublicKeys() map[string]string {
 	publicKey := testHostedDocumentPrivateKey().Public().(ed25519.PublicKey)
 	return map[string]string{testHostedDocumentKeyID: base64.StdEncoding.EncodeToString(publicKey)}
+}
+
+func testHostedDocumentSigningKeySet(t *testing.T) hostedDocumentSigningKeySet {
+	t.Helper()
+	now := time.Now().UTC()
+	keySet := hostedDocumentSigningKeySet{
+		SchemaVersion: 1,
+		Generation:    1,
+		IssuedAt:      now.Add(-time.Minute).Format(time.RFC3339Nano),
+		ExpiresAt:     now.Add(time.Hour).Format(time.RFC3339Nano),
+		ActiveKeyID:   testHostedDocumentKeyID,
+		Keys: []hostedDocumentSigningPublicKey{{
+			KeyID:        testHostedDocumentKeyID,
+			Algorithm:    hostedSignatureAlgorithm,
+			PublicKeyB64: testHostedDocumentPublicKeys()[testHostedDocumentKeyID],
+			State:        "active",
+		}},
+	}
+	var err error
+	keySet.Fingerprint, err = hostedDocumentKeySetFingerprint(keySet)
+	if err != nil {
+		t.Fatalf("fingerprint Hosted signing key set: %v", err)
+	}
+	return keySet
 }
 
 func signedTestPolicySnapshot(t *testing.T, document map[string]any) map[string]any {

@@ -153,30 +153,39 @@ func (s *Server) enforceRoutePolicy(w http.ResponseWriter, r *http.Request, user
 }
 
 func (s *Server) enforceHostedPolicyContinuity(w http.ResponseWriter, r *http.Request, route apiroute.Route, routeKnown bool) bool {
+	if routeKnown && hostedContinuityDenyOnlyOperation(route.OperationID) {
+		// Expired Hosted authority must not trap a user in their own local session.
+		// These exact operations only remove the caller's own authority; route
+		// permissions and resource ownership are still enforced by the normal
+		// middleware and handler after this continuity check. Server-wide denial
+		// remains available to a locally authoritative owner, never to a stale
+		// Hosted owner projection.
+		return true
+	}
 	state := remotePolicyContinuity(s.loadRemotePolicyState(), time.Now().UTC())
 	if state == "valid" {
 		return true
 	}
-	method := http.MethodGet
-	if r != nil {
-		method = r.Method
-	}
-	readOnly := method == http.MethodGet || method == http.MethodHead || method == http.MethodOptions
-	mediaDelivery := routeKnown && route.RatePolicy == "media-delivery"
-	playbackOperation := routeKnown && route.Permission == "play-media"
-	switch state {
-	case "grace":
-		if readOnly || mediaDelivery || playbackOperation {
-			return true
-		}
-	case "hard-expired-draining":
-		if mediaDelivery {
-			return true
-		}
-	}
 	w.Header().Set("Retry-After", "300")
-	writeProductError(w, http.StatusServiceUnavailable, "policy_reconciliation_required", "Portico Account policy must be reconciled before this operation can continue.")
+	code := "hosted_authority_stale"
+	message := "Portico Account authority expired before Hosted Services could be reached. Reconnect this server before continuing."
+	if state == "clock-invalid" {
+		code = "hosted_authority_clock_invalid"
+		message = "This server's clock moved behind its last trusted Hosted time. Correct the clock and reconcile Portico Account authority."
+	}
+	writeProductError(w, http.StatusServiceUnavailable, code, message)
 	return false
+}
+
+func hostedContinuityDenyOnlyOperation(operationID string) bool {
+	switch strings.TrimSpace(operationID) {
+	case "postAuthLogout",
+		"deleteAccountSessionsId",
+		"revokeAutomaticProfileTrusts":
+		return true
+	default:
+		return false
+	}
 }
 
 func itoa(value int) string {

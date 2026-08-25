@@ -1,7 +1,8 @@
 import type { AuthMeResponse, HostedProfileSelectionEnvelope, HostedRouteDocument, HostedRouteEntry, HostedServer, PorticoDocumentSigningKeySet } from "./types.js";
 import type { CredentialAdapter, HostedServicesClient, LocalServerSession, PorticoClient, SessionStore } from "./client.js";
-import { ApiError } from "./client.js";
+import { ApiError, parseRetryAfter, PorticoTransportError } from "./client.js";
 import { productMessage, resolveProductProblem } from "./productLanguage.js";
+import { positiveFullJitterDelay } from "./retryScheduling.js";
 import {
   assertViewerIdentity,
   assertViewerScopeMatchesCredentials,
@@ -45,6 +46,10 @@ export interface HostedServerConnectorOptions {
   routeProbeFetch?: typeof fetch;
   retryDelaysMs?: number[];
   retryDelay?: (milliseconds: number) => Promise<void>;
+  /** Persisted installation identifier used only to spread route retries. */
+  retryCohort?: string;
+  /** Absolute Unix-millisecond deadline for the complete Hosted discovery. */
+  discoveryDeadlineAt?: number;
   routeProbeTimeoutMs?: number;
   maxParallelRouteProbes?: number;
   /** Clients default to LAN first and fall back to the verified public route without changing account or viewer authority. */
@@ -77,7 +82,8 @@ export interface HostedRouteHealthEvidence {
 export type HostedServerRouteDiscoveryOptions = Pick<HostedServerConnectorOptions,
   "hostedClient" | "runtime" | "routeProbeFetch" | "retryDelaysMs" | "retryDelay" |
   "routeProbeTimeoutMs" | "maxParallelRouteProbes" | "routePreference" |
-  "localRouteCandidates" | "trustedHostedDocumentKeys" | "now" | "signal">;
+  "localRouteCandidates" | "trustedHostedDocumentKeys" | "now" | "signal" |
+  "retryCohort" | "discoveryDeadlineAt">;
 
 async function validateSelectedHostedDiscovery(
   server: HostedServer,
@@ -115,7 +121,8 @@ function validateRouteURL(route: HostedRouteEntry, lan: boolean): string | undef
   }
 }
 
-const defaultHostedConnectionRetryDelaysMs = [2500, 5000, 7500];
+const defaultHostedConnectionRetryDelaysMs = [2500, 5000];
+const defaultHostedRouteDiscoveryTimeoutMs = 30_000;
 const maxPendingRouteFailureReports = 8;
 const routeFailureReportCooldownMs = 30_000;
 const maxRememberedRouteFailureReports = 128;
@@ -134,7 +141,10 @@ export async function connectHostedServer(server: HostedServer, options: HostedS
   }
   const discoveredConnection = options.discoveredConnection;
   if (discoveredConnection) await validateSelectedHostedDiscovery(server, discoveredConnection, options);
-  const { routeDocument, route } = discoveredConnection ?? await discoverHostedServerRoute(server, options);
+  const { routeDocument, route } = discoveredConnection ?? await discoverHostedServerRoute(server, {
+    ...options,
+    retryCohort: options.retryCohort?.trim() || options.clientIdentity.installationId,
+  });
   throwIfConnectionAborted(options.signal);
   const session: LocalServerSession = {
     serverId: server.id,
@@ -489,6 +499,27 @@ export class HostedConnectionAbortedError extends Error {
   }
 }
 
+export class HostedRouteDiscoveryTimeoutError extends ApiError {
+  constructor() {
+    super(0, "route_discovery_timeout", "The direct server route could not be discovered before the connection deadline.", undefined, {
+      retryable: true,
+    });
+    this.name = "HostedRouteDiscoveryTimeoutError";
+  }
+}
+
+export class HostedRouteRetryLaterError extends ApiError {
+  constructor(cause: ApiError) {
+    super(cause.status, "route_discovery_retry_later", "The connection target is temporarily busy. Try this connection again later.", undefined, {
+      retryable: true,
+      retryAfter: cause.retryAfter,
+      retryAt: cause.retryAt,
+      retryAfterMs: cause.retryAfterMs,
+    });
+    this.name = "HostedRouteRetryLaterError";
+  }
+}
+
 export function throwIfConnectionAborted(signal?: AbortSignal): void {
   if (!signal?.aborted) return;
   if (signal.reason instanceof Error) throw signal.reason;
@@ -505,41 +536,159 @@ export async function discoverHostedServerRoute(
   options: HostedServerRouteDiscoveryOptions
 ): Promise<HostedServerRouteDiscovery> {
   throwIfConnectionAborted(options.signal);
-  await options.hostedClient.checkCompatibility?.();
-  throwIfConnectionAborted(options.signal);
   if (server.preferredAuthMode === "local") {
     throw new Error("This server uses This Server sign-in and cannot be opened from a hosted Portico client.");
   }
   const runtime = createHostedConnectionRuntime(options.runtime);
-  const retryDelays = options.retryDelaysMs ?? defaultHostedConnectionRetryDelaysMs;
-  const retryDelay = options.retryDelay ?? ((milliseconds: number) => delay(milliseconds, runtime, options.signal));
+  const startedAt = Date.now();
+  const maximumDeadlineAt = startedAt + defaultHostedRouteDiscoveryTimeoutMs;
+  const requestedDeadlineAt = options.discoveryDeadlineAt ?? maximumDeadlineAt;
+  if (!Number.isFinite(requestedDeadlineAt) || requestedDeadlineAt <= startedAt) {
+    throw new HostedRouteDiscoveryTimeoutError();
+  }
+  // A caller may shorten the interactive discovery budget, but it cannot turn
+  // this foreground operation into an unbounded background retry loop.
+  const discoveryDeadlineAt = Math.min(requestedDeadlineAt, maximumDeadlineAt);
+  const deadlineController = runtime.createAbortController();
+  const abortForCaller = () => deadlineController.abort(
+    options.signal?.reason instanceof Error ? options.signal.reason : new HostedConnectionAbortedError()
+  );
+  options.signal?.addEventListener("abort", abortForCaller, {once: true});
+  const deadlineTimer = runtime.setTimeout(
+    () => deadlineController.abort(new HostedRouteDiscoveryTimeoutError()),
+    Math.max(1, discoveryDeadlineAt - startedAt)
+  );
+  const discoveryOptions: HostedServerRouteDiscoveryOptions = {
+    ...options,
+    signal: deadlineController.signal,
+    discoveryDeadlineAt,
+  };
+  // The outer discovery loop is the sole retry owner and is always bounded to
+  // two waits / three route requests, even if an older caller supplies more.
+  const retryDelays = (options.retryDelaysMs ?? defaultHostedConnectionRetryDelaysMs)
+    .filter((milliseconds) => Number.isFinite(milliseconds) && milliseconds >= 0)
+    .map((milliseconds) => Math.floor(milliseconds))
+    .slice(0, 2);
+  const retryDelay = options.retryDelay ?? ((milliseconds: number) => delay(milliseconds, runtime, deadlineController.signal));
+  const retryCohort = options.retryCohort?.trim() || "";
   let lastRouteError: Error | undefined;
-  for (let attempt = 0; attempt <= retryDelays.length; attempt++) {
-    try {
-      throwIfConnectionAborted(options.signal);
-      const routeDocument = await options.hostedClient.routes(server.id, {signal: options.signal});
-      throwIfConnectionAborted(options.signal);
-      await verifyHostedRouteDocument(routeDocument, server.id, options.trustedHostedDocumentKeys, options.now?.() ?? runtime.now(), runtime);
-			if (routeDocument.serverPublicKey !== server.serverPublicKey || routeDocument.serverPublicKeyFingerprint !== server.serverPublicKeyFingerprint) {
-				throw new Error("The signed route document does not match the selected Hosted server identity.");
-			}
-      const routes = [
-        ...routesForConnection(routeDocument, options.routePreference),
-        ...await localRoutesForConnection(server, routeDocument, options)
-      ];
-      const route = await selectVerifiedRoute(routes, routeDocument, options);
-      throwIfConnectionAborted(options.signal);
-      if (route) return { routeDocument, route };
-      throw lastRouteError ?? new Error("Unable to verify a route for this server.");
-    } catch (error) {
-      throwIfConnectionAborted(options.signal);
-      lastRouteError = error instanceof Error ? error : new Error(String(error));
-      if (!hostedConnectionErrorIsRetryable(error) || attempt === retryDelays.length) throw lastRouteError;
-      await retryDelay(retryDelays[attempt]);
-      throwIfConnectionAborted(options.signal);
+  const waitForRetry = async (error: unknown, attempt: number): Promise<void> => {
+    throwIfConnectionAborted(deadlineController.signal);
+    lastRouteError = error instanceof Error ? error : new Error(String(error));
+    if (!hostedRouteFetchErrorIsRetryable(error) || attempt === retryDelays.length) throw lastRouteError;
+    const retryAfterMs = error instanceof ApiError ? Math.max(0, error.retryAfterMs ?? 0) : 0;
+    const configuredCap = retryDelays[attempt] ?? 0;
+    const remaining = discoveryDeadlineAt - Date.now();
+    if (retryAfterMs > 0 && retryAfterMs >= remaining) throw new HostedRouteRetryLaterError(error as ApiError);
+    // Retry-After is a strict lower bound. Fleet spreading is still full jitter
+    // across the complete configured cap; never collapse a cold fleet into a
+    // one-second band after the server asks it to back off.
+    const jitter = routeDiscoveryJitter(runtime, configuredCap, retryCohort, server.id, attempt);
+    const waitMilliseconds = retryAfterMs + jitter;
+    if (waitMilliseconds >= remaining) {
+      if (retryAfterMs > 0) throw new HostedRouteRetryLaterError(error as ApiError);
+      throw new HostedRouteDiscoveryTimeoutError();
     }
+    await abortableRetryDelay(retryDelay, waitMilliseconds, deadlineController.signal);
+    throwIfConnectionAborted(deadlineController.signal);
+  };
+  try {
+    await options.hostedClient.checkCompatibility?.({
+      signal: deadlineController.signal,
+      retryBudget: 0,
+      deadlineAt: discoveryDeadlineAt,
+    });
+    throwIfConnectionAborted(deadlineController.signal);
+    for (let attempt = 0; attempt <= retryDelays.length; attempt++) {
+      let routeDocument: HostedRouteDocument;
+      try {
+        throwIfConnectionAborted(deadlineController.signal);
+        routeDocument = await options.hostedClient.routes(server.id, {
+          signal: deadlineController.signal,
+          retryBudget: 0,
+          deadlineAt: discoveryDeadlineAt,
+        });
+      } catch (error) {
+        await waitForRetry(error, attempt);
+        continue;
+      }
+      try {
+        throwIfConnectionAborted(deadlineController.signal);
+        await verifyHostedRouteDocument(routeDocument, server.id, options.trustedHostedDocumentKeys, options.now?.() ?? runtime.now(), runtime);
+			  if (routeDocument.serverPublicKey !== server.serverPublicKey || routeDocument.serverPublicKeyFingerprint !== server.serverPublicKeyFingerprint) {
+				  throw new Error("The signed route document does not match the selected Hosted server identity.");
+			  }
+        const routes = [
+          ...routesForConnection(routeDocument, options.routePreference),
+          ...await localRoutesForConnection(server, routeDocument, discoveryOptions)
+        ];
+        const route = await selectVerifiedRoute(routes, routeDocument, discoveryOptions);
+        throwIfConnectionAborted(deadlineController.signal);
+        if (route) return { routeDocument, route };
+        throw lastRouteError ?? new Error("Unable to verify a route for this server.");
+      } catch (error) {
+        await waitForRetry(error, attempt);
+      }
+    }
+  } finally {
+    runtime.clearTimeout(deadlineTimer);
+    options.signal?.removeEventListener("abort", abortForCaller);
   }
   throw lastRouteError ?? new Error("Unable to verify a route for this server.");
+}
+
+function routeDiscoveryJitter(
+  runtime: ResolvedHostedConnectionRuntimeAdapters,
+  capMilliseconds: number,
+  cohort: string | undefined,
+  serverId: string,
+  attempt: number,
+): number {
+  const random = () => {
+    const bytes = runtime.secureRandom(4);
+    return (
+      ((bytes[0] ?? 0) * 0x1000000 + (bytes[1] ?? 0) * 0x10000 + (bytes[2] ?? 0) * 0x100 + (bytes[3] ?? 0)) /
+      0x100000000
+    );
+  };
+  const stableCohort = cohort?.trim() ? `${cohort.trim()}:${serverId}` : "";
+  return positiveFullJitterDelay(Math.max(1, capMilliseconds), stableCohort, attempt, random);
+}
+
+function abortableRetryDelay(
+  retryDelay: (milliseconds: number) => Promise<void>,
+  milliseconds: number,
+  signal: AbortSignal,
+): Promise<void> {
+  if (signal.aborted) {
+    return Promise.reject(signal.reason instanceof Error ? signal.reason : new HostedConnectionAbortedError());
+  }
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (error?: unknown) => {
+      if (settled) return;
+      settled = true;
+      signal.removeEventListener("abort", abort);
+      if (error === undefined) resolve();
+      else reject(error);
+    };
+    const abort = () => finish(signal.reason instanceof Error ? signal.reason : new HostedConnectionAbortedError());
+    signal.addEventListener("abort", abort, {once: true});
+    Promise.resolve()
+      .then(() => {
+        if (settled || signal.aborted) {
+          throw signal.reason instanceof Error ? signal.reason : new HostedConnectionAbortedError();
+        }
+        return retryDelay(milliseconds);
+      })
+      .then(() => finish(), (error) => finish(error));
+  });
+}
+
+function hostedRouteFetchErrorIsRetryable(error: unknown): boolean {
+  if (error instanceof PorticoTransportError) return true;
+  if (!(error instanceof ApiError)) return false;
+  return error.status === 408 || error.status === 425 || error.status === 429 || (error.status >= 500 && error.status < 600);
 }
 
 export async function verifyHostedRouteDocument(
@@ -913,18 +1062,42 @@ async function verifyRoute(route: HostedRouteEntry, document: HostedRouteDocumen
     if ((options.routePreference === "public-first" || options.routePreference === "lan-only") && isLANRoute(route) && error instanceof TypeError) {
       throw new LocalNetworkRouteUnavailableError({ cause: error });
     }
-    throw new Error(`${detail} Check that the server is online and Remote Access is enabled, then try again.`);
+    throw new PorticoTransportError(
+      "route_probe_transport_failed",
+      `${detail} Check that the server is online and Remote Access is enabled, then try again.`,
+      error,
+      {method: "GET", phase: controller.signal.aborted ? "timeout" : "request", retryable: true},
+    );
   } finally {
     runtime.clearTimeout(timeout);
     options.signal?.removeEventListener("abort", cancelForNewerChoice);
   }
   throwIfConnectionAborted(options.signal);
-  assertRouteHealthResponseNotRedirected(response, base);
+  try {
+    assertRouteHealthResponseNotRedirected(response, base);
+  } catch (error) {
+    await cancelRouteProbeResponse(response);
+    throw error;
+  }
   if (response.status === 401 || response.status === 403) {
+    await cancelRouteProbeResponse(response);
     void reportRouteFailure(route, document, options, "http_failed");
     throw new Error("This route candidate did not authorize its health check.");
   }
   if (!response.ok) {
+    if (response.status === 408 || response.status === 425 || response.status === 429 ||
+        (response.status >= 500 && response.status < 600)) {
+      const retryMetadata = parseRetryAfter(response.headers.get("Retry-After"));
+      await cancelRouteProbeResponse(response);
+      throw new ApiError(
+        response.status,
+        "route_probe_retryable",
+        `The media server route is temporarily unavailable (HTTP ${response.status}).`,
+        undefined,
+        {retryable: true, ...retryMetadata},
+      );
+    }
+    await cancelRouteProbeResponse(response);
     void reportRouteFailure(route, document, options, "http_failed");
     throw new Error(`Remote Access health verification failed with HTTP ${response.status}. Check the local server Remote Access status.`);
   }
@@ -946,6 +1119,15 @@ async function verifyRoute(route: HostedRouteEntry, document: HostedRouteDocumen
   if (health.remoteAccessEnabled === false) {
     void reportRouteFailure(route, document, options, "remote_access_disabled");
     throw new Error("Remote Access is disabled on the selected server route. Enable Remote Access on the local server before connecting.");
+  }
+}
+
+async function cancelRouteProbeResponse(response: Response): Promise<void> {
+  try {
+    await response.body?.cancel();
+  } catch {
+    // Preserve the classified connection failure if the runtime has already
+    // locked or canceled the body. The retry owner must still make progress.
   }
 }
 

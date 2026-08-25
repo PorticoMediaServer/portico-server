@@ -39,6 +39,7 @@ export * from "./queryPolicy.js";
 export * from "./preferences.js";
 export * from "./profiles.js";
 export * from "./runtime.js";
+export * from "./retryScheduling.js";
 export * from "./searchContract.js";
 export * from "./selectionActions.js";
 export * from "./trustedServerConnection.js";

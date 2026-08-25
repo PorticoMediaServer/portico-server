@@ -26,7 +26,7 @@ const (
 	localProfilePINLockDuration                    = 15 * time.Minute
 	localProfilePINBackoffBase                     = time.Second
 	localProfilePINBackoffMaximum                  = 8 * time.Second
-	localProfilePINBcryptCost                      = 10
+	localProfilePINBcryptCost                      = 8
 	profileRestrictionsVersion                     = "v1"
 	hostedProfileSelectionAssertionVersion         = "v1"
 	profileSelectionGrantTTL                       = 2 * time.Minute
@@ -235,32 +235,44 @@ func validLocalProfilePIN(pin string) bool {
 }
 
 // localProfilePINDummyHash keeps missing and malformed credentials on the
-// same cost-10 bcrypt path as real PINs without allocating work per request.
-const localProfilePINDummyHash = "$2y$10$p36EVzr4vk.Uw3e86jgYxuXgyBd0ss2fIjV4.68MvRjZ5hMF9sy1W"
+// same cost-8 bcrypt path as real PINs without allocating work per request.
+const localProfilePINDummyHash = "$2b$08$ZNSVVlfSU.wyMtr0EXeLs.wVLLWhYzyL9QPECq6.S3NxMmAv9n4/m"
 
-func hashLocalProfilePIN(pin string) (string, error) {
+func hashLocalProfilePIN(ctx context.Context, callsite kdfCallsite, pin string) (string, error) {
 	if !validLocalProfilePIN(pin) {
 		return "", errInvalidProfilePIN
 	}
-	hash, err := bcrypt.GenerateFromPassword([]byte(pin), localProfilePINBcryptCost)
+	hash, err := runKDF(ctx, callsite, kdfLaneMutation, func() ([]byte, error) {
+		return bcrypt.GenerateFromPassword([]byte(pin), localProfilePINBcryptCost)
+	})
 	if err != nil {
 		return "", err
 	}
 	return string(hash), nil
 }
 
-func verifyLocalProfilePINHash(encoded, pin string) bool {
+func verifyLocalProfilePINHash(ctx context.Context, callsite kdfCallsite, encoded, pin string) (bool, error) {
 	eligible := validLocalProfilePIN(pin) && validProfilePINBcryptHash(encoded, localProfilePINBcryptCost)
 	hash := []byte(encoded)
 	if !eligible {
 		hash = []byte(localProfilePINDummyHash)
 	}
-	return bcrypt.CompareHashAndPassword(hash, []byte(pin)) == nil && eligible
+	compareErr, err := runKDF(ctx, callsite, kdfLaneCompare, func() (error, error) {
+		return bcrypt.CompareHashAndPassword(hash, []byte(pin)), nil
+	})
+	return compareErr == nil && eligible, err
 }
 
 func validProfilePINBcryptHash(encoded string, expectedCost int) bool {
 	cost, err := bcrypt.Cost([]byte(encoded))
-	return err == nil && cost == expectedCost
+	if err != nil {
+		return false
+	}
+	// PIN credentials written by the immutable 001 schema use cost 10.  The
+	// current writer uses cost 8 for bounded PIN admission, so both historical
+	// forms remain readable during the forward migration.  Do not accept a
+	// lower-than-policy hash or silently downgrade a stronger one.
+	return cost == expectedCost || (expectedCost == localProfilePINBcryptCost && cost == 10)
 }
 
 func normalizeProfileDisplayName(value string) (string, bool) {
@@ -693,7 +705,7 @@ func (s *Server) createLocalProfileContext(ctx context.Context, accountID string
 	}
 	var pinHash string
 	if input.PIN != "" {
-		hash, err := hashLocalProfilePIN(input.PIN)
+		hash, err := hashLocalProfilePIN(ctx, kdfProfilePINSetHash, input.PIN)
 		if err != nil {
 			return AccountProfile{}, err
 		}
@@ -800,15 +812,25 @@ func (s *Server) listAccountProfilesContext(ctx context.Context, accountID strin
 }
 
 func (s *Server) setLocalProfilePINContext(ctx context.Context, accountID, profileID, pin string) error {
+	return s.setLocalProfilePINAuthorizedContext(ctx, accountID, profileID, pin, "", "")
+}
+
+func (s *Server) setLocalProfilePINAuthorizedContext(ctx context.Context, accountID, profileID, pin, expectedHash, sessionID string) error {
 	if !validLocalProfilePIN(pin) {
 		return errInvalidProfilePIN
 	}
-	hash, err := hashLocalProfilePIN(pin)
+	hash, err := hashLocalProfilePIN(ctx, kdfProfilePINSetHash, pin)
 	if err != nil {
 		return err
 	}
-	now := time.Now().UTC().Format(time.RFC3339Nano)
+	now := time.Now().UTC()
+	nowText := now.Format(time.RFC3339Nano)
 	return s.withUserTxTagged(ctx, []string{"profiles", "local_profile_pin_credentials"}, func(tx *sql.Tx) error {
+		if expectedHash != "" || sessionID != "" {
+			if err := validatePasswordSessionTx(tx, accountID, accountID, sessionID, expectedHash, now); err != nil {
+				return err
+			}
+		}
 		var origin string
 		if err := tx.QueryRow(`SELECT origin FROM profiles WHERE id = ? AND account_id = ? AND disabled_at = ''`, profileID, accountID).Scan(&origin); err != nil {
 			return errProfileAccountMismatch
@@ -821,17 +843,27 @@ func (s *Server) setLocalProfilePINContext(ctx context.Context, accountID, profi
 			VALUES (?, ?, 0, '', ?, ?)
 			ON CONFLICT(profile_id) DO UPDATE SET
 				pin_hash = excluded.pin_hash, failed_attempts = 0, locked_until = '', updated_at = excluded.updated_at`,
-			profileID, hash, now, now)
+			profileID, hash, nowText, nowText)
 		if err == nil {
-			_, err = tx.Exec(`UPDATE profiles SET pin_required = 1, pin_revision = pin_revision + 1, updated_at = ? WHERE id = ? AND account_id = ?`, now, profileID, accountID)
+			_, err = tx.Exec(`UPDATE profiles SET pin_required = 1, pin_revision = pin_revision + 1, updated_at = ? WHERE id = ? AND account_id = ?`, nowText, profileID, accountID)
 		}
 		return err
 	})
 }
 
 func (s *Server) clearLocalProfilePINContext(ctx context.Context, accountID, profileID string) error {
-	now := time.Now().UTC().Format(time.RFC3339Nano)
+	return s.clearLocalProfilePINAuthorizedContext(ctx, accountID, profileID, "", "")
+}
+
+func (s *Server) clearLocalProfilePINAuthorizedContext(ctx context.Context, accountID, profileID, expectedHash, sessionID string) error {
+	now := time.Now().UTC()
+	nowText := now.Format(time.RFC3339Nano)
 	return s.withUserTxTagged(ctx, []string{"profiles", "local_profile_pin_credentials"}, func(tx *sql.Tx) error {
+		if expectedHash != "" || sessionID != "" {
+			if err := validatePasswordSessionTx(tx, accountID, accountID, sessionID, expectedHash, now); err != nil {
+				return err
+			}
+		}
 		var origin string
 		var primary int
 		if err := tx.QueryRow(`SELECT origin, is_primary FROM profiles WHERE id = ? AND account_id = ? AND disabled_at = ''`, profileID, accountID).Scan(&origin, &primary); err != nil {
@@ -852,7 +884,7 @@ func (s *Server) clearLocalProfilePINContext(ctx context.Context, accountID, pro
 		if _, err := tx.Exec(`DELETE FROM local_profile_pin_credentials WHERE profile_id = ?`, profileID); err != nil {
 			return err
 		}
-		_, err := tx.Exec(`UPDATE profiles SET pin_required = 0, pin_revision = pin_revision + 1, updated_at = ? WHERE id = ? AND account_id = ?`, now, profileID, accountID)
+		_, err := tx.Exec(`UPDATE profiles SET pin_required = 0, pin_revision = pin_revision + 1, updated_at = ? WHERE id = ? AND account_id = ?`, nowText, profileID, accountID)
 		return err
 	})
 }
@@ -861,83 +893,162 @@ func (s *Server) verifyLocalProfilePINContext(ctx context.Context, accountID, pr
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
-	var valid bool
-	err := s.withUserTxTagged(ctx, []string{"profiles", "local_profile_pin_credentials"}, func(tx *sql.Tx) error {
-		var err error
-		valid, err = verifyLocalProfilePINTx(tx, accountID, profileID, pin, now)
-		return err
-	})
-	return valid, err
+	for attempt := 0; attempt < 3; attempt++ {
+		snapshot, err := s.loadLocalProfilePINSnapshot(ctx, accountID, profileID)
+		if err != nil {
+			// Missing/malformed/foreign credentials still spend exactly one
+			// admitted configured-cost comparison before returning their product error.
+			_, kdfErr := verifyLocalProfilePINHash(ctx, kdfProfilePINAdminCompare, "", pin)
+			if kdfErr != nil {
+				return false, kdfErr
+			}
+			return false, err
+		}
+		evaluation, err := evaluateLocalProfilePIN(ctx, kdfProfilePINAdminCompare, snapshot, pin, now)
+		if err != nil {
+			return false, err
+		}
+		err = s.withUserTxTagged(ctx, []string{"profiles", "local_profile_pin_credentials"}, func(tx *sql.Tx) error {
+			return applyLocalProfilePINEvaluationTx(tx, snapshot, evaluation, now)
+		})
+		if errors.Is(err, errProfilePINConcurrentChange) {
+			continue
+		}
+		if err != nil {
+			return false, err
+		}
+		if evaluation.mutate && !evaluation.valid {
+			return false, nil
+		}
+		return evaluation.valid, evaluation.result
+	}
+	return false, errProfilePINConcurrentChange
 }
 
-func verifyLocalProfilePINTx(tx *sql.Tx, accountID, profileID, pin string, now time.Time) (bool, error) {
-	var origin, pinHash, lockedUntil, nextAttemptAt string
-	var failed int
-	if err := tx.QueryRow(`
-		SELECT p.origin, c.pin_hash, c.failed_attempts, c.locked_until, c.next_attempt_at
-		FROM profiles p
-		JOIN local_profile_pin_credentials c ON c.profile_id = p.id
-		WHERE p.id = ? AND p.account_id = ? AND p.disabled_at = ''`, profileID, accountID).
-		Scan(&origin, &pinHash, &failed, &lockedUntil, &nextAttemptAt); err != nil {
-		verifyLocalProfilePINHash("", pin)
-		if errors.Is(err, sql.ErrNoRows) {
-			return false, errProfilePINNotSet
-		}
-		return false, err
+var errProfilePINConcurrentChange = errors.New("profile pin changed concurrently")
+
+type localProfilePINSnapshot struct {
+	accountID, profileID, origin                         string
+	pinHash, lockedUntil, nextAttemptAt, credentialStamp string
+	failed, pinRequired, primary, profilesAllowed        int
+	pinRevision                                          int64
+}
+
+type localProfilePINEvaluation struct {
+	valid, mutate              bool
+	failed                     int
+	lockedUntil, nextAttemptAt string
+	result                     error
+}
+
+func (s *Server) loadLocalProfilePINSnapshot(ctx context.Context, accountID, profileID string) (localProfilePINSnapshot, error) {
+	var snapshot localProfilePINSnapshot
+	snapshot.accountID, snapshot.profileID = strings.TrimSpace(accountID), strings.TrimSpace(profileID)
+	err := s.queryUserRow(ctx, `
+		SELECT p.origin, p.pin_required, p.is_primary, p.pin_revision, COALESCE(u.allow_account_profiles, 1),
+		       COALESCE(c.pin_hash, ''), COALESCE(c.failed_attempts, 0), COALESCE(c.locked_until, ''),
+		       COALESCE(c.next_attempt_at, ''), COALESCE(c.updated_at, '')
+		FROM profiles p JOIN users u ON u.id = p.account_id
+		LEFT JOIN local_profile_pin_credentials c ON c.profile_id = p.id
+		WHERE p.id = ? AND p.account_id = ? AND p.disabled_at = '' AND COALESCE(u.disabled_at, '') = ''`,
+		snapshot.profileID, snapshot.accountID).Scan(&snapshot.origin, &snapshot.pinRequired, &snapshot.primary,
+		&snapshot.pinRevision, &snapshot.profilesAllowed, &snapshot.pinHash, &snapshot.failed, &snapshot.lockedUntil,
+		&snapshot.nextAttemptAt, &snapshot.credentialStamp)
+	if errors.Is(err, sql.ErrNoRows) || snapshot.pinHash == "" {
+		return localProfilePINSnapshot{}, errProfilePINNotSet
 	}
-	if origin != "local" {
-		verifyLocalProfilePINHash("", pin)
-		return false, errHostedProfileLocalPIN
+	if err != nil {
+		return localProfilePINSnapshot{}, err
 	}
-	if lockedUntil != "" {
-		locked, _ := time.Parse(time.RFC3339Nano, lockedUntil)
-		if locked.After(now) {
-			verifyLocalProfilePINHash(pinHash, pin)
-			return false, profilePINRetryError(errProfilePINLocked, locked, now)
-		}
-		failed = 0
+	if snapshot.origin != "local" {
+		return localProfilePINSnapshot{}, errHostedProfileLocalPIN
 	}
-	if nextAttemptAt != "" {
-		nextAttempt, _ := time.Parse(time.RFC3339Nano, nextAttemptAt)
-		if nextAttempt.After(now) {
-			verifyLocalProfilePINHash(pinHash, pin)
-			return false, profilePINRetryError(errProfilePINBackoff, nextAttempt, now)
-		}
+	return snapshot, nil
+}
+
+func evaluateLocalProfilePIN(ctx context.Context, callsite kdfCallsite, snapshot localProfilePINSnapshot, pin string, now time.Time) (localProfilePINEvaluation, error) {
+	valid, err := verifyLocalProfilePINHash(ctx, callsite, snapshot.pinHash, pin)
+	if err != nil {
+		return localProfilePINEvaluation{}, err
 	}
-	valid := verifyLocalProfilePINHash(pinHash, pin)
+	evaluation := localProfilePINEvaluation{valid: valid, failed: snapshot.failed, lockedUntil: snapshot.lockedUntil, nextAttemptAt: snapshot.nextAttemptAt}
+	if locked, parseErr := time.Parse(time.RFC3339Nano, snapshot.lockedUntil); parseErr == nil && locked.After(now) {
+		evaluation.valid = false
+		evaluation.result = profilePINRetryError(errProfilePINLocked, locked, now)
+		return evaluation, nil
+	}
+	if nextAttempt, parseErr := time.Parse(time.RFC3339Nano, snapshot.nextAttemptAt); parseErr == nil && nextAttempt.After(now) {
+		evaluation.valid = false
+		evaluation.result = profilePINRetryError(errProfilePINBackoff, nextAttempt, now)
+		return evaluation, nil
+	}
+	if snapshot.lockedUntil != "" {
+		evaluation.failed = 0
+	}
+	evaluation.mutate = true
 	if valid {
-		_, err := tx.Exec(`UPDATE local_profile_pin_credentials SET failed_attempts = 0, locked_until = '', next_attempt_at = '', updated_at = ? WHERE profile_id = ?`, now.Format(time.RFC3339Nano), profileID)
-		return true, err
+		evaluation.failed, evaluation.lockedUntil, evaluation.nextAttemptAt = 0, "", ""
+		return evaluation, nil
 	}
-	failed++
-	lockValue := ""
-	delay := localProfilePINBackoffBase << min(failed-1, 3)
+	evaluation.failed++
+	delay := localProfilePINBackoffBase << min(evaluation.failed-1, 3)
 	if delay > localProfilePINBackoffMaximum {
 		delay = localProfilePINBackoffMaximum
 	}
 	nextAttempt := now.Add(delay)
-	if failed >= localProfilePINFailureLimit {
+	evaluation.lockedUntil = ""
+	if evaluation.failed >= localProfilePINFailureLimit {
 		nextAttempt = now.Add(localProfilePINLockDuration)
-		lockValue = nextAttempt.Format(time.RFC3339Nano)
+		evaluation.lockedUntil = nextAttempt.Format(time.RFC3339Nano)
 	}
-	_, err := tx.Exec(`UPDATE local_profile_pin_credentials SET failed_attempts = ?, locked_until = ?, next_attempt_at = ?, updated_at = ? WHERE profile_id = ?`, failed, lockValue, nextAttempt.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano), profileID)
-	return false, err
+	evaluation.nextAttemptAt = nextAttempt.Format(time.RFC3339Nano)
+	evaluation.result = profilePINRetryError(errProfilePINBackoff, nextAttempt, now)
+	if evaluation.lockedUntil != "" {
+		evaluation.result = profilePINRetryError(errProfilePINLocked, nextAttempt, now)
+	}
+	return evaluation, nil
 }
 
-func profilePINAttemptResultTx(tx *sql.Tx, profileID string, now time.Time) error {
-	var lockedUntil, nextAttemptAt string
-	if err := tx.QueryRow(`SELECT locked_until, next_attempt_at FROM local_profile_pin_credentials WHERE profile_id = ?`, profileID).Scan(&lockedUntil, &nextAttemptAt); err != nil {
-		return errInvalidProfileSelectionGrant
+func validateLocalProfilePINSnapshotTx(tx *sql.Tx, snapshot localProfilePINSnapshot) error {
+	var count int
+	err := tx.QueryRow(`
+		SELECT COUNT(*) FROM profiles p JOIN users u ON u.id = p.account_id
+		JOIN local_profile_pin_credentials c ON c.profile_id = p.id
+		WHERE p.id = ? AND p.account_id = ? AND p.origin = ? AND p.pin_required = ? AND p.pin_revision = ?
+		  AND p.disabled_at = '' AND COALESCE(u.disabled_at, '') = '' AND COALESCE(u.allow_account_profiles, 1) = ?
+		  AND c.pin_hash = ? AND c.failed_attempts = ? AND c.locked_until = ? AND c.next_attempt_at = ? AND c.updated_at = ?`,
+		snapshot.profileID, snapshot.accountID, snapshot.origin, snapshot.pinRequired, snapshot.pinRevision,
+		snapshot.profilesAllowed, snapshot.pinHash, snapshot.failed, snapshot.lockedUntil, snapshot.nextAttemptAt,
+		snapshot.credentialStamp).Scan(&count)
+	if err != nil {
+		return err
 	}
-	if lockedUntil != "" {
-		if until, err := time.Parse(time.RFC3339Nano, lockedUntil); err == nil && until.After(now) {
-			return profilePINRetryError(errProfilePINLocked, until, now)
-		}
+	if count != 1 {
+		return errProfilePINConcurrentChange
 	}
-	if until, err := time.Parse(time.RFC3339Nano, nextAttemptAt); err == nil && until.After(now) {
-		return profilePINRetryError(errProfilePINBackoff, until, now)
+	return nil
+}
+
+func applyLocalProfilePINEvaluationTx(tx *sql.Tx, snapshot localProfilePINSnapshot, evaluation localProfilePINEvaluation, now time.Time) error {
+	if err := validateLocalProfilePINSnapshotTx(tx, snapshot); err != nil {
+		return err
 	}
-	return errInvalidProfileSelectionGrant
+	if !evaluation.mutate {
+		return nil
+	}
+	result, err := tx.Exec(`
+		UPDATE local_profile_pin_credentials
+		SET failed_attempts = ?, locked_until = ?, next_attempt_at = ?, updated_at = ?
+		WHERE profile_id = ? AND pin_hash = ? AND failed_attempts = ? AND locked_until = ? AND next_attempt_at = ? AND updated_at = ?`,
+		evaluation.failed, evaluation.lockedUntil, evaluation.nextAttemptAt, now.Format(time.RFC3339Nano),
+		snapshot.profileID, snapshot.pinHash, snapshot.failed, snapshot.lockedUntil, snapshot.nextAttemptAt, snapshot.credentialStamp)
+	if err != nil {
+		return err
+	}
+	if rowsAffected(result) != 1 {
+		return errProfilePINConcurrentChange
+	}
+	return nil
 }
 
 func (s *Server) issueLocalProfileSelectionGrantContext(ctx context.Context, accountID, profileID, pin, deviceID, installationID string, now time.Time) (ProfileSelectionGrant, error) {
@@ -950,35 +1061,77 @@ func (s *Server) issueLocalProfileSelectionGrantForPurposeContext(ctx context.Co
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
-	var grant ProfileSelectionGrant
-	var pinResult error
-	err := s.withUserTxTagged(ctx, []string{"profiles", "profile_selection_grants"}, func(tx *sql.Tx) error {
-		var origin string
-		var pinRequired int
-		if err := tx.QueryRow(`SELECT origin, pin_required FROM profiles WHERE id = ? AND account_id = ? AND disabled_at = ''`, profileID, accountID).Scan(&origin, &pinRequired); err != nil {
-			return errProfileAccountMismatch
-		}
-		if origin != "local" {
-			return errHostedProfileLocalPIN
-		}
-		if pinRequired == 1 {
-			valid, err := verifyLocalProfilePINTx(tx, accountID, profileID, pin, now)
-			if err != nil {
-				return err
+	for attempt := 0; attempt < 3; attempt++ {
+		snapshot, snapshotErr := s.loadLocalProfilePINSnapshot(ctx, accountID, profileID)
+		if snapshotErr != nil {
+			if !errors.Is(snapshotErr, errProfilePINNotSet) {
+				return ProfileSelectionGrant{}, snapshotErr
 			}
-			if !valid {
-				pinResult = profilePINAttemptResultTx(tx, profileID, now)
+			// A profile without a credential is allowed only when its current
+			// profile row says no PIN is required. Read that fact without holding
+			// a write transaction; the transaction below rechecks it exactly.
+			var origin string
+			var pinRequired, primary, profilesAllowed int
+			var pinRevision int64
+			err := s.queryUserRow(ctx, `
+				SELECT p.origin, p.pin_required, p.is_primary, p.pin_revision, COALESCE(u.allow_account_profiles, 1)
+				FROM profiles p JOIN users u ON u.id = p.account_id
+				WHERE p.id = ? AND p.account_id = ? AND p.disabled_at = '' AND COALESCE(u.disabled_at, '') = ''`, profileID, accountID).
+				Scan(&origin, &pinRequired, &primary, &pinRevision, &profilesAllowed)
+			if err != nil {
+				return ProfileSelectionGrant{}, errProfileAccountMismatch
+			}
+			if origin != "local" {
+				return ProfileSelectionGrant{}, errHostedProfileLocalPIN
+			}
+			if pinRequired == 1 {
+				_, kdfErr := verifyLocalProfilePINHash(ctx, kdfProfilePINSelectCompare, "", pin)
+				if kdfErr != nil {
+					return ProfileSelectionGrant{}, kdfErr
+				}
+				return ProfileSelectionGrant{}, errProfilePINNotSet
+			}
+			snapshot = localProfilePINSnapshot{accountID: accountID, profileID: profileID, origin: origin, pinRequired: pinRequired, primary: primary, pinRevision: pinRevision, profilesAllowed: profilesAllowed}
+		}
+		var evaluation localProfilePINEvaluation
+		if snapshot.pinRequired == 1 {
+			var err error
+			evaluation, err = evaluateLocalProfilePIN(ctx, kdfProfilePINSelectCompare, snapshot, pin, now)
+			if err != nil {
+				return ProfileSelectionGrant{}, err
+			}
+		}
+		var grant ProfileSelectionGrant
+		err := s.withUserTxTagged(ctx, []string{"profiles", "local_profile_pin_credentials", "profile_selection_grants"}, func(tx *sql.Tx) error {
+			if snapshot.pinRequired == 1 {
+				if err := applyLocalProfilePINEvaluationTx(tx, snapshot, evaluation, now); err != nil {
+					return err
+				}
+			} else {
+				var count int
+				if err := tx.QueryRow(`SELECT COUNT(*) FROM profiles p JOIN users u ON u.id = p.account_id WHERE p.id = ? AND p.account_id = ? AND p.origin = 'local' AND p.pin_required = 0 AND p.pin_revision = ? AND p.disabled_at = '' AND COALESCE(u.disabled_at, '') = '' AND COALESCE(u.allow_account_profiles, 1) = ?`, profileID, accountID, snapshot.pinRevision, snapshot.profilesAllowed).Scan(&count); err != nil || count != 1 {
+					return errProfilePINConcurrentChange
+				}
+			}
+			if snapshot.pinRequired == 1 && !evaluation.valid {
 				return nil
 			}
+			var err error
+			grant, err = s.mintProfileSelectionGrantBoundTx(tx, accountID, profileID, "local", purpose, sourceProofID, deviceID, installationID, now)
+			return err
+		})
+		if errors.Is(err, errProfilePINConcurrentChange) {
+			continue
 		}
-		var err error
-		grant, err = s.mintProfileSelectionGrantBoundTx(tx, accountID, profileID, "local", purpose, sourceProofID, deviceID, installationID, now)
-		return err
-	})
-	if err == nil && pinResult != nil {
-		return ProfileSelectionGrant{}, pinResult
+		if err != nil {
+			return ProfileSelectionGrant{}, err
+		}
+		if snapshot.pinRequired == 1 && !evaluation.valid {
+			return ProfileSelectionGrant{}, evaluation.result
+		}
+		return grant, nil
 	}
-	return grant, err
+	return ProfileSelectionGrant{}, errProfilePINConcurrentChange
 }
 
 // issueHostedProfileSelectionGrantContext exchanges a Cloud-signed selection

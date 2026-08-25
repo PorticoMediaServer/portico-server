@@ -70,6 +70,7 @@ import {
   hostedCSRFToken,
   rememberHostedCSRFToken,
 } from "../../runtime/hostedBrowserSecurity";
+import { browserHostedTerminalMutationDurability } from "../../runtime/hostedTerminalMutationDurability";
 
 function reasonMessage(reason: unknown): string {
   return reason instanceof Error && reason.message.trim()
@@ -129,6 +130,8 @@ export class HttpSettingsDataSource implements SettingsDataSource {
         hostedApiBaseUrl,
         csrfToken: hostedCSRFToken,
         onCSRFToken: rememberHostedCSRFToken,
+        terminalMutationDurabilityAdapter:
+          browserHostedTerminalMutationDurability,
       });
     this.syncHostedIdentityToServer =
       options.syncHostedIdentityToServer !== false;

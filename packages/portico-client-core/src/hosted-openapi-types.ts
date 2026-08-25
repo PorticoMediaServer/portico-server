@@ -459,6 +459,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/account/terminal-mutations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Reconcile a terminal mutation by its original Idempotency-Key */
+        get: operations["getAccountTerminalMutationByKey"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/account/terminal-mutations/{receiptId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Reconcile one terminal mutation receipt */
+        get: operations["getAccountTerminalMutationReceipt"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/account/users/{userId}/image": {
         parameters: {
             query?: never;
@@ -1142,6 +1176,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/operator/terminal-mutations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Reconcile a terminal mutation by its original Idempotency-Key */
+        get: operations["getOperatorTerminalMutationByKey"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/operator/terminal-mutations/{receiptId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Reconcile one terminal mutation receipt */
+        get: operations["getOperatorTerminalMutationReceipt"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/operator/users/actions": {
         parameters: {
             query?: never;
@@ -1527,6 +1595,23 @@ export interface paths {
         put?: never;
         /** Verify and consume a current signed profile selection */
         post: operations["exchangeHostedProfileSelection"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/servers/{serverId}/profile-wake-ack": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Acknowledge application of an account profile wake */
+        post: operations["acknowledgeServerProfileWake"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1965,11 +2050,18 @@ export interface components {
         };
         DocumentSigningKeySet: {
             activeKeyId: string;
+            expiresAt: string;
+            fingerprint: string;
+            generation: number;
+            issuedAt: string;
             keys: {
                 algorithm: string;
                 keyId: string;
                 publicKeyB64: string;
+                revokedAt?: string;
                 state: string;
+                validFrom?: string;
+                validUntil?: string;
             }[];
             schemaVersion: number;
         };
@@ -2037,6 +2129,8 @@ export interface components {
             }[];
             lastReachabilityTestResult: string;
             policyDigest?: string;
+            policyRevision?: number;
+            policyRoot?: string;
             preferredAuthMode: string;
             protocolMaximum: number;
             protocolMinimum: number;
@@ -2058,6 +2152,8 @@ export interface components {
             ok: boolean;
             policyChanged: boolean;
             policyDigest?: string;
+            policyRevision?: number;
+            policyRoot?: string;
             publicIp?: string;
             remoteAccessEnabled: boolean;
             repair?: components["schemas"]["RepairSignalResponse"];
@@ -2396,6 +2492,20 @@ export interface components {
             activeDevices: number;
             activeMemberships: number;
             activeSessions: number;
+            admission: {
+                accepted: number;
+                byClass: {
+                    [key: string]: number;
+                };
+                inFlight: number;
+                rejected: number;
+            };
+            bcrypt: {
+                capacity: number;
+                inFlight: number;
+                maxInFlight: number;
+                waiting: number;
+            };
             /** Format: date-time */
             checkedAt: string;
             deadReachabilityJobs: number;
@@ -2403,6 +2513,7 @@ export interface components {
             failedDnsRecordCount: number;
             failedPushWakes: number;
             oldestCertificateJobAgeSeconds: number;
+            oldestProfileImageDeletionAgeSeconds: number;
             oldestPushWakeAgeSeconds: number;
             oldestReachabilityJobAgeSeconds: number;
             pendingCertificateJobs: number;
@@ -2410,6 +2521,24 @@ export interface components {
             pendingInvitations: number;
             pendingPushWakes: number;
             pendingReachabilityJobs: number;
+            presenceCapacitySaturations: number;
+            profileImageDeletionQueueCapacity: number;
+            profileImageDeletionQueueDepth: number;
+            profileImageDeletionQueueFailures: number;
+            profileImageDeletionQueueOverdue: number;
+            reachabilityAsnConcurrencyUnavailable: boolean;
+            reachabilityDeadLetters: number;
+            reachabilityEmptyPolls: number;
+            reachabilityLeaseAttempts: number;
+            reachabilityLeasedJobs: number;
+            reachabilityMaxProbeInFlight: number;
+            reachabilityPrefixConcurrencyLimited: number;
+            reachabilityProbeAttempts: number;
+            reachabilityProbeInFlight: number;
+            reachabilityProbeLatencyMilliseconds: number;
+            reachabilityProbeResults: number;
+            reachabilityProcessingFailures: number;
+            reachabilityTargetConcurrencyLimited: number;
             recentCertificateFailures: number;
             recentDnsFailures: number;
             recentLoginFailures: number;
@@ -2451,6 +2580,8 @@ export interface components {
             /** Format: date-time */
             certificateExpiresAt?: string;
             certificateStatus: string;
+            checkpointAgeSeconds?: number;
+            checkpointState?: string;
             compatibilityEnvelopeRevision?: number;
             /** Format: date-time */
             createdAt: string;
@@ -2464,10 +2595,16 @@ export interface components {
             id: string;
             /** Format: date-time */
             lastHeartbeatAt?: string;
+            /** Format: date-time */
+            lastPresenceAt?: string;
+            livePresenceState?: string;
             name: string;
             ownerEmail: string;
             ownerUserId: string;
             ownerUsername: string;
+            /** Format: date-time */
+            presenceAsOf?: string;
+            presenceSource?: string;
             protocolMaximum?: number;
             protocolMinimum?: number;
             reachableEndpointCount: number;
@@ -2501,22 +2638,36 @@ export interface components {
         };
         PolicySnapshot: {
             audience: string;
+            chunkCount?: number;
+            chunkDigest?: string;
+            chunkIndex?: number;
+            contentRoot?: string;
+            decodedBytes?: number;
             deletedAccountTombstones: {
                 /** Format: date-time */
                 deletedAt: string;
                 userId: string;
             }[];
             digest?: string;
+            encodedBytes?: number;
             /** Format: date-time */
             expiresAt: string;
             generation?: number;
             /** Format: date-time */
             issuedAt: string;
+            itemCount?: number;
             kind: string;
+            manifestChunkDecodedBytes?: number[];
+            manifestChunkEncodedBytes?: number[];
+            manifestChunkHashes?: string[];
+            manifestDigest?: string;
+            manifestId?: string;
             members: components["schemas"]["MemberProfile"][];
             minimumServerVersion: string;
             pendingInvites: components["schemas"]["Invitation"][];
             policyDigest?: string;
+            policyRevision?: number;
+            policyRoot?: string;
             serverId: string;
             signature: string;
             signatureAlgorithm: string;
@@ -2668,6 +2819,7 @@ export interface components {
             assignedHostname: string;
             audience: string;
             authModes: string[];
+            availabilityState?: string;
             certificate: {
                 /** Format: date-time */
                 expiresAt?: string;
@@ -2680,6 +2832,8 @@ export interface components {
             /** Format: date-time */
             issuedAt: string;
             kind: string;
+            /** Format: date-time */
+            lastPresenceAt?: string;
             membership: {
                 accountId: string;
                 allowSubordinateProfiles: boolean;
@@ -2699,6 +2853,9 @@ export interface components {
                 authoritative: boolean;
                 source: string;
             };
+            /** Format: date-time */
+            presenceAsOf?: string;
+            presenceSource?: string;
             routeAuthority?: string;
             routes: {
                 address?: string;
@@ -2784,9 +2941,14 @@ export interface components {
             id: string;
             /** Format: date-time */
             lastHeartbeatAt?: string;
+            /** Format: date-time */
+            lastPresenceAt?: string;
             name: string;
             ownerUserId: string;
             preferredAuthMode: string;
+            /** Format: date-time */
+            presenceAsOf?: string;
+            presenceSource?: string;
             protocolMaximum?: number;
             protocolMinimum?: number;
             remoteAccessEnabled: boolean;
@@ -2822,6 +2984,18 @@ export interface components {
         ServerList: {
             items: components["schemas"]["Server"][];
             pageInfo: components["schemas"]["CursorPageInfo"];
+        };
+        ServerProfileWakeAckRequest: {
+            accountId: string;
+            targetProfileRevision: number;
+            wakeId: string;
+        };
+        ServerProfileWakeAckResponse: {
+            accountId: string;
+            ok: boolean;
+            serverId: string;
+            targetProfileRevision: number;
+            wakeId: string;
         };
         ServerPushWakeRequest: {
             idempotencyKey: string;
@@ -2907,6 +3081,21 @@ export interface components {
             service: string;
             setupSessionId: string;
             status: string;
+        };
+        TerminalMutationReceipt: {
+            action: string;
+            actorId: string;
+            actorType: string;
+            auditEventId: string;
+            /** Format: date-time */
+            createdAt: string;
+            receiptId: string;
+            targetId: string;
+            targetType: string;
+        };
+        TerminalMutationReceiptResponse: {
+            outcome: string;
+            receipt: components["schemas"]["TerminalMutationReceipt"];
         };
         User: {
             /** Format: date-time */
@@ -3060,7 +3249,10 @@ export interface operations {
     revokeAccountDevice: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Stable caller-generated key required for terminal mutation replay and response-loss reconciliation. */
+                "Idempotency-Key": string;
+            };
             path: {
                 deviceId: string;
             };
@@ -3071,6 +3263,10 @@ export interface operations {
             /** @description Successful response */
             200: {
                 headers: {
+                    /** @description Committed or outcome_unknown terminal result marker. */
+                    "X-Portico-Terminal-Outcome"?: "committed" | "outcome_unknown";
+                    /** @description Stable server-derived receipt identifier for reconciliation. */
+                    "X-Portico-Terminal-Receipt"?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -3143,6 +3339,19 @@ export interface operations {
             /** @description Unexpected server error */
             500: {
                 headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Service temporarily unavailable */
+            503: {
+                headers: {
+                    /** @description Committed or outcome_unknown terminal result marker. */
+                    "X-Portico-Terminal-Outcome"?: "committed" | "outcome_unknown";
+                    /** @description Stable server-derived receipt identifier for reconciliation. */
+                    "X-Portico-Terminal-Receipt"?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -3338,7 +3547,10 @@ export interface operations {
     deleteAccount: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Stable caller-generated key required for terminal mutation replay and response-loss reconciliation. */
+                "Idempotency-Key": string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -3351,6 +3563,10 @@ export interface operations {
             /** @description Successful response */
             200: {
                 headers: {
+                    /** @description Committed or outcome_unknown terminal result marker. */
+                    "X-Portico-Terminal-Outcome"?: "committed" | "outcome_unknown";
+                    /** @description Stable server-derived receipt identifier for reconciliation. */
+                    "X-Portico-Terminal-Receipt"?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -3423,6 +3639,19 @@ export interface operations {
             /** @description Unexpected server error */
             500: {
                 headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Service temporarily unavailable */
+            503: {
+                headers: {
+                    /** @description Committed or outcome_unknown terminal result marker. */
+                    "X-Portico-Terminal-Outcome"?: "committed" | "outcome_unknown";
+                    /** @description Stable server-derived receipt identifier for reconciliation. */
+                    "X-Portico-Terminal-Receipt"?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -3622,7 +3851,10 @@ export interface operations {
     uploadAccountImage: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Stable caller-generated key required for terminal mutation replay and response-loss reconciliation. */
+                "Idempotency-Key": string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -3635,6 +3867,10 @@ export interface operations {
             /** @description Successful response */
             200: {
                 headers: {
+                    /** @description Committed or outcome_unknown terminal result marker. */
+                    "X-Portico-Terminal-Outcome"?: "committed" | "outcome_unknown";
+                    /** @description Stable server-derived receipt identifier for reconciliation. */
+                    "X-Portico-Terminal-Receipt"?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -3707,6 +3943,19 @@ export interface operations {
             /** @description Unexpected server error */
             500: {
                 headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Service temporarily unavailable */
+            503: {
+                headers: {
+                    /** @description Committed or outcome_unknown terminal result marker. */
+                    "X-Portico-Terminal-Outcome"?: "committed" | "outcome_unknown";
+                    /** @description Stable server-derived receipt identifier for reconciliation. */
+                    "X-Portico-Terminal-Receipt"?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -3718,7 +3967,10 @@ export interface operations {
     deleteAccountImage: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Stable caller-generated key required for terminal mutation replay and response-loss reconciliation. */
+                "Idempotency-Key": string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -3727,6 +3979,10 @@ export interface operations {
             /** @description Successful response */
             200: {
                 headers: {
+                    /** @description Committed or outcome_unknown terminal result marker. */
+                    "X-Portico-Terminal-Outcome"?: "committed" | "outcome_unknown";
+                    /** @description Stable server-derived receipt identifier for reconciliation. */
+                    "X-Portico-Terminal-Receipt"?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -3805,12 +4061,28 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description Service temporarily unavailable */
+            503: {
+                headers: {
+                    /** @description Committed or outcome_unknown terminal result marker. */
+                    "X-Portico-Terminal-Outcome"?: "committed" | "outcome_unknown";
+                    /** @description Stable server-derived receipt identifier for reconciliation. */
+                    "X-Portico-Terminal-Receipt"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     changeAccountPassword: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Stable caller-generated key required for terminal mutation replay and response-loss reconciliation. */
+                "Idempotency-Key": string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -3823,6 +4095,10 @@ export interface operations {
             /** @description Successful response */
             200: {
                 headers: {
+                    /** @description Committed or outcome_unknown terminal result marker. */
+                    "X-Portico-Terminal-Outcome"?: "committed" | "outcome_unknown";
+                    /** @description Stable server-derived receipt identifier for reconciliation. */
+                    "X-Portico-Terminal-Receipt"?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -3895,6 +4171,19 @@ export interface operations {
             /** @description Unexpected server error */
             500: {
                 headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Service temporarily unavailable */
+            503: {
+                headers: {
+                    /** @description Committed or outcome_unknown terminal result marker. */
+                    "X-Portico-Terminal-Outcome"?: "committed" | "outcome_unknown";
+                    /** @description Stable server-derived receipt identifier for reconciliation. */
+                    "X-Portico-Terminal-Receipt"?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -4616,7 +4905,9 @@ export interface operations {
     deleteAccountProfile: {
         parameters: {
             query?: never;
-            header?: {
+            header: {
+                /** @description Stable caller-generated key required for terminal mutation replay and response-loss reconciliation. */
+                "Idempotency-Key": string;
                 "X-Portico-Installation-ID"?: string;
             };
             path: {
@@ -4729,12 +5020,25 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description Service temporarily unavailable */
+            503: {
+                headers: {
+                    /** @description Profile and credential responses are not cacheable. */
+                    "Cache-Control"?: "no-store";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     setAccountProfilePIN: {
         parameters: {
             query?: never;
-            header?: {
+            header: {
+                /** @description Stable caller-generated key required for terminal mutation replay and response-loss reconciliation. */
+                "Idempotency-Key": string;
                 "X-Portico-Installation-ID"?: string;
             };
             path: {
@@ -4851,12 +5155,25 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description Service temporarily unavailable */
+            503: {
+                headers: {
+                    /** @description Profile and credential responses are not cacheable. */
+                    "Cache-Control"?: "no-store";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     clearAccountProfilePIN: {
         parameters: {
             query?: never;
-            header?: {
+            header: {
+                /** @description Stable caller-generated key required for terminal mutation replay and response-loss reconciliation. */
+                "Idempotency-Key": string;
                 "X-Portico-Installation-ID"?: string;
             };
             path: {
@@ -4964,6 +5281,17 @@ export interface operations {
             };
             /** @description Unexpected server error */
             500: {
+                headers: {
+                    /** @description Profile and credential responses are not cacheable. */
+                    "Cache-Control"?: "no-store";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Service temporarily unavailable */
+            503: {
                 headers: {
                     /** @description Profile and credential responses are not cacheable. */
                     "Cache-Control"?: "no-store";
@@ -5194,7 +5522,10 @@ export interface operations {
     revokeCurrentAccountPushSubscription: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Stable caller-generated key required for terminal mutation replay and response-loss reconciliation. */
+                "Idempotency-Key": string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -5207,6 +5538,10 @@ export interface operations {
             /** @description Successful response */
             200: {
                 headers: {
+                    /** @description Committed or outcome_unknown terminal result marker. */
+                    "X-Portico-Terminal-Outcome"?: "committed" | "outcome_unknown";
+                    /** @description Stable server-derived receipt identifier for reconciliation. */
+                    "X-Portico-Terminal-Receipt"?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -5279,6 +5614,19 @@ export interface operations {
             /** @description Unexpected server error */
             500: {
                 headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Service temporarily unavailable */
+            503: {
+                headers: {
+                    /** @description Committed or outcome_unknown terminal result marker. */
+                    "X-Portico-Terminal-Outcome"?: "committed" | "outcome_unknown";
+                    /** @description Stable server-derived receipt identifier for reconciliation. */
+                    "X-Portico-Terminal-Receipt"?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -5576,7 +5924,10 @@ export interface operations {
     deleteAccountServer: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Stable caller-generated key required for terminal mutation replay and response-loss reconciliation. */
+                "Idempotency-Key": string;
+            };
             path: {
                 serverId: string;
             };
@@ -5587,6 +5938,10 @@ export interface operations {
             /** @description Successful response */
             200: {
                 headers: {
+                    /** @description Committed or outcome_unknown terminal result marker. */
+                    "X-Portico-Terminal-Outcome"?: "committed" | "outcome_unknown";
+                    /** @description Stable server-derived receipt identifier for reconciliation. */
+                    "X-Portico-Terminal-Receipt"?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -5665,12 +6020,28 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description Service temporarily unavailable */
+            503: {
+                headers: {
+                    /** @description Committed or outcome_unknown terminal result marker. */
+                    "X-Portico-Terminal-Outcome"?: "committed" | "outcome_unknown";
+                    /** @description Stable server-derived receipt identifier for reconciliation. */
+                    "X-Portico-Terminal-Receipt"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     updateAccountServer: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Stable caller-generated key required for terminal mutation replay and response-loss reconciliation. */
+                "Idempotency-Key": string;
+            };
             path: {
                 serverId: string;
             };
@@ -5685,6 +6056,10 @@ export interface operations {
             /** @description Successful response */
             200: {
                 headers: {
+                    /** @description Committed or outcome_unknown terminal result marker. */
+                    "X-Portico-Terminal-Outcome"?: "committed" | "outcome_unknown";
+                    /** @description Stable server-derived receipt identifier for reconciliation. */
+                    "X-Portico-Terminal-Receipt"?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -5757,6 +6132,19 @@ export interface operations {
             /** @description Unexpected server error */
             500: {
                 headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Service temporarily unavailable */
+            503: {
+                headers: {
+                    /** @description Committed or outcome_unknown terminal result marker. */
+                    "X-Portico-Terminal-Outcome"?: "committed" | "outcome_unknown";
+                    /** @description Stable server-derived receipt identifier for reconciliation. */
+                    "X-Portico-Terminal-Receipt"?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -6062,7 +6450,10 @@ export interface operations {
     revokeServerInvite: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Stable caller-generated key required for terminal mutation replay and response-loss reconciliation. */
+                "Idempotency-Key": string;
+            };
             path: {
                 serverId: string;
                 inviteId: string;
@@ -6074,6 +6465,10 @@ export interface operations {
             /** @description Successful response */
             200: {
                 headers: {
+                    /** @description Committed or outcome_unknown terminal result marker. */
+                    "X-Portico-Terminal-Outcome"?: "committed" | "outcome_unknown";
+                    /** @description Stable server-derived receipt identifier for reconciliation. */
+                    "X-Portico-Terminal-Receipt"?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -6146,6 +6541,19 @@ export interface operations {
             /** @description Unexpected server error */
             500: {
                 headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Service temporarily unavailable */
+            503: {
+                headers: {
+                    /** @description Committed or outcome_unknown terminal result marker. */
+                    "X-Portico-Terminal-Outcome"?: "committed" | "outcome_unknown";
+                    /** @description Stable server-derived receipt identifier for reconciliation. */
+                    "X-Portico-Terminal-Receipt"?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -6448,7 +6856,10 @@ export interface operations {
     revokeServerMember: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Stable caller-generated key required for terminal mutation replay and response-loss reconciliation. */
+                "Idempotency-Key": string;
+            };
             path: {
                 serverId: string;
                 memberId: string;
@@ -6460,6 +6871,10 @@ export interface operations {
             /** @description Successful response */
             200: {
                 headers: {
+                    /** @description Committed or outcome_unknown terminal result marker. */
+                    "X-Portico-Terminal-Outcome"?: "committed" | "outcome_unknown";
+                    /** @description Stable server-derived receipt identifier for reconciliation. */
+                    "X-Portico-Terminal-Receipt"?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -6538,12 +6953,28 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description Service temporarily unavailable */
+            503: {
+                headers: {
+                    /** @description Committed or outcome_unknown terminal result marker. */
+                    "X-Portico-Terminal-Outcome"?: "committed" | "outcome_unknown";
+                    /** @description Stable server-derived receipt identifier for reconciliation. */
+                    "X-Portico-Terminal-Receipt"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     updateServerMember: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Stable caller-generated key required for terminal mutation replay and response-loss reconciliation. */
+                "Idempotency-Key": string;
+            };
             path: {
                 serverId: string;
                 memberId: string;
@@ -6559,6 +6990,10 @@ export interface operations {
             /** @description Successful response */
             200: {
                 headers: {
+                    /** @description Committed or outcome_unknown terminal result marker. */
+                    "X-Portico-Terminal-Outcome"?: "committed" | "outcome_unknown";
+                    /** @description Stable server-derived receipt identifier for reconciliation. */
+                    "X-Portico-Terminal-Receipt"?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -6631,6 +7066,19 @@ export interface operations {
             /** @description Unexpected server error */
             500: {
                 headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Service temporarily unavailable */
+            503: {
+                headers: {
+                    /** @description Committed or outcome_unknown terminal result marker. */
+                    "X-Portico-Terminal-Outcome"?: "committed" | "outcome_unknown";
+                    /** @description Stable server-derived receipt identifier for reconciliation. */
+                    "X-Portico-Terminal-Receipt"?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -6853,6 +7301,192 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PorticoSessionBootstrap"];
+                };
+            };
+            /** @description Invalid request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Authentication required or credential invalid */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Authenticated principal is not authorized */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource state conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description HTTP 423 */
+            423: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unexpected server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getAccountTerminalMutationByKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TerminalMutationReceiptResponse"];
+                };
+            };
+            /** @description Invalid request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Authentication required or credential invalid */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Authenticated principal is not authorized */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource state conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description HTTP 423 */
+            423: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unexpected server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getAccountTerminalMutationReceipt: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                receiptId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TerminalMutationReceiptResponse"];
                 };
             };
             /** @description Invalid request */
@@ -7402,7 +8036,10 @@ export interface operations {
     revokeBrowserSession: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Stable caller-generated key required for terminal mutation replay and response-loss reconciliation. */
+                "Idempotency-Key": string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -7411,6 +8048,10 @@ export interface operations {
             /** @description Successful response */
             200: {
                 headers: {
+                    /** @description Committed or outcome_unknown terminal result marker. */
+                    "X-Portico-Terminal-Outcome"?: "committed" | "outcome_unknown";
+                    /** @description Stable server-derived receipt identifier for reconciliation. */
+                    "X-Portico-Terminal-Receipt"?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -7483,6 +8124,19 @@ export interface operations {
             /** @description Unexpected server error */
             500: {
                 headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Service temporarily unavailable */
+            503: {
+                headers: {
+                    /** @description Committed or outcome_unknown terminal result marker. */
+                    "X-Portico-Terminal-Outcome"?: "committed" | "outcome_unknown";
+                    /** @description Stable server-derived receipt identifier for reconciliation. */
+                    "X-Portico-Terminal-Receipt"?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -7586,7 +8240,10 @@ export interface operations {
     disableMFA: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Stable caller-generated key required for terminal mutation replay and response-loss reconciliation. */
+                "Idempotency-Key": string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -7599,6 +8256,10 @@ export interface operations {
             /** @description Successful response */
             200: {
                 headers: {
+                    /** @description Committed or outcome_unknown terminal result marker. */
+                    "X-Portico-Terminal-Outcome"?: "committed" | "outcome_unknown";
+                    /** @description Stable server-derived receipt identifier for reconciliation. */
+                    "X-Portico-Terminal-Receipt"?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -7677,12 +8338,28 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description Service temporarily unavailable */
+            503: {
+                headers: {
+                    /** @description Committed or outcome_unknown terminal result marker. */
+                    "X-Portico-Terminal-Outcome"?: "committed" | "outcome_unknown";
+                    /** @description Stable server-derived receipt identifier for reconciliation. */
+                    "X-Portico-Terminal-Receipt"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     enableMFA: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Stable caller-generated key required for terminal mutation replay and response-loss reconciliation. */
+                "Idempotency-Key": string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -7695,6 +8372,10 @@ export interface operations {
             /** @description Successful response */
             200: {
                 headers: {
+                    /** @description Committed or outcome_unknown terminal result marker. */
+                    "X-Portico-Terminal-Outcome"?: "committed" | "outcome_unknown";
+                    /** @description Stable server-derived receipt identifier for reconciliation. */
+                    "X-Portico-Terminal-Receipt"?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -7773,12 +8454,28 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description Service temporarily unavailable */
+            503: {
+                headers: {
+                    /** @description Committed or outcome_unknown terminal result marker. */
+                    "X-Portico-Terminal-Outcome"?: "committed" | "outcome_unknown";
+                    /** @description Stable server-derived receipt identifier for reconciliation. */
+                    "X-Portico-Terminal-Receipt"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     rotateMFARecoveryCodes: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Stable caller-generated key required for terminal mutation replay and response-loss reconciliation. */
+                "Idempotency-Key": string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -7791,6 +8488,10 @@ export interface operations {
             /** @description Successful response */
             200: {
                 headers: {
+                    /** @description Committed or outcome_unknown terminal result marker. */
+                    "X-Portico-Terminal-Outcome"?: "committed" | "outcome_unknown";
+                    /** @description Stable server-derived receipt identifier for reconciliation. */
+                    "X-Portico-Terminal-Receipt"?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -7869,12 +8570,28 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description Service temporarily unavailable */
+            503: {
+                headers: {
+                    /** @description Committed or outcome_unknown terminal result marker. */
+                    "X-Portico-Terminal-Outcome"?: "committed" | "outcome_unknown";
+                    /** @description Stable server-derived receipt identifier for reconciliation. */
+                    "X-Portico-Terminal-Receipt"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     setupMFA: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Stable caller-generated key required for terminal mutation replay and response-loss reconciliation. */
+                "Idempotency-Key": string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -7887,6 +8604,10 @@ export interface operations {
             /** @description Successful response */
             200: {
                 headers: {
+                    /** @description Committed or outcome_unknown terminal result marker. */
+                    "X-Portico-Terminal-Outcome"?: "committed" | "outcome_unknown";
+                    /** @description Stable server-derived receipt identifier for reconciliation. */
+                    "X-Portico-Terminal-Receipt"?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -7959,6 +8680,19 @@ export interface operations {
             /** @description Unexpected server error */
             500: {
                 headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Service temporarily unavailable */
+            503: {
+                headers: {
+                    /** @description Committed or outcome_unknown terminal result marker. */
+                    "X-Portico-Terminal-Outcome"?: "committed" | "outcome_unknown";
+                    /** @description Stable server-derived receipt identifier for reconciliation. */
+                    "X-Portico-Terminal-Receipt"?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -8062,7 +8796,10 @@ export interface operations {
     completePasswordReset: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Stable caller-generated key required for terminal mutation replay and response-loss reconciliation. */
+                "Idempotency-Key": string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -8075,6 +8812,10 @@ export interface operations {
             /** @description Successful response */
             200: {
                 headers: {
+                    /** @description Committed or outcome_unknown terminal result marker. */
+                    "X-Portico-Terminal-Outcome"?: "committed" | "outcome_unknown";
+                    /** @description Stable server-derived receipt identifier for reconciliation. */
+                    "X-Portico-Terminal-Receipt"?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -8147,6 +8888,19 @@ export interface operations {
             /** @description Unexpected server error */
             500: {
                 headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Service temporarily unavailable */
+            503: {
+                headers: {
+                    /** @description Committed or outcome_unknown terminal result marker. */
+                    "X-Portico-Terminal-Outcome"?: "committed" | "outcome_unknown";
+                    /** @description Stable server-derived receipt identifier for reconciliation. */
+                    "X-Portico-Terminal-Receipt"?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -8446,7 +9200,10 @@ export interface operations {
     refreshNativeSession: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Stable caller-generated key required for terminal mutation replay and response-loss reconciliation. */
+                "Idempotency-Key": string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -8459,6 +9216,10 @@ export interface operations {
             /** @description Successful response */
             200: {
                 headers: {
+                    /** @description Committed or outcome_unknown terminal result marker. */
+                    "X-Portico-Terminal-Outcome"?: "committed" | "outcome_unknown";
+                    /** @description Stable server-derived receipt identifier for reconciliation. */
+                    "X-Portico-Terminal-Receipt"?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -8537,12 +9298,28 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description Service temporarily unavailable */
+            503: {
+                headers: {
+                    /** @description Committed or outcome_unknown terminal result marker. */
+                    "X-Portico-Terminal-Outcome"?: "committed" | "outcome_unknown";
+                    /** @description Stable server-derived receipt identifier for reconciliation. */
+                    "X-Portico-Terminal-Receipt"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     revokeNativeSession: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Stable caller-generated key required for terminal mutation replay and response-loss reconciliation. */
+                "Idempotency-Key": string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -8555,6 +9332,10 @@ export interface operations {
             /** @description Successful response */
             200: {
                 headers: {
+                    /** @description Committed or outcome_unknown terminal result marker. */
+                    "X-Portico-Terminal-Outcome"?: "committed" | "outcome_unknown";
+                    /** @description Stable server-derived receipt identifier for reconciliation. */
+                    "X-Portico-Terminal-Receipt"?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -8627,6 +9408,19 @@ export interface operations {
             /** @description Unexpected server error */
             500: {
                 headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Service temporarily unavailable */
+            503: {
+                headers: {
+                    /** @description Committed or outcome_unknown terminal result marker. */
+                    "X-Portico-Terminal-Outcome"?: "committed" | "outcome_unknown";
+                    /** @description Stable server-derived receipt identifier for reconciliation. */
+                    "X-Portico-Terminal-Receipt"?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -11198,10 +11992,199 @@ export interface operations {
             };
         };
     };
-    applyOperatorUserAction: {
+    getOperatorTerminalMutationByKey: {
         parameters: {
             query?: never;
             header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TerminalMutationReceiptResponse"];
+                };
+            };
+            /** @description Invalid request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Authentication required or credential invalid */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Authenticated principal is not authorized */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource state conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description HTTP 423 */
+            423: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unexpected server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getOperatorTerminalMutationReceipt: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                receiptId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TerminalMutationReceiptResponse"];
+                };
+            };
+            /** @description Invalid request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Authentication required or credential invalid */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Authenticated principal is not authorized */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource state conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description HTTP 423 */
+            423: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unexpected server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    applyOperatorUserAction: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Stable caller-generated key required for terminal mutation replay and response-loss reconciliation. */
+                "Idempotency-Key": string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -11214,6 +12197,10 @@ export interface operations {
             /** @description Successful response */
             200: {
                 headers: {
+                    /** @description Committed or outcome_unknown terminal result marker. */
+                    "X-Portico-Terminal-Outcome"?: "committed" | "outcome_unknown";
+                    /** @description Stable server-derived receipt identifier for reconciliation. */
+                    "X-Portico-Terminal-Receipt"?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -11286,6 +12273,19 @@ export interface operations {
             /** @description Unexpected server error */
             500: {
                 headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Service temporarily unavailable */
+            503: {
+                headers: {
+                    /** @description Committed or outcome_unknown terminal result marker. */
+                    "X-Portico-Terminal-Outcome"?: "committed" | "outcome_unknown";
+                    /** @description Stable server-derived receipt identifier for reconciliation. */
+                    "X-Portico-Terminal-Receipt"?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -11389,7 +12389,10 @@ export interface operations {
     resetOperatorUserMFA: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Stable caller-generated key required for terminal mutation replay and response-loss reconciliation. */
+                "Idempotency-Key": string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -11402,6 +12405,10 @@ export interface operations {
             /** @description Successful response */
             200: {
                 headers: {
+                    /** @description Committed or outcome_unknown terminal result marker. */
+                    "X-Portico-Terminal-Outcome"?: "committed" | "outcome_unknown";
+                    /** @description Stable server-derived receipt identifier for reconciliation. */
+                    "X-Portico-Terminal-Receipt"?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -11474,6 +12481,19 @@ export interface operations {
             /** @description Unexpected server error */
             500: {
                 headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Service temporarily unavailable */
+            503: {
+                headers: {
+                    /** @description Committed or outcome_unknown terminal result marker. */
+                    "X-Portico-Terminal-Outcome"?: "committed" | "outcome_unknown";
+                    /** @description Stable server-derived receipt identifier for reconciliation. */
+                    "X-Portico-Terminal-Receipt"?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -13354,6 +14374,126 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HostedProfileSelectionEnvelope"];
+                };
+            };
+            /** @description Invalid request */
+            400: {
+                headers: {
+                    /** @description Profile and credential responses are not cacheable. */
+                    "Cache-Control"?: "no-store";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Authentication required or credential invalid */
+            401: {
+                headers: {
+                    /** @description Profile and credential responses are not cacheable. */
+                    "Cache-Control"?: "no-store";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Authenticated principal is not authorized */
+            403: {
+                headers: {
+                    /** @description Profile and credential responses are not cacheable. */
+                    "Cache-Control"?: "no-store";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    /** @description Profile and credential responses are not cacheable. */
+                    "Cache-Control"?: "no-store";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Resource state conflict */
+            409: {
+                headers: {
+                    /** @description Profile and credential responses are not cacheable. */
+                    "Cache-Control"?: "no-store";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description HTTP 423 */
+            423: {
+                headers: {
+                    /** @description Profile and credential responses are not cacheable. */
+                    "Cache-Control"?: "no-store";
+                    /** @description Minimum seconds before retrying. */
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    /** @description Profile and credential responses are not cacheable. */
+                    "Cache-Control"?: "no-store";
+                    /** @description Minimum seconds before retrying. */
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unexpected server error */
+            500: {
+                headers: {
+                    /** @description Profile and credential responses are not cacheable. */
+                    "Cache-Control"?: "no-store";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    acknowledgeServerProfileWake: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                serverId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ServerProfileWakeAckRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful response */
+            200: {
+                headers: {
+                    /** @description Profile and credential responses are not cacheable. */
+                    "Cache-Control"?: "no-store";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServerProfileWakeAckResponse"];
                 };
             };
             /** @description Invalid request */

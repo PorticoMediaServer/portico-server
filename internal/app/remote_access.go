@@ -182,21 +182,35 @@ type RemotePolicySync struct {
 }
 
 type RemotePolicySnapshot struct {
-	Kind                     string                          `json:"kind"`
-	Audience                 string                          `json:"audience"`
-	SnapshotID               string                          `json:"snapshotId"`
-	Generation               int64                           `json:"generation,omitempty"`
-	Digest                   string                          `json:"digest"`
-	PolicyDigest             string                          `json:"policyDigest"`
-	Version                  int                             `json:"version"`
-	ServerID                 string                          `json:"serverId"`
-	Members                  []RemoteAccessMember            `json:"members"`
-	DeletedAccountTombstones []RemoteDeletedAccountTombstone `json:"deletedAccountTombstones"`
-	IssuedAt                 string                          `json:"issuedAt"`
-	ExpiresAt                string                          `json:"expiresAt"`
-	SignatureAlgorithm       string                          `json:"signatureAlgorithm"`
-	SignatureKeyID           string                          `json:"signatureKeyId,omitempty"`
-	Signature                string                          `json:"signature"`
+	Kind                      string                          `json:"kind"`
+	Audience                  string                          `json:"audience"`
+	SnapshotID                string                          `json:"snapshotId"`
+	ManifestID                string                          `json:"manifestId,omitempty"`
+	Generation                int64                           `json:"generation,omitempty"`
+	ChunkIndex                int                             `json:"chunkIndex,omitempty"`
+	ChunkCount                int                             `json:"chunkCount,omitempty"`
+	ItemCount                 int                             `json:"itemCount,omitempty"`
+	EncodedBytes              int                             `json:"encodedBytes,omitempty"`
+	DecodedBytes              int                             `json:"decodedBytes,omitempty"`
+	Digest                    string                          `json:"digest"`
+	ManifestDigest            string                          `json:"manifestDigest,omitempty"`
+	PolicyDigest              string                          `json:"policyDigest"`
+	PolicyRevision            int64                           `json:"policyRevision,omitempty"`
+	PolicyRoot                string                          `json:"policyRoot,omitempty"`
+	ContentRoot               string                          `json:"contentRoot,omitempty"`
+	ChunkDigest               string                          `json:"chunkDigest,omitempty"`
+	ManifestChunkHashes       []string                        `json:"manifestChunkHashes,omitempty"`
+	ManifestChunkEncodedBytes []int                           `json:"manifestChunkEncodedBytes,omitempty"`
+	ManifestChunkDecodedBytes []int                           `json:"manifestChunkDecodedBytes,omitempty"`
+	Version                   int                             `json:"version"`
+	ServerID                  string                          `json:"serverId"`
+	Members                   []RemoteAccessMember            `json:"members"`
+	DeletedAccountTombstones  []RemoteDeletedAccountTombstone `json:"deletedAccountTombstones"`
+	IssuedAt                  string                          `json:"issuedAt"`
+	ExpiresAt                 string                          `json:"expiresAt"`
+	SignatureAlgorithm        string                          `json:"signatureAlgorithm"`
+	SignatureKeyID            string                          `json:"signatureKeyId,omitempty"`
+	Signature                 string                          `json:"signature"`
 }
 
 type RemoteDeletedAccountTombstone struct {
@@ -1135,12 +1149,10 @@ func remotePolicySyncStatus(settings RemoteAccessSettings, members []RemoteAcces
 	status := continuity
 	note := "Portico Account membership policy has been applied to this server."
 	switch continuity {
-	case "grace":
-		note = "Portico Account services are unavailable. Existing sessions have bounded access while policy reconciliation continues."
-	case "hard-expired-draining":
-		note = "Portico Account policy has expired. Only already-established playback may finish while reconciliation continues."
 	case "hard-expired":
 		note = "Portico Account policy has expired. Hosted-member access requires policy reconciliation."
+	case "clock-invalid":
+		note = "The server clock moved behind the last trusted Hosted time. Hosted-member access requires clock repair and policy reconciliation."
 	case "unknown":
 		status = "missing"
 		note = "Portico Account policy timing is unavailable and must be reconciled."
@@ -1668,6 +1680,8 @@ func (s *Server) sendRemoteAccessHeartbeatWithOptions(ctx context.Context, setti
 		"lastReachabilityTestResult":    settings.LastReachabilityResult,
 		"lanEndpointCandidates":         s.lanEndpointCandidates(settings),
 		"policyDigest":                  policyDigest,
+		"policyRevision":                policyState.PolicyRevision,
+		"policyRoot":                    policyState.PolicyRoot,
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {
@@ -1709,6 +1723,8 @@ func (s *Server) sendRemoteAccessHeartbeatWithOptions(ctx context.Context, setti
 		TopologyChanged     bool                      `json:"topologyChanged,omitempty"`
 		Repair              *remoteAccessRepairSignal `json:"repair,omitempty"`
 		PolicyDigest        string                    `json:"policyDigest,omitempty"`
+		PolicyRevision      int64                     `json:"policyRevision,omitempty"`
+		PolicyRoot          string                    `json:"policyRoot,omitempty"`
 		PolicyChanged       bool                      `json:"policyChanged,omitempty"`
 	}
 	if len(bytes.TrimSpace(responseBytes)) > 0 {
@@ -1798,9 +1814,21 @@ func (s *Server) sendRemoteAccessHeartbeatWithOptions(ctx context.Context, setti
 	hasAuthoritativePolicyDigest := responseDigestErr == nil
 	localPolicyAbsent := strings.TrimSpace(policyState.SnapshotID) == "" || policyDigest == ""
 	policyRenewalDue := remotePolicyRenewalDue(policyState, now)
-	knownDigestSync := hasAuthoritativePolicyDigest && (response.PolicyChanged || !strings.EqualFold(responsePolicyDigest, policyDigest) || policyRenewalDue)
+	knownDigestSync := response.PolicyChanged || (hasAuthoritativePolicyDigest && (!strings.EqualFold(responsePolicyDigest, policyDigest) || policyRenewalDue))
+	if response.PolicyRevision > 0 && response.PolicyRevision != policyState.PolicyRevision {
+		knownDigestSync = true
+	}
 	unknownDigestSync := !hasAuthoritativePolicyDigest && (localPolicyAbsent || policyRenewalDue) && s.claimUnknownPolicySyncAttempt(now)
 	shouldSyncPolicy := options.SyncPolicy && (knownDigestSync || unknownDigestSync)
+	// A heartbeat advances trusted time only when Hosted confirms the exact
+	// locally applied policy and its acknowledgement has already succeeded.
+	// Merely authenticating the server credential must not lengthen continuity
+	// for stale or partially applied authority.
+	if !localPolicyAbsent && !policyState.AckPending && hasAuthoritativePolicyDigest && !response.PolicyChanged && strings.EqualFold(responsePolicyDigest, policyDigest) {
+		if err := s.advanceRemotePolicyTrustedTimeFloor(policyState, now); err != nil {
+			return fmt.Errorf("advance trusted Hosted policy time: %w", err)
+		}
+	}
 	if shouldSyncPolicy {
 		s.startOwnedAsync("remote-policy-heartbeat-sync", func(ctx context.Context) {
 			syncCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
@@ -1853,16 +1881,97 @@ func (s *Server) syncRemoteAccessPolicySnapshot(ctx context.Context, settings Re
 	if err := json.Unmarshal(raw, &snapshot); err != nil {
 		return err
 	}
+	if snapshot.ChunkCount < 1 {
+		snapshot.ChunkCount = 1
+	}
+	if snapshot.ChunkIndex != 0 || snapshot.ChunkCount > 4096 {
+		return errors.New("Hosted Services returned an invalid policy manifest chunk")
+	}
 	if err := s.ensureHostedDocumentKey(ctx, settings.HostedBaseURL, snapshot.SignatureKeyID); err != nil {
 		return fmt.Errorf("Hosted Services policy signing key was unavailable: %w", err)
 	}
 	if err := s.verifyHostedPolicySnapshot(raw, snapshot, settings.ServerID, time.Now().UTC()); err != nil {
 		return fmt.Errorf("Hosted Services policy snapshot was rejected: %w", err)
 	}
+	chunks := []RemotePolicySnapshot{snapshot}
+	chunkRaws := []json.RawMessage{append(json.RawMessage(nil), raw...)}
+	aggregateWireBytes := len(raw)
+	if snapshot.ChunkCount > 1 {
+		for chunkIndex := 1; chunkIndex < snapshot.ChunkCount; chunkIndex++ {
+			chunkEndpoint := endpoint + "?chunk=" + strconv.Itoa(chunkIndex)
+			var chunkRaw json.RawMessage
+			if err := s.hostedJSON(ctx, http.MethodGet, chunkEndpoint, credential, nil, &chunkRaw); err != nil {
+				return fmt.Errorf("fetch Hosted policy chunk %d: %w", chunkIndex, err)
+			}
+			var chunk RemotePolicySnapshot
+			if err := json.Unmarshal(chunkRaw, &chunk); err != nil {
+				return fmt.Errorf("decode Hosted policy chunk %d: %w", chunkIndex, err)
+			}
+			if chunk.ChunkIndex != chunkIndex || chunk.ChunkCount != snapshot.ChunkCount || chunk.SnapshotID != snapshot.SnapshotID || chunk.ManifestID != snapshot.ManifestID || chunk.Generation != snapshot.Generation || chunk.PolicyRevision != snapshot.PolicyRevision || chunk.PolicyRoot != snapshot.PolicyRoot || chunk.ManifestDigest != snapshot.ManifestDigest {
+				return fmt.Errorf("Hosted policy chunk %d does not match the manifest fence", chunkIndex)
+			}
+			if err := s.verifyHostedPolicySnapshot(chunkRaw, chunk, settings.ServerID, time.Now().UTC()); err != nil {
+				return fmt.Errorf("Hosted Services policy chunk %d was rejected: %w", chunkIndex, err)
+			}
+			aggregateWireBytes += len(chunkRaw)
+			chunks = append(chunks, chunk)
+			chunkRaws = append(chunkRaws, append(json.RawMessage(nil), chunkRaw...))
+		}
+		members := make([]RemoteAccessMember, 0, snapshot.ItemCount)
+		tombstones := make([]RemoteDeletedAccountTombstone, 0)
+		for _, chunk := range chunks {
+			members = append(members, chunk.Members...)
+			tombstones = append(tombstones, chunk.DeletedAccountTombstones...)
+		}
+		snapshot.Members = members
+		snapshot.DeletedAccountTombstones = tombstones
+		if len(members)+len(tombstones) != snapshot.ItemCount {
+			return errors.New("Hosted policy manifest item count does not match its chunks")
+		}
+	}
+	if aggregateWireBytes > maxRemotePolicyAggregate {
+		return errors.New("Hosted policy snapshot exceeds the aggregate transfer bound")
+	}
+	if len(snapshot.ManifestChunkHashes) > 0 {
+		if len(snapshot.ManifestChunkHashes) != len(chunks) || len(snapshot.ManifestChunkEncodedBytes) != len(chunks) || len(snapshot.ManifestChunkDecodedBytes) != len(chunks) {
+			return errors.New("Hosted policy manifest chunk descriptors do not match the response")
+		}
+		hashes := make([]string, len(chunks))
+		totalEncodedBytes, totalDecodedBytes := 0, 0
+		for i, chunk := range chunks {
+			hash, hashErr := remotePolicyChunkDigest(chunkRaws[i])
+			if hashErr != nil {
+				return hashErr
+			}
+			hashes[i] = hash
+			if !strings.EqualFold(hash, snapshot.ManifestChunkHashes[i]) || !strings.EqualFold(hash, chunk.ChunkDigest) {
+				return fmt.Errorf("Hosted policy chunk %d digest does not match the signed manifest", i)
+			}
+			if snapshot.ManifestChunkEncodedBytes[i] != chunk.EncodedBytes || snapshot.ManifestChunkDecodedBytes[i] != chunk.DecodedBytes {
+				return fmt.Errorf("Hosted policy chunk %d byte bounds do not match the signed manifest", i)
+			}
+			totalEncodedBytes += chunk.EncodedBytes
+			totalDecodedBytes += chunk.DecodedBytes
+		}
+		if totalEncodedBytes > maxRemotePolicyAggregate || totalDecodedBytes > maxRemotePolicyAggregate {
+			return errors.New("Hosted policy manifest aggregate byte bounds are invalid")
+		}
+		contentRoot, rootErr := remotePolicyContentRoot(hashes, snapshot.ItemCount)
+		if rootErr != nil || !strings.EqualFold(contentRoot, snapshot.ContentRoot) {
+			return errors.New("Hosted policy content root does not match the assembled chunks")
+		}
+	}
 	if err := validateRemotePolicyMembershipAuthority(snapshot.Members); err != nil {
 		return fmt.Errorf("Hosted Services policy snapshot authority was rejected: %w", err)
 	}
-	snapshotDigest, err := normalizedSHA256Digest(snapshot.Digest)
+	if err := validateRemotePolicyTombstones(snapshot.DeletedAccountTombstones); err != nil {
+		return fmt.Errorf("Hosted Services policy tombstones were rejected: %w", err)
+	}
+	manifestDigest := strings.TrimSpace(snapshot.ManifestDigest)
+	if manifestDigest == "" {
+		manifestDigest = snapshot.Digest
+	}
+	snapshotDigest, err := normalizedSHA256Digest(manifestDigest)
 	if err != nil {
 		return fmt.Errorf("Hosted Services policy snapshot digest was rejected: %w", err)
 	}
@@ -1870,17 +1979,18 @@ func (s *Server) syncRemoteAccessPolicySnapshot(ctx context.Context, settings Re
 	if err != nil {
 		return fmt.Errorf("Hosted Services policy snapshot revision was rejected: %w", err)
 	}
-	if err := s.replaceRemoteAccessMembers(normalizeRemoteAccessMemberProfileURLs(settings.HostedBaseURL, snapshot.Members)); err != nil {
-		return err
-	}
-	if err := s.applyRemoteDeletedAccountTombstones(snapshot.DeletedAccountTombstones); err != nil {
-		return err
-	}
 	policyState := remotePolicyState{
 		SnapshotID: snapshot.SnapshotID, SnapshotDigest: snapshotDigest, Generation: snapshot.Generation,
-		IssuedAt: snapshot.IssuedAt, ExpiresAt: snapshot.ExpiresAt, PolicyDigest: policyDigest, AckPending: true,
+		IssuedAt: snapshot.IssuedAt, ExpiresAt: snapshot.ExpiresAt, PolicyDigest: policyDigest, PolicyRevision: snapshot.PolicyRevision, PolicyRoot: snapshot.PolicyRoot, ContentRoot: snapshot.ContentRoot, AckPending: true,
+		TrustedTimeFloor: time.Now().UTC().Format(time.RFC3339Nano),
 	}
-	if err := s.saveRemotePolicyState(policyState); err != nil {
+	if previousFloor, floorErr := time.Parse(time.RFC3339Nano, strings.TrimSpace(s.loadRemotePolicyState().TrustedTimeFloor)); floorErr == nil {
+		candidateFloor, _ := time.Parse(time.RFC3339Nano, policyState.TrustedTimeFloor)
+		if previousFloor.After(candidateFloor) {
+			policyState.TrustedTimeFloor = previousFloor.UTC().Format(time.RFC3339Nano)
+		}
+	}
+	if err := s.applyRemotePolicySnapshotAtomically(normalizeRemoteAccessMemberProfileURLs(settings.HostedBaseURL, snapshot.Members), snapshot.DeletedAccountTombstones, policyState); err != nil {
 		return err
 	}
 	if err := s.ackRemotePolicyState(ctx, settings, credential, policyState); err != nil {
@@ -1923,10 +2033,18 @@ func (s *Server) ackRemotePolicyState(ctx context.Context, settings RemoteAccess
 }
 
 func validateRemotePolicyMembershipAuthority(members []RemoteAccessMember) error {
+	if len(members) == 0 || len(members) > maxRemotePolicyMembers {
+		return fmt.Errorf("policy member count %d is outside the supported bound", len(members))
+	}
 	activeOwners := 0
 	membershipIDs := map[string]bool{}
 	activeUserIDs := map[string]bool{}
 	for _, member := range members {
+		if len(strings.TrimSpace(member.PorticoMembershipID)) > 256 || len(strings.TrimSpace(member.ID)) > 256 ||
+			len(strings.TrimSpace(member.PorticoUserID)) > 256 || len(strings.TrimSpace(member.UserID)) > 256 ||
+			len(member.Email) > 320 || len(member.DisplayName) > 256 {
+			return errors.New("policy membership field exceeds its bound")
+		}
 		role := strings.TrimSpace(member.Role)
 		if role != "owner" && role != "user" {
 			return fmt.Errorf("membership %q has unsupported role %q", member.PorticoMembershipID, role)
@@ -1960,6 +2078,27 @@ func validateRemotePolicyMembershipAuthority(members []RemoteAccessMember) error
 	return nil
 }
 
+func validateRemotePolicyTombstones(tombstones []RemoteDeletedAccountTombstone) error {
+	if len(tombstones) > maxRemotePolicyTombstones {
+		return fmt.Errorf("policy tombstone count %d exceeds the supported bound", len(tombstones))
+	}
+	seen := make(map[string]struct{}, len(tombstones))
+	for _, tombstone := range tombstones {
+		id := strings.TrimSpace(tombstone.UserID)
+		if id == "" || len(id) > 256 {
+			return errors.New("policy tombstone identity is invalid")
+		}
+		if _, exists := seen[id]; exists {
+			return errors.New("policy tombstone identities must be unique")
+		}
+		seen[id] = struct{}{}
+		if _, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(tombstone.DeletedAt)); err != nil {
+			return errors.New("policy tombstone timestamp is invalid")
+		}
+	}
+	return nil
+}
+
 func (s *Server) applyRemoteDeletedAccountTombstones(tombstones []RemoteDeletedAccountTombstone) error {
 	if len(tombstones) == 0 {
 		return nil
@@ -1989,6 +2128,54 @@ func (s *Server) applyRemoteDeletedAccountTombstones(tombstones []RemoteDeletedA
 
 var errRemoteAuthorityFenceRetry = errors.New("remote authority revocation requires a runtime fence retry")
 
+// applyRemotePolicySnapshotAtomically makes the signed checkpoint and every
+// local authority projection one SQLite commit. A process crash can therefore
+// leave either the previous accepted policy or the complete new one, but never
+// new members with an old checkpoint (or the inverse).
+func (s *Server) applyRemotePolicySnapshotAtomically(members []RemoteAccessMember, tombstones []RemoteDeletedAccountTombstone, state remotePolicyState) error {
+	encryptedState, err := s.encryptedRemotePolicyState(state)
+	if err != nil {
+		return err
+	}
+	for attempt := 0; attempt < 3; attempt++ {
+		revokedByMembership, err := s.remoteAccountsRevokedByMemberSnapshotContext(context.Background(), members)
+		if err != nil {
+			return err
+		}
+		revokedByTombstone, err := s.remoteDeletedAccountIDsContext(context.Background(), tombstones)
+		if err != nil {
+			return err
+		}
+		accountIDs := append(revokedByMembership, revokedByTombstone...)
+		handles, err := s.beginAccountRuntimeErasuresContext(context.Background(), accountIDs)
+		if err != nil {
+			return err
+		}
+		fenced := make(map[string]bool, len(accountIDs))
+		for _, accountID := range accountIDs {
+			if accountID = strings.TrimSpace(accountID); accountID != "" {
+				fenced[accountID] = true
+			}
+		}
+		now := time.Now().UTC()
+		err = s.withBackgroundTxTagged(context.Background(), []string{"remote-access", "portico-members", "users", "profiles", "account", "settings"}, func(tx *sql.Tx) error {
+			if err := s.replaceRemoteAccessMembersFencedTx(tx, members, fenced, now.Format(time.RFC3339)); err != nil {
+				return err
+			}
+			if err := s.applyRemoteDeletedAccountTombstonesFencedTx(tx, tombstones, fenced); err != nil {
+				return err
+			}
+			return saveRemotePolicyStateTx(tx, encryptedState, now)
+		})
+		finishProfileErasureFences(handles)
+		if errors.Is(err, errRemoteAuthorityFenceRetry) {
+			continue
+		}
+		return err
+	}
+	return errors.New("remote policy authority changed repeatedly while applying a signed checkpoint")
+}
+
 func (s *Server) remoteDeletedAccountIDsContext(ctx context.Context, tombstones []RemoteDeletedAccountTombstone) ([]string, error) {
 	ids := []string{}
 	for _, tombstone := range tombstones {
@@ -2017,46 +2204,51 @@ func (s *Server) remoteDeletedAccountIDsContext(ctx context.Context, tombstones 
 
 func (s *Server) applyRemoteDeletedAccountTombstonesFenced(tombstones []RemoteDeletedAccountTombstone, fenced map[string]bool) error {
 	return s.withBackgroundTxTagged(context.Background(), []string{"remote-access", "portico-members", "users", "profiles", "account"}, func(tx *sql.Tx) error {
-		for _, tombstone := range tombstones {
-			porticoUserID := strings.TrimSpace(tombstone.UserID)
-			if porticoUserID == "" {
-				continue
-			}
-			rows, err := tx.Query(`SELECT id FROM users WHERE portico_user_id = ?`, porticoUserID)
-			if err != nil {
-				return err
-			}
-			var localUserIDs []string
-			for rows.Next() {
-				var localUserID string
-				if err := rows.Scan(&localUserID); err != nil {
-					rows.Close()
-					return err
-				}
-				localUserIDs = append(localUserIDs, localUserID)
-			}
-			if err := rows.Err(); err != nil {
+		return s.applyRemoteDeletedAccountTombstonesFencedTx(tx, tombstones, fenced)
+	})
+}
+
+func (s *Server) applyRemoteDeletedAccountTombstonesFencedTx(tx *sql.Tx, tombstones []RemoteDeletedAccountTombstone, fenced map[string]bool) error {
+	for _, tombstone := range tombstones {
+		porticoUserID := strings.TrimSpace(tombstone.UserID)
+		if porticoUserID == "" {
+			continue
+		}
+		rows, err := tx.Query(`SELECT id FROM users WHERE portico_user_id = ?`, porticoUserID)
+		if err != nil {
+			return err
+		}
+		var localUserIDs []string
+		for rows.Next() {
+			var localUserID string
+			if err := rows.Scan(&localUserID); err != nil {
 				rows.Close()
 				return err
 			}
+			localUserIDs = append(localUserIDs, localUserID)
+		}
+		if err := rows.Err(); err != nil {
 			rows.Close()
-			for _, localUserID := range localUserIDs {
-				if !fenced[localUserID] {
-					return errRemoteAuthorityFenceRetry
-				}
-				now := time.Now().UTC().Format(time.RFC3339Nano)
-				if err := s.revokeAccountAuthorityTx(context.Background(), tx, localUserID, now); err != nil {
-					return err
-				}
-				deletedEmail, err := uniqueDeletedPorticoPrincipalEmailTx(tx, porticoUserID, localUserID)
-				if err != nil {
-					return err
-				}
-				deletedUsername, err := uniqueDeletedPorticoPrincipalUsernameTx(tx, porticoUserID, localUserID)
-				if err != nil {
-					return err
-				}
-				if _, err := tx.Exec(`
+			return err
+		}
+		rows.Close()
+		for _, localUserID := range localUserIDs {
+			if !fenced[localUserID] {
+				return errRemoteAuthorityFenceRetry
+			}
+			now := time.Now().UTC().Format(time.RFC3339Nano)
+			if err := s.revokeAccountAuthorityTx(context.Background(), tx, localUserID, now); err != nil {
+				return err
+			}
+			deletedEmail, err := uniqueDeletedPorticoPrincipalEmailTx(tx, porticoUserID, localUserID)
+			if err != nil {
+				return err
+			}
+			deletedUsername, err := uniqueDeletedPorticoPrincipalUsernameTx(tx, porticoUserID, localUserID)
+			if err != nil {
+				return err
+			}
+			if _, err := tx.Exec(`
 					UPDATE users
 					SET auth_origin = 'portico_deleted',
 						portico_user_id = '',
@@ -2067,16 +2259,15 @@ func (s *Server) applyRemoteDeletedAccountTombstonesFenced(tombstones []RemoteDe
 						disabled_at = CASE WHEN disabled_at = '' THEN ? ELSE disabled_at END,
 						updated_at = ?
 					WHERE id = ?`, deletedEmail, deletedUsername, now, now, localUserID); err != nil {
-					return err
-				}
-			}
-			if _, err := tx.Exec(`UPDATE remote_access_members SET status = 'deleted', local_user_id = '', last_synced_at = ? WHERE portico_user_id = ?`,
-				time.Now().UTC().Format(time.RFC3339), porticoUserID); err != nil {
 				return err
 			}
 		}
-		return nil
-	})
+		if _, err := tx.Exec(`UPDATE remote_access_members SET status = 'deleted', local_user_id = '', last_synced_at = ? WHERE portico_user_id = ?`,
+			time.Now().UTC().Format(time.RFC3339), porticoUserID); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func deletedPorticoPrincipalEmail(porticoUserID, localUserID string) string {
@@ -2720,7 +2911,14 @@ func (s *Server) generateCertificateCSR(hostname string) (*ecdsa.PrivateKey, []b
 }
 
 func (s *Server) runRemoteAccessHeartbeat(ctx context.Context) {
-	timer := time.NewTimer(0)
+	initialDelay := time.Duration(0)
+	if settings, err := s.remoteAccessSettings(); err == nil && settings.Enabled && settings.ClaimStatus == "claimed" && settings.ServerID != "" {
+		lastHeartbeat, parseErr := time.Parse(time.RFC3339, settings.LastHeartbeatAt)
+		if parseErr != nil || time.Since(lastHeartbeat) >= s.remoteAccessLeaseInterval() {
+			initialDelay = remoteAccessFleetCohortWait(settings.ServerID, s.remoteAccessStartupCohortWindow(), time.Now().UTC())
+		}
+	}
+	timer := time.NewTimer(initialDelay)
 	defer timer.Stop()
 	consecutiveFailures := 0
 	var lastHeartbeat time.Time
@@ -2731,8 +2929,10 @@ func (s *Server) runRemoteAccessHeartbeat(ctx context.Context) {
 		case <-timer.C:
 		}
 		nextInterval := s.remoteAccessLeaseInterval()
+		retryCohortID := ""
 		settings, err := s.remoteAccessSettings()
 		if err == nil && settings.Enabled && settings.ClaimStatus == "claimed" && settings.ServerID != "" {
+			retryCohortID = settings.ServerID
 			now := time.Now().UTC()
 			if lastHeartbeat.IsZero() && settings.LastHeartbeatAt != "" {
 				lastHeartbeat, _ = time.Parse(time.RFC3339, settings.LastHeartbeatAt)
@@ -2789,14 +2989,67 @@ func (s *Server) runRemoteAccessHeartbeat(ctx context.Context) {
 				}
 			}
 		}
-		timer.Reset(jitterRemoteAccessInterval(nextInterval))
+		if consecutiveFailures > 0 && retryCohortID != "" {
+			nextInterval = remoteAccessRetryCohortDelay(retryCohortID, consecutiveFailures, nextInterval)
+		} else {
+			nextInterval = jitterRemoteAccessInterval(nextInterval)
+		}
+		timer.Reset(nextInterval)
 	}
+}
+
+func (s *Server) remoteAccessStartupCohortWindow() time.Duration {
+	if configured := time.Duration(s.remoteAccessStartupCohortWindowNanos.Load()); configured > 0 {
+		return configured
+	}
+	return 5 * time.Minute
+}
+
+func remoteAccessFleetCohortDelay(serverID string, window time.Duration) time.Duration {
+	serverID = strings.TrimSpace(serverID)
+	if serverID == "" || window <= 0 {
+		return 0
+	}
+	digest := sha256.Sum256([]byte("portico-heartbeat-startup-cohort-v1\n" + serverID))
+	value := uint64(0)
+	for _, item := range digest[:8] {
+		value = value<<8 | uint64(item)
+	}
+	return time.Duration(value % uint64(window))
+}
+
+func remoteAccessFleetCohortWait(serverID string, window time.Duration, now time.Time) time.Duration {
+	offset := remoteAccessFleetCohortDelay(serverID, window)
+	if strings.TrimSpace(serverID) == "" || window <= 0 {
+		return 0
+	}
+	phase := time.Duration(now.UnixNano() % int64(window))
+	wait := offset - phase
+	if wait < 0 {
+		wait += window
+	}
+	return wait
+}
+
+func remoteAccessRetryCohortDelay(serverID string, failure int, floor time.Duration) time.Duration {
+	if floor <= 0 {
+		return time.Second
+	}
+	// The server-provided Retry-After or local exponential backoff is a strict
+	// floor. Add a cohort window (capped at five minutes) instead of applying
+	// negative jitter that could violate Retry-After and synchronize recovery.
+	cohort := strings.TrimSpace(serverID) + "\nretry\n" + strconv.Itoa(failure)
+	spread := floor
+	if spread > 5*time.Minute {
+		spread = 5 * time.Minute
+	}
+	return floor + remoteAccessFleetCohortDelay(cohort, spread)
 }
 
 func (s *Server) remoteAccessLeaseInterval() time.Duration {
 	seconds := s.remoteAccessLeaseSeconds.Load()
 	if seconds < 60 || seconds > 3600 {
-		return 10 * time.Minute
+		return 30 * time.Minute
 	}
 	// Hosted returns the lease lifetime, not the instant at which it should be
 	// renewed. Renew at two-thirds of that lifetime so jitter and a transient
@@ -3561,38 +3814,43 @@ func (s *Server) remoteAccountsRevokedByMemberSnapshotContext(ctx context.Contex
 func (s *Server) replaceRemoteAccessMembersFenced(members []RemoteAccessMember, fenced map[string]bool) error {
 	now := time.Now().UTC().Format(time.RFC3339)
 	return s.withBackgroundTxTagged(context.Background(), []string{"remote-access", "portico-members", "users", "profiles", "account"}, func(tx *sql.Tx) error {
-		if _, err := tx.Exec(`UPDATE remote_access_members SET status = 'revoked', last_synced_at = ?`, now); err != nil {
+		return s.replaceRemoteAccessMembersFencedTx(tx, members, fenced, now)
+	})
+}
+
+func (s *Server) replaceRemoteAccessMembersFencedTx(tx *sql.Tx, members []RemoteAccessMember, fenced map[string]bool, now string) error {
+	if _, err := tx.Exec(`UPDATE remote_access_members SET status = 'revoked', last_synced_at = ?`, now); err != nil {
+		return err
+	}
+	for _, member := range members {
+		if member.PorticoMembershipID == "" {
+			member.PorticoMembershipID = member.ID
+		}
+		if member.PorticoUserID == "" {
+			member.PorticoUserID = member.UserID
+		}
+		if member.PorticoMembershipID == "" || member.PorticoUserID == "" {
+			continue
+		}
+		status := member.Status
+		if status == "" {
+			status = "active"
+		}
+		localUserID, provisionErr := s.linkSingleLocalOwnerForPorticoMemberTx(tx, member, status, now)
+		if provisionErr != nil {
+			return provisionErr
+		}
+		if localUserID == "" {
+			localUserID, provisionErr = s.provisionPorticoProfileTx(tx, member, status, now)
+		}
+		if provisionErr != nil {
+			return provisionErr
+		}
+		permissionTemplateJSON, err := json.Marshal(member.PermissionTemplate)
+		if err != nil {
 			return err
 		}
-		for _, member := range members {
-			if member.PorticoMembershipID == "" {
-				member.PorticoMembershipID = member.ID
-			}
-			if member.PorticoUserID == "" {
-				member.PorticoUserID = member.UserID
-			}
-			if member.PorticoMembershipID == "" || member.PorticoUserID == "" {
-				continue
-			}
-			status := member.Status
-			if status == "" {
-				status = "active"
-			}
-			localUserID, provisionErr := s.linkSingleLocalOwnerForPorticoMemberTx(tx, member, status, now)
-			if provisionErr != nil {
-				return provisionErr
-			}
-			if localUserID == "" {
-				localUserID, provisionErr = s.provisionPorticoProfileTx(tx, member, status, now)
-			}
-			if provisionErr != nil {
-				return provisionErr
-			}
-			permissionTemplateJSON, err := json.Marshal(member.PermissionTemplate)
-			if err != nil {
-				return err
-			}
-			if _, err := tx.Exec(`
+		if _, err := tx.Exec(`
 				INSERT INTO remote_access_members (portico_membership_id, portico_user_id, email, display_name, role, status, permission_template_json, local_user_id, last_synced_at)
 				VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE(NULLIF(?, ''), NULLIF((SELECT local_user_id FROM remote_access_members WHERE portico_membership_id = ?), ''), ''), ?)
 				ON CONFLICT(portico_membership_id) DO UPDATE SET
@@ -3604,14 +3862,14 @@ func (s *Server) replaceRemoteAccessMembersFenced(members []RemoteAccessMember, 
 					permission_template_json = excluded.permission_template_json,
 					local_user_id = CASE WHEN excluded.local_user_id <> '' THEN excluded.local_user_id ELSE remote_access_members.local_user_id END,
 					last_synced_at = excluded.last_synced_at`,
-				member.PorticoMembershipID, member.PorticoUserID, member.Email, member.DisplayName, member.Role, status, string(permissionTemplateJSON), localUserID, member.PorticoMembershipID, now); err != nil {
-				return err
-			}
+			member.PorticoMembershipID, member.PorticoUserID, member.Email, member.DisplayName, member.Role, status, string(permissionTemplateJSON), localUserID, member.PorticoMembershipID, now); err != nil {
+			return err
 		}
-		// The policy snapshot is authoritative. A revoked Cloud membership must
-		// invalidate local sessions minted by an earlier Portico login, otherwise
-		// the removed member remains signed in until the independent local expiry.
-		if _, err := tx.Exec(`
+	}
+	// The policy snapshot is authoritative. A revoked Cloud membership must
+	// invalidate local sessions minted by an earlier Portico login, otherwise
+	// the removed member remains signed in until the independent local expiry.
+	if _, err := tx.Exec(`
 			DELETE FROM sessions
 			WHERE user_id IN (
 				SELECT u.id
@@ -3621,38 +3879,37 @@ func (s *Server) replaceRemoteAccessMembersFenced(members []RemoteAccessMember, 
 					AND u.auth_origin = 'portico'
 					AND u.role <> 'owner'
 			)`); err != nil {
-			return err
-		}
-		rows, err := tx.Query(`
+		return err
+	}
+	rows, err := tx.Query(`
 			SELECT DISTINCT u.id
 			FROM users u
 			JOIN remote_access_members ram ON ram.local_user_id = u.id
 			WHERE ram.status <> 'active' AND u.auth_origin = 'portico'`)
-		if err != nil {
+	if err != nil {
+		return err
+	}
+	inactiveUserIDs := []string{}
+	for rows.Next() {
+		var userID string
+		if err := rows.Scan(&userID); err != nil {
+			rows.Close()
 			return err
 		}
-		inactiveUserIDs := []string{}
-		for rows.Next() {
-			var userID string
-			if err := rows.Scan(&userID); err != nil {
-				rows.Close()
-				return err
-			}
-			inactiveUserIDs = append(inactiveUserIDs, userID)
+		inactiveUserIDs = append(inactiveUserIDs, userID)
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	for _, userID := range inactiveUserIDs {
+		if !fenced[userID] {
+			return errRemoteAuthorityFenceRetry
 		}
-		if err := rows.Close(); err != nil {
+		if err := s.revokeAccountAuthorityTx(context.Background(), tx, userID, now); err != nil {
 			return err
 		}
-		for _, userID := range inactiveUserIDs {
-			if !fenced[userID] {
-				return errRemoteAuthorityFenceRetry
-			}
-			if err := s.revokeAccountAuthorityTx(context.Background(), tx, userID, now); err != nil {
-				return err
-			}
-		}
-		return nil
-	})
+	}
+	return nil
 }
 
 func normalizeRemoteAccessMemberProfileURLs(hostedBaseURL string, members []RemoteAccessMember) []RemoteAccessMember {

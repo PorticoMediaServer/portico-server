@@ -6166,6 +6166,107 @@
         ],
         "type": "object"
       },
+      "HostedServerWake": {
+        "additionalProperties": false,
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "audience": {
+            "const": "portico-media-server",
+            "type": "string"
+          },
+          "expiresAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "issuedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "kind": {
+            "const": "server-wake",
+            "type": "string"
+          },
+          "reason": {
+            "enum": [
+              "policy_changed",
+              "authority_changed",
+              "profile_authority_changed",
+              "repair_requested",
+              "route_changed"
+            ],
+            "type": "string"
+          },
+          "serverId": {
+            "type": "string"
+          },
+          "signature": {
+            "type": "string"
+          },
+          "signatureAlgorithm": {
+            "const": "ed25519",
+            "type": "string"
+          },
+          "signatureKeyId": {
+            "type": "string"
+          },
+          "targetPolicyRevision": {
+            "format": "int64",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "targetProfileRevision": {
+            "format": "int64",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "version": {
+            "const": 1,
+            "type": "integer"
+          },
+          "wakeId": {
+            "maxLength": 128,
+            "minLength": 8,
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "version",
+          "audience",
+          "serverId",
+          "targetPolicyRevision",
+          "reason",
+          "wakeId",
+          "issuedAt",
+          "expiresAt",
+          "signatureAlgorithm",
+          "signatureKeyId",
+          "signature"
+        ],
+        "type": "object"
+      },
+      "HostedServerWakeAccepted": {
+        "additionalProperties": false,
+        "properties": {
+          "accepted": {
+            "const": true,
+            "type": "boolean"
+          },
+          "targetPolicyRevision": {
+            "format": "int64",
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "accepted",
+          "targetPolicyRevision"
+        ],
+        "type": "object",
+        "x-portico-audience": "management"
+      },
       "IOPressureDiagnostics": {
         "properties": {
           "currentFullAvg10": {
@@ -64375,6 +64476,125 @@
           "web",
           "mobile",
           "television"
+        ]
+      }
+    },
+    "/remote-access/hosted-wake": {
+      "post": {
+        "description": "Verifies a short-lived Hosted signature and schedules an outbound authority refresh. The callback itself grants no authority and does not treat receipt as convergence.",
+        "operationId": "postRemoteAccessHostedWake",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HostedServerWake"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostedServerWakeAccepted"
+                }
+              }
+            },
+            "description": "Verified wake accepted for asynchronous convergence"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "400 Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "401 Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "403 Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "404 Not Found"
+          },
+          "405": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "405 Method Not Allowed"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "409 Conflict"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "429 Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "500 Internal Server Error"
+          }
+        },
+        "security": [],
+        "summary": "Accept a signed Hosted Services convergence hint",
+        "x-portico-audience": "management",
+        "x-portico-audit-event": "api.postRemoteAccessHostedWake",
+        "x-portico-auth": "public",
+        "x-portico-permission": "public",
+        "x-portico-rate-policy": "state-mutation",
+        "x-portico-runtime-registered": true,
+        "x-portico-surfaces": [
+          "web-admin"
         ]
       }
     },

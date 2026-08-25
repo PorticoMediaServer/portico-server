@@ -3,6 +3,7 @@ import { act, renderHook } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   automaticHostedAvailabilityRetry,
+  createHostedAvailabilityRetryCohort,
   hostedAvailabilityCopy,
   hostedAvailabilityRetryDelay,
   useHostedAvailabilityRetry,
@@ -14,6 +15,14 @@ afterEach(() => {
 });
 
 describe('Hosted availability retry policy', () => {
+  it('creates non-fixed per-page fallback cohorts from browser cryptographic entropy', () => {
+    const first = createHostedAvailabilityRetryCohort();
+    const second = createHostedAvailabilityRetryCohort();
+    expect(first).toMatch(/^page-[0-9a-f]{32}$/);
+    expect(second).toMatch(/^page-[0-9a-f]{32}$/);
+    expect(second).not.toBe(first);
+  });
+
   it('uses only retryable, non-ambiguous failures and honors Retry-After', () => {
     expect(automaticHostedAvailabilityRetry(new ApiError(503, 'hosted_unavailable', 'unavailable', undefined, { retryable: true }))).toBe(true);
     expect(automaticHostedAvailabilityRetry(new ApiError(503, 'hosted_unavailable', 'unavailable'))).toBe(true);
@@ -26,21 +35,23 @@ describe('Hosted availability retry policy', () => {
     expect(hostedAvailabilityRetryDelay(undefined, 1_000)).toBe(5_000);
   });
 
-  it('waits for five visible seconds and cleans up its timer', () => {
+  it('waits for its positive visible cohort spread and cleans up its timer', () => {
     vi.useFakeTimers();
     let visibility: DocumentVisibilityState = 'hidden';
     vi.spyOn(document, 'visibilityState', 'get').mockImplementation(() => visibility);
     vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
     const retry = vi.fn();
     const reason = new ApiError(503, 'hosted_unavailable', 'unavailable', undefined, { retryable: true });
-    const hook = renderHook(() => useHostedAvailabilityRetry({ enabled: true, reason, retry }));
+    const cohort = 'visible-installation';
+    const retryDelay = hostedAvailabilityRetryDelay(undefined, Date.now(), cohort);
+    const hook = renderHook(() => useHostedAvailabilityRetry({ enabled: true, reason, retry, cohort }));
 
     act(() => vi.advanceTimersByTime(20_000));
     expect(retry).not.toHaveBeenCalled();
     act(() => {
       visibility = 'visible';
       document.dispatchEvent(new Event('visibilitychange'));
-      vi.advanceTimersByTime(4_999);
+      vi.advanceTimersByTime(retryDelay - 1);
     });
     expect(retry).not.toHaveBeenCalled();
     act(() => vi.advanceTimersByTime(1));
@@ -51,14 +62,16 @@ describe('Hosted availability retry policy', () => {
     expect(retry).toHaveBeenCalledTimes(1);
   });
 
-  it('resumes immediately when the browser comes online', () => {
+  it('cohort-spreads retries when the browser comes online', () => {
     vi.useFakeTimers();
     let online = false;
     vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
     vi.spyOn(navigator, 'onLine', 'get').mockImplementation(() => online);
     const retry = vi.fn();
     const reason = new TypeError('Failed to fetch');
-    const { result } = renderHook(() => useHostedAvailabilityRetry({ enabled: true, reason, retry }));
+    const cohort = 'online-installation';
+    const retryDelay = hostedAvailabilityRetryDelay(undefined, Date.now(), cohort);
+    const { result } = renderHook(() => useHostedAvailabilityRetry({ enabled: true, reason, retry, cohort }));
 
     expect(result.current.copy).toEqual(hostedAvailabilityCopy(true));
     act(() => vi.advanceTimersByTime(20_000));
@@ -67,6 +80,10 @@ describe('Hosted availability retry policy', () => {
       online = true;
       window.dispatchEvent(new Event('online'));
     });
+    expect(retry).not.toHaveBeenCalled();
+    act(() => vi.advanceTimersByTime(retryDelay - 1));
+    expect(retry).not.toHaveBeenCalled();
+    act(() => vi.advanceTimersByTime(1));
     expect(retry).toHaveBeenCalledTimes(1);
     expect(result.current.copy).toEqual(hostedAvailabilityCopy(false));
   });
@@ -77,9 +94,15 @@ describe('Hosted availability retry policy', () => {
     vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
     const retry = vi.fn();
     const reason = new ApiError(503, 'hosted_unavailable', 'unavailable', undefined, { retryAfterMs: 9_000 });
-    renderHook(() => useHostedAvailabilityRetry({ enabled: true, reason, retry }));
+    const cohort = 'retry-after-installation';
+    const retryDelay = hostedAvailabilityRetryDelay(undefined, Date.now(), cohort);
+    renderHook(() => useHostedAvailabilityRetry({ enabled: true, reason, retry, cohort }));
 
     act(() => vi.advanceTimersByTime(8_999));
+    expect(retry).not.toHaveBeenCalled();
+    act(() => vi.advanceTimersByTime(1));
+    expect(retry).not.toHaveBeenCalled();
+    act(() => vi.advanceTimersByTime(retryDelay - 1));
     expect(retry).not.toHaveBeenCalled();
     act(() => vi.advanceTimersByTime(1));
     expect(retry).toHaveBeenCalledTimes(1);

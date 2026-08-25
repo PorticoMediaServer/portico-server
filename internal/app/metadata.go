@@ -1715,7 +1715,7 @@ func (s *Server) applyManualAniListMatch(ctx context.Context, userID string, ite
 		{Provider: "anilist", ExternalID: strconv.Itoa(result.ID), ExternalType: "anime", Confidence: 1, ExplicitAcceptance: true},
 	}
 	if result.IDMal > 0 {
-		update.metadataIdentities = append(update.metadataIdentities, metadataProviderIdentityProposal{Provider: "mal", ExternalID: strconv.Itoa(result.IDMal), ExternalType: "anime", Confidence: .8})
+		update.metadataIdentities = append(update.metadataIdentities, metadataProviderIdentityProposal{Provider: "mal", ExternalID: strconv.Itoa(result.IDMal), ExternalType: "anime", Confidence: .8, ProviderAsserted: true})
 	}
 	updated, err := s.saveMetadataUpdate("", item.ID, update)
 	if err != nil {
@@ -2379,7 +2379,7 @@ func (s *Server) refreshMediaMetadataFromAniList(ctx context.Context, item Media
 	update.metadataRich = &rich
 	update.metadataIdentities = []metadataProviderIdentityProposal{{Provider: "anilist", ExternalID: strconv.Itoa(result.ID), ExternalType: "anime", Confidence: .86}}
 	if result.IDMal > 0 {
-		update.metadataIdentities = append(update.metadataIdentities, metadataProviderIdentityProposal{Provider: "mal", ExternalID: strconv.Itoa(result.IDMal), ExternalType: "anime", Confidence: .8})
+		update.metadataIdentities = append(update.metadataIdentities, metadataProviderIdentityProposal{Provider: "mal", ExternalID: strconv.Itoa(result.IDMal), ExternalType: "anime", Confidence: .8, ProviderAsserted: true})
 	}
 	updated, err := s.saveMetadataUpdate("", item.ID, update)
 	if err != nil {
@@ -2552,10 +2552,10 @@ func (s *Server) updateMusicParentsFromTrack(item MediaItem, artistName, artistI
 		update.metadataSource = source
 		update.metadataProvider = "musicbrainz"
 		if release.ReleaseGroup.ID != "" {
-			update.metadataIdentities = append(update.metadataIdentities, metadataProviderIdentityProposal{Provider: "musicbrainz", ExternalID: release.ReleaseGroup.ID, ExternalType: "release-group", Confidence: confidence})
+			update.metadataIdentities = append(update.metadataIdentities, metadataProviderIdentityProposal{Provider: "musicbrainz", ExternalID: release.ReleaseGroup.ID, ExternalType: "release-group", Confidence: confidence, ProviderAsserted: true})
 		}
 		if release.ID != "" {
-			update.metadataIdentities = append(update.metadataIdentities, metadataProviderIdentityProposal{Provider: "musicbrainz", ExternalID: release.ID, ExternalType: "release", Confidence: maxFloat(0, confidence-.04)})
+			update.metadataIdentities = append(update.metadataIdentities, metadataProviderIdentityProposal{Provider: "musicbrainz", ExternalID: release.ID, ExternalType: "release", Confidence: maxFloat(0, confidence-.04), ProviderAsserted: true})
 		}
 		if _, err := s.saveMetadataUpdate("", item.ParentID, update); err != nil {
 			return err
@@ -2569,7 +2569,7 @@ func (s *Server) updateMusicParentsFromTrack(item MediaItem, artistName, artistI
 		update.metadataSource = source
 		update.metadataProvider = "musicbrainz"
 		if artistID != "" {
-			update.metadataIdentities = []metadataProviderIdentityProposal{{Provider: "musicbrainz", ExternalID: artistID, ExternalType: "artist", Confidence: confidence}}
+			update.metadataIdentities = []metadataProviderIdentityProposal{{Provider: "musicbrainz", ExternalID: artistID, ExternalType: "artist", Confidence: confidence, ProviderAsserted: true}}
 		}
 		if _, err := s.saveMetadataUpdate("", item.GrandparentID, update); err != nil {
 			return err
@@ -2661,16 +2661,16 @@ func (s *Server) refreshAlbumMetadataFromMusicBrainz(ctx context.Context, item M
 	rich := mapMusicBrainzReleaseGroupProviderRich(group)
 	s.enrichMusicBrainzProposalWithCoverArt(ctx, &rich, group.ID, releaseID)
 	update.metadataRich = &rich
-	update.metadataIdentities = []metadataProviderIdentityProposal{{Provider: "musicbrainz", ExternalID: group.ID, ExternalType: "release-group", Confidence: .84}}
+	update.metadataIdentities = []metadataProviderIdentityProposal{{Provider: "musicbrainz", ExternalID: group.ID, ExternalType: "release-group", Confidence: .84, ProviderAsserted: true}}
 	if releaseID != "" {
-		update.metadataIdentities = append(update.metadataIdentities, metadataProviderIdentityProposal{Provider: "musicbrainz", ExternalID: releaseID, ExternalType: "release", Confidence: .8})
+		update.metadataIdentities = append(update.metadataIdentities, metadataProviderIdentityProposal{Provider: "musicbrainz", ExternalID: releaseID, ExternalType: "release", Confidence: .8, ProviderAsserted: true})
 	}
 	updated, err := s.saveMetadataUpdate("", item.ID, update)
 	if err != nil {
 		return MediaItem{}, err
 	}
 	if artistID != "" && item.ParentID != "" {
-		_ = s.applyProviderIdentitiesToMedia(ctx, item.ParentID, "musicbrainz", source, []metadataProviderIdentityProposal{{Provider: "musicbrainz", ExternalID: artistID, ExternalType: "artist", Confidence: .80}})
+		_ = s.applyProviderIdentitiesToMedia(ctx, item.ParentID, "musicbrainz", source, []metadataProviderIdentityProposal{{Provider: "musicbrainz", ExternalID: artistID, ExternalType: "artist", Confidence: .80, ProviderAsserted: true}})
 	}
 	return updated, nil
 }

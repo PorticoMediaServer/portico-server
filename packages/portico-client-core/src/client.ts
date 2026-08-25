@@ -300,6 +300,7 @@ import {
 } from "./internal/sseDecoder.js";
 import { decodeHighRiskResponse } from "./internal/highRiskResponses.js";
 import { getOperationPolicy, type OperationClass } from "./operationPolicy.js";
+import { positiveFullJitterDelay } from "./retryScheduling.js";
 
 export type DataTag = string;
 export type ValueProvider<T> = T | (() => T);
@@ -404,6 +405,78 @@ export class PorticoTransportError extends ApiError {
     this.cause = cause;
     this.method = metadata.method ?? "GET";
     this.phase = metadata.phase ?? "request";
+  }
+}
+
+export interface PendingHostedTerminalMutation {
+  version: "v1";
+  idempotencyKey: string;
+  method: string;
+  path: string;
+  createdAt: string;
+}
+
+export interface HostedTerminalMutationDurabilityAdapter {
+  load?(): Promise<readonly PendingHostedTerminalMutation[]>;
+  save(record: PendingHostedTerminalMutation): Promise<void>;
+  remove(idempotencyKey: string): Promise<void>;
+}
+
+/** A lost terminal-mutation response was reconciled as committed. */
+export class HostedTerminalMutationCommittedError extends ApiError {
+  readonly idempotencyKey: string;
+  readonly receipt: Readonly<Record<string, unknown>>;
+  readonly committed = true;
+
+  constructor(
+    idempotencyKey: string,
+    receipt: Readonly<Record<string, unknown>>,
+  ) {
+    super(
+      200,
+      "terminal_mutation_committed",
+      "Portico confirmed that your change was saved.",
+      { receipt },
+    );
+    this.name = "HostedTerminalMutationCommittedError";
+    this.idempotencyKey = idempotencyKey;
+    this.receipt = receipt;
+  }
+}
+
+/** The mutation may have committed; retain the key and reconcile, never replay blindly. */
+export class HostedTerminalMutationUncertainError extends ApiError {
+  readonly cause: unknown;
+  readonly idempotencyKey: string;
+  readonly method: string;
+  readonly path: string;
+
+  constructor(
+    cause: unknown,
+    record: PendingHostedTerminalMutation,
+  ) {
+    super(
+      cause instanceof ApiError ? cause.status : 0,
+      "terminal_mutation_outcome_unknown",
+      "Portico is still confirming this change.",
+      undefined,
+      {
+        ambiguous: true,
+        retryable: false,
+        requestId: cause instanceof ApiError ? cause.requestId : undefined,
+        responseHeaders:
+          cause instanceof ApiError ? cause.responseHeaders : undefined,
+        retryAfter: cause instanceof ApiError ? cause.retryAfter : undefined,
+        retryAt: cause instanceof ApiError ? cause.retryAt : undefined,
+        retryAfterMs:
+          cause instanceof ApiError ? cause.retryAfterMs : undefined,
+      },
+    );
+    this.name = "HostedTerminalMutationUncertainError";
+    this.cause = cause;
+    this.idempotencyKey = record.idempotencyKey;
+    this.method = record.method;
+    this.path = record.path;
   }
 }
 
@@ -559,6 +632,8 @@ export interface PorticoClientOptions {
   retryBudget?: number;
   /** Optional delays for safe Hosted-read retries. */
   retryDelaysMs?: readonly number[];
+  /** Persisted installation cohort used only to spread control-plane retries. */
+  retryCohort?: ValueProvider<string>;
   eventStream?: EventStreamAdapter;
   /** Optional deterministic scheduling hooks for event transport runtimes and tests. */
   eventSubscriptionRuntime?: Partial<PorticoEventSubscriptionRuntime>;
@@ -594,6 +669,10 @@ export interface HostedServicesClientOptions {
   retryBudget?: number;
   /** Optional delays for safe Hosted-read retries. */
   retryDelaysMs?: readonly number[];
+  /** Persisted installation cohort used only to spread control-plane retries. */
+  retryCohort?: ValueProvider<string>;
+  /** Durable key ledger for terminal changes whose HTTP response may be lost. */
+  terminalMutationDurabilityAdapter?: HostedTerminalMutationDurabilityAdapter;
 }
 
 export interface BitrateTestResult {
@@ -613,7 +692,7 @@ export interface RequestSignal {
 
 type TransportConfig = Pick<
   PorticoClientOptions,
-  "requestTimeoutMs" | "retryBudget" | "retryDelaysMs"
+  "requestTimeoutMs" | "retryBudget" | "retryDelaysMs" | "retryCohort"
 >;
 type TransportRequestOptions = RequestSignal & { method?: string };
 
@@ -4673,6 +4752,56 @@ export function createPorticoClient(options: PorticoClientOptions = {}) {
 
 export type PorticoClient = ReturnType<typeof createPorticoClient>;
 
+function isHostedTerminalMutation(path: string, method: string): boolean {
+  const pathname = path.split("?", 1)[0] ?? path;
+  const verb = method.toUpperCase();
+  if (
+    verb === "POST" &&
+    new Set([
+      "/api/auth/logout",
+      "/api/auth/sessions/refresh",
+      "/api/auth/sessions/revoke",
+      "/api/auth/password-reset/complete",
+      "/api/auth/mfa/setup",
+      "/api/auth/mfa/enable",
+      "/api/auth/mfa/recovery-codes/rotate",
+      "/api/auth/mfa/disable",
+      "/api/account/me/image",
+      "/api/account/me/password",
+      "/api/operator/users/actions",
+      "/api/operator/users/mfa-reset",
+    ]).has(pathname)
+  )
+    return true;
+  if (verb === "DELETE" && pathname === "/api/account/me") return true;
+  if (
+    verb === "DELETE" &&
+    new Set([
+      "/api/account/me/image",
+      "/api/account/push-subscriptions/current",
+    ]).has(pathname)
+  )
+    return true;
+  if (
+    verb === "DELETE" &&
+    /^\/api\/account\/(?:profiles|devices)\/[^/]+(?:\/pin)?$/.test(pathname)
+  )
+    return true;
+  if (
+    verb === "PUT" &&
+    /^\/api\/account\/profiles\/[^/]+\/pin$/.test(pathname)
+  )
+    return true;
+  if (
+    (verb === "PATCH" || verb === "DELETE") &&
+    /^\/api\/(?:account\/)?servers\/[^/]+(?:\/members\/[^/]+|\/invites\/[^/]+)?$/.test(
+      pathname,
+    )
+  )
+    return true;
+  return false;
+}
+
 export function createHostedServicesClient(
   options: HostedServicesClientOptions = {},
 ) {
@@ -4693,6 +4822,92 @@ export function createHostedServicesClient(
   };
   const rawRequest = <T>(path: string, init: ApiRequestInit = {}) =>
     hostedRequest<T>(path, init, hostedOptions, inFlightJSONRequests);
+  const pendingTerminalMutations = new Map<
+    string,
+    PendingHostedTerminalMutation
+  >();
+  const persistTerminalMutation = async (
+    record: PendingHostedTerminalMutation,
+  ) => {
+    await options.terminalMutationDurabilityAdapter?.save(record);
+    pendingTerminalMutations.set(record.idempotencyKey, record);
+  };
+  const removeTerminalMutation = async (idempotencyKey: string) => {
+    await options.terminalMutationDurabilityAdapter?.remove(idempotencyKey);
+    pendingTerminalMutations.delete(idempotencyKey);
+  };
+  const reconcileTerminalMutationByKey = (
+    idempotencyKey: string,
+    init: ApiRequestInit = {},
+  ) =>
+    rawRequest<{
+      outcome: "committed";
+      receipt: Readonly<Record<string, unknown>>;
+    }>("/api/account/terminal-mutations", {
+      ...init,
+      method: "GET",
+      headers: { "Idempotency-Key": idempotencyKey },
+      operationClass: "interactive read",
+    });
+  const terminalFormRequest = async <T>(
+    path: string,
+    form: FormData,
+    init?: RequestSignal,
+  ): Promise<T> => {
+    const idempotencyKey = createRequestId(options.requestId);
+    const record: PendingHostedTerminalMutation = {
+      version: "v1",
+      idempotencyKey,
+      method: "POST",
+      path: canonicalAPIPath(path),
+      createdAt: new Date().toISOString(),
+    };
+    await persistTerminalMutation(record);
+    try {
+      const result = await hostedFormRequest<T>(
+        path,
+        form,
+        "POST",
+        { ...hostedOptions, requestId: () => idempotencyKey },
+        init,
+      );
+      await removeTerminalMutation(idempotencyKey);
+      return result;
+    } catch (error) {
+      if (!isAmbiguousPorticoError(error)) {
+        await removeTerminalMutation(idempotencyKey);
+        throw error;
+      }
+      try {
+        const reconciled = await reconcileTerminalMutationByKey(
+          idempotencyKey,
+          init,
+        );
+        if (reconciled.outcome === "committed") {
+          await removeTerminalMutation(idempotencyKey);
+          throw new HostedTerminalMutationCommittedError(
+            idempotencyKey,
+            reconciled.receipt,
+          );
+        }
+      } catch (reconciliationError) {
+        if (reconciliationError instanceof HostedTerminalMutationCommittedError)
+          throw reconciliationError;
+      }
+      throw new HostedTerminalMutationUncertainError(error, record);
+    }
+  };
+  const withMutationIdempotency = (
+    init: ApiRequestInit = {},
+  ): ApiRequestInit => {
+    const method = String(init.method ?? "GET").toUpperCase();
+    if (method === "GET" || method === "HEAD" || method === "OPTIONS")
+      return init;
+    const headers = normalizeHeaders(init.headers);
+    if (!headerValue(headers, "idempotency-key"))
+      headers["Idempotency-Key"] = createRequestId(options.requestId);
+    return { ...init, headers };
+  };
   const publicSystemRequest = (init: ApiRequestInit = {}) =>
     hostedRequest<import("./types.js").HostedSystemInfo>(
       "/api/system",
@@ -4706,6 +4921,9 @@ export function createHostedServicesClient(
     );
   let compatibilityCheck:
     | Promise<import("./compatibility.js").HostedServicesCompatibility>
+    | undefined;
+  let documentSigningKeysCheck:
+    | Promise<import("./types.js").PorticoDocumentSigningKeySet>
     | undefined;
   const checkCompatibility = (init: ApiRequestInit = {}) => {
     compatibilityCheck ??= publicSystemRequest(init)
@@ -4722,7 +4940,54 @@ export function createHostedServicesClient(
       checkCompatibility(requestTransportOptions(init)),
       init.signal ?? undefined,
     );
-    return rawRequest<T>(path, init);
+    const prepared = withMutationIdempotency(init);
+    const method = String(prepared.method ?? "GET").toUpperCase();
+    if (!isHostedTerminalMutation(path, method))
+      return rawRequest<T>(path, prepared);
+    const idempotencyKey = headerValue(
+      normalizeHeaders(prepared.headers),
+      "idempotency-key",
+    );
+    const record: PendingHostedTerminalMutation = {
+      version: "v1",
+      idempotencyKey,
+      method,
+      path: canonicalAPIPath(path),
+      createdAt: new Date().toISOString(),
+    };
+    // When a durable adapter is configured, failure to persist must stop the
+    // request before dispatch. Otherwise a process death could lose the only
+    // safe reconciliation identity.
+    await persistTerminalMutation(record);
+    try {
+      const result = await rawRequest<T>(path, prepared);
+      await removeTerminalMutation(idempotencyKey);
+      return result;
+    } catch (error) {
+      if (!isAmbiguousPorticoError(error)) {
+        await removeTerminalMutation(idempotencyKey);
+        throw error;
+      }
+      try {
+        const reconciled = await reconcileTerminalMutationByKey(
+          idempotencyKey,
+          requestTransportOptions(prepared),
+        );
+        if (reconciled.outcome === "committed") {
+          await removeTerminalMutation(idempotencyKey);
+          throw new HostedTerminalMutationCommittedError(
+            idempotencyKey,
+            reconciled.receipt,
+          );
+        }
+      } catch (reconciliationError) {
+        if (reconciliationError instanceof HostedTerminalMutationCommittedError)
+          throw reconciliationError;
+        // A missing or temporarily unavailable receipt does not prove rollback;
+        // retain the durable key for a later authenticated reconciliation.
+      }
+      throw new HostedTerminalMutationUncertainError(error, record);
+    }
   };
   const recheckAfterAuthentication = async <T>(
     response: T,
@@ -4751,16 +5016,74 @@ export function createHostedServicesClient(
     if (!token) throw new TypeError("profile administration proof is required");
     return { "X-Portico-Profile-Admin": token };
   };
+  const loadPendingTerminalMutations = async () => {
+    const durable =
+      (await options.terminalMutationDurabilityAdapter?.load?.()) ?? [];
+    for (const record of durable) {
+      if (
+        record?.version !== "v1" ||
+        typeof record.idempotencyKey !== "string" ||
+        record.idempotencyKey.length < 8 ||
+        record.idempotencyKey.length > 128 ||
+        !/^[A-Za-z0-9._:-]+$/.test(record.idempotencyKey) ||
+        typeof record.method !== "string" ||
+        typeof record.path !== "string"
+      )
+        continue;
+      pendingTerminalMutations.set(record.idempotencyKey, { ...record });
+    }
+    return [...pendingTerminalMutations.values()];
+  };
   return {
     request,
     hostedApiUrl: (path: string) =>
       `${resolveBase(options.hostedApiBaseUrl, "https://api.getportico.tv")}${path}`,
     system: publicSystemRequest,
     checkCompatibility,
-    documentSigningKeys: () =>
-      request<import("./types.js").PorticoDocumentSigningKeySet>(
+    pendingAccountTerminalMutations: loadPendingTerminalMutations,
+    reconcilePendingAccountTerminalMutations: async (init?: RequestSignal) => {
+      await awaitWithAbort(
+        checkCompatibility(requestTransportOptions(init ?? {})),
+        init?.signal ?? undefined,
+      );
+      const records = await loadPendingTerminalMutations();
+      const outcomes: Array<{
+        record: PendingHostedTerminalMutation;
+        outcome: "committed" | "pending";
+        receipt?: Readonly<Record<string, unknown>>;
+      }> = [];
+      for (const record of records) {
+        try {
+          const reconciled = await reconcileTerminalMutationByKey(
+            record.idempotencyKey,
+            init,
+          );
+          if (reconciled.outcome === "committed") {
+            await removeTerminalMutation(record.idempotencyKey);
+            outcomes.push({
+              record,
+              outcome: "committed",
+              receipt: reconciled.receipt,
+            });
+            continue;
+          }
+        } catch {
+          // A missing/temporarily unavailable receipt remains pending. The
+          // stable key is retained for the next authenticated recovery pass.
+        }
+        outcomes.push({ record, outcome: "pending" });
+      }
+      return outcomes;
+    },
+    documentSigningKeys: (init?: RequestSignal) => {
+      documentSigningKeysCheck ??= request<import("./types.js").PorticoDocumentSigningKeySet>(
         "/api/signing-keys",
-      ),
+      ).catch((error) => {
+        documentSigningKeysCheck = undefined;
+        throw error;
+      });
+      return awaitWithAbort(documentSigningKeysCheck, init?.signal ?? undefined);
+    },
     me: async (init?: RequestSignal) => {
       const response = await request<
         import("./types.js").PorticoAccountAuthResponse
@@ -4770,6 +5093,30 @@ export function createHostedServicesClient(
     },
     account: () =>
       request<import("./types.js").PorticoAccountResponse>("/api/account/me"),
+    reconcileAccountTerminalMutation: (
+      idempotencyKey: string,
+      init?: RequestSignal,
+    ) => {
+      const key = String(idempotencyKey ?? "").trim();
+      if (key.length < 8 || key.length > 128 || !/^[A-Za-z0-9._:-]+$/.test(key))
+        throw new TypeError("A valid terminal mutation idempotency key is required.");
+      return request<{
+        outcome: "committed";
+        receipt: {
+          receiptId: string;
+          auditEventId: string;
+          action: string;
+          targetType: string;
+          targetId: string;
+          actorType: string;
+          actorId: string;
+          createdAt: string;
+        };
+      }>("/api/account/terminal-mutations", {
+        ...init,
+        headers: { "Idempotency-Key": key },
+      });
+    },
     updateAccount: (body: {
       username: string;
       email?: string;
@@ -4779,9 +5126,9 @@ export function createHostedServicesClient(
         user: import("./types.js").PorticoAccountAuthResponse["user"];
       }>("/api/account/me", { method: "PATCH", body }),
     uploadAccountImage: (form: FormData, init?: RequestSignal) =>
-      hostedFormRequest<{
+      terminalFormRequest<{
         user: import("./types.js").PorticoAccountAuthResponse["user"];
-      }>("/api/account/me/image", form, "POST", hostedOptions, init),
+      }>("/api/account/me/image", form, init),
     deleteAccountImage: (init?: RequestSignal) =>
       request<{
         user: import("./types.js").PorticoAccountAuthResponse["user"];
@@ -6258,7 +6605,14 @@ async function hostedFetchWithRetry(
       const retryAfterMs = parseRetryAfter(
         response.headers.get("Retry-After"),
       ).retryAfterMs;
-      retryDelay = Math.max(configuredDelay, retryAfterMs ?? 0);
+      const retryCohort = String(resolveValue(config.retryCohort, "")).trim();
+      const spread = retryCohort
+        ? positiveFullJitterDelay(configuredDelay, retryCohort, attempt)
+        : configuredDelay;
+      // The local backoff is a jitter budget, not an additional mandatory
+      // wait. A provider Retry-After is different: it is an exact lower bound,
+      // so spread the fleet only after that deadline.
+      retryDelay = retryAfterMs === undefined ? spread : retryAfterMs + spread;
       if (
         context.deadlineAt !== undefined &&
         Date.now() + retryDelay >= context.deadlineAt
@@ -6273,7 +6627,11 @@ async function hostedFetchWithRetry(
         context.signal.aborted
       )
         throw error;
-      retryDelay = delays[attempt];
+      const retryFloor = delays[attempt];
+      const retryCohort = String(resolveValue(config.retryCohort, "")).trim();
+      retryDelay = retryCohort
+        ? positiveFullJitterDelay(retryFloor, retryCohort, attempt)
+        : retryFloor;
     }
     if (retryDelay === undefined)
       throw new Error("Hosted read retry budget has no delay slot.");
@@ -6463,6 +6821,9 @@ async function hostedFormRequest<T>(
       {
         ...(csrf ? { "X-Portico-CSRF": csrf } : {}),
         ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}),
+        ...(normalizedMethod !== "GET" && normalizedMethod !== "HEAD"
+          ? { "Idempotency-Key": createRequestId(config.requestId) }
+          : {}),
       },
       config.requestId,
     ),
@@ -6663,6 +7024,8 @@ async function throwApiError(
     messageId,
     requestId,
     responseHeaders,
+    ambiguous:
+      responseHeaders["x-portico-terminal-outcome"] === "outcome_unknown",
     ...retry,
   });
 }
@@ -6715,6 +7078,8 @@ function responseHeaderRecord(
     "content-type",
     "retry-after",
     "x-request-id",
+    "x-portico-terminal-outcome",
+    "x-portico-terminal-receipt",
     "x-ratelimit-limit",
     "x-ratelimit-remaining",
     "x-ratelimit-reset",

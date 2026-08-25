@@ -570,6 +570,7 @@ function RuntimeRecovery({ embedded = false }: { embedded?: boolean }) {
     enabled: recovery?.automaticAvailabilityRetry === true,
     reason: availabilityReason,
     retry: runtime.retry,
+    cohort: runtime.hostedRetryCohort,
   });
   if (!recovery) return null;
   const serverName = recovery.serverName || 'this server';

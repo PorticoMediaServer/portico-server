@@ -70,8 +70,8 @@ jobs:
         run: |
           notes="Verified prerelease of @porticomediaserver/client-core $VERSION. This immutable package is consumed by Portico clients and does not update the Portico Media Server latest-release channel. Complete corresponding source is attached automatically from this tag."
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            gh release upload "$RELEASE_TAG" "release/portico-client-core-$VERSION.tgz" "release/portico-client-core-$VERSION.tgz.sha256" --clobber
-            gh release edit "$RELEASE_TAG" --prerelease --title "Portico Client Core $VERSION" --notes "$notes"
+            echo "Refusing to modify existing immutable release $RELEASE_TAG" >&2
+            exit 1
           else
             gh release create "$RELEASE_TAG" "release/portico-client-core-$VERSION.tgz" "release/portico-client-core-$VERSION.tgz.sha256" --verify-tag --prerelease --title "Portico Client Core $VERSION" --notes "$notes"
           fi

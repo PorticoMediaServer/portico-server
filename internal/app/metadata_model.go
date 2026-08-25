@@ -43,6 +43,15 @@ func metadataSourceRequestsIdentityAcceptance(source string) bool {
 // the same identity, but it cannot displace an already accepted different ID.
 // An explicit manual acceptance supersedes the prior winner transactionally.
 func upsertMediaProviderIdentityTx(tx *sql.Tx, mediaID, provider, externalID, externalType string, confidence float64, source string, explicitAcceptance bool, acceptedByUserID, now string) error {
+	return upsertMediaProviderIdentityTxWithPolicy(tx, mediaID, provider, externalID, externalType, confidence, source, explicitAcceptance, acceptedByUserID, now, false)
+}
+
+// upsertMediaProviderIdentityTxWithPolicy applies the normal automatic
+// identity floor unless the provider has asserted the relationship directly
+// in its payload. Provider-asserted identities can establish the first
+// identity below that floor, but automated evidence still cannot replace a
+// different accepted identity; only explicit manual acceptance can do that.
+func upsertMediaProviderIdentityTxWithPolicy(tx *sql.Tx, mediaID, provider, externalID, externalType string, confidence float64, source string, explicitAcceptance bool, acceptedByUserID, now string, providerAsserted bool) error {
 	if tx == nil {
 		return errors.New("metadata identity transaction is required")
 	}
@@ -75,7 +84,7 @@ func upsertMediaProviderIdentityTx(tx *sql.Tx, mediaID, provider, externalID, ex
 		return err
 	}
 	status := metadataIdentityCandidate
-	if (errors.Is(err, sql.ErrNoRows) && confidence >= automaticMetadataMinimumScore) || acceptedID == externalID {
+	if (errors.Is(err, sql.ErrNoRows) && (confidence >= automaticMetadataMinimumScore || providerAsserted)) || acceptedID == externalID {
 		status = metadataIdentityAccepted
 	} else if explicitAcceptance {
 		if _, err := tx.Exec(`

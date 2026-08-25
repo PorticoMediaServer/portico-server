@@ -149,6 +149,9 @@ func (s *Server) handleLocalProfileAccountAuthentication(w http.ResponseWriter, 
 	}
 	user, err := s.authenticateLocalNativeUser(r.Context(), request.Login, request.Password)
 	if err != nil {
+		if writeKDFUnavailable(w, err) {
+			return
+		}
 		s.recordLoginFailure(rateKey)
 		writeProductError(w, http.StatusUnauthorized, "invalid_credentials", "Username/email or password is incorrect.")
 		return
@@ -486,6 +489,12 @@ func (s *Server) createProfileAccountAuthentication(r *http.Request, user User, 
 	}
 	var deviceID string
 	err = s.withUserTxTagged(r.Context(), []string{"devices", "profile_account_authentications"}, func(tx *sql.Tx) error {
+		if expected := strings.TrimSpace(user.verifiedPasswordHash); expected != "" {
+			var currentPasswordHash string
+			if err := tx.QueryRow(`SELECT COALESCE(password_hash, '') FROM users WHERE id = ? AND COALESCE(disabled_at, '') = ''`, user.ID).Scan(&currentPasswordHash); err != nil || currentPasswordHash != expected {
+				return errPasswordCredentialChanged
+			}
+		}
 		var err error
 		deviceID, err = s.upsertProfileAuthenticationDeviceTx(tx, r, user.ID, descriptor, now)
 		if err != nil {
@@ -611,81 +620,141 @@ func (s *Server) upsertProfileAuthenticationDeviceTx(tx *sql.Tx, r *http.Request
 }
 
 func (s *Server) consumeLocalProfileAccountAuthentication(ctx context.Context, request LocalProfileSelectionRequest, browserBinding string, now time.Time) (ProfileSelectionGrant, error) {
-	var grant ProfileSelectionGrant
-	var pinResult error
 	serverID, err := s.profileDirectoryServerIDContext(ctx)
 	if err != nil {
 		return ProfileSelectionGrant{}, err
 	}
-	err = s.withUserTxTagged(ctx, []string{"profile_account_authentications", "profiles", "local_profile_pin_credentials", "profile_selection_grants", "automatic_profile_selection_trusts"}, func(tx *sql.Tx) error {
-		record, err := profileAccountAuthenticationTx(tx, request.AccountAuthenticationToken, "local", now)
+	for attempt := 0; attempt < 3; attempt++ {
+		preRecord, err := s.profileAccountAuthenticationContext(ctx, request.AccountAuthenticationToken, "local", now)
 		if err != nil {
-			return err
+			return ProfileSelectionGrant{}, err
 		}
-		if record.Purpose == "browser" && (record.BrowserBindingHash == "" || !credentialDigestMatches(record.BrowserBindingHash, browserBinding)) {
-			return errInvalidProfileAccountAuthentication
+		if preRecord.Purpose == "browser" && (preRecord.BrowserBindingHash == "" || !credentialDigestMatches(preRecord.BrowserBindingHash, browserBinding)) {
+			return ProfileSelectionGrant{}, errInvalidProfileAccountAuthentication
 		}
 		var origin string
 		var pinRequired, primary, profilesAllowed int
-		if err := tx.QueryRow(`
-			SELECT p.origin, p.pin_required, p.is_primary, COALESCE(u.allow_account_profiles, 1)
+		var profilePINRevision int64
+		if err := s.queryUserRow(ctx, `
+			SELECT p.origin, p.pin_required, p.is_primary, COALESCE(u.allow_account_profiles, 1), p.pin_revision
 			FROM profiles p JOIN users u ON u.id = p.account_id
 			WHERE p.id = ? AND p.account_id = ? AND p.disabled_at = '' AND COALESCE(u.disabled_at, '') = ''`,
-			strings.TrimSpace(request.ProfileID), record.AccountID).Scan(&origin, &pinRequired, &primary, &profilesAllowed); err != nil {
+			strings.TrimSpace(request.ProfileID), preRecord.AccountID).Scan(&origin, &pinRequired, &primary, &profilesAllowed, &profilePINRevision); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
-				return errProfileNotFound
+				return ProfileSelectionGrant{}, errProfileNotFound
 			}
-			return err
+			return ProfileSelectionGrant{}, err
 		}
 		if origin != "local" {
-			return errHostedProfileLocalPIN
+			return ProfileSelectionGrant{}, errHostedProfileLocalPIN
 		}
 		if profilesAllowed != 1 && primary != 1 {
-			return errProfileNotAllowed
+			return ProfileSelectionGrant{}, errProfileNotAllowed
 		}
 		trustedAutomaticSelection := strings.TrimSpace(request.AutomaticSelectionTrust) != ""
-		if trustedAutomaticSelection {
-			if err := automaticProfileTrustTx(tx, request.AutomaticSelectionTrust, record, request.ProfileID, serverID, now); err != nil {
-				return err
+		var snapshot localProfilePINSnapshot
+		var evaluation localProfilePINEvaluation
+		if pinRequired == 1 && !trustedAutomaticSelection {
+			snapshot, err = s.loadLocalProfilePINSnapshot(ctx, preRecord.AccountID, request.ProfileID)
+			if err != nil {
+				_, kdfErr := verifyLocalProfilePINHash(ctx, kdfProfilePINSelectCompare, "", request.PIN)
+				if kdfErr != nil {
+					return ProfileSelectionGrant{}, kdfErr
+				}
+				return ProfileSelectionGrant{}, err
+			}
+			evaluation, err = evaluateLocalProfilePIN(ctx, kdfProfilePINSelectCompare, snapshot, request.PIN, now)
+			if err != nil {
+				return ProfileSelectionGrant{}, err
 			}
 		}
-		if pinRequired == 1 && !trustedAutomaticSelection {
-			if !validLocalProfilePIN(request.PIN) {
-				return errInvalidProfilePIN
-			}
-			valid, err := verifyLocalProfilePINTx(tx, record.AccountID, request.ProfileID, request.PIN, now)
+		var grant ProfileSelectionGrant
+		err = s.withUserTxTagged(ctx, []string{"profile_account_authentications", "profiles", "local_profile_pin_credentials", "profile_selection_grants", "automatic_profile_selection_trusts"}, func(tx *sql.Tx) error {
+			record, err := profileAccountAuthenticationTx(tx, request.AccountAuthenticationToken, "local", now)
 			if err != nil {
 				return err
 			}
-			if !valid {
-				pinResult = profilePINAttemptResultTx(tx, request.ProfileID, now)
-				return nil
+			if record.ID != preRecord.ID || record.AccountID != preRecord.AccountID || record.Purpose != preRecord.Purpose || record.DeviceID != preRecord.DeviceID || record.InstallationID != preRecord.InstallationID || record.BrowserBindingHash != preRecord.BrowserBindingHash {
+				return errProfilePINConcurrentChange
 			}
-		}
-		grant, err = s.mintProfileSelectionGrantBoundTx(tx, record.AccountID, request.ProfileID, "local", record.Purpose, record.ID, record.DeviceID, record.InstallationID, now)
-		if err != nil {
-			return err
-		}
-		if record.Purpose == "browser" {
-			if _, err := tx.Exec(`UPDATE profile_selection_grants SET browser_binding_hash = ? WHERE token_hash = ?`, record.BrowserBindingHash, hashToken(grant.Token)); err != nil {
+			var currentOrigin string
+			var currentPINRequired, currentPrimary, currentProfilesAllowed int
+			var currentPINRevision int64
+			if err := tx.QueryRow(`
+				SELECT p.origin, p.pin_required, p.is_primary, COALESCE(u.allow_account_profiles, 1), p.pin_revision
+				FROM profiles p JOIN users u ON u.id = p.account_id
+				WHERE p.id = ? AND p.account_id = ? AND p.disabled_at = '' AND COALESCE(u.disabled_at, '') = ''`,
+				strings.TrimSpace(request.ProfileID), record.AccountID).Scan(&currentOrigin, &currentPINRequired, &currentPrimary, &currentProfilesAllowed, &currentPINRevision); err != nil {
+				return errProfilePINConcurrentChange
+			}
+			if currentOrigin != origin || currentPINRequired != pinRequired || currentPrimary != primary || currentProfilesAllowed != profilesAllowed || currentPINRevision != profilePINRevision {
+				return errProfilePINConcurrentChange
+			}
+			if trustedAutomaticSelection {
+				if err := automaticProfileTrustTx(tx, request.AutomaticSelectionTrust, record, request.ProfileID, serverID, now); err != nil {
+					return err
+				}
+			}
+			if pinRequired == 1 && !trustedAutomaticSelection {
+				if err := applyLocalProfilePINEvaluationTx(tx, snapshot, evaluation, now); err != nil {
+					return err
+				}
+				if !evaluation.valid {
+					return nil
+				}
+			}
+			grant, err = s.mintProfileSelectionGrantBoundTx(tx, record.AccountID, request.ProfileID, "local", record.Purpose, record.ID, record.DeviceID, record.InstallationID, now)
+			if err != nil {
 				return err
 			}
-			grant.BrowserBindingHash = record.BrowserBindingHash
+			if record.Purpose == "browser" {
+				if _, err := tx.Exec(`UPDATE profile_selection_grants SET browser_binding_hash = ? WHERE token_hash = ?`, record.BrowserBindingHash, hashToken(grant.Token)); err != nil {
+					return err
+				}
+				grant.BrowserBindingHash = record.BrowserBindingHash
+			}
+			result, err := tx.Exec(`UPDATE profile_account_authentications SET consumed_at = ? WHERE id = ? AND consumed_at = ''`, now.Format(time.RFC3339Nano), record.ID)
+			if err != nil {
+				return err
+			}
+			changed, err := result.RowsAffected()
+			if err != nil || changed != 1 {
+				return errProfileAccountAuthenticationUsed
+			}
+			return nil
+		})
+		if errors.Is(err, errProfilePINConcurrentChange) {
+			continue
 		}
-		result, err := tx.Exec(`UPDATE profile_account_authentications SET consumed_at = ? WHERE id = ? AND consumed_at = ''`, now.Format(time.RFC3339Nano), record.ID)
 		if err != nil {
-			return err
+			return ProfileSelectionGrant{}, err
 		}
-		changed, err := result.RowsAffected()
-		if err != nil || changed != 1 {
-			return errProfileAccountAuthenticationUsed
+		if pinRequired == 1 && !trustedAutomaticSelection && !evaluation.valid {
+			return ProfileSelectionGrant{}, evaluation.result
 		}
-		return nil
-	})
-	if err == nil && pinResult != nil {
-		return ProfileSelectionGrant{}, pinResult
+		return grant, nil
 	}
-	return grant, err
+	return ProfileSelectionGrant{}, errProfilePINConcurrentChange
+}
+
+func (s *Server) profileAccountAuthenticationContext(ctx context.Context, rawToken, provider string, now time.Time) (profileAccountAuthenticationRecord, error) {
+	var record profileAccountAuthenticationRecord
+	var expiresAt, consumedAt string
+	err := s.queryUserRow(ctx, `
+		SELECT id, account_id, auth_provider, purpose, device_id, installation_id, browser_binding_hash, expires_at, consumed_at
+		FROM profile_account_authentications WHERE token_hash = ?`, hashToken(strings.TrimSpace(rawToken))).Scan(
+		&record.ID, &record.AccountID, &record.AuthProvider, &record.Purpose, &record.DeviceID, &record.InstallationID, &record.BrowserBindingHash, &expiresAt, &consumedAt)
+	if err != nil || record.AuthProvider != normalizeAuthProvider(provider) || record.DeviceID == "" {
+		return profileAccountAuthenticationRecord{}, errInvalidProfileAccountAuthentication
+	}
+	if consumedAt != "" {
+		return profileAccountAuthenticationRecord{}, errProfileAccountAuthenticationUsed
+	}
+	record.ExpiresAt, err = time.Parse(time.RFC3339Nano, expiresAt)
+	if err != nil || !record.ExpiresAt.After(now) {
+		return profileAccountAuthenticationRecord{}, errInvalidProfileAccountAuthentication
+	}
+	return record, nil
 }
 
 func profileAccountAuthenticationTx(tx *sql.Tx, rawToken, provider string, now time.Time) (profileAccountAuthenticationRecord, error) {
@@ -732,6 +801,9 @@ func (s *Server) profileSelectionGrantRecord(ctx context.Context, rawToken, prov
 }
 
 func (s *Server) writeProfileAuthenticationError(w http.ResponseWriter, err error) {
+	if writeKDFUnavailable(w, err) {
+		return
+	}
 	var retry *profilePINRetryAfterError
 	if errors.As(err, &retry) {
 		seconds := int64((retry.retryAfter + time.Second - 1) / time.Second)
@@ -741,6 +813,11 @@ func (s *Server) writeProfileAuthenticationError(w http.ResponseWriter, err erro
 		w.Header().Set("Retry-After", strconv.FormatInt(seconds, 10))
 	}
 	switch {
+	case errors.Is(err, errPasswordCredentialChanged):
+		writeProductError(w, http.StatusUnauthorized, "credentials_changed", "The account password changed while Portico was signing in. Sign in again.")
+	case errors.Is(err, errProfilePINConcurrentChange):
+		w.Header().Set("Retry-After", "1")
+		writeProductError(w, http.StatusServiceUnavailable, "profile_selection_busy", "This profile changed while Portico was verifying it. Try again shortly.")
 	case errors.Is(err, errProfilePINLocked):
 		writeProductError(w, http.StatusTooManyRequests, "profile_temporarily_locked", "Too many incorrect PIN attempts were made. Wait until the lock expires, then try again.")
 	case errors.Is(err, errProfilePINBackoff):

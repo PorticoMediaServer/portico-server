@@ -8,6 +8,7 @@ import (
 
 type User struct {
 	AuthSessionID          string             `json:"-"`
+	verifiedPasswordHash   string             `json:"-"`
 	ID                     string             `json:"id"`
 	AccountID              string             `json:"-"`
 	ProfileID              string             `json:"profileId,omitempty"`

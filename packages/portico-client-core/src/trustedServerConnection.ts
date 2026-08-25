@@ -180,6 +180,8 @@ export interface TrustedServerConnectorOptions {
   routeProbeFetch?: typeof fetch;
   routeProbeTimeoutMs?: number;
   routePreference?: HostedServerConnectorOptions["routePreference"];
+  /** Persisted installation identifier used only to spread route retries. */
+  retryCohort?: string;
   now?: () => Date;
   /** Cancels a stale server/profile choice before any active publication. */
   signal?: AbortSignal;
@@ -394,6 +396,7 @@ export async function refreshTrustedServerRoute(
     routePreference: options.routePreference,
     localRouteCandidates: options.localRouteCandidates,
     trustedHostedDocumentKeys,
+    retryCohort: options.retryCohort?.trim() || record.session.installationId,
     now: options.now,
     signal: options.signal
   });
@@ -567,90 +570,28 @@ export async function connectResilientHostedServer(
     }
   }
 
-  // Race cached authentication only against read-only Hosted discovery. A
-  // fresh Hosted credential is minted only if discovery wins the race (or the
-  // cached path fails), so a successful cached startup cannot leave an unused
-  // 180-day credential family behind.
-  const cached = cachedCandidate(existing, options).then(
-    candidate => ({ kind: "cached" as const, candidate }),
-    error => ({ kind: "cached-error" as const, error })
-  );
-  const discovered = discoverLiveRoute(server, options).then(
-    discovery => ({ kind: "discovered" as const, discovery }),
-    error => ({ kind: "discovery-error" as const, error })
-  );
-  const first = await Promise.race([cached, discovered]);
-  throwIfConnectionAborted(options.signal);
-
-  if (first.kind === "cached") {
-    try {
-      return await finish(first.candidate);
-    } catch (error) {
-      if (isCandidateTransactionFailure(error)) throw error;
-      throwIfConnectionAborted(options.signal);
-      const live = await discovered;
-      throwIfConnectionAborted(options.signal);
-      if (live.kind === "discovered") {
-        try {
-          return await finish(await liveCandidate(server, options, live.discovery));
-        } catch (liveError) {
-          if (isCandidateTransactionFailure(liveError)) throw liveError;
-          throwIfConnectionAborted(options.signal);
-          return fail(liveError);
-        }
-      }
-      return fail(error);
-    }
-  }
-
-  if (first.kind === "discovered") {
-    try {
-      return await finish(await liveCandidate(server, options, first.discovery));
-    } catch (liveError) {
-      if (isCandidateTransactionFailure(liveError)) throw liveError;
-      throwIfConnectionAborted(options.signal);
-      const remembered = await cached;
-      throwIfConnectionAborted(options.signal);
-      if (remembered.kind === "cached") {
-        try {
-          return await finish(remembered.candidate);
-        } catch (cachedError) {
-          if (isCandidateTransactionFailure(cachedError)) throw cachedError;
-          throwIfConnectionAborted(options.signal);
-          return fail(cachedError);
-        }
-      }
-      return fail(liveError);
-    }
-  }
-
-  if (first.kind === "cached-error") {
-    const live = await discovered;
+  // Warm startup is deliberately direct-first. Starting Hosted discovery in
+  // parallel makes a successful cached connection appear fast while still
+  // issuing /api/system, /api/signing-keys, and /routes in the background.
+  // Those requests are not harmless at fleet scale, and an aborted selection
+  // must never leave a losing Hosted branch running. Hosted recovery begins
+  // only after every remembered route has failed.
+  let cachedError: unknown;
+  try {
+    return await finish(await cachedCandidate(existing, options));
+  } catch (error) {
+    if (isCandidateTransactionFailure(error)) throw error;
     throwIfConnectionAborted(options.signal);
-    if (live.kind === "discovered") {
-      try {
-        return await finish(await liveCandidate(server, options, live.discovery));
-      } catch (liveError) {
-        if (isCandidateTransactionFailure(liveError)) throw liveError;
-        throwIfConnectionAborted(options.signal);
-        return fail(liveError);
-      }
-    }
-    return fail(first.error);
+    cachedError = error;
   }
 
-  const remembered = await cached;
-  throwIfConnectionAborted(options.signal);
-  if (remembered.kind === "cached") {
-    try {
-      return await finish(remembered.candidate);
-    } catch (error) {
-      if (isCandidateTransactionFailure(error)) throw error;
-      throwIfConnectionAborted(options.signal);
-      return fail(error);
-    }
+  try {
+    return await finish(await liveCandidate(server, options));
+  } catch (error) {
+    if (isCandidateTransactionFailure(error)) throw error;
+    throwIfConnectionAborted(options.signal);
+    return fail(error instanceof Error ? error : cachedError ?? error);
   }
-  return fail(first.error);
 }
 
 export function createTrustedServerCredentialAdapter(
@@ -668,29 +609,6 @@ export function createTrustedServerCredentialAdapter(
     },
     clear: async () => { await connections.ready?.(); return connections.remove(accountId, serverId); }
   };
-}
-
-async function discoverLiveRoute(
-  server: HostedServer,
-  options: ResilientHostedServerConnectorOptions
-): Promise<HostedServerRouteDiscovery> {
-  throwIfConnectionAborted(options.signal);
-  const trustedHostedDocumentKeys = await options.loadTrustedHostedDocumentKeys();
-  throwIfConnectionAborted(options.signal);
-  return discoverHostedServerRoute(server, {
-    hostedClient: options.hostedClient,
-    runtime: options.runtime,
-    routeProbeFetch: options.routeProbeFetch,
-    retryDelaysMs: options.retryDelaysMs,
-    retryDelay: options.retryDelay,
-    routeProbeTimeoutMs: options.routeProbeTimeoutMs,
-    maxParallelRouteProbes: options.maxParallelRouteProbes,
-    routePreference: options.routePreference,
-    localRouteCandidates: options.localRouteCandidates,
-    trustedHostedDocumentKeys,
-    now: options.now,
-    signal: options.signal
-  });
 }
 
 async function liveCandidate(
@@ -719,6 +637,7 @@ async function liveCandidate(
     routePreference: options.routePreference,
     localRouteCandidates: options.localRouteCandidates,
     trustedHostedDocumentKeys,
+    retryCohort: options.retryCohort?.trim() || options.clientIdentity.installationId,
     discoveredConnection,
     now: options.now,
     selectionEnvelope: options.selectionEnvelope,
