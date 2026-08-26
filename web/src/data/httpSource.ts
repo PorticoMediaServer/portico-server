@@ -159,13 +159,6 @@ export function trustedSetupClaimURL(raw: string): string {
   return claimURL.toString();
 }
 
-function abortIfRequested(signal: AbortSignal): void {
-  if (signal.aborted)
-    throw signal.reason instanceof Error
-      ? signal.reason
-      : new DOMException("Request aborted", "AbortError");
-}
-
 async function durableBrowserInstallationId(): Promise<string> {
   if (typeof window === "undefined")
     throw new Error(
