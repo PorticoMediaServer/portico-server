@@ -30,33 +30,6 @@ export type HostedDeviceAuthorizationDecisionRequest = HostedSchema<"DeviceAutho
 export type HostedDeviceAuthorizationDecisionResponse = HostedSchema<"DeviceAuthorizationDecisionResponse">;
 export type HostedDeviceAuthorizationRedeemResponse = HostedSchema<"DeviceAuthorizationRedeemResponse">;
 
-export interface HostedPushSubscriptionRequest {
-  installationId: string;
-  provider: "apns";
-  appBundleId: "tv.getportico.ios";
-  environment: "sandbox" | "production";
-  deviceToken: string;
-}
-
-export interface HostedPushSubscriptionRevokeRequest {
-  installationId: string;
-  appBundleId: "tv.getportico.ios";
-  environment: "sandbox" | "production";
-}
-
-export interface HostedPushSubscriptionReceipt {
-  version: 1;
-  subscriptionId: string;
-  provider: "apns";
-  appBundleId: string;
-  environment: "sandbox" | "production";
-  status: "active" | "revoked";
-  issuedAt: string;
-  signatureAlgorithm: "ed25519";
-  signingKeyId: string;
-  signature: string;
-}
-
 // Portico Account profiles are Cloud-owned. These aliases deliberately expose
 // the generated wire contract so every client uses the same request and
 // response shapes rather than recreating profile transport models per shell.

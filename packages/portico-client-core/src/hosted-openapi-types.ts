@@ -216,24 +216,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/account/push-subscriptions/current": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        /** Register the current authenticated native session for generic notification wake-ups */
-        put: operations["registerCurrentAccountPushSubscription"];
-        post?: never;
-        /** Revoke the current authenticated native session notification wake subscription */
-        delete: operations["revokeCurrentAccountPushSubscription"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/account/server-claims/by-code/complete": {
         parameters: {
             query?: never;
@@ -1618,23 +1600,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/servers/{serverId}/push-wakes": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Send generic notification invalidation wake-ups to active member installations */
-        post: operations["sendServerPushWake"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/servers/{serverId}/repair-signal": {
         parameters: {
             query?: never;
@@ -1850,31 +1815,6 @@ export interface components {
             expectedRevision: number;
             name: string;
             restrictions: components["schemas"]["AccountProfileRestrictions"];
-        };
-        AccountPushSubscriptionReceipt: {
-            appBundleId: string;
-            environment: string;
-            /** Format: date-time */
-            issuedAt: string;
-            provider: string;
-            signature: string;
-            signatureAlgorithm: string;
-            signingKeyId: string;
-            status: string;
-            subscriptionId: string;
-            version: number;
-        };
-        AccountPushSubscriptionRequest: {
-            appBundleId: string;
-            deviceToken: string;
-            environment: string;
-            installationId?: string;
-            provider: string;
-        };
-        AccountPushSubscriptionRevokeRequest: {
-            appBundleId: string;
-            environment: string;
-            installationId?: string;
         };
         AccountResponse: {
             [key: string]: unknown;
@@ -2511,15 +2451,12 @@ export interface components {
             deadReachabilityJobs: number;
             failedCertificateJobs: number;
             failedDnsRecordCount: number;
-            failedPushWakes: number;
             oldestCertificateJobAgeSeconds: number;
             oldestProfileImageDeletionAgeSeconds: number;
-            oldestPushWakeAgeSeconds: number;
             oldestReachabilityJobAgeSeconds: number;
             pendingCertificateJobs: number;
             pendingClaims: number;
             pendingInvitations: number;
-            pendingPushWakes: number;
             pendingReachabilityJobs: number;
             presenceCapacitySaturations: number;
             profileImageDeletionQueueCapacity: number;
@@ -2996,16 +2933,6 @@ export interface components {
             serverId: string;
             targetProfileRevision: number;
             wakeId: string;
-        };
-        ServerPushWakeRequest: {
-            idempotencyKey: string;
-            kind: string;
-            recipientAccountIds: string[];
-        };
-        ServerPushWakeResponse: {
-            accepted: number;
-            invalidated: number;
-            unavailable: number;
         };
         ServerUpdateRequest: {
             [key: string]: unknown;
@@ -5415,218 +5342,6 @@ export interface operations {
                 headers: {
                     /** @description Profile and credential responses are not cacheable. */
                     "Cache-Control"?: "no-store";
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-        };
-    };
-    registerCurrentAccountPushSubscription: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AccountPushSubscriptionRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AccountPushSubscriptionReceipt"];
-                };
-            };
-            /** @description Invalid request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-            /** @description Authentication required or credential invalid */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-            /** @description Authenticated principal is not authorized */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-            /** @description Resource not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-            /** @description Resource state conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-            /** @description HTTP 423 */
-            423: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-            /** @description Rate limit exceeded */
-            429: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-            /** @description Unexpected server error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-        };
-    };
-    revokeCurrentAccountPushSubscription: {
-        parameters: {
-            query?: never;
-            header: {
-                /** @description Stable caller-generated key required for terminal mutation replay and response-loss reconciliation. */
-                "Idempotency-Key": string;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AccountPushSubscriptionRevokeRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful response */
-            200: {
-                headers: {
-                    /** @description Committed or outcome_unknown terminal result marker. */
-                    "X-Portico-Terminal-Outcome"?: "committed" | "outcome_unknown";
-                    /** @description Stable server-derived receipt identifier for reconciliation. */
-                    "X-Portico-Terminal-Receipt"?: string;
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AccountPushSubscriptionReceipt"];
-                };
-            };
-            /** @description Invalid request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-            /** @description Authentication required or credential invalid */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-            /** @description Authenticated principal is not authorized */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-            /** @description Resource not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-            /** @description Resource state conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-            /** @description HTTP 423 */
-            423: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-            /** @description Rate limit exceeded */
-            429: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-            /** @description Unexpected server error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-            /** @description Service temporarily unavailable */
-            503: {
-                headers: {
-                    /** @description Committed or outcome_unknown terminal result marker. */
-                    "X-Portico-Terminal-Outcome"?: "committed" | "outcome_unknown";
-                    /** @description Stable server-derived receipt identifier for reconciliation. */
-                    "X-Portico-Terminal-Receipt"?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -14582,104 +14297,6 @@ export interface operations {
                 headers: {
                     /** @description Profile and credential responses are not cacheable. */
                     "Cache-Control"?: "no-store";
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-        };
-    };
-    sendServerPushWake: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                serverId: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ServerPushWakeRequest"];
-            };
-        };
-        responses: {
-            /** @description Request accepted */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ServerPushWakeResponse"];
-                };
-            };
-            /** @description Invalid request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-            /** @description Authentication required or credential invalid */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-            /** @description Authenticated principal is not authorized */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-            /** @description Resource not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-            /** @description Resource state conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-            /** @description HTTP 423 */
-            423: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-            /** @description Rate limit exceeded */
-            429: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-            /** @description Unexpected server error */
-            500: {
-                headers: {
                     [name: string]: unknown;
                 };
                 content: {

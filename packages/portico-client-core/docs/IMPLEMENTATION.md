@@ -114,7 +114,7 @@ Platform-specific code must continue to own:
 - Remote/focus navigation.
 - App lifecycle cleanup.
 - Offline/download storage.
-- Push notifications and device permissions.
+- App lifecycle handling and foreground notification-inbox refresh.
 
 TV and mobile clients should use the Hosted Services Nearby TV Setup methods rather than re-declaring request and response shapes locally. Hosted Services is the sole TV activation-code authority: its client exposes `createTVSetupSession`, scoped-secret `tvSetupSession`, `authorizeTVSetupGrant`, and `redeemTVSetupSession` so a signed-out TV can display one code before choosing a server. The local server does not issue or advertise a second, indistinguishable TV setup ticket. Protocol-v1 uses `XXXX-XXXX` codes from `ABCDEFGHJKMNPQRSTUVWXYZ23456789`; clients normalize lowercase, ordinary spaces, and at most one dash but reject every other shape. Binary, HLS, image, and Server-Sent Event routes should be consumed through the shared URL helpers so hosted/Portico tokens are applied consistently.
 

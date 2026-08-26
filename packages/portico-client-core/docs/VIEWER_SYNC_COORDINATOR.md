@@ -32,7 +32,7 @@ Every adapter must preserve this order:
 1. `playback-continuity`: established playback, player command/session events,
    and work required to keep buffered playback progressing;
 2. `interactive`: the visible route and direct user actions;
-3. `background`: hidden screens, notification badges, prefetch, and broad
+   3. `background`: hidden screens, notification-inbox reconciliation, prefetch, and broad
    foreground reconciliation.
 
 Ordinary app synchronization must never consume the reserved playback query

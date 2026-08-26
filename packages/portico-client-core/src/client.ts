@@ -4778,7 +4778,6 @@ function isHostedTerminalMutation(path: string, method: string): boolean {
     verb === "DELETE" &&
     new Set([
       "/api/account/me/image",
-      "/api/account/push-subscriptions/current",
     ]).has(pathname)
   )
     return true;
@@ -5200,20 +5199,6 @@ export function createHostedServicesClient(
         method: "POST",
         body: { refreshToken },
       }),
-    registerPushSubscription: (
-      body: import("./types.js").HostedPushSubscriptionRequest,
-    ) =>
-      request<import("./types.js").HostedPushSubscriptionReceipt>(
-        "/api/account/push-subscriptions/current",
-        { method: "PUT", body },
-      ),
-    revokePushSubscription: (
-      body: import("./types.js").HostedPushSubscriptionRevokeRequest,
-    ) =>
-      request<import("./types.js").HostedPushSubscriptionReceipt>(
-        "/api/account/push-subscriptions/current",
-        { method: "DELETE", body },
-      ),
     logout: async () => {
       const response = await request<{ ok: boolean }>("/api/auth/logout", {
         method: "POST",
