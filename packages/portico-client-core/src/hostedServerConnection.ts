@@ -55,7 +55,7 @@ export interface HostedServerConnectorOptions {
   /** Clients default to LAN first and fall back to the verified public route without changing account or viewer authority. */
   routePreference?: HostedRoutePreference;
   rememberLastConnectedServer?: (serverId: string) => void;
-  localRouteCandidates?: (server: HostedServer, document: HostedRouteDocument) => HostedRouteEntry[] | Promise<HostedRouteEntry[]>;
+  localRouteCandidates?: (server: HostedServer, document: HostedRouteDocument, signal?: AbortSignal) => HostedRouteEntry[] | Promise<HostedRouteEntry[]>;
   trustedHostedDocumentKeys: Record<string, string>;
   /** Explicit, PIN-verified profile selection bound to this server and Hosted device session. */
   selectionEnvelope: HostedProfileSelectionEnvelope;
@@ -123,6 +123,7 @@ function validateRouteURL(route: HostedRouteEntry, lan: boolean): string | undef
 
 const defaultHostedConnectionRetryDelaysMs = [2500, 5000];
 const defaultHostedRouteDiscoveryTimeoutMs = 30_000;
+const hostedRouteFallbackDelayMs = 150;
 const maxPendingRouteFailureReports = 8;
 const routeFailureReportCooldownMs = 30_000;
 const maxRememberedRouteFailureReports = 128;
@@ -618,11 +619,15 @@ export async function discoverHostedServerRoute(
 			  if (routeDocument.serverPublicKey !== server.serverPublicKey || routeDocument.serverPublicKeyFingerprint !== server.serverPublicKeyFingerprint) {
 				  throw new Error("The signed route document does not match the selected Hosted server identity.");
 			  }
-        const routes = [
-          ...routesForConnection(routeDocument, options.routePreference),
-          ...await localRoutesForConnection(server, routeDocument, discoveryOptions)
-        ];
-        const route = await selectVerifiedRoute(routes, routeDocument, discoveryOptions);
+        const routes = routesForConnection(routeDocument, options.routePreference);
+        const route = await selectVerifiedRoute(
+          routes,
+          routeDocument,
+          discoveryOptions,
+          options.routePreference === "public-only" || !options.localRouteCandidates
+            ? undefined
+            : signal => localRoutesForConnection(server, routeDocument, { ...discoveryOptions, signal })
+        );
         throwIfConnectionAborted(deadlineController.signal);
         if (route) return { routeDocument, route };
         throw lastRouteError ?? new Error("Unable to verify a route for this server.");
@@ -823,14 +828,20 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 async function localRoutesForConnection(server: HostedServer, document: HostedRouteDocument, options: HostedServerRouteDiscoveryOptions): Promise<HostedRouteEntry[]> {
   if (!options.localRouteCandidates) return [];
   throwIfConnectionAborted(options.signal);
-  const candidates = await options.localRouteCandidates(server, document);
+  const candidates = await options.localRouteCandidates(server, document, options.signal);
   throwIfConnectionAborted(options.signal);
   return candidates
     .filter((route) => isLANRoute(route) && route.url)
     .map((route) => ({ ...route, quality: route.quality || "reported" }));
 }
 
-async function selectVerifiedRoute(routes: HostedRouteEntry[], document: HostedRouteDocument, options: HostedServerRouteDiscoveryOptions): Promise<HostedRouteEntry> {
+async function selectVerifiedRoute(
+  routes: HostedRouteEntry[],
+  document: HostedRouteDocument,
+  options: HostedServerRouteDiscoveryOptions,
+  discoverLocalRoutes?: (signal: AbortSignal) => Promise<HostedRouteEntry[]>
+): Promise<HostedRouteEntry> {
+  type RouteProbeResult = { route?: HostedRouteEntry; error?: Error };
   const unique = new Map<string, HostedRouteEntry>();
   for (const route of routes) {
     const key = `${route.type}\n${route.url}`;
@@ -839,53 +850,92 @@ async function selectVerifiedRoute(routes: HostedRouteEntry[], document: HostedR
   const candidates = [...unique.values()];
   const lan = candidates.filter(isLANRoute);
   const publicRoutes = candidates.filter((route) => !isLANRoute(route));
-  const groups = options.routePreference === "public-first" || options.routePreference === "public-only"
-    ? [publicRoutes, ...(options.routePreference === "public-only" ? [] : [lan])]
-    : [lan, ...(options.routePreference === "lan-only" ? [] : [publicRoutes])];
+  const runtime = createHostedConnectionRuntime(options.runtime);
+  const controller = runtime.createAbortController();
+  const abortForCaller = () => controller.abort(options.signal?.reason);
+  options.signal?.addEventListener("abort", abortForCaller, {once: true});
+  const scopedOptions = { ...options, signal: controller.signal };
+  const tasks: Promise<RouteProbeResult>[] = [];
+  const lanFirst = options.routePreference !== "public-first" && options.routePreference !== "public-only";
+  const allowLAN = options.routePreference !== "public-only";
+  const allowPublic = options.routePreference !== "lan-only";
+  if (allowLAN && lan.length > 0) {
+    tasks.push((async () => {
+      if (!lanFirst) await delay(hostedRouteFallbackDelayMs, runtime, controller.signal);
+      return probeRouteGroup(lan, document, scopedOptions);
+    })());
+  }
+  if (allowLAN && discoverLocalRoutes) {
+    tasks.push((async () => {
+      const discovered = await discoverLocalRoutes(controller.signal);
+      throwIfConnectionAborted(controller.signal);
+      if (!lanFirst) await delay(hostedRouteFallbackDelayMs, runtime, controller.signal);
+      return discovered.length > 0
+        ? probeRouteGroup(discovered, document, scopedOptions)
+        : { error: new Error("No nearby route was discovered for this server.") } satisfies RouteProbeResult;
+    })().catch(error => ({ error: error instanceof Error ? error : new Error(String(error)) } satisfies RouteProbeResult)));
+  }
+  if (allowPublic && publicRoutes.length > 0) {
+    tasks.push((async () => {
+      // Preference is a small head start, never a cumulative LAN/WAN timeout.
+      if (lanFirst && (lan.length > 0 || discoverLocalRoutes)) {
+        await delay(hostedRouteFallbackDelayMs, runtime, controller.signal);
+      }
+      return probeRouteGroup(publicRoutes, document, scopedOptions);
+    })());
+  }
   let lastError: Error | undefined;
-  for (const group of groups) {
-    throwIfConnectionAborted(options.signal);
-    if (group.length === 0) continue;
-    const result = await probeRouteGroup(group, document, options);
-    if (result.route) return result.route;
-    if (result.error) {
-      lastError = result.error;
-      if (!hostedConnectionErrorIsRetryable(result.error)) throw result.error;
+  let hardError: Error | undefined;
+  const pending = new Map<number, Promise<{ index: number; result: RouteProbeResult }>>(tasks.map((task, index) => [index, task.then(
+    result => ({ index, result }),
+    error => ({ index, result: { error: error instanceof Error ? error : new Error(String(error)) } })
+  )]));
+  try {
+    while (pending.size > 0) {
+      const settled = await Promise.race(pending.values());
+      throwIfConnectionAborted(options.signal);
+      pending.delete(settled.index);
+      if (settled.result.route) return settled.result.route;
+      if (settled.result.error) {
+        lastError = settled.result.error;
+        if (!hostedConnectionErrorIsRetryable(settled.result.error) && !hardError) {
+          hardError = settled.result.error;
+        }
+      }
     }
+  } finally {
+    if (!controller.signal.aborted) controller.abort();
+    options.signal?.removeEventListener("abort", abortForCaller);
   }
   if (options.routePreference === "public-only" && lan.length > 0) {
     throw new NearbyRouteAvailableError(lastError === undefined ? undefined : { cause: lastError });
   }
-  throw lastError ?? new Error("Unable to verify a route for this server.");
+  throw hardError ?? lastError ?? new Error("Unable to verify a route for this server.");
 }
 
 async function probeRouteGroup(routes: HostedRouteEntry[], document: HostedRouteDocument, options: HostedServerRouteDiscoveryOptions): Promise<{ route?: HostedRouteEntry; error?: Error }> {
   const parallelism = Math.max(1, Math.min(4, options.maxParallelRouteProbes ?? 3));
   let lastError: Error | undefined;
+  let hardError: Error | undefined;
   for (let offset = 0; offset < routes.length; offset += parallelism) {
     throwIfConnectionAborted(options.signal);
     const batch = routes.slice(offset, offset + parallelism);
-    const results = await Promise.all(batch.map(async (route) => {
-      try {
-        await verifyRoute(route, document, options);
-        return { route };
-      } catch (error) {
-        return { error: error instanceof Error ? error : new Error(String(error)) };
-      }
-    }));
-    throwIfConnectionAborted(options.signal);
-    const success = results.find((result) => result.route);
-    if (success?.route) return { route: success.route };
-    const hardFailure = results.find((result) => result.error && !hostedConnectionErrorIsRetryable(result.error));
-    if (hardFailure?.error) return { error: hardFailure.error };
-    for (let index = results.length - 1; index >= 0; index -= 1) {
-      if (results[index]?.error) {
-        lastError = results[index].error;
-        break;
+    const pending = new Map<number, Promise<{ index: number; route?: HostedRouteEntry; error?: Error }>>(batch.map((route, index) => [index, verifyRoute(route, document, options).then(
+      () => ({ index, route } as { index: number; route?: HostedRouteEntry; error?: Error }),
+      error => ({ index, error: error instanceof Error ? error : new Error(String(error)) } as { index: number; route?: HostedRouteEntry; error?: Error })
+    )]));
+    while (pending.size > 0) {
+      const result = await Promise.race(pending.values());
+      throwIfConnectionAborted(options.signal);
+      pending.delete(result.index);
+      if (result.route) return { route: result.route };
+      if (result.error) {
+        lastError = result.error;
+        if (!hostedConnectionErrorIsRetryable(result.error) && !hardError) hardError = result.error;
       }
     }
   }
-  return { error: lastError };
+  return { error: hardError ?? lastError };
 }
 
 function delay(milliseconds: number, runtime: ResolvedHostedConnectionRuntimeAdapters, signal?: AbortSignal): Promise<void> {

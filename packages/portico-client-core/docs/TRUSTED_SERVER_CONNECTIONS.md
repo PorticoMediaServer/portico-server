@@ -37,11 +37,17 @@ then go directly to the server.
 
 ## Later launches
 
-Cached current/previous route probes run at the same time as fresh Hosted
-discovery. A cached route is only a connection hint: its public health response
+Cached current/previous LAN and public route probes run as a first-success race,
+with LAN receiving only a small head start rather than a complete serialized
+timeout. A cached route is only a connection hint: its public health response
 must match the pinned server ID and fingerprint before any server credential is
-sent. A Hosted timeout or outage therefore cannot block a previously attached
-device from opening its server.
+sent. If no remembered route verifies within 500 milliseconds, fresh Hosted
+discovery starts as a hedge while the cached probes continue. Conclusive cached
+failure starts Hosted immediately; a quick cached winner makes no Hosted route
+request. Bonjour discovery never blocks an available public-route probe, and
+losing probes are cancelled after the first identity-confirmed winner. A Hosted
+timeout or outage therefore cannot block a previously attached device from
+opening its server.
 
 Use `connectTrustedServerRecord()` when the Hosted server list itself is
 unavailable. This is particularly useful while restoring an app shell from

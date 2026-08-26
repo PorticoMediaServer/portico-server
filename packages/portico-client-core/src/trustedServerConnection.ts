@@ -340,6 +340,9 @@ interface CandidateConnection {
   source: "hosted" | "cached";
 }
 
+const hostedDiscoveryHedgeDelayMs = 500;
+const cachedRouteFallbackDelayMs = 150;
+
 /**
  * Connects without contacting Hosted Services. Route hints are not authority:
  * each is probed over HTTPS and must return the pinned server ID and public-key
@@ -439,10 +442,11 @@ export async function refreshTrustedServerRoute(
 }
 
 /**
- * Starts cached direct/LAN authentication and read-only Hosted route discovery
- * together. A cached winner returns without minting a new credential; a live
- * winner mints only after discovery is selected. Failure of either path never
- * erases durable state unless the selected server explicitly reports a scoped
+ * Starts with a credential-free race across remembered direct/LAN routes and
+ * hedges read-only Hosted discovery only when no route verifies within 500 ms.
+ * A cached winner returns without minting a new credential; a live winner
+ * mints only after discovery is selected. Failure of either path never erases
+ * durable state unless the selected server explicitly reports a scoped
  * revocation.
  */
 export async function connectResilientHostedServer(
@@ -511,87 +515,146 @@ export async function connectResilientHostedServer(
     }
   }
 
-  // Restricted browser modes are deliberately sequential. Automatic Web
-  // startup uses public-only; lan-only is reserved for an explicit nearby
-  // connection action that may trigger browser Local Network permission.
-  if (options.routePreference === "public-only" || options.routePreference === "lan-only") {
-    const scope = options.routePreference === "public-only" ? "public" : "lan";
-    let cachedError: unknown;
-    try {
-      return await finish(await cachedCandidate(existing, options, scope));
-    } catch (error) {
-      if (isCandidateTransactionFailure(error)) throw error;
-      throwIfConnectionAborted(options.signal);
-      cachedError = error;
-    }
-    try {
-      return await finish(await liveCandidate(server, options));
-    } catch (error) {
-      if (isCandidateTransactionFailure(error)) throw error;
-      throwIfConnectionAborted(options.signal);
-      if (options.routePreference === "public-only") {
-        const hasRememberedLAN = [existing.currentRoute, existing.previousRoute]
-          .some((route) => route !== undefined && cachedRouteIsLAN(route));
-        if (hasRememberedLAN && !isTerminalServerAuthorizationFailure(error)) {
-          return fail(error instanceof NearbyRouteAvailableError
-            ? error
-            : new NearbyRouteAvailableError({ cause: error }));
-        }
-      }
-      if (error instanceof NearbyRouteAvailableError || error instanceof LocalNetworkRouteUnavailableError) return fail(error);
-      return fail(cachedError ?? error);
-    }
-  }
-
-  // Public-first remains available to callers that consciously accept
-  // automatic LAN fallback after public routes fail.
-  if (options.routePreference === "public-first") {
-    try {
-      return await finish(await cachedCandidate(existing, options, "public"));
-    } catch (error) {
-      if (isCandidateTransactionFailure(error)) throw error;
-      throwIfConnectionAborted(options.signal);
-    }
-    try {
-      // A previously identity-verified LAN route is still useful when Hosted
-      // Services is unavailable. Probe every durable rollback candidate before
-      // making fresh signed discovery a requirement; public remains first.
-      return await finish(await cachedCandidate(existing, options, "lan"));
-    } catch (error) {
-      if (isCandidateTransactionFailure(error)) throw error;
-      throwIfConnectionAborted(options.signal);
-    }
-    try {
-      return await finish(await liveCandidate(server, options));
-    } catch (error) {
-      if (isCandidateTransactionFailure(error)) throw error;
-      throwIfConnectionAborted(options.signal);
-      return fail(error);
-    }
-  }
-
-  // Warm startup is deliberately direct-first. Starting Hosted discovery in
-  // parallel makes a successful cached connection appear fast while still
-  // issuing /api/system, /api/signing-keys, and /routes in the background.
-  // Those requests are not harmless at fleet scale, and an aborted selection
-  // must never leave a losing Hosted branch running. Hosted recovery begins
-  // only after every remembered route has failed.
-  let cachedError: unknown;
+  const routeScope = options.routePreference === "public-only"
+    ? "public"
+    : options.routePreference === "lan-only"
+      ? "lan"
+      : "all";
+  let winner: TrustedRouteDiscoveryWinner;
   try {
-    return await finish(await cachedCandidate(existing, options));
+    winner = await discoverTrustedRouteWinner(existing, server, options, routeScope);
   } catch (error) {
     if (isCandidateTransactionFailure(error)) throw error;
     throwIfConnectionAborted(options.signal);
-    cachedError = error;
+    return fail(restrictedRouteFailure(error, existing, options.routePreference));
   }
 
   try {
-    return await finish(await liveCandidate(server, options));
-  } catch (error) {
-    if (isCandidateTransactionFailure(error)) throw error;
+    const candidate = winner.source === "cached"
+      ? await cachedCandidate(existing, options, routeScope, winner.route)
+      : await liveCandidate(server, options, winner.discovery);
+    return await finish(candidate);
+  } catch (firstError) {
+    if (isCandidateTransactionFailure(firstError)) throw firstError;
     throwIfConnectionAborted(options.signal);
-    return fail(error instanceof Error ? error : cachedError ?? error);
+    if (isTerminalServerAuthorizationFailure(firstError)) return fail(firstError);
+    try {
+      // The selected route proved the pinned server before its authenticated
+      // activation failed. Retry only the other discovery class; this keeps a
+      // transient credential/API failure from discarding a still-valid route.
+      const fallback = winner.source === "cached"
+        ? await liveCandidate(server, options)
+        : await cachedCandidate(existing, options, routeScope);
+      return await finish(fallback);
+    } catch (fallbackError) {
+      if (isCandidateTransactionFailure(fallbackError)) throw fallbackError;
+      throwIfConnectionAborted(options.signal);
+      return fail(restrictedRouteFailure(fallbackError ?? firstError, existing, options.routePreference));
+    }
   }
+}
+
+type CachedRouteScope = "all" | "public" | "lan";
+
+type TrustedRouteDiscoveryWinner =
+  | { source: "cached"; route: VerifiedServerRouteHint }
+  | { source: "hosted"; discovery: HostedServerRouteDiscovery };
+
+type DiscoveryOutcome<T> =
+  | { ok: true; value: T }
+  | { ok: false; error: unknown };
+
+async function discoverTrustedRouteWinner(
+  record: TrustedServerConnectionRecord,
+  server: HostedServer,
+  options: ResilientHostedServerConnectorOptions,
+  routeScope: CachedRouteScope
+): Promise<TrustedRouteDiscoveryWinner> {
+  const runtime = createHostedConnectionRuntime(options.runtime);
+  const cachedController = runtime.createAbortController();
+  const hostedController = runtime.createAbortController();
+  const abortBranches = () => {
+    if (!cachedController.signal.aborted) cachedController.abort(options.signal?.reason);
+    if (!hostedController.signal.aborted) hostedController.abort(options.signal?.reason);
+  };
+  options.signal?.addEventListener("abort", abortBranches, {once: true});
+  const cachedOutcome = selectCachedVerifiedRoute(record, {
+    ...options,
+    signal: cachedController.signal
+  }, routeScope).then<DiscoveryOutcome<TrustedRouteDiscoveryWinner>, DiscoveryOutcome<TrustedRouteDiscoveryWinner>>(
+    route => ({ ok: true, value: { source: "cached", route } }),
+    error => ({ ok: false, error })
+  ).then(outcome => ({ branch: "cached" as const, outcome }));
+  let hedgeTimer: unknown;
+  const hedge = new Promise<"hedge">((resolve) => {
+    hedgeTimer = runtime.setTimeout(() => resolve("hedge"), hostedDiscoveryHedgeDelayMs);
+  });
+  const hostedOutcome = () => discoverFreshHostedRoute(server, options, hostedController.signal)
+    .then<DiscoveryOutcome<TrustedRouteDiscoveryWinner>, DiscoveryOutcome<TrustedRouteDiscoveryWinner>>(
+      discovery => ({ ok: true, value: { source: "hosted", discovery } }),
+      error => ({ ok: false, error })
+    ).then(outcome => ({ branch: "hosted" as const, outcome }));
+  try {
+    const initial = await Promise.race([cachedOutcome, hedge]);
+    throwIfConnectionAborted(options.signal);
+    if (initial !== "hedge") {
+      runtime.clearTimeout(hedgeTimer);
+      if (initial.outcome.ok) return initial.outcome.value;
+      const hosted = await hostedOutcome();
+      if (hosted.outcome.ok) return hosted.outcome.value;
+      throw hosted.outcome.error ?? initial.outcome.error;
+    }
+
+    const hosted = hostedOutcome();
+    const first = await Promise.race([cachedOutcome, hosted]);
+    throwIfConnectionAborted(options.signal);
+    if (first.outcome.ok) return first.outcome.value;
+    const second = first.branch === "cached" ? await hosted : await cachedOutcome;
+    if (second.outcome.ok) return second.outcome.value;
+    throw second.outcome.error ?? first.outcome.error;
+  } finally {
+    runtime.clearTimeout(hedgeTimer);
+    abortBranches();
+    options.signal?.removeEventListener("abort", abortBranches);
+  }
+}
+
+async function discoverFreshHostedRoute(
+  server: HostedServer,
+  options: ResilientHostedServerConnectorOptions,
+  signal: AbortSignal
+): Promise<HostedServerRouteDiscovery> {
+  const trustedHostedDocumentKeys = await options.loadTrustedHostedDocumentKeys();
+  throwIfConnectionAborted(signal);
+  return discoverHostedServerRoute(server, {
+    hostedClient: options.hostedClient,
+    runtime: options.runtime,
+    routeProbeFetch: options.routeProbeFetch,
+    retryDelaysMs: options.retryDelaysMs,
+    retryDelay: options.retryDelay,
+    routeProbeTimeoutMs: options.routeProbeTimeoutMs,
+    maxParallelRouteProbes: options.maxParallelRouteProbes,
+    routePreference: options.routePreference,
+    localRouteCandidates: options.localRouteCandidates,
+    trustedHostedDocumentKeys,
+    retryCohort: options.retryCohort?.trim() || options.clientIdentity.installationId,
+    now: options.now,
+    signal
+  });
+}
+
+function restrictedRouteFailure(
+  error: unknown,
+  record: TrustedServerConnectionRecord,
+  preference: HostedServerConnectorOptions["routePreference"]
+): unknown {
+  if (error instanceof NearbyRouteAvailableError || error instanceof LocalNetworkRouteUnavailableError) return error;
+  if (preference === "public-only" && !isTerminalServerAuthorizationFailure(error)) {
+    const hasRememberedLAN = [record.currentRoute, record.previousRoute]
+      .some((route) => route !== undefined && cachedRouteIsLAN(route));
+    if (hasRememberedLAN) return new NearbyRouteAvailableError({ cause: error });
+  }
+  return error;
 }
 
 export function createTrustedServerCredentialAdapter(
@@ -661,10 +724,11 @@ async function liveCandidate(
 async function cachedCandidate(
   record: TrustedServerConnectionRecord,
   options: Pick<TrustedServerConnectorOptions, "createLocalClient" | "runtime" | "routeProbeFetch" | "routeProbeTimeoutMs" | "routePreference" | "now" | "signal">,
-  routeScope: "all" | "public" | "lan" = "all"
+  routeScope: CachedRouteScope = "all",
+  selectedRoute?: VerifiedServerRouteHint
 ): Promise<CandidateConnection> {
   throwIfConnectionAborted(options.signal);
-  const route = await selectCachedVerifiedRoute(record, options, routeScope);
+  const route = selectedRoute ?? await selectCachedVerifiedRoute(record, options, routeScope);
   throwIfConnectionAborted(options.signal);
   const session: LocalServerSession = {
     ...record.session,
@@ -700,46 +764,69 @@ async function selectCachedVerifiedRoute(
     .filter((route): route is VerifiedServerRouteHint => Boolean(route))
     .filter((route) => routeScope === "all" || (routeScope === "lan") === cachedRouteIsLAN(route));
   if (candidates.length === 0) throw new Error(`No remembered ${routeScope === "all" ? "" : `${routeScope} `}route could reach this server.`);
-  if ((options.routePreference === "public-first" || options.routePreference === "lan-first") && routeScope === "all") {
-    const lan = candidates.filter(cachedRouteIsLAN);
-    const publicRoutes = candidates.filter((route) => !cachedRouteIsLAN(route));
-    const groups = options.routePreference === "lan-first" ? [lan, publicRoutes] : [publicRoutes, lan];
-    const errors: unknown[] = [];
-    for (const group of groups) {
-      if (group.length === 0) continue;
-      const results = await Promise.all(group.map(async (route) => {
-        try {
-          await verifyCachedRoute(route, record, options);
-          return { route };
-        } catch (error) {
-          return { error };
-        }
-      }));
-      throwIfConnectionAborted(options.signal);
-      const success = results.find((result) => result.route);
-      if (success?.route) return success.route;
-      errors.push(...results.flatMap((result) => result.error === undefined ? [] : [result.error]));
+  const hasLAN = candidates.some(cachedRouteIsLAN);
+  const hasPublic = candidates.some((route) => !cachedRouteIsLAN(route));
+  const delayLAN = routeScope === "all" && hasLAN && hasPublic && options.routePreference === "public-first";
+  const delayPublic = routeScope === "all" && hasLAN && hasPublic && options.routePreference !== "public-first";
+  const runtime = createHostedConnectionRuntime(options.runtime);
+  const controllers = candidates.map(() => runtime.createAbortController());
+  const abortCandidates = () => {
+    for (const controller of controllers) {
+      if (!controller.signal.aborted) controller.abort(options.signal?.reason);
     }
-    const identityError = errors.find(error => errorMessage(error).includes("identity"));
-    throw identityError ?? errors.at(-1) ?? new Error("No remembered route could reach this server.");
-  }
+  };
+  options.signal?.addEventListener("abort", abortCandidates, {once: true});
   const pending = new Map<number, Promise<{ index: number; route?: VerifiedServerRouteHint; error?: unknown }>>();
   candidates.forEach((route, index) => {
-    pending.set(index, verifyCachedRoute(route, record, options).then(
-      () => ({ index, route }),
-      error => ({ index, error })
-    ));
+    const controller = controllers[index]!;
+    const delayed = (delayLAN && cachedRouteIsLAN(route)) || (delayPublic && !cachedRouteIsLAN(route));
+    pending.set(index, (async () => {
+      if (delayed) await waitForConnectionDelay(cachedRouteFallbackDelayMs, runtime, controller.signal);
+      await verifyCachedRoute(route, record, { ...options, signal: controller.signal });
+      return { index, route };
+    })().catch(error => ({ index, error })));
   });
   const errors: unknown[] = [];
-  while (pending.size > 0) {
-    const result = await Promise.race(pending.values());
-    throwIfConnectionAborted(options.signal);
-    pending.delete(result.index);
-    if (result.route) return result.route;
-    errors.push(result.error);
+  try {
+    while (pending.size > 0) {
+      const result = await Promise.race(pending.values());
+      throwIfConnectionAborted(options.signal);
+      pending.delete(result.index);
+      if (result.route) {
+        controllers.forEach((controller, index) => {
+          if (index !== result.index && !controller.signal.aborted) controller.abort();
+        });
+        return result.route;
+      }
+      errors.push(result.error);
+    }
+  } finally {
+    options.signal?.removeEventListener("abort", abortCandidates);
   }
   const identityError = errors.find(error => errorMessage(error).includes("identity"));
   throw identityError ?? errors.at(-1) ?? new Error("No remembered route could reach this server.");
+}
+
+function waitForConnectionDelay(
+  milliseconds: number,
+  runtime: ReturnType<typeof createHostedConnectionRuntime>,
+  signal?: AbortSignal
+): Promise<void> {
+  if (signal?.aborted) {
+    return Promise.reject(signal.reason instanceof Error ? signal.reason : new Error("Connection attempt was cancelled."));
+  }
+  return new Promise((resolve, reject) => {
+    const handle = runtime.setTimeout(() => {
+      signal?.removeEventListener("abort", abort);
+      resolve();
+    }, milliseconds);
+    const abort = () => {
+      runtime.clearTimeout(handle);
+      signal?.removeEventListener("abort", abort);
+      reject(signal?.reason instanceof Error ? signal.reason : new Error("Connection attempt was cancelled."));
+    };
+    signal?.addEventListener("abort", abort, {once: true});
+  });
 }
 
 function cachedRouteIsLAN(route: VerifiedServerRouteHint): boolean {

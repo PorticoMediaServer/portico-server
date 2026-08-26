@@ -6,6 +6,7 @@ import {
   connectResilientHostedServer,
   connectTrustedServerRecord,
   createMemorySessionStore,
+  discoverHostedServerRoute,
   isTerminalServerAuthorizationFailure,
   refreshTrustedServerRoute,
   TrustedServerCandidateActivationError,
@@ -267,6 +268,163 @@ test("Hosted discovery failure does not block or erase a verified cached server 
   assert.equal(result.identity.authenticated, true);
   assert.equal(connections.values.size, 1);
   assert.deepEqual(connections.removed, []);
+});
+
+test("cached LAN and public routes use a staggered first-success race and cancel the loser", async () => {
+  const stored = record({
+    previousRoute: {
+      url: "https://192-168-1-20.direct.getportico.tv:32500",
+      type: "lan_ip_encoded",
+      verifiedAt: "2026-07-13T11:00:00.000Z"
+    }
+  });
+  const connections = adapter([stored]);
+  let lanAborted = false;
+  let hostedDiscoveryCalls = 0;
+  const startedAt = Date.now();
+  const result = await connectResilientHostedServer(
+    { ...testServerIdentity(), id: stored.serverId, name: stored.serverName, preferredAuthMode: "portico" },
+    {
+      accountId: stored.accountId,
+      connectionAdapter: connections,
+      hostedClient: {},
+      loadTrustedHostedDocumentKeys: async () => {
+        hostedDiscoveryCalls += 1;
+        throw new Error("Hosted discovery must not start for a quick cached winner.");
+      },
+      selectionEnvelope: { accountId: stored.accountId, serverId: stored.serverId, profileId: stored.profileId, installationId: "install-1" },
+      clientIdentity: { installationId: "install-1", deviceName: "iPhone", app: "Portico", platform: "iOS" },
+      routePreference: "lan-first",
+      sessionStore: createMemorySessionStore(stored.session),
+      stageCandidate,
+      createLocalClient: store => localClient(store),
+      routeProbeFetch: async (input, init) => {
+        if (String(input).startsWith(stored.previousRoute.url)) {
+          return new Promise((_, reject) => {
+            const abort = () => {
+              lanAborted = true;
+              reject(new Error("LAN probe cancelled after the public route won."));
+            };
+            init?.signal?.addEventListener("abort", abort, { once: true });
+          });
+        }
+        return jsonResponse({
+          serverId: stored.serverId,
+          serverPublicKeyFingerprint: stored.serverPublicKeyFingerprint,
+          remoteAccessEnabled: true
+        });
+      }
+    }
+  );
+
+  assert.equal(result.source, "cached");
+  assert.equal(result.session.apiBaseUrl, stored.currentRoute.url);
+  assert.equal(hostedDiscoveryCalls, 0);
+  assert.equal(lanAborted, true);
+  assert.ok(Date.now() - startedAt < 450, "LAN failure must not impose a full route timeout before public routing");
+});
+
+test("Hosted discovery is hedged after 500 ms while a cached probe remains eligible to win", async () => {
+  const stored = record({ previousRoute: undefined });
+  const connections = adapter([stored]);
+  let releaseCachedProbe;
+  let hostedStartedAt = 0;
+  const startedAt = Date.now();
+  const result = await connectResilientHostedServer(
+    { ...testServerIdentity(), id: stored.serverId, name: stored.serverName, preferredAuthMode: "portico" },
+    {
+      accountId: stored.accountId,
+      connectionAdapter: connections,
+      hostedClient: {},
+      loadTrustedHostedDocumentKeys: async () => {
+        hostedStartedAt = Date.now();
+        releaseCachedProbe(jsonResponse({
+          serverId: stored.serverId,
+          serverPublicKeyFingerprint: stored.serverPublicKeyFingerprint,
+          remoteAccessEnabled: true
+        }));
+        throw new TypeError("Hosted Services unavailable");
+      },
+      selectionEnvelope: { accountId: stored.accountId, serverId: stored.serverId, profileId: stored.profileId, installationId: "install-1" },
+      clientIdentity: { installationId: "install-1", deviceName: "iPhone", app: "Portico", platform: "iOS" },
+      sessionStore: createMemorySessionStore(stored.session),
+      stageCandidate,
+      createLocalClient: store => localClient(store),
+      routeProbeFetch: async () => new Promise(resolve => { releaseCachedProbe = resolve; })
+    }
+  );
+
+  assert.equal(result.source, "cached");
+  assert.ok(hostedStartedAt - startedAt >= 450, "Hosted must not receive a healthy warm-start request before the hedge window");
+  assert.ok(hostedStartedAt - startedAt < 800, "Hosted discovery should start close to the 500 ms hedge boundary");
+});
+
+test("a conclusive cached failure starts Hosted discovery without waiting for the hedge timer", async () => {
+  const stored = record({ previousRoute: undefined });
+  const startedAt = Date.now();
+  let hostedStartedAt = 0;
+  await assert.rejects(connectResilientHostedServer(
+    { ...testServerIdentity(), id: stored.serverId, name: stored.serverName, preferredAuthMode: "portico" },
+    {
+      accountId: stored.accountId,
+      connectionAdapter: adapter([stored]),
+      hostedClient: {},
+      loadTrustedHostedDocumentKeys: async () => {
+        hostedStartedAt = Date.now();
+        throw new TypeError("Hosted Services unavailable");
+      },
+      selectionEnvelope: { accountId: stored.accountId, serverId: stored.serverId, profileId: stored.profileId, installationId: "install-1" },
+      clientIdentity: { installationId: "install-1", deviceName: "iPhone", app: "Portico", platform: "iOS" },
+      sessionStore: createMemorySessionStore(stored.session),
+      stageCandidate,
+      createLocalClient: store => localClient(store),
+      routeProbeFetch: async () => { throw new TypeError("remembered route is offline"); }
+    }
+  ), /Hosted Services unavailable/);
+
+  assert.ok(hostedStartedAt > 0);
+  assert.ok(hostedStartedAt - startedAt < 300, "a definitive cached failure should bypass the 500 ms hedge delay");
+});
+
+test("slow nearby discovery does not block a verified public Hosted route", async () => {
+  const stored = record();
+  const publicRoute = "https://fresh.direct.getportico.tv:32500";
+  let localDiscoveryAborted = false;
+  const startedAt = Date.now();
+  const discovery = await discoverHostedServerRoute(
+    { ...testServerIdentity(), id: stored.serverId, name: stored.serverName, preferredAuthMode: "portico" },
+    {
+      hostedClient: {
+        checkCompatibility: async () => ({ apiVersion: "v1" }),
+        routes: async () => signedRouteDocument({
+          serverId: stored.serverId,
+          issuedAt: "2026-07-14T11:59:00.000Z",
+          expiresAt: "2026-07-14T12:05:00.000Z",
+          routes: [{ type: "public_direct", url: publicRoute, quality: "reachable" }]
+        })
+      },
+      trustedHostedDocumentKeys: { [hostedDocumentTestKeyId]: hostedDocumentTestPublicKey },
+      runtime: trustedAttachmentRuntime,
+      routePreference: "lan-first",
+      retryDelaysMs: [],
+      localRouteCandidates: async (_server, _document, signal) => new Promise((_, reject) => {
+        signal?.addEventListener("abort", () => {
+          localDiscoveryAborted = true;
+          reject(new Error("Nearby discovery cancelled after public success."));
+        }, { once: true });
+      }),
+      routeProbeFetch: async () => jsonResponse({
+        serverId: stored.serverId,
+        serverPublicKeyFingerprint: stored.serverPublicKeyFingerprint,
+        remoteAccessEnabled: true
+      }),
+      now: () => new Date("2026-07-14T12:00:00.000Z")
+    }
+  );
+
+  assert.equal(discovery.route.url, publicRoute);
+  assert.equal(localDiscoveryAborted, true);
+  assert.ok(Date.now() - startedAt < 500, "Bonjour discovery must not serialize the public route probe");
 });
 
 test("public-first recovery probes a verified LAN rollback route before requiring Hosted discovery", async () => {

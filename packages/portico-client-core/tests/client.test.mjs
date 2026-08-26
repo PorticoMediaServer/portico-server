@@ -2401,13 +2401,13 @@ test("Hosted connector uses injected fetch, clock, abort, and timer facilities",
 
   assert.equal(sessionSet.apiBaseUrl, "https://runtime.direct.getportico.tv");
   assert.deepEqual(calls.map(call => call[0]), [
-    "abort-controller", "set-timeout", "abort-controller", "set-timeout",
+    "abort-controller", "set-timeout", "abort-controller", "abort-controller", "set-timeout",
     "fetch", "clear-timeout", "clear-timeout"
   ]);
   assert.ok(calls[1][1] > 0 && calls[1][1] <= 30_000, "discovery owns a bounded absolute timer");
-  assert.equal(calls[3][1], 3500);
-  assert.deepEqual(calls[4], ["fetch", "https://runtime.direct.getportico.tv/api/remote-access/health", true]);
-  assert.deepEqual(calls.slice(5), [["clear-timeout", true], ["clear-timeout", true]]);
+  assert.equal(calls[4][1], 3500);
+  assert.deepEqual(calls[5], ["fetch", "https://runtime.direct.getportico.tv/api/remote-access/health", true]);
+  assert.deepEqual(calls.slice(6), [["clear-timeout", true], ["clear-timeout", true]]);
 });
 
 test("Hosted connector clears the provisional session and stops before auth when the server API is incompatible", async () => {
@@ -3348,6 +3348,45 @@ test("hosted connector probes LAN candidates in a bounded parallel batch before 
   assert.equal(calls.filter((url) => url.includes("192.168.1.")).length, 2);
   assert.equal(calls.at(-1).startsWith("https://parallel.direct.getportico.tv"), true);
   assert.equal(sessionSet.apiBaseUrl, "https://parallel.direct.getportico.tv");
+});
+
+test("a wrong-identity LAN candidate cannot suppress a valid public route", async () => {
+  let sessionSet;
+  const publicRoute = "https://identity-race.direct.getportico.tv";
+  const hostedClient = {
+    routes: async () => signedRouteDocument({
+      serverId: "srv_identity_race",
+      serverName: "Identity race",
+      assignedHostname: "identity-race.direct.getportico.tv",
+      issuedAt: "2026-05-23T00:00:00Z",
+      expiresAt: "2026-05-23T00:05:00Z",
+      authModes: ["portico"],
+      certificate: { status: "valid" },
+      membership: { role: "owner" },
+      routes: [
+        { type: "lan", url: "https://192.168.1.50:32500", quality: "reported" },
+        { type: "public_direct", url: publicRoute, quality: "reachable" }
+      ]
+    }),
+    porticoSession: async () => ({ tokenType: "Bearer", accessToken: "access", accessExpiresAt: "2026-05-23T01:00:00Z", refreshToken: "refresh", refreshExpiresAt: "2026-06-23T00:00:00Z" }),
+    reportRouteFailure: async () => ({ ok: true, matched: true })
+  };
+
+  await connectHostedServer({ ...testServerIdentity(), id: "srv_identity_race", name: "Identity race", preferredAuthMode: "portico" }, {
+    ...hostedProfileBinding("srv_identity_race"),
+    hostedClient,
+    localClient: compatibleLocalClient("srv_identity_race", publicRoute),
+    sessionStore: { set: (session) => { sessionSet = session; }, clear: () => {} },
+    routeProbeFetch: async input => String(input).includes("192.168.1.50")
+      ? jsonResponse({ serverId: "spoofed-server", serverPublicKeyFingerprint: testServerPublicKeyFingerprint, remoteAccessEnabled: true })
+      : jsonResponse({ serverId: "srv_identity_race", serverPublicKeyFingerprint: testServerPublicKeyFingerprint, remoteAccessEnabled: true }),
+    retryDelaysMs: [],
+    trustedHostedDocumentKeys: { [hostedDocumentTestKeyId]: hostedDocumentTestPublicKey },
+    runtime: clientAttachmentRuntime,
+    now: () => new Date("2026-05-23T00:01:00Z")
+  });
+
+  assert.equal(sessionSet.apiBaseUrl, publicRoute);
 });
 
 test("documented resource URL helpers do not leak account credentials", () => {

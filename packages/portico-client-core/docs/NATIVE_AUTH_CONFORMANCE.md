@@ -87,9 +87,11 @@ restores or removes durable state, and never publishes the candidate runtime.
 
 New native shells should prefer `connectResilientHostedServer`. It preserves
 the same signed-route checks, exchanges the Hosted bootstrap token for a
-server-native credential at `/api/auth/portico/sessions`, and races fresh
-Hosted discovery against the account/server-scoped record described in
-`TRUSTED_SERVER_CONNECTIONS.md`.
+server-native credential at `/api/auth/portico/sessions`, and races the
+account/server-scoped remembered routes described in
+`TRUSTED_SERVER_CONNECTIONS.md`. Fresh Hosted discovery joins that race only
+after the 500-millisecond hedge boundary or an earlier conclusive cached
+failure.
 
 ## App restart and switching
 
