@@ -147,6 +147,16 @@ function SignedInDevices({
       </SettingsGroup>
     );
   if (query.status === "error")
+    if (
+      query.hostedAvailability.automatic &&
+      !query.hostedAvailability.showWarning
+    )
+      return (
+        <SettingsGroup title={title} description={description}>
+          <SettingsLoading label={`Still loading ${title.toLocaleLowerCase()}`} />
+        </SettingsGroup>
+      );
+  if (query.status === "error")
     return (
       <SettingsGroup title={title} description={description}>
         <SettingsError
@@ -916,6 +926,19 @@ function MFASettings({
         <SettingsLoading label="Checking two-factor authentication" />
       </SettingsGroup>
     );
+  if (query.status === "error")
+    if (
+      query.hostedAvailability.automatic &&
+      !query.hostedAvailability.showWarning
+    )
+      return (
+        <SettingsGroup
+          title="Two-factor authentication"
+          description="Additional Portico Account sign-in protection."
+        >
+          <SettingsLoading label="Still checking two-factor authentication" />
+        </SettingsGroup>
+      );
   if (query.status === "error")
     return (
       <SettingsGroup

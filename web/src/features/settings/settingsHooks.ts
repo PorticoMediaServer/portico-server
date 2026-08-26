@@ -15,11 +15,13 @@ export function useSettingsQuery<T>(
   const runtime = useOptionalViewerRuntime();
   const [state, setState] = useState<QueryState<T>>({ status: 'loading' });
   const [automaticRevision, setAutomaticRevision] = useState(0);
+  const availabilityFailureStartedAt = useRef<number | undefined>(undefined);
   const retryAutomatically = useCallback(() => setAutomaticRevision((current) => current + 1), []);
   const hostedAvailability = useHostedAvailabilityRetry({
     enabled: options.automaticHostedRetry === true && state.status === 'error',
     reason: state.status === 'error' ? state.error : undefined,
     retry: retryAutomatically,
+    failureStartedAt: availabilityFailureStartedAt.current,
   });
 
   useEffect(() => {
@@ -32,10 +34,14 @@ export function useSettingsQuery<T>(
       : load(source, querySignal);
     request.then(
       (data) => {
-        if (!controller.signal.aborted) setState({ status: 'success', data });
+        if (!controller.signal.aborted) {
+          availabilityFailureStartedAt.current = undefined;
+          setState({ status: 'success', data });
+        }
       },
       (reason: unknown) => {
         if (controller.signal.aborted) return;
+        availabilityFailureStartedAt.current ??= Date.now();
         setState({
           status: 'error',
           error: reason instanceof Error ? reason : new Error('Portico could not load this settings section.'),

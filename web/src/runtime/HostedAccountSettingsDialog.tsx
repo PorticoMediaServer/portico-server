@@ -80,7 +80,8 @@ export function HostedAccountSettingsDialog({ onDismiss }: { onDismiss: () => vo
     </header>
     <div className="runtime-account-settings-content">
       {query.status === 'loading' && <SettingsLoading label="Loading Portico Account settings" />}
-      {query.status === 'error' && <SettingsError
+      {query.status === 'error' && availability.automatic && !availability.showWarning && <SettingsLoading label="Still loading Portico Account settings" />}
+      {query.status === 'error' && (!availability.automatic || availability.showWarning) && <SettingsError
         title={availability.automatic ? availability.copy.title : 'Account settings are unavailable'}
         message={availability.automatic ? availability.copy.body : 'Portico couldn’t load your account settings right now.'}
         onRetry={availability.automatic ? undefined : () => setRevision((value) => value + 1)}

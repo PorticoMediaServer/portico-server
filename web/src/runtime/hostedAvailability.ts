@@ -1,7 +1,8 @@
-import { isAmbiguousPorticoError, isRetryablePorticoError, positiveFullJitterDelay, productMessage } from '@porticomediaserver/client-core';
+import { isAmbiguousPorticoError, isRetryablePorticoError, positiveFullJitterDelay } from '@porticomediaserver/client-core';
 import { useEffect, useRef, useState } from 'react';
 
 export const HOSTED_AVAILABILITY_RETRY_MS = 5_000;
+export const HOSTED_AVAILABILITY_WARNING_DELAY_MS = 8_000;
 
 export function createHostedAvailabilityRetryCohort(): string {
   const values = new Uint32Array(4);
@@ -51,13 +52,13 @@ export function hostedAvailabilityRetryDelay(reason: unknown, now = Date.now(), 
 export function hostedAvailabilityCopy(offline: boolean): HostedAvailabilityCopy {
   if (offline) {
     return {
-      title: productMessage('problem.offline').title ?? "You're offline",
-      body: 'Reconnect to the network. Portico will resume automatically when your connection returns.',
+      title: 'Still waiting for a connection',
+      body: 'Portico will continue automatically when this device is back online.',
     };
   }
   return {
-    title: productMessage('problem.cloud-unavailable').title ?? 'Portico Account services unavailable',
-    body: 'Portico couldn’t reach account services. It will keep trying automatically.',
+    title: 'Still connecting to Portico',
+    body: 'This is taking longer than usual. Portico will keep trying automatically.',
   };
 }
 
@@ -66,23 +67,58 @@ export function useHostedAvailabilityRetry({
   reason,
   retry,
   cohort,
+  failureStartedAt,
 }: {
   enabled: boolean;
   reason: unknown;
   retry: () => void;
   cohort?: string;
-}): { automatic: boolean; offline: boolean; copy: HostedAvailabilityCopy } {
+  failureStartedAt?: number;
+}): { automatic: boolean; offline: boolean; showWarning: boolean; copy: HostedAvailabilityCopy } {
   const retryRef = useRef(retry);
   retryRef.current = retry;
   const pageCohortRef = useRef<string | undefined>(undefined);
   if (pageCohortRef.current === undefined) pageCohortRef.current = createHostedAvailabilityRetryCohort();
   const retryCohort = cohort?.trim() || pageCohortRef.current;
+  const retryMetadata =
+    reason && typeof reason === 'object' ? (reason as RetryMetadata) : undefined;
+  const retryAfterMs =
+    typeof retryMetadata?.retryAfterMs === 'number' &&
+    Number.isFinite(retryMetadata.retryAfterMs)
+      ? retryMetadata.retryAfterMs
+      : undefined;
+  const retryAt =
+    typeof retryMetadata?.retryAt === 'string'
+      ? retryMetadata.retryAt
+      : undefined;
   const [offline, setOffline] = useState(() => typeof navigator !== 'undefined' && navigator.onLine === false);
+  const [showWarning, setShowWarning] = useState(false);
   // The runtime provider has already classified the original failure before
   // enabling this hook. `reason` intentionally contains only bounded retry
   // timing metadata, so re-classifying it here would discard the original
   // HTTP/transport evidence and incorrectly turn automatic recovery off.
   const automatic = enabled;
+
+  useEffect(() => {
+    if (!enabled) {
+      setShowWarning(false);
+      return;
+    }
+    const elapsed = Number.isFinite(failureStartedAt)
+      ? Math.max(0, Date.now() - (failureStartedAt as number))
+      : 0;
+    const remaining = Math.max(0, HOSTED_AVAILABILITY_WARNING_DELAY_MS - elapsed);
+    if (remaining === 0) {
+      setShowWarning(true);
+      return;
+    }
+    setShowWarning(false);
+    const timer = window.setTimeout(
+      () => setShowWarning(true),
+      remaining,
+    );
+    return () => window.clearTimeout(timer);
+  }, [enabled, failureStartedAt]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -104,7 +140,9 @@ export function useHostedAvailabilityRetry({
     // Keep the Retry-After timestamp separate from the bounded jitter window.
     // A hidden tab waits one fresh bounded interval when it becomes visible;
     // an explicit provider deadline remains a strict lower bound.
-    const retryAfterAt = scheduledAt + hostedRetryAfterDelay(reason, scheduledAt);
+    const retryAfterAt =
+      scheduledAt +
+      hostedRetryAfterDelay({retryAfterMs, retryAt}, scheduledAt);
     const clear = () => {
       if (timer !== undefined) window.clearTimeout(timer);
       timer = undefined;
@@ -143,7 +181,12 @@ export function useHostedAvailabilityRetry({
       window.removeEventListener('offline', clear);
       document.removeEventListener('visibilitychange', visibilityChanged);
     };
-  }, [automatic, reason, retryCohort]);
+  }, [automatic, retryAfterMs, retryAt, retryCohort]);
 
-  return { automatic, offline, copy: hostedAvailabilityCopy(offline) };
+  return {
+    automatic,
+    offline,
+    showWarning: enabled && showWarning,
+    copy: hostedAvailabilityCopy(offline),
+  };
 }

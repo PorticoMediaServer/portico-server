@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   automaticHostedAvailabilityRetry,
   createHostedAvailabilityRetryCohort,
+  HOSTED_AVAILABILITY_WARNING_DELAY_MS,
   hostedAvailabilityCopy,
   hostedAvailabilityRetryDelay,
   useHostedAvailabilityRetry,
@@ -116,7 +117,40 @@ describe('Hosted availability retry policy', () => {
     const { result } = renderHook(() => useHostedAvailabilityRetry({ enabled: true, reason: {}, retry }));
 
     expect(result.current.automatic).toBe(true);
+    expect(result.current.showWarning).toBe(false);
+    act(() =>
+      vi.advanceTimersByTime(HOSTED_AVAILABILITY_WARNING_DELAY_MS - 1),
+    );
+    expect(result.current.showWarning).toBe(false);
+    act(() => vi.advanceTimersByTime(1));
+    expect(result.current.showWarning).toBe(true);
     act(() => vi.advanceTimersByTime(5_000));
     expect(retry).toHaveBeenCalledTimes(1);
+  });
+
+  it('preserves the warning deadline across fast automatic retry attempts', () => {
+    vi.useFakeTimers();
+    vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
+    const retry = vi.fn();
+    const failureStartedAt = Date.now();
+    const { result, rerender } = renderHook(
+      ({ enabled }) => useHostedAvailabilityRetry({
+        enabled,
+        reason: {},
+        retry,
+        failureStartedAt,
+      }),
+      { initialProps: { enabled: true } },
+    );
+
+    act(() => vi.advanceTimersByTime(5_000));
+    rerender({ enabled: false });
+    rerender({ enabled: true });
+    expect(result.current.showWarning).toBe(false);
+    act(() => vi.advanceTimersByTime(2_999));
+    expect(result.current.showWarning).toBe(false);
+    act(() => vi.advanceTimersByTime(1));
+    expect(result.current.showWarning).toBe(true);
   });
 });

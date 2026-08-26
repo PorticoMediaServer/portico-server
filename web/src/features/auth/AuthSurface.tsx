@@ -724,6 +724,10 @@ export function SetupSurface({ serverName }: { serverName: string }) {
       setSetupCheckRevision((current) => current + 1);
     },
   });
+  const setupRetryQuietly =
+    Boolean(error) &&
+    setupAvailability.automatic &&
+    !setupAvailability.showWarning;
   useEffect(() => {
     if (mode !== "portico") return;
     let active = true;
@@ -840,10 +844,10 @@ export function SetupSurface({ serverName }: { serverName: string }) {
         </div>
         {mode === "portico" && (
           <div
-            className={`setup-portico-progress${error ? " error" : ""}`}
+            className={`setup-portico-progress${error && !setupRetryQuietly ? " error" : ""}`}
             aria-live="polite"
           >
-            {!error && (
+            {(!error || setupRetryQuietly) && (
               <>
                 <LoaderCircle className="runtime-spinner" />
                 <p>
@@ -855,7 +859,7 @@ export function SetupSurface({ serverName }: { serverName: string }) {
                 </p>
               </>
             )}
-            {error && (
+            {error && !setupRetryQuietly && (
               <>
                 <div className="auth-error" role="alert">
                   <AlertTriangle />

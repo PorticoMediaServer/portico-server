@@ -613,7 +613,8 @@ describe('RuntimeProvider', () => {
     vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
 
     render(<RuntimeProvider config={hostedConfig}><RuntimeHarness /></RuntimeProvider>);
-    expect(await screen.findByRole('heading', { name: ClientCore.productMessage('problem.cloud-unavailable').title })).toBeInTheDocument();
+    expect(await screen.findByText('Still checking your Portico Account…')).toBeInTheDocument();
+    expect(screen.queryByText('Portico Account services unavailable')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument();
 
     expect(fetchMock.mock.calls.filter(([input]) => String(input).endsWith('/api/account/server-claims/by-code/complete'))).toHaveLength(1);
@@ -1146,7 +1147,7 @@ describe('RuntimeProvider', () => {
     expect(authorizationAttempts).toBe(2);
   });
 
-  it('reports a transient Hosted session check as account-service unavailability rather than expiration', async () => {
+  it('keeps a transient Hosted session check quiet rather than reporting expiration or an outage', async () => {
     const fetchMock = vi.fn((input: string | URL | Request) => {
       const url = String(input);
       if (url.endsWith('/api/system')) return Promise.resolve(response(hostedSystem));
@@ -1157,9 +1158,11 @@ describe('RuntimeProvider', () => {
 
     render(<RuntimeProvider config={hostedConfig}><RuntimeHarness /></RuntimeProvider>);
 
-    expect(await screen.findByRole('heading', { name: ClientCore.productMessage('problem.cloud-unavailable').title })).toBeInTheDocument();
-    expect(screen.queryByText(ClientCore.productMessage('auth.session-expired').body!)).not.toBeInTheDocument();
-    expect(screen.getByText('Portico couldn’t reach account services. It will keep trying automatically.')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText('Still checking your Portico Account…')).toBeInTheDocument();
+      expect(screen.queryByText(ClientCore.productMessage('auth.session-expired').body!)).not.toBeInTheDocument();
+      expect(screen.queryByText('Portico Account services unavailable')).not.toBeInTheDocument();
+    });
     expect(screen.queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument();
   });
 

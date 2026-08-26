@@ -571,8 +571,17 @@ function RuntimeRecovery({ embedded = false }: { embedded?: boolean }) {
     reason: availabilityReason,
     retry: runtime.retry,
     cohort: runtime.hostedRetryCohort,
+    failureStartedAt: runtime.hostedAvailabilityFailureStartedAt,
   });
   if (!recovery) return null;
+  if (availability.automatic && !availability.showWarning) {
+    return <RuntimeProgress
+      title="Opening Portico"
+      body="Still checking your Portico Account…"
+      kind="account"
+      embedded={embedded}
+    />;
+  }
   const serverName = recovery.serverName || 'this server';
   const copy = productMessage(recovery.messageId, { serverName });
   const needsSignIn = recovery.recoveryActions.includes('sign-in');

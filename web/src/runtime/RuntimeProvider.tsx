@@ -1325,6 +1325,27 @@ export function RuntimeProvider({
     createHostedAvailabilityRetryCohort,
   );
   const hostedRetryCohortRef = useRef(hostedRetryCohort);
+  const hostedAvailabilityFailureStartedAtRef = useRef<number | undefined>(
+    undefined,
+  );
+  if (
+    state.id === "runtime-recovery" &&
+    state.automaticAvailabilityRetry === true
+  ) {
+    hostedAvailabilityFailureStartedAtRef.current ??= state.startedAt;
+  } else if (
+    [
+      "hosted-sign-in",
+      "sso-onboarding",
+      "device-authorization",
+      "no-memberships",
+      "server-selection",
+      "profile-selection",
+      "server-ready",
+    ].includes(state.id)
+  ) {
+    hostedAvailabilityFailureStartedAtRef.current = undefined;
+  }
   useEffect(() => {
     let active = true;
     void connectionVault.installationId().then((value) => {
@@ -3607,6 +3628,8 @@ export function RuntimeProvider({
     viewerRuntime,
     connectionWarning,
     hostedRetryCohort,
+    hostedAvailabilityFailureStartedAt:
+      hostedAvailabilityFailureStartedAtRef.current,
     dismissConnectionWarning: () => setConnectionWarning(undefined),
     busy,
     mfaRequired,

@@ -570,20 +570,18 @@ describe("personal account and security Settings", () => {
     expect(summary).not.toHaveBeenCalled();
   });
 
-  it("renders an honest Portico Account security failure state", async () => {
+  it("keeps a first Portico Account security failure in the normal loading state", async () => {
     const source = new FixtureSettingsDataSource();
     vi.spyOn(source, "porticoMFAStatus").mockRejectedValue(
       new Error("Portico Account security did not answer."),
     );
     render(<AccountSettings viewer={porticoViewer} source={source} />);
     expect(
-      await screen.findByText("Portico Account services unavailable"),
+      await screen.findByText("Still checking two-factor authentication"),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(
-        "Portico couldn’t reach account services. It will keep trying automatically.",
-      ),
-    ).toBeInTheDocument();
+      screen.queryByText("Portico Account services unavailable"),
+    ).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "Try again" }),
     ).not.toBeInTheDocument();
@@ -601,8 +599,11 @@ describe("personal account and security Settings", () => {
     render(<AccountSettings viewer={porticoViewer} source={source} />);
     await act(async () => Promise.resolve());
     expect(
-      screen.getByText("Portico Account services unavailable"),
+      screen.getByText("Still loading signed-in devices"),
     ).toBeInTheDocument();
+    expect(
+      screen.queryByText("Portico Account services unavailable"),
+    ).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "Try again" }),
     ).not.toBeInTheDocument();
