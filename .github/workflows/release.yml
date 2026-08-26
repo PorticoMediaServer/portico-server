@@ -140,7 +140,8 @@ jobs:
         with: {name: macos-arm64, path: dist/Portico-Media-Server-macOS-arm64.dmg, if-no-files-found: error}
 
   docker:
-    needs: [identity, tests]
+    # Do not move the public container tags until every native package exists.
+    needs: [identity, tests, linux, windows, macos]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
