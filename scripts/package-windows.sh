@@ -13,4 +13,20 @@ INSTALLER_WIN="$(cygpath -w "$ROOT/packaging/windows/installer.nsi")"
 export PORTICO_STAGE_WIN="$STAGE_WIN" PORTICO_PORTABLE_WIN="$PORTABLE_WIN"
 powershell.exe -NoLogo -NoProfile -Command \
   '$ErrorActionPreference = "Stop"; Compress-Archive -Path (Join-Path $env:PORTICO_STAGE_WIN "*") -DestinationPath $env:PORTICO_PORTABLE_WIN -Force'
-makensis.exe "/DOUTPUT_FILE=$SETUP_WIN" "/DSTAGE_DIR=$STAGE_WIN" "/DPRODUCT_VERSION=$VERSION" "$INSTALLER_WIN"
+NSIS_EXE="$(command -v makensis.exe || true)"
+if [[ -z "$NSIS_EXE" ]]; then
+  for candidate in \
+    "/c/Program Files (x86)/NSIS/makensis.exe" \
+    "/c/Program Files/NSIS/makensis.exe" \
+    "/c/ProgramData/chocolatey/bin/makensis.exe"; do
+    if [[ -x "$candidate" ]]; then
+      NSIS_EXE="$candidate"
+      break
+    fi
+  done
+fi
+if [[ -z "$NSIS_EXE" ]]; then
+  echo "NSIS compiler not found after installation." >&2
+  exit 1
+fi
+"$NSIS_EXE" "/DOUTPUT_FILE=$SETUP_WIN" "/DSTAGE_DIR=$STAGE_WIN" "/DPRODUCT_VERSION=$VERSION" "$INSTALLER_WIN"
