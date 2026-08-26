@@ -190,6 +190,35 @@ jobs:
         with: {path: dist/artifacts, pattern: 'windows-*', merge-multiple: true}
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with: {path: dist/artifacts, name: macos-arm64}
+      - name: Verify complete platform payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected=(
+            Portico-Media-Server-Windows-x64-Setup.exe
+            Portico-Media-Server-Windows-x64-Portable.zip
+            Portico-Media-Server-Windows-arm64-Setup.exe
+            Portico-Media-Server-Windows-arm64-Portable.zip
+            Portico-Media-Server-macOS-arm64.dmg
+            portico-media-server-linux-x64.tar.gz
+            portico-media-server-linux-x64.deb
+            portico-media-server-linux-x64.rpm
+            portico-media-server-linux-arm64.tar.gz
+            portico-media-server-linux-arm64.deb
+            portico-media-server-linux-arm64.rpm
+          )
+          for asset in "${expected[@]}"; do
+            if [[ ! -s "dist/artifacts/$asset" ]]; then
+              echo "Missing or empty release asset: $asset" >&2
+              exit 1
+            fi
+          done
+          actual_count="$(find dist/artifacts -maxdepth 1 -type f | wc -l | tr -d ' ')"
+          if [[ "$actual_count" != "${#expected[@]}" ]]; then
+            echo "Expected ${#expected[@]} platform assets, found $actual_count." >&2
+            find dist/artifacts -maxdepth 1 -type f -print | sort >&2
+            exit 1
+          fi
       - run: |
           cd dist/artifacts
           sha256sum ./* | sort -k2 > checksums.sha256
@@ -205,6 +234,7 @@ jobs:
           tag_name: '${{ needs.identity.outputs.tag }}'
           name: 'Portico Media Server ${{ needs.identity.outputs.version }} — Development Preview'
           prerelease: false
+          make_latest: true
           generate_release_notes: true
           body: |
             Portico Media Server is still prerelease-quality software. This release is published as the current development preview so the permanent `/releases/latest` link remains useful.

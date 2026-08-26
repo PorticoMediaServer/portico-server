@@ -8,6 +8,26 @@ OUT="$ROOT/dist"
 mkdir -p "$OUT"
 "$ROOT/scripts/build-release-payload.sh" "$VERSION" linux "$GOARCH_VALUE" "$FFMPEG_ROOT" "$STAGE" "$BUILD_NUMBER"
 tar --sort=name --mtime='UTC 2020-01-01' --owner=0 --group=0 --numeric-owner -C "$STAGE" -czf "$OUT/portico-media-server-linux-${FILE_ARCH}.tar.gz" .
-export PORTICO_PACKAGE_VERSION="$VERSION" PORTICO_PACKAGE_ARCH="$PACKAGE_ARCH" PORTICO_PACKAGE_ROOT="$STAGE"
-nfpm package --config "$ROOT/packaging/linux/nfpm.yaml" --packager deb --target "$OUT/portico-media-server-linux-${FILE_ARCH}.deb"
-nfpm package --config "$ROOT/packaging/linux/nfpm.yaml" --packager rpm --target "$OUT/portico-media-server-linux-${FILE_ARCH}.rpm"
+
+escape_sed_replacement() {
+  local value="$1"
+  value="${value//\\/\\\\}"
+  value="${value//&/\\&}"
+  value="${value//|/\\|}"
+  printf '%s' "$value"
+}
+
+PACKAGE_CONFIG="$OUT/nfpm-${GOARCH_VALUE}.yaml"
+sed \
+  -e "s|\${PORTICO_PACKAGE_VERSION}|$(escape_sed_replacement "$VERSION")|g" \
+  -e "s|\${PORTICO_PACKAGE_ARCH}|$(escape_sed_replacement "$PACKAGE_ARCH")|g" \
+  -e "s|\${PORTICO_PACKAGE_ROOT}|$(escape_sed_replacement "$STAGE")|g" \
+  "$ROOT/packaging/linux/nfpm.yaml" > "$PACKAGE_CONFIG"
+
+if grep -q '\${PORTICO_PACKAGE_' "$PACKAGE_CONFIG"; then
+  echo "unresolved Portico package variable in $PACKAGE_CONFIG" >&2
+  exit 1
+fi
+
+nfpm package --config "$PACKAGE_CONFIG" --packager deb --target "$OUT/portico-media-server-linux-${FILE_ARCH}.deb"
+nfpm package --config "$PACKAGE_CONFIG" --packager rpm --target "$OUT/portico-media-server-linux-${FILE_ARCH}.rpm"
