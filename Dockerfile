@@ -2,6 +2,7 @@
 FROM node:24-bookworm-slim AS web-build
 WORKDIR /src
 COPY api/product-language ./api/product-language
+COPY api/openapi/fixtures ./api/openapi/fixtures
 COPY packages/portico-client-core/package*.json ./packages/portico-client-core/
 RUN cd packages/portico-client-core && npm ci --no-audit --no-fund
 COPY packages/portico-client-core ./packages/portico-client-core

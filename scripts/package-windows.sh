@@ -6,5 +6,11 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 STAGE="$ROOT/dist/stage-windows-$GOARCH_VALUE"
 OUT="$ROOT/dist"
 "$ROOT/scripts/build-release-payload.sh" "$VERSION" windows "$GOARCH_VALUE" "$FFMPEG_ROOT" "$STAGE" "$BUILD_NUMBER"
-powershell.exe -NoLogo -NoProfile -Command "Compress-Archive -Path '$STAGE\\*' -DestinationPath '$OUT\\Portico-Media-Server-Windows-${FILE_ARCH}-Portable.zip' -Force"
-makensis.exe /DOUTPUT_FILE="$OUT\\Portico-Media-Server-Windows-${FILE_ARCH}-Setup.exe" /DSTAGE_DIR="$STAGE" /DPRODUCT_VERSION="$VERSION" "$ROOT/packaging/windows/installer.nsi"
+STAGE_WIN="$(cygpath -w "$STAGE")"
+PORTABLE_WIN="$(cygpath -w "$OUT/Portico-Media-Server-Windows-${FILE_ARCH}-Portable.zip")"
+SETUP_WIN="$(cygpath -w "$OUT/Portico-Media-Server-Windows-${FILE_ARCH}-Setup.exe")"
+INSTALLER_WIN="$(cygpath -w "$ROOT/packaging/windows/installer.nsi")"
+export PORTICO_STAGE_WIN="$STAGE_WIN" PORTICO_PORTABLE_WIN="$PORTABLE_WIN"
+powershell.exe -NoLogo -NoProfile -Command \
+  '$ErrorActionPreference = "Stop"; Compress-Archive -Path (Join-Path $env:PORTICO_STAGE_WIN "*") -DestinationPath $env:PORTICO_PORTABLE_WIN -Force'
+makensis.exe "/DOUTPUT_FILE=$SETUP_WIN" "/DSTAGE_DIR=$STAGE_WIN" "/DPRODUCT_VERSION=$VERSION" "$INSTALLER_WIN"
