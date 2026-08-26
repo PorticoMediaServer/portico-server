@@ -450,7 +450,6 @@ func (s *Server) ensureHostedDocumentKey(ctx context.Context, hostedBaseURL, req
 	s.hostedDocumentKeyRefreshMu.Unlock()
 	defer func() {
 		s.hostedDocumentKeyRefreshMu.Lock()
-		call.err = call.err
 		close(call.done)
 		s.hostedDocumentKeyRefresh = nil
 		s.hostedDocumentKeyRefreshMu.Unlock()
