@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM node:24-bookworm-slim AS web-build
+FROM node:25-bookworm-slim AS web-build
 WORKDIR /src
 COPY api/product-language ./api/product-language
 COPY api/openapi/fixtures ./api/openapi/fixtures
