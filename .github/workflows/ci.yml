@@ -54,6 +54,38 @@ jobs:
       - run: npm --prefix web test -- --maxWorkers=1
       - run: npm --prefix web run build
       - run: npm --prefix web run verify:bundle
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with: {name: ci-web-dist, path: web/dist, if-no-files-found: error}
+
+  windows-package:
+    name: Package Windows ${{ matrix.file_arch }}
+    needs: web
+    runs-on: windows-2025
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {goarch: amd64, file_arch: x64, toolchain_target: windows-x64}
+          - {goarch: arm64, file_arch: arm64, toolchain_target: windows-arm64}
+    defaults: {run: {shell: bash}}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with: {go-version-file: go.mod, cache-dependency-path: go.sum}
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with: {name: ci-web-dist, path: web/dist}
+      - name: Download qualified FFmpeg
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          toolchain_tag="$(node -p "require('./media-toolchain/sources.lock.json').releaseTag")"
+          mkdir -p .toolchain/ffmpeg
+          gh release download "$toolchain_tag" --pattern "portico-ffmpeg-${toolchain_tag}-${{ matrix.toolchain_target }}.tar.xz" --dir .toolchain
+          tar -xJf .toolchain/*.tar.xz -C .toolchain/ffmpeg
+      - run: choco install nsis --no-progress --yes
+      - run: ./scripts/package-windows.sh '0.0.0' '${{ matrix.goarch }}' '${{ matrix.file_arch }}' .toolchain/ffmpeg '${{ github.run_number }}'
+      - run: |
+          test -s 'dist/Portico-Media-Server-Windows-${{ matrix.file_arch }}-Portable.zip'
+          test -s 'dist/Portico-Media-Server-Windows-${{ matrix.file_arch }}-Setup.exe'
 
   compile:
     name: Compile ${{ matrix.target }}

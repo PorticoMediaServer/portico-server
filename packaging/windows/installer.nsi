@@ -26,12 +26,16 @@ Section "Install"
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Portico Media Server" "Publisher" "${PRODUCT_PUBLISHER}"
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Portico Media Server" "URLInfoAbout" "${PRODUCT_WEB_SITE}"
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Portico Media Server" "UninstallString" '"$INSTDIR\Uninstall.exe"'
-  CreateDirectory "$PROGRAMDATA\Portico Media Server"
+  ReadEnvStr $0 "ProgramData"
+  StrCmp $0 "" 0 +2
+  StrCpy $0 "C:\ProgramData"
+  StrCpy $0 "$0\Portico Media Server"
+  CreateDirectory "$0"
   nsExec::ExecToLog 'sc.exe stop PorticoMediaServer'
   nsExec::ExecToLog 'sc.exe delete PorticoMediaServer'
   nsExec::ExecToLog 'sc.exe create PorticoMediaServer binPath= "\"$INSTDIR\portico-media-server.exe\"" start= auto DisplayName= "Portico Media Server"'
   nsExec::ExecToLog 'sc.exe description PorticoMediaServer "Portico personal media server"'
-  WriteRegMultiStr HKLM "SYSTEM\CurrentControlSet\Services\PorticoMediaServer" "Environment" "PORTICO_APP_DATA=$PROGRAMDATA\Portico Media Server$\0PORTICO_WEB_DIST=$INSTDIR\web$\0PORTICO_FFMPEG_PATH=$INSTDIR\bin\ffmpeg.exe$\0PORTICO_FFPROBE_PATH=$INSTDIR\bin\ffprobe.exe$\0PORTICO_ENVIRONMENT=production$\0PORTICO_HOSTED_API_AUTHORITY=https://api.getportico.tv$\0"
+  nsExec::ExecToLog 'reg.exe add "HKLM\SYSTEM\CurrentControlSet\Services\PorticoMediaServer" /v Environment /t REG_MULTI_SZ /s "|" /d "PORTICO_APP_DATA=$0|PORTICO_WEB_DIST=$INSTDIR\web|PORTICO_FFMPEG_PATH=$INSTDIR\bin\ffmpeg.exe|PORTICO_FFPROBE_PATH=$INSTDIR\bin\ffprobe.exe|PORTICO_ENVIRONMENT=production|PORTICO_HOSTED_API_AUTHORITY=https://api.getportico.tv" /f'
   nsExec::ExecToLog 'sc.exe start PorticoMediaServer'
 SectionEnd
 
