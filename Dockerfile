@@ -12,7 +12,7 @@ RUN cd web && npm ci --no-audit --no-fund
 COPY web ./web
 RUN cd web && npm run build && npm run verify:bundle
 
-FROM golang:1.26-bookworm AS server-build
+FROM golang:1.27-bookworm AS server-build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
