@@ -18,6 +18,7 @@ import './styles/app.css';
 import './styles/quality.css';
 
 const App = lazy(() => import('./App').then((module) => ({ default: module.App })));
+const ElementParityPreview = lazy(() => import('./preview/ElementParityPreview').then((module) => ({ default: module.ElementParityPreview })));
 
 function ConnectedRuntimeEntry() {
   const auth = useAuthSession();
@@ -63,12 +64,16 @@ if (import.meta.env.PROD) {
   void registerHostedServiceWorker(window.__PORTICO_CONFIG__?.mode);
 }
 
+const previewEnabled = import.meta.env.VITE_PORTICO_ELEMENT_PREVIEW === 'true';
+
 reactRoot.render(
   <StrictMode>
     <UnexpectedErrorBoundary>
-      <RuntimeProvider fixtureSourceLoader={fixtureSourceLoader}>
-        <RouterProvider router={router} />
-      </RuntimeProvider>
+      {previewEnabled
+        ? <Suspense fallback={<div className="runtime-content-reservation" aria-busy="true" />}><ElementParityPreview /></Suspense>
+        : <RuntimeProvider fixtureSourceLoader={fixtureSourceLoader}>
+          <RouterProvider router={router} />
+        </RuntimeProvider>}
     </UnexpectedErrorBoundary>
   </StrictMode>,
 );
