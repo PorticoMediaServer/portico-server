@@ -1,17 +1,5 @@
 import type { MediaAttachment } from '@porticomediaserver/client-core';
-import {
-  Download,
-  FileText,
-  Film,
-  Gauge,
-  HardDrive,
-  Headphones,
-  LoaderCircle,
-  Plus,
-  RefreshCw,
-  Trash2,
-  Upload,
-} from '#portico-icons';
+import { ActionDownloadIcon, ViewDetailsIcon, MediaMovieIcon, PlaybackQualityIcon, DeviceStorageIcon, MediaAudiobookIcon, StatusLoadingIcon, ActionAddIcon, ActionRefreshIcon, ActionDeleteIcon, ActionSendIcon } from '#portico-icons';
 import { useEffect, useRef, useState } from 'react';
 import { IconButton, SecondaryButton } from '../../components/controls/Buttons';
 import { reviewedProductErrorText } from '../../components/ProductLanguage';
@@ -118,7 +106,7 @@ function SubtitleRow({
 
   return (
     <div className="technical-stream-row subtitle-row">
-      <span className="technical-kind"><FileText /> Subtitle</span>
+      <span className="technical-kind"><ViewDetailsIcon /> Subtitle</span>
       <span className="technical-copy">
         <strong>{stream.displayTitle || 'Subtitle'}</strong>
         <small>{[stream.codec.toLocaleUpperCase(), ...streamFacts(stream)].filter(Boolean).join(' · ')}</small>
@@ -131,7 +119,7 @@ function SubtitleRow({
             disabled={busy}
             onClick={() => setConfirming(true)}
           >
-            <Trash2 />
+            <ActionDeleteIcon />
           </IconButton>
         </span>
       )}
@@ -280,8 +268,9 @@ export function TechnicalMediaEditor({
     (left, right) => ['video', 'audio', 'subtitle'].indexOf(left.kind)
       - ['video', 'audio', 'subtitle'].indexOf(right.kind),
   );
-  const fileStreamIDs = new Set((item.mediaFiles ?? []).flatMap((file) => file.streams?.map((stream) => stream.id) ?? []));
-  const primaryStreams = streams.filter((stream) => stream.kind !== 'subtitle' && !fileStreamIDs.has(stream.id));
+  const fileStreams = (item.mediaFiles ?? []).flatMap((file) => file.streams ?? []);
+  const analyzedStreams = [...new Map([...streams, ...fileStreams].map((stream) => [stream.id, stream])).values()];
+  const primaryStreams = analyzedStreams.filter((stream) => stream.kind !== 'subtitle');
   const subtitles = streams.filter((stream) => stream.kind === 'subtitle');
   const canOptimize = item.actions?.includes('media.optimize') ?? false;
   const readyOptions = options.status === 'ready' ? options.data : undefined;
@@ -307,7 +296,7 @@ export function TechnicalMediaEditor({
 
       <section className="technical-section source-summary">
         <header>
-          <span><Film /><strong>Source media</strong></span>
+          <span><MediaMovieIcon /><strong>Source media</strong></span>
           <small className={item.availability === 'unavailable' ? 'unavailable' : ''}>{availability}</small>
         </header>
         <div className="source-facts">
@@ -317,13 +306,13 @@ export function TechnicalMediaEditor({
             {Boolean(item.missingFileCount) && <em>{item.missingFileCount} missing</em>}
           </span>
           {options.status === 'loading' && (
-            <span className="technical-loading"><LoaderCircle /> Loading source details</span>
+            <span className="technical-loading"><StatusLoadingIcon /> Loading source details</span>
           )}
           {options.status === 'error' && (
             <span className="technical-load-error">
               <strong>Source details unavailable</strong>
               <button type="button" onClick={() => setOptionsRevision((value) => value + 1)}>
-                <RefreshCw /> Retry
+                <ActionRefreshIcon /> Retry
               </button>
             </span>
           )}
@@ -348,7 +337,7 @@ export function TechnicalMediaEditor({
 
       <section className="technical-section">
         <header>
-          <span><HardDrive /><strong>Files and versions</strong></span>
+          <span><DeviceStorageIcon /><strong>Files and versions</strong></span>
           <small>{sourceFiles.length} {sourceFiles.length === 1 ? 'file' : 'files'}</small>
         </header>
         {sourceFiles.length ? (
@@ -411,7 +400,7 @@ export function TechnicalMediaEditor({
                     {file.streams?.map((stream) => (
                       <div className="technical-stream-row" key={stream.id}>
                         <span className="technical-kind">
-                          {stream.kind === 'video' ? <Film /> : <Headphones />}
+                          {stream.kind === 'video' ? <MediaMovieIcon /> : <MediaAudiobookIcon />}
                           {stream.kind === 'subtitle' ? 'Subtitle' : stream.kind === 'video' ? 'Video' : 'Audio'}
                         </span>
                         <span className="technical-copy">
@@ -435,7 +424,7 @@ export function TechnicalMediaEditor({
 
       <section className="technical-section">
         <header>
-          <span><Gauge /><strong>Streams</strong></span>
+          <span><PlaybackQualityIcon /><strong>Streams</strong></span>
           <small>{primaryStreams.length} {primaryStreams.length === 1 ? 'stream' : 'streams'}</small>
         </header>
         {primaryStreams.length ? (
@@ -443,7 +432,7 @@ export function TechnicalMediaEditor({
             {primaryStreams.map((stream) => (
               <div className="technical-stream-row" key={stream.id}>
                 <span className="technical-kind">
-                  {stream.kind === 'video' ? <Film /> : <Headphones />}
+                  {stream.kind === 'video' ? <MediaMovieIcon /> : <MediaAudiobookIcon />}
                   {stream.kind === 'video' ? 'Video' : 'Audio'}
                 </span>
                 <span className="technical-copy">
@@ -463,7 +452,7 @@ export function TechnicalMediaEditor({
 
       <section className="technical-section">
         <header>
-          <span><FileText /><strong>Subtitles</strong></span>
+          <span><ViewDetailsIcon /><strong>Subtitles</strong></span>
           <small>{subtitles.length} {subtitles.length === 1 ? 'track' : 'tracks'}</small>
         </header>
         <div className="subtitle-upload-row">
@@ -497,7 +486,7 @@ export function TechnicalMediaEditor({
             />
           </label>
           <SecondaryButton disabled={Boolean(busy)} onClick={() => subtitleInput.current?.click()}>
-            <Upload />{busy === 'subtitle-upload' ? 'Uploading…' : 'Upload subtitle'}
+            <ActionSendIcon />{busy === 'subtitle-upload' ? 'Uploading…' : 'Upload subtitle'}
           </SecondaryButton>
         </div>
         {subtitles.length ? (
@@ -530,7 +519,7 @@ export function TechnicalMediaEditor({
 
       <section className="technical-section">
         <header>
-          <span><Gauge /><strong>Optimized versions</strong></span>
+          <span><PlaybackQualityIcon /><strong>Optimized versions</strong></span>
           <small>{versions.length} available</small>
         </header>
         {versions.length > 0 && (
@@ -562,7 +551,7 @@ export function TechnicalMediaEditor({
                       true,
                     )}
                   >
-                    <Trash2 />
+                    <ActionDeleteIcon />
                   </IconButton>
                 )}
               </div>
@@ -601,7 +590,7 @@ export function TechnicalMediaEditor({
                     true,
                   )}
                 >
-                  {queued ? <LoaderCircle className="state-spinner" /> : failed ? <RefreshCw /> : <Plus />}
+                  {queued ? <StatusLoadingIcon className="state-spinner" /> : failed ? <ActionRefreshIcon /> : <ActionAddIcon />}
                   <span><strong>{queued ? 'Preparing version' : failed ? 'Retry version' : existing ? 'Regenerate version' : 'Create version'}</strong></span>
                 </button>
                 {option?.job && <small className={`technical-job-status ${failed ? 'failed' : ''}`} role={failed ? 'alert' : 'status'}>
@@ -628,14 +617,14 @@ export function TechnicalMediaEditor({
       {attachments.length > 0 && (
         <section className="technical-section">
           <header>
-            <span><Download /><strong>Attachments</strong></span>
+            <span><ActionDownloadIcon /><strong>Attachments</strong></span>
             <small>{attachments.length} files</small>
           </header>
           <div className="technical-attachment-list">
             {attachments.map((attachment) => {
               const copy = (
                 <>
-                  <FileText />
+                  <ViewDetailsIcon />
                   <span>
                     <strong>{attachment.filename}</strong>
                     <small>
@@ -647,7 +636,7 @@ export function TechnicalMediaEditor({
               );
               return attachment.url ? (
                 <a key={attachment.id} href={attachment.url} download>
-                  {copy}<Download />
+                  {copy}<ActionDownloadIcon />
                 </a>
               ) : (
                 <div key={attachment.id}>{copy}<small>Download unavailable</small></div>

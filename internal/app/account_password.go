@@ -62,7 +62,7 @@ func (s *Server) handleAccountPassword(w http.ResponseWriter, r *http.Request, u
 		return
 	}
 	if strings.TrimSpace(currentHash) == "" {
-		_, _, kdfErr := verifyAccountPassword(r.Context(), kdfPasswordChangeCompare, "", req.CurrentPassword)
+		_, kdfErr := verifyAccountPassword(r.Context(), kdfPasswordChangeCompare, "", req.CurrentPassword)
 		if writeKDFUnavailable(w, kdfErr) {
 			return
 		}
@@ -72,7 +72,7 @@ func (s *Server) handleAccountPassword(w http.ResponseWriter, r *http.Request, u
 		return
 	}
 
-	currentValid, _, verifiedHash, kdfErr := verifyAccountPasswordSnapshot(r.Context(), kdfPasswordChangeCompare, currentHash, req.CurrentPassword)
+	currentValid, verifiedHash, kdfErr := verifyAccountPasswordSnapshot(r.Context(), kdfPasswordChangeCompare, currentHash, req.CurrentPassword)
 	if writeKDFUnavailable(w, kdfErr) {
 		return
 	}

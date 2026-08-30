@@ -1,23 +1,4 @@
-import {
-  type LucideIcon,
-  AlertTriangle,
-  ArrowDown,
-  ArrowUp,
-  BookOpen,
-  ChevronRight,
-  Film,
-  LibraryBig,
-  Music,
-  MoreHorizontal,
-  Pin,
-  PinOff,
-  Plus,
-  Radio,
-  RefreshCw,
-  Search,
-  Tv,
-  X,
-} from '#portico-icons';
+import { type PorticoSemanticIconComponent, StatusWarningIcon, NavigationMoveDownIcon, NavigationMoveUpIcon, NavigationLibraryIcon, NavigationDisclosureIcon, MediaMovieIcon, MediaMusicIcon, ActionMoreIcon, ActionPinIcon, ActionUnpinIcon, ActionAddIcon, NavigationChannelsIcon, ActionRefreshIcon, NavigationSearchIcon, DeviceTvIcon, ActionCloseIcon } from '#portico-icons';
 import { useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { SecondaryButton } from '../../components/controls/Buttons';
@@ -29,23 +10,23 @@ import type { LibrarySummary } from '../../data/models';
 import { useOptionalWebDisplayPreferences } from '../../preferences/WebDisplayPreferencesProvider';
 import './libraries.css';
 
-function libraryPresentation(kind: string): { label: string; icon: LucideIcon; tone: string } {
+function libraryPresentation(kind: string): { label: string; icon: PorticoSemanticIconComponent; tone: string } {
   switch (kind) {
     case 'movies':
     case 'movie':
-      return { label: 'Movies', icon: Film, tone: 'movies' };
+      return { label: 'Movies', icon: MediaMovieIcon, tone: 'movies' };
     case 'music':
-      return { label: 'Music', icon: Music, tone: 'music' };
+      return { label: 'Music', icon: MediaMusicIcon, tone: 'music' };
     case 'audiobook':
     case 'audiobooks':
-      return { label: 'Audiobooks', icon: BookOpen, tone: 'audiobooks' };
+      return { label: 'Audiobooks', icon: NavigationLibraryIcon, tone: 'audiobooks' };
     case 'recorded-tv':
     case 'recorded_tv':
-      return { label: 'Recorded TV', icon: Radio, tone: 'recorded-tv' };
+      return { label: 'Recorded TV', icon: NavigationChannelsIcon, tone: 'recorded-tv' };
     case 'anime':
-      return { label: 'Anime', icon: Tv, tone: 'anime' };
+      return { label: 'Anime', icon: DeviceTvIcon, tone: 'anime' };
     default:
-      return { label: 'TV Shows', icon: Tv, tone: 'television' };
+      return { label: 'TV Shows', icon: DeviceTvIcon, tone: 'television' };
   }
 }
 
@@ -77,17 +58,17 @@ function LibraryEntry({ library, pinned, firstPinned, lastPinned, busy, onAction
         <strong>{library.name}</strong>
         <small>{itemCount(library)}</small>
       </span>
-      {pinned && <span className="library-hub-pinned"><Pin /> {productText('preferences.library-status-pinned')}</span>}
-      <ChevronRight className="library-hub-chevron" aria-hidden="true" />
+      {pinned && <span className="library-hub-pinned"><ActionPinIcon /> {productText('preferences.library-status-pinned')}</span>}
+      <NavigationDisclosureIcon className="library-hub-chevron" aria-hidden="true" />
     </Link>
-    <button ref={trigger} className="library-hub-more" type="button" disabled={busy} aria-label={`Library options for ${library.name}`} aria-expanded={open} aria-haspopup="menu" onClick={() => setOpen((value) => !value)}><MoreHorizontal /></button>
+    <button ref={trigger} className="library-hub-more" type="button" disabled={busy} aria-label={`Library options for ${library.name}`} aria-expanded={open} aria-haspopup="menu" onClick={() => setOpen((value) => !value)}><ActionMoreIcon /></button>
     {open && <AnchoredOverlay anchorRef={trigger} placement="bottom-end" className="library-hub-menu" role="menu" onDismiss={() => setOpen(false)}>
-      <Link role="menuitem" to={libraryDestination(library)}><ChevronRight /> Open library</Link>
+      <Link role="menuitem" to={libraryDestination(library)}><NavigationDisclosureIcon /> Open library</Link>
       {pinned
-        ? <button role="menuitem" onClick={() => { onAction('unpin'); setOpen(false); }}><PinOff /> Unpin from sidebar</button>
-        : <button role="menuitem" onClick={() => { onAction('pin'); setOpen(false); }}><Pin /> Pin to sidebar</button>}
-      {pinned && <button role="menuitem" disabled={firstPinned} onClick={() => { onAction('up'); setOpen(false); }}><ArrowUp /> Move up</button>}
-      {pinned && <button role="menuitem" disabled={lastPinned} onClick={() => { onAction('down'); setOpen(false); }}><ArrowDown /> Move down</button>}
+        ? <button role="menuitem" onClick={() => { onAction('unpin'); setOpen(false); }}><ActionUnpinIcon /> Unpin from sidebar</button>
+        : <button role="menuitem" onClick={() => { onAction('pin'); setOpen(false); }}><ActionPinIcon /> Pin to sidebar</button>}
+      {pinned && <button role="menuitem" disabled={firstPinned} onClick={() => { onAction('up'); setOpen(false); }}><NavigationMoveUpIcon /> Move up</button>}
+      {pinned && <button role="menuitem" disabled={lastPinned} onClick={() => { onAction('down'); setOpen(false); }}><NavigationMoveDownIcon /> Move down</button>}
     </AnchoredOverlay>}
   </div>;
 }
@@ -143,7 +124,7 @@ export function LibrariesHubPage() {
         <h1>Libraries</h1>
         <p>Browse every media library available to this account.</p>
       </div>
-      {canManageLibraries && <Link className="button secondary" to="/settings/media"><Plus /> Manage libraries</Link>}
+      {canManageLibraries && <Link className="button secondary" to="/settings/media"><ActionAddIcon /> Manage libraries</Link>}
     </header>
 
     {libraries.status === 'success' && allLibraries.length > 0 && <div className="library-hub-summary" aria-label="Library summary">
@@ -154,22 +135,22 @@ export function LibrariesHubPage() {
 
     {libraries.status === 'success' && allLibraries.length > 0 && <div className="library-hub-toolbar">
       <label className="library-hub-search">
-        <Search aria-hidden="true" />
+        <NavigationSearchIcon aria-hidden="true" />
         <input aria-label="Filter libraries" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Filter libraries" />
-        {query && <button type="button" onClick={() => setQuery('')} aria-label="Clear library filter"><X /></button>}
+        {query && <button type="button" onClick={() => setQuery('')} aria-label="Clear library filter"><ActionCloseIcon /></button>}
       </label>
       <span>{visibleLibraries.length === allLibraries.length ? 'All libraries' : `${visibleLibraries.length} matching`}</span>
     </div>}
 
     {libraries.status === 'loading' && <div className="library-hub-reservation" aria-busy="true" aria-label="Loading libraries"><div aria-hidden="true" /><div aria-hidden="true" /><div aria-hidden="true" /></div>}
 
-    {libraries.status === 'error' && <div className="library-state error" role="alert"><AlertTriangle /><strong>Couldn’t load libraries</strong><p>{productProblemText(libraries.error, 'library.load-failed')}</p><SecondaryButton onClick={() => setReloadKey((value) => value + 1)}><RefreshCw /> {productText('action.retry')}</SecondaryButton></div>}
+    {libraries.status === 'error' && <div className="library-state error" role="alert"><StatusWarningIcon /><strong>Couldn’t load libraries</strong><p>{productProblemText(libraries.error, 'library.load-failed')}</p><SecondaryButton onClick={() => setReloadKey((value) => value + 1)}><ActionRefreshIcon /> {productText('action.retry')}</SecondaryButton></div>}
 
     {libraries.status === 'success' && allLibraries.length === 0 && (canManageLibraries
-      ? <div className="library-state library-hub-first-library"><LibraryBig /><strong>Add your first library</strong><p>Choose a media type and one or more folders on this server. Portico keeps the source files in place and queues the first scan.</p><Link className="button primary" to="/settings/media?newLibrary=1"><Plus /> Add first library</Link></div>
-      : <div className="library-state"><LibraryBig /><strong>This server has no available libraries</strong><p>The server owner has not made a media library available to this account.</p></div>)}
+      ? <div className="library-state library-hub-first-library"><NavigationLibraryIcon /><strong>Add your first library</strong><p>Choose a media type and one or more folders on this server. Portico keeps the source files in place and queues the first scan.</p><Link className="button primary" to="/settings/media?newLibrary=1"><ActionAddIcon /> Add first library</Link></div>
+      : <div className="library-state"><NavigationLibraryIcon /><strong>This server has no available libraries</strong><p>The server owner has not made a media library available to this account.</p></div>)}
 
-    {libraries.status === 'success' && allLibraries.length > 0 && visibleLibraries.length === 0 && <div className="library-state"><Search /><strong>No libraries match “{query.trim()}”</strong><p>Try a different library name or media type.</p><SecondaryButton onClick={() => setQuery('')}>Clear filter</SecondaryButton></div>}
+    {libraries.status === 'success' && allLibraries.length > 0 && visibleLibraries.length === 0 && <div className="library-state"><NavigationSearchIcon /><strong>No libraries match “{query.trim()}”</strong><p>Try a different library name or media type.</p><SecondaryButton onClick={() => setQuery('')}>Clear filter</SecondaryButton></div>}
 
     {libraries.status === 'success' && visibleLibraries.length > 0 && <section className="library-hub-directory" aria-label="Available libraries">
       {visibleLibraries.map((library) => {

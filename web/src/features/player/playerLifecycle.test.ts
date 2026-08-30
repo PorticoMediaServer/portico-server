@@ -20,6 +20,21 @@ describe('player lifecycle transactions', () => {
     expect(play).toHaveBeenCalledTimes(1);
   });
 
+  it('finishes an overrun HLS seek from 56.4 seconds without assigning the exact 60-second endpoint', async () => {
+    const media = document.createElement('video');
+    Object.defineProperty(media, 'paused', { configurable: true, get: () => true });
+    Object.defineProperty(media, 'duration', { configurable: true, value: 60 });
+    media.currentTime = 56.4;
+    const play = vi.spyOn(media, 'play').mockResolvedValue(undefined);
+    vi.spyOn(media, 'pause').mockImplementation(() => undefined);
+    const transaction = createSeekTransaction(media, 100);
+
+    await expect(transaction.seek(media.currentTime + 30)).resolves.toBe('completed');
+    expect(media.currentTime).toBeCloseTo(59.9, 5);
+    expect(media.currentTime).toBeLessThan(media.duration);
+    expect(play).toHaveBeenCalledOnce();
+  });
+
   it('does not classify pause, seek, background, or buffered playback as a stall', () => {
     const media = document.createElement('video');
     Object.defineProperty(media, 'paused', { configurable: true, value: true });

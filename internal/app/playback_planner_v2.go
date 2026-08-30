@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/PorticoMediaServer/portico-server/internal/mediafacts"
+	"github.com/PorticoMediaServer/portico-server/internal/playbackcap"
 	"github.com/PorticoMediaServer/portico-server/internal/playbackhw"
 	"github.com/PorticoMediaServer/portico-server/internal/playbackplan"
 )
@@ -34,6 +35,15 @@ func (s *Server) planMediaPlayback(ctx context.Context, item MediaItem, profile 
 	capabilities, err := resolvePlaybackCapabilities(profile)
 	if err != nil {
 		return PlaybackDecision{}, err
+	}
+	// Burn-in produces ordinary video pixels; it is a Server execution
+	// capability, not a subtitle-decoder capability the client must advertise.
+	// Derive burn-in candidates only from audiovisual tuples the client already
+	// proved it can consume, and bind them to the exact selected source stream.
+	if strings.EqualFold(strings.TrimSpace(subtitleMode), "burn_in") {
+		if selected := streamByID(item.Streams, selectedSubtitleID); selected.ID != "" && selected.Kind == "subtitle" {
+			capabilities = playbackCapabilitiesWithServerBurnIn(capabilities, selected.Codec, playbackSubtitleFactKind(selected.Codec))
+		}
 	}
 	selection := playbackplan.Selection{}
 	if index, ok := playbackStreamIndex(item.Streams, selectedAudioID, "audio"); ok {
@@ -125,6 +135,24 @@ func (s *Server) planMediaPlayback(ctx context.Context, item MediaItem, profile 
 		decision.IsProxied = true
 	}
 	return decision, nil
+}
+
+func playbackCapabilitiesWithServerBurnIn(capabilities playbackcap.Resolution, codec, kind string) playbackcap.Resolution {
+	codec = strings.ToLower(strings.TrimSpace(codec))
+	kind = strings.ToLower(strings.TrimSpace(kind))
+	if codec == "" || kind == "" {
+		return capabilities
+	}
+	original := append([]playbackcap.DeliveryTuple(nil), capabilities.Tuples...)
+	for _, tuple := range original {
+		if tuple.Kind != playbackcap.MediaAudiovisual || tuple.Subtitle.Mode != playbackcap.SubtitleNone {
+			continue
+		}
+		burn := tuple
+		burn.Subtitle = playbackcap.Subtitle{Codec: codec, Kind: kind, Mode: playbackcap.SubtitleBurn}
+		capabilities.Tuples = append(capabilities.Tuples, burn)
+	}
+	return capabilities
 }
 
 func remapReplacedScannerStream(previous, current []Stream, selectedID, kind string) string {
@@ -261,6 +289,7 @@ func playbackDecisionFromPlan(plan playbackplan.Plan, hardwarePlan *playbackhw.P
 		PlanDigest: binding.Digest, SourceRevision: binding.SourceRevision,
 		CapabilityEvidenceID: binding.CapabilityEvidenceID, Generation: binding.Generation,
 		VideoAction: videoAction, AudioAction: audioAction, SubtitleAction: string(plan.Subtitle.Action), execution: binding,
+		plannerRejections: plan.Rejections,
 	}
 	if plan.Hardware.Verified {
 		decision.HardwareBackend = string(plan.Hardware.Backend)

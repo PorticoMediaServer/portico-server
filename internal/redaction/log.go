@@ -44,12 +44,6 @@ func OperationID(kind, value string) string {
 	return strings.TrimSpace(kind) + "-" + hex.EncodeToString(sum[:])[:16]
 }
 
-// RedactString retains the legacy path-only helper for callers that do not
-// have process credentials available.
-func RedactString(value string, sensitivePaths ...string) string {
-	return (Policy{SensitivePaths: sensitivePaths}).RedactString(value)
-}
-
 func (p Policy) RedactString(value string) string {
 	for _, sensitive := range p.SensitivePaths {
 		sensitive = strings.TrimSpace(sensitive)
@@ -566,5 +560,5 @@ func Error(err error, sensitivePaths ...string) error {
 	if err == nil {
 		return nil
 	}
-	return errors.New(RedactString(err.Error(), sensitivePaths...))
+	return errors.New((Policy{SensitivePaths: sensitivePaths}).RedactString(err.Error()))
 }

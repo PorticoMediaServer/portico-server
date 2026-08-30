@@ -19,7 +19,10 @@ function renderSaved(source: FixturePorticoDataSource, entry: string, detail = f
     <MemoryRouter initialEntries={[entry]}>
       <PlaybackSessionProvider>
         {detail
-          ? <Routes><Route path="/saved/:kind/:id" element={<SavedResourcePage />} /></Routes>
+          ? <Routes>
+              <Route path="/saved/:kind/:id" element={<SavedResourcePage />} />
+              <Route path="/saved" element={<SavedPage />} />
+            </Routes>
           : <SavedPage />}
       </PlaybackSessionProvider>
     </MemoryRouter>
@@ -86,6 +89,29 @@ describe('Saved workspace', () => {
       }),
       expect.any(AbortSignal),
     ));
+    expect(await screen.findByRole('status')).toHaveTextContent('Playlist order updated.');
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Move Fargo earlier, position 2' })).toBeEnabled());
+  });
+
+  it('deletes only the saved resource and returns to the Saved workspace', async () => {
+    const source = new FixturePorticoDataSource();
+    const remove = vi.spyOn(source as PorticoDataSource, 'deleteSavedResource');
+    renderSaved(source, '/saved/playlists/fixture-playlist-weekend', true);
+    await screen.findByRole('heading', { name: 'Weekend queue' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete Weekend queue' }));
+    expect(screen.getByRole('heading', { name: 'Delete “Weekend queue”?' })).toBeInTheDocument();
+    expect(screen.getByText(/Your media files and library items are not deleted/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+
+    await waitFor(() => expect(remove).toHaveBeenCalledWith(
+      'playlist',
+      'fixture-playlist-weekend',
+      expect.any(AbortSignal),
+    ));
+    expect(await screen.findByRole('heading', { name: 'Saved' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Playlists' }));
+    expect(screen.queryByText('Weekend queue')).not.toBeInTheDocument();
   });
 
   it('loads long playlists in pages without collapsing duplicate media entries', async () => {

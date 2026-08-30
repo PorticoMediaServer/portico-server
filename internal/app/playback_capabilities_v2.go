@@ -115,7 +115,39 @@ func normalizePlaybackCapabilityEvidence(client playbackcap.Client, schemaVersio
 }
 
 func (s *Server) authorizePlaybackCapabilityEvidence(ctx context.Context, user User, profile PlaybackClientProfile) (playbackCapabilityAuthority, bool) {
-	if s == nil || s.db == nil || !strings.HasPrefix(user.AuthSessionID, "nativesess_") || strings.TrimSpace(user.DeviceID) == "" || strings.TrimSpace(profile.CapabilitySchemaVersion) != playbackCapabilitySchemaV2 {
+	if s == nil || s.db == nil || strings.TrimSpace(user.AuthSessionID) == "" || strings.TrimSpace(user.DeviceID) == "" || strings.TrimSpace(profile.CapabilitySchemaVersion) != playbackCapabilitySchemaV2 {
+		return playbackCapabilityAuthority{}, false
+	}
+	if strings.HasPrefix(user.AuthSessionID, "sess_") {
+		var installationID, deviceName, appName, platform, sessionExpires, deviceRevoked string
+		var trusted int
+		err := s.queryUserRow(ctx, `
+			SELECT COALESCE(d.installation_id, ''), COALESCE(NULLIF(d.display_name, ''), d.name), d.app, d.platform,
+				d.trusted, COALESCE(d.revoked_at, ''), s.expires_at
+			FROM sessions s JOIN devices d ON d.id = s.device_id AND d.user_id = s.user_id
+			WHERE s.id = ? AND s.user_id = ? AND COALESCE(NULLIF(s.profile_id, ''), s.user_id) = ? AND s.device_id = ?`,
+			user.AuthSessionID, accountIDForUser(user), viewerProfileID(user), user.DeviceID).
+			Scan(&installationID, &deviceName, &appName, &platform, &trusted, &deviceRevoked, &sessionExpires)
+		if err != nil || trusted != 1 || deviceRevoked != "" || strings.TrimSpace(installationID) == "" {
+			return playbackCapabilityAuthority{}, false
+		}
+		expiresAt, err := parseCredentialTime(sessionExpires)
+		if err != nil || !expiresAt.After(time.Now().UTC()) {
+			return playbackCapabilityAuthority{}, false
+		}
+		family, ok := authenticatedBrowserCapabilityFamily(appName)
+		if !ok || !strings.EqualFold(strings.TrimSpace(profile.ClientFamily), family) || strings.TrimSpace(profile.ClientVersion) == "" {
+			return playbackCapabilityAuthority{}, false
+		}
+		deviceIdentity := strings.TrimSpace(user.DeviceID) + "/" + installationID
+		return playbackCapabilityAuthority{
+			Source: playbackcap.SourceAuthenticatedRuntime, Family: family, Platform: "web",
+			Device: strings.TrimSpace(deviceName), DeviceID: deviceIdentity,
+			Producer:        "portico-authenticated/" + family + "/web",
+			ProducerVersion: playbackCapabilitySchemaV2 + "/" + strings.ToLower(strings.TrimSpace(appName)),
+		}, true
+	}
+	if !strings.HasPrefix(user.AuthSessionID, "nativesess_") {
 		return playbackCapabilityAuthority{}, false
 	}
 	refreshID := strings.TrimPrefix(user.AuthSessionID, "nativesess_")
@@ -138,6 +170,23 @@ func (s *Server) authorizePlaybackCapabilityEvidence(ctx context.Context, user U
 	if err != nil || !expiresAt.After(time.Now().UTC()) {
 		return playbackCapabilityAuthority{}, false
 	}
+	// Hosted attachment intentionally returns a durable server-native credential
+	// family to every Client Core consumer. The Web app is still a browser
+	// runtime, however: bind its measured capabilities to the exact trusted
+	// attachment session, device, installation, and browser family instead of
+	// misclassifying navigator.platform as a native playback platform.
+	if family, ok := attachedWebCapabilityFamily(appName, platform, profile.ClientFamily); ok {
+		if strings.TrimSpace(installationID) == "" || strings.TrimSpace(profile.ClientVersion) == "" {
+			return playbackCapabilityAuthority{}, false
+		}
+		deviceIdentity := strings.TrimSpace(user.DeviceID) + "/" + installationID
+		return playbackCapabilityAuthority{
+			Source: playbackcap.SourceAuthenticatedRuntime, Family: family, Platform: "web",
+			Device: strings.TrimSpace(deviceName), DeviceID: deviceIdentity,
+			Producer:        "portico-authenticated/" + family + "/web",
+			ProducerVersion: playbackCapabilitySchemaV2 + "/" + strings.ToLower(strings.TrimSpace(appName)) + "/" + refreshCreated,
+		}, true
+	}
 	family, canonicalPlatform := nativeCapabilityFamily(platform)
 	if family == "" || strings.TrimSpace(appName) == "" || (strings.TrimSpace(profile.ClientFamily) != "" && !strings.EqualFold(strings.TrimSpace(profile.ClientFamily), family)) || strings.TrimSpace(profile.ClientVersion) == "" {
 		return playbackCapabilityAuthority{}, false
@@ -153,6 +202,39 @@ func (s *Server) authorizePlaybackCapabilityEvidence(ctx context.Context, user U
 		Device: strings.TrimSpace(deviceName), DeviceID: deviceIdentity,
 		Producer: producer, ProducerVersion: producerVersion,
 	}, true
+}
+
+func attachedWebCapabilityFamily(appName, platform, requestedFamily string) (string, bool) {
+	if !strings.EqualFold(strings.TrimSpace(appName), "portico-web") {
+		return "", false
+	}
+	if strings.TrimSpace(platform) == "" {
+		return "", false
+	}
+	if nativeFamily, _ := nativeCapabilityFamily(platform); nativeFamily != "" {
+		return "", false
+	}
+	switch family := strings.ToLower(strings.TrimSpace(requestedFamily)); family {
+	case "chromium", "edge", "firefox", "safari":
+		return family, true
+	default:
+		return "", false
+	}
+}
+
+func authenticatedBrowserCapabilityFamily(appName string) (string, bool) {
+	switch strings.ToLower(strings.TrimSpace(appName)) {
+	case "chrome", "chromium":
+		return "chromium", true
+	case "microsoft edge", "edge":
+		return "edge", true
+	case "firefox":
+		return "firefox", true
+	case "safari":
+		return "safari", true
+	default:
+		return "", false
+	}
 }
 
 func nativeCapabilityFamily(platform string) (family, canonicalPlatform string) {

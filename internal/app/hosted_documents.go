@@ -532,15 +532,6 @@ func (s *Server) verifyHostedPolicySnapshot(raw json.RawMessage, snapshot Remote
 }
 
 func verifyHostedPolicySnapshot(raw json.RawMessage, snapshot RemotePolicySnapshot, expectedServerID string, now time.Time, encodedKeys map[string]string, previous remotePolicyState) error {
-	// Version-one snapshots predate explicit chunk metadata and are treated as
-	// one bounded chunk for compatibility. New manifests always carry these
-	// fields explicitly.
-	if snapshot.ChunkCount == 0 {
-		snapshot.ChunkCount = 1
-	}
-	if snapshot.ItemCount == 0 {
-		snapshot.ItemCount = len(snapshot.Members) + len(snapshot.DeletedAccountTombstones)
-	}
 	if len(raw) > maxRemotePolicyEncoded {
 		return errors.New("policy snapshot exceeds the encoded byte limit")
 	}

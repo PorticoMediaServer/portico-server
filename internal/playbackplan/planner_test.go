@@ -43,6 +43,26 @@ func TestPlannerModes(t *testing.T) {
 	}
 }
 
+func TestBrowserHLSMonoTupleDeliversMPEG2MP2WithoutUpmix(t *testing.T) {
+	facts := baseFacts()
+	facts.Container = "mpegts"
+	facts.Video[0] = mediafacts.Video{Index: 0, Codec: "mpeg2video", Profile: "main", CodedWidth: 320, CodedHeight: 180, PixelFormat: "yuv420p", BitDepth: 8, FrameRate: mediafacts.Rational{Num: 25, Den: 1}, SampleAspectRatio: mediafacts.Rational{Num: 1, Den: 1}, DisplayAspectRatio: mediafacts.Rational{Num: 16, Den: 9}}
+	facts.Audio[0] = mediafacts.Audio{Index: 1, Codec: "mp2", Layout: "mono", Channels: 1, SampleRate: 48000, Bitrate: 128000}
+	tuple := avTuple("mpegts", "h264", "sdr", "aac", "mono", 1, playbackcap.Subtitle{Mode: playbackcap.SubtitleNone})
+	tuple.Protocol = "hls"
+	tuple.Video.Profile = "main"
+	tuple.Video.BitDepth = 8
+	tuple.Audio.Profile = "lc"
+	tuple.Audio.Route = "decode"
+	plan, err := Build(Request{Facts: facts, Capabilities: playbackcap.Resolution{EvidenceID: "web:chromium", Tuples: []playbackcap.DeliveryTuple{tuple}}, Policy: MaximumFidelity, Protocol: "hls", Selection: Selection{VideoIndex: ip(0), AudioIndex: ip(1)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Mode == Unsupported || plan.Audio.Layout != "mono" || plan.Audio.Channels != 1 {
+		t.Fatalf("mono MPEG2/MP2 plan = %#v", plan)
+	}
+}
+
 func TestH264ConstrainedBaselineMatchesBrowserBaselineCapability(t *testing.T) {
 	facts := baseFacts()
 	facts.Video[0].Profile = "Constrained Baseline"
@@ -174,6 +194,43 @@ func TestHLSCopyRequiresCurrentPositiveExactSeekEvidence(t *testing.T) {
 	staleFacts.Video[0].KeyframeEvidenceRevision = "previous-source-revision"
 	if plan := build(staleFacts); plan.Mode != VideoTranscode || !has(plan.Reasons, ReasonExactSeekUnavailable) {
 		t.Fatalf("stale exact-seek evidence did not fail closed: %#v", plan)
+	}
+}
+
+func TestPorticoSignalMKVChromiumRemuxRequiresExecutorCompatibleSeekEvidence(t *testing.T) {
+	facts := baseFacts()
+	facts.Source = mediafacts.Source{Fingerprint: "sha256-sampled:b36d7f8cd6691ac7f1d739c5fae5e3a107dc9f197984682151663f8279131b64", Revision: "834671a3e68d93d8bcce1561edd1c5b408edbb1984ecaeec4b47f1cdd7ef680d", SizeBytes: 2151186}
+	facts.Container = "matroska"
+	facts.DurationUS = 20_021_000
+	facts.Video[0] = mediafacts.Video{Index: 0, Codec: "h264", Profile: "High", Level: "30", CodecTag: "[0][0][0][0]", CodedWidth: 640, CodedHeight: 360, SampleAspectRatio: mediafacts.Rational{Num: 1, Den: 1}, DisplayAspectRatio: mediafacts.Rational{Num: 16, Den: 9}, PixelFormat: "yuv420p", BitDepth: 8, ChromaSubsampling: "4:2:0", FieldOrder: "progressive", FrameRate: mediafacts.Rational{Num: 30, Den: 1}, Timing: mediafacts.Timing{StartTime: &mediafacts.Rational{Num: 21, Den: 1000}, TimeBase: &mediafacts.Rational{Num: 1, Den: 1000}}}
+	facts.Audio[0] = mediafacts.Audio{Index: 1, Codec: "aac", Profile: "LC", Layout: "mono", Channels: 1, SampleRate: 48000, GaplessConfidence: mediafacts.ConfidenceUnknown, Timing: mediafacts.Timing{StartTime: &mediafacts.Rational{Num: 0, Den: 1}, TimeBase: &mediafacts.Rational{Num: 1, Den: 1000}}}
+	httpTuple := avTuple("mp4", "h264", "sdr", "aac", "mono", 1, playbackcap.Subtitle{Mode: playbackcap.SubtitleNone})
+	httpTuple.Video.BitDepth, httpTuple.Video.MaxWidth, httpTuple.Video.MaxHeight, httpTuple.Video.MaxFrameRate = 8, 2294, 1490, 60
+	httpTuple.Video.Chroma = "4:2:0"
+	httpTuple.Audio.Profile, httpTuple.Audio.Route = "lc", "decode"
+	hlsTuple := httpTuple
+	hlsTuple.Protocol, hlsTuple.Container = "hls", "mpegts"
+	req := Request{Facts: facts, Capabilities: playbackcap.Resolution{EvidenceID: "authenticated_runtime:chromium-152", Tuples: []playbackcap.DeliveryTuple{httpTuple, hlsTuple}}, Policy: MaximumFidelity, Selection: Selection{VideoIndex: ip(0), AudioIndex: ip(1)}}
+
+	progressive, err := Build(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if progressive.Mode != Remux || progressive.Protocol != "http" || progressive.Streams[0].Action != Copy || progressive.Streams[1].Action != Copy {
+		t.Fatalf("live Chromium facts did not select the supported progressive remux tuple: %#v", progressive)
+	}
+
+	// The current executor publishes every non-direct VOD graph as HLS. HLS
+	// packet-copy remains fail-closed until source-revision-bound keyframe-grid
+	// evidence proves segment-safe seeks; unknown AAC gapless facts alone must
+	// neither force nor authorize video conversion.
+	req.Protocol = "hls"
+	hls, err := Build(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hls.Mode != VideoTranscode || !has(hls.Reasons, ReasonExactSeekUnavailable) || !has(hls.Reasons, ReasonGaplessFactsUnknown) {
+		t.Fatalf("executor-constrained HLS plan did not preserve seek/gapless safety: %#v", hls)
 	}
 }
 

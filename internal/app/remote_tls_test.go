@@ -50,7 +50,7 @@ func TestRemoteTLSRepairReloadsCertificateAndHeartbeats(t *testing.T) {
 			t.Fatalf("decode heartbeat: %v", err)
 		}
 		heartbeatSeen <- payload
-		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "serverId": "srv_tls_repair", "assignedHostname": "ptc-tls-repair.direct.getportico.tv", "remoteAccessEnabled": true})
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "serverId": "srv_tls_repair", "assignedHostname": "ptc-tls-repair.direct.getportico.tv", "remoteAccessEnabled": true, "publicConsoleOriginGeneration": 1})
 	}))
 	t.Cleanup(hosted.Close)
 

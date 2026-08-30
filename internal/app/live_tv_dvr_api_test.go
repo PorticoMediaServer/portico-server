@@ -77,6 +77,42 @@ func TestLiveTVChannelPageFiltersAndReturnsAccessibleGroups(t *testing.T) {
 	}
 }
 
+func TestLiveTVChannelPageSerializesEmptyItemsAsArray(t *testing.T) {
+	server := newScannerTestServer(t)
+	now := time.Now().UTC().Truncate(time.Second).Format(time.RFC3339)
+	if _, err := server.db.Exec(`
+		INSERT INTO live_tv_sources (id, name, type, enabled, created_at, updated_at)
+		VALUES ('src_empty_filter', 'Empty Filter Source', 'm3u', 1, ?, ?)`, now, now); err != nil {
+		t.Fatalf("insert source: %v", err)
+	}
+	if _, err := server.db.Exec(`
+		INSERT INTO live_tv_channels (id, source_id, number, name, stream_url, enabled, sort_order, last_seen_at, created_at, updated_at)
+		VALUES ('channel_present', 'src_empty_filter', '1', 'Present Channel', 'https://example.test/present', 1, 1, ?, ?, ?)`, now, now, now); err != nil {
+		t.Fatalf("insert channel: %v", err)
+	}
+
+	user := User{ID: "usr_empty_filter", ProfileID: "usr_empty_filter", ProfileIsPrimary: true, Permissions: map[string]bool{"viewLiveTV": true}}
+	if _, err := server.db.Exec(`
+		INSERT INTO users (id, username, email, display_name, password_hash, role, permissions_json, preferences_json, created_at, updated_at)
+		VALUES (?, 'empty-filter', 'empty-filter@example.test', 'Empty Filter', 'hash', 'user', '{}', '{}', ?, ?)`, user.ID, now, now); err != nil {
+		t.Fatalf("insert user: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/live-tv/sources/src_empty_filter/channels?query=no-such-channel", nil)
+	recorder := httptest.NewRecorder()
+	server.handleLiveTVSourceRoute(recorder, req, user, []string{"src_empty_filter", "channels"})
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("channel page status = %d body=%s", recorder.Code, recorder.Body.String())
+	}
+	var body map[string]json.RawMessage
+	if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode channel page: %v", err)
+	}
+	if string(body["items"]) != "[]" {
+		t.Fatalf("items must be an empty JSON array, body=%s", recorder.Body.String())
+	}
+}
+
 func TestLiveTVGuideGroupFilterKeepsCompleteGroupNavigation(t *testing.T) {
 	server := newScannerTestServer(t)
 	now := time.Now().UTC().Truncate(time.Second)

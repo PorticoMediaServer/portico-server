@@ -521,6 +521,19 @@ export class HostedRouteRetryLaterError extends ApiError {
   }
 }
 
+/** Hosted accepted the attachment but has not published a usable endpoint generation yet. */
+export class HostedRoutePublicationPendingError extends ApiError {
+  constructor(cause?: ApiError) {
+    super(cause?.status ?? 425, "route_publication_pending", "Portico is finishing this server's secure route.", undefined, {
+      retryable: true,
+      retryAfter: cause?.retryAfter,
+      retryAt: cause?.retryAt,
+      retryAfterMs: cause?.retryAfterMs,
+    });
+    this.name = "HostedRoutePublicationPendingError";
+  }
+}
+
 export function throwIfConnectionAborted(signal?: AbortSignal): void {
   if (!signal?.aborted) return;
   if (signal.reason instanceof Error) throw signal.reason;
@@ -610,15 +623,16 @@ export async function discoverHostedServerRoute(
           deadlineAt: discoveryDeadlineAt,
         });
       } catch (error) {
-        await waitForRetry(error, attempt);
+        await waitForRetry(hostedRoutePublicationPendingResponse(error) ?? error, attempt);
         continue;
       }
       try {
         throwIfConnectionAborted(deadlineController.signal);
-        await verifyHostedRouteDocument(routeDocument, server.id, options.trustedHostedDocumentKeys, options.now?.() ?? runtime.now(), runtime);
+        await verifyHostedRouteDocument(routeDocument, server.id, options.trustedHostedDocumentKeys, options.now?.() ?? runtime.now(), runtime, true);
 			  if (routeDocument.serverPublicKey !== server.serverPublicKey || routeDocument.serverPublicKeyFingerprint !== server.serverPublicKeyFingerprint) {
 				  throw new Error("The signed route document does not match the selected Hosted server identity.");
 			  }
+        assertRoutePublicationReady(routeDocument);
         const routes = routesForConnection(routeDocument, options.routePreference);
         const route = await selectVerifiedRoute(
           routes,
@@ -691,9 +705,28 @@ function abortableRetryDelay(
 }
 
 function hostedRouteFetchErrorIsRetryable(error: unknown): boolean {
+  if (error instanceof HostedRoutePublicationPendingError) return true;
   if (error instanceof PorticoTransportError) return true;
   if (!(error instanceof ApiError)) return false;
   return error.status === 408 || error.status === 425 || error.status === 429 || (error.status >= 500 && error.status < 600);
+}
+
+function hostedRoutePublicationPendingResponse(error: unknown): HostedRoutePublicationPendingError | undefined {
+  if (!(error instanceof ApiError)) return undefined;
+  // These statuses are scoped to the Hosted route-read operation here.
+  return error.status === 409 || error.status === 425
+    ? new HostedRoutePublicationPendingError(error)
+    : undefined;
+}
+
+function assertRoutePublicationReady(document: HostedRouteDocument): void {
+  if (!Number.isSafeInteger(document.endpointGeneration) || (document.endpointGeneration ?? 0) <= 0) {
+    throw new HostedRoutePublicationPendingError();
+  }
+  const certificateStatus = document.certificate?.status?.trim().toLowerCase();
+  if (document.routes.length === 0 && certificateStatus !== "valid" && certificateStatus !== "active") {
+    throw new HostedRoutePublicationPendingError();
+  }
 }
 
 export async function verifyHostedRouteDocument(
@@ -701,10 +734,11 @@ export async function verifyHostedRouteDocument(
   expectedServerId: string,
   trustedKeys: Record<string, string>,
   now = new Date(),
-  runtimeAdapters: HostedConnectionRuntimeAdapters | ResolvedHostedConnectionRuntimeAdapters = {}
+  runtimeAdapters: HostedConnectionRuntimeAdapters | ResolvedHostedConnectionRuntimeAdapters = {},
+  allowPendingGeneration = false,
 ): Promise<void> {
   const runtime = createHostedConnectionRuntime(runtimeAdapters);
-  assertRouteDocumentEnvelope(document);
+  assertRouteDocumentEnvelope(document, allowPendingGeneration);
   if (document.audience !== "portico-media-server") throw new Error("The route document was issued for a different product.");
   if (document.serverId !== expectedServerId) throw new Error("The route document identifies a different server.");
 	if (!document.serverPublicKey?.trim() || !isValidPorticoServerPublicKeyFingerprint(document.serverPublicKeyFingerprint)) throw new Error("The route document omits the server identity key.");
@@ -1025,9 +1059,10 @@ export function routesForConnection(document: HostedRouteDocument, preference: H
   return unique;
 }
 
-function assertRouteDocumentEnvelope(document: HostedRouteDocument): asserts document is HostedRouteDocument & {endpointGeneration: number} {
+function assertRouteDocumentEnvelope(document: HostedRouteDocument, allowPendingGeneration = false): asserts document is HostedRouteDocument & {endpointGeneration: number} {
   if (document.kind !== "route-document") throw new Error("The route document kind is invalid.");
   if (document.documentVersion !== 1) throw new Error("The route document version is not supported.");
+  if (allowPendingGeneration && (document.endpointGeneration === undefined || document.endpointGeneration === 0)) return;
   if (!Number.isSafeInteger(document.endpointGeneration) || (document.endpointGeneration ?? 0) <= 0) {
     throw new Error("The route document endpoint generation is invalid.");
   }
@@ -1057,7 +1092,7 @@ function hostedConnectionErrorIsRetryable(error: unknown): boolean {
 }
 
 export function isIPEncodedDirectRoute(route: HostedRouteEntry): boolean {
-  return route.type === "public_direct_ip_encoded" || route.type === "direct_ip_encoded" || route.type === "lan_ip_encoded";
+  return route.type === "public_direct_ip_encoded" || route.type === "lan_ip_encoded";
 }
 
 function isLANRoute(route: HostedRouteEntry): boolean {
@@ -1065,11 +1100,11 @@ function isLANRoute(route: HostedRouteEntry): boolean {
 }
 
 function isPublicDirectRoute(route: HostedRouteEntry): boolean {
-  return route.type === "public_direct" || route.type === "direct";
+  return route.type === "public_direct" || route.type === "public_console_origin";
 }
 
 function isIPEncodedPublicRoute(route: HostedRouteEntry): boolean {
-  return route.type === "public_direct_ip_encoded" || route.type === "direct_ip_encoded";
+  return route.type === "public_direct_ip_encoded";
 }
 
 export function routeIsUsableCandidate(route: HostedRouteEntry): boolean {

@@ -7,7 +7,6 @@ import (
 	"math"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -92,6 +91,10 @@ func TestGeneratedHLSManifestValidationFencesStructureAndFiles(t *testing.T) {
 	valid := "#EXTM3U\n#EXT-X-VERSION:7\n#EXT-X-TARGETDURATION:4\n#EXT-X-MEDIA-SEQUENCE:0\n#EXT-X-MAP:URI=\"init.mp4\"\n#EXTINF:4.000,\nsegment_00000.m4s\n"
 	if err := validateGeneratedHLSManifest(session, valid); err != nil {
 		t.Fatalf("valid generated manifest rejected: %v", err)
+	}
+	rounded := strings.Replace(valid, "#EXTINF:4.000", "#EXTINF:4.004", 1)
+	if err := validateGeneratedHLSManifest(session, rounded); err != nil {
+		t.Fatalf("valid rounded target duration rejected: %v", err)
 	}
 	for name, manifest := range map[string]string{
 		"duration over target": strings.Replace(valid, "#EXTINF:4.000", "#EXTINF:5.000", 1),
@@ -304,11 +307,30 @@ func TestMediaHLSSegmentStartSecondsTracksRequestedSegment(t *testing.T) {
 	}
 }
 
-func TestPublicHLSCannotOptIntoKeyframeSnappedRemux(t *testing.T) {
-	query := make(url.Values)
-	query.Set("directStream", "1")
-	if hlsDirectStreamRemuxRequested(query) {
-		t.Fatalf("public HLS query unexpectedly enabled copy-remux")
+func TestPlannedVODSegmentsReusePublishedFullTimelineProducer(t *testing.T) {
+	server := &Server{transcodes: map[string]*transcodeSession{}}
+	binding := playbackExecutionBinding{Digest: "plan", Quality: "original", Generation: 1}
+	identity := plannedTranscodeIdentity{UserID: "user", ProfileID: "profile", PlaybackSessionID: "session", AuthorizationRevision: "revision", PlaybackGeneration: 1, GrantTokenHash: "grant"}
+	key := plannedTranscodeSessionKey("movie", binding, identity, 0)
+	running := &transcodeSession{key: key, done: make(chan struct{}), updateCh: make(chan struct{}), admissionActive: true}
+	server.transcodes[key] = running
+	if got := server.plannedVODSegmentStartSeconds("movie", binding, identity, "segment_00003.ts", 12); got != 0 {
+		t.Fatalf("running origin producer selected start %d, want 0", got)
+	}
+	close(running.done)
+	running.admissionActive = false
+	dir := t.TempDir()
+	running.dir = dir
+	running.manifest = filepath.Join(dir, "index.m3u8")
+	if err := os.WriteFile(running.manifest, []byte("#EXTM3U\n#EXT-X-ENDLIST\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := server.plannedVODSegmentStartSeconds("movie", binding, identity, "segment_00003.ts", 12); got != 0 {
+		t.Fatalf("completed origin producer selected start %d, want 0", got)
+	}
+	running.markFailure(errors.New("producer failed"), false)
+	if got := server.plannedVODSegmentStartSeconds("movie", binding, identity, "segment_00003.ts", 12); got != 12 {
+		t.Fatalf("failed origin producer selected start %d, want seek-scoped 12", got)
 	}
 }
 
@@ -944,8 +966,7 @@ func TestGeneratedHLSManifestsPreserveMediaTimelineAtProducerStart(t *testing.T)
 		}
 		defer session.stop(0)
 		waitForTranscodeDone(t, session)
-		// Fragmented-MP4 copy-remux is retained only as an internal legacy
-		// primitive; the public full-timeline route rejects query-forced remux.
+		// HEVC direct streaming uses fragmented MP4 while preserving the complete timeline.
 		assertHLSManifestStartsNear(t, ffprobePath, session.manifest, 0)
 	})
 }
@@ -2117,33 +2138,6 @@ func TestBackgroundTranscodeSlotsAreBounded(t *testing.T) {
 	server.transcodeMu.Unlock()
 }
 
-func TestServerShutdownStopsAndJoinsLegacyTranscodes(t *testing.T) {
-	cmd := exec.Command("sleep", "30")
-	if err := cmd.Start(); err != nil {
-		t.Fatal(err)
-	}
-	done := make(chan struct{})
-	go func() {
-		_ = cmd.Wait()
-		close(done)
-	}()
-	session := &transcodeSession{cmd: cmd, done: done, updateCh: make(chan struct{})}
-	server := &Server{transcodes: map[string]*transcodeSession{"legacy": session}}
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	if err := server.shutdownLegacyTranscodes(ctx); err != nil {
-		t.Fatal(err)
-	}
-	select {
-	case <-done:
-	default:
-		t.Fatal("legacy transcode was not joined before shutdown returned")
-	}
-	if len(server.transcodes) != 0 {
-		t.Fatal("legacy transcode remained published after shutdown")
-	}
-}
-
 func TestForegroundSeekSupersedesStaleProducerWithoutTouchingOtherPlayback(t *testing.T) {
 	server := newScannerTestServer(t)
 	startRunning := func(userID, mediaID string, start int, lastProduced int) *transcodeSession {
@@ -2298,5 +2292,25 @@ func TestTranscodeSessionSpeedMultiplierUsesProducedSegments(t *testing.T) {
 	session.lastProducedSegment = 9
 	if speed := transcodeSessionSpeedMultiplier(session, now); speed != 0 {
 		t.Fatalf("speed multiplier before first produced segment = %.1f, expected 0", speed)
+	}
+}
+
+func TestTranscodeManifestReadTimeoutCoversBoundedEncodeStartup(t *testing.T) {
+	if got := transcodeManifestReadTimeout(false); got != 6*time.Second {
+		t.Fatalf("encode manifest initial timeout = %s, want 6s until segment progress", got)
+	}
+	if got := transcodeManifestReadTimeout(true); got != 14*time.Second {
+		t.Fatalf("remux manifest timeout = %s, want 14s", got)
+	}
+	now := time.Now()
+	soft, hard := now.Add(6*time.Second), now.Add(14*time.Second)
+	if got := transcodeManifestProgressDeadline(false, transcodeSessionSnapshot{lastProducedSegment: -1}, soft, hard); !got.Equal(soft) {
+		t.Fatalf("stalled producer deadline extended to %s", got)
+	}
+	if got := transcodeManifestProgressDeadline(false, transcodeSessionSnapshot{lastProducedSegment: 0}, soft, hard); !got.Equal(hard) {
+		t.Fatalf("progressing producer deadline = %s, want %s", got, hard)
+	}
+	if got := transcodeManifestProgressDeadline(true, transcodeSessionSnapshot{lastProducedSegment: 0}, soft, hard); !got.Equal(soft) {
+		t.Fatalf("direct stream deadline was rewritten to %s", got)
 	}
 }

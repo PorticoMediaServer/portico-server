@@ -3,22 +3,12 @@ import type { MediaItem, MediaStream } from '../../data/models';
 import { mediaPresentation } from '../catalog/mediaPresentation';
 import type { PlaybackCollectionContext } from '../player/watchNavigation';
 
-const kindAliases: Record<string, string> = {
-  audiobook: 'book',
-  'audiobook-series': 'series',
-  live_channel: 'channel',
-  'live-channel': 'channel',
-  live_recording: 'recording',
-  'live-recording': 'recording',
-};
-
 export function rawDetailKind(item: MediaItem) {
-  return String(item.entityKind || item.kind || '').trim().toLocaleLowerCase();
+  return item.entityKind;
 }
 
 export function detailKind(item: MediaItem) {
-  const raw = rawDetailKind(item).replaceAll('_', '-');
-  return kindAliases[raw] ?? raw;
+  return rawDetailKind(item);
 }
 
 export function orderedDetailItems(items: MediaItem[]) {
@@ -82,20 +72,19 @@ export function isMusicDetail(item: MediaItem) {
 }
 
 export function isAudiobookDetail(item: MediaItem) {
-  const raw = rawDetailKind(item).replaceAll('_', '-');
-  return ['author', 'book', 'audiobook', 'series', 'audiobook-series', 'chapter', 'audiobook-chapter'].includes(raw);
+  return ['author', 'audiobook', 'audiobook-series', 'chapter'].includes(rawDetailKind(item));
 }
 
 export function isChannelDetail(item: MediaItem) {
-  return detailKind(item) === 'channel';
+  return detailKind(item) === 'live-channel';
 }
 
 export function isContainerDetail(item: MediaItem) {
-  return ['show', 'season', 'artist', 'album', 'author', 'series', 'collection', 'playlist', 'category'].includes(detailKind(item));
+  return ['show', 'season', 'artist', 'album', 'author', 'audiobook-series', 'collection', 'playlist', 'category'].includes(detailKind(item));
 }
 
 export function isPlayableDetail(item: MediaItem) {
-  return !isContainerDetail(item) && ['movie', 'episode', 'track', 'book', 'recording', 'channel'].includes(detailKind(item));
+  return !isContainerDetail(item) && ['movie', 'episode', 'track', 'audiobook', 'chapter', 'recording', 'live-channel'].includes(detailKind(item));
 }
 
 export function detailArtworkShape(item: MediaItem): 'square' | 'poster' {
@@ -110,7 +99,7 @@ export function detailLibraryDestination(item: MediaItem) {
   const kind = detailKind(item);
   if (kind === 'collection') return { path: '/saved?tab=collections', label: productMessage('destination.collections').text ?? '' };
   if (kind === 'playlist') return { path: '/saved?tab=playlists', label: productMessage('destination.playlists').text ?? '' };
-  if (kind === 'channel') return { path: '/live?tab=channels', label: productMessage('destination.live-tv').text ?? '' };
+  if (kind === 'live-channel') return { path: '/live?tab=channels', label: productMessage('destination.live-tv').text ?? '' };
   const path = item.libraryId ? `/library/${encodeURIComponent(item.libraryId)}` : '/libraries';
   if (item.libraryName?.trim()) return { path, label: item.libraryName.trim() };
   if (isAudiobookDetail(item)) return { path, label: productMessage('destination.audiobooks').text ?? '' };
@@ -130,8 +119,8 @@ export function detailSavedLabel(item: MediaItem, saved: boolean) {
     album: 'Save album',
     track: 'Save track',
     author: 'Save author',
-    book: 'Save audiobook',
-    series: 'Save series',
+    audiobook: 'Save audiobook',
+    'audiobook-series': 'Save series',
     collection: 'Save collection',
     playlist: 'Save playlist',
   };
@@ -156,11 +145,11 @@ export function detailChildTitle(item: MediaItem) {
     artist: 'media.albums-title',
     album: 'media.tracks-title',
     author: 'media.audiobooks-title',
-    book: 'media.chapters-title',
-    series: 'media.audiobooks-title',
+    audiobook: 'media.chapters-title',
+    'audiobook-series': 'media.audiobooks-title',
     collection: 'media.included-title',
     playlist: 'media.playlist-title',
-    channel: 'media.programming-title',
+    'live-channel': 'media.programming-title',
   };
   return productMessage(messages[detailKind(item)] ?? 'media.included-title').text ?? '';
 }
@@ -172,11 +161,11 @@ export function detailEmptyChildCopy(item: MediaItem) {
     artist: 'media.empty-artist',
     album: 'media.empty-album',
     author: 'media.empty-author',
-    book: 'media.empty-audiobook',
-    series: 'media.empty-series',
+    audiobook: 'media.empty-audiobook',
+    'audiobook-series': 'media.empty-series',
     collection: 'media.empty-collection',
     playlist: 'media.empty-playlist',
-    channel: 'media.empty-channel',
+    'live-channel': 'media.empty-channel',
   };
   return productMessage(messages[detailKind(item)] ?? 'media.empty-included').text ?? '';
 }

@@ -1,4 +1,4 @@
-import { AlertTriangle, Check, RefreshCw, Search, UserPlus, Users, X } from '#portico-icons';
+import { StatusWarningIcon, ActionConfirmIcon, ActionRefreshIcon, NavigationSearchIcon, AccountProfilesIcon, ActionCloseIcon } from '#portico-icons';
 import { useEffect, useMemo, useState } from 'react';
 import { IconButton } from '../../components/controls/Buttons';
 import { productProblemText } from '../../components/ProductLanguage';
@@ -85,13 +85,13 @@ export function SavedShareEditor({ shares, visibility, onChange }: {
           options={[{ id: 'view', label: 'Can view' }, { id: 'edit', label: 'Can edit' }]}
           onChange={(value) => updateAccess(share.userId, value === 'edit')}
         />
-        <IconButton label={`Remove ${share.displayName}`} onClick={() => remove(share.userId)}><X /></IconButton>
+        <IconButton label={`Remove ${share.displayName}`} onClick={() => remove(share.userId)}><ActionCloseIcon /></IconButton>
       </div>)}</div>
-      : <div className="portico-saved-share-empty"><Users /><span>No named access</span><p>Add someone below without sharing this with the whole server.</p></div>}
+      : <div className="portico-saved-share-empty"><AccountProfilesIcon /><span>No named access</span><p>Add someone below without sharing this with the whole server.</p></div>}
 
     <div className="portico-saved-share-discovery">
       <label htmlFor="portico-saved-share-search">Add someone</label>
-      <div className="portico-saved-share-search"><Search /><input
+      <div className="portico-saved-share-search"><NavigationSearchIcon /><input
         id="portico-saved-share-search"
         type="search"
         value={query}
@@ -99,16 +99,16 @@ export function SavedShareEditor({ shares, visibility, onChange }: {
         placeholder="Search by username"
         autoComplete="off"
         onChange={(event) => setQuery(event.target.value.slice(0, maximumQueryLength))}
-      />{query && <IconButton label="Clear search" onClick={() => setQuery('')}><X /></IconButton>}</div>
+      />{query && <IconButton label="Clear search" onClick={() => setQuery('')}><ActionCloseIcon /></IconButton>}</div>
 
-      {candidates.status === 'loading' && <div className="portico-saved-share-state" role="status"><RefreshCw className="state-spinner" /><span>Finding people…</span></div>}
-      {candidates.status === 'error' && <div className="portico-saved-share-state error" role="alert"><AlertTriangle /><span>{productProblemText(candidates.error)}</span><button type="button" onClick={() => setReloadKey((value) => value + 1)}>Try again</button></div>}
+      {candidates.status === 'loading' && <div className="portico-saved-share-state" role="status"><ActionRefreshIcon className="state-spinner" /><span>Finding people…</span></div>}
+      {candidates.status === 'error' && <div className="portico-saved-share-state error" role="alert"><StatusWarningIcon /><span>{productProblemText(candidates.error)}</span><button type="button" onClick={() => setReloadKey((value) => value + 1)}>Try again</button></div>}
       {candidates.status === 'success' && availableCandidates.length > 0 && <div className="portico-saved-candidate-list">{availableCandidates.map((candidate) => <button type="button" key={candidate.userId} onClick={() => add(candidate)}>
         <span className="portico-saved-share-avatar" aria-hidden="true">{candidate.displayName.trim().charAt(0).toLocaleUpperCase() || '?'}</span>
         <strong>{candidate.displayName}</strong>
-        <span><UserPlus /> Add</span>
+        <span><AccountProfilesIcon /> Add</span>
       </button>)}</div>}
-      {candidates.status === 'success' && availableCandidates.length === 0 && <div className="portico-saved-share-state empty" role="status"><Check /><span>{query.trim() ? 'No other people match this name.' : 'No other active members are available.'}</span></div>}
+      {candidates.status === 'success' && availableCandidates.length === 0 && <div className="portico-saved-share-state empty" role="status"><ActionConfirmIcon /><span>{query.trim() ? 'No other people match this name.' : 'No other active members are available.'}</span></div>}
       {candidates.status === 'success' && candidates.data.hasMore && <div className="portico-saved-share-more"><span>More people match this search. Enter more of the name to narrow the list.</span></div>}
     </div>
   </section>;

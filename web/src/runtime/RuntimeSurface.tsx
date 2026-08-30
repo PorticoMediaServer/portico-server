@@ -1,19 +1,4 @@
-import {
-  AlertTriangle,
-  ArrowLeft,
-  ArrowRight,
-  CircleUserRound,
-  Globe2,
-  LoaderCircle,
-  LockKeyhole,
-  LogIn,
-  RefreshCw,
-  Server,
-  ServerOff,
-  ShieldCheck,
-  Wifi,
-  WifiOff,
-} from '#portico-icons';
+import { StatusWarningIcon, NavigationBackIcon, NavigationForwardIcon, AccountProfileIcon, DeviceNetworkIcon, StatusLoadingIcon, StatusLockedIcon, AccountSignInIcon, ActionRefreshIcon, DeviceServerIcon, DeviceOfflineIcon, StatusSecureIcon, DeviceWifiIcon } from '#portico-icons';
 import {
   productMessage,
   resolveProductProblem,
@@ -27,8 +12,7 @@ import { PrimaryButton, SecondaryButton } from '../components/controls/Buttons';
 import { PasswordInput, PasswordRequirements, validPorticoPassword } from '../components/controls/PasswordInput';
 import { productText } from '../components/ProductLanguage';
 import type { HostedServerSummary } from './runtimeMachine';
-import { useRuntime } from './RuntimeContext';
-import type { SSOOnboardingPreview } from './RuntimeContext';
+import { useRuntime, type SSOOnboardingPreview } from './RuntimeContext';
 import { useHostedAvailabilityRetry } from './hostedAvailability';
 
 const profileSelectionRequired = productMessage('auth.profile-selection-required');
@@ -36,17 +20,17 @@ const profileSelectionRequired = productMessage('auth.profile-selection-required
 function ProductStatusIcon({ icon }: { icon?: SemanticIconId }) {
   switch (icon) {
     case 'status.locked':
-      return <LockKeyhole data-semantic-icon={icon} />;
+      return <StatusLockedIcon data-semantic-icon={icon} />;
     case 'status.offline':
-      return <WifiOff data-semantic-icon={icon} />;
+      return <DeviceOfflineIcon data-semantic-icon={icon} />;
     case 'status.profile':
-      return <CircleUserRound data-semantic-icon={icon} />;
+      return <AccountProfileIcon data-semantic-icon={icon} />;
     case 'status.server':
-      return <ServerOff data-semantic-icon={icon} />;
+      return <DeviceOfflineIcon data-semantic-icon={icon} />;
     case 'status.loading':
-      return <LoaderCircle data-semantic-icon={icon} />;
+      return <StatusLoadingIcon data-semantic-icon={icon} />;
     default:
-      return <AlertTriangle data-semantic-icon={icon ?? 'status.error'} />;
+      return <StatusWarningIcon data-semantic-icon={icon ?? 'status.error'} />;
   }
 }
 
@@ -111,7 +95,7 @@ function RuntimeProgress({ title, body, kind, serverName, embedded = false }: { 
     const timer = window.setTimeout(() => setDelayed(true), kind === 'route' ? 12_000 : 8_000);
     return () => window.clearTimeout(timer);
   }, [kind]);
-  const icon = kind === 'route' ? <Globe2 /> : kind === 'memberships' ? <Server /> : <LoaderCircle />;
+  const icon = kind === 'route' ? <DeviceNetworkIcon /> : kind === 'memberships' ? <DeviceServerIcon /> : <StatusLoadingIcon />;
   // Ordinary connection work is intentionally silent inside the product
   // frame. The reserved projection area prevents a flash or layout shift;
   // only an exhausted/terminal recovery state becomes user-facing UI.
@@ -119,9 +103,9 @@ function RuntimeProgress({ title, body, kind, serverName, embedded = false }: { 
   return <RuntimePanel title={title} icon={icon}>
     <p className="runtime-intro" aria-live="polite">{delayed ? (kind === 'route' ? `The direct route to ${serverName || 'this server'} is taking longer than expected.` : 'This step is taking longer than expected.') : body}</p>
     <div className="runtime-progress-line" aria-hidden="true"><span /></div>
-    {kind === 'route' && <div className="runtime-connection-facts"><span><ShieldCheck />HTTPS and server identity must verify</span><span><Globe2 />Playback connects directly to your server</span></div>}
-    {delayed && kind !== 'configuration' && <div className="runtime-actions">{kind === 'route' && <SecondaryButton onClick={runtime.reselectServer}><ArrowLeft /> Choose another server</SecondaryButton>}{(kind === 'account' || kind === 'memberships') && <button type="button" className="runtime-text-action" onClick={() => void runtime.hostedLogout()}>Sign out</button>}</div>}
-    {!delayed && kind === 'route' && <SecondaryButton onClick={runtime.reselectServer}><ArrowLeft /> Choose another server</SecondaryButton>}
+    {kind === 'route' && <div className="runtime-connection-facts"><span><StatusSecureIcon />HTTPS and server identity must verify</span><span><DeviceNetworkIcon />Playback connects directly to your server</span></div>}
+    {delayed && kind !== 'configuration' && <div className="runtime-actions">{kind === 'route' && <SecondaryButton onClick={runtime.reselectServer}><NavigationBackIcon /> Choose another server</SecondaryButton>}{(kind === 'account' || kind === 'memberships') && <button type="button" className="runtime-text-action" onClick={() => void runtime.hostedLogout()}>Sign out</button>}</div>}
+    {!delayed && kind === 'route' && <SecondaryButton onClick={runtime.reselectServer}><NavigationBackIcon /> Choose another server</SecondaryButton>}
   </RuntimePanel>;
 }
 
@@ -170,7 +154,7 @@ function HostedSignIn() {
   const deviceSetup = runtime.hasDeviceAuthorizationIntent;
   const claimServerName = runtime.serverClaimName;
   const title = mode === 'register' ? (deviceSetup ? 'Create an account to connect your device' : claimSetup ? (claimServerName ? `Create an account to continue setting up “${claimServerName}”` : 'Create an account to continue') : productText('account.create-title')) : mode === 'request-reset' ? 'Recover your Portico Account' : mode === 'complete-reset' ? 'Choose a new password' : runtime.mfaRequired ? (claimServerName ? `Verify your sign-in for “${claimServerName}”` : 'Verify your sign-in') : deviceSetup ? 'Sign in to connect your device' : claimSetup ? (claimServerName ? `Continue setting up your server “${claimServerName}”` : 'Continue setting up your server') : 'Sign in to Portico';
-  const intro = mode === 'register' ? (deviceSetup ? 'Create a Portico Account, then review the device before granting access.' : claimSetup ? 'Create a Portico Account to continue with server setup.' : productText('account.create-intro')) : mode === 'request-reset' ? 'Enter your account email. If it matches an account, Portico will send a secure recovery link.' : mode === 'complete-reset' ? 'Choose a new password for your Portico Account. The recovery token has already been removed from the address bar.' : runtime.mfaRequired ? 'Enter the code from your authenticator, or use one of your recovery codes.' : deviceSetup ? 'Sign in or create an account, then confirm the device requesting access.' : claimSetup ? 'Sign in or create a Portico Account to continue with server setup.' : 'Sign in using your Portico Account credentials.';
+  const intro = mode === 'register' ? (deviceSetup ? 'Create a Portico Account, then review the device before granting access.' : claimSetup ? 'Create a Portico Account to continue with server setup.' : productText('account.create-intro')) : mode === 'request-reset' ? 'Enter your account email. If it matches an account, Portico will send a secure recovery link.' : mode === 'complete-reset' ? 'Choose a new password for your Portico Account.' : runtime.mfaRequired ? 'Enter the code from your authenticator, or use one of your recovery codes.' : deviceSetup ? 'Sign in or create an account, then confirm the device requesting access.' : claimSetup ? 'Sign in or create a Portico Account to continue with server setup.' : 'Sign in using your Portico Account credentials.';
   const showIdentityProviders = (mode === 'sign-in' || mode === 'register') && !runtime.mfaRequired;
 	const submitDisabled = runtime.busy
 		|| (mode === 'register' && (!validPorticoUsername(username) || !email.trim() || !validPorticoPassword(password)))
@@ -179,7 +163,11 @@ function HostedSignIn() {
 		|| (mode === 'sign-in' && (!email.trim() || !password || (runtime.mfaRequired && !(useRecoveryCode ? recoveryCode.trim() : mfaCode.trim()))));
   const identityProviderURL = (provider: 'google' | 'apple') => {
     const target = new URL(`/auth/sso/${provider}/start`, 'https://web.getportico.tv');
-    if (typeof window !== 'undefined') target.searchParams.set('returnTo', `${window.location.origin}${window.location.pathname}${window.location.search}`);
+    if (typeof window !== 'undefined') {
+      const returnTo = new URL(`${window.location.origin}${window.location.pathname}${window.location.search}`);
+      if (runtime.hasLocalLoginIntent) returnTo.searchParams.set('localLoginResume', '1');
+      target.searchParams.set('returnTo', returnTo.toString());
+    }
     return target.toString();
   };
   useEffect(() => {
@@ -189,7 +177,7 @@ function HostedSignIn() {
     if (!consumeNativeDeviceSSOAutoStart(provider, code)) return;
     window.location.assign(identityProviderURL(provider));
   }, [mode, runtime.deviceAuthorizationCode, runtime.deviceAuthorizationProvider, runtime.mfaRequired, runtime.nativeDeviceAuthorizationReturn]);
-  if (resetSent) return <RuntimePanel title="Check your email"><p className="runtime-intro">If an account matches <strong>{email}</strong>, recovery instructions are on the way. The link expires and can be used only once.</p><div className="runtime-actions"><PrimaryButton onClick={() => changeMode('sign-in')}><ArrowLeft /> Back to sign in</PrimaryButton><SecondaryButton disabled={runtime.busy} onClick={() => setResetSent(false)}>Send again</SecondaryButton></div></RuntimePanel>;
+  if (resetSent) return <RuntimePanel title="Save your email"><p className="runtime-intro">If an account matches <strong>{email}</strong>, recovery instructions are on the way. The link expires and can be used only once.</p><div className="runtime-actions"><PrimaryButton onClick={() => changeMode('sign-in')}><NavigationBackIcon /> Back to sign in</PrimaryButton><SecondaryButton disabled={runtime.busy} onClick={() => setResetSent(false)}>Send again</SecondaryButton></div></RuntimePanel>;
   return <RuntimePanel title={title}>
     <p className="runtime-intro">{intro}</p>
     {showIdentityProviders && <>
@@ -212,10 +200,26 @@ function HostedSignIn() {
       {mode === 'sign-in' && runtime.mfaRequired && <div className="runtime-mfa"><label><span>{useRecoveryCode ? 'Recovery code' : 'Verification code'}</span><input autoFocus inputMode={useRecoveryCode ? 'text' : 'numeric'} autoComplete="one-time-code" value={useRecoveryCode ? recoveryCode : mfaCode} onChange={(event) => useRecoveryCode ? setRecoveryCode(event.target.value) : setMfaCode(event.target.value.replace(/\s/g, ''))} required /></label><button type="button" className="runtime-text-action" onClick={() => { setUseRecoveryCode((value) => !value); setMfaCode(''); setRecoveryCode(''); }}>{useRecoveryCode ? 'Use an authenticator code' : 'Use a recovery code'}</button></div>}
       {canonicalNotice && <p className="runtime-message warning" role="alert"><ProductStatusIcon icon={canonicalNotice.icon} /><span><strong>{canonicalNotice.title}</strong>{canonicalNotice.body}</span></p>}
       {error && <ProductProblem presentation={error} />}
-      <PrimaryButton type="submit" disabled={submitDisabled}>{runtime.busy ? <><LoaderCircle className="runtime-spinner" /> Please wait…</> : mode === 'register' ? 'Create account' : mode === 'request-reset' ? 'Send recovery email' : mode === 'complete-reset' ? 'Update password' : runtime.mfaRequired ? 'Verify and sign in' : 'Sign in'}</PrimaryButton>
-      {mode === 'sign-in' ? <div className="runtime-form-links"><button type="button" className="runtime-text-action" onClick={() => changeMode('request-reset')}>Forgot password?</button><button type="button" className="runtime-text-action" onClick={() => changeMode('register')}>Create an account</button></div> : mode !== 'complete-reset' && <button type="button" className="runtime-text-action runtime-back-link" onClick={() => changeMode('sign-in')}><ArrowLeft /> Back to sign in</button>}
+      <PrimaryButton type="submit" disabled={submitDisabled}>{runtime.busy ? <><StatusLoadingIcon className="runtime-spinner" /> Please wait…</> : mode === 'register' ? 'Create account' : mode === 'request-reset' ? 'Send recovery email' : mode === 'complete-reset' ? 'Update password' : runtime.mfaRequired ? 'Verify and sign in' : 'Sign in'}</PrimaryButton>
+      {mode === 'sign-in' ? <div className="runtime-form-links"><button type="button" className="runtime-text-action" onClick={() => changeMode('request-reset')}>Forgot password?</button><button type="button" className="runtime-text-action" onClick={() => changeMode('register')}>Create an account</button></div> : mode !== 'complete-reset' && <button type="button" className="runtime-text-action runtime-back-link" onClick={() => changeMode('sign-in')}><NavigationBackIcon /> Back to sign in</button>}
     </form>
     {(mode === 'sign-in' || mode === 'register') && <AccountLegalLinks />}
+  </RuntimePanel>;
+}
+
+function LocalLoginRecovery() {
+  const runtime = useRuntime();
+  if (runtime.state.id !== 'local-login-recovery') return null;
+  const body = runtime.state.reason === 'callback-policy'
+    ? 'This server address is not currently approved for Portico Account sign-in. Return to the server setup page, confirm its public address, and start sign-in again.'
+    : runtime.state.reason === 'expired'
+    ? 'This server sign-in request expired. Return to your server and choose Use a Portico Account again.'
+    : runtime.state.reason === 'unavailable'
+      ? 'This browser could not restore the protected server sign-in request. Return to your server and start sign-in again.'
+      : 'The protected server sign-in request is no longer available. Return to your server and choose Use a Portico Account again.';
+  return <RuntimePanel title={runtime.state.reason === 'callback-policy' ? 'Check this server address' : 'Restart server sign-in'}>
+    <p className="runtime-intro">{body}</p>
+    <div className="runtime-actions"><SecondaryButton onClick={() => void runtime.hostedLogout()}><NavigationBackIcon /> Go to Portico sign in</SecondaryButton></div>
   </RuntimePanel>;
 }
 
@@ -303,11 +307,11 @@ function SSOOnboarding() {
     <form onSubmit={submit}>
       {preview.providerEmail && <label htmlFor="sso-onboarding-email"><span>{providerName}-verified email</span><input id="sso-onboarding-email" type="email" value={preview.providerEmail} readOnly aria-readonly="true" /><small>{preview.privateEmail ? 'Apple private relay address. Apple forwards messages according to your Sign in with Apple settings.' : `Verified by ${providerName}.`}</small></label>}
       {!preview.providerEmail && !preview.verifiedContactEmailRequired && <label htmlFor="sso-onboarding-contact-email"><span>Contact email (optional)</span><input id="sso-onboarding-contact-email" type="email" autoCapitalize="none" autoComplete="email" value={contactEmail} onChange={(event) => setContactEmail(event.target.value)} placeholder="you@example.com" /><small>This address is optional and will not be marked verified.</small></label>}
-      {preview.verifiedContactEmailRequired && <div className="runtime-message warning" role="alert"><AlertTriangle /><span><strong>A verified contact email is still required</strong>Portico cannot finish this account safely yet. Entering an address here would not verify that you own it. Start the provider flow again after verified-email onboarding is available.</span></div>}
+      {preview.verifiedContactEmailRequired && <div className="runtime-message warning" role="alert"><StatusWarningIcon /><span><strong>A verified contact email is still required</strong>Portico cannot finish this account safely yet. Entering an address here would not verify that you own it. Start the provider flow again after verified-email onboarding is available.</span></div>}
       <label htmlFor="sso-onboarding-username"><span>Username</span><input id="sso-onboarding-username" aria-label="Username" autoFocus autoCapitalize="none" autoComplete="username" minLength={3} maxLength={32} pattern="[A-Za-z0-9][A-Za-z0-9._-]{1,30}[A-Za-z0-9]" value={username} onChange={(event) => { setUsername(event.target.value); setUsernameError(''); }} aria-invalid={Boolean(usernameError)} aria-describedby={usernameError ? 'sso-onboarding-username-error' : 'sso-onboarding-username-help'} required /><small id={usernameError ? undefined : 'sso-onboarding-username-help'}>3–32 letters, numbers, periods, underscores, or hyphens.</small></label>
-      {usernameError && <p id="sso-onboarding-username-error" className="runtime-message warning" role="alert"><AlertTriangle /><span>{usernameError}</span></p>}
+      {usernameError && <p id="sso-onboarding-username-error" className="runtime-message warning" role="alert"><StatusWarningIcon /><span>{usernameError}</span></p>}
       {error && <ProductProblem presentation={error} />}
-      <PrimaryButton type="submit" disabled={runtime.busy || preview.verifiedContactEmailRequired}>{runtime.busy ? <><LoaderCircle className="runtime-spinner" /> Creating account…</> : 'Create Portico Account'}</PrimaryButton>
+      <PrimaryButton type="submit" disabled={runtime.busy || preview.verifiedContactEmailRequired}>{runtime.busy ? <><StatusLoadingIcon className="runtime-spinner" /> Creating account…</> : 'Create Portico Account'}</PrimaryButton>
     </form>
     <AccountLegalLinks />
   </RuntimePanel>;
@@ -402,7 +406,7 @@ function TVDeviceAuthorization({ initialCode = '', servers }: { initialCode?: st
     if (eligibleServers.length === 1) setSelectedServerId(eligibleServers[0].id);
     else if (!eligibleServers.some((server) => server.id === selectedServerId)) setSelectedServerId('');
   }, [eligibleServers.map((server) => server.id).join('\u0000')]);
-  if (connected) return <RuntimePanel title="TV connected" icon={<ShieldCheck />}>
+  if (connected) return <RuntimePanel title="TV connected" icon={<StatusSecureIcon />}>
     <p className="runtime-intro">Return to your TV. Portico will finish signing in automatically.</p>
   </RuntimePanel>;
   return <RuntimePanel title="Connect a device">
@@ -412,11 +416,11 @@ function TVDeviceAuthorization({ initialCode = '', servers }: { initialCode?: st
       {previewMatchesCode && <div className="runtime-device-review"><strong>{preview!.deviceName}</strong><span>{[preview!.platform, preview!.appVersion].filter(Boolean).join(' · ')}</span><p>{eligibleServers.length > 1 ? 'Confirm this is your TV, then choose the Portico server it should open.' : 'Confirm this is your TV, then connect it to your Portico Account.'}</p></div>}
       {previewMatchesCode && eligibleServers.length > 1 && <div className="runtime-device-servers" role="radiogroup" aria-label="Portico server">{servers.map((server) => {
         const eligible = server.remoteAccessEnabled && server.preferredAuthMode === 'portico';
-        return <button key={server.id} type="button" role="radio" aria-checked={selectedServerId === server.id} disabled={!eligible || busy} onClick={() => setSelectedServerId(server.id)}><Server /><span><strong>{server.name}</strong><small>{eligible ? 'Available' : 'Portico Account remote access required'}</small></span></button>;
+        return <button key={server.id} type="button" role="radio" aria-checked={selectedServerId === server.id} disabled={!eligible || busy} onClick={() => setSelectedServerId(server.id)}><DeviceServerIcon /><span><strong>{server.name}</strong><small>{eligible ? 'Available' : 'Portico Account remote access required'}</small></span></button>;
       })}</div>}
       {previewMatchesCode && eligibleServers.length === 0 && <p className="runtime-message warning">No servers are available yet. You can still sign in to this TV and add or accept access to a server later.</p>}
       {error && <ProductProblem presentation={error} />}
-      <div className="runtime-actions"><PrimaryButton type="submit" disabled={busy || !valid || (previewMatchesCode && requiresServerChoice && !selectedServerId)}>{busy ? <><LoaderCircle className="runtime-spinner" /> Please wait…</> : previewMatchesCode ? 'Connect TV' : 'Review request'}</PrimaryButton></div>
+      <div className="runtime-actions"><PrimaryButton type="submit" disabled={busy || !valid || (previewMatchesCode && requiresServerChoice && !selectedServerId)}>{busy ? <><StatusLoadingIcon className="runtime-spinner" /> Please wait…</> : previewMatchesCode ? 'Connect TV' : 'Review request'}</PrimaryButton></div>
     </form>
   </RuntimePanel>;
 }
@@ -462,19 +466,19 @@ function GenericDeviceAuthorization({ initialCode = '', nativeReturn = false }: 
     finally { if (requestFence.current(ticket)) setBusy(false); }
   };
   useEffect(() => { if (valid && initialCode) void review(); }, []);
-  if (finished) return <RuntimePanel title={finished === 'approved' ? 'Device connected' : 'Request denied'} icon={<ShieldCheck />}><p className="runtime-intro">{finished === 'approved' ? 'Return to your device. Portico will finish signing in automatically.' : 'The device was not granted access.'}</p></RuntimePanel>;
+  if (finished) return <RuntimePanel title={finished === 'approved' ? 'Device connected' : 'Request denied'} icon={<StatusSecureIcon />}><p className="runtime-intro">{finished === 'approved' ? 'Return to your device. Portico will finish signing in automatically.' : 'The device was not granted access.'}</p></RuntimePanel>;
   return <RuntimePanel title="Authorize a device">
     <p className="runtime-intro">Enter the eight-character code shown on your device, then confirm the request before granting access.</p>
     <form onSubmit={(event) => { event.preventDefault(); void (previewMatchesCode ? decide('approve') : review()); }}>
       <label><span>Device code</span><input autoFocus={!initialCode} inputMode="text" autoComplete="one-time-code" autoCapitalize="characters" spellCheck={false} placeholder="XXXX-XXXX" minLength={9} maxLength={9} pattern="[A-HJ-KM-NP-Z2-9]{4}-[A-HJ-KM-NP-Z2-9]{4}" value={code} onChange={(event) => { const nextCode = normalizeDeviceCode(event.target.value); requestFence.invalidate(nextCode); setCode(nextCode); setBusy(false); setPreview(undefined); setPreviewedCode(''); setError(undefined); }} required /></label>
       {previewMatchesCode && <div className="runtime-device-review"><strong>{preview!.deviceName}</strong><span>{[preview!.platform, preview!.appVersion].filter(Boolean).join(' · ')}</span><p>Confirm this is the device requesting access before you continue.</p></div>}
       {error && <ProductProblem presentation={error} />}
-      <div className="runtime-actions"><PrimaryButton type="submit" disabled={busy || !valid}>{busy ? <><LoaderCircle className="runtime-spinner" /> Please wait…</> : previewMatchesCode ? 'Approve device' : 'Review request'}</PrimaryButton>{previewMatchesCode && <SecondaryButton disabled={busy} onClick={() => void decide('deny')}>Deny</SecondaryButton>}</div>
+      <div className="runtime-actions"><PrimaryButton type="submit" disabled={busy || !valid}>{busy ? <><StatusLoadingIcon className="runtime-spinner" /> Please wait…</> : previewMatchesCode ? 'Approve device' : 'Review request'}</PrimaryButton>{previewMatchesCode && <SecondaryButton disabled={busy} onClick={() => void decide('deny')}>Deny</SecondaryButton>}</div>
     </form>
   </RuntimePanel>;
 }
 
-function NoMemberships() {
+function NoMemberships({ embedded = false }: { embedded?: boolean }) {
   const runtime = useRuntime();
   const [mode, setMode] = useState<'claim' | 'invite'>('claim');
   const [value, setValue] = useState('');
@@ -486,11 +490,11 @@ function NoMemberships() {
       else await runtime.acceptInvite(value.trim());
     } catch (reason) { setError(canonicalProblem(reason)); }
   };
-  return <RuntimePanel title="No servers yet" icon={<ServerOff />}>
+  return <RuntimePanel title="No servers yet" icon={<DeviceOfflineIcon />} embedded={embedded}>
     <p className="runtime-intro">Claim a server you own, or accept an invitation from another server owner.</p>
     <div className="runtime-segmented" role="tablist" aria-label="Add a server"><button type="button" role="tab" aria-selected={mode === 'claim'} className={mode === 'claim' ? 'active' : ''} onClick={() => { setMode('claim'); setValue(''); setError(undefined); }}>Claim a server</button><button type="button" role="tab" aria-selected={mode === 'invite'} className={mode === 'invite' ? 'active' : ''} onClick={() => { setMode('invite'); setValue(''); setError(undefined); }}>Accept an invite</button></div>
-    <form className="runtime-membership-form" onSubmit={(event) => { event.preventDefault(); void run(); }}><label><span>{mode === 'claim' ? 'Server claim code' : 'Invitation code'}</span><input autoFocus value={value} onChange={(event) => setValue(event.target.value)} autoComplete="off" required /><small>{mode === 'claim' ? 'Find this one-time code on the server’s Portico claim screen.' : 'Invitation links fill this automatically. Paste the invitation token only when adding it manually.'}</small></label>{error && <ProductProblem presentation={error} />}<PrimaryButton type="submit" disabled={runtime.busy || !value.trim()}>{runtime.busy ? <><LoaderCircle className="runtime-spinner" /> Please wait…</> : mode === 'claim' ? 'Claim server' : 'Accept invitation'}</PrimaryButton></form>
-    <div className="runtime-footer-actions"><SecondaryButton disabled={runtime.busy} onClick={() => void runtime.refreshMemberships().catch(() => undefined)}><RefreshCw /> Refresh servers</SecondaryButton><button type="button" className="runtime-text-action" onClick={() => void runtime.hostedLogout()}>Sign out</button></div>
+    <form className="runtime-membership-form" onSubmit={(event) => { event.preventDefault(); void run(); }}><label><span>{mode === 'claim' ? 'Server claim code' : 'Invitation code'}</span><input autoFocus value={value} onChange={(event) => setValue(event.target.value)} autoComplete="off" required /><small>{mode === 'claim' ? 'Find this one-time code on the server’s Portico claim screen.' : 'Invitation links fill this automatically. Paste the invitation token only when adding it manually.'}</small></label>{error && <ProductProblem presentation={error} />}<PrimaryButton type="submit" disabled={runtime.busy || !value.trim()}>{runtime.busy ? <><StatusLoadingIcon className="runtime-spinner" /> Please wait…</> : mode === 'claim' ? 'Claim server' : 'Accept invitation'}</PrimaryButton></form>
+    <div className="runtime-footer-actions"><SecondaryButton disabled={runtime.busy} onClick={() => void runtime.refreshMemberships().catch(() => undefined)}><ActionRefreshIcon /> Refresh servers</SecondaryButton></div>
   </RuntimePanel>;
 }
 
@@ -510,15 +514,34 @@ export function relativeHeartbeat(server: HostedServerSummary): string {
 
 function ServerSelection() {
   const runtime = useRuntime();
+  const [refreshError, setRefreshError] = useState<ProductMessagePresentation>();
+  const [selectionError, setSelectionError] = useState<ProductMessagePresentation>();
   if (runtime.state.id !== 'server-selection') return null;
-  return <RuntimePanel title="Choose a server" icon={<Server />} wide={runtime.state.servers.length > 3}>
+  const refresh = async () => {
+    setRefreshError(undefined);
+    try {
+      await runtime.refreshMemberships();
+    } catch (reason) {
+      setRefreshError(canonicalProblem(reason));
+    }
+  };
+  const select = async (server: HostedServerSummary) => {
+    setSelectionError(undefined);
+    try {
+      await runtime.selectServer(server);
+    } catch (reason) {
+      setSelectionError(canonicalProblem(reason));
+    }
+  };
+  return <RuntimePanel title="Choose a server" icon={<DeviceServerIcon />} wide={runtime.state.servers.length > 3}>
     <p className="runtime-intro">Only servers that allow Portico Account access can open from web.getportico.tv. Every connection is verified before server credentials are issued.</p>
     <div className="runtime-server-list">{runtime.state.servers.map((server) => {
       const eligible = server.remoteAccessEnabled && server.preferredAuthMode === 'portico';
       const status = !server.remoteAccessEnabled ? 'Remote Access is off' : server.preferredAuthMode !== 'portico' ? 'This Server sign-in only' : relativeHeartbeat(server);
-      return <button key={server.id} onClick={() => void runtime.selectServer(server)} disabled={runtime.busy || !eligible}><span className={`runtime-server-icon ${eligible ? '' : 'unavailable'}`}><Server /></span><span><strong>{server.name}</strong><small>{status}</small></span>{eligible ? <ArrowRight /> : <LockKeyhole />}</button>;
+      return <button key={server.id} onClick={() => void select(server)} disabled={runtime.busy || !eligible || runtime.canSelectHostedServer === false}><span className={`runtime-server-icon ${eligible ? '' : 'unavailable'}`}><DeviceServerIcon /></span><span><strong>{server.name}</strong><small>{status}</small></span>{eligible ? <NavigationForwardIcon /> : <StatusLockedIcon />}</button>;
     })}</div>
-    <div className="runtime-footer-actions"><SecondaryButton disabled={runtime.busy} onClick={() => void runtime.refreshMemberships().catch(() => undefined)}><RefreshCw /> Refresh servers</SecondaryButton><button type="button" className="runtime-text-action" onClick={() => void runtime.hostedLogout()}>Sign out</button></div>
+    {(refreshError || selectionError) && <ProductProblem presentation={(refreshError || selectionError)!} />}
+    <div className="runtime-footer-actions"><SecondaryButton disabled={runtime.busy} onClick={() => void refresh()}><ActionRefreshIcon /> Refresh servers</SecondaryButton><button type="button" className="runtime-text-action" onClick={() => void runtime.hostedLogout()}>Sign out</button></div>
   </RuntimePanel>;
 }
 
@@ -544,16 +567,16 @@ function ProfileSelection() {
         if (profile.hasPIN) setSelectedProfileId(profile.id);
         else void open(profile.id);
       }}
-    ><span className="runtime-profile-avatar">{profile.name.trim().slice(0, 1).toLocaleUpperCase() || 'P'}</span><span><strong>{profile.name}</strong><small>{profile.hasPIN ? 'PIN required' : 'Open profile'}</small></span><ArrowRight /></button>)}</div>
+    ><span className="runtime-profile-avatar">{profile.name.trim().slice(0, 1).toLocaleUpperCase() || 'P'}</span><span><strong>{profile.name}</strong><small>{profile.hasPIN ? 'PIN required' : 'Open profile'}</small></span><NavigationForwardIcon /></button>)}</div>
     {selected?.hasPIN && <form className="runtime-profile-pin" onSubmit={(event) => { event.preventDefault(); void open(selected.id, pin); }}>
       <label><span>Enter {selected.name}’s PIN</span><input autoFocus inputMode="numeric" autoComplete="one-time-code" minLength={4} maxLength={4} pattern="[0-9]{4}" value={pin} onChange={(event) => setPin(event.target.value.replace(/\D/g, '').slice(0, 4))} required /></label>
-      <PrimaryButton type="submit" disabled={runtime.busy || pin.length !== 4}>{runtime.busy ? <><LoaderCircle className="runtime-spinner" /> Opening…</> : 'Open profile'}</PrimaryButton>
+      <PrimaryButton type="submit" disabled={runtime.busy || pin.length !== 4}>{runtime.busy ? <><StatusLoadingIcon className="runtime-spinner" /> Opening…</> : 'Open profile'}</PrimaryButton>
     </form>}
     {runtime.state.messageId && <ProductProblem presentation={productMessage(runtime.state.messageId)} />}
     <div className="runtime-footer-actions">
       {localLogin
-        ? <><SecondaryButton disabled={runtime.busy} onClick={runtime.retry}><RefreshCw /> Refresh profiles</SecondaryButton><button type="button" className="runtime-text-action" onClick={() => void runtime.continueWithHostedAccount()}>Continue to Portico</button></>
-        : <SecondaryButton onClick={runtime.reselectServer}><ArrowLeft /> Choose another server</SecondaryButton>}
+        ? <><SecondaryButton disabled={runtime.busy} onClick={runtime.retry}><ActionRefreshIcon /> Refresh profiles</SecondaryButton><button type="button" className="runtime-text-action" onClick={() => void runtime.continueWithHostedAccount()}>Continue to Portico</button></>
+        : <SecondaryButton onClick={runtime.reselectServer}><NavigationBackIcon /> Choose another server</SecondaryButton>}
       <button type="button" className="runtime-text-action" onClick={() => void runtime.hostedLogout()}>Sign out</button>
     </div>
   </RuntimePanel>;
@@ -574,6 +597,15 @@ function RuntimeRecovery({ embedded = false }: { embedded?: boolean }) {
     failureStartedAt: runtime.hostedAvailabilityFailureStartedAt,
   });
   if (!recovery) return null;
+  if (recovery.automaticRoutePublicationRetry) {
+    return <RuntimeProgress
+      title="Finishing server setup"
+      body={`Portico is preparing a secure connection to ${recovery.serverName || 'this server'}. This page will continue automatically.`}
+      kind="route"
+      serverName={recovery.serverName}
+      embedded={embedded}
+    />;
+  }
   if (availability.automatic && !availability.showWarning) {
     return <RuntimeProgress
       title="Opening Portico"
@@ -590,12 +622,12 @@ function RuntimeRecovery({ embedded = false }: { embedded?: boolean }) {
   return <RuntimePanel title={title} icon={<ProductStatusIcon icon={copy.icon} />} embedded={embedded}>
     <p className="runtime-intro">{body}</p>
     <div className="runtime-actions">
-      {needsSignIn && <PrimaryButton onClick={() => void runtime.hostedLogout()}><LogIn /> Sign in again</PrimaryButton>}
-      {recovery.recoveryActions.includes('try-nearby') && <PrimaryButton onClick={() => void runtime.tryNearbyConnection()}><Wifi /> Try nearby connection</PrimaryButton>}
-      {!needsSignIn && !availability.automatic && recovery.recoveryActions.includes('retry') && <PrimaryButton onClick={runtime.retry}><RefreshCw /> Try again</PrimaryButton>}
-      {recovery.recoveryActions.includes('reselect-server') && <SecondaryButton onClick={runtime.reselectServer}><ArrowLeft /> Choose another server</SecondaryButton>}
-      {!availability.automatic && recovery.recoveryActions.includes('refresh-memberships') && <SecondaryButton onClick={() => void runtime.refreshMemberships().catch(() => undefined)}><RefreshCw /> Refresh servers</SecondaryButton>}
-      {recovery.recoveryActions.includes('continue-account') && <SecondaryButton onClick={() => void runtime.continueWithHostedAccount()}><ArrowRight /> Continue to Portico</SecondaryButton>}
+      {needsSignIn && <PrimaryButton onClick={() => void runtime.hostedLogout()}><AccountSignInIcon /> Sign in again</PrimaryButton>}
+      {recovery.recoveryActions.includes('try-nearby') && <PrimaryButton onClick={() => void runtime.tryNearbyConnection()}><DeviceWifiIcon /> Try nearby connection</PrimaryButton>}
+      {!needsSignIn && !availability.automatic && recovery.recoveryActions.includes('retry') && <PrimaryButton onClick={runtime.retry}><ActionRefreshIcon /> Try again</PrimaryButton>}
+      {recovery.recoveryActions.includes('reselect-server') && <SecondaryButton onClick={runtime.reselectServer}><NavigationBackIcon /> Choose another server</SecondaryButton>}
+      {!availability.automatic && recovery.recoveryActions.includes('refresh-memberships') && <SecondaryButton onClick={() => void runtime.refreshMemberships().catch(() => undefined)}><ActionRefreshIcon /> Refresh servers</SecondaryButton>}
+      {recovery.recoveryActions.includes('continue-account') && <SecondaryButton onClick={() => void runtime.continueWithHostedAccount()}><NavigationForwardIcon /> Continue to Portico</SecondaryButton>}
       {!needsSignIn && recovery.recoveryActions.includes('sign-out') && <button type="button" className="runtime-text-action" onClick={() => void runtime.hostedLogout()}>Sign out</button>}
     </div>
   </RuntimePanel>;
@@ -612,6 +644,8 @@ export function RuntimeSurface({ embedded = false }: { embedded?: boolean }) {
       return <RuntimeProgress title="Opening Portico" body="Checking your Portico Account session…" kind="account" embedded={embedded} />;
     case 'hosted-sign-in':
       return <HostedSignIn />;
+    case 'local-login-recovery':
+      return <LocalLoginRecovery />;
     case 'sso-onboarding':
       return <SSOOnboarding />;
     case 'device-authorization':
@@ -619,7 +653,7 @@ export function RuntimeSurface({ embedded = false }: { embedded?: boolean }) {
     case 'server-memberships':
       return <RuntimeProgress title="Finding your servers" body="Loading servers shared with your Portico Account…" kind="memberships" embedded={embedded} />;
     case 'no-memberships':
-      return <NoMemberships />;
+      return <NoMemberships embedded={embedded} />;
     case 'server-selection':
       return <ServerSelection />;
     case 'profile-selection':

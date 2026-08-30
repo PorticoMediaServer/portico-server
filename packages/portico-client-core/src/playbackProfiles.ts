@@ -130,41 +130,48 @@ export function browserPlaybackClientProfile(): PlaybackClientProfile {
     devicePixelRatio?: number;
   };
   const video = global.document?.createElement("video");
-  if (!video) return genericPlaybackClientProfile({ platform: "browser-unavailable" });
-  const canPlay = (type: string) => video.canPlayType(type) !== "";
-  const supportsNativeHls = canPlay("application/vnd.apple.mpegurl") || canPlay("application/x-mpegURL");
+  const audio = global.document?.createElement("audio");
+  if (!video || !audio) return genericPlaybackClientProfile({ platform: "browser-unavailable" });
+  const canPlayVideo = (type: string) => video.canPlayType(type) !== "";
+  const canPlayAudio = (type: string) => audio.canPlayType(type) !== "";
+  const supportsNativeHls = canPlayVideo("application/vnd.apple.mpegurl") || canPlayVideo("application/x-mpegURL");
   const supportsMse = typeof global.MediaSource !== "undefined";
   const supportsHls = supportsNativeHls || supportsMse;
-  const supportsMpegTs = canPlay("video/mp2t");
+  const supportsMpegTs = canPlayVideo("video/mp2t");
   const userAgent = global.navigator?.userAgent ?? "";
   const hostPlatform = global.navigator?.platform ?? "unknown";
   const platform = "web";
   const { family, version } = browserFamilyAndVersion(userAgent);
   const ratio = global.devicePixelRatio || 1;
-  const webAudioCodecs = unique([
-    canPlay('audio/mp4; codecs="mp4a.40.2"') ? "aac" : "",
-    canPlay("audio/mpeg") ? "mp3" : "",
-    canPlay('audio/webm; codecs="opus"') ? "opus" : "",
-    canPlay('audio/webm; codecs="vorbis"') ? "vorbis" : ""
-  ]);
+  const audioTargets = [
+    canPlayAudio('audio/mp4; codecs="mp4a.40.2"') ? {container: "mp4", codec: "aac"} : undefined,
+    canPlayAudio("audio/mpeg") ? {container: "mp3", codec: "mp3"} : undefined,
+    canPlayAudio("audio/flac") ? {container: "flac", codec: "flac"} : undefined,
+    canPlayAudio('audio/ogg; codecs="opus"') ? {container: "ogg", codec: "opus"} : undefined,
+    canPlayAudio('audio/webm; codecs="opus"') ? {container: "webm", codec: "opus"} : undefined,
+    canPlayAudio('audio/ogg; codecs="vorbis"') ? {container: "ogg", codec: "vorbis"} : undefined,
+    canPlayAudio('audio/webm; codecs="vorbis"') ? {container: "webm", codec: "vorbis"} : undefined
+  ].filter((target): target is {container: string; codec: string} => target !== undefined);
+  const webAudioCodecs = unique(audioTargets.map((target) => target.codec));
   const containers = unique([
-    canPlay("video/mp4") ? "mp4" : "",
-    canPlay("video/mp4") ? "m4v" : "",
-    canPlay("video/mp4") ? "mov" : "",
-    canPlay("video/webm") ? "webm" : "",
+    canPlayVideo("video/mp4") ? "mp4" : "",
+    canPlayVideo("video/mp4") ? "m4v" : "",
+    canPlayVideo("video/mp4") ? "mov" : "",
+    canPlayVideo("video/webm") ? "webm" : "",
     supportsHls ? "hls" : "",
-    supportsMpegTs ? "mpegts" : ""
+    supportsMpegTs ? "mpegts" : "",
+    ...audioTargets.map((target) => target.container)
   ]);
   const videoCodecs = unique([
-    canPlay('video/mp4; codecs="avc1.42E01E"') ? "h264" : "",
-    canPlay('video/mp4; codecs="avc1.42E01E"') ? "avc1" : "",
-    canPlay('video/webm; codecs="vp8"') ? "vp8" : "",
-    canPlay('video/webm; codecs="vp9"') ? "vp9" : "",
-    canPlay('video/mp4; codecs="av01.0.05M.08"') ? "av1" : ""
+    canPlayVideo('video/mp4; codecs="avc1.42E01E"') ? "h264" : "",
+    canPlayVideo('video/mp4; codecs="avc1.42E01E"') ? "avc1" : "",
+    canPlayVideo('video/webm; codecs="vp8"') ? "vp8" : "",
+    canPlayVideo('video/webm; codecs="vp9"') ? "vp9" : "",
+    canPlayVideo('video/mp4; codecs="av01.0.05M.08"') ? "av1" : ""
   ]);
   const maxWidth = global.screen ? Math.max(1, Math.round(global.screen.width * ratio)) : 1280;
   const maxHeight = global.screen ? Math.max(1, Math.round(global.screen.height * ratio)) : 720;
-  const tuples = browserCapabilityTuples({ containers, videoCodecs, audioCodecs: webAudioCodecs, supportsHls, maxWidth, maxHeight });
+  const tuples = browserCapabilityTuples({ containers, videoCodecs, audioCodecs: webAudioCodecs, audioTargets, supportsHls, maxWidth, maxHeight });
   if (tuples.length === 0) return genericPlaybackClientProfile({ device: userAgent || "Browser", platform });
   return webPlaybackCapabilityProfile({
     family,
@@ -173,9 +180,10 @@ export function browserPlaybackClientProfile(): PlaybackClientProfile {
     platform,
     evidence: {
       id: `portico-web-runtime-${family}-${version}`,
-      source: "unauthenticated_probe",
+      source: "authenticated_runtime",
       confidence: "medium",
       producer: "portico-web-runtime",
+      producerVersion: `${PLAYBACK_CAPABILITY_CONTRACT_VERSION}/${family}/${version}`,
       reviewedAt: new Date().toISOString(),
       minVersion: version,
       maxVersion: version,
@@ -216,7 +224,7 @@ function browserFamilyAndVersion(userAgent: string): {family: "chromium" | "edge
   return { family: "chromium", version: "0" };
 }
 
-function browserCapabilityTuples(input: {containers: readonly string[]; videoCodecs: readonly string[]; audioCodecs: readonly string[]; supportsHls: boolean; maxWidth: number; maxHeight: number}): PlaybackCapabilityTuple[] {
+function browserCapabilityTuples(input: {containers: readonly string[]; videoCodecs: readonly string[]; audioCodecs: readonly string[]; audioTargets: readonly {container: string; codec: string}[]; supportsHls: boolean; maxWidth: number; maxHeight: number}): PlaybackCapabilityTuple[] {
   const tuples: PlaybackCapabilityTuple[] = [];
   const noSubtitle = { mode: "none" } as const;
   const textSubtitle = { codec: "webvtt", kind: "text", mode: "native" } as const;
@@ -230,20 +238,53 @@ function browserCapabilityTuples(input: {containers: readonly string[]; videoCod
     }
   };
   if (input.containers.includes("mp4") && input.videoCodecs.includes("h264")) {
-    const audio = input.audioCodecs.includes("aac") ? { codec: "aac", profile: "lc", layout: "stereo", route: "decode", maxChannels: 2 } as const : undefined;
+    const audioLayouts = input.audioCodecs.includes("aac") ? [
+      { codec: "aac", profile: "lc", layout: "mono", route: "decode", maxChannels: 1 },
+      { codec: "aac", profile: "lc", layout: "stereo", route: "decode", maxChannels: 2 },
+    ] as const : [];
     for (const profile of ["baseline", "main", "high"] as const) {
       const video = { codec: "h264", profile, pixelFormat: "yuv420p", chroma: "4:2:0", dynamicRange: "sdr", bitDepth: 8, maxWidth: input.maxWidth, maxHeight: input.maxHeight, maxFrameRate: 60 } as const;
-      addAudiovisual("http", "mp4", video, audio);
+      addAudiovisual("http", "mp4", video);
+      for (const audio of audioLayouts) {
+        tuples.push({ mediaKind: "audiovisual", protocol: "http", container: "mp4", video, audio, subtitle: noSubtitle });
+        tuples.push({ mediaKind: "audiovisual", protocol: "http", container: "mp4", video, audio, subtitle: textSubtitle });
+      }
       // Portico's H.264 HLS executor emits MPEG-TS segments. The Web player
       // consumes them through native HLS or the bundled managed HLS runtime.
-      if (input.supportsHls) addAudiovisual("hls", "mpegts", video, audio);
+      if (input.supportsHls) {
+        addAudiovisual("hls", "mpegts", video);
+        for (const audio of audioLayouts) {
+          tuples.push({ mediaKind: "audiovisual", protocol: "hls", container: "mpegts", video, audio, subtitle: noSubtitle });
+          tuples.push({ mediaKind: "audiovisual", protocol: "hls", container: "mpegts", video, audio, subtitle: textSubtitle });
+        }
+      }
     }
   }
   if (input.containers.includes("webm") && input.videoCodecs.includes("vp9")) {
-    const audio = input.audioCodecs.includes("opus") ? { codec: "opus", layout: "stereo", route: "decode", maxChannels: 2 } as const : undefined;
-    addAudiovisual("http", "webm", { codec: "vp9", pixelFormat: "yuv420p", chroma: "4:2:0", dynamicRange: "sdr", bitDepth: 8, maxWidth: input.maxWidth, maxHeight: input.maxHeight, maxFrameRate: 60 }, audio);
+    const video = { codec: "vp9", pixelFormat: "yuv420p", chroma: "4:2:0", dynamicRange: "sdr", bitDepth: 8, maxWidth: input.maxWidth, maxHeight: input.maxHeight, maxFrameRate: 60 } as const;
+    addAudiovisual("http", "webm", video);
+    if (input.audioCodecs.includes("opus")) {
+      for (const audio of [
+        { codec: "opus", layout: "mono", route: "decode", maxChannels: 1 },
+        { codec: "opus", layout: "stereo", route: "decode", maxChannels: 2 },
+      ] as const) {
+        tuples.push({ mediaKind: "audiovisual", protocol: "http", container: "webm", video, audio, subtitle: noSubtitle });
+        tuples.push({ mediaKind: "audiovisual", protocol: "http", container: "webm", video, audio, subtitle: textSubtitle });
+      }
+    }
   }
-  if (input.audioCodecs.includes("mp3")) tuples.push({ mediaKind: "audio", protocol: "http", container: "mp3", audio: { codec: "mp3", layout: "stereo", route: "decode", maxChannels: 2 }, subtitle: { mode: "none" } });
+  for (const target of input.audioTargets) {
+    tuples.push({ mediaKind: "audio", protocol: "http", container: target.container, audio: { codec: target.codec, layout: "mono", route: "decode", maxChannels: 1 }, subtitle: { mode: "none" } });
+    tuples.push({ mediaKind: "audio", protocol: "http", container: target.container, audio: { codec: target.codec, layout: "stereo", route: "decode", maxChannels: 2 }, subtitle: { mode: "none" } });
+  }
+  // Generated on-demand media is HLS by contract. A runtime that can decode
+  // AAC and consume Portico's managed HLS path can truthfully accept an
+  // audio-only MPEG-TS rendition even when the source container cannot play
+  // progressively (for example FLAC or Ogg/Opus).
+  if (input.supportsHls && input.audioCodecs.includes("aac")) {
+    tuples.push({ mediaKind: "audio", protocol: "hls", container: "mpegts", audio: { codec: "aac", profile: "lc", layout: "mono", route: "decode", maxChannels: 1 }, subtitle: { mode: "none" } });
+    tuples.push({ mediaKind: "audio", protocol: "hls", container: "mpegts", audio: { codec: "aac", profile: "lc", layout: "stereo", route: "decode", maxChannels: 2 }, subtitle: { mode: "none" } });
+  }
   return tuples;
 }
 

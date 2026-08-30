@@ -1,15 +1,5 @@
 import type { ActionableLiveTVChannel, ActionableLiveTVProgram, ActionableLiveTVSource } from '../../data/models';
-import {
-  CalendarDays,
-  ChevronLeft,
-  ChevronRight,
-  Clock3,
-  Play,
-  Search,
-  Star,
-  Video,
-  X,
-} from '#portico-icons';
+import { MediaCalendarIcon, NavigationPreviousIcon, NavigationDisclosureIcon, MetadataTimeIcon, PlaybackPlayIcon, NavigationSearchIcon, ActionRateIcon, MediaVideoIcon, ActionCloseIcon } from '#portico-icons';
 import { type ComponentType, type CSSProperties, type KeyboardEvent, useDeferredValue, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { IconButton, PrimaryButton, SecondaryButton } from '../../components/controls/Buttons';
@@ -206,26 +196,26 @@ export function GuideWorkspace({
         {focusedChannelProgram?.description && <p className="live-focus-description">{focusedChannelProgram.description}</p>}
       </div>
       <div className="live-focus-actions">
-        {canPlay && hasAction(focusedChannel, liveActions.play) && <PrimaryButton disabled={busy === `watch:${focusedChannel.id}`} onClick={() => void watch(focusedChannel)}><Play fill="currentColor" /> {busy === `watch:${focusedChannel.id}` ? productText('state.opening', { destination: productText('destination.live-tv') }) : programIsLive(focusedChannelProgram, serverTime) ? productText('action.watch-live') : 'Watch channel'}</PrimaryButton>}
-        {capabilities?.canFavoriteChannels && (hasAction(focusedChannel, liveActions.favoriteAdd) || hasAction(focusedChannel, liveActions.favoriteRemove)) && <IconButton disabled={busy === `favorite:${focusedChannel.id}`} label={`${focusedChannel.favorite ? 'Remove' : 'Add'} ${focusedChannel.name} ${focusedChannel.favorite ? 'from' : 'to'} favorites`} className={focusedChannel.favorite ? 'selected' : ''} onClick={() => void favorite(focusedChannel)}><Star fill={focusedChannel.favorite ? 'currentColor' : 'none'} /></IconButton>}
-        {focusedChannelProgram && capabilities?.canScheduleRecordings && hasAction(focusedChannelProgram, liveActions.record) && !scheduledPrograms.has(focusedChannelProgram.id) && <SecondaryButton disabled={busy === `record:${focusedChannelProgram.id}`} onClick={() => void record(focusedChannelProgram)}><Video /> {productText('action.record-once')}</SecondaryButton>}
-        {focusedChannelProgram && capabilities?.canScheduleRecordings && hasAction(focusedChannelProgram, liveActions.recordSeries) && !scheduledPrograms.has(focusedChannelProgram.id) && <SecondaryButton disabled={busy === `record:${focusedChannelProgram.id}`} onClick={() => void record(focusedChannelProgram, true)}><CalendarDays /> {productText('action.record-series')}</SecondaryButton>}
-        {scheduledPrograms.has(focusedChannelProgram?.id ?? '') && <span className="recording-confirmed"><Video /> Scheduled</span>}
-        {selectedProgramId && <IconButton label="Return to current program" onClick={() => { setSelectedProgramId(''); setSelectedChannelId(''); }}><X /></IconButton>}
+        {canPlay && hasAction(focusedChannel, liveActions.play) && <PrimaryButton disabled={busy === `watch:${focusedChannel.id}`} onClick={() => void watch(focusedChannel)}><PlaybackPlayIcon fill="currentColor" /> {busy === `watch:${focusedChannel.id}` ? productText('state.opening', { destination: productText('destination.live-tv') }) : programIsLive(focusedChannelProgram, serverTime) ? productText('action.watch-live') : 'Watch channel'}</PrimaryButton>}
+        {capabilities?.canFavoriteChannels && (hasAction(focusedChannel, liveActions.favoriteAdd) || hasAction(focusedChannel, liveActions.favoriteRemove)) && <IconButton disabled={busy === `favorite:${focusedChannel.id}`} label={`${focusedChannel.favorite ? 'Remove' : 'Add'} ${focusedChannel.name} ${focusedChannel.favorite ? 'from' : 'to'} favorites`} className={focusedChannel.favorite ? 'selected' : ''} onClick={() => void favorite(focusedChannel)}><ActionRateIcon fill={focusedChannel.favorite ? 'currentColor' : 'none'} /></IconButton>}
+        {focusedChannelProgram && capabilities?.canScheduleRecordings && hasAction(focusedChannelProgram, liveActions.record) && !scheduledPrograms.has(focusedChannelProgram.id) && <SecondaryButton disabled={busy === `record:${focusedChannelProgram.id}`} onClick={() => void record(focusedChannelProgram)}><MediaVideoIcon /> {productText('action.record-once')}</SecondaryButton>}
+        {focusedChannelProgram && capabilities?.canScheduleRecordings && hasAction(focusedChannelProgram, liveActions.recordSeries) && !scheduledPrograms.has(focusedChannelProgram.id) && <SecondaryButton disabled={busy === `record:${focusedChannelProgram.id}`} onClick={() => void record(focusedChannelProgram, true)}><MediaCalendarIcon /> {productText('action.record-series')}</SecondaryButton>}
+        {scheduledPrograms.has(focusedChannelProgram?.id ?? '') && <span className="recording-confirmed"><MediaVideoIcon /> Scheduled</span>}
+        {selectedProgramId && <IconButton label="Return to current program" onClick={() => { setSelectedProgramId(''); setSelectedChannelId(''); }}><ActionCloseIcon /></IconButton>}
       </div>
     </section>}
 
     <div className="live-toolbar guide-toolbar">
       <LiveChoiceMenu className="source-choice" label="Source" value={sourceId} choices={sources.map((candidate) => ({ id: candidate.id, label: candidate.name, detail: `${candidate.channelCount} channels` }))} onChange={setSourceId} />
       <div className="guide-window-control">
-        <IconButton label="Earlier programs" onClick={() => shiftWindow(-guideHours)}><ChevronLeft /></IconButton>
+        <IconButton label="Earlier programs" onClick={() => shiftWindow(-guideHours)}><NavigationPreviousIcon /></IconButton>
         <label className="guide-day-field"><span>Day</span><input type="date" value={localDay(windowStart)} onChange={(event) => selectDay(event.target.value)} /></label>
-        <button type="button" className="guide-now-button" onClick={resetNow}><Clock3 /> Now</button>
-        <IconButton label="Later programs" onClick={() => shiftWindow(guideHours)}><ChevronRight /></IconButton>
+        <button type="button" className="guide-now-button" onClick={resetNow}><MetadataTimeIcon /> Now</button>
+        <IconButton label="Later programs" onClick={() => shiftWindow(guideHours)}><NavigationDisclosureIcon /></IconButton>
       </div>
-      <label className="guide-search"><Search /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search guide" aria-label="Search guide" /></label>
+      <label className="guide-search"><NavigationSearchIcon /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search guide" aria-label="Search guide" /></label>
       {rawGroups.length > 1 && <LiveChoiceMenu className="group-choice" label="Group" value={group} choices={[{ id: 'all', label: 'All channels' }, ...rawGroups.map((name) => ({ id: name, label: name }))]} onChange={setGroup} />}
-      <SecondaryButton selected={favoritesOnly} onClick={() => setFavoritesOnly((current) => !current)}><Star fill={favoritesOnly ? 'currentColor' : 'none'} /> Favorites</SecondaryButton>
+      <SecondaryButton selected={favoritesOnly} onClick={() => setFavoritesOnly((current) => !current)}><ActionRateIcon fill={favoritesOnly ? 'currentColor' : 'none'} /> Favorites</SecondaryButton>
     </div>
 
     {(actionError || actionNotice) && <p className={actionError ? 'live-action-message error' : 'live-action-message'} role={actionError ? 'alert' : 'status'}>{actionError || actionNotice}</p>}
@@ -241,14 +231,14 @@ export function GuideWorkspace({
     {usingChannelFallback && channels.length === 0 && <StateSurface kind="empty" {...productState(query || favoritesOnly || group !== 'all' ? 'live-tv.filter-empty' : 'live-tv.empty')} />}
     {usingChannelFallback && channels.length > 0 && <GuideGrid channels={channels} programs={[]} from={windowStart} to={new Date(windowStart.getTime() + guideHours * 60 * 60 * 1000)} serverTime={new Date(serverTime)} selectedProgramId="" scheduledPrograms={scheduledPrograms} onSelectProgram={() => undefined} onSelectChannel={(channel) => { setSelectedChannelId(channel.id); setSelectedProgramId(''); }} logo={logo} />}
     {guide.status === 'success' && supportsPaging && (cursors.length > 0 || guide.data.pageInfo.hasMore) && <div className="guide-page-controls">
-      <SecondaryButton disabled={cursors.length === 0} onClick={() => setCursors((current) => current.slice(0, -1))}><ChevronLeft /> Previous channels</SecondaryButton>
+      <SecondaryButton disabled={cursors.length === 0} onClick={() => setCursors((current) => current.slice(0, -1))}><NavigationPreviousIcon /> Previous channels</SecondaryButton>
       <span>Page {cursors.length + 1}{guide.data.pageInfo.total != null ? ` · ${guide.data.pageInfo.total} channels` : ''}</span>
-      <SecondaryButton disabled={!guide.data.pageInfo.hasMore || !guide.data.pageInfo.nextCursor} onClick={() => guide.data.pageInfo.nextCursor && setCursors((current) => [...current, guide.data.pageInfo.nextCursor!])}>Next channels <ChevronRight /></SecondaryButton>
+      <SecondaryButton disabled={!guide.data.pageInfo.hasMore || !guide.data.pageInfo.nextCursor} onClick={() => guide.data.pageInfo.nextCursor && setCursors((current) => [...current, guide.data.pageInfo.nextCursor!])}>Next channels <NavigationDisclosureIcon /></SecondaryButton>
     </div>}
     {usingChannelFallback && fallbackSupportsPaging && (cursors.length > 0 || channelFallback.data.pageInfo.hasMore) && <div className="guide-page-controls">
-      <SecondaryButton disabled={cursors.length === 0} onClick={() => setCursors((current) => current.slice(0, -1))}><ChevronLeft /> Previous channels</SecondaryButton>
+      <SecondaryButton disabled={cursors.length === 0} onClick={() => setCursors((current) => current.slice(0, -1))}><NavigationPreviousIcon /> Previous channels</SecondaryButton>
       <span>Page {cursors.length + 1}{channelFallback.data.pageInfo.total != null ? ` · ${channelFallback.data.pageInfo.total} channels` : ''}</span>
-      <SecondaryButton disabled={!channelFallback.data.pageInfo.hasMore || !channelFallback.data.pageInfo.nextCursor} onClick={() => channelFallback.data.pageInfo.nextCursor && setCursors((current) => [...current, channelFallback.data.pageInfo.nextCursor!])}>Next channels <ChevronRight /></SecondaryButton>
+      <SecondaryButton disabled={!channelFallback.data.pageInfo.hasMore || !channelFallback.data.pageInfo.nextCursor} onClick={() => channelFallback.data.pageInfo.nextCursor && setCursors((current) => [...current, channelFallback.data.pageInfo.nextCursor!])}>Next channels <NavigationDisclosureIcon /></SecondaryButton>
     </div>}
   </div>;
 }
@@ -329,7 +319,7 @@ export function GuideGrid<C extends SharedGuideChannel, P extends SharedGuidePro
           <button type="button" className="live-guide-channel" onClick={() => onSelectChannel(channel)}>
             <span className="guide-channel-logo">{logo(channel) ? <img src={logo(channel)} alt="" /> : <span>{channel.number || '—'}</span>}</span>
             <span><strong>{channel.name}</strong><span>{channel.groupTitle || 'Live channel'}</span></span>
-            {channel.favorite && <Star fill="currentColor" aria-label="Favorite" />}
+            {channel.favorite && <ActionRateIcon fill="currentColor" aria-label="Favorite" />}
           </button>
           <div className="live-guide-program-track">
             {showNow && <span className="guide-now-line" style={{ left: `${nowPosition}%` }} aria-hidden="true" />}
@@ -353,7 +343,7 @@ export function GuideGrid<C extends SharedGuideChannel, P extends SharedGuidePro
                 aria-label={`${program.title}, ${timeLabel(program.startAt)} to ${timeLabel(program.endAt)}`}
                 onClick={() => onSelectProgram(program)}
                 onKeyDown={(event) => moveFocus(event, channelIndex, programIndex, program.startAt)}
-              ><strong>{program.title}</strong><span>{timeLabel(program.startAt)} · {program.subtitle || program.category || 'Live'}</span>{scheduledPrograms.has(program.id) && <Video aria-label="Scheduled to record" />}</button>;
+              ><strong>{program.title}</strong><span>{timeLabel(program.startAt)} · {program.subtitle || program.category || 'Live'}</span>{scheduledPrograms.has(program.id) && <MediaVideoIcon aria-label="Scheduled to record" />}</button>;
             })}
             {channelPrograms.length === 0 && <div className="live-guide-gap">No schedule data</div>}
           </div>

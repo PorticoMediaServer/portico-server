@@ -1,14 +1,5 @@
-import {
-  contextualMediaPlayAction,
-  productMessage,
-  reserveOrderedSurfaceSlots,
-  resolveReservedSurfaceSlot,
-  type ProductMessageId,
-  type ProductMessagePresentation,
-  type ProductMessageVariables,
-  type ReservedSurfaceSlot,
-} from '@porticomediaserver/client-core';
-import { LibraryBig, Plus, RefreshCw, SlidersHorizontal } from '#portico-icons';
+import { contextualMediaPlayAction, productMessage, reserveOrderedSurfaceSlots, resolveReservedSurfaceSlot, type ProductMessageId, type ProductMessagePresentation, type ProductMessageVariables, type ReservedSurfaceSlot, } from '@porticomediaserver/client-core';
+import { NavigationLibraryIcon, ActionAddIcon, ActionRefreshIcon, ActionCustomizeIcon } from '#portico-icons';
 import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { PrimaryButton, SecondaryButton } from '../../components/controls/Buttons';
@@ -169,7 +160,7 @@ export function HomeRowSurface({ descriptor, eager, onResolved }: { descriptor: 
   if (!active || (rowQuery.status === 'loading' && row.items.length === 0)) return <div ref={target}><HomeRowSkeleton title={descriptor.title} shape={homeRowArtworkShape(descriptor)} /></div>;
   if (rowQuery.status === 'error' && row.items.length === 0) {
     const failure = homeProblem(rowQuery.error, 'home.row-unavailable', { rowTitle: descriptor.title });
-    return <div ref={target} data-home-slot-resolution="failed" className="portico-home-row"><div className="portico-home-row-error" role="status"><ProductLanguageIcon presentation={failure} /><span><strong>{failure.title}</strong><small>{failure.body}</small></span><SecondaryButton onClick={() => setRowReloadKey((value) => value + 1)}><RefreshCw /> {failure.actions[0]?.label}</SecondaryButton></div></div>;
+    return <div ref={target} data-home-slot-resolution="failed" className="portico-home-row"><div className="portico-home-row-error" role="status"><ProductLanguageIcon presentation={failure} /><span><strong>{failure.title}</strong><small>{failure.body}</small></span><SecondaryButton onClick={() => setRowReloadKey((value) => value + 1)}><ActionRefreshIcon /> {failure.actions[0]?.label}</SecondaryButton></div></div>;
   }
   // Empty server rows are policy inputs, not useful product surfaces. Keep
   // them available to customization and later invalidations without exposing
@@ -193,10 +184,21 @@ function HomeHero({ item, context, playbackOptions, showBackdrop }: { item?: Med
   const itemActionKey = (item?.actions ?? []).join('\u001f');
   const presentedActions = useMediaActionPresentations(projectedActionIds);
   const playAction = actionPresentation(presentedActions, 'play');
-  const contextualPlayAction = item ? contextualMediaPlayAction(playAction, item) : undefined;
+  const contextualPlayAction = item ? contextualMediaPlayAction(playAction, {
+    entityKind: item.entityKind,
+    progressSeconds: item.progressSeconds,
+    seasonNumber: item.seasonNumber,
+    episodeNumber: item.episodeNumber,
+    playbackTarget: item.playbackTarget ? {
+      entityKind: item.playbackTarget.entityKind,
+      progressSeconds: item.playbackTarget.progressSeconds,
+      seasonNumber: item.playbackTarget.seasonNumber,
+      episodeNumber: item.playbackTarget.episodeNumber,
+    } : undefined,
+  }) : undefined;
   const watchlistAction = saved
-    ? actionPresentation(presentedActions, 'watchlist.remove', 'watchlist.update')
-    : actionPresentation(presentedActions, 'watchlist.add', 'watchlist.update');
+    ? actionPresentation(presentedActions, 'watchlist.remove')
+    : actionPresentation(presentedActions, 'watchlist.add');
   useEffect(() => {
     currentItemId.current = item?.id;
     setSaved(item?.watchlisted ?? false);
@@ -253,7 +255,7 @@ function EmptyHomePage() {
   }
   if (libraries.status === 'error') {
     const failure = homeProblem(libraries.error, 'home.libraries-unavailable');
-    return <div className="standard-page"><div className="library-state error" role="alert"><ProductLanguageIcon presentation={failure} /><strong>{failure.title}</strong><p>{failure.body}</p><SecondaryButton onClick={() => setReloadKey((value) => value + 1)}><RefreshCw /> {failure.actions[0]?.label}</SecondaryButton></div></div>;
+    return <div className="standard-page"><div className="library-state error" role="alert"><ProductLanguageIcon presentation={failure} /><strong>{failure.title}</strong><p>{failure.body}</p><SecondaryButton onClick={() => setReloadKey((value) => value + 1)}><ActionRefreshIcon /> {failure.actions[0]?.label}</SecondaryButton></div></div>;
   }
 
   const hasLibraries = libraries.data.length > 0;
@@ -261,7 +263,7 @@ function EmptyHomePage() {
     <span>{productMessage('home.first-library-label').text}</span>
     <h1>{productMessage('home.first-library-title').text}</h1>
     <p>{productMessage('home.first-library-body').text}</p>
-    <div className="action-row"><Link className="button primary" to="/settings/media?newLibrary=1"><Plus /> {productMessage('action.add-first-library').text}</Link></div>
+    <div className="action-row"><Link className="button primary" to="/settings/media?newLibrary=1"><ActionAddIcon /> {productMessage('action.add-first-library').text}</Link></div>
   </div></section></div>;
 
   if (!hasLibraries) return <div className="portico-home-page"><section className="portico-home-hero portico-home-hero-empty portico-home-first-library"><div>
@@ -275,7 +277,7 @@ function EmptyHomePage() {
     <span>{productMessage('home.label').text}</span>
     <h1>{productMessage('home.building-title').text}</h1>
     <p>{libraryCountMessage.text}</p>
-    <div className="action-row"><Link className="button primary" to="/libraries"><LibraryBig /> {productMessage('action.open-libraries').text}</Link></div>
+    <div className="action-row"><Link className="button primary" to="/libraries"><NavigationLibraryIcon /> {productMessage('action.open-libraries').text}</Link></div>
   </div></section></div>;
 }
 
@@ -287,9 +289,9 @@ export function HomePage() {
   const [rowSlots, setRowSlots] = useState<ReservedSurfaceSlot<HomeRowDescriptor, HomeRowDescriptor>[]>([]);
   const allRows = useMemo(() => home.status === 'success' ? home.data.rows as HomeRowDescriptor[] : [], [home]);
   const defaultHidden = display.preferences.homeRowOrder.length === 0 && display.preferences.hiddenHomeRows.length === 0
-    ? allRows.filter((row) => row.defaultVisible === false && !row.required && (row.hideable === true || row.controls?.includes('hide') === true)).map((row) => row.id)
+    ? allRows.filter((row) => row.defaultVisible === false && !row.required && row.hideable === true).map((row) => row.id)
     : [];
-  const hideableRows = new Set(allRows.filter((row) => !row.required && (row.hideable === true || row.controls?.includes('hide') === true)).map((row) => row.id));
+  const hideableRows = new Set(allRows.filter((row) => !row.required && row.hideable === true).map((row) => row.id));
   const hidden = new Set([...defaultHidden, ...display.preferences.hiddenHomeRows].filter((id) => hideableRows.has(id)));
   const rows = orderHomeRows(allRows, display.preferences.homeRowOrder).filter((row) => !hidden.has(row.id));
   const advertisedRows = useRef(rows);
@@ -319,15 +321,15 @@ export function HomePage() {
   }
   if (home.status === 'error') {
     const failure = homeProblem(home.error, 'home.unavailable');
-    return <div className="standard-page"><div className="library-state error" role="alert"><ProductLanguageIcon presentation={failure} /><strong>{failure.title}</strong><p>{failure.body}</p><SecondaryButton onClick={() => setReloadKey((value) => value + 1)}><RefreshCw /> {failure.actions[0]?.label}</SecondaryButton></div></div>;
+    return <div className="standard-page"><div className="library-state error" role="alert"><ProductLanguageIcon presentation={failure} /><strong>{failure.title}</strong><p>{failure.body}</p><SecondaryButton onClick={() => setReloadKey((value) => value + 1)}><ActionRefreshIcon /> {failure.actions[0]?.label}</SecondaryButton></div></div>;
   }
   if (allRows.length === 0) return <EmptyHomePage />;
   return <div className="portico-home-page">
     <HomeHero item={hero} context={heroRow?.title} playbackOptions={heroPlaybackOptions} showBackdrop={display.preferences.showBackdrops} />
     {display.status === 'error' && <div className="home-preference-warning" role="status"><ProductLanguageIcon presentation={productMessage('home.preferences-unavailable')} /><span>{productMessage('home.preferences-unavailable').body}</span><button type="button" onClick={display.retry}>{productMessage('home.preferences-unavailable').actions[0]?.label}</button></div>}
     <div className="portico-home-content">
-      <div className="portico-home-toolbar"><SecondaryButton onClick={() => setCustomizing(true)}><SlidersHorizontal /> {productMessage('action.customize-home').text}</SecondaryButton></div>
-      {failedRows.length > 0 && <div className="portico-home-degraded" role="status"><RefreshCw /><span>{degradedHome.title}</span><button type="button" onClick={() => { setRowSlots([]); setReloadKey((value) => value + 1); }}>{degradedHome.actions[0]?.label}</button></div>}
+      <div className="portico-home-toolbar"><SecondaryButton onClick={() => setCustomizing(true)}><ActionCustomizeIcon /> {productMessage('action.customize-home').text}</SecondaryButton></div>
+      {failedRows.length > 0 && <div className="portico-home-degraded" role="status"><ActionRefreshIcon /><span>{degradedHome.title}</span><button type="button" onClick={() => { setRowSlots([]); setReloadKey((value) => value + 1); }}>{degradedHome.actions[0]?.label}</button></div>}
       {orderedSlots.map((slot, index) => <HomeRowSurface key={slot.id} descriptor={slot.descriptor} eager={index < 3} onResolved={resolveRow} />)}
     </div>
     {customizing && <HomeCustomizationDialog rows={allRows} preferences={display.preferences} busy={display.busy} onDismiss={() => setCustomizing(false)} onSave={display.update} />}

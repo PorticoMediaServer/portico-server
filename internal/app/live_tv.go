@@ -192,11 +192,7 @@ func (s *Server) handleLiveTVRoute(w http.ResponseWriter, r *http.Request, user 
 			s.handleLiveTVStreamClose(w, r, user, parts[1])
 			return
 		}
-		if len(parts) != 2 || r.Method != http.MethodGet {
-			writeError(w, http.StatusNotFound, "not_found", "Live TV stream route was not found.")
-			return
-		}
-		s.handleLiveTVDirectStream(w, r, user, parts[1])
+		writeError(w, http.StatusNotFound, "not_found", "Live TV stream route was not found.")
 		return
 	}
 	if parts[0] == "logos" {
@@ -508,6 +504,12 @@ func (s *Server) handleLiveTVSourceRoute(w http.ResponseWriter, r *http.Request,
 			writeError(w, http.StatusInternalServerError, "live_tv_channels_failed", "Unable to load Live TV channel groups.")
 			return
 		}
+		if channels == nil {
+			channels = make([]LiveTVChannel, 0)
+		}
+		if groups == nil {
+			groups = make([]string, 0)
+		}
 		applyLiveTVChannelsActions(channels, user)
 		var pageTotal *int
 		if strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("count")), "exact") {
@@ -610,18 +612,7 @@ func (s *Server) listLiveTVSources(includeDisabled bool) ([]LiveTVSource, error)
 func (s *Server) listLiveTVSourcesForProfile(profileID string, includeDisabled bool) ([]LiveTVSource, error) {
 	profileID = strings.TrimSpace(profileID)
 	if profileID == "" {
-		sources, err := s.listLiveTVSources(includeDisabled)
-		if err != nil {
-			return nil, err
-		}
-		// Missing viewer identity must never inherit legacy catalog-global
-		// favorite/hidden summaries. Return operational source data with neutral
-		// viewer state so unauthenticated or incorrectly scoped callers fail closed.
-		for index := range sources {
-			sources[index].FavoriteChannelCount = 0
-			sources[index].HiddenChannelCount = 0
-		}
-		return sources, nil
+		return nil, errors.New("viewer profile is required")
 	}
 	where := ""
 	if !includeDisabled {
@@ -2235,17 +2226,7 @@ func resolveLiveTVChannelIdentities(tx *sql.Tx, source liveTVSourceRecord, chann
 			}
 		}
 		if stableID == "" {
-			// Retain a legacy ID only when that exact row already exists. Fresh channels
-			// receive a Portico-owned ID unrelated to any provider attribute.
-			var count int
-			if err := tx.QueryRow(`SELECT COUNT(*) FROM live_tv_channels WHERE id = ? AND source_id = ?`, provisionalID, source.ID).Scan(&count); err != nil {
-				return nil, nil, err
-			}
-			if count == 1 && !claimed[provisionalID] {
-				stableID = provisionalID
-			} else {
-				stableID = randomID("ch")
-			}
+			stableID = randomID("ch")
 		}
 		claimed[stableID] = true
 		channel.ID = stableID
@@ -4046,6 +4027,16 @@ func (s *Server) liveTVPlaybackResponseForSession(r *http.Request, user User, se
 	}
 	qualities := liveTVPlaybackQualitiesForPolicy(providerStreamFormat, policy)
 	selectedQuality := liveTVQualityForResolvedPolicy(policy)
+	var persistedQuality string
+	if err := s.queryUserRow(r.Context(), `SELECT selected_quality_id FROM playback_sessions WHERE id = ? AND profile_id = ?`, sessionID, viewerProfileID(user)).Scan(&persistedQuality); err == nil {
+		persistedQuality = normalizeLiveTVQualityID(persistedQuality)
+		for _, quality := range qualities {
+			if quality.ID == persistedQuality && quality.Available {
+				selectedQuality = persistedQuality
+				break
+			}
+		}
+	}
 	policy.LiveDelivery = &PlaybackDeliveryPolicy{DeliveryMode: "server_hls", GrantRequired: true, AllowedOperationClasses: []string{"manifest", "segment"}, AuthorizationRecheckSeconds: 60, QualityProfile: selectedQuality}
 	s.dvrAllocationMu.Lock()
 	allocationLease, allocationErr := s.reserveLiveTVTunerAllocation(r.Context(), source.ID, channel.ID, "live_session", sessionID)
@@ -4087,10 +4078,84 @@ func (s *Server) liveTVPlaybackResponseForSession(r *http.Request, user User, se
 		Generation:        0,
 		PlaybackRevision:  0,
 	}
+	_ = s.queryUserRow(r.Context(), `SELECT renegotiation_revision, playback_generation FROM playback_sessions WHERE id = ? AND profile_id = ?`, sessionID, viewerProfileID(user)).Scan(&playback.PlaybackRevision, &playback.Generation)
 	if err := s.ensurePlaybackContinuationCredential(r, user, &playback); err != nil {
 		return PlaybackResponse{}, err
 	}
 	return playback, nil
+}
+
+func (s *Server) handleLiveTVPlaybackRenegotiation(w http.ResponseWriter, r *http.Request, user User, sessionID, channelID string, req PlaybackRenegotiationRequest, revision int64, generation int, lastRequest, lastFingerprint, fingerprint string) {
+	if req.QualityID == nil || req.AudioStreamID != nil || req.SubtitleStreamID != nil || req.SubtitleMode != nil || req.VersionID != nil {
+		writeError(w, http.StatusBadRequest, "invalid_live_tv_renegotiation", "Live TV playback can change only the advertised quality.")
+		return
+	}
+	quality := normalizeLiveTVQualityID(*req.QualityID)
+	if quality == "auto" && strings.ToLower(strings.TrimSpace(*req.QualityID)) != "auto" {
+		writeError(w, http.StatusBadRequest, "invalid_live_tv_quality", "Choose an advertised Live TV quality.")
+		return
+	}
+	var storedProfileJSON, storedIntentJSON string
+	if err := s.queryUserRow(r.Context(), `SELECT client_profile_json, playback_intent_json FROM playback_sessions WHERE id = ? AND profile_id = ?`, sessionID, viewerProfileID(user)).Scan(&storedProfileJSON, &storedIntentJSON); err != nil {
+		writeError(w, http.StatusNotFound, "playback_session_not_found", "Playback session was not found.")
+		return
+	}
+	var profile PlaybackClientProfile
+	var intent PlaybackIntent
+	_ = json.Unmarshal([]byte(storedProfileJSON), &profile)
+	_ = json.Unmarshal([]byte(storedIntentJSON), &intent)
+	if !isZeroPlaybackClientProfile(req.ClientProfile) {
+		profile = req.ClientProfile
+	}
+	if !isZeroPlaybackIntent(req.Intent) {
+		intent = req.Intent
+	}
+	intent.QualityProfile = quality
+	if lastRequest == req.RequestID {
+		if lastFingerprint != fingerprint {
+			writeError(w, http.StatusConflict, "renegotiation_request_conflict", "requestId was already used with a different playback selection.")
+			return
+		}
+		playback, err := s.liveTVPlaybackResponseForSession(r, user, sessionID, channelID, profile, intent)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "renegotiation_failed", "Unable to restore Live TV playback after the quality change.")
+			return
+		}
+		setPlaybackMediaGrantCookie(w, r, playback)
+		writeJSON(w, http.StatusOK, playback)
+		return
+	}
+	if revision != req.ExpectedRevision {
+		writeError(w, http.StatusConflict, "renegotiation_revision_conflict", "Playback selection changed on another client. Reload the playback response before renegotiating.")
+		return
+	}
+	profileJSON, _ := json.Marshal(profile)
+	intentJSON, _ := json.Marshal(intent)
+	result, err := s.execUserWriteTaggedForViewer(r.Context(), accountIDForUser(user), viewerProfileID(user), []string{"playback"}, `
+		UPDATE playback_sessions SET selected_quality_id = ?, renegotiation_revision = renegotiation_revision + 1,
+			client_profile_json = ?, playback_intent_json = ?, playback_generation = playback_generation + 1,
+			last_renegotiation_request_id = ?, last_renegotiation_fingerprint = ?, last_seen_at = ?
+		WHERE id = ? AND profile_id = ? AND ended_at = '' AND state <> 'stopped' AND is_live = 1
+			AND renegotiation_revision = ? AND playback_generation = ?`,
+		quality, string(profileJSON), string(intentJSON), req.RequestID, fingerprint, time.Now().UTC().Format(time.RFC3339Nano),
+		sessionID, viewerProfileID(user), revision, generation)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "renegotiation_failed", "Unable to change Live TV quality.")
+		return
+	}
+	if changed, _ := result.RowsAffected(); changed != 1 {
+		writeError(w, http.StatusConflict, "renegotiation_revision_conflict", "Playback selection changed on another client. Reload the playback response before renegotiating.")
+		return
+	}
+	_, _ = s.execUserWrite(r.Context(), `UPDATE playback_media_grants SET revoked_at = ? WHERE playback_session_id = ? AND revoked_at = ''`, time.Now().UTC().Format(time.RFC3339Nano), sessionID)
+	s.forgetMediaGrantsForPlaybackSession(sessionID)
+	playback, err := s.liveTVPlaybackResponseForSession(r, user, sessionID, channelID, profile, intent)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "renegotiation_failed", "Unable to change Live TV quality.")
+		return
+	}
+	setPlaybackMediaGrantCookie(w, r, playback)
+	writeJSON(w, http.StatusOK, playback)
 }
 
 func (s *Server) closeLiveTVStream(user User, channelID string, sessionID string) error {
@@ -4193,18 +4258,30 @@ type liveTVQualityConstraint struct {
 func liveTVPlaybackQualities(streamFormat string) []Quality {
 	requiresTranscode := streamFormat != "hls"
 	return []Quality{
-		{ID: "auto", Label: "Auto", Description: "Use the resolved Live TV quality.", Available: true, RequiresTranscode: requiresTranscode},
-		{ID: "source", Label: "Source Quality", Description: "Use the highest provider quality.", Available: true, RequiresTranscode: requiresTranscode},
-		{ID: "1080p-high", Label: "1080p High", Description: "Cap Live TV to 8 Mbps.", Available: true, RequiresTranscode: requiresTranscode},
-		{ID: "1080p-medium", Label: "1080p Medium", Description: "Cap Live TV to 5 Mbps.", Available: true, RequiresTranscode: requiresTranscode},
-		{ID: "720p-high", Label: "720p High", Description: "Cap Live TV to 4 Mbps.", Available: true, RequiresTranscode: requiresTranscode},
-		{ID: "720p-medium", Label: "720p Medium", Description: "Cap Live TV to 2.5 Mbps.", Available: true, RequiresTranscode: requiresTranscode},
-		{ID: "480p", Label: "480p", Description: "Cap Live TV to 1.5 Mbps.", Available: true, RequiresTranscode: requiresTranscode},
-		{ID: "328p", Label: "328p", Description: "Cap Live TV to 0.7 Mbps.", Available: true, RequiresTranscode: requiresTranscode},
+		{ID: "auto", Label: "Automatic", Description: "Best quality for this connection.", Available: true, RequiresTranscode: requiresTranscode},
+		{ID: "source", Label: "Original Quality", Description: "Uses the provider's original quality.", Available: true, RequiresTranscode: requiresTranscode},
+		{ID: "1080p-high", Label: playbackVideoQualityLabel(1080, 8000), Description: playbackVideoQualityDescription(1080, 8000), Available: true, RequiresTranscode: requiresTranscode},
+		{ID: "1080p-medium", Label: playbackVideoQualityLabel(1080, 5000), Description: playbackVideoQualityDescription(1080, 5000), Available: true, RequiresTranscode: requiresTranscode},
+		{ID: "720p-high", Label: playbackVideoQualityLabel(720, 4000), Description: playbackVideoQualityDescription(720, 4000), Available: true, RequiresTranscode: requiresTranscode},
+		{ID: "720p-medium", Label: playbackVideoQualityLabel(720, 2500), Description: playbackVideoQualityDescription(720, 2500), Available: true, RequiresTranscode: requiresTranscode},
+		{ID: "480p", Label: playbackVideoQualityLabel(480, 1500), Description: playbackVideoQualityDescription(480, 1500), Available: true, RequiresTranscode: requiresTranscode},
+		{ID: "328p", Label: playbackVideoQualityLabel(328, 700), Description: playbackVideoQualityDescription(328, 700), Available: true, RequiresTranscode: requiresTranscode},
 	}
 }
 
 func liveTVQualityForResolvedPolicy(policy ResolvedPlaybackPolicy) string {
+	requested := normalizeLiveTVQualityID(policy.DeliveryProfile)
+	if requested != "auto" {
+		constraint := liveTVQualityConstraintFor(requested)
+		if constraint.source {
+			if policy.MaxVideoBitrateMbps <= 0 && policy.MaxVideoHeight <= 0 {
+				return requested
+			}
+		} else if (policy.MaxVideoBitrateMbps <= 0 || constraint.maxBandwidth <= policy.MaxVideoBitrateMbps*1_000_000) &&
+			(policy.MaxVideoHeight <= 0 || constraint.maxHeight <= policy.MaxVideoHeight) {
+			return requested
+		}
+	}
 	selected := "480p"
 	switch firstNonEmpty(policy.DeliveryProfile, resolvedDeliveryProfile("live_channel", policy)) {
 	case "video-original":
@@ -4322,26 +4399,6 @@ func (s *Server) getLiveTVChannelForPlayback(channelID string) (liveTVPlaybackCh
 		return liveTVPlaybackChannel{}, liveTVSourceRecord{}, err
 	}
 	return channel, source, nil
-}
-
-func (s *Server) handleLiveTVDirectStream(w http.ResponseWriter, r *http.Request, user User, channelID string) {
-	if !canPlayLiveTV(user) {
-		writeError(w, http.StatusForbidden, "forbidden", "You do not have permission to play Live TV.")
-		return
-	}
-	channel, source, err := s.getLiveTVChannelForPlayback(channelID)
-	if err != nil || (!source.Enabled && !canManageLiveTVSources(user)) {
-		writeError(w, http.StatusNotFound, "live_tv_channel_not_found", "Live TV channel was not found.")
-		return
-	}
-	if !s.userLiveTVChannelAllowedForUser(user, channel.ID) {
-		writeError(w, http.StatusNotFound, "live_tv_channel_not_found", "Live TV channel was not found.")
-		return
-	}
-	// The legacy byte proxy had no playback session to own a persistent tuner
-	// allocation. All Live TV playback now starts through /play or /open and
-	// delivers operation-scoped HLS resources, so this route fails closed.
-	writeProductError(w, http.StatusConflict, "live_tv_playback_session_required", "Start Live TV from the guide so Portico can reserve a tuner.")
 }
 
 func (s *Server) handleLiveTVLogo(w http.ResponseWriter, r *http.Request, user User, channelID string) {
@@ -5509,7 +5566,7 @@ func resolveProviderURL(base *url.URL, value string) (string, error) {
 }
 
 func copyLiveTVHeaders(dst http.Header, src http.Header) {
-	for _, key := range []string{"Content-Type", "Content-Length", "Accept-Ranges"} {
+	for _, key := range []string{"Content-Type", "Content-Length", "Content-Range", "Accept-Ranges"} {
 		if value := src.Get(key); value != "" {
 			dst.Set(key, value)
 		}

@@ -81,6 +81,10 @@ type downloadPreparationCreateEnvelope struct {
 	QualityProfile   string   `json:"qualityProfile,omitempty"`
 }
 
+type downloadPreparationGrantRequest struct {
+	Delivery string `json:"delivery"`
+}
+
 func (s *Server) handleDownloadPreparations(w http.ResponseWriter, r *http.Request, user User) {
 	if !user.Permissions["downloadMedia"] {
 		writeError(w, http.StatusForbidden, "forbidden", "You do not have permission to download media.")
@@ -142,6 +146,14 @@ func (s *Server) handleDownloadPreparations(w http.ResponseWriter, r *http.Reque
 			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "Use POST for this endpoint.")
 			return
 		}
+		var request downloadPreparationGrantRequest
+		if !decodeJSON(w, r, &request) {
+			return
+		}
+		if request.Delivery != "browser" && request.Delivery != "native" {
+			writeError(w, http.StatusBadRequest, "invalid_download_grant_delivery", "Choose browser or native grant delivery.")
+			return
+		}
 		grant, err := s.issueDownloadPreparationGrantContext(r.Context(), user, preparationID)
 		if err != nil {
 			writeDownloadPreparationError(w, err)
@@ -154,6 +166,9 @@ func (s *Server) handleDownloadPreparations(w http.ResponseWriter, r *http.Reque
 			if len(parts) == 4 {
 				setMediaDownloadGrantCookie(w, r, parts[2], grant)
 			}
+		}
+		if request.Delivery == "browser" {
+			grant.GrantToken = ""
 		}
 		writeJSON(w, http.StatusCreated, grant)
 		return

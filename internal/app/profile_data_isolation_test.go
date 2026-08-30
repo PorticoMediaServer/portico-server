@@ -136,12 +136,9 @@ func TestWatchWithFriendsProfilesOnOneAccountRemainDistinctAndPrivate(t *testing
 		t.Fatalf("consumer payload omitted distinct profile identities: %s", payload)
 	}
 
-	privatePreferences, _ := json.Marshal(map[string]any{"privacy": UserPrivacyPreferences{
+	setUserPrivacyPreferencesForTest(t, server.db, child.ProfileID, UserPrivacyPreferences{
 		ShowActivityToMembers: false, IncludeInWatchWithFriends: true,
-	}})
-	if _, err := server.db.Exec(`UPDATE profiles SET preferences_json = ? WHERE id = ?`, string(privatePreferences), child.ProfileID); err != nil {
-		t.Fatalf("set child privacy: %v", err)
-	}
+	})
 	visible := server.visibleWatchWithFriendsMembersContext(context.Background(), primary, group)
 	if len(visible) != 1 || visible[0].ProfileID != primary.ProfileID {
 		t.Fatalf("profile privacy did not hide only the child participant: %#v", visible)
@@ -275,12 +272,9 @@ func TestLiveTVChannelStateAndSummariesAreProfileScoped(t *testing.T) {
 	if globalFavorite != 0 || globalHidden != 0 {
 		t.Fatalf("viewer state leaked into global channel catalog: favorite=%d hidden=%d", globalFavorite, globalHidden)
 	}
-	if _, err := server.db.Exec(`UPDATE live_tv_sources SET favorite_channel_count = 7, hidden_channel_count = 9 WHERE id = 'src_profile_live'`); err != nil {
-		t.Fatalf("seed legacy source summaries: %v", err)
-	}
 	neutralSources, err := server.listLiveTVSourcesForProfile("", false)
-	if err != nil || len(neutralSources) != 1 || neutralSources[0].FavoriteChannelCount != 0 || neutralSources[0].HiddenChannelCount != 0 {
-		t.Fatalf("missing profile identity did not fail closed with neutral summaries: %#v, err=%v", neutralSources, err)
+	if err == nil || len(neutralSources) != 0 {
+		t.Fatalf("missing profile identity did not fail closed: %#v, err=%v", neutralSources, err)
 	}
 }
 

@@ -96,6 +96,10 @@ func TestPlaybackMediaGrantIsHashedScopedExpiringAndRevocable(t *testing.T) {
 	if err := db.QueryRow(`SELECT id FROM users WHERE username = 'grant-owner'`).Scan(&userID); err != nil {
 		t.Fatalf("query grant owner: %v", err)
 	}
+	var profileID string
+	if err := db.QueryRow(`SELECT id FROM profiles WHERE account_id = ? AND is_primary = 1`, userID).Scan(&profileID); err != nil {
+		t.Fatalf("query grant owner profile: %v", err)
+	}
 	now := time.Now().UTC()
 	if _, err := db.Exec(`
 		INSERT INTO media_items (id, type, title, sort_title, genres_json, tags_json, labels_json, added_at)
@@ -105,11 +109,11 @@ func TestPlaybackMediaGrantIsHashedScopedExpiringAndRevocable(t *testing.T) {
 	if _, err := db.Exec(`
 		INSERT INTO playback_sessions (id, user_id, profile_id, media_id, media_type, title, started_at, last_seen_at, state)
 		VALUES ('play_grant_test', ?, ?, 'media_grant_test', 'movie', 'Grant test', ?, ?, 'playing')`,
-		userID, userID, now.Format(time.RFC3339), now.Format(time.RFC3339)); err != nil {
+		userID, profileID, now.Format(time.RFC3339), now.Format(time.RFC3339)); err != nil {
 		t.Fatalf("insert playback session: %v", err)
 	}
 	bindPlaybackSessionPlanForTest(t, db, "play_grant_test", "media_grant_test", false)
-	user := User{ID: userID, Permissions: map[string]bool{"playMedia": true}}
+	user := User{ID: userID, AccountID: userID, ProfileID: profileID, ProfileIsPrimary: true, Permissions: map[string]bool{"playMedia": true}}
 	grant, err := server.issueMediaGrant(context.Background(), user, "play_grant_test", "media", "media_grant_test")
 	if err != nil {
 		t.Fatalf("issue media grant: %v", err)

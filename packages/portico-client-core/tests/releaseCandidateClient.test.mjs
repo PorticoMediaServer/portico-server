@@ -219,9 +219,6 @@ test("viewer notification invalidations stream through the portable event adapte
       yield `event: notification-invalidation\ndata: ${JSON.stringify({
         version: "v1", kind: "notifications.invalidated", occurredAt: "2026-07-16T12:00:00Z"
       })}\n\n`;
-      yield `data: ${JSON.stringify({
-        version: "v1", kind: "notifications.invalidated", recipient, occurredAt: "2026-07-16T12:01:00Z"
-      })}\n\n`;
     } }
   });
   await client.streamViewerNotificationInvalidations({ audience: "profile" }, new AbortController().signal, event => events.push(event));

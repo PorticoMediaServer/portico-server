@@ -196,6 +196,15 @@ func TestConfigurationAwareCapabilityAvailabilityIsFailClosed(t *testing.T) {
 	if got := remoteAccessCapabilityState(server); got != "available" {
 		t.Fatalf("fully configured remote access state=%q", got)
 	}
+	for _, diagnostic := range []string{"public_checking", "public_unreachable", "heartbeat_failed", "repair_network_changed"} {
+		settings.LastReachabilityResult = diagnostic
+		if err := server.saveRemoteAccessSettings(settings); err != nil {
+			t.Fatal(err)
+		}
+		if got := remoteAccessCapabilityState(server); got != "available" {
+			t.Fatalf("configured remote access with operational diagnostic %q state=%q, want available", diagnostic, got)
+		}
+	}
 	settings.CertificateStatus = "pending"
 	if err := server.saveRemoteAccessSettings(settings); err != nil {
 		t.Fatal(err)
@@ -340,7 +349,7 @@ func expectedBroadCapabilityRoutes() map[string]map[string]bool {
 	return map[string]map[string]bool{
 		"downloads": routes(
 			"GET /api/download-preparations", "POST /api/download-preparations", "GET /api/download-preparations/{}", "PATCH /api/download-preparations/{}", "DELETE /api/download-preparations/{}", "POST /api/download-preparations/{}/grant",
-			"GET /api/media/{}/download-options", "POST /api/media/{}/download-grants", "GET /api/media/{}/download", "HEAD /api/media/{}/download",
+			"GET /api/media/{}/download-options", "GET /api/media/{}/download", "HEAD /api/media/{}/download",
 		),
 		"home.lazy-rows":                routes("GET /api/home", "GET /api/home/rows/{}"),
 		"library.canonical-browse":      routes("POST /api/libraries/{}/browse"),
@@ -364,7 +373,7 @@ func expectedBroadCapabilityRoutes() map[string]map[string]bool {
 		),
 		"playback.google-cast-custom-receiver": routes("POST /api/playback/cast/bootstrap", "POST /api/playback/cast/reconnect", "POST /api/playback/cast/redeem", "GET /api/playback/cast/sessions/{}/state", "POST /api/playback/cast/sessions/{}/{}", "DELETE /api/playback/cast/sessions/{}/stop"),
 		"media.actions": routes(
-			"GET /api/product-contract", "POST /api/playback-sessions", "POST /api/media/{}/download-grants", "POST /api/media/{}/watchlist", "POST /api/media/{}/favorite", "POST /api/media/{}/watched", "POST /api/media/{}/reaction", "POST /api/media/{}/rating", "POST /api/media/{}/jobs", "DELETE /api/media/{}",
+			"GET /api/product-contract", "POST /api/playback-sessions", "POST /api/download-preparations", "POST /api/media/{}/watchlist", "POST /api/media/{}/favorite", "POST /api/media/{}/watched", "POST /api/media/{}/reaction", "POST /api/media/{}/rating", "POST /api/media/{}/jobs", "DELETE /api/media/{}",
 			"POST /api/dvr/recordings", "POST /api/dvr/rules", "POST /api/dvr/recordings/{}/playback", "DELETE /api/dvr/recordings/{}", "PATCH /api/dvr/rules/{}",
 		),
 		"search.grouped-cursors":    routes("POST /api/search"),

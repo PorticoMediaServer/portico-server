@@ -134,7 +134,7 @@ export type NativeDownloadPreparationAPI = {
   downloadOptions(mediaId: string): Promise<DownloadOptionsResponse>;
   createDownloadPreparation(body: DownloadPreparationSingleCreateRequest): Promise<DownloadPreparation>;
   downloadPreparation(id: string): Promise<DownloadPreparation>;
-  createDownloadPreparationGrant(id: string): Promise<MediaDownloadGrantResponse>;
+  createDownloadPreparationGrant(id: string, body: {delivery: "native"}): Promise<MediaDownloadGrantResponse>;
 };
 
 export class NativeDownloadWorkflowError extends Error {
@@ -200,7 +200,7 @@ export async function authorizeNativeDownloadTransfer(
   if (preparation.state !== "ready" || preparation.qualityProfile !== variant.qualityProfile) {
     throw new NativeDownloadWorkflowError("preparation_not_ready");
   }
-  const grant = await api.createDownloadPreparationGrant(preparation.id);
+  const grant = await api.createDownloadPreparationGrant(preparation.id, {delivery: "native"});
   const expiry = Date.parse(grant.expiresAt);
   if (!grant.downloadUrl || !grant.grantToken || !Number.isFinite(expiry) || expiry <= now || grant.profile !== variant.qualityProfile) {
     throw new NativeDownloadWorkflowError("grant_invalid");

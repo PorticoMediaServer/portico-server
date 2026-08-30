@@ -268,11 +268,7 @@ func validProfilePINBcryptHash(encoded string, expectedCost int) bool {
 	if err != nil {
 		return false
 	}
-	// PIN credentials written by the immutable 001 schema use cost 10.  The
-	// current writer uses cost 8 for bounded PIN admission, so both historical
-	// forms remain readable during the forward migration.  Do not accept a
-	// lower-than-policy hash or silently downgrade a stronger one.
-	return cost == expectedCost || (expectedCost == localProfilePINBcryptCost && cost == 10)
+	return cost == expectedCost
 }
 
 func normalizeProfileDisplayName(value string) (string, bool) {
@@ -612,7 +608,6 @@ func applyRequestPrincipal(user *User, principal RequestPrincipal) {
 		return
 	}
 	user.AccountID = principal.AccountID
-	user.ID = principal.AccountID // legacy account identifier; do not change viewer tables implicitly.
 	user.ProfileID = principal.ProfileID
 	user.ProfileIsPrimary = principal.ProfileIsPrimary
 	user.AuthOrigin = map[AuthenticationAuthority]string{AuthenticationAuthorityHosted: "portico", AuthenticationAuthorityLocal: "local"}[principal.AuthenticationAuthority]
@@ -642,29 +637,17 @@ func applyRequestPrincipal(user *User, principal RequestPrincipal) {
 }
 
 func viewerProfileID(user User) string {
-	if id := strings.TrimSpace(user.ProfileID); id != "" {
-		return id
-	}
-	return strings.TrimSpace(user.ID)
+	return strings.TrimSpace(user.ProfileID)
 }
 
 func selectedProfileMayManageAccount(user User) bool {
-	// Legacy/internal callers without an explicit profile still represent the
-	// account's primary identity. The canonical primary profile shares the
-	// account ID; recognize that durable identity even when a caller was loaded
-	// before the denormalized ProfileIsPrimary flag was hydrated. Secondary
-	// profiles must still carry an explicit positive primary assertion, which
-	// request-principal resolution never grants to them.
 	profileID := strings.TrimSpace(user.ProfileID)
 	accountID := accountIDForUser(user)
-	return profileID == "" || (accountID != "" && profileID == accountID) || user.ProfileIsPrimary
+	return accountID != "" && profileID != "" && user.ProfileIsPrimary
 }
 
 func accountIDForUser(user User) string {
-	if id := strings.TrimSpace(user.AccountID); id != "" {
-		return id
-	}
-	return strings.TrimSpace(user.ID)
+	return strings.TrimSpace(user.AccountID)
 }
 
 func (s *Server) accountIDForProfileContext(ctx context.Context, profileID string) (string, error) {
@@ -682,7 +665,7 @@ func (s *Server) accountAndProfileIDsContext(ctx context.Context, identityID str
 	}
 	accountID, err := s.accountIDForProfileContext(ctx, identityID)
 	if err != nil {
-		return identityID, identityID
+		return "", ""
 	}
 	return accountID, identityID
 }

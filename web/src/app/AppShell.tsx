@@ -1,33 +1,4 @@
-import {
-	AlertTriangle,
-  BookOpen,
-  Bookmark,
-	ArrowDown,
-	ArrowUp,
-  ChevronDown,
-  ChevronRight,
-  Film,
-  Home,
-  Image as ImageIcon,
-  LibraryBig,
-  LogOut,
-  Menu,
-  MoreHorizontal,
-  Music,
-	PanelLeftClose,
-	PanelLeftOpen,
-	PinOff,
-  Radio,
-  Search,
-  Server,
-  ServerOff,
-  TerminalSquare,
-  Tv,
-  Users,
-  UsersRound,
-	UserRound,
-  X,
-} from '#portico-icons';
+import { StatusWarningIcon, NavigationLibraryIcon, ActionWatchlistIcon, NavigationMoveDownIcon, NavigationMoveUpIcon, NavigationExpandIcon, NavigationDisclosureIcon, MediaMovieIcon, NavigationHomeIcon, StatusArtworkUnavailableIcon, AccountSignOutIcon, ViewListIcon, ActionMoreIcon, MediaMusicIcon, NavigationCollapseIcon, ActionUnpinIcon, NavigationChannelsIcon, NavigationSearchIcon, DeviceServerIcon, DeviceOfflineIcon, DeviceTvIcon, AccountProfilesIcon, AccountWatchTogetherIcon, AccountUserIcon, ActionCloseIcon } from '#portico-icons';
 import { productMessage, type ProductMessageId } from '@porticomediaserver/client-core';
 import { type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -49,12 +20,12 @@ import { usePersistentFrame } from '../runtime/RuntimeProductFrame';
 import { useRouteLifecycle } from '../runtime/useRouteLifecycle';
 
 const navigation = [
-  ['/', 'navigation.home', Home],
-  ['/libraries', 'navigation.libraries', LibraryBig],
-  ['/live', 'navigation.live-tv', Radio],
-  ['/search', 'navigation.search', Search],
-  ['/saved', 'navigation.saved', Bookmark],
-] as const satisfies ReadonlyArray<readonly [string, ProductMessageId, typeof Home]>;
+  ['/', 'navigation.home', NavigationHomeIcon],
+  ['/libraries', 'navigation.libraries', NavigationLibraryIcon],
+  ['/live', 'navigation.live-tv', NavigationChannelsIcon],
+  ['/search', 'navigation.search', NavigationSearchIcon],
+  ['/saved', 'navigation.saved', ActionWatchlistIcon],
+] as const satisfies ReadonlyArray<readonly [string, ProductMessageId, typeof NavigationHomeIcon]>;
 
 const mobileNavigationQuery = '(max-width: 900px)';
 const LOCAL_PROFILE_SELECTION_KEY = 'portico.local-profile-selection-required.v1';
@@ -97,11 +68,11 @@ function drawerFocusableElements(drawer: HTMLElement) {
 }
 
 function LibraryIcon({ library }: { library: LibrarySummary }) {
-  if (library.kind === 'music') return <Music aria-hidden="true" />;
-  if (library.kind === 'movies') return <Film aria-hidden="true" />;
-  if (library.kind === 'audiobooks') return <BookOpen aria-hidden="true" />;
-  if (library.kind === 'recorded-tv') return <Radio aria-hidden="true" />;
-  return <Tv aria-hidden="true" />;
+  if (library.kind === 'music') return <MediaMusicIcon aria-hidden="true" />;
+  if (library.kind === 'movies') return <MediaMovieIcon aria-hidden="true" />;
+  if (library.kind === 'audiobooks') return <NavigationLibraryIcon aria-hidden="true" />;
+  if (library.kind === 'recorded-tv') return <NavigationChannelsIcon aria-hidden="true" />;
+  return <DeviceTvIcon aria-hidden="true" />;
 }
 
 function PinnedLibraryNavItem({ library, active, first, last, onChange }: {
@@ -116,11 +87,11 @@ function PinnedLibraryNavItem({ library, active, first, last, onChange }: {
   const destination = `/library/${encodeURIComponent(library.id)}`;
   return <div className={`library-pin-row ${active ? 'active' : ''}`}>
     <Link to={destination} className="nav-item library-pin"><LibraryIcon library={library} /><span>{library.name}</span></Link>
-    <button ref={trigger} type="button" className="library-pin-more" aria-label={productMessage('navigation.library-options', { title: library.name }).text} aria-expanded={open} aria-haspopup="menu" onClick={() => setOpen((value) => !value)}><MoreHorizontal /></button>
+    <button ref={trigger} type="button" className="library-pin-more" aria-label={productMessage('navigation.library-options', { title: library.name }).text} aria-expanded={open} aria-haspopup="menu" onClick={() => setOpen((value) => !value)}><ActionMoreIcon /></button>
     {open && <AnchoredOverlay anchorRef={trigger} placement="bottom-start" className="library-pin-menu" role="menu" onDismiss={() => setOpen(false)}>
-      <button role="menuitem" disabled={first} onClick={() => { onChange('up'); setOpen(false); }}><ArrowUp /> {productMessage('navigation.move-up').text}</button>
-      <button role="menuitem" disabled={last} onClick={() => { onChange('down'); setOpen(false); }}><ArrowDown /> {productMessage('navigation.move-down').text}</button>
-      <button role="menuitem" onClick={() => { onChange('unpin'); setOpen(false); }}><PinOff /> {productMessage('navigation.unpin').text}</button>
+      <button role="menuitem" disabled={first} onClick={() => { onChange('up'); setOpen(false); }}><NavigationMoveUpIcon /> {productMessage('navigation.move-up').text}</button>
+      <button role="menuitem" disabled={last} onClick={() => { onChange('down'); setOpen(false); }}><NavigationMoveDownIcon /> {productMessage('navigation.move-down').text}</button>
+      <button role="menuitem" onClick={() => { onChange('unpin'); setOpen(false); }}><ActionUnpinIcon /> {productMessage('navigation.unpin').text}</button>
     </AnchoredOverlay>}
   </div>;
 }
@@ -396,7 +367,7 @@ export function AppShell({ children, viewer, player }: { children: ReactNode; vi
   }, [availableNavigation.length, displayPreferences.reduceMotion, drawerActive, mobileLayout, mobileOpen, pageInactive, persistentFrame, routeTransitioning, shellClassName, shellStyle, sidebarClassName]);
 
   const sidebarContent = <>
-      <div className="brand-row"><img src="/brand/portico-wordmark-white.svg" className="brand brand-wordmark" alt="Portico" /><img src="/brand/portico-symbol-white.svg" className="brand brand-symbol" alt="Portico" /><IconButton label={productMessage('navigation.close').text ?? ''} className="nav-close" onClick={() => closeMobileNavigation()}><X /></IconButton></div>
+      <div className="brand-row"><img src="/brand/portico-wordmark-white.svg" className="brand brand-wordmark" alt="Portico" /><img src="/brand/portico-symbol-white.svg" className="brand brand-symbol" alt="Portico" /><IconButton label={productMessage('navigation.close').text ?? ''} className="nav-close" onClick={() => closeMobileNavigation()}><ActionCloseIcon /></IconButton></div>
       <nav className="primary-nav" aria-label={productMessage('navigation.primary-label').text}>{availableNavigation.map(([to, messageId, Icon]) => <NavLink key={to} to={to} end={to === '/'} className={({ isActive }) => isActive ? 'nav-item active' : 'nav-item'}><Icon aria-hidden="true" /><span>{productMessage(messageId).text}</span></NavLink>)}</nav>
       {pinnedLibraries.length > 0 && <><div className="sidebar-rule" /><div className="nav-caption"><span>{productMessage('navigation.pinned-libraries').text}</span><Link to="/libraries">{productMessage('navigation.manage').text}</Link></div><nav className="library-nav" aria-label={productMessage('navigation.pinned-libraries').text}>{pinnedLibraries.map((library, index) => {
         const destination = `/library/${encodeURIComponent(library.id)}`;
@@ -414,14 +385,14 @@ export function AppShell({ children, viewer, player }: { children: ReactNode; vi
         }} />;
       })}</nav></>}
       <div className="sidebar-spacer" />
-      {!mobileLayout && <button type="button" className="sidebar-collapse" aria-label={productText(sidebarCollapsed ? 'navigation.expand' : 'navigation.collapse')} title={productText(sidebarCollapsed ? 'navigation.expand' : 'navigation.collapse')} onClick={() => void display?.patch({ sidebarCollapsed: !sidebarCollapsed }).catch(() => undefined)}>{sidebarCollapsed ? <PanelLeftOpen /> : <PanelLeftClose />}<span>{productText(sidebarCollapsed ? 'navigation.expand' : 'navigation.collapse')}</span></button>}
+      {!mobileLayout && <button type="button" className="sidebar-collapse" aria-label={productText(sidebarCollapsed ? 'navigation.expand' : 'navigation.collapse')} title={productText(sidebarCollapsed ? 'navigation.expand' : 'navigation.collapse')} onClick={() => void display?.patch({ sidebarCollapsed: !sidebarCollapsed }).catch(() => undefined)}>{sidebarCollapsed ? <NavigationExpandIcon /> : <NavigationCollapseIcon />}<span>{productText(sidebarCollapsed ? 'navigation.expand' : 'navigation.collapse')}</span></button>}
       {!mobileLayout && !sidebarCollapsed && <div className="sidebar-resize-handle" role="separator" aria-label="Resize navigation" aria-orientation="vertical" aria-valuemin={SIDEBAR_WIDTH_MIN} aria-valuemax={SIDEBAR_WIDTH_MAX} aria-valuenow={sidebarWidth} tabIndex={0} title="Resize navigation" onDoubleClick={() => updateSidebarWidth(SIDEBAR_WIDTH_DEFAULT, true)} onKeyDown={resizeSidebarWithKeyboard} onPointerDown={startSidebarResize} onPointerMove={moveSidebarResize} onPointerUp={finishSidebarResize} onPointerCancel={finishSidebarResize} />}
   </>;
   const topbarContent = <>
-        <IconButton ref={mobileTrigger} label={productMessage('navigation.open').text ?? ''} className="menu-button" onClick={openMobileNavigation}><Menu /></IconButton>
+        <IconButton ref={mobileTrigger} label={productMessage('navigation.open').text ?? ''} className="menu-button" onClick={openMobileNavigation}><ViewListIcon /></IconButton>
         <div className="topbar-search">
           <form ref={searchAnchor} className={`global-search ${searchOpen ? 'active' : ''}`} role="search" onSubmit={(event) => { event.preventDefault(); submitSearch(); }}>
-            <button className="quick-search-submit" type="submit" aria-label={productMessage('search.open-full').text}><Search /></button>
+            <button className="quick-search-submit" type="submit" aria-label={productMessage('search.open-full').text}><NavigationSearchIcon /></button>
             <input ref={searchInput} value={quickQuery} maxLength={searchContract.status === 'success' ? searchContract.data.limits.maximumQueryLength : undefined} onFocus={() => {
               if (suppressNextSearchOpen.current) {
                 suppressNextSearchOpen.current = false;
@@ -443,7 +414,7 @@ export function AppShell({ children, viewer, player }: { children: ReactNode; vi
                 moveSearchSelection(-1);
               }
             }} placeholder={productMessage('search.input-placeholder', { serverName: viewer.serverName }).text} aria-label={productMessage('search.quick-input-label').text} role="combobox" aria-haspopup="dialog" aria-expanded={searchOpen} aria-controls="global-search-results" aria-activedescendant={activeSearchOptionId} />
-            {quickQuery && <button className="quick-search-clear" type="button" aria-label={productMessage('action.clear-search').text} onClick={() => { setQuickQuery(''); searchInput.current?.focus(); }}><X /></button>}
+            {quickQuery && <button className="quick-search-clear" type="button" aria-label={productMessage('action.clear-search').text} onClick={() => { setQuickQuery(''); searchInput.current?.focus(); }}><ActionCloseIcon /></button>}
           </form>
           {searchOpen && <AnchoredOverlay id="global-search-results" role="dialog" anchorRef={searchAnchor} returnFocusRef={searchInput} matchAnchorWidth autoFocusComposite={false} ariaLabel="Search suggestions" className="quick-search-panel" onDismiss={(reason) => {
             if (reason === 'escape') suppressNextSearchOpen.current = true;
@@ -458,7 +429,7 @@ export function AppShell({ children, viewer, player }: { children: ReactNode; vi
               event.preventDefault();
               setProfileOpen(true);
             }
-          }}><span className="profile-avatar-shell"><span className="avatar">{avatar}</span>{notifications.unreadCount > 0 && <span className="notification-count-badge" aria-hidden="true">{notifications.unreadCount > 99 ? '99+' : notifications.unreadCount}</span>}</span><span><strong>{displayName}</strong><small>{viewer.serverName}</small></span><ChevronDown /></button>
+          }}><span className="profile-avatar-shell"><span className="avatar">{avatar}</span>{notifications.unreadCount > 0 && <span className="notification-count-badge" aria-hidden="true">{notifications.unreadCount > 99 ? '99+' : notifications.unreadCount}</span>}</span><span><strong>{displayName}</strong><small>{viewer.serverName}</small></span><NavigationExpandIcon /></button>
           {profileOpen && <AnchoredOverlay anchorRef={profileTrigger} placement="bottom-end" className="profile-menu" role="menu" onDismiss={() => setProfileOpen(false)}>
             <div className="profile-menu-current"><span className="avatar">{avatar}</span><span><strong>{displayName}</strong><small>{viewer.user?.role || 'user'} · {viewer.serverName}</small></span></div>
 			<Link role="menuitem" to="/notifications" onClick={() => setProfileOpen(false)}><SemanticProductIcon id="status.notification" /> {productText('notification.title')}{notifications.unreadCount > 0 && <span className="profile-menu-count">{notifications.unreadCount > 99 ? '99+' : notifications.unreadCount}</span>}</Link>
@@ -469,25 +440,27 @@ export function AppShell({ children, viewer, player }: { children: ReactNode; vi
           try { sessionStorage.setItem(LOCAL_PROFILE_SELECTION_KEY, 'true'); } catch { /* The dedicated state still applies for this page lifetime. */ }
           setProfileSwitcherOpen(true);
         }
-			}}><UserRound /> Switch Profile <ChevronRight /></button>
-            <Link role="menuitem" to="/settings/account"><Users /> Account settings <ChevronRight /></Link>
-            <Link role="menuitem" to="/settings/profiles"><UserRound /> Profiles <ChevronRight /></Link>
-            <Link role="menuitem" to="/settings/appearance"><ImageIcon /> Appearance <ChevronRight /></Link>
+			}}><AccountUserIcon /> Switch Profile <NavigationDisclosureIcon /></button>
+            {runtime?.config.mode === 'hosted'
+              ? <button role="menuitem" onClick={() => { setProfileOpen(false); runtime.openAccountSettings(); }}><AccountProfilesIcon /> Account settings <NavigationDisclosureIcon /></button>
+              : <Link role="menuitem" to="/settings/account"><AccountProfilesIcon /> Account settings <NavigationDisclosureIcon /></Link>}
+            <Link role="menuitem" to="/settings/profiles"><AccountUserIcon /> Profiles <NavigationDisclosureIcon /></Link>
+            <Link role="menuitem" to="/settings/appearance"><StatusArtworkUnavailableIcon /> Appearance <NavigationDisclosureIcon /></Link>
             <button role="menuitem" onClick={() => { setProfileOpen(false); setFeedbackOpen(true); }}><SemanticProductIcon id="action.message" /> {productText('action.send-message')}</button>
-            {canWatchWithFriends && <Link role="menuitem" to="/watch-with-friends"><UsersRound /> Watch With Friends <ChevronRight /></Link>}
-            {canManageServer && <Link role="menuitem" to="/settings/status"><Server /> Server settings <ChevronRight /></Link>}
-            {canManageServer && <Link role="menuitem" to="/settings/diagnostics"><TerminalSquare /> Server console <ChevronRight /></Link>}
+            {canWatchWithFriends && <Link role="menuitem" to="/watch-with-friends"><AccountWatchTogetherIcon /> Watch With Friends <NavigationDisclosureIcon /></Link>}
+            {canManageServer && <Link role="menuitem" to="/settings/status"><DeviceServerIcon /> Server settings <NavigationDisclosureIcon /></Link>}
+            {canManageServer && <Link role="menuitem" to="/settings/diagnostics"><DeviceServerIcon /> Server console <NavigationDisclosureIcon /></Link>}
             {runtime?.config.mode === 'hosted' ? <>
-              <button role="menuitem" onClick={() => { setProfileOpen(false); runtime.disconnectServer(); }}><ServerOff /> Choose another server</button>
-              <button role="menuitem" onClick={() => { setProfileOpen(false); void runtime.hostedLogout(); }}><LogOut /> Sign out of Portico Account</button>
+              <button role="menuitem" onClick={() => { setProfileOpen(false); runtime.disconnectServer(); }}><DeviceOfflineIcon /> Choose another server</button>
+              <button role="menuitem" onClick={() => { setProfileOpen(false); void runtime.hostedLogout(); }}><AccountSignOutIcon /> Sign out of Portico Account</button>
 			</> : <>
-				<button role="menuitem" onClick={() => { setProfileOpen(false); void auth.logout(); }}><LogOut /> Sign out of current session</button>
+				<button role="menuitem" onClick={() => { setProfileOpen(false); void auth.logout(); }}><AccountSignOutIcon /> Sign out of current session</button>
 			</>}
           </AnchoredOverlay>}
         </div>
   </>;
   const warningContent = connectionWarning ? <div ref={connectionWarningRef} className="connection-durability-warning" role="status" aria-live="polite" data-semantic-icon={connectionWarning.icon}>
-        <AlertTriangle aria-hidden="true" />
+        <StatusWarningIcon aria-hidden="true" />
         <span><strong>{connectionWarning.title}</strong><small>{connectionWarning.body}</small></span>
   </div> : null;
   const mobileTabsContent = availableNavigation.map(([to, messageId, Icon]) => <NavLink key={to} to={to} end={to === '/'} className={({ isActive }) => isActive ? 'mobile-tab active' : 'mobile-tab'}><Icon /><span>{productMessage(messageId).text}</span></NavLink>);

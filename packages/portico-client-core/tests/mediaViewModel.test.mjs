@@ -75,7 +75,7 @@ test("non-poster artwork role publishes contract geometry and source role", () =
 test("future contract kinds require no client kind table", () => {
   const view = resolveMediaDetailViewModel(contract, {
     id: "story-1",
-    type: "interactive-story",
+    entityKind: "interactive-story",
     title: "Choose the Stars",
     sortTitle: "Choose the Stars",
     addedAt: "2026-07-16T00:00:00Z",
@@ -101,7 +101,7 @@ test("future contract kinds require no client kind table", () => {
 test("full detail resources publish canonical availability without a web adapter", () => {
   const partial = resolveMediaDetailViewModel(contract, {
     id: "episode-availability",
-    type: "episode",
+    entityKind: "episode",
     title: "The Missing Reel",
     sortTitle: "Missing Reel",
     addedAt: "2026-07-16T00:00:00Z",
@@ -120,7 +120,7 @@ test("full detail resources publish canonical availability without a web adapter
 
   const unavailable = resolveMediaDetailViewModel(contract, {
     id: "episode-unavailable",
-    type: "episode",
+    entityKind: "episode",
     title: "Gone",
     sortTitle: "Gone",
     addedAt: "2026-07-16T00:00:00Z",
@@ -138,18 +138,18 @@ test("full detail resources publish canonical availability without a web adapter
   assert.equal(unavailable.availability.status, "unavailable");
 });
 
-test("wire aliases resolve through the Product Contract kind mapping", () => {
+test("canonical entity kinds resolve through the Product Contract kind mapping", () => {
   const view = resolveMediaViewModel(contract, {
-    id: "story-alias-1",
-    type: "interactive_story",
+    id: "story-1",
+    entityKind: "interactive_story",
     title: "Mapped Future",
-    images: { poster: "", backdrop: "", thumb: "" }
+    artwork: { poster: "", backdrop: "", thumb: "" }
   });
 
   assert.equal(view.sourceKind, "interactive_story");
   assert.equal(view.kind, "interactive-story");
   assert.equal(view.semantics.known, true);
-  assert.deepEqual(view.destination, { kind: "children", entityId: "story-alias-1" });
+  assert.deepEqual(view.destination, { kind: "children", entityId: "story-1" });
 });
 
 test("unpublished kinds remain visible through conservative defaults", () => {

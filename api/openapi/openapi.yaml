@@ -3103,7 +3103,7 @@ components:
           uniqueItems: true
           items: { type: string }
         flowId: { type: string }
-        resultHandling: { type: string, enum: [json, job, playback-session, download-grant, flow] }
+        resultHandling: { type: string, enum: [json, job, playback-session, download-preparation, flow] }
     MediaActionConfirmation:
       type: object
       additionalProperties: false
@@ -4183,79 +4183,6 @@ components:
           type: string
         thumb:
           type: string
-    LocalizationInfo:
-      type: object
-      required: [locales, languages, countries, timeZones, ratingSystems, generatedAt]
-      properties:
-        locales:
-          type: array
-          items:
-            $ref: "#/components/schemas/LocalizationOption"
-        languages:
-          type: array
-          items:
-            $ref: "#/components/schemas/LocalizationOption"
-        countries:
-          type: array
-          items:
-            $ref: "#/components/schemas/LocalizationOption"
-        timeZones:
-          type: array
-          items:
-            type: string
-        ratingSystems:
-          type: array
-          items:
-            $ref: "#/components/schemas/LocalizationRatingSet"
-        generatedAt:
-          type: string
-          format: date-time
-    LocalizationOption:
-      type: object
-      required: [id, label]
-      properties:
-        id:
-          type: string
-        label:
-          type: string
-        labels:
-          type: object
-          additionalProperties:
-            type: string
-    LocalizationRatingSet:
-      type: object
-      required: [country, system, ratings]
-      properties:
-        country:
-          type: string
-        system:
-          type: string
-        label:
-          type: string
-        labels:
-          type: object
-          additionalProperties:
-            type: string
-        ratings:
-          type: array
-          items:
-            $ref: "#/components/schemas/LocalizationRating"
-    LocalizationRating:
-      type: object
-      required: [id, label, rank]
-      properties:
-        id:
-          type: string
-        label:
-          type: string
-        labels:
-          type: object
-          additionalProperties:
-            type: string
-        rank:
-          type: integer
-        minimumAge:
-          type: integer
     MediaState:
       x-portico-audience: viewer
       type: object
@@ -4495,14 +4422,14 @@ components:
         createdAt:
           type: string
           format: date-time
-    MediaDownloadGrantRequest:
+    DownloadPreparationGrantRequest:
       type: object
-      required: [profile]
+      required: [delivery]
       properties:
-        profile:
+        delivery:
           type: string
-          default: source
-          description: Source/original, default/optimized, or a concrete optimized profile listed by the download-options operation.
+          enum: [browser, native]
+          description: Browser delivery uses only an HttpOnly cookie. Native delivery returns the ephemeral transfer credential for the PorticoDownload authorization scheme.
     MediaDownloadGrantResponse:
       type: object
       required: [downloadUrl, expiresAt, profile]
@@ -4961,7 +4888,7 @@ components:
           description: A required row remains represented even when it is empty or temporarily unavailable.
         hideable:
           type: boolean
-          description: Server-owned policy. Clients must default to false when consuming older contracts.
+          description: Server-owned policy.
         reorderable:
           type: boolean
           description: Server-owned policy. Clients must not infer reorder eligibility from row type.
@@ -4969,9 +4896,6 @@ components:
         cursorCapable: { type: boolean }
         privacySensitivity: { type: string }
         policyState: { type: string }
-        controls:
-          type: array
-          items: { type: string, enum: [hide, reorder, pin] }
         cacheTtlSeconds: { type: integer }
         items:
           type: array
@@ -4999,7 +4923,7 @@ components:
         query: { type: string, maxLength: 120 }
         entityKinds:
           type: array
-          items: { type: string, enum: [movies, movie, shows, show, anime, season, episodes, episode, people, person, music, artist, album, track, audiobooks, audiobook, book, live-tv, live-channel, live_channel] }
+          items: { type: string, enum: [movie, show, season, episode, person, artist, album, track, book, live-channel] }
         libraryIds:
           type: array
           items: { type: string }
@@ -5249,7 +5173,7 @@ components:
       x-portico-audience: viewer
       type: object
       additionalProperties: false
-      required: [id, metadataRevision, metadataEtag, type, title, sortTitle, genres, tags, labels, addedAt, images, state, actions]
+      required: [id, metadataRevision, metadataEtag, entityKind, title, sortTitle, genres, tags, labels, addedAt, images, state, actions]
       properties:
         id:
           type: string
@@ -5266,7 +5190,7 @@ components:
           $ref: "#/components/schemas/MediaHierarchyCounts"
         parentId:
           type: string
-        type:
+        entityKind:
           type: string
         title:
           type: string
@@ -6128,10 +6052,6 @@ components:
       additionalProperties: false
       description: Portable viewing intent resolved by the server against media facts, capabilities, membership limits, and server clamps.
       properties:
-        networkClass:
-          type: string
-          description: Compatibility quality bucket. The server resolves locality independently and never trusts this value for authorization or remote-access clamps.
-          enum: [local, wifi, cellular, unknown]
         transportClass:
           type: string
           description: Non-authoritative client transport context, independent of route address and server locality.
@@ -7651,6 +7571,32 @@ components:
           description: Explicitly completes the media and closes the playback session after this event is accepted.
         isPlaying:
           type: boolean
+    PlaybackSessionStopRequest:
+      type: object
+      additionalProperties: false
+      required: [disposition, generation, eventSequence, recordedAt, positionSeconds, durationSeconds]
+      properties:
+        disposition:
+          type: string
+          enum: [stopped, completed]
+        generation:
+          type: integer
+          format: int64
+          minimum: 1
+        eventSequence:
+          type: integer
+          format: int64
+          minimum: 1
+        recordedAt:
+          type: string
+          format: date-time
+        positionSeconds:
+          type: number
+          minimum: 0
+        durationSeconds:
+          type: number
+          minimum: 0
+          description: Required terminal timeline duration. May be zero only for stopped indefinite/live playback; completed playback requires a positive value.
     PlaybackProgressAcknowledgement:
       type: object
       required: [accepted, duplicate, stale, highestEventSequence, sessionState, generation]
@@ -7688,7 +7634,6 @@ components:
       additionalProperties: false
       required: [sourceKind, sourceId, clientInstanceId, clientProfile, receiverId, receiverOrigin, receiverPublicKey, receiverChallenge]
       properties:
-        mediaId: { type: string, deprecated: true, description: Compatibility alias for sourceId when sourceKind is media. New clients use the discriminated sourceKind/sourceId pair. }
         sourceKind: { type: string, enum: [media, live, dvr, library-channel], description: Authoritative source route selected for this handoff. }
         sourceId: { type: string, minLength: 1, description: Immutable identifier for the selected source route. }
         versionId: { type: string }
@@ -12374,17 +12319,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SuccessResponse"
-  /account/preferences:
-    get:
-      summary: Get the legacy projection of the current user's localization and playback preferences
-      description: Read-only compatibility projection. New clients use /preferences for complete revisioned preference documents.
-      responses:
-        "200":
-          description: User preferences
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/UserPreferences"
   /account/library-navigation:
     get:
       summary: Get the current account's ordered pinned libraries
@@ -12587,18 +12521,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SystemStatus"
-  /localization:
-    get:
-      security: []
-      summary: Get localization options and rating systems
-      description: Returns safe static locale, language, time-zone, and content-rating system metadata for first-party and native clients.
-      responses:
-        "200":
-          description: Localization metadata
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/LocalizationInfo"
   /branding:
     get:
       security: []
@@ -14145,6 +14067,11 @@ paths:
       operationId: createDownloadPreparationGrant
       summary: Mint a bounded, range-safe transfer grant for a ready preparation
       x-portico-permission: download-media
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DownloadPreparationGrantRequest" }
       responses:
         "201":
           description: Transfer grant created
@@ -14153,35 +14080,6 @@ paths:
               schema: { $ref: "#/components/schemas/MediaDownloadGrantResponse" }
         "404": { description: Preparation is absent or belongs to another profile }
         "409": { description: Preparation is not ready }
-  /media/{id}/download-grants:
-    post:
-      summary: Prepare a bounded transfer URL for a permitted, already-ready media version
-      description: Compatibility operation for already-ready artifacts. New clients create a download preparation first. The opaque grant is authorization-revision and exact-version bound, range-safe until expiry, and never an account credential.
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/MediaDownloadGrantRequest"
-      responses:
-        "201":
-          description: Browser download grant created
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/MediaDownloadGrantResponse"
-        "403":
-          description: User lacks download permission
-        "404":
-          description: Media item is not visible to the user
-        "409":
-          description: Requested media version is not currently downloadable
   /media/{id}/download:
     get:
       summary: Download the original source or an existing optimized version for a permitted media item
@@ -15295,7 +15193,13 @@ paths:
                 $ref: "#/components/schemas/PlaybackProgressAcknowledgement"
     delete:
       summary: End a playback session
-      description: Marks the session stopped so it leaves the live dashboard and remains available in history.
+      description: Atomically records the final playback position and terminal disposition, then ends the session and revokes its playback authority.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PlaybackSessionStopRequest"
       responses:
         "200":
           description: Playback session ended
@@ -15367,10 +15271,15 @@ paths:
       operationId: revokePlaybackContinuation
       security: []
       x-portico-auth: public
-      summary: Revoke playback continuation and stop the session
+      summary: Atomically stop native playback and revoke its continuation authority
       x-portico-audience: viewer
       x-portico-surfaces: [mobile, television]
       x-portico-client-core-method: revokePlaybackContinuation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PlaybackSessionStopRequest" }
       responses:
         "200":
           description: Continuation revoked

@@ -6,8 +6,9 @@ import process from 'node:process';
 import { gzipSync } from 'node:zlib';
 
 const distDirectory = join(process.cwd(), 'dist');
-const assetsDirectory = join(distDirectory, 'assets');
 const indexHtml = await readFile(join(distDirectory, 'index.html'), 'utf8');
+const buildManifest = JSON.parse(await readFile(join(distDirectory, 'portico-build.json'), 'utf8'));
+const assetsDirectory = join(distDirectory, 'assets', buildManifest.buildId);
 const assetNames = await readdir(assetsDirectory);
 
 const scriptSources = [...indexHtml.matchAll(/<script[^>]+>/g)]

@@ -215,10 +215,14 @@ func TestAppLongPollRouteReplaysSSEAppEventShapeWithoutLostWakeup(t *testing.T) 
 	account, _ := createProfileProtocolAccount(t, server)
 	const installationID = "long-poll-app-installation"
 	deviceID := bindProfileTestDevice(t, server.db, server, account.ID, installationID)
+	var profileIdentityID string
+	if err := server.db.QueryRow(`SELECT id FROM profile_identities WHERE profile_id = ? AND provider = 'local'`, account.ID).Scan(&profileIdentityID); err != nil {
+		t.Fatal(err)
+	}
 	const token = "long-poll-app-token"
 	now := time.Now().UTC()
-	if _, err := server.db.Exec(`INSERT INTO sessions (id, user_id, profile_id, auth_provider, device_id, token_hash, expires_at, created_at, last_seen_at) VALUES (?, ?, ?, 'local', ?, ?, ?, ?, ?)`,
-		"long_poll_app_session", account.ID, account.ID, deviceID, hashToken(token), now.Add(time.Hour).Format(time.RFC3339Nano), now.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano)); err != nil {
+	if _, err := server.db.Exec(`INSERT INTO sessions (id, user_id, profile_id, profile_identity_id, auth_provider, device_id, token_hash, expires_at, created_at, last_seen_at) VALUES (?, ?, ?, ?, 'local', ?, ?, ?, ?, ?)`,
+		"long_poll_app_session", account.ID, account.ID, profileIdentityID, deviceID, hashToken(token), now.Add(time.Hour).Format(time.RFC3339Nano), now.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano)); err != nil {
 		t.Fatal(err)
 	}
 	httpServer := httptest.NewServer(server.Handler())
@@ -308,8 +312,12 @@ func TestNotificationLongPollIsInteractiveScopedAndContentFree(t *testing.T) {
 	}
 	const token = "long-poll-notification-token"
 	now := time.Now().UTC()
-	if _, err := server.db.Exec(`INSERT INTO sessions (id, user_id, profile_id, auth_provider, device_id, token_hash, expires_at, created_at, last_seen_at) VALUES (?, ?, ?, 'local', ?, ?, ?, ?, ?)`,
-		"long_poll_notification_session", account.ID, account.ID, deviceID, hashToken(token), now.Add(time.Hour).Format(time.RFC3339Nano), now.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano)); err != nil {
+	var profileIdentityID string
+	if err := server.db.QueryRow(`SELECT id FROM profile_identities WHERE profile_id = ? AND provider = 'local'`, account.ID).Scan(&profileIdentityID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := server.db.Exec(`INSERT INTO sessions (id, user_id, profile_id, profile_identity_id, auth_provider, device_id, token_hash, expires_at, created_at, last_seen_at) VALUES (?, ?, ?, ?, 'local', ?, ?, ?, ?, ?)`,
+		"long_poll_notification_session", account.ID, account.ID, profileIdentityID, deviceID, hashToken(token), now.Add(time.Hour).Format(time.RFC3339Nano), now.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano)); err != nil {
 		t.Fatal(err)
 	}
 	serverID, err := server.profileDirectoryServerIDContext(t.Context())

@@ -1,5 +1,5 @@
 import type { WatchWithFriendsCreateRequest, WatchWithFriendsGroup } from '@porticomediaserver/client-core';
-import { LoaderCircle, Plus, RefreshCw, UsersRound } from '#portico-icons';
+import { StatusLoadingIcon, ActionAddIcon, ActionRefreshIcon, AccountWatchTogetherIcon } from '#portico-icons';
 import { useEffect, useState, type FormEvent } from 'react';
 import { PrimaryButton, SecondaryButton } from '../../components/controls/Buttons';
 import { MediaSearchPicker } from './MediaSearchPicker';
@@ -35,7 +35,7 @@ export function CreateGroupForm({
     </div>
     <div className="watch-create-actions">
       <SecondaryButton onClick={onCancel} disabled={busy}>Cancel</SecondaryButton>
-      <PrimaryButton type="submit" disabled={busy || !mediaId.trim()}>{busy ? <LoaderCircle className="watch-spin" /> : <Plus />} Create group</PrimaryButton>
+      <PrimaryButton type="submit" disabled={busy || !mediaId.trim()}>{busy ? <StatusLoadingIcon className="watch-spin" /> : <ActionAddIcon />} Create group</PrimaryButton>
     </div>
   </form>;
 }
@@ -58,9 +58,9 @@ export function GroupDirectory({
   onRefresh: () => void;
 }) {
   return <aside className="watch-directory" aria-label="Active Watch With Friends groups">
-    <header><div><h2>Active groups</h2><span>{groups.length} available</span></div><button type="button" onClick={onRefresh} aria-label="Refresh active groups" title="Refresh active groups"><RefreshCw /></button></header>
+    <header><div><h2>Active groups</h2><span>{groups.length} available</span></div><button type="button" onClick={onRefresh} aria-label="Refresh active groups" title="Refresh active groups"><ActionRefreshIcon /></button></header>
     {groups.length === 0
-      ? <div className="watch-directory-empty"><UsersRound /><strong>No active groups</strong><span>Create one for a media item to begin.</span></div>
+      ? <div className="watch-directory-empty"><AccountWatchTogetherIcon /><strong>No active groups</strong><span>Create one for a media item to begin.</span></div>
       : <div className="watch-group-list">{groups.map((group) => {
         const joined = groupIncludesViewer(group, viewer);
         return <article className={selectedId === group.id ? 'selected' : ''} key={group.id}>

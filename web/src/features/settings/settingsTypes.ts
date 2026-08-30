@@ -23,6 +23,7 @@ import type {
   LogEvent,
   Permissions,
   PorticoInvite,
+  PlaybackSession,
   RemoteAccessSettingsPatch,
   RemoteAccessStatus,
   RemoteStorageSource,
@@ -43,7 +44,6 @@ import type {
   SystemStorageReport,
   TranscodeCapacityReport,
   User,
-  UserPreferences,
   UserCreateRequest,
   UserPatchRequest,
 } from '@porticomediaserver/client-core';
@@ -235,7 +235,6 @@ export type AccountSignedInDevice = {
 export type PorticoMemberInviteInput = {
   recipient: string;
   email?: string;
-  role: 'user';
   permissionTemplate: {
     permissions: Permissions;
     maxContentRating?: string;
@@ -277,7 +276,7 @@ export interface SettingsDataSource {
 
   settingsStatus(signal: AbortSignal): Promise<SettingsStatusSnapshot>;
   runConnectivityCheck(signal: AbortSignal): Promise<RemoteAccessStatus>;
-  stopPlayback(sessionId: string, signal: AbortSignal): Promise<void>;
+  stopPlayback(session: PlaybackSession, signal: AbortSignal): Promise<void>;
 
   remoteAccess(signal: AbortSignal): Promise<RemoteAccessStatus>;
   updateRemoteAccess(input: RemoteAccessSettingsPatch, signal: AbortSignal): Promise<RemoteAccessStatus>;
@@ -342,8 +341,6 @@ export interface SettingsDataSource {
   restoreStatus(operationId: string, statusToken: string, signal: AbortSignal): Promise<RestoreWorkflowResponse>;
 
   logs(input: { limit?: number; cursor?: string }, signal: AbortSignal): Promise<ListResponse<LogEvent>>;
-  preferences(signal: AbortSignal): Promise<UserPreferences>;
-  updatePreferences(input: UserPreferences, signal: AbortSignal): Promise<User>;
   signedInDevices(origin: AccountOrigin, signal: AbortSignal): Promise<AccountSignedInDevice[]>;
   updateAccountIdentity(origin: AccountOrigin, input: { displayName: string; email: string }, signal: AbortSignal): Promise<AccountIdentitySnapshot>;
   uploadAccountImage(origin: AccountOrigin, file: File, signal: AbortSignal): Promise<AccountIdentitySnapshot>;

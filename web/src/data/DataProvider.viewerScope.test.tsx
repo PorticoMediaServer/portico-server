@@ -300,6 +300,22 @@ describe('DataProvider viewer scope integration', () => {
 		expect(source.homeCalls).toBe(2);
 	});
 
+	it('propagates a Saved change into matching product data without blanking the current scope', async () => {
+		const source = new LiveHomeSource(viewer('adult', 'policy-live'));
+		render(<DataProvider source={source}><ReplacementHome /></DataProvider>);
+		await waitFor(() => expect(screen.getByLabelText('home-title')).toHaveTextContent('Home 1'));
+		const pending = deferred<HomeResult>();
+		source.nextHome = pending.promise;
+
+		act(() => source.publish(['playlists']));
+		expect(screen.getByLabelText('home-title')).toHaveTextContent('Home 1');
+		expect(screen.getByLabelText('home-stale')).toHaveTextContent('fresh');
+
+		act(() => pending.resolve(home('Saved propagated')));
+		await waitFor(() => expect(screen.getByLabelText('home-title')).toHaveTextContent('Saved propagated'));
+		expect(source.homeCalls).toBe(2);
+	});
+
 	it('retains successful content when a background live refresh fails', async () => {
 		const active = viewer('adult', 'policy-live');
 		const source = new LiveHomeSource(active);

@@ -92,8 +92,7 @@ func CurrentMigrationIdentity() (MigrationIdentity, error) {
 }
 
 // ReadMigrationIdentity reads and validates the exact release schema identity
-// on an already-open SQLite handle. Restore sources must have been created by
-// this release baseline; pre-release databases are intentionally unsupported.
+// on an already-open SQLite handle.
 func ReadMigrationIdentity(ctx context.Context, db *sql.DB) (MigrationIdentity, int, error) {
 	if db == nil {
 		return MigrationIdentity{}, 0, errors.New("database handle is nil")
@@ -535,7 +534,7 @@ func ensureMigrationMetadata(ctx context.Context, conn migrationConnection) erro
 			return fmt.Errorf("create migration metadata: %w", err)
 		}
 	} else if existing != 2 {
-		return migrationLayoutError("pre-release migration metadata is incomplete")
+		return migrationLayoutError("migration metadata is incomplete")
 	}
 	if err := validateMetadataTable(ctx, conn, "schema_migrations", []string{"version", "filename", "applied_at", "checksum_sha256", "checksum_source"}); err != nil {
 		return err
@@ -586,7 +585,7 @@ func validateDatabaseIdentity(ctx context.Context, conn migrationConnection, bun
 			return fmt.Errorf("read migration ledger without identity: %w", err)
 		}
 		if applied != 0 {
-			return migrationLayoutError("a pre-release migration ledger exists without a reviewed identity")
+			return migrationLayoutError("migration ledger exists without the canonical identity")
 		}
 		var applicationObjects int
 		if err := conn.QueryRowContext(ctx, `
@@ -605,28 +604,17 @@ func validateDatabaseIdentity(ctx context.Context, conn migrationConnection, bun
 	if err != nil {
 		return fmt.Errorf("read database migration identity: %w", err)
 	}
-	if formatVersion > currentDatabaseFormatVersion {
-		return fmt.Errorf("database format %d is newer than this binary format %d", formatVersion, currentDatabaseFormatVersion)
-	}
 	if formatVersion != currentDatabaseFormatVersion {
-		return migrationLayoutError(fmt.Sprintf("pre-release database format %d is not supported", formatVersion))
+		return migrationLayoutError("database format does not match the canonical release")
 	}
-	databaseHead, err := migrationNumber(head)
-	if err != nil {
-		return migrationLayoutError(fmt.Sprintf("migration head %q is invalid", head))
+	if head != bundle.Head.Version {
+		return migrationLayoutError("migration head does not match the canonical release")
 	}
-	if databaseHead > bundle.Head.Number {
-		return migrationLayoutError(fmt.Sprintf("migration head %s is outside reviewed head %s", head, bundle.Head.Version))
-	}
-	canonical, ok := migrationForNumber(bundle, databaseHead)
-	if !ok || canonical.Version != head {
-		return migrationLayoutError(fmt.Sprintf("migration head %q is not an exact reviewed prefix", head))
-	}
-	expectedLedger := migrationPrefixLedgerHash(bundle.Migrations, databaseHead)
+	expectedLedger := bundle.LedgerHash
 	if !strings.EqualFold(strings.TrimSpace(ledgerHash), expectedLedger) {
 		return migrationIntegrityError(fmt.Sprintf("migration ledger digest mismatch: database=%s binary=%s", ledgerHash, expectedLedger))
 	}
-	return validateDatabasePrefix(ctx, conn, bundle, databaseHead)
+	return validateDatabasePrefix(ctx, conn, bundle, bundle.Head.Number)
 }
 
 func validateDatabasePrefix(ctx context.Context, conn migrationConnection, bundle migrationBundle, headNumber int) error {

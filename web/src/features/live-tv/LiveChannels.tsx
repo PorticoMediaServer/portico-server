@@ -1,6 +1,6 @@
 import type { ActionableLiveTVChannel, ActionableLiveTVSource } from '../../data/models';
 import { type ComponentType, useDeferredValue, useEffect, useState } from 'react';
-import { ChevronLeft, ChevronRight, Play, Search, Star } from '#portico-icons';
+import { NavigationPreviousIcon, NavigationDisclosureIcon, PlaybackPlayIcon, NavigationSearchIcon, ActionRateIcon } from '#portico-icons';
 import { useNavigate } from 'react-router-dom';
 import { IconButton, PrimaryButton, SecondaryButton } from '../../components/controls/Buttons';
 import { productText, reviewedProductErrorText } from '../../components/ProductLanguage';
@@ -107,15 +107,15 @@ export function ChannelsWorkspace({
       <ChannelLogo channel={selected} source={source} featured />
       <div><p>{selected.number ? `Channel ${selected.number}` : selected.groupTitle || 'Live channel'}</p><h2><ChannelTitle name={selected.name} /></h2><span>{[selected.groupTitle, selected.country, selected.programCount ? `${selected.programCount} guide entries` : 'No guide entries'].filter(Boolean).join(' · ')}</span></div>
       <div>
-        {hasAction(selected, liveActions.play) && <PrimaryButton disabled={busy === `watch:${selected.id}`} onClick={() => void watch(selected)}><Play fill="currentColor" /> {busy === `watch:${selected.id}` ? productText('state.opening', { destination: productText('destination.live-tv') }) : productText('action.watch-live')}</PrimaryButton>}
-        {(hasAction(selected, liveActions.favoriteAdd) || hasAction(selected, liveActions.favoriteRemove)) && <SecondaryButton disabled={busy === `favorite:${selected.id}`} selected={selected.favorite} onClick={() => void favorite(selected)}><Star fill={selected.favorite ? 'currentColor' : 'none'} /> {productText(selected.favorite ? 'action.remove-favorite' : 'action.add-favorite')}</SecondaryButton>}
+        {hasAction(selected, liveActions.play) && <PrimaryButton disabled={busy === `watch:${selected.id}`} onClick={() => void watch(selected)}><PlaybackPlayIcon fill="currentColor" /> {busy === `watch:${selected.id}` ? productText('state.opening', { destination: productText('destination.live-tv') }) : productText('action.watch-live')}</PrimaryButton>}
+        {(hasAction(selected, liveActions.favoriteAdd) || hasAction(selected, liveActions.favoriteRemove)) && <SecondaryButton disabled={busy === `favorite:${selected.id}`} selected={selected.favorite} onClick={() => void favorite(selected)}><ActionRateIcon fill={selected.favorite ? 'currentColor' : 'none'} /> {productText(selected.favorite ? 'action.remove-favorite' : 'action.add-favorite')}</SecondaryButton>}
       </div>
     </section>}
     <div className="live-toolbar channels-toolbar">
       <LiveChoiceMenu className="source-choice" label="Source" value={sourceId} choices={sources.map((candidate) => ({ id: candidate.id, label: candidate.name, detail: `${candidate.channelCount} channels` }))} onChange={setSourceId} />
-      <label className="guide-search"><Search /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Filter channels" aria-label="Filter channels" /></label>
+      <label className="guide-search"><NavigationSearchIcon /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Filter channels" aria-label="Filter channels" /></label>
       {groups.length > 1 && <LiveChoiceMenu className="group-choice" label="Group" value={group} choices={[{ id: 'all', label: 'All channels' }, ...groups.map((name) => ({ id: name, label: name }))]} onChange={setGroup} />}
-      <SecondaryButton selected={favoritesOnly} onClick={() => setFavoritesOnly((current) => !current)}><Star fill={favoritesOnly ? 'currentColor' : 'none'} /> Favorites</SecondaryButton>
+      <SecondaryButton selected={favoritesOnly} onClick={() => setFavoritesOnly((current) => !current)}><ActionRateIcon fill={favoritesOnly ? 'currentColor' : 'none'} /> Favorites</SecondaryButton>
     </div>
     {error && <p className="live-action-message error" role="alert">{error}</p>}
     {channels.status === 'loading' && <StateSurface kind="loading" {...productState('live-tv.loading')} />}
@@ -124,18 +124,18 @@ export function ChannelsWorkspace({
       const state = productState(restricted ? 'live-tv.restricted' : 'live-tv.offline');
       return <StateSurface kind={restricted ? 'permission' : 'error'} title={state.title} message={reviewedProductErrorText(channels.error, restricted ? 'live-tv.restricted' : 'live-tv.offline')} onRetry={() => setRevision((current) => current + 1)} />;
     })()}
-    {channels.status === 'success' && channels.data.items.length === 0 && <StateSurface kind="empty" {...productState(query || favoritesOnly || group !== 'all' ? 'live-tv.filter-empty' : 'live-tv.empty')} />}
+    {channels.status === 'success' && channels.data.items.length === 0 && <StateSurface kind="empty" {...productState(query || favoritesOnly || group !== 'all' ? 'live-tv.channels-filter-empty' : 'live-tv.empty')} />}
     {channels.status === 'success' && channels.data.items.length > 0 && <div className="channel-directory" aria-label="Channels">{channels.data.items.map((channel) => <article className={selectedId === channel.id ? 'selected' : ''} key={channel.id}>
       <button type="button" className="channel-directory-select" onClick={() => setSelectedId(channel.id)} aria-label={`Select ${channel.name}`}>
         <ChannelLogo channel={channel} source={source} />
         <span><strong>{channel.name}</strong><span>{[channel.number && `Channel ${channel.number}`, channel.groupTitle, channel.country].filter(Boolean).join(' · ')}</span></span>
       </button>
-      <div>{hasAction(channel, liveActions.play) && <SecondaryButton disabled={busy === `watch:${channel.id}`} onClick={() => void watch(channel)}><Play /> {productText('action.watch-live')}</SecondaryButton>}{(hasAction(channel, liveActions.favoriteAdd) || hasAction(channel, liveActions.favoriteRemove)) && <IconButton disabled={busy === `favorite:${channel.id}`} label={`${channel.favorite ? 'Remove' : 'Add'} ${channel.name} ${channel.favorite ? 'from' : 'to'} favorites`} className={channel.favorite ? 'selected' : ''} onClick={() => void favorite(channel)}><Star fill={channel.favorite ? 'currentColor' : 'none'} /></IconButton>}</div>
+      <div>{hasAction(channel, liveActions.play) && <SecondaryButton disabled={busy === `watch:${channel.id}`} onClick={() => void watch(channel)}><PlaybackPlayIcon /> {productText('action.watch-live')}</SecondaryButton>}{(hasAction(channel, liveActions.favoriteAdd) || hasAction(channel, liveActions.favoriteRemove)) && <IconButton disabled={busy === `favorite:${channel.id}`} label={`${channel.favorite ? 'Remove' : 'Add'} ${channel.name} ${channel.favorite ? 'from' : 'to'} favorites`} className={channel.favorite ? 'selected' : ''} onClick={() => void favorite(channel)}><ActionRateIcon fill={channel.favorite ? 'currentColor' : 'none'} /></IconButton>}</div>
     </article>)}</div>}
     {channels.status === 'success' && supportsPaging && (cursors.length > 0 || channels.data.pageInfo.hasMore) && <div className="guide-page-controls">
-      <SecondaryButton disabled={cursors.length === 0} onClick={() => setCursors((current) => current.slice(0, -1))}><ChevronLeft /> Previous</SecondaryButton>
+      <SecondaryButton disabled={cursors.length === 0} onClick={() => setCursors((current) => current.slice(0, -1))}><NavigationPreviousIcon /> Previous</SecondaryButton>
       <span>Page {cursors.length + 1}{channels.data.pageInfo.total != null ? ` · ${channels.data.pageInfo.total} channels` : ''}</span>
-      <SecondaryButton disabled={!channels.data.pageInfo.hasMore || !channels.data.pageInfo.nextCursor} onClick={() => channels.data.pageInfo.nextCursor && setCursors((current) => [...current, channels.data.pageInfo.nextCursor!])}>Next <ChevronRight /></SecondaryButton>
+      <SecondaryButton disabled={!channels.data.pageInfo.hasMore || !channels.data.pageInfo.nextCursor} onClick={() => channels.data.pageInfo.nextCursor && setCursors((current) => [...current, channels.data.pageInfo.nextCursor!])}>Next <NavigationDisclosureIcon /></SecondaryButton>
     </div>}
   </div>;
 }

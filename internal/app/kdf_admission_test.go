@@ -194,9 +194,6 @@ func TestProductionBcryptInventoryIsConfinedToAdmittedImplementations(t *testing
 			"hashLocalProfilePIN":       {"GenerateFromPassword": 1},
 			"verifyLocalProfilePINHash": {"CompareHashAndPassword": 1},
 		},
-		"internal/app/kdf_upgrade.go": {
-			"runPasswordHashUpgrades": {"GenerateFromPassword": 1},
-		},
 	}
 	observed := map[string]map[string]map[string]int{}
 	var violations []string

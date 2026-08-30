@@ -1,4 +1,4 @@
-import { ArrowRight, Grid3X3, History, List, Search, Trash2, X } from '#portico-icons';
+import { NavigationForwardIcon, ViewGridIcon, MetadataTimeIcon, ViewListIcon, NavigationSearchIcon, ActionDeleteIcon, ActionCloseIcon } from '#portico-icons';
 import { productMessage, type SearchGroupCapability } from '@porticomediaserver/client-core';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
@@ -353,8 +353,8 @@ export function SearchPage() {
   return <div className="standard-page full-search-page">
     <header className="full-search-header"><div><h1>{pageMessage.title}</h1><p>{pageMessage.body}</p></div></header>
     <form className="full-search-field" role="search" onSubmit={(event) => { event.preventDefault(); submit(); }}>
-      <Search /><input type="search" autoFocus value={draft} onChange={(event) => setDraft(event.target.value)} placeholder={productMessage('search.input-placeholder', { serverName: auth.viewer?.serverName ?? productMessage('search.default-server-name').text ?? '' }).text} aria-label={productMessage('search.input-label').text} />
-      {draft && <button type="button" aria-label={productMessage('action.clear-search').text} onClick={() => { setDraft(''); updateParams({ q: undefined }); }}><X /></button>}
+      <NavigationSearchIcon /><input type="search" autoFocus value={draft} onChange={(event) => setDraft(event.target.value)} placeholder={productMessage('search.input-placeholder', { serverName: auth.viewer?.serverName ?? productMessage('search.default-server-name').text ?? '' }).text} aria-label={productMessage('search.input-label').text} />
+      {draft && <button type="button" aria-label={productMessage('action.clear-search').text} onClick={() => { setDraft(''); updateParams({ q: undefined }); }}><ActionCloseIcon /></button>}
       <kbd>{productMessage('search.submit-hint').text}</kbd>
     </form>
     {committedQuery && searchContract.status === 'success' && <div className="full-search-tools">
@@ -367,15 +367,15 @@ export function SearchPage() {
           return <button type="button" key={kind.id} className={active ? 'active' : ''} aria-pressed={active} onClick={() => toggleKinds(kind.values)}>{kind.label}</button>;
         })}
       </div>
-      <div className="search-view-switch" aria-label={productMessage('search.result-view-label').text}><IconButton label={productMessage('search.grid-view-label').text ?? ''} className={view === 'grid' ? 'selected' : ''} onClick={() => updateParams({ view: undefined })}><Grid3X3 /></IconButton><IconButton label={productMessage('search.list-view-label').text ?? ''} className={view === 'list' ? 'selected' : ''} onClick={() => updateParams({ view: 'list' })}><List /></IconButton></div>
+      <div className="search-view-switch" aria-label={productMessage('search.result-view-label').text}><IconButton label={productMessage('search.grid-view-label').text ?? ''} className={view === 'grid' ? 'selected' : ''} onClick={() => updateParams({ view: undefined })}><ViewGridIcon /></IconButton><IconButton label={productMessage('search.list-view-label').text ?? ''} className={view === 'list' ? 'selected' : ''} onClick={() => updateParams({ view: 'list' })}><ViewListIcon /></IconButton></div>
     </div>}
     {committedQuery && excludedSortGroups.length > 0 && <p className="search-sort-scope">{productMessage('search.scope-hidden', { groups: excludedSortGroups.join(', '), verb: excludedSortGroups.length === 1 ? 'is' : 'are' }).text}</p>}
     {!committedQuery && displayPreferences.rememberSearchHistory && recentSearches.length > 0 && <section className="recent-searches" aria-labelledby="recent-searches-title">
-      <header><div><History /><span><h2 id="recent-searches-title">{productMessage('search.recent-title').text}</h2><p>{productMessage('search.recent-body').text}</p></span></div><button type="button" disabled={display?.busy} onClick={() => void clearHistory()}><Trash2 /> {productMessage('action.clear-history').text}</button></header>
-      <div>{recentSearches.map((query) => <button type="button" key={query.toLocaleLowerCase()} onClick={() => { setDraft(query); updateParams({ q: query }); }}><span>{query}</span><ArrowRight /></button>)}</div>
+      <header><div><MetadataTimeIcon /><span><h2 id="recent-searches-title">{productMessage('search.recent-title').text}</h2><p>{productMessage('search.recent-body').text}</p></span></div><button type="button" disabled={display?.busy} onClick={() => void clearHistory()}><ActionDeleteIcon /> {productMessage('action.clear-history').text}</button></header>
+      <div>{recentSearches.map((query) => <button type="button" key={query.toLocaleLowerCase()} onClick={() => { setDraft(query); updateParams({ q: query }); }}><span>{query}</span><NavigationForwardIcon /></button>)}</div>
       {(display?.status === 'error' || historyError) && <p className="recent-search-error" role="status">{historyFailure.body}</p>}
     </section>}
-    {!committedQuery && (!displayPreferences.rememberSearchHistory || recentSearches.length === 0) && <div className="library-state full-search-empty"><Search /><strong>{productMessage('search.start-title').text}</strong><p>{productMessage('search.start-body').text}</p></div>}
+    {!committedQuery && (!displayPreferences.rememberSearchHistory || recentSearches.length === 0) && <div className="library-state full-search-empty"><NavigationSearchIcon /><strong>{productMessage('search.start-title').text}</strong><p>{productMessage('search.start-body').text}</p></div>}
     {committedQuery && searchContract.status === 'loading' && <div className="search-contract-reservation" aria-busy="true"><span className="sr-only">{loadingMessage.title}</span></div>}
     {committedQuery && searchContract.status === 'error' && contractFailure && <div className="library-state error" role="alert"><ProductLanguageIcon presentation={contractFailure} /><strong>{contractFailure.title}</strong><p>{contractFailure.body}</p></div>}
     {committedQuery && searchContract.status === 'success' && state.status === 'loading' && settledGroups.length === 0 && <div className="search-groups search-groups-reservation" aria-busy="true">{groupStates.map((groupState) => <SearchGroupRequestStatus key={`${requestKey}:${groupState.descriptor.id}:reserved`} state={groupState} retry={() => retryGroup(groupState.descriptor)} />)}</div>}

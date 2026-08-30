@@ -1,7 +1,4 @@
-import {
-  Check,
-  X,
-} from '#portico-icons';
+import { ActionConfirmIcon, ActionCloseIcon } from '#portico-icons';
 import { productMessage } from '@porticomediaserver/client-core';
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -57,12 +54,12 @@ function LibrarySelectionBar({
   const removeWatchlist = action('watchlist.remove');
   const addFavorite = action('favorite.add');
   const removeFavorite = action('favorite.remove');
-  const markWatched = action('watched.mark', 'watched.set', 'watched.update', 'play-state.update');
-  const markUnwatched = action('watched.unmark', 'watched.set', 'watched.update', 'play-state.update');
+  const markWatched = action('watched.mark', 'watched.set');
+  const markUnwatched = action('watched.unmark', 'watched.set');
   const addPlaylist = action('playlist.add');
   const addCollection = action('collection.add');
   const editMetadata = action('metadata.edit');
-  const canEditMetadata = Boolean(editMetadata) && new Set(items.map((item) => item.entityKind ?? item.kind)).size === 1;
+  const canEditMetadata = Boolean(editMetadata) && new Set(items.map((item) => item.entityKind)).size === 1;
   const run = async (actionLabel: string, mutation: (item: MediaItem) => Promise<MediaItem>) => {
     setBusy(true);
     setNotice('');
@@ -87,7 +84,7 @@ function LibrarySelectionBar({
         <span>{productMessage('library.selection-count', { count: items.length }).text}</span>
         <button type="button" onClick={onClear}>{productMessage('action.clear-selection').text}</button>
         {notice && <p aria-live="polite">{notice}</p>}
-        <IconButton label={productMessage('action.cancel-selection').text ?? ''} onClick={onClear}><X /></IconButton>
+        <IconButton label={productMessage('action.cancel-selection').text ?? ''} onClick={onClear}><ActionCloseIcon /></IconButton>
       </div>
       {actionsAvailable && <div className="library-selection-actions">
         {addCollection && <button type="button" disabled={busy} onClick={() => setSavedTarget('collection')}><MediaActionIcon action={addCollection} /> {addCollection.label}</button>}
@@ -152,7 +149,7 @@ function LibraryTable({ items, selected, playbackOptions, onToggle }: { items: M
         const detailPath = mediaDetailPath(item);
         const selectedItem = selected.includes(item.id);
         return <div id={`library-item-${item.id}`} data-library-title={item.sortTitle || item.title} className={`library-table-row ${selectedItem ? 'selected' : ''}`} role="row" key={item.id}>
-          <span role="cell">{item.actions?.length ? <button type="button" className={`selection-check table-check ${selectedItem ? 'selected' : ''}`} onClick={() => onToggle(item.id)} aria-label={productMessage(selectedItem ? 'library.deselect-item' : 'library.select-item', { title: item.title }).text} aria-pressed={selectedItem}>{selectedItem && <Check />}</button> : null}</span>
+          <span role="cell">{item.actions?.length ? <button type="button" className={`selection-check table-check ${selectedItem ? 'selected' : ''}`} onClick={() => onToggle(item.id)} aria-label={productMessage(selectedItem ? 'library.deselect-item' : 'library.select-item', { title: item.title }).text} aria-pressed={selectedItem}>{selectedItem && <ActionConfirmIcon />}</button> : null}</span>
           <span role="cell" className="library-table-title"><span className="library-table-art"><MediaArtwork item={item} shape={mediaPresentation(item).artworkShape} /></span>{detailPath ? <Link to={detailPath}><strong>{item.title}</strong><span>{item.parentTitle || item.subtitle}</span></Link> : <span><strong>{item.title}</strong><span>{item.parentTitle || item.subtitle}</span></span>}</span>
           <span role="cell">{item.year || '—'}</span>
           <span role="cell">{item.length || '—'}</span>
@@ -177,7 +174,7 @@ function FacetResults({ page, onApply }: { page: LibraryPivotPage; onApply: (que
 function ResourceResult({ item }: { item: MediaItem }) {
   const actions = useMediaActionPresentations(item.actions ?? []);
   const play = actionPresentation(actions, 'play');
-  const resourceKind = item.kind === 'playlist' ? 'playlist' : 'collection';
+  const resourceKind = item.entityKind === 'playlist' ? 'playlist' : 'collection';
   return <Link to={`/saved/${resourceKind}s/${item.id}`}>
     <span className="library-resource-art"><MediaArtwork item={item} /></span>
     <span><strong>{item.title}</strong><span>{item.summary || item.subtitle}</span></span>
@@ -220,7 +217,7 @@ export function LibraryResults({
   const [operationNotice, setOperationNotice] = useState('');
   const visibleItems = useMemo(() => page.sections?.length ? page.sections.flatMap((section) => section.items) : page.items, [page.items, page.sections]);
   const selectedItems = visibleItems.filter((item) => selected.includes(item.id));
-  const pivotShapes = new Set(pivot.entityKinds.map((kind) => mediaPresentation({ entityKind: kind, kind: kind as MediaItem['kind'] }).artworkShape));
+  const pivotShapes = new Set(pivot.entityKinds.map((entityKind) => mediaPresentation({ entityKind }).artworkShape));
   const square = pivotShapes.size === 1 && pivotShapes.has('square');
   const playbackContext = { type: 'library' as const, id: library.id, title: `${library.name} · ${pivot.label}` };
   const playbackOptions = playbackOptionsForItems(visibleItems, playbackContext);
@@ -256,7 +253,7 @@ export function LibraryResults({
 
   return <>
     {content}
-    {operationNotice && <div className="library-saved-notice" role="status"><Check /><span>{operationNotice}</span><IconButton label={productMessage('action.dismiss-status').text ?? ''} onClick={() => setOperationNotice('')}><X /></IconButton></div>}
+    {operationNotice && <div className="library-saved-notice" role="status"><ActionConfirmIcon /><span>{operationNotice}</span><IconButton label={productMessage('action.dismiss-status').text ?? ''} onClick={() => setOperationNotice('')}><ActionCloseIcon /></IconButton></div>}
     {selectedItems.length > 0 && <LibrarySelectionBar items={selectedItems} onClear={() => setSelected([])} onChanged={onChanged} onRetain={setSelected} onCompleted={setOperationNotice} />}
   </>;
 }

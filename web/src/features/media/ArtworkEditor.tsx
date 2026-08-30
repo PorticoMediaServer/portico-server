@@ -1,5 +1,5 @@
 import type { MediaImage } from '@porticomediaserver/client-core';
-import { ArrowLeft, ArrowRight, Check, ImageIcon, ImagePlus, Trash2 } from '#portico-icons';
+import { NavigationBackIcon, NavigationForwardIcon, ActionConfirmIcon, StatusArtworkUnavailableIcon, ActionAddIcon, ActionDeleteIcon } from '#portico-icons';
 import { useMemo, useRef, useState } from 'react';
 import { IconButton, SecondaryButton } from '../../components/controls/Buttons';
 import { reviewedProductErrorText } from '../../components/ProductLanguage';
@@ -111,16 +111,16 @@ export function ArtworkEditor({
         })}
       </div>
       <input ref={fileInput} className="artwork-file-input" type="file" accept="image/jpeg,image/png,image/gif,image/webp" aria-hidden="true" tabIndex={-1} disabled={Boolean(busy)} onChange={(event) => void upload(event.currentTarget.files?.[0])} />
-      <SecondaryButton disabled={Boolean(busy)} onClick={() => fileInput.current?.click()}><ImagePlus /> {busy === 'upload' ? 'Uploading…' : `Upload ${artworkLabels[selectedType].toLocaleLowerCase()}`}</SecondaryButton>
+      <SecondaryButton disabled={Boolean(busy)} onClick={() => fileInput.current?.click()}><ActionAddIcon /> {busy === 'upload' ? 'Uploading…' : `Upload ${artworkLabels[selectedType].toLocaleLowerCase()}`}</SecondaryButton>
     </div>
 
     {(error || notice) && <p className={`artwork-feedback ${error ? 'error' : ''}`} role={error ? 'alert' : 'status'}>{error || notice}</p>}
 
     {visibleImages.length === 0 ? <div className="artwork-empty">
-      <ImageIcon />
+      <StatusArtworkUnavailableIcon />
       <strong>No {artworkLabels[selectedType].toLocaleLowerCase()} artwork</strong>
       <p>Upload an image to use it for this media item.</p>
-      <SecondaryButton disabled={Boolean(busy)} onClick={() => fileInput.current?.click()}><ImagePlus /> Choose image</SecondaryButton>
+      <SecondaryButton disabled={Boolean(busy)} onClick={() => fileInput.current?.click()}><ActionAddIcon /> Choose image</SecondaryButton>
     </div> : <div className="artwork-grid">
       {visibleImages.map((image, index) => {
         const source = artworkSource(image, fallbackUrls[selectedType]);
@@ -131,17 +131,17 @@ export function ArtworkEditor({
         const hasActions = !image.preferred || removable || canReorder;
         return <article key={image.id} className={`artwork-card ${image.preferred ? 'preferred' : ''}`} aria-busy={working}>
           <div className="artwork-preview">
-            {source ? <img src={source} alt="" /> : <span><ImageIcon /><small>Preview unavailable</small></span>}
-            {image.preferred && <span className="artwork-current"><Check /> Current</span>}
+            {source ? <img src={source} alt="" /> : <span><StatusArtworkUnavailableIcon /><small>Preview unavailable</small></span>}
+            {image.preferred && <span className="artwork-current"><ActionConfirmIcon /> Current</span>}
           </div>
           <div className="artwork-card-copy"><strong>{origin}</strong><small>{artworkDetail(image)}</small></div>
           {hasActions && <div className="artwork-card-actions">
             {!image.preferred && <button type="button" aria-label={`Use ${origin} ${artworkLabels[selectedType].toLocaleLowerCase()}`} disabled={Boolean(busy)} onClick={() => void run(`prefer:${image.id}`, `${artworkLabels[selectedType]} selected.`, () => onPreferred(image.id))}>Use this</button>}
             {canReorder && <span className="artwork-order-actions">
-              <IconButton label={`Move ${artworkLabels[selectedType].toLocaleLowerCase()} earlier`} disabled={Boolean(busy) || index === 0 || image.preferred || visibleImages[index - 1]?.preferred} onClick={() => void move(index, -1)}><ArrowLeft /></IconButton>
-              <IconButton label={`Move ${artworkLabels[selectedType].toLocaleLowerCase()} later`} disabled={Boolean(busy) || index === visibleImages.length - 1 || image.preferred} onClick={() => void move(index, 1)}><ArrowRight /></IconButton>
+              <IconButton label={`Move ${artworkLabels[selectedType].toLocaleLowerCase()} earlier`} disabled={Boolean(busy) || index === 0 || image.preferred || visibleImages[index - 1]?.preferred} onClick={() => void move(index, -1)}><NavigationBackIcon /></IconButton>
+              <IconButton label={`Move ${artworkLabels[selectedType].toLocaleLowerCase()} later`} disabled={Boolean(busy) || index === visibleImages.length - 1 || image.preferred} onClick={() => void move(index, 1)}><NavigationForwardIcon /></IconButton>
             </span>}
-            {removable && <IconButton label={`Remove ${artworkLabels[selectedType].toLocaleLowerCase()}`} disabled={Boolean(busy)} onClick={() => setConfirmingDelete(image.id)}><Trash2 /></IconButton>}
+            {removable && <IconButton label={`Remove ${artworkLabels[selectedType].toLocaleLowerCase()}`} disabled={Boolean(busy)} onClick={() => setConfirmingDelete(image.id)}><ActionDeleteIcon /></IconButton>}
           </div>}
           {confirmingDelete === image.id && <div className="artwork-delete-confirmation">
             <strong>Remove this uploaded {artworkLabels[selectedType].toLocaleLowerCase()}?</strong>

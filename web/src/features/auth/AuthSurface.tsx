@@ -1,22 +1,10 @@
-import {
-  AlertTriangle,
-  ArrowLeft,
-  ArrowRight,
-  Globe2,
-  KeyRound,
-  LoaderCircle,
-  RefreshCw,
-  Server,
-  ShieldCheck,
-  UserPlus,
-  WifiOff,
-} from "#portico-icons";
+import { StatusWarningIcon, NavigationBackIcon, NavigationForwardIcon, DeviceNetworkIcon, AccountSecurityIcon, StatusLoadingIcon, ActionRefreshIcon, DeviceServerIcon, StatusSecureIcon, AccountProfilesIcon, DeviceOfflineIcon } from "#portico-icons";
 import {
   productMessage,
   resolveProductProblem,
   type ProductMessageId,
 } from "@porticomediaserver/client-core";
-import { type FormEvent, useEffect, useState } from "react";
+import { type FormEvent, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   PrimaryButton,
@@ -71,7 +59,7 @@ function ServerIdentity({
 }) {
   return (
     <div className="auth-server">
-      <Server />
+      <DeviceServerIcon />
       <span>
         <strong>{serverName}</strong>
         <small>{detail}</small>
@@ -148,6 +136,19 @@ function setupClaimErrorText(reason: unknown): string {
   return productErrorText(reason, "problem.request-failed");
 }
 
+function setupRequiresServerLoopback(reason: unknown): boolean {
+  return Boolean(reason) && typeof reason === "object"
+    && (reason as { code?: unknown }).code === "setup_local_access_required";
+}
+
+function setupResumeRequired(reason: unknown): boolean {
+  return (
+    Boolean(reason) &&
+    typeof reason === "object" &&
+    (reason as { code?: unknown }).code === "owner_link_pending"
+  );
+}
+
 const demoMode = import.meta.env.VITE_PORTICO_DEMO_MODE === "true";
 const demoLogin = String(
   import.meta.env.VITE_PORTICO_DEMO_PUBLIC_USERNAME ?? "",
@@ -179,7 +180,7 @@ export function AuthLoadingSurface({
       >
         <AuthBrand />
         <div className="auth-loading-state">
-          <LoaderCircle />
+          <StatusLoadingIcon />
           <span>
             <strong>{title}</strong>
             <p>
@@ -193,12 +194,12 @@ export function AuthLoadingSurface({
           <div className="auth-recovery-actions">
             {runtime?.config.mode !== "hosted" && (
               <PrimaryButton onClick={auth.refresh}>
-                <RefreshCw /> Try again
+                <ActionRefreshIcon /> Try again
               </PrimaryButton>
             )}
             {runtime?.config.mode === "hosted" && (
               <SecondaryButton onClick={runtime.disconnectServer}>
-                <ArrowLeft /> Choose another server
+                <NavigationBackIcon /> Choose another server
               </SecondaryButton>
             )}
           </div>
@@ -223,19 +224,19 @@ export function AuthFailureSurface({
       <section className="auth-panel auth-problem" role="alert">
         <AuthBrand />
         <div className="auth-problem-icon">
-          <WifiOff />
+          <DeviceOfflineIcon />
         </div>
         <h1>{fallback.title}</h1>
         <p>{message || fallback.body}</p>
         <div className="auth-recovery-actions">
           {runtime?.config.mode !== "hosted" && (
             <PrimaryButton onClick={onRetry ?? auth.refresh}>
-              <RefreshCw /> Try again
+              <ActionRefreshIcon /> Try again
             </PrimaryButton>
           )}
           {runtime?.config.mode === "hosted" && (
             <SecondaryButton onClick={runtime.disconnectServer}>
-              <ArrowLeft /> Choose another server
+              <NavigationBackIcon /> Choose another server
             </SecondaryButton>
           )}
         </div>
@@ -264,7 +265,7 @@ export function AccountChooserSurface({ serverName }: { serverName: string }) {
     setSwitchError("");
     try {
       await auth.switchBrowserAccount(accountId);
-      navigate("/home", { replace: true });
+      navigate("/", { replace: true });
     } catch (reason) {
       setSwitchError(productErrorText(reason, "problem.request-failed"));
     }
@@ -280,7 +281,7 @@ export function AccountChooserSurface({ serverName }: { serverName: string }) {
         </header>
         {(switchError || error) && (
           <p className="auth-error account-chooser-error" role="alert">
-            <AlertTriangle />
+            <StatusWarningIcon />
             {switchError ||
               reviewedProductErrorText(
                 error,
@@ -315,7 +316,7 @@ export function AccountChooserSurface({ serverName }: { serverName: string }) {
                     · {accountLastUsed(account.lastUsedAt)}
                   </small>
                 </span>
-                <ArrowRight />
+                <NavigationForwardIcon />
               </button>
             );
           })}
@@ -326,7 +327,7 @@ export function AccountChooserSurface({ serverName }: { serverName: string }) {
               disabled={auth.busy}
               onClick={auth.beginAddAccount}
             >
-              <UserPlus /> Add account
+              <AccountProfilesIcon /> Add account
             </SecondaryButton>
           )}
           {error && (
@@ -336,7 +337,7 @@ export function AccountChooserSurface({ serverName }: { serverName: string }) {
               disabled={auth.busy}
               onClick={auth.retryBrowserAccounts}
             >
-              <RefreshCw /> Reload accounts
+              <ActionRefreshIcon /> Reload accounts
             </button>
           )}
         </div>
@@ -382,7 +383,7 @@ export function LocalProfileSelectionSurface({
         </header>
         {error && (
           <p className="auth-error account-chooser-error" role="alert">
-            <AlertTriangle />
+            <StatusWarningIcon />
             {error}
           </p>
         )}
@@ -408,7 +409,7 @@ export function LocalProfileSelectionSurface({
                   {profile.hasPIN ? "PIN required" : "Open profile"}
                 </small>
               </span>
-              <ArrowRight />
+              <NavigationForwardIcon />
             </button>
           ))}
         </div>
@@ -458,7 +459,7 @@ export function LocalProfileSelectionSurface({
             disabled={auth.busy}
             onClick={auth.cancelLocalProfileLogin}
           >
-            <ArrowLeft /> Back to sign in
+            <NavigationBackIcon /> Back to sign in
           </button>
         </div>
         <AccountLegalNotice />
@@ -493,7 +494,7 @@ export function SignInSurface({
     try {
       await auth.login({ login: login.trim(), password, rememberOnBrowser });
       runtime?.dismissConnectionWarning();
-      if (addingAccount) navigate("/home", { replace: true });
+      if (addingAccount) navigate("/", { replace: true });
     } catch (reason) {
       setError(productErrorText(reason, "auth.invalid-credentials"));
     }
@@ -530,7 +531,7 @@ export function SignInSurface({
             role="alert"
             data-semantic-icon={callbackWarning.icon}
           >
-            <AlertTriangle />
+            <StatusWarningIcon />
             {callbackWarning.body ??
               callbackWarning.text ??
               callbackWarning.title}
@@ -578,7 +579,7 @@ export function SignInSurface({
             className="button primary auth-portico-button"
             href={`/api/auth/portico/start?returnUrl=${encodeURIComponent("/?accountAdded=1")}&rememberOnBrowser=${rememberOnBrowser}`}
           >
-            <Globe2 /> Continue with Portico Account <ArrowRight />
+            <DeviceNetworkIcon /> Continue with Portico Account <NavigationForwardIcon />
           </a>
         )}
         {localEnabled && porticoEnabled && (
@@ -613,7 +614,7 @@ export function SignInSurface({
             </label>
             {error && (
               <p className="auth-error" role="alert">
-                <AlertTriangle />
+                <StatusWarningIcon />
                 {error}
               </p>
             )}
@@ -621,14 +622,14 @@ export function SignInSurface({
               type="submit"
               disabled={auth.busy || !login.trim() || !password}
             >
-              <KeyRound />{" "}
+              <AccountSecurityIcon />{" "}
               {auth.busy ? "Signing in…" : "Sign in with This Server"}
             </PrimaryButton>
           </form>
         )}
         {!localEnabled && !porticoEnabled && (
           <div className="auth-method-error" role="alert">
-            <AlertTriangle />
+            <StatusWarningIcon />
             <span>
               <strong>No sign-in method is available</strong>
               <p>
@@ -639,7 +640,7 @@ export function SignInSurface({
           </div>
         )}
         <p className="auth-security-note">
-          <ShieldCheck /> Credentials are sent only to{" "}
+          <StatusSecureIcon /> Credentials are sent only to{" "}
           {porticoEnabled && !localEnabled
             ? "Portico over HTTPS"
             : "this server"}
@@ -653,7 +654,7 @@ export function SignInSurface({
             disabled={auth.busy}
             onClick={auth.cancelAddAccount}
           >
-            <ArrowLeft /> Back to Portico
+            <NavigationBackIcon /> Back to Portico
           </button>
         )}
       </section>
@@ -663,6 +664,8 @@ export function SignInSurface({
 
 export function SetupSurface({ serverName }: { serverName: string }) {
   const auth = useAuthSession();
+  const authRef = useRef(auth);
+  authRef.current = auth;
   const runtime = useOptionalRuntime();
   const returningFromPortico =
     typeof window !== "undefined" &&
@@ -700,6 +703,10 @@ export function SetupSurface({ serverName }: { serverName: string }) {
   const [error, setError] = useState("");
   const [setupStatusFailure, setSetupStatusFailure] = useState<unknown>();
   const [setupCheckRevision, setSetupCheckRevision] = useState(0);
+  const [setupBootstrap, setSetupBootstrap] = useState<
+    "pending" | "ready" | "error"
+  >(returningFromPortico ? "ready" : "pending");
+  const [setupBootstrapRevision, setSetupBootstrapRevision] = useState(0);
   useEffect(() => {
     if (mode === "portico") return;
     try {
@@ -729,12 +736,43 @@ export function SetupSurface({ serverName }: { serverName: string }) {
     setupAvailability.automatic &&
     !setupAvailability.showWarning;
   useEffect(() => {
+    if (returningFromPortico) return;
+    let active = true;
+    const check = async () => {
+      try {
+        const status = await authRef.current.porticoSetupStatus();
+        if (!active) return;
+        if (
+          status.porticoConnected ||
+          status.claimStatus === "pending" ||
+          status.claimStatus === "claimed"
+        ) {
+          setMode("portico");
+        }
+        setSetupBootstrap("ready");
+      } catch (reason) {
+        if (!active) return;
+        if (setupResumeRequired(reason)) {
+          setMode("portico");
+          setSetupBootstrap("ready");
+          return;
+        }
+        setSetupStatusFailure(reason);
+        setSetupBootstrap("error");
+      }
+    };
+    void check();
+    return () => {
+      active = false;
+    };
+  }, [returningFromPortico, setupBootstrapRevision]);
+  useEffect(() => {
     if (mode !== "portico") return;
     let active = true;
     let retryTimer: number | undefined;
     const check = async () => {
       try {
-        const status = await auth.porticoSetupStatus();
+        const status = await authRef.current.porticoSetupStatus();
         if (!active) return;
         setSetupStatusFailure(undefined);
         if (!status.setupRequired && status.porticoConnected) {
@@ -763,7 +801,61 @@ export function SetupSurface({ serverName }: { serverName: string }) {
       active = false;
       if (retryTimer !== undefined) window.clearTimeout(retryTimer);
     };
-  }, [auth, mode, setupCheckRevision]);
+  }, [mode, setupCheckRevision]);
+  if (setupBootstrap !== "ready") {
+    return (
+      <main className="auth-surface">
+        <section className="auth-panel setup-panel">
+          <AuthBrand />
+          <header className="auth-heading">
+            <h1>Set Up Your Portico Server</h1>
+            <p>Checking whether this server has setup in progress.</p>
+          </header>
+          <div
+            className={`setup-portico-progress${setupBootstrap === "error" ? " error" : ""}`}
+            aria-live="polite"
+          >
+            {setupBootstrap === "pending" ? (
+              <>
+                <StatusLoadingIcon className="runtime-spinner" />
+                <p>
+                  <strong>Checking server setup…</strong>
+                  <small>
+                    Portico is checking for an existing secure account setup.
+                  </small>
+                </p>
+              </>
+            ) : (
+              <>
+                <div className="auth-error" role="alert">
+                  <StatusWarningIcon />
+                  <span>
+                    <strong>{setupRequiresServerLoopback(setupStatusFailure) ? "Finish setup on the server computer" : "Portico couldn’t check server setup"}</strong>
+                    <small>{setupRequiresServerLoopback(setupStatusFailure)
+                      ? "Open http://127.0.0.1:32600 in a browser on the computer running Portico Server. This LAN address will work after an owner is established."
+                      : setupClaimErrorText(setupStatusFailure)}</small>
+                  </span>
+                </div>
+                {!setupRequiresServerLoopback(setupStatusFailure) && <div className="runtime-footer-actions">
+                  <button
+                    type="button"
+                    className="auth-text-button"
+                    onClick={() => {
+                      setSetupStatusFailure(undefined);
+                      setSetupBootstrap("pending");
+                      setSetupBootstrapRevision((current) => current + 1);
+                    }}
+                  >
+                    <ActionRefreshIcon /> Try again
+                  </button>
+                </div>}
+              </>
+            )}
+          </div>
+        </section>
+      </main>
+    );
+  }
   const update = (field: keyof typeof details, value: string) =>
     setDetails((current) => ({ ...current, [field]: value }));
   const submit = async (event: FormEvent) => {
@@ -849,7 +941,7 @@ export function SetupSurface({ serverName }: { serverName: string }) {
           >
             {(!error || setupRetryQuietly) && (
               <>
-                <LoaderCircle className="runtime-spinner" />
+                <StatusLoadingIcon className="runtime-spinner" />
                 <p>
                   <strong>Finishing server setup…</strong>
                   <small>
@@ -862,7 +954,7 @@ export function SetupSurface({ serverName }: { serverName: string }) {
             {error && !setupRetryQuietly && (
               <>
                 <div className="auth-error" role="alert">
-                  <AlertTriangle />
+                  <StatusWarningIcon />
                   <span>
                     <strong>
                       {setupAvailability.automatic
@@ -902,7 +994,7 @@ export function SetupSurface({ serverName }: { serverName: string }) {
               onClick={() => void startPorticoSetup()}
             >
               <span className="setup-mode-icon">
-                <Globe2 />
+                <DeviceNetworkIcon />
               </span>
               <span>
                 <span className="setup-mode-title">
@@ -921,7 +1013,7 @@ export function SetupSurface({ serverName }: { serverName: string }) {
                   Portico, or if you're not sure which is right for you.
                 </small>
               </span>
-              <ArrowRight />
+              <NavigationForwardIcon />
             </button>
             <button
               type="button"
@@ -930,7 +1022,7 @@ export function SetupSurface({ serverName }: { serverName: string }) {
               onClick={chooseLocalMode}
             >
               <span className="setup-mode-icon">
-                <KeyRound />
+                <AccountSecurityIcon />
               </span>
               <span>
                 <span className="setup-mode-title">
@@ -947,13 +1039,13 @@ export function SetupSurface({ serverName }: { serverName: string }) {
                   control over your Portico server.
                 </small>
               </span>
-              <ArrowRight />
+              <NavigationForwardIcon />
             </button>
           </div>
         )}
         {mode === "choose" && error && (
           <div className="auth-error setup-choice-error" role="alert">
-            <AlertTriangle />
+            <StatusWarningIcon />
             <span>
               <strong>Portico couldn't complete this request</strong>
               <small>{error}</small>
@@ -970,7 +1062,7 @@ export function SetupSurface({ serverName }: { serverName: string }) {
                 setError("");
               }}
             >
-              <ArrowLeft /> Account options
+              <NavigationBackIcon /> Account options
             </button>
             <form onSubmit={submit}>
               <div className="setup-fields">
@@ -1048,7 +1140,7 @@ export function SetupSurface({ serverName }: { serverName: string }) {
               </label>
               {error && (
                 <p className="auth-error" role="alert">
-                  <AlertTriangle />
+                  <StatusWarningIcon />
                   {error}
                 </p>
               )}

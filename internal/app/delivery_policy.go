@@ -24,10 +24,7 @@ const (
 func (s *Server) resolvePlaybackPolicyForRequest(ctx context.Context, r *http.Request, user User, item MediaItem, intent PlaybackIntent, profile PlaybackClientProfile) (ResolvedPlaybackPolicy, PlaybackClientProfile) {
 	serverLocality := s.playbackNetworkClassForRequest(r)
 	transportClass := normalizePlaybackTransportClass(intent.TransportClass)
-	if transportClass == playbackNetworkUnknown {
-		transportClass = normalizePlaybackTransportClass(intent.NetworkClass)
-	}
-	networkClass := effectivePlaybackNetworkClass(intent.NetworkClass, transportClass, serverLocality)
+	networkClass := effectivePlaybackNetworkClass(transportClass, serverLocality)
 	policy := defaultResolvedPlaybackPolicy(item.Type, networkClass)
 
 	applyPlaybackIntent(&policy, item.Type, intent)
@@ -106,8 +103,7 @@ func (s *Server) playbackNetworkClassForRequest(r *http.Request) string {
 // can reach a public-direct hostname from the server's own LAN, and a Wi-Fi
 // client can be remote. Locality controls trust/clamps; transport selects the
 // user's quality bucket.
-func effectivePlaybackNetworkClass(legacyNetworkClass, transportClass, serverLocality string) string {
-	legacy := normalizePlaybackNetworkClass(legacyNetworkClass)
+func effectivePlaybackNetworkClass(transportClass, serverLocality string) string {
 	transport := normalizePlaybackTransportClass(transportClass)
 	locality := normalizePlaybackServerLocality(serverLocality)
 	if locality == playbackNetworkLocal {
@@ -115,9 +111,6 @@ func effectivePlaybackNetworkClass(legacyNetworkClass, transportClass, serverLoc
 	}
 	if transport == playbackNetworkWiFi || transport == playbackNetworkCellular {
 		return transport
-	}
-	if legacy == playbackNetworkWiFi || legacy == playbackNetworkCellular {
-		return legacy
 	}
 	if locality == playbackNetworkRemote {
 		return playbackNetworkRemote
@@ -212,8 +205,7 @@ func applyPlaybackIntent(policy *ResolvedPlaybackPolicy, mediaType string, inten
 		return
 	}
 	// NetworkClass is already resolved from server-observed locality and the
-	// client's transport hint before this function runs. Never let the legacy
-	// client field overwrite that result: a phone on Wi-Fi can still be remote,
+	// client's transport hint before this function runs. A phone on Wi-Fi can still be remote,
 	// while a public-direct request can be a same-household hairpin and should
 	// retain local/original defaults.
 	if value := normalizePlaybackQualityProfile(intent.QualityProfile); value != "" {

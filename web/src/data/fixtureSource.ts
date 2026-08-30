@@ -1,4 +1,5 @@
 import { media, musicMedia } from './fixtures';
+import { secureRandomUUID } from '../runtime/secureRandomUUID';
 import {
   ApiError,
   defaultAccountServerInstallationPreferences,
@@ -66,8 +67,6 @@ import type {
   DVRResult,
   HomeResult,
   HomeRow,
-  LibraryBrowseInput,
-  LibraryBrowseResult,
   LocalProfileLoginChallenge,
   LocalProfileSelection,
   MediaDownloadOptions,
@@ -118,7 +117,7 @@ const silentPreview = 'data:audio/wav;base64,UklGRkQDAABXQVZFZm10IBAAAAABAAEAQB8
 
 function playbackMedia(item: MediaItem) {
   return {
-    id: item.id, libraryId: item.libraryId, type: item.kind, title: item.title, sortTitle: item.title,
+    id: item.id, libraryId: item.libraryId, entityKind: item.entityKind, title: item.title, sortTitle: item.title,
     metadataEtag: `fixture-media-${item.id}-revision-1`, metadataRevision: 1,
     year: item.year || undefined, durationSeconds: 1, summary: item.summary, tagline: item.subtitle,
     genres: item.genre ? [item.genre] : [], tags: [], labels: [], addedAt: '2026-01-01T00:00:00Z',
@@ -130,19 +129,6 @@ function playbackMedia(item: MediaItem) {
 
 function normalizedTitle(title: string) {
   return title.replace(/^(a|an|the)\s+/i, '').toLocaleLowerCase();
-}
-
-function sortItems(items: LibraryBrowseResult['items'], input: LibraryBrowseInput) {
-  const direction = input.direction === 'ascending' ? 1 : -1;
-  return [...items].sort((left, right) => {
-    if (input.sort === 'Recently added' || input.sort === 'Year') {
-      return (left.year - right.year) * direction;
-    }
-    if (input.sort === 'Critic rating') {
-      return left.rating.localeCompare(right.rating) * direction;
-    }
-    return normalizedTitle(left.title).localeCompare(normalizedTitle(right.title)) * direction;
-  });
 }
 
 function fixtureWorkspaceKind(libraryId: string): LibraryBrowseCapabilities['library']['kind'] {
@@ -223,7 +209,7 @@ function fixtureBrowseCapabilities(libraryId: string): LibraryBrowseCapabilities
 }
 
 function fixtureFieldValue(item: MediaItem, field: string): unknown {
-  if (field === 'entityKind') return item.kind;
+  if (field === 'entityKind') return item.entityKind;
   if (field === 'title') return item.title;
   if (field === 'year') return item.year;
   if (field === 'decade') return Math.floor(item.year / 10) * 10;
@@ -287,7 +273,6 @@ function fixtureWorkspaceSort(items: MediaItem[], sorts: BrowseSort[]) {
 function fixtureSavedResourceMedia(
   resource: SavedResourceSummary,
   kind: 'collection' | 'playlist',
-  libraryKind: LibraryBrowseCapabilities['library']['kind'],
 ): MediaItem {
   return {
     id: resource.id,
@@ -295,8 +280,7 @@ function fixtureSavedResourceMedia(
     title: resource.title,
     subtitle: `${resource.itemCount} ${resource.itemCount === 1 ? 'item' : 'items'}`,
     year: 0,
-    type: libraryKind === 'movies' ? 'movie' : libraryKind === 'music' || libraryKind === 'audiobooks' ? 'music' : 'show',
-    kind,
+    entityKind: kind,
     poster: '/brand/portico-wordmark-white.svg',
     backdrop: '/brand/portico-wordmark-white.svg',
     rating: '',
@@ -504,7 +488,7 @@ export class FixturePorticoDataSource implements PorticoDataSource {
   private items() {
     return media
       .filter((item) => !this.deletedMediaIds.has(item.id))
-      .map((item, index) => ({ ...item, addedAt: new Date(Date.UTC(2026, 5, 30 - index)).toISOString(), libraryId: item.libraryId ?? (item.type === 'movie' ? 'fixture-movies' : 'fixture-tv'), ...this.mediaMetadata.get(item.id), actions: ['play', 'download', 'watchlist.add', 'watchlist.remove', 'favorite.add', 'favorite.remove', 'watched.set', 'reaction.set', 'rating.set', 'collection.add', 'playlist.add', 'feedback.report-problem', 'feedback.request-higher-quality', 'metadata.edit', 'metadata.refresh', 'media.analyze', 'media.optimize', 'media.delete'], ...this.mediaState.get(item.id), mediaImages: this.fixtureArtwork(item) }));
+      .map((item, index) => ({ ...item, addedAt: new Date(Date.UTC(2026, 5, 30 - index)).toISOString(), libraryId: item.libraryId ?? (item.entityKind === 'movie' ? 'fixture-movies' : 'fixture-tv'), ...this.mediaMetadata.get(item.id), actions: ['play', 'download', 'watchlist.add', 'watchlist.remove', 'favorite.add', 'favorite.remove', 'watched.set', 'reaction.set', 'rating.set', 'collection.add', 'playlist.add', 'feedback.report-problem', 'feedback.request-higher-quality', 'metadata.edit', 'metadata.refresh', 'media.analyze', 'media.optimize', 'media.delete'], ...this.mediaState.get(item.id), mediaImages: this.fixtureArtwork(item) }));
   }
 
   private allItems() {
@@ -817,7 +801,7 @@ export class FixturePorticoDataSource implements PorticoDataSource {
 
   async createAccountProfile(input: ServerManagedProfileCreateRequest, proof: string, signal: AbortSignal) {
     await this.createProfileAdministrationProof({ password: proof }, signal);
-    const profile = { id: `fixture-profile-${crypto.randomUUID()}`, name: input.name.trim(), avatar: input.avatar, isPrimary: false, isAccountAdmin: false, hasPIN: Boolean(input.pin), pinRevision: input.pin ? 1 : 0, sortOrder: this.profiles.length, policy: structuredClone(input.policy) };
+    const profile = { id: `fixture-profile-${secureRandomUUID()}`, name: input.name.trim(), avatar: input.avatar, isPrimary: false, isAccountAdmin: false, hasPIN: Boolean(input.pin), pinRevision: input.pin ? 1 : 0, sortOrder: this.profiles.length, policy: structuredClone(input.policy) };
     this.profiles.push(profile);
     return structuredClone(profile);
   }
@@ -933,7 +917,7 @@ export class FixturePorticoDataSource implements PorticoDataSource {
     const scope = this.currentViewer.viewerScope!;
     const now = new Date().toISOString();
     const reporter = { authority: scope.authority, accountName: this.currentViewer.user?.displayName ?? 'Viewer', accountId: scope.accountId } as unknown as ServerOwnerFeedbackRecord['reporter'];
-    const record: ServerOwnerFeedbackRecord = { id: `fixture-feedback-${crypto.randomUUID()}`, reporter, kind: input.kind, category: input.category, status: 'new', message: input.message, diagnostics: { deviceClass: 'web', platform: input.context.platform, appVersion: input.context.appVersion, mediaId: input.context.mediaId, occurredAt: now }, duplicateCount: 0, submittedAt: now, updatedAt: now, revision: 1 };
+    const record: ServerOwnerFeedbackRecord = { id: `fixture-feedback-${secureRandomUUID()}`, reporter, kind: input.kind, category: input.category, status: 'new', message: input.message, diagnostics: { deviceClass: 'web', platform: input.context.platform, appVersion: input.context.appVersion, mediaId: input.context.mediaId, occurredAt: now }, duplicateCount: 0, submittedAt: now, updatedAt: now, revision: 1 };
     this.feedback.unshift(record);
     return { id: record.id, status: 'new', submittedAt: now };
   }
@@ -974,7 +958,7 @@ export class FixturePorticoDataSource implements PorticoDataSource {
   async createOwnerViewerNotice(input: ServerOwnerNoticeRequest, signal: AbortSignal) {
     if (signal.aborted) throw new DOMException('Request aborted', 'AbortError');
     const scope = this.currentViewer.viewerScope!;
-    this.notifications.unshift({ id: `fixture-notice-${crypto.randomUUID()}`, recipient: input.audience === 'profile' ? { authority: 'local', accountId: scope.accountId, serverId: scope.serverId, profileId: input.profileId, audience: 'profile' } : { authority: scope.authority, accountId: input.accountId, serverId: scope.serverId, audience: 'account-admin' }, kind: 'server.message', severity: input.severity ?? 'informational', messageId: 'notification.server-message', iconId: 'status.notification', interpolation: {}, actions: [], content: { body: input.message }, createdAt: new Date().toISOString(), readAt: null, archivedAt: null });
+    this.notifications.unshift({ id: `fixture-notice-${secureRandomUUID()}`, recipient: input.audience === 'profile' ? { authority: 'local', accountId: scope.accountId, serverId: scope.serverId, profileId: input.profileId, audience: 'profile' } : { authority: scope.authority, accountId: input.accountId, serverId: scope.serverId, audience: 'account-admin' }, kind: 'server.message', severity: input.severity ?? 'informational', messageId: 'notification.server-message', iconId: 'status.notification', interpolation: {}, actions: [], content: { body: input.message }, createdAt: new Date().toISOString(), readAt: null, archivedAt: null });
     this.notificationRevision += 1;
   }
 
@@ -1101,9 +1085,9 @@ export class FixturePorticoDataSource implements PorticoDataSource {
   async libraries(signal: AbortSignal) {
     if (signal.aborted) throw new DOMException('Request aborted', 'AbortError');
     return [
-      { id: 'fixture-tv', name: 'TV Shows', kind: 'tv' as const, itemCount: this.items().filter((item) => item.type === 'show').length },
-      { id: 'fixture-movies', name: 'Movies', kind: 'movies' as const, itemCount: this.items().filter((item) => item.type === 'movie').length },
-      { id: 'fixture-music', name: 'Music', kind: 'music' as const, itemCount: this.allItems().filter((item) => item.type === 'music').length },
+      { id: 'fixture-tv', name: 'TV Shows', kind: 'tv' as const, itemCount: this.items().filter((item) => item.entityKind === 'show').length },
+      { id: 'fixture-movies', name: 'Movies', kind: 'movies' as const, itemCount: this.items().filter((item) => item.entityKind === 'movie').length },
+      { id: 'fixture-music', name: 'Music', kind: 'music' as const, itemCount: this.allItems().filter((item) => ['artist', 'album', 'track'].includes(item.entityKind)).length },
     ];
   }
 
@@ -1155,7 +1139,7 @@ export class FixturePorticoDataSource implements PorticoDataSource {
     if (pivot.id === 'collections' || pivot.id === 'playlists') {
       const kind = pivot.id === 'collections' ? 'collection' : 'playlist';
       const items = [...(this.saved.get(kind)?.values() ?? [])]
-        .map((resource) => fixtureSavedResourceMedia(resource, kind, capabilities.library.kind));
+        .map((resource) => fixtureSavedResourceMedia(resource, kind));
       return {
         items,
         total: items.length,
@@ -1194,7 +1178,7 @@ export class FixturePorticoDataSource implements PorticoDataSource {
     }
 
     const kinds = new Set(pivot.entityKinds);
-    let items: MediaItem[] = base.filter((item) => kinds.size === 0 || kinds.has(item.kind));
+    let items: MediaItem[] = base.filter((item) => kinds.size === 0 || kinds.has(item.entityKind));
     if (input.request.query) items = items.filter((item) => fixturePredicate(item, input.request.query as BrowseExpression));
     items = fixtureWorkspaceSort(items, appliedSort);
     if (input.request.seek?.prefix) {
@@ -1227,7 +1211,7 @@ export class FixturePorticoDataSource implements PorticoDataSource {
     const capabilities = await this.libraryBrowseCapabilities(input.libraryId, signal);
     if (!capabilities.pivots.some((pivot) => pivot.id === input.pivot)) throw new Error('This library view is no longer available.');
     const timestamp = new Date().toISOString();
-    const id = `fixture-view-${globalThis.crypto.randomUUID()}`;
+    const id = `fixture-view-${secureRandomUUID()}`;
     const savedView: SavedView = {
       id,
       title,
@@ -1261,64 +1245,6 @@ export class FixturePorticoDataSource implements PorticoDataSource {
     return savedView;
   }
 
-  async browseLibrary(input: LibraryBrowseInput, signal: AbortSignal): Promise<LibraryBrowseResult> {
-    if (signal.aborted) throw new DOMException('Request aborted', 'AbortError');
-
-    const normalizedPivot = input.pivot.toLocaleLowerCase().replaceAll(' ', '-');
-    let items = input.kind === 'music'
-      ? normalizedPivot === 'discover'
-        ? this.allItems().filter((item) => item.type === 'music')
-        : this.allItems().filter((item) => item.type === 'music' && item.kind === normalizedPivot.replace(/s$/, ''))
-      : this.items().filter((item) => (input.kind === 'movies' ? item.type === 'movie' : item.type === 'show'));
-    if (input.filter === 'In progress') items = items.filter((item) => item.progress != null);
-    if (input.filter === 'Unwatched') items = items.filter((item) => item.progress == null);
-    if (input.search?.trim()) {
-      const query = input.search.trim().toLocaleLowerCase();
-      items = items.filter((item) => `${item.title} ${item.subtitle} ${item.genre}`.toLocaleLowerCase().includes(query));
-    }
-    const sorted = sortItems(items, input);
-    return {
-      items: sorted,
-      total: sorted.length,
-      libraryId: input.kind === 'movies' ? 'fixture-movies' : 'fixture-tv',
-      hasMore: false,
-      nextCursor: null,
-      capabilities: {
-        apiVersion: 'v1',
-        pivots: input.kind === 'music'
-          ? [
-              { id: 'discover', label: 'Discover', entityKinds: ['album', 'track'], defaultView: 'shelves', supportedViews: ['shelves'], browseSupported: false, endpointTemplate: '/api/libraries/{libraryId}/discover' },
-              { id: 'artists', label: 'Artists', entityKinds: ['artist'], defaultView: 'grid', supportedViews: ['grid', 'list'], browseSupported: true, endpointTemplate: '/api/libraries/{libraryId}/browse' },
-              { id: 'albums', label: 'Albums', entityKinds: ['album'], defaultView: 'grid', supportedViews: ['grid', 'list'], browseSupported: true, endpointTemplate: '/api/libraries/{libraryId}/browse' },
-              { id: 'tracks', label: 'Tracks', entityKinds: ['track'], defaultView: 'list', supportedViews: ['grid', 'list'], browseSupported: true, endpointTemplate: '/api/libraries/{libraryId}/browse' },
-              { id: 'playlists', label: 'Playlists', entityKinds: ['playlist'], defaultView: 'list', supportedViews: ['list'], browseSupported: false, endpointTemplate: '/api/playlists?libraryId={libraryId}' },
-              { id: 'genres', label: 'Genres', entityKinds: ['category'], defaultView: 'facets', supportedViews: ['facets'], browseSupported: false, endpointTemplate: '/api/libraries/{libraryId}/categories' },
-            ]
-          : input.kind === 'movies'
-          ? [
-              { id: 'discover', label: 'Discover', entityKinds: ['movie'], defaultView: 'shelves', supportedViews: ['shelves'], browseSupported: false, endpointTemplate: '/api/libraries/{libraryId}/discover' },
-              { id: 'movies', label: 'Movies', entityKinds: ['movie'], defaultView: 'grid', supportedViews: ['grid', 'list'], browseSupported: true, endpointTemplate: '/api/libraries/{libraryId}/browse' },
-              { id: 'collections', label: 'Collections', entityKinds: ['collection'], defaultView: 'grid', supportedViews: ['grid'], browseSupported: false, endpointTemplate: '/api/collections?libraryId={libraryId}' },
-              { id: 'categories', label: 'Categories', entityKinds: ['category'], defaultView: 'facets', supportedViews: ['facets'], browseSupported: false, endpointTemplate: '/api/libraries/{libraryId}/categories' },
-            ]
-          : [
-              { id: 'discover', label: 'Discover', entityKinds: ['show'], defaultView: 'shelves', supportedViews: ['shelves'], browseSupported: false, endpointTemplate: '/api/libraries/{libraryId}/discover' },
-              { id: 'shows', label: 'Shows', entityKinds: ['show'], defaultView: 'grid', supportedViews: ['grid', 'list'], browseSupported: true, endpointTemplate: '/api/libraries/{libraryId}/browse' },
-              { id: 'episodes', label: 'Episodes', entityKinds: ['episode'], defaultView: 'list', supportedViews: ['grid', 'list'], browseSupported: true, endpointTemplate: '/api/libraries/{libraryId}/browse' },
-              { id: 'collections', label: 'Collections', entityKinds: ['collection'], defaultView: 'grid', supportedViews: ['grid'], browseSupported: false, endpointTemplate: '/api/collections?libraryId={libraryId}' },
-              { id: 'categories', label: 'Categories', entityKinds: ['category'], defaultView: 'facets', supportedViews: ['facets'], browseSupported: false, endpointTemplate: '/api/libraries/{libraryId}/categories' },
-            ],
-        sorts: [
-          { id: 'title', label: 'Title', defaultDirection: 'asc' },
-          { id: 'dateAdded', label: 'Recently added', defaultDirection: 'desc' },
-          { id: 'year', label: 'Year', defaultDirection: 'desc' },
-          { id: 'criticRating', label: 'Critic rating', defaultDirection: 'desc' },
-        ],
-        actions: ['play', 'watchlist.add', 'metadata.edit'],
-      },
-    };
-  }
-
   async search(query: string, signal: AbortSignal, limit = 6): Promise<SearchResult[]> {
     if (signal.aborted) throw new DOMException('Request aborted', 'AbortError');
     const normalized = query.trim().toLocaleLowerCase();
@@ -1335,7 +1261,7 @@ export class FixturePorticoDataSource implements PorticoDataSource {
     }
     const sort = input.sort ?? 'relevance';
     const direction = input.direction ?? (sort === 'title' ? 'asc' : 'desc');
-    const matchesKind = (item: MediaItem) => !input.entityKinds?.length || input.entityKinds.includes(String(item.entityKind ?? item.kind));
+    const matchesKind = (item: MediaItem) => !input.entityKinds?.length || input.entityKinds.includes(String(item.entityKind));
     const compareKnown = (left: number | string | undefined, right: number | string | undefined, leftId: string, rightId: string) => {
       const leftKnown = left !== undefined && left !== '' && left !== 0;
       const rightKnown = right !== undefined && right !== '' && right !== 0;
@@ -1357,7 +1283,7 @@ export class FixturePorticoDataSource implements PorticoDataSource {
       const descriptor = contract.groups.find((group) => group.id === groupId);
       if (!descriptor || (input.group && input.group !== descriptor.id)) return [];
       const resultKinds = new Set(descriptor.resultKinds);
-      const groupItems = items.filter((item) => resultKinds.has(String(item.entityKind ?? item.kind)));
+      const groupItems = items.filter((item) => resultKinds.has(String(item.entityKind)));
       return groupItems.length ? [{
         id: descriptor.id,
         title: descriptor.title,
@@ -1404,13 +1330,13 @@ export class FixturePorticoDataSource implements PorticoDataSource {
     if (signal.aborted) throw new DOMException('Request aborted', 'AbortError');
     const item = this.allItems().find((candidate) => candidate.id === id);
     if (!item) throw new Error('This media item is no longer available.');
-    const recommendationItems = this.allItems().filter((candidate) => candidate.type === item.type && candidate.id !== id).slice(0, 7);
+    const recommendationItems = this.allItems().filter((candidate) => candidate.entityKind === item.entityKind && candidate.id !== id).slice(0, 7);
     return {
       ...item,
-      summary: item.type === 'show'
+      summary: item.entityKind === 'show'
         ? 'Ordinary people are pulled into an escalating chain of consequences where every choice leaves a mark.'
         : 'A carefully catalogued film from this Portico library.',
-      studio: item.type === 'show' ? 'FX Productions' : 'Portico Library',
+      studio: item.entityKind === 'show' ? 'FX Productions' : 'Portico Library',
       recommendationRows: [{ id: 'more-like-this', title: 'More like this', type: 'poster', items: recommendationItems, hasMore: false }],
     };
   }
@@ -1574,7 +1500,7 @@ export class FixturePorticoDataSource implements PorticoDataSource {
 
   async uploadLyrics(id: string, file: File, language: string, signal: AbortSignal): Promise<void> {
     const item = await this.media(id, signal);
-    if (item.kind !== 'track') throw new Error('Lyrics can only be added to tracks.');
+    if (item.entityKind !== 'track') throw new Error('Lyrics can only be added to tracks.');
     const lyric: MediaLyric = {
       id: `fixture-lyric-${Date.now()}`,
       source: 'manual',
@@ -1589,7 +1515,7 @@ export class FixturePorticoDataSource implements PorticoDataSource {
 
   async fetchLyrics(id: string, signal: AbortSignal): Promise<void> {
     const item = await this.media(id, signal);
-    if (item.kind !== 'track') throw new Error('Lyrics can only be added to tracks.');
+    if (item.entityKind !== 'track') throw new Error('Lyrics can only be added to tracks.');
     const lyric: MediaLyric = {
       id: `fixture-lrclib-${Date.now()}`,
       source: 'provider',
@@ -1604,7 +1530,7 @@ export class FixturePorticoDataSource implements PorticoDataSource {
 
   async searchLyrics(id: string, query: string, signal: AbortSignal): Promise<LyricSearchCandidate[]> {
     const item = await this.media(id, signal);
-    if (item.kind !== 'track') throw new Error('Lyrics search is only available for tracks.');
+    if (item.entityKind !== 'track') throw new Error('Lyrics search is only available for tracks.');
     const trackName = query.trim() || item.title;
     return [
       { provider: 'lrclib', externalId: `fixture-synced-${id}`, trackName, artistName: item.subtitle.split(' · ')[0], albumName: item.parentTitle, durationSeconds: 230, format: 'lrc', synced: true },
@@ -1614,7 +1540,7 @@ export class FixturePorticoDataSource implements PorticoDataSource {
 
   async applyLyrics(id: string, candidate: Pick<LyricSearchCandidate, 'provider' | 'externalId'>, signal: AbortSignal): Promise<void> {
     const item = await this.media(id, signal);
-    if (item.kind !== 'track') throw new Error('Lyrics can only be added to tracks.');
+    if (item.entityKind !== 'track') throw new Error('Lyrics can only be added to tracks.');
     const synced = candidate.externalId.includes('synced');
     const lyric: MediaLyric = {
       id: `fixture-applied-${Date.now()}`,
@@ -1640,8 +1566,8 @@ export class FixturePorticoDataSource implements PorticoDataSource {
     const item = await this.media(id, signal);
     const title = query.trim() || item.title;
     return [
-      { provider: 'tmdb', externalId: `fixture-${id}`, externalType: item.kind, source: 'TMDB', score: 0.97, accepted: true, title, year: item.year, overview: item.summary, reasons: [{ code: 'title_exact', delta: 0.6 }], createdAt: new Date().toISOString() },
-      { provider: 'tvdb', externalId: `fixture-alt-${id}`, externalType: item.kind, source: 'TVDB', score: 0.81, accepted: false, title: `${title} (${item.year})`, year: item.year, overview: 'Alternate catalogue match.', reasons: [{ code: 'title_close', delta: 0.4 }], createdAt: new Date().toISOString() },
+      { provider: 'tmdb', externalId: `fixture-${id}`, externalType: item.entityKind, source: 'TMDB', score: 0.97, accepted: true, title, year: item.year, overview: item.summary, reasons: [{ code: 'title_exact', delta: 0.6 }], createdAt: new Date().toISOString() },
+      { provider: 'tvdb', externalId: `fixture-alt-${id}`, externalType: item.entityKind, source: 'TVDB', score: 0.81, accepted: false, title: `${title} (${item.year})`, year: item.year, overview: 'Alternate catalogue match.', reasons: [{ code: 'title_close', delta: 0.4 }], createdAt: new Date().toISOString() },
     ];
   }
 
@@ -1706,7 +1632,7 @@ export class FixturePorticoDataSource implements PorticoDataSource {
           available: true,
           url: silentPreview,
           sizeBytes: 48_000,
-          container: item.type === 'music' ? 'wav' : 'mkv',
+          container: item.entityKind === 'music' ? 'wav' : 'mkv',
           sourceKind: 'local',
         },
         ...profiles.map((profile) => {
@@ -1829,7 +1755,7 @@ export class FixturePorticoDataSource implements PorticoDataSource {
       } as SavedResourceDetail<K>;
     }
     const itemIds = kind === 'view'
-      ? this.allItems().filter((item) => item.type === 'movie' && !item.watched).map((item) => item.id)
+      ? this.allItems().filter((item) => item.entityKind === 'movie' && !item.watched).map((item) => item.id)
       : this.savedItems.get(`${kind}:${id}`) ?? [];
     const page = itemIds.slice(offset, offset + limit);
     const items = page.flatMap((mediaId) => {
@@ -1850,7 +1776,7 @@ export class FixturePorticoDataSource implements PorticoDataSource {
     if (signal.aborted) throw new DOMException('Request aborted', 'AbortError');
     if (kind === 'view' && (!input.libraryId || !input.pivot)) throw new Error('Choose a library and view.');
     const timestamp = new Date().toISOString();
-    const id = `fixture-${kind}-${globalThis.crypto.randomUUID()}`;
+    const id = `fixture-${kind}-${secureRandomUUID()}`;
     const shares = kind === 'view' ? undefined : this.savedSharesFromRequest(input.shares) ?? [];
     const resource: SavedResourceSummary = {
       id, kind, ownerUserId: kind === 'view' ? undefined : this.currentViewer.user?.id, title: input.title.trim(), summary: input.summary?.trim(), itemCount: input.mediaIds?.length ?? 0,
@@ -1864,7 +1790,7 @@ export class FixturePorticoDataSource implements PorticoDataSource {
     resources.set(id, resource);
     this.saved.set(kind, resources);
     if (kind === 'playlist') {
-      this.savedPlaylistEntries.set(id, (input.mediaIds ?? []).map((mediaId) => ({ entryId: `fixture-playlist-entry-${globalThis.crypto.randomUUID()}`, mediaId })));
+      this.savedPlaylistEntries.set(id, (input.mediaIds ?? []).map((mediaId) => ({ entryId: `fixture-playlist-entry-${secureRandomUUID()}`, mediaId })));
     } else if (kind === 'collection') {
       this.savedItems.set(`${kind}:${id}`, [...new Set(input.mediaIds ?? [])]);
     }
@@ -1905,7 +1831,7 @@ export class FixturePorticoDataSource implements PorticoDataSource {
       let entries = [...(this.savedPlaylistEntries.get(id) ?? [])];
       const removals = new Set(playlistMutation.removeEntryIds ?? []);
       entries = entries.filter((entry) => !removals.has(entry.entryId));
-      for (const mediaId of playlistMutation.addMediaIds ?? []) entries.push({ entryId: `fixture-playlist-entry-${globalThis.crypto.randomUUID()}`, mediaId });
+      for (const mediaId of playlistMutation.addMediaIds ?? []) entries.push({ entryId: `fixture-playlist-entry-${secureRandomUUID()}`, mediaId });
       if (playlistMutation.orderEntryIds) {
         const byEntryId = new Map(entries.map((entry) => [entry.entryId, entry]));
         if (playlistMutation.orderEntryIds.length !== entries.length || new Set(playlistMutation.orderEntryIds).size !== entries.length || playlistMutation.orderEntryIds.some((entryId) => !byEntryId.has(entryId))) {
@@ -1997,7 +1923,7 @@ export class FixturePorticoDataSource implements PorticoDataSource {
     this.fixturePlayback = next;
     return structuredClone(next);
   }
-  async stopPlayback(_sessionId: string, _signal?: AbortSignal, _keepalive?: boolean) { this.fixturePlayback = undefined; this.fixtureQueue = undefined; }
+  async stopPlayback(_sessionId: string, _request: import("@porticomediaserver/client-core").PlaybackSessionStopInput, _signal?: AbortSignal, _keepalive?: boolean) { this.fixturePlayback = undefined; this.fixtureQueue = undefined; }
   async playbackSessionQueue(_sessionId: string, _signal: AbortSignal) { if (!this.fixtureQueue) throw new Error('No fixture playback session is active.'); return structuredClone(this.fixtureQueue); }
   async updatePlaybackSessionQueue(_sessionId: string, request: PlaybackSessionQueueReplaceRequest, _signal: AbortSignal) {
     if (!this.fixtureQueue) throw new Error('No fixture playback session is active.');
@@ -2082,7 +2008,7 @@ export class FixturePorticoDataSource implements PorticoDataSource {
   async startLiveTVPlayback(channelId: string, _signal: AbortSignal) {
     const channel = this.fixtureLiveChannels().find((item) => item.id === channelId);
     if (!channel) throw new Error('Fixture channel not found.');
-    const item: MediaItem = { id: channel.id, title: channel.name, subtitle: channel.groupTitle ?? 'Live TV', year: 0, type: 'show', kind: 'recording', poster: '/brand/portico-wordmark-white.svg', backdrop: '/brand/portico-wordmark-white.svg', rating: '', length: 'Live', genre: channel.groupTitle ?? '', actions: ['live.play'] };
+    const item: MediaItem = { id: channel.id, title: channel.name, subtitle: channel.groupTitle ?? 'Live TV', year: 0, entityKind: 'live-channel', poster: '/brand/portico-wordmark-white.svg', backdrop: '/brand/portico-wordmark-white.svg', rating: '', length: 'Live', genre: channel.groupTitle ?? '', actions: ['live.play'] };
     const value = this.playbackFor(item, []);
     return {
       ...value,
@@ -2130,7 +2056,7 @@ export class FixturePorticoDataSource implements PorticoDataSource {
   async startLibraryChannelPlayback(channelId: string, signal: AbortSignal) {
     const channel = (await this.libraryChannels(signal)).items.find((item) => item.id === channelId);
     if (!channel) throw new Error('Fixture Library Channel not found.');
-    const value = this.playbackFor({ id: channel.id, title: channel.name, subtitle: 'Library Channel', year: 0, type: 'show', kind: 'recording', poster: channel.logoUrl ?? '', backdrop: channel.logoUrl ?? '', rating: '', length: 'Live', genre: 'Library Channel' }, []);
+    const value = this.playbackFor({ id: channel.id, title: channel.name, subtitle: 'Library Channel', year: 0, entityKind: 'live-channel', poster: channel.logoUrl ?? '', backdrop: channel.logoUrl ?? '', rating: '', length: 'Live', genre: 'Library Channel' }, []);
     return { ...value, isLive: true };
   }
 
@@ -2173,6 +2099,6 @@ export class FixturePorticoDataSource implements PorticoDataSource {
   async startDVRPlayback(recordingId: string, signal: AbortSignal) {
     const recording = (await this.dvr(signal)).recordings.find((item) => item.id === recordingId);
     if (!recording) throw new Error('Fixture recording not found.');
-    return this.playbackFor({ id: recording.id, title: recording.title, subtitle: 'DVR recording', year: 0, type: 'show', kind: 'recording', poster: '/brand/portico-wordmark-white.svg', backdrop: '/brand/portico-wordmark-white.svg', rating: '', length: 'Recorded', genre: 'DVR', actions: ['dvr.play'] }, []);
+    return this.playbackFor({ id: recording.id, title: recording.title, subtitle: 'DVR recording', year: 0, entityKind: 'recording', poster: '/brand/portico-wordmark-white.svg', backdrop: '/brand/portico-wordmark-white.svg', rating: '', length: 'Recorded', genre: 'DVR', actions: ['dvr.play'] }, []);
   }
 }

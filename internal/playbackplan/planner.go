@@ -38,16 +38,26 @@ func Build(req Request) (Plan, error) {
 	}
 	var candidates []candidate
 	var dvRejected, toneMapRejected bool
+	rejections := RejectionDiagnostics{Counts: map[string]int{}, Selection: req.Selection, AllowedModes: append([]Mode(nil), req.AllowedModes...), Constraints: req.Constraints}
 	tuples := append([]playbackcap.DeliveryTuple(nil), req.Capabilities.Tuples...)
 	sort.SliceStable(tuples, func(i, j int) bool { return tupleKey(tuples[i]) < tupleKey(tuples[j]) })
 	for _, t := range tuples {
-		if t.Kind != kind || (req.Protocol != "" && token(t.Protocol) != token(req.Protocol)) {
+		if t.Kind != kind {
+			rejections.Counts["media_kind"]++
 			continue
 		}
-		p, ok, dvr, tmr := makeCandidate(req, facts, v, a, s, t)
+		if req.Protocol != "" && token(t.Protocol) != token(req.Protocol) {
+			rejections.Counts["protocol"]++
+			continue
+		}
+		p, ok, dvr, tmr, rejectedBy := makeCandidate(req, facts, v, a, s, t)
 		dvRejected = dvRejected || dvr
 		toneMapRejected = toneMapRejected || tmr
-		if ok && (len(allowed) == 0 || allowed[p.plan.Mode]) {
+		if !ok {
+			rejections.Counts[rejectedBy]++
+		} else if len(allowed) != 0 && !allowed[p.plan.Mode] {
+			rejections.Counts["mode_policy"]++
+		} else {
 			candidates = append(candidates, p)
 		}
 	}
@@ -58,7 +68,9 @@ func Build(req Request) (Plan, error) {
 		} else if toneMapRejected {
 			r = ReasonHDRToneMapDisabled
 		}
-		return unsupportedPlan(req, r), nil
+		p := unsupportedPlan(req, r)
+		p.Rejections = rejections
+		return p, nil
 	}
 	sort.SliceStable(candidates, func(i, j int) bool {
 		a, b := candidates[i], candidates[j]
@@ -85,6 +97,7 @@ func Build(req Request) (Plan, error) {
 		return tupleKey(a.tuple) < tupleKey(b.tuple)
 	})
 	p := candidates[0].plan
+	p.Rejections = rejections
 	p.Reasons = canonicalReasons(p.Reasons)
 	p.Digest, _ = p.ComputeDigest()
 	return p, nil
@@ -173,7 +186,7 @@ func selectStreams(f mediafacts.Facts, sel Selection) (*mediafacts.Video, *media
 	return v, a, s, kind, nil
 }
 
-func makeCandidate(req Request, f mediafacts.Facts, v *mediafacts.Video, a *mediafacts.Audio, s *mediafacts.Subtitle, t playbackcap.DeliveryTuple) (candidate, bool, bool, bool) {
+func makeCandidate(req Request, f mediafacts.Facts, v *mediafacts.Video, a *mediafacts.Audio, s *mediafacts.Subtitle, t playbackcap.DeliveryTuple) (candidate, bool, bool, bool, string) {
 	p := Plan{SchemaRevision: SchemaRevision, SourceFingerprint: f.Source.Fingerprint, SourceRevision: f.Source.Revision, CapabilityEvidenceID: req.Capabilities.EvidenceID, Policy: req.Policy, MediaKind: t.Kind, Protocol: token(t.Protocol), Container: token(t.Container), Selection: req.Selection, Constraints: req.Constraints, Hardware: cleanHardware(req.Hardware), Timeline: Timeline{Mode: "vod", DurationUS: f.DurationUS, Generation: 1}}
 	if f.DurationUS == 0 || f.DurationConfidence == mediafacts.ConfidenceUnknown {
 		p.Timeline.Mode = "event"
@@ -204,11 +217,11 @@ func makeCandidate(req Request, f mediafacts.Facts, v *mediafacts.Video, a *medi
 		}
 	}
 	if !audioOK {
-		return candidate{}, false, false, false
+		return candidate{}, false, false, false, "audio_route"
 	}
 	color, valid, dvr, tmr := decideColor(v, t.Video, videoCopy, req.DisableToneMapping, req.ToneMapAlgorithm)
 	if !valid {
-		return candidate{}, false, dvr, tmr
+		return candidate{}, false, dvr, tmr, "color_route"
 	}
 	p.Color = color
 	if color != nil {
@@ -270,7 +283,7 @@ func makeCandidate(req Request, f mediafacts.Facts, v *mediafacts.Video, a *medi
 	}
 	subOK := applySubtitle(&p, s, t.Subtitle)
 	if !subOK {
-		return candidate{}, false, false, false
+		return candidate{}, false, false, false, "subtitle_route"
 	}
 	filters := s != nil && p.Subtitle.Action == BurnIn || (color != nil && color.Action != "preserve") || (v != nil && (v.Rotation != 0 || token(v.FieldOrder) != "" && token(v.FieldOrder) != "progressive"))
 	// A progressive source is not already an HLS/DASH presentation merely
@@ -290,7 +303,7 @@ func makeCandidate(req Request, f mediafacts.Facts, v *mediafacts.Video, a *medi
 		p.Mode = VideoTranscode
 		p.Reasons = append(p.Reasons, ReasonVideoConversion)
 		if req.Hardware.Backend != "" && !req.Hardware.Verified {
-			return candidate{}, false, false, false
+			return candidate{}, false, false, false, "hardware_route"
 		}
 	}
 	p.Stages = graph(p, v, a, s)
@@ -302,7 +315,7 @@ func makeCandidate(req Request, f mediafacts.Facts, v *mediafacts.Video, a *medi
 	if color != nil && color.Action != "preserve" {
 		fidelity -= 20
 	}
-	return candidate{t, p, cost, fidelity}, true, false, false
+	return candidate{t, p, cost, fidelity}, true, false, false, ""
 }
 
 func decideGapless(a mediafacts.Audio, timingCopy bool) GaplessDecision {

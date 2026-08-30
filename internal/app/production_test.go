@@ -29,6 +29,14 @@ import (
 	"github.com/PorticoMediaServer/portico-server/internal/database"
 )
 
+func stoppedPlaybackRequest(playback PlaybackResponse) PlaybackSessionStopRequest {
+	return PlaybackSessionStopRequest{
+		Disposition: "stopped", Generation: int64(playback.Generation), EventSequence: 1_000_000,
+		RecordedAt: time.Now().UTC().Format(time.RFC3339Nano), PositionSeconds: 0,
+		DurationSeconds: float64(playback.Timeline.DurationSeconds),
+	}
+}
+
 func watchWithFriendsRevisionPtr(revision int64) *int64 { return &revision }
 
 func TestDeviceRevocationDeletesSessions(t *testing.T) {
@@ -1302,7 +1310,7 @@ func TestPlaybackActiveRestoreReturnsCurrentSession(t *testing.T) {
 		t.Fatalf("expected same-client active session target status=%d body=%s targets=%#v", status, body, targets)
 	}
 
-	status, body = doJSON(t, client, http.MethodDelete, serverURL+"/api/playback-sessions/"+playback.SessionID, nil, nil)
+	status, body = doJSON(t, client, http.MethodDelete, serverURL+"/api/playback-sessions/"+playback.SessionID, stoppedPlaybackRequest(playback), nil)
 	if status != http.StatusOK {
 		t.Fatalf("stop playback status = %d, body: %s", status, body)
 	}
@@ -1397,13 +1405,10 @@ func setMediaDurationForProgressTest(t *testing.T, db *sql.DB, mediaID string) {
 
 func setPlaybackProgressPreferencesForTest(t *testing.T, db *sql.DB, userID string, preferences PlaybackProgressPreferences) {
 	t.Helper()
-	raw, err := json.Marshal(map[string]any{"playbackProgress": preferences})
-	if err != nil {
-		t.Fatalf("marshal playback progress preferences: %v", err)
-	}
-	if _, err := db.Exec(`UPDATE users SET preferences_json = ? WHERE id = ?`, string(raw), userID); err != nil {
-		t.Fatalf("set playback progress preferences: %v", err)
-	}
+	setProfileServerPreferenceValuesForTest(t, db, userID, func(values *profileServerPreferenceValues) {
+		values.Playback.StartedThresholdPercent = preferences.StartedThresholdPercent
+		values.Playback.PlayedThresholdPercent = preferences.PlayedThresholdPercent
+	})
 }
 
 func writeOrderedPlaybackProgressForTest(t *testing.T, db *sql.DB, client *http.Client, serverURL, mediaID string, progressSeconds, durationSeconds int) MediaItem {
@@ -1436,16 +1441,56 @@ func writeOrderedPlaybackProgressForTest(t *testing.T, db *sql.DB, client *http.
 
 func setUserPrivacyPreferencesForTest(t *testing.T, db *sql.DB, userID string, preferences UserPrivacyPreferences) {
 	t.Helper()
-	raw, err := json.Marshal(map[string]any{"privacy": preferences})
+	setProfileServerPreferenceValuesForTest(t, db, userID, func(values *profileServerPreferenceValues) {
+		values.Privacy.PauseWatchHistory = preferences.PauseWatchHistory
+		values.Privacy.ShowActivityToMembers = preferences.ShowActivityToMembers
+		values.Privacy.IncludeInWatchWithFriends = preferences.IncludeInWatchWithFriends
+	})
+}
+
+func setProfileServerPreferenceValuesForTest(t *testing.T, db *sql.DB, profileID string, mutate func(*profileServerPreferenceValues)) {
+	t.Helper()
+	server := &Server{db: db}
+	serverID, err := server.profileDirectoryServerIDContext(context.Background())
 	if err != nil {
-		t.Fatalf("marshal privacy preferences: %v", err)
+		t.Fatalf("load server identity for preferences: %v", err)
 	}
-	if _, err := db.Exec(`UPDATE users SET preferences_json = ? WHERE id = ?`, string(raw), userID); err != nil {
-		t.Fatalf("set privacy preferences: %v", err)
+	values := defaultProfileServerValues(User{})
+	var existing string
+	if err := db.QueryRow(`SELECT values_json FROM viewer_preference_documents WHERE scope_type = 'profile-server' AND profile_id = ? AND server_id = ?`, profileID, serverID).Scan(&existing); err == nil {
+		if err := json.Unmarshal([]byte(existing), &values); err != nil {
+			t.Fatalf("decode profile-server preferences: %v", err)
+		}
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("load profile-server preferences: %v", err)
 	}
-	if _, err := db.Exec(`UPDATE profiles SET preferences_json = ? WHERE id = ? OR (account_id = ? AND is_primary = 1)`, string(raw), userID, userID); err != nil {
-		t.Fatalf("set profile privacy preferences: %v", err)
+	mutate(&values)
+	raw, err := json.Marshal(values)
+	if err != nil {
+		t.Fatalf("marshal profile-server preferences: %v", err)
 	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	if _, err := db.Exec(`
+		INSERT INTO viewer_preference_documents (
+			id, scope_type, authority, account_id, profile_id, server_id, device_class, installation_id,
+			version, revision, values_json, created_at, updated_at
+		) VALUES (?, 'profile-server', 'local', ?, ?, ?, '', '', 'v1', 1, ?, ?, ?)
+		ON CONFLICT(scope_type, authority, account_id, profile_id, server_id, device_class, installation_id)
+		DO UPDATE SET values_json = excluded.values_json, revision = viewer_preference_documents.revision + 1, updated_at = excluded.updated_at`,
+		randomID("pref"), userIDForProfileTest(t, db, profileID), profileID, serverID, string(raw), now, now); err != nil {
+		t.Fatalf("store profile-server preferences: %v", err)
+	}
+}
+
+func userIDForProfileTest(t *testing.T, db *sql.DB, profileID string) string {
+	t.Helper()
+	var accountID string
+	if err := db.QueryRow(`SELECT account_id FROM profiles WHERE id = ?`, profileID).Scan(&accountID); err == nil {
+		return accountID
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("load preference profile account: %v", err)
+	}
+	return profileID
 }
 
 func TestPlaybackHeartbeatPersistsMediaProgress(t *testing.T) {
@@ -1533,7 +1578,7 @@ func TestPausedWatchHistorySuppressesPlaybackProgressAndHistory(t *testing.T) {
 		t.Fatalf("paused watch history wrote %d media state row(s)", stateRows)
 	}
 
-	status, body = doJSON(t, client, http.MethodDelete, serverURL+"/api/playback-sessions/"+playback.SessionID, nil, nil)
+	status, body = doJSON(t, client, http.MethodDelete, serverURL+"/api/playback-sessions/"+playback.SessionID, stoppedPlaybackRequest(playback), nil)
 	if status != http.StatusOK {
 		t.Fatalf("stop playback status = %d, body: %s", status, body)
 	}
@@ -1737,7 +1782,7 @@ func TestPlaybackProgressEventsRejectStaleUpdatesAndAllowIntentionalRewind(t *te
 	}
 }
 
-func TestPlaybackStopPreservesHeartbeatSecondsWithoutDuration(t *testing.T) {
+func TestPlaybackStopPersistsItsAtomicPositionWhenMediaStateIsMissing(t *testing.T) {
 	serverURL, db := newAuthTestServerWithDB(t)
 	setMediaDurationForProgressTest(t, db, "movie_meridian")
 	seedExactPlaybackFactsForFixture(t, &Server{db: db}, "movie_meridian")
@@ -1745,6 +1790,10 @@ func TestPlaybackStopPreservesHeartbeatSecondsWithoutDuration(t *testing.T) {
 	client := &http.Client{Jar: jar}
 	loginUser(t, client, serverURL)
 	userID := adminUserID(t, db)
+	var profileID string
+	if err := db.QueryRow(`SELECT id FROM profiles WHERE account_id = ? AND is_primary = 1`, userID).Scan(&profileID); err != nil {
+		t.Fatalf("load admin primary profile: %v", err)
+	}
 
 	var playback PlaybackResponse
 	status, body := doJSON(t, client, http.MethodPost, serverURL+"/api/playback-sessions", authenticatedPlaybackRuntimeRequest("movie_meridian"), &playback)
@@ -1762,11 +1811,13 @@ func TestPlaybackStopPreservesHeartbeatSecondsWithoutDuration(t *testing.T) {
 		t.Fatalf("heartbeat status = %d, body: %s", status, body)
 	}
 
-	if _, err := db.Exec(`DELETE FROM user_media_state WHERE user_id = ? AND media_id = ?`, userID, "movie_meridian"); err != nil {
+	if _, err := db.Exec(`DELETE FROM user_media_state WHERE profile_id = ? AND media_id = ?`, profileID, "movie_meridian"); err != nil {
 		t.Fatalf("clear media state before stop: %v", err)
 	}
 
-	status, body = doJSON(t, client, http.MethodDelete, serverURL+"/api/playback-sessions/"+playback.SessionID, nil, nil)
+	stopRequest := stoppedPlaybackRequest(playback)
+	stopRequest.PositionSeconds = 600
+	status, body = doJSON(t, client, http.MethodDelete, serverURL+"/api/playback-sessions/"+playback.SessionID, stopRequest, nil)
 	if status != http.StatusOK {
 		t.Fatalf("stop playback status = %d, body: %s", status, body)
 	}
@@ -1992,6 +2043,8 @@ func TestStalePlaybackSessionFinalizesProgressFromServerTelemetry(t *testing.T) 
 	if endedAt == "" {
 		t.Fatalf("expected stale playback session to be stopped")
 	}
+	assertCount(t, db, `SELECT COUNT(*) FROM playback_media_grants WHERE playback_session_id = '`+playback.SessionID+`' AND revoked_at = ''`, 0)
+	assertCount(t, db, `SELECT COUNT(*) FROM playback_session_continuation_credentials WHERE playback_session_id = '`+playback.SessionID+`' AND revoked_at = ''`, 0)
 }
 
 func TestUserRemoteBitrateLimitCapsPlaybackDecision(t *testing.T) {
@@ -2181,7 +2234,7 @@ func TestUserPlaybackStreamLimitRejectsAdditionalPlayback(t *testing.T) {
 		t.Fatalf("second playback status=%d body=%s", status, body)
 	}
 
-	status, body = doJSON(t, client, http.MethodDelete, serverURL+"/api/playback-sessions/"+first.SessionID, nil, nil)
+	status, body = doJSON(t, client, http.MethodDelete, serverURL+"/api/playback-sessions/"+first.SessionID, stoppedPlaybackRequest(first), nil)
 	if status != http.StatusOK {
 		t.Fatalf("end first playback status=%d body=%s", status, body)
 	}
@@ -2951,7 +3004,7 @@ func TestFilesystemBrowseResolvesSymlinkDirectoryEntries(t *testing.T) {
 	}
 	req := httptest.NewRequest(http.MethodGet, "/api/filesystem/browse?path="+url.QueryEscape(root), nil)
 	recorder := httptest.NewRecorder()
-	server.handleFilesystemBrowse(recorder, req, User{ID: "usr_owner", Role: "owner", Permissions: ownerPermissions()})
+	server.handleFilesystemBrowse(recorder, req, User{ID: "usr_owner", AccountID: "usr_owner", ProfileID: "usr_owner", ProfileIsPrimary: true, Role: "owner", AuthProvider: "local", Permissions: ownerPermissions()})
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("browse status = %d, body=%s", recorder.Code, recorder.Body.String())
 	}
@@ -2996,7 +3049,7 @@ func TestFilesystemCreateDirectoryCreatesOnlyFinalFolder(t *testing.T) {
 	target := filepath.Join(root, "New Folder")
 	req := newFilesystemCreateDirectoryRequest(t, target)
 	recorder := httptest.NewRecorder()
-	server.handleFilesystemDirectories(recorder, req, User{ID: "usr_owner", Role: "owner", Permissions: ownerPermissions()})
+	server.handleFilesystemDirectories(recorder, req, User{ID: "usr_owner", AccountID: "usr_owner", ProfileID: "usr_owner", ProfileIsPrimary: true, Role: "owner", AuthProvider: "local", Permissions: ownerPermissions()})
 	if recorder.Code != http.StatusCreated {
 		t.Fatalf("create directory status = %d, body=%s", recorder.Code, recorder.Body.String())
 	}
@@ -3045,7 +3098,7 @@ func TestFilesystemCreateDirectoryRejectsUnsafePaths(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			req := newFilesystemCreateDirectoryRequest(t, tt.path)
 			recorder := httptest.NewRecorder()
-			server.handleFilesystemDirectories(recorder, req, User{ID: "usr_owner", Role: "owner", Permissions: ownerPermissions()})
+			server.handleFilesystemDirectories(recorder, req, User{ID: "usr_owner", AccountID: "usr_owner", ProfileID: "usr_owner", ProfileIsPrimary: true, Role: "owner", AuthProvider: "local", Permissions: ownerPermissions()})
 			if recorder.Code != tt.wantCode {
 				t.Fatalf("create directory status = %d, expected %d, body=%s", recorder.Code, tt.wantCode, recorder.Body.String())
 			}
@@ -4007,46 +4060,6 @@ func TestSystemDiagnosticsReportsJobLaneBacklog(t *testing.T) {
 	}
 	if lanes[jobLaneMetadata].Queued != 1 || lanes[jobLaneMetadata].Running != 0 {
 		t.Fatalf("metadata backlog = queued %d running %d, expected 1/0: %#v", lanes[jobLaneMetadata].Queued, lanes[jobLaneMetadata].Running, diagnostics.JobLanes)
-	}
-}
-
-func TestLocalizationEndpointIsPublicAndIncludesRatingSystems(t *testing.T) {
-	serverURL, db := newAuthTestServerWithDB(t)
-	if _, err := db.Exec(`
-		UPDATE localization_rating_values
-		SET label = 'PG-13 Catalog', labels_json = '{"en-US":"PG-13 Catalog","fr-CA":"PG-13 catalogue"}'
-		WHERE country = 'US' AND system = 'MPA' AND rating = 'PG-13'`); err != nil {
-		t.Fatalf("update rating catalog: %v", err)
-	}
-	var info LocalizationInfo
-	status, body := doJSON(t, http.DefaultClient, http.MethodGet, serverURL+"/api/localization", nil, &info)
-	if status != http.StatusOK {
-		t.Fatalf("localization status = %d, body: %s", status, body)
-	}
-	if len(info.Locales) < 10 || len(info.Languages) < 10 || len(info.Countries) < 4 || len(info.TimeZones) == 0 || info.GeneratedAt == "" {
-		t.Fatalf("localization info missing core options: %#v", info)
-	}
-	foundUS := false
-	for _, system := range info.RatingSystems {
-		if system.Country == "US" && system.System == "MPA" {
-			for _, rating := range system.Ratings {
-				if rating.ID == "PG-13" && rating.Rank == 4 && rating.Label == "PG-13 Catalog" && rating.Labels["fr-CA"] == "PG-13 catalogue" && rating.MinimumAge == 13 {
-					foundUS = true
-				}
-			}
-		}
-	}
-	if !foundUS {
-		t.Fatalf("localization info missing US MPA rating system: %#v", info.RatingSystems)
-	}
-	foundFrenchCountryLabel := false
-	for _, country := range info.Countries {
-		if country.ID == "GB" && country.Labels["fr-CA"] == "Royaume-Uni" {
-			foundFrenchCountryLabel = true
-		}
-	}
-	if !foundFrenchCountryLabel {
-		t.Fatalf("localization info missing localized country labels: %#v", info.Countries)
 	}
 }
 

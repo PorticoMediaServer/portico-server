@@ -2,7 +2,10 @@ package app
 
 import (
 	"bytes"
+	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -563,6 +566,15 @@ func TestMusicHandoffCarriesQueueHistoryToNewSession(t *testing.T) {
 	if prepareRec.Code != http.StatusOK {
 		t.Fatalf("prepare status=%d body=%s", prepareRec.Code, prepareRec.Body.String())
 	}
+	var preparedWire struct {
+		Playback map[string]any `json:"playback"`
+	}
+	if err := json.Unmarshal(prepareRec.Body.Bytes(), &preparedWire); err != nil {
+		t.Fatalf("decode prepared wire response: %v", err)
+	}
+	if credential, present := preparedWire.Playback["continuationCredential"]; !present || credential != nil {
+		t.Fatalf("prepared wire continuationCredential = %#v (present=%t), want explicit credential-free null", credential, present)
+	}
 	var prepared PlaybackPreparedResponse
 	if err := json.Unmarshal(prepareRec.Body.Bytes(), &prepared); err != nil {
 		t.Fatalf("decode prepare response: %v", err)
@@ -571,7 +583,26 @@ func TestMusicHandoffCarriesQueueHistoryToNewSession(t *testing.T) {
 		t.Fatalf("prepared response = %#v", prepared)
 	}
 
-	handoffBody, err := json.Marshal(PlaybackHandoffRequest{PreparedSessionID: prepared.PreparedSessionID, MediaID: "track_handoff_b", QueueMediaIDs: []string{"track_handoff_c"}, ProgressSeconds: 118, Intent: PlaybackIntent{QualityProfile: "standard", PreferredSubtitleMode: "off"}})
+	fractionalProgressBody := []byte(fmt.Sprintf(`{"preparedSessionId":%q,"requestId":"fractional-progress","progressSeconds":14.9}`, prepared.PreparedSessionID))
+	fractionalProgressReq := httptest.NewRequest(http.MethodPost, "/api/playback-sessions/"+started.SessionID+"/handoff", bytes.NewReader(fractionalProgressBody))
+	fractionalProgressRec := httptest.NewRecorder()
+	server.handlePlaybackHandoff(fractionalProgressRec, fractionalProgressReq, user, started.SessionID)
+	if fractionalProgressRec.Code != http.StatusBadRequest || !strings.Contains(fractionalProgressRec.Body.String(), "bad_json") {
+		t.Fatalf("fractional progress handoff status=%d body=%s", fractionalProgressRec.Code, fractionalProgressRec.Body.String())
+	}
+
+	missingRequestIDBody, err := json.Marshal(PlaybackHandoffRequest{PreparedSessionID: prepared.PreparedSessionID, MediaID: "track_handoff_b", QueueMediaIDs: []string{"track_handoff_c"}, ProgressSeconds: 118})
+	if err != nil {
+		t.Fatalf("marshal missing-request-id handoff: %v", err)
+	}
+	missingRequestIDReq := httptest.NewRequest(http.MethodPost, "/api/playback-sessions/"+started.SessionID+"/handoff", bytes.NewReader(missingRequestIDBody))
+	missingRequestIDRec := httptest.NewRecorder()
+	server.handlePlaybackHandoff(missingRequestIDRec, missingRequestIDReq, user, started.SessionID)
+	if missingRequestIDRec.Code != http.StatusBadRequest || !strings.Contains(missingRequestIDRec.Body.String(), "handoff_request_id_invalid") {
+		t.Fatalf("missing request ID handoff status=%d body=%s", missingRequestIDRec.Code, missingRequestIDRec.Body.String())
+	}
+
+	handoffBody, err := json.Marshal(PlaybackHandoffRequest{RequestID: "handoff-track-b", PreparedSessionID: prepared.PreparedSessionID, MediaID: "track_handoff_b", QueueMediaIDs: []string{"track_handoff_c"}, ProgressSeconds: 118, Intent: PlaybackIntent{QualityProfile: "standard", PreferredSubtitleMode: "off"}})
 	if err != nil {
 		t.Fatalf("marshal handoff request: %v", err)
 	}
@@ -628,6 +659,51 @@ func TestMusicHandoffCarriesQueueHistoryToNewSession(t *testing.T) {
 	}
 	if oldEndedAt == "" {
 		t.Fatalf("old playback session was not ended during handoff")
+	}
+	var activeSourceGrants, activeReplacementGrants, activeSourceContinuations int
+	if err := server.db.QueryRow(`SELECT COUNT(1) FROM playback_media_grants WHERE playback_session_id = ? AND revoked_at = ''`, started.SessionID).Scan(&activeSourceGrants); err != nil {
+		t.Fatalf("count source grants: %v", err)
+	}
+	if err := server.db.QueryRow(`SELECT COUNT(1) FROM playback_media_grants WHERE playback_session_id = ? AND revoked_at = ''`, handedOff.SessionID).Scan(&activeReplacementGrants); err != nil {
+		t.Fatalf("count replacement grants: %v", err)
+	}
+	if err := server.db.QueryRow(`SELECT COUNT(1) FROM playback_session_continuation_credentials WHERE playback_session_id = ? AND revoked_at = ''`, started.SessionID).Scan(&activeSourceContinuations); err != nil {
+		t.Fatalf("count source continuations: %v", err)
+	}
+	if activeSourceGrants != 0 || activeSourceContinuations != 0 || activeReplacementGrants == 0 {
+		t.Fatalf("handoff authority cleanup source_grants=%d source_continuations=%d replacement_grants=%d", activeSourceGrants, activeSourceContinuations, activeReplacementGrants)
+	}
+
+	secondPrepareBody, _ := json.Marshal(PlaybackPrepareNextRequest{MediaID: "track_handoff_c", SourceContext: sourceContext})
+	secondPrepareReq := httptest.NewRequest(http.MethodPost, "/api/playback-sessions/"+handedOff.SessionID+"/prepare-next", bytes.NewReader(secondPrepareBody))
+	secondPrepareRec := httptest.NewRecorder()
+	server.handlePlaybackPrepareNext(secondPrepareRec, secondPrepareReq, user, handedOff.SessionID)
+	if secondPrepareRec.Code != http.StatusOK {
+		t.Fatalf("second prepare status=%d body=%s", secondPrepareRec.Code, secondPrepareRec.Body.String())
+	}
+	var secondPrepared PlaybackPreparedResponse
+	if err := json.Unmarshal(secondPrepareRec.Body.Bytes(), &secondPrepared); err != nil {
+		t.Fatalf("decode second prepare: %v", err)
+	}
+	secondHandoffBody, _ := json.Marshal(PlaybackHandoffRequest{RequestID: "handoff-track-c", PreparedSessionID: secondPrepared.PreparedSessionID, ProgressSeconds: 119})
+	secondHandoffReq := httptest.NewRequest(http.MethodPost, "/api/playback-sessions/"+handedOff.SessionID+"/handoff", bytes.NewReader(secondHandoffBody))
+	secondHandoffRec := httptest.NewRecorder()
+	server.handlePlaybackHandoff(secondHandoffRec, secondHandoffReq, user, handedOff.SessionID)
+	if secondHandoffRec.Code != http.StatusOK {
+		t.Fatalf("second handoff status=%d body=%s", secondHandoffRec.Code, secondHandoffRec.Body.String())
+	}
+	var final PlaybackResponse
+	if err := json.Unmarshal(secondHandoffRec.Body.Bytes(), &final); err != nil {
+		t.Fatalf("decode second handoff: %v", err)
+	}
+	if final.Media.ID != "track_handoff_c" {
+		t.Fatalf("second handoff media=%q", final.Media.ID)
+	}
+	var activeMiddleGrants, activeFinalGrants int
+	_ = server.db.QueryRow(`SELECT COUNT(1) FROM playback_media_grants WHERE playback_session_id = ? AND revoked_at = ''`, handedOff.SessionID).Scan(&activeMiddleGrants)
+	_ = server.db.QueryRow(`SELECT COUNT(1) FROM playback_media_grants WHERE playback_session_id = ? AND revoked_at = ''`, final.SessionID).Scan(&activeFinalGrants)
+	if activeMiddleGrants != 0 || activeFinalGrants == 0 {
+		t.Fatalf("multi-hop authority cleanup middle_grants=%d final_grants=%d", activeMiddleGrants, activeFinalGrants)
 	}
 }
 
@@ -866,7 +942,11 @@ func TestPlaybackSessionQueueMutationFiltersUnavailableMedia(t *testing.T) {
 			('track_queue_blocked', 'lib_queue_blocked', 'track', 'Blocked', 'Blocked', ?, 'https://media.example.com/blocked.mp3', 120)`, now, now); err != nil {
 		t.Fatalf("insert tracks: %v", err)
 	}
-	user := User{ID: "usr_queue_limited", Username: "limited", Email: "limited@example.test", DisplayName: "Limited", Role: "user", Permissions: map[string]bool{"playMedia": true}}
+	var profileID string
+	if err := server.db.QueryRow(`SELECT id FROM profiles WHERE account_id = 'usr_queue_limited' AND is_primary = 1`).Scan(&profileID); err != nil {
+		t.Fatalf("load limited profile: %v", err)
+	}
+	user := User{ID: "usr_queue_limited", AccountID: "usr_queue_limited", ProfileID: profileID, ProfileIsPrimary: true, Username: "limited", Email: "limited@example.test", DisplayName: "Limited", Role: "user", Permissions: map[string]bool{"playMedia": true}}
 	started := startPlaybackForTest(t, server, user, PlaybackSessionCreateRequest{MediaID: "track_queue_allowed", Intent: PlaybackIntent{QualityProfile: "original"}})
 
 	revision := started.QueueRevision
@@ -906,7 +986,11 @@ func TestPlaybackStartFiltersRestrictedSourceContextMediaIDs(t *testing.T) {
 			('track_context_blocked', 'lib_context_blocked', 'track', 'Blocked', 'Blocked', ?, 'https://media.example.com/blocked.mp3', 120)`, now, now); err != nil {
 		t.Fatalf("insert tracks: %v", err)
 	}
-	user := User{ID: "usr_context_limited", Username: "context", Email: "context@example.test", DisplayName: "Context", Role: "user", Permissions: map[string]bool{"playMedia": true, "transcode": true}}
+	var profileID string
+	if err := server.db.QueryRow(`SELECT id FROM profiles WHERE account_id = 'usr_context_limited' AND is_primary = 1`).Scan(&profileID); err != nil {
+		t.Fatalf("load context profile: %v", err)
+	}
+	user := User{ID: "usr_context_limited", AccountID: "usr_context_limited", ProfileID: profileID, ProfileIsPrimary: true, Username: "context", Email: "context@example.test", DisplayName: "Context", Role: "user", Permissions: map[string]bool{"playMedia": true, "transcode": true}}
 	playback := startPlaybackForTest(t, server, user, PlaybackSessionCreateRequest{
 		MediaID:       "track_context_allowed",
 		QueueMediaIDs: []string{"track_context_blocked"},
@@ -973,12 +1057,12 @@ func TestPlaybackRestorePreservesSelectedQualityAudioSubtitleAndVersion(t *testi
 		}
 	}
 	if _, err := server.db.Exec(`
-		INSERT INTO media_streams (id, media_id, kind, codec, language, channels, bitrate, width, height, display_title)
+		INSERT INTO media_streams (id, media_id, file_id, source_kind, stream_index, kind, codec, language, channels, bitrate, width, height, display_title)
 		VALUES
-			('video_main', 'movie_restore_selection', 'video', 'h264', '', 0, 4000000, 1920, 1080, 'H264'),
-			('audio_main', 'movie_restore_selection', 'audio', 'aac', 'eng', 2, 160000, 0, 0, 'English'),
-			('audio_alt', 'movie_restore_selection', 'audio', 'aac', 'fra', 2, 160000, 0, 0, 'French'),
-			('sub_text', 'movie_restore_selection', 'subtitle', 'webvtt', 'eng', 0, 0, 0, 0, 'English')`); err != nil {
+			('video_main', 'movie_restore_selection', 'version_alternate', 'ffprobe', 0, 'video', 'h264', '', 0, 4000000, 1920, 1080, 'H264'),
+			('audio_main', 'movie_restore_selection', 'version_alternate', 'ffprobe', 1, 'audio', 'aac', 'eng', 2, 160000, 0, 0, 'English'),
+			('audio_alt', 'movie_restore_selection', 'version_alternate', 'ffprobe', 2, 'audio', 'aac', 'fra', 2, 160000, 0, 0, 'French'),
+			('sub_text', 'movie_restore_selection', 'version_alternate', 'sidecar', 3, 'subtitle', 'webvtt', 'eng', 0, 0, 0, 0, 'English')`); err != nil {
 		t.Fatalf("insert streams: %v", err)
 	}
 	if _, err := server.db.Exec(`UPDATE media_streams SET source_url = '/api/media/movie_restore_selection/subtitles/sub_text' WHERE id = 'sub_text'`); err != nil {
@@ -1057,6 +1141,10 @@ func mediaIDsForTest(items []MediaItem) []string {
 func TestPlaybackStartServesDirectPlayAsByteRangeStream(t *testing.T) {
 	server := newScannerTestServer(t)
 	user := dvrTestUser(t, server)
+	analysisCtx, unregisterAnalysis := server.mediaResourceGovernor().registerBackgroundContext(context.Background())
+	defer unregisterAnalysis()
+	analysisWriteStarted := make(chan struct{})
+	analysisWriteDone := make(chan error, 1)
 	now := time.Now().UTC().Format(time.RFC3339)
 	if _, err := server.db.Exec(`INSERT INTO libraries (id, name, type, created_at) VALUES ('lib_direct_play_hls', 'Movies', 'movie', ?)`, now); err != nil {
 		t.Fatalf("insert library: %v", err)
@@ -1072,6 +1160,21 @@ func TestPlaybackStartServesDirectPlayAsByteRangeStream(t *testing.T) {
 			('movie_direct_play_hls_video', 'movie_direct_play_hls', 'video', 'h264', 0, 4000000, 1920, 1080, 'H264 Main - 1920x1080', 'main', 'yuv420p', 8, 24, '', 0, 0),
 			('movie_direct_play_hls_audio', 'movie_direct_play_hls', 'audio', 'aac', 2, 160000, 0, 0, 'eng - AAC LC - 2 ch', 'lc', '', 0, 0, 'stereo', 48000, 1)`); err != nil {
 		t.Fatalf("insert streams: %v", err)
+	}
+	go func() {
+		analysisWriteDone <- server.withBackgroundTxTagged(analysisCtx, []string{"jobs", "media"}, func(tx *sql.Tx) error {
+			if _, err := tx.ExecContext(analysisCtx, `UPDATE media_items SET sort_title = sort_title WHERE id = 'movie_direct_play_hls'`); err != nil {
+				return err
+			}
+			close(analysisWriteStarted)
+			<-analysisCtx.Done()
+			return context.Cause(analysisCtx)
+		})
+	}()
+	select {
+	case <-analysisWriteStarted:
+	case <-time.After(time.Second):
+		t.Fatal("scanner-style background write did not enter its transaction")
 	}
 	body, err := json.Marshal(PlaybackSessionCreateRequest{
 		MediaID: "movie_direct_play_hls",
@@ -1117,6 +1220,35 @@ func TestPlaybackStartServesDirectPlayAsByteRangeStream(t *testing.T) {
 	}
 	if playback.Decision.RequiresRemux {
 		t.Fatalf("direct byte-range playback should not require remux, got %+v", playback.Decision)
+	}
+	if playback.SelectedAudioStreamID != "movie_direct_play_hls_audio" {
+		t.Fatalf("selected audio stream = %q, want the sole planner-admitted stream", playback.SelectedAudioStreamID)
+	}
+	if len(playback.AudioStreams) != 1 || playback.AudioStreams[0].ID != playback.SelectedAudioStreamID || playback.AudioStreams[0].Codec != "aac" || playback.AudioStreams[0].Bitrate != 160000 || playback.AudioStreams[0].Channels != 2 || playback.AudioStreams[0].ChannelLayout != "stereo" || playback.AudioStreams[0].DisplayTitle != "eng - AAC LC - 2 ch" {
+		t.Fatalf("audio response metadata did not describe the selected planner stream: selected=%q streams=%+v", playback.SelectedAudioStreamID, playback.AudioStreams)
+	}
+	select {
+	case <-analysisCtx.Done():
+		if !errors.Is(context.Cause(analysisCtx), errRemoteStoragePreempted) {
+			t.Fatalf("analysis preemption cause = %v", context.Cause(analysisCtx))
+		}
+	case <-time.After(time.Second):
+		t.Fatal("direct-play admission did not preempt scan analysis")
+	}
+	select {
+	case err := <-analysisWriteDone:
+		if !errors.Is(err, errRemoteStoragePreempted) {
+			t.Fatalf("background analysis write exit = %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("preempted scanner-style background write did not release SQLite promptly")
+	}
+	if playback.MediaGrant.Token == "" {
+		t.Fatal("direct-play admission did not issue a media grant after analysis preemption")
+	}
+	mediaRequest := mediaGrantRequest(http.MethodGet, playback.SourceURL, playback.MediaGrant.Token)
+	if resolved, err := server.userForMediaGrant(mediaRequest); err != nil || resolved.ID != user.ID {
+		t.Fatalf("direct-play media read was not authorized after analysis preemption: user=%q err=%v", resolved.ID, err)
 	}
 }
 
@@ -1166,6 +1298,13 @@ func TestPlaybackStartValidatesAndPropagatesSelectedAudioStream(t *testing.T) {
 	}
 	if playback.Decision.Mode != "direct_play" || !strings.Contains(playback.SourceURL, "/stream") || strings.Contains(playback.SourceURL, "/hls/") {
 		t.Fatalf("compatible MP4 selection should retain canonical direct byte-range resource: decision=%#v source=%q", playback.Decision, playback.SourceURL)
+	}
+	defaultPlayback := startPlaybackForTest(t, server, user, PlaybackSessionCreateRequest{
+		MediaID:       "movie_audio_select_hls",
+		ClientProfile: profile,
+	})
+	if defaultPlayback.SelectedAudioStreamID != "movie_audio_select_hls_audio_main" {
+		t.Fatalf("planner-selected default audio stream = %q, want main stream index 1", defaultPlayback.SelectedAudioStreamID)
 	}
 
 	body, err := json.Marshal(PlaybackSessionCreateRequest{

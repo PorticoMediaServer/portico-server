@@ -15,7 +15,7 @@ const viewer: Viewer = {
 };
 
 const movie: MediaItem = {
-  id: 'healthy-movie', title: 'Healthy movie result', subtitle: '', year: 2026, type: 'movie', kind: 'movie', poster: '', backdrop: '', rating: '', length: '', genre: '', actions: [],
+  id: 'healthy-movie', title: 'Healthy movie result', subtitle: '', year: 2026, entityKind: 'movie', poster: '', backdrop: '', rating: '', length: '', genre: '', actions: [],
 };
 
 describe('QuickSearchPanel', () => {
@@ -47,7 +47,7 @@ describe('QuickSearchPanel', () => {
       sort: 'relevance',
       direction: 'desc',
       groups: [{ id: 'music', title: 'Music', entityKind: 'track', status: 'success', items: [
-        { ...movie, id: 'album-blue', title: 'Blue', type: 'music', kind: 'album', entityKind: 'album' },
+        { ...movie, id: 'album-blue', title: 'Blue', entityKind: 'album' },
       ], hasMore: false, nextCursor: null }],
     });
 

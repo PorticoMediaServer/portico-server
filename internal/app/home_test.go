@@ -408,7 +408,7 @@ func TestHomeRecommendationsUsePersistentCache(t *testing.T) {
 		t.Fatalf("store recommendation cache: %v", err)
 	}
 
-	rows := server.recommendationRows(User{ID: userID})
+	rows := server.recommendationRows(User{ID: userID, AccountID: userID, ProfileID: userID})
 	if len(rows) != 1 || len(rows[0].Items) != 1 || rows[0].Items[0].ID != "movie_saffron" {
 		t.Fatalf("recommendation row did not use cache: %#v", rows)
 	}

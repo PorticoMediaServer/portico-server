@@ -733,7 +733,7 @@ export function resolveDeliveryPreference(preferences: ProfileDeviceClassPrefere
 /** Produces portable intent for playback start, restore, prepare-next, and handoff. */
 export function playbackIntentFromPreferences(
   preferences: ProfileDeviceClassPreferences,
-  network: NonNullable<PlaybackIntent["networkClass"]>,
+  network: NetworkClass,
   policy: PlaybackPreferencePolicy,
   portablePreferences?: {
     playback: Pick<ProfileServerPreferences["playback"], "preferredAudioLanguages" | "preferredSubtitleLanguages" | "subtitlesEnabled">;
@@ -764,7 +764,6 @@ export function playbackIntentFromPreferences(
       .find((language) => language.length > 0)
     : undefined;
   return {
-    networkClass: network,
     transportClass: network === "wifi" || network === "cellular" ? network : "unknown",
     qualityProfile,
     ...deliveryPolicies,

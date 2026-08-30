@@ -1,9 +1,10 @@
 import { createHostedServicesClient, createPorticoClient, type PorticoAccountUser } from '@porticomediaserver/client-core';
-import { RefreshCw, X } from '#portico-icons';
+import { ActionRefreshIcon, ActionCloseIcon } from '#portico-icons';
 import { useCallback, useMemo, useState } from 'react';
 import { IconButton, SecondaryButton } from '../components/controls/Buttons';
 import { ModalOverlay } from '../components/overlay/OverlayPortal';
 import { AccountSettings } from '../features/settings/PersonalSettings';
+import { PeopleOperations } from '../features/settings/PeopleOperations';
 import { HttpSettingsDataSource } from '../features/settings/HttpSettingsDataSource';
 import { SettingsError, SettingsLoading } from '../features/settings/SettingsControls';
 import { useSettingsQuery } from '../features/settings/settingsHooks';
@@ -51,6 +52,7 @@ function parseAccountUser(value: unknown): PorticoAccountUser {
 export function HostedAccountSettingsDialog({ onDismiss }: { onDismiss: () => void }) {
   const runtime = useRuntime();
   const [revision, setRevision] = useState(0);
+  const [section, setSection] = useState<'account' | 'people'>('account');
   const hosted = useMemo(() => createHostedServicesClient({
     hostedApiBaseUrl: runtime.config.hostedApiBaseUrl,
     csrfToken: hostedCSRFToken,
@@ -60,14 +62,30 @@ export function HostedAccountSettingsDialog({ onDismiss }: { onDismiss: () => vo
   const source = useMemo(() => new HttpSettingsDataSource(
     unavailableServerClient,
     hosted,
-    { syncHostedIdentityToServer: false },
-  ), [hosted]);
+    {
+      syncHostedIdentityToServer: false,
+      authoritativeServerId: runtime.selectedHostedServerId,
+    },
+  ), [hosted, runtime.selectedHostedServerId]);
   const load = useCallback(async (_source: SettingsDataSource, signal: AbortSignal) => {
     const response = await hosted.account();
     if (signal.aborted) throw signal.reason;
     return accountViewer(parseAccountUser(response.user));
   }, [hosted]);
   const query = useSettingsQuery(load, source, revision, { automaticHostedRetry: true });
+  const people = useSettingsQuery(
+    useCallback(
+      (next: SettingsDataSource, signal: AbortSignal) => runtime.selectedHostedServerId
+        && section === 'people'
+        ? next.settingsOperations('people', signal)
+        : section !== 'people'
+          ? Promise.resolve(null)
+        : Promise.reject(new TypeError('Choose a server before opening People settings.')),
+      [runtime.selectedHostedServerId, section],
+    ),
+    source,
+    revision,
+  );
   const availability = query.hostedAvailability;
 
   return <ModalOverlay className="portico-settings-dialog runtime-account-settings-dialog" labelledBy="runtime-account-settings-title" onDismiss={onDismiss}>
@@ -76,18 +94,25 @@ export function HostedAccountSettingsDialog({ onDismiss }: { onDismiss: () => vo
         <h2 id="runtime-account-settings-title">Portico Account settings</h2>
         <p>These settings remain available even when your media server is offline.</p>
       </div>
-      <IconButton label="Close account settings" onClick={onDismiss}><X /></IconButton>
+      <IconButton label="Close account settings" onClick={onDismiss}><ActionCloseIcon /></IconButton>
     </header>
+    <nav className="runtime-account-settings-sections" aria-label="Account settings sections">
+      <button type="button" aria-current={section === 'account' ? 'page' : undefined} onClick={() => setSection('account')}>Account</button>
+      {runtime.selectedHostedServerId && <button type="button" aria-current={section === 'people' ? 'page' : undefined} onClick={() => setSection('people')}>People</button>}
+    </nav>
     <div className="runtime-account-settings-content">
-      {query.status === 'loading' && <SettingsLoading label="Loading Portico Account settings" />}
-      {query.status === 'error' && availability.automatic && !availability.showWarning && <SettingsLoading label="Still loading Portico Account settings" />}
-      {query.status === 'error' && (!availability.automatic || availability.showWarning) && <SettingsError
+      {section === 'account' && query.status === 'loading' && <SettingsLoading label="Loading Portico Account settings" />}
+      {section === 'account' && query.status === 'error' && availability.automatic && !availability.showWarning && <SettingsLoading label="Still loading Portico Account settings" />}
+      {section === 'account' && query.status === 'error' && (!availability.automatic || availability.showWarning) && <SettingsError
         title={availability.automatic ? availability.copy.title : 'Account settings are unavailable'}
         message={availability.automatic ? availability.copy.body : 'Portico couldn’t load your account settings right now.'}
         onRetry={availability.automatic ? undefined : () => setRevision((value) => value + 1)}
       />}
-      {query.status === 'success' && query.data && <AccountSettings viewer={query.data} source={source} />}
+      {section === 'account' && query.status === 'success' && query.data && <AccountSettings viewer={query.data} source={source} />}
+      {section === 'people' && people.status === 'loading' && <SettingsLoading label="Loading people and access data" />}
+      {section === 'people' && people.status === 'error' && <SettingsError title="People settings are unavailable" message="Portico couldn’t load invitations for this server right now." onRetry={() => setRevision((value) => value + 1)} />}
+      {section === 'people' && people.status === 'success' && people.data && <PeopleOperations operations={people.data} source={source} onChanged={() => setRevision((value) => value + 1)} />}
     </div>
-    {query.status === 'error' && !availability.automatic && <footer><SecondaryButton onClick={() => setRevision((value) => value + 1)}><RefreshCw /> Try again</SecondaryButton></footer>}
+    {query.status === 'error' && !availability.automatic && <footer><SecondaryButton onClick={() => setRevision((value) => value + 1)}><ActionRefreshIcon /> Try again</SecondaryButton></footer>}
   </ModalOverlay>;
 }

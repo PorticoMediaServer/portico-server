@@ -97,6 +97,7 @@ export type RuntimeState =
   | (RuntimeStateBase & { id: 'checking-local-server'; serverName: string })
   | (RuntimeStateBase & { id: 'hosted-account-session' })
   | (RuntimeStateBase & { id: 'hosted-sign-in'; messageId?: ProductMessageId })
+  | (RuntimeStateBase & { id: 'local-login-recovery'; reason: 'expired' | 'unavailable' | 'lost' | 'callback-policy' })
   | (RuntimeStateBase & { id: 'sso-onboarding' })
   | (RuntimeStateBase & { id: 'device-authorization'; mode: 'tv' | 'generic'; initialCode?: string; nativeReturn?: boolean; servers: HostedServerSummary[] })
   | (RuntimeStateBase & { id: 'server-memberships' })
@@ -104,13 +105,14 @@ export type RuntimeState =
   | (RuntimeStateBase & { id: 'server-selection'; servers: HostedServerSummary[] })
   | (RuntimeStateBase & { id: 'profile-selection'; servers: HostedServerSummary[]; selectedServer: HostedServerSummary; profiles: HostedAccountProfile[]; messageId?: ProductMessageId })
   | (RuntimeStateBase & { id: 'route-discovery'; servers: HostedServerSummary[]; selectedServer: HostedServerSummary })
-  | (RuntimeStateBase & { id: 'runtime-recovery'; classification: RuntimeFailureClassification; messageId: ProductMessageId; serverName?: string; selectedServer?: HostedServerSummary; servers?: HostedServerSummary[]; automaticAvailabilityRetry?: boolean; availabilityRetryAfterMs?: number; availabilityRetryAt?: string })
+  | (RuntimeStateBase & { id: 'runtime-recovery'; classification: RuntimeFailureClassification; messageId: ProductMessageId; serverName?: string; selectedServer?: HostedServerSummary; servers?: HostedServerSummary[]; automaticAvailabilityRetry?: boolean; availabilityRetryAfterMs?: number; availabilityRetryAt?: string; automaticRoutePublicationRetry?: boolean })
   | (RuntimeStateBase & { id: 'server-ready'; mode: RuntimeMode; serverName: string });
 
 export type RuntimeEvent =
   | { type: 'CHECK_LOCAL'; serverName?: string }
   | { type: 'CHECK_HOSTED_SESSION' }
   | { type: 'HOSTED_SIGN_IN_REQUIRED'; messageId?: ProductMessageId }
+  | { type: 'LOCAL_LOGIN_RECOVERY_REQUIRED'; reason: 'expired' | 'unavailable' | 'lost' | 'callback-policy' }
   | { type: 'SSO_ONBOARDING' }
   | { type: 'DEVICE_AUTHORIZATION'; mode: 'tv' | 'generic'; initialCode?: string; nativeReturn?: boolean; servers: HostedServerSummary[] }
   | { type: 'LOAD_MEMBERSHIPS' }
@@ -118,7 +120,7 @@ export type RuntimeEvent =
   | { type: 'SELECT_SERVER'; server: HostedServerSummary; servers: HostedServerSummary[] }
   | { type: 'PROFILE_SELECTION_REQUIRED'; server: HostedServerSummary; servers: HostedServerSummary[]; profiles: HostedAccountProfile[]; messageId?: ProductMessageId }
   | { type: 'READY'; mode: RuntimeMode; serverName: string }
-  | { type: 'FAILURE'; classification: RuntimeFailureClassification; messageId?: ProductMessageId; serverName?: string; selectedServer?: HostedServerSummary; servers?: HostedServerSummary[]; hosted?: boolean; continueAccount?: boolean; nearbyAvailable?: boolean; automaticAvailabilityRetry?: boolean; availabilityRetryAfterMs?: number; availabilityRetryAt?: string }
+  | { type: 'FAILURE'; classification: RuntimeFailureClassification; messageId?: ProductMessageId; serverName?: string; selectedServer?: HostedServerSummary; servers?: HostedServerSummary[]; hosted?: boolean; continueAccount?: boolean; nearbyAvailable?: boolean; automaticAvailabilityRetry?: boolean; availabilityRetryAfterMs?: number; availabilityRetryAt?: string; automaticRoutePublicationRetry?: boolean }
   | { type: 'RESTART' };
 
 function state(id: RuntimeState['id'], overrides: Record<string, unknown> = {}): RuntimeState {
@@ -137,6 +139,8 @@ export function runtimeReducer(_current: RuntimeState, event: RuntimeEvent): Run
       return state('hosted-account-session');
     case 'HOSTED_SIGN_IN_REQUIRED':
       return state('hosted-sign-in', { messageId: event.messageId, recoveryActions: ['sign-in'] });
+    case 'LOCAL_LOGIN_RECOVERY_REQUIRED':
+      return state('local-login-recovery', { reason: event.reason });
     case 'SSO_ONBOARDING':
       return state('sso-onboarding');
     case 'DEVICE_AUTHORIZATION':
@@ -173,6 +177,7 @@ export function runtimeReducer(_current: RuntimeState, event: RuntimeEvent): Run
         automaticAvailabilityRetry: event.automaticAvailabilityRetry,
         availabilityRetryAfterMs: event.availabilityRetryAfterMs,
         availabilityRetryAt: event.availabilityRetryAt,
+        automaticRoutePublicationRetry: event.automaticRoutePublicationRetry,
       });
     }
     case 'RESTART':

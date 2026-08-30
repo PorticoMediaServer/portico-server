@@ -47,13 +47,11 @@ func (s *Server) resolvePlaybackHardwareRoute(ctx context.Context, settings tran
 	if inputCodec == "" || output == "" {
 		return playbackplan.HardwareRoute{}, nil
 	}
-	outputDepth := video.BitDepth
-	if software.Color != nil && software.Color.Output == "sdr" {
-		outputDepth = 8
-	}
-	if outputDepth != 10 {
-		outputDepth = 8
-	}
+	outputDepth := playbackHardwareOutputBitDepth(video, output, software)
+	// H.264 browser targets are the canonical 8-bit 4:2:0 delivery tuple. A
+	// Main10 source is input evidence, not permission to silently emit High10.
+	// Seal the requested output depth before probing so VideoToolbox selection
+	// and the eventual compiler graph describe the same executable pipeline.
 	inputDepth := video.BitDepth
 	if inputDepth != 10 {
 		inputDepth = 8
@@ -86,6 +84,14 @@ func (s *Server) resolvePlaybackHardwareRoute(ctx context.Context, settings tran
 		return playbackHardwareRouteFromPlan(plan), &plan
 	}
 	return playbackplan.HardwareRoute{}, nil
+}
+
+func playbackHardwareOutputBitDepth(video mediafacts.Video, output playbackhw.Codec, plan playbackplan.Plan) int {
+	depth := video.BitDepth
+	if output == playbackhw.H264 || plan.Color != nil && plan.Color.Output == "sdr" || depth != 10 {
+		return 8
+	}
+	return 10
 }
 
 func (s *Server) playbackHardwareExecutionIdentityMatches(ctx context.Context, plan *playbackhw.Plan) bool {
@@ -260,7 +266,11 @@ func (s *Server) playbackHardwareDeviceIdentity(ctx context.Context, settings tr
 		if !ok || !platformOK || strings.TrimSpace(platform) == "" {
 			return "", "", "", "", "", false
 		}
-		platformSum := sha256.Sum256([]byte(platform))
+		stablePlatform, stable := playbackHardwareDarwinPlatformIdentity(platform)
+		if !stable {
+			return "", "", "", "", "", false
+		}
+		platformSum := sha256.Sum256([]byte(stablePlatform))
 		device := "apple-platform:sha256:" + hex.EncodeToString(platformSum[:])
 		return playbackhw.Apple, device, "platform-default", "videotoolbox-macos", strings.TrimSpace(version), true
 	}
@@ -331,6 +341,28 @@ func (s *Server) playbackHardwareDeviceIdentity(ctx context.Context, settings tr
 		}
 	}
 	return "", "", "", "", "", false
+}
+
+func playbackHardwareDarwinPlatformIdentity(output string) (string, bool) {
+	values := map[string]string{}
+	for _, line := range strings.Split(output, "\n") {
+		line = strings.TrimSpace(line)
+		for _, key := range []string{"IOPlatformUUID", "model"} {
+			prefix := "\"" + key + "\" = "
+			if !strings.HasPrefix(line, prefix) {
+				continue
+			}
+			value := strings.TrimSpace(strings.TrimPrefix(line, prefix))
+			value = strings.Trim(value, "<>\"")
+			if value != "" {
+				values[key] = value
+			}
+		}
+	}
+	if values["IOPlatformUUID"] == "" || values["model"] == "" {
+		return "", false
+	}
+	return "uuid=" + strings.ToLower(values["IOPlatformUUID"]) + "\nmodel=" + strings.ToLower(values["model"]), true
 }
 
 func playbackHardwareCommand(parent context.Context, binary string, args ...string) (string, bool) {

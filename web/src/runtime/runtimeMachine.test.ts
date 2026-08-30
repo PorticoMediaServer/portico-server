@@ -225,7 +225,7 @@ describe('runtime configuration and credential boundaries', () => {
   it('captures and scrubs a local-server Portico Account handoff', () => {
     const callbackUrl = 'http://localhost:32500/api/auth/portico/callback';
     const localOrigin = 'http://localhost:32500';
-    const handoff = extractHostedBootstrapIntent(`https://web.getportico.tv/#/local-login?serverId=srv_family&serverName=Family%20Media&callbackUrl=${encodeURIComponent(callbackUrl)}&localOrigin=${encodeURIComponent(localOrigin)}&state=state-token-with-enough-entropy&serverPublicKeyFingerprint=sha256%3Afingerprint`);
+    const handoff = extractHostedBootstrapIntent(`https://web.getportico.tv/#/local-login?serverId=srv_family&serverName=Family%20Media&callbackUrl=${encodeURIComponent(callbackUrl)}&localOrigin=${encodeURIComponent(localOrigin)}&state=state-token-with-enough-entropy&serverPublicKeyFingerprint=sha256%3Afingerprint&publicConsoleOriginGeneration=7`);
     expect(handoff.intent.localLogin).toEqual({
       serverId: 'srv_family',
       serverName: 'Family Media',
@@ -233,6 +233,7 @@ describe('runtime configuration and credential boundaries', () => {
       localOrigin,
       state: 'state-token-with-enough-entropy',
       serverPublicKeyFingerprint: 'sha256:fingerprint',
+      publicConsoleOriginGeneration: 7,
     });
     expect(handoff.safeUrl).toBe('/');
     expect(handoff.safeUrl).not.toContain('state-token');
@@ -246,6 +247,7 @@ describe('runtime configuration and credential boundaries', () => {
       localOrigin: 'http://localhost:32500',
       state: 'state-token-with-enough-entropy',
       serverPublicKeyFingerprint: 'sha256:fingerprint',
+      publicConsoleOriginGeneration: 7,
     };
     expect(verifiedLocalLoginRedirect(intent, 'http://localhost:32500/api/auth/portico/callback?code=one-time-code&state=state-token-with-enough-entropy')).toContain('code=one-time-code');
     expect(() => verifiedLocalLoginRedirect(intent, 'https://evil.example/api/auth/portico/callback?code=one-time-code&state=state-token-with-enough-entropy')).toThrow('unexpected server address');
@@ -266,6 +268,7 @@ describe('runtime configuration and credential boundaries', () => {
       localOrigin,
       state: 'state-token-with-enough-entropy',
       serverPublicKeyFingerprint: 'sha256:fingerprint',
+      publicConsoleOriginGeneration: 7,
     };
     expect(verifiedLocalLoginRedirect(intent, `${callbackUrl}?code=one-time-code&state=${intent.state}`)).toBe(
       `${callbackUrl}?code=one-time-code&state=${intent.state}`,
@@ -285,6 +288,7 @@ describe('runtime configuration and credential boundaries', () => {
       localOrigin,
       state: 'state-token-with-enough-entropy',
       serverPublicKeyFingerprint: 'sha256:fingerprint',
+      publicConsoleOriginGeneration: 7,
     };
     expect(() => verifiedLocalLoginRedirect(intent, `${callbackUrl}?code=one-time-code&state=${intent.state}`)).toThrow(
       'not secure',

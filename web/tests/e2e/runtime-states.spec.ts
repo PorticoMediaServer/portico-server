@@ -46,10 +46,17 @@ test('local first-run setup offers Hosted and local-only ownership honestly', as
     setupRequired: true,
     serverFriendlyName: 'Workshop Server',
   }));
+  await page.route('**/api/auth/portico-setup/status', (route) => json(route, {
+    setupRequired: true,
+    remoteAccess: {
+      porticoConnected: false,
+      settings: { claimStatus: 'not_claimed' },
+    },
+  }));
 
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'Set Up Your Portico Server' })).toBeVisible();
-  await expect(page.getByRole('button', { name: /Portico Account/ })).toBeVisible();
+  await expect(page.getByText('Use A Portico Account', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: /Sign in directly to a server/ }).click();
   await expect(page.getByLabel('Username')).toBeVisible();
   await expect(page.getByRole('textbox', { name: 'Password', exact: true })).toHaveAttribute('minlength', '8');
@@ -168,15 +175,31 @@ test('Hosted account without memberships offers claim and invitation recovery', 
   }));
   await page.route('https://web.getportico.tv/api/account/servers*', (route) => json(route, {
     items: [],
-    total: 0,
-    limit: 50,
-    hasMore: false,
+    pageInfo: { hasMore: false },
+  }));
+  await page.route('https://web.getportico.tv/api/account/me', (route) => json(route, {
+    user: { id: 'account-1', username: 'owner', email: 'owner@example.com' },
   }));
 
   await page.goto('/');
+  await expect(page.getByRole('navigation', { name: 'Primary navigation' })).toBeVisible();
+  await expect(page.getByRole('button', { name: /No server connected.*Claim or accept access/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Open account menu for Portico Account' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'No servers yet' })).toBeVisible();
   await expect(page.getByLabel('Server claim code')).toBeVisible();
+  await expect(page.locator('.runtime-membership-form')).toHaveCSS('border-style', 'none');
+  await expect(page.locator('.runtime-membership-form')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  await expect(page.locator('.runtime-membership-form')).toHaveCSS('padding', '0px');
   await page.getByRole('tab', { name: 'Accept an invite' }).click();
   await expect(page.getByLabel('Invitation code')).toBeVisible();
+  await expect(page.locator('.runtime-membership-form')).toHaveCSS('border-style', 'none');
   await expect(page.getByRole('button', { name: 'Refresh servers' })).toBeVisible();
+  await page.getByRole('button', { name: 'Libraries' }).click();
+  await expect(page.getByRole('heading', { name: 'No libraries available' })).toBeVisible();
+  await page.getByRole('button', { name: 'Add a server' }).click();
+  await expect(page.getByRole('heading', { name: 'No servers yet' })).toBeVisible();
+  await page.getByRole('button', { name: 'Open account menu for Portico Account' }).click();
+  await page.getByRole('menuitem', { name: 'Account settings' }).click();
+  await expect(page.getByRole('heading', { name: 'Portico Account settings' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Delete Portico Account' })).toBeVisible();
 });

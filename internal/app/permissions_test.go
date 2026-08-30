@@ -30,7 +30,7 @@ func TestLiveDVRPermissionHelpersUseGranularScopes(t *testing.T) {
 	if canPlayLiveTV(manager) {
 		t.Fatal("manageDVR should not grant Live TV playback by itself")
 	}
-	serverManager := User{Role: "owner", AuthProvider: "local", Permissions: map[string]bool{"manageServer": true}}
+	serverManager := User{ID: "owner", AccountID: "owner", ProfileID: "owner", ProfileIsPrimary: true, Role: "owner", AuthProvider: "local", Permissions: map[string]bool{"manageServer": true}}
 	if !canManageLiveTV(serverManager) || !canManageLiveTVSources(serverManager) {
 		t.Fatal("manageServer should authorize Live TV source administration")
 	}

@@ -362,7 +362,7 @@
           "uniqueItems": true
         },
         "flowId": { "type": "string", "minLength": 1 },
-        "resultHandling": { "enum": ["json", "job", "playback-session", "download-grant", "flow"] }
+        "resultHandling": { "enum": ["json", "job", "playback-session", "download-preparation", "flow"] }
       }
     },
     "mediaActionConfirmation": {

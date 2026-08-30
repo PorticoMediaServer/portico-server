@@ -7,17 +7,9 @@ const MAX_ACCOUNT_ID_LENGTH = 512;
 // Account tombstones are cleanup barriers, not browser-installation identity.
 // They survive sign-out until exact verified cleanup and must never be used as
 // a reason to silently clear or regenerate the installation binding.
-/** Legacy aggregate key retained only for fail-closed migration. */
-export const SIGNED_OUT_ACCOUNT_LEDGER_KEY = 'portico.hosted.signed-out-accounts.v1';
 export const SIGNED_OUT_ACCOUNT_TOMBSTONE_PREFIX = 'portico.hosted.signed-out-account.v1:';
-export const LEGACY_SIGNED_OUT_ACCOUNT_KEY = 'portico.hosted.explicitly-signed-out-account';
 /** Local-only reserved ID used when sign-out precedes authoritative account discovery. */
 export const GLOBAL_SIGN_OUT_FENCE_ID = '__portico_global_sign_out_fence__';
-
-type LegacySignedOutAccountLedger = {
-  version: typeof TOMBSTONE_VERSION;
-  accountIds: string[];
-};
 
 type SignedOutAccountTombstone = {
   version: typeof TOMBSTONE_VERSION;
@@ -52,17 +44,6 @@ function tombstoneKey(accountId: string): string {
   return `${SIGNED_OUT_ACCOUNT_TOMBSTONE_PREFIX}${encodeURIComponent(accountId)}`;
 }
 
-function parseLegacyLedger(value: string): Set<string> {
-  const parsed = JSON.parse(value) as Partial<LegacySignedOutAccountLedger> | null;
-  if (!parsed || parsed.version !== TOMBSTONE_VERSION || !Array.isArray(parsed.accountIds)) {
-    throw new Error('The signed-out account ledger has an unsupported shape.');
-  }
-  if (!parsed.accountIds.every(validAccountId)) {
-    throw new Error('The signed-out account ledger contains invalid account identifiers.');
-  }
-  return new Set(parsed.accountIds);
-}
-
 function serializeTombstone(accountId: string): string {
   return JSON.stringify({ version: TOMBSTONE_VERSION, accountId } satisfies SignedOutAccountTombstone);
 }
@@ -92,27 +73,12 @@ function removeAndVerify(storage: LedgerStorage, key: string): void {
   if (storage.getItem(key) !== null) throw new Error('A signed-out account marker could not be removed.');
 }
 
-/** Migrates old aggregate/scalar markers without using an aggregate for new writes. */
-function migrateLegacyMarkers(storage: LedgerStorage): void {
-  const aggregate = storage.getItem(SIGNED_OUT_ACCOUNT_LEDGER_KEY);
-  const legacyAccountId = storage.getItem(LEGACY_SIGNED_OUT_ACCOUNT_KEY);
-  const accountIds = aggregate === null ? new Set<string>() : parseLegacyLedger(aggregate);
-  if (legacyAccountId !== null) {
-    if (!validAccountId(legacyAccountId)) throw new Error('The legacy signed-out account marker is invalid.');
-    accountIds.add(legacyAccountId);
-  }
-  for (const accountId of accountIds) writeAndVerifyTombstone(storage, accountId);
-  if (aggregate !== null) removeAndVerify(storage, SIGNED_OUT_ACCOUNT_LEDGER_KEY);
-  if (legacyAccountId !== null) removeAndVerify(storage, LEGACY_SIGNED_OUT_ACCOUNT_KEY);
-}
-
 function prepareStorage(storage: LedgerStorage | undefined): storage is LedgerStorage {
   if (!storage) {
     restoreTrustLost = true;
     return false;
   }
   try {
-    migrateLegacyMarkers(storage);
     return !restoreTrustLost;
   } catch {
     restoreTrustLost = true;
@@ -276,6 +242,7 @@ async function assertVaultRestoreAllowed(vault: HostedConnectionVault, accountId
 export function protectHostedConnectionVault(vault: HostedConnectionVault): HostedConnectionVault {
   return {
     persistencePolicy: vault.persistencePolicy,
+    ready: () => vault.ready(),
     durability: () => vault.durability(),
     installationId: () => vault.installationId(),
     activeAccount: async () => {

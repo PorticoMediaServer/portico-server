@@ -428,7 +428,7 @@ const unscopedMethods = new Set([
 
 const transitionTeardownMethods = new Set(['stopPlayback']);
 const synchronousFactoryMethods = new Set(['settingsDataSource', 'watchWithFriendsSource']);
-const optionalSignalPositions: Record<string, number> = { stopPlayback: 1, touchPlayback: 2 };
+const optionalSignalPositions: Record<string, number> = { stopPlayback: 2, touchPlayback: 2 };
 function scopedPromiseClient<T extends object>(client: T, runtime: WebViewerRuntime, bindingGeneration: number): T {
 	const proxy = new Proxy(client, {
 		get(target, property, receiver) {

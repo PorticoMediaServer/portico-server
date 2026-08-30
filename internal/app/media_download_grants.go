@@ -27,10 +27,6 @@ const (
 
 var errDownloadGrantDenied = errors.New("download grant is invalid, expired, revoked, or out of scope")
 
-type MediaDownloadGrantRequest struct {
-	Profile string `json:"profile,omitempty"`
-}
-
 type MediaDownloadGrantResponse struct {
 	DownloadURL string `json:"downloadUrl"`
 	GrantToken  string `json:"grantToken,omitempty"`
@@ -59,56 +55,6 @@ type mediaDownloadGrantRecord struct {
 	ConsumedAt            string
 	AuthorizationRevision string
 	PreparationID         string
-}
-
-func (s *Server) handleMediaDownloadGrantRoute(w http.ResponseWriter, r *http.Request, user User) {
-	w.Header().Set("Referrer-Policy", "no-referrer")
-	if r.Method != http.MethodPost {
-		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "Use POST for this endpoint.")
-		return
-	}
-	path := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/media/"), "/")
-	parts := strings.Split(path, "/")
-	if len(parts) != 2 || parts[0] == "" || parts[1] != "download-grants" {
-		writeError(w, http.StatusNotFound, "not_found", "Media download grant route was not found.")
-		return
-	}
-	if !user.Permissions["downloadMedia"] {
-		writeError(w, http.StatusForbidden, "forbidden", "You do not have permission to download media.")
-		return
-	}
-	var request MediaDownloadGrantRequest
-	if !decodeJSON(w, r, &request) {
-		return
-	}
-	mediaID := parts[0]
-	grant, target, item, err := s.issueMediaDownloadGrant(r.Context(), user, mediaID, request.Profile)
-	if err != nil {
-		switch {
-		case errors.Is(err, sql.ErrNoRows):
-			writeError(w, http.StatusNotFound, "media_not_found", "Media item was not found.")
-		case errors.Is(err, errInvalidDownloadGrantProfile):
-			writeError(w, http.StatusBadRequest, "invalid_download_profile", "Choose the original source or a listed optimized quality.")
-		case errors.Is(err, errUnsupportedPlaybackSource), errors.Is(err, errDownloadGrantUnavailable):
-			writeError(w, http.StatusConflict, "download_unavailable", "That media version is not currently available for download.")
-		default:
-			writeError(w, http.StatusInternalServerError, "download_grant_failed", "Unable to prepare this browser download.")
-		}
-		return
-	}
-	w.Header().Set("Cache-Control", "private, no-store")
-	w.Header().Set("Referrer-Policy", "no-referrer")
-	setMediaDownloadGrantCookie(w, r, item.ID, grant)
-	s.recordAudit(r, user, "media.download_grant_issued", "media", item.ID, "info", map[string]string{
-		"profile":     target.Profile,
-		"versionKind": target.VersionKind,
-		"expiresAt":   grant.ExpiresAt,
-	})
-	// Browser callers receive the capability only in an HttpOnly cookie. Native
-	// offline clients use the preparation-grant endpoint, which intentionally
-	// returns the token for its PorticoDownload authorization header.
-	grant.GrantToken = ""
-	writeJSON(w, http.StatusCreated, grant)
 }
 
 var (

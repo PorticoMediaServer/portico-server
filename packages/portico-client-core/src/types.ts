@@ -202,7 +202,7 @@ export type DownloadPreparationSingleCreateRequest = { mediaId: string; qualityP
 export type DownloadPreparationBatchCreateRequest = ({ mediaIds: string[] } | { containerId: string }) & { qualityProfile?: string };
 export type DownloadPreparationNextEpisodeRequest = { nextAfterMediaId: string; qualityProfile?: string };
 export type DownloadPreparationUpdateRequest = MainSchema<"DownloadPreparationUpdateRequest">;
-export type MediaDownloadGrantRequest = MainSchema<"MediaDownloadGrantRequest">;
+export type DownloadPreparationGrantRequest = MainSchema<"DownloadPreparationGrantRequest">;
 export type MediaDownloadGrantResponse = MainSchema<"MediaDownloadGrantResponse">;
 export type LiveTVSource = MainSchema<"LiveTVSource">;
 export type LiveTVSourceSummary = MainSchema<"LiveTVSourceSummary">;
@@ -297,10 +297,6 @@ export type SystemStorageCategory = MainSchema<"SystemStorageCategory">;
 export type SystemStorageCleanupResponse = MainSchema<"SystemStorageCleanupResponse">;
 export type RuntimeDependency = MainSchema<"RuntimeDependency">;
 export type BrandingInfo = MainSchema<"BrandingInfo">;
-export type LocalizationInfo = MainSchema<"LocalizationInfo">;
-export type LocalizationOption = MainSchema<"LocalizationOption">;
-export type LocalizationRatingSet = MainSchema<"LocalizationRatingSet">;
-export type LocalizationRating = MainSchema<"LocalizationRating">;
 export type RestoreBackupState =
   | "validating"
   | "staged"
@@ -406,6 +402,11 @@ export type PlaybackSessionQueueRequest = MainSchema<"PlaybackSessionQueueReques
 export type PlaybackProgressEvent = MainSchema<"PlaybackProgressEvent">;
 export type PlaybackProgressInput = Omit<PlaybackProgressEvent, "eventSequence" | "recordedAt"> & Partial<Pick<PlaybackProgressEvent, "eventSequence" | "recordedAt">>;
 export type PlaybackProgressAcknowledgement = MainSchema<"PlaybackProgressAcknowledgement">;
+export type PlaybackSessionStopRequest = MainSchema<"PlaybackSessionStopRequest">;
+export type PlaybackSessionStopInput = Pick<
+  PlaybackSessionStopRequest,
+  "disposition" | "positionSeconds" | "durationSeconds"
+>;
 export type PlaybackContinuationCredential = MainSchema<"PlaybackContinuationCredential">;
 export type PlaybackContinuationState = MainSchema<"PlaybackContinuationState">;
 export type PlaybackContinuationRotateRequest = MainSchema<"PlaybackContinuationRotateRequest">;

@@ -56,14 +56,10 @@ func (s *Server) decodeMaterializedPageCursor(value, scope, principal string, no
 
 func homeRowDescriptor(id, title, kind, layout, explanation string, priority int, critical bool) HomeRow {
 	required := id == "continue" || id == "continue_listening" || id == "ondeck"
-	controls := []string{"reorder"}
-	if !required {
-		controls = append([]string{"hide"}, controls...)
-	}
 	row := HomeRow{
 		ID: id, Kind: kind, Title: title, Type: layout, Explanation: explanation,
 		Endpoint: "/api/home/rows/" + id, Priority: priority, DefaultVisible: true,
-		Critical: critical, CursorCapable: true, Required: required, Hideable: !required, Reorderable: true, Controls: controls,
+		Critical: critical, CursorCapable: true, Required: required, Hideable: !required, Reorderable: true,
 		CacheTTLSeconds: 45,
 	}
 	row.ArtworkShape = resolvedHomeRowArtworkShape(row)
@@ -584,10 +580,9 @@ func searchCursorScope(query, group string, entityKinds, libraryIDs []string, sp
 	return "search:" + query + ":" + group + ":" + spec.Field + ":" + spec.Direction + ":kinds=" + strings.Join(kinds, ",") + ":libraries=" + strings.Join(libraries, ",")
 }
 
-// canonicalSearchCursorEntityKinds records the effective storage kinds rather
-// than caller spelling. This keeps aliases replay-compatible while preventing
-// a cursor issued for one subset of a multi-kind group (for example tracks)
-// from being replayed against another subset (for example artists).
+// canonicalSearchCursorEntityKinds records the storage kinds selected by the
+// canonical public entity kinds. This prevents a cursor issued for one subset
+// of a multi-kind group from being replayed against another subset.
 func canonicalSearchCursorEntityKinds(entityKinds []string) []string {
 	requested := stringSet(entityKinds)
 	if len(requested) == 0 {
@@ -606,14 +601,8 @@ func canonicalSearchCursorEntityKinds(entityKinds []string) []string {
 			effective["live-channel"] = true
 			continue
 		}
-		if requested[definition.ID] {
-			for _, storageType := range definition.Types {
-				effective[storageType] = true
-			}
-			continue
-		}
 		for _, storageType := range definition.Types {
-			if requested[storageType] || requested[string(catalogkind.Public(storageType))] {
+			if requested[string(catalogkind.Public(storageType))] {
 				effective[storageType] = true
 			}
 		}

@@ -7,7 +7,14 @@
 .runtime-product-frame .health-dot.pending { background: var(--silver-muted); }
 .runtime-product-frame .global-search[aria-disabled='true'] > svg { width: 18px; flex: 0 0 auto; }
 .runtime-product-frame .global-search[aria-disabled='true'] > span { overflow: hidden; color: var(--silver-dim); font-size: var(--type-supporting); text-overflow: ellipsis; white-space: nowrap; }
+.runtime-product-frame button.nav-item { width: 100%; background: transparent; font: inherit; text-align: left; cursor: pointer; }
+.runtime-product-frame button.nav-item.active { background-color: #378ec3; background-image: linear-gradient(180deg, #4ca4d8 0%, #378ec3 100%); }
+.runtime-no-server-card { width: 100%; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.runtime-no-server-card > svg { color: var(--silver-muted); }
 .runtime-content-reservation { min-height: 100vh; padding-top: var(--top-chrome-height); }
+.runtime-unavailable-destination { min-height: calc(100vh - var(--top-chrome-height)); padding: 112px clamp(24px, 5vw, 72px) 48px; }
+.runtime-unavailable-destination h1 { margin: 0 0 10px; color: var(--silver); font-size: var(--type-page-title); }
+.runtime-unavailable-destination p { max-width: 540px; margin: 0 0 22px; color: var(--silver-dim); line-height: 1.6; }
 .runtime-embedded-surface { min-height: 100vh; padding: calc(var(--top-chrome-height) + 48px) 32px 72px; display: grid; place-items: start center; }
 .runtime-panel-embedded { margin: 0; }
 .persistent-frame-backdrop-host,
@@ -16,7 +23,7 @@
 .runtime-panel > .auth-wordmark { margin-bottom: 22px; }
 .runtime-state-icon { width: 52px; height: 52px; display: grid; place-items: center; border: 1px solid var(--line-strong); border-radius: 50%; color: var(--screen-blue-strong); background: rgba(55, 142, 195, .07); }
 .runtime-state-icon svg { width: 23px; }
-.runtime-state-icon .lucide-loader-circle { animation: state-spin 900ms linear infinite; }
+.runtime-state-icon .portico-icon-loader-circle { animation: state-spin 900ms linear infinite; }
 .runtime-panel h1 { margin: 0 0 8px; outline: 0; font-size: 28px; font-weight: 600; line-height: 1.22; letter-spacing: -.03em; }
 .runtime-state-icon + h1 { margin-top: 18px; }
 .runtime-route-heading:focus,
@@ -106,7 +113,6 @@
 .runtime-segmented { margin-bottom: 16px; display: flex; border-bottom: 1px solid var(--line); }
 .runtime-segmented button { min-height: 44px; padding: 0 12px; border: 0; border-bottom: 2px solid transparent; color: var(--silver-dim); background: transparent; font-size: var(--type-supporting); cursor: pointer; }
 .runtime-segmented button.active { border-bottom-color: var(--screen-blue); color: var(--silver); }
-.runtime-membership-form { padding: 15px; border: 1px solid var(--line); border-radius: var(--radius-control); background: #0b1219; }
 .runtime-membership-form > .button { width: max-content; min-width: 150px; }
 .runtime-device-review { padding: 14px 0; display: grid; gap: 4px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
 .runtime-device-review span, .runtime-device-review p { color: var(--silver-dim); font-size: var(--type-caption); }
@@ -162,7 +168,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .runtime-state-icon .lucide-loader-circle,
+  .runtime-state-icon .portico-icon-loader-circle,
   .runtime-spinner { animation-duration: 1600ms; }
   .runtime-progress-line > span { width: 100%; animation: none; opacity: .75; }
 }

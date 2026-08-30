@@ -1,4 +1,4 @@
-import { ChevronRight, RefreshCw, Search } from '#portico-icons';
+import { NavigationDisclosureIcon, ActionRefreshIcon, NavigationSearchIcon } from '#portico-icons';
 import { orderSearchGroups, productMessage, resolveSearchResultSemantic, type ProductContract } from '@porticomediaserver/client-core';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -117,20 +117,20 @@ function QuickSearchGroup({ contract, group, query, activeOptionId, onActiveOpti
   const groupFailure = searchGroupFailure(current.messageId);
   const loadMoreLabel = productMessage('action.load-more-group', { group: current.title.toLocaleLowerCase() }).text;
   return <section className="quick-group" aria-labelledby={`quick-group-${current.id}`}>
-    <div className="quick-group-heading"><strong id={`quick-group-${current.id}`}>{current.title}</strong><Link to={fullSearch} onClick={onSelect}>{productMessage('action.view-all').text} <ChevronRight /></Link></div>
+    <div className="quick-group-heading"><strong id={`quick-group-${current.id}`}>{current.title}</strong><Link to={fullSearch} onClick={onSelect}>{productMessage('action.view-all').text} <NavigationDisclosureIcon /></Link></div>
     <div className={`quick-group-items ${current.entityKind === 'person' ? 'people' : ''}`}>{current.items.map((item) => {
-      const artworkRole = resolveSearchResultSemantic(contract, item.entityKind || item.kind)?.artworkRole;
+      const artworkRole = resolveSearchResultSemantic(contract, item.entityKind)?.artworkRole;
       const artworkRatio = contract.artworkRoles.find((role) => role.id === artworkRole)?.aspectRatio;
       const square = artworkRatio != null && Math.abs(artworkRatio - 1) < 0.08;
       const optionId = searchOptionId(current.id, item.id);
       return <Link id={optionId} data-search-result data-active={activeOptionId === optionId ? 'true' : undefined} tabIndex={-1} aria-label={productMessage('action.open-item', { title: item.title }).text} to={mediaDetailPath(item) ?? `/media/${item.id}`} key={item.id} onMouseEnter={() => onActiveOptionChange?.(optionId)} onFocus={() => onActiveOptionChange?.(optionId)} onClick={onSelect}>
       <MediaArtwork className={`quick-result-art ${square ? 'square' : ''}`} item={item} />
-      <span><strong>{item.title}</strong><small>{item.subtitle || [mediaPresentation(item).label, item.year || undefined].filter(Boolean).join(' · ')}</small></span><ChevronRight />
+      <span><strong>{item.title}</strong><small>{item.subtitle || [mediaPresentation(item).label, item.year || undefined].filter(Boolean).join(' · ')}</small></span><NavigationDisclosureIcon />
     </Link>;
     })}</div>
     {current.status === 'error' && <div className="quick-group-error" role="status"><ProductLanguageIcon presentation={groupFailure} /><span>{groupFailure.body}</span><button type="button" onClick={onRetry}>{groupFailure.actions[0]?.label}</button></div>}
     {error && <div className="quick-group-error" role="status"><ProductLanguageIcon presentation={failure} /><span>{failure.body}</span><button type="button" onClick={() => void loadMore()}>{failure.actions[0]?.label}</button></div>}
-    {current.status === 'success' && current.hasMore && current.nextCursor && current.items.length < maximumItems && <button className="quick-group-more" type="button" disabled={loading} onClick={() => void loadMore()}>{loading ? <><RefreshCw className="state-spinner" /> {productMessage('state.loading-more').title}</> : loadMoreLabel}</button>}
+    {current.status === 'success' && current.hasMore && current.nextCursor && current.items.length < maximumItems && <button className="quick-group-more" type="button" disabled={loading} onClick={() => void loadMore()}>{loading ? <><ActionRefreshIcon className="state-spinner" /> {productMessage('state.loading-more').title}</> : loadMoreLabel}</button>}
   </section>;
 }
 
@@ -151,6 +151,6 @@ export function QuickSearchPanel({ query, serverName, activeOptionId, onActiveOp
       {productContract.status === 'success' && state.status === 'success' && groups.length === 0 && <div className="quick-search-empty"><ProductLanguageIcon presentation={emptyMessage} /> {productMessage('search.quick-empty', { serverName }).text}</div>}
       {productContract.status === 'success' && groups.map((group) => <QuickSearchGroup key={`${query.trim()}:${group.id}`} contract={productContract.data} group={group} query={query.trim()} activeOptionId={activeOptionId} onActiveOptionChange={onActiveOptionChange} onSelect={onSelect} onRetry={() => setReloadKey((value) => value + 1)} />)}
     </div>
-    <button className="quick-search-all" type="button" onClick={onViewAll}><Search /> {productMessage(query.trim() ? 'search.view-all-query' : 'search.view-all', { query: query.trim() }).text}</button>
+    <button className="quick-search-all" type="button" onClick={onViewAll}><NavigationSearchIcon /> {productMessage(query.trim() ? 'search.view-all-query' : 'search.view-all', { query: query.trim() }).text}</button>
   </>;
 }

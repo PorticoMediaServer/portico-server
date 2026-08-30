@@ -1,5 +1,5 @@
 import { productMessage } from '@porticomediaserver/client-core';
-import { Home } from '#portico-icons';
+import { NavigationHomeIcon } from '#portico-icons';
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { ProductProblemMessage } from './ProductProblemMessage';
 import { recordRouteRenderFailure } from './routeDiagnostics';
@@ -39,7 +39,7 @@ export class RouteErrorBoundary extends Component<RouteErrorBoundaryProps, Route
         'action.retry': () => this.setState({ error: undefined }),
       }} />
       <div>
-        <a className="button secondary" href="/"><Home /> {productMessage('action.go-home').text}</a>
+        <a className="button secondary" href="/"><NavigationHomeIcon /> {productMessage('action.go-home').text}</a>
       </div>
     </section>;
   }

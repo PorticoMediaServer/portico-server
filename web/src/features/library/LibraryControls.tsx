@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowUp, Check, ChevronDown, Plus, Save, SlidersHorizontal, Trash2, X } from '#portico-icons';
+import { NavigationMoveDownIcon, NavigationMoveUpIcon, ActionConfirmIcon, NavigationExpandIcon, ActionAddIcon, ActionCustomizeIcon, ActionDeleteIcon, ActionCloseIcon } from '#portico-icons';
 import { type FormEvent, type ReactNode, useEffect, useId, useMemo, useRef, useState } from 'react';
 import {
   availableFields,
@@ -19,6 +19,7 @@ import {
 import { IconButton, PrimaryButton, SecondaryButton } from '../../components/controls/Buttons';
 import { AnchoredOverlay, ModalOverlay } from '../../components/overlay/OverlayPortal';
 import { productLanguageProblem } from '../../components/states/ProductLanguageState';
+import { secureRandomUUID } from '../../runtime/secureRandomUUID';
 import type {
   BrowseExpression,
   BrowseSort,
@@ -71,7 +72,7 @@ export function CapabilityMenu({
     >
       <span><span className="library-choice-label">{label}</span><strong>{selected?.label ?? formatCapabilityLabel(value)}</strong></span>
       {selectedIndicator && <span className="library-choice-selected-indicator">{selectedIndicator}</span>}
-      <ChevronDown />
+      <NavigationExpandIcon />
     </button>
     {open && <AnchoredOverlay
       id={listboxId}
@@ -97,14 +98,14 @@ export function CapabilityMenu({
         }}
       >
         <span><strong>{option.label}</strong>{option.detail && <span>{option.detail}</span>}</span>
-        {option.trailing ?? (value === option.id && <Check />)}
+        {option.trailing ?? (value === option.id && <ActionConfirmIcon />)}
       </button>)}
     </AnchoredOverlay>}
   </div>;
 }
 
 function directionIcon(direction: BrowseSort['direction']) {
-  return direction === 'asc' ? <ArrowUp /> : <ArrowDown />;
+  return direction === 'asc' ? <NavigationMoveUpIcon /> : <NavigationMoveDownIcon />;
 }
 
 export function SortCapabilityMenu({
@@ -133,7 +134,7 @@ export function SortCapabilityMenu({
         label: option.label,
         detail: option.expensive ? productMessage('library.sort-expensive').text : undefined,
         trailing: chosen
-          ? <span className="library-sort-menu-state">{directionIcon(value.direction)}<Check /></span>
+          ? <span className="library-sort-menu-state">{directionIcon(value.direction)}<ActionConfirmIcon /></span>
           : undefined,
       };
     })}
@@ -177,7 +178,7 @@ function hasIncompleteChoiceCondition(node: FilterNode, fields: LibraryFieldCapa
 function firstCondition(fields: LibraryFieldCapability[]): FilterConditionNode | undefined {
   const field = fields.find((candidate) => candidate.operators.length > 0);
   return field ? {
-    id: `condition-${crypto.randomUUID()}`,
+    id: `condition-${secureRandomUUID()}`,
     kind: 'condition',
     field: field.id,
     operator: field.operators[0],
@@ -286,7 +287,7 @@ function FilterConditionEditor({
           />
         </label>)}
     <label className="library-negate-choice"><input type="checkbox" checked={node.negated} onChange={(event) => onChange({ ...node, negated: event.target.checked })} /><span>{productMessage('library.filter-exclude').text}</span></label>
-    <IconButton label={productMessage('library.filter-remove-condition').text ?? ''} onClick={onRemove}><Trash2 /></IconButton>
+    <IconButton label={productMessage('library.filter-remove-condition').text ?? ''} onClick={onRemove}><ActionDeleteIcon /></IconButton>
   </div>;
 }
 
@@ -327,7 +328,7 @@ function FilterGroupEditor({
     onChange({
       ...node,
       children: [...node.children, {
-        id: `group-${crypto.randomUUID()}`,
+        id: `group-${secureRandomUUID()}`,
         kind: 'group',
         mode: 'all',
         negated: false,
@@ -344,7 +345,7 @@ function FilterGroupEditor({
       </div>
       <span>{productMessage('library.filter-conditions-suffix').text}</span>
       <label className="library-negate-choice"><input type="checkbox" checked={node.negated} onChange={(event) => onChange({ ...node, negated: event.target.checked })} /><span>{productMessage('library.filter-exclude-group').text}</span></label>
-      {!root && onRemove && <IconButton label={productMessage('library.filter-remove-group').text ?? ''} onClick={onRemove}><Trash2 /></IconButton>}
+      {!root && onRemove && <IconButton label={productMessage('library.filter-remove-group').text ?? ''} onClick={onRemove}><ActionDeleteIcon /></IconButton>}
     </div>
     <div className="library-filter-children">
       {node.children.map((child) => child.kind === 'condition'
@@ -373,8 +374,8 @@ function FilterGroupEditor({
       {!node.children.length && <p className="library-filter-empty">{productMessage('library.conditions-empty').title}</p>}
     </div>
     <div className="library-filter-add">
-      <button type="button" disabled={!canAddCondition} onClick={addCondition}><Plus /> {productMessage('action.add-condition').text}</button>
-      <button type="button" disabled={!canAddGroup} onClick={addGroup}><Plus /> {productMessage('action.add-group').text}</button>
+      <button type="button" disabled={!canAddCondition} onClick={addCondition}><ActionAddIcon /> {productMessage('action.add-condition').text}</button>
+      <button type="button" disabled={!canAddGroup} onClick={addGroup}><ActionAddIcon /> {productMessage('action.add-group').text}</button>
     </div>
   </section>;
 }
@@ -404,7 +405,7 @@ function SortEditor({
               ? nextSort
               : candidate).filter((candidate, candidateIndex, all) => all.findIndex((match) => match.field === candidate.field) === candidateIndex))}
           />
-          <IconButton label={productMessage('library.sort-remove', { sort: capability.label }).text ?? ''} disabled={sorts.length === 1} onClick={() => onChange(sorts.filter((_, candidateIndex) => candidateIndex !== index))}><Trash2 /></IconButton>
+          <IconButton label={productMessage('library.sort-remove', { sort: capability.label }).text ?? ''} disabled={sorts.length === 1} onClick={() => onChange(sorts.filter((_, candidateIndex) => candidateIndex !== index))}><ActionDeleteIcon /></IconButton>
         </div>;
       })}
     </div>
@@ -416,7 +417,7 @@ function SortEditor({
         const capability = unused[0];
         if (capability) onChange([...sorts, { field: capability.id, direction: capability.defaultDirection }]);
       }}
-    ><Plus /> {productMessage('action.add-sort').text}</button>
+    ><ActionAddIcon /> {productMessage('action.add-sort').text}</button>
   </section>;
 }
 
@@ -452,7 +453,7 @@ export function AdvancedLibraryDialog({
   return <ModalOverlay className="library-filter-sheet" labelledBy="library-filter-title" onDismiss={onDismiss}>
     <header>
       <div><h2 id="library-filter-title">{productMessage('library.refine-title', { pivot: pivot.label }).text}</h2><p>{productMessage('library.condition-budget', { count: conditionCount, maximum: capabilities.queryLimits.maximumClauses }).text}</p></div>
-      <IconButton label={productMessage('action.dismiss').text ?? ''} onClick={onDismiss}><X /></IconButton>
+      <IconButton label={productMessage('action.dismiss').text ?? ''} onClick={onDismiss}><ActionCloseIcon /></IconButton>
     </header>
     <div className="library-filter-sheet-body">
       <div className="library-builder-section-title"><h3>{productMessage('library.filters-title').text}</h3><p>{productMessage('library.filters-body').text}</p></div>
@@ -523,19 +524,19 @@ export function SaveLibraryViewDialog({
   };
   return <ModalOverlay className="library-save-dialog" labelledBy="library-save-title" onDismiss={onDismiss}>
     <form onSubmit={(event) => void submit(event)}>
-      <header><div><h2 id="library-save-title">{productMessage('library.save-title').text}</h2><p>{library.name} · {pivot.label}</p></div><IconButton label={productMessage('library.save-close').text ?? ''} onClick={onDismiss}><X /></IconButton></header>
+      <header><div><h2 id="library-save-title">{productMessage('library.save-title').text}</h2><p>{library.name} · {pivot.label}</p></div><IconButton label={productMessage('library.save-close').text ?? ''} onClick={onDismiss}><ActionCloseIcon /></IconButton></header>
       <div className="library-save-fields">
         <label><span>{productMessage('library.save-name').text}</span><input autoFocus value={title} onChange={(event) => setTitle(event.target.value)} placeholder={productMessage('library.save-name-example').text} /></label>
         <label className="library-save-pin"><input type="checkbox" checked={pinned} onChange={(event) => setPinned(event.target.checked)} /><span>{productMessage('library.save-pin').text}</span></label>
         {error && <p className="library-dialog-error" role="alert">{error}</p>}
       </div>
-      <footer><SecondaryButton onClick={onDismiss}>{productMessage('action.cancel').text}</SecondaryButton><PrimaryButton type="submit" disabled={!title.trim() || busy}><Save /> {busy ? productMessage('state.saving').text : productMessage('action.save-view').text}</PrimaryButton></footer>
+      <footer><SecondaryButton onClick={onDismiss}>{productMessage('action.cancel').text}</SecondaryButton><PrimaryButton type="submit" disabled={!title.trim() || busy}><ActionConfirmIcon /> {busy ? productMessage('state.saving').text : productMessage('action.save-view').text}</PrimaryButton></footer>
     </form>
   </ModalOverlay>;
 }
 
 export function AdvancedButton({ count, onClick }: { count: number; onClick: () => void }) {
-  return <SecondaryButton onClick={onClick}><SlidersHorizontal /> {productMessage(count ? 'library.more-filters-count' : 'library.more-filters', { count }).text}</SecondaryButton>;
+  return <SecondaryButton onClick={onClick}><ActionCustomizeIcon /> {productMessage(count ? 'library.more-filters-count' : 'library.more-filters', { count }).text}</SecondaryButton>;
 }
 
 export function LibraryControlGroup({ children }: { children: ReactNode }) {

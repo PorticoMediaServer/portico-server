@@ -1,14 +1,4 @@
-import {
-  CircleUserRound,
-  CircleX,
-  Inbox,
-  LibraryBig,
-  LoaderCircle,
-  Search,
-  ServerOff,
-  TriangleAlert,
-  WifiOff,
-} from '#portico-icons';
+import { AccountProfileIcon, StatusErrorIcon, StatusEmptyIcon, NavigationLibraryIcon, StatusLoadingIcon, NavigationSearchIcon, DeviceOfflineIcon, StatusWarningIcon } from '#portico-icons';
 import {
   productMessage,
   resolveProductProblem,
@@ -35,14 +25,14 @@ export function productLanguageProblem(reason: unknown, fallback: ProductMessage
 export function ProductLanguageIcon({ presentation }: { presentation: ProductMessagePresentation }) {
   if (!presentation.icon) return null;
   const glyph = semanticIcon(presentation.icon as SemanticIconId).glyph;
-  if (glyph === 'CircleX') return <CircleX aria-hidden="true" />;
-  if (glyph === 'Inbox') return <Inbox aria-hidden="true" />;
-  if (glyph === 'LibraryBig') return <LibraryBig aria-hidden="true" />;
-  if (glyph === 'LoaderCircle') return <LoaderCircle className="state-spinner" aria-hidden="true" />;
-  if (glyph === 'Search') return <Search aria-hidden="true" />;
-  if (glyph === 'ServerOff') return <ServerOff aria-hidden="true" />;
-  if (glyph === 'TriangleAlert') return <TriangleAlert aria-hidden="true" />;
-  if (glyph === 'WifiOff') return <WifiOff aria-hidden="true" />;
-  if (glyph === 'CircleUserRound') return <CircleUserRound aria-hidden="true" />;
+  if (glyph === 'CircleX') return <StatusErrorIcon aria-hidden="true" />;
+  if (glyph === 'Inbox') return <StatusEmptyIcon aria-hidden="true" />;
+  if (glyph === 'LibraryBig') return <NavigationLibraryIcon aria-hidden="true" />;
+  if (glyph === 'LoaderCircle') return <StatusLoadingIcon className="state-spinner" aria-hidden="true" />;
+  if (glyph === 'Search') return <NavigationSearchIcon aria-hidden="true" />;
+  if (glyph === 'ServerOff') return <DeviceOfflineIcon aria-hidden="true" />;
+  if (glyph === 'TriangleAlert') return <StatusWarningIcon aria-hidden="true" />;
+  if (glyph === 'WifiOff') return <DeviceOfflineIcon aria-hidden="true" />;
+  if (glyph === 'CircleUserRound') return <AccountProfileIcon aria-hidden="true" />;
   return null;
 }

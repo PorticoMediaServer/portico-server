@@ -3,7 +3,6 @@ import { hostedCSRFToken, HOSTED_BROWSER_INSTALLATION_IDENTITY_POLICY, rememberH
 
 afterEach(() => {
   rememberHostedCSRFToken('');
-  document.cookie = 'portico_hosted_csrf=; Max-Age=0; Path=/';
 });
 
 describe('hosted browser security', () => {
@@ -16,9 +15,8 @@ describe('hosted browser security', () => {
     });
   });
 
-  it('moves from the rolling-upgrade cookie to API-origin request verification in memory', () => {
-    document.cookie = 'portico_hosted_csrf=legacy%2Etoken; Path=/';
-    expect(hostedCSRFToken()).toBe('legacy.token');
+  it('retains API-origin request verification only in memory', () => {
+    expect(hostedCSRFToken()).toBe('');
     rememberHostedCSRFToken(' token.value ');
     expect(hostedCSRFToken()).toBe('token.value');
   });

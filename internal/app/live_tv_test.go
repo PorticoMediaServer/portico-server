@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
 	"strconv"
@@ -16,9 +15,45 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
-
-	"github.com/PorticoMediaServer/portico-server/internal/config"
 )
+
+func TestLiveTVPartialResponseRequiresCoherentContentRange(t *testing.T) {
+	response := &http.Response{StatusCode: http.StatusPartialContent, ContentLength: 10, Header: make(http.Header)}
+	response.Header.Set("Content-Range", "bytes 10-19/100")
+	if !validLiveTVPartialResponse(response) {
+		t.Fatal("expected coherent partial response to pass")
+	}
+
+	forwarded := make(http.Header)
+	response.Header.Set("Content-Type", "video/mp2t")
+	response.Header.Set("Content-Length", "10")
+	response.Header.Set("Accept-Ranges", "bytes")
+	copyLiveTVHeaders(forwarded, response.Header)
+	if got := forwarded.Get("Content-Range"); got != "bytes 10-19/100" {
+		t.Fatalf("Content-Range = %q", got)
+	}
+
+	for name, contentRange := range map[string]string{
+		"missing":    "",
+		"wrong unit": "items 10-19/100",
+		"reversed":   "bytes 19-10/100",
+		"past total": "bytes 10-100/100",
+		"malformed":  "bytes nope",
+	} {
+		t.Run(name, func(t *testing.T) {
+			candidate := &http.Response{StatusCode: http.StatusPartialContent, ContentLength: 10, Header: make(http.Header)}
+			candidate.Header.Set("Content-Range", contentRange)
+			if validLiveTVPartialResponse(candidate) {
+				t.Fatalf("accepted invalid Content-Range %q", contentRange)
+			}
+		})
+	}
+
+	response.ContentLength = 9
+	if validLiveTVPartialResponse(response) {
+		t.Fatal("accepted Content-Length inconsistent with Content-Range")
+	}
+}
 
 func TestParseM3UPlaylistAndXMLTVPrograms(t *testing.T) {
 	playlist := `#EXTM3U
@@ -1360,22 +1395,6 @@ func TestLiveTVGuideFiltersAndSortsBeforePagination(t *testing.T) {
 	}
 }
 
-func TestLiveTVGuideRejectsDeepLegacyOffsets(t *testing.T) {
-	serverURL, _, _ := newDiscoveryTestServer(t, config.Config{})
-	jar, _ := cookiejar.New(nil)
-	client := &http.Client{Jar: jar}
-	loginUser(t, client, serverURL)
-
-	var response map[string]any
-	status, body := doJSON(t, client, http.MethodGet, serverURL+"/api/live-tv/sources/src_any/guide?offset=10001", nil, &response)
-	if status != http.StatusBadRequest {
-		t.Fatalf("deep guide offset status=%d body=%s", status, body)
-	}
-	if response["code"] != "invalid_cursor" {
-		t.Fatalf("deep guide offset response = %#v", response)
-	}
-}
-
 func TestSearchIncludesPermittedLiveTVChannels(t *testing.T) {
 	server := newScannerTestServer(t)
 	user := dvrTestUser(t, server)
@@ -1534,6 +1553,34 @@ func TestLiveTVStreamOpenAndCloseManagePlaybackSession(t *testing.T) {
 	if len(streams) != 1 || streams[0].ID != playback.SessionID || !streams[0].IsLive || streams[0].Media.ID != "chan_open" {
 		t.Fatalf("unexpected active live tv streams: %#v", streams)
 	}
+	renegotiateBody := `{"requestId":"live-quality-720","expectedRevision":0,"qualityId":"720p-high"}`
+	renegotiateReq := httptest.NewRequest(http.MethodPost, "/api/playback-sessions/"+playback.SessionID+"/renegotiate", strings.NewReader(renegotiateBody))
+	renegotiateRecorder := httptest.NewRecorder()
+	server.handlePlaybackSessionRoute(renegotiateRecorder, renegotiateReq, user)
+	if renegotiateRecorder.Code != http.StatusOK {
+		t.Fatalf("quality renegotiation status=%d body=%s", renegotiateRecorder.Code, renegotiateRecorder.Body.String())
+	}
+	var changed PlaybackResponse
+	if err := json.Unmarshal(renegotiateRecorder.Body.Bytes(), &changed); err != nil {
+		t.Fatalf("decode quality response: %v", err)
+	}
+	if changed.SelectedQualityID != "720p-high" || !strings.Contains(changed.SourceURL, "quality=720p-high") || changed.PlaybackRevision != 1 {
+		t.Fatalf("quality change was not preserved: selected=%q source=%q revision=%d", changed.SelectedQualityID, changed.SourceURL, changed.PlaybackRevision)
+	}
+	var selectedQuality string
+	if err := server.db.QueryRow(`SELECT selected_quality_id FROM playback_sessions WHERE id = ?`, playback.SessionID).Scan(&selectedQuality); err != nil || selectedQuality != "720p-high" {
+		t.Fatalf("durable selected quality=%q err=%v", selectedQuality, err)
+	}
+	replayReq := httptest.NewRequest(http.MethodPost, "/api/playback-sessions/"+playback.SessionID+"/renegotiate", strings.NewReader(renegotiateBody))
+	replayRecorder := httptest.NewRecorder()
+	server.handlePlaybackSessionRoute(replayRecorder, replayReq, user)
+	if replayRecorder.Code != http.StatusOK {
+		t.Fatalf("idempotent quality replay status=%d body=%s", replayRecorder.Code, replayRecorder.Body.String())
+	}
+	var durableRevision int64
+	if err := server.db.QueryRow(`SELECT renegotiation_revision FROM playback_sessions WHERE id = ?`, playback.SessionID).Scan(&durableRevision); err != nil || durableRevision != 1 {
+		t.Fatalf("idempotent quality replay revision=%d err=%v", durableRevision, err)
+	}
 
 	closeBody := `{"sessionId":"` + playback.SessionID + `"}`
 	closeReq := httptest.NewRequest(http.MethodPost, "/api/live-tv/streams/chan_open/close", strings.NewReader(closeBody))
@@ -1555,6 +1602,13 @@ func TestLiveTVStreamOpenAndCloseManagePlaybackSession(t *testing.T) {
 	}
 	if len(streams) != 0 {
 		t.Fatalf("closed stream still listed: %#v", streams)
+	}
+}
+
+func TestLiveTVExactQualitySurvivesResolvedPolicy(t *testing.T) {
+	policy := ResolvedPlaybackPolicy{DeliveryProfile: "720p-high", MaxVideoBitrateMbps: 4, MaxVideoHeight: 720}
+	if got := liveTVQualityForResolvedPolicy(policy); got != "720p-high" {
+		t.Fatalf("exact advertised quality=%q", got)
 	}
 }
 

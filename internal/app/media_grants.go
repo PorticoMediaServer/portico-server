@@ -11,9 +11,8 @@ import (
 )
 
 const (
-	mediaGrantQueryParameter = "media_grant" // rejected legacy transport; retained for log redaction and migration tests
-	mediaGrantCookieName     = "portico_media_grant"
-	mediaGrantTTL            = 20 * time.Minute
+	mediaGrantCookieName = "portico_media_grant"
+	mediaGrantTTL        = 20 * time.Minute
 )
 
 var errMediaGrantDenied = errors.New("media grant is invalid, expired, revoked, or out of scope")
@@ -449,6 +448,9 @@ func (s *Server) revokeLiveTVGrantAllocation(ctx context.Context, playbackSessio
 			return err
 		}
 		if _, err := tx.Exec(`UPDATE playback_sessions SET state = 'stopped', ended_at = ?, last_seen_at = ? WHERE id = ? AND ended_at = ''`, now, now, playbackSessionID); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(`UPDATE playback_session_continuation_credentials SET revoked_at = ?, previous_valid_until = '' WHERE playback_session_id = ? AND revoked_at = ''`, now, playbackSessionID); err != nil {
 			return err
 		}
 		_, err := tx.Exec(`DELETE FROM live_tv_tuner_allocations WHERE allocation_kind = 'live_session' AND consumer_id = ?`, playbackSessionID)

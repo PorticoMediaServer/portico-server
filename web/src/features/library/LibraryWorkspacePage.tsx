@@ -1,31 +1,6 @@
+import { availableFields, availableSorts, countConditions, encodeExpression, encodeSorts, expressionToFilter, queryChips, removeExpressionAtPath, resolveBrowseWorkspaceQuery, sortLabel, productMessage, type BrowseLibraryRequest, type LibraryBrowseCapabilities, type SavedView, } from '@porticomediaserver/client-core';
 import {
-  availableFields,
-  availableSorts,
-  countConditions,
-  encodeExpression,
-  encodeSorts,
-  expressionToFilter,
-  queryChips,
-  removeExpressionAtPath,
-  resolveBrowseWorkspaceQuery,
-  sortLabel,
-  productMessage,
-  type BrowseLibraryRequest,
-  type LibraryBrowseCapabilities,
-  type SavedView,
-} from '@porticomediaserver/client-core';
-import {
-  ArrowDown,
-  Check,
-  Grid3X3,
-  LayoutList,
-  RefreshCw,
-  Rows3,
-  Save,
-  Shapes,
-  Table2,
-  X,
-} from '#portico-icons';
+  NavigationMoveDownIcon, ActionConfirmIcon, ViewGridIcon, ViewListIcon, ActionRefreshIcon, MediaCollectionIcon, ActionCloseIcon } from '#portico-icons';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { IconButton, PrimaryButton, SecondaryButton } from '../../components/controls/Buttons';
@@ -104,11 +79,11 @@ function findAlphabetTarget(page: LibraryPivotPage, letter: string) {
 }
 
 function viewIcon(view: LibraryPresentation) {
-  if (view === 'shelves') return <Rows3 />;
-  if (view === 'list') return <LayoutList />;
-  if (view === 'table') return <Table2 />;
-  if (view === 'facets') return <Shapes />;
-  return <Grid3X3 />;
+  if (view === 'shelves') return <ViewListIcon />;
+  if (view === 'list') return <ViewListIcon />;
+  if (view === 'table') return <ViewGridIcon />;
+  if (view === 'facets') return <MediaCollectionIcon />;
+  return <ViewGridIcon />;
 }
 
 function viewLabel(view: LibraryPresentation) {
@@ -434,7 +409,7 @@ export function LibraryWorkspacePage({
 
   if (capabilities.status === 'error' && !capabilities.data) {
     const failure = productLanguageProblem(capabilities.error, 'library.load-failed');
-    return <div className="standard-page library-workspace-page"><div className="library-workspace-state error" role="alert"><ProductLanguageIcon presentation={failure} /><strong>{failure.title}</strong><p>{failure.body}</p><SecondaryButton onClick={() => setReloadRevision((current) => current + 1)}><RefreshCw /> {failure.actions[0]?.label}</SecondaryButton></div></div>;
+    return <div className="standard-page library-workspace-page"><div className="library-workspace-state error" role="alert"><ProductLanguageIcon presentation={failure} /><strong>{failure.title}</strong><p>{failure.body}</p><SecondaryButton onClick={() => setReloadRevision((current) => current + 1)}><ActionRefreshIcon /> {failure.actions[0]?.label}</SecondaryButton></div></div>;
   }
 
   if (!pivot || !capabilityData) {
@@ -480,7 +455,7 @@ export function LibraryWorkspacePage({
           onChange={(nextSort) => updateParameters({ sort: encodeSorts([nextSort, ...sorts.filter((sort) => sort.field !== nextSort.field)]) })}
         />
         <AdvancedButton count={queryConditionCount} onClick={() => setAdvancedOpen(true)} />
-        <SecondaryButton onClick={() => setSaveOpen(true)}><Save /> {productMessage('action.save-view').text}</SecondaryButton>
+        <SecondaryButton onClick={() => setSaveOpen(true)}><ActionConfirmIcon /> {productMessage('action.save-view').text}</SecondaryButton>
       </>}
       <span className="library-toolbar-spacer" />
       <LibraryControlGroup>
@@ -494,7 +469,7 @@ export function LibraryWorkspacePage({
     </div>}
 
     {chips.length > 0 && <div className="library-query-chips" aria-label={productMessage('library.applied-filters-label').text}>
-      {chips.map((chip) => <button key={chip.key} type="button" onClick={() => expression && applyQuery(removeExpressionAtPath(expression, chip.path))}>{chip.label}<X /></button>)}
+      {chips.map((chip) => <button key={chip.key} type="button" onClick={() => expression && applyQuery(removeExpressionAtPath(expression, chip.path))}>{chip.label}<ActionCloseIcon /></button>)}
       <button type="button" className="clear-all" onClick={() => applyQuery(undefined)}>{productMessage('action.clear-filters').text}</button>
     </div>}
 
@@ -505,8 +480,8 @@ export function LibraryWorkspacePage({
 
     {expressionInvalid && <div className="library-inline-error" role="alert"><ProductLanguageIcon presentation={invalidFilterMessage} /><span><strong>{invalidFilterMessage.title}</strong><p>{invalidFilterMessage.body}</p></span><SecondaryButton onClick={() => updateParameters({ filters: undefined })}>{invalidFilterMessage.actions[0]?.label}</SecondaryButton></div>}
     {page.status === 'loading' && !page.data && !expressionInvalid && <div className={`library-results-reservation is-${artworkShape}`} data-artwork-shape={artworkShape} aria-busy="true"><span className="sr-only">{loadingMessage.title}. {loadingMessage.body}</span></div>}
-    {pageFailure && <div className="library-inline-error" role="alert"><ProductLanguageIcon presentation={pageFailure} /><span><strong>{pageFailure.title}</strong><p>{pageFailure.body}</p></span><SecondaryButton onClick={() => setReloadRevision((current) => current + 1)}><RefreshCw /> {pageFailure.actions[0]?.label}</SecondaryButton></div>}
-    {continuationError && page.data && <div className="library-inline-error" role="alert"><ProductLanguageIcon presentation={continuationFailure} /><span><strong>{continuationFailure.title}</strong><p>{continuationFailure.body}</p></span><SecondaryButton onClick={() => void (continuationError.kind === 'seek' ? seekAlphabet(continuationError.letter) : loadMore())}><RefreshCw /> {continuationFailure.actions[0]?.label}</SecondaryButton></div>}
+    {pageFailure && <div className="library-inline-error" role="alert"><ProductLanguageIcon presentation={pageFailure} /><span><strong>{pageFailure.title}</strong><p>{pageFailure.body}</p></span><SecondaryButton onClick={() => setReloadRevision((current) => current + 1)}><ActionRefreshIcon /> {pageFailure.actions[0]?.label}</SecondaryButton></div>}
+    {continuationError && page.data && <div className="library-inline-error" role="alert"><ProductLanguageIcon presentation={continuationFailure} /><span><strong>{continuationFailure.title}</strong><p>{continuationFailure.body}</p></span><SecondaryButton onClick={() => void (continuationError.kind === 'seek' ? seekAlphabet(continuationError.letter) : loadMore())}><ActionRefreshIcon /> {continuationFailure.actions[0]?.label}</SecondaryButton></div>}
     {!expressionInvalid && page.data && loadedCount === 0 && <div className="library-workspace-state"><ProductLanguageIcon presentation={expression ? filteredEmptyMessage : emptyMessage} /><strong>{expression ? filteredEmptyMessage.title : emptyMessage.title}</strong><p>{expression ? filteredEmptyMessage.body : emptyMessage.body}</p>{expression && <SecondaryButton onClick={() => applyQuery(undefined)}>{filteredEmptyMessage.actions[0]?.label}</SecondaryButton>}</div>}
     {!expressionInvalid && page.data && loadedCount > 0 && <LibraryResults
       library={library}
@@ -516,7 +491,7 @@ export function LibraryWorkspacePage({
       onApplyFacet={applyFacet}
       onChanged={() => setReloadRevision((current) => current + 1)}
     />}
-    {!expressionInvalid && page.data?.hasMore && <div className="library-load-more"><PrimaryButton disabled={loadingMore} onClick={() => void loadMore()}>{loadingMore ? <RefreshCw className="state-spinner" /> : <ArrowDown />} {loadingMore ? loadingMoreMessage.title : loadMoreLabel}</PrimaryButton></div>}
+    {!expressionInvalid && page.data?.hasMore && <div className="library-load-more"><PrimaryButton disabled={loadingMore} onClick={() => void loadMore()}>{loadingMore ? <ActionRefreshIcon className="state-spinner" /> : <NavigationMoveDownIcon />} {loadingMore ? loadingMoreMessage.title : loadMoreLabel}</PrimaryButton></div>}
 
     {!expressionInvalid && alphabetical && page.data && loadedCount > 0 && <nav className="library-alpha-rail" aria-label={productMessage('library.alpha-label').text}>
       {alphabet.map((letter) => <button
@@ -549,6 +524,6 @@ export function LibraryWorkspacePage({
       onSaved={setSavedView}
       onDismiss={() => setSaveOpen(false)}
     />}
-    {savedView && <div className="library-saved-notice" role="status"><Check /> <span>{productMessage('library.saved-view-notice', { title: savedView.title }).text}</span><IconButton label={productMessage('library.dismiss-saved-view').text ?? ''} onClick={() => setSavedView(undefined)}><X /></IconButton></div>}
+    {savedView && <div className="library-saved-notice" role="status"><ActionConfirmIcon /> <span>{productMessage('library.saved-view-notice', { title: savedView.title }).text}</span><IconButton label={productMessage('library.dismiss-saved-view').text ?? ''} onClick={() => setSavedView(undefined)}><ActionCloseIcon /></IconButton></div>}
   </div>;
 }

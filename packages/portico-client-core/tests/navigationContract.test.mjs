@@ -44,6 +44,13 @@ test("every canonical destination round-trips through custom-scheme and HTTPS li
   }
 });
 
+test("home uses only the canonical root route", () => {
+  assert.equal(serializePorticoLink({destination: "home"}), "portico://");
+  assert.equal(serializePorticoLink({destination: "home"}, "https://web.getportico.tv/"), "https://web.getportico.tv/");
+  assert.equal(parsePorticoLink("https://web.getportico.tv/home"), undefined);
+  assert.equal(parsePorticoLink("portico://home"), undefined);
+});
+
 test("canonical media and play links remain strict inputs", () => {
   assert.deepEqual(parsePorticoLink("portico://media/movie-1"), {destination: "media-detail", mediaId: "movie-1"});
   assert.deepEqual(parsePorticoLink("https://web.getportico.tv/play/movie-1"), {destination: "player", mediaId: "movie-1"});

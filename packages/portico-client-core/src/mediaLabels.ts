@@ -17,7 +17,7 @@ export function episodeOnlyLabel(item: MediaItem): string {
 }
 
 export function ownedEpisodeCount(item: MediaItem): number {
-  const children = item.children?.filter((child) => child.type === "episode").length ?? 0;
+  const children = item.children?.filter((child) => child.entityKind === "episode").length ?? 0;
   return children || item.fileCount || 0;
 }
 

@@ -1,11 +1,4 @@
-import {
-  AlertTriangle,
-  Database,
-  FileWarning,
-  RefreshCw,
-  Trash2,
-  X,
-} from "#portico-icons";
+import { StatusWarningIcon, DeviceStorageIcon, ActionRefreshIcon, ActionDeleteIcon, ActionCloseIcon } from "#portico-icons";
 import { ApiError } from "@porticomediaserver/client-core";
 import { useMemo, useState } from "react";
 import { IconButton, SecondaryButton } from "../../components/controls/Buttons";
@@ -125,12 +118,12 @@ export function MediaDeleteDialog({
           disabled={busy}
           onClick={onDismiss}
         >
-          <X />
+          <ActionCloseIcon />
         </IconButton>
       </header>
       <div className="media-delete-body">
         <div className="media-delete-impact" role="note">
-          <AlertTriangle />
+          <StatusWarningIcon />
           <span>
             <strong>This cannot be undone in Portico.</strong>
             <small>
@@ -167,7 +160,7 @@ export function MediaDeleteDialog({
               setError("");
             }}
           >
-            <Database />
+            <DeviceStorageIcon />
             <span>
               <strong>Remove from Portico</strong>
               <small>
@@ -188,7 +181,7 @@ export function MediaDeleteDialog({
                 setError("");
               }}
             >
-              <FileWarning />
+              <StatusWarningIcon />
               <span>
                 <strong>Move source files to trash</strong>
                 <small>
@@ -218,7 +211,7 @@ export function MediaDeleteDialog({
         )}
         {error && (
           <p className="media-delete-error" role="alert">
-            <AlertTriangle /> {error}
+            <StatusWarningIcon /> {error}
           </p>
         )}
       </div>
@@ -234,11 +227,11 @@ export function MediaDeleteDialog({
         >
           {busy ? (
             <>
-              <RefreshCw className="state-spinner" /> Removing…
+              <ActionRefreshIcon className="state-spinner" /> Removing…
             </>
           ) : (
             <>
-              <Trash2 />{" "}
+              <ActionDeleteIcon />{" "}
               {intent === "files"
                 ? "Move to trash"
                 : items.length === 1

@@ -1,4 +1,4 @@
-import { BookOpen, CheckCircle2, FolderHeart, ListMusic, Music2, Radio, RefreshCw, Tv } from '#portico-icons';
+import { NavigationLibraryIcon, StatusSuccessIcon, LibrarySavedIcon, MediaPlaylistIcon, MediaMusicIcon, NavigationChannelsIcon, ActionRefreshIcon, DeviceTvIcon } from '#portico-icons';
 import { productMessage, type ProductMessageId } from '@porticomediaserver/client-core';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
@@ -26,7 +26,7 @@ function childDetail(item: MediaItem, count: number) {
     series: ['media.audiobook-count-single', 'media.audiobook-count'],
     collection: ['media.item-count-single', 'media.item-count'],
     playlist: ['media.item-count-single', 'media.item-count'],
-    channel: ['media.program-count-single', 'media.program-count'],
+    'live-channel': ['media.program-count-single', 'media.program-count'],
   };
   const ids = messages[kind] ?? ['media.item-count-single', 'media.item-count'];
   return productMessage(count === 1 ? ids[0] : ids[1], { count }).text ?? '';
@@ -34,12 +34,12 @@ function childDetail(item: MediaItem, count: number) {
 
 function HierarchyEmpty({ item }: { item: MediaItem }) {
   const kind = detailKind(item);
-  const Icon = kind === 'album' || kind === 'artist' ? Music2
-    : kind === 'author' || kind === 'book' || kind === 'series' ? BookOpen
-      : kind === 'playlist' ? ListMusic
-        : kind === 'collection' ? FolderHeart
-          : kind === 'channel' ? Radio
-            : Tv;
+  const Icon = kind === 'album' || kind === 'artist' ? MediaMusicIcon
+    : kind === 'author' || kind === 'book' || kind === 'series' ? NavigationLibraryIcon
+      : kind === 'playlist' ? MediaPlaylistIcon
+        : kind === 'collection' ? LibrarySavedIcon
+          : kind === 'live-channel' ? NavigationChannelsIcon
+            : DeviceTvIcon;
   return <div className="portico-detail-inline-state empty" role="status">
     <Icon />
     <span><strong>{productMessage('media.children-unavailable-title', { section: detailChildTitle(item) }).text}</strong><small>{detailEmptyChildCopy(item)}</small></span>
@@ -67,7 +67,7 @@ function EpisodeRow({ item, selected, onSelect, playbackOptions }: { item: Media
       <span className="show-episode-copy">
         <span className="show-episode-heading"><span>{episodeNumberLabel(item)}</span><strong>{item.title}</strong></span>
         {item.summary && <span className="show-episode-summary">{item.summary}</span>}
-        <span className="show-episode-meta">{item.length || runtimeUnavailable}{item.watched ? <><i aria-hidden="true" /><CheckCircle2 /> {watched}</> : resumeTime ? <><i aria-hidden="true" />{resumeFrom}</> : null}</span>
+        <span className="show-episode-meta">{item.length || runtimeUnavailable}{item.watched ? <><i aria-hidden="true" /><StatusSuccessIcon /> {watched}</> : resumeTime ? <><i aria-hidden="true" />{resumeFrom}</> : null}</span>
       </span>
     </button>
     <div className="show-episode-actions">
@@ -244,7 +244,7 @@ function RemoteEpisodePanel({ season, selectedEpisodeID, onSelectEpisode }: { se
     return <div className="portico-detail-inline-state error" role="alert">
       <ProductLanguageIcon presentation={failure} />
       <span><strong>{failure.title}</strong><small>{failure.body}</small></span>
-      <SecondaryButton onClick={() => setReloadKey((value) => value + 1)}><RefreshCw /> {failure.actions[0]?.label}</SecondaryButton>
+      <SecondaryButton onClick={() => setReloadKey((value) => value + 1)}><ActionRefreshIcon /> {failure.actions[0]?.label}</SecondaryButton>
     </div>;
   }
   const loadMore = async () => {
@@ -270,8 +270,8 @@ function RemoteEpisodePanel({ season, selectedEpisodeID, onSelectEpisode }: { se
     }
   };
   return <><EpisodeList season={season} episodes={query.data.items} selectedEpisodeID={selectedEpisodeID} onSelectEpisode={onSelectEpisode} />
-    {pageError && <div className="portico-detail-inline-state error" role="alert"><ProductLanguageIcon presentation={productMessage('problem.request-failed')} /><span><strong>{productMessage('problem.request-failed').title}</strong><small>{productMessage('problem.request-failed').body}</small></span><SecondaryButton onClick={() => void loadMore()}><RefreshCw /> {productMessage('problem.request-failed').actions[0]?.label}</SecondaryButton></div>}
-    {query.data.hasMore && query.data.nextCursor && <SecondaryButton disabled={loadingMore} onClick={() => void loadMore()}>{loadingMore ? <RefreshCw className="state-spinner" /> : null} {loadingMore ? productMessage('state.loading-more').title : productMessage('action.load-more-group', { group: productMessage('media.episodes-title').text?.toLocaleLowerCase() }).text}</SecondaryButton>}</>;
+    {pageError && <div className="portico-detail-inline-state error" role="alert"><ProductLanguageIcon presentation={productMessage('problem.request-failed')} /><span><strong>{productMessage('problem.request-failed').title}</strong><small>{productMessage('problem.request-failed').body}</small></span><SecondaryButton onClick={() => void loadMore()}><ActionRefreshIcon /> {productMessage('problem.request-failed').actions[0]?.label}</SecondaryButton></div>}
+    {query.data.hasMore && query.data.nextCursor && <SecondaryButton disabled={loadingMore} onClick={() => void loadMore()}>{loadingMore ? <ActionRefreshIcon className="state-spinner" /> : null} {loadingMore ? productMessage('state.loading-more').title : productMessage('action.load-more-group', { group: productMessage('media.episodes-title').text?.toLocaleLowerCase() }).text}</SecondaryButton>}</>;
 }
 
 function EpisodePanel({ season, selectedEpisodeID, onSelectEpisode }: { season: MediaItem; selectedEpisodeID?: string; onSelectEpisode: (id: string) => void }) {
@@ -329,9 +329,9 @@ function ShowHierarchy({ item }: { item: MediaItem }) {
 
 function ChildGrid({ item, children }: { item: MediaItem; children: MediaItem[] }) {
   const kind = detailKind(item);
-  const view = ['season', 'album', 'book', 'playlist', 'channel'].includes(kind) ? 'list' : 'grid';
+  const view = ['season', 'album', 'audiobook', 'playlist', 'live-channel'].includes(kind) ? 'list' : 'grid';
   const shape = kind === 'artist' ? 'square'
-    : ['author', 'series'].includes(kind) ? 'poster'
+    : ['author', 'audiobook-series'].includes(kind) ? 'poster'
       : kind === 'collection' || kind === 'category' ? undefined
         : detailArtworkShape(item);
   return <SelectableMediaGrid items={orderedDetailItems(children)} view={view} shape={shape} playbackContext={detailPlaybackContext(item)} className={view === 'list' ? 'portico-detail-ordered-list' : kind === 'artist' ? 'portico-music-grid' : ''} />;
@@ -339,7 +339,7 @@ function ChildGrid({ item, children }: { item: MediaItem; children: MediaItem[] 
 
 function ResolvedDetailHierarchy({ item }: { item: MediaItem }) {
   if (detailKind(item) === 'show') return <ShowHierarchy item={item} />;
-  if (detailKind(item) === 'book' && item.chapters !== undefined) return <section className="portico-detail-section">
+  if (detailKind(item) === 'audiobook' && item.chapters !== undefined) return <section className="portico-detail-section">
     <SectionHeading title={productMessage('media.chapters-title').text ?? ''} detail={childDetail(item, item.chapters.length)} />
     <AudiobookChapterList book={item} chapters={item.chapters} />
   </section>;
@@ -388,7 +388,7 @@ function PaginatedDetailHierarchy({ item }: { item: MediaItem }) {
     const failure = productLanguageProblem(query.error, 'media.detail-unavailable');
     return <>
       <ResolvedDetailHierarchy item={partialItem} />
-      <div className="portico-detail-inline-state error" role="alert"><ProductLanguageIcon presentation={failure} /><span><strong>{failure.title}</strong><small>{failure.body}</small></span><SecondaryButton onClick={() => setReloadKey((value) => value + 1)}><RefreshCw /> {failure.actions[0]?.label}</SecondaryButton></div>
+      <div className="portico-detail-inline-state error" role="alert"><ProductLanguageIcon presentation={failure} /><span><strong>{failure.title}</strong><small>{failure.body}</small></span><SecondaryButton onClick={() => setReloadKey((value) => value + 1)}><ActionRefreshIcon /> {failure.actions[0]?.label}</SecondaryButton></div>
     </>;
   }
   const loadMore = async () => {
@@ -416,8 +416,8 @@ function PaginatedDetailHierarchy({ item }: { item: MediaItem }) {
   };
   return <>
     <ResolvedDetailHierarchy item={{ ...item, children: query.data.items, childrenTruncated: false }} />
-    {pageError && <div className="portico-detail-inline-state error" role="alert"><ProductLanguageIcon presentation={productMessage('problem.request-failed')} /><span><strong>{productMessage('problem.request-failed').title}</strong><small>{productMessage('problem.request-failed').body}</small></span><SecondaryButton onClick={() => void loadMore()}><RefreshCw /> {productMessage('problem.request-failed').actions[0]?.label}</SecondaryButton></div>}
-    {query.data.hasMore && query.data.nextCursor && <SecondaryButton disabled={loadingMore} onClick={() => void loadMore()}>{loadingMore ? <RefreshCw className="state-spinner" /> : null} {loadingMore ? productMessage('state.loading-more').title : productMessage('action.load-more-group', { group: detailChildTitle(item).toLocaleLowerCase() }).text}</SecondaryButton>}
+    {pageError && <div className="portico-detail-inline-state error" role="alert"><ProductLanguageIcon presentation={productMessage('problem.request-failed')} /><span><strong>{productMessage('problem.request-failed').title}</strong><small>{productMessage('problem.request-failed').body}</small></span><SecondaryButton onClick={() => void loadMore()}><ActionRefreshIcon /> {productMessage('problem.request-failed').actions[0]?.label}</SecondaryButton></div>}
+    {query.data.hasMore && query.data.nextCursor && <SecondaryButton disabled={loadingMore} onClick={() => void loadMore()}>{loadingMore ? <ActionRefreshIcon className="state-spinner" /> : null} {loadingMore ? productMessage('state.loading-more').title : productMessage('action.load-more-group', { group: detailChildTitle(item).toLocaleLowerCase() }).text}</SecondaryButton>}
   </>;
 }
 

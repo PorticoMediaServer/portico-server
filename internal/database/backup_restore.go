@@ -62,9 +62,9 @@ func ProtectCreatedFile(path string) error {
 	return enforcePrivateExistingFile(path)
 }
 
-// PreparePrivateLogArtifacts repairs the active log and all legacy rotated
-// files before the first record is emitted. Rotation calls the corresponding
-// enforcement function again after renaming files.
+// PreparePrivateLogArtifacts repairs the active log and its bounded rotated
+// files before the first record is emitted. Rotation enforces the same policy
+// after renaming files.
 func PreparePrivateLogArtifacts(path string, backups int) error {
 	path = strings.TrimSpace(path)
 	if path == "" {

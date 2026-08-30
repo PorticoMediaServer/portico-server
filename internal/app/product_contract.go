@@ -717,7 +717,10 @@ func (s *Server) handleProductContract(w http.ResponseWriter, r *http.Request, _
 		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "Use GET for this endpoint.")
 		return
 	}
-	w.Header().Set("Cache-Control", "private, max-age=300")
+	// The contract embeds the active build identity. Reusing it across an atomic
+	// release switch can pair build N's contract with build N+1's System response
+	// and correctly trip the client's fail-closed compatibility check.
+	w.Header().Set("Cache-Control", "private, no-store")
 	writeJSON(w, http.StatusOK, s.canonicalProductContract())
 }
 

@@ -7,7 +7,22 @@ STAGE="$ROOT/dist/stage-linux-$GOARCH_VALUE"
 OUT="$ROOT/dist"
 mkdir -p "$OUT"
 "$ROOT/scripts/build-release-payload.sh" "$VERSION" linux "$GOARCH_VALUE" "$FFMPEG_ROOT" "$STAGE" "$BUILD_NUMBER"
-tar --sort=name --mtime='UTC 2020-01-01' --owner=0 --group=0 --numeric-owner -C "$STAGE" -czf "$OUT/portico-media-server-linux-${FILE_ARCH}.tar.gz" .
+ARCHIVE="$OUT/portico-media-server-linux-${FILE_ARCH}.tar.gz"
+COPYFILE_DISABLE=1 tar --no-xattrs --no-mac-metadata --sort=name --mtime='UTC 2020-01-01' --owner=0 --group=0 --numeric-owner -C "$STAGE" -czf "$ARCHIVE" .
+python3 - "$ARCHIVE" <<'PY'
+import sys, tarfile
+
+with tarfile.open(sys.argv[1], "r:gz") as archive:
+    forbidden = []
+    for member in archive.getmembers():
+        if member.name.rsplit("/", 1)[-1].startswith("._") or member.name.rsplit("/", 1)[-1] == ".DS_Store":
+            forbidden.append(member.name)
+        for key in member.pax_headers:
+            if "xattr" in key.lower() or "resourcefork" in key.lower():
+                forbidden.append(f"{member.name}:{key}")
+    if forbidden:
+        raise SystemExit("release archive contains forbidden metadata: " + ", ".join(forbidden[:8]))
+PY
 
 escape_sed_replacement() {
   local value="$1"

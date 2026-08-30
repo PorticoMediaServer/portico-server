@@ -414,9 +414,8 @@ func restoreSafeMessage(code string) string {
 	}
 }
 
-// ReadBackupManifest reads the sidecar without following a selected backup's
-// final-component symlink. Missing sidecars are reported as os.ErrNotExist so
-// callers can apply the identity-based legacy rule explicitly.
+// ReadBackupManifest reads the mandatory sidecar without following a selected
+// backup's final-component symlink.
 func ReadBackupManifest(databasePath string) (BackupManifest, error) {
 	manifestPath := databasePath + ".manifest.json"
 	if err := requireRegularNonSymlinkFile(manifestPath); err != nil {
@@ -536,7 +535,7 @@ func ValidateRestoreCandidateForBackup(ctx context.Context, path string, manifes
 // InspectRestoreDatabase is used only while publishing a new backup: the
 // manifest does not exist until the database has been copied and inspected.
 // Restore admission itself must call ValidateRestoreCandidate and therefore
-// rejects manifestless/legacy sources.
+// requires the canonical manifest.
 func InspectRestoreDatabase(ctx context.Context, path string) (RestoreValidation, error) {
 	return InspectRestoreDatabaseWithLimit(ctx, path, RestoreMaxDatabaseBytes)
 }

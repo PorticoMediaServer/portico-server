@@ -3,11 +3,9 @@ package database
 import (
 	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io/fs"
-	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -76,7 +74,7 @@ func TestMigrationBaselineFreshAndReopenIsNoOp(t *testing.T) {
 	}
 }
 
-func TestShippingMigrationInventoryExcludesArchivedPreReleaseHistory(t *testing.T) {
+func TestShippingMigrationInventoryContainsOnlyCanonicalBaseline(t *testing.T) {
 	entries, err := fs.ReadDir(embeddedMigrations.FS(), ".")
 	if err != nil {
 		t.Fatalf("read embedded migrations: %v", err)
@@ -89,36 +87,6 @@ func TestShippingMigrationInventoryExcludesArchivedPreReleaseHistory(t *testing.
 	}
 	if want := []string{"001_initial.sql"}; !slices.Equal(embeddedSQL, want) {
 		t.Fatalf("embedded SQL inventory=%v want=%v", embeddedSQL, want)
-	}
-
-	archive := filepath.Join("testdata", "pre-release-af615102")
-	archiveEntries, err := os.ReadDir(archive)
-	if err != nil {
-		t.Fatalf("read archived migration history: %v", err)
-	}
-	var archivedSQL []string
-	for _, entry := range archiveEntries {
-		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".sql") {
-			archivedSQL = append(archivedSQL, entry.Name())
-		}
-	}
-	if len(archivedSQL) != 42 || archivedSQL[0] != "001_initial_foundation.sql" || archivedSQL[len(archivedSQL)-1] != "043_canonical_playback_state.sql" {
-		t.Fatalf("archived pre-release inventory is incomplete: count=%d first=%q last=%q", len(archivedSQL), archivedSQL[0], archivedSQL[len(archivedSQL)-1])
-	}
-	foundation001, err := os.ReadFile(filepath.Join(archive, "001_initial_foundation.sql"))
-	if err != nil {
-		t.Fatalf("read archived Foundation 001: %v", err)
-	}
-	foundationSum := sha256.Sum256(foundation001)
-	if got := hex.EncodeToString(foundationSum[:]); got != "3efae2a9860854930ffe680d7acb65c48baf4491051cbf7357a7da7c9a3ce994" {
-		t.Fatalf("archived Foundation 001 checksum=%s", got)
-	}
-	if slices.ContainsFunc(archivedSQL, func(name string) bool { return strings.HasPrefix(name, "021_") }) {
-		t.Fatal("archive invented the intentionally absent pre-release sequence 021")
-	}
-	readme, err := os.ReadFile(filepath.Join(archive, "README.md"))
-	if err != nil || !strings.Contains(string(readme), "must never") || !strings.Contains(string(readme), "rebuild required") {
-		t.Fatalf("archive safety README is missing or ambiguous: err=%v", err)
 	}
 }
 
@@ -378,13 +346,13 @@ func migrationMetadataSnapshot(t *testing.T, db interface {
 	return snapshot.String()
 }
 
-func TestMigrationBaselineRejectsPreReleaseIdentityAndLedger(t *testing.T) {
+func TestMigrationBaselineRejectsNoncanonicalIdentityAndLedger(t *testing.T) {
 	for _, test := range []struct {
 		name   string
 		mutate string
 	}{
-		{name: "pre-release format", mutate: `UPDATE portico_database_identity SET format_version = 1 WHERE id = 1`},
-		{name: "pre-release head", mutate: `UPDATE portico_database_identity SET migration_head = '043_canonical_playback_state' WHERE id = 1`},
+		{name: "wrong format", mutate: `UPDATE portico_database_identity SET format_version = 0 WHERE id = 1`},
+		{name: "wrong head", mutate: `UPDATE portico_database_identity SET migration_head = 'unexpected' WHERE id = 1`},
 		{name: "blank checksum", mutate: `UPDATE schema_migrations SET checksum_sha256 = '' WHERE version = '001_initial'`},
 	} {
 		t.Run(test.name, func(t *testing.T) {

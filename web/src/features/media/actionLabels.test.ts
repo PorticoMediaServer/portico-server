@@ -2,15 +2,15 @@ import { describe, expect, it } from 'vitest';
 import type { MediaItem } from '../../data/models';
 import { compactSavedLabel, playActionLabel, savedAriaLabel, savedMenuLabel, selectedSavedCopy } from './actionLabels';
 
-function item(kind: MediaItem['kind'], type: MediaItem['type'], title = 'Example'): MediaItem {
-  return { id: kind, title, subtitle: '', year: 0, type, kind, poster: '', backdrop: '', rating: '', length: '', genre: '' };
+function item(entityKind: MediaItem['entityKind'], title = 'Example'): MediaItem {
+  return { id: entityKind, title, subtitle: '', year: 0, entityKind, poster: '', backdrop: '', rating: '', length: '', genre: '' };
 }
 
 describe('context-aware media action labels', () => {
   it('uses listening language for artists, albums, and tracks', () => {
-    const artist = item('artist', 'music', 'Bonobo');
-    const album = item('album', 'music', 'Black Sands');
-    const track = item('track', 'music', 'Kiara');
+    const artist = item('artist', 'Bonobo');
+    const album = item('album', 'Black Sands');
+    const track = item('track', 'Kiara');
     expect(playActionLabel(artist)).toBe('Play mix');
     expect(playActionLabel(album)).toBe('Play album');
     expect(playActionLabel(track)).toBe('Play');
@@ -20,7 +20,7 @@ describe('context-aware media action labels', () => {
   });
 
   it('keeps established video watchlist language', () => {
-    const movie = item('movie', 'movie', 'Arrival');
+    const movie = item('movie', 'Arrival');
     expect(playActionLabel(movie)).toBe('Play');
     expect(compactSavedLabel(movie, true)).toBe('In watchlist');
     expect(savedMenuLabel(movie, false)).toBe('Add to watchlist');
@@ -28,7 +28,7 @@ describe('context-aware media action labels', () => {
   });
 
   it('uses music-aware bulk copy only for an all-listening selection', () => {
-    expect(selectedSavedCopy([item('album', 'music'), item('track', 'music')])).toEqual({ label: 'Save', notice: 'Saved.' });
-    expect(selectedSavedCopy([item('album', 'music'), item('movie', 'movie')])).toEqual({ label: 'Watchlist', notice: 'Added to watchlist.' });
+    expect(selectedSavedCopy([item('album'), item('track')])).toEqual({ label: 'Save', notice: 'Saved.' });
+    expect(selectedSavedCopy([item('album'), item('movie')])).toEqual({ label: 'Watchlist', notice: 'Added to watchlist.' });
   });
 });

@@ -1,5 +1,5 @@
 import type { Job, Library, RemoteStorageAnalysisMode, RemoteStorageSource, RemoteStorageSourceRequest } from '@porticomediaserver/client-core';
-import { AlertTriangle, CheckCircle2, CloudDownload, HardDrive, Plus, RefreshCw, Trash2, X } from '#portico-icons';
+import { StatusWarningIcon, StatusSuccessIcon, ActionPrepareDownloadIcon, DeviceStorageIcon, ActionAddIcon, ActionRefreshIcon, ActionDeleteIcon, ActionCloseIcon } from '#portico-icons';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { IconButton, PrimaryButton, SecondaryButton } from '../../components/controls/Buttons';
 import { ModalOverlay } from '../../components/overlay/OverlayPortal';
@@ -13,7 +13,7 @@ type RemoteKind = RemoteStorageSourceRequest['kind'];
 
 const analysisModeOptions: Array<{ value: RemoteStorageAnalysisMode; label: string; description: string }> = [
   { value: 'basic', label: 'Basic', description: 'Recommended for rclone and WebDAV. Adds technical facts and representative thumbnails with bounded reads.' },
-  { value: 'file_list_only', label: 'File List Only', description: 'Reads no media content during scans. Technical stream data and thumbnails are deferred.' },
+  { value: 'file_list_only', label: 'File Clipboard Only', description: 'Reads no media content during scans. Technical stream data and thumbnails are deferred.' },
   { value: 'complete', label: 'Complete', description: 'Deep whole-file compute, including sonic analysis, loudness, and intro/credit detection; highest cloud traffic.' },
   { value: 'custom', label: 'Custom', description: 'Advanced. Uses exactly the enabled Low, Moderate, and High disk-I/O operations in this library’s Custom analysis settings.' },
 ];
@@ -135,7 +135,7 @@ function RemoteStorageEditor({
   return <ModalOverlay labelledBy="portico-remote-storage-editor-title" className="portico-settings-dialog portico-remote-storage-dialog" initialFocusRef={nameInput} onDismiss={dismiss}>
     <header>
       <div><h2 id="portico-remote-storage-editor-title">Add remote storage</h2><p>{library.name}</p></div>
-      <IconButton label="Close" disabled={mutation.busy} onClick={dismiss}><X /></IconButton>
+      <IconButton label="Close" disabled={mutation.busy} onClick={dismiss}><ActionCloseIcon /></IconButton>
     </header>
     <div className="portico-settings-dialog-fields">
       <fieldset className="portico-remote-kind">
@@ -169,7 +169,7 @@ function RemoteStorageEditor({
       {analysisMode === 'complete' && <InlineNotice tone="warn">{completeStorageWarning}</InlineNotice>}
       {analysisMode === 'custom' && <InlineNotice tone="warn">{customStorageWarning}</InlineNotice>}
       <p className="portico-remote-secret-note">Credentials and rclone configuration are sent once. Portico will not show them again.</p>
-      {error && <p className="portico-settings-dialog-error" role="alert"><AlertTriangle />{error}</p>}
+      {error && <p className="portico-settings-dialog-error" role="alert"><StatusWarningIcon />{error}</p>}
     </div>
     <footer>
       <SecondaryButton disabled={mutation.busy} onClick={dismiss}>Cancel</SecondaryButton>
@@ -247,18 +247,18 @@ export function RemoteStorageSettings({ library, source, onScanQueued }: { libra
   return <section className="portico-remote-storage" aria-label={`${library.name} remote storage`}>
     <header>
       <span><strong>Remote storage</strong><small>Managed WebDAV and rclone sources are inventoried without walking a mounted filesystem.</small></span>
-      <SecondaryButton disabled={mutation.busy} onClick={() => setEditorOpen(true)}><Plus /> Add source</SecondaryButton>
+      <SecondaryButton disabled={mutation.busy} onClick={() => setEditorOpen(true)}><ActionAddIcon /> Add source</SecondaryButton>
     </header>
     {(feedback || error) && <InlineNotice tone={error ? 'error' : 'success'}>{error || feedback}</InlineNotice>}
-    {loading ? <p className="portico-remote-storage-state"><RefreshCw className="portico-settings-spinner" /> Loading remote sources…</p>
-      : items.length === 0 ? <p className="portico-remote-storage-state"><CloudDownload /> No managed remote sources.</p>
+    {loading ? <p className="portico-remote-storage-state"><ActionRefreshIcon className="portico-settings-spinner" /> Loading remote sources…</p>
+      : items.length === 0 ? <p className="portico-remote-storage-state"><ActionPrepareDownloadIcon /> No managed remote sources.</p>
         : <div className="portico-remote-storage-list">{items.map((item) => <article key={item.id}>
           <div className="portico-remote-storage-identity">
-            <HardDrive />
+            <DeviceStorageIcon />
             <span><strong>{item.name}</strong><small>{item.kind === 'webdav' ? 'WebDAV' : 'rclone'} · {remoteLocation(item)}</small></span>
           </div>
           <dl>
-            <div><dt>Health</dt><dd className={item.health === 'healthy' ? 'healthy' : item.health === 'unknown' ? '' : 'warning'}>{item.health === 'healthy' && <CheckCircle2 />}{remoteStateLabel(item)}</dd></div>
+            <div><dt>Health</dt><dd className={item.health === 'healthy' ? 'healthy' : item.health === 'unknown' ? '' : 'warning'}>{item.health === 'healthy' && <StatusSuccessIcon />}{remoteStateLabel(item)}</dd></div>
             <div><dt>Inventory</dt><dd>{item.inventoryStatus}</dd></div>
             <div className="portico-remote-storage-mode"><dt>Scan depth</dt><dd><select aria-label={`Scan depth for ${item.name}`} value={item.analysisMode ?? 'basic'} disabled={mutation.busy} onChange={(event) => void updateAnalysisMode(item, event.target.value as RemoteStorageAnalysisMode)}>{analysisModeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></dd></div>
             <div><dt>Objects</dt><dd>{formatRemoteCount(item.objects)}{item.missingObjects > 0 ? ` · ${formatRemoteCount(item.missingObjects)} missing` : ''}</dd></div>
@@ -267,10 +267,10 @@ export function RemoteStorageSettings({ library, source, onScanQueued }: { libra
           {item.analysisMode === 'complete' && <InlineNotice tone="warn">{completeStorageWarning}</InlineNotice>}
           {item.analysisMode === 'custom' && <InlineNotice tone="warn">{customStorageWarning}</InlineNotice>}
           <div className="portico-remote-storage-actions">
-            <SecondaryButton disabled={mutation.busy} onClick={() => void inventory(item)}><RefreshCw /> Scan</SecondaryButton>
+            <SecondaryButton disabled={mutation.busy} onClick={() => void inventory(item)}><ActionRefreshIcon /> Scan</SecondaryButton>
             {confirmRemove === item.id
               ? <div className="portico-inline-confirm"><span>Remove {item.name}? Portico will delete its saved connection, not remote files.</span><button type="button" onClick={() => setConfirmRemove('')}>Cancel</button><button type="button" className="danger" disabled={mutation.busy} onClick={() => void remove(item)}>Remove source</button></div>
-              : <IconButton label={`Remove ${item.name}`} disabled={mutation.busy} onClick={() => setConfirmRemove(item.id)}><Trash2 /></IconButton>}
+              : <IconButton label={`Remove ${item.name}`} disabled={mutation.busy} onClick={() => setConfirmRemove(item.id)}><ActionDeleteIcon /></IconButton>}
           </div>
         </article>)}</div>}
     {editorOpen && <RemoteStorageEditor

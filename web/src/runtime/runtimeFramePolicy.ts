@@ -10,6 +10,7 @@ export function runtimeUsesProductFrame(state: RuntimeState): boolean {
     case 'checking-local-server':
     case 'hosted-account-session':
     case 'server-memberships':
+    case 'no-memberships':
     case 'route-discovery':
       return true;
     case 'runtime-recovery':

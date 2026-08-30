@@ -1,6 +1,6 @@
 import type {ViewerScope} from '@porticomediaserver/client-core';
 import {
-  LEGACY_LOCAL_SESSION_QUARANTINE_KEY,
+  AMBIENT_COOKIE_QUARANTINE_KEY,
   ambientCookieRestoreStatus,
   beginAmbientCookieMutation,
   bindAmbientCookieMutationToViewer,
@@ -11,7 +11,7 @@ import {
 // from the durable Hosted installation identity. Sign-out and verified local
 // reauthentication may change the barrier state, but neither operation may
 // silently regenerate or clear the browser installation binding.
-export const LOCAL_SESSION_QUARANTINE_KEY = LEGACY_LOCAL_SESSION_QUARANTINE_KEY;
+export const LOCAL_SESSION_QUARANTINE_KEY = AMBIENT_COOKIE_QUARANTINE_KEY;
 
 type LocalSessionQuarantineMarker = {
   version: 1;

@@ -211,18 +211,18 @@ test("contextualizes only a server-projected play action with canonical product 
     }]
   };
   const [play] = mediaActionsForSurface(contract, ["play"], "web");
-  const movieResume = contextualMediaPlayAction(play, { kind: "movie", progressSeconds: 90 });
+  const movieResume = contextualMediaPlayAction(play, { entityKind: "movie", progressSeconds: 90 });
   const showResume = contextualMediaPlayAction(play, {
-    kind: "show",
-    playbackTarget: { kind: "episode", seasonNumber: 2, episodeNumber: 10, progressSeconds: 270 }
+    entityKind: "show",
+    playbackTarget: { entityKind: "episode", seasonNumber: 2, episodeNumber: 10, progressSeconds: 270 }
   });
   const showStart = contextualMediaPlayAction(play, {
-    kind: "show",
-    playbackTarget: { kind: "episode", seasonNumber: 3, episodeNumber: 1 }
+    entityKind: "show",
+    playbackTarget: { entityKind: "episode", seasonNumber: 3, episodeNumber: 1 }
   });
-  const albumStart = contextualMediaPlayAction(play, { kind: "album" });
+  const albumStart = contextualMediaPlayAction(play, { entityKind: "album" });
 
-  assert.equal(contextualMediaPlayAction(undefined, { kind: "movie", progressSeconds: 90 }), undefined);
+  assert.equal(contextualMediaPlayAction(undefined, { entityKind: "movie", progressSeconds: 90 }), undefined);
   assert.deepEqual({ label: movieResume?.label, id: movieResume?.labelMessageId }, { label: "Resume", id: "action.resume" });
   assert.deepEqual({ label: showResume?.label, id: showResume?.labelMessageId }, { label: "Resume S2E10", id: "action.resume-episode" });
   assert.deepEqual({ label: showStart?.label, id: showStart?.labelMessageId }, { label: "Play S3E1", id: "action.play-episode" });

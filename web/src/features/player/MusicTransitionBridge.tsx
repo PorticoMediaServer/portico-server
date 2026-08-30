@@ -5,6 +5,7 @@ import {
   playbackSourceFor,
   type MediaItem,
   type PlaybackHandoffRequest,
+  type PlaybackPrepareNextRequest,
   type PlaybackPreparedResponse,
   type PlaybackResponse,
   type PlaybackSessionQueueResponse,
@@ -13,7 +14,7 @@ import { type RefObject, useEffect, useRef } from 'react';
 import { usePorticoDataSource } from '../../data/DataProvider';
 import type { MusicPlaybackPreferences } from '../../data/models';
 import { useOptionalWebDisplayPreferences } from '../../preferences/WebDisplayPreferencesProvider';
-import { defaultWebDisplayPreferences, webPlaybackIntent } from '../../preferences/webDisplayPreferences';
+import { defaultWebDisplayPreferences, webPlaybackIntent, type WebDisplayPreferences } from '../../preferences/webDisplayPreferences';
 
 type MusicTransitionBridgeProps = {
   playback: PlaybackResponse;
@@ -25,6 +26,7 @@ type MusicTransitionBridgeProps = {
   enabled: boolean;
   onTransitioning: (transitioning: boolean) => void;
   handoff: (request: PlaybackHandoffRequest) => Promise<PlaybackResponse | undefined>;
+  prepareNext: (candidate: MediaItem, request: PlaybackPrepareNextRequest, force?: boolean) => Promise<PlaybackPreparedResponse>;
 };
 
 type PreparedTrack = {
@@ -50,6 +52,7 @@ export function MusicTransitionBridge({
   enabled,
   onTransitioning,
   handoff,
+  prepareNext,
 }: MusicTransitionBridgeProps) {
   const source = usePorticoDataSource();
   const webPreferences = useOptionalWebDisplayPreferences()?.preferences ?? defaultWebDisplayPreferences;
@@ -58,6 +61,20 @@ export function MusicTransitionBridge({
   const preparingRef = useRef(false);
   const transitioningRef = useRef(false);
   const continuationRef = useRef<ActiveContinuation | undefined>(undefined);
+  const sourceRef = useRef(source);
+  const volumeRef = useRef(volume);
+  const mutedRef = useRef(muted);
+  const onTransitioningRef = useRef(onTransitioning);
+  const handoffRef = useRef(handoff);
+  const prepareNextRef = useRef(prepareNext);
+  sourceRef.current = source;
+  volumeRef.current = volume;
+  mutedRef.current = muted;
+  onTransitioningRef.current = onTransitioning;
+  handoffRef.current = handoff;
+  prepareNextRef.current = prepareNext;
+  const candidate = nextCandidate(playback, queue);
+  const transitionOwnerKey = musicTransitionOwnerKey(playback, queue, preferences, webPreferences);
 
   useEffect(() => () => {
     const continuation = continuationRef.current;
@@ -71,7 +88,6 @@ export function MusicTransitionBridge({
     const media = mediaRef.current;
     const preload = preloadRef.current;
     if (!enabled || !media || !preload) return;
-    const candidate = nextCandidate(playback, queue);
     if (!candidate || (!preferences.gapless && preferences.crossfadeSeconds <= 0)) return;
     let disposed = false;
     const controller = new AbortController();
@@ -84,40 +100,29 @@ export function MusicTransitionBridge({
       activeContinuation.stop = continuePreloadedAudioUntilPrimaryPlays({
         primary: media,
         preload: activeContinuation.audio,
-        volume,
-        muted,
+        volume: volumeRef.current,
+        muted: mutedRef.current,
         normalization: playback.media.audioNormalization,
         normalizationMode: preferences.normalizationMode,
         onSettled: () => {
           if (continuationRef.current === activeContinuation) continuationRef.current = undefined;
           transitioningRef.current = false;
-          onTransitioning(false);
+          onTransitioningRef.current(false);
         },
       });
     }
     preparedRef.current = undefined;
     preparingRef.current = false;
     transitioningRef.current = Boolean(continuationRef.current);
-    onTransitioning(Boolean(continuationRef.current));
+    onTransitioningRef.current(Boolean(continuationRef.current));
 
     const prepare = async () => {
       if (preparingRef.current || preparedRef.current || continuationRef.current || disposed) return;
       preparingRef.current = true;
       try {
-        const queueItems = queue?.items ?? playback.queue;
-        const index = queueItems.findIndex((item) => item.id === candidate.id);
-        const remainingIDs = (index >= 0 ? queueItems.slice(index + 1) : queueItems.filter((item) => item.id !== candidate.id)).map((item) => item.id);
-        const response = await source.prepareNextPlayback(playback.sessionId, controller.signal, {
-          mediaId: candidate.id,
-          queueMediaIds: remainingIDs,
-          crossfadeSeconds: preferences.crossfadeSeconds,
-          preferredHandoff: preferences.crossfadeSeconds > 0 ? 'crossfade' : 'gapless',
-          sourceContext: queue?.sourceContext ?? playback.sourceContext,
-          commitPreviousEnd: true,
-          intent: webPlaybackIntent(webPreferences),
-        });
+        const response = await prepareNextRef.current(candidate, musicTransitionRequest(playback, queue, preferences, webPreferences));
         if (disposed || controller.signal.aborted) return;
-        const resolve = (path: string) => playbackResourceUrl(response.playback, path, (value) => source.playbackResourceUrl(value), window.location.href);
+        const resolve = (path: string) => playbackResourceUrl(response.playback, path, (value) => sourceRef.current.playbackResourceUrl(value), window.location.href);
         const sourceURL = playbackSourceFor(response.playback, resolve, {
           quality: defaultPlaybackQuality(response.playback),
           baseHref: window.location.href,
@@ -141,12 +146,15 @@ export function MusicTransitionBridge({
       const prepared = preparedRef.current;
       if (!prepared || transitioningRef.current || disposed) return;
       transitioningRef.current = true;
-      onTransitioning(true);
+      onTransitioningRef.current(true);
       const fadeSeconds = prepared.canOverlap ? preferences.crossfadeSeconds : 0;
       let preloadStarted = false;
-      if (prepared.canOverlap && preload.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
-        preload.muted = muted;
-        preload.volume = fadeSeconds > 0 ? 0 : effectivePlaybackVolume(volume, prepared.response.playback.media.audioNormalization, preferences.normalizationMode);
+      // Zero-crossfade owns a direct prepared handoff. Waiting for a secondary
+      // element's play promise can outlive the primary ended event and suppress
+      // the sole terminal consumer without ever emitting the handoff request.
+      if (fadeSeconds > 0 && prepared.canOverlap && preload.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+        preload.muted = mutedRef.current;
+        preload.volume = fadeSeconds > 0 ? 0 : effectivePlaybackVolume(volumeRef.current, prepared.response.playback.media.audioNormalization, preferences.normalizationMode);
         try {
           await preload.play();
           preloadStarted = true;
@@ -158,8 +166,8 @@ export function MusicTransitionBridge({
         const startedAt = performance.now();
         while (!disposed) {
           const ratio = Math.min(1, (performance.now() - startedAt) / (fadeSeconds * 1_000));
-          media.volume = effectivePlaybackVolume(volume * (1 - ratio), playback.media.audioNormalization, preferences.normalizationMode);
-          preload.volume = effectivePlaybackVolume(volume * ratio, prepared.response.playback.media.audioNormalization, preferences.normalizationMode);
+          media.volume = effectivePlaybackVolume(volumeRef.current * (1 - ratio), playback.media.audioNormalization, preferences.normalizationMode);
+          preload.volume = effectivePlaybackVolume(volumeRef.current * ratio, prepared.response.playback.media.audioNormalization, preferences.normalizationMode);
           if (ratio >= 1) break;
           await delay(50, controller.signal).catch(() => undefined);
         }
@@ -176,11 +184,13 @@ export function MusicTransitionBridge({
       }
       let next: PlaybackResponse | undefined;
       try {
-        next = await handoff({
+        console.info('[portico-music-transition]', JSON.stringify({ phase: 'handoff', sourceSessionId: playback.sessionId, preparedSessionId: prepared.response.preparedSessionId }));
+        next = await handoffRef.current({
           preparedSessionId: prepared.response.preparedSessionId,
           progressSeconds: Number.isFinite(media.currentTime) ? media.currentTime : undefined,
         });
-      } catch {
+      } catch (reason) {
+        console.warn('[portico-music-transition]', JSON.stringify({ phase: 'handoff-rejected', sourceSessionId: playback.sessionId, preparedSessionId: prepared.response.preparedSessionId, failure: reason instanceof Error ? reason.name : 'unknown' }));
         next = undefined;
       }
       if (!next) {
@@ -189,7 +199,7 @@ export function MusicTransitionBridge({
           continuationRef.current = undefined;
         }
         transitioningRef.current = false;
-        onTransitioning(false);
+        onTransitioningRef.current(false);
         return;
       }
     };
@@ -201,7 +211,10 @@ export function MusicTransitionBridge({
       const remaining = Math.max(0, media.duration - media.currentTime);
       const prepareLead = Math.max(8, preferences.crossfadeSeconds + 3);
       if (remaining <= prepareLead) void prepare();
-      const transitionLead = preferences.crossfadeSeconds > 0 ? preferences.crossfadeSeconds : 0.18;
+      // Browsers can advance from their last sparse timeupdate directly to a
+      // paused ended state. Give a zero-crossfade handoff a full second to
+      // commit while the source is still playing.
+      const transitionLead = preferences.crossfadeSeconds > 0 ? preferences.crossfadeSeconds : 1;
       if (remaining <= transitionLead) void transition();
     };
     const timer = window.setInterval(tick, 80);
@@ -217,15 +230,66 @@ export function MusicTransitionBridge({
       preparedRef.current = undefined;
       preparingRef.current = false;
       transitioningRef.current = continuationOwnsPreload;
-      if (!continuationOwnsPreload) onTransitioning(false);
+      if (!continuationOwnsPreload) onTransitioningRef.current(false);
     };
-  }, [enabled, handoff, mediaRef, muted, onTransitioning, playback, preferences, queue, source, volume, webPreferences]);
+    // Playback and queue responses may be re-projected while progress is being
+    // recorded.  Those equivalent objects must not tear down the sole prepare
+    // owner and issue another POST. The owner key contains every input that can
+    // change the prepared continuation; the captured values are immutable for
+    // that identity.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enabled, mediaRef, transitionOwnerKey]);
 
   return <audio ref={preloadRef} className="player-preload-audio" aria-hidden="true" />;
 }
 
 export function nextCandidate(playback: PlaybackResponse, queue: PlaybackSessionQueueResponse | undefined): MediaItem | undefined {
   return (queue?.items ?? playback.queue).find((item) => item.id !== playback.media.id);
+}
+
+export function musicTransitionOwnerKey(
+  playback: PlaybackResponse,
+  queue: PlaybackSessionQueueResponse | undefined,
+  preferences: MusicPlaybackPreferences,
+  webPreferences: WebDisplayPreferences,
+) {
+  const queueItems = queue?.items ?? playback.queue;
+  const candidate = nextCandidate(playback, queue);
+  const candidateIndex = candidate ? queueItems.findIndex((item) => item.id === candidate.id) : -1;
+  const continuationMediaIds = candidateIndex >= 0
+    ? queueItems.slice(candidateIndex + 1).map((item) => item.id)
+    : queueItems.filter((item) => item.id !== playback.media.id && item.id !== candidate?.id).map((item) => item.id);
+  const intent = webPlaybackIntent(webPreferences);
+  return JSON.stringify({
+    sessionId: playback.sessionId,
+    candidateId: candidate?.id ?? '',
+    continuationMediaIds,
+    sourceContext: queue?.sourceContext ?? playback.sourceContext,
+    gapless: preferences.gapless,
+    crossfadeSeconds: preferences.crossfadeSeconds,
+    normalizationMode: preferences.normalizationMode,
+    intent,
+  });
+}
+
+export function musicTransitionRequest(
+  playback: PlaybackResponse,
+  queue: PlaybackSessionQueueResponse | undefined,
+  preferences: MusicPlaybackPreferences,
+  webPreferences: WebDisplayPreferences,
+): PlaybackPrepareNextRequest {
+  const candidate = nextCandidate(playback, queue);
+  const queueItems = queue?.items ?? playback.queue;
+  const candidateIndex = candidate ? queueItems.findIndex((item) => item.id === candidate.id) : -1;
+  return {
+    mediaId: candidate?.id,
+    queueMediaIds: (candidateIndex >= 0 ? queueItems.slice(candidateIndex + 1) : queueItems.filter((item) => item.id !== playback.media.id && item.id !== candidate?.id)).map((item) => item.id),
+    crossfadeSeconds: preferences.crossfadeSeconds,
+    preferredHandoff: preferences.crossfadeSeconds > 0 ? 'crossfade' : 'gapless',
+    sourceContext: queue?.sourceContext ?? playback.sourceContext,
+    commitPreviousEnd: true,
+    intent: webPlaybackIntent(webPreferences),
+  };
 }
 
 export function continuePreloadedAudioUntilPrimaryPlays({

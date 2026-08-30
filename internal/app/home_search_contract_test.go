@@ -245,8 +245,8 @@ func TestSearchQueryLengthMatchesPublishedContract(t *testing.T) {
 	}
 }
 
-func TestSearchEntityAliasesMatchPublishedRequestContract(t *testing.T) {
-	for _, kind := range []string{"anime", "season", "artist", "album", "track", "audiobook", "book", "person", "live-channel", "live_channel"} {
+func TestSearchEntityKindsMatchPublishedRequestContract(t *testing.T) {
+	for _, kind := range []string{"movie", "show", "season", "episode", "artist", "album", "track", "book", "person", "live-channel"} {
 		if _, _, err := normalizeSearchRequest(SearchRequest{Query: "contract", EntityKinds: []string{kind}}); err != nil {
 			t.Errorf("published entity kind %q rejected: %v", kind, err)
 		}
@@ -346,10 +346,9 @@ func TestSearchCursorKindScopeIsOrderIndependentAndAliasCanonical(t *testing.T) 
 	if left != right {
 		t.Fatalf("equivalent kind scopes differ:\nleft  %s\nright %s", left, right)
 	}
-	liveAlias := searchCursorScope("query", "live-tv", []string{"live_channel"}, nil, spec)
 	liveCanonical := searchCursorScope("query", "live-tv", []string{"live-channel"}, nil, spec)
-	if liveAlias != liveCanonical {
-		t.Fatalf("equivalent Live TV aliases differ: %q != %q", liveAlias, liveCanonical)
+	if strings.Contains(liveCanonical, "live_channel") {
+		t.Fatalf("Live TV cursor scope exposed a storage-only kind: %q", liveCanonical)
 	}
 }
 
@@ -542,7 +541,7 @@ func TestSearchPOSTGroupsAndFiltersOnServer(t *testing.T) {
 		t.Fatalf("load searchable movie: %v", err)
 	}
 	var response SearchResponse
-	request := SearchRequest{Query: title, EntityKinds: []string{"movies"}, LibraryIDs: []string{libraryID}, Limit: 4}
+	request := SearchRequest{Query: title, EntityKinds: []string{"movie"}, LibraryIDs: []string{libraryID}, Limit: 4}
 	status, body := doJSON(t, client, http.MethodPost, serverURL+"/api/search", request, &response)
 	if status != http.StatusOK {
 		t.Fatalf("search status = %d, body: %s", status, body)

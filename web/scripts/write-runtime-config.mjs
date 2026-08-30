@@ -22,7 +22,13 @@ async function hashTree(directory, relative = '') {
   }
   return hash.digest('hex');
 }
-const buildId = process.env.PORTICO_WEB_BUILD_ID || `sha256-${(await hashTree(dist)).slice(0, 24)}`;
+let scopedBuildId = '';
+try {
+  scopedBuildId = JSON.parse(await readFile(resolve(dist, 'portico-asset-scope.json'), 'utf8')).buildId || '';
+} catch {
+  // Bundles produced before asset scoping retain the deterministic tree fallback.
+}
+const buildId = process.env.PORTICO_WEB_BUILD_ID || scopedBuildId || `sha256-${(await hashTree(dist)).slice(0, 24)}`;
 const config = {
   mode,
   hostedApiBaseUrl: mode === 'hosted' ? 'https://web.getportico.tv' : 'https://api.getportico.tv',

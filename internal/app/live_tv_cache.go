@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -227,6 +228,10 @@ func proxyCachedLiveTVHLSItem(w http.ResponseWriter, r *http.Request, binding li
 		writeError(w, http.StatusBadGateway, "stream_unavailable", "The provider stream is not responding yet. Try Restart Stream.")
 		return
 	}
+	if resp.StatusCode == http.StatusPartialContent && !validLiveTVPartialResponse(resp) {
+		writeError(w, http.StatusBadGateway, "stream_unavailable", "The provider returned an invalid partial stream response. Try Restart Stream.")
+		return
+	}
 	copyLiveTVHeaders(w.Header(), resp.Header)
 	w.Header().Set("Cache-Control", "private, max-age=30")
 	if r.Method == http.MethodHead {
@@ -256,4 +261,35 @@ func proxyCachedLiveTVHLSItem(w http.ResponseWriter, r *http.Request, binding li
 	w.Header().Set("X-Portico-Stream-Cache", "pass")
 	w.WriteHeader(resp.StatusCode)
 	_, _ = io.Copy(w, resp.Body)
+}
+
+func validLiveTVPartialResponse(resp *http.Response) bool {
+	if resp == nil {
+		return false
+	}
+	value := strings.TrimSpace(resp.Header.Get("Content-Range"))
+	unit, bounds, ok := strings.Cut(value, " ")
+	if !ok || !strings.EqualFold(strings.TrimSpace(unit), "bytes") {
+		return false
+	}
+	rangePart, totalPart, ok := strings.Cut(strings.TrimSpace(bounds), "/")
+	if !ok || strings.TrimSpace(totalPart) == "" {
+		return false
+	}
+	startText, endText, ok := strings.Cut(strings.TrimSpace(rangePart), "-")
+	if !ok {
+		return false
+	}
+	start, startErr := strconv.ParseInt(strings.TrimSpace(startText), 10, 64)
+	end, endErr := strconv.ParseInt(strings.TrimSpace(endText), 10, 64)
+	if startErr != nil || endErr != nil || start < 0 || end < start {
+		return false
+	}
+	if total := strings.TrimSpace(totalPart); total != "*" {
+		totalSize, err := strconv.ParseInt(total, 10, 64)
+		if err != nil || totalSize <= end {
+			return false
+		}
+	}
+	return resp.ContentLength < 0 || resp.ContentLength == end-start+1
 }

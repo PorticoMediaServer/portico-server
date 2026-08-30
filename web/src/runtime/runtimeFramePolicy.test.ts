@@ -18,6 +18,7 @@ describe('runtimeUsesProductFrame', () => {
     state({ id: 'checking-local-server', serverName: 'Home Server' }),
     state({ id: 'hosted-account-session' }),
     state({ id: 'server-memberships' }),
+    state({ id: 'no-memberships' }),
     state({ id: 'route-discovery', servers: [], selectedServer: server }),
     state({ id: 'runtime-recovery', classification: 'server-offline', messageId: 'problem.server-unavailable', selectedServer: server }),
   ])('keeps ordinary connection state $id inside the product frame', (runtimeState) => {

@@ -1,16 +1,5 @@
 import type { ActionableDVRRecording, ActionableDVRRule, ActionableLiveTVSource } from '../../data/models';
-import {
-  AlertTriangle,
-  CalendarDays,
-  Clock3,
-  Pause,
-  Pencil,
-  Play,
-  Search,
-  Trash2,
-  Video,
-  X,
-} from '#portico-icons';
+import { StatusWarningIcon, MediaCalendarIcon, MetadataTimeIcon, PlaybackPauseIcon, ActionEditIcon, PlaybackPlayIcon, NavigationSearchIcon, ActionDeleteIcon, MediaVideoIcon, ActionCloseIcon } from '#portico-icons';
 import { type ComponentType, type FormEvent, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { IconButton, PrimaryButton, SecondaryButton } from '../../components/controls/Buttons';
@@ -180,7 +169,7 @@ export function DVRWorkspace({
         <div><span>Stored</span><strong>{formatBytes(storedBytes)}</strong></div>
         {operations && <div className={operations.storage.state === 'healthy' ? '' : 'attention'}><span>Available</span><strong>{formatBytes(operations.storage.availableBytes)}</strong></div>}
       </div>
-      {canCreateRule && <PrimaryButton onClick={() => setCreateRuleOpen(true)}><CalendarDays /> {productText('action.create-rule')}</PrimaryButton>}
+      {canCreateRule && <PrimaryButton onClick={() => setCreateRuleOpen(true)}><MediaCalendarIcon /> {productText('action.create-rule')}</PrimaryButton>}
     </div>
     <div className="dvr-toolbar">
       <nav className="dvr-tabs" aria-label="DVR views">
@@ -189,7 +178,7 @@ export function DVRWorkspace({
         {(canCreateRule || rules.length > 0) && <button className={section === 'rules' ? 'active' : ''} onClick={() => selectSection('rules')}>Rules <span>{rules.length}</span></button>}
         {(operational.supported || failedAll.length > 0) && <button className={section === 'issues' ? 'active' : ''} onClick={() => selectSection('issues')}>Issues {issuesCount > 0 && <span>{issuesCount}</span>}</button>}
       </nav>
-      <label className="dvr-search"><Search /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={`Filter ${section}`} aria-label={`Filter ${section}`} /></label>
+      <label className="dvr-search"><NavigationSearchIcon /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={`Filter ${section}`} aria-label={`Filter ${section}`} /></label>
     </div>
     {error && <p className="live-action-message error" role="alert">{error}</p>}
     {notice && <p className="live-action-message" role="status">{notice}</p>}
@@ -219,12 +208,12 @@ function RecordingsView({ running, completed, incomplete, busy, onPlay, onConfir
 
 function RecordingRows({ recordings, busy, onPlay, onConfirm }: { recordings: ActionableDVRRecording[]; busy: string; onPlay: (recording: ActionableDVRRecording) => Promise<void>; onConfirm: (confirmation: Confirmation) => void }) {
   return <div className="dvr-list recording-list">{recordings.map((recording) => <article key={recording.id}>
-    <span className={`recording-status ${normalizedStatus(recording)}`}><Video /></span>
-    <div><strong>{recording.title}</strong><span>{dateTimeLabel(recording.startsAt)} · {formatBytes(recording.sizeBytes)}</span>{recording.failureMessageId && <span className="recording-error"><AlertTriangle /> {requestError({ messageId: recording.failureMessageId }, 'dvr.recording-failed')}</span>}</div>
+    <span className={`recording-status ${normalizedStatus(recording)}`}><MediaVideoIcon /></span>
+    <div><strong>{recording.title}</strong><span>{dateTimeLabel(recording.startsAt)} · {formatBytes(recording.sizeBytes)}</span>{recording.failureMessageId && <span className="recording-error"><StatusWarningIcon /> {requestError({ messageId: recording.failureMessageId }, 'dvr.recording-failed')}</span>}</div>
     <span className={`status-label ${normalizedStatus(recording)}`}>{normalizedStatus(recording)}</span>
     <div className="recording-actions">
-      {hasAction(recording, liveActions.recordingPlay) && <SecondaryButton disabled={busy === `play:${recording.id}`} onClick={() => void onPlay(recording)}><Play /> {productText('action.play-recording')}</SecondaryButton>}
-      {hasAction(recording, liveActions.recordingDelete) && <IconButton label={`Delete ${recording.title}`} onClick={() => onConfirm({ kind: 'recording', item: recording })}><Trash2 /></IconButton>}
+      {hasAction(recording, liveActions.recordingPlay) && <SecondaryButton disabled={busy === `play:${recording.id}`} onClick={() => void onPlay(recording)}><PlaybackPlayIcon /> {productText('action.play-recording')}</SecondaryButton>}
+      {hasAction(recording, liveActions.recordingDelete) && <IconButton label={`Delete ${recording.title}`} onClick={() => onConfirm({ kind: 'recording', item: recording })}><ActionDeleteIcon /></IconButton>}
     </div>
   </article>)}</div>;
 }
@@ -232,10 +221,10 @@ function RecordingRows({ recordings, busy, onPlay, onConfirm }: { recordings: Ac
 function ScheduleView({ recordings, onConfirm, StateSurface }: { recordings: ActionableDVRRecording[]; onConfirm: (confirmation: Confirmation) => void; StateSurface: ComponentType<{ kind: 'loading' | 'empty' | 'error' | 'permission'; title?: string; message: string; onRetry?: () => void }> }) {
   if (!recordings.length) return <StateSurface kind="empty" {...productState('dvr.schedule-empty')} />;
   return <section className="dvr-section-stack"><header><h2>Upcoming</h2><span>{recordings.length} scheduled</span></header><div className="dvr-list schedule-list">{recordings.map((recording) => <article key={recording.id}>
-    <Clock3 />
+    <MetadataTimeIcon />
     <div><strong>{recording.title}</strong><span>{dateTimeLabel(recording.startsAt)}–{timeLabel(recording.endsAt)}</span></div>
     <span className="status-label scheduled">Scheduled</span>
-    {hasAction(recording, liveActions.recordingCancel) && <IconButton label={`Cancel ${recording.title}`} onClick={() => onConfirm({ kind: 'recording', item: recording })}><X /></IconButton>}
+    {hasAction(recording, liveActions.recordingCancel) && <IconButton label={`Cancel ${recording.title}`} onClick={() => onConfirm({ kind: 'recording', item: recording })}><ActionCloseIcon /></IconButton>}
   </article>)}</div></section>;
 }
 
@@ -243,10 +232,10 @@ function RulesView({ rules, busy, onUpdate, onConfirm, StateSurface }: { rules: 
   const [editingRuleId, setEditingRuleId] = useState('');
   if (!rules.length) return <StateSurface kind="empty" {...productState('dvr.rules-empty')} />;
   return <div className="dvr-list rule-list">{rules.map((rule) => <div className="rule-item" key={rule.id}>
-    <article><CalendarDays /><div><strong>{rule.title}</strong><span>{rule.matchType === 'series' ? 'Series' : 'Single program'} · Priority {rule.priority ?? 50} · {rule.retentionDays ? `Keep ${rule.retentionDays} days` : 'Keep until deleted'} · {rule.maxRecordingsPerSeries ? `Up to ${rule.maxRecordingsPerSeries}` : 'No episode limit'}</span></div><span className={`status-label ${rule.enabled ? 'enabled' : 'paused'}`}>{rule.enabled ? 'Enabled' : 'Paused'}</span><div className="rule-actions">
-      {(hasAction(rule, liveActions.ruleEnable) || hasAction(rule, liveActions.ruleDisable)) && <IconButton disabled={busy === `rule:${rule.id}`} label={`${rule.enabled ? 'Pause' : 'Enable'} rule ${rule.title}`} onClick={() => void onUpdate(rule, { enabled: !rule.enabled })}>{rule.enabled ? <Pause /> : <Play />}</IconButton>}
-      {hasAction(rule, liveActions.ruleEdit) && <IconButton label={`Edit rule ${rule.title}`} className={editingRuleId === rule.id ? 'selected' : ''} onClick={() => setEditingRuleId((current) => current === rule.id ? '' : rule.id)}><Pencil /></IconButton>}
-      {hasAction(rule, liveActions.ruleDelete) && <IconButton label={`Delete rule ${rule.title}`} onClick={() => onConfirm({ kind: 'rule', item: rule })}><Trash2 /></IconButton>}
+    <article><MediaCalendarIcon /><div><strong>{rule.title}</strong><span>{rule.matchType === 'series' ? 'Series' : 'Single program'} · Priority {rule.priority ?? 50} · {rule.retentionDays ? `Keep ${rule.retentionDays} days` : 'Keep until deleted'} · {rule.maxRecordingsPerSeries ? `Up to ${rule.maxRecordingsPerSeries}` : 'No episode limit'}</span></div><span className={`status-label ${rule.enabled ? 'enabled' : 'paused'}`}>{rule.enabled ? 'Enabled' : 'Paused'}</span><div className="rule-actions">
+      {(hasAction(rule, liveActions.ruleEnable) || hasAction(rule, liveActions.ruleDisable)) && <IconButton disabled={busy === `rule:${rule.id}`} label={`${rule.enabled ? 'Pause' : 'Enable'} rule ${rule.title}`} onClick={() => void onUpdate(rule, { enabled: !rule.enabled })}>{rule.enabled ? <PlaybackPauseIcon /> : <PlaybackPlayIcon />}</IconButton>}
+      {hasAction(rule, liveActions.ruleEdit) && <IconButton label={`Edit rule ${rule.title}`} className={editingRuleId === rule.id ? 'selected' : ''} onClick={() => setEditingRuleId((current) => current === rule.id ? '' : rule.id)}><ActionEditIcon /></IconButton>}
+      {hasAction(rule, liveActions.ruleDelete) && <IconButton label={`Delete rule ${rule.title}`} onClick={() => onConfirm({ kind: 'rule', item: rule })}><ActionDeleteIcon /></IconButton>}
     </div></article>
     {editingRuleId === rule.id && <RuleEditor rule={rule} onCancel={() => setEditingRuleId('')} onSave={async (patch) => { await onUpdate(rule, patch); setEditingRuleId(''); }} />}
   </div>)}</div>;
@@ -256,7 +245,7 @@ function IssuesView({ failed, operational, busy, onPlay, onConfirm, StateSurface
   const hasIssues = failed.length || operational?.conflicts.length;
   if (!hasIssues) return <StateSurface kind="empty" {...productState('dvr.issues-empty')} />;
   return <div className="dvr-issues">
-    {operational?.conflicts.map((conflict) => <section className="dvr-issue-row" key={conflict.id}><AlertTriangle /><div><strong>{productState('dvr.conflict').title}</strong><span>{requestError({ messageId: conflict.messageId, details: { capacity: conflict.capacity, demand: conflict.demand } }, 'dvr.conflict', { capacity: conflict.capacity, demand: conflict.demand })} · {dateTimeLabel(conflict.startsAt)}–{timeLabel(conflict.endsAt)}</span></div></section>)}
+    {operational?.conflicts.map((conflict) => <section className="dvr-issue-row" key={conflict.id}><StatusWarningIcon /><div><strong>{productState('dvr.conflict').title}</strong><span>{requestError({ messageId: conflict.messageId, details: { capacity: conflict.capacity, demand: conflict.demand } }, 'dvr.conflict', { capacity: conflict.capacity, demand: conflict.demand })} · {dateTimeLabel(conflict.startsAt)}–{timeLabel(conflict.endsAt)}</span></div></section>)}
     {failed.length > 0 && <section className="failed-recordings"><header><h2>Failed recordings</h2><span>{failed.length}</span></header><RecordingRows recordings={failed} busy={busy} onPlay={onPlay} onConfirm={onConfirm} /></section>}
   </div>;
 }
@@ -303,10 +292,10 @@ function DVRConfirmationDialog({ confirmation, busy, error, onDismiss, onConfirm
         ? 'This deletes the incomplete DVR recording and the playable partial file Portico kept. This cannot be undone.'
         : 'This deletes the DVR recording and its stored recording file. This cannot be undone.';
   return <ModalOverlay className="dvr-confirm-dialog" labelledBy="dvr-confirm-title" onDismiss={onDismiss}>
-    <header><div><h2 id="dvr-confirm-title">{title}</h2><p>{confirmation.kind === 'rule' ? 'Recording rule' : scheduled ? 'Scheduled recording' : 'DVR recording'}</p></div><IconButton label="Close confirmation" onClick={onDismiss}><X /></IconButton></header>
+    <header><div><h2 id="dvr-confirm-title">{title}</h2><p>{confirmation.kind === 'rule' ? 'Recording rule' : scheduled ? 'Scheduled recording' : 'DVR recording'}</p></div><IconButton label="Close confirmation" onClick={onDismiss}><ActionCloseIcon /></IconButton></header>
     <p>{description}</p>
     {error && <p className="dvr-dialog-error" role="alert">{error}</p>}
-    <footer><SecondaryButton disabled={busy} onClick={onDismiss}>{productText('action.cancel')}</SecondaryButton><button type="button" className="button danger" disabled={busy} onClick={() => void onConfirm()}><Trash2 /> {busy ? 'Working' : confirmation.kind === 'recording' && scheduled ? productText('action.cancel-recording') : 'Delete'}</button></footer>
+    <footer><SecondaryButton disabled={busy} onClick={onDismiss}>{productText('action.cancel')}</SecondaryButton><button type="button" className="button danger" disabled={busy} onClick={() => void onConfirm()}><ActionDeleteIcon /> {busy ? 'Working' : confirmation.kind === 'recording' && scheduled ? productText('action.cancel-recording') : 'Delete'}</button></footer>
   </ModalOverlay>;
 }
 
@@ -320,7 +309,7 @@ function CreateRuleDialog({ sources, sourceId, busy, error, onDismiss, onCreate 
   };
   return <ModalOverlay className="dvr-rule-dialog" labelledBy="create-rule-title" onDismiss={onDismiss}>
     <form onSubmit={submit}>
-      <header><div><h2 id="create-rule-title">New recording rule</h2><p>Schedule matching programs automatically</p></div><IconButton label="Close new rule" onClick={onDismiss}><X /></IconButton></header>
+      <header><div><h2 id="create-rule-title">New recording rule</h2><p>Schedule matching programs automatically</p></div><IconButton label="Close new rule" onClick={onDismiss}><ActionCloseIcon /></IconButton></header>
       <div className="dvr-rule-fields">
         <label><span>Program or series title</span><input autoFocus value={title} onChange={(event) => setTitle(event.target.value)} /></label>
         <LiveChoiceMenu label="Source" value={selectedSourceId} choices={sources.map((source) => ({ id: source.id, label: source.name }))} onChange={setSelectedSourceId} />

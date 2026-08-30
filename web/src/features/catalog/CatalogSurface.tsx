@@ -1,15 +1,4 @@
-import {
-  AlertTriangle,
-  Check,
-  ChevronLeft,
-  ChevronRight,
-  CircleCheck,
-  Ellipsis,
-  Film,
-  Music2,
-  RefreshCw,
-  X,
-} from '#portico-icons';
+import { StatusWarningIcon, ActionConfirmIcon, NavigationPreviousIcon, NavigationDisclosureIcon, StatusSuccessIcon, ActionMoreIcon, MediaMovieIcon, MediaMusicIcon, ActionRefreshIcon, ActionCloseIcon } from '#portico-icons';
 import { productMessage, resolveMediaDetailViewModel, resolveMediaViewModel, type ProductContract } from '@porticomediaserver/client-core';
 import { type ReactNode, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
@@ -36,7 +25,7 @@ import { MediaMetadataEditor, SavedTargetDialog } from '../media/MediaActionDial
 import { actionPresentation, MediaActionIcon, useMediaActionPresentations } from '../media/MediaActionPresentation';
 import { MediaDeleteDialog } from '../media/MediaDeleteDialog';
 import { MediaRatingDialog } from '../media/MediaRatingDialog';
-import { savedAriaLabel } from '../media/actionLabels';
+import { isListeningMedia, savedAriaLabel } from '../media/actionLabels';
 import { targetFromMedia, type ContextTarget } from '../media/contextTarget';
 import { mediaPresentation } from './mediaPresentation';
 import './catalog.css';
@@ -51,14 +40,14 @@ export type ArtworkShape = 'poster' | 'square' | 'landscape';
 function CatalogOperationNotice({ notice, onDismiss }: { notice: DetailOperationNotice; onDismiss: () => void }) {
   const root = document.getElementById('portico-overlays') ?? document.body;
   return createPortal(<div className={`catalog-operation-notice ${notice.tone}`} role={notice.tone === 'error' ? 'alert' : 'status'} aria-live="polite">
-    {notice.tone === 'pending' ? <RefreshCw className="state-spinner" /> : notice.tone === 'success' ? <CircleCheck /> : <AlertTriangle />}
+    {notice.tone === 'pending' ? <ActionRefreshIcon className="state-spinner" /> : notice.tone === 'success' ? <StatusSuccessIcon /> : <StatusWarningIcon />}
     <span><strong>{notice.title}</strong>{notice.detail && <small>{notice.detail}</small>}</span>
-    {notice.tone !== 'pending' && <IconButton label={productMessage('action.dismiss-status').text ?? ''} onClick={onDismiss}><X /></IconButton>}
+    {notice.tone !== 'pending' && <IconButton label={productMessage('action.dismiss-status').text ?? ''} onClick={onDismiss}><ActionCloseIcon /></IconButton>}
   </div>, root);
 }
 
 export function mediaDetailPath(item: MediaItem) {
-  const kind = String(item.entityKind || item.kind).replaceAll('_', '-');
+  const kind = String(item.entityKind).replaceAll('_', '-');
   if (kind === 'live-channel') {
     const parameters = new URLSearchParams({ tab: 'channels', channel: item.id, q: item.title });
     if (item.libraryId) parameters.set('source', item.libraryId);
@@ -82,19 +71,17 @@ export function resolveWebMediaViewModel(contract: ProductContract, item: MediaI
   return resolveMediaViewModel(contract, {
     id: item.id,
     libraryId: item.libraryId,
-    entityKind: item.entityKind || item.kind,
-    type: item.type,
+    entityKind: item.entityKind,
     title: item.title,
     subtitle: item.subtitle,
     parentTitle: item.parentTitle,
     summary: item.summary,
     year: item.year,
     durationSeconds: item.durationSeconds,
-    artwork: item.artwork,
-    images: { poster: item.poster, backdrop: item.backdrop },
+    artwork: { poster: item.poster, backdrop: item.backdrop, ...(item.artwork ?? {}) },
     actions: item.actions,
     fields: item.typedMetadata,
-    state: {
+    userState: {
       watched: item.watched,
       watchlisted: item.watchlisted,
       favorite: item.favorite,
@@ -107,9 +94,6 @@ export function resolveWebMediaViewModel(contract: ProductContract, item: MediaI
       fileCount: item.fileCount,
       missingFileCount: item.missingFileCount,
     } : undefined,
-    missing: item.missing,
-    fileCount: item.fileCount,
-    missingFileCount: item.missingFileCount,
   });
 }
 
@@ -118,7 +102,7 @@ export function resolveWebMediaDetailViewModel(contract: ProductContract, item: 
   const source = {
     id: item.id,
     libraryId: item.libraryId,
-    type: item.entityKind || item.kind,
+    entityKind: item.entityKind,
     title: item.title,
     images: { poster: item.poster, backdrop: item.backdrop, thumb: '' },
     artwork: item.artwork ?? {},
@@ -169,7 +153,7 @@ export function MediaArtwork({ item, shape, className = '' }: { item: MediaItem;
   const source = viewModel?.artwork.url || item.poster;
   const failed = artworkFailureExpiresAt(source) > 0;
   if (!source || failed) {
-    const Icon = resolvedShape === 'square' ? Music2 : Film;
+    const Icon = resolvedShape === 'square' ? MediaMusicIcon : MediaMovieIcon;
     return <span className={`catalog-artwork-fallback ${resolvedShape} ${className}`} data-artwork-role={viewModel?.artwork.role} role="img" aria-label={productMessage('media.artwork-unavailable', { title: item.title }).text}><Icon /></span>;
   }
   const width = 320;
@@ -351,7 +335,7 @@ export function MediaActionMenu({
   const playTarget = (startSeconds?: number) => {
     closeMenu();
     const options = startSeconds == null ? playbackOptions : { ...(playbackOptions ?? {}), startSeconds };
-    if (playback && (target.type === 'music' || ['track', 'album'].includes(target.kind))) {
+    if (playback && isListeningMedia(target)) {
       void playback.start(target.id, options);
       return;
     }
@@ -361,9 +345,9 @@ export function MediaActionMenu({
   if (!canPlay && !canWatchlist && !canFavorite && !canMarkWatched && !canAddCollection && !canAddPlaylist && !canQueue && !canEditMetadata && !canRefresh && !canAnalyze && !canOptimize && !canDownload && !canDelete && !canReact && !canRate && !canWatchWithFriends) return null;
   return <>
     <div className={`more-actions ${card ? 'card-more-actions' : ''}`} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()}>
-      <IconButton ref={triggerRef} label={productMessage('action.more-for', { title: target.title }).text ?? ''} className={open ? 'selected' : ''} onClick={(event) => { event.preventDefault(); event.stopPropagation(); setOpen((value) => !value); }}><Ellipsis /></IconButton>
+      <IconButton ref={triggerRef} label={productMessage('action.more-for', { title: target.title }).text ?? ''} className={open ? 'selected' : ''} onClick={(event) => { event.preventDefault(); event.stopPropagation(); setOpen((value) => !value); }}><ActionMoreIcon /></IconButton>
       {open && <AnchoredOverlay anchorRef={triggerRef} placement={card ? 'right-start' : 'bottom-end'} className={`context-menu ${card ? 'card-context-menu' : ''}`} role="menu" onDismiss={closeMenu}>
-        <div className="context-title">{target.poster ? <img src={target.poster} alt="" /> : <span className="context-artwork-fallback"><Film /></span>}<span><strong>{target.title}</strong><small>{target.subtitle}</small></span></div>
+        <div className="context-title">{target.poster ? <img src={target.poster} alt="" /> : <span className="context-artwork-fallback"><MediaMovieIcon /></span>}<span><strong>{target.title}</strong><small>{target.subtitle}</small></span></div>
         <div className="context-section">
           {action('play') && <button type="button" onClick={() => playTarget()}><MediaActionIcon action={action('play')!} /> {action('play')!.label}</button>}
           {action('play.from-beginning') && canRestart && <button type="button" onClick={() => playTarget(0)}><MediaActionIcon action={action('play.from-beginning')!} /> {action('play.from-beginning')!.label}</button>}
@@ -438,7 +422,7 @@ function BulkActionBar({ items, onClear, onRetain, onDeleted }: { items: MediaIt
   const canMarkUnwatched = supports(['watched.unmark', 'watched.set']);
   const canAddPlaylist = supports(['playlist.add']);
   const canAddCollection = supports(['collection.add']);
-  const canEditMetadata = supports(['metadata.edit']) && new Set(items.map((item) => item.kind)).size === 1;
+  const canEditMetadata = supports(['metadata.edit']) && new Set(items.map((item) => item.entityKind)).size === 1;
   const canRefresh = supports(['metadata.refresh']);
   const canAnalyze = supports(['media.analyze']);
   const canOptimize = supports(['media.optimize']);
@@ -462,7 +446,7 @@ function BulkActionBar({ items, onClear, onRetain, onDeleted }: { items: MediaIt
       <div className="bulk-summary-row">
         <div className="bulk-count"><strong>{items.length}</strong><span>{productMessage('library.selected-label').text}</span><button type="button" onClick={onClear}>{productMessage('action.clear-selection').text}</button></div>
         {notice && <span className="bulk-notice" aria-live="polite">{notice}</span>}
-        <IconButton label={productMessage('action.cancel-selection').text ?? ''} onClick={onClear}><X /></IconButton>
+        <IconButton label={productMessage('action.cancel-selection').text ?? ''} onClick={onClear}><ActionCloseIcon /></IconButton>
       </div>
       {(canWatchlist || canFavorite || canMarkWatched || canMarkUnwatched || canAddPlaylist || canAddCollection || canEditMetadata || canRefresh || canAnalyze || canOptimize || canDownload || canDelete) && <div className="bulk-actions-stack"><div className="bulk-action-row primary-actions">
         {canAddCollection && action('collection.add') && <button type="button" disabled={busy} onClick={() => setSavedTarget('collection')}><MediaActionIcon action={action('collection.add')!} /><span>{action('collection.add')!.label}</span></button>}
@@ -563,9 +547,9 @@ export function MediaCard({
   return <article className={`media-card-shell catalog-card ${resolvedShape} ${selected ? 'selected' : ''}`}>
     <div className="artwork-stage" style={artworkAspectRatio ? { aspectRatio: artworkAspectRatio } : undefined}>
       {detailPath ? <Link to={detailPath} className="artwork-wrap" aria-label={productMessage('action.open-item', { title: item.title }).text}><MediaArtwork item={item} shape={resolvedShape} />{item.progress != null && <span className="progress"><span style={{ width: `${item.progress}%` }} /></span>}</Link> : <div className="artwork-wrap"><MediaArtwork item={item} shape={resolvedShape} /></div>}
-      {onSelect && <button type="button" className={`selection-check ${selected ? 'selected' : ''}`} onClick={(event) => { event.preventDefault(); event.stopPropagation(); onSelect(); }} aria-label={productMessage(selected ? 'library.deselect-item' : 'library.select-item', { title: item.title }).text} aria-pressed={selected}>{selected && <Check />}</button>}
+      {onSelect && <button type="button" className={`selection-check ${selected ? 'selected' : ''}`} onClick={(event) => { event.preventDefault(); event.stopPropagation(); onSelect(); }} aria-label={productMessage(selected ? 'library.deselect-item' : 'library.select-item', { title: item.title }).text} aria-pressed={selected}>{selected && <ActionConfirmIcon />}</button>}
       {(canPlay || canWatchlist || target.actions?.length) && <div className="card-command-strip" aria-label={productMessage('media.actions-label', { title: item.title }).text}>
-        {canPlay && (playback && (item.type === 'music' || ['track', 'album'].includes(item.kind))
+        {canPlay && (playback && isListeningMedia(item)
           ? <button type="button" className="card-command" onClick={(event) => { event.stopPropagation(); void playback.start(item.id, playbackOptions); }} aria-label={`${playAction?.label ?? productMessage('action.play').text ?? ''} ${item.title}`}><MediaActionIcon action={playAction!} /></button>
           : <Link className="card-command" to={`/watch/${item.id}`} state={watchNavigationState(playbackOptions)} onClick={(event) => event.stopPropagation()} aria-label={`${playAction?.label ?? productMessage('action.play').text ?? ''} ${item.title}`}><MediaActionIcon action={playAction!} /></Link>)}
         {canWatchlist && <button type="button" className={`card-command ${saved ? 'selected' : ''}`} onClick={(event) => { event.preventDefault(); event.stopPropagation(); void toggleSaved(); }} aria-label={`${watchlistAction?.label ?? savedAriaLabel(item, saved)} ${item.title}`} aria-pressed={saved} title={saveError || undefined}><MediaActionIcon action={watchlistAction!} /></button>}
@@ -622,8 +606,8 @@ export function MediaRail({ title, items, detail, shape, playbackContext, hasMor
     };
   }, [continuationKey, hasMore, items.length]);
   return <section className="media-section">
-    <SectionHeading title={title} controls={<><IconButton label={productMessage('action.scroll-left').text ?? ''} disabled={!scrollState.left} onClick={() => move(-1)}><ChevronLeft /></IconButton><IconButton label={productMessage('action.scroll-right').text ?? ''} disabled={!scrollState.right} onClick={() => move(1)}><ChevronRight /></IconButton></>} />
-    <div className={`media-rail ${shape ?? ''}`} ref={rail} role="region" aria-label={title} aria-description={detail} tabIndex={0} onScroll={syncScrollState} onKeyDown={(event) => { if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') { event.preventDefault(); move(event.key === 'ArrowLeft' ? -1 : 1); } }}>{visibleItems.map((item) => <MediaCard key={item.id} item={item} shape={shape} playbackOptions={playbackOptions} selected={selected.includes(item.id)} onSelect={item.actions?.length ? () => toggle(item.id) : undefined} onDeleted={remove} />)}{loadingMore && <span className="media-rail-continuation" role="status"><RefreshCw className="state-spinner" /><span className="sr-only">{productMessage('state.loading-more').title}</span></span>}</div>
+    <SectionHeading title={title} controls={<><IconButton label={productMessage('action.scroll-left').text ?? ''} disabled={!scrollState.left} onClick={() => move(-1)}><NavigationPreviousIcon /></IconButton><IconButton label={productMessage('action.scroll-right').text ?? ''} disabled={!scrollState.right} onClick={() => move(1)}><NavigationDisclosureIcon /></IconButton></>} />
+    <div className={`media-rail ${shape ?? ''}`} ref={rail} role="region" aria-label={title} aria-description={detail} tabIndex={0} onScroll={syncScrollState} onKeyDown={(event) => { if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') { event.preventDefault(); move(event.key === 'ArrowLeft' ? -1 : 1); } }}>{visibleItems.map((item) => <MediaCard key={item.id} item={item} shape={shape} playbackOptions={playbackOptions} selected={selected.includes(item.id)} onSelect={item.actions?.length ? () => toggle(item.id) : undefined} onDeleted={remove} />)}{loadingMore && <span className="media-rail-continuation" role="status"><ActionRefreshIcon className="state-spinner" /><span className="sr-only">{productMessage('state.loading-more').title}</span></span>}</div>
     {selectedItems.length > 0 && <BulkActionBar items={selectedItems} onClear={() => setSelected([])} onRetain={setSelected} onDeleted={remove} />}
   </section>;
 }
@@ -654,8 +638,8 @@ export function MediaListRow({ item, playbackOptions, selected = false, onSelect
   const detailPath = mediaDetailPath(item);
   const target = targetFromMedia(item);
   return <article className={`catalog-list-row ${selected ? 'selected' : ''}`}>
-    {onSelect && <button type="button" className={`selection-check row-check ${selected ? 'selected' : ''}`} onClick={onSelect} aria-label={productMessage(selected ? 'library.deselect-item' : 'library.select-item', { title: item.title }).text} aria-pressed={selected}>{selected && <Check />}</button>}
-    {detailPath ? <Link className="catalog-list-row-link" to={detailPath}><span className="catalog-list-art"><MediaArtwork item={item} shape={mediaPresentation(item).artworkShape} /></span><span className="list-primary"><strong>{item.title}</strong><small>{item.subtitle || [item.genre, item.year || undefined].filter(Boolean).join(' · ')}</small></span><span>{item.rating}</span><span>{item.length}</span><ChevronRight className="list-detail" aria-hidden="true" /></Link> : <div className="catalog-list-row-link"><span className="catalog-list-art"><MediaArtwork item={item} shape={mediaPresentation(item).artworkShape} /></span><span className="list-primary"><strong>{item.title}</strong><small>{item.subtitle}</small></span></div>}
+    {onSelect && <button type="button" className={`selection-check row-check ${selected ? 'selected' : ''}`} onClick={onSelect} aria-label={productMessage(selected ? 'library.deselect-item' : 'library.select-item', { title: item.title }).text} aria-pressed={selected}>{selected && <ActionConfirmIcon />}</button>}
+    {detailPath ? <Link className="catalog-list-row-link" to={detailPath}><span className="catalog-list-art"><MediaArtwork item={item} shape={mediaPresentation(item).artworkShape} /></span><span className="list-primary"><strong>{item.title}</strong><small>{item.subtitle || [item.genre, item.year || undefined].filter(Boolean).join(' · ')}</small></span><span>{item.rating}</span><span>{item.length}</span><NavigationDisclosureIcon className="list-detail" aria-hidden="true" /></Link> : <div className="catalog-list-row-link"><span className="catalog-list-art"><MediaArtwork item={item} shape={mediaPresentation(item).artworkShape} /></span><span className="list-primary"><strong>{item.title}</strong><small>{item.subtitle}</small></span></div>}
     <MediaActionMenu target={target} playbackOptions={playbackOptions} onDeleted={onDeleted} />
   </article>;
 }

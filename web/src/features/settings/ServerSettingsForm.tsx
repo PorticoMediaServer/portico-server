@@ -1,8 +1,9 @@
 import { ApiError, type SettingsDocument, type SettingsGroups, type SettingsGroupsUpdate, type SettingsGroupSummary, type SettingsSummaryResponse } from '@porticomediaserver/client-core';
-import { LockKeyhole, RotateCcw } from '#portico-icons';
+import { StatusLockedIcon, ActionResetIcon } from '#portico-icons';
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { SecondaryButton } from '../../components/controls/Buttons';
 import { reviewedProductErrorText } from '../../components/ProductLanguage';
+import { secureRandomUUID } from '../../runtime/secureRandomUUID';
 import {
   ChoiceControl,
   InlineNotice,
@@ -26,9 +27,7 @@ type DraftGroup = Record<string, DraftValue>;
 type SettingsDraft = Partial<Record<WritableSettingsGroup, DraftGroup>>;
 
 function settingsIdempotencyKey(): string {
-  const cryptoAPI = globalThis.crypto;
-  if (cryptoAPI?.randomUUID) return `settings-${cryptoAPI.randomUUID()}`;
-  return `settings-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return `settings-${secureRandomUUID()}`;
 }
 
 function groupRecord(groups: SettingsGroups, key: WritableSettingsGroup): Record<string, unknown> {
@@ -267,7 +266,7 @@ export function ServerSettingsForm({ section, document, summary, viewer, source,
     }
   };
 
-  if (groups.length === 0) return <div className="portico-settings-state"><LockKeyhole /><strong>No settings are available here</strong><p>Your account or this server does not expose any configurable settings in this section.</p></div>;
+  if (groups.length === 0) return <div className="portico-settings-state"><StatusLockedIcon /><strong>No settings are available here</strong><p>Your account or this server does not expose any configurable settings in this section.</p></div>;
 
   const changedFields = document.applyImpact?.changedFields ?? [];
   const restartFields = document.applyImpact?.restartRequiredFields ?? document.restartRequiredFields;
@@ -323,10 +322,10 @@ export function ServerSettingsForm({ section, document, summary, viewer, source,
           }
           return <Fragment key={`${group.id}-${field.field}`}><SettingRow label={field.label} description={field.description} indicator={indicator}>{readOnly && field.kind === 'secret' ? <ReadOnlyValue>Restricted</ReadOnlyValue> : control}</SettingRow>{resolved && <div className="portico-setting-resolution" role="status"><span><strong>Requested</strong> {displayResolvedValue(resolved.requestedValue)}</span><span><strong>Effective</strong> {displayResolvedValue(resolved.effectiveValue)}{resolved.effectiveSource ? ` · ${resolved.effectiveSource}` : ''}</span>{(resolved.policyLimit !== undefined || resolved.restrictionReason) && <span><strong>Policy</strong> {displayResolvedValue(resolved.policyLimit)}{resolved.restrictionReason ? ` · ${resolved.restrictionReason}` : ''}</span>}</div>}{warning && <InlineNotice tone="warn"><strong>Storage and I/O warning.</strong> {warning}</InlineNotice>}</Fragment>;
         })}
-        {readOnly && <div className="portico-settings-readonly-note"><LockKeyhole />{capability?.implemented === false ? 'This server does not currently provide this settings group.' : capabilityState ?? 'Your account can view this group but cannot change it.'}</div>}
+        {readOnly && <div className="portico-settings-readonly-note"><StatusLockedIcon />{capability?.implemented === false ? 'This server does not currently provide this settings group.' : capabilityState ?? 'Your account can view this group but cannot change it.'}</div>}
       </SettingsGroup>;
     })}
     <SaveBar dirty={dirty} busy={busy} feedback={feedback} error={error} onSave={save} onReset={() => { intentKey.current = undefined; setDraft({}); setFeedback(''); setError(''); setFieldErrors(new Map()); }} />
-    {error.includes('another session') && <div className="portico-settings-conflict-action"><SecondaryButton onClick={onReload}><RotateCcw /> Reload current settings</SecondaryButton></div>}
+    {error.includes('another session') && <div className="portico-settings-conflict-action"><SecondaryButton onClick={onReload}><ActionResetIcon /> Reload current settings</SecondaryButton></div>}
   </div>;
 }

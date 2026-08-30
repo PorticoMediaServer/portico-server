@@ -19,8 +19,7 @@ function media(overrides: Partial<MediaItem> & Pick<MediaItem, 'id' | 'title'>):
   return {
     subtitle: '',
     year: 0,
-    type: 'movie',
-    kind: 'movie',
+    entityKind: 'movie',
     poster: '/poster.jpg',
     backdrop: '/backdrop.jpg',
     rating: '',
@@ -66,7 +65,7 @@ function renderDetail(source: FixturePorticoDataSource, id: string, search = '')
 
 describe('media detail workspace', () => {
   it('presents movie provenance, availability, discovery, and capability-gated actions together', async () => {
-    const trailer = media({ id: 'trailer', title: 'Official trailer', kind: 'movie', year: 2026 });
+    const trailer = media({ id: 'trailer', title: 'Official trailer',  year: 2026 });
     const recommendation = media({ id: 'recommended', title: 'Solaris', year: 1972 });
     const movie = media({
       id: 'arrival',
@@ -146,16 +145,15 @@ describe('media detail workspace', () => {
   });
 
   it('keeps the show hero while selecting the resume season and rendering complete episode rows', async () => {
-    const pilot = media({ id: 'episode-1', title: 'Pilot', type: 'show', kind: 'episode', parentId: 'season-1', grandparentId: 'fargo', seasonNumber: 1, episodeNumber: 1, length: '52m', summary: 'A drifter arrives in Bemidji.', actions: ['play', 'watchlist.add'] });
-    const palindrome = media({ id: 'episode-2', title: 'Palindrome', type: 'show', kind: 'episode', parentId: 'season-2', grandparentId: 'fargo', seasonNumber: 2, episodeNumber: 10, length: '48m', summary: 'The case closes in on its final confrontation.', progress: 42, progressSeconds: 270, actions: ['play', 'watched.set'] });
-    const firstSeason = media({ id: 'season-1', title: 'Season 1', type: 'show', kind: 'season', seasonNumber: 1, children: [pilot] });
-    const secondSeason = media({ id: 'season-2', title: 'Season 2', type: 'show', kind: 'season', seasonNumber: 2, children: [palindrome] });
+    const pilot = media({ id: 'episode-1', title: 'Pilot', entityKind: 'episode', parentId: 'season-1', grandparentId: 'fargo', seasonNumber: 1, episodeNumber: 1, length: '52m', summary: 'A drifter arrives in Bemidji.', actions: ['play', 'watchlist.add'] });
+    const palindrome = media({ id: 'episode-2', title: 'Palindrome', entityKind: 'episode', parentId: 'season-2', grandparentId: 'fargo', seasonNumber: 2, episodeNumber: 10, length: '48m', summary: 'The case closes in on its final confrontation.', progress: 42, progressSeconds: 270, actions: ['play', 'watched.set'] });
+    const firstSeason = media({ id: 'season-1', title: 'Season 1', entityKind: 'season', seasonNumber: 1, children: [pilot] });
+    const secondSeason = media({ id: 'season-2', title: 'Season 2', entityKind: 'season', seasonNumber: 2, children: [palindrome] });
     const secondSeasonDetail = secondSeason;
     const show = media({
       id: 'fargo',
       title: 'Fargo',
-      type: 'show',
-      kind: 'show',
+      entityKind: 'show',
       libraryId: 'tv',
       progress: 35,
       actions: ['watchlist.add', 'watched.set'],
@@ -179,9 +177,9 @@ describe('media detail workspace', () => {
   });
 
   it('resolves durable season and episode links into the canonical show workspace', async () => {
-    const episode = media({ id: 'episode-link', title: 'The Castle', type: 'show', kind: 'episode', parentId: 'season-link', parentTitle: 'Season 2', grandparentId: 'fargo-link', grandparentTitle: 'Fargo', seasonNumber: 2, episodeNumber: 9, actions: ['play'] });
-    const season = media({ id: 'season-link', title: 'Season 2', type: 'show', kind: 'season', parentId: 'fargo-link', parentTitle: 'Fargo', seasonNumber: 2, children: [episode] });
-    const show = media({ id: 'fargo-link', title: 'Fargo', type: 'show', kind: 'show', children: [season], actions: ['play'] });
+    const episode = media({ id: 'episode-link', title: 'The Castle', entityKind: 'episode', parentId: 'season-link', parentTitle: 'Season 2', grandparentId: 'fargo-link', grandparentTitle: 'Fargo', seasonNumber: 2, episodeNumber: 9, actions: ['play'] });
+    const season = media({ id: 'season-link', title: 'Season 2', entityKind: 'season', parentId: 'fargo-link', parentTitle: 'Fargo', seasonNumber: 2, children: [episode] });
+    const show = media({ id: 'fargo-link', title: 'Fargo', entityKind: 'show', children: [season], actions: ['play'] });
     renderDetail(new DetailSource([show, season, episode]), episode.id);
 
     expect(await screen.findByRole('heading', { name: 'Fargo' })).toBeInTheDocument();
@@ -190,10 +188,10 @@ describe('media detail workspace', () => {
   });
 
   it('renders the server-selected show playback target when season children are shallow', async () => {
-    const episode = media({ id: 'episode-target', title: 'The Castle', type: 'show', kind: 'episode', parentId: 'season-target', grandparentId: 'fargo-target', seasonNumber: 2, episodeNumber: 9, length: '48m', progressSeconds: 330, actions: ['play'] });
-    const shallowSeason = media({ id: 'season-target', title: 'Season 2', type: 'show', kind: 'season', parentId: 'fargo-target', seasonNumber: 2 });
+    const episode = media({ id: 'episode-target', title: 'The Castle', entityKind: 'episode', parentId: 'season-target', grandparentId: 'fargo-target', seasonNumber: 2, episodeNumber: 9, length: '48m', progressSeconds: 330, actions: ['play'] });
+    const shallowSeason = media({ id: 'season-target', title: 'Season 2', entityKind: 'season', parentId: 'fargo-target', seasonNumber: 2 });
     const seasonDetail = { ...shallowSeason, children: [episode] };
-    const show = media({ id: 'fargo-target', title: 'Fargo', type: 'show', kind: 'show', children: [shallowSeason], playbackTarget: episode });
+    const show = media({ id: 'fargo-target', title: 'Fargo', entityKind: 'show', children: [shallowSeason], playbackTarget: episode });
     renderDetail(new DetailSource([show, seasonDetail, episode]), show.id);
 
     expect(await screen.findByRole('button', { name: 'Resume S2E9' })).toBeInTheDocument();
@@ -201,9 +199,9 @@ describe('media detail workspace', () => {
   });
 
   it('keeps contextual resume copy when the server-projected play action gates eligibility', async () => {
-    const episode = media({ id: 'episode-context', title: 'The Return', type: 'show', kind: 'episode', parentId: 'season-context', grandparentId: 'show-context', seasonNumber: 3, episodeNumber: 7, progressSeconds: 91, actions: ['play'] });
-    const season = media({ id: 'season-context', title: 'Season 3', type: 'show', kind: 'season', seasonNumber: 3, children: [episode] });
-    const show = media({ id: 'show-context', title: 'Contextual Show', type: 'show', kind: 'show', children: [season], playbackTarget: episode });
+    const episode = media({ id: 'episode-context', title: 'The Return', entityKind: 'episode', parentId: 'season-context', grandparentId: 'show-context', seasonNumber: 3, episodeNumber: 7, progressSeconds: 91, actions: ['play'] });
+    const season = media({ id: 'season-context', title: 'Season 3', entityKind: 'season', seasonNumber: 3, children: [episode] });
+    const show = media({ id: 'show-context', title: 'Contextual Show', entityKind: 'show', children: [season], playbackTarget: episode });
     renderDetail(new DetailSource([show, season, episode]), show.id);
 
     expect(await screen.findByRole('button', { name: 'Resume S3E7' })).toBeInTheDocument();
@@ -211,20 +209,19 @@ describe('media detail workspace', () => {
   });
 
   it('follows episode cursors until a deep-linked episode beyond the initial 200 is loaded and selected', async () => {
-    const season = media({ id: 'season-deep', title: 'Season 1', type: 'show', kind: 'season', seasonNumber: 1 });
-    const show = media({ id: 'show-deep', title: 'Deep Link Show', type: 'show', kind: 'show', children: [season] });
+    const season = media({ id: 'season-deep', title: 'Season 1', entityKind: 'season', seasonNumber: 1 });
+    const show = media({ id: 'show-deep', title: 'Deep Link Show', entityKind: 'show', children: [season] });
     const initialEpisodes = Array.from({ length: 3 }, (_, index) => media({
       id: `episode-deep-${index + 1}`,
       title: `Episode ${index + 1}`,
-      type: 'show',
-      kind: 'episode',
+      entityKind: 'episode',
       parentId: season.id,
       grandparentId: show.id,
       seasonNumber: 1,
       episodeNumber: index + 1,
       actions: ['play'],
     }));
-    const requested = media({ id: 'episode-deep-201', title: 'The Deep Link', type: 'show', kind: 'episode', parentId: season.id, grandparentId: show.id, seasonNumber: 1, episodeNumber: 201, actions: ['play'] });
+    const requested = media({ id: 'episode-deep-201', title: 'The Deep Link', entityKind: 'episode', parentId: season.id, grandparentId: show.id, seasonNumber: 1, episodeNumber: 201, actions: ['play'] });
     const source = new DetailSource([show, season, ...initialEpisodes, requested]);
     const children = vi.spyOn(source, 'mediaChildren')
       .mockResolvedValueOnce({ items: initialEpisodes, hasMore: true, nextCursor: 'after-200' })
@@ -238,10 +235,10 @@ describe('media detail workspace', () => {
   });
 
   it('completes truncated show and season hierarchy through cursor child pages', async () => {
-    const pilot = media({ id: 'episode-page-1', title: 'Pilot', type: 'show', kind: 'episode', parentId: 'season-page', grandparentId: 'show-page', seasonNumber: 1, episodeNumber: 1, actions: ['play'] });
-    const second = media({ id: 'episode-page-2', title: 'Second Chapter', type: 'show', kind: 'episode', parentId: 'season-page', grandparentId: 'show-page', seasonNumber: 1, episodeNumber: 2, actions: ['play'] });
-    const season = media({ id: 'season-page', title: 'Season 1', type: 'show', kind: 'season', seasonNumber: 1, children: [pilot], childrenTruncated: true });
-    const show = media({ id: 'show-page', title: 'A Complete Show', type: 'show', kind: 'show', children: [season], childrenTruncated: true });
+    const pilot = media({ id: 'episode-page-1', title: 'Pilot', entityKind: 'episode', parentId: 'season-page', grandparentId: 'show-page', seasonNumber: 1, episodeNumber: 1, actions: ['play'] });
+    const second = media({ id: 'episode-page-2', title: 'Second Chapter', entityKind: 'episode', parentId: 'season-page', grandparentId: 'show-page', seasonNumber: 1, episodeNumber: 2, actions: ['play'] });
+    const season = media({ id: 'season-page', title: 'Season 1', entityKind: 'season', seasonNumber: 1, children: [pilot], childrenTruncated: true });
+    const show = media({ id: 'show-page', title: 'A Complete Show', entityKind: 'show', children: [season], childrenTruncated: true });
     const source = new DetailSource([show, season, pilot, second]);
     const children = vi.spyOn(source, 'mediaChildren').mockImplementation(async (id) => id === show.id
       ? { items: [{ ...season, children: undefined }], hasMore: false, nextCursor: null }
@@ -255,10 +252,10 @@ describe('media detail workspace', () => {
   });
 
   it('loads further truncated album children without discarding the current page', async () => {
-    const first = media({ id: 'track-page-1', title: 'First Track', type: 'music', kind: 'track', actions: ['play'] });
-    const second = media({ id: 'track-page-2', title: 'Second Track', type: 'music', kind: 'track', actions: ['play'] });
-    const third = media({ id: 'track-page-3', title: 'Third Track', type: 'music', kind: 'track', actions: ['play'] });
-    const album = media({ id: 'album-page', title: 'Long Album', type: 'music', kind: 'album', children: [first], childrenTruncated: true });
+    const first = media({ id: 'track-page-1', title: 'First Track', entityKind: 'track', actions: ['play'] });
+    const second = media({ id: 'track-page-2', title: 'Second Track', entityKind: 'track', actions: ['play'] });
+    const third = media({ id: 'track-page-3', title: 'Third Track', entityKind: 'track', actions: ['play'] });
+    const album = media({ id: 'album-page', title: 'Long Album', entityKind: 'album', children: [first], childrenTruncated: true });
     const source = new DetailSource([album, first, second, third]);
     const children = vi.spyOn(source, 'mediaChildren')
       .mockResolvedValueOnce({ items: [first, second], hasMore: true, nextCursor: 'track-cursor' })
@@ -274,8 +271,8 @@ describe('media detail workspace', () => {
   });
 
   it('keeps loaded hierarchy children visible when a continuation fails', async () => {
-    const first = media({ id: 'track-stable-1', title: 'Loaded Track', type: 'music', kind: 'track' });
-    const album = media({ id: 'album-stable', title: 'Stable Album', type: 'music', kind: 'album', children: [first], childrenTruncated: true });
+    const first = media({ id: 'track-stable-1', title: 'Loaded Track', entityKind: 'track' });
+    const album = media({ id: 'album-stable', title: 'Stable Album', entityKind: 'album', children: [first], childrenTruncated: true });
     const source = new DetailSource([album, first]);
     vi.spyOn(source, 'mediaChildren')
       .mockResolvedValueOnce({ items: [first], hasMore: true, nextCursor: 'next-page' })
@@ -289,11 +286,11 @@ describe('media detail workspace', () => {
   });
 
   it('selects duplicate season labels by stable season identity', async () => {
-    const firstEpisode = media({ id: 'duplicate-episode-1', title: 'First identity', type: 'show', kind: 'episode' });
-    const secondEpisode = media({ id: 'duplicate-episode-2', title: 'Second identity', type: 'show', kind: 'episode' });
-    const firstSeason = media({ id: 'duplicate-season-1', title: 'Season 1', type: 'show', kind: 'season', seasonNumber: 1, children: [firstEpisode] });
-    const secondSeason = media({ id: 'duplicate-season-2', title: 'Season 1', type: 'show', kind: 'season', seasonNumber: 2, children: [secondEpisode] });
-    const show = media({ id: 'duplicate-show', title: 'Duplicate seasons', type: 'show', kind: 'show', children: [firstSeason, secondSeason] });
+    const firstEpisode = media({ id: 'duplicate-episode-1', title: 'First identity', entityKind: 'episode' });
+    const secondEpisode = media({ id: 'duplicate-episode-2', title: 'Second identity', entityKind: 'episode' });
+    const firstSeason = media({ id: 'duplicate-season-1', title: 'Season 1', entityKind: 'season', seasonNumber: 1, children: [firstEpisode] });
+    const secondSeason = media({ id: 'duplicate-season-2', title: 'Season 1', entityKind: 'season', seasonNumber: 2, children: [secondEpisode] });
+    const show = media({ id: 'duplicate-show', title: 'Duplicate seasons', entityKind: 'show', children: [firstSeason, secondSeason] });
     renderDetail(new DetailSource([show, firstSeason, secondSeason, firstEpisode, secondEpisode]), show.id);
 
     await screen.findByText('First identity');
@@ -304,9 +301,9 @@ describe('media detail workspace', () => {
   });
 
   it('uses square artwork only for true music and preserves audiobook lineage as poster media', async () => {
-    const track = media({ id: 'track-1', title: 'Kiara', type: 'music', kind: 'track', length: '3:50', actions: ['play'], typedMetadata: { trackNumber: '2', trackArtist: 'Bonobo' } });
-    const firstTrack = media({ id: 'track-0', title: 'Prelude', type: 'music', kind: 'track', length: '1:18', actions: ['play'], typedMetadata: { trackNumber: '1', trackArtist: 'Bonobo' } });
-    const album = media({ id: 'album', title: 'Black Sands', type: 'music', kind: 'album', parentId: 'artist', parentTitle: 'Bonobo', year: 2010, children: [track, firstTrack] });
+    const track = media({ id: 'track-1', title: 'Kiara', entityKind: 'track', length: '3:50', actions: ['play'], typedMetadata: { trackNumber: '2', trackArtist: 'Bonobo' } });
+    const firstTrack = media({ id: 'track-0', title: 'Prelude', entityKind: 'track', length: '1:18', actions: ['play'], typedMetadata: { trackNumber: '1', trackArtist: 'Bonobo' } });
+    const album = media({ id: 'album', title: 'Black Sands', entityKind: 'album', parentId: 'artist', parentTitle: 'Bonobo', year: 2010, children: [track, firstTrack] });
     const albumSource = new DetailSource([album, track]);
     const startPlayback = vi.spyOn(albumSource, 'startPlayback').mockRejectedValue(new Error('Playback response omitted in this interaction test.'));
     const albumRender = renderDetail(albumSource, album.id);
@@ -323,12 +320,11 @@ describe('media detail workspace', () => {
     await waitFor(() => expect(startPlayback).toHaveBeenCalledWith('track-1', expect.objectContaining({ queueMediaIds: ['track-0', 'track-1'] }), expect.any(AbortSignal)));
     albumRender.unmount();
 
-    const chapter = media({ id: 'chapter-1', title: 'Chapter 1', type: 'music', kind: 'track', entityKind: 'audiobook-chapter', length: '26m' });
+    const chapter = media({ id: 'chapter-1', title: 'Chapter 1', entityKind: 'chapter', length: '26m' });
     const audiobook = media({
       id: 'audiobook',
       title: 'Project Hail Mary',
-      type: 'music',
-      kind: 'book',
+
       entityKind: 'audiobook',
       libraryId: 'books',
       parentId: 'series',
@@ -351,21 +347,21 @@ describe('media detail workspace', () => {
     expect(screen.getByRole('heading', { name: 'Chapters' })).toBeInTheDocument();
     expect(await screen.findByRole('link', { name: 'Play The journey begins' })).toHaveAttribute('href', '/watch/audiobook');
     expect(screen.getByText('5:20')).toBeInTheDocument();
-    expect(await screen.findByRole('button', { name: 'Play audiobook' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Play' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Mark finished' })).toBeInTheDocument();
   });
 
   it('collapses music recommendation tracks into one album-level card per release', () => {
-    const first = media({ id: 'track-a', title: 'First song', type: 'music', kind: 'track', parentId: 'album-a', parentTitle: 'Shared album', grandparentTitle: 'The Artist', poster: '/album.jpg' });
-    const second = media({ id: 'track-b', title: 'Second song', type: 'music', kind: 'track', parentId: 'album-a', parentTitle: 'Shared album', grandparentTitle: 'The Artist', poster: '/album.jpg' });
-    const other = media({ id: 'track-c', title: 'Other song', type: 'music', kind: 'track', parentId: 'album-b', parentTitle: 'Other album', grandparentTitle: 'The Artist' });
+    const first = media({ id: 'track-a', title: 'First song', entityKind: 'track', parentId: 'album-a', parentTitle: 'Shared album', grandparentTitle: 'The Artist', poster: '/album.jpg' });
+    const second = media({ id: 'track-b', title: 'Second song', entityKind: 'track', parentId: 'album-a', parentTitle: 'Shared album', grandparentTitle: 'The Artist', poster: '/album.jpg' });
+    const other = media({ id: 'track-c', title: 'Other song', entityKind: 'track', parentId: 'album-b', parentTitle: 'Other album', grandparentTitle: 'The Artist' });
 
     expect(musicRecommendationItems([first, second, other])).toMatchObject([
-      { id: 'album-a', title: 'Shared album', kind: 'album', subtitle: 'The Artist' },
-      { id: 'album-b', title: 'Other album', kind: 'album', subtitle: 'The Artist' },
+      { id: 'album-a', title: 'Shared album', entityKind: 'album', subtitle: 'The Artist' },
+      { id: 'album-b', title: 'Other album', entityKind: 'album', subtitle: 'The Artist' },
     ]);
 
-    const currentAlbum = media({ id: 'album-a', title: 'Shared album', type: 'music', kind: 'album' });
+    const currentAlbum = media({ id: 'album-a', title: 'Shared album', entityKind: 'album' });
     expect(musicRecommendationRows([
       { id: 'related', title: 'Related Music', type: 'square', items: [first, second, other], hasMore: false },
       { id: 'artist', title: 'More from The Artist', type: 'square', items: [first, other], hasMore: false },
@@ -378,11 +374,11 @@ describe('media detail workspace', () => {
   it('uses entity-specific hierarchy and action language for saved, live, and recorded media', async () => {
     const child = media({ id: 'child', title: 'Moonlight', year: 2016 });
     const cases: Array<{ item: MediaItem; section?: string; action?: string; kind: string }> = [
-      { item: media({ id: 'author', title: 'Ursula K. Le Guin', type: 'music', kind: 'author', children: [media({ id: 'book', title: 'The Dispossessed', type: 'music', kind: 'book', entityKind: 'audiobook' })] }), section: 'Audiobooks', action: undefined, kind: 'Author' },
-      { item: media({ id: 'collection', title: 'Modern classics', kind: 'collection', children: [child] }), section: 'Included media', kind: 'Collection' },
-      { item: media({ id: 'playlist', title: 'Weekend queue', kind: 'playlist', children: [child], actions: ['play'] }), section: 'Playlist', action: 'Play playlist', kind: 'Playlist' },
-      { item: media({ id: 'channel', title: 'Kanal 7', type: 'show', kind: 'category', entityKind: 'live-channel', children: [media({ id: 'program', title: 'Evening News', type: 'show', kind: 'episode' })], actions: ['live.play'] }), section: 'Programming', action: 'Watch live', kind: 'Live channel' },
-      { item: media({ id: 'recording', title: 'Saturday Cinema', type: 'show', kind: 'recording', actions: ['dvr.play'], fileCount: 1 }), action: 'Play recording', kind: 'DVR recording' },
+      { item: media({ id: 'author', title: 'Ursula K. Le Guin', entityKind: 'author', children: [media({ id: 'book', title: 'The Dispossessed', entityKind: 'audiobook' })] }), section: 'Audiobooks', action: undefined, kind: 'Author' },
+      { item: media({ id: 'collection', title: 'Modern classics', entityKind: 'collection', children: [child] }), section: 'Included media', kind: 'Collection' },
+      { item: media({ id: 'playlist', title: 'Weekend queue', entityKind: 'playlist', children: [child], actions: ['play'] }), section: 'Playlist', action: 'Play playlist', kind: 'Playlist' },
+      { item: media({ id: 'channel', title: 'Kanal 7', entityKind: 'live-channel', children: [media({ id: 'program', title: 'Evening News', entityKind: 'live-program' })], actions: ['live.play'] }), section: 'Programming', action: 'Play', kind: 'Live channel' },
+      { item: media({ id: 'recording', title: 'Saturday Cinema', entityKind: 'recording', actions: ['dvr.play'], fileCount: 1 }), action: 'Play recording', kind: 'DVR recording' },
     ];
 
     for (const current of cases) {
@@ -397,7 +393,7 @@ describe('media detail workspace', () => {
   });
 
   it('does not infer controls and distinguishes an explicit empty container', async () => {
-    const show = media({ id: 'empty-show', title: 'Unscanned Show', type: 'show', kind: 'show', progressSeconds: 90, children: [], actions: [] });
+    const show = media({ id: 'empty-show', title: 'Unscanned Show', entityKind: 'show', progressSeconds: 90, children: [], actions: [] });
     renderDetail(new DetailSource([show]), show.id);
 
     expect(await screen.findByRole('heading', { name: 'Unscanned Show' })).toBeInTheDocument();

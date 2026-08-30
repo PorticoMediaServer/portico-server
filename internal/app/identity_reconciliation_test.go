@@ -28,7 +28,7 @@ func TestIdentityReconciliationReviewHandlersRequireAdminAndResolveKeepSeparate(
 		t.Fatalf("non-admin list status=%d body=%s", response.Code, response.Body.String())
 	}
 
-	admin := User{ID: "usr_identity_admin", Email: "admin@example.test", Role: "owner", AuthProvider: "local", Permissions: ownerPermissions()}
+	admin := User{ID: "usr_identity_admin", AccountID: "usr_identity_admin", ProfileID: "usr_identity_admin", ProfileIsPrimary: true, Email: "admin@example.test", Role: "owner", AuthProvider: "local", Permissions: ownerPermissions()}
 	request = httptest.NewRequest(http.MethodGet, "/api/identity-reconciliation/reviews?domain=media&status=open", nil)
 	response = httptest.NewRecorder()
 	server.handleIdentityReconciliationReviews(response, request, admin)

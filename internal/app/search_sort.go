@@ -147,11 +147,11 @@ func knownSearchGroup(group string) bool {
 
 func knownSearchEntityKind(kind string) bool {
 	for _, definition := range searchGroupDefinitions {
-		if definition.ID == kind || definition.EntityKind == kind {
+		if definition.EntityKind == kind {
 			return true
 		}
 		for _, storageType := range definition.Types {
-			if storageType == kind || string(catalogkind.Public(storageType)) == kind {
+			if string(catalogkind.Public(storageType)) == kind {
 				return true
 			}
 		}
@@ -175,11 +175,11 @@ func searchEntityKindsIncludeGroup(kinds []string, group string) bool {
 }
 
 func searchKindsSelectDefinition(kinds map[string]bool, definition searchGroupDefinition) bool {
-	if kinds[definition.ID] || kinds[definition.EntityKind] {
+	if kinds[definition.EntityKind] {
 		return true
 	}
 	for _, storageType := range definition.Types {
-		if kinds[storageType] || kinds[string(catalogkind.Public(storageType))] {
+		if kinds[string(catalogkind.Public(storageType))] {
 			return true
 		}
 	}

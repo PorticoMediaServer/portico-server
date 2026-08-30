@@ -80,6 +80,13 @@ type Selection struct {
 	AudioIndex    *int `json:"audioIndex,omitempty"`
 	SubtitleIndex *int `json:"subtitleIndex,omitempty"`
 }
+
+type RejectionDiagnostics struct {
+	Counts       map[string]int `json:"-"`
+	Selection    Selection      `json:"-"`
+	AllowedModes []Mode         `json:"-"`
+	Constraints  Constraints    `json:"-"`
+}
 type StreamAction struct {
 	Index        int    `json:"index"`
 	Kind         string `json:"kind"`
@@ -188,6 +195,7 @@ type Plan struct {
 	Hardware             HardwareRoute         `json:"hardware"`
 	Constraints          Constraints           `json:"constraints"`
 	Reasons              []ReasonCode          `json:"reasons"`
+	Rejections           RejectionDiagnostics  `json:"-"`
 }
 
 func (p Plan) StableJSON() ([]byte, error) { q := p; q.Digest = ""; return json.Marshal(q) }

@@ -98,13 +98,14 @@ func (s *Server) handlePorticoLoginStart(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	authURL := s.porticoHostedLoginURL(settings.HostedBaseURL, map[string]string{
-		"serverId":                   settings.ServerID,
-		"serverName":                 firstNonEmpty(systemIdentity.FriendlyName, "Portico"),
-		"callbackUrl":                callbackURL,
-		"localOrigin":                localOrigin,
-		"state":                      state,
-		"serverPublicKeyFingerprint": identity.Fingerprint,
-		"installationId":             installationID,
+		"serverId":                      settings.ServerID,
+		"serverName":                    firstNonEmpty(systemIdentity.FriendlyName, "Portico"),
+		"callbackUrl":                   callbackURL,
+		"localOrigin":                   localOrigin,
+		"state":                         state,
+		"serverPublicKeyFingerprint":    identity.Fingerprint,
+		"installationId":                installationID,
+		"publicConsoleOriginGeneration": strconv.FormatInt(settings.PublicConsoleOriginGeneration, 10),
 	})
 	http.Redirect(w, r, authURL, http.StatusFound)
 }

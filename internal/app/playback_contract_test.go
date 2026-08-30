@@ -109,7 +109,10 @@ func TestPlaybackContinuationIsScopedRotatableAndDurablyAcknowledgesProgress(t *
 	if status != http.StatusOK || recoveredRotation.Token != rotated.Token || recoveredRotation.ExpiresAt != rotated.ExpiresAt || recoveredRotation.Origin != rotated.Origin || recoveredRotation.Generation != rotated.Generation {
 		t.Fatalf("lost-response rotation retry did not recover the exact credential: status=%d first=%#v recovered=%#v body=%s", status, rotated, recoveredRotation, body)
 	}
-	status, body = doPlaybackContinuationJSON(t, client, http.MethodDelete, continuationURL, rotated.Token, "", nil, nil)
+	status, body = doPlaybackContinuationJSON(t, client, http.MethodDelete, continuationURL, rotated.Token, "", map[string]any{
+		"disposition": "stopped", "generation": rotated.Generation, "eventSequence": 2,
+		"recordedAt": time.Now().UTC().Format(time.RFC3339Nano), "positionSeconds": 2, "durationSeconds": 0,
+	}, nil)
 	if status != http.StatusOK {
 		t.Fatalf("continuation revoke status=%d body=%s", status, body)
 	}
@@ -350,7 +353,7 @@ func TestPlaybackRenegotiationValidatesBeforeAdvancingRevision(t *testing.T) {
 	status, body := doJSON(t, client, http.MethodPost, serverURL+"/api/playback-sessions", PlaybackSessionCreateRequest{
 		MediaID: "movie_meridian", SkipPreroll: true,
 		ClientProfile: attachAuthenticatedPlaybackRuntime(PlaybackClientProfile{Device: "iPhone", Platform: "ios", SupportsHLS: true, MaxWidth: 1920, MaxHeight: 1080}),
-		Intent:        PlaybackIntent{NetworkClass: "wifi", QualityProfile: "standard", MaxVideoBitrateMbps: 12},
+		Intent:        PlaybackIntent{TransportClass: "wifi", QualityProfile: "standard", MaxVideoBitrateMbps: 12},
 	}, &playback)
 	if status != http.StatusOK {
 		t.Fatalf("start playback status=%d body=%s", status, body)
@@ -370,7 +373,7 @@ func TestPlaybackRenegotiationValidatesBeforeAdvancingRevision(t *testing.T) {
 	if revision != 0 {
 		t.Fatalf("invalid renegotiation advanced revision to %d", revision)
 	}
-	if !strings.Contains(profileJSON, `"platform":"ios"`) || !strings.Contains(intentJSON, `"networkClass":"wifi"`) || !strings.Contains(intentJSON, `"maxVideoBitrateMbps":12`) {
+	if !strings.Contains(profileJSON, `"platform":"ios"`) || !strings.Contains(intentJSON, `"transportClass":"wifi"`) || !strings.Contains(intentJSON, `"maxVideoBitrateMbps":12`) {
 		t.Fatalf("canonical playback inputs were not persisted: profile=%s intent=%s", profileJSON, intentJSON)
 	}
 }
@@ -407,7 +410,7 @@ func TestPlaybackRenegotiationPreservesOmittedSelectionsAndReplaysIdempotently(t
 	status, body := doJSON(t, client, http.MethodPost, serverURL+"/api/playback-sessions", PlaybackSessionCreateRequest{
 		MediaID: "movie_meridian", SkipPreroll: true,
 		ClientProfile: attachAuthenticatedPlaybackRuntime(PlaybackClientProfile{Device: "iPhone", Platform: "ios", SupportsHLS: true, MaxWidth: 1920, MaxHeight: 1080}),
-		Intent:        PlaybackIntent{NetworkClass: "wifi", QualityProfile: "standard", MaxVideoBitrateMbps: 12},
+		Intent:        PlaybackIntent{TransportClass: "wifi", QualityProfile: "standard", MaxVideoBitrateMbps: 12},
 	}, &started)
 	if status != http.StatusOK {
 		t.Fatalf("start playback status=%d body=%s", status, body)
@@ -439,7 +442,7 @@ func TestPlaybackRenegotiationPreservesOmittedSelectionsAndReplaysIdempotently(t
 			beforeQuality, beforeAudio, beforeSubtitle, beforeMode, beforeVersion,
 			afterQuality, afterAudio, afterSubtitle, afterMode, afterVersion)
 	}
-	if !strings.Contains(profileJSON, `"platform":"ios"`) || !strings.Contains(intentJSON, `"networkClass":"wifi"`) {
+	if !strings.Contains(profileJSON, `"platform":"ios"`) || !strings.Contains(intentJSON, `"transportClass":"wifi"`) {
 		t.Fatalf("omitted canonical inputs were not preserved: profile=%s intent=%s", profileJSON, intentJSON)
 	}
 
@@ -503,7 +506,7 @@ func TestPlaybackProgressContractRequiresOrderingMetadata(t *testing.T) {
 	}
 }
 
-func TestCompletedPlaybackProgressEventStopsSessionAndCannotBeRevived(t *testing.T) {
+func TestAtomicCompletedPlaybackStopPersistsTerminalStateAndCannotBeRevived(t *testing.T) {
 	serverURL, db := newAuthTestServerWithDB(t)
 	setMediaDurationForProgressTest(t, db, "movie_meridian")
 	seedExactPlaybackFactsForFixture(t, &Server{db: db}, "movie_meridian")
@@ -517,17 +520,24 @@ func TestCompletedPlaybackProgressEventStopsSessionAndCannotBeRevived(t *testing
 		t.Fatalf("create playback session status=%d body=%s", status, body)
 	}
 
-	var acknowledgement PlaybackProgressAcknowledgement
-	status, body = doJSON(t, client, http.MethodPatch, serverURL+"/api/playback-sessions/"+playback.SessionID, map[string]any{
-		"eventSequence":   1,
+	status, body = doJSON(t, client, http.MethodDelete, serverURL+"/api/playback-sessions/"+playback.SessionID, map[string]any{
+		"disposition":     "completed",
+		"generation":      playback.Generation,
+		"eventSequence":   playback.NextEventSequence,
 		"recordedAt":      time.Now().UTC().Format(time.RFC3339Nano),
-		"state":           "playing",
 		"positionSeconds": playbackProgressTestDurationSeconds,
 		"durationSeconds": playbackProgressTestDurationSeconds,
-		"completed":       true,
-	}, &acknowledgement)
-	if status != http.StatusOK || !acknowledgement.Accepted || acknowledgement.SessionState != "stopped" {
-		t.Fatalf("completed progress status=%d acknowledgement=%#v body=%s", status, acknowledgement, body)
+	}, nil)
+	if status != http.StatusOK {
+		t.Fatalf("atomic completed stop status=%d body=%s", status, body)
+	}
+	var position, progress int
+	var state, endedAt string
+	if err := db.QueryRow(`SELECT position_seconds, progress, state, ended_at FROM playback_sessions WHERE id = ?`, playback.SessionID).Scan(&position, &progress, &state, &endedAt); err != nil {
+		t.Fatal(err)
+	}
+	if position != playbackProgressTestDurationSeconds || progress != 100 || state != "stopped" || endedAt == "" {
+		t.Fatalf("terminal state position=%d progress=%d state=%q endedAt=%q", position, progress, state, endedAt)
 	}
 
 	status, body = doJSON(t, client, http.MethodPatch, serverURL+"/api/playback-sessions/"+playback.SessionID, map[string]any{
@@ -544,5 +554,50 @@ func TestCompletedPlaybackProgressEventStopsSessionAndCannotBeRevived(t *testing
 	status, body = doJSON(t, client, http.MethodGet, serverURL+"/api/media/movie_meridian", nil, &item)
 	if status != http.StatusOK || !item.State.Watched || item.State.Resume != nil {
 		t.Fatalf("completed media state status=%d state=%#v body=%s", status, item.State, body)
+	}
+}
+
+func TestAtomicPlaybackStopRejectsStaleAuthorityAndLegacyCompletedPatch(t *testing.T) {
+	serverURL, db := newAuthTestServerWithDB(t)
+	setMediaDurationForProgressTest(t, db, "movie_meridian")
+	seedExactPlaybackFactsForFixture(t, &Server{db: db}, "movie_meridian")
+	jar, _ := cookiejar.New(nil)
+	client := &http.Client{Jar: jar}
+	loginUser(t, client, serverURL)
+
+	var playback PlaybackResponse
+	status, body := doJSON(t, client, http.MethodPost, serverURL+"/api/playback-sessions", authenticatedPlaybackRuntimeRequest("movie_meridian"), &playback)
+	if status != http.StatusOK {
+		t.Fatalf("create playback session status=%d body=%s", status, body)
+	}
+	terminal := map[string]any{
+		"disposition": "completed", "generation": playback.Generation,
+		"eventSequence": playback.NextEventSequence, "recordedAt": time.Now().UTC().Format(time.RFC3339Nano),
+		"positionSeconds": playbackProgressTestDurationSeconds, "durationSeconds": playbackProgressTestDurationSeconds,
+	}
+	terminal["generation"] = playback.Generation + 1
+	status, body = doJSON(t, client, http.MethodDelete, serverURL+"/api/playback-sessions/"+playback.SessionID, terminal, nil)
+	if status != http.StatusConflict || !strings.Contains(body, `"code":"playback_generation_stale"`) {
+		t.Fatalf("stale generation status=%d body=%s", status, body)
+	}
+	terminal["generation"] = playback.Generation
+	status, body = doJSON(t, client, http.MethodPatch, serverURL+"/api/playback-sessions/"+playback.SessionID, map[string]any{
+		"eventSequence": playback.NextEventSequence, "generation": playback.Generation,
+		"recordedAt": time.Now().UTC().Format(time.RFC3339Nano), "positionSeconds": 10,
+	}, nil)
+	if status != http.StatusOK {
+		t.Fatalf("seed progress status=%d body=%s", status, body)
+	}
+	terminal["eventSequence"] = playback.NextEventSequence
+	status, body = doJSON(t, client, http.MethodDelete, serverURL+"/api/playback-sessions/"+playback.SessionID, terminal, nil)
+	if status != http.StatusConflict || !strings.Contains(body, `"code":"playback_event_sequence_stale"`) {
+		t.Fatalf("stale sequence status=%d body=%s", status, body)
+	}
+	status, body = doJSON(t, client, http.MethodPatch, serverURL+"/api/playback-sessions/"+playback.SessionID, map[string]any{
+		"eventSequence": playback.NextEventSequence, "recordedAt": time.Now().UTC().Format(time.RFC3339Nano),
+		"positionSeconds": playbackProgressTestDurationSeconds, "durationSeconds": playbackProgressTestDurationSeconds, "completed": true,
+	}, nil)
+	if status != http.StatusBadRequest || !strings.Contains(body, `"code":"terminal_request_required"`) {
+		t.Fatalf("legacy completed PATCH status=%d body=%s", status, body)
 	}
 }

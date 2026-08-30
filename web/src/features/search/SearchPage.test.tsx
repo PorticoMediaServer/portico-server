@@ -17,7 +17,7 @@ const viewer: Viewer = {
 
 function result(id: string, title: string): MediaItem {
   return {
-    id, title, subtitle: '', year: 2026, type: 'movie', kind: 'movie', poster: '', backdrop: '', rating: '', length: '', genre: '', actions: [],
+    id, title, subtitle: '', year: 2026, entityKind: 'movie', poster: '', backdrop: '', rating: '', length: '', genre: '', actions: [],
   };
 }
 

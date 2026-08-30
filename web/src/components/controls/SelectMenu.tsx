@@ -1,4 +1,4 @@
-import { Check, ChevronDown } from '#portico-icons';
+import { ActionConfirmIcon, NavigationExpandIcon } from '#portico-icons';
 import { useId, useRef, useState } from 'react';
 import { AnchoredOverlay } from '../overlay/OverlayPortal';
 
@@ -14,10 +14,10 @@ export function SelectMenu({ label, value, options, onChange, labelledBy, descri
   return (
     <div className="select-menu">
       <button id={triggerId} ref={triggerRef} type="button" className="select-trigger" onClick={() => setOpen(!open)} aria-label={labelledBy ? undefined : label} aria-labelledby={labelledBy} aria-describedby={describedBy} aria-expanded={open} aria-haspopup="listbox" aria-controls={open ? listboxId : undefined}>
-        <span>{label && <small>{label}</small>}{selected?.label ?? value}</span><ChevronDown />
+        <span>{label && <small>{label}</small>}{selected?.label ?? value}</span><NavigationExpandIcon />
       </button>
       {open && <AnchoredOverlay id={listboxId} labelledBy={triggerId} returnFocusRef={triggerRef} anchorRef={triggerRef} minAnchorWidth className="select-popover" role="listbox" onDismiss={() => setOpen(false)}>
-        {options.map((option) => <button type="button" role="option" aria-selected={value === option.id} disabled={option.disabled} key={option.id} onClick={() => { onChange(option.id); setOpen(false); triggerRef.current?.focus(); }} className={value === option.id ? 'chosen' : ''}>{option.label}{value === option.id && <Check />}</button>)}
+        {options.map((option) => <button type="button" role="option" aria-selected={value === option.id} disabled={option.disabled} key={option.id} onClick={() => { onChange(option.id); setOpen(false); triggerRef.current?.focus(); }} className={value === option.id ? 'chosen' : ''}>{option.label}{value === option.id && <ActionConfirmIcon />}</button>)}
       </AnchoredOverlay>}
     </div>
   );

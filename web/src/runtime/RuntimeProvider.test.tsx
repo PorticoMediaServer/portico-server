@@ -5,6 +5,8 @@ import { MemoryRouter } from 'react-router-dom';
 import { useRuntime } from './RuntimeContext';
 import { extractHostedBootstrapIntent, extractPorticoLoginResult, RuntimeProvider } from './RuntimeProvider';
 import { consumeNativeDeviceSSOAutoStart, nativeDeviceAuthorizationCompletionURL, RuntimeSurface } from './RuntimeSurface';
+import { RuntimeProductFrame } from './RuntimeProductFrame';
+import { runtimeUsesProductFrame } from './runtimeFramePolicy';
 import type { HostedServerSummary, RuntimeConfig } from './runtimeMachine';
 import { DataProvider, useAuthSession, usePorticoDataSource } from '../data/DataProvider';
 import { FixturePorticoDataSource } from '../data/fixtureSource';
@@ -26,6 +28,22 @@ import {
 } from './signedOutAccountLedger';
 import { beginAmbientCookieMutation } from './ambientCookieQuarantine';
 import clientCompatibilityFixture from '../../../api/openapi/fixtures/client-compatibility-conformance.json';
+
+const clientCoreOriginals = vi.hoisted(() => ({
+  connectResilientHostedServer: undefined as typeof import('@porticomediaserver/client-core').connectResilientHostedServer | undefined,
+  connectTrustedServerRecord: undefined as typeof import('@porticomediaserver/client-core').connectTrustedServerRecord | undefined,
+}));
+
+vi.mock('@porticomediaserver/client-core', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@porticomediaserver/client-core')>();
+  clientCoreOriginals.connectResilientHostedServer = actual.connectResilientHostedServer;
+  clientCoreOriginals.connectTrustedServerRecord = actual.connectTrustedServerRecord;
+  return {
+    ...actual,
+    connectResilientHostedServer: vi.fn(actual.connectResilientHostedServer),
+    connectTrustedServerRecord: vi.fn(actual.connectTrustedServerRecord),
+  };
+});
 
 function response(payload: unknown, ok = true, status = 200) {
   const body = JSON.stringify(payload);
@@ -55,6 +73,13 @@ function sharedVaultStorage(): HostedConnectionVaultStorage {
     },
     delete: async (name, id) => { store(name).delete(key(id)); },
     getAll: async <T,>(name: string) => [...store(name).values()] as T[],
+    compareAndSwapConnection: async (id, expectedVersion, value) => {
+      const current = store('connections').get(key(id)) as { metadata?: { mutationVersion?: number }; mutationVersion?: number } | undefined;
+      if ((current?.metadata?.mutationVersion ?? current?.mutationVersion ?? 0) !== expectedVersion) return false;
+      store('connections').set(key(id), value);
+      return true;
+    },
+    replaceConnectionWithTombstone: async (id, value) => { store('connections').set(key(id), value); },
   };
 }
 
@@ -154,6 +179,7 @@ function preparedConnection(serverId: string, serverName: string, profileId = 'p
       currentRoute: { url: `https://${serverId}.direct.getportico.tv`, type: 'public_direct', verifiedAt: '2026-07-14T11:00:00.000Z' },
       session,
       lastSuccessfulConnectionAt: '2026-07-14T11:00:00.000Z',
+      mutationVersion: 1,
     },
     source: 'hosted',
   };
@@ -226,6 +252,7 @@ async function rememberedHostedBrowser(serverIds = ['server-1']): Promise<Hosted
         serverPublicKeyFingerprint,
       },
       lastSuccessfulConnectionAt: `2026-07-14T11:0${index}:00.000Z`,
+      mutationVersion: 1,
     };
     await vault.save(record);
   }
@@ -236,6 +263,15 @@ function RuntimeHarness() {
   const runtime = useRuntime();
   if (runtime.state.id === 'server-ready') return <div>Ready on {runtime.state.serverName}</div>;
   return <RuntimeSurface />;
+}
+
+function ProductFrameRuntimeHarness() {
+  const runtime = useRuntime();
+  if (runtime.state.id === 'server-ready') return <div>Ready on {runtime.state.serverName}</div>;
+  const surface = <RuntimeSurface embedded={runtimeUsesProductFrame(runtime.state)} />;
+  return runtimeUsesProductFrame(runtime.state)
+    ? <MemoryRouter><RuntimeProductFrame>{surface}</RuntimeProductFrame></MemoryRouter>
+    : surface;
 }
 
 function MembershipRefreshHarness() {
@@ -345,9 +381,11 @@ afterEach(() => {
   resetSignedOutAccountQuarantineForTests();
   window.history.replaceState(null, '', '/');
   window.localStorage.clear();
-	window.sessionStorage.clear();
+  window.sessionStorage.clear();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
+  vi.mocked(ClientCore.connectResilientHostedServer).mockReset().mockImplementation(clientCoreOriginals.connectResilientHostedServer!);
+  vi.mocked(ClientCore.connectTrustedServerRecord).mockReset().mockImplementation(clientCoreOriginals.connectTrustedServerRecord!);
 });
 
 describe('RuntimeProvider', () => {
@@ -381,6 +419,7 @@ describe('RuntimeProvider', () => {
     expect(window.location.pathname).toBe('/device');
     expect(window.location.hash).toBe('');
     expect(requests.every((request) => !request.url.includes('ABCD-EFGH'))).toBe(true);
+    expect(requests.filter((request) => request.url.includes('/api/account/servers?')).map((request) => new URL(request.url).searchParams.get('limit'))).toEqual(['50']);
     fireEvent.click(screen.getByRole('radio', { name: /Family Room/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Connect TV' }));
     expect(await screen.findByRole('heading', { name: 'TV connected' })).toBeInTheDocument();
@@ -494,6 +533,17 @@ describe('RuntimeProvider', () => {
     });
   });
 
+  it('does not interpret retired bootstrap query or path aliases', () => {
+    expect(extractHostedBootstrapIntent('https://web.getportico.tv/?invite=retired&claim=retired&resetToken=retired&token=retired')).toEqual({
+      intent: {},
+      safeUrl: '/?invite=retired&claim=retired&resetToken=retired&token=retired',
+    });
+    expect(extractHostedBootstrapIntent('https://web.getportico.tv/claim/retired')).toEqual({
+      intent: {},
+      safeUrl: '/claim/retired',
+    });
+  });
+
   it('separates and scrubs an SSO onboarding token from password recovery', () => {
     expect(extractHostedBootstrapIntent('https://web.getportico.tv/auth/sso/onboarding?token=opaque-onboarding-token')).toEqual({
       intent: { ssoOnboardingToken: 'opaque-onboarding-token' },
@@ -560,6 +610,69 @@ describe('RuntimeProvider', () => {
     fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'available-name' } });
     fireEvent.click(screen.getByRole('button', { name: 'Create Portico Account' }));
     await waitFor(() => expect(requests.filter((request) => request.url.endsWith('/api/auth/sso/onboarding/complete')).at(-1)?.body).toEqual({ onboardingToken: 'onboarding-two', username: 'available-name' }));
+  });
+
+  it('coalesces rapid SSO onboarding submissions while completion is pending', async () => {
+    window.history.replaceState(null, '', '/auth/sso/onboarding?token=single-flight-onboarding');
+    let resolveCompletion: ((value: Response) => void) | undefined;
+    const pendingCompletion = new Promise<Response>((resolve) => {
+      resolveCompletion = resolve;
+    });
+    const fetchMock = vi.fn((input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith('/api/system')) return Promise.resolve(response(hostedSystem));
+      if (url.endsWith('/api/auth/sso/onboarding/preview')) return Promise.resolve(response({ provider: 'google', providerEmail: 'viewer@example.test', privateEmail: false, suggestedUsername: 'single-flight-viewer' }));
+      if (url.endsWith('/api/auth/sso/onboarding/complete')) return pendingCompletion;
+      if (url.endsWith('/api/auth/me')) return Promise.resolve(response({ authenticated: false }));
+      return Promise.reject(new Error(`Unexpected request: ${url}`));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<RuntimeProvider config={hostedConfig}><RuntimeHarness /></RuntimeProvider>);
+
+    const submit = await screen.findByRole('button', { name: 'Create Portico Account' });
+    fireEvent.click(submit);
+    fireEvent.click(submit);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Creating account…' })).toBeDisabled());
+    expect(fetchMock.mock.calls.filter(([input]) => String(input).endsWith('/api/auth/sso/onboarding/complete'))).toHaveLength(1);
+
+    resolveCompletion?.(response({ authenticated: false, onboardingRequired: true, usernameUnavailable: true, onboardingToken: 'single-flight-rotated', provider: 'google' }));
+    expect(await screen.findByText('That username is already in use. Choose another.')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Create Portico Account' })).toBeEnabled());
+  });
+
+  it('loads the first valid Hosted server page after successful SSO onboarding', async () => {
+    window.history.replaceState(null, '', '/auth/sso/onboarding?token=successful-onboarding');
+    const serverPageURLs: string[] = [];
+    let authenticated = false;
+    const fetchMock = vi.fn((input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith('/api/system')) return Promise.resolve(response(hostedSystem));
+      if (url.endsWith('/api/auth/sso/onboarding/preview')) return Promise.resolve(response({ provider: 'google', providerEmail: 'viewer@example.test', privateEmail: false, suggestedUsername: 'new-viewer' }));
+      if (url.endsWith('/api/auth/sso/onboarding/complete')) {
+        authenticated = true;
+        return Promise.resolve(response({ authenticated: true, user: { id: 'user-new', username: 'new-viewer', email: 'viewer@example.test' }, provider: 'google', returnTo: '/' }));
+      }
+      if (url.endsWith('/api/auth/me')) return Promise.resolve(response(authenticated
+        ? { authenticated: true, user: { id: 'user-new', username: 'new-viewer', email: 'viewer@example.test' } }
+        : { authenticated: false }));
+      if (url.includes('/api/account/servers?')) {
+        serverPageURLs.push(url);
+        const limit = Number(new URL(url).searchParams.get('limit'));
+        return Promise.resolve(limit <= 50
+          ? response({ items: [], pageInfo: { hasMore: false } })
+          : response({ code: 'invalid_cursor' }, false, 400));
+      }
+      return Promise.reject(new Error(`Unexpected request: ${url}`));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<RuntimeProvider config={hostedConfig}><RuntimeHarness /></RuntimeProvider>);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Create Portico Account' }));
+    expect(await screen.findByRole('heading', { name: 'No servers yet' })).toBeInTheDocument();
+    expect(serverPageURLs).toHaveLength(1);
+    expect(new URL(serverPageURLs[0]).searchParams.get('limit')).toBe('50');
   });
 
   it('fails closed when Hosted requires a separately verified contact email', async () => {
@@ -773,10 +886,10 @@ describe('RuntimeProvider', () => {
   });
 
   it('consumes local-login result parameters without retaining server detail in browser history', () => {
-    expect(extractPorticoLoginResult('http://localhost:32500/?porticoLogin=error&porticoLoginError=raw+server+diagnostic&porticoLoginMessageId=auth.profile-selection-failed#/home')).toEqual({
+    expect(extractPorticoLoginResult('http://localhost:32500/?porticoLogin=error&porticoLoginMessageId=auth.profile-selection-failed#/')).toEqual({
       result: 'error',
       messageId: 'auth.profile-selection-failed',
-      safeUrl: '/#/home',
+      safeUrl: '/#/',
     });
   });
 
@@ -886,19 +999,22 @@ describe('RuntimeProvider', () => {
       if (url.endsWith('/api/system')) return Promise.resolve(response(serverSystem));
       if (url.endsWith('/api/auth/capabilities')) return Promise.resolve(response({ setupRequired: true, localCredentialsEnabled: false, porticoAccountAuthEnabled: false, serverFriendlyName: 'Family Media', publicUserPickerEnabled: false, visibleUsers: [], generatedAt: new Date().toISOString() }));
       if (url.endsWith('/api/auth/me')) return Promise.resolve(response({ authenticated: false, setupRequired: true, serverFriendlyName: 'Family Media' }));
+      if (url.endsWith('/api/auth/portico-setup/status')) return Promise.resolve(response({ setupRequired: true, remoteAccess: { porticoConnected: false, settings: { claimStatus: 'not_claimed' } } }));
       return Promise.reject(new Error(`Unexpected request: ${url}`));
     });
     vi.stubGlobal('fetch', fetchMock);
     render(<RuntimeProvider config={bundledConfig}><ReadyAppHarness /></RuntimeProvider>);
     expect(await screen.findByRole('heading', { name: 'Set Up Your Portico Server' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /^Use A Portico Account/ })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /^Use A Portico Account/ })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /Sign in directly to a server/ }));
     expect(screen.getByRole('button', { name: 'Create This Server owner' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Terms of Use' })).toHaveAttribute('href', 'https://getportico.tv/terms/');
     expect(screen.getByRole('link', { name: 'Privacy Policy' })).toHaveAttribute('href', 'https://getportico.tv/privacy/');
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
     expect(String(fetchMock.mock.calls[0][0])).toContain('/api/system');
     expect(String(fetchMock.mock.calls[1][0])).toContain('/api/auth/capabilities');
+    expect(String(fetchMock.mock.calls[2][0])).toContain('/api/auth/me');
+    expect(String(fetchMock.mock.calls[3][0])).toContain('/api/auth/portico-setup/status');
   });
 
   it('renders only the sign-in methods advertised by a claimed bundled server', async () => {
@@ -1029,14 +1145,14 @@ describe('RuntimeProvider', () => {
   it('completes an authenticated local-server handoff without entering direct-route discovery', async () => {
     const callbackUrl = 'http://localhost:32500/api/auth/portico/callback';
     const state = 'state-token-with-enough-entropy';
-    window.history.replaceState(null, '', `/#/local-login?serverId=server-1&serverName=Family%20Media&callbackUrl=${encodeURIComponent(callbackUrl)}&localOrigin=${encodeURIComponent('http://localhost:32500')}&state=${state}&serverPublicKeyFingerprint=sha256%3Afingerprint`);
+    window.history.replaceState(null, '', `/#/local-login?serverId=server-1&serverName=Family%20Media&callbackUrl=${encodeURIComponent(callbackUrl)}&localOrigin=${encodeURIComponent('http://localhost:32500')}&state=${state}&serverPublicKeyFingerprint=sha256%3Afingerprint&publicConsoleOriginGeneration=7`);
     const navigate = vi.fn();
     const fetchMock = vi.fn((input: string | URL | Request, _init?: RequestInit) => {
       const url = String(input);
       if (url.endsWith('/api/system')) return Promise.resolve(response(hostedSystem));
       if (url.endsWith('/api/auth/me')) return Promise.resolve(response({ authenticated: true, user: { id: 'user-1', email: 'owner@example.test', displayName: 'Owner' } }));
       if (url.includes('/api/account/profiles')) return Promise.resolve(response({ accountId: 'user-1', profiles: [{ id: 'profile-1', name: 'Owner', isPrimary: true, isAccountAdmin: true, hasPIN: false, pinRevision: 0, sortOrder: 0, policy: { version: 'v1', maximumAgeRating: null, allowUnrated: true, blockedLabels: [], allowDownloads: true, allowLiveTV: true, allowDvr: true, allowWatchWithFriends: true, allowFeedback: true } }], total: 1, revision: 1 }));
-      if (url.endsWith('/api/account/servers/server-1/local-login/authorize')) return Promise.resolve(response({ redirectUrl: `${callbackUrl}?code=one-time-code&state=${state}` }, true, 201));
+      if (url.endsWith('/api/account/servers/server-1/local-login/authorize')) return Promise.resolve(response({ redirectUrl: `${callbackUrl}?code=one-time-code&state=${state}`, localOrigin: 'http://localhost:32500' }, true, 201));
       return Promise.reject(new Error(`Unexpected request: ${url}`));
     });
     vi.stubGlobal('fetch', fetchMock);
@@ -1047,13 +1163,13 @@ describe('RuntimeProvider', () => {
     expect(window.location.hash).toBe('');
     expect(fetchMock.mock.calls.some((call) => String(call[0]).endsWith('/api/account/servers'))).toBe(false);
     const authorizeCall = fetchMock.mock.calls.find((call) => String(call[0]).endsWith('/local-login/authorize'));
-    expect(JSON.parse(String(authorizeCall?.[1]?.body))).toMatchObject({ callbackUrl, localOrigin: 'http://localhost:32500', state, serverPublicKeyFingerprint: 'sha256:fingerprint', profileId: 'profile-1' });
+    expect(JSON.parse(String(authorizeCall?.[1]?.body))).toMatchObject({ callbackUrl, localOrigin: 'http://localhost:32500', state, serverPublicKeyFingerprint: 'sha256:fingerprint', publicConsoleOriginGeneration: 7, profileId: 'profile-1' });
   });
 
   it('returns a fresh Hosted sign-in to the requesting local server instead of opening the normal server chooser', async () => {
     const callbackUrl = 'http://localhost:32500/api/auth/portico/callback';
     const state = 'state-token-with-enough-entropy';
-    window.history.replaceState(null, '', `/#/local-login?serverId=server-1&serverName=Family%20Media&callbackUrl=${encodeURIComponent(callbackUrl)}&localOrigin=${encodeURIComponent('http://localhost:32500')}&state=${state}&serverPublicKeyFingerprint=sha256%3Afingerprint`);
+    window.history.replaceState(null, '', `/#/local-login?serverId=server-1&serverName=Family%20Media&callbackUrl=${encodeURIComponent(callbackUrl)}&localOrigin=${encodeURIComponent('http://localhost:32500')}&state=${state}&serverPublicKeyFingerprint=sha256%3Afingerprint&publicConsoleOriginGeneration=7`);
     const navigate = vi.fn();
     const fetchMock = vi.fn((input: string | URL | Request, init?: RequestInit) => {
       const url = String(input);
@@ -1061,7 +1177,7 @@ describe('RuntimeProvider', () => {
       if (url.endsWith('/api/auth/me')) return Promise.resolve(response({ authenticated: false }));
       if (url.endsWith('/api/auth/login')) return Promise.resolve(response({ authenticated: true, user: { id: 'user-1', email: 'owner@example.test', displayName: 'Owner' } }));
       if (url.includes('/api/account/profiles')) return Promise.resolve(response({ accountId: 'user-1', profiles: [{ id: 'profile-1', name: 'Owner', isPrimary: true, isAccountAdmin: true, hasPIN: false, pinRevision: 0, sortOrder: 0, policy: { version: 'v1', maximumAgeRating: null, allowUnrated: true, blockedLabels: [], allowDownloads: true, allowLiveTV: true, allowDvr: true, allowWatchWithFriends: true, allowFeedback: true } }], total: 1, revision: 1 }));
-      if (url.endsWith('/api/account/servers/server-1/local-login/authorize')) return Promise.resolve(response({ redirectUrl: `${callbackUrl}?code=one-time-code&state=${state}` }, true, 201));
+      if (url.endsWith('/api/account/servers/server-1/local-login/authorize')) return Promise.resolve(response({ redirectUrl: `${callbackUrl}?code=one-time-code&state=${state}`, localOrigin: 'http://localhost:32500' }, true, 201));
       return Promise.reject(new Error(`Unexpected request: ${url}`));
     });
     vi.stubGlobal('fetch', fetchMock);
@@ -1076,17 +1192,106 @@ describe('RuntimeProvider', () => {
     expect(fetchMock.mock.calls.some((call) => String(call[0]).endsWith('/api/account/servers'))).toBe(false);
   });
 
+  it.each(['google', 'apple'] as const)('preserves a local-server handoff across the %s SSO return URL without leaking its fragment', async (provider) => {
+    const callbackUrl = 'https://demo.getportico.tv/api/auth/portico/callback';
+    const state = `${provider}-sso-state-token-with-enough-entropy`;
+    window.history.replaceState(null, '', `/#/local-login?serverId=server-1&serverName=Public%20Demo&callbackUrl=${encodeURIComponent(callbackUrl)}&localOrigin=${encodeURIComponent('https://demo.getportico.tv')}&state=${state}&serverPublicKeyFingerprint=sha256%3Afingerprint&publicConsoleOriginGeneration=19`);
+    vi.stubGlobal('fetch', vi.fn((input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith('/api/system')) return Promise.resolve(response(hostedSystem));
+      if (url.endsWith('/api/auth/me')) return Promise.resolve(response({ authenticated: false }));
+      return Promise.reject(new Error(`Unexpected request: ${url}`));
+    }));
+    const first = render(<RuntimeProvider config={hostedConfig}><RuntimeHarness /></RuntimeProvider>);
+    const providerLink = await screen.findByRole('link', { name: `Sign in with ${provider === 'google' ? 'Google' : 'Apple'}` });
+    const start = new URL(providerLink.getAttribute('href')!);
+    const returnTo = new URL(start.searchParams.get('returnTo')!);
+    expect(returnTo.pathname).toBe('/');
+    expect(returnTo.searchParams.get('localLoginResume')).toBe('1');
+    expect(returnTo.hash).toBe('');
+    expect(start.toString()).not.toContain(state);
+    const storedHandoff = JSON.parse(window.sessionStorage.getItem('portico.hosted.local-login-handoff.v1')!);
+    expect(storedHandoff.intent.state).toBe(state);
+    expect(storedHandoff.expiresAt - Date.now()).toBeGreaterThan(299_000);
+    expect(storedHandoff.expiresAt - Date.now()).toBeLessThanOrEqual(300_000);
+    first.unmount();
+
+    window.history.replaceState(null, '', returnTo.pathname + returnTo.search);
+    const navigate = vi.fn();
+    const authorizeRequests: RequestInit[] = [];
+    vi.stubGlobal('fetch', vi.fn((input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/api/system')) return Promise.resolve(response(hostedSystem));
+      if (url.endsWith('/api/auth/me')) return Promise.resolve(response({ authenticated: true, user: { id: 'user-1', displayName: 'Owner' } }));
+      if (url.endsWith('/api/account/profiles')) return Promise.resolve(response({ accountId: 'user-1', profiles: [{ id: 'profile-1', name: 'Owner', isPrimary: true, isAccountAdmin: true, hasPIN: false, pinRevision: 0, sortOrder: 0, policy: unrestrictedPolicy }], total: 1, revision: 1 }));
+      if (url.endsWith('/local-login/authorize')) {
+        authorizeRequests.push(init ?? {});
+        return Promise.resolve(response({ redirectUrl: `${callbackUrl}?code=one-time-code&state=${state}`, localOrigin: 'https://demo.getportico.tv', publicConsoleOriginGeneration: 19 }, true, 201));
+      }
+      return Promise.reject(new Error(`Unexpected request: ${url}`));
+    }));
+    render(<RuntimeProvider config={hostedConfig} navigate={navigate}><RuntimeHarness /></RuntimeProvider>);
+    await vi.waitFor(() => expect(navigate).toHaveBeenCalledWith(`${callbackUrl}?code=one-time-code&state=${state}`));
+    expect(authorizeRequests).toHaveLength(1);
+    expect(JSON.parse(String(authorizeRequests[0].body))).toMatchObject({ publicConsoleOriginGeneration: 19 });
+    expect(window.location.search).toBe('');
+  });
+
+  it.each([
+    ['lost', null],
+    ['expired', JSON.stringify({ version: 1, expiresAt: 1, intent: {} })],
+  ] as const)('shows a truthful %s local-login recovery state after SSO instead of opening the ordinary root', async (reason, stored) => {
+    if (stored) window.sessionStorage.setItem('portico.hosted.local-login-handoff.v1', stored);
+    window.history.replaceState(null, '', '/?localLoginResume=1');
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    render(<RuntimeProvider config={hostedConfig}><RuntimeHarness /></RuntimeProvider>);
+    expect(await screen.findByRole('heading', { name: 'Restart server sign-in' })).toBeInTheDocument();
+    expect(screen.getByText(/return to your server/i)).toBeInTheDocument();
+    expect(window.location.search).toBe('');
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(String(fetchMock.mock.calls[0][0])).toContain('/api/system');
+    expect(fetchMock.mock.calls.some(([input]) => String(input).endsWith('/api/auth/me'))).toBe(false);
+    expect(reason).toBeTruthy();
+  });
+
+  it('shows protected-storage recovery when sessionStorage cannot be read on SSO return', async () => {
+    window.history.replaceState(null, '', '/?localLoginResume=1');
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new DOMException('blocked', 'SecurityError'); });
+    render(<RuntimeProvider config={hostedConfig}><RuntimeHarness /></RuntimeProvider>);
+    expect(await screen.findByRole('heading', { name: 'Restart server sign-in' })).toBeInTheDocument();
+    expect(screen.getByText(/could not restore the protected server sign-in request/i)).toBeInTheDocument();
+  });
+
+  it('keeps callback-policy context instead of falling through to the ordinary account root', async () => {
+    const callbackUrl = 'https://demo.getportico.tv/api/auth/portico/callback';
+    const state = 'callback-policy-state-token-with-enough-entropy';
+    window.history.replaceState(null, '', `/#/local-login?serverId=server-1&serverName=Public%20Demo&callbackUrl=${encodeURIComponent(callbackUrl)}&localOrigin=${encodeURIComponent('https://demo.getportico.tv')}&state=${state}&serverPublicKeyFingerprint=sha256%3Afingerprint&publicConsoleOriginGeneration=19`);
+    vi.stubGlobal('fetch', vi.fn((input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith('/api/system')) return Promise.resolve(response(hostedSystem));
+      if (url.endsWith('/api/auth/me')) return Promise.resolve(response({ authenticated: true, user: { id: 'user-1', displayName: 'Owner' } }));
+      if (url.endsWith('/api/account/profiles')) return Promise.resolve(response({ accountId: 'user-1', profiles: [{ id: 'profile-1', name: 'Owner', isPrimary: true, isAccountAdmin: true, hasPIN: false, pinRevision: 0, sortOrder: 0, policy: unrestrictedPolicy }], total: 1, revision: 1 }));
+      if (url.endsWith('/local-login/authorize')) return Promise.resolve(response({ code: 'invalid_callback_url', message: 'not allowed' }, false, 400));
+      return Promise.reject(new Error(`Unexpected request: ${url}`));
+    }));
+    render(<RuntimeProvider config={hostedConfig}><RuntimeHarness /></RuntimeProvider>);
+    expect(await screen.findByRole('heading', { name: 'Check this server address' })).toBeInTheDocument();
+    expect(screen.getByText(/public address/i)).toBeInTheDocument();
+    expect(window.sessionStorage.getItem('portico.hosted.local-login-handoff.v1')).toContain(state);
+  });
+
   it('keeps a successful Hosted account session when the local-login profile directory fails', async () => {
     const callbackUrl = 'http://localhost:32500/api/auth/portico/callback';
     const state = 'profile-failure-state-token-with-enough-entropy';
-    window.history.replaceState(null, '', `/#/local-login?serverId=server-1&serverName=Family%20Media&callbackUrl=${encodeURIComponent(callbackUrl)}&localOrigin=${encodeURIComponent('http://localhost:32500')}&state=${state}&serverPublicKeyFingerprint=sha256%3Afingerprint`);
+    window.history.replaceState(null, '', `/#/local-login?serverId=server-1&serverName=Family%20Media&callbackUrl=${encodeURIComponent(callbackUrl)}&localOrigin=${encodeURIComponent('http://localhost:32500')}&state=${state}&serverPublicKeyFingerprint=sha256%3Afingerprint&publicConsoleOriginGeneration=7`);
     const fetchMock = vi.fn((input: string | URL | Request) => {
       const url = String(input);
       if (url.endsWith('/api/system')) return Promise.resolve(response(hostedSystem));
       if (url.endsWith('/api/auth/me')) return Promise.resolve(response({ authenticated: false }));
       if (url.endsWith('/api/auth/login')) return Promise.resolve(response({ authenticated: true, user: { id: 'user-1', email: 'owner@example.test', displayName: 'Owner' } }));
       if (url.endsWith('/api/account/profiles')) return Promise.resolve(response({ code: 'invalid_profile', messageId: 'auth.invalid-profile' }, false, 400));
-      if (url.includes('/api/account/servers')) return Promise.resolve(response({ items: [], total: 0 }));
+      if (url.includes('/api/account/servers')) return Promise.resolve(response({ items: [], pageInfo: { hasMore: false } }));
       return Promise.reject(new Error(`Unexpected request: ${url}`));
     });
     vi.stubGlobal('fetch', fetchMock);
@@ -1109,7 +1314,7 @@ describe('RuntimeProvider', () => {
   it('retries an interrupted local-login authorization without asking for credentials again', async () => {
     const callbackUrl = 'http://localhost:32500/api/auth/portico/callback';
     const state = 'authorization-retry-state-token-with-enough-entropy';
-    window.history.replaceState(null, '', `/#/local-login?serverId=server-1&serverName=Family%20Media&callbackUrl=${encodeURIComponent(callbackUrl)}&localOrigin=${encodeURIComponent('http://localhost:32500')}&state=${state}&serverPublicKeyFingerprint=sha256%3Afingerprint`);
+    window.history.replaceState(null, '', `/#/local-login?serverId=server-1&serverName=Family%20Media&callbackUrl=${encodeURIComponent(callbackUrl)}&localOrigin=${encodeURIComponent('http://localhost:32500')}&state=${state}&serverPublicKeyFingerprint=sha256%3Afingerprint&publicConsoleOriginGeneration=7`);
     const navigate = vi.fn();
     let accountAuthenticated = false;
     let authorizationAttempts = 0;
@@ -1128,7 +1333,7 @@ describe('RuntimeProvider', () => {
         authorizationAttempts += 1;
         return authorizationAttempts === 1
           ? Promise.reject(new TypeError('Failed to fetch'))
-          : Promise.resolve(response({ redirectUrl: `${callbackUrl}?code=one-time-code&state=${state}` }, true, 201));
+          : Promise.resolve(response({ redirectUrl: `${callbackUrl}?code=one-time-code&state=${state}`, localOrigin: 'http://localhost:32500' }, true, 201));
       }
       return Promise.reject(new Error(`Unexpected request: ${url}`));
     });
@@ -1169,7 +1374,7 @@ describe('RuntimeProvider', () => {
 	it('recovers the short-lived local-server handoff after the sensitive fragment is scrubbed and the page reloads', async () => {
 		const callbackUrl = 'http://localhost:32500/api/auth/portico/callback';
 		const state = 'reload-safe-state-token-with-enough-entropy';
-		window.history.replaceState(null, '', `/#/local-login?serverId=server-1&serverName=Family%20Media&callbackUrl=${encodeURIComponent(callbackUrl)}&localOrigin=${encodeURIComponent('http://localhost:32500')}&state=${state}&serverPublicKeyFingerprint=sha256%3Afingerprint`);
+		window.history.replaceState(null, '', `/#/local-login?serverId=server-1&serverName=Family%20Media&callbackUrl=${encodeURIComponent(callbackUrl)}&localOrigin=${encodeURIComponent('http://localhost:32500')}&state=${state}&serverPublicKeyFingerprint=sha256%3Afingerprint&publicConsoleOriginGeneration=7`);
 		const firstFetch = vi.fn((input: string | URL | Request) => {
 			const url = String(input);
 			if (url.endsWith('/api/system')) return Promise.resolve(response(hostedSystem));
@@ -1181,6 +1386,7 @@ describe('RuntimeProvider', () => {
 		await vi.waitFor(() => expect(window.location.hash).toBe(''));
 		expect(window.sessionStorage.length).toBe(1);
 		first.unmount();
+		window.history.replaceState(null, '', '/?localLoginResume=1');
 
 		const navigate = vi.fn();
 		const secondFetch = vi.fn((input: string | URL | Request) => {
@@ -1188,13 +1394,15 @@ describe('RuntimeProvider', () => {
 			if (url.endsWith('/api/system')) return Promise.resolve(response(hostedSystem));
 			if (url.endsWith('/api/auth/me')) return Promise.resolve(response({ authenticated: true, user: { id: 'user-1', email: 'owner@example.test', displayName: 'Owner' } }));
 			if (url.includes('/api/account/profiles')) return Promise.resolve(response({ accountId: 'user-1', profiles: [{ id: 'profile-1', name: 'Owner', isPrimary: true, isAccountAdmin: true, hasPIN: false, pinRevision: 0, sortOrder: 0, policy: unrestrictedPolicy }], total: 1, revision: 1 }));
-			if (url.endsWith('/api/account/servers/server-1/local-login/authorize')) return Promise.resolve(response({ redirectUrl: `${callbackUrl}?code=one-time-code&state=${state}` }, true, 201));
+			if (url.endsWith('/api/account/servers/server-1/local-login/authorize')) return Promise.resolve(response({ redirectUrl: `${callbackUrl}?code=one-time-code&state=${state}`, localOrigin: 'http://localhost:32500' }, true, 201));
 			return Promise.reject(new Error(`Unexpected request: ${url}`));
 		});
 		vi.stubGlobal('fetch', secondFetch);
 		render(<RuntimeProvider config={hostedConfig} navigate={navigate}><RuntimeHarness /></RuntimeProvider>);
 
 		await vi.waitFor(() => expect(navigate).toHaveBeenCalledWith(`${callbackUrl}?code=one-time-code&state=${state}`));
+		expect(secondFetch.mock.calls.filter((call) => String(call[0]).endsWith('/local-login/authorize'))).toHaveLength(1);
+		expect(window.location.search).toBe('');
 		expect(secondFetch.mock.calls.some((call) => String(call[0]).endsWith('/api/account/servers'))).toBe(false);
 			// The proof-bound handoff remains recoverable for its five-minute TTL
 			// because browsers cannot report a denied localhost navigation back to JS.
@@ -1205,13 +1413,71 @@ describe('RuntimeProvider', () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(response(hostedSystem))
       .mockResolvedValueOnce(response({ authenticated: true, user: { id: 'user-1', email: 'owner@example.test', displayName: 'Owner' } }))
-      .mockResolvedValueOnce(response({ items: [], total: 0 }));
+      .mockResolvedValueOnce(response({ items: [], pageInfo: { hasMore: false } }));
     vi.stubGlobal('fetch', fetchMock);
-    render(<RuntimeProvider config={hostedConfig}><RuntimeHarness /></RuntimeProvider>);
+    render(<RuntimeProvider config={hostedConfig}><ProductFrameRuntimeHarness /></RuntimeProvider>);
     expect(await screen.findByRole('heading', { name: 'No servers yet' })).toBeInTheDocument();
+    expect(screen.getByRole('navigation', { name: 'Primary navigation' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Open account menu for Portico Account' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Claim a server' })).toHaveAttribute('aria-selected', 'true');
     fireEvent.click(screen.getByRole('tab', { name: 'Accept an invite' }));
     expect(screen.getByRole('button', { name: 'Accept invitation' })).toBeInTheDocument();
+  });
+
+  it.each([
+    { code: 'invite_not_found', status: 404, raw: 'database invitation id invite-secret was absent', title: 'Item not found' },
+    { code: 'invite_not_acceptable', status: 409, raw: 'recipient account usr-secret did not match', title: "Portico couldn't complete this request" },
+  ])('keeps rejected invitation diagnostics out of no-server customer copy for $code', async ({ code, status, raw, title }) => {
+    const fetchMock = vi.fn((input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/api/system')) return Promise.resolve(response(hostedSystem));
+      if (url.endsWith('/api/auth/me')) return Promise.resolve(response({ authenticated: true, user: { id: 'user-1', email: 'member@example.test', displayName: 'Member' } }));
+      if (url.includes('/api/account/servers')) return Promise.resolve(response({ items: [], pageInfo: { hasMore: false } }));
+      if (url.includes('/api/invites/') && url.endsWith('/accept') && init?.method === 'POST') {
+        return Promise.resolve(response({ code, message: raw }, false, status));
+      }
+      return Promise.reject(new Error(`Unexpected request: ${url}`));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    render(<RuntimeProvider config={hostedConfig}><ProductFrameRuntimeHarness /></RuntimeProvider>);
+
+    expect(await screen.findByRole('heading', { name: 'No servers yet' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: 'Accept an invite' }));
+    const accept = await screen.findByRole('button', { name: 'Accept invitation' });
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'invite-code' } });
+    fireEvent.click(accept);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(title);
+    expect(screen.queryByText(raw)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Accept invitation' })).toBeEnabled();
+  });
+
+  it('lets an unattached Hosted account delete itself through visible account settings', async () => {
+    const fetchMock = vi.fn((input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/api/system')) return Promise.resolve(response(hostedSystem));
+      if (url.endsWith('/api/auth/me')) return Promise.resolve(response({ authenticated: true, user: { id: 'user-1', email: 'owner@example.test', displayName: 'Owner' } }));
+      if (url.includes('/api/account/servers')) return Promise.resolve(response({ items: [], pageInfo: { hasMore: false } }));
+      if (url.endsWith('/api/account/me') && init?.method === 'DELETE') return Promise.resolve(response({ ok: true, deletedAt: '2026-08-27T21:00:00Z' }));
+      if (url.endsWith('/api/account/me')) return Promise.resolve(response({ user: { id: 'user-1', username: 'sso-owner', email: 'owner@example.test' } }));
+      if (url.endsWith('/api/auth/logout')) return Promise.resolve(response({ ok: true }));
+      return Promise.reject(new Error(`Unexpected request: ${url}`));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    render(<RuntimeProvider config={hostedConfig}><ProductFrameRuntimeHarness /></RuntimeProvider>);
+
+    expect(await screen.findByRole('heading', { name: 'No servers yet' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Open account menu for Portico Account' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Account settings' }));
+    expect(await screen.findByRole('heading', { name: 'Portico Account settings' })).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('button', { name: 'Delete Portico Account' }));
+    fireEvent.change(screen.getByLabelText('Type DELETE to confirm'), { target: { value: 'DELETE' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Delete Portico Account' }));
+
+    expect(await screen.findByRole('heading', { name: 'Sign in to Portico' })).toBeInTheDocument();
+    const deletion = fetchMock.mock.calls.find(([input, init]) => String(input).endsWith('/api/account/me') && init?.method === 'DELETE');
+    expect(deletion).toBeDefined();
+    expect(JSON.parse(String(deletion?.[1]?.body))).toEqual({ password: '' });
   });
 
   it('signs out locally at once and ignores a stale membership failure', async () => {
@@ -1305,7 +1571,7 @@ describe('RuntimeProvider', () => {
       if (url.endsWith('/api/system')) return Promise.resolve(response(hostedSystem));
       if (url.endsWith('/api/auth/login')) return Promise.resolve(response(accountC));
       if (url.endsWith('/api/auth/sessions/revoke')) return Promise.resolve(response({ ok: true }));
-      if (url.includes('/api/account/servers')) return Promise.resolve(response({ items: [], total: 0 }));
+      if (url.includes('/api/account/servers')) return Promise.resolve(response({ items: [], pageInfo: { hasMore: false } }));
       return Promise.reject(new Error(`Unexpected request: ${url}`));
     });
     vi.stubGlobal('fetch', fetchMock);
@@ -1360,7 +1626,7 @@ describe('RuntimeProvider', () => {
       const url = String(input);
       if (url.endsWith('/api/system')) return Promise.resolve(response(hostedSystem));
       if (url.endsWith('/api/auth/me')) return Promise.resolve(response({ authenticated: true, user: { id: 'user-1', email: 'owner@example.test', displayName: 'Owner' } }));
-      if (url.includes('/api/account/servers')) return Promise.resolve(response({ items: [], total: 0 }));
+      if (url.includes('/api/account/servers')) return Promise.resolve(response({ items: [], pageInfo: { hasMore: false } }));
       if (url.endsWith('/api/auth/logout')) return Promise.resolve(response({ ok: true }));
       return Promise.reject(new Error(`Unexpected request: ${url}`));
     });
@@ -1393,6 +1659,7 @@ describe('RuntimeProvider', () => {
       currentRoute: { url: 'https://server-1.direct.getportico.tv', type: 'public_direct', verifiedAt: '2026-07-14T11:00:00.000Z' },
       session: { serverId: 'server-1', serverName: 'Family Media', apiBaseUrl: 'https://server-1.direct.getportico.tv', accessToken: 'access-server-1', refreshToken: 'refresh-server-1', serverPublicKeyFingerprint: testServerFingerprint('server-1') },
       lastSuccessfulConnectionAt: '2026-07-14T11:00:00.000Z',
+      mutationVersion: 1,
     });
     const failingCleanup: HostedConnectionVault = {
       ...firstProcess,
@@ -1403,7 +1670,7 @@ describe('RuntimeProvider', () => {
       const url = String(input);
       if (url.endsWith('/api/system')) return Promise.resolve(response(hostedSystem));
       if (url.endsWith('/api/auth/me')) return Promise.resolve(response({ authenticated: true, user: { id: 'user-1', email: 'owner@example.test', displayName: 'Owner' } }));
-      if (url.includes('/api/account/servers')) return Promise.resolve(response({ items: [], total: 0 }));
+      if (url.includes('/api/account/servers')) return Promise.resolve(response({ items: [], pageInfo: { hasMore: false } }));
       if (url.endsWith('/api/auth/logout') || url.includes('/api/auth/sessions/revoke')) return Promise.reject(new TypeError('revocation unavailable'));
       return Promise.reject(new Error(`Unexpected request: ${url}`));
     });
@@ -1434,7 +1701,7 @@ describe('RuntimeProvider', () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(response(hostedSystem))
       .mockResolvedValueOnce(response({ authenticated: true, user: { id: 'user-1', email: 'owner@example.test', displayName: 'Owner' } }))
-      .mockResolvedValueOnce(response({ items: servers, total: 2 }));
+      .mockResolvedValueOnce(response({ items: servers, pageInfo: { hasMore: false } }));
     vi.stubGlobal('fetch', fetchMock);
     render(<RuntimeProvider config={hostedConfig}><RuntimeHarness /></RuntimeProvider>);
     expect(await screen.findByRole('heading', { name: 'Choose a server' })).toBeInTheDocument();
@@ -1454,7 +1721,7 @@ describe('RuntimeProvider', () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(response(hostedSystem))
       .mockResolvedValueOnce(response({ authenticated: true, user: { id: 'user-1', email: 'owner@example.test', displayName: 'Owner' } }))
-      .mockResolvedValueOnce(response({ items: [server], total: 1 }))
+      .mockResolvedValueOnce(response({ items: [server], pageInfo: { hasMore: false } }))
       .mockResolvedValueOnce(response({ accountId: 'user-1', profiles, revision: 1, total: 2 }));
     vi.stubGlobal('fetch', fetchMock);
 
@@ -1476,7 +1743,7 @@ describe('RuntimeProvider', () => {
     expect(hostedRequests).toEqual(expect.arrayContaining([
       'https://web.getportico.tv/api/system',
       'https://web.getportico.tv/api/auth/me',
-      'https://web.getportico.tv/api/account/servers?limit=100',
+      'https://web.getportico.tv/api/account/servers?limit=50',
       'https://web.getportico.tv/api/account/profiles',
     ]));
     expect(hostedRequests.some((url) => url.includes('/routes') || url.includes('/sessions'))).toBe(false);
@@ -1491,7 +1758,7 @@ describe('RuntimeProvider', () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(response(hostedSystem))
       .mockResolvedValueOnce(response({ authenticated: true, user: { id: 'user-1', email: 'owner@example.test', displayName: 'Owner' } }))
-      .mockResolvedValueOnce(response({ items: [server], total: 1 }))
+      .mockResolvedValueOnce(response({ items: [server], pageInfo: { hasMore: false } }))
       .mockResolvedValueOnce(response({ accountId: 'user-1', revision: 1, total: 2, profiles: [
         { id: 'profile-1', name: 'Justin', hasPIN: false, isPrimary: true, isAccountAdmin: true, pinRevision: 0, policy, sortOrder: 0 },
         { id: 'profile-2', name: 'Guest', hasPIN: false, isPrimary: false, isAccountAdmin: false, pinRevision: 0, policy, sortOrder: 1 },
@@ -1516,7 +1783,7 @@ describe('RuntimeProvider', () => {
       const url = String(input);
       if (url === 'https://web.getportico.tv/api/system') return Promise.resolve(response(hostedSystem));
       if (url === 'https://web.getportico.tv/api/auth/me') return Promise.resolve(response({ authenticated: true, user: { id: 'user-1', email: 'owner@example.test', displayName: 'Owner' } }));
-      if (url.includes('/api/account/servers')) return Promise.resolve(response({ items: [server], total: 1 }));
+      if (url.includes('/api/account/servers')) return Promise.resolve(response({ items: [server], pageInfo: { hasMore: false } }));
       if (url === 'https://web.getportico.tv/api/account/profiles') return Promise.resolve(response({ accountId: 'user-1', revision: 1, total: 1, profiles: [{ id: 'profile-1', name: 'Justin', hasPIN: true, isPrimary: true, isAccountAdmin: true, pinRevision: 3, policy, sortOrder: 0 }] }));
       if (url === 'https://server-1.direct.getportico.tv/api/remote-access/health') return Promise.resolve(response({ serverId: 'server-1', serverPublicKeyFingerprint: testServerFingerprint('server-1'), remoteAccessEnabled: true }));
       if (url === 'https://server-1.direct.getportico.tv/api/system') return Promise.resolve(response(serverSystem));
@@ -1573,7 +1840,7 @@ describe('RuntimeProvider', () => {
       const url = String(input);
       if (url.endsWith('/api/system')) return Promise.resolve(response(hostedSystem));
       if (url.endsWith('/api/auth/me')) return Promise.resolve(response({ authenticated: true, user: { id: 'user-1', email: 'owner@example.test', displayName: 'Owner' } }));
-      if (url.includes('/api/account/servers')) return Promise.resolve(response({ items: [server], total: 1 }));
+      if (url.includes('/api/account/servers')) return Promise.resolve(response({ items: [server], pageInfo: { hasMore: false } }));
       if (url.endsWith('/api/account/profiles')) return Promise.resolve(response({ accountId: 'user-1', profiles, revision: 1, total: 2 }));
       if (url.includes('/api/account/profiles/profile-1/selection-assertions')) {
         profileSelectionBodies.push(JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>);
@@ -1639,7 +1906,7 @@ describe('RuntimeProvider', () => {
       const url = String(input);
       if (url.endsWith('/api/system')) { events.push('hosted-system'); return Promise.resolve(response(hostedSystem)); }
       if (url === 'https://web.getportico.tv/api/auth/me') { events.push('hosted-me'); return Promise.resolve(response({ authenticated: true, user: { id: 'user-1', email: 'owner@example.test', displayName: 'Owner' } })); }
-      if (url.includes('/api/account/servers')) { events.push('memberships'); return Promise.resolve(response({ items: [server], total: 1 })); }
+      if (url.includes('/api/account/servers')) { events.push('memberships'); return Promise.resolve(response({ items: [server], pageInfo: { hasMore: false } })); }
       if (url.endsWith('/api/account/profiles')) { events.push('profiles'); return Promise.resolve(response({ accountId: 'user-1', profiles: [profile], revision: 1, total: 1 })); }
       if (url.includes('/selection-assertions')) {
         events.push('profile-envelope');
@@ -1734,7 +2001,7 @@ describe('RuntimeProvider', () => {
       const url = String(input);
       if (url.endsWith('/api/system')) return Promise.resolve(response(hostedSystem));
       if (url === 'https://web.getportico.tv/api/auth/me') return Promise.resolve(response({ authenticated: true, user: { id: 'user-1', email: 'owner@example.test', displayName: 'Owner' } }));
-      if (url.includes('/api/account/servers')) return Promise.resolve(response({ items: servers, total: 2 }));
+      if (url.includes('/api/account/servers')) return Promise.resolve(response({ items: servers, pageInfo: { hasMore: false } }));
       if (url.endsWith('/api/account/profiles')) return Promise.resolve(response({ accountId: 'user-1', profiles: [profile], revision: 1, total: 1 }));
       if (url.includes('/selection-assertions')) {
         const serverId = String(init?.body ?? '').includes('server-2') ? 'server-2' : 'server-1';
@@ -1802,7 +2069,7 @@ describe('RuntimeProvider', () => {
       const url = String(input);
       if (url.endsWith('/api/system')) return Promise.resolve(response(hostedSystem));
       if (url === 'https://web.getportico.tv/api/auth/me') return Promise.resolve(response({ authenticated: true, user: { id: 'user-1', email: 'owner@example.test', displayName: 'Owner' } }));
-      if (url.includes('/api/account/servers')) return Promise.resolve(response({ items: servers, total: 2 }));
+      if (url.includes('/api/account/servers')) return Promise.resolve(response({ items: servers, pageInfo: { hasMore: false } }));
       if (url.endsWith('/api/account/profiles')) return Promise.resolve(response({ accountId: 'user-1', profiles: [profile], revision: 1, total: 1 }));
       if (url.includes('/selection-assertions')) {
         const serverId = String(init?.body ?? '').includes('server-2') ? 'server-2' : 'server-1';
@@ -1919,7 +2186,7 @@ describe('RuntimeProvider', () => {
       const url = String(input);
       if (url.endsWith('/api/system')) return Promise.resolve(response(hostedSystem));
       if (url === 'https://web.getportico.tv/api/auth/me') return Promise.resolve(response({ authenticated: true, user: { id: 'user-1', email: 'owner@example.test', displayName: 'Owner' } }));
-      if (url.includes('/api/account/servers')) return Promise.resolve(response({ items: servers, total: 3 }));
+      if (url.includes('/api/account/servers')) return Promise.resolve(response({ items: servers, pageInfo: { hasMore: false } }));
       if (url.endsWith('/api/account/profiles')) return Promise.resolve(response({ accountId: 'user-1', profiles: [profile], revision: 1, total: 1 }));
       if (url.includes('/selection-assertions')) {
         const body = String(init?.body ?? '');
@@ -2039,7 +2306,7 @@ describe('RuntimeProvider', () => {
         systemCalls += 1;
         return systemCalls === 1 ? Promise.reject(new TypeError('Hosted Services unavailable')) : Promise.resolve(response(hostedSystem));
       }
-      if (url.includes('/api/account/servers')) return Promise.resolve(response({ items: [], total: 0 }));
+      if (url.includes('/api/account/servers')) return Promise.resolve(response({ items: [], pageInfo: { hasMore: false } }));
       if (url.startsWith('https://web.getportico.tv')) return Promise.reject(new TypeError('Hosted Services unavailable'));
       return Promise.reject(new Error(`Unexpected request: ${url}`));
     });
@@ -2070,6 +2337,35 @@ describe('RuntimeProvider', () => {
     expect(screen.queryByText(/direct\.getportico\.tv/)).not.toBeInTheDocument();
   });
 
+  it('selects the exact recovered directory server after a remembered chooser refresh', async () => {
+    const vault = await rememberedHostedBrowser(['server-1', 'server-2']);
+    const demo = hostedServer('server-1', 'Public Demo');
+    let recovered = false;
+    const fetchMock = vi.fn((input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/api/system')) return recovered ? Promise.resolve(response(hostedSystem)) : Promise.reject(new TypeError('Hosted Services unavailable'));
+      if (url.endsWith('/api/auth/me')) return Promise.resolve(response({ authenticated: true, user: { id: 'user-1', email: 'owner@example.test', displayName: 'Owner' } }));
+      if (url.includes('/api/account/servers?')) return Promise.resolve(response({ items: [demo], pageInfo: { hasMore: false } }));
+      if (url.endsWith('/api/account/profiles')) return Promise.resolve(response({ accountId: 'user-1', profiles: [{ id: 'profile-1', name: 'Owner', hasPIN: false, isPrimary: true, isAccountAdmin: true, pinRevision: 0, policy: unrestrictedPolicy, sortOrder: 0 }], revision: 1, total: 1 }));
+      if (url.includes('/selection-assertions')) return Promise.resolve(response({ version: 'v1', accountId: 'user-1', accountRevision: 1, assertionId: 'assertion', audience: 'portico-media-server', deviceId: 'browser', expiresAt: '2099-01-01T00:05:00.000Z', installationId: JSON.parse(String(init?.body ?? '{}')).installationId, issuedAt: '2026-08-30T10:00:00.000Z', pinRevision: 0, profileId: 'profile-1', profiles: [], serverId: demo.id, signature: 'signature', signatureAlgorithm: 'ed25519', signatureKeyId: 'key-1' }));
+      return Promise.reject(new Error(`Unexpected request: ${url}`));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const connector = vi.spyOn(ClientCore, 'connectResilientHostedServer').mockRejectedValue(new TypeError('route unavailable'));
+
+    render(<RuntimeProvider config={hostedConfig} hostedConnectionVault={vault}><RuntimeHarness /></RuntimeProvider>);
+    expect(await screen.findByRole('heading', { name: 'Choose a server' })).toBeInTheDocument();
+
+    recovered = true;
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh servers' }));
+    expect(await screen.findByRole('button', { name: /Public Demo/ })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: /Public Demo/ }));
+
+    await vi.waitFor(() => expect(fetchMock.mock.calls.some(([request]) => String(request).endsWith('/api/account/profiles'))).toBe(true));
+    await vi.waitFor(() => expect(fetchMock.mock.calls.some(([request]) => String(request).includes('/selection-assertions'))).toBe(true));
+    expect(connector).toHaveBeenCalledOnce();
+  });
+
   it('keeps a remembered server credential after transient Hosted and server outages', async () => {
     const vault = await rememberedHostedBrowser();
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Network unavailable')));
@@ -2087,13 +2383,178 @@ describe('RuntimeProvider', () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(response(hostedSystem))
       .mockResolvedValueOnce(response({ authenticated: true, user: { id: 'user-1', email: 'owner@example.test', displayName: 'Owner' } }))
-      .mockResolvedValueOnce(response({ items: servers, total: 1 }));
+      .mockResolvedValueOnce(response({ items: servers, pageInfo: { hasMore: false } }));
     vi.stubGlobal('fetch', fetchMock);
     render(<RuntimeProvider config={hostedConfig}><RuntimeHarness /></RuntimeProvider>);
     expect(await screen.findByRole('heading', { name: 'Choose a server' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /LAN only/ })).toBeDisabled();
     expect(screen.getByText('This Server sign-in only')).toBeInTheDocument();
     expect(fetchMock.mock.calls.filter(([input]) => String(input).startsWith(hostedConfig.hostedApiBaseUrl))).toHaveLength(3);
+  });
+
+  it('refreshes a mounted chooser from one authenticated directory owner before explicit selection', async () => {
+    const stale = {
+      ...hostedServer('server-1', 'Public Demo'),
+      lastHeartbeatAt: '2026-08-30T04:00:00.000Z',
+    };
+    const other = hostedServer('server-2', 'Other Server');
+    const fresh = {
+      ...stale,
+      lastHeartbeatAt: new Date().toISOString(),
+    };
+    let directoryReads = 0;
+    const fetchMock = vi.fn((input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/api/system')) return Promise.resolve(response(hostedSystem));
+      if (url.endsWith('/api/auth/me')) return Promise.resolve(response({ authenticated: true, user: { id: 'user-1', email: 'owner@example.test', displayName: 'Owner' } }));
+      if (url.includes('/api/account/servers?')) {
+        directoryReads += 1;
+        return Promise.resolve(response({ items: directoryReads === 1 ? [stale, other] : [fresh], pageInfo: { hasMore: false } }));
+      }
+      if (url.endsWith('/api/account/profiles')) return Promise.resolve(response({ accountId: 'user-1', profiles: [{ id: 'profile-1', name: 'Owner', hasPIN: false, isPrimary: true, isAccountAdmin: true, pinRevision: 0, policy: unrestrictedPolicy, sortOrder: 0 }], revision: 1, total: 1 }));
+      if (url.includes('/selection-assertions')) return Promise.resolve(response({ version: 'v1', accountId: 'user-1', accountRevision: 1, assertionId: 'assertion', audience: 'portico-media-server', deviceId: 'browser', expiresAt: '2099-01-01T00:05:00.000Z', installationId: JSON.parse(String(init?.body ?? '{}')).installationId, issuedAt: '2026-08-30T10:00:00.000Z', pinRevision: 0, profileId: 'profile-1', profiles: [], serverId: fresh.id, signature: 'signature', signatureAlgorithm: 'ed25519', signatureKeyId: 'key-1' }));
+      return Promise.reject(new Error(`Unexpected request: ${url}`));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const connector = vi.spyOn(ClientCore, 'connectResilientHostedServer').mockRejectedValue(new TypeError('route unavailable'));
+
+    render(<RuntimeProvider config={hostedConfig}><RuntimeHarness /></RuntimeProvider>);
+    expect(await screen.findByRole('heading', { name: 'Choose a server' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Public Demo.*Last online/ })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh servers' }));
+    await vi.waitFor(() => expect(directoryReads).toBe(2));
+    expect(directoryReads).toBe(2);
+    expect(await screen.findByRole('button', { name: /Public Demo.*Online now/ })).toBeEnabled();
+    expect(connector).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: /Public Demo.*Online now/ }));
+    await vi.waitFor(() => expect(fetchMock.mock.calls.some(([request]) => String(request).includes('/api/account/profiles'))).toBe(true));
+    await vi.waitFor(() => expect(fetchMock.mock.calls.some(([request]) => String(request).includes('/selection-assertions'))).toBe(true));
+    expect(connector).toHaveBeenCalledOnce();
+  });
+
+  it('automatically finishes a sole freshly claimed server after route publication without duplicate attempts', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const server = hostedServer('server-1', 'Fresh server');
+    const profile = { id: 'profile-1', name: 'Owner', hasPIN: false, isPrimary: true, isAccountAdmin: true, pinRevision: 0, policy: unrestrictedPolicy, sortOrder: 0 };
+    const fetchMock = vi.fn((input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/api/system')) return Promise.resolve(response(hostedSystem));
+      if (url.endsWith('/api/auth/me')) return Promise.resolve(response({ authenticated: true, user: { id: 'user-1', email: 'owner@example.test', displayName: 'Owner' } }));
+      if (url.includes('/api/account/servers')) return Promise.resolve(response({ items: [server], pageInfo: { hasMore: false } }));
+      if (url.endsWith('/api/account/profiles')) return Promise.resolve(response({ accountId: 'user-1', profiles: [profile], revision: 1, total: 1 }));
+      if (url.includes('/selection-assertions')) {
+        const body = JSON.parse(String(init?.body ?? '{}')) as { installationId?: string };
+        return Promise.resolve(response({
+          version: 'v1', accountId: 'user-1', accountRevision: 1, assertionId: 'assertion-profile-1', audience: 'portico-media-server', deviceId: 'browser-device',
+          expiresAt: '2099-01-01T00:05:00.000Z', installationId: body.installationId, issuedAt: '2026-07-14T12:00:00.000Z', pinRevision: 0,
+          profileId: 'profile-1', profiles: [], serverId: server.id, signature: 'signature', signatureAlgorithm: 'ed25519', signatureKeyId: 'key-1',
+        }));
+      }
+      return Promise.reject(new Error(`Unexpected request: ${url}`));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    let attempts = 0;
+    const connector = vi.spyOn(ClientCore, 'connectResilientHostedServer').mockImplementation((selectedServer, options) => {
+      attempts += 1;
+      if (attempts < 3) return Promise.reject(new ClientCore.HostedRoutePublicationPendingError());
+      return publishPreparedConnection(preparedConnection(selectedServer.id, selectedServer.name, options.selectionEnvelope.profileId), options);
+    });
+
+    render(<RuntimeProvider config={hostedConfig}><RuntimeHarness /></RuntimeProvider>);
+    expect(await screen.findByRole('heading', { name: 'Finishing server setup' })).toBeInTheDocument();
+    expect(screen.getByText(/continue automatically/i)).toBeInTheDocument();
+    await vi.advanceTimersByTimeAsync(4_000);
+    await vi.waitFor(() => expect(connector).toHaveBeenCalledTimes(2));
+    await vi.advanceTimersByTimeAsync(15_000);
+    await vi.waitFor(() => {
+      expect(connector).toHaveBeenCalledTimes(3);
+      expect(screen.getByText('Ready on Fresh server')).toBeInTheDocument();
+    });
+  });
+
+  it('keeps one truthful setup owner through a 110-second route-publication convergence', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const server = hostedServer('server-1', 'Patient server');
+    const profile = { id: 'profile-1', name: 'Owner', hasPIN: false, isPrimary: true, isAccountAdmin: true, pinRevision: 0, policy: unrestrictedPolicy, sortOrder: 0 };
+    vi.stubGlobal('fetch', vi.fn((input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/api/system')) return Promise.resolve(response(hostedSystem));
+      if (url.endsWith('/api/auth/me')) return Promise.resolve(response({ authenticated: true, user: { id: 'user-1', email: 'owner@example.test', displayName: 'Owner' } }));
+      if (url.includes('/api/account/servers')) return Promise.resolve(response({ items: [server], pageInfo: { hasMore: false } }));
+      if (url.endsWith('/api/account/profiles')) return Promise.resolve(response({ accountId: 'user-1', profiles: [profile], revision: 1, total: 1 }));
+      if (url.includes('/selection-assertions')) return Promise.resolve(response({ version: 'v1', accountId: 'user-1', accountRevision: 1, assertionId: 'assertion', audience: 'portico-media-server', deviceId: 'browser', expiresAt: '2099-01-01T00:05:00.000Z', installationId: JSON.parse(String(init?.body ?? '{}')).installationId, issuedAt: '2026-07-14T12:00:00.000Z', pinRevision: 0, profileId: 'profile-1', profiles: [], serverId: server.id, signature: 'signature', signatureAlgorithm: 'ed25519', signatureKeyId: 'key-1' }));
+      return Promise.reject(new Error(`Unexpected request: ${url}`));
+    }));
+    const startedAt = Date.now();
+    let inFlight = 0;
+    let maximumInFlight = 0;
+    const connector = vi.spyOn(ClientCore, 'connectResilientHostedServer').mockImplementation(async (selectedServer, options) => {
+      inFlight += 1;
+      maximumInFlight = Math.max(maximumInFlight, inFlight);
+      try {
+        if (Date.now() - startedAt < 110_000) throw new ClientCore.HostedRoutePublicationPendingError();
+        return publishPreparedConnection(preparedConnection(selectedServer.id, selectedServer.name, options.selectionEnvelope.profileId), options);
+      } finally {
+        inFlight -= 1;
+      }
+    });
+
+    render(<RuntimeProvider config={hostedConfig}><RuntimeHarness /></RuntimeProvider>);
+    expect(await screen.findByRole('heading', { name: 'Finishing server setup' })).toBeInTheDocument();
+    for (let elapsed = 0; elapsed < 105_000; elapsed += 5_000) await vi.advanceTimersByTimeAsync(5_000);
+    expect(screen.getByRole('heading', { name: 'Finishing server setup' })).toBeInTheDocument();
+    for (let elapsed = 105_000; elapsed < 150_000; elapsed += 5_000) await vi.advanceTimersByTimeAsync(5_000);
+    expect(await screen.findByText('Ready on Patient server')).toBeInTheDocument();
+    expect(connector.mock.calls.length).toBeGreaterThan(4);
+    expect(maximumInFlight).toBe(1);
+  });
+
+  it.each([
+    ['current route probe failure', new Error('Unable to verify a current direct route')],
+    ['remote access disabled', new ClientCore.ApiError(403, 'remote_access_disabled', 'Remote access is disabled.')],
+    ['terminal authorization', new ClientCore.ApiError(403, 'membership_inactive', 'Membership is inactive.')],
+  ])('does not background-loop %s', async (_label, failure) => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const server = hostedServer('server-1', 'No loop');
+    const profile = { id: 'profile-1', name: 'Owner', hasPIN: false, isPrimary: true, isAccountAdmin: true, pinRevision: 0, policy: unrestrictedPolicy, sortOrder: 0 };
+    vi.stubGlobal('fetch', vi.fn((input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/api/system')) return Promise.resolve(response(hostedSystem));
+      if (url.endsWith('/api/auth/me')) return Promise.resolve(response({ authenticated: true, user: { id: 'user-1', displayName: 'Owner' } }));
+      if (url.includes('/api/account/servers')) return Promise.resolve(response({ items: [server], pageInfo: { hasMore: false } }));
+      if (url.endsWith('/api/account/profiles')) return Promise.resolve(response({ accountId: 'user-1', profiles: [profile], revision: 1, total: 1 }));
+      if (url.includes('/selection-assertions')) return Promise.resolve(response({ version: 'v1', accountId: 'user-1', accountRevision: 1, assertionId: 'assertion', audience: 'portico-media-server', deviceId: 'browser', expiresAt: '2099-01-01T00:05:00.000Z', installationId: JSON.parse(String(init?.body ?? '{}')).installationId, issuedAt: '2026-07-14T12:00:00.000Z', pinRevision: 0, profileId: 'profile-1', profiles: [], serverId: server.id, signature: 'signature', signatureAlgorithm: 'ed25519', signatureKeyId: 'key-1' }));
+      return Promise.reject(new Error(`Unexpected request: ${url}`));
+    }));
+    const connector = vi.spyOn(ClientCore, 'connectResilientHostedServer').mockRejectedValue(failure);
+    render(<RuntimeProvider config={hostedConfig}><RuntimeHarness /></RuntimeProvider>);
+    await vi.waitFor(() => expect(connector).toHaveBeenCalledOnce());
+    await vi.advanceTimersByTimeAsync(90_000);
+    expect(connector).toHaveBeenCalledOnce();
+    expect(screen.queryByRole('heading', { name: 'Finishing server setup' })).not.toBeInTheDocument();
+  });
+
+  it('cancels pending route-publication timers on teardown', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const server = hostedServer('server-1', 'Unmounting server');
+    const profile = { id: 'profile-1', name: 'Owner', hasPIN: false, isPrimary: true, isAccountAdmin: true, pinRevision: 0, policy: unrestrictedPolicy, sortOrder: 0 };
+    vi.stubGlobal('fetch', vi.fn((input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/api/system')) return Promise.resolve(response(hostedSystem));
+      if (url.endsWith('/api/auth/me')) return Promise.resolve(response({ authenticated: true, user: { id: 'user-1', displayName: 'Owner' } }));
+      if (url.includes('/api/account/servers')) return Promise.resolve(response({ items: [server], pageInfo: { hasMore: false } }));
+      if (url.endsWith('/api/account/profiles')) return Promise.resolve(response({ accountId: 'user-1', profiles: [profile], revision: 1, total: 1 }));
+      if (url.includes('/selection-assertions')) return Promise.resolve(response({ version: 'v1', accountId: 'user-1', accountRevision: 1, assertionId: 'assertion', audience: 'portico-media-server', deviceId: 'browser', expiresAt: '2099-01-01T00:05:00.000Z', installationId: JSON.parse(String(init?.body ?? '{}')).installationId, issuedAt: '2026-07-14T12:00:00.000Z', pinRevision: 0, profileId: 'profile-1', profiles: [], serverId: server.id, signature: 'signature', signatureAlgorithm: 'ed25519', signatureKeyId: 'key-1' }));
+      return Promise.reject(new Error(`Unexpected request: ${url}`));
+    }));
+    const connector = vi.spyOn(ClientCore, 'connectResilientHostedServer').mockRejectedValue(new ClientCore.HostedRoutePublicationPendingError());
+    const view = render(<RuntimeProvider config={hostedConfig}><RuntimeHarness /></RuntimeProvider>);
+    expect(await screen.findByRole('heading', { name: 'Finishing server setup' })).toBeInTheDocument();
+    view.unmount();
+    await vi.advanceTimersByTimeAsync(90_000);
+    expect(connector).toHaveBeenCalledOnce();
   });
 
   it('renders configuration recovery instead of throwing for a malformed Hosted URL', async () => {

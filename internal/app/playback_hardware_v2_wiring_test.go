@@ -56,3 +56,14 @@ func TestPlaybackHardwareAutoCandidatesTryVerifiedLinuxFallback(t *testing.T) {
 		t.Fatalf("explicit backend was rewritten: %#v", explicit)
 	}
 }
+
+func TestPlaybackHardwareH264OutputSealsEightBitTarget(t *testing.T) {
+	video := mediafacts.Video{Codec: "hevc", PixelFormat: "yuv420p10le", BitDepth: 10}
+	plan := playbackplan.Plan{Color: &playbackplan.ColorDecision{Input: "sdr", Output: "sdr", Action: "preserve"}}
+	if got := playbackHardwareOutputBitDepth(video, playbackhw.H264, plan); got != 8 {
+		t.Fatalf("H.264 output depth = %d, want 8", got)
+	}
+	if got := playbackHardwareOutputBitDepth(video, playbackhw.HEVC, playbackplan.Plan{}); got != 10 {
+		t.Fatalf("HEVC Main10 output depth = %d, want 10", got)
+	}
+}

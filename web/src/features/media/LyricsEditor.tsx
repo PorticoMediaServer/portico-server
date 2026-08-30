@@ -1,5 +1,5 @@
 import type { LyricSearchCandidate, MediaLyric } from '@porticomediaserver/client-core';
-import { CloudDownload, FileMusic, RefreshCw, Search, Trash2, Upload } from '#portico-icons';
+import { ActionPrepareDownloadIcon, MediaMusicIcon, ActionRefreshIcon, NavigationSearchIcon, ActionDeleteIcon, ActionSendIcon } from '#portico-icons';
 import { useRef, useState } from 'react';
 import { IconButton, PrimaryButton, SecondaryButton } from '../../components/controls/Buttons';
 import { reviewedProductErrorText } from '../../components/ProductLanguage';
@@ -127,7 +127,7 @@ export function LyricsEditor({
             />
           </label>
           <SecondaryButton disabled={Boolean(busy)} onClick={() => fileInput.current?.click()}>
-            <Upload />{busy === 'upload' ? 'Uploading…' : 'Upload file'}
+            <ActionSendIcon />{busy === 'upload' ? 'Uploading…' : 'Upload file'}
           </SecondaryButton>
         </div>
         <span className="lyrics-fetch-button">
@@ -135,7 +135,7 @@ export function LyricsEditor({
             disabled={Boolean(busy)}
             onClick={() => void run('fetch', 'Lyrics found and applied.', onFetch)}
           >
-            {busy === 'fetch' ? <RefreshCw className="state-spinner" /> : <CloudDownload />}
+            {busy === 'fetch' ? <ActionRefreshIcon className="state-spinner" /> : <ActionPrepareDownloadIcon />}
             {busy === 'fetch' ? 'Finding…' : 'Find automatically'}
           </SecondaryButton>
         </span>
@@ -148,7 +148,7 @@ export function LyricsEditor({
         </header>
         {lyrics.length ? lyrics.map((lyric) => (
           <div className="lyrics-row" key={lyric.id}>
-            <FileMusic />
+            <MediaMusicIcon />
             <span>
               <strong>{lyric.synced ? 'Synchronized lyrics' : 'Plain lyrics'}</strong>
               <small>{[lyricSource(lyric), lyric.language?.toLocaleUpperCase(), lyric.format.toLocaleUpperCase()].filter(Boolean).join(' · ')}</small>
@@ -159,7 +159,7 @@ export function LyricsEditor({
                 disabled={Boolean(busy)}
                 onClick={() => void run(`delete:${lyric.id}`, 'Lyrics removed.', () => onDelete(lyric.id))}
               >
-                <Trash2 />
+                <ActionDeleteIcon />
               </IconButton>
             )}
           </div>
@@ -188,7 +188,7 @@ export function LyricsEditor({
           />
         </label>
         <PrimaryButton type="submit" disabled={Boolean(busy)}>
-          {busy === 'search' ? <RefreshCw className="state-spinner" /> : <Search />}
+          {busy === 'search' ? <ActionRefreshIcon className="state-spinner" /> : <NavigationSearchIcon />}
           {busy === 'search' ? 'Searching…' : 'Search'}
         </PrimaryButton>
       </form>
@@ -201,7 +201,7 @@ export function LyricsEditor({
           </header>
           {results.length ? results.map((candidate) => (
             <div className="lyrics-result-row" key={`${candidate.provider}:${candidate.externalId}`}>
-              <FileMusic />
+              <MediaMusicIcon />
               <span>
                 <strong>{candidate.trackName}</strong>
                 <small>

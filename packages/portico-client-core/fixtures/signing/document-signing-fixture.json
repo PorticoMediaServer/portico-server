@@ -1,11 +1,12 @@
 {
   "keyIdDerived": "ed25519-tB_YlPluyK3KGahf",
-  "policyCanonicalPayloadB64": "cG9ydGljby1zaWduZWQtZG9jdW1lbnQ6cG9saWN5LXNuYXBzaG90OnYxCnsiYXVkaWVuY2UiOiJwb3J0aWNvLW1lZGlhLXNlcnZlciIsImRlbGV0ZWRBY2NvdW50VG9tYnN0b25lcyI6W10sImRpZ2VzdCI6Ijc4YjA5NTEyMmEzOTc4ZmNkNGVkNmVhYmJkMjAxMWU1YmQ4ZDlkOGZjMTk0NjVkMDllZDUwNjlkYzI3MDdjYjgiLCJleHBpcmVzQXQiOiIyMDI2LTA3LTA5VDEyOjEwOjAwWiIsImdlbmVyYXRpb24iOjEsImlzc3VlZEF0IjoiMjAyNi0wNy0wOVQxMjowMDowMFoiLCJraW5kIjoicG9saWN5LXNuYXBzaG90IiwibWVtYmVycyI6W10sIm1pbmltdW1TZXJ2ZXJWZXJzaW9uIjoiMC4xLjAiLCJwZW5kaW5nSW52aXRlcyI6W10sInBvbGljeURpZ2VzdCI6Ijc4YjA5NTEyMmEzOTc4ZmNkNGVkNmVhYmJkMjAxMWU1YmQ4ZDlkOGZjMTk0NjVkMDllZDUwNjlkYzI3MDdjYjgiLCJzZXJ2ZXJJZCI6InNydl9maXh0dXJlIiwic2lnbmF0dXJlQWxnb3JpdGhtIjoiZWQyNTUxOSIsInNpZ25hdHVyZUtleUlkIjoiZWQyNTUxOS10Ql9ZbFBsdXlLM0tHYWhmIiwic25hcHNob3RJZCI6InBvbGljeV9maXh0dXJlIiwidmVyc2lvbiI6MX0=",
+  "policyCanonicalPayloadB64": "cG9ydGljby1zaWduZWQtZG9jdW1lbnQ6cG9saWN5LXNuYXBzaG90OnYxCnsiYXVkaWVuY2UiOiJwb3J0aWNvLW1lZGlhLXNlcnZlciIsImNodW5rQ291bnQiOjEsImRlbGV0ZWRBY2NvdW50VG9tYnN0b25lcyI6W10sImRpZ2VzdCI6Ijc4YjA5NTEyMmEzOTc4ZmNkNGVkNmVhYmJkMjAxMWU1YmQ4ZDlkOGZjMTk0NjVkMDllZDUwNjlkYzI3MDdjYjgiLCJleHBpcmVzQXQiOiIyMDI2LTA3LTA5VDEyOjEwOjAwWiIsImdlbmVyYXRpb24iOjEsImlzc3VlZEF0IjoiMjAyNi0wNy0wOVQxMjowMDowMFoiLCJraW5kIjoicG9saWN5LXNuYXBzaG90IiwibWVtYmVycyI6W10sIm1pbmltdW1TZXJ2ZXJWZXJzaW9uIjoiMC4xLjAiLCJwZW5kaW5nSW52aXRlcyI6W10sInBvbGljeURpZ2VzdCI6Ijc4YjA5NTEyMmEzOTc4ZmNkNGVkNmVhYmJkMjAxMWU1YmQ4ZDlkOGZjMTk0NjVkMDllZDUwNjlkYzI3MDdjYjgiLCJzZXJ2ZXJJZCI6InNydl9maXh0dXJlIiwic2lnbmF0dXJlQWxnb3JpdGhtIjoiZWQyNTUxOSIsInNpZ25hdHVyZUtleUlkIjoiZWQyNTUxOS10Ql9ZbFBsdXlLM0tHYWhmIiwic25hcHNob3RJZCI6InBvbGljeV9maXh0dXJlIiwidmVyc2lvbiI6MX0=",
   "policySnapshot": {
     "kind": "policy-snapshot",
     "audience": "portico-media-server",
     "snapshotId": "policy_fixture",
     "generation": 1,
+    "chunkCount": 1,
     "digest": "78b095122a3978fcd4ed6eabbd2011e5bd8d9d8fc19465d09ed5069dc2707cb8",
     "policyDigest": "78b095122a3978fcd4ed6eabbd2011e5bd8d9d8fc19465d09ed5069dc2707cb8",
     "version": 1,
@@ -18,10 +19,10 @@
     "minimumServerVersion": "0.1.0",
     "signatureAlgorithm": "ed25519",
     "signatureKeyId": "ed25519-tB_YlPluyK3KGahf",
-    "signature": "8vrIaSTktkosYusY8k4cQ5rwjsL1UPlC5vt4WrZ9s9zZ_AZqQuBKinqzqMdCit7mvgjjVhoEZBeN4zJdcJgpCw"
+    "signature": "KPpY00QCHimVGPW5RfkGKZCfUSnzHyywEbjMJunsoUmmdneo7GKJ0C7D5eNn0lPt2-8uQXe65rQWDZmDJvkhDA"
   },
   "publicKeyB64": "4v4qObcyZkKCfW2C1JdiLNbCl/54Jw6qQ2sB8Ia288s=",
-  "routeCanonicalPayloadB64": "cG9ydGljby1zaWduZWQtZG9jdW1lbnQ6cm91dGUtZG9jdW1lbnQ6djEKeyJhc3NpZ25lZEhvc3RuYW1lIjoiZml4dHVyZS5kaXJlY3QuZ2V0cG9ydGljby50diIsImF1ZGllbmNlIjoicG9ydGljby1tZWRpYS1zZXJ2ZXIiLCJhdXRoTW9kZXMiOlsicG9ydGljbyJdLCJjZXJ0aWZpY2F0ZSI6eyJleHBpcmVzQXQiOiIyMDI2LTEwLTA3VDEyOjAwOjAwWiIsInN0YXR1cyI6ImFjdGl2ZSJ9LCJkb2N1bWVudFZlcnNpb24iOjEsImVuZHBvaW50R2VuZXJhdGlvbiI6MSwiZXhwaXJlc0F0IjoiMjAyNi0wNy0wOVQxMjowNTowMC4xMjNaIiwiaXNzdWVkQXQiOiIyMDI2LTA3LTA5VDEyOjAwOjAwLjEyM1oiLCJraW5kIjoicm91dGUtZG9jdW1lbnQiLCJtZW1iZXJzaGlwIjp7ImFjY291bnRJZCI6ImFjY3RfZml4dHVyZSIsImFsbG93U3Vib3JkaW5hdGVQcm9maWxlcyI6dHJ1ZSwiaWQiOiJtZW1fZml4dHVyZSIsInBlcm1pc3Npb25UZW1wbGF0ZSI6eyJwZXJtaXNzaW9ucyI6eyJkb3dubG9hZCI6dHJ1ZSwicGxheSI6dHJ1ZX19LCJyZXNvdXJjZUxpbWl0cyI6eyJtYXhBY3RpdmVEb3dubG9hZHMiOm51bGwsIm1heEJhbmR3aWR0aEticHMiOm51bGwsIm1heER2clJ1bGVzIjpudWxsLCJtYXhTY2hlZHVsZWRSZWNvcmRpbmdzIjpudWxsLCJtYXhTaW11bHRhbmVvdXNTdHJlYW1zIjpudWxsfSwicm9sZSI6Im93bmVyIiwic3RhdHVzIjoiYWN0aXZlIn0sInJvdXRlcyI6W3siaG9zdCI6ImZpeHR1cmUuZGlyZWN0LmdldHBvcnRpY28udHYiLCJsYXN0Q2hlY2tlZEF0IjoiMjAyNi0wNy0wOVQxMjowMDowMFoiLCJxdWFsaXR5IjoicmVhY2hhYmxlIiwidHlwZSI6InB1YmxpY19kaXJlY3QiLCJ1cmwiOiJodHRwczovL2ZpeHR1cmUuZGlyZWN0LmdldHBvcnRpY28udHY6NDQzIn1dLCJzZXJ2ZXJJZCI6InNydl9maXh0dXJlIiwic2VydmVyTmFtZSI6IkZpeHR1cmUgU2VydmVyIiwic2VydmVyUHVibGljS2V5IjoidXdXNm1uVkRYdEFkbnVOWFFUaEdmQjIzVVpnd2h0VjJDNTExaDF0SGIxaz0iLCJzZXJ2ZXJQdWJsaWNLZXlGaW5nZXJwcmludCI6InNoYTI1Njo4SXI5UE1nU2FVM2RzVGQzeTB1dGk5U0ptNUlPLTRuMVk4aVI2RTJjVkk0Iiwic2lnbmF0dXJlQWxnb3JpdGhtIjoiZWQyNTUxOSIsInNpZ25hdHVyZUtleUlkIjoiZWQyNTUxOS10Ql9ZbFBsdXlLM0tHYWhmIn0=",
+  "routeCanonicalPayloadB64": "cG9ydGljby1zaWduZWQtZG9jdW1lbnQ6cm91dGUtZG9jdW1lbnQ6djEKeyJhc3NpZ25lZEhvc3RuYW1lIjoiZml4dHVyZS5kaXJlY3QuZ2V0cG9ydGljby50diIsImF1ZGllbmNlIjoicG9ydGljby1tZWRpYS1zZXJ2ZXIiLCJhdXRoTW9kZXMiOlsicG9ydGljbyJdLCJjZXJ0aWZpY2F0ZSI6eyJleHBpcmVzQXQiOiIyMDI2LTEwLTA3VDEyOjAwOjAwWiIsInN0YXR1cyI6ImFjdGl2ZSJ9LCJkb2N1bWVudFZlcnNpb24iOjEsImVuZHBvaW50R2VuZXJhdGlvbiI6MSwiZXhwaXJlc0F0IjoiMjAyNi0wNy0wOVQxMjowNTowMC4xMjNaIiwiaXNzdWVkQXQiOiIyMDI2LTA3LTA5VDEyOjAwOjAwLjEyM1oiLCJraW5kIjoicm91dGUtZG9jdW1lbnQiLCJtZW1iZXJzaGlwIjp7ImFjY291bnRJZCI6ImFjY3RfZml4dHVyZSIsImFsbG93U3Vib3JkaW5hdGVQcm9maWxlcyI6dHJ1ZSwiaWQiOiJtZW1fZml4dHVyZSIsInBlcm1pc3Npb25UZW1wbGF0ZSI6eyJwZXJtaXNzaW9ucyI6eyJkb3dubG9hZCI6dHJ1ZSwicGxheSI6dHJ1ZX19LCJyZXNvdXJjZUxpbWl0cyI6eyJtYXhBY3RpdmVEb3dubG9hZHMiOm51bGwsIm1heEJhbmR3aWR0aEticHMiOm51bGwsIm1heER2clJ1bGVzIjpudWxsLCJtYXhTY2hlZHVsZWRSZWNvcmRpbmdzIjpudWxsLCJtYXhTaW11bHRhbmVvdXNTdHJlYW1zIjpudWxsfSwicm9sZSI6Im93bmVyIiwic3RhdHVzIjoiYWN0aXZlIn0sInJvdXRlcyI6W3siYWRkcmVzcyI6IjE5OC41MS4xMDAuMjAiLCJnZW5lcmF0aW9uIjoxLCJob3N0IjoiMTk4LTUxLTEwMC0yMC1tYWMuZml4dHVyZS5kaXJlY3QuZ2V0cG9ydGljby50diIsImxhc3RDaGVja2VkQXQiOiIyMDI2LTA3LTA5VDEyOjAwOjAwLjEyM1oiLCJxdWFsaXR5IjoicmVhY2hhYmxlIiwicmVkaXJlY3RBdXRob3JpdHkiOiJmaXh0dXJlLmRpcmVjdC5nZXRwb3J0aWNvLnR2Iiwic2NvcGUiOiJwdWJsaWNfZGlyZWN0Iiwic2VydmVyUHVibGljS2V5RmluZ2VycHJpbnQiOiJzaGEyNTY6OElyOVBNZ1NhVTNkc1RkM3kwdXRpOVNKbTVJTy00bjFZOGlSNkUyY1ZJNCIsInR5cGUiOiJwdWJsaWNfZGlyZWN0X2lwX2VuY29kZWQiLCJ1cmwiOiJodHRwczovLzE5OC01MS0xMDAtMjAtbWFjLmZpeHR1cmUuZGlyZWN0LmdldHBvcnRpY28udHY6MzI1MDAifSx7ImFkZHJlc3MiOiIyMDAxOmRiODo6MjAiLCJnZW5lcmF0aW9uIjoxLCJob3N0IjoiMjAwMS1kYjgtLTIwLW1hYy5maXh0dXJlLmRpcmVjdC5nZXRwb3J0aWNvLnR2IiwibGFzdENoZWNrZWRBdCI6IjIwMjYtMDctMDlUMTI6MDA6MDAuMTIzWiIsInF1YWxpdHkiOiJyZWFjaGFibGUiLCJyZWRpcmVjdEF1dGhvcml0eSI6ImZpeHR1cmUuZGlyZWN0LmdldHBvcnRpY28udHYiLCJzY29wZSI6InB1YmxpY19kaXJlY3QiLCJzZXJ2ZXJQdWJsaWNLZXlGaW5nZXJwcmludCI6InNoYTI1Njo4SXI5UE1nU2FVM2RzVGQzeTB1dGk5U0ptNUlPLTRuMVk4aVI2RTJjVkk0IiwidHlwZSI6InB1YmxpY19kaXJlY3RfaXBfZW5jb2RlZCIsInVybCI6Imh0dHBzOi8vMjAwMS1kYjgtLTIwLW1hYy5maXh0dXJlLmRpcmVjdC5nZXRwb3J0aWNvLnR2OjMyNTAwIn0seyJnZW5lcmF0aW9uIjoxLCJob3N0IjoiZGVtby5nZXRwb3J0aWNvLnR2IiwibGFzdENoZWNrZWRBdCI6IjIwMjYtMDctMDlUMTI6MDA6MDAuMTIzWiIsInF1YWxpdHkiOiJyZWFjaGFibGUiLCJyZWRpcmVjdEF1dGhvcml0eSI6ImRlbW8uZ2V0cG9ydGljby50diIsInNjb3BlIjoicHVibGljX2RpcmVjdCIsInNlcnZlclB1YmxpY0tleUZpbmdlcnByaW50Ijoic2hhMjU2OjhJcjlQTWdTYVUzZHNUZDN5MHV0aTlTSm01SU8tNG4xWThpUjZFMmNWSTQiLCJ0eXBlIjoicHVibGljX2NvbnNvbGVfb3JpZ2luIiwidXJsIjoiaHR0cHM6Ly9kZW1vLmdldHBvcnRpY28udHYifV0sInNlcnZlcklkIjoic3J2X2ZpeHR1cmUiLCJzZXJ2ZXJOYW1lIjoiRml4dHVyZSBTZXJ2ZXIiLCJzZXJ2ZXJQdWJsaWNLZXkiOiJ1d1c2bW5WRFh0QWRudU5YUVRoR2ZCMjNVWmd3aHRWMkM1MTFoMXRIYjFrPSIsInNlcnZlclB1YmxpY0tleUZpbmdlcnByaW50Ijoic2hhMjU2OjhJcjlQTWdTYVUzZHNUZDN5MHV0aTlTSm01SU8tNG4xWThpUjZFMmNWSTQiLCJzaWduYXR1cmVBbGdvcml0aG0iOiJlZDI1NTE5Iiwic2lnbmF0dXJlS2V5SWQiOiJlZDI1NTE5LXRCX1lsUGx1eUszS0dhaGYifQ==",
   "routeDocument": {
     "kind": "route-document",
     "documentVersion": 1,
@@ -39,11 +40,39 @@
     ],
     "routes": [
       {
-        "type": "public_direct",
-        "url": "https://fixture.direct.getportico.tv:443",
-        "host": "fixture.direct.getportico.tv",
+        "type": "public_direct_ip_encoded",
+        "scope": "public_direct",
+        "url": "https://198-51-100-20-mac.fixture.direct.getportico.tv:32500",
+        "host": "198-51-100-20-mac.fixture.direct.getportico.tv",
+        "address": "198.51.100.20",
+        "serverPublicKeyFingerprint": "sha256:8Ir9PMgSaU3dsTd3y0uti9SJm5IO-4n1Y8iR6E2cVI4",
+        "redirectAuthority": "fixture.direct.getportico.tv",
+        "generation": 1,
         "quality": "reachable",
-        "lastCheckedAt": "2026-07-09T12:00:00Z"
+        "lastCheckedAt": "2026-07-09T12:00:00.123Z"
+      },
+      {
+        "type": "public_direct_ip_encoded",
+        "scope": "public_direct",
+        "url": "https://2001-db8--20-mac.fixture.direct.getportico.tv:32500",
+        "host": "2001-db8--20-mac.fixture.direct.getportico.tv",
+        "address": "2001:db8::20",
+        "serverPublicKeyFingerprint": "sha256:8Ir9PMgSaU3dsTd3y0uti9SJm5IO-4n1Y8iR6E2cVI4",
+        "redirectAuthority": "fixture.direct.getportico.tv",
+        "generation": 1,
+        "quality": "reachable",
+        "lastCheckedAt": "2026-07-09T12:00:00.123Z"
+      },
+      {
+        "type": "public_console_origin",
+        "scope": "public_direct",
+        "url": "https://demo.getportico.tv",
+        "host": "demo.getportico.tv",
+        "serverPublicKeyFingerprint": "sha256:8Ir9PMgSaU3dsTd3y0uti9SJm5IO-4n1Y8iR6E2cVI4",
+        "redirectAuthority": "demo.getportico.tv",
+        "generation": 1,
+        "quality": "reachable",
+        "lastCheckedAt": "2026-07-09T12:00:00.123Z"
       }
     ],
     "certificate": {
@@ -72,6 +101,6 @@
     },
     "signatureAlgorithm": "ed25519",
     "signatureKeyId": "ed25519-tB_YlPluyK3KGahf",
-    "signature": "R-yUJg62U4nHxuPoS-WJIfOkQJMsOBSlv35jlTGXDuHOiynXKB32dtv_rp4blS2r1gOzLQ-QPGcgIvEsVdxuAQ"
+    "signature": "q-3WYmcjnge23lSdYPw2vwNgJf-glWIB9dd7aBgQ2OTc0bmNe_kZLuo7tpd9lyheYmDehkMbTRzfkyJNW5dYCA"
   }
 }

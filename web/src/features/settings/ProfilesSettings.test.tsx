@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FixturePorticoDataSource } from '../../data/fixtureSource';
 import { ProfilesSettings } from './ProfilesSettings';
@@ -51,5 +51,44 @@ describe('ProfilesSettings administration proof expiry', () => {
 
     expect(screen.queryByRole('button', { name: 'Add profile' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Unlock' })).toBeInTheDocument();
+  });
+
+  it('keeps profile creation and destructive removal behind the current administration proof', async () => {
+    vi.useRealTimers();
+    const source = new FixturePorticoDataSource();
+    const create = vi.spyOn(source, 'createAccountProfile');
+    const remove = vi.spyOn(source, 'deleteAccountProfile');
+    render(<ProfilesSettings source={source} />);
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    fireEvent.change(screen.getByLabelText('Confirm the primary profile'), { target: { value: '1234' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Unlock' }));
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    fireEvent.change(screen.getByLabelText('New profile name'), { target: { value: 'Guest' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add profile' }));
+    await waitFor(() => expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'Guest' }),
+      expect.any(String),
+      expect.any(AbortSignal),
+    ));
+    expect((await screen.findAllByText('Guest')).length).toBeGreaterThanOrEqual(1);
+
+    const removeButtons = screen.getAllByRole('button', { name: 'Remove profile' });
+    fireEvent.click(removeButtons[0]!);
+    const confirmation = screen.getByRole('alert');
+    expect(confirmation).toHaveTextContent(/Remove profile/);
+    fireEvent.click(within(confirmation).getByRole('button', { name: 'Remove profile' }));
+    await waitFor(() => expect(remove).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.any(String),
+      expect.any(AbortSignal),
+    ));
   });
 });

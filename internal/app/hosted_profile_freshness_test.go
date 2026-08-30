@@ -141,9 +141,24 @@ func (fixture *hostedFreshnessFixture) insertBrowserSession(t *testing.T, profil
 	token := "hosted-browser-session-" + profileID
 	now := time.Now().UTC()
 	deviceID := bindProfileTestDevice(t, fixture.db, fixture.server, fixture.account.ID, "freshness-browser-install-0001")
+	var externalProfileID string
+	if err := fixture.db.QueryRow(`SELECT external_profile_id FROM profiles WHERE id = ?`, profileID).Scan(&externalProfileID); err != nil {
+		t.Fatalf("load hosted profile subject: %v", err)
+	}
+	identityNow := now.Format(time.RFC3339)
+	if _, err := fixture.db.Exec(`
+		INSERT OR IGNORE INTO profile_identities (id, profile_id, provider, subject, email, display_name, verified_at, last_seen_at, created_at, updated_at)
+		VALUES (?, ?, 'portico', ?, ?, ?, ?, ?, ?, ?)`,
+		"pident_freshness_"+profileID, profileID, externalProfileID, fixture.account.Email, externalProfileID, identityNow, identityNow, identityNow, identityNow); err != nil {
+		t.Fatalf("insert hosted profile identity: %v", err)
+	}
+	var profileIdentityID string
+	if err := fixture.db.QueryRow(`SELECT id FROM profile_identities WHERE profile_id = ? AND provider = 'portico'`, profileID).Scan(&profileIdentityID); err != nil {
+		t.Fatalf("load hosted profile identity: %v", err)
+	}
 	if _, err := fixture.db.Exec(`
 		INSERT INTO sessions (id, user_id, profile_id, profile_identity_id, auth_provider, device_id, token_hash, expires_at, created_at, last_seen_at)
-		VALUES (?, ?, ?, '', 'portico', ?, ?, ?, ?, ?)`, randomID("sess"), fixture.account.ID, profileID, deviceID, hashToken(token),
+		VALUES (?, ?, ?, ?, 'portico', ?, ?, ?, ?, ?)`, randomID("sess"), fixture.account.ID, profileID, profileIdentityID, deviceID, hashToken(token),
 		now.Add(time.Hour).Format(time.RFC3339), now.Format(time.RFC3339), now.Format(time.RFC3339)); err != nil {
 		t.Fatalf("insert hosted browser session: %v", err)
 	}

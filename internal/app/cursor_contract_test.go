@@ -3,8 +3,6 @@ package app
 import (
 	"encoding/base64"
 	"errors"
-	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -48,20 +46,6 @@ func TestContractCursorIsEncryptedBoundAndExpiring(t *testing.T) {
 	}
 	if err := server.decodeContractCursor(token, "browse:lib_movies:query", "usr_owner", &decoded, now.Add(cursorDefaultTTL)); !errors.Is(err, errCursorExpired) {
 		t.Fatalf("expired cursor error = %v", err)
-	}
-}
-
-func TestCollectionCursorRejectsLegacyOffsetPayload(t *testing.T) {
-	server := &Server{cfg: config.Config{AppDataDir: t.TempDir()}}
-	now := time.Now().UTC()
-	token, err := server.encodeContractCursor("saved", "usr_owner", map[string]int{"offset": 25}, now)
-	if err != nil {
-		t.Fatalf("encode legacy cursor: %v", err)
-	}
-	req := httptest.NewRequest(http.MethodGet, "/api/watchlist?cursor="+token, nil)
-	var target savedMediaCursor
-	if err := server.decodeCollectionCursor(req, "saved", "usr_owner", now, &target); !errors.Is(err, errInvalidCursor) {
-		t.Fatalf("legacy offset cursor error = %v", err)
 	}
 }
 

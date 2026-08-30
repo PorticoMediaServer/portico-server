@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+
+	"github.com/PorticoMediaServer/portico-server/internal/playbackplan"
 )
 
 type User struct {
@@ -563,37 +565,6 @@ type StoragePathsRequest struct {
 	CopyDatabase    bool   `json:"copyDatabase"`
 }
 
-type LocalizationInfo struct {
-	Locales       []LocalizationOption    `json:"locales"`
-	Languages     []LocalizationOption    `json:"languages"`
-	Countries     []LocalizationOption    `json:"countries"`
-	TimeZones     []string                `json:"timeZones"`
-	RatingSystems []LocalizationRatingSet `json:"ratingSystems"`
-	GeneratedAt   string                  `json:"generatedAt"`
-}
-
-type LocalizationOption struct {
-	ID     string            `json:"id"`
-	Label  string            `json:"label"`
-	Labels map[string]string `json:"labels,omitempty"`
-}
-
-type LocalizationRatingSet struct {
-	Country string               `json:"country"`
-	System  string               `json:"system"`
-	Label   string               `json:"label,omitempty"`
-	Labels  map[string]string    `json:"labels,omitempty"`
-	Ratings []LocalizationRating `json:"ratings"`
-}
-
-type LocalizationRating struct {
-	ID         string            `json:"id"`
-	Label      string            `json:"label"`
-	Labels     map[string]string `json:"labels,omitempty"`
-	Rank       int               `json:"rank"`
-	MinimumAge int               `json:"minimumAge,omitempty"`
-}
-
 type CreateLibraryRequest struct {
 	Name     string         `json:"name"`
 	Type     string         `json:"type"`
@@ -943,7 +914,7 @@ type MediaItem struct {
 	LibraryName        string                   `json:"libraryName,omitempty"`
 	Counts             *MediaHierarchyCounts    `json:"counts,omitempty"`
 	ParentID           string                   `json:"parentId,omitempty"`
-	Type               string                   `json:"type"`
+	Type               string                   `json:"entityKind"`
 	Title              string                   `json:"title"`
 	SortTitle          string                   `json:"sortTitle"`
 	OriginalTitle      string                   `json:"originalTitle,omitempty"`
@@ -1424,7 +1395,6 @@ type HomeRow struct {
 	CursorCapable      bool        `json:"cursorCapable,omitempty"`
 	PrivacySensitivity string      `json:"privacySensitivity,omitempty"`
 	PolicyState        string      `json:"policyState,omitempty"`
-	Controls           []string    `json:"controls,omitempty"`
 	CacheTTLSeconds    int         `json:"cacheTtlSeconds,omitempty"`
 	Items              []MediaItem `json:"items"`
 	Total              int         `json:"total,omitempty"`
@@ -2504,8 +2474,8 @@ type ServerActivityResponse struct {
 }
 
 // TelemetryMetricStatus accompanies numeric telemetry values. A value is only
-// authoritative when Status is "ok"; unavailable values remain zero in the
-// backwards-compatible numeric fields and carry a reason here instead.
+// authoritative when Status is "ok"; unavailable values remain zero and carry
+// a reason here instead.
 type TelemetryMetricStatus struct {
 	Status string `json:"status"`
 	Reason string `json:"reason,omitempty"`
@@ -2925,6 +2895,15 @@ type PlaybackProgressAcknowledgement struct {
 	Generation           int64  `json:"generation"`
 }
 
+type PlaybackSessionStopRequest struct {
+	Disposition     string  `json:"disposition"`
+	Generation      int64   `json:"generation"`
+	EventSequence   int64   `json:"eventSequence"`
+	RecordedAt      string  `json:"recordedAt"`
+	PositionSeconds float64 `json:"positionSeconds"`
+	DurationSeconds float64 `json:"durationSeconds"`
+}
+
 type PlaybackRenegotiationRequest struct {
 	RequestID        string                `json:"requestId"`
 	ExpectedRevision int64                 `json:"expectedRevision"`
@@ -3027,7 +3006,6 @@ type PlaybackCapabilitySubtitle struct {
 // it against the media type, route, decoder facts, membership and server
 // clamps before choosing a delivery mode.
 type PlaybackIntent struct {
-	NetworkClass               string   `json:"networkClass,omitempty"`
 	TransportClass             string   `json:"transportClass,omitempty"`
 	QualityProfile             string   `json:"qualityProfile,omitempty"`
 	DirectPlayPolicy           string   `json:"directPlayPolicy,omitempty"`
@@ -3111,6 +3089,7 @@ type PlaybackDecision struct {
 	AudioAction          string   `json:"audioAction,omitempty"`
 	SubtitleAction       string   `json:"subtitleAction,omitempty"`
 	HardwareBackend      string   `json:"hardwareBackend,omitempty"`
+	plannerRejections    playbackplan.RejectionDiagnostics
 	execution            *playbackExecutionBinding
 }
 

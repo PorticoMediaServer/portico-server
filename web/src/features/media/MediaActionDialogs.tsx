@@ -1,16 +1,4 @@
-import {
-  Check,
-  CircleCheck,
-  FolderHeart,
-  ListMusic,
-  Lock,
-  LockOpen,
-  Plus,
-  RefreshCw,
-  ScanSearch,
-  Search,
-  X,
-} from "#portico-icons";
+import { ActionConfirmIcon, StatusSuccessIcon, LibrarySavedIcon, MediaPlaylistIcon, StatusLockedIcon, AccountSecurityIcon, ActionAddIcon, ActionRefreshIcon, NavigationSearchIcon, ActionCloseIcon } from "#portico-icons";
 import {
   type ReactNode,
   useCallback,
@@ -129,17 +117,18 @@ export function SavedTargetDialog({
   const [complete, setComplete] = useState("");
   const label = resourceLabel(kind);
   const headingId = `add-to-${kind}-title`;
-  const add = async (id: string, name: string, updatedAt: string) => {
+  const add = async (id: string, name: string, updatedAt: string, itemCount: number) => {
     setBusy(id);
     setError("");
     try {
-      await mutations.mutateItems(kind, id, {
+      const updated = await mutations.mutateItems(kind, id, {
         addMediaIds: mediaIds,
         expectedUpdatedAt: updatedAt,
       });
-      setComplete(
-        `Added ${mediaIds.length === 1 ? "this item" : `${mediaIds.length} items`} to ${name}.`,
-      );
+      const unchangedCollection = kind === "collection" && updated.itemCount === itemCount;
+      setComplete(unchangedCollection
+        ? `${mediaIds.length === 1 ? "This item is" : "These items are"} already in ${name}.`
+        : `Added ${mediaIds.length === 1 ? "this item" : `${mediaIds.length} items`} to ${name}.`);
       setReloadKey((value) => value + 1);
     } catch (reason) {
       setError(
@@ -180,7 +169,7 @@ export function SavedTargetDialog({
       setBusy("");
     }
   };
-  const Icon = kind === "playlist" ? ListMusic : FolderHeart;
+  const Icon = kind === "playlist" ? MediaPlaylistIcon : LibrarySavedIcon;
   return (
     <ModalOverlay
       labelledBy={headingId}
@@ -197,12 +186,12 @@ export function SavedTargetDialog({
           <h2 id={headingId}>Add to {label}</h2>
         </div>
         <IconButton label="Close" onClick={onDismiss}>
-          <X />
+          <ActionCloseIcon />
         </IconButton>
       </header>
       {complete ? (
         <div className="saved-target-complete" role="status">
-          <CircleCheck />
+          <StatusSuccessIcon />
           <strong>{complete}</strong>
           <p>
             You can keep this dialog open to add the same selection somewhere
@@ -213,7 +202,7 @@ export function SavedTargetDialog({
       <div className="saved-target-body">
         {resources.status === "loading" && (
           <div className="saved-target-state" aria-busy="true">
-            <RefreshCw className="state-spinner" /> Loading {label}s
+            <ActionRefreshIcon className="state-spinner" /> Loading {label}s
           </div>
         )}
         {resources.status === "error" && (
@@ -231,7 +220,7 @@ export function SavedTargetDialog({
                 disabled={Boolean(busy)}
                 key={resource.id}
                 onClick={() =>
-                  void add(resource.id, resource.title, resource.updatedAt)
+                  void add(resource.id, resource.title, resource.updatedAt, resource.itemCount)
                 }
               >
                 <span>
@@ -246,9 +235,9 @@ export function SavedTargetDialog({
                   </small>
                 </span>
                 {busy === resource.id ? (
-                  <RefreshCw className="state-spinner" />
+                  <ActionRefreshIcon className="state-spinner" />
                 ) : (
-                  <Plus />
+                  <ActionAddIcon />
                 )}
               </button>
             ))}
@@ -303,7 +292,7 @@ export function SavedTargetDialog({
       <footer>
         {!creating && (
           <SecondaryButton onClick={() => setCreating(true)}>
-            <Plus /> New {label}
+            <ActionAddIcon /> New {label}
           </SecondaryButton>
         )}
         <PrimaryButton onClick={onDismiss}>
@@ -358,7 +347,7 @@ function TagEditor({
             onClick={() => onChange(values.filter((item) => item !== value))}
           >
             {value}
-            <X />
+            <ActionCloseIcon />
           </button>
         ))}
         <input
@@ -440,7 +429,7 @@ function PeopleEditor({
                 onChange(people.filter((_, candidate) => candidate !== index))
               }
             >
-              <X />
+              <ActionCloseIcon />
             </IconButton>
           </div>
         ))}
@@ -450,7 +439,7 @@ function PeopleEditor({
           onChange([...people, { name: "", role: "Actor", character: "" }])
         }
       >
-        <Plus /> Add person
+        <ActionAddIcon /> Add person
       </SecondaryButton>
     </div>
   );
@@ -579,7 +568,7 @@ export function MediaMetadataEditor({
         "General",
         "Artwork",
         "Media",
-        ...(first?.kind === "track" ? ["Lyrics"] : []),
+        ...(first?.entityKind === "track" ? ["Lyrics"] : []),
         "Tags",
         "Cast & Crew",
         "Matching",
@@ -666,7 +655,7 @@ export function MediaMetadataEditor({
         title={`${action}. Locked values are preserved during metadata refreshes.`}
         onClick={() => toggleLock(key)}
       >
-        {locked ? <Lock /> : <LockOpen />}
+        {locked ? <StatusLockedIcon /> : <AccountSecurityIcon />}
       </button>
     );
   };
@@ -888,7 +877,7 @@ export function MediaMetadataEditor({
       >
         <h1 id={headingId}>Edit metadata</h1>
         <div className="library-state" aria-busy="true">
-          <RefreshCw className="state-spinner" />
+          <ActionRefreshIcon className="state-spinner" />
           <strong>Loading metadata</strong>
         </div>
       </ModalOverlay>
@@ -922,7 +911,7 @@ export function MediaMetadataEditor({
         <div>
           <p>
             {single
-              ? `${first?.libraryName || "Media library"} / ${mediaKindLabel(first?.kind)}`
+              ? `${first?.libraryName || "Media library"} / ${mediaKindLabel(first?.entityKind)}`
               : `${mediaIds.length} selected items`}
           </p>
           <h1 id={headingId}>Edit metadata</h1>
@@ -933,7 +922,7 @@ export function MediaMetadataEditor({
           disabled={busy}
           onClick={onDismiss}
         >
-          <X />
+          <ActionCloseIcon />
         </IconButton>
       </header>
       <div className="metadata-body">
@@ -965,13 +954,13 @@ export function MediaMetadataEditor({
                 {field("network", "Network")}
                 {field("country", "Country")}
                 {single &&
-                  (first?.kind === "episode" || first?.kind === "season") &&
+                  (first?.entityKind === "episode" || first?.entityKind === "season") &&
                   field("seasonNumber", "Season number")}
                 {single &&
-                  first?.kind === "episode" &&
+                  first?.entityKind === "episode" &&
                   field("episodeNumber", "Episode number")}
                 {single &&
-                  ["track", "chapter"].includes(first?.kind ?? "") &&
+                  ["track", "chapter"].includes(first?.entityKind ?? "") &&
                   field("indexNumber", "Track number")}
               </div>
               {single && (
@@ -1079,7 +1068,7 @@ export function MediaMetadataEditor({
               }}
             />
           )}
-          {tab === "Lyrics" && first?.kind === "track" && (
+          {tab === "Lyrics" && first?.entityKind === "track" && (
             <LyricsEditor
               lyrics={first.lyrics ?? []}
               defaultQuery={[first.title, first.subtitle.split(" · ")[0]]
@@ -1230,7 +1219,7 @@ export function MediaMetadataEditor({
                   placeholder="Title, year, or provider ID"
                 />
                 <PrimaryButton type="submit" disabled={matching}>
-                  <Search /> {matching ? "Searching…" : "Search"}
+                  <NavigationSearchIcon /> {matching ? "Searching…" : "Search"}
                 </PrimaryButton>
               </form>
               {matches.length > 0 && (
@@ -1240,7 +1229,7 @@ export function MediaMetadataEditor({
                       key={`${candidate.provider}:${candidate.externalId}`}
                     >
                       <div className="match-poster">
-                        <ScanSearch />
+                        <NavigationSearchIcon />
                       </div>
                       <span>
                         <strong>
@@ -1268,7 +1257,7 @@ export function MediaMetadataEditor({
                         disabled={busy}
                         onClick={() => void applyMatch(candidate)}
                       >
-                        {candidate.accepted && <Check />} Use match
+                        {candidate.accepted && <ActionConfirmIcon />} Use match
                       </SecondaryButton>
                     </article>
                   ))}

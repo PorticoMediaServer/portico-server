@@ -310,7 +310,7 @@ func (s *Server) handleProfileAdministrationProof(w http.ResponseWriter, r *http
 			s.writeProfileManagementError(w, err)
 			return
 		}
-		valid, _, verifiedHash, verifyErr := verifyAccountPasswordSnapshot(r.Context(), kdfProfileReauthCompare, passwordHash, request.Password)
+		valid, verifiedHash, verifyErr := verifyAccountPasswordSnapshot(r.Context(), kdfProfileReauthCompare, passwordHash, request.Password)
 		if verifyErr != nil {
 			s.writeProfileManagementError(w, verifyErr)
 			return

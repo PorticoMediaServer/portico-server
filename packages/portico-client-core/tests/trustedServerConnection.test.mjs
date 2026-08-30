@@ -88,6 +88,7 @@ function record(overrides = {}) {
       routeType: "public_direct"
     },
     lastSuccessfulConnectionAt: "2026-07-13T12:00:00.000Z",
+    mutationVersion: 1,
     ...overrides
   };
 }
@@ -98,9 +99,24 @@ function adapter(initial = []) {
   return {
     removed,
     values,
+    ready: async () => {},
+    durability: () => "durable",
+    persistencePolicy: "saved-session",
     list: async accountId => [...values.values()].filter(item => item.accountId === accountId),
     load: async (accountId, serverId) => values.get(`${accountId}\n${serverId}`),
     save: async item => { values.set(`${item.accountId}\n${item.serverId}`, structuredClone(item)); },
+    compareAndSwap: async (expectedVersion, item) => {
+      const key = `${item.accountId}\n${item.serverId}`;
+      const current = values.get(key);
+      if ((current?.mutationVersion ?? 0) !== expectedVersion) return false;
+      values.set(key, structuredClone(item));
+      return true;
+    },
+    removeWithTombstone: async tombstone => {
+      removed.push([tombstone.accountId, tombstone.serverId]);
+      values.delete(`${tombstone.accountId}\n${tombstone.serverId}`);
+    },
+    loadRemovalTombstone: async () => undefined,
     remove: async (accountId, serverId) => { removed.push([accountId, serverId]); values.delete(`${accountId}\n${serverId}`); },
     clearAccount: async accountId => {
       for (const [key, item] of values) if (item.accountId === accountId) values.delete(key);
@@ -948,7 +964,9 @@ test("an atomicity-uncertain durable write is fatal and restores the prior trans
   const connections = adapter([stored]);
   const durableBefore = structuredClone(connections.values.get(`${stored.accountId}\n${stored.serverId}`));
   const save = connections.save;
+  const compareAndSwap = connections.compareAndSwap;
   let saveCalls = 0;
+  let compareAndSwapCalls = 0;
   connections.save = async item => {
     saveCalls += 1;
     if (saveCalls === 1) {
@@ -956,6 +974,10 @@ test("an atomicity-uncertain durable write is fatal and restores the prior trans
       throw new TrustedServerDurabilityUncertainError(new Error("second secure store failed"), [new Error("compensation failed")]);
     }
     await save(item);
+  };
+  connections.compareAndSwap = async (expectedVersion, item) => {
+    compareAndSwapCalls += 1;
+    return compareAndSwap(expectedVersion, item);
   };
   const previous = { serverId: "server-before", apiBaseUrl: "https://before.example", accessToken: "before-access" };
   const active = createMemorySessionStore(previous);
@@ -981,7 +1003,8 @@ test("an atomicity-uncertain durable write is fatal and restores the prior trans
     && error.failClosed === false
     && error.rollbackFailures.some(failure => failure?.message === "compensation failed"));
 
-  assert.equal(saveCalls, 2, "the previous durable value is restored after an uncertain write");
+  assert.equal(saveCalls, 1, "the uncertain candidate write is not replayed");
+  assert.equal(compareAndSwapCalls, 1, "the previous durable value is restored with version-fenced CAS");
   assert.equal(published, false);
   assert.deepEqual(rollbackModes, ["restore-previous"]);
   assert.equal(active.get().accessToken, "before-access");
@@ -992,22 +1015,21 @@ test("rollback fences candidate runtime synchronously before credential and paus
   const stored = record({ previousRoute: undefined });
   const connections = adapter([stored]);
   const save = connections.save;
-  let saveCalls = 0;
+  const compareAndSwap = connections.compareAndSwap;
   let releaseDurableRestore;
   let announceDurableRestore;
   const durableRestoreStarted = new Promise(resolve => { announceDurableRestore = resolve; });
   const durableRestoreGate = new Promise(resolve => { releaseDurableRestore = resolve; });
   connections.save = async item => {
-    saveCalls += 1;
-    if (saveCalls === 1) {
-      await save(item);
-      throw new TrustedServerDurabilityUncertainError(new Error("candidate durable write became uncertain"));
-    }
+    await save(item);
+    throw new TrustedServerDurabilityUncertainError(new Error("candidate durable write became uncertain"));
+  };
+  connections.compareAndSwap = async (expectedVersion, item) => {
     assert.equal(runtimeState, "fenced", "B is retracted before durable restoration starts");
     announceDurableRestore();
     await durableRestoreGate;
     assert.equal(runtimeState, "fenced", "neither A nor B runtime is republished while durable restoration waits");
-    await save(item);
+    return compareAndSwap(expectedVersion, item);
   };
   const previous = { serverId: "server-before", apiBaseUrl: "https://before.example", accessToken: "before-access" };
   let current = previous;

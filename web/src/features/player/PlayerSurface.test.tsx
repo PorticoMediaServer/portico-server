@@ -12,17 +12,20 @@ import {
   within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useNavigate } from "react-router-dom";
 import type { ReactNode } from "react";
 import { DataProvider } from "../../data/DataProvider";
 import { FixturePorticoDataSource } from "../../data/fixtureSource";
 import type { PorticoDataSource, Viewer } from "../../data/models";
 import {
   isExplicitMissingHLSManifest,
+  isTransientHLSManifestWait,
   playableSubtitleStreams,
   PlaybackSessionProvider,
   PlayerDock,
   shouldUseNativeHLS,
+  stablePreparedHandoffRequestID,
+  normalizedPlaybackHandoffProgress,
   usePlaybackSession,
   WatchPage,
 } from "./PlayerSurface";
@@ -82,7 +85,7 @@ const viewer: Viewer = {
 function coreMedia(id: string, title: string): PlaybackResponse["media"] {
   return {
     id,
-    type: "episode",
+    entityKind: "episode",
     title,
     sortTitle: title,
     metadataEtag: `test-media-${id}-revision-1`,
@@ -272,6 +275,16 @@ function PlaybackContractHarness() {
   );
 }
 
+function CollapsedTrackStartHarness() {
+  const playback = usePlaybackSession();
+  return <button type="button" onClick={() => void playback.start("6b705dadddf08a29ee14be80ecf9b5cb01968814")}>Play track</button>;
+}
+
+function NavigateAwayHarness() {
+  const navigate = useNavigate();
+  return <button type="button" onClick={() => navigate('/settings/account')}>Open account settings</button>;
+}
+
 beforeEach(() => {
   hlsFixtures.instances.length = 0;
   localStorage.clear();
@@ -313,6 +326,85 @@ afterEach(() => {
 });
 
 describe("production playback surface", () => {
+  it("reuses one nonempty prepared-handoff request ID across duplicate consumers and ambiguity", () => {
+    const cache = new Map<string, string>();
+    const first = stablePreparedHandoffRequestID(cache, "session-1", "prepared-2");
+    expect(first).toMatch(/^web-[0-9a-f-]{36}$/);
+    expect(stablePreparedHandoffRequestID(cache, "session-1", "prepared-2")).toBe(first);
+    expect(stablePreparedHandoffRequestID(cache, "session-1", "prepared-3")).not.toBe(first);
+    expect(stablePreparedHandoffRequestID(cache, "session-2", "prepared-2")).not.toBe(first);
+  });
+  it("normalizes fractional media time to the Server handoff integer wire contract", () => {
+    expect(normalizedPlaybackHandoffProgress(14.9)).toBe(14);
+    expect(normalizedPlaybackHandoffProgress(-1.2)).toBe(0);
+    expect(normalizedPlaybackHandoffProgress(Number.NaN)).toBeUndefined();
+  });
+  it("shows a recoverable dock failure when collapsed track preparation is rejected", async () => {
+    const source = new FixturePorticoDataSource();
+    const start = vi.spyOn(source as PorticoDataSource, "startPlayback").mockRejectedValue(new ApiError(422, "delivery_policy_unsatisfied", "No legal playback plan."));
+    render(
+      <DataProvider source={source} initialViewer={viewer}>
+        <WebDisplayPreferencesProvider>
+          <MemoryRouter initialEntries={["/media/6b705dadddf08a29ee14be80ecf9b5cb01968814"]}>
+            <PlaybackSessionProvider>
+              <PlayerDock />
+              <CollapsedTrackStartHarness />
+            </PlaybackSessionProvider>
+          </MemoryRouter>
+        </WebDisplayPreferencesProvider>
+      </DataProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Play track" }));
+    const failure = await screen.findByRole("alert");
+    expect(failure).toHaveTextContent("Playback could not start");
+    expect(failure.closest(".player-mini")).toHaveClass("player-pending-shell");
+    expect(start).toHaveBeenCalledWith("6b705dadddf08a29ee14be80ecf9b5cb01968814", expect.any(Object), expect.any(AbortSignal));
+    expect(screen.getByRole("button", { name: "Try again" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Play" })).toBeDisabled();
+    expect(screen.getAllByRole("button", { name: "Close player" }).length).toBeGreaterThan(0);
+  });
+
+  it("mounts the full player chrome while preparing and preserves it around a start failure", async () => {
+    const source = new FixturePorticoDataSource();
+    let rejectStart: ((reason: unknown) => void) | undefined;
+    vi.spyOn(source as PorticoDataSource, "startPlayback").mockImplementation(() => new Promise((_, reject) => { rejectStart = reject; }));
+    renderPlayer(source);
+
+    const preparing = await screen.findByRole("status");
+    expect(preparing).toHaveTextContent("Preparing playback");
+    expect(preparing.closest(".player-full")).toHaveClass("player-pending-shell");
+    expect(preparing.closest(".player-full")?.querySelector('input[type="range"]')).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Play" })).toBeDisabled();
+    expect(screen.getAllByRole("button", { name: "Close player" }).length).toBeGreaterThan(0);
+
+    await waitFor(() => expect(rejectStart).toBeTypeOf("function"));
+    rejectStart?.(new ApiError(422, "delivery_policy_unsatisfied", "No legal playback plan."));
+    const failure = await screen.findByRole("alert");
+    expect(failure).toHaveTextContent("Playback could not start");
+    expect(failure.closest(".player-full")).toHaveClass("player-pending-shell");
+    expect(screen.getByRole("button", { name: "Try again" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Play" })).toBeDisabled();
+  });
+
+  it("dismisses a handled playback failure when the user navigates elsewhere", async () => {
+    const source = new FixturePorticoDataSource();
+    vi.spyOn(source as PorticoDataSource, "startPlayback").mockRejectedValue(new ApiError(422, "delivery_policy_unsatisfied", "No legal playback plan."));
+    render(
+      <DataProvider source={source} initialViewer={viewer}>
+        <WebDisplayPreferencesProvider>
+          <MemoryRouter initialEntries={["/media/track"]}>
+            <PlaybackSessionProvider><PlayerDock /><CollapsedTrackStartHarness /><NavigateAwayHarness /></PlaybackSessionProvider>
+          </MemoryRouter>
+        </WebDisplayPreferencesProvider>
+      </DataProvider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Play track" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Playback could not start");
+    fireEvent.click(screen.getByRole("button", { name: "Open account settings" }));
+    await waitFor(() => expect(screen.queryByText("Playback could not start")).not.toBeInTheDocument());
+  });
+
   it("keeps the active session until replacement is prepared and coalesces grant renewal", async () => {
     const source = new FixturePorticoDataSource();
     const start = vi.spyOn(source as PorticoDataSource, "startPlayback")
@@ -434,6 +526,15 @@ describe("production playback surface", () => {
     expect(isExplicitMissingHLSManifest(404, "manifestLoadError", true)).toBe(
       false,
     );
+  });
+
+  it("retries only reviewed pre-play manifest publication waits", () => {
+    expect(isTransientHLSManifestWait(409, "manifestLoadError", false)).toBe(true);
+    expect(isTransientHLSManifestWait(425, "manifestLoadError", false)).toBe(true);
+    expect(isTransientHLSManifestWait(503, "manifestLoadError", false)).toBe(true);
+    expect(isTransientHLSManifestWait(503, "fragLoadError", false)).toBe(false);
+    expect(isTransientHLSManifestWait(503, "manifestLoadError", true)).toBe(false);
+    expect(isTransientHLSManifestWait(500, "manifestLoadError", false)).toBe(false);
   });
 
   it("uses native HLS only in Safari even when Chromium reports tentative support", () => {
@@ -587,7 +688,7 @@ describe("production playback surface", () => {
       "episode-1",
       expect.objectContaining({
         intent: expect.objectContaining({
-          networkClass: "local",
+          transportClass: "unknown",
           qualityProfile: "original",
         }),
       }),
@@ -758,6 +859,11 @@ describe("production playback surface", () => {
     await waitFor(() =>
       expect(stop).toHaveBeenCalledWith(
         "session-1",
+        expect.objectContaining({
+          disposition: "stopped",
+          positionSeconds: expect.any(Number),
+          durationSeconds: expect.any(Number),
+        }),
         expect.any(AbortSignal),
         true,
       ),
@@ -765,6 +871,69 @@ describe("production playback surface", () => {
     expect(
       screen.queryByLabelText("Now playing The Castle"),
     ).not.toBeInTheDocument();
+  });
+
+  it("sends stop without waiting for final progress during explicit close", async () => {
+    const source = new FixturePorticoDataSource();
+    vi.spyOn(source as PorticoDataSource, "startPlayback").mockResolvedValue(playback());
+    vi.spyOn(source as PorticoDataSource, "playbackSessionQueue").mockResolvedValue(queue());
+    vi.spyOn(source as PorticoDataSource, "touchPlayback").mockImplementation(
+      () => new Promise(() => undefined),
+    );
+    const stop = vi.spyOn(source as PorticoDataSource, "stopPlayback").mockImplementation(
+      () => new Promise(() => undefined),
+    );
+
+    renderPlayer(source);
+    await screen.findByLabelText("Now playing The Castle");
+    fireEvent.click(screen.getByRole("button", { name: "Close player" }));
+    await waitFor(() => expect(stop).toHaveBeenCalledOnce());
+    expect(screen.queryByLabelText("Now playing The Castle")).not.toBeInTheDocument();
+  });
+
+  it("completes a finite VOD overrun without assigning or playing the HLS endpoint", async () => {
+    const source = new FixturePorticoDataSource();
+    const finitePlayback = playback({
+      queue: [],
+      repeatMode: "off",
+      streamFormat: "hls",
+      sourceUrl: "/api/playback-resources/final.m3u8",
+      timeline: { type: "vod", durationSeconds: 60, canPause: true, canSeek: true },
+    });
+    vi.spyOn(source as PorticoDataSource, "startPlayback").mockResolvedValue(finitePlayback);
+    vi.spyOn(source as PorticoDataSource, "playbackSessionQueue").mockResolvedValue(queue({ items: [], total: 0, repeatMode: "off" }));
+    const progress = vi.spyOn(source as PorticoDataSource, "touchPlayback");
+    const stop = vi.spyOn(source as PorticoDataSource, "stopPlayback").mockResolvedValue(undefined);
+
+    const view = renderPlayer(source);
+    const surface = await screen.findByLabelText("Now playing The Castle");
+    const media = surface.querySelector("video") as HTMLVideoElement;
+    Object.defineProperty(media, "duration", { configurable: true, value: 60 });
+    media.currentTime = 46.2;
+    vi.mocked(HTMLMediaElement.prototype.play).mockClear();
+
+    fireEvent.click(screen.getByRole("button", { name: "Forward 30 seconds" }));
+
+    expect(media.currentTime).toBe(46.2);
+    expect(HTMLMediaElement.prototype.play).not.toHaveBeenCalled();
+    expect(await screen.findByRole("region", { name: "Playback is complete." })).toBeInTheDocument();
+    expect(screen.queryByLabelText("The Castle", { selector: "video" })).not.toBeInTheDocument();
+    expect(screen.getByRole("slider", { name: "Playback position" })).toHaveValue("60");
+    fireEvent.timeUpdate(media, { target: { currentTime: 0.7 } });
+    expect(screen.getByRole("slider", { name: "Playback position" })).toHaveValue("60");
+    expect(progress).not.toHaveBeenCalledWith(
+      "session-1",
+      expect.objectContaining({ completed: true }),
+      expect.anything(),
+      expect.anything(),
+    );
+    await waitFor(() => expect(stop).toHaveBeenCalledWith(
+      "session-1",
+      { disposition: "completed", positionSeconds: 60, durationSeconds: 60 },
+      expect.any(AbortSignal),
+      true,
+    ));
+    view.unmount();
   });
 
   it("appends and inserts next through revision-safe queue mutations", async () => {
@@ -895,13 +1064,17 @@ describe("production playback surface", () => {
     const handoff = vi
       .spyOn(source as PorticoDataSource, "handoffPlayback")
       .mockResolvedValue(handedOff);
+    const touch = vi.spyOn(source as PorticoDataSource, "touchPlayback");
+    const stop = vi.spyOn(source as PorticoDataSource, "stopPlayback").mockResolvedValue(undefined);
 
     renderPlayer(source);
     const surface = await screen.findByLabelText("Now playing The Castle");
     await waitFor(() =>
       expect(HTMLMediaElement.prototype.play).toHaveBeenCalled(),
     );
-    fireEvent.ended(surface.querySelector("video") as HTMLVideoElement);
+    const endedMedia = surface.querySelector("video") as HTMLVideoElement;
+    fireEvent.ended(endedMedia);
+    for (let index = 0; index < 8; index += 1) fireEvent.ended(endedMedia);
 
     const upNext = await screen.findByRole("region", { name: "Up next" });
     expect(within(upNext).getByText("Palindrome")).toBeInTheDocument();
@@ -913,6 +1086,17 @@ describe("production playback surface", () => {
       expect.any(AbortSignal),
       expect.objectContaining({ intent: expect.any(Object) }),
     );
+    expect(prepare).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(stop).toHaveBeenCalledWith(
+      "session-1",
+      { disposition: "completed", positionSeconds: 120, durationSeconds: 120 },
+      expect.any(AbortSignal),
+      true,
+    ));
+    const touchesAfterCompletion = touch.mock.calls.length;
+    fireEvent.pause(endedMedia);
+    fireEvent.timeUpdate(endedMedia);
+    expect(touch).toHaveBeenCalledTimes(touchesAfterCompletion);
 
     fireEvent.click(within(upNext).getByRole("button", { name: "Cancel" }));
     expect(
@@ -947,16 +1131,7 @@ describe("production playback surface", () => {
       source as PorticoDataSource,
       "playbackSessionQueue",
     ).mockResolvedValue(emptyQueue);
-    const touch = vi
-      .spyOn(source as PorticoDataSource, "touchPlayback")
-      .mockResolvedValue({
-        accepted: true,
-        duplicate: false,
-        stale: false,
-        generation: 1,
-        highestEventSequence: 2,
-        sessionState: "stopped",
-      });
+    const stop = vi.spyOn(source as PorticoDataSource, "stopPlayback").mockResolvedValue(undefined);
     const handoff = vi
       .spyOn(source as PorticoDataSource, "handoffPlayback")
       .mockResolvedValue(playback({ sessionId: "session-replay", queue: [] }));
@@ -974,14 +1149,12 @@ describe("production playback surface", () => {
     expect(
       within(complete).getByText("You're all caught up"),
     ).toBeInTheDocument();
-    await waitFor(() =>
-      expect(touch).toHaveBeenCalledWith(
-        "session-1",
-        expect.objectContaining({ completed: true, positionSeconds: 120 }),
-        expect.any(AbortSignal),
-        false,
-      ),
-    );
+    await waitFor(() => expect(stop).toHaveBeenCalledWith(
+      "session-1",
+      { disposition: "completed", positionSeconds: 120, durationSeconds: 120 },
+      expect.any(AbortSignal),
+      true,
+    ));
     fireEvent.click(within(complete).getByRole("button", { name: "Replay" }));
     await waitFor(() =>
       expect(handoff).toHaveBeenCalledWith(
@@ -994,6 +1167,98 @@ describe("production playback surface", () => {
         expect.any(AbortSignal),
       ),
     );
+  });
+
+  it("shares one atomic terminal owner across natural end, completed UI close, and repeated cleanup events", async () => {
+    const source = new FixturePorticoDataSource();
+    const current = playback({ queue: [] });
+    vi.spyOn(source as PorticoDataSource, "startPlayback").mockResolvedValue(current);
+    vi.spyOn(source as PorticoDataSource, "playbackSessionQueue").mockResolvedValue(queue({ items: [], total: 0 }));
+    const touch = vi.spyOn(source as PorticoDataSource, "touchPlayback");
+    const stop = vi.spyOn(source as PorticoDataSource, "stopPlayback").mockImplementation(() => new Promise<void>(() => undefined));
+
+    renderPlayer(source);
+    const surface = await screen.findByLabelText("Now playing The Castle");
+    const media = surface.querySelector("video") as HTMLVideoElement;
+    Object.defineProperty(media, "duration", { configurable: true, value: 120 });
+    media.currentTime = 120;
+
+    fireEvent.ended(media);
+    fireEvent.ended(media);
+    await screen.findByRole("region", { name: "Playback is complete." });
+    await waitFor(() => expect(stop).toHaveBeenCalledTimes(1));
+    expect(stop).toHaveBeenCalledWith(
+      "session-1",
+      { disposition: "completed", positionSeconds: 120, durationSeconds: 120 },
+      expect.any(AbortSignal),
+      true,
+    );
+    const touchesAtFence = touch.mock.calls.length;
+
+    fireEvent.pause(media);
+    fireEvent.timeUpdate(media);
+    fireEvent.ended(media);
+    fireEvent.click(screen.getAllByRole("button", { name: "Close player" })[0]);
+
+    expect(stop).toHaveBeenCalledTimes(1);
+    expect(touch).toHaveBeenCalledTimes(touchesAtFence);
+    expect(screen.queryByLabelText("Now playing The Castle")).not.toBeInTheDocument();
+  });
+
+  it("hands off the canonical next queue item before terminalizing an ended music session", async () => {
+    const transitionTelemetry = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const source = new FixturePorticoDataSource();
+    const currentMedia = { ...coreMedia("track-1", "Signal One"), entityKind: "track" as const };
+    const nextMedia = { ...coreMedia("track-2", "Signal Two"), entityKind: "track" as const };
+    const thirdMedia = { ...coreMedia("track-3", "Signal Three"), entityKind: "track" as const };
+    const current = playback({ media: currentMedia, queue: [currentMedia, nextMedia, thirdMedia] });
+    vi.spyOn(source as PorticoDataSource, "startPlayback").mockResolvedValue(current);
+    vi.spyOn(source as PorticoDataSource, "playbackSessionQueue").mockResolvedValue(queue({ current: currentMedia, items: [currentMedia, nextMedia, thirdMedia], total: 3 }));
+    const prepare = vi.spyOn(source as PorticoDataSource, "prepareNextPlayback").mockResolvedValue({ preparedSessionId: "prepared-track-2", playback: playback({ sessionId: "prepared", media: nextMedia, queue: [thirdMedia] }), expiresAt: new Date(Date.now() + 60_000).toISOString() } as never);
+    let resolveHandoff!: (value: PlaybackResponse) => void;
+    const handoff = vi.spyOn(source as PorticoDataSource, "handoffPlayback").mockImplementation(() => new Promise<PlaybackResponse>((resolve) => { resolveHandoff = resolve; }));
+    const stop = vi.spyOn(source as PorticoDataSource, "stopPlayback").mockResolvedValue(undefined);
+    renderPlayer(source, "track-1");
+    const media = (await screen.findByLabelText("Now playing Signal One")).querySelector("video") as HTMLVideoElement;
+    fireEvent.ended(media);
+    await waitFor(() => expect(prepare).toHaveBeenCalledWith("session-1", expect.any(AbortSignal), expect.objectContaining({ mediaId: "track-2" })));
+    await waitFor(() => expect(handoff).toHaveBeenCalledTimes(1));
+    expect(prepare).toHaveBeenCalledTimes(1);
+    expect(handoff).toHaveBeenCalledWith(
+      "session-1",
+      expect.objectContaining({
+        preparedSessionId: "prepared-track-2",
+        requestId: expect.stringMatching(/^web-[0-9a-f-]{36}$/),
+      }),
+      expect.any(AbortSignal),
+    );
+    expect(transitionTelemetry).toHaveBeenCalledWith("[portico-playback-handoff]", expect.stringMatching(/"phase":"request".*"sourceSessionId":"session-1".*"preparedSessionId":"prepared-track-2".*"requestId":"web-[0-9a-f-]{36}"/));
+    expect(stop).not.toHaveBeenCalled();
+    resolveHandoff(playback({ sessionId: "session-2", media: nextMedia, queue: [thirdMedia] }));
+    await waitFor(() => expect(screen.getByLabelText("Now playing Signal Two")).toBeInTheDocument());
+    expect(stop).not.toHaveBeenCalled();
+  });
+
+  it("terminalizes an ended music session once when its prepared handoff fails", async () => {
+    const source = new FixturePorticoDataSource();
+    const currentMedia = { ...coreMedia("track-1", "Signal One"), entityKind: "track" as const };
+    const nextMedia = { ...coreMedia("track-2", "Signal Two"), entityKind: "track" as const };
+    const current = playback({ media: currentMedia, queue: [currentMedia, nextMedia] });
+    vi.spyOn(source as PorticoDataSource, "startPlayback").mockResolvedValue(current);
+    vi.spyOn(source as PorticoDataSource, "playbackSessionQueue").mockResolvedValue(queue({ current: currentMedia, items: [currentMedia, nextMedia], total: 2 }));
+    vi.spyOn(source as PorticoDataSource, "prepareNextPlayback").mockResolvedValue({ preparedSessionId: "prepared-track-2", playback: playback({ sessionId: "prepared", media: nextMedia }), expiresAt: new Date(Date.now() + 60_000).toISOString() } as never);
+    vi.spyOn(source as PorticoDataSource, "handoffPlayback").mockRejectedValue(new Error("handoff failed"));
+    const touch = vi.spyOn(source as PorticoDataSource, "touchPlayback");
+    const stop = vi.spyOn(source as PorticoDataSource, "stopPlayback").mockResolvedValue(undefined);
+    renderPlayer(source, "track-1");
+    const media = (await screen.findByLabelText("Now playing Signal One")).querySelector("video") as HTMLVideoElement;
+    fireEvent.ended(media);
+    await waitFor(() => expect(stop).toHaveBeenCalledTimes(1));
+    const touches = touch.mock.calls.length;
+    fireEvent.timeUpdate(media);
+    fireEvent.ended(media);
+    expect(stop).toHaveBeenCalledTimes(1);
+    expect(touch).toHaveBeenCalledTimes(touches);
   });
 
   it("closes an established playback session with a direct interruption message after an unrecoverable media failure", async () => {
@@ -1057,7 +1322,7 @@ describe("production playback surface", () => {
     const source = new FixturePorticoDataSource();
     const liveMedia = {
       ...coreMedia("channel-1", "News 7"),
-      type: "live_channel",
+      entityKind: "live-channel",
     } as PlaybackResponse["media"];
     const live = playback({
       media: liveMedia,
@@ -1180,7 +1445,7 @@ describe("production playback surface", () => {
     const audioSource = new FixturePorticoDataSource();
     const musicMedia = {
       ...coreMedia("track-lyrics", "Night Drive"),
-      type: "track",
+      entityKind: "track",
       lyrics: [
         {
           id: "lyrics-1",
@@ -1375,17 +1640,17 @@ describe("production playback surface", () => {
     const source = new FixturePorticoDataSource();
     const initialPlayback = playback({
       qualities: [
-        { id: "original", label: "Original", description: "Original quality" },
+        { id: "original", label: "Original Quality", description: "Server source detail" },
         {
           id: "720p",
-          label: "720p",
-          description: "4 Mbps",
+          label: "720p · 4 Mbps",
+          description: "Server transcode detail",
           requiresTranscode: true,
         },
         {
           id: "480p",
-          label: "480p",
-          description: "1.5 Mbps",
+          label: "480p · 1.5 Mbps",
+          description: "Server low-bandwidth detail",
           requiresTranscode: true,
         },
       ],
@@ -1417,6 +1682,8 @@ describe("production playback surface", () => {
 
     quality.focus();
     fireEvent.keyDown(quality, { key: "ArrowDown" });
+    expect(within(settings).getByRole("option", { name: /Original QualityServer source detail/ })).toBeInTheDocument();
+    expect(within(settings).getByRole("option", { name: /720p · 4 MbpsServer transcode detail/ })).toBeInTheDocument();
     const original = within(settings).getByRole("option", {
       name: /Original/i,
     });
@@ -1651,7 +1918,21 @@ describe("production playback surface", () => {
     });
     fireEvent.click(english);
     await waitFor(() => expect(track.mode).toBe("hidden"));
-    expect(english).toHaveAttribute("aria-checked", "true");
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("dialog", { name: "Subtitles" }),
+      ).not.toBeInTheDocument(),
+    );
+    expect(
+      screen.queryByRole("dialog", { name: "Volume" }),
+    ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Subtitles" }));
+    expect(
+      within(await screen.findByRole("dialog", { name: "Subtitles" })).getByRole(
+        "radio",
+        { name: /English CC/ },
+      ),
+    ).toHaveAttribute("aria-checked", "true");
 
     Object.assign(track, {
       activeCues: {
@@ -1711,7 +1992,7 @@ describe("production playback surface", () => {
     const source = new FixturePorticoDataSource();
     const musicMedia = {
       ...coreMedia("track-plain-lyrics", "Quiet Hours"),
-      type: "track",
+      entityKind: "track",
       lyrics: [
         {
           id: "lyrics-broken",
@@ -1761,11 +2042,11 @@ describe("production playback surface", () => {
     ["audiobook", "book-1", "The Long Way Home", "mode-audiobook"],
   ] as const)(
     "renders %s playback with its audio-first artwork mode",
-    async (type, id, title, className) => {
+    async (entityKind, id, title, className) => {
       const source = new FixturePorticoDataSource();
       const media = {
         ...coreMedia(id, title),
-        type,
+        entityKind,
       } as PlaybackResponse["media"];
       vi.spyOn(source as PorticoDataSource, "startPlayback").mockResolvedValue(
         playback({ media, queue: [] }),

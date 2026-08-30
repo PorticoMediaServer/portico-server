@@ -38,7 +38,7 @@ export function serializeLibraryDisplayPreferences(value: LibraryDisplayPreferen
 
 export function libraryTabs(type?: string, includeSources = false): string[] {
   const normalized = (type ?? "").toLowerCase();
-  const tabs = normalized === "music" || normalized === "music-library"
+  const tabs = normalized === "music"
     ? ["Discover", "Artists", "Albums", "Tracks", "Categories", "Collections"]
     : ["Discover", "Library", "Categories", "Collections"];
   return includeSources ? [...tabs, "Sources"] : tabs;
@@ -56,16 +56,16 @@ export function typedFilterForTab(tab: string, filter: string, libraryType?: str
 
 function primaryLibraryItemType(libraryType?: string, tab = "Library"): string {
   const normalized = (libraryType ?? "").toLowerCase();
-  if (normalized === "music" || normalized === "music-library") {
+  if (normalized === "music") {
     if (tab === "Discover" || tab === "Albums") return "album";
     if (tab === "Artists") return "artist";
     if (tab === "Tracks") return "track";
     return "";
   }
   if (tab !== "Discover" && tab !== "Library") return "";
-  if (normalized === "movie" || normalized === "movies") return "movie";
-  if (normalized === "show" || normalized === "shows" || normalized === "anime") return normalized === "anime" ? "anime" : "show";
-  if (normalized === "audiobook" || normalized === "audiobooks") return "audiobook";
+  if (normalized === "movie") return "movie";
+  if (normalized === "show" || normalized === "anime") return normalized === "anime" ? "anime" : "show";
+  if (normalized === "audiobook") return "audiobook";
   return "";
 }
 
@@ -119,14 +119,14 @@ export function libraryFilterLabel(filter: string, categories: LibraryCategory[]
 export function libraryCountLabel(tab: string, libraryType: string, count: number): string {
   const plural = count === 1 ? "" : "s";
   const normalized = (libraryType ?? "").toLowerCase();
-  if (normalized === "movie" || normalized === "movies") return `movie${plural}`;
-  if (normalized === "show" || normalized === "shows" || normalized === "anime") return `show${plural}`;
-  if (normalized === "music" || normalized === "music-library") {
+  if (normalized === "movie") return `movie${plural}`;
+  if (normalized === "show" || normalized === "anime") return `show${plural}`;
+  if (normalized === "music") {
     if (tab === "Artists") return `artist${plural}`;
     if (tab === "Tracks") return `track${plural}`;
     return `album${plural}`;
   }
-  if (normalized === "audiobook" || normalized === "audiobooks") return `book${plural}`;
+  if (normalized === "audiobook") return `book${plural}`;
   return `visible item${plural}`;
 }
 

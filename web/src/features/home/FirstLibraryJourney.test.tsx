@@ -203,7 +203,7 @@ describe('first library journey', () => {
 
   it('drops a delayed continuation after its row descriptor changes', async () => {
     const source = new FixturePorticoDataSource(owner);
-    const media = (id: string, title: string): MediaItem => ({ id, title, subtitle: '', year: 0, type: 'movie', kind: 'movie', poster: '', backdrop: '', rating: '', length: '', genre: '', actions: [] });
+    const media = (id: string, title: string): MediaItem => ({ id, title, subtitle: '', year: 0, entityKind: 'movie', poster: '', backdrop: '', rating: '', length: '', genre: '', actions: [] });
     const oldRow: HomeRow = { id: 'continue', title: 'Old row', type: 'poster', endpoint: '/old', items: [media('old-first', 'Old first')], hasMore: true, nextCursor: 'old-cursor' };
     const newRow: HomeRow = { id: 'continue', title: 'New row', type: 'poster', endpoint: '/new', items: [media('new-first', 'New first')], hasMore: false, nextCursor: null };
     let initialCalls = 0;
@@ -230,7 +230,7 @@ describe('first library journey', () => {
 
   it('continues across a duplicate-only cursor page without duplicating cards', async () => {
     const source = new FixturePorticoDataSource(owner);
-    const item = (id: string, title: string): MediaItem => ({ id, title, subtitle: '', year: 0, type: 'movie', kind: 'movie', poster: '', backdrop: '', rating: '', length: '', genre: '', actions: [] });
+    const item = (id: string, title: string): MediaItem => ({ id, title, subtitle: '', year: 0, entityKind: 'movie', poster: '', backdrop: '', rating: '', length: '', genre: '', actions: [] });
     const first = item('first', 'First title');
     const row: HomeRow = { id: 'continuous', title: 'Continuous row', type: 'poster', endpoint: '/continuous', items: [first], hasMore: true, nextCursor: 'cursor-1' };
     const cursors: Array<string | undefined> = [];

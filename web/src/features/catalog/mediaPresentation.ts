@@ -25,23 +25,6 @@ export type MediaPresentationDescriptor = {
   person: boolean;
 };
 
-const aliases: Record<string, CanonicalMediaKind> = {
-  audiobook: 'audiobook',
-  book: 'audiobook',
-  series: 'audiobook-series',
-  'audiobook-series': 'audiobook-series',
-  audiobook_series: 'audiobook-series',
-  'audiobook-chapter': 'chapter',
-  audiobook_chapter: 'chapter',
-  channel: 'live-channel',
-  live_channel: 'live-channel',
-  program: 'live-program',
-  live_program: 'live-program',
-  live_recording: 'recording',
-  'live-recording': 'recording',
-  special: 'episode',
-};
-
 const descriptors: Record<CanonicalMediaKind, MediaPresentationDescriptor> = {
   movie: descriptor('movie', 'movies', 'Movie', 'Movies', 'poster', 'watchlist', 'watched', true, false),
   show: descriptor('show', 'shows', 'Show', 'Shows', 'poster', 'watchlist', 'watched', false, true),
@@ -78,13 +61,11 @@ function descriptor(
   return { kind, group, label, pluralLabel, artworkShape, savedVerb, completionNoun, playable, container, person };
 }
 
-export function canonicalMediaKind(item: Pick<MediaItem, 'entityKind' | 'kind'>): CanonicalMediaKind {
-  const raw = String(item.entityKind || item.kind || '').trim().toLocaleLowerCase();
-  const normalized = aliases[raw] ?? raw.replaceAll('_', '-');
-  return Object.hasOwn(descriptors, normalized) ? normalized as CanonicalMediaKind : 'unknown';
+export function canonicalMediaKind(item: Pick<MediaItem, 'entityKind'>): CanonicalMediaKind {
+  return Object.hasOwn(descriptors, item.entityKind) ? item.entityKind as CanonicalMediaKind : 'unknown';
 }
 
-export function mediaPresentation(item: Pick<MediaItem, 'entityKind' | 'kind'>): MediaPresentationDescriptor {
+export function mediaPresentation(item: Pick<MediaItem, 'entityKind'>): MediaPresentationDescriptor {
   return descriptors[canonicalMediaKind(item)];
 }
 
@@ -100,7 +81,7 @@ export function searchGroupMatchesSelection(group: SearchGroupCapability, select
   return selectedKinds.some((kind) => members.has(kind));
 }
 
-export function mediaCountLabel(item: Pick<MediaItem, 'entityKind' | 'kind'>, count: number) {
+export function mediaCountLabel(item: Pick<MediaItem, 'entityKind'>, count: number) {
   const presentation = mediaPresentation(item);
   return `${count} ${count === 1 ? presentation.label : presentation.pluralLabel}`;
 }

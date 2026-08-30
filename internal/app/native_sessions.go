@@ -377,7 +377,7 @@ func (s *Server) authenticateLocalNativeUser(ctx context.Context, login, passwor
 		WHERE lower(username) = ? OR lower(email) = ?
 		ORDER BY CASE WHEN lower(username) = ? THEN 0 ELSE 1 END
 		LIMIT 1`, login, login, login).Scan(&userID, &passwordHash, &disabledAt); err != nil {
-		_, _, kdfErr := verifyAccountPassword(ctx, kdfNativeLoginCompare, "", password)
+		_, kdfErr := verifyAccountPassword(ctx, kdfNativeLoginCompare, "", password)
 		if kdfErr != nil {
 			return User{}, kdfErr
 		}
@@ -386,13 +386,13 @@ func (s *Server) authenticateLocalNativeUser(ctx context.Context, login, passwor
 	if disabledAt != "" {
 		// Run the same expensive password verification as an active account, but
 		// never upgrade a disabled account's hash or reveal the account state.
-		_, _, kdfErr := verifyAccountPassword(ctx, kdfNativeLoginCompare, passwordHash, password)
+		_, kdfErr := verifyAccountPassword(ctx, kdfNativeLoginCompare, passwordHash, password)
 		if kdfErr != nil {
 			return User{}, kdfErr
 		}
 		return User{}, errors.New("invalid credentials")
 	}
-	valid, verifiedHash, err := s.verifyAndUpgradeLocalPasswordSnapshot(ctx, kdfNativeLoginCompare, userID, passwordHash, password)
+	valid, verifiedHash, err := s.verifyCanonicalPasswordSnapshot(ctx, kdfNativeLoginCompare, passwordHash, password)
 	if err != nil {
 		return User{}, err
 	}
@@ -906,7 +906,10 @@ func (s *Server) nativeCredentialsResponse(ctx context.Context, user User, devic
 	}
 	settings, _ := s.loadSettingsContext(ctx)
 	serverID, _ := s.publicServerIDForAuthProviderContext(ctx, settings, record.AuthProvider)
-	publicAccountID, publicProfileID := s.publicViewerIdentityForUserContext(ctx, user, record.AuthProvider)
+	publicAccountID, publicProfileID, err := s.publicViewerIdentityForUserContext(ctx, user, record.AuthProvider)
+	if err != nil {
+		return NativeSessionCredentials{}, err
+	}
 	publicUser := user
 	publicUser.ProfileID = publicProfileID
 	return NativeSessionCredentials{

@@ -11,7 +11,7 @@ describe('person detail', () => {
     class PersonSource extends FixturePorticoDataSource {
       override async person(id: string, signal: AbortSignal) {
         if (signal.aborted) throw new DOMException('Request aborted', 'AbortError');
-        const credit: MediaItem = { id: 'arrival', title: 'Arrival', subtitle: 'Movie', year: 2016, type: 'movie', kind: 'movie', poster: '/arrival.jpg', backdrop: '', rating: 'PG-13', length: '1h 56m', genre: 'Science fiction', actions: [] };
+        const credit: MediaItem = { id: 'arrival', title: 'Arrival', subtitle: 'Movie', year: 2016, entityKind: 'movie', poster: '/arrival.jpg', backdrop: '', rating: 'PG-13', length: '1h 56m', genre: 'Science fiction', actions: [] };
         return { id, name: 'Amy Adams', imageUrl: '/amy.jpg', knownFor: 'Arrival', credits: [credit], hasMore: false };
       }
     }
@@ -25,7 +25,7 @@ describe('person detail', () => {
   it('does not let an old person continuation overwrite a newer person route', async () => {
     let resolveOldContinuation: ((value: Awaited<ReturnType<FixturePorticoDataSource['person']>>) => void) | undefined;
     const oldContinuation = new Promise<Awaited<ReturnType<FixturePorticoDataSource['person']>>>((resolve) => { resolveOldContinuation = resolve; });
-    const credit = (id: string, title: string): MediaItem => ({ id, title, subtitle: 'Movie', year: 2026, type: 'movie', kind: 'movie', poster: '', backdrop: '', rating: '', length: '', genre: '', actions: [] });
+    const credit = (id: string, title: string): MediaItem => ({ id, title, subtitle: 'Movie', year: 2026, entityKind: 'movie', poster: '', backdrop: '', rating: '', length: '', genre: '', actions: [] });
     class PersonSource extends FixturePorticoDataSource {
       override async person(id: string, signal: AbortSignal, cursor?: string) {
         if (id === 'person-old' && cursor) return oldContinuation;

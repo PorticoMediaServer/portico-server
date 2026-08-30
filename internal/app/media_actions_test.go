@@ -68,7 +68,7 @@ func TestFullAndLeanMediaHydrationShareCanonicalActions(t *testing.T) {
 	if err := db.QueryRow(`SELECT id, library_id FROM media_items WHERE type = 'movie' ORDER BY id LIMIT 1`).Scan(&mediaID, &libraryID); err != nil {
 		t.Fatalf("load movie fixture: %v", err)
 	}
-	user := User{ID: "usr_action_projection", Role: "user", Permissions: map[string]bool{
+	user := User{ID: "usr_action_projection", AccountID: "usr_action_projection", ProfileID: "usr_action_projection", ProfileIsPrimary: true, AllowFeedback: true, Role: "user", Permissions: map[string]bool{
 		"playMedia": true, "editMetadata": true,
 	}}
 	permissionsJSON, _ := json.Marshal(user.Permissions)

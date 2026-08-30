@@ -439,6 +439,7 @@ func videoFilters(req Request, v mediafacts.Video) (string, error) {
 		return req.Hardware.Filter, nil
 	}
 	var f []string
+	videoAction := action(req.Plan, "video")
 	field := token(v.FieldOrder)
 	if field != "" && field != "progressive" {
 		f = append(f, "bwdif=mode=send_frame:parity=auto:deint=interlaced")
@@ -535,7 +536,23 @@ func videoFilters(req Request, v mediafacts.Video) (string, error) {
 		}
 		f = append(f, filter)
 	}
+	// The canonical H.264 delivery tuple is 8-bit 4:2:0. Source pixel format is
+	// not an output contract: without this explicit conversion libx264 retains
+	// a Main10 source as High10, which browsers truthfully reject.
+	if token(videoAction.OutputCodec) == "h264" && (v.BitDepth > 8 || token(v.PixelFormat) != "yuv420p") && !containsVideoFormatFilter(f, "yuv420p") {
+		f = append(f, "format=yuv420p")
+	}
 	return strings.Join(f, ","), nil
+}
+
+func containsVideoFormatFilter(filters []string, pixelFormat string) bool {
+	want := "format=" + token(pixelFormat)
+	for _, filter := range filters {
+		if token(filter) == want {
+			return true
+		}
+	}
+	return false
 }
 
 func toneMapAlgorithm(color *playbackplan.ColorDecision) string {

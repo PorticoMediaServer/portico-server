@@ -403,7 +403,6 @@ func TestSubordinateProfileCannotReachAccountOrAdministrativeSurfaces(t *testing
 		handler authedHandler
 	}{
 		{path: "/api/account/profile", handler: server.handleAccountProfile},
-		{path: "/api/account/preferences", handler: server.handleAccountPreferences},
 	} {
 		request := httptest.NewRequest(http.MethodGet, "http://portico.test"+route.path, nil)
 		response := httptest.NewRecorder()

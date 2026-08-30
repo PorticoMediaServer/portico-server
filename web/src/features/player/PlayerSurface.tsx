@@ -1,37 +1,6 @@
-import {
-  activeTrickplaySet,
-  ApiError,
-  burnInSubtitleIDFor,
-  defaultPlaybackQuality,
-  effectivePlaybackVolume,
-  playbackDecisionLabel,
-  playbackSegmentAutomationDecision,
-  playbackSelectionRequiresHLS,
-  playbackResourceUrl,
-  playbackSourceFor,
-  playerContentMode,
-  productMessage,
-  createPlaybackAutomationState,
-  reducePlaybackAutomation,
-  reduceUpNextCountdown,
-  segmentLabel,
-  supportsTrickplayPreview,
-  watchWithFriendsTargetPosition,
-  type MediaItem,
-  type MediaTrickplaySet,
-  type PlaybackCommand,
-  type PlaybackHandoffRequest,
-  type PlaybackPreparedResponse,
-  type PlaybackProgressInput,
-  type PlaybackRenegotiationRequest,
-  type PlaybackRepeatMode,
-  type PlaybackResponse,
-  type PlaybackSessionQueueRequest,
-  type PlaybackSessionQueueResponse,
-  type UpNextCountdownState,
-} from '@porticomediaserver/client-core';
+import { activeTrickplaySet, ApiError, burnInSubtitleIDFor, defaultPlaybackQuality, effectivePlaybackVolume, playbackDecisionLabel, playbackSegmentAutomationDecision, playbackSelectionRequiresHLS, playbackResourceUrl, playbackSourceFor, playerContentMode, productMessage, createPlaybackAutomationState, reducePlaybackAutomation, reduceUpNextCountdown, segmentLabel, supportsTrickplayPreview, watchWithFriendsTargetPosition, type MediaItem, type MediaTrickplaySet, type PlaybackCommand, type PlaybackHandoffRequest, type PlaybackPreparedResponse, type PlaybackPrepareNextRequest, type PlaybackProgressInput, type PlaybackRenegotiationRequest, type PlaybackRepeatMode, type PlaybackResponse, type PlaybackSessionQueueRequest, type PlaybackSessionQueueResponse, type UpNextCountdownState, } from '@porticomediaserver/client-core';
 import type HlsInstance from 'hls.js';
-import { Check, ChevronDown, GripVertical } from '#portico-icons';
+import { ActionConfirmIcon, NavigationExpandIcon, ActionCustomizeIcon } from '#portico-icons';
 import {
   createContext,
   type CSSProperties,
@@ -55,10 +24,12 @@ import { AnchoredOverlay, ModalOverlay } from '../../components/overlay/OverlayP
 import { ProductLanguageIcon } from '../../components/product/ProductLanguageIcon';
 import { useAuthSession, usePorticoDataSource } from '../../data/DataProvider';
 import type { PlaybackStartOptions } from '../../data/models';
+import { secureRandomUUID } from '../../runtime/secureRandomUUID';
 import './player.css';
 import { selectLyricDocument } from './lyrics';
 import { LyricsPanel } from './LyricsPanel';
-import { MusicTransitionBridge } from './MusicTransitionBridge';
+import { musicTransitionRequest, MusicTransitionBridge, nextCandidate } from './MusicTransitionBridge';
+import { playbackPreparationOwner } from './PlaybackPreparationOwner';
 import { accountRepeatMode, normalizeMusicPlaybackPreferences } from './musicPlayback';
 import { playbackOptionsFromNavigationState } from './watchNavigation';
 import { playbackCommandClientFrom, subscribeToPlaybackCommands } from './playbackCommandRuntime';
@@ -71,7 +42,7 @@ import { FeedbackDialog } from '../feedback/FeedbackDialog';
 import { useOptionalRuntime } from '../../runtime/RuntimeContext';
 import { mediaPresentation } from '../catalog/mediaPresentation';
 
-type PlaybackStatus = 'idle' | 'preparing' | 'ready' | 'buffering' | 'recovering' | 'failed';
+type PlaybackStatus = 'idle' | 'preparing' | 'ready' | 'buffering' | 'recovering' | 'completed' | 'failed';
 type PlaybackFailureKind = 'route' | 'source' | 'transcode' | 'decode' | 'unknown';
 type PlaybackSessionOrigin = 'start' | 'restore' | 'handoff';
 
@@ -90,6 +61,22 @@ const PLAYER_VOLUME_STORAGE_KEY = 'portico.player.volume.v1';
 const PLAYBACK_SPEEDS = [0.75, 1, 1.25, 1.5, 2] as const;
 
 type StoredPlayerVolume = { volume: number; muted: boolean };
+
+export function stablePreparedHandoffRequestID(
+  cache: Map<string, string>,
+  sourceSessionID: string,
+  preparedSessionID: string,
+  suppliedRequestID?: string,
+): string {
+  const key = `${sourceSessionID}:${preparedSessionID}`;
+  const requestID = suppliedRequestID?.trim() || cache.get(key) || `web-${secureRandomUUID()}`;
+  cache.set(key, requestID);
+  return requestID;
+}
+
+export function normalizedPlaybackHandoffProgress(value: number | undefined): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? Math.max(0, Math.floor(value)) : undefined;
+}
 
 export function loadStoredPlayerVolume(storage?: Pick<Storage, 'getItem'>): StoredPlayerVolume {
   try {
@@ -115,7 +102,7 @@ type PostPlayState =
   | { phase: 'countdown'; next: MediaItem; preparedSessionId: string; expiresAt: string }
   | { phase: 'passout'; next: MediaItem; preparedSessionId?: string; expiresAt?: string }
   | { phase: 'cancelled'; next: MediaItem; preparedSessionId?: string; expiresAt?: string }
-  | { phase: 'failed'; next: MediaItem; message: string }
+  | { phase: 'failed'; next: MediaItem; message: string; preparationRequest: PlaybackPrepareNextRequest }
   | { phase: 'exhausted' };
 
 type PlaybackContextValue = {
@@ -138,12 +125,15 @@ type PlaybackContextValue = {
   startDVR: (recordingId: string) => Promise<PlaybackResponse | undefined>;
   retry: () => Promise<void>;
   close: () => Promise<void>;
+  complete: (durationSeconds: number) => Promise<void>;
   touch: (event: PlaybackProgressInput, keepalive?: boolean) => Promise<void>;
   renewGrant: () => Promise<void>;
   renegotiate: (request: Omit<PlaybackRenegotiationRequest, 'requestId' | 'expectedRevision' | 'clientProfile'>) => Promise<PlaybackResponse | undefined>;
   recoverRoute: () => Promise<void>;
   adapterRecoveryGeneration: number;
-  next: (automatic?: boolean) => Promise<void>;
+  completedSessionId?: string;
+  next: (automatic?: boolean, preparationRequest?: PlaybackPrepareNextRequest) => Promise<boolean>;
+  prepareNext: (candidate: MediaItem, request?: PlaybackPrepareNextRequest, force?: boolean) => Promise<PlaybackPreparedResponse>;
   handoff: (request: PlaybackHandoffRequest) => Promise<PlaybackResponse | undefined>;
   previous: () => Promise<void>;
   appendQueue: (mediaIds: string[]) => Promise<void>;
@@ -153,7 +143,7 @@ type PlaybackContextValue = {
   shuffleQueue: () => Promise<void>;
   setRepeatMode: (mode: PlaybackRepeatMode) => Promise<void>;
   reloadQueue: () => Promise<void>;
-  beginPostPlay: (candidate?: MediaItem) => Promise<void>;
+  beginPostPlay: (candidate?: MediaItem, force?: boolean, preparationRequest?: PlaybackPrepareNextRequest) => Promise<void>;
   cancelPostPlay: () => void;
   replay: () => Promise<void>;
   markReady: () => void;
@@ -215,6 +205,7 @@ export function PlaybackSessionProvider({ children }: { children: ReactNode }) {
   const [postPlay, setPostPlay] = useState<PostPlayState>({ phase: 'inactive' });
   const [sessionOrigin, setSessionOrigin] = useState<PlaybackSessionOrigin>('restore');
   const [adapterRecoveryGeneration, setAdapterRecoveryGeneration] = useState(0);
+  const [completedSessionId, setCompletedSessionId] = useState<string>();
   const playbackRef = useRef<PlaybackResponse | undefined>(undefined);
   const queueRef = useRef<PlaybackSessionQueueResponse | undefined>(undefined);
   const queueMutationRef = useRef(false);
@@ -222,11 +213,13 @@ export function PlaybackSessionProvider({ children }: { children: ReactNode }) {
   const queueControllerRef = useRef<AbortController | undefined>(undefined);
   const queueRetryTimerRef = useRef<number | undefined>(undefined);
   const preparedNextRef = useRef<PlaybackPreparedResponse | undefined>(undefined);
-  const postPlayControllerRef = useRef<AbortController | undefined>(undefined);
   const operationRef = useRef(0);
   const controllerRef = useRef<AbortController | undefined>(undefined);
   const renegotiationControllerRef = useRef<AbortController | undefined>(undefined);
   const grantRenewalRef = useRef<{ sessionId: string; promise: Promise<void> } | undefined>(undefined);
+  const completedSessionRef = useRef('');
+  const terminalOwnerRef = useRef<{ sessionId: string; promise: Promise<void> } | undefined>(undefined);
+  const preparedHandoffRequestIDsRef = useRef(new Map<string, string>());
   const startingMediaRef = useRef('');
   const retryRef = useRef<({ kind: 'media'; mediaId: string; options: PlaybackStartOptions } | { kind: 'live'; channelId: string } | { kind: 'library-channel'; channelId: string } | { kind: 'dvr'; recordingId: string }) | undefined>(undefined);
   const restoreAttemptedRef = useRef(false);
@@ -303,7 +296,7 @@ export function PlaybackSessionProvider({ children }: { children: ReactNode }) {
     renegotiationControllerRef.current?.abort();
     queueControllerRef.current?.abort();
     if (queueRetryTimerRef.current !== undefined) window.clearTimeout(queueRetryTimerRef.current);
-    postPlayControllerRef.current?.abort();
+    playbackPreparationOwner.preserveSession(value.sessionId);
     const retryTarget = retryRef.current;
     const retryTargetId = retryTarget?.kind === 'media' ? retryTarget.mediaId : retryTarget?.kind === 'live' || retryTarget?.kind === 'library-channel' ? retryTarget.channelId : retryTarget?.recordingId;
     if (retryTarget?.kind === 'media' && retryTarget.mediaId === value.media.id) {
@@ -329,6 +322,9 @@ export function PlaybackSessionProvider({ children }: { children: ReactNode }) {
         };
     }
     setPlayback(value);
+    completedSessionRef.current = '';
+    terminalOwnerRef.current = undefined;
+    setCompletedSessionId(undefined);
     setSessionOrigin(origin);
     setStatus('ready');
     setError(undefined);
@@ -366,7 +362,7 @@ export function PlaybackSessionProvider({ children }: { children: ReactNode }) {
     operationRef.current = operation;
     controllerRef.current?.abort();
     renegotiationControllerRef.current?.abort();
-    postPlayControllerRef.current?.abort();
+    playbackPreparationOwner.cancel();
     const controller = new AbortController();
     controllerRef.current = controller;
     startingMediaRef.current = mediaId;
@@ -413,7 +409,7 @@ export function PlaybackSessionProvider({ children }: { children: ReactNode }) {
     operationRef.current = operation;
     controllerRef.current?.abort();
     renegotiationControllerRef.current?.abort();
-    postPlayControllerRef.current?.abort();
+    playbackPreparationOwner.cancel();
     const controller = new AbortController();
     controllerRef.current = controller;
     startingMediaRef.current = channelId;
@@ -448,7 +444,7 @@ export function PlaybackSessionProvider({ children }: { children: ReactNode }) {
     operationRef.current = operation;
     controllerRef.current?.abort();
     renegotiationControllerRef.current?.abort();
-    postPlayControllerRef.current?.abort();
+    playbackPreparationOwner.cancel();
     const controller = new AbortController();
     controllerRef.current = controller;
     startingMediaRef.current = recordingId;
@@ -483,7 +479,7 @@ export function PlaybackSessionProvider({ children }: { children: ReactNode }) {
     operationRef.current = operation;
     controllerRef.current?.abort();
     renegotiationControllerRef.current?.abort();
-    postPlayControllerRef.current?.abort();
+    playbackPreparationOwner.cancel();
     const controller = new AbortController();
     controllerRef.current = controller;
     startingMediaRef.current = channelId;
@@ -586,7 +582,7 @@ export function PlaybackSessionProvider({ children }: { children: ReactNode }) {
 
   const touch = useCallback(async (event: PlaybackProgressInput, keepalive = false) => {
     const current = playbackRef.current;
-    if (!current) return;
+    if (!current || completedSessionRef.current === current.sessionId) return;
     try {
       await source.touchPlayback(current.sessionId, event, undefined, keepalive);
     } catch {
@@ -594,23 +590,70 @@ export function PlaybackSessionProvider({ children }: { children: ReactNode }) {
     }
   }, [source]);
 
+  const prepareNextOnce = useCallback((current: PlaybackResponse, candidateId = '', request: PlaybackPrepareNextRequest = {}, force = false) => {
+    const canonicalRequest = { ...request, intent: request.intent ?? deliveryIntent() };
+    // The Server grants exactly one prepared continuation for a current
+    // session/candidate pair.  UI projections can rebuild an equivalent
+    // request while progress and runtime state are being rendered, so request
+    // object identity (or serialization) must not create another owner.  A
+    // reviewed Retry is the only path allowed to replace this result.
+    const key = JSON.stringify({ sessionId: current.sessionId, candidateId });
+    return playbackPreparationOwner.prepare(
+      key,
+      (signal) => source.prepareNextPlayback(current.sessionId, signal, canonicalRequest),
+      force,
+    );
+  }, [deliveryIntent, source]);
+
+  const prepareNext = useCallback((candidate: MediaItem, request: PlaybackPrepareNextRequest = {}, force = false) => {
+    const current = playbackRef.current;
+    if (!current || current.isLive) return Promise.reject(new Error('No finite playback session is available to prepare.'));
+    return prepareNextOnce(current, candidate.id, request, force);
+  }, [prepareNextOnce]);
+
+  const terminalize = useCallback((disposition: 'stopped' | 'completed', positionSeconds: number, durationSeconds: number) => {
+    const current = playbackRef.current;
+    if (!current) return Promise.resolve();
+    if (terminalOwnerRef.current?.sessionId === current.sessionId) return terminalOwnerRef.current.promise;
+    completedSessionRef.current = current.sessionId;
+    if (disposition === 'completed') {
+      setCompletedSessionId(current.sessionId);
+      setStatus('completed');
+    }
+    const controller = new AbortController();
+    const promise = source.stopPlayback(current.sessionId, {
+      disposition,
+      positionSeconds,
+      durationSeconds,
+    }, controller.signal, true).catch(() => {
+      // The terminal owner remains fenced after an uncertain result so UI
+      // cleanup cannot re-enter with stale progress or a second mutation.
+    });
+    terminalOwnerRef.current = { sessionId: current.sessionId, promise };
+    return promise;
+  }, [source]);
+
   const close = useCallback(async () => {
     operationRef.current += 1;
     controllerRef.current?.abort();
     renegotiationControllerRef.current?.abort();
-    postPlayControllerRef.current?.abort();
+    playbackPreparationOwner.cancel();
     queueControllerRef.current?.abort();
     if (queueRetryTimerRef.current !== undefined) window.clearTimeout(queueRetryTimerRef.current);
     const current = playbackRef.current;
     const media = mediaRef.current;
-    if (current) {
-      await touch({
-        state: media?.paused ? 'paused' : 'playing',
-        progressSeconds: media?.currentTime ?? 0,
-        durationSeconds: Number.isFinite(media?.duration) ? media?.duration : undefined,
-      }, true);
-      try { await source.stopPlayback(current.sessionId, undefined, true); } catch { /* keepalive teardown is best effort */ }
-    }
+    const positionSeconds = Math.max(0, Number.isFinite(media?.currentTime) ? media!.currentTime : 0);
+    const durationSeconds = current?.timeline.type === 'live'
+      ? 0
+      : Math.max(
+          1,
+          Number.isFinite(media?.duration) && media!.duration > 0
+            ? media!.duration
+            : current?.timeline.durationSeconds ?? positionSeconds,
+        );
+    const stop = current
+      ? terminalize('stopped', positionSeconds, durationSeconds)
+      : Promise.resolve();
     media?.pause();
     if (media) {
       media.removeAttribute('src');
@@ -629,7 +672,16 @@ export function PlaybackSessionProvider({ children }: { children: ReactNode }) {
     preparedNextRef.current = undefined;
     setStatus('idle');
     startingMediaRef.current = '';
-  }, [markQueueNeedsRefresh, replaceQueue, setPlayback, source, touch]);
+    void stop.catch(() => {
+      // The keepalive stop continues after the player has been dismissed.
+    });
+  }, [markQueueNeedsRefresh, replaceQueue, setPlayback, terminalize]);
+
+  const complete = useCallback(async (durationSeconds: number) => {
+    const current = playbackRef.current;
+    if (!current) return;
+    await terminalize('completed', durationSeconds, durationSeconds);
+  }, [terminalize]);
 
   useEffect(() => () => {
     queueControllerRef.current?.abort();
@@ -658,7 +710,7 @@ export function PlaybackSessionProvider({ children }: { children: ReactNode }) {
       if (controller.signal.aborted || playbackRef.current?.sessionId !== current.sessionId) return;
       const value = await source.renegotiatePlayback(current.sessionId, {
         ...request,
-        requestId: `web-${globalThis.crypto.randomUUID()}`,
+        requestId: `web-${secureRandomUUID()}`,
         expectedRevision: current.playbackRevision,
       }, controller.signal);
       if (controller.signal.aborted || playbackRef.current?.sessionId !== current.sessionId) return;
@@ -697,13 +749,26 @@ export function PlaybackSessionProvider({ children }: { children: ReactNode }) {
     setFailure(undefined);
     setError(undefined);
     try {
-      const value = await source.handoffPlayback(current.sessionId, { ...request, intent: request.intent ?? deliveryIntent() }, controller.signal);
+      const preparedRequestID = request.preparedSessionId
+        ? stablePreparedHandoffRequestID(preparedHandoffRequestIDsRef.current, current.sessionId, request.preparedSessionId, request.requestId)
+        : request.requestId;
+      console.info('[portico-playback-handoff]', JSON.stringify({ phase: 'request', sourceSessionId: current.sessionId, preparedSessionId: request.preparedSessionId ?? '', requestId: preparedRequestID ?? '' }));
+      const value = await source.handoffPlayback(current.sessionId, {
+        ...request,
+        ...(normalizedPlaybackHandoffProgress(request.progressSeconds) !== undefined
+          ? { progressSeconds: normalizedPlaybackHandoffProgress(request.progressSeconds) }
+          : { progressSeconds: undefined }),
+        ...(preparedRequestID ? { requestId: preparedRequestID } : {}),
+        intent: request.intent ?? deliveryIntent(),
+      }, controller.signal);
       if (operationRef.current === operation && !controller.signal.aborted) {
+        console.info('[portico-playback-handoff]', JSON.stringify({ phase: 'accepted', sourceSessionId: current.sessionId, preparedSessionId: request.preparedSessionId ?? '', requestId: preparedRequestID ?? '', nextSessionId: value.sessionId }));
         acceptPlayback(value, 'handoff');
         return value;
       }
     } catch (reason) {
       if (controller.signal.aborted) return;
+      console.warn('[portico-playback-handoff]', JSON.stringify({ phase: 'rejected', sourceSessionId: current.sessionId, preparedSessionId: request.preparedSessionId ?? '', failure: reason instanceof Error ? reason.name : 'unknown', status: reason instanceof ApiError ? reason.status : 0, code: reason instanceof ApiError ? reason.code : '' }));
       const nextFailure = playbackFailure(reason);
       if (nextFailure) {
         setFailure(nextFailure);
@@ -713,10 +778,10 @@ export function PlaybackSessionProvider({ children }: { children: ReactNode }) {
     }
   }, [acceptPlayback, deliveryIntent, source]);
 
-  const next = useCallback(async (automatic = false) => {
+  const next = useCallback(async (automatic = false, preparationRequest: PlaybackPrepareNextRequest = {}) => {
     const current = playbackRef.current;
-    if (!current || current.isLive) return;
-    const candidate = queue?.items[0] ?? current.queue[0];
+    if (!current || current.isLive) return false;
+    const candidate = nextCandidate(current, queue);
     const cached = preparedNextRef.current;
     const cachedExpiry = cached ? Date.parse(cached.expiresAt) : 0;
     const cachedIsUsable = Boolean(cached && cachedExpiry > Date.now() + 2_000 && (!candidate || cached.playback.media.id === candidate.id));
@@ -728,47 +793,43 @@ export function PlaybackSessionProvider({ children }: { children: ReactNode }) {
     if (automation) automationStateRef.current = automation.state;
     if (automation?.effect === 'confirm-still-watching') {
       if (candidate) setPostPlay({ phase: 'passout', next: candidate, preparedSessionId: cached?.preparedSessionId, expiresAt: cached?.expiresAt });
-      return;
+      return false;
     }
     if (!automatic) markMeaningfulInteraction();
     setPostPlay({ phase: 'inactive' });
-    postPlayControllerRef.current?.abort();
     if (cachedIsUsable && cached) {
-      await handoff({ preparedSessionId: cached.preparedSessionId });
-      return;
+      return Boolean(await handoff({ preparedSessionId: cached.preparedSessionId }));
     }
-    const controller = new AbortController();
     setStatus('preparing');
     setFailure(undefined);
     setError(undefined);
     try {
-      const prepared = await source.prepareNextPlayback(current.sessionId, controller.signal, { intent: deliveryIntent() });
-      if (playbackRef.current?.sessionId !== current.sessionId) return;
-      await handoff({ preparedSessionId: prepared.preparedSessionId });
+      const prepared = await prepareNextOnce(current, candidate?.id, preparationRequest);
+      if (playbackRef.current?.sessionId !== current.sessionId) return false;
+      return Boolean(await handoff({ preparedSessionId: prepared.preparedSessionId }));
     } catch (reason) {
       const nextFailure = playbackFailure(reason);
-      if (!nextFailure) return;
-      if (candidate) setPostPlay({ phase: 'failed', next: candidate, message: nextFailure.message });
+      if (!nextFailure) return false;
+      if (candidate) setPostPlay({ phase: 'failed', next: candidate, message: nextFailure.message, preparationRequest });
       else setPostPlay({ phase: 'exhausted' });
       setStatus('ready');
+      return false;
     }
-  }, [deliveryIntent, handoff, markMeaningfulInteraction, preferences.passoutAfterEpisodes, preferences.passoutProtection, queue?.items, source]);
+  }, [handoff, markMeaningfulInteraction, preferences.passoutAfterEpisodes, preferences.passoutProtection, prepareNextOnce, queue?.items]);
 
-  const beginPostPlay = useCallback(async (candidate?: MediaItem) => {
+  const beginPostPlay = useCallback(async (candidate?: MediaItem, force = false, preparationRequest: PlaybackPrepareNextRequest = {}) => {
     const current = playbackRef.current;
     if (!current || current.isLive) return;
-    postPlayControllerRef.current?.abort();
     if (!candidate) {
       preparedNextRef.current = undefined;
       setPostPlay({ phase: 'exhausted' });
       return;
     }
-    const controller = new AbortController();
-    postPlayControllerRef.current = controller;
     setPostPlay({ phase: 'preparing', next: candidate });
+    const preparation = prepareNextOnce(current, candidate.id, preparationRequest, force);
     try {
-      const prepared = await source.prepareNextPlayback(current.sessionId, controller.signal, { intent: deliveryIntent() });
-      if (controller.signal.aborted || playbackRef.current?.sessionId !== current.sessionId) return;
+      const prepared = await preparation;
+      if (playbackRef.current?.sessionId !== current.sessionId) return;
       preparedNextRef.current = prepared;
       setPostPlay({
         phase: 'countdown',
@@ -777,18 +838,19 @@ export function PlaybackSessionProvider({ children }: { children: ReactNode }) {
         expiresAt: prepared.expiresAt,
       });
     } catch (reason) {
-      if (controller.signal.aborted) return;
+      if (!playbackPreparationOwner.owns(preparation) || playbackRef.current?.sessionId !== current.sessionId) return;
       const nextFailure = playbackFailure(reason);
       setPostPlay({
         phase: 'failed',
         next: candidate,
         message: nextFailure?.message ?? productMessage('playback.up-next-failed').body ?? '',
+        preparationRequest,
       });
     }
-  }, [deliveryIntent, source]);
+  }, [prepareNextOnce]);
 
   const cancelPostPlay = useCallback(() => {
-    postPlayControllerRef.current?.abort();
+    playbackPreparationOwner.cancel();
     setPostPlay((current) => {
       if (current.phase === 'countdown' || current.phase === 'passout') return {
         phase: 'cancelled',
@@ -808,7 +870,7 @@ export function PlaybackSessionProvider({ children }: { children: ReactNode }) {
     operationRef.current = operation;
     controllerRef.current?.abort();
     renegotiationControllerRef.current?.abort();
-    postPlayControllerRef.current?.abort();
+    playbackPreparationOwner.cancel();
     const controller = new AbortController();
     controllerRef.current = controller;
     preparedNextRef.current = undefined;
@@ -830,7 +892,14 @@ export function PlaybackSessionProvider({ children }: { children: ReactNode }) {
       return;
     } catch (handoffReason) {
       if (controller.signal.aborted || operationRef.current !== operation) return;
-      try { await source.stopPlayback(current.sessionId, controller.signal); } catch { /* an ended session may already be closed */ }
+      try {
+        const positionSeconds = 0;
+        await source.stopPlayback(current.sessionId, {
+          disposition: 'stopped',
+          positionSeconds,
+          durationSeconds: Math.max(1, current.timeline.durationSeconds ?? positionSeconds),
+        }, controller.signal);
+      } catch { /* an ended session may already be closed */ }
       setPlayback(undefined);
       replaceQueue(undefined);
       try {
@@ -1084,9 +1153,9 @@ export function PlaybackSessionProvider({ children }: { children: ReactNode }) {
   const repeatMode = queue?.repeatMode ?? playback?.repeatMode ?? 'off';
 
   const value = useMemo<PlaybackContextValue>(() => ({
-    status, playback, queue, queueError, queueBusy, queueNeedsRefresh, repeatMode, sessionOrigin, error, failure, interruption, postPlay, mediaRef, start, startLive, startLibraryChannel, startDVR, retry, close, touch, renewGrant, renegotiate, recoverRoute, adapterRecoveryGeneration, next, handoff, previous,
-    appendQueue, playNext, removeQueueItem, moveQueueItem, shuffleQueue, setRepeatMode, reloadQueue, beginPostPlay, cancelPostPlay, replay, markReady, markBuffering, markRecovering, fail, interrupt, dismissInterruption, applyExternalCommand, markMeaningfulInteraction,
-  }), [adapterRecoveryGeneration, appendQueue, applyExternalCommand, beginPostPlay, cancelPostPlay, close, dismissInterruption, error, fail, failure, handoff, interruption, interrupt, markBuffering, markMeaningfulInteraction, markReady, markRecovering, moveQueueItem, next, playback, playNext, postPlay, previous, queue, queueBusy, queueError, queueNeedsRefresh, recoverRoute, renegotiate, reloadQueue, removeQueueItem, renewGrant, repeatMode, replay, retry, sessionOrigin, setRepeatMode, shuffleQueue, start, startDVR, startLibraryChannel, startLive, status, touch]);
+    status, playback, queue, queueError, queueBusy, queueNeedsRefresh, repeatMode, sessionOrigin, error, failure, interruption, postPlay, mediaRef, start, startLive, startLibraryChannel, startDVR, retry, close, complete, touch, renewGrant, renegotiate, recoverRoute, adapterRecoveryGeneration, completedSessionId, next, handoff, previous,
+    prepareNext, appendQueue, playNext, removeQueueItem, moveQueueItem, shuffleQueue, setRepeatMode, reloadQueue, beginPostPlay, cancelPostPlay, replay, markReady, markBuffering, markRecovering, fail, interrupt, dismissInterruption, applyExternalCommand, markMeaningfulInteraction,
+  }), [adapterRecoveryGeneration, appendQueue, applyExternalCommand, beginPostPlay, cancelPostPlay, close, complete, completedSessionId, dismissInterruption, error, fail, failure, handoff, interruption, interrupt, markBuffering, markMeaningfulInteraction, markReady, markRecovering, moveQueueItem, next, playback, playNext, postPlay, prepareNext, previous, queue, queueBusy, queueError, queueNeedsRefresh, recoverRoute, renegotiate, reloadQueue, removeQueueItem, renewGrant, repeatMode, replay, retry, sessionOrigin, setRepeatMode, shuffleQueue, start, startDVR, startLibraryChannel, startLive, status, touch]);
 
   return <PlaybackContext.Provider value={value}>{children}</PlaybackContext.Provider>;
 }
@@ -1122,6 +1191,11 @@ function sleepTimerMode(value: string): SleepTimerMode {
 
 export function isExplicitMissingHLSManifest(responseStatus: number, details: unknown, playbackStarted: boolean) {
   if (playbackStarted || (responseStatus !== 404 && responseStatus !== 410)) return false;
+  return String(details).toLocaleLowerCase().includes('manifest');
+}
+
+export function isTransientHLSManifestWait(responseStatus: number, details: unknown, playbackStarted: boolean) {
+  if (playbackStarted || ![409, 425, 503].includes(responseStatus)) return false;
   return String(details).toLocaleLowerCase().includes('manifest');
 }
 
@@ -1280,15 +1354,44 @@ function PlayerSubtitleLayer() {
   return <div className="player-subtitle-layer" aria-hidden="true">{activeCues.map((cue, index) => <span key={`${cue}-${index}`}>{cue}</span>)}</div>;
 }
 
-function WatchState() {
+function PendingPlayerControls({ full, onClose }: { full: boolean; onClose: () => void }) {
+  const disabled = true;
+  return <div className={`player-controls player-pending-controls ${full ? 'full' : 'mini'}`}>
+    <div className="player-timeline" aria-hidden="true"><span>0:00</span><span className="player-timeline-track"><input type="range" min={0} max={1} value={0} disabled readOnly tabIndex={-1} /></span><span>0:00</span></div>
+    <div className="player-command-row">
+      <div className="player-transport" aria-label={productMessage('playback.transport-controls').text}>
+        <button type="button" disabled={disabled} aria-label={productMessage('action.previous-item').text}><ProductLanguageIcon id="action.previous" /></button>
+        <button type="button" className="player-skip-button" disabled={disabled} aria-label={productMessage('action.rewind-seconds', { seconds: 10 }).text}><ProductLanguageIcon id="action.replay" /><span>10</span></button>
+        <button type="button" className="play-toggle" disabled={disabled} aria-label={productMessage('action.play').text}><ProductLanguageIcon id="action.play" filled /></button>
+        <button type="button" className="player-skip-button" disabled={disabled} aria-label={productMessage('action.forward-seconds', { seconds: 30 }).text}><ProductLanguageIcon id="action.refresh" /><span>30</span></button>
+        <button type="button" disabled={disabled} aria-label={productMessage('action.next-item').text}><ProductLanguageIcon id="action.next" /></button>
+      </div>
+      <div className="player-utilities" aria-label={productMessage('playback.utilities').text}>
+        <button type="button" disabled={disabled} aria-label={productMessage('playback.menu-volume').text}><ProductLanguageIcon id="action.volume" /></button>
+        <button type="button" disabled={disabled} aria-label={productMessage('playback.menu-subtitles').text}><ProductLanguageIcon id="action.subtitles" /></button>
+        <button type="button" disabled={disabled} aria-label={productMessage('playback.menu-settings').text}><ProductLanguageIcon id="action.settings" /></button>
+        <button type="button" disabled={disabled} aria-label={productMessage('playback.menu-queue').text}><ProductLanguageIcon id="action.player-queue" /></button>
+        <button type="button" disabled={disabled} aria-label={productMessage('action.fullscreen').text}><ProductLanguageIcon id="action.fullscreen" /></button>
+        <button type="button" onClick={onClose} aria-label={productMessage('action.close-player').text}><ProductLanguageIcon id="action.close" /></button>
+      </div>
+    </div>
+  </div>;
+}
+
+function PendingPlayerShell({ full, onClose }: { full: boolean; onClose: () => void }) {
   const { status, error, failure, retry } = usePlayback();
-  const navigate = useNavigate();
-  if (status === 'failed') {
-    const copy = productMessage('playback.failed');
-    return <main className="player-state" role="alert">{copy.icon && <ProductLanguageIcon id={copy.icon} />}<strong>{failure?.title ?? copy.title}</strong><p>{failure?.message ?? error ?? copy.body}</p><div><SecondaryButton onClick={() => void retry()}><ProductLanguageIcon id="action.retry" /> {productMessage('action.retry').text}</SecondaryButton><SecondaryButton onClick={() => navigate(-1)}>{productMessage('action.back-to-portico').text}</SecondaryButton></div></main>;
-  }
-  const copy = productMessage('playback.preparing');
-  return <main className="player-state" aria-live="polite" aria-busy="true">{copy.icon && <ProductLanguageIcon id={copy.icon} className="state-spinner" />}<strong>{copy.title}</strong></main>;
+  const failed = status === 'failed';
+  const copy = productMessage(failed ? 'playback.failed' : 'playback.preparing');
+  const title = failed ? failure?.title ?? copy.title : copy.title;
+  const message = failed ? failure?.message ?? error ?? copy.body : copy.body;
+  return <section className={`${full ? 'player-full' : 'player-mini'} player-pending-shell`} aria-label={title}>
+    <div className="player-media-stage player-pending-stage" aria-hidden="true"><ProductLanguageIcon id={copy.icon ?? (failed ? 'status.warning' : 'status.loading')} className={!failed ? 'state-spinner' : undefined} /></div>
+    <div className={`player-pending-copy ${failed ? 'failed' : ''}`} role={failed ? 'alert' : 'status'} aria-live={failed ? 'assertive' : 'polite'} aria-busy={!failed}>
+      <span><strong>{title}</strong>{message && <small>{message}</small>}</span>
+      <div>{failed && <SecondaryButton onClick={() => void retry()}><ProductLanguageIcon id="action.retry" /> {productMessage('action.retry').text}</SecondaryButton>}<SecondaryButton onClick={onClose}><ProductLanguageIcon id="action.close" /> {productMessage('action.close-player').text}</SecondaryButton></div>
+    </div>
+    <PendingPlayerControls full={full} onClose={onClose} />
+  </section>;
 }
 
 export function WatchPage() {
@@ -1478,7 +1581,7 @@ function QueuePanel({ onDismiss }: { onDismiss: () => void }) {
     <ol className="queue-list">
       {current && <li className="queue-current" aria-current="true"><QueueArtwork item={current} /><span><strong>{current.title}</strong><small>{[productMessage('playback.queue-now-playing').text, current.parentTitle || current.tagline].filter(Boolean).join(' · ')}</small></span></li>}
       {entries.map(({ item, sourceIndex }, index) => <li key={`${item.id}-${sourceIndex}`} data-queue-source-index={sourceIndex} draggable={canMutate} className={`${dragSourceIndex === sourceIndex ? 'dragging' : ''} ${dragTargetIndex === sourceIndex && dragSourceIndex !== sourceIndex ? 'drag-target' : ''}`.trim()} onDragStart={(event) => beginDrag(event, sourceIndex)} onDragOver={(event) => acceptDrag(event, sourceIndex)} onDrop={(event) => drop(event, sourceIndex)} onDragEnd={finishDrag}>
-      <span className="queue-drag-handle" aria-hidden="true" title="Drag to reorder" onPointerDown={(event) => beginPointerDrag(event, sourceIndex)} onPointerMove={movePointerDrag} onPointerUp={(event) => endPointerDrag(event, true)} onPointerCancel={(event) => endPointerDrag(event, false)}><GripVertical /></span><QueueArtwork item={item} /><span><strong>{item.title}</strong><small>{item.parentTitle || item.tagline || mediaPresentation({ kind: item.type }).label}</small></span>
+      <span className="queue-drag-handle" aria-hidden="true" title="Drag to reorder" onPointerDown={(event) => beginPointerDrag(event, sourceIndex)} onPointerMove={movePointerDrag} onPointerUp={(event) => endPointerDrag(event, true)} onPointerCancel={(event) => endPointerDrag(event, false)}><ActionCustomizeIcon /></span><QueueArtwork item={item} /><span><strong>{item.title}</strong><small>{item.parentTitle || item.tagline || mediaPresentation({ entityKind: item.entityKind }).label}</small></span>
       <div><button type="button" aria-label={productMessage('action.move-queue-earlier', { title: item.title }).text} title={productMessage('action.move-queue-earlier', { title: item.title }).text} disabled={!canMutate || index === 0} onClick={() => void moveQueueItem(sourceIndex, entries[index - 1]?.sourceIndex ?? sourceIndex).catch(() => undefined)}><ProductLanguageIcon id="action.move-up" /></button><button type="button" aria-label={productMessage('action.move-queue-later', { title: item.title }).text} title={productMessage('action.move-queue-later', { title: item.title }).text} disabled={!canMutate || index === entries.length - 1} onClick={() => void moveQueueItem(sourceIndex, entries[index + 1]?.sourceIndex ?? sourceIndex).catch(() => undefined)}><ProductLanguageIcon id="action.move-down" /></button><button type="button" aria-label={productMessage('action.remove-from-queue', { title: item.title }).text} title={productMessage('action.remove-from-queue', { title: item.title }).text} disabled={!canMutate} onClick={() => void removeQueueItem(sourceIndex).catch(() => undefined)}><ProductLanguageIcon id="action.remove-queue" /></button></div>
     </li>)}</ol>
     {!entries.length && <p className="player-empty-copy">{productMessage('playback.queue-empty').body}</p>}
@@ -1589,7 +1692,7 @@ function PostPlaySurface({ onClose, autoplay }: { onClose: () => void; autoplay:
       {postPlay.phase === 'countdown' && <><button type="button" className="primary" onClick={() => void next()}><ProductLanguageIcon id="action.play" /> {productMessage('action.play-now').text}</button><button type="button" onClick={cancelPostPlay}><ProductLanguageIcon id="action.cancel" /> {productMessage('action.cancel').text}</button><button type="button" onClick={() => void replay()}><ProductLanguageIcon id="action.replay" /> {productMessage('action.replay').text}</button></>}
       {postPlay.phase === 'cancelled' && <><button type="button" className="primary" onClick={() => void next()}><ProductLanguageIcon id="action.next" /> {productMessage('action.play-next').text}</button><button type="button" onClick={() => void replay()}><ProductLanguageIcon id="action.replay" /> {productMessage('action.replay').text}</button></>}
       {postPlay.phase === 'passout' && <><button type="button" className="primary" onClick={() => void next()}><ProductLanguageIcon id="action.play" /> {productMessage('action.still-watching').text}</button><button type="button" onClick={cancelPostPlay}><ProductLanguageIcon id="action.cancel" /> {productMessage('action.stop-autoplay').text}</button></>}
-      {postPlay.phase === 'failed' && <><button type="button" className="primary" onClick={() => void beginPostPlay(nextItem)}><ProductLanguageIcon id="action.retry" /> {productMessage('action.retry').text}</button><button type="button" onClick={() => void replay()}><ProductLanguageIcon id="action.replay" /> {productMessage('action.replay').text}</button></>}
+      {postPlay.phase === 'failed' && <><button type="button" className="primary" onClick={() => void beginPostPlay(nextItem, true, postPlay.preparationRequest)}><ProductLanguageIcon id="action.retry" /> {productMessage('action.retry').text}</button><button type="button" onClick={() => void replay()}><ProductLanguageIcon id="action.replay" /> {productMessage('action.replay').text}</button></>}
     </div>
   </div>;
 }
@@ -1666,29 +1769,15 @@ function PlayerSettingDropdown({ label, value, options, onChange }: {
   return <section className={`player-setting-dropdown ${open ? 'open' : ''}`}>
     <span className="player-setting-label">{label}</span>
     <button ref={triggerRef} type="button" role="combobox" className="player-setting-dropdown-trigger" aria-label={label} aria-haspopup="listbox" aria-expanded={open} aria-controls={listId} onClick={() => setOpen(!open)} onKeyDown={onTriggerKeyDown}>
-      <span><strong>{selected.label}</strong>{selected.detail && <small>{selected.detail}</small>}</span><ChevronDown aria-hidden="true" />
+      <span><strong>{selected.label}</strong>{selected.detail && <small>{selected.detail}</small>}</span><NavigationExpandIcon aria-hidden="true" />
     </button>
     <div id={listId} className="player-setting-options" role="listbox" aria-label={label} aria-hidden={!open}>
       {options.map((option, index) => <button ref={(node) => { optionRefs.current[index] = node; }} key={option.id} type="button" role="option" aria-selected={option.id === value} className={option.id === value ? 'selected' : ''} tabIndex={open && index === selectedIndex ? 0 : -1} onClick={() => choose(option)} onKeyDown={(event) => onOptionKeyDown(event, index)}>
         <span><strong>{option.label}</strong>{option.detail && <small>{option.detail}</small>}</span>
-        {option.id === value && <Check className="player-choice-check" aria-hidden="true" />}
+        {option.id === value && <ActionConfirmIcon className="player-choice-check" aria-hidden="true" />}
       </button>)}
     </div>
   </section>;
-}
-
-function sourceQualityDetail(playback: PlaybackResponse): string {
-  const streams = playback.media.streams ?? [];
-  const video = streams.find((stream) => stream.kind === 'video');
-  const bitrates = streams.map((stream) => stream.bitrate ?? 0).filter((value) => value > 0);
-  const totalBitsPerSecond = bitrates.reduce((total, value) => total + (value < 10_000 ? value * 1_000 : value), 0);
-  const parts: string[] = [];
-  if (totalBitsPerSecond > 0) {
-    const mbps = totalBitsPerSecond / 1_000_000;
-    parts.push(`${mbps < 10 ? mbps.toFixed(1) : Math.round(mbps)} Mbps`);
-  }
-  if (video?.height) parts.push(`${video.height}p`);
-  return parts.join(' · ');
 }
 
 function PlayerControls({
@@ -1713,7 +1802,7 @@ function PlayerControls({
   const preferences = displayPreferences?.preferences ?? defaultWebDisplayPreferences;
   const musicPreferences = useMemo(() => normalizeMusicPlaybackPreferences(auth.viewer?.user?.preferences?.musicPlayback), [auth.viewer?.user?.preferences?.musicPlayback]);
   const { selectedId: subtitleId, setSelectedId: setSubtitleId, options: subtitleOptions } = usePlayerSubtitles();
-  const { playback, queue, repeatMode, sessionOrigin, mediaRef, touch, next, handoff, previous, start, renegotiate, beginPostPlay, fail, shuffleQueue, setRepeatMode, markMeaningfulInteraction } = player;
+  const { status, playback, queue, repeatMode, sessionOrigin, mediaRef, touch, complete, next, prepareNext, handoff, previous, start, renegotiate, beginPostPlay, fail, shuffleQueue, setRepeatMode, markMeaningfulInteraction } = player;
   const [playing, setPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -1733,6 +1822,7 @@ function PlayerControls({
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
   const [musicTransitioning, setMusicTransitioning] = useState(false);
   const defaultsAppliedSessionRef = useRef('');
+  const terminalSessionRef = useRef('');
   const seekTransactionRef = useRef<ReturnType<typeof createSeekTransaction> | undefined>(undefined);
   const commandRowRef = useRef<HTMLDivElement>(null);
   const mode = playback ? playerContentMode(playback.media, playback.isLive) : 'video';
@@ -1752,6 +1842,7 @@ function PlayerControls({
   const resolveMediaSessionResource = useCallback((path: string) => source.playbackResourceUrl(path), [source]);
 
   useEffect(() => {
+    terminalSessionRef.current = '';
     setQuality(playback?.selectedQualityId || (playback ? defaultPlaybackQuality(playback) : 'original'));
     setAudioStreamId(playback?.selectedAudioStreamId ?? '');
     setPlaybackRate(Number(preferences.defaultPlaybackSpeed));
@@ -1813,11 +1904,22 @@ function PlayerControls({
       if (repeatMode === 'one') {
         element.currentTime = 0;
         void element.play();
-      } else if (upcomingItems.length > 0) {
+        return;
+      }
+      if (!playback?.sessionId || terminalSessionRef.current === playback.sessionId) return;
+      terminalSessionRef.current = playback.sessionId;
+      const terminalDuration = Number.isFinite(element.duration) && element.duration > 0
+        ? element.duration
+        : playback?.timeline.durationSeconds ?? 0;
+      if (upcomingItems.length > 0) {
         const candidate = upcomingItems[0];
-        void touch({ positionSeconds: element.duration, durationSeconds: element.duration, state: 'paused' });
         if (isMusic) {
-          if (sessionAutoplay) void next();
+          if (sessionAutoplay) {
+            void next(false, musicTransitionRequest(playback, queue, musicPreferences, preferences)).then((committed) => {
+              if (!committed && terminalDuration > 0) void complete(terminalDuration);
+            });
+            return;
+          }
         } else {
           void beginPostPlay(candidate);
         }
@@ -1825,9 +1927,9 @@ function PlayerControls({
         const first = queue?.history[0];
         if (first) void start(first.id, { queueMediaIds: [...(queue?.history.slice(1) ?? []), queue?.current].filter(Boolean).map((item) => item.id), repeatMode: 'all', sourceContext: queue?.sourceContext });
       } else {
-        void touch({ completed: true, positionSeconds: element.duration, durationSeconds: element.duration });
         void beginPostPlay();
       }
+      if (terminalDuration > 0) void complete(terminalDuration);
     };
     sync();
     for (const event of ['play', 'pause', 'timeupdate', 'durationchange', 'volumechange', 'loadedmetadata']) element.addEventListener(event, sync);
@@ -1838,7 +1940,7 @@ function PlayerControls({
       element.removeEventListener('volumechange', persistVolume);
       element.removeEventListener('ended', onEnded);
     };
-  }, [beginPostPlay, fail, isLive, isMusic, mediaRef, musicPreferences.normalizationMode, musicTransitioning, next, playback?.media.audioNormalization, playback?.timeline.durationSeconds, preferences.audioNormalizationMode, queue, repeatMode, sessionAutoplay, sleepTimer.expireAtTrackEnd, start, touch, upcomingItems]);
+  }, [beginPostPlay, complete, fail, isLive, isMusic, mediaRef, musicPreferences, musicTransitioning, next, playback, preferences, queue, repeatMode, sessionAutoplay, sleepTimer.expireAtTrackEnd, start, touch, upcomingItems]);
 
   useEffect(() => {
     const element = mediaRef.current;
@@ -1892,6 +1994,20 @@ function PlayerControls({
     if (!element || isLive) return;
     markMeaningfulInteraction();
     const target = element.currentTime + seconds;
+    const sourceDuration = Number.isFinite(element.duration) ? element.duration : duration;
+    if (Number.isFinite(sourceDuration) && sourceDuration > 0 && target >= sourceDuration) {
+      element.pause();
+      if (repeatMode === 'one') {
+        element.currentTime = 0;
+        setCurrentTime(0);
+        void element.play().catch(() => undefined);
+        return;
+      }
+      setCurrentTime(sourceDuration);
+      void complete(sourceDuration);
+      void beginPostPlay();
+      return;
+    }
     const state = element.paused ? 'paused' : 'playing';
     void seekTransactionRef.current?.seek(target).then((result) => {
       if (result !== 'completed') return;
@@ -1975,11 +2091,15 @@ function PlayerControls({
   });
 
   if (!playback) return null;
+  const completed = status === 'completed';
+  const completedDuration = playback.timeline.durationSeconds ?? duration;
+  const displayedDuration = completed && completedDuration > 0 ? completedDuration : duration;
+  const displayedCurrentTime = completed ? displayedDuration : currentTime;
   const hasLyrics = Boolean(lyricDocument);
   const audioMode = mode === 'music' || mode === 'audiobook';
   const trackMenuLabel = productMessage(audioMode ? 'playback.menu-lyrics' : 'playback.menu-subtitles').text ?? '';
   const hasTrackMenu = audioMode ? hasLyrics : subtitleOptions.length > 0;
-  const progress = duration > 0 ? Math.min(100, Math.max(0, (currentTime / duration) * 100)) : 0;
+  const progress = displayedDuration > 0 ? Math.min(100, Math.max(0, (displayedCurrentTime / displayedDuration) * 100)) : 0;
   const progressStyle = { '--player-progress': `${progress}%` } as CSSProperties;
   const trickplaySet = activeTrickplaySet(trickplaySets);
   const updateTrickplayPreview = (event: ReactMouseEvent<HTMLInputElement>) => {
@@ -1999,15 +2119,15 @@ function PlayerControls({
     {isLive
       ? <div className="player-timeline player-live-timeline"><span className="live-indicator">{productMessage('playback.live').text}</span><span>{productMessage('playback.watching-now').text}</span></div>
       : <div className="player-timeline">
-        <span>{timeLabel(currentTime)}</span>
+        <span>{timeLabel(displayedCurrentTime)}</span>
         <span className="player-timeline-track">
           {trickplayPreview && <span className={`trickplay-preview ${trickplayPreview.url ? '' : 'time-only'}`} style={{ left: `${trickplayPreview.leftPercent}%` }}>{trickplayPreview.url && <img src={trickplayPreview.url} alt="" onError={() => { setTrickplayImagesAvailable(false); setTrickplayPreview((current) => current ? { ...current, url: undefined } : current); }} />}<small>{timeLabel(trickplayPreview.seconds)}</small></span>}
-          <input type="range" min={0} max={Math.max(1, duration)} step={0.1} value={Math.min(currentTime, Math.max(1, duration))} style={progressStyle} onChange={(event) => seekTo(Number(event.target.value))} onMouseMove={updateTrickplayPreview} onMouseLeave={() => setTrickplayPreview(undefined)} aria-label={productMessage('playback.position').text} />
+          <input type="range" min={0} max={Math.max(1, displayedDuration)} step={0.1} value={Math.min(displayedCurrentTime, Math.max(1, displayedDuration))} style={progressStyle} onChange={(event) => seekTo(Number(event.target.value))} onMouseMove={updateTrickplayPreview} onMouseLeave={() => setTrickplayPreview(undefined)} aria-label={productMessage('playback.position').text} />
         </span>
-        <span>{timeLabel(duration)}</span>
+        <span>{timeLabel(displayedDuration)}</span>
       </div>}
     {activeSegment && <div className="player-skip-prompt"><button type="button" onClick={() => seekTo(activeSegment.endSeconds)}>{productMessage('action.skip-segment', { segment: segmentLabel(activeSegment.type) }).text}</button><button type="button" aria-label={productMessage('action.dismiss-skip-prompt', { segment: segmentLabel(activeSegment.type).toLocaleLowerCase() }).text} onClick={() => setDismissedSegments((current) => ({ sessionId: playback?.sessionId ?? '', ids: current.sessionId === (playback?.sessionId ?? '') ? [...current.ids, activeSegment.id] : [activeSegment.id] }))}><ProductLanguageIcon id="action.close" /></button></div>}
-    {diagnosticsOpen && <ModalOverlay labelledBy="player-diagnostics-title" className="player-diagnostics-overlay" onDismiss={() => setDiagnosticsOpen(false)}><header><span><ProductLanguageIcon id="action.technical-stats" /><strong id="player-diagnostics-title">{productMessage('playback.diagnostics-title').text}</strong></span><button type="button" aria-label={productMessage('action.close-playback-diagnostics').text} onClick={() => setDiagnosticsOpen(false)}><ProductLanguageIcon id="action.close" /></button></header><dl><div><dt>{productMessage('playback.diagnostics-playback').text}</dt><dd>{playbackDecisionLabel(playback.decision.mode)}</dd></div><div><dt>{productMessage('playback.diagnostics-format').text}</dt><dd>{playbackSelectionRequiresHLS(playback, quality, audioStreamId) ? 'HLS' : playback.streamFormat || productMessage('playback.diagnostics-direct').text}</dd></div><div><dt>{productMessage('playback.diagnostics-quality').text}</dt><dd>{playback.qualities.find((item) => item.id === quality)?.label ?? quality}</dd></div><div><dt>{productMessage('playback.diagnostics-audio').text}</dt><dd>{playback.audioStreams.find((item) => item.id === audioStreamId)?.displayTitle ?? (audioStreamId || productMessage('playback.diagnostics-default').text)}</dd></div><div><dt>{productMessage('playback.diagnostics-rate').text}</dt><dd>{playbackRate}×</dd></div><div><dt>{productMessage('playback.diagnostics-position').text}</dt><dd>{timeLabel(currentTime)} / {timeLabel(duration)}</dd></div>{playback.decision.reason && <div><dt>{productMessage('playback.diagnostics-decision').text}</dt><dd>{playback.decision.reason}</dd></div>}</dl></ModalOverlay>}
+    {diagnosticsOpen && <ModalOverlay labelledBy="player-diagnostics-title" className="player-diagnostics-overlay" onDismiss={() => setDiagnosticsOpen(false)}><header><span><ProductLanguageIcon id="action.technical-stats" /><strong id="player-diagnostics-title">{productMessage('playback.diagnostics-title').text}</strong></span><button type="button" aria-label={productMessage('action.close-playback-diagnostics').text} onClick={() => setDiagnosticsOpen(false)}><ProductLanguageIcon id="action.close" /></button></header><dl><div><dt>{productMessage('playback.diagnostics-playback').text}</dt><dd>{playbackDecisionLabel(playback.decision.mode)}</dd></div><div><dt>{productMessage('playback.diagnostics-format').text}</dt><dd>{playbackSelectionRequiresHLS(playback, quality, audioStreamId) ? 'HLS' : playback.streamFormat || productMessage('playback.diagnostics-direct').text}</dd></div><div><dt>{productMessage('playback.diagnostics-quality').text}</dt><dd>{playback.qualities.find((item) => item.id === quality)?.label ?? ''}</dd></div><div><dt>{productMessage('playback.diagnostics-audio').text}</dt><dd>{playback.audioStreams.find((item) => item.id === audioStreamId)?.displayTitle ?? (audioStreamId || productMessage('playback.diagnostics-default').text)}</dd></div><div><dt>{productMessage('playback.diagnostics-rate').text}</dt><dd>{playbackRate}×</dd></div><div><dt>{productMessage('playback.diagnostics-position').text}</dt><dd>{timeLabel(currentTime)} / {timeLabel(duration)}</dd></div>{playback.decision.reason && <div><dt>{productMessage('playback.diagnostics-decision').text}</dt><dd>{playback.decision.reason}</dd></div>}</dl></ModalOverlay>}
     <PlayerMenuGroup><div ref={commandRowRef} className="player-command-row">
       <div className="player-transport" aria-label={productMessage('playback.transport-controls').text}>
         <button type="button" onClick={() => void previous()} disabled={isLive || !queue?.history.length} aria-label={productMessage('action.previous-item').text}><ProductLanguageIcon id="action.previous" /></button>
@@ -2018,24 +2138,24 @@ function PlayerControls({
       </div>
       <div className="player-utilities" aria-label={productMessage('playback.utilities').text}>
         <PlayerMenu label={productMessage('playback.menu-volume').text ?? ''} icon={<ProductLanguageIcon id={muted || volume === 0 ? 'action.mute' : 'action.volume'} />} panelClassName="volume-menu-panel"><div className="volume-panel"><input className="player-volume-slider" type="range" min={0} max={1} step={0.05} value={muted ? 0 : volume} onChange={(event) => changeVolume(Number(event.target.value))} aria-label={productMessage('playback.menu-volume').text} aria-orientation="vertical" aria-valuetext={`${Math.round((muted ? 0 : volume) * 100)}%`} /><button type="button" onClick={toggleMuted}><ProductLanguageIcon id={muted ? 'action.unmute' : 'action.mute'} /> {productMessage(muted ? 'action.unmute' : 'action.mute').text}</button></div></PlayerMenu>
-        <PlayerMenu label={trackMenuLabel} icon={<ProductLanguageIcon id={audioMode ? 'action.lyrics' : 'action.subtitles'} />} disabled={!hasTrackMenu} panelClassName={audioMode ? 'lyrics-menu-panel' : ''}>
+        <PlayerMenu label={trackMenuLabel} icon={<ProductLanguageIcon id={audioMode ? 'action.lyrics' : 'action.subtitles'} />} disabled={!hasTrackMenu} panelClassName={audioMode ? 'lyrics-menu-panel' : ''}>{(dismiss) =>
           <div className="track-panel">
           {!audioMode && <>
             <div className="player-menu-heading"><span><strong>{productMessage('playback.menu-subtitles').text}</strong><small>{subtitleId === NO_SUBTITLE_ID ? productMessage('playback.subtitles-off').text : subtitleOptions.find((option) => option.id === subtitleId)?.label}</small></span></div>
             <div className="subtitle-choice-list" role="radiogroup" aria-label={productMessage('playback.subtitle-track').text}>
-              <button type="button" role="radio" aria-checked={subtitleId === NO_SUBTITLE_ID} className={subtitleId === NO_SUBTITLE_ID ? 'selected' : ''} onClick={() => void selectSubtitle(NO_SUBTITLE_ID)}>{productMessage('playback.subtitles-off').text}</button>
-              {subtitleOptions.map((option) => <button key={option.id} type="button" role="radio" aria-checked={subtitleId === option.id} className={subtitleId === option.id ? 'selected' : ''} onClick={() => void selectSubtitle(option.id)}><span>{option.label}</span>{option.language && option.label.toLocaleLowerCase() !== option.language.toLocaleLowerCase() && <small>{option.language.toLocaleUpperCase()}</small>}</button>)}
+              <button type="button" role="radio" aria-checked={subtitleId === NO_SUBTITLE_ID} className={subtitleId === NO_SUBTITLE_ID ? 'selected' : ''} onClick={() => { dismiss(); void selectSubtitle(NO_SUBTITLE_ID); }}>{productMessage('playback.subtitles-off').text}</button>
+              {subtitleOptions.map((option) => <button key={option.id} type="button" role="radio" aria-checked={subtitleId === option.id} className={subtitleId === option.id ? 'selected' : ''} onClick={() => { dismiss(); void selectSubtitle(option.id); }}><span>{option.label}</span>{option.language && option.label.toLocaleLowerCase() !== option.language.toLocaleLowerCase() && <small>{option.language.toLocaleUpperCase()}</small>}</button>)}
             </div>
             {displayPreferences && <div className="subtitle-appearance">
               <span>{productMessage('playback.subtitle-text-size').text}</span><div>{(['small', 'medium', 'large'] as const).map((size) => <button key={size} type="button" className={preferences.subtitleSize === size ? 'selected' : ''} aria-pressed={preferences.subtitleSize === size} onClick={() => void displayPreferences.patch({ subtitleSize: size }).catch(() => undefined)}>{productMessage(size === 'small' ? 'playback.option-small' : size === 'medium' ? 'playback.option-medium' : 'playback.option-large').text}</button>)}</div>
               <span>{productMessage('playback.subtitle-background').text}</span><div>{(['none', 'subtle', 'solid'] as const).map((background) => <button key={background} type="button" className={preferences.subtitleBackground === background ? 'selected' : ''} aria-pressed={preferences.subtitleBackground === background} onClick={() => void displayPreferences.patch({ subtitleBackground: background }).catch(() => undefined)}>{productMessage(background === 'none' ? 'playback.option-none' : background === 'subtle' ? 'playback.option-subtle' : 'playback.option-solid').text}</button>)}</div>
             </div>}
           </>}
-          {lyricDocument && <LyricsPanel document={lyricDocument} currentTime={currentTime} />}</div>
+          {lyricDocument && <LyricsPanel document={lyricDocument} currentTime={currentTime} />}</div>}
         </PlayerMenu>
         {playback.chapters.some((chapter) => typeof chapter.startSeconds === 'number') && <PlayerMenu label={productMessage('playback.menu-chapters').text ?? ''} icon={<ProductLanguageIcon id="action.chapters" />}><div className="chapter-panel"><div className="player-menu-heading"><span><strong>{productMessage('playback.menu-chapters').text}</strong><small>{productMessage(playback.chapters.length === 1 ? 'playback.chapter-count-one' : 'playback.chapter-count-many', { count: playback.chapters.length }).text}</small></span></div><ol>{playback.chapters.flatMap((chapter, index) => typeof chapter.startSeconds === 'number' ? [<li key={chapter.id ?? `${chapter.startSeconds}-${index}`}><button type="button" className={currentTime >= chapter.startSeconds && currentTime < (playback.chapters[index + 1]?.startSeconds ?? Number.POSITIVE_INFINITY) ? 'selected' : ''} onClick={() => seekTo(chapter.startSeconds!)}><ChapterThumbnail src={chapter.thumbUrl ? playbackResourceUrl(playback, chapter.thumbUrl, (value) => source.playbackResourceUrl(value), window.location.href) : undefined} /><span>{chapter.title || productMessage('playback.chapter-number', { number: index + 1 }).text}</span><small>{timeLabel(chapter.startSeconds)}</small></button></li>] : [])}</ol></div></PlayerMenu>}
         <PlayerMenu label={productMessage('playback.menu-settings').text ?? ''} icon={<ProductLanguageIcon id="action.settings" />} panelClassName="settings-menu-panel">{(dismiss) => <PlayerSettingGroup><div className="settings-panel">
-          {playback.qualities.some((item) => item.available !== false) && <PlayerSettingDropdown label={productMessage('playback.setting-quality').text ?? 'Quality'} value={quality} onChange={(value) => void selectQuality(value)} options={playback.qualities.filter((item) => item.available !== false && Boolean(item.id)).map((item) => ({ id: item.id ?? '', label: item.id === 'original' ? 'Original quality' : item.label || item.id || 'Quality', detail: item.id === 'original' ? sourceQualityDetail(playback) : item.description ?? '' }))} />}
+          {playback.qualities.some((item) => item.available !== false && Boolean(item.id && item.label)) && <PlayerSettingDropdown label={productMessage('playback.setting-quality').text ?? 'Quality'} value={quality} onChange={(value) => void selectQuality(value)} options={playback.qualities.filter((item) => item.available !== false && Boolean(item.id && item.label)).map((item) => ({ id: item.id!, label: item.label!, detail: item.description }))} />}
           {playback.audioStreams.length > 0 && <PlayerSettingDropdown label={productMessage('playback.setting-audio').text ?? 'Audio'} value={audioStreamId} onChange={(value) => void selectAudio(value)} options={playback.audioStreams.filter((stream) => Boolean(stream.id)).map((stream) => ({ id: stream.id ?? '', label: stream.displayTitle || stream.language || stream.codec || 'Audio', detail: [stream.language?.toLocaleUpperCase(), stream.codec?.toLocaleUpperCase(), stream.channels ? `${stream.channels} channels` : ''].filter(Boolean).join(' · ') }))} />}
           {!isLive && <PlayerSettingDropdown label={productMessage('playback.setting-speed').text ?? 'Playback speed'} value={String(playbackRate)} onChange={(value) => setPlaybackRate(Number(value))} options={PLAYBACK_SPEEDS.map((rate) => ({ id: String(rate), label: rate === 1 ? productMessage('playback.speed-normal').text ?? 'Normal' : `${rate}×` }))} />}
           {!isLive && <button type="button" role="switch" aria-checked={sessionAutoplay} className={`player-toggle-setting ${sessionAutoplay ? 'selected' : ''}`} onClick={() => onSessionAutoplayChange(!sessionAutoplay)}><span><strong>{productMessage('playback.setting-autoplay').text}</strong><small>Continue with the next item automatically.</small></span><i aria-hidden="true" /></button>}
@@ -2048,7 +2168,7 @@ function PlayerControls({
       </div>
     </div></PlayerMenuGroup>
     <SourceSelectionBridge quality={quality} audioStreamId={audioStreamId} subtitleId={subtitleId} />
-    {isMusic && <MusicTransitionBridge playback={playback} queue={queue} mediaRef={mediaRef} preferences={musicPreferences} volume={volume} muted={muted} enabled={sessionAutoplay} onTransitioning={setMusicTransitioning} handoff={handoff} />}
+    {isMusic && <MusicTransitionBridge playback={playback} queue={queue} mediaRef={mediaRef} preferences={musicPreferences} volume={volume} muted={muted} enabled={sessionAutoplay} onTransitioning={setMusicTransitioning} handoff={handoff} prepareNext={prepareNext} />}
   </div>;
 }
 
@@ -2068,7 +2188,7 @@ function mediaBufferCanCarryPlayback(media: HTMLMediaElement, minimumSeconds = 1
 }
 
 function SourceSelectionBridge({ quality, audioStreamId, subtitleId }: { quality: string; audioStreamId: string; subtitleId: string }) {
-  const { playback, mediaRef, status, touch, renewGrant, recoverRoute, adapterRecoveryGeneration, markReady, markBuffering, markRecovering, fail, interrupt } = usePlayback();
+  const { playback, mediaRef, status, touch, renewGrant, recoverRoute, adapterRecoveryGeneration, completedSessionId, markReady, markBuffering, markRecovering, fail, interrupt } = usePlayback();
   const source = usePorticoDataSource();
   const loadedSessionRef = useRef('');
   const pendingResumeRef = useRef<{ sessionId: string; positionSeconds: number } | undefined>(undefined);
@@ -2094,7 +2214,7 @@ function SourceSelectionBridge({ quality, audioStreamId, subtitleId }: { quality
     && serverSubtitleId === selectedServerSubtitleId;
   useEffect(() => {
     const media = mediaRef.current;
-    if (!media || !playback || !selectionAuthorized) return;
+    if (!media || !playback || !selectionAuthorized || completedSessionId === playback.sessionId) return;
     const sourceGeneration = sourceGenerationRef.current + 1;
     sourceGenerationRef.current = sourceGeneration;
     const sameSession = loadedSessionRef.current === playback.sessionId;
@@ -2138,6 +2258,7 @@ function SourceSelectionBridge({ quality, audioStreamId, subtitleId }: { quality
     loadedSessionRef.current = playback.sessionId;
     let hls: HlsInstance | undefined;
     let disposed = false;
+    let manifestReadinessRecoveries = 0;
     let networkRecoveries = 0;
     let mediaRecoveries = 0;
     let nativeRecoveries = 0;
@@ -2269,6 +2390,7 @@ function SourceSelectionBridge({ quality, audioStreamId, subtitleId }: { quality
           fragLoadingMaxRetryTimeout: 2_000,
           manifestLoadingMaxRetry: 4,
           manifestLoadingRetryDelay: 250,
+          manifestLoadingMaxRetryTimeout: 2_000,
         });
         hls.subtitleDisplay = false;
         hls.subtitleTrack = -1;
@@ -2297,6 +2419,18 @@ function SourceSelectionBridge({ quality, audioStreamId, subtitleId }: { quality
             const responseStatus = data.response?.code ?? 0;
             const manifestMissing = isExplicitMissingHLSManifest(responseStatus, data.details, playbackStarted());
             if (manifestMissing) {
+              fail('source');
+              return;
+            }
+            const manifestPending = isTransientHLSManifestWait(responseStatus, data.details, playbackStarted());
+            if (manifestPending) {
+              const delays = [250, 500, 1_000, 2_000, 3_000];
+              if (manifestReadinessRecoveries < delays.length) {
+                const delay = delays[manifestReadinessRecoveries];
+                manifestReadinessRecoveries += 1;
+                scheduleRecovery(delay, () => hls?.loadSource(sourceUrl));
+                return;
+              }
               fail('source');
               return;
             }
@@ -2371,7 +2505,7 @@ function SourceSelectionBridge({ quality, audioStreamId, subtitleId }: { quality
       if (nativeRecoveryReady) media.removeEventListener('loadedmetadata', nativeRecoveryReady);
       hls?.destroy();
     };
-  }, [adapterRecoveryGeneration, audioStreamId, fail, interrupt, markReady, markRecovering, mediaRef, playback?.media.id, playback?.playbackRevision, playback?.sessionId, playback?.streamFormat, quality, recoverRoute, renewGrant, selectionAuthorized, serverSubtitleId, source]);
+  }, [adapterRecoveryGeneration, audioStreamId, completedSessionId, fail, interrupt, markReady, markRecovering, mediaRef, playback?.media.id, playback?.playbackRevision, playback?.sessionId, playback?.streamFormat, quality, recoverRoute, renewGrant, selectionAuthorized, serverSubtitleId, source]);
 
   useEffect(() => {
     const media = mediaRef.current;
@@ -2486,7 +2620,7 @@ function SourceSelectionBridge({ quality, audioStreamId, subtitleId }: { quality
 }
 
 export function PlayerDock() {
-  const { playback, mediaRef, close, interruption, dismissInterruption } = usePlayback();
+  const { status, playback, mediaRef, close, completedSessionId, interruption, dismissInterruption } = usePlayback();
   const source = usePorticoDataSource();
   const auth = useAuthSession();
   const preferences = useOptionalWebDisplayPreferences()?.preferences ?? defaultWebDisplayPreferences;
@@ -2499,6 +2633,17 @@ export function PlayerDock() {
   const [sessionAutoplay, setSessionAutoplay] = useState(preferences.autoplayNext);
   const surfaceRef = useRef<HTMLElement>(null);
   const mediaStageRef = useRef<HTMLDivElement>(null);
+  const failureRouteRef = useRef<string | undefined>(undefined);
+
+  useEffect(() => {
+    const route = `${location.pathname}${location.search}`;
+    if (!playback && status === 'failed') {
+      if (failureRouteRef.current && failureRouteRef.current !== route) void close();
+      else failureRouteRef.current = route;
+      return;
+    }
+    failureRouteRef.current = undefined;
+  }, [close, location.pathname, location.search, playback, status]);
 
   useEffect(() => {
     if (!location.pathname.startsWith('/watch/')) setLastNonWatchPath(`${location.pathname}${location.search}`);
@@ -2543,9 +2688,15 @@ export function PlayerDock() {
     <span><strong>{interruption.title}</strong><small>{interruption.message}</small></span>
     <button type="button" aria-label={productMessage('action.dismiss-playback-message').text} onClick={dismissInterruption}><ProductLanguageIcon id="action.close" /></button>
   </div>;
-  if (full && !playback) return <div className="player-full player-loading"><WatchState /></div>;
+  const closePendingPlayer = () => {
+    if (full) navigate(lastNonWatchPath, { replace: true });
+    void close();
+  };
+  if (full && !playback) return <PendingPlayerShell full onClose={closePendingPlayer} />;
+  if (!playback && status !== 'idle') return <PendingPlayerShell full={false} onClose={closePendingPlayer} />;
   if (!playback) return null;
   const effectiveFull = full || browserFullscreen;
+  const completed = completedSessionId === playback.sessionId;
   const mode = playerContentMode(playback.media, playback.isLive);
   const resolvePlaybackAsset = (path?: string) => path
     ? playbackResourceUrl(playback, path, (value) => source.playbackResourceUrl(value), window.location.href)
@@ -2578,14 +2729,14 @@ export function PlayerDock() {
   const identityTitle = seriesTitle || playback.media.title;
   const identitySubtitle = seriesTitle
     ? [playback.media.title, playback.media.seasonNumber != null && playback.media.episodeNumber != null ? `S${playback.media.seasonNumber} · E${playback.media.episodeNumber}` : ''].filter(Boolean).join(' · ')
-    : subtitle || playback.media.tagline || mediaPresentation({ entityKind: playback.media.type, kind: playback.media.type }).label;
+    : subtitle || playback.media.tagline || mediaPresentation({ entityKind: playback.media.entityKind }).label;
   return <PlayerSubtitleProvider playback={playback} mediaRef={mediaRef}>
     <section ref={surfaceRef} className={`${effectiveFull ? 'player-full' : 'player-mini'} mode-${mode} subtitle-size-${preferences.subtitleSize} subtitle-background-${preferences.subtitleBackground}`} aria-label={productMessage('playback.now-playing', { title: playback.media.title }).text}>
       {full && <button type="button" className="player-collapse" aria-label={productMessage('action.collapse-player').text} onClick={collapsePlayer}><ProductLanguageIcon id="action.collapse" /></button>}
       <div ref={mediaStageRef} className="player-media-stage" style={{ backgroundImage: artwork ? `url(${artwork})` : undefined }} role={!effectiveFull ? 'button' : undefined} tabIndex={!effectiveFull ? 0 : undefined} aria-label={!effectiveFull ? productMessage('action.expand-player').text : undefined} onClick={!effectiveFull ? (event) => { if (event.target instanceof Element && event.target.closest('button')) return; expandPlayer(); } : undefined} onKeyDown={!effectiveFull ? (event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); expandPlayer(); } } : undefined}>
-        <video ref={mediaRef} autoPlay playsInline preload="auto" poster={mode === 'video' || mode === 'live' ? artwork : undefined} aria-label={playback.media.title}>
+        {!completed && <video ref={mediaRef} autoPlay playsInline preload="auto" poster={mode === 'video' || mode === 'live' ? artwork : undefined} aria-label={playback.media.title}>
           {playback.subtitleStreams.filter((stream) => stream.sourceUrl).map((stream) => <track key={stream.id} kind="subtitles" src={resolvePlaybackAsset(stream.sourceUrl)} srcLang={stream.language} label={stream.displayTitle || stream.language || stream.codec} />)}
-        </video>
+        </video>}
         {(mode === 'music' || mode === 'audiobook') && <div className="audio-artwork">
           <PlayerArtworkImage src={audioArtwork} fallback={<span className="audio-artwork-fallback"><ProductLanguageIcon id={mode === 'audiobook' ? 'status.audiobook' : 'status.music'} /></span>} />
         </div>}

@@ -1,24 +1,4 @@
-import {
-  AlertTriangle,
-  ArrowDown,
-  ArrowUp,
-  Bookmark,
-  Check,
-  ChevronLeft,
-  ChevronRight,
-  FolderHeart,
-  Heart,
-  ListMusic,
-  Lock,
-  Pencil,
-  Pin,
-  Play,
-  Plus,
-  RefreshCw,
-  Trash2,
-  Users,
-  X,
-} from '#portico-icons';
+import { StatusWarningIcon, NavigationMoveDownIcon, NavigationMoveUpIcon, ActionWatchlistIcon, ActionConfirmIcon, NavigationPreviousIcon, NavigationDisclosureIcon, LibrarySavedIcon, ActionFavoriteIcon, MediaPlaylistIcon, StatusLockedIcon, ActionEditIcon, ActionPinIcon, PlaybackPlayIcon, ActionAddIcon, ActionRefreshIcon, ActionDeleteIcon, AccountProfilesIcon, ActionCloseIcon } from '#portico-icons';
 import { productMessage } from '@porticomediaserver/client-core';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
@@ -38,7 +18,6 @@ import {
 } from '../../data/DataProvider';
 import { canManageServer } from '../../data/authority';
 import type {
-  CollectionMembershipMutation,
   LibraryKind,
   MediaItem,
   PlaylistItemsMutation,
@@ -101,7 +80,7 @@ function mediaItemCount(count: number) {
 }
 
 function kindIcon(kind: SavedResourceKind) {
-  return kind === 'view' ? Pin : kind === 'playlist' ? ListMusic : FolderHeart;
+  return kind === 'view' ? ActionPinIcon : kind === 'playlist' ? MediaPlaylistIcon : LibrarySavedIcon;
 }
 
 type SavedResourceWithSharing = SavedResourceSummary & {
@@ -141,20 +120,20 @@ function isConflict(reason: unknown) {
     || candidate.problem?.code?.toLocaleLowerCase().includes('conflict');
 }
 
-function SavedState({ icon: Icon, title, detail, error, onRetry }: { icon: typeof Bookmark; title: string; detail: string; error?: boolean; onRetry?: () => void }) {
+function SavedState({ icon: Icon, title, detail, error, onRetry }: { icon: typeof ActionWatchlistIcon; title: string; detail: string; error?: boolean; onRetry?: () => void }) {
   return <div className={`saved-state ${error ? 'error' : ''}`} role={error ? 'alert' : 'status'}>
     <Icon />
     <strong>{title}</strong>
     <p>{detail}</p>
-    {onRetry && <SecondaryButton onClick={onRetry}><RefreshCw /> {productMessage('action.retry').text}</SecondaryButton>}
+    {onRetry && <SecondaryButton onClick={onRetry}><ActionRefreshIcon /> {productMessage('action.retry').text}</SecondaryButton>}
   </div>;
 }
 
 function SavedSelectionBar({ count, busy, action, onAction, onClear }: { count: number; busy: boolean; action: string; onAction: () => void; onClear: () => void }) {
   return <section className="portico-saved-selection" aria-label={productMessage('library.selection-label', { count }).text}>
     <div><strong>{count}</strong><span>{productMessage('library.selected-label').text}</span><button type="button" onClick={onClear}>{productMessage('action.clear-selection').text}</button></div>
-    <SecondaryButton disabled={busy} onClick={onAction}><Trash2 /> {busy ? 'Removing…' : action}</SecondaryButton>
-    <IconButton label={productMessage('action.cancel-selection').text ?? ''} onClick={onClear}><X /></IconButton>
+    <SecondaryButton disabled={busy} onClick={onAction}><ActionDeleteIcon /> {busy ? 'Removing…' : action}</SecondaryButton>
+    <IconButton label={productMessage('action.cancel-selection').text ?? ''} onClick={onClear}><ActionCloseIcon /></IconButton>
   </section>;
 }
 
@@ -221,9 +200,9 @@ function PersonalMediaPanel({ mode, query, onReload }: { mode: 'watchlist' | 'fa
     onReload();
   };
 
-  if (query.status === 'loading') return <SavedState icon={RefreshCw} title={`Loading ${mode}`} detail="Fetching your saved media from this server." />;
-  if (query.status === 'error') return <SavedState error icon={AlertTriangle} title={`Couldn’t load ${mode}`} detail={reviewedProductErrorText(query.error, 'problem.request-failed')} onRetry={onReload} />;
-  if (!items.length) return <SavedState icon={mode === 'watchlist' ? Bookmark : Heart} title={mode === 'watchlist' ? 'Your watchlist is empty' : 'No favorites yet'} detail={mode === 'watchlist' ? 'Add titles from Home, Search, or any library.' : 'Favorite a movie, show, episode, artist, album, or track to keep it close.'} />;
+  if (query.status === 'loading') return <SavedState icon={ActionRefreshIcon} title={`Loading ${mode}`} detail="Fetching your saved media from this server." />;
+  if (query.status === 'error') return <SavedState error icon={StatusWarningIcon} title={`Couldn’t load ${mode}`} detail={reviewedProductErrorText(query.error, 'problem.request-failed')} onRetry={onReload} />;
+  if (!items.length) return <SavedState icon={mode === 'watchlist' ? ActionWatchlistIcon : ActionFavoriteIcon} title={mode === 'watchlist' ? 'Your watchlist is empty' : 'No favorites yet'} detail={mode === 'watchlist' ? 'Add titles from Home, Search, or any library.' : 'Favorite a movie, show, episode, artist, album, or track to keep it close.'} />;
   return <>
     {(notice || error) && <div className={`portico-saved-notice ${error ? 'error' : ''}`} role={error ? 'alert' : 'status'}>{error || notice}</div>}
     <ControlledMediaGroups items={items} selected={selected} onToggle={toggle} onWatchlistChange={mode === 'watchlist' ? (_, saved) => { if (!saved) onReload(); } : undefined} onFavoriteChange={mode === 'favorites' ? (_, favorite) => { if (!favorite) onReload(); } : undefined} />
@@ -246,14 +225,14 @@ function FavoritesPanel() {
 function SavedResourceList({ kind, reloadKey, onRetry }: { kind: SavedResourceKind; reloadKey: number; onRetry: () => void }) {
   const query = useSavedResources(kind, reloadKey);
   const Icon = kindIcon(kind);
-  if (query.status === 'loading') return <SavedState icon={RefreshCw} title={`Loading ${kindLabel(kind).toLocaleLowerCase()}s`} detail="Fetching this section from your server." />;
-  if (query.status === 'error') return <SavedState error icon={AlertTriangle} title={`Couldn’t load ${kindLabel(kind).toLocaleLowerCase()}s`} detail={reviewedProductErrorText(query.error, 'problem.request-failed')} onRetry={onRetry} />;
+  if (query.status === 'loading') return <SavedState icon={ActionRefreshIcon} title={`Loading ${kindLabel(kind).toLocaleLowerCase()}s`} detail="Fetching this section from your server." />;
+  if (query.status === 'error') return <SavedState error icon={StatusWarningIcon} title={`Couldn’t load ${kindLabel(kind).toLocaleLowerCase()}s`} detail={reviewedProductErrorText(query.error, 'problem.request-failed')} onRetry={onRetry} />;
   if (!query.data.length) return <SavedState icon={Icon} title={`No ${kindLabel(kind).toLocaleLowerCase()}s yet`} detail={kind === 'view' ? 'Save a useful library query so it stays available across Portico clients.' : `Create a ${kindLabel(kind).toLocaleLowerCase()} to organize media without changing the library itself.`} />;
   return <div className="portico-saved-resource-list">{query.data.map((resource) => <Link to={resourcePath(kind, resource.id)} key={resource.id}>
     <span className={`portico-saved-resource-icon ${kind}`}><Icon /></span>
     <span className="portico-saved-resource-copy"><strong>{resource.title}</strong><small>{resource.summary || (kind === 'view' ? `${resource.libraryName ?? 'Library'} · ${resource.pivot ?? 'Browse'}` : mediaItemCount(resource.itemCount))}</small></span>
-    <span className="portico-saved-resource-access">{kind === 'view' ? (resource.isPinned ? <><Pin /> {productMessage('preferences.library-status-pinned').text}</> : productMessage('navigation.saved').text) : resource.visibility === 'server' ? <><Users /> {productMessage('settings.label.server').text}</> : <><Lock /> Private</>}</span>
-    <ChevronRight />
+    <span className="portico-saved-resource-access">{kind === 'view' ? (resource.isPinned ? <><ActionPinIcon /> {productMessage('preferences.library-status-pinned').text}</> : productMessage('navigation.saved').text) : resource.visibility === 'server' ? <><AccountProfilesIcon /> {productMessage('settings.label.server').text}</> : <><StatusLockedIcon /> Private</>}</span>
+    <NavigationDisclosureIcon />
   </Link>)}</div>;
 }
 
@@ -310,13 +289,13 @@ function SavedResourceEditor({ kind, resource, onDismiss, onSaved }: { kind: Sav
   };
   const titleId = `portico-saved-${kind}-editor-title`;
   return <ModalOverlay labelledBy={titleId} className={`portico-saved-dialog portico-saved-editor ${kind !== 'view' ? 'has-sharing' : ''}`} onDismiss={onDismiss}>
-    <header><div><p>{resource ? 'Edit' : 'Create'}</p><h2 id={titleId}>{resource?.title ?? `New ${kindLabel(kind).toLocaleLowerCase()}`}</h2></div><IconButton label={productMessage('action.close').text ?? ''} onClick={onDismiss}><X /></IconButton></header>
+    <header><div><p>{resource ? 'Edit' : 'Create'}</p><h2 id={titleId}>{resource?.title ?? `New ${kindLabel(kind).toLocaleLowerCase()}`}</h2></div><IconButton label={productMessage('action.close').text ?? ''} onClick={onDismiss}><ActionCloseIcon /></IconButton></header>
     <div className="portico-saved-editor-fields">
       <label><span>{productMessage('library.save-name').text}</span><input autoFocus value={title} maxLength={160} onChange={(event) => setTitle(event.target.value)} /></label>
       {kind !== 'view' && <label><span>Description <small>Optional</small></span><textarea value={summary} rows={4} onChange={(event) => setSummary(event.target.value)} /></label>}
       {kind !== 'view' && <div className="portico-saved-editor-choice portico-saved-visibility"><span>Server visibility</span>{canPublishToServer
         ? <SelectMenu label="Who can view" value={visibility} options={[{ id: 'private', label: 'Private' }, { id: 'server', label: 'Everyone on this server' }]} onChange={(value) => setVisibility(value === 'server' ? 'server' : 'private')} />
-        : <div className="portico-saved-visibility-value"><Lock /> Private</div>}
+        : <div className="portico-saved-visibility-value"><StatusLockedIcon /> Private</div>}
       <p>{losesServerVisibility
         ? 'Server-wide access requires server management permission. Saving will change this to private.'
         : canPublishToServer ? 'Named access is managed separately below.' : 'Only server managers can share with everyone. You can still add people below.'}</p></div>}
@@ -328,7 +307,7 @@ function SavedResourceEditor({ kind, resource, onDismiss, onSaved }: { kind: Sav
         {selectedLibrary && <div className="portico-saved-editor-choice"><span>View</span><SelectMenu label="View" value={pivot || defaultPivot(selectedLibrary.kind)} options={viewPivots(selectedLibrary.kind).map((view) => ({ id: view, label: view }))} onChange={setPivot} /></div>}
         <label className="portico-saved-pin"><input type="checkbox" checked={pinned} onChange={(event) => setPinned(event.target.checked)} /><span><strong>Pin this view</strong><small>Keep it available for faster access.</small></span></label>
       </>}
-      {error && <p className="portico-saved-dialog-error" role="alert"><AlertTriangle /> {error}</p>}
+      {error && <p className="portico-saved-dialog-error" role="alert"><StatusWarningIcon /> {error}</p>}
     </div>
     <footer><SecondaryButton onClick={onDismiss}>{productMessage('action.cancel').text}</SecondaryButton><PrimaryButton disabled={busy || (kind === 'view' && libraries.status !== 'success')} onClick={() => void submit()}>{busy ? productMessage('action.saving').text : resource ? productMessage('action.save-changes').text : `Create ${kindLabel(kind).toLocaleLowerCase()}`}</PrimaryButton></footer>
   </ModalOverlay>;
@@ -350,7 +329,7 @@ export function SavedPage() {
     setEditorOpen(false);
   };
   return <div className="standard-page portico-saved-page">
-    <header className="portico-saved-header"><div><p className="route-context">Your media</p><h1>{productMessage('navigation.saved').text}</h1><p>Watchlist, favorites, playlists, collections, and reusable library views.</p></div>{kind && <PrimaryButton onClick={() => setEditorOpen(true)}><Plus /> New {kindLabel(kind).toLocaleLowerCase()}</PrimaryButton>}</header>
+    <header className="portico-saved-header"><div><p className="route-context">Your media</p><h1>{productMessage('navigation.saved').text}</h1><p>Watchlist, favorites, playlists, collections, and reusable library views.</p></div>{kind && <PrimaryButton onClick={() => setEditorOpen(true)}><ActionAddIcon /> New {kindLabel(kind).toLocaleLowerCase()}</PrimaryButton>}</header>
     <nav className="portico-saved-tabs" aria-label="Saved sections">{savedTabs.map(([id, label]) => <button type="button" className={tab === id ? 'active' : ''} aria-current={tab === id ? 'page' : undefined} key={id} onClick={() => selectTab(id)}>{label}</button>)}</nav>
     <div className="portico-saved-content">
       {tab === 'watchlist' && <WatchlistPanel />}
@@ -368,7 +347,7 @@ function PlaylistItems({ entries, selected, busy, canEdit, canReorder, onToggle,
     const position = entry.position + 1;
     return <li key={entry.entryId} className={selectedEntry ? 'selected' : ''}>
       {canEdit
-        ? <button type="button" className={`selection-check row-check ${selectedEntry ? 'selected' : ''}`} onClick={() => onToggle(entry.entryId)} aria-label={`${productMessage(selectedEntry ? 'library.deselect-item' : 'library.select-item', { title: item.title }).text}, position ${position}`} aria-pressed={selectedEntry}>{selectedEntry && <Check />}</button>
+        ? <button type="button" className={`selection-check row-check ${selectedEntry ? 'selected' : ''}`} onClick={() => onToggle(entry.entryId)} aria-label={`${productMessage(selectedEntry ? 'library.deselect-item' : 'library.select-item', { title: item.title }).text}, position ${position}`} aria-pressed={selectedEntry}>{selectedEntry && <ActionConfirmIcon />}</button>
         : <span aria-hidden="true" />}
       <span className="portico-playlist-index">{position}</span>
       <span className={`portico-playlist-art ${mediaPresentation(item).artworkShape}`}><MediaArtwork item={item} shape={mediaPresentation(item).artworkShape === 'square' ? 'square' : 'poster'} /></span>
@@ -376,9 +355,9 @@ function PlaylistItems({ entries, selected, busy, canEdit, canReorder, onToggle,
       <span className="portico-playlist-duration">{item.length}</span>
       <div className="portico-playlist-actions">
         {canEdit && <>
-          <IconButton label={`${productMessage('action.move-queue-earlier', { title: item.title }).text}, position ${position}`} disabled={busy || !canReorder || index === 0} onClick={() => onMove(index, -1)}><ArrowUp /></IconButton>
-          <IconButton label={`${productMessage('action.move-queue-later', { title: item.title }).text}, position ${position}`} disabled={busy || !canReorder || index === entries.length - 1} onClick={() => onMove(index, 1)}><ArrowDown /></IconButton>
-          <IconButton label={`Remove ${item.title}, position ${position}`} disabled={busy} onClick={() => onRemove([entry.entryId])}><Trash2 /></IconButton>
+          <IconButton label={`${productMessage('action.move-queue-earlier', { title: item.title }).text}, position ${position}`} disabled={busy || !canReorder || index === 0} onClick={() => onMove(index, -1)}><NavigationMoveUpIcon /></IconButton>
+          <IconButton label={`${productMessage('action.move-queue-later', { title: item.title }).text}, position ${position}`} disabled={busy || !canReorder || index === entries.length - 1} onClick={() => onMove(index, 1)}><NavigationMoveDownIcon /></IconButton>
+          <IconButton label={`Remove ${item.title}, position ${position}`} disabled={busy} onClick={() => onRemove([entry.entryId])}><ActionDeleteIcon /></IconButton>
         </>}
         <MediaActionMenu target={targetFromMedia(item)} />
       </div>
@@ -460,8 +439,8 @@ function SavedResourceDetail({ kind, id }: { kind: SavedResourceKind; id: string
 
   const currentResource = resource?.id === id && resource.kind === kind ? resource : undefined;
   if (!currentResource) {
-    if (query.status === 'error') return <div className="standard-page"><SavedState error icon={AlertTriangle} title={`Couldn’t load this ${kindLabel(kind).toLocaleLowerCase()}`} detail={reviewedProductErrorText(query.error, 'problem.request-failed')} onRetry={() => setReloadKey((value) => value + 1)} /><Link className="portico-saved-back" to="/saved"><ChevronLeft /> Back to Saved</Link></div>;
-    return <div className="standard-page"><SavedState icon={RefreshCw} title={`Loading ${kindLabel(kind).toLocaleLowerCase()}`} detail="Fetching its current contents and permissions." /></div>;
+    if (query.status === 'error') return <div className="standard-page"><SavedState error icon={StatusWarningIcon} title={`Couldn’t load this ${kindLabel(kind).toLocaleLowerCase()}`} detail={reviewedProductErrorText(query.error, 'problem.request-failed')} onRetry={() => setReloadKey((value) => value + 1)} /><Link className="portico-saved-back" to="/saved"><NavigationPreviousIcon /> Back to Saved</Link></div>;
+    return <div className="standard-page"><SavedState icon={ActionRefreshIcon} title={`Loading ${kindLabel(kind).toLocaleLowerCase()}`} detail="Fetching its current contents and permissions." /></div>;
   }
 
   const sharedResource = currentResource as SavedResourceWithSharing;
@@ -482,7 +461,7 @@ function SavedResourceDetail({ kind, id }: { kind: SavedResourceKind; id: string
     setCursor(undefined);
     setReloadKey((value) => value + 1);
   };
-  const runMutation = async (perform: () => Promise<SavedResourceSummary>, message: string) => {
+  const runMutation = async (perform: () => Promise<SavedResourceSummary>, message: string, reconcile?: () => void) => {
     setBusy(true);
     setError('');
     setNotice('');
@@ -490,6 +469,7 @@ function SavedResourceDetail({ kind, id }: { kind: SavedResourceKind; id: string
     try {
       const updated = await perform();
       setResource(updated);
+      reconcile?.();
       setSelected([]);
       setNotice(message);
       reloadFromStart();
@@ -508,14 +488,18 @@ function SavedResourceDetail({ kind, id }: { kind: SavedResourceKind; id: string
     () => mutations.mutateItems('playlist', currentResource.id, { ...mutation, expectedUpdatedAt: currentResource.updatedAt }),
     message,
   );
-  const runCollectionMutation = (mutation: CollectionMembershipMutation, message: string) => runMutation(
-    () => mutations.mutateItems('collection', currentResource.id, { ...mutation, expectedUpdatedAt: currentResource.updatedAt }),
-    message,
-  );
   const remove = (ids: string[]) => {
     const message = `${ids.length} ${ids.length === 1 ? 'item' : 'items'} removed.`;
-    if (kind === 'playlist') void runPlaylistMutation({ removeEntryIds: ids }, message);
-    if (kind === 'collection') void runCollectionMutation({ removeMediaIds: ids }, message);
+    if (kind === 'playlist') void runMutation(
+      () => mutations.mutateItems('playlist', currentResource.id, { removeEntryIds: ids, expectedUpdatedAt: currentResource.updatedAt }),
+      message,
+      () => setPlaylistEntries((current) => current.filter((entry) => !ids.includes(entry.entryId))),
+    );
+    if (kind === 'collection') void runMutation(
+      () => mutations.mutateItems('collection', currentResource.id, { removeMediaIds: ids, expectedUpdatedAt: currentResource.updatedAt }),
+      message,
+      () => setItems((current) => current.filter((item) => !ids.includes(item.id))),
+    );
   };
   const move = (index: number, direction: number) => {
     if (!canReorder) return;
@@ -541,14 +525,14 @@ function SavedResourceDetail({ kind, id }: { kind: SavedResourceKind; id: string
   };
   const toggle = (selectedId: string) => setSelected((current) => current.includes(selectedId) ? current.filter((candidate) => candidate !== selectedId) : [...current, selectedId]);
   return <div className={`standard-page portico-saved-detail ${hasMore || refreshing ? 'has-pagination' : ''}`}>
-    <nav className="portico-saved-breadcrumbs"><Link to="/saved">{productMessage('navigation.saved').text}</Link><ChevronRight /><span>{kindLabel(kind)}</span></nav>
+    <nav className="portico-saved-breadcrumbs"><Link to="/saved">{productMessage('navigation.saved').text}</Link><NavigationDisclosureIcon /><span>{kindLabel(kind)}</span></nav>
     <header className="portico-saved-detail-header">
       <span className={`portico-saved-detail-icon ${kind}`}><Icon /></span>
       <div><p>{kindLabel(kind)}</p><h1>{currentResource.title}</h1><span>{kind === 'view' ? `${currentResource.libraryName ?? 'Library'} · ${currentResource.pivot ?? 'Browse'} · ${currentResource.itemCount} results` : `${mediaItemCount(currentResource.itemCount)} · ${savedAccessSummary(sharedResource)}`}</span>{currentResource.summary && <p>{currentResource.summary}</p>}</div>
-      <div className="portico-saved-detail-actions">{kind === 'playlist' && visibleItems.length > 0 && <PrimaryButton disabled={busy || refreshing} onClick={() => void playAll()}><Play /> {hasMore ? 'Play loaded' : 'Play all'}</PrimaryButton>}{canManageResource && <SecondaryButton onClick={() => setEditOpen(true)}><Pencil /> {kind === 'view' ? 'Edit' : 'Edit & share'}</SecondaryButton>}{canManageResource && <IconButton label={`Delete ${currentResource.title}`} onClick={() => setDeleteOpen(true)}><Trash2 /></IconButton>}</div>
+      <div className="portico-saved-detail-actions">{kind === 'playlist' && visibleItems.length > 0 && <PrimaryButton disabled={busy || refreshing} onClick={() => void playAll()}><PlaybackPlayIcon /> {hasMore ? 'Play loaded' : 'Play all'}</PrimaryButton>}{canManageResource && <SecondaryButton onClick={() => setEditOpen(true)}><ActionEditIcon /> {kind === 'view' ? 'Edit' : 'Edit & share'}</SecondaryButton>}{canManageResource && <IconButton label={`Delete ${currentResource.title}`} onClick={() => setDeleteOpen(true)}><ActionDeleteIcon /></IconButton>}</div>
     </header>
-    {(notice || error) && <div className={`portico-saved-notice ${error ? 'error' : ''} ${conflict ? 'conflict' : ''}`} role={error ? 'alert' : 'status'}><span>{error || notice}</span>{conflict && <button type="button" onClick={() => { setConflict(false); setError(''); reloadFromStart(); }}><RefreshCw /> Reload latest</button>}</div>}
-    {query.status === 'error' && <div className="portico-saved-notice error" role="alert"><span>{reviewedProductErrorText(query.error, 'problem.request-failed')}</span><button type="button" onClick={() => setReloadKey((value) => value + 1)}><RefreshCw /> {productMessage('action.retry').text}</button></div>}
+    {(notice || error) && <div className={`portico-saved-notice ${error ? 'error' : ''} ${conflict ? 'conflict' : ''}`} role={error ? 'alert' : 'status'}><span>{error || notice}</span>{conflict && <button type="button" onClick={() => { setConflict(false); setError(''); reloadFromStart(); }}><ActionRefreshIcon /> Reload latest</button>}</div>}
+    {query.status === 'error' && <div className="portico-saved-notice error" role="alert"><span>{reviewedProductErrorText(query.error, 'problem.request-failed')}</span><button type="button" onClick={() => setReloadKey((value) => value + 1)}><ActionRefreshIcon /> {productMessage('action.retry').text}</button></div>}
     {!visibleItems.length && !refreshing && <SavedState icon={Icon} title={kind === 'view' ? 'No matches right now' : `This ${kindLabel(kind).toLocaleLowerCase()} is empty`} detail={kind === 'view' ? 'The saved query is valid, but no accessible media currently matches it.' : 'Add media from a library card or its More menu.'} />}
     {selected.length > 0 && kind !== 'view' && <SavedSelectionBar count={selected.length} busy={busy} action={`Remove from ${kindLabel(kind).toLocaleLowerCase()}`} onAction={() => remove(selected)} onClear={() => setSelected([])} />}
     {kind === 'playlist' && playlistEntries.length > 0 && <PlaylistItems entries={playlistEntries} selected={selected} busy={busy || refreshing} canEdit={currentResource.canEdit} canReorder={canReorder} onToggle={toggle} onMove={move} onRemove={remove} />}
@@ -559,13 +543,13 @@ function SavedResourceDetail({ kind, id }: { kind: SavedResourceKind; id: string
       {(hasMore || query.status === 'error') && <SecondaryButton disabled={refreshing || !nextCursor} onClick={() => { if (query.status === 'error') setReloadKey((value) => value + 1); else if (nextCursor) setCursor(nextCursor); }}>{refreshing ? productMessage('state.loading-more').title : query.status === 'error' ? productMessage('action.retry').text : `Load ${Math.min(50, Math.max(0, currentResource.itemCount - loadedCount))} more`}</SecondaryButton>}
     </div>}
     {editOpen && canManageResource && <SavedResourceEditor kind={kind} resource={currentResource} onDismiss={() => setEditOpen(false)} onSaved={(updated) => { setEditOpen(false); setResource(updated); setNotice(`${kindLabel(kind)} updated.`); }} />}
-    {deleteOpen && canManageResource && <ModalOverlay labelledBy="portico-saved-delete-title" className="portico-saved-dialog portico-saved-delete" onDismiss={() => setDeleteOpen(false)}><header><div><p>Delete {kindLabel(kind).toLocaleLowerCase()}</p><h2 id="portico-saved-delete-title">Delete “{currentResource.title}”?</h2></div><IconButton label={productMessage('action.close').text ?? ''} onClick={() => setDeleteOpen(false)}><X /></IconButton></header><p>This removes the {kindLabel(kind).toLocaleLowerCase()} only. Your media files and library items are not deleted.</p>{error && <p className="portico-saved-dialog-error" role="alert">{error}</p>}<footer><SecondaryButton onClick={() => setDeleteOpen(false)}>{productMessage('action.cancel').text}</SecondaryButton><button type="button" className="button danger" disabled={busy} onClick={() => { setBusy(true); setError(''); void mutations.delete(kind, currentResource.id).then(() => navigate('/saved'), (reason) => { setBusy(false); setError(reviewedProductErrorText(reason, 'problem.request-failed')); }); }}><Trash2 /> {busy ? 'Deleting…' : 'Delete'}</button></footer></ModalOverlay>}
+    {deleteOpen && canManageResource && <ModalOverlay labelledBy="portico-saved-delete-title" className="portico-saved-dialog portico-saved-delete" onDismiss={() => setDeleteOpen(false)}><header><div><p>Delete {kindLabel(kind).toLocaleLowerCase()}</p><h2 id="portico-saved-delete-title">Delete “{currentResource.title}”?</h2></div><IconButton label={productMessage('action.close').text ?? ''} onClick={() => setDeleteOpen(false)}><ActionCloseIcon /></IconButton></header><p>This removes the {kindLabel(kind).toLocaleLowerCase()} only. Your media files and library items are not deleted.</p>{error && <p className="portico-saved-dialog-error" role="alert">{error}</p>}<footer><SecondaryButton onClick={() => setDeleteOpen(false)}>{productMessage('action.cancel').text}</SecondaryButton><button type="button" className="button danger" disabled={busy} onClick={() => { setBusy(true); setError(''); void mutations.delete(kind, currentResource.id).then(() => navigate('/saved'), (reason) => { setBusy(false); setError(reviewedProductErrorText(reason, 'problem.request-failed')); }); }}><ActionDeleteIcon /> {busy ? 'Deleting…' : 'Delete'}</button></footer></ModalOverlay>}
   </div>;
 }
 
 export function SavedResourcePage() {
   const { kind: routeKind, id } = useParams();
   const kind = kindFromRoute(routeKind);
-  if (!kind || !id) return <div className="standard-page"><SavedState error icon={AlertTriangle} title="This Saved link is invalid" detail="Return to Saved and choose an available item." /><Link className="portico-saved-back" to="/saved"><ChevronLeft /> Back to Saved</Link></div>;
+  if (!kind || !id) return <div className="standard-page"><SavedState error icon={StatusWarningIcon} title="This Saved link is invalid" detail="Return to Saved and choose an available item." /><Link className="portico-saved-back" to="/saved"><NavigationPreviousIcon /> Back to Saved</Link></div>;
   return <SavedResourceDetail kind={kind} id={id} />;
 }

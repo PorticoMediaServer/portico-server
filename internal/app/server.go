@@ -46,6 +46,7 @@ import (
 	"github.com/PorticoMediaServer/portico-server/internal/database"
 	"github.com/PorticoMediaServer/portico-server/internal/ffmpegsupervisor"
 	"github.com/PorticoMediaServer/portico-server/internal/optimized"
+	"github.com/PorticoMediaServer/portico-server/internal/playbackplan"
 	_ "golang.org/x/image/webp"
 )
 
@@ -347,6 +348,7 @@ type Server struct {
 	remoteAccessLeaseSeconds             atomic.Int64
 	remoteAccessRepairPollSeconds        atomic.Int64
 	remoteAccessStartupCohortWindowNanos atomic.Int64
+	remoteAccessHeartbeatIntervalNanos   atomic.Int64
 	remoteTLS                            remoteTLSRuntime
 }
 
@@ -494,12 +496,11 @@ func (s *Server) queryBackgroundRow(ctx context.Context, query string, args ...a
 }
 
 func (s *Server) execUserWrite(ctx context.Context, query string, args ...any) (sql.Result, error) {
-	return s.execUserWriteTagged(ctx, nil, query, args...)
+	return s.execUserWriteTagged(ctx, []string{"database"}, query, args...)
 }
 
-// execUserWriteTagged publishes the caller-owned invalidation vocabulary when
-// tags is non-nil. Passing nil retains SQL-derived compatibility for simple
-// single-table writes; passing an empty slice deliberately suppresses an event.
+// execUserWriteTagged publishes the caller-owned invalidation vocabulary.
+// An empty slice deliberately suppresses an event.
 func (s *Server) execUserWriteTagged(ctx context.Context, tags []string, query string, args ...any) (sql.Result, error) {
 	return s.execUserWriteTaggedForViewer(ctx, "", "", tags, query, args...)
 }
@@ -534,9 +535,7 @@ func (s *Server) execPrioritizedWriteTaggedForViewer(ctx context.Context, priori
 	s.recordSQLiteWriteMetrics(lane, stats, time.Since(start), err)
 	if err == nil && rowsAffected(result) > 0 {
 		s.invalidateAuthorizationCachesForMutation(query, tags)
-		if tags == nil {
-			s.publishSQLDataChanged(query)
-		} else if len(tags) > 0 {
+		if len(tags) > 0 {
 			s.publishDataChangedForViewer("data.changed", tags, "database", "", nil, accountID, profileID)
 		}
 	}
@@ -1036,6 +1035,7 @@ func (s *Server) ActivateRuntimeGeneration() {
 		s.startBackground("live-tv-lifecycle-reaper", s.runLiveTVLifecycleReaper)
 		s.startBackground("library-channel-maintainer", s.runLibraryChannelMaintenance)
 		s.startBackground("remote-access-heartbeat", s.runRemoteAccessHeartbeat)
+		s.startBackground("remote-access-certificate-maintenance", s.runRemoteAccessCertificateMaintenance)
 		s.startBackground("remote-access-network-monitor", s.runRemoteAccessNetworkMonitor)
 		s.startBackground("remote-tls-listener-repair", s.runRemoteTLSListenerRepair)
 		s.startBackground("api-key-usage-writer", s.runAPIKeyUsageWriter)
@@ -1917,9 +1917,7 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	// work. In particular, this seals the dispatcher-before-register window so
 	// no newly claimed job can begin using SQLite after the host's join boundary.
 	s.BeginShutdown()
-	legacyTranscodeErr := s.shutdownLegacyTranscodes(ctx)
-	supervisorErr := s.ffmpegSupervisor.Shutdown(ctx)
-	if err := errors.Join(legacyTranscodeErr, supervisorErr); err != nil {
+	if err := s.ffmpegSupervisor.Shutdown(ctx); err != nil {
 		return err
 	}
 	if err := s.restoreBarrier.quiesce(ctx); err != nil {
@@ -2228,6 +2226,7 @@ func (s *Server) requestIdentity(next http.Handler) http.Handler {
 		if !requestIDPattern.MatchString(requestID) {
 			requestID = randomID("req")
 		}
+		r.Header.Set(requestIDHeader, requestID)
 		w.Header().Set(requestIDHeader, requestID)
 		next.ServeHTTP(w, r)
 	})
@@ -2737,6 +2736,14 @@ func (s *Server) csrfAllowed(r *http.Request) bool {
 	if r.Method == http.MethodGet || r.Method == http.MethodHead || r.Method == http.MethodOptions {
 		return true
 	}
+	// Portico attachment sessions are authenticated by the one-time,
+	// origin-bound encrypted handshake claimed inside the handler. Browser
+	// connectors intentionally omit ambient cookies and bearer credentials, so
+	// requiring the cookie-session CSRF header here would reject the protected
+	// exchange before its cryptographic proof can be evaluated.
+	if r.Method == http.MethodPost && strings.TrimSpace(r.URL.Path) == "/api/auth/portico/sessions" {
+		return true
+	}
 	hasCSRFHeader := r.Header.Get(csrfHeaderName) != ""
 	hasSessionCookie := len(s.requestSessionCookies(r)) > 0
 	hasBrowserVaultCookie := len(s.requestBrowserVaultCookies(r)) > 0
@@ -3008,11 +3015,11 @@ func (s *Server) userForSessionTokenWithError(r *http.Request, token string) (Us
 		return user, expires, true, nil
 	}
 	row := s.queryUserRow(ctx, `
-		SELECT s.id, u.id, COALESCE(NULLIF(s.profile_id, ''), u.id), COALESCE(s.profile_identity_id, ''), COALESCE(NULLIF(s.auth_provider, ''), 'local'),
+		SELECT s.id, u.id, s.profile_id, s.profile_identity_id, s.auth_provider,
 			u.username, u.email, u.display_name, COALESCE(u.profile_image_path, ''), COALESCE(u.profile_image_url, ''), u.role, COALESCE(u.auth_origin, 'local'), COALESCE(u.portico_user_id, ''), COALESCE(u.portico_membership_id, ''), u.password_hash IS NOT NULL AND u.password_hash <> '', u.permissions_json, u.preferences_json, COALESCE(u.max_content_rating, ''), COALESCE(u.max_active_sessions, 0), COALESCE(u.max_active_streams, 0), COALESCE(u.remote_bitrate_limit_mbps, 0), s.expires_at, s.device_id
 		FROM sessions s
 		JOIN users u ON u.id = s.user_id
-		WHERE s.token_hash = ? AND COALESCE(u.disabled_at, '') = ''`, hash)
+		WHERE s.token_hash = ? AND s.profile_id <> '' AND s.profile_identity_id <> '' AND s.auth_provider IN ('local', 'portico') AND COALESCE(u.disabled_at, '') = ''`, hash)
 
 	var user User
 	var permissionsJSON string
@@ -3228,9 +3235,6 @@ func authResponse(authenticated bool, setupRequired bool, user *User) AuthMeResp
 		response.AuthProvider = user.AuthProvider
 		response.Authority = viewerAuthorityForAuthProvider(user.AuthProvider)
 		response.AccountID = strings.TrimSpace(user.AccountID)
-		if response.AccountID == "" {
-			response.AccountID = user.ID
-		}
 		response.ProfileID = user.ProfileID
 		response.ProfileIdentityID = user.ProfileIdentityID
 		response.SignInMethods = user.SignInMethods
@@ -3250,23 +3254,18 @@ func viewerAuthorityForAuthProvider(provider string) string {
 // issued by Hosted Services. Internal keys must never escape as the canonical
 // viewer scope: clients compare this scope with the signed profile-selection
 // envelope before publishing credentials or profile-owned state.
-func (s *Server) publicViewerIdentityForUserContext(ctx context.Context, user User, provider string) (string, string) {
+func (s *Server) publicViewerIdentityForUserContext(ctx context.Context, user User, provider string) (string, string, error) {
 	internalAccountID := strings.TrimSpace(user.AccountID)
-	if internalAccountID == "" {
-		internalAccountID = strings.TrimSpace(user.ID)
-	}
 	internalProfileID := strings.TrimSpace(user.ProfileID)
-	if internalProfileID == "" {
-		internalProfileID = internalAccountID
+	if internalAccountID == "" || internalProfileID == "" {
+		return "", "", errors.New("canonical viewer identity is unavailable")
 	}
-	if strings.TrimSpace(provider) == "" {
-		provider = user.AuthProvider
+	provider = normalizeAuthProvider(provider)
+	if provider == "" {
+		return "", "", errors.New("canonical authentication provider is unavailable")
 	}
-	if strings.TrimSpace(provider) == "" {
-		provider = defaultAuthProviderForUser(user)
-	}
-	if normalizeAuthProvider(provider) != "portico" {
-		return internalAccountID, internalProfileID
+	if provider != "portico" {
+		return internalAccountID, internalProfileID, nil
 	}
 
 	publicAccountID := strings.TrimSpace(user.PorticoUserID)
@@ -3275,7 +3274,7 @@ func (s *Server) publicViewerIdentityForUserContext(ctx context.Context, user Us
 		publicAccountID = strings.TrimSpace(publicAccountID)
 	}
 	if publicAccountID == "" {
-		publicAccountID = internalAccountID
+		return "", "", errors.New("Hosted account identity is unavailable")
 	}
 
 	publicProfileID := ""
@@ -3286,9 +3285,9 @@ func (s *Server) publicViewerIdentityForUserContext(ctx context.Context, user Us
 		internalProfileID, internalAccountID).Scan(&publicProfileID)
 	publicProfileID = strings.TrimSpace(publicProfileID)
 	if publicProfileID == "" {
-		publicProfileID = internalProfileID
+		return "", "", errors.New("Hosted profile identity is unavailable")
 	}
-	return publicAccountID, publicProfileID
+	return publicAccountID, publicProfileID, nil
 }
 
 func (s *Server) publicServerIDForAuthProviderContext(ctx context.Context, settings map[string]any, provider string) (string, error) {
@@ -3325,7 +3324,15 @@ func (s *Server) authResponseWithServerContext(ctx context.Context, authenticate
 	}
 	if user != nil {
 		response.AuthorizationRevision = s.authorizationRevisionForUserContext(ctx, *user)
-		response.AccountID, response.ProfileID = s.publicViewerIdentityForUserContext(ctx, *user, user.AuthProvider)
+		publicAccountID, publicProfileID, identityErr := s.publicViewerIdentityForUserContext(ctx, *user, user.AuthProvider)
+		if identityErr != nil {
+			response.Authenticated = false
+			response.User = nil
+			response.AccountID = ""
+			response.ProfileID = ""
+			return response
+		}
+		response.AccountID, response.ProfileID = publicAccountID, publicProfileID
 		publicUser := *user
 		publicUser.ProfileID = response.ProfileID
 		response.User = &publicUser
@@ -3858,7 +3865,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 			writeDatabaseAccessError(w, err, http.StatusInternalServerError, "login_failed", "Unable to inspect login credentials.")
 			return
 		}
-		_, _, kdfErr := verifyAccountPassword(r.Context(), kdfBrowserLoginCompare, "", req.Password)
+		_, kdfErr := verifyAccountPassword(r.Context(), kdfBrowserLoginCompare, "", req.Password)
 		if writeKDFUnavailable(w, kdfErr) {
 			return
 		}
@@ -3867,7 +3874,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if strings.TrimSpace(passwordHash) == "" {
-		_, _, kdfErr := verifyAccountPassword(r.Context(), kdfBrowserLoginCompare, "", req.Password)
+		_, kdfErr := verifyAccountPassword(r.Context(), kdfBrowserLoginCompare, "", req.Password)
 		if writeKDFUnavailable(w, kdfErr) {
 			return
 		}
@@ -3875,7 +3882,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "bad_credentials", "Username/email or password is incorrect.")
 		return
 	}
-	passwordValid, verifiedPasswordHash, err := s.verifyAndUpgradeLocalPasswordSnapshot(r.Context(), kdfBrowserLoginCompare, user.ID, passwordHash, req.Password)
+	passwordValid, verifiedPasswordHash, err := s.verifyCanonicalPasswordSnapshot(r.Context(), kdfBrowserLoginCompare, passwordHash, req.Password)
 	if err != nil {
 		if writeKDFUnavailable(w, err) {
 			return
@@ -4223,21 +4230,6 @@ func (s *Server) clearLoginFailures(key string) {
 	delete(s.loginAttempts, key)
 }
 
-func (s *Server) handleAccountPreferences(w http.ResponseWriter, r *http.Request, user User) {
-	if !selectedProfileMayManageAccount(user) {
-		writeError(w, http.StatusForbidden, "primary_profile_required", "Switch to the primary profile to manage account settings.")
-		return
-	}
-	switch r.Method {
-	case http.MethodGet:
-		writeJSON(w, http.StatusOK, user.Preferences)
-	case http.MethodPatch:
-		writeProductError(w, http.StatusGone, "legacy_preferences_read_only", "Use the revisioned /api/preferences endpoint to update viewer preferences.")
-	default:
-		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "Use GET or PATCH for this endpoint.")
-	}
-}
-
 func (s *Server) handleLibraryNavigationPreferences(w http.ResponseWriter, r *http.Request, user User) {
 	switch r.Method {
 	case http.MethodGet:
@@ -4480,7 +4472,7 @@ func (s *Server) handleAccountProfile(w http.ResponseWriter, r *http.Request, us
 			writeDatabaseAccessError(w, err, http.StatusServiceUnavailable, "profile_reauthentication_unavailable", "Unable to verify the current password.")
 			return
 		}
-		valid, verifiedPasswordHash, err := s.verifyAndUpgradeLocalPasswordSnapshot(r.Context(), kdfProfileReauthCompare, accountIDForUser(user), passwordHash, req.CurrentPassword)
+		valid, verifiedPasswordHash, err := s.verifyCanonicalPasswordSnapshot(r.Context(), kdfProfileReauthCompare, passwordHash, req.CurrentPassword)
 		if err != nil {
 			if writeKDFUnavailable(w, err) {
 				return
@@ -5420,6 +5412,10 @@ func (s *Server) handleLibraryRoute(w http.ResponseWriter, r *http.Request, user
 		return
 	}
 	if len(parts) == 2 && parts[1] == "sources" && r.Method == http.MethodGet {
+		if _, present := r.URL.Query()["offset"]; present {
+			writeError(w, http.StatusBadRequest, "offset_not_supported", "Use the opaque cursor to continue library sources.")
+			return
+		}
 		if !canInteractivelyManageServer(user) {
 			writeError(w, http.StatusForbidden, "forbidden", "You do not have permission to browse library source paths.")
 			return
@@ -5433,10 +5429,6 @@ func (s *Server) handleLibraryRoute(w http.ResponseWriter, r *http.Request, user
 		}
 		if !allowed {
 			writeError(w, http.StatusForbidden, "forbidden", "This library is not shared with your account.")
-			return
-		}
-		if r.URL.Query().Has("offset") {
-			writeError(w, http.StatusBadRequest, "offset_not_supported", "Library sources use opaque cursors; offset pagination is not supported.")
 			return
 		}
 		limit := clampInt(queryInt(r, "limit", 100), 1, 250)
@@ -5741,10 +5733,6 @@ func (s *Server) handleHomeRowRoute(w http.ResponseWriter, r *http.Request, user
 	rowID := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/home/rows/"), "/")
 	if rowID == "" {
 		writeError(w, http.StatusNotFound, "home_row_not_found", "Home row was not found.")
-		return
-	}
-	if r.URL.Query().Has("offset") {
-		writeError(w, http.StatusBadRequest, "offset_not_supported", "Home rows use opaque cursors; offset pagination is not supported.")
 		return
 	}
 	limit := clampInt(queryInt(r, "limit", homeRowDefaultPageLimit), 1, 50)
@@ -6619,10 +6607,6 @@ func (s *Server) handlePlaybackHistory(w http.ResponseWriter, r *http.Request, u
 	}
 	filters := playbackHistoryFiltersFromRequest(r)
 	scope := collectionCursorScope("playback-history", filters.UserID, filters.LibraryID, filters.MediaType, strings.ToLower(filters.Query), filters.Period)
-	if r.URL.Query().Has("offset") {
-		writeError(w, http.StatusBadRequest, "invalid_cursor", "Playback history uses opaque cursors; offset is not supported.")
-		return
-	}
 	cursorPayload := struct {
 		StartedAt string `json:"startedAt"`
 		ID        string `json:"id"`
@@ -8540,6 +8524,11 @@ func playbackSourceStartError(fallbackCode string, err error) *playbackStartHTTP
 }
 
 func (s *Server) startPlaybackForRequest(r *http.Request, user User, req PlaybackSessionCreateRequest) (PlaybackResponse, *playbackStartHTTPError) {
+	// Playback admission is foreground work regardless of the eventual delivery
+	// mode. Direct-play sessions still need prompt catalog reads, grant issuance,
+	// and byte-range authorization, so they must preempt cancellable scan analysis
+	// just as transcode admission does.
+	s.mediaResourceGovernor().preemptBackgroundForPlayback()
 	requestedItem, err := s.getMediaPlaybackDetailForUser(r.Context(), user, req.MediaID)
 	if err != nil {
 		return PlaybackResponse{}, &playbackStartHTTPError{status: http.StatusNotFound, code: "media_not_found", message: "Media item was not found."}
@@ -8643,7 +8632,30 @@ func (s *Server) startPlaybackForRequest(r *http.Request, user User, req Playbac
 		return PlaybackResponse{}, &playbackStartHTTPError{status: http.StatusUnprocessableEntity, code: "playback_plan_unavailable", message: "Portico could not produce a verified playback plan for this source and client."}
 	}
 	if decision.Mode == "unavailable" {
+		diagnostic := playbackCapabilityDiagnosticFor(req.ClientProfile)
+		s.log.Warn("playback delivery policy unsatisfied",
+			"request_id", strings.TrimSpace(r.Header.Get(requestIDHeader)),
+			"client_family", diagnostic.ClientFamily,
+			"client_platform", diagnostic.Platform,
+			"capability_schema", diagnostic.SchemaVersion,
+			"client_version", diagnostic.ClientVersion,
+			"tuple_count", diagnostic.TupleCount,
+			"tuples", diagnostic.Tuples,
+			"quality_profile", policy.QualityProfile,
+			"direct_play_policy", policy.DirectPlayPolicy,
+			"direct_stream_policy", policy.DirectStreamPolicy,
+			"transcode_policy", policy.TranscodePolicy,
+			"delivery_profile", policy.DeliveryProfile,
+			"decision_reasons", decision.ReasonCodes,
+			"selection", decision.plannerRejections.Selection,
+			"allowed_modes", decision.plannerRejections.AllowedModes,
+			"constraints", decision.plannerRejections.Constraints,
+			"rejection_counts", decision.plannerRejections.Counts,
+		)
 		return PlaybackResponse{}, &playbackStartHTTPError{status: http.StatusUnprocessableEntity, code: "delivery_policy_unsatisfied", message: "This title cannot be delivered within the selected playback policy."}
+	}
+	if selectedAudioStreamID == "" {
+		selectedAudioStreamID = selectedAudioStreamIDFromPlan(item, decision)
 	}
 	if decision.RequiresTranscode && !s.userCanTranscode(user) {
 		return PlaybackResponse{}, &playbackStartHTTPError{status: http.StatusUnprocessableEntity, code: "transcode_not_authorized", message: "This profile cannot create the compatible stream required for this title."}
@@ -8740,6 +8752,44 @@ func (s *Server) startPlaybackForRequest(r *http.Request, user User, req Playbac
 		return PlaybackResponse{}, &playbackStartHTTPError{status: http.StatusInternalServerError, code: "playback_continuity_failed", message: "Unable to establish playback continuity."}
 	}
 	return playback, nil
+}
+
+func selectedAudioStreamIDFromPlan(item MediaItem, decision PlaybackDecision) string {
+	if decision.execution == nil || len(decision.execution.Plan) == 0 {
+		return ""
+	}
+	var plan playbackplan.Plan
+	if json.Unmarshal(decision.execution.Plan, &plan) != nil {
+		return ""
+	}
+	audioIndex := -1
+	for _, action := range plan.Streams {
+		if action.Kind != "audio" {
+			continue
+		}
+		if audioIndex >= 0 && audioIndex != action.Index {
+			return ""
+		}
+		audioIndex = action.Index
+	}
+	if audioIndex < 0 {
+		return ""
+	}
+	selectedVersionID := strings.TrimSpace(selectedPlaybackVersionID(item))
+	selectedID := ""
+	for _, stream := range item.Streams {
+		if stream.Kind != "audio" || stream.Index != audioIndex {
+			continue
+		}
+		if selectedVersionID != "" && strings.TrimSpace(stream.FileID) != "" && stream.FileID != selectedVersionID {
+			continue
+		}
+		if selectedID != "" && selectedID != stream.ID {
+			return ""
+		}
+		selectedID = stream.ID
+	}
+	return normalizeSelectedAudioStreamID(selectedID)
 }
 
 func (s *Server) handlePlaybackActive(w http.ResponseWriter, r *http.Request, user User) {
@@ -9196,10 +9246,8 @@ func (s *Server) handlePlaybackHandoff(w http.ResponseWriter, r *http.Request, u
 			return
 		}
 		if req.RequestID == "" {
-			// The prepared capability is itself unique and single-use. Deriving the
-			// idempotency key preserves safe retries for older clients while newer
-			// clients may still supply a request identifier for observability.
-			req.RequestID = "prepared:" + preparedID
+			writeError(w, http.StatusBadRequest, "handoff_request_id_invalid", "requestId is required for prepared playback handoff.")
+			return
 		}
 		fingerprintBytes, _ := json.Marshal(req)
 		fingerprint := hashToken(string(fingerprintBytes))
@@ -10278,6 +10326,7 @@ func mediaPlaybackCanUseDirectStream(decision PlaybackDecision) bool {
 func sourceQualityDescription(item MediaItem, _ PlaybackDecision) string {
 	bitrateBitsPerSecond := 0
 	videoHeight := 0
+	audioLayout := ""
 	for _, stream := range item.Streams {
 		if stream.Bitrate > 0 {
 			bitrate := stream.Bitrate
@@ -10289,20 +10338,106 @@ func sourceQualityDescription(item MediaItem, _ PlaybackDecision) string {
 		if stream.Kind == "video" && stream.Height > videoHeight {
 			videoHeight = stream.Height
 		}
+		if stream.Kind == "audio" && audioLayout == "" {
+			audioLayout = playbackAudioLayoutLabel(stream.ChannelLayout, stream.Channels)
+		}
 	}
 	parts := []string{}
 	if bitrateBitsPerSecond > 0 {
-		mbps := float64(bitrateBitsPerSecond) / 1_000_000
-		if mbps < 10 {
-			parts = append(parts, fmt.Sprintf("%.1f Mbps", mbps))
+		if videoHeight == 0 {
+			parts = append(parts, fmt.Sprintf("%d kbps", max(1, int(math.Round(float64(bitrateBitsPerSecond)/1000)))))
 		} else {
-			parts = append(parts, fmt.Sprintf("%.0f Mbps", mbps))
+			parts = append(parts, playbackMbpsLabel(bitrateBitsPerSecond/1000))
 		}
 	}
 	if videoHeight > 0 {
 		parts = append(parts, fmt.Sprintf("%dp", videoHeight))
+	} else if audioLayout != "" {
+		parts = append(parts, audioLayout)
 	}
 	return strings.Join(parts, " · ")
+}
+
+func playbackMbpsLabel(kbps int) string {
+	if kbps%1000 == 0 {
+		return fmt.Sprintf("%d Mbps", kbps/1000)
+	}
+	return fmt.Sprintf("%.1f Mbps", float64(kbps)/1000)
+}
+
+func playbackVideoQualityLabel(height, videoKbps int) string {
+	resolution := fmt.Sprintf("%dp", height)
+	if height >= 2160 {
+		resolution = "4K"
+	}
+	return resolution + " · " + playbackMbpsLabel(videoKbps)
+}
+
+func playbackVideoQualityDescription(height, videoKbps int) string {
+	resolution := fmt.Sprintf("%dp", height)
+	if height >= 2160 {
+		resolution = "4K"
+	}
+	return fmt.Sprintf("Limits video to %s at %s.", resolution, playbackMbpsLabel(videoKbps))
+}
+
+func playbackAudioLayoutLabel(layout string, channels int) string {
+	switch strings.ToLower(strings.TrimSpace(layout)) {
+	case "mono", "1.0":
+		return "Mono"
+	case "stereo", "2.0":
+		return "Stereo"
+	case "2.1", "3.0", "3.1", "4.0", "4.1", "5.0", "5.1", "6.1", "7.1":
+		return strings.TrimSpace(layout)
+	}
+	switch channels {
+	case 1:
+		return "Mono"
+	case 2:
+		return "Stereo"
+	case 6:
+		return "5.1"
+	case 8:
+		return "7.1"
+	default:
+		if channels > 0 {
+			return fmt.Sprintf("%d-channel", channels)
+		}
+		return ""
+	}
+}
+
+func playbackDecisionAudioLayout(item MediaItem, decision PlaybackDecision) string {
+	if decision.execution != nil && len(decision.execution.Plan) > 0 {
+		var plan playbackplan.Plan
+		if json.Unmarshal(decision.execution.Plan, &plan) == nil {
+			if label := playbackAudioLayoutLabel(plan.Audio.Layout, plan.Audio.Channels); label != "" {
+				return label
+			}
+		}
+	}
+	for _, stream := range item.Streams {
+		if stream.Kind == "audio" {
+			if label := playbackAudioLayoutLabel(stream.ChannelLayout, stream.Channels); label != "" {
+				return label
+			}
+		}
+	}
+	return "Stereo"
+}
+
+func playbackAudioQualityLabel(audioKbps int, layout string) string {
+	if layout == "" {
+		return fmt.Sprintf("%d kbps", audioKbps)
+	}
+	return fmt.Sprintf("%d kbps %s", audioKbps, layout)
+}
+
+func playbackAudioQualityDescription(audioKbps int, layout string) string {
+	if layout == "" {
+		return fmt.Sprintf("Limits audio to %d kbps.", audioKbps)
+	}
+	return fmt.Sprintf("Limits audio to %d kbps %s.", audioKbps, strings.ToLower(layout))
 }
 
 func playbackQualities(item MediaItem, decision PlaybackDecision, policy ResolvedPlaybackPolicy, allowTranscode bool) []Quality {
@@ -10317,12 +10452,13 @@ func playbackQualities(item MediaItem, decision PlaybackDecision, policy Resolve
 		if !allowTranscode || policy.TranscodePolicy == "never" {
 			return options
 		}
+		layout := playbackDecisionAudioLayout(item, decision)
 		for _, id := range []string{"audio-high", "audio-standard", "audio-data-saver"} {
 			preset := transcodePresets[id]
 			if policy.MaxAudioBitrateKbps > 0 && preset.audioK > policy.MaxAudioBitrateKbps {
 				continue
 			}
-			options = append(options, Quality{ID: id, Label: preset.label, Description: fmt.Sprintf("%d kbps", preset.audioK), Available: true, RequiresTranscode: true})
+			options = append(options, Quality{ID: id, Label: playbackAudioQualityLabel(preset.audioK, layout), Description: playbackAudioQualityDescription(preset.audioK, layout), Available: true, RequiresTranscode: true})
 		}
 		return options
 	}
@@ -10343,28 +10479,7 @@ func playbackQualities(item MediaItem, decision PlaybackDecision, policy Resolve
 			if policy.MaxVideoHeight > 0 && preset.height > policy.MaxVideoHeight {
 				continue
 			}
-			bitrate := fmt.Sprintf("%.1f Mbps", float64(preset.videoK)/1000)
-			if preset.videoK%1000 == 0 {
-				bitrate = fmt.Sprintf("%d Mbps", preset.videoK/1000)
-			}
-			label := fmt.Sprintf("%dp", preset.height)
-			switch id {
-			case "video-high":
-				label = "4K UHD"
-			case "1080p-high":
-				label = "1080p HD (High)"
-			case "1080p-medium":
-				label = "1080p HD (Medium)"
-			case "1080p-standard", "1080p-low":
-				label = "1080p HD"
-			case "720p-medium":
-				label = "720p HD (High)"
-			case "720p-standard":
-				label = "720p HD (Medium)"
-			case "720p-low":
-				label = "720p HD"
-			}
-			transcodeOptions = append(transcodeOptions, Quality{ID: id, Label: label, Description: bitrate, Available: true, RequiresTranscode: true})
+			transcodeOptions = append(transcodeOptions, Quality{ID: id, Label: playbackVideoQualityLabel(preset.height, preset.videoK), Description: playbackVideoQualityDescription(preset.height, preset.videoK), Available: true, RequiresTranscode: true})
 		}
 	}
 	original := Quality{ID: "original", Label: "Original Quality", Description: sourceQualityDescription(item, decision), Available: true}
@@ -10375,7 +10490,7 @@ func playbackQualities(item MediaItem, decision PlaybackDecision, policy Resolve
 	}
 	options := []Quality{original}
 	if allowTranscode && policy.TranscodePolicy != "never" {
-		options = append(options, Quality{ID: "auto", Label: "Automatic", Description: "Best for this connection", Available: true, RequiresTranscode: decision.RequiresTranscode})
+		options = append(options, Quality{ID: "auto", Label: "Automatic", Description: "Best quality for this connection.", Available: true, RequiresTranscode: decision.RequiresTranscode})
 	}
 	return append(options, transcodeOptions...)
 }
@@ -11068,6 +11183,10 @@ func (s *Server) handlePlaybackSessionRoute(w http.ResponseWriter, r *http.Reque
 			writeError(w, http.StatusBadRequest, "completed_position_required", "A completed event must include progressSeconds or positionSeconds.")
 			return
 		}
+		if req.Completed != nil && *req.Completed {
+			writeError(w, http.StatusBadRequest, "terminal_request_required", "Complete playback with the atomic DELETE terminal request.")
+			return
+		}
 		ack, err := s.touchPlaybackSession(user, sessionID, req)
 		if err != nil {
 			if errors.Is(err, errPlaybackGenerationStale) {
@@ -11100,16 +11219,38 @@ func (s *Server) handlePlaybackSessionRoute(w http.ResponseWriter, r *http.Reque
 				}
 			}
 		}
-		if ack.Accepted && req.Completed != nil && *req.Completed {
-			if err := s.endPlaybackSession(user, sessionID); err != nil && !errors.Is(err, sql.ErrNoRows) {
-				writeError(w, http.StatusInternalServerError, "playback_session_failed", "Unable to complete playback session.")
-				return
-			}
-			ack.SessionState = "stopped"
-		}
 		writeJSON(w, http.StatusOK, ack)
 	case http.MethodDelete:
-		if err := s.endPlaybackSession(user, sessionID); err != nil {
+		var req PlaybackSessionStopRequest
+		if !decodeJSON(w, r, &req) {
+			return
+		}
+		req.Disposition = strings.ToLower(strings.TrimSpace(req.Disposition))
+		if req.Disposition != "stopped" && req.Disposition != "completed" {
+			writeError(w, http.StatusBadRequest, "invalid_playback_disposition", "disposition must be stopped or completed.")
+			return
+		}
+		if req.Generation <= 0 || req.EventSequence <= 0 {
+			writeError(w, http.StatusBadRequest, "invalid_playback_terminal_authority", "generation and eventSequence must be positive integers.")
+			return
+		}
+		if _, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(req.RecordedAt)); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_recorded_at", "recordedAt must be an RFC 3339 timestamp.")
+			return
+		}
+		if math.IsNaN(req.PositionSeconds) || math.IsInf(req.PositionSeconds, 0) || req.PositionSeconds < 0 || math.IsNaN(req.DurationSeconds) || math.IsInf(req.DurationSeconds, 0) || req.DurationSeconds < 0 || (req.Disposition == "completed" && req.DurationSeconds <= 0) {
+			writeError(w, http.StatusBadRequest, "invalid_playback_terminal_position", "positionSeconds and durationSeconds must be finite and non-negative; completed playback requires a positive durationSeconds.")
+			return
+		}
+		if err := s.endPlaybackSessionAtomically(user, sessionID, req); err != nil {
+			if errors.Is(err, errPlaybackGenerationStale) {
+				writeError(w, http.StatusConflict, "playback_generation_stale", "Playback progress authority changed. Reload the active playback session.")
+				return
+			}
+			if errors.Is(err, errPlaybackEventSequenceStale) {
+				writeError(w, http.StatusConflict, "playback_event_sequence_stale", "Playback terminal event is not newer than the accepted playback state.")
+				return
+			}
 			if errors.Is(err, sql.ErrNoRows) {
 				writeError(w, http.StatusNotFound, "playback_session_not_found", "Playback session was not found.")
 				return
@@ -11154,8 +11295,8 @@ func (s *Server) handlePlaybackRenegotiation(w http.ResponseWriter, r *http.Requ
 	ctx := r.Context()
 	var mediaID, endedAt, state, lastRequest, lastFingerprint string
 	var revision int64
-	var playbackGeneration int
-	if err := s.queryUserRow(ctx, `SELECT media_id, ended_at, state, renegotiation_revision, last_renegotiation_request_id, last_renegotiation_fingerprint, playback_generation FROM playback_sessions WHERE id = ? AND profile_id = ?`, sessionID, viewerProfileID(user)).Scan(&mediaID, &endedAt, &state, &revision, &lastRequest, &lastFingerprint, &playbackGeneration); err != nil {
+	var playbackGeneration, isLive int
+	if err := s.queryUserRow(ctx, `SELECT media_id, ended_at, state, renegotiation_revision, last_renegotiation_request_id, last_renegotiation_fingerprint, playback_generation, is_live FROM playback_sessions WHERE id = ? AND profile_id = ?`, sessionID, viewerProfileID(user)).Scan(&mediaID, &endedAt, &state, &revision, &lastRequest, &lastFingerprint, &playbackGeneration, &isLive); err != nil {
 		writeError(w, http.StatusNotFound, "playback_session_not_found", "Playback session was not found.")
 		return
 	}
@@ -11165,6 +11306,10 @@ func (s *Server) handlePlaybackRenegotiation(w http.ResponseWriter, r *http.Requ
 	}
 	fingerprintBytes, _ := json.Marshal(req)
 	fingerprint := hashToken(string(fingerprintBytes))
+	if isLive == 1 {
+		s.handleLiveTVPlaybackRenegotiation(w, r, user, sessionID, mediaID, req, revision, playbackGeneration, lastRequest, lastFingerprint, fingerprint)
+		return
+	}
 	if lastRequest == req.RequestID {
 		if lastFingerprint != fingerprint {
 			writeError(w, http.StatusConflict, "renegotiation_request_conflict", "requestId was already used with a different playback selection.")
@@ -14835,7 +14980,6 @@ func (s *Server) validatedLocalContentPath(ctx context.Context, path string) (st
 		UNION
 		SELECT path FROM libraries WHERE trim(COALESCE(path, '')) <> ''`)
 	if err == nil {
-		defer rows.Close()
 		for rows.Next() {
 			var root string
 			if rows.Scan(&root) == nil {
@@ -15380,8 +15524,10 @@ func normalizeAuthProvider(provider string) string {
 	switch strings.ToLower(strings.TrimSpace(provider)) {
 	case "portico":
 		return "portico"
-	default:
+	case "local":
 		return "local"
+	default:
+		return ""
 	}
 }
 
@@ -19587,8 +19733,39 @@ func (s *Server) expireStalePlaybackSessions(now time.Time) error {
 	cutoff := now.Add(-30 * time.Second).Format(time.RFC3339)
 	audioCutoff := now.Add(-12 * time.Hour).Format(time.RFC3339)
 	endedAt := now.Format(time.RFC3339)
+	// Reconcile authority left by any terminal path that predates the current
+	// atomic stop contract. A stopped session can never retain bearer authority,
+	// even when its terminal response was lost or rejected.
+	terminalResidueRows, residueErr := s.queryUserRead(context.Background(), `
+		SELECT DISTINCT ps.id
+		FROM playback_sessions ps
+		WHERE (ps.ended_at <> '' OR ps.state = 'stopped')
+			AND (
+				EXISTS (SELECT 1 FROM playback_media_grants g WHERE g.playback_session_id = ps.id AND g.revoked_at = '')
+				OR EXISTS (SELECT 1 FROM playback_session_continuation_credentials c WHERE c.playback_session_id = ps.id AND c.revoked_at = '')
+				OR EXISTS (SELECT 1 FROM live_tv_tuner_allocations a WHERE a.allocation_kind = 'live_session' AND a.consumer_id = ps.id)
+			)`)
+	if residueErr != nil {
+		return residueErr
+	}
+	terminalResidueSessionIDs := []string{}
+	for terminalResidueRows.Next() {
+		var sessionID string
+		if scanErr := terminalResidueRows.Scan(&sessionID); scanErr != nil {
+			_ = terminalResidueRows.Close()
+			return scanErr
+		}
+		terminalResidueSessionIDs = append(terminalResidueSessionIDs, sessionID)
+	}
+	if rowsErr := terminalResidueRows.Err(); rowsErr != nil {
+		_ = terminalResidueRows.Close()
+		return rowsErr
+	}
+	if closeErr := terminalResidueRows.Close(); closeErr != nil {
+		return closeErr
+	}
 	rows, err := s.queryUserRead(context.Background(), `
-		SELECT id, user_id, media_id
+		SELECT id, user_id, profile_id, media_id
 		FROM playback_sessions
 		WHERE ended_at = '' AND last_seen_at < ?
 			AND (media_type NOT IN ('track', 'audiobook') OR last_seen_at < ?)`, cutoff, audioCutoff)
@@ -19598,15 +19775,17 @@ func (s *Server) expireStalePlaybackSessions(now time.Time) error {
 	staleSessions := []struct {
 		SessionID string
 		UserID    string
+		ProfileID string
 		MediaID   string
 	}{}
 	for rows.Next() {
 		var stale struct {
 			SessionID string
 			UserID    string
+			ProfileID string
 			MediaID   string
 		}
-		if err := rows.Scan(&stale.SessionID, &stale.UserID, &stale.MediaID); err != nil {
+		if err := rows.Scan(&stale.SessionID, &stale.UserID, &stale.ProfileID, &stale.MediaID); err != nil {
 			_ = rows.Close()
 			return err
 		}
@@ -19618,22 +19797,59 @@ func (s *Server) expireStalePlaybackSessions(now time.Time) error {
 	var mediaIDs []string
 	for _, stale := range staleSessions {
 		mediaID := stale.MediaID
-		if finalizedMediaID, finalizeErr := s.finalizePlaybackSessionProgress(User{ID: stale.UserID}, stale.SessionID); finalizeErr == nil && strings.TrimSpace(finalizedMediaID) != "" {
+		if finalizedMediaID, finalizeErr := s.finalizePlaybackSessionProgress(User{ID: stale.UserID, AccountID: stale.UserID, ProfileID: stale.ProfileID}, stale.SessionID); finalizeErr == nil && strings.TrimSpace(finalizedMediaID) != "" {
 			mediaID = finalizedMediaID
 		}
 		if strings.TrimSpace(mediaID) != "" {
 			mediaIDs = append(mediaIDs, mediaID)
 		}
 	}
-	_, err = s.execUserWrite(context.Background(), `
-		UPDATE playback_sessions
-		SET ended_at = ?, state = 'stopped'
-		WHERE ended_at = '' AND last_seen_at < ?
-			AND (media_type NOT IN ('track', 'audiobook') OR last_seen_at < ?)`,
-		endedAt, cutoff, audioCutoff)
-	if err == nil {
+	endedSessions := make([]string, 0, len(staleSessions))
+	err = s.withPlaybackTxTagged(context.Background(), []string{"playback"}, func(tx *sql.Tx) error {
+		for _, sessionID := range terminalResidueSessionIDs {
+			if _, updateErr := tx.Exec(`UPDATE playback_media_grants SET revoked_at = ? WHERE playback_session_id = ? AND revoked_at = ''`, endedAt, sessionID); updateErr != nil {
+				return updateErr
+			}
+			if _, updateErr := tx.Exec(`UPDATE playback_session_continuation_credentials SET revoked_at = ?, previous_valid_until = '' WHERE playback_session_id = ? AND revoked_at = ''`, endedAt, sessionID); updateErr != nil {
+				return updateErr
+			}
+			if _, updateErr := tx.Exec(`DELETE FROM live_tv_tuner_allocations WHERE allocation_kind = 'live_session' AND consumer_id = ?`, sessionID); updateErr != nil {
+				return updateErr
+			}
+		}
 		for _, stale := range staleSessions {
-			_ = s.completeEndedPlaybackSessionHistoryContext(context.Background(), stale.SessionID)
+			result, updateErr := tx.Exec(`
+				UPDATE playback_sessions
+				SET ended_at = ?, state = 'stopped'
+				WHERE id = ? AND ended_at = '' AND last_seen_at < ?
+					AND (media_type NOT IN ('track', 'audiobook') OR last_seen_at < ?)`,
+				endedAt, stale.SessionID, cutoff, audioCutoff)
+			if updateErr != nil {
+				return updateErr
+			}
+			if rowsAffected(result) != 1 {
+				continue
+			}
+			if _, updateErr = tx.Exec(`UPDATE playback_media_grants SET revoked_at = ? WHERE playback_session_id = ? AND revoked_at = ''`, endedAt, stale.SessionID); updateErr != nil {
+				return updateErr
+			}
+			if _, updateErr = tx.Exec(`UPDATE playback_session_continuation_credentials SET revoked_at = ?, previous_valid_until = '' WHERE playback_session_id = ? AND revoked_at = ''`, endedAt, stale.SessionID); updateErr != nil {
+				return updateErr
+			}
+			if _, updateErr = tx.Exec(`DELETE FROM live_tv_tuner_allocations WHERE allocation_kind = 'live_session' AND consumer_id = ?`, stale.SessionID); updateErr != nil {
+				return updateErr
+			}
+			endedSessions = append(endedSessions, stale.SessionID)
+		}
+		return nil
+	})
+	if err == nil {
+		for _, sessionID := range terminalResidueSessionIDs {
+			s.forgetMediaGrantsForPlaybackSession(sessionID)
+		}
+		for _, sessionID := range endedSessions {
+			s.forgetMediaGrantsForPlaybackSession(sessionID)
+			_ = s.completeEndedPlaybackSessionHistoryContext(context.Background(), sessionID)
 		}
 		for _, mediaID := range mediaIDs {
 			if !s.hasActivePlaybackForMedia(mediaID) {
@@ -25125,11 +25341,14 @@ func (s *Server) playbackProgressPreferencesForUserContext(ctx context.Context, 
 		ctx = context.Background()
 	}
 	_, profileID := s.accountAndProfileIDsContext(ctx, identityID)
-	var raw string
-	if err := s.queryUserRow(ctx, `SELECT preferences_json FROM profiles WHERE id = ? AND disabled_at = ''`, profileID).Scan(&raw); err != nil {
+	values, err := s.profileServerPreferenceValuesForProfileContext(ctx, profileID)
+	if err != nil {
 		return defaultPlaybackProgressPreferences()
 	}
-	return decodeUserPreferences(raw).PlaybackProgress
+	return PlaybackProgressPreferences{
+		StartedThresholdPercent: values.Playback.StartedThresholdPercent,
+		PlayedThresholdPercent:  values.Playback.PlayedThresholdPercent,
+	}
 }
 
 func (s *Server) userPrivacyPreferencesForUserContext(ctx context.Context, userID string) UserPrivacyPreferences {
@@ -25145,11 +25364,32 @@ func (s *Server) userPrivacyPreferencesForProfileContext(ctx context.Context, pr
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	var raw string
-	if err := s.queryUserRow(ctx, `SELECT preferences_json FROM profiles WHERE id = ? AND disabled_at = ''`, profileID).Scan(&raw); err != nil {
+	values, err := s.profileServerPreferenceValuesForProfileContext(ctx, profileID)
+	if err != nil {
 		return defaultUserPrivacyPreferences()
 	}
-	return decodeUserPreferences(raw).Privacy
+	return UserPrivacyPreferences{
+		PauseWatchHistory:         values.Privacy.PauseWatchHistory,
+		ShowActivityToMembers:     values.Privacy.ShowActivityToMembers,
+		IncludeInWatchWithFriends: values.Privacy.IncludeInWatchWithFriends,
+	}
+}
+
+func (s *Server) profileServerPreferenceValuesForProfileContext(ctx context.Context, profileID string) (profileServerPreferenceValues, error) {
+	serverID, err := s.profileDirectoryServerIDContext(ctx)
+	if err != nil {
+		return profileServerPreferenceValues{}, err
+	}
+	var raw string
+	err = s.queryUserRow(ctx, `SELECT values_json FROM viewer_preference_documents WHERE scope_type = 'profile-server' AND profile_id = ? AND server_id = ?`, profileID, serverID).Scan(&raw)
+	if err != nil {
+		return profileServerPreferenceValues{}, err
+	}
+	var values profileServerPreferenceValues
+	if err := json.Unmarshal([]byte(raw), &values); err != nil {
+		return profileServerPreferenceValues{}, err
+	}
+	return values, nil
 }
 
 func normalizePlaybackProgressState(progress int, watched bool, durationSeconds int, mediaType string, preferences PlaybackProgressPreferences) normalizedPlaybackProgressState {
@@ -25351,7 +25591,7 @@ func (s *Server) createPlaybackSession(r *http.Request, user User, item MediaIte
 		VideoSource:      playbackVideoSourceLabel(item, isLive),
 		VideoTarget:      playbackTargetLabel(decision, isLive, false),
 		AudioDecision:    decisionLabel,
-		AudioSource:      audioSourceLabel(item),
+		AudioSource:      playbackAudioSourceLabel(item),
 		AudioTarget:      playbackTargetLabel(decision, isLive, true),
 		SubtitleDecision: subtitleDecision,
 		Media:            item,
@@ -25430,13 +25670,28 @@ func (s *Server) commitPlaybackSessionReplacement(ctx context.Context, user User
 			}
 			previousSessionIDs = append(previousSessionIDs, previousSessionID)
 		}
-		return rows.Err()
+		if err := rows.Err(); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		if err := rows.Close(); err != nil {
+			return err
+		}
+		for _, previousSessionID := range previousSessionIDs {
+			if _, err := tx.Exec(`UPDATE playback_media_grants SET revoked_at = ? WHERE playback_session_id = ? AND revoked_at = ''`, now, previousSessionID); err != nil {
+				return err
+			}
+			if _, err := tx.Exec(`UPDATE playback_session_continuation_credentials SET revoked_at = ?, previous_valid_until = '' WHERE playback_session_id = ? AND revoked_at = ''`, now, previousSessionID); err != nil {
+				return err
+			}
+		}
+		return nil
 	})
 	if err != nil {
 		return err
 	}
 	for _, previousSessionID := range previousSessionIDs {
-		s.revokePlaybackContinuation(previousSessionID)
+		s.forgetMediaGrantsForPlaybackSession(previousSessionID)
 		s.releaseLiveTVTunerAllocation(ctx, "live_session", previousSessionID)
 		_ = s.completeEndedPlaybackSessionHistoryContext(ctx, previousSessionID)
 	}
@@ -26306,6 +26561,103 @@ func (s *Server) endPlaybackSession(user User, sessionID string) error {
 	return nil
 }
 
+func (s *Server) endPlaybackSessionAtomically(user User, sessionID string, req PlaybackSessionStopRequest) error {
+	nowTime := time.Now().UTC()
+	now := nowTime.Format(time.RFC3339Nano)
+	profileID := viewerProfileID(user)
+	accountID := accountIDForUser(user)
+	preferences := s.playbackProgressPreferencesForUserContext(context.Background(), profileID)
+	positionSeconds := max(0, int(math.Round(req.PositionSeconds)))
+	durationSeconds := max(0, int(math.Round(req.DurationSeconds)))
+	if req.Disposition == "completed" {
+		positionSeconds = durationSeconds
+	} else if durationSeconds > 0 {
+		positionSeconds = min(positionSeconds, durationSeconds)
+	}
+	var mediaID string
+	err := s.withPrioritizedTxTaggedForViewer(context.Background(), sqliteWritePlayback, "playback_terminal_tx", database.UserWriteRetry, accountID, profileID,
+		[]string{"playback", "playback-progress", "media-state", "library-items", "home"}, func(tx *sql.Tx) error {
+			var mediaType, endedAt, state string
+			var liveInt, historyPaused int
+			var currentGeneration, lastSequence int64
+			if err := tx.QueryRow(`
+				SELECT media_id, media_type, is_live, history_paused, ended_at, state,
+					progress_generation, last_event_sequence
+				FROM playback_sessions
+				WHERE id = ? AND profile_id = ?`, sessionID, profileID).
+				Scan(&mediaID, &mediaType, &liveInt, &historyPaused, &endedAt, &state, &currentGeneration, &lastSequence); err != nil {
+				return err
+			}
+			if strings.TrimSpace(endedAt) != "" || state == "stopped" {
+				return sql.ErrNoRows
+			}
+			if req.Generation != currentGeneration {
+				return errPlaybackGenerationStale
+			}
+			if req.EventSequence <= lastSequence {
+				return errPlaybackEventSequenceStale
+			}
+			progress := sessionProgressPercent(positionSeconds, durationSeconds, liveInt == 1)
+			result, err := tx.Exec(`
+				UPDATE playback_sessions
+				SET last_seen_at = ?, ended_at = ?, state = 'stopped', progress = ?,
+					position_seconds = ?, last_event_sequence = ?,
+					last_event_recorded_at = ?, last_event_received_at = ?
+				WHERE id = ? AND profile_id = ? AND ended_at = '' AND state <> 'stopped'
+					AND progress_generation = ? AND last_event_sequence < ?`,
+				now, now, progress, positionSeconds, req.EventSequence,
+				strings.TrimSpace(req.RecordedAt), now, sessionID, profileID,
+				req.Generation, req.EventSequence)
+			if err != nil {
+				return err
+			}
+			if rowsAffected(result) != 1 {
+				return errPlaybackEventSequenceStale
+			}
+			_, err = tx.Exec(`DELETE FROM playback_prepared_handoffs WHERE source_session_id = ? AND user_id = ? AND profile_id = ? AND state = 'prepared'`, sessionID, accountID, profileID)
+			if err != nil {
+				return err
+			}
+			if liveInt == 1 || historyPaused != 0 || strings.TrimSpace(mediaID) == "" {
+				return nil
+			}
+			completed := req.Disposition == "completed"
+			normalized := normalizePlaybackProgressState(positionSeconds, completed, durationSeconds, mediaType, preferences)
+			lastPlayed := ""
+			if mediaType == "track" || normalized.Started || normalized.Watched {
+				lastPlayed = nowTime.Format(time.RFC3339)
+			}
+			_, err = tx.Exec(`
+				INSERT INTO user_media_state (
+					profile_id, user_id, media_id, watched, progress_seconds, last_played_at,
+					updated_at, progress_session_id, progress_recorded_at
+				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+				ON CONFLICT(profile_id, media_id) DO UPDATE SET
+					watched = excluded.watched,
+					progress_seconds = excluded.progress_seconds,
+					last_played_at = CASE WHEN excluded.last_played_at <> '' THEN excluded.last_played_at ELSE user_media_state.last_played_at END,
+					updated_at = excluded.updated_at,
+					progress_session_id = excluded.progress_session_id,
+					progress_recorded_at = excluded.progress_recorded_at`,
+				profileID, accountID, mediaID, boolInt(normalized.Watched), normalized.ProgressSeconds,
+				lastPlayed, nowTime.Format(time.RFC3339), sessionID, strings.TrimSpace(req.RecordedAt))
+			return err
+		})
+	if err != nil {
+		return err
+	}
+	s.invalidateHomeCacheForProfile(profileID)
+	s.revokeMediaGrantsForSession(context.Background(), sessionID)
+	s.revokePlaybackContinuation(sessionID)
+	s.releaseLiveTVTunerAllocation(context.Background(), "live_session", sessionID)
+	_ = s.completeEndedPlaybackSessionHistoryContext(context.Background(), sessionID)
+	if !s.hasActivePlaybackForMedia(mediaID) {
+		s.stopTranscodeSessionForMedia(mediaID)
+	}
+	s.notifyPlaybackCommand(sessionID)
+	return nil
+}
+
 func (s *Server) hasActivePlaybackForMedia(mediaID string) bool {
 	var exists int
 	cutoff := time.Now().UTC().Add(-45 * time.Second).Format(time.RFC3339)
@@ -26352,6 +26704,29 @@ func playbackTargetLabel(decision PlaybackDecision, isLive bool, audio bool) str
 		return "H.264"
 	}
 	return "Original"
+}
+
+func playbackAudioSourceLabel(item MediaItem) string {
+	for _, stream := range item.Streams {
+		if stream.Kind != "audio" {
+			continue
+		}
+		if label := strings.TrimSpace(stream.DisplayTitle); label != "" {
+			return label
+		}
+		parts := []string{strings.ToUpper(strings.TrimSpace(stream.Codec))}
+		if stream.Channels == 1 {
+			parts = append(parts, "Mono")
+		} else if stream.Channels == 2 {
+			parts = append(parts, "Stereo")
+		} else if stream.Channels > 0 {
+			parts = append(parts, fmt.Sprintf("%d channels", stream.Channels))
+		}
+		if label := strings.TrimSpace(strings.Join(parts, " ")); label != "" {
+			return label
+		}
+	}
+	return "No audio"
 }
 
 func estimatedBandwidthMbps(item MediaItem, isLive bool) float64 {
@@ -30807,9 +31182,6 @@ func validateSettingGroupPolicy(group string, values map[string]any) error {
 		if defaultProfile != "" && len(templates) > 0 {
 			foundEnabled := false
 			for _, raw := range templates {
-				if legacy, ok := raw.(string); ok && legacy == defaultProfile {
-					foundEnabled = true
-				}
 				if template, ok := raw.(map[string]any); ok && template["profile"] == defaultProfile && template["enabled"] == true {
 					foundEnabled = true
 				}

@@ -648,7 +648,7 @@ shutdown:
 	request := httptest.NewRequest(http.MethodGet, "/api/logs/stream", nil)
 	done := make(chan struct{})
 	go func() {
-		server.handleLogStream(writer, request, User{ID: "owner", Email: "owner@example.test", Role: "owner", AuthProvider: "local", Permissions: ownerPermissions()})
+		server.handleLogStream(writer, request, User{ID: "owner", AccountID: "owner", ProfileID: "owner", ProfileIsPrimary: true, Email: "owner@example.test", Role: "owner", AuthProvider: "local", Permissions: ownerPermissions()})
 		close(done)
 	}()
 	select {
@@ -669,7 +669,7 @@ func TestW1R3LogStreamRequiresResetForUnsupportedResume(t *testing.T) {
 	request := httptest.NewRequest(http.MethodGet, "/api/logs/stream", nil)
 	request.Header.Set("Last-Event-ID", "log_previous_generation")
 	writer := httptest.NewRecorder()
-	server.handleLogStream(writer, request, User{ID: "owner", Email: "owner@example.test", Role: "owner", AuthProvider: "local", Permissions: ownerPermissions()})
+	server.handleLogStream(writer, request, User{ID: "owner", AccountID: "owner", ProfileID: "owner", ProfileIsPrimary: true, Email: "owner@example.test", Role: "owner", AuthProvider: "local", Permissions: ownerPermissions()})
 	if !strings.Contains(writer.Body.String(), "event: stream-reset") || !strings.Contains(writer.Body.String(), "resume_not_supported") {
 		t.Fatalf("unsupported stream resume did not receive an explicit reset: %q", writer.Body.String())
 	}

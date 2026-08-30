@@ -1,4 +1,4 @@
-import { Check, Eye, EyeOff } from '#portico-icons';
+import { ActionConfirmIcon, AccountVisibilityShowIcon, AccountVisibilityHideIcon } from '#portico-icons';
 import { forwardRef, useId, useState, type InputHTMLAttributes } from 'react';
 import { productText } from '../ProductLanguage';
 
@@ -53,7 +53,7 @@ export const PasswordInput = forwardRef<HTMLInputElement, InputHTMLAttributes<HT
           setVisible((current) => !current);
         }}
       >
-        {visible ? <EyeOff aria-hidden="true" /> : <Eye aria-hidden="true" />}
+        {visible ? <AccountVisibilityHideIcon aria-hidden="true" /> : <AccountVisibilityShowIcon aria-hidden="true" />}
       </button>
     </span>;
   },
@@ -67,7 +67,7 @@ export function PasswordRequirements({ value, id }: { value: string; id?: string
       {passwordRequirements.map((requirement) => {
         const met = requirement.test(value);
         return <li key={requirement.id} className={met ? 'met' : ''}>
-          <Check aria-hidden="true" />
+          <ActionConfirmIcon aria-hidden="true" />
           <span>{productText(requirement.labelId)}</span>
           <span className="sr-only">: {met ? 'met' : 'not met'}</span>
         </li>;

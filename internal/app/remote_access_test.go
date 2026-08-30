@@ -24,9 +24,11 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -121,6 +123,28 @@ func TestLANEndpointCandidatesExcludeListenerWildcardsAndLoopback(t *testing.T) 
 		if !foundSecure {
 			t.Fatalf("private interface %s did not receive a secure unified-port candidate: %#v", privateHost, candidates)
 		}
+	}
+}
+
+func TestPublicInterfaceHostsRetainBoundedDualStackPublicAddresses(t *testing.T) {
+	hosts := publicInterfaceHostsFromAddresses([]string{
+		"127.0.0.1/8", "10.0.0.10/24", "169.254.10.20/16", "188.68.34.120/22",
+		"2a03:4000:10:342:a8d9:4cff:fe3b:fdcd/64", "188.68.34.120", "100.112.214.39/32",
+		"192.0.2.10/24", "198.51.100.20/24", "203.0.113.30/24", "2001:db8::10/64",
+	})
+	want := []string{"188.68.34.120", "2a03:4000:10:342:a8d9:4cff:fe3b:fdcd"}
+	if !reflect.DeepEqual(hosts, want) {
+		t.Fatalf("public interface hosts = %#v, want %#v", hosts, want)
+	}
+	if got := publicInterfaceHostsFromAddresses([]string{"188.68.34.120/22"}); !reflect.DeepEqual(got, []string{"188.68.34.120"}) {
+		t.Fatalf("IPv4-only public interface hosts = %#v", got)
+	}
+	if got := publicInterfaceHostsFromAddresses([]string{"2a03:4000:10:342::10/64"}); !reflect.DeepEqual(got, []string{"2a03:4000:10:342::10"}) {
+		t.Fatalf("IPv6-only public interface hosts = %#v", got)
+	}
+	bounded := publicInterfaceHostsFromAddresses([]string{"8.8.8.8", "9.9.9.9", "1.1.1.1", "208.67.222.222", "208.67.220.220"})
+	if len(bounded) != 4 {
+		t.Fatalf("bounded public interface hosts = %#v", bounded)
 	}
 }
 
@@ -239,25 +263,23 @@ func TestRemoteAccessPublicEndpointRequiresNamespaceAndObservedPublicIP(t *testi
 	}
 }
 
-func TestRemoteAccessStartupHeartbeatDoesNotWaitForCertificateRenewal(t *testing.T) {
+func TestRemoteAccessHeartbeatCadenceDoesNotWaitForCertificateRenewal(t *testing.T) {
 	certificateStarted := make(chan struct{})
 	releaseCertificate := make(chan struct{})
-	heartbeatSeen := make(chan struct{}, 1)
+	heartbeatSeen := make(chan struct{}, 3)
 	hosted := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.URL.Path == "/api/servers/srv_startup/heartbeat" && r.Method == http.MethodPost:
 			if r.Header.Get("Authorization") != "Bearer server-credential-startup" {
 				t.Fatalf("heartbeat auth = %q", r.Header.Get("Authorization"))
 			}
-			select {
-			case heartbeatSeen <- struct{}{}:
-			default:
-			}
+			heartbeatSeen <- struct{}{}
 			writeJSON(w, http.StatusOK, map[string]any{
-				"ok":                  true,
-				"serverId":            "srv_startup",
-				"assignedHostname":    "ptc-aaaaaaaaaaaaaaaaaaaa.direct.getportico.tv",
-				"remoteAccessEnabled": true,
+				"ok":                            true,
+				"serverId":                      "srv_startup",
+				"assignedHostname":              "ptc-aaaaaaaaaaaaaaaaaaaa.direct.getportico.tv",
+				"remoteAccessEnabled":           true,
+				"publicConsoleOriginGeneration": 1,
 			})
 		case r.URL.Path == "/api/servers/srv_startup/certificate-orders" && r.Method == http.MethodPost:
 			close(certificateStarted)
@@ -286,6 +308,7 @@ func TestRemoteAccessStartupHeartbeatDoesNotWaitForCertificateRenewal(t *testing
 		PreferredRemoteAuthMode: "portico",
 		CertificateStatus:       "not_requested",
 		LANDiscoveryEnabled:     true,
+		LastHeartbeatAt:         time.Now().UTC().Format(time.RFC3339),
 	}
 	if err := srv.saveRemoteAccessSettings(settings); err != nil {
 		t.Fatalf("save settings: %v", err)
@@ -298,7 +321,9 @@ func TestRemoteAccessStartupHeartbeatDoesNotWaitForCertificateRenewal(t *testing
 	t.Cleanup(cancel)
 	// Preserve production fleet spreading while keeping this ordering test fast.
 	srv.remoteAccessStartupCohortWindowNanos.Store(int64(time.Millisecond))
+	srv.remoteAccessHeartbeatIntervalNanos.Store(int64(20 * time.Millisecond))
 	go srv.runRemoteAccessHeartbeat(ctx)
+	go srv.runRemoteAccessCertificateMaintenance(ctx)
 
 	select {
 	case <-heartbeatSeen:
@@ -309,6 +334,11 @@ func TestRemoteAccessStartupHeartbeatDoesNotWaitForCertificateRenewal(t *testing
 	case <-certificateStarted:
 	case <-time.After(time.Second):
 		t.Fatal("certificate renewal was not attempted after startup heartbeat")
+	}
+	select {
+	case <-heartbeatSeen:
+	case <-time.After(3 * time.Second):
+		t.Fatal("next lease heartbeat waited behind blocked certificate renewal")
 	}
 }
 
@@ -325,12 +355,13 @@ func TestRemoteAccessHeartbeatRecordsSuccessBeforePolicySync(t *testing.T) {
 			}
 			heartbeatPayload <- payload
 			writeJSON(w, http.StatusOK, map[string]any{
-				"ok":                  true,
-				"serverId":            "srv_fast",
-				"assignedHostname":    "ptc-fast.direct.getportico.tv",
-				"remoteAccessEnabled": true,
-				"publicIp":            "198.51.100.44",
-				"topologyChanged":     true,
+				"ok":                            true,
+				"serverId":                      "srv_fast",
+				"assignedHostname":              "ptc-fast.direct.getportico.tv",
+				"remoteAccessEnabled":           true,
+				"publicIp":                      "198.51.100.44",
+				"topologyChanged":               true,
+				"publicConsoleOriginGeneration": 1,
 			})
 		case r.URL.Path == "/api/servers/srv_fast/policy-snapshot" && r.Method == http.MethodGet:
 			close(policyStarted)
@@ -404,6 +435,102 @@ func TestRemoteAccessHeartbeatRecordsSuccessBeforePolicySync(t *testing.T) {
 	}
 }
 
+func TestRemoteAccessHeartbeatKeepsDirectCapabilityAvailableAcrossTopologyProbe(t *testing.T) {
+	var mu sync.Mutex
+	heartbeatCount := 0
+	capabilityStates := make([]string, 0, 2)
+	hosted := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/servers/srv_topology_probe/heartbeat" || r.Method != http.MethodPost {
+			t.Fatalf("unexpected hosted request: %s %s", r.Method, r.URL.Path)
+		}
+		var payload struct {
+			Capabilities []CompatibilityCapability `json:"capabilities"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("decode heartbeat: %v", err)
+		}
+		state := ""
+		for _, capability := range payload.Capabilities {
+			if capability.ID == "remote-access.direct" {
+				state = capability.State
+				break
+			}
+		}
+		mu.Lock()
+		heartbeatCount++
+		current := heartbeatCount
+		capabilityStates = append(capabilityStates, state)
+		mu.Unlock()
+		response := map[string]any{
+			"ok":                            true,
+			"serverId":                      "srv_topology_probe",
+			"assignedHostname":              "ptc-aaaaaaaaaaaaaaaaaaaa.direct.getportico.tv",
+			"remoteAccessEnabled":           true,
+			"publicIp":                      "198.51.100.45",
+			"publicConsoleOriginGeneration": 1,
+		}
+		if current == 1 {
+			response["topologyChanged"] = true
+		} else {
+			response["repair"] = map[string]any{
+				"publicRouteStatus":    "reachable",
+				"publicRouteCheckedAt": time.Now().UTC().Format(time.RFC3339),
+			}
+		}
+		writeJSON(w, http.StatusOK, response)
+	}))
+	t.Cleanup(hosted.Close)
+
+	srv := newRemoteAccessUnitServer(t)
+	_ = srv.Handler() // Build the production route registry used by the capability envelope.
+	settings := RemoteAccessSettings{
+		Enabled:                     true,
+		HostedBaseURL:               hosted.URL,
+		ClaimStatus:                 "claimed",
+		ServerID:                    "srv_topology_probe",
+		AssignedHostname:            "ptc-aaaaaaaaaaaaaaaaaaaa.direct.getportico.tv",
+		PublicPortMode:              "manual",
+		ManualPublicPort:            32500,
+		PreferredRemoteAuthMode:     "portico",
+		CertificateStatus:           "valid",
+		LastPublicIPAddress:         "198.51.100.45",
+		LastReachabilityResult:      "public_reachable",
+		LastReachabilityCheckAt:     time.Now().UTC().Format(time.RFC3339),
+		LastHostedRemoteAccessState: "enabled",
+	}
+	if err := srv.saveRemoteAccessSettings(settings); err != nil {
+		t.Fatalf("save settings: %v", err)
+	}
+	if err := srv.saveSecretSetting(remoteAccessCredentialKey, "server-credential-topology-probe"); err != nil {
+		t.Fatalf("save credential: %v", err)
+	}
+	if err := srv.sendRemoteAccessHeartbeatWithOptions(context.Background(), settings, remoteAccessHeartbeatOptions{SyncPolicy: false}); err != nil {
+		t.Fatalf("topology-change heartbeat: %v", err)
+	}
+	checking, err := srv.remoteAccessSettings()
+	if err != nil {
+		t.Fatalf("reload checking settings: %v", err)
+	}
+	if checking.LastReachabilityResult != "public_checking" {
+		t.Fatalf("topology-change result=%q, want public_checking", checking.LastReachabilityResult)
+	}
+	if err := srv.sendRemoteAccessHeartbeatWithOptions(context.Background(), checking, remoteAccessHeartbeatOptions{SyncPolicy: false}); err != nil {
+		t.Fatalf("reachable heartbeat: %v", err)
+	}
+	reachable, err := srv.remoteAccessSettings()
+	if err != nil {
+		t.Fatalf("reload reachable settings: %v", err)
+	}
+	if reachable.LastReachabilityResult != "public_reachable" {
+		t.Fatalf("probe result=%q, want public_reachable", reachable.LastReachabilityResult)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(capabilityStates) != 2 || capabilityStates[0] != "available" || capabilityStates[1] != "available" {
+		t.Fatalf("remote-access.direct states across topology probe=%v, want [available available]", capabilityStates)
+	}
+}
+
 func TestRemoteAccessHeartbeatSkipsPolicySyncWhenDigestMatches(t *testing.T) {
 	const digest = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 	var mu sync.Mutex
@@ -419,11 +546,12 @@ func TestRemoteAccessHeartbeatSkipsPolicySyncWhenDigestMatches(t *testing.T) {
 				t.Errorf("heartbeat policy digest = %#v", payload["policyDigest"])
 			}
 			writeJSON(w, http.StatusOK, map[string]any{
-				"ok":                  true,
-				"serverId":            "srv_policy_current",
-				"remoteAccessEnabled": true,
-				"policyDigest":        digest,
-				"policyChanged":       false,
+				"ok":                            true,
+				"serverId":                      "srv_policy_current",
+				"remoteAccessEnabled":           true,
+				"policyDigest":                  digest,
+				"policyChanged":                 false,
+				"publicConsoleOriginGeneration": 1,
 			})
 		case r.URL.Path == "/api/servers/srv_policy_current/policy-snapshot":
 			mu.Lock()
@@ -475,7 +603,7 @@ func TestRemoteAccessHeartbeatOmittedDigestDoesNotRefetchAfterLocalPolicyEvidenc
 		switch {
 		case r.URL.Path == "/api/servers/srv_policy_digest_omitted/heartbeat" && r.Method == http.MethodPost:
 			writeJSON(w, http.StatusOK, map[string]any{
-				"ok": true, "serverId": "srv_policy_digest_omitted", "remoteAccessEnabled": true,
+				"ok": true, "serverId": "srv_policy_digest_omitted", "remoteAccessEnabled": true, "publicConsoleOriginGeneration": 1,
 			})
 		case r.URL.Path == "/api/servers/srv_policy_digest_omitted/policy-snapshot":
 			mu.Lock()
@@ -535,7 +663,7 @@ func TestRemoteAccessHeartbeatRetriesPendingPolicyAckWithoutRefetch(t *testing.T
 	hosted := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.URL.Path == "/api/servers/srv_policy_ack/heartbeat" && r.Method == http.MethodPost:
-			writeJSON(w, http.StatusOK, map[string]any{"ok": true, "serverId": "srv_policy_ack", "remoteAccessEnabled": true, "policyDigest": policyDigest, "policyChanged": false})
+			writeJSON(w, http.StatusOK, map[string]any{"ok": true, "serverId": "srv_policy_ack", "remoteAccessEnabled": true, "policyDigest": policyDigest, "policyChanged": false, "publicConsoleOriginGeneration": 1})
 		case r.URL.Path == "/api/servers/srv_policy_ack/policy-sync-ack" && r.Method == http.MethodPost:
 			var ack map[string]string
 			if err := json.NewDecoder(r.Body).Decode(&ack); err != nil {
@@ -598,11 +726,12 @@ func TestRemoteAccessNetworkMonitorPushesChangeWithoutPublicIPPoll(t *testing.T)
 			}
 			heartbeatSeen <- payload
 			writeJSON(w, http.StatusOK, map[string]any{
-				"ok":                  true,
-				"serverId":            "srv_ip_change",
-				"assignedHostname":    "ptc-ip-change.direct.getportico.tv",
-				"remoteAccessEnabled": true,
-				"publicIp":            "198.51.100.77",
+				"ok":                            true,
+				"serverId":                      "srv_ip_change",
+				"assignedHostname":              "ptc-ip-change.direct.getportico.tv",
+				"remoteAccessEnabled":           true,
+				"publicIp":                      "198.51.100.77",
+				"publicConsoleOriginGeneration": 1,
 			})
 		default:
 			t.Fatalf("unexpected hosted request: %s %s", r.Method, r.URL.Path)
@@ -640,8 +769,8 @@ func TestRemoteAccessNetworkMonitorPushesChangeWithoutPublicIPPoll(t *testing.T)
 	}
 	select {
 	case payload := <-heartbeatSeen:
-		if payload["publicIpCandidate"] != "203.0.113.10" {
-			t.Fatalf("heartbeat public IP candidate = %#v", payload["publicIpCandidate"])
+		if _, ok := payload["publicIpCandidates"].([]any); !ok {
+			t.Fatalf("heartbeat public IP candidates = %#v, want canonical array", payload["publicIpCandidates"])
 		}
 	case <-time.After(time.Second):
 		t.Fatal("network change did not trigger heartbeat")
@@ -696,12 +825,13 @@ func TestRemoteAccessHeartbeatCarriesRepairWithoutSeparatePoll(t *testing.T) {
 		}
 		heartbeats <- struct{}{}
 		writeJSON(w, http.StatusOK, map[string]any{
-			"ok":                  true,
-			"serverId":            "srv_heartbeat_repair",
-			"assignedHostname":    "ptc-heartbeat-repair.direct.getportico.tv",
-			"remoteAccessEnabled": true,
-			"publicIp":            "198.51.100.90",
-			"leaseSeconds":        900,
+			"ok":                            true,
+			"serverId":                      "srv_heartbeat_repair",
+			"assignedHostname":              "ptc-heartbeat-repair.direct.getportico.tv",
+			"remoteAccessEnabled":           true,
+			"publicIp":                      "198.51.100.90",
+			"leaseSeconds":                  900,
+			"publicConsoleOriginGeneration": 1,
 			"repair": map[string]any{
 				"hostedServicesReachable": true,
 				"publicRouteStatus":       "failed",
@@ -814,11 +944,12 @@ func TestRemoteAccessRepairSignalTriggersImmediateHeartbeat(t *testing.T) {
 			}
 			heartbeatSeen <- payload
 			writeJSON(w, http.StatusOK, map[string]any{
-				"ok":                  true,
-				"serverId":            "srv_repair_signal",
-				"assignedHostname":    "ptc-bbbbbbbbbbbbbbbbbbbb.direct.getportico.tv",
-				"remoteAccessEnabled": true,
-				"publicIp":            "198.51.100.88",
+				"ok":                            true,
+				"serverId":                      "srv_repair_signal",
+				"assignedHostname":              "ptc-bbbbbbbbbbbbbbbbbbbb.direct.getportico.tv",
+				"remoteAccessEnabled":           true,
+				"publicIp":                      "198.51.100.88",
+				"publicConsoleOriginGeneration": 1,
 			})
 		default:
 			t.Fatalf("unexpected hosted request: %s %s", r.Method, r.URL.Path)
@@ -855,8 +986,8 @@ func TestRemoteAccessRepairSignalTriggersImmediateHeartbeat(t *testing.T) {
 	}
 	select {
 	case payload := <-heartbeatSeen:
-		if payload["publicIpCandidate"] != "198.51.100.88" {
-			t.Fatalf("heartbeat public IP candidate = %#v", payload["publicIpCandidate"])
+		if _, ok := payload["publicIpCandidates"].([]any); !ok {
+			t.Fatalf("repair heartbeat public IP candidates = %#v, want canonical array", payload["publicIpCandidates"])
 		}
 	case <-time.After(time.Second):
 		t.Fatal("repair signal did not trigger heartbeat")
@@ -870,6 +1001,18 @@ func TestRemoteAccessRepairSignalTriggersImmediateHeartbeat(t *testing.T) {
 	}
 	if certificateOrderCount != 1 || certificateFinalizeCount != 1 || updated.CertificateRenewalError != "" || updated.LastCertificateRenewalAt == "" {
 		t.Fatalf("certificate repair did not run cleanly: order=%d finalize=%d settings=%#v", certificateOrderCount, certificateFinalizeCount, updated)
+	}
+}
+
+func TestCanonicalConfiguredPublicConsoleOrigin(t *testing.T) {
+	t.Parallel()
+	if got := canonicalConfiguredPublicConsoleOrigin("https://DEMO.getportico.tv:443"); got != "https://demo.getportico.tv" {
+		t.Fatalf("canonical public console origin = %q", got)
+	}
+	for _, raw := range []string{"http://demo.getportico.tv", "https://demo.getportico.tv:8443", "https://user@demo.getportico.tv", "https://demo.getportico.tv/path", "https://127.0.0.1", "https://-demo.getportico.tv", "https://demo。getportico.tv"} {
+		if got := canonicalConfiguredPublicConsoleOrigin(raw); got != "" {
+			t.Fatalf("invalid public console origin %q accepted as %q", raw, got)
+		}
 	}
 }
 
@@ -925,6 +1068,73 @@ func TestRemoteAccessSettingsValidateAndAudit(t *testing.T) {
 		}
 	}
 	t.Fatalf("expected remote access audit event, got %#v", audit.Items)
+}
+
+func TestClaimedRemoteAccessLifecyclePublishesEveryOwnerTransition(t *testing.T) {
+	heartbeats := make(chan bool, 2)
+	hosted := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/api/servers/srv_lifecycle/heartbeat" {
+			t.Fatalf("unexpected Hosted request: %s %s", r.Method, r.URL.Path)
+		}
+		if r.Header.Get("Authorization") != "Bearer server-credential-lifecycle" {
+			t.Fatalf("heartbeat authorization = %q", r.Header.Get("Authorization"))
+		}
+		var payload struct {
+			Enabled                       bool  `json:"remoteAccessEnabled"`
+			PublicConsoleOriginGeneration int64 `json:"publicConsoleOriginGeneration"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatal(err)
+		}
+		heartbeats <- payload.Enabled
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "serverId": "srv_lifecycle", "remoteAccessEnabled": payload.Enabled, "publicConsoleOriginGeneration": payload.PublicConsoleOriginGeneration})
+	}))
+	t.Cleanup(hosted.Close)
+
+	serverURL, _, server := newRemoteAccessTestServer(t)
+	settings, err := server.remoteAccessSettings()
+	if err != nil {
+		t.Fatal(err)
+	}
+	settings.Enabled = true
+	settings.HostedBaseURL = hosted.URL
+	settings.ClaimStatus = "claimed"
+	settings.ServerID = "srv_lifecycle"
+	settings.AssignedHostname = "ptc-lifecycle.direct.getportico.tv"
+	settings.PublicPortMode = "manual"
+	settings.ManualPublicPort = 32400
+	settings.PublicConsoleOriginGeneration = 1
+	if err := server.saveRemoteAccessSettings(settings); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.saveSecretSetting(remoteAccessCredentialKey, "server-credential-lifecycle"); err != nil {
+		t.Fatal(err)
+	}
+	jar, _ := cookiejar.New(nil)
+	client := &http.Client{Jar: jar}
+	loginUser(t, client, serverURL)
+
+	for _, enabled := range []bool{false, true} {
+		status, body := doJSON(t, client, http.MethodPatch, serverURL+"/api/remote-access/settings", map[string]any{"enabled": enabled}, nil)
+		if status != http.StatusOK {
+			t.Fatalf("set enabled=%t status=%d body=%s", enabled, status, body)
+		}
+		select {
+		case published := <-heartbeats:
+			if published != enabled {
+				t.Fatalf("published enabled=%t, want %t", published, enabled)
+			}
+		case <-time.After(time.Second):
+			t.Fatalf("enabled=%t was not published", enabled)
+		}
+	}
+	updated, err := server.remoteAccessSettings()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.LastHeartbeatAt == "" || updated.LastHeartbeatError != "" {
+		t.Fatalf("lifecycle heartbeat did not commit cleanly: %#v", updated)
+	}
 }
 
 func TestRemotePolicyMembershipAuthorityRejectsAliasesAndControlPlanePermissions(t *testing.T) {
@@ -1142,162 +1352,13 @@ func TestRemotePolicySnapshotCheckpointFailureRollsBackAuthorityProjection(t *te
 	}
 }
 
-func TestRemoteAccessMemberSyncProtectsCredentialBearingSubjectIdentity(t *testing.T) {
-	srv := newPorticoIdentitySyncTestServer(t)
-	now := time.Now().UTC().Format(time.RFC3339)
-	passwordHash, err := bcrypt.GenerateFromPassword([]byte("local-password-123"), bcrypt.DefaultCost)
-	if err != nil {
-		t.Fatalf("hash password: %v", err)
-	}
-	insertPorticoIdentityTestUser(t, srv.db, "legacy", "legacy@example.test", "user", "local", "", "", passwordHash, now)
-	if _, err := srv.db.Exec(`
-		INSERT INTO profile_identities (id, profile_id, provider, subject, email, display_name, verified_at, last_seen_at, created_at, updated_at)
-		VALUES ('stale-portico-identity', 'legacy', 'portico', 'hosted-subject', 'legacy@example.test', 'Protected Legacy', '', '', ?, ?)`, now, now); err != nil {
-		t.Fatalf("seed protected Portico profile identity: %v", err)
-	}
-	insertPorticoIdentityTestUser(t, srv.db, "target", "target-cache@portico-account-cache.invalid", "user", "portico", "hosted-subject", "hosted-membership", nil, now)
-
-	err = srv.replaceRemoteAccessMembers([]RemoteAccessMember{{
-		PorticoMembershipID: "hosted-membership",
-		PorticoUserID:       "hosted-subject",
-		Email:               "member@example.test",
-		DisplayName:         "Hosted Member",
-		Role:                "user",
-		Status:              "active",
-	}})
-	if !errors.Is(err, errPorticoIdentityConflict) {
-		t.Fatalf("credential-bearing subject collision error=%v, want identity conflict", err)
-	}
-	var identityProfileID string
-	if err := srv.db.QueryRow(`SELECT profile_id FROM profile_identities WHERE id = 'stale-portico-identity'`).Scan(&identityProfileID); err != nil || identityProfileID != "legacy" {
-		t.Fatalf("protected identity profile=%q err=%v", identityProfileID, err)
-	}
-	var targetIdentityCount int
-	if err := srv.db.QueryRow(`SELECT COUNT(*) FROM profile_identities WHERE id = 'pident_portico_target'`).Scan(&targetIdentityCount); err != nil || targetIdentityCount != 0 {
-		t.Fatalf("target identity count=%d err=%v", targetIdentityCount, err)
-	}
-}
-
-func TestRemoteAccessMemberSyncReleasesDisposableLocalGhostEmailCollision(t *testing.T) {
-	srv := newPorticoIdentitySyncTestServer(t)
-	now := time.Now().UTC().Format(time.RFC3339)
-	insertPorticoIdentityTestUser(t, srv.db, "target", "target-cache@portico-account-cache.invalid", "user", "portico", "hosted-subject", "hosted-membership", nil, now)
-	insertPorticoIdentityTestUser(t, srv.db, "legacy", "member@example.test", "user", "local", "", "", nil, now)
-
-	if err := srv.replaceRemoteAccessMembers([]RemoteAccessMember{{
-		PorticoMembershipID: "hosted-membership",
-		PorticoUserID:       "hosted-subject",
-		Email:               "member@example.test",
-		DisplayName:         "Hosted Member",
-		Role:                "user",
-		Status:              "active",
-	}}); err != nil {
-		t.Fatalf("sync member with disposable local ghost: %v", err)
-	}
-	assertPorticoIdentitySyncResult(t, srv.db, "target", "legacy", "member@example.test", "hosted-membership")
-}
-
-func TestRemoteAccessMemberSyncRejectsProtectedLocalEmailCollision(t *testing.T) {
-	srv := newPorticoIdentitySyncTestServer(t)
-	now := time.Now().UTC().Format(time.RFC3339)
-	passwordHash, err := bcrypt.GenerateFromPassword([]byte("local-password-123"), bcrypt.DefaultCost)
-	if err != nil {
-		t.Fatalf("hash password: %v", err)
-	}
-	insertPorticoIdentityTestUser(t, srv.db, "target", "target-cache@portico-account-cache.invalid", "user", "portico", "hosted-subject", "hosted-membership", nil, now)
-	insertPorticoIdentityTestUser(t, srv.db, "protected", "member@example.test", "user", "local", "", "", passwordHash, now)
-
-	err = srv.replaceRemoteAccessMembers([]RemoteAccessMember{{
-		PorticoMembershipID: "hosted-membership",
-		PorticoUserID:       "hosted-subject",
-		Email:               "member@example.test",
-		DisplayName:         "Hosted Member",
-		Role:                "user",
-		Status:              "active",
-	}})
-	if !errors.Is(err, errPorticoIdentityLinkRequired) {
-		t.Fatalf("protected local collision error=%v, want link required", err)
-	}
-	assertPorticoIdentitySyncRollback(t, srv.db, "target", "target-cache@portico-account-cache.invalid", "protected", "local")
-}
-
-func TestRemoteAccessMemberSyncRejectsDifferentPorticoSubjectEmailCollision(t *testing.T) {
-	srv := newPorticoIdentitySyncTestServer(t)
-	now := time.Now().UTC().Format(time.RFC3339)
-	insertPorticoIdentityTestUser(t, srv.db, "target", "target-cache@portico-account-cache.invalid", "user", "portico", "hosted-subject", "hosted-membership", nil, now)
-	insertPorticoIdentityTestUser(t, srv.db, "other", "member@example.test", "user", "portico", "different-subject", "different-membership", nil, now)
-
-	err := srv.replaceRemoteAccessMembers([]RemoteAccessMember{{
-		PorticoMembershipID: "hosted-membership",
-		PorticoUserID:       "hosted-subject",
-		Email:               "member@example.test",
-		DisplayName:         "Hosted Member",
-		Role:                "user",
-		Status:              "active",
-	}})
-	if !errors.Is(err, errPorticoIdentityConflict) {
-		t.Fatalf("different-subject collision error=%v, want identity conflict", err)
-	}
-	assertPorticoIdentitySyncRollback(t, srv.db, "target", "target-cache@portico-account-cache.invalid", "other", "portico")
-}
-
-func TestRemoteAccessMemberSyncProtectsOwnerAndActiveLegacyPrincipals(t *testing.T) {
-	for _, test := range []struct {
-		name    string
-		protect func(t *testing.T, db *sql.DB, now string)
-	}{
-		{name: "owner", protect: func(t *testing.T, db *sql.DB, now string) {
-			if _, err := db.Exec(`UPDATE users SET role = 'owner' WHERE id = 'legacy'`); err != nil {
-				t.Fatalf("protect owner: %v", err)
-			}
-		}},
-		{name: "session", protect: func(t *testing.T, db *sql.DB, now string) {
-			if _, err := db.Exec(`INSERT INTO sessions (id, user_id, profile_id, token_hash, expires_at, created_at, last_seen_at) VALUES ('session', 'legacy', 'legacy', 'session-hash', ?, ?, ?)`, now, now, now); err != nil {
-				t.Fatalf("protect session: %v", err)
-			}
-		}},
-		{name: "device", protect: func(t *testing.T, db *sql.DB, now string) {
-			insertPorticoIdentityTestDevice(t, db, now)
-		}},
-		{name: "native refresh credential", protect: func(t *testing.T, db *sql.DB, now string) {
-			insertPorticoIdentityTestDevice(t, db, now)
-			if _, err := db.Exec(`INSERT INTO native_refresh_tokens (id, family_id, user_id, profile_id, device_id, token_hash, created_at, expires_at) VALUES ('refresh', 'family', 'legacy', 'legacy', 'device', 'refresh-hash', ?, ?)`, now, now); err != nil {
-				t.Fatalf("protect native refresh credential: %v", err)
-			}
-		}},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			srv := newPorticoIdentitySyncTestServer(t)
-			now := time.Now().UTC().Format(time.RFC3339)
-			insertPorticoIdentityTestUser(t, srv.db, "target", "target-cache@portico-account-cache.invalid", "user", "portico", "hosted-subject", "hosted-membership", nil, now)
-			insertPorticoIdentityTestUser(t, srv.db, "legacy", "member@example.test", "user", "cloud", "", "", nil, now)
-			test.protect(t, srv.db, now)
-
-			err := srv.replaceRemoteAccessMembers([]RemoteAccessMember{{
-				PorticoMembershipID: "hosted-membership",
-				PorticoUserID:       "hosted-subject",
-				Email:               "member@example.test",
-				DisplayName:         "Hosted Member",
-				Role:                "user",
-				Status:              "active",
-			}})
-			if !errors.Is(err, errPorticoIdentityLinkRequired) {
-				t.Fatalf("protected principal error=%v, want link required", err)
-			}
-			assertPorticoIdentitySyncRollback(t, srv.db, "target", "target-cache@portico-account-cache.invalid", "legacy", "cloud")
-		})
-	}
-}
-
 func newPorticoIdentitySyncTestServer(t *testing.T) *Server {
 	t.Helper()
 	chdirRepoRoot(t)
 	appDataDir := t.TempDir()
 	db, err := database.Open(config.Config{
-		AppDataDir:     appDataDir,
-		DatabasePath:   filepath.Join(appDataDir, "portico.db"),
-		WebDistDir:     filepath.Join("web", "dist"),
-		SampleMediaURL: "https://media.example.test/sample.mp4",
+		AppDataDir: appDataDir, DatabasePath: filepath.Join(appDataDir, "portico.db"),
+		WebDistDir: filepath.Join("web", "dist"), SampleMediaURL: "https://media.example.test/sample.mp4",
 	})
 	if err != nil {
 		t.Fatalf("open identity-sync database: %v", err)
@@ -1308,60 +1369,15 @@ func newPorticoIdentitySyncTestServer(t *testing.T) *Server {
 
 func insertPorticoIdentityTestUser(t *testing.T, db *sql.DB, id, email, role, origin, porticoUserID, membershipID string, passwordHash []byte, now string) {
 	t.Helper()
+	var storedPassword any
+	if len(passwordHash) > 0 {
+		storedPassword = string(passwordHash)
+	}
 	if _, err := db.Exec(`
 		INSERT INTO users (id, username, email, display_name, password_hash, role, auth_origin, portico_user_id, portico_membership_id, permissions_json, preferences_json, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '{}', '{}', ?, ?)`,
-		id, id, email, id, nullableTestPasswordHash(passwordHash), role, origin, porticoUserID, membershipID, now, now); err != nil {
+		id, id, email, id, storedPassword, role, origin, porticoUserID, membershipID, now, now); err != nil {
 		t.Fatalf("insert identity test user %s: %v", id, err)
-	}
-}
-
-func nullableTestPasswordHash(hash []byte) any {
-	if len(hash) == 0 {
-		return nil
-	}
-	return string(hash)
-}
-
-func insertPorticoIdentityTestDevice(t *testing.T, db *sql.DB, now string) {
-	t.Helper()
-	if _, err := db.Exec(`INSERT INTO devices (id, user_id, name, created_at, last_seen_at) VALUES ('device', 'legacy', 'Legacy Device', ?, ?)`, now, now); err != nil {
-		t.Fatalf("protect device: %v", err)
-	}
-}
-
-func assertPorticoIdentitySyncResult(t *testing.T, db *sql.DB, targetID, legacyID, email, membershipID string) {
-	t.Helper()
-	var targetEmail, targetOrigin, legacyEmail, legacyOrigin, mappedUserID string
-	if err := db.QueryRow(`SELECT email, auth_origin FROM users WHERE id = ?`, targetID).Scan(&targetEmail, &targetOrigin); err != nil {
-		t.Fatalf("load target user: %v", err)
-	}
-	if err := db.QueryRow(`SELECT email, auth_origin FROM users WHERE id = ?`, legacyID).Scan(&legacyEmail, &legacyOrigin); err != nil {
-		t.Fatalf("load legacy user: %v", err)
-	}
-	if err := db.QueryRow(`SELECT local_user_id FROM remote_access_members WHERE portico_membership_id = ?`, membershipID).Scan(&mappedUserID); err != nil {
-		t.Fatalf("load remote member mapping: %v", err)
-	}
-	if targetEmail != email || targetOrigin != "portico" || legacyOrigin != "portico_deleted" || legacyEmail == email || mappedUserID != targetID {
-		t.Fatalf("unexpected sync result: targetEmail=%q targetOrigin=%q legacyEmail=%q legacyOrigin=%q mapped=%q", targetEmail, targetOrigin, legacyEmail, legacyOrigin, mappedUserID)
-	}
-}
-
-func assertPorticoIdentitySyncRollback(t *testing.T, db *sql.DB, targetID, targetEmail, collisionID, collisionOrigin string) {
-	t.Helper()
-	var actualTargetEmail, actualCollisionOrigin string
-	if err := db.QueryRow(`SELECT email FROM users WHERE id = ?`, targetID).Scan(&actualTargetEmail); err != nil {
-		t.Fatalf("load rolled-back target: %v", err)
-	}
-	if err := db.QueryRow(`SELECT auth_origin FROM users WHERE id = ?`, collisionID).Scan(&actualCollisionOrigin); err != nil {
-		t.Fatalf("load rolled-back collision: %v", err)
-	}
-	var mappings int
-	if err := db.QueryRow(`SELECT COUNT(*) FROM remote_access_members`).Scan(&mappings); err != nil {
-		t.Fatalf("count rolled-back mappings: %v", err)
-	}
-	if actualTargetEmail != targetEmail || actualCollisionOrigin != collisionOrigin || mappings != 0 {
-		t.Fatalf("sync did not fail atomically: targetEmail=%q collisionOrigin=%q mappings=%d", actualTargetEmail, actualCollisionOrigin, mappings)
 	}
 }
 
@@ -1791,51 +1807,6 @@ func TestRemotePolicySnapshotTombstonePurgesPorticoPrincipalCache(t *testing.T) 
 	}
 	if sessionCount != 0 {
 		t.Fatalf("sessions remaining = %d", sessionCount)
-	}
-}
-
-func TestPorticoProfileProvisioningQuarantinesLegacyDeletedCacheForSameEmail(t *testing.T) {
-	srv := newScannerTestServer(t)
-	now := time.Now().UTC().Format(time.RFC3339)
-	permissionsJSON, _ := json.Marshal(permissionsForRole("user"))
-	preferencesJSON, _ := json.Marshal(defaultUserPreferences())
-	if _, err := srv.db.Exec(`
-		INSERT INTO users (id, username, email, display_name, password_hash, role, auth_origin, portico_user_id, portico_membership_id, permissions_json, preferences_json, created_at, updated_at)
-		VALUES ('usr_old_portico_cache', 'justinehler', 'justinehler@icloud.com', 'Old Portico Cache', NULL, 'user', 'local', '', '', ?, ?, ?, ?)`,
-		string(permissionsJSON), string(preferencesJSON), now, now); err != nil {
-		t.Fatalf("insert old hosted cache user: %v", err)
-	}
-
-	user, err := srv.userForPorticoMembership(RemoteAccessMember{
-		PorticoMembershipID: "mem_new_portico",
-		PorticoUserID:       "usr_new_portico",
-		Email:               "justinehler@icloud.com",
-		DisplayName:         "New Portico",
-		Role:                "user",
-		Status:              "active",
-		PermissionTemplate: RemotePermissionTemplate{
-			Permissions: map[string]bool{"playMedia": true, "transcode": true},
-		},
-	})
-	if err != nil {
-		t.Fatalf("provision Portico profile: %v", err)
-	}
-	if user.ID == "usr_old_portico_cache" || user.Email != "justinehler@icloud.com" || user.AuthOrigin != "portico" || user.PorticoUserID != "usr_new_portico" || user.PorticoMembershipID != "mem_new_portico" {
-		t.Fatalf("expected new Portico principal cache row, got %#v", user)
-	}
-	var count int
-	if err := srv.db.QueryRow(`SELECT COUNT(*) FROM users WHERE lower(email) = lower('justinehler@icloud.com')`).Scan(&count); err != nil {
-		t.Fatalf("count email rows: %v", err)
-	}
-	if count != 1 {
-		t.Fatalf("expected one active row for Portico email, got %d", count)
-	}
-	var oldOrigin, oldEmail string
-	if err := srv.db.QueryRow(`SELECT auth_origin, email FROM users WHERE id = 'usr_old_portico_cache'`).Scan(&oldOrigin, &oldEmail); err != nil {
-		t.Fatalf("load old cache row: %v", err)
-	}
-	if oldOrigin != "portico_deleted" || oldEmail == "justinehler@icloud.com" {
-		t.Fatalf("legacy deleted cache row was not quarantined: origin=%q email=%q", oldOrigin, oldEmail)
 	}
 }
 
@@ -2384,6 +2355,11 @@ func TestRemoteAccessClaimAcknowledgementRetainsReceiptUntilSuccess(t *testing.T
 			writeJSON(w, http.StatusOK, map[string]bool{"acknowledged": true})
 		case r.URL.Path == "/api/servers/srv_ack_retry/policy-snapshot" && r.Method == http.MethodGet:
 			writeError(w, http.StatusServiceUnavailable, "temporary", "policy unavailable")
+		case r.URL.Path == "/api/servers/srv_ack_retry/heartbeat" && r.Method == http.MethodPost:
+			if r.Header.Get("Authorization") != "Bearer ack-retry-server-credential" {
+				t.Fatalf("heartbeat authorization = %q", r.Header.Get("Authorization"))
+			}
+			writeJSON(w, http.StatusOK, map[string]any{"ok": true, "publicConsoleOriginGeneration": 1})
 		default:
 			t.Fatalf("unexpected hosted request: %s %s", r.Method, r.URL.Path)
 		}
@@ -2437,6 +2413,8 @@ func TestRemoteAccessClaimAcknowledgementRetainsReceiptUntilSuccess(t *testing.T
 func TestPorticoPrimarySetupClaimCreatesLinkedOwnerWithoutLocalUser(t *testing.T) {
 	var certificateCSR string
 	var claimAckSeen bool
+	var compatibilityHeartbeatSeen atomic.Bool
+	var rejectedPreHeartbeatPolicyRequests atomic.Int64
 	const claimReceipt = "setup-claim-receipt"
 	signingKeySet := testHostedDocumentSigningKeySet(t)
 	hosted := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -2484,10 +2462,28 @@ func TestPorticoPrimarySetupClaimCreatesLinkedOwnerWithoutLocalUser(t *testing.T
 			if r.Header.Get("Authorization") != "Bearer setup-server-credential" {
 				t.Fatalf("heartbeat auth = %q", r.Header.Get("Authorization"))
 			}
-			writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+			var heartbeat struct {
+				SoftwareVersion   string                    `json:"softwareVersion"`
+				BuildCommit       string                    `json:"buildCommit"`
+				APIContractDigest string                    `json:"apiContractDigest"`
+				Capabilities      []CompatibilityCapability `json:"capabilities"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&heartbeat); err != nil {
+				t.Fatalf("decode heartbeat: %v", err)
+			}
+			if heartbeat.SoftwareVersion == "" || heartbeat.BuildCommit == "" || heartbeat.APIContractDigest == "" || len(heartbeat.Capabilities) == 0 {
+				t.Fatalf("heartbeat omitted compatibility identity: %#v", heartbeat)
+			}
+			compatibilityHeartbeatSeen.Store(true)
+			writeJSON(w, http.StatusOK, map[string]any{"ok": true, "publicConsoleOriginGeneration": 1})
 		case r.URL.Path == "/api/servers/srv_setup_owner/policy-snapshot" && r.Method == http.MethodGet:
 			if r.Header.Get("Authorization") != "Bearer setup-server-credential" {
 				t.Fatalf("policy snapshot auth = %q", r.Header.Get("Authorization"))
+			}
+			if !compatibilityHeartbeatSeen.Load() {
+				rejectedPreHeartbeatPolicyRequests.Add(1)
+				writeJSON(w, http.StatusConflict, map[string]any{"code": "server_build_identity_invalid", "detail": "Heartbeat required before policy."})
+				return
 			}
 			writeJSON(w, http.StatusOK, signedTestPolicySnapshot(t, map[string]any{
 				"snapshotId": "policy_setup_owner",
@@ -2507,7 +2503,7 @@ func TestPorticoPrimarySetupClaimCreatesLinkedOwnerWithoutLocalUser(t *testing.T
 			if r.Header.Get("Authorization") != "Bearer setup-server-credential" {
 				t.Fatalf("policy sync ack auth = %q", r.Header.Get("Authorization"))
 			}
-			writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+			writeJSON(w, http.StatusOK, map[string]any{"ok": true, "publicConsoleOriginGeneration": 1})
 		case r.URL.Path == "/api/servers/srv_setup_owner/members/sync" && r.Method == http.MethodGet:
 			if r.Header.Get("Authorization") != "Bearer setup-server-credential" {
 				t.Fatalf("member sync auth = %q", r.Header.Get("Authorization"))
@@ -2613,6 +2609,12 @@ func TestPorticoPrimarySetupClaimCreatesLinkedOwnerWithoutLocalUser(t *testing.T
 	if activation.SetupRequired || !status.PorticoConnected || status.Settings.ServerID != "srv_setup_owner" {
 		t.Fatalf("expected completed local activation, got setupRequired=%v settings=%#v", activation.SetupRequired, status.Settings)
 	}
+	if !compatibilityHeartbeatSeen.Load() {
+		t.Fatal("setup completed without publishing a compatibility heartbeat")
+	}
+	if rejected := rejectedPreHeartbeatPolicyRequests.Load(); rejected != 0 {
+		t.Fatalf("policy requested before compatibility heartbeat %d time(s)", rejected)
+	}
 	if !claimAckSeen || srv.secretSetting(remoteAccessClaimReceiptKey) != "" {
 		t.Fatalf("claim acknowledgement/receipt cleanup incomplete: ack=%v receipt=%q", claimAckSeen, srv.secretSetting(remoteAccessClaimReceiptKey))
 	}
@@ -2628,6 +2630,87 @@ func TestPorticoPrimarySetupClaimCreatesLinkedOwnerWithoutLocalUser(t *testing.T
 	}
 	if user.Role != "owner" || user.AuthOrigin != "portico" || user.PorticoUserID != "usr_setup_owner" || user.HasLocalPassword {
 		t.Fatalf("unexpected linked owner profile: %#v", user)
+	}
+}
+
+func TestPorticoSetupActivationRecoveryPublishesHeartbeatBeforeOwnerPolicy(t *testing.T) {
+	srv := newRemoteAccessUnitServer(t)
+	srv.cfg.HostedDocumentPublicKeys = testHostedDocumentPublicKeys()
+	var compatibilityHeartbeatSeen atomic.Bool
+	var rejectedPreHeartbeatPolicyRequests atomic.Int64
+	signingKeySet := testHostedDocumentSigningKeySet(t)
+	hosted := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/api/signing-keys" && r.Method == http.MethodGet:
+			writeJSON(w, http.StatusOK, signingKeySet)
+		case r.URL.Path == "/api/servers/srv_setup_recovery/heartbeat" && r.Method == http.MethodPost:
+			if r.Header.Get("Authorization") != "Bearer setup-recovery-credential" {
+				t.Fatalf("heartbeat authorization = %q", r.Header.Get("Authorization"))
+			}
+			var heartbeat struct {
+				SoftwareVersion   string                    `json:"softwareVersion"`
+				BuildCommit       string                    `json:"buildCommit"`
+				APIContractDigest string                    `json:"apiContractDigest"`
+				Capabilities      []CompatibilityCapability `json:"capabilities"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&heartbeat); err != nil {
+				t.Fatalf("decode heartbeat: %v", err)
+			}
+			if heartbeat.SoftwareVersion == "" || heartbeat.BuildCommit == "" || heartbeat.APIContractDigest == "" || len(heartbeat.Capabilities) == 0 {
+				t.Fatalf("heartbeat omitted compatibility identity: %#v", heartbeat)
+			}
+			compatibilityHeartbeatSeen.Store(true)
+			writeJSON(w, http.StatusOK, map[string]any{"ok": true, "publicConsoleOriginGeneration": 1})
+		case r.URL.Path == "/api/servers/srv_setup_recovery/policy-snapshot" && r.Method == http.MethodGet:
+			if !compatibilityHeartbeatSeen.Load() {
+				rejectedPreHeartbeatPolicyRequests.Add(1)
+				writeJSON(w, http.StatusConflict, map[string]any{"code": "server_build_identity_invalid", "detail": "Heartbeat required before policy."})
+				return
+			}
+			writeJSON(w, http.StatusOK, signedTestPolicySnapshot(t, map[string]any{
+				"snapshotId": "policy_setup_recovery",
+				"version":    1,
+				"serverId":   "srv_setup_recovery",
+				"members": []map[string]any{{
+					"id": "mem_setup_recovery", "serverId": "srv_setup_recovery", "userId": "usr_setup_recovery",
+					"email": "recovery-owner@example.test", "displayName": "Recovery Owner", "role": "owner", "status": "active",
+				}},
+			}))
+		case r.URL.Path == "/api/servers/srv_setup_recovery/policy-sync-ack" && r.Method == http.MethodPost:
+			writeJSON(w, http.StatusOK, map[string]any{"ok": true, "publicConsoleOriginGeneration": 1})
+		default:
+			t.Fatalf("unexpected hosted request: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	t.Cleanup(hosted.Close)
+
+	settings, err := srv.remoteAccessSettings()
+	if err != nil {
+		t.Fatal(err)
+	}
+	settings.Enabled = true
+	settings.ClaimStatus = "claimed"
+	settings.ServerID = "srv_setup_recovery"
+	settings.HostedBaseURL = hosted.URL
+	settings.PreferredRemoteAuthMode = "portico"
+	if err := srv.saveRemoteAccessSettings(settings); err != nil {
+		t.Fatal(err)
+	}
+	if err := srv.saveSecretSetting(remoteAccessCredentialKey, "setup-recovery-credential"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := srv.finishPorticoSetupActivation(context.Background(), RemoteAccessStatus{Settings: settings, PorticoConnected: true}); err != nil {
+		t.Fatalf("recover setup activation: %v", err)
+	}
+	if !compatibilityHeartbeatSeen.Load() {
+		t.Fatal("recovery completed without publishing a compatibility heartbeat")
+	}
+	if rejected := rejectedPreHeartbeatPolicyRequests.Load(); rejected != 0 {
+		t.Fatalf("recovery requested owner policy before compatibility heartbeat %d time(s)", rejected)
+	}
+	if err := srv.ensurePorticoSetupOwnerProfile(); err != nil {
+		t.Fatalf("ensure recovered owner profile: %v", err)
 	}
 }
 
@@ -2737,7 +2820,7 @@ func TestRemoteAccessStatusCompletesClaimAndSendsHeartbeat(t *testing.T) {
 			if enabled, _ := req["remoteAccessEnabled"].(bool); !enabled {
 				t.Fatalf("local detach must not send a disabled heartbeat to Hosted Services")
 			}
-			writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+			writeJSON(w, http.StatusOK, map[string]any{"ok": true, "publicConsoleOriginGeneration": 1})
 		case r.URL.Path == "/api/servers/srv_portico_done/policy-snapshot" && r.Method == http.MethodGet:
 			if r.Header.Get("Authorization") != "Bearer server-credential-done" {
 				t.Fatalf("policy snapshot auth = %q", r.Header.Get("Authorization"))
@@ -2965,7 +3048,7 @@ func TestRemoteAccessStatusCompletesClaimAndSendsHeartbeat(t *testing.T) {
 	}
 	var managementAuth AuthMeResponse
 	status, body = doJSON(t, client, http.MethodGet, serverURL+"/api/auth/me", nil, &managementAuth)
-	if status != http.StatusOK || !managementAuth.Authenticated || managementAuth.User == nil || !canInteractivelyManageServer(*managementAuth.User) {
+	if status != http.StatusOK || !managementAuth.Authenticated || managementAuth.User == nil || managementAuth.User.Role != "owner" || managementAuth.Authority != "local" {
 		t.Fatalf("claim synchronization displaced the interactive owner: status=%d body=%s user=%#v", status, body, managementAuth.User)
 	}
 	status, body = doJSON(t, client, http.MethodPatch, serverURL+"/api/remote-access/members/mem_portico_user", map[string]any{
@@ -4106,6 +4189,9 @@ func signedTestPolicySnapshot(t *testing.T, document map[string]any) map[string]
 	if _, ok := document["generation"]; !ok {
 		document["generation"] = 1
 	}
+	document["chunkCount"] = 1
+	document["chunkIndex"] = 0
+	document["itemCount"] = policySnapshotTestItemCount(document)
 	document["audience"] = hostedDocumentAudience
 	document["signatureAlgorithm"] = hostedSignatureAlgorithm
 	document["signatureKeyId"] = testHostedDocumentKeyID
@@ -4131,6 +4217,23 @@ func signedTestPolicySnapshot(t *testing.T, document map[string]any) map[string]
 	}
 	document["signature"] = base64.RawURLEncoding.EncodeToString(ed25519.Sign(testHostedDocumentPrivateKey(), payload))
 	return document
+}
+
+func policySnapshotTestItemCount(document map[string]any) int {
+	count := 0
+	for _, field := range []string{"members", "deletedAccountTombstones"} {
+		switch values := document[field].(type) {
+		case []any:
+			count += len(values)
+		case []map[string]any:
+			count += len(values)
+		case []RemoteAccessMember:
+			count += len(values)
+		case []RemoteDeletedAccountTombstone:
+			count += len(values)
+		}
+	}
+	return count
 }
 
 func newRemoteAccessUnitServer(t *testing.T) *Server {

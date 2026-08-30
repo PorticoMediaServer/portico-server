@@ -54,6 +54,7 @@ import {
   type SearchRequestOptions,
   type DownloadPreparation,
 } from "@porticomediaserver/client-core";
+import { secureRandomUUID } from "../runtime/secureRandomUUID";
 import {
   createBrowserHostedConnectionVault,
   type HostedConnectionVault,
@@ -74,8 +75,6 @@ import type {
   DVRConsumerStatus,
 } from "../features/live-tv/liveTypes";
 import type {
-  BrowsePivot,
-  BrowseSortOption,
   ActionableDVRRecording,
   ActionableDVRRule,
   ActionableLiveTVChannel,
@@ -83,9 +82,6 @@ import type {
   DVRResult,
   HomeResult,
   HomeRow,
-  LibraryCapabilities,
-  LibraryBrowseInput,
-  LibraryBrowseResult,
   LibraryNavigationPreferences,
   LibrarySummary,
   LiveTVGuideInput,
@@ -166,7 +162,7 @@ async function durableBrowserInstallationId(): Promise<string> {
     );
   const existing = window.localStorage.getItem(LOCAL_PROFILE_INSTALLATION_KEY);
   if (existing?.trim()) return existing;
-  const created = globalThis.crypto.randomUUID();
+  const created = secureRandomUUID();
   window.localStorage.setItem(LOCAL_PROFILE_INSTALLATION_KEY, created);
   if (window.localStorage.getItem(LOCAL_PROFILE_INSTALLATION_KEY) !== created) {
     throw new Error(
@@ -181,8 +177,6 @@ type ApiProfileSelectionResponse = ApiSchema<"ProfileSelectionResponse">;
 type ApiBrowserAccounts = ApiSchema<"BrowserAccountsResponse">;
 type ApiBrowserAccountMutation = ApiSchema<"BrowserAccountMutationResponse">;
 type ApiBrowseCapabilities = ApiSchema<"LibraryBrowseCapabilities">;
-type ApiBrowseRequest = ApiSchema<"BrowseLibraryRequest">;
-type ApiBrowseResponse = ApiSchema<"BrowseLibraryResponse">;
 type ApiLibrary = ApiSchema<"Library">;
 type ApiLibraryList = ApiSchema<"LibraryListResponse">;
 type ApiHomeResponse = ApiSchema<"HomeResponse">;
@@ -192,7 +186,6 @@ type ApiMediaItem = ApiSchema<"MediaItem">;
 type ApiMediaMatchSearchResponse = ApiSchema<"MediaMatchSearchResponse">;
 type ApiProductContract = ApiSchema<"ProductContract">;
 type ApiSearchResponse = ApiSchema<"SearchResponse">;
-type ApiSuggestionsResponse = ApiSchema<"SuggestionsResponse">;
 type ApiLibraryCategoryList = ApiSchema<"LibraryCategoryListResponse">;
 type ApiLibraryCategory = ApiSchema<"LibraryCategory">;
 type ApiLibraryFacetValueList = ApiSchema<"LibraryFacetValueListResponse">;
@@ -233,7 +226,6 @@ type HomeRowSource = Pick<ApiHomeRow, "id" | "title" | "type"> &
     Pick<
       ApiHomeRow,
       | "cacheTtlSeconds"
-      | "controls"
       | "critical"
       | "cursorCapable"
       | "defaultVisible"
@@ -356,13 +348,6 @@ export function imagePath(
   return trusted;
 }
 
-function viewType(entityKind: string): MediaItem["type"] {
-  // `type` predates the canonical entity taxonomy, but remains on the web view
-  // model for compatibility. Preserve the server kind at runtime so consumers
-  // never mistake episodes, live media, or audiobook entities for shows/music.
-  return entityKind as MediaItem["type"];
-}
-
 function fieldText(fields: Record<string, unknown> | undefined, key: string) {
   const value = fields?.[key];
   if (typeof value === "string") return value;
@@ -395,8 +380,6 @@ function cardToMedia(
     subtitle: item.subtitle ?? "",
     summary: item.summary,
     year: item.year ?? 0,
-    type: viewType(item.entityKind),
-    kind: item.entityKind as MediaItem["kind"],
     poster: imagePath(item.artwork.poster, undefined, resolveResource, {
       width: 480,
       height: 720,
@@ -438,7 +421,7 @@ function detailToMedia(
   includeRelations = true,
   resolveResource: ResourceResolver = identityResource,
 ): MediaItem {
-  const entityKind = item.type;
+  const entityKind = item.entityKind;
   const progressSeconds = item.state.progressSeconds;
   const progress =
     item.durationSeconds && progressSeconds > 0
@@ -456,8 +439,6 @@ function detailToMedia(
     title: item.title,
     subtitle: item.tagline ?? item.parentTitle ?? "",
     year: item.year ?? 0,
-    type: viewType(entityKind),
-    kind: entityKind as MediaItem["kind"],
     poster: imagePath(item.images.poster, undefined, resolveResource, {
       width: 480,
       height: 720,
@@ -598,7 +579,6 @@ function homeRowToView(
     nextCursor: row.nextCursor,
     endpoint: row.endpoint,
     explanation: row.explanation,
-    controls: row.controls,
     required: policy.required,
     hideable: policy.hideable,
     reorderable: policy.reorderable,
@@ -678,60 +658,6 @@ function userView(
   };
 }
 
-function kindMatches(
-  libraryType: string,
-  requested: LibraryBrowseInput["kind"],
-) {
-  const mapping: Record<LibraryBrowseInput["kind"], string> = {
-    movies: "movie",
-    tv: "show",
-    anime: "anime",
-    music: "music",
-    audiobooks: "audiobook",
-    "recorded-tv": "recorded-tv",
-  };
-  return libraryType === mapping[requested];
-}
-
-function canonicalPivot(value: string) {
-  return value.trim().toLocaleLowerCase().replaceAll(" ", "-");
-}
-
-function canonicalSort(value: string) {
-  return (
-    (
-      {
-        Title: "title",
-        "Recently added": "dateAdded",
-        Year: "year",
-        "Critic rating": "criticRating",
-      } as Record<string, string>
-    )[value] ?? value
-  );
-}
-
-function queryForFilter(filter: string): ApiBrowseRequest["query"] {
-  if (filter === "In progress")
-    return { field: "playState", operator: "equals", value: "in-progress" };
-  if (filter === "Unwatched")
-    return { field: "playState", operator: "equals", value: "unplayed" };
-  return undefined;
-}
-
-function mapPivots(capabilities: ApiBrowseCapabilities): BrowsePivot[] {
-  return capabilities.pivots.map((pivot) => ({
-    id: pivot.id,
-    label: pivot.label,
-    entityKinds: pivot.entityKinds,
-    defaultView: libraryWorkspacePresentation(pivot.defaultView),
-    supportedViews: [
-      ...new Set(pivot.supportedViews.map(libraryWorkspacePresentation)),
-    ],
-    browseSupported: pivot.browseSupported,
-    endpointTemplate: pivot.endpointTemplate,
-  }));
-}
-
 function normalizeBrowseCapabilities(
   capabilities: ApiBrowseCapabilities,
 ): LibraryBrowseCapabilities {
@@ -751,23 +677,9 @@ function normalizeBrowseCapabilities(
   };
 }
 
-function mapSorts(capabilities: ApiBrowseCapabilities): BrowseSortOption[] {
-  return capabilities.sorts.map((sort) => ({
-    id: sort.id,
-    label: sort.label,
-    defaultDirection: sort.defaultDirection,
-  }));
-}
-
-function typeForLibrary(kind: LibraryBrowseInput["kind"]): MediaItem["type"] {
-  if (kind === "music" || kind === "audiobooks") return "music";
-  return kind === "movies" ? "movie" : "show";
-}
-
 function summaryToMedia(
   item: { id: string; title: string; summary?: string; itemCount?: number },
   kind: "collection" | "playlist",
-  libraryKind: LibraryBrowseInput["kind"],
 ): MediaItem {
   return {
     id: item.id,
@@ -778,8 +690,7 @@ function summaryToMedia(
         { count: item.itemCount ?? 0 },
       ).text ?? "",
     year: 0,
-    type: typeForLibrary(libraryKind),
-    kind,
+    entityKind: kind,
     poster: "/brand/portico-wordmark-white.svg",
     backdrop: "/brand/portico-wordmark-white.svg",
     rating: "",
@@ -836,30 +747,7 @@ function savedViewSummary(item: ApiSavedView): SavedResourceSummary {
   };
 }
 
-function categoryToMedia(
-  category: ApiLibraryCategory,
-  libraryKind: LibraryBrowseInput["kind"],
-): MediaItem {
-  return {
-    id: category.id,
-    title: category.name,
-    subtitle: `${category.count} ${category.count === 1 ? "title" : "titles"}`,
-    year: 0,
-    type: typeForLibrary(libraryKind),
-    kind: "category",
-    poster: imagePath(category.image),
-    backdrop: imagePath(category.image),
-    rating: "",
-    length: "",
-    genre: category.group,
-    summary: category.description,
-    availability: "available",
-  };
-}
-
 function libraryWorkspacePresentation(value: string): LibraryPresentation {
-  if (value === "compact") return "compact-grid";
-  if (value === "timeline") return "list";
   if (
     ["shelves", "grid", "compact-grid", "list", "table", "facets"].includes(
       value,
@@ -907,8 +795,6 @@ function dvrRecordingToMedia(
     title: recording.title,
     subtitle: `${recording.status} · ${starts.toLocaleString()}`,
     year: Number.isFinite(starts.getTime()) ? starts.getFullYear() : 0,
-    type: "show",
-    kind: "recording",
     poster: "/brand/portico-wordmark-white.svg",
     backdrop: "/brand/portico-wordmark-white.svg",
     rating: "",
@@ -944,9 +830,11 @@ function nonBrowsePage(
 }
 
 export class HttpPorticoDataSource implements PorticoDataSource {
+  readonly authoritativeHostedServerId: string;
+  readonly authoritativeHostedClient?: HostedServicesClient;
   private readonly client: PorticoClient;
   private readonly installationId: () => Promise<string>;
-  private readonly playbackClientInstanceId = `web-${globalThis.crypto.randomUUID()}`;
+  private readonly playbackClientInstanceId = `web-${secureRandomUUID()}`;
   private readonly playbackAdapter = createPlaybackSessionAdapter();
   private contract?: ApiProductContract;
   private contractRequest?: ProductContractRequest;
@@ -962,8 +850,9 @@ export class HttpPorticoDataSource implements PorticoDataSource {
     rememberOnBrowser: boolean;
   };
   private readonly hostedOptions?: {
-    hostedClient: HostedServicesClient;
-    connectionVault: HostedConnectionVault;
+        hostedClient: HostedServicesClient;
+        hostedServerId?: string;
+        connectionVault: HostedConnectionVault;
     switchHostedProfile: (
       profileId: string,
       pin: string | undefined,
@@ -992,6 +881,7 @@ export class HttpPorticoDataSource implements PorticoDataSource {
       | (() => Promise<string>)
       | {
           hostedClient: HostedServicesClient;
+          hostedServerId?: string;
           connectionVault: HostedConnectionVault;
           switchHostedProfile: (
             profileId: string,
@@ -1001,6 +891,23 @@ export class HttpPorticoDataSource implements PorticoDataSource {
         } = durableBrowserInstallationId,
     bundledConnectionVault: HostedConnectionVault = browserVault,
   ) {
+    const constructedHostedServerId: unknown = typeof installationOrHostedOptions === "function"
+      ? undefined
+      : (installationOrHostedOptions as { hostedServerId?: unknown }).hostedServerId;
+    const constructedHostedClient: unknown = typeof installationOrHostedOptions === "function"
+      ? undefined
+      : (installationOrHostedOptions as { hostedClient?: unknown }).hostedClient;
+    if (constructedHostedServerId !== undefined && typeof constructedHostedServerId !== "string")
+      throw new TypeError("Portico Hosted server identity has an invalid runtime shape.");
+    if (
+      constructedHostedClient !== undefined &&
+      (typeof constructedHostedClient !== "object" ||
+        constructedHostedClient === null ||
+        typeof (constructedHostedClient as { request?: unknown }).request !== "function")
+    )
+      throw new TypeError("Portico Hosted client has an invalid runtime shape.");
+    this.authoritativeHostedServerId = constructedHostedServerId?.trim() ?? "";
+    this.authoritativeHostedClient = constructedHostedClient as HostedServicesClient | undefined;
     this.client =
       client ??
       createPorticoClient({
@@ -1597,7 +1504,7 @@ export class HttpPorticoDataSource implements PorticoDataSource {
     if (serverDirectory.authority !== "hosted" || !this.hostedOptions)
       return serverDirectory;
     const cloud = await this.hostedOptions.hostedClient.profiles({ signal });
-    // A Portico Server stores a server-local mirror ID for the account while
+    // A Portico server stores a server-local mirror ID for the account while
     // Hosted Services owns the globally scoped Portico Account ID. Those IDs
     // are intentionally different namespaces. The Hosted session determines
     // which account directory can be returned, and the server independently
@@ -2173,161 +2080,6 @@ export class HttpPorticoDataSource implements PorticoDataSource {
     return capabilities;
   }
 
-  async browseLibrary(
-    input: LibraryBrowseInput,
-    signal: AbortSignal,
-  ): Promise<LibraryBrowseResult> {
-    await this.productContract(signal);
-    const libraries = await this.client.request<ApiLibraryList>(
-      "/api/libraries",
-      { signal },
-    );
-    const libraryItems = libraries.items as ApiLibrary[];
-    const library = libraryItems.find((candidate) =>
-      kindMatches(candidate.type, input.kind),
-    );
-    if (!library)
-      throw new Error(
-        `No ${input.kind === "movies" ? "movie" : input.kind === "music" ? "music" : "TV"} library is available.`,
-      );
-
-    const capabilities = await this.browseCapabilities(library.id, signal);
-    const requestedPivot = canonicalPivot(input.pivot);
-    const pivot =
-      capabilities.pivots.find(
-        (candidate) =>
-          candidate.id === requestedPivot ||
-          canonicalPivot(candidate.label) === requestedPivot,
-      ) ?? capabilities.pivots[0];
-    if (!pivot)
-      throw new Error(`This library does not declare any ${input.kind} views.`);
-
-    const mappedCapabilities: LibraryCapabilities = {
-      apiVersion: capabilities.apiVersion,
-      pivots: mapPivots(capabilities),
-      sorts: mapSorts(capabilities),
-      actions: capabilities.actions,
-    };
-
-    if (!pivot.browseSupported) {
-      const endpoint = pivot.endpointTemplate.replaceAll(
-        "{libraryId}",
-        encodeURIComponent(library.id),
-      );
-      if (pivot.id === "discover") {
-        const response = await this.client.request<ApiSuggestionsResponse>(
-          endpoint,
-          { signal },
-        );
-        const items =
-          response.rows?.flatMap((row) =>
-            row.items.map((item) => this.mediaDetail(item, false)),
-          ) ??
-          response.items.map((suggestion) =>
-            this.mediaDetail(suggestion.item, false),
-          );
-        return {
-          items,
-          total: items.length,
-          libraryId: library.id,
-          hasMore: false,
-          nextCursor: null,
-          capabilities: mappedCapabilities,
-        };
-      }
-      if (pivot.id === "categories" || pivot.id === "genres") {
-        const response = await this.client.request<ApiLibraryCategoryList>(
-          endpoint,
-          { signal },
-        );
-        return {
-          items: (response.items as ApiLibraryCategory[]).map((category) =>
-            categoryToMedia(category, input.kind),
-          ),
-          total: response.total,
-          libraryId: library.id,
-          hasMore: false,
-          nextCursor: null,
-          capabilities: mappedCapabilities,
-        };
-      }
-      if (pivot.id === "collections") {
-        const response = await this.client.request<ApiCollectionPage>(
-          endpoint,
-          { signal },
-        );
-        return {
-          items: response.items.map((item) =>
-            summaryToMedia(item, "collection", input.kind),
-          ),
-          total: response.pageInfo.total ?? response.items.length,
-          libraryId: library.id,
-          hasMore: response.pageInfo.hasMore,
-          nextCursor: response.pageInfo.nextCursor,
-          capabilities: mappedCapabilities,
-        };
-      }
-      if (pivot.id === "playlists") {
-        const response = await this.client.request<ApiPlaylistPage>(endpoint, {
-          signal,
-        });
-        return {
-          items: response.items.map((item) =>
-            summaryToMedia(item, "playlist", input.kind),
-          ),
-          total: response.pageInfo.total ?? response.items.length,
-          libraryId: library.id,
-          hasMore: response.pageInfo.hasMore,
-          nextCursor: response.pageInfo.nextCursor,
-          capabilities: mappedCapabilities,
-        };
-      }
-      const response = await this.client.request<{
-        items: ApiMediaItem[];
-        total?: number;
-        pageInfo?: { total?: number; hasMore?: boolean; nextCursor?: string };
-      }>(endpoint, { signal });
-      const items = response.items.map((item) => this.mediaDetail(item, false));
-      return {
-        items,
-        total: response.total ?? response.pageInfo?.total ?? items.length,
-        libraryId: library.id,
-        hasMore: response.pageInfo?.hasMore ?? false,
-        nextCursor: response.pageInfo?.nextCursor ?? null,
-        capabilities: mappedCapabilities,
-      };
-    }
-
-    const sortField = canonicalSort(input.sort);
-    const supportedSort = capabilities.sorts.find(
-      (candidate) => candidate.id === sortField,
-    );
-    const body: ApiBrowseRequest = {
-      pivot: pivot.id,
-      limit: 200,
-      query: queryForFilter(input.filter),
-      sort: [
-        {
-          field: supportedSort?.id ?? pivot.defaultSort[0]?.field ?? "title",
-          direction: input.direction === "ascending" ? "asc" : "desc",
-        },
-      ],
-    };
-    const response = await this.client.request<ApiBrowseResponse>(
-      `/api/libraries/${encodeURIComponent(library.id)}/browse`,
-      { method: "POST", body, signal },
-    );
-    const items = response.items.map(this.mediaCard);
-    return {
-      items,
-      total: response.pageInfo.total ?? items.length,
-      libraryId: library.id,
-      nextCursor: response.pageInfo.nextCursor,
-      hasMore: response.pageInfo.hasMore,
-      capabilities: mappedCapabilities,
-    };
-  }
-
   async libraryBrowseCapabilities(
     libraryId: string,
     signal: AbortSignal,
@@ -2464,11 +2216,6 @@ export class HttpPorticoDataSource implements PorticoDataSource {
           title: facet.name,
           subtitle: "",
           year: 0,
-          type: "music" as const,
-          kind:
-            facet.entityKind === "author"
-              ? ("author" as const)
-              : ("series" as const),
           poster: imagePath(facet.image),
           backdrop: imagePath(facet.image),
           rating: "",
@@ -2493,7 +2240,7 @@ export class HttpPorticoDataSource implements PorticoDataSource {
       );
       return nonBrowsePage(input, {
         items: response.items.map((item) =>
-          summaryToMedia(item, "collection", input.libraryKind),
+          summaryToMedia(item, "collection"),
         ),
         total: response.pageInfo.total,
         nextCursor: response.pageInfo.nextCursor,
@@ -2512,7 +2259,7 @@ export class HttpPorticoDataSource implements PorticoDataSource {
       );
       return nonBrowsePage(input, {
         items: response.items.map((item) =>
-          summaryToMedia(item, "playlist", input.libraryKind),
+          summaryToMedia(item, "playlist"),
         ),
         total: response.pageInfo.total,
         nextCursor: response.pageInfo.nextCursor,
@@ -2999,9 +2746,11 @@ export class HttpPorticoDataSource implements PorticoDataSource {
     id: string,
     signal: AbortSignal,
   ): Promise<string> {
-    const grant = await this.client.createDownloadPreparationGrant(id, {
-      signal,
-    });
+    const grant = await this.client.createDownloadPreparationGrant(
+      id,
+      { delivery: "browser" },
+      { signal },
+    );
     const trusted = trustedServerResource(
       grant.downloadUrl,
       this.resolveResource,
@@ -3041,9 +2790,16 @@ export class HttpPorticoDataSource implements PorticoDataSource {
     profile: string,
     signal: AbortSignal,
   ): Promise<string> {
-    const grant = await this.client.createMediaDownloadGrant(
-      id,
-      { profile: profile.trim() || "source" },
+    const preparation = await this.client.createDownloadPreparation(
+      { mediaId: id, qualityProfile: profile.trim() || "source" },
+      { signal },
+    );
+    if (preparation.state !== "ready") {
+      throw new Error("This download is still being prepared.");
+    }
+    const grant = await this.client.createDownloadPreparationGrant(
+      preparation.id,
+      { delivery: "browser" },
       { signal },
     );
     const trusted = trustedServerResource(
@@ -3375,11 +3131,12 @@ export class HttpPorticoDataSource implements PorticoDataSource {
 
   async stopPlayback(
     sessionId: string,
+    request: import("@porticomediaserver/client-core").PlaybackSessionStopInput,
     signal?: AbortSignal,
     keepalive = false,
   ): Promise<void> {
     try {
-      await this.client.stopPlayback(sessionId, { signal, keepalive });
+      await this.client.stopPlayback(sessionId, request, { signal, keepalive });
     } catch (reason) {
       if (!(reason instanceof ApiError) || reason.status !== 404) throw reason;
     } finally {

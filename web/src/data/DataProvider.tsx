@@ -32,8 +32,6 @@ import type {
   ActionableLiveTVChannel,
   ActionableLiveTVSource,
   DVRResult,
-  LibraryBrowseInput,
-  LibraryBrowseResult,
   MediaItem,
   PersonDetail,
   PorticoDataSource,
@@ -1398,12 +1396,6 @@ export function usePorticoQuery<T>(
 	options: SourceQueryOptions<T> = {},
 ): QueryState<T> {
 	return useSourceQuery(key, load, liveTags, refreshRevision, options);
-}
-
-export function useLibraryBrowse(input: LibraryBrowseInput, reloadKey = 0): QueryState<LibraryBrowseResult> {
-  const key = JSON.stringify(input);
-  const load = useMemo(() => (source: PorticoDataSource, signal: AbortSignal) => source.browseLibrary(input, signal), [key]);
-  return useSourceQuery(`library-browse:${key}`, load, ['libraries', 'library-items', 'media', 'metadata', 'playback-progress', 'media-state'], reloadKey);
 }
 
 export function useHome(reloadKey = 0): QueryState<HomeResult> {

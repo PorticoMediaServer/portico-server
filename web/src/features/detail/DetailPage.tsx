@@ -1,4 +1,4 @@
-import { BookOpen, ChevronRight, Disc3, Film, FolderHeart, LibraryBig, ListMusic, Music2, Radio, RefreshCw, Tv } from '#portico-icons';
+import { NavigationLibraryIcon, NavigationDisclosureIcon, MediaMusicIcon, MediaMovieIcon, LibrarySavedIcon, MediaPlaylistIcon, NavigationChannelsIcon, ActionRefreshIcon, DeviceTvIcon } from '#portico-icons';
 import { productMessage, resolveMediaAvailability } from '@porticomediaserver/client-core';
 import { type CSSProperties, useRef, useState } from 'react';
 import { Link, Navigate, useParams } from 'react-router-dom';
@@ -31,21 +31,21 @@ function DetailBreadcrumbs({ item }: { item: MediaItem }) {
   const uniqueParents = parents.filter((parent, index) => parent.id !== item.id && parents.findIndex((candidate) => candidate.id === parent.id) === index);
   return <nav className="portico-detail-breadcrumbs" aria-label={productMessage('media.hierarchy-label').text}>
     <Link to={library.path}>{library.label}</Link>
-    {uniqueParents.map((parent) => <span key={parent.id}><ChevronRight /><Link to={`/media/${parent.id}`}>{parent.title}</Link></span>)}
-    <span><ChevronRight /><strong aria-current="page">{item.title}</strong></span>
+    {uniqueParents.map((parent) => <span key={parent.id}><NavigationDisclosureIcon /><Link to={`/media/${parent.id}`}>{parent.title}</Link></span>)}
+    <span><NavigationDisclosureIcon /><strong aria-current="page">{item.title}</strong></span>
   </nav>;
 }
 
 function DetailIcon({ item }: { item: MediaItem }) {
   const kind = detailKind(item);
-  if (kind === 'collection') return <FolderHeart />;
-  if (kind === 'playlist') return <ListMusic />;
-  if (kind === 'channel' || kind === 'recording') return <Radio />;
-  if (isAudiobookDetail(item)) return <BookOpen />;
-  if (isMusicDetail(item)) return kind === 'album' || kind === 'track' ? <Disc3 /> : <Music2 />;
-  if (kind === 'movie') return <Film />;
-  if (kind === 'category') return <LibraryBig />;
-  return <Tv />;
+  if (kind === 'collection') return <LibrarySavedIcon />;
+  if (kind === 'playlist') return <MediaPlaylistIcon />;
+  if (kind === 'live-channel' || kind === 'recording') return <NavigationChannelsIcon />;
+  if (isAudiobookDetail(item)) return <NavigationLibraryIcon />;
+  if (isMusicDetail(item)) return kind === 'album' || kind === 'track' ? <MediaMusicIcon /> : <MediaMusicIcon />;
+  if (kind === 'movie') return <MediaMovieIcon />;
+  if (kind === 'category') return <NavigationLibraryIcon />;
+  return <DeviceTvIcon />;
 }
 
 function DetailLoading() {
@@ -89,7 +89,7 @@ function DetailFailure({ error, onRetry }: { error: Error; onRetry: () => void }
       <strong>{presentation.title}</strong>
       <p>{presentation.body}</p>
       <div className="portico-detail-failure-actions">
-        {!missing && <SecondaryButton onClick={onRetry}><RefreshCw /> {retryLabel}</SecondaryButton>}
+        {!missing && <SecondaryButton onClick={onRetry}><ActionRefreshIcon /> {retryLabel}</SecondaryButton>}
         <Link className="button secondary" to="/libraries">{productMessage('action.open-libraries').text}</Link>
       </div>
     </div>
@@ -119,9 +119,11 @@ export function DetailPage() {
   }
   const viewModel = productContract.status === 'success' ? resolveWebMediaDetailViewModel(productContract.data, item) : undefined;
   const availability = viewModel?.availability ?? resolveMediaAvailability({
-    missing: item.missing,
-    fileCount: item.fileCount,
-    missingFileCount: item.missingFileCount,
+    availability: item.availability ? {
+      status: item.availability,
+      fileCount: item.fileCount,
+      missingFileCount: item.missingFileCount,
+    } : undefined,
   });
   const contractArtwork = viewModel?.semantics.known ? viewModel.artwork : undefined;
   const fallbackShape = detailArtworkShape(item);

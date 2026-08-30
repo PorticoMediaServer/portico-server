@@ -1,6 +1,6 @@
 {
-  "rootExportCount": 320,
-  "rootExportSha256": "47ebcebf9d73a6e09fe38fbee975a488f4fd5f469458eef31a6d78205b3a9ec0",
+  "rootExportCount": 321,
+  "rootExportSha256": "089aa660aeb8b5bd843b014df7c1f91a6230255eaf8b59d6beb318781923b819",
   "subpaths": [
     ".",
     "./browser",

@@ -1,4 +1,4 @@
-import { AlertTriangle, Star, X } from '#portico-icons';
+import { StatusWarningIcon, ActionRateIcon, ActionCloseIcon } from '#portico-icons';
 import { useState } from 'react';
 import { IconButton, PrimaryButton, SecondaryButton } from '../../components/controls/Buttons';
 import { ModalOverlay } from '../../components/overlay/OverlayPortal';
@@ -36,10 +36,10 @@ export function MediaRatingDialog({
   return <ModalOverlay labelledBy={headingId} className="media-rating-dialog" onDismiss={() => { if (!busy) onDismiss(); }}>
     <header>
       <div><p>Your rating</p><h2 id={headingId}>Rate {title}</h2></div>
-      <IconButton label="Close rating dialog" disabled={busy} onClick={onDismiss}><X /></IconButton>
+      <IconButton label="Close rating dialog" disabled={busy} onClick={onDismiss}><ActionCloseIcon /></IconButton>
     </header>
     <div className="media-rating-body">
-      <div className="media-rating-score" aria-live="polite"><Star fill={selected ? 'currentColor' : 'none'} /><strong>{selected || '—'}</strong><span>out of 10</span></div>
+      <div className="media-rating-score" aria-live="polite"><ActionRateIcon fill={selected ? 'currentColor' : 'none'} /><strong>{selected || '—'}</strong><span>out of 10</span></div>
       <div className="media-rating-options" role="radiogroup" aria-label={`Rating for ${title}`}>
         {Array.from({ length: 10 }, (_, index) => index + 1).map((rating) => <button
           type="button"
@@ -52,7 +52,7 @@ export function MediaRatingDialog({
         >{rating}</button>)}
       </div>
       <p>Ratings help Portico tune recommendations for this account.</p>
-      {error && <p className="media-rating-error" role="alert"><AlertTriangle /> {error}</p>}
+      {error && <p className="media-rating-error" role="alert"><StatusWarningIcon /> {error}</p>}
     </div>
     <footer>
       {value > 0 && <button type="button" className="media-rating-clear" disabled={busy} onClick={() => void save(0)}>Clear rating</button>}

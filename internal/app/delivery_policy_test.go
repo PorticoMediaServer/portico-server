@@ -88,20 +88,19 @@ func TestPublicHostnameDoesNotOverrideLANLocality(t *testing.T) {
 func TestEffectivePlaybackNetworkClassSeparatesTransportFromLocality(t *testing.T) {
 	cases := []struct {
 		name      string
-		legacy    string
 		transport string
 		locality  string
 		want      string
 	}{
-		{name: "wifi local", legacy: "wifi", transport: "wifi", locality: "local", want: "local"},
-		{name: "cellular remote", legacy: "cellular", transport: "cellular", locality: "remote", want: "cellular"},
-		{name: "wifi remote", legacy: "wifi", transport: "wifi", locality: "remote", want: "wifi"},
-		{name: "unknown local", legacy: "unknown", transport: "unknown", locality: "local", want: "local"},
-		{name: "false local claim", legacy: "local", transport: "unknown", locality: "remote", want: "remote"},
+		{name: "wifi local", transport: "wifi", locality: "local", want: "local"},
+		{name: "cellular remote", transport: "cellular", locality: "remote", want: "cellular"},
+		{name: "wifi remote", transport: "wifi", locality: "remote", want: "wifi"},
+		{name: "unknown local", transport: "unknown", locality: "local", want: "local"},
+		{name: "unknown remote", transport: "unknown", locality: "remote", want: "remote"},
 	}
 	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) {
-			if got := effectivePlaybackNetworkClass(test.legacy, test.transport, test.locality); got != test.want {
+			if got := effectivePlaybackNetworkClass(test.transport, test.locality); got != test.want {
 				t.Fatalf("effective network class = %q, want %q", got, test.want)
 			}
 		})
@@ -148,7 +147,6 @@ func TestResolvedPlaybackPolicyKeepsHairpinLocalityWhenClientReportsWiFi(t *test
 	request := httptest.NewRequest("POST", "https://media.direct.getportico.tv/api/playback-sessions", nil)
 	request.RemoteAddr = "8.8.8.8:51822"
 	policy, _ := server.resolvePlaybackPolicyForRequest(context.Background(), request, User{}, MediaItem{Type: "movie"}, PlaybackIntent{
-		NetworkClass:   playbackNetworkWiFi,
 		TransportClass: playbackNetworkWiFi,
 	}, PlaybackClientProfile{})
 	if policy.ServerLocality != playbackNetworkLocal || policy.NetworkClass != playbackNetworkLocal || policy.QualityProfile != "original" {
@@ -340,5 +338,52 @@ func TestQualityOffersDoNotPublishAlternateDirectResources(t *testing.T) {
 
 	if len(resources) != 1 || !resources[0].Default || resources[0].SourceURL != "/api/media/movie-direct-auto/stream" || resources[0].StreamFormat != "http" {
 		t.Fatalf("response published resources outside the active sealed plan: %#v", resources)
+	}
+}
+
+func TestPlaybackQualityLabelsAreCanonicalAcrossMediaFamilies(t *testing.T) {
+	find := func(qualities []Quality, id string) Quality {
+		t.Helper()
+		for _, quality := range qualities {
+			if quality.ID == id {
+				return quality
+			}
+		}
+		t.Fatalf("quality %q missing from %#v", id, qualities)
+		return Quality{}
+	}
+
+	audio := MediaItem{Type: "track", Streams: []Stream{{Kind: "audio", Codec: "flac", ChannelLayout: "stereo", Channels: 2, Bitrate: 1_120_000}}}
+	audioQualities := playbackQualities(audio, PlaybackDecision{Mode: "direct_play"}, ResolvedPlaybackPolicy{TranscodePolicy: "allow"}, true)
+	if got := find(audioQualities, "original"); got.Label != "Original Quality" || got.Description != "1120 kbps · Stereo" {
+		t.Fatalf("audio original copy = %#v", got)
+	}
+	if got := find(audioQualities, "audio-data-saver"); got.Label != "128 kbps Stereo" || got.Description != "Limits audio to 128 kbps stereo." {
+		t.Fatalf("audio quality copy = %#v", got)
+	}
+
+	video := MediaItem{Type: "movie", Streams: []Stream{{Kind: "video", Height: 1080, Bitrate: 7_500_000}, {Kind: "audio", ChannelLayout: "stereo", Channels: 2, Bitrate: 192_000}}}
+	videoQualities := playbackQualities(video, PlaybackDecision{Mode: "direct_play"}, ResolvedPlaybackPolicy{TranscodePolicy: "allow"}, true)
+	if got := find(videoQualities, "auto"); got.Label != "Automatic" || got.Description != "Best quality for this connection." {
+		t.Fatalf("automatic quality copy = %#v", got)
+	}
+	if got := find(videoQualities, "1080p-low"); got.Label != "1080p · 8 Mbps" || got.Description != "Limits video to 1080p at 8 Mbps." {
+		t.Fatalf("video quality copy = %#v", got)
+	}
+
+	live := liveTVPlaybackQualities("hls")
+	if got := find(live, "source"); got.Label != "Original Quality" || got.Description != "Uses the provider's original quality." {
+		t.Fatalf("Live TV original copy = %#v", got)
+	}
+	if got := find(live, "720p-medium"); got.Label != "720p · 2.5 Mbps" || got.Description != "Limits video to 720p at 2.5 Mbps." {
+		t.Fatalf("Live TV quality copy = %#v", got)
+	}
+
+	channel := libraryChannelPlaybackQualities("720p-medium")
+	if got := find(channel, "original"); got.Label != "Original Quality" {
+		t.Fatalf("Library Channel original copy = %#v", got)
+	}
+	if got := find(channel, "720p-medium"); got.Label != "720p · 4 Mbps" || got.Description != "Limits video to 720p at 4 Mbps · Channel default." {
+		t.Fatalf("Library Channel quality copy = %#v", got)
 	}
 }

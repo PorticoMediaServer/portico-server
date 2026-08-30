@@ -1,14 +1,11 @@
 package app
 
 import (
-	"bytes"
-	"context"
 	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
-	"time"
 
 	"golang.org/x/crypto/bcrypt"
 )
@@ -44,101 +41,22 @@ func TestAccountPasswordPolicyAndKDF(t *testing.T) {
 	if err != nil || cost != currentPasswordBcryptCost {
 		t.Fatalf("current password cost=%d err=%v", cost, err)
 	}
-	if valid, upgrade, err := verifyAccountPassword(t.Context(), kdfBrowserLoginCompare, hash, "Correct horse battery staple1"); !valid || upgrade || err != nil {
-		t.Fatalf("current hash valid=%t upgrade=%t", valid, upgrade)
+	if valid, err := verifyAccountPassword(t.Context(), kdfBrowserLoginCompare, hash, "Correct horse battery staple1"); !valid || err != nil {
+		t.Fatalf("current hash valid=%t err=%v", valid, err)
 	}
-	legacyHash, err := bcrypt.GenerateFromPassword([]byte("Correct horse battery staple1"), bcrypt.MinCost)
+	noncanonicalHash, err := bcrypt.GenerateFromPassword([]byte("Correct horse battery staple1"), bcrypt.MinCost)
 	if err != nil {
-		t.Fatalf("hash legacy password: %v", err)
+		t.Fatalf("hash noncanonical password: %v", err)
 	}
-	if valid, upgrade, err := verifyAccountPassword(t.Context(), kdfBrowserLoginCompare, string(legacyHash), "Correct horse battery staple1"); !valid || !upgrade || err != nil {
-		t.Fatalf("legacy hash valid=%t upgrade=%t", valid, upgrade)
+	if valid, err := verifyAccountPassword(t.Context(), kdfBrowserLoginCompare, string(noncanonicalHash), "Correct horse battery staple1"); valid || err != nil {
+		t.Fatalf("noncanonical hash authenticated valid=%t err=%v", valid, err)
 	}
-	if valid, _, err := verifyAccountPassword(t.Context(), kdfBrowserLoginCompare, "", "wrong password"); valid || err != nil {
+	if valid, err := verifyAccountPassword(t.Context(), kdfBrowserLoginCompare, "", "wrong password"); valid || err != nil {
 		t.Fatalf("empty hash authenticated")
 	}
-	if valid, _, err := verifyAccountPassword(t.Context(), kdfBrowserLoginCompare, "malformed", "wrong password"); valid || err != nil {
+	if valid, err := verifyAccountPassword(t.Context(), kdfBrowserLoginCompare, "malformed", "wrong password"); valid || err != nil {
 		t.Fatalf("malformed hash authenticated")
 	}
-}
-
-func TestBrowserAndNativeLoginUpgradeLegacyPasswordCost(t *testing.T) {
-	server := newScannerTestServer(t)
-	db := server.db
-	password := "Password1234"
-	now := time.Now().UTC().Format(time.RFC3339)
-	initialHash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.MinCost)
-	if err != nil {
-		t.Fatalf("hash initial password: %v", err)
-	}
-	if _, err := db.Exec(`
-		INSERT INTO users (id, username, email, display_name, password_hash, role, auth_origin, permissions_json, preferences_json, created_at, updated_at)
-		VALUES ('usr_kdf', 'admin', 'admin@example.test', 'Admin', ?, 'owner', 'local', '{}', '{}', ?, ?)`, string(initialHash), now, now); err != nil {
-		t.Fatalf("insert KDF user: %v", err)
-	}
-	setLegacyHash := func() string {
-		t.Helper()
-		hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.MinCost)
-		if err != nil {
-			t.Fatalf("hash legacy password: %v", err)
-		}
-		if _, err := db.Exec(`UPDATE users SET password_hash = ? WHERE username = 'admin'`, string(hash)); err != nil {
-			t.Fatalf("seed legacy password hash: %v", err)
-		}
-		return string(hash)
-	}
-	storedCost := func() int {
-		t.Helper()
-		var hash string
-		if err := db.QueryRow(`SELECT password_hash FROM users WHERE username = 'admin'`).Scan(&hash); err != nil {
-			t.Fatalf("load password hash: %v", err)
-		}
-		cost, err := bcrypt.Cost([]byte(hash))
-		if err != nil {
-			t.Fatalf("inspect password cost: %v", err)
-		}
-		return cost
-	}
-	waitForCurrentCost := func() {
-		t.Helper()
-		deadline := time.Now().Add(10 * time.Second)
-		for time.Now().Before(deadline) {
-			if storedCost() == currentPasswordBcryptCost {
-				return
-			}
-			time.Sleep(10 * time.Millisecond)
-		}
-		t.Fatal("password hash upgrade did not complete")
-	}
-
-	legacyHash := setLegacyHash()
-	request := httptest.NewRequest(http.MethodPost, "/api/auth/login", bytes.NewBufferString(`{"login":"admin","password":"wrong-password"}`))
-	request.RemoteAddr = "127.0.0.1:12345"
-	response := httptest.NewRecorder()
-	server.handleLogin(response, request)
-	if response.Code != http.StatusUnauthorized {
-		t.Fatalf("wrong-password login status=%d body=%s", response.Code, response.Body.String())
-	}
-	var unchanged string
-	if err := db.QueryRow(`SELECT password_hash FROM users WHERE username = 'admin'`).Scan(&unchanged); err != nil || unchanged != legacyHash {
-		t.Fatalf("failed login changed hash err=%v", err)
-	}
-
-	request = httptest.NewRequest(http.MethodPost, "/api/auth/login", bytes.NewBufferString(`{"login":"admin","password":"Password1234"}`))
-	request.RemoteAddr = "127.0.0.1:12346"
-	response = httptest.NewRecorder()
-	server.handleLogin(response, request)
-	if response.Code != http.StatusOK {
-		t.Fatalf("browser login status=%d body=%s", response.Code, response.Body.String())
-	}
-	waitForCurrentCost()
-
-	setLegacyHash()
-	user, err := server.authenticateLocalNativeUser(context.Background(), "admin", password)
-	if err != nil || user.ID != "usr_kdf" {
-		t.Fatalf("native login user=%#v err=%v", user, err)
-	}
-	waitForCurrentCost()
 }
 
 func TestPasswordVerificationSnapshotFencesSessionIssuance(t *testing.T) {

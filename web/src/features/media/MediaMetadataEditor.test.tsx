@@ -11,8 +11,7 @@ function editableMedia(): MediaItem {
     title: 'Metadata Lock Fixture',
     subtitle: '',
     year: 2026,
-    type: 'movie',
-    kind: 'movie',
+    entityKind: 'movie',
     poster: '/poster.jpg',
     backdrop: '/backdrop.jpg',
     rating: 'PG',
@@ -35,8 +34,7 @@ function editableEpisode(): MediaItem {
     ...editableMedia(),
     id: 'metadata-episode-fixture',
     title: 'Survive the Streets',
-    type: 'show',
-    kind: 'episode',
+    entityKind: 'episode',
     durationSeconds: 2520,
     communityRating: 8.4,
     criticRating: 92,
@@ -51,9 +49,9 @@ describe('MediaMetadataEditor metadata locks', () => {
     ['track', 'Track'],
     ['book', 'Audiobook'],
     ['unsupported', 'Unsupported media'],
-  ] as const)('uses canonical, neutral context for %s metadata', async (kind, label) => {
+  ] as const)('uses canonical, neutral context for %s metadata', async (entityKind, label) => {
     const source = new FixturePorticoDataSource();
-    const item = { ...editableMedia(), id: `metadata-${kind}`, kind, libraryName: 'My Library' };
+    const item = { ...editableMedia(), id: `metadata-${entityKind}`, entityKind, libraryName: 'My Library' };
     vi.spyOn(source as PorticoDataSource, 'media').mockResolvedValue(item);
     render(<DataProvider source={source}><MediaMetadataEditor mediaIds={[item.id]} initialItems={[item]} onDismiss={() => undefined} /></DataProvider>);
 

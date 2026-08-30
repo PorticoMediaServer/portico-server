@@ -1,30 +1,6 @@
+import { productMessage, validPorticoUsername, viewerPreferenceLimitsV1, } from "@porticomediaserver/client-core";
 import {
-  productMessage,
-  validPorticoUsername,
-  viewerPreferenceLimitsV1,
-} from "@porticomediaserver/client-core";
-import {
-  AlertTriangle,
-  Camera,
-  CheckCircle2,
-  ChevronRight,
-  ClipboardCopy,
-  ExternalLink,
-  Film,
-  KeyRound,
-  Laptop,
-  ListVideo,
-  LogOut,
-  MonitorSmartphone,
-  MonitorCog,
-  RefreshCw,
-  Search,
-  ShieldCheck,
-  ShieldOff,
-  SlidersHorizontal,
-  Trash2,
-  UserPlus,
-} from "#portico-icons";
+  StatusWarningIcon, MediaPhotoIcon, StatusSuccessIcon, NavigationDisclosureIcon, ViewListIcon, ActionOpenExternalIcon, MediaMovieIcon, AccountSecurityIcon, DeviceClientIcon, PlaybackQueueIcon, AccountSignOutIcon, NavigationSettingsIcon, ActionRefreshIcon, NavigationSearchIcon, StatusSecureIcon, StatusErrorIcon, ActionCustomizeIcon, ActionDeleteIcon, AccountProfilesIcon } from "#portico-icons";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
@@ -76,6 +52,15 @@ import type {
   SettingsOperationalSnapshot,
   SettingsViewer,
 } from "./settingsTypes";
+
+export const playbackQualityPreferenceOptions: Array<{ value: string; label: string }> = [
+  { value: "off", label: "Off" },
+  { value: "automatic", label: "Automatic" },
+  { value: "original", label: "Original Quality" },
+  { value: "high", label: "High" },
+  { value: "standard", label: "Standard" },
+  { value: "data-saver", label: "Data Saver" },
+];
 
 function relativeTime(value: string): string {
   const elapsed = Date.now() - Date.parse(value);
@@ -187,7 +172,7 @@ function SignedInDevices({
       description={description}
       actions={
         <SecondaryButton onClick={() => setRevision((current) => current + 1)}>
-          <RefreshCw /> Refresh
+          <ActionRefreshIcon /> Refresh
         </SecondaryButton>
       }
     >
@@ -199,7 +184,7 @@ function SignedInDevices({
       <div className="portico-account-session-list">
         {devices.length === 0 ? (
           <div className="portico-settings-state">
-            <Laptop />
+            <DeviceClientIcon />
             <strong>No signed-in devices were returned</strong>
             <p>
               {origin === "portico"
@@ -213,7 +198,7 @@ function SignedInDevices({
               <span
                 className={`portico-session-icon ${device.current ? "current" : ""}`}
               >
-                <MonitorSmartphone />
+                <DeviceClientIcon />
               </span>
               <span>
                 <strong>{device.name}</strong>
@@ -266,7 +251,7 @@ function SignedInDevices({
                       disabled={mutation.busy}
                       onClick={() => setConfirming(device.id)}
                     >
-                      <LogOut /> Sign out
+                      <AccountSignOutIcon /> Sign out
                     </SecondaryButton>
                   )
                 ) : (
@@ -471,7 +456,7 @@ function ProfileIdentity({
             disabled={readOnly || mutation.busy}
             onClick={() => fileInput.current?.click()}
           >
-            <Camera /> {profileImageUrl ? "Replace image" : "Add image"}
+            <MediaPhotoIcon /> {profileImageUrl ? "Replace image" : "Add image"}
           </SecondaryButton>
           {profileImageUrl &&
             (removePhoto ? (
@@ -495,7 +480,7 @@ function ProfileIdentity({
                 disabled={readOnly || mutation.busy}
                 onClick={() => setRemovePhoto(true)}
               >
-                <Trash2 />
+                <ActionDeleteIcon />
               </IconButton>
             ))}
         </div>
@@ -581,7 +566,7 @@ function PasswordSettings({
           description="The server owner can reset this credential from People & Access."
         >
           <span className="portico-setting-readonly">
-            <KeyRound />{" "}
+            <AccountSecurityIcon />{" "}
             {viewer.hasLocalPassword ? "Configured" : "Not configured"}
           </span>
         </SettingRow>
@@ -591,7 +576,7 @@ function PasswordSettings({
     return (
       <SettingsGroup title={title} description={description}>
         <div className="portico-settings-readonly-note">
-          <KeyRound />
+          <AccountSecurityIcon />
           Password changes require an interactive account sign-in.
         </div>
       </SettingsGroup>
@@ -774,7 +759,7 @@ function MFASettings({
         description="Additional Portico Account sign-in protection."
       >
         <div className="portico-settings-readonly-note">
-          <ShieldOff />
+          <StatusErrorIcon />
           Two-factor authentication changes require an interactive Portico
           Account sign-in.
         </div>
@@ -970,7 +955,7 @@ function MFASettings({
       description="Protect your Portico Account with time-based codes from an authenticator app."
       actions={
         <SecondaryButton disabled={mutation.busy} onClick={() => refresh()}>
-          <RefreshCw /> Refresh
+          <ActionRefreshIcon /> Refresh
         </SecondaryButton>
       }
     >
@@ -987,7 +972,7 @@ function MFASettings({
             status.enabled ? "enabled" : status.setupStarted ? "pending" : ""
           }
         >
-          {status.enabled ? <ShieldCheck /> : <ShieldOff />}
+          {status.enabled ? <StatusSecureIcon /> : <StatusErrorIcon />}
         </span>
         <span>
           <small>Status</small>
@@ -1066,7 +1051,7 @@ function MFASettings({
                 className="portico-settings-inline-link"
                 href={setup.otpauthUrl}
               >
-                <ExternalLink /> Open in authenticator app
+                <ActionOpenExternalIcon /> Open in authenticator app
               </a>
               <div className="portico-account-mfa-verify">
                 <label>
@@ -1125,7 +1110,7 @@ function MFASettings({
                   setRecoveryCodes([]);
                 }}
               >
-                <RefreshCw /> Create new codes
+                <ActionRefreshIcon /> Create new codes
               </SecondaryButton>
             </SettingRow>
           ) : (
@@ -1170,7 +1155,7 @@ function MFASettings({
               description="Removing this protection requires a fresh authenticator code plus your password, or a recent Google or Apple sign-in."
             >
               <SecondaryButton onClick={() => setDisabling(true)}>
-                <ShieldOff /> Disable two-factor
+                <StatusErrorIcon /> Disable two-factor
               </SecondaryButton>
             </SettingRow>
           ) : (
@@ -1235,7 +1220,7 @@ function MFASettings({
               </small>
             </span>
             <SecondaryButton onClick={() => void copyRecoveryCodes()}>
-              <ClipboardCopy /> Copy codes
+              <ViewListIcon /> Copy codes
             </SecondaryButton>
           </header>
           <textarea
@@ -1496,7 +1481,7 @@ export function BrowserAccountsSettings({
     setError("");
     try {
       await auth.switchBrowserAccount(accountId);
-      navigate("/home", { replace: true });
+      navigate("/", { replace: true });
     } catch (reason) {
       setError(reviewedProductErrorText(reason, "auth.account-switch-failed"));
     }
@@ -1555,7 +1540,7 @@ export function BrowserAccountsSettings({
         actions={
           auth.browserAccounts.data.canAddAccount ? (
             <PrimaryButton disabled={auth.busy} onClick={auth.beginAddAccount}>
-              <UserPlus /> Add account
+              <AccountProfilesIcon /> Add account
             </PrimaryButton>
           ) : undefined
         }
@@ -1565,7 +1550,7 @@ export function BrowserAccountsSettings({
         )}
         {auth.browserAccounts.status !== "loading" && accounts.length === 0 && (
           <div className="browser-account-empty">
-            <MonitorSmartphone />
+            <DeviceClientIcon />
             <strong>No accounts are remembered</strong>
             <p>
               Sign in and choose to remember the account to make switching
@@ -1598,7 +1583,7 @@ export function BrowserAccountsSettings({
                 </span>
                 {active && (
                   <span className="browser-account-active">
-                    <CheckCircle2 /> Current
+                    <StatusSuccessIcon /> Current
                   </span>
                 )}
                 {!active && (
@@ -1630,7 +1615,7 @@ export function BrowserAccountsSettings({
                     disabled={auth.busy}
                     onClick={() => setConfirming(account.id)}
                   >
-                    <Trash2 />
+                    <ActionDeleteIcon />
                   </IconButton>
                 )}
               </div>
@@ -1650,7 +1635,7 @@ export function BrowserAccountsSettings({
             disabled={auth.busy}
             onClick={() => void auth.logout()}
           >
-            <LogOut /> Sign out
+            <AccountSignOutIcon /> Sign out
           </SecondaryButton>
         </SettingRow>
         <SettingRow
@@ -1678,7 +1663,7 @@ export function BrowserAccountsSettings({
               disabled={auth.busy || accounts.length === 0}
               onClick={() => setConfirming("all")}
             >
-              <LogOut /> Sign out all
+              <AccountSignOutIcon /> Sign out all
             </button>
           )}
         </SettingRow>
@@ -1799,7 +1784,7 @@ function WebAppearanceSettings() {
         {libraries.status === "loading" && (
           <div className="portico-settings-compact-state">
             <span className="portico-settings-spinner">
-              <SlidersHorizontal />
+              <ActionCustomizeIcon />
             </span>
             <span>
               <strong>{productText("preferences.libraries-loading")}</strong>
@@ -1819,7 +1804,7 @@ function WebAppearanceSettings() {
         )}
         {libraries.status === "success" && libraries.data.length === 0 && (
           <div className="portico-settings-state">
-            <Film />
+            <MediaMovieIcon />
             <strong>{productText("preferences.libraries-empty")}</strong>
             <p>{productMessage("preferences.libraries-empty").body}</p>
           </div>
@@ -1868,7 +1853,7 @@ function WebAppearanceSettings() {
           </InlineNotice>
         )}
         <div className="portico-home-layout-entry">
-          <ListVideo />
+          <PlaybackQueueIcon />
           <span>
             <strong>
               {home.status === "success"
@@ -1893,7 +1878,7 @@ function WebAppearanceSettings() {
             disabled={home.status !== "success" || home.data.rows.length === 0}
             onClick={() => setCustomizingHome(true)}
           >
-            {productText("action.customize-rows")} <ChevronRight />
+            {productText("action.customize-rows")} <NavigationDisclosureIcon />
           </SecondaryButton>
         </div>
       </SettingsGroup>
@@ -2199,14 +2184,7 @@ function WebPlaybackSettings() {
             <ChoiceControl
               label={`${network} quality`}
               value={draft.playbackQuality[network]}
-              options={[
-                { value: "off", label: "Off" },
-                { value: "automatic", label: "Automatic" },
-                { value: "original", label: "Original" },
-                { value: "high", label: "High" },
-                { value: "standard", label: "Standard" },
-                { value: "data-saver", label: "Data Saver" },
-              ]}
+              options={playbackQualityPreferenceOptions}
               onChange={(value) =>
                 setDraft({
                   ...draft,
@@ -2386,13 +2364,13 @@ function WebPrivacySettings() {
               <SecondaryButton
                 onClick={() => setDraft({ ...draft, recentSearches: [] })}
               >
-                <Trash2 /> {productText("action.clear-all")}
+                <ActionDeleteIcon /> {productText("action.clear-all")}
               </SecondaryButton>
             )}
           </header>
           {draft.recentSearches.map((query) => (
             <div key={query}>
-              <Search />
+              <NavigationSearchIcon />
               <span>{query}</span>
               <IconButton
                 label={productText("preferences.recent-search-remove", {
@@ -2407,7 +2385,7 @@ function WebPrivacySettings() {
                   })
                 }
               >
-                <Trash2 />
+                <ActionDeleteIcon />
               </IconButton>
             </div>
           ))}
@@ -2820,7 +2798,7 @@ function ClearHistory({ source }: { source: SettingsDataSource }) {
               disabled={mutation.busy}
               onClick={() => void clear()}
             >
-              <Trash2 />
+              <ActionDeleteIcon />
               {productText(
                 mutation.busy
                   ? "action.clearing-history"
@@ -2830,7 +2808,7 @@ function ClearHistory({ source }: { source: SettingsDataSource }) {
           </div>
         ) : (
           <SecondaryButton onClick={() => setConfirming(true)}>
-            <Trash2 /> {productText("action.clear-history")}
+            <ActionDeleteIcon /> {productText("action.clear-history")}
           </SecondaryButton>
         )}
       </SettingRow>
@@ -2883,13 +2861,13 @@ export function HelpSettings({
           </span>
         </SettingRow>
         <SettingRow
-          label="Database"
-          description="Database readiness and migration status."
+          label="Storage"
+          description="Storage readiness and migration status."
         >
           <span
             className={`portico-setting-readonly ${release.databaseReady ? "healthy" : "danger"}`}
           >
-            {release.databaseReady ? <CheckCircle2 /> : <AlertTriangle />}
+            {release.databaseReady ? <StatusSuccessIcon /> : <StatusWarningIcon />}
             {release.migrationStatus}
           </span>
         </SettingRow>
@@ -2900,7 +2878,7 @@ export function HelpSettings({
           <span
             className={`portico-setting-readonly ${release.webDistReady ? "healthy" : "danger"}`}
           >
-            {release.webDistReady ? <CheckCircle2 /> : <AlertTriangle />}
+            {release.webDistReady ? <StatusSuccessIcon /> : <StatusWarningIcon />}
             {release.webDistReady ? "Ready" : "Unavailable"}
           </span>
         </SettingRow>
@@ -2911,24 +2889,24 @@ export function HelpSettings({
       >
         <div className="portico-support-links">
           <a href="https://getportico.tv/docs" target="_blank" rel="noreferrer">
-            <MonitorCog />
+            <NavigationSettingsIcon />
             <span>
               <strong>Documentation</strong>
               <small>Setup, playback, remote access, and administration</small>
             </span>
-            <ExternalLink />
+            <ActionOpenExternalIcon />
           </a>
           <a
             href="https://getportico.tv/support"
             target="_blank"
             rel="noreferrer"
           >
-            <ShieldCheck />
+            <StatusSecureIcon />
             <span>
               <strong>Support</strong>
               <small>Help with this Portico installation</small>
             </span>
-            <ExternalLink />
+            <ActionOpenExternalIcon />
           </a>
         </div>
         <InlineNotice tone="info">
@@ -2953,7 +2931,7 @@ export function HelpSettings({
                 src="/provider-logos/tmdb-blue-short.svg"
                 alt="The Movie Database (TMDB)"
               />
-              <ExternalLink />
+              <ActionOpenExternalIcon />
             </a>
             <small>
               This product uses the TMDB API but is not endorsed or certified by
@@ -2967,7 +2945,7 @@ export function HelpSettings({
         >
           <span className="portico-setting-readonly portico-attribution">
             <a href="https://thetvdb.com/" target="_blank" rel="noreferrer">
-              Metadata provided by TheTVDB <ExternalLink />
+              Metadata provided by TheTVDB <ActionOpenExternalIcon />
             </a>
           </span>
         </SettingRow>
@@ -2981,7 +2959,7 @@ export function HelpSettings({
               target="_blank"
               rel="noreferrer"
             >
-              FFmpeg legal and licensing information <ExternalLink />
+              FFmpeg legal and licensing information <ActionOpenExternalIcon />
             </a>
             <small>
               Portico release bundles are built with GPL and version-3 licensing

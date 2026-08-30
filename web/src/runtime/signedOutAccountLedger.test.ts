@@ -7,7 +7,6 @@ import {
   markAccountSignedOut,
   protectHostedConnectionVault,
   resetSignedOutAccountQuarantineForTests,
-  SIGNED_OUT_ACCOUNT_LEDGER_KEY,
   SIGNED_OUT_ACCOUNT_TOMBSTONE_PREFIX,
   signedOutAccountQuarantine,
   SignedOutAccountRestoreBlockedError,
@@ -29,6 +28,13 @@ function vaultStorage(): HostedConnectionVaultStorage {
     },
     delete: async (name, id) => { store(name).delete(key(id)); },
     getAll: async <T,>(name: string) => [...store(name).values()] as T[],
+    compareAndSwapConnection: async (id, expectedVersion, value) => {
+      const current = store('connections').get(key(id)) as { metadata?: { mutationVersion?: number }; mutationVersion?: number } | undefined;
+      if ((current?.metadata?.mutationVersion ?? current?.mutationVersion ?? 0) !== expectedVersion) return false;
+      store('connections').set(key(id), value);
+      return true;
+    },
+    replaceConnectionWithTombstone: async (id, value) => { store('connections').set(key(id), value); },
   };
 }
 
@@ -43,7 +49,6 @@ describe('signed-out account cleanup ledger', () => {
     expect(markAccountSignedOut('account-2')).toBe(true);
     expect(JSON.parse(window.localStorage.getItem(`${SIGNED_OUT_ACCOUNT_TOMBSTONE_PREFIX}account-1`)!)).toEqual({ version: 1, accountId: 'account-1' });
     expect(JSON.parse(window.localStorage.getItem(`${SIGNED_OUT_ACCOUNT_TOMBSTONE_PREFIX}account-2`)!)).toEqual({ version: 1, accountId: 'account-2' });
-    expect(window.localStorage.getItem(SIGNED_OUT_ACCOUNT_LEDGER_KEY)).toBeNull();
     expect(clearAccountAfterVerifiedCleanup('account-1')).toBe(true);
     expect([...signedOutAccountQuarantine().accountIds]).toEqual(['account-2']);
   });
@@ -53,7 +58,7 @@ describe('signed-out account cleanup ledger', () => {
     const tab = () => ({
       get length() { return values.size; },
       key: (index: number) => [...values.keys()][index] ?? null,
-      getItem: (key: string) => key === SIGNED_OUT_ACCOUNT_LEDGER_KEY ? null : values.get(key) ?? null,
+      getItem: (key: string) => values.get(key) ?? null,
       setItem: (key: string, value: string) => { values.set(key, value); },
       removeItem: (key: string) => { values.delete(key); },
     });
@@ -68,7 +73,7 @@ describe('signed-out account cleanup ledger', () => {
   });
 
   it('denies all restore when the durable ledger is corrupt or cannot be verified after writing', () => {
-    window.localStorage.setItem(SIGNED_OUT_ACCOUNT_LEDGER_KEY, '{not-json');
+    window.localStorage.setItem(`${SIGNED_OUT_ACCOUNT_TOMBSTONE_PREFIX}account-1`, '{not-json');
     expect(signedOutAccountQuarantine().trustedForRestore).toBe(false);
 
     resetSignedOutAccountQuarantineForTests();
@@ -124,6 +129,7 @@ describe('signed-out account cleanup ledger', () => {
       currentRoute: { url: 'https://home.direct.getportico.tv', type: 'public_direct', verifiedAt: '2026-07-16T00:00:00.000Z' },
       session: { serverId: 'server-1', apiBaseUrl: 'https://home.direct.getportico.tv', accessToken: 'candidate', refreshToken: 'candidate-refresh' },
       lastSuccessfulConnectionAt: '2026-07-16T00:00:00.000Z',
+      mutationVersion: 1,
     })).rejects.toBeInstanceOf(TrustedServerPublicationBlockedError);
     await expect(guarded.assertPublicationAllowed?.('account-1')).rejects.toBeInstanceOf(TrustedServerPublicationBlockedError);
     await expect(guarded.load('account-1', 'server-1')).rejects.toBeInstanceOf(SignedOutAccountRestoreBlockedError);

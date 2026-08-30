@@ -202,14 +202,19 @@ func (s *Server) libraryChannelDeliveryPolicyForRequest(r *http.Request, user Us
 
 func libraryChannelPlaybackQualities(selected string) []Quality {
 	qualities := make([]Quality, 0, len(transcodePresets)+1)
-	qualities = append(qualities, Quality{ID: "original", Label: "Original", Description: "Source dimensions with H.264/AAC channel continuity.", Available: true, RequiresTranscode: true})
+	qualities = append(qualities, Quality{ID: "original", Label: "Original Quality", Description: "Uses the source's original picture quality.", Available: true, RequiresTranscode: true})
 	for _, id := range []string{"auto", "1080p-high", "1080p-medium", "720p-high", "720p-medium", "480p", "328p"} {
 		preset := transcodePresets[id]
-		description := fmt.Sprintf("Up to %dp at %d Mbps", preset.height, max(1, preset.videoK/1000))
-		if id == selected {
-			description += " (channel default)"
+		label := playbackVideoQualityLabel(preset.height, preset.videoK)
+		description := playbackVideoQualityDescription(preset.height, preset.videoK)
+		if id == "auto" {
+			label = "Automatic"
+			description = "Best quality for this connection."
 		}
-		qualities = append(qualities, Quality{ID: id, Label: preset.label, Description: description, Available: true, RequiresTranscode: true})
+		if id == selected {
+			description = strings.TrimSuffix(description, ".") + " · Channel default."
+		}
+		qualities = append(qualities, Quality{ID: id, Label: label, Description: description, Available: true, RequiresTranscode: true})
 	}
 	return qualities
 }

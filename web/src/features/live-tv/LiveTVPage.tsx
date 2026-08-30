@@ -1,4 +1,4 @@
-import { AlertTriangle, ListVideo, Radio, RefreshCw, Tv, TvMinimalPlay, Video } from '#portico-icons';
+import { StatusWarningIcon, PlaybackQueueIcon, NavigationChannelsIcon, ActionRefreshIcon, DeviceTvIcon, MediaLiveTvIcon, MediaVideoIcon } from '#portico-icons';
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { SecondaryButton } from '../../components/controls/Buttons';
@@ -29,13 +29,13 @@ export function StateSurface({
   message: string;
   onRetry?: () => void;
 }) {
-  const Icon = kind === 'loading' ? RefreshCw : kind === 'error' || kind === 'permission' ? AlertTriangle : Radio;
+  const Icon = kind === 'loading' ? ActionRefreshIcon : kind === 'error' || kind === 'permission' ? StatusWarningIcon : NavigationChannelsIcon;
   const heading = title ?? (kind === 'permission' ? 'Live TV access is restricted' : kind === 'error' ? 'Live TV is unavailable' : kind === 'empty' ? 'Nothing to show yet' : 'Loading Live TV');
   return <div className={`live-state ${kind}`} role={kind === 'error' || kind === 'permission' ? 'alert' : 'status'} aria-busy={kind === 'loading'}>
     <Icon className={kind === 'loading' ? 'state-spinner' : ''} />
     <strong>{heading}</strong>
     <p>{message}</p>
-    {onRetry && <SecondaryButton onClick={onRetry}><RefreshCw /> Try again</SecondaryButton>}
+    {onRetry && <SecondaryButton onClick={onRetry}><ActionRefreshIcon /> Try again</SecondaryButton>}
   </div>;
 }
 
@@ -88,10 +88,10 @@ export function LiveTVPage() {
   return <div className="standard-page live-page-next">
     <header className="page-header live-title-row"><div><p className="route-context">Live television</p><h1>Live TV</h1><p>Guide, channels, recordings, and rules.</p></div><time>{timeLabel(clock)}</time></header>
     <nav className="page-tabs live-tabs" aria-label="Live TV views">
-      <Link className={tab === 'guide' ? 'active' : ''} aria-current={tab === 'guide' ? 'page' : undefined} to={tabUrl('guide', sourceId)}><Tv /> {productText('live-tv.tab.guide')}</Link>
-      <Link className={tab === 'channels' ? 'active' : ''} aria-current={tab === 'channels' ? 'page' : undefined} to={tabUrl('channels', sourceId)}><ListVideo /> {productText('live-tv.tab.channels')}</Link>
-      {canUseDVR && <Link className={tab === 'dvr' ? 'active' : ''} aria-current={tab === 'dvr' ? 'page' : undefined} to={tabUrl('dvr', sourceId)}><Video /> {productText('live-tv.tab.dvr')}</Link>}
-      <Link className={tab === 'library-channels' ? 'active' : ''} aria-current={tab === 'library-channels' ? 'page' : undefined} to={tabUrl('library-channels', '')}><TvMinimalPlay /> {productText('live-tv.tab.library-channels')}</Link>
+      <Link className={tab === 'guide' ? 'active' : ''} aria-current={tab === 'guide' ? 'page' : undefined} to={tabUrl('guide', sourceId)}><DeviceTvIcon /> {productText('live-tv.tab.guide')}</Link>
+      <Link className={tab === 'channels' ? 'active' : ''} aria-current={tab === 'channels' ? 'page' : undefined} to={tabUrl('channels', sourceId)}><PlaybackQueueIcon /> {productText('live-tv.tab.channels')}</Link>
+      {canUseDVR && <Link className={tab === 'dvr' ? 'active' : ''} aria-current={tab === 'dvr' ? 'page' : undefined} to={tabUrl('dvr', sourceId)}><MediaVideoIcon /> {productText('live-tv.tab.dvr')}</Link>}
+      <Link className={tab === 'library-channels' ? 'active' : ''} aria-current={tab === 'library-channels' ? 'page' : undefined} to={tabUrl('library-channels', '')}><MediaLiveTvIcon /> {productText('live-tv.tab.library-channels')}</Link>
     </nav>
     {tab === 'library-channels' && <LibraryChannelsWorkspace StateSurface={StateSurface} />}
     {tab !== 'library-channels' && sources.status === 'loading' && <StateSurface kind="loading" {...productState('live-tv.loading')} />}

@@ -1,4 +1,4 @@
-import { Check, LockKeyhole, LogOut, X } from '#portico-icons';
+import { ActionConfirmIcon, StatusLockedIcon, AccountSignOutIcon, ActionCloseIcon } from '#portico-icons';
 import { type ServerManagedProfileDirectory } from '@porticomediaserver/client-core';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { IconButton } from '../../components/controls/Buttons';
@@ -90,8 +90,8 @@ export function ProfileSwitcherDialog({ onDismiss, required = false, onSignOut }
     <header>
       <div><p>Profiles</p><h2 id="profile-switcher-title">Who’s watching?</h2></div>
       {required
-        ? <IconButton label="Sign out" disabled={busy} onClick={onSignOut}><LogOut /></IconButton>
-        : <IconButton label={productText('action.close')} disabled={busy} onClick={onDismiss}><X /></IconButton>}
+        ? <IconButton label="Sign out" disabled={busy} onClick={onSignOut}><AccountSignOutIcon /></IconButton>
+        : <IconButton label={productText('action.close')} disabled={busy} onClick={onDismiss}><ActionCloseIcon /></IconButton>}
     </header>
     {!directory && !error ? <div className="profile-switcher-loading" aria-busy="true">Loading profiles…</div> : null}
     {directory ? <div className="profile-switcher-grid" role="list" aria-label="Available profiles">
@@ -99,7 +99,7 @@ export function ProfileSwitcherDialog({ onDismiss, required = false, onSignOut }
         const current = profile.id === auth.viewer?.viewerScope?.profileId;
         const image = avatarSource(profile);
         return <button key={profile.id} type="button" role="listitem" disabled={busy} className={`${selectedId === profile.id ? 'selected' : ''} ${current ? 'current' : ''}`} onClick={() => void choose(profile.id)}>
-          <span className="profile-switcher-avatar">{image ? <img src={image} alt="" /> : initials(profile.name)}{profile.hasPIN ? <span className="profile-switcher-lock"><LockKeyhole /></span> : null}{current ? <span className="profile-switcher-current"><Check /></span> : null}</span>
+          <span className="profile-switcher-avatar">{image ? <img src={image} alt="" /> : initials(profile.name)}{profile.hasPIN ? <span className="profile-switcher-lock"><StatusLockedIcon /></span> : null}{current ? <span className="profile-switcher-current"><ActionConfirmIcon /></span> : null}</span>
           <strong>{profile.name}</strong>
           <small>{current ? 'Current profile' : profile.hasPIN ? 'PIN required' : 'Open profile'}</small>
         </button>;

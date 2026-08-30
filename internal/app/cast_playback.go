@@ -38,7 +38,6 @@ var castReceiverOperations = map[string]bool{
 }
 
 type CastBootstrapRequest struct {
-	MediaID                 string                `json:"mediaId"`
 	VersionID               string                `json:"versionId,omitempty"`
 	ClientInstanceID        string                `json:"clientInstanceId"`
 	ClientProfile           PlaybackClientProfile `json:"clientProfile"`
@@ -273,22 +272,9 @@ func (s *Server) handleCastBootstrap(w http.ResponseWriter, r *http.Request, use
 	req.ClientInstanceID = normalizePlaybackClientInstanceID(req.ClientInstanceID)
 	req.SourceKind = strings.ToLower(strings.TrimSpace(req.SourceKind))
 	req.SourceID = strings.TrimSpace(req.SourceID)
-	if req.SourceKind == "" {
-		req.SourceKind = "media"
-	}
-	if req.SourceID == "" {
-		req.SourceID = req.MediaID
-	}
 	if (req.SourceKind != "media" && req.SourceKind != "live" && req.SourceKind != "dvr" && req.SourceKind != "library-channel") || req.SourceID == "" {
 		writeError(w, http.StatusBadRequest, "invalid_cast_source", "Cast playback requires a supported source kind and source ID.")
 		return
-	}
-	if req.SourceKind == "media" {
-		if req.MediaID != "" && req.MediaID != req.SourceID {
-			writeError(w, http.StatusBadRequest, "invalid_cast_source", "mediaId and sourceId must identify the same media item.")
-			return
-		}
-		req.MediaID = req.SourceID
 	}
 	if strings.TrimSpace(req.SourcePlaybackSessionID) != "" {
 		var sourceClientInstanceID, sourceMediaID string
@@ -1192,6 +1178,12 @@ func (s *Server) stopCastReceiverSession(ctx context.Context, auth castSessionAu
 			return err
 		}
 		if _, err := tx.ExecContext(ctx, `UPDATE playback_media_grants SET revoked_at = ? WHERE playback_session_id = ? AND revoked_at = ''`, now, auth.record.PlaybackSessionID); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE playback_session_continuation_credentials SET revoked_at = ?, previous_valid_until = '' WHERE playback_session_id = ? AND revoked_at = ''`, now, auth.record.PlaybackSessionID); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM live_tv_tuner_allocations WHERE allocation_kind = 'live_session' AND consumer_id = ?`, auth.record.PlaybackSessionID); err != nil {
 			return err
 		}
 		return nil

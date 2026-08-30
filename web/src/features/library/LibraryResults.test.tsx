@@ -13,8 +13,7 @@ function movie(id: string, title: string): MediaItem {
     title,
     subtitle: '2026',
     year: 2026,
-    type: 'movie',
-    kind: 'movie',
+    entityKind: 'movie',
     poster: '',
     backdrop: '',
     rating: '',
@@ -77,7 +76,7 @@ describe('library bulk operations', () => {
   });
 
   it('uses canonical presentation artwork shapes instead of legacy view types', () => {
-    const episode = { ...movie('episode-one', 'Episode One'), type: 'show' as const, kind: 'episode' as const, entityKind: 'episode' };
+    const episode = { ...movie('episode-one', 'Episode One'), entityKind: 'episode' as const };
     render(<DataProvider source={new FixturePorticoDataSource()}><MemoryRouter><LibraryResults
       library={{ id: 'shows', name: 'Shows', kind: 'tv', itemCount: 1 }}
       pivot={{ ...pivot, id: 'episodes', entityKinds: ['episode'], defaultView: 'table', supportedViews: ['table'] }}

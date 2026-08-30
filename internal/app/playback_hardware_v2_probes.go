@@ -52,6 +52,9 @@ func playbackHardwareProbes(backend playbackhw.Backend, pipeline playbackhw.Requ
 	probes := []ffmpegprobe.Probe{}
 	if !encodeOnly {
 		spec.hardwareStages = append(spec.hardwareStages, playbackhw.Decode)
+		if backend == playbackhw.VideoToolbox {
+			spec.crossovers = append(spec.crossovers, playbackhw.Download)
+		}
 		probes = append(probes, executableHardwareProbe("decode-"+string(pipeline.InputCodec), ffmpegprobe.Decode,
 			append(append([]string{"-hide_banner", "-nostdin", "-v", "error"}, playbackHardwareDecoderArgs(backend, pipeline.Device.DevicePath)...),
 				"-i", inputs[pipeline.InputCodec], "-frames:v", "1", "-f", "null", "-")...))
@@ -71,7 +74,7 @@ func playbackHardwareProbes(backend playbackhw.Backend, pipeline playbackhw.Requ
 		} else {
 			spec.softwareStages = append(spec.softwareStages, playbackhw.Deinterlace)
 			if !encodeOnly {
-				spec.crossovers = append(spec.crossovers, playbackhw.Download, playbackhw.Upload)
+				spec.crossovers = append(spec.crossovers, playbackHardwareSoftwareFrameCrossovers(backend)...)
 			}
 		}
 	}
@@ -83,7 +86,7 @@ func playbackHardwareProbes(backend playbackhw.Backend, pipeline playbackhw.Requ
 		} else {
 			spec.softwareStages = append(spec.softwareStages, playbackhw.ToneMap)
 			if !encodeOnly {
-				spec.crossovers = append(spec.crossovers, playbackhw.Download, playbackhw.Upload)
+				spec.crossovers = append(spec.crossovers, playbackHardwareSoftwareFrameCrossovers(backend)...)
 			}
 		}
 	}
@@ -95,15 +98,22 @@ func playbackHardwareProbes(backend playbackhw.Backend, pipeline playbackhw.Requ
 		} else {
 			spec.softwareStages = append(spec.softwareStages, playbackhw.Scale)
 			if !encodeOnly {
-				spec.crossovers = append(spec.crossovers, playbackhw.Download, playbackhw.Upload)
+				spec.crossovers = append(spec.crossovers, playbackHardwareSoftwareFrameCrossovers(backend)...)
 			}
 		}
 	}
 	if pipeline.SubtitleFile != "" {
 		spec.softwareStages = append(spec.softwareStages, playbackhw.SubtitleBurn)
 		if !encodeOnly {
-			spec.crossovers = append(spec.crossovers, playbackhw.Download, playbackhw.Upload)
+			spec.crossovers = append(spec.crossovers, playbackHardwareSoftwareFrameCrossovers(backend)...)
 		}
+	}
+	if backend == playbackhw.VideoToolbox && !encodeOnly &&
+		(pipeline.InputPixelFormat != pipeline.OutputPixelFormat || pipeline.InputBitDepth != pipeline.OutputBitDepth) {
+		// Prove the exact software-frame format crossover used between
+		// VideoToolbox decode and encode.
+		spec.softwareStages = append(spec.softwareStages, playbackhw.Scale)
+		spec.crossovers = append(spec.crossovers, playbackhw.Download)
 	}
 	if len(filterArgs) > 0 {
 		kind := ffmpegprobe.ScaleDeinterlace
@@ -116,9 +126,6 @@ func playbackHardwareProbes(backend playbackhw.Backend, pipeline playbackhw.Requ
 	// Software/crossover operations are verified as a single real decode ->
 	// download -> filter -> upload -> encode graph against the corpus vector.
 	if len(spec.softwareStages) > 0 || len(spec.crossovers) > 0 {
-		if backend == playbackhw.VideoToolbox && !encodeOnly {
-			return nil, playbackHardwareProbeSpec{}, fmt.Errorf("videotoolbox software-filter crossover has no verified device context")
-		}
 		if strings.TrimSpace(inputs[pipeline.InputCodec]) == "" {
 			return nil, playbackHardwareProbeSpec{}, hardwareProbeFailure("crossover vector")
 		}
@@ -129,6 +136,13 @@ func playbackHardwareProbes(backend playbackhw.Backend, pipeline playbackhw.Requ
 	spec.softwareStages = uniqueHardwareOperations(spec.softwareStages)
 	spec.crossovers = uniqueHardwareOperations(spec.crossovers)
 	return probes, spec, nil
+}
+
+func playbackHardwareSoftwareFrameCrossovers(backend playbackhw.Backend) []playbackhw.Operation {
+	if backend == playbackhw.VideoToolbox {
+		return []playbackhw.Operation{playbackhw.Download}
+	}
+	return []playbackhw.Operation{playbackhw.Download, playbackhw.Upload}
 }
 
 func uniqueHardwareInts(values []int) []int {
@@ -167,7 +181,7 @@ func executableHardwareProbe(name string, kind ffmpegprobe.Kind, args ...string)
 func playbackHardwareDecoderArgs(backend playbackhw.Backend, path string) []string {
 	switch backend {
 	case playbackhw.VideoToolbox:
-		return []string{"-hwaccel", "videotoolbox", "-hwaccel_output_format", "videotoolbox_vld"}
+		return []string{"-hwaccel", "videotoolbox"}
 	case playbackhw.QSV:
 		return []string{"-init_hw_device", "vaapi=portico_vaapi:" + path, "-init_hw_device", "qsv=portico_probe@portico_vaapi", "-filter_hw_device", "portico_probe", "-hwaccel", "qsv", "-hwaccel_output_format", "qsv"}
 	case playbackhw.VAAPI:
@@ -192,7 +206,16 @@ func playbackHardwareSyntheticEncodeArgs(backend playbackhw.Backend, codec playb
 	}
 	args = append(args, "-f", "lavfi", "-i", "color=size=64x64:rate=1:duration=1,format="+pix)
 	graph := append([]string{}, filters...)
-	if backend != playbackhw.AMF {
+	// VideoToolbox encoders accept software NV12 frames directly and create
+	// their own device context. A generic hwupload filter has no device to bind
+	// on macOS and makes an otherwise executable encoder probe fail closed.
+	if backend == playbackhw.VideoToolbox {
+		format := "nv12"
+		if depth == 10 {
+			format = "p010le"
+		}
+		graph = append([]string{"format=" + format}, graph...)
+	} else if backend != playbackhw.AMF {
 		graph = append([]string{playbackHardwareUploadFilter(backend, depth)}, graph...)
 	}
 	if len(graph) > 0 {
@@ -213,7 +236,11 @@ func playbackHardwareCrossoverArgs(backend playbackhw.Backend, pipeline playback
 	}
 	filters := []string{}
 	if !pipeline.EncodeOnly {
-		filters = append(filters, "hwdownload", "format="+softwareFormat)
+		if backend == playbackhw.VideoToolbox {
+			filters = append(filters, "format="+softwareFormat)
+		} else {
+			filters = append(filters, "hwdownload", "format="+softwareFormat)
+		}
 	}
 	if pipeline.Deinterlace {
 		filters = append(filters, "bwdif")
@@ -227,7 +254,7 @@ func playbackHardwareCrossoverArgs(backend playbackhw.Backend, pipeline playback
 	if pipeline.SubtitleFile != "" {
 		filters = append(filters, "subtitles='"+strings.ReplaceAll(pipeline.SubtitleFile, "'", "\\'")+"'")
 	}
-	if !pipeline.EncodeOnly {
+	if !pipeline.EncodeOnly && backend != playbackhw.VideoToolbox {
 		filters = append(filters, playbackHardwareUploadFilter(backend, pipeline.OutputBitDepth))
 	}
 	return append(args, "-vf", strings.Join(filters, ","), "-frames:v", "1", "-c:v", playbackHardwareEncoderName(backend, pipeline.OutputCodec), "-f", "null", "-")

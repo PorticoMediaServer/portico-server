@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"math"
 	"net/http"
 	"net/url"
 	"strings"
@@ -23,6 +24,7 @@ var (
 	errPlaybackContinuationRotationConflict = errors.New("playback continuation rotation request conflicts with a prior request")
 	errPlaybackContinuationRotationReceipt  = errors.New("playback continuation rotation receipt cannot be recovered")
 	errPlaybackGenerationStale              = errors.New("playback progress authority generation is stale")
+	errPlaybackEventSequenceStale           = errors.New("playback terminal event sequence is stale")
 )
 
 type playbackContinuationRotationReceipt struct {
@@ -343,6 +345,10 @@ func (s *Server) handlePlaybackContinuationRoute(w http.ResponseWriter, r *http.
 			writeError(w, http.StatusBadRequest, "invalid_recorded_at", "recordedAt must be an RFC 3339 timestamp.")
 			return
 		}
+		if req.Completed != nil && *req.Completed {
+			writeError(w, http.StatusBadRequest, "terminal_request_required", "Complete playback with the atomic DELETE terminal request.")
+			return
+		}
 		if req.Generation != 0 && req.Generation != credentialGeneration {
 			writeError(w, http.StatusConflict, "playback_generation_stale", "Playback progress authority changed. Reload the active playback session.")
 			return
@@ -363,13 +369,6 @@ func (s *Server) handlePlaybackContinuationRoute(w http.ResponseWriter, r *http.
 			if s.extendPlaybackContinuation(r, sessionID) != "" {
 				ack.GrantExtended = true
 				ack.GrantSemantics = "extension"
-			}
-			if req.Completed != nil && *req.Completed {
-				if err := s.endPlaybackSession(user, sessionID); err != nil && !errors.Is(err, sql.ErrNoRows) {
-					writeError(w, http.StatusInternalServerError, "playback_session_failed", "Unable to complete playback session.")
-					return
-				}
-				ack.SessionState = "stopped"
 			}
 		}
 		writeJSON(w, http.StatusOK, ack)
@@ -408,7 +407,36 @@ func (s *Server) handlePlaybackContinuationRoute(w http.ResponseWriter, r *http.
 		}
 		writeJSON(w, http.StatusOK, credential)
 	case http.MethodDelete:
-		if err := s.endPlaybackSession(user, sessionID); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		var req PlaybackSessionStopRequest
+		if !decodeJSON(w, r, &req) {
+			return
+		}
+		req.Disposition = strings.ToLower(strings.TrimSpace(req.Disposition))
+		if req.Disposition != "stopped" && req.Disposition != "completed" {
+			writeError(w, http.StatusBadRequest, "invalid_playback_disposition", "disposition must be stopped or completed.")
+			return
+		}
+		if req.Generation <= 0 || req.Generation != credentialGeneration || req.EventSequence <= 0 {
+			writeError(w, http.StatusConflict, "playback_generation_stale", "Playback progress authority changed. Reload the active playback session.")
+			return
+		}
+		if _, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(req.RecordedAt)); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_recorded_at", "recordedAt must be an RFC 3339 timestamp.")
+			return
+		}
+		if math.IsNaN(req.PositionSeconds) || math.IsInf(req.PositionSeconds, 0) || req.PositionSeconds < 0 || math.IsNaN(req.DurationSeconds) || math.IsInf(req.DurationSeconds, 0) || req.DurationSeconds < 0 || (req.Disposition == "completed" && req.DurationSeconds <= 0) {
+			writeError(w, http.StatusBadRequest, "invalid_playback_terminal_position", "positionSeconds and durationSeconds must be finite and non-negative; completed playback requires a positive durationSeconds.")
+			return
+		}
+		if err := s.endPlaybackSessionAtomically(user, sessionID, req); err != nil {
+			if errors.Is(err, errPlaybackGenerationStale) || errors.Is(err, errPlaybackEventSequenceStale) {
+				writeError(w, http.StatusConflict, "playback_terminal_stale", "Playback terminal authority is stale.")
+				return
+			}
+			if errors.Is(err, sql.ErrNoRows) {
+				writeError(w, http.StatusNotFound, "playback_session_not_found", "Playback session was not found.")
+				return
+			}
 			writeError(w, http.StatusInternalServerError, "playback_session_failed", "Unable to end playback session.")
 			return
 		}

@@ -98,6 +98,16 @@ func pruneStaleLiveTVTunerAllocationsTx(tx *sql.Tx, liveCutoff string) (bool, er
 	}
 	record(result)
 	result, err = tx.Exec(`
+		UPDATE playback_session_continuation_credentials SET revoked_at = ?, previous_valid_until = ''
+		WHERE revoked_at = '' AND playback_session_id IN (
+			SELECT consumer_id FROM live_tv_tuner_allocations
+			WHERE allocation_kind = 'live_session' AND heartbeat_at < ?
+		)`, now, liveCutoff)
+	if err != nil {
+		return false, err
+	}
+	record(result)
+	result, err = tx.Exec(`
 		UPDATE playback_sessions SET state = 'stopped', ended_at = ?, last_seen_at = ?
 		WHERE id IN (
 			SELECT consumer_id FROM live_tv_tuner_allocations

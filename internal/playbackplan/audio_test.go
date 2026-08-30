@@ -31,6 +31,29 @@ func TestAudioOnlyCodecFamiliesDoNotRequireVideoCapabilities(t *testing.T) {
 	}
 }
 
+func TestAudioOnlyConversionCanUseGeneratedHLSAAC(t *testing.T) {
+	f := baseFacts()
+	f.Video, f.Subtitles, f.Container = nil, nil, "flac"
+	f.Audio[0] = mediafacts.Audio{Index: 1, Codec: "flac", Layout: "mono", Channels: 1, SampleRate: 48000}
+	hlsAAC := audioOnlyTuple("mpegts", "aac", "mono", 1)
+	hlsAAC.Protocol = "hls"
+	hlsAAC.Audio.Profile = "lc"
+	hlsAAC.Audio.Route = "decode"
+	plan, err := Build(Request{
+		Facts: f,
+		Capabilities: playbackcap.Resolution{EvidenceID: "authenticated_runtime:web-audio", Tuples: []playbackcap.DeliveryTuple{
+			audioOnlyTuple("mp3", "mp3", "mono", 1), hlsAAC,
+		}},
+		Policy: MaximumFidelity, Protocol: "hls", Selection: Selection{AudioIndex: ip(1)},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Mode != DirectStream || plan.MediaKind != playbackcap.MediaAudio || plan.Protocol != "hls" || plan.Container != "mpegts" || plan.SegmentFormat != "mpegts" || plan.Audio.Codec != "aac" || plan.Audio.Layout != "mono" || plan.Audio.Channels != 1 || plan.Audio.Passthrough {
+		t.Fatalf("FLAC generated-HLS plan = %#v", plan)
+	}
+}
+
 func TestGaplessDecisionIsSealedAndConversionNeverClaimsProof(t *testing.T) {
 	f := baseFacts()
 	f.Video, f.Subtitles, f.Container = nil, nil, "mp3"

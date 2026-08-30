@@ -143,7 +143,7 @@ func TestLiveTVSourceAdministrationRequiresInteractiveOwnerAndManageServer(t *te
 		})
 	}
 
-	owner := User{Role: "owner", AuthProvider: "local", Permissions: map[string]bool{"manageServer": true}}
+	owner := User{ID: "owner", AccountID: "owner", ProfileID: "owner", ProfileIsPrimary: true, Role: "owner", AuthProvider: "local", Permissions: map[string]bool{"manageServer": true}}
 	if !canManageLiveTVSources(owner) {
 		t.Fatal("interactive owner with manageServer could not manage Live TV sources")
 	}
@@ -416,21 +416,6 @@ func TestGuideRefreshReconcilesSeriesRulesAndRevokedChannelPolicy(t *testing.T) 
 	}
 	if enabled != 0 || future != 0 {
 		t.Fatalf("revoked rule enabled=%d future=%d", enabled, future)
-	}
-}
-
-func TestLegacyDirectLiveTVStreamFailsClosedWithoutAllocation(t *testing.T) {
-	server := newScannerTestServer(t)
-	user := dvrTestUser(t, server)
-	insertReleaseCandidateLiveSource(t, server, "source_no_direct", "channel_no_direct", 1)
-	recorder := httptest.NewRecorder()
-	server.handleLiveTVDirectStream(recorder, httptest.NewRequest(http.MethodGet, "/api/live-tv/streams/channel_no_direct", nil), user, "channel_no_direct")
-	if recorder.Code != http.StatusConflict || !strings.Contains(recorder.Body.String(), `"code":"live_tv_playback_session_required"`) {
-		t.Fatalf("legacy direct stream=%d body=%s", recorder.Code, recorder.Body.String())
-	}
-	var allocations int
-	if err := server.db.QueryRow(`SELECT COUNT(*) FROM live_tv_tuner_allocations`).Scan(&allocations); err != nil || allocations != 0 {
-		t.Fatalf("direct stream allocations=%d err=%v", allocations, err)
 	}
 }
 

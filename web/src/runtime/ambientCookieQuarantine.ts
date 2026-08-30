@@ -3,7 +3,6 @@ import { sameViewerScope, type ViewerScope } from '@porticomediaserver/client-co
 export const AMBIENT_COOKIE_QUARANTINE_KEY = 'portico-ambient-cookie-quarantine-v1';
 export const AMBIENT_COOKIE_RESERVATION_HEAD_KEY = 'portico-ambient-cookie-reservation-head-v1';
 export const AMBIENT_COOKIE_RESERVATION_PREFIX = 'portico-ambient-cookie-reservation-v1:';
-export const LEGACY_LOCAL_SESSION_QUARANTINE_KEY = 'portico-local-session-quarantine-v1';
 
 export type AmbientCookieMutationKind =
   | 'logout'
@@ -87,11 +86,6 @@ function readMarker(target: Storage): AmbientCookieRestoreStatus {
     };
   }
   if (active) return { trustedForRestore: true, quarantined: true, marker: active };
-  // A pre-release Local Auth marker still represents an untrusted ambient
-  // HttpOnly cookie. Never silently forget it during the contract upgrade.
-  if (target.getItem(LEGACY_LOCAL_SESSION_QUARANTINE_KEY) !== null) {
-    return { trustedForRestore: false, quarantined: true };
-  }
   return { trustedForRestore: true, quarantined: false };
 }
 
@@ -298,7 +292,6 @@ export function clearAmbientCookieAfterVerifiedAuthentication(
       || current.marker.intent.state !== 'authenticated'
       || JSON.stringify(current.marker.intent.expected) !== JSON.stringify(expected)) return false;
     target.removeItem(AMBIENT_COOKIE_QUARANTINE_KEY);
-    target.removeItem(LEGACY_LOCAL_SESSION_QUARANTINE_KEY);
     target.removeItem(reservationKey(marker.mutationId));
     const status = readMarker(target);
     return status.trustedForRestore && !status.quarantined;

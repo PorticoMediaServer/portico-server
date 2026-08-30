@@ -3,8 +3,7 @@ import type { MediaCard, MediaItem, ProductContract } from "./types.js";
 export interface MediaViewSource {
   readonly id: string;
   readonly title: string;
-  readonly entityKind?: string;
-  readonly type?: string;
+  readonly entityKind: string;
   readonly libraryId?: string;
   readonly subtitle?: string;
   readonly parentTitle?: string;
@@ -12,19 +11,10 @@ export interface MediaViewSource {
   readonly year?: number;
   readonly durationSeconds?: number;
   readonly artwork?: Readonly<Record<string, string>>;
-  readonly images?: {
-    readonly poster?: string;
-    readonly backdrop?: string;
-    readonly thumb?: string;
-  };
   readonly actions?: readonly string[];
   readonly fields?: Readonly<Record<string, unknown>>;
   readonly userState?: MediaViewStateSource;
-  readonly state?: MediaViewStateSource;
   readonly availability?: MediaViewAvailabilitySource;
-  readonly missing?: boolean;
-  readonly fileCount?: number;
-  readonly missingFileCount?: number;
 }
 
 export interface MediaViewStateSource {
@@ -112,7 +102,7 @@ export interface MediaViewModel {
 }
 
 export type MediaDetailViewSource = Pick<MediaItem,
-  "id" | "libraryId" | "type" | "title" | "parentTitle" | "summary" | "year" |
+  "id" | "libraryId" | "entityKind" | "title" | "parentTitle" | "summary" | "year" |
   "durationSeconds" | "artwork" | "images" | "actions" | "typedMetadata" | "state" |
   "missing" | "fileCount" | "missingFileCount"
 >;
@@ -133,11 +123,11 @@ const safeArtworkRole: ResolvedArtworkRole = {
 
 /**
  * Resolves media presentation exclusively from the current Product Contract.
- * Unknown future kinds remain navigable and visible through conservative
- * detail/poster defaults rather than disappearing from older clients.
+ * Unknown optional kinds remain navigable and visible through conservative
+ * detail/poster defaults.
  */
 export function resolveMediaViewModel(contract: ProductContract, source: MediaViewSource): MediaViewModel {
-  const sourceKind = normalizedText(source.entityKind) ?? normalizedText(source.type) ?? "unknown";
+  const sourceKind = normalizedText(source.entityKind) ?? "unknown";
   const mappedKind = contract.search.resultSemantics.kindMappings.find((mapping) => mapping.resultKind === sourceKind)?.entityKind;
   const semantic = contract.entitySemantics.find((candidate) => candidate.id === sourceKind)
     ?? contract.entitySemantics.find((candidate) => candidate.id === mappedKind);
@@ -149,7 +139,7 @@ export function resolveMediaViewModel(contract: ProductContract, source: MediaVi
   const role = preferredRole && validArtworkRole(preferredRole) ? preferredRole : fallbackRole;
   const artworkSources = collectArtworkSources(source);
   const selectedArtwork = selectArtworkSource(artworkSources, role.id);
-  const state = source.userState ?? source.state;
+  const state = source.userState;
   const subtitle = normalizedText(source.subtitle) ?? normalizedText(source.parentTitle);
   const title = normalizedText(source.title) ?? source.id;
   const libraryId = normalizedText(source.libraryId);
@@ -217,11 +207,7 @@ export function resolveMediaCardViewModel(contract: ProductContract, card: Media
     summary: card.summary,
     year: card.year,
     durationSeconds: card.durationSeconds,
-    artwork: {
-      poster: card.artwork.poster,
-      backdrop: card.artwork.backdrop,
-      thumb: card.artwork.thumb
-    },
+    artwork: card.artwork,
     actions: card.actions,
     fields: card.fields,
     userState: {
@@ -244,21 +230,16 @@ export function resolveMediaDetailViewModel(contract: ProductContract, item: Med
   return resolveMediaViewModel(contract, {
     id: item.id,
     libraryId: item.libraryId,
-    type: item.type,
+    entityKind: item.entityKind,
     title: item.title,
     parentTitle: item.parentTitle,
     summary: item.summary,
     year: item.year,
     durationSeconds: item.durationSeconds,
-    artwork: item.artwork,
-    images: {
-      poster: item.images.poster,
-      backdrop: item.images.backdrop,
-      thumb: item.images.thumb
-    },
+    artwork: { ...item.images, ...item.artwork },
     actions: item.actions,
     fields: item.typedMetadata,
-    state: {
+    userState: {
       watched: item.state.watched,
       watchlisted: item.state.watchlisted,
       favorite: item.state.favorite,
@@ -267,20 +248,19 @@ export function resolveMediaDetailViewModel(contract: ProductContract, item: Med
       reaction: item.state.reaction,
       lastPlayedAt: item.state.lastPlayedAt
     },
-    missing: item.missing,
-    fileCount: item.fileCount,
-    missingFileCount: item.missingFileCount
+    availability: {
+      status: item.missing ? "unavailable" : (item.missingFileCount ?? 0) > 0 ? "partial" : "available",
+      fileCount: item.fileCount,
+      missingFileCount: item.missingFileCount
+    }
   });
 }
 
 /** Resolves the one canonical availability shape used by every client surface. */
-export function resolveMediaAvailability(source: Pick<MediaViewSource, "availability" | "missing" | "fileCount" | "missingFileCount">): MediaViewAvailabilitySource | undefined {
-  const fileCount = finiteNumber(source.availability?.fileCount ?? source.fileCount);
-  const missingFileCount = finiteNumber(source.availability?.missingFileCount ?? source.missingFileCount);
-  const status = source.availability?.status
-    ?? (source.missing === true ? "unavailable"
-      : (missingFileCount ?? 0) > 0 ? "partial"
-        : source.missing !== undefined || fileCount !== undefined ? "available" : undefined);
+export function resolveMediaAvailability(source: Pick<MediaViewSource, "availability">): MediaViewAvailabilitySource | undefined {
+  const fileCount = finiteNumber(source.availability?.fileCount);
+  const missingFileCount = finiteNumber(source.availability?.missingFileCount);
+  const status = source.availability?.status;
   if (!status) return undefined;
   return {
     status,
@@ -313,10 +293,6 @@ function collectArtworkSources(source: MediaViewSource): Readonly<Record<string,
   for (const [role, url] of Object.entries(source.artwork ?? {})) {
     const normalizedURL = normalizedText(url);
     if (normalizedURL) sources[role] = normalizedURL;
-  }
-  for (const [role, url] of Object.entries(source.images ?? {})) {
-    const normalizedURL = normalizedText(url);
-    if (normalizedURL && !sources[role]) sources[role] = normalizedURL;
   }
   return sources;
 }

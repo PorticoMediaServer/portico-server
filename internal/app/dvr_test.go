@@ -1339,6 +1339,7 @@ func TestRecordedTVGenericMediaQueriesRemainProfileScoped(t *testing.T) {
 func dvrPermissionUser(id string, permissions map[string]bool) User {
 	return User{
 		ID:               id,
+		AccountID:        id,
 		ProfileID:        id,
 		ProfileIsPrimary: true,
 		Username:         id,

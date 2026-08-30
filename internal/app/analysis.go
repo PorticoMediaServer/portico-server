@@ -522,7 +522,10 @@ func (s *Server) persistFFprobeAnalysisInputs(ctx context.Context, item MediaIte
 		if err := s.upsertAudioNormalizationFromFFprobe(tx, item.ID, payload, now); err != nil {
 			return err
 		}
-		if _, err := tx.Exec(`DELETE FROM media_streams WHERE media_id = ? AND ((? <> '' AND file_id = ?) OR source_kind IN ('ffprobe', 'scanner'))`, item.ID, fileID, fileID); err != nil {
+		// Analysis replaces only technical streams belonging to the analyzed
+		// source version. Sidecar subtitles share that file identity but are
+		// scanner-owned, and technical streams for other versions remain valid.
+		if _, err := tx.Exec(`DELETE FROM media_streams WHERE media_id = ? AND file_id = ? AND source_kind IN ('ffprobe', 'scanner')`, item.ID, fileID); err != nil {
 			return err
 		}
 		for _, stream := range streams {

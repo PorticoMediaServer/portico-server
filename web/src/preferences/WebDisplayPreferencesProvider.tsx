@@ -62,7 +62,8 @@ function viewPreferences(bundle: ServerViewerPreferenceBundle): WebDisplayPrefer
     subtitleSize: server.playback.subtitleSize,
     subtitleBackground: server.playback.subtitleBackground,
     showSyncedLyrics: server.playback.showSyncedLyrics,
-    skipIntroPrompts: server.playback.introSkip !== 'off',
+		introSkip: server.playback.introSkip,
+		creditsSkip: server.playback.creditsSkip,
     defaultPlaybackSpeed: String(server.playback.defaultSpeed),
     audioNormalizationMode: server.music.audioNormalization,
     ...local,
@@ -102,7 +103,8 @@ function scopeChanges(next: Partial<WebDisplayPreferences>) {
   if ('subtitleSize' in next) playback.subtitleSize = next.subtitleSize;
   if ('subtitleBackground' in next) playback.subtitleBackground = next.subtitleBackground;
   if ('showSyncedLyrics' in next) playback.showSyncedLyrics = next.showSyncedLyrics;
-  if ('skipIntroPrompts' in next) playback.introSkip = next.skipIntroPrompts ? 'ask' : 'off';
+	if ('introSkip' in next) playback.introSkip = next.introSkip;
+	if ('creditsSkip' in next) playback.creditsSkip = next.creditsSkip;
   if ('defaultPlaybackSpeed' in next) playback.defaultSpeed = Number(next.defaultPlaybackSpeed);
   if (Object.keys(playback).length) server.playback = playback;
   if ('audioNormalizationMode' in next) server.music = { audioNormalization: next.audioNormalizationMode };

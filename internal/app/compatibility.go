@@ -111,7 +111,7 @@ var serverCapabilityDefinitions = []serverCapabilityDefinition{
 	{"downloads", 1, []string{"product"}, []serverCapabilityRoute{
 		capabilityRoute("GET", "/api/download-preparations"), capabilityRoute("POST", "/api/download-preparations"),
 		capabilityRoute("GET", "/api/download-preparations/{preparationId}"), capabilityRoute("PATCH", "/api/download-preparations/{preparationId}"), capabilityRoute("DELETE", "/api/download-preparations/{preparationId}"), capabilityRoute("POST", "/api/download-preparations/{preparationId}/grant"),
-		capabilityRoute("GET", "/api/media/{id}/download-options"), capabilityRoute("POST", "/api/media/{id}/download-grants"), capabilityRoute("GET", "/api/media/{id}/download"), capabilityRoute("HEAD", "/api/media/{id}/download"),
+		capabilityRoute("GET", "/api/media/{id}/download-options"), capabilityRoute("GET", "/api/media/{id}/download"), capabilityRoute("HEAD", "/api/media/{id}/download"),
 	}, nil},
 	{"home.lazy-rows", 1, []string{"product"}, []serverCapabilityRoute{capabilityRoute("GET", "/api/home"), capabilityRoute("GET", "/api/home/rows/{id}")}, nil},
 	{"library.canonical-browse", 1, []string{"product"}, []serverCapabilityRoute{capabilityRoute("POST", "/api/libraries/{libraryId}/browse")}, nil},
@@ -197,11 +197,17 @@ func remoteAccessCapabilityState(s *Server) string {
 	credential := strings.TrimSpace(s.secretSetting(remoteAccessCredentialKey))
 	endpoint := s.remotePublicEndpoint(settings)
 	certificateReady := settings.CertificateStatus == "valid" || settings.CertificateStatus == "custom_valid"
-	reachabilityReady := settings.LastReachabilityResult == "public_reachable" || settings.LastReachabilityResult == "reachable" || settings.LastReachabilityResult == "hosted_enabled"
 	if !settings.Enabled || settings.ClaimStatus != "claimed" || strings.TrimSpace(settings.ServerID) == "" || credential == "" || strings.TrimSpace(settings.AssignedHostname) == "" {
 		return "requires_configuration"
 	}
-	if !certificateReady || endpoint.URL == "" || !reachabilityReady {
+	// Capability state describes whether this build can serve the signed direct
+	// access protocol. Reachability is independently verified by Hosted Services
+	// for every published endpoint and is intentionally not a capability gate.
+	// Coupling this state to the last asynchronous reachability diagnostic creates
+	// a deadlock: a topology change advertises the capability as degraded, Hosted
+	// then withholds the verified route document, and clients cannot reconnect even
+	// after the replacement endpoints have passed their probes.
+	if !certificateReady || endpoint.URL == "" {
 		return "degraded"
 	}
 	return "available"

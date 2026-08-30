@@ -1695,6 +1695,61 @@ func TestLibraryScannerIngestsTextSidecarSubtitles(t *testing.T) {
 			t.Fatalf("subtitle languages = %#v", languages)
 		}
 	}
+
+	// A later technical-analysis pass replaces only streams it owns for the
+	// analyzed version. Scanner-owned sidecars and another version's technical
+	// streams must remain visible to playback projection.
+	var analyzedFileID, analyzedPath string
+	if err := server.db.QueryRow(`SELECT id, path FROM media_files WHERE media_id = ? ORDER BY id LIMIT 1`, detail.ID).Scan(&analyzedFileID, &analyzedPath); err != nil {
+		t.Fatalf("load analyzed file id: %v", err)
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	if _, err := server.db.Exec(`INSERT INTO media_files (id, media_id, library_id, path, source_type, available, size_bytes, first_seen_at, last_seen_at) VALUES ('subtitle_alternate_file', ?, ?, ?, 'local', 1, 10, ?, ?)`, detail.ID, library.ID, filepath.Join(root, "Northbridge.S01E02.Alternate.mkv"), now, now); err != nil {
+		t.Fatalf("insert alternate version: %v", err)
+	}
+	if _, err := server.db.Exec(`INSERT INTO media_streams (id, media_id, file_id, source_kind, source_identity, storage_key, stream_index, kind, codec, display_title) VALUES ('subtitle_alternate_video', ?, 'subtitle_alternate_file', 'ffprobe', 'alternate-video', 'subtitle_alternate_video', 0, 'video', 'hevc', 'Alternate HEVC')`, detail.ID); err != nil {
+		t.Fatalf("insert alternate technical stream: %v", err)
+	}
+	payload := ffprobePayload{
+		Format: ffprobeFormat{Duration: "20", FormatName: "matroska,webm"},
+		Streams: []ffprobeStream{
+			{Index: 0, CodecType: "video", CodecName: "h264", Profile: "High", PixelFormat: "yuv420p", Width: 640, Height: 360, AverageFrameRate: "30/1", TimeBase: "1/1000", Duration: "20"},
+			{Index: 1, CodecType: "audio", CodecName: "aac", Profile: "LC", Channels: 2, ChannelLayout: "stereo", SampleRate: "48000", TimeBase: "1/48000", Duration: "20"},
+		},
+	}
+	if err := server.persistFFprobeAnalysisInputs(context.Background(), detail, analyzedPath, analyzedPath, payload, mediaAnalysisOptions{}, true, now); err != nil {
+		t.Fatalf("persist technical analysis: %v", err)
+	}
+	projected, err := server.getMediaDetail("", detail.ID)
+	if err != nil {
+		t.Fatalf("load analyzed projection: %v", err)
+	}
+	subtitleCount = 0
+	alternatePreserved := false
+	for _, stream := range projected.Streams {
+		if stream.Kind == "subtitle" && stream.SourceKind == "sidecar" {
+			subtitleCount++
+		}
+		if stream.ID == "subtitle_alternate_video" && stream.Codec == "hevc" {
+			alternatePreserved = true
+		}
+	}
+	if subtitleCount != 5 {
+		t.Fatalf("analysis removed scanner-owned sidecars: streams=%#v", projected.Streams)
+	}
+	if !alternatePreserved {
+		t.Fatalf("analysis removed another version's technical stream: streams=%#v", projected.Streams)
+	}
+	var analyzedTechnical, analyzedSidecars int
+	if err := server.db.QueryRow(`SELECT COUNT(*) FROM media_streams WHERE media_id = ? AND file_id = ? AND source_kind IN ('ffprobe', 'scanner')`, detail.ID, analyzedFileID).Scan(&analyzedTechnical); err != nil {
+		t.Fatalf("count analyzed technical streams: %v", err)
+	}
+	if err := server.db.QueryRow(`SELECT COUNT(*) FROM media_streams WHERE media_id = ? AND file_id = ? AND source_kind = 'sidecar'`, detail.ID, analyzedFileID).Scan(&analyzedSidecars); err != nil {
+		t.Fatalf("count analyzed sidecars: %v", err)
+	}
+	if analyzedTechnical != 2 || analyzedSidecars != 5 {
+		t.Fatalf("analyzed version streams technical=%d sidecars=%d", analyzedTechnical, analyzedSidecars)
+	}
 }
 
 func TestLibraryScannerRejectsSidecarsThatEscapeLibraryThroughSymlinks(t *testing.T) {

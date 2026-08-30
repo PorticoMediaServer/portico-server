@@ -56,16 +56,13 @@ func hashAccountPassword(ctx context.Context, callsite kdfCallsite, password str
 // authority must carry this value into their commit transaction and compare
 // it again with users.password_hash; a later password rotation then wins over
 // the stale request monotonically.
-func verifyAccountPasswordSnapshot(ctx context.Context, callsite kdfCallsite, passwordHash, password string) (valid bool, upgrade bool, verifiedHash string, err error) {
+func verifyAccountPasswordSnapshot(ctx context.Context, callsite kdfCallsite, passwordHash, password string) (valid bool, verifiedHash string, err error) {
 	passwordHash = strings.TrimSpace(passwordHash)
 	eligible := passwordHash != "" && utf8.ValidString(password) && len([]byte(password)) <= accountPasswordMaxBytes
 	hash := []byte(passwordHash)
 	candidate := []byte(password)
 	cost, costErr := bcrypt.Cost(hash)
-	// Historical hashes below the current policy are still valid and are
-	// upgraded after authentication.  A hash at a newer cost is equally valid
-	// and must never be replaced with a weaker current-cost hash.
-	if !eligible || costErr != nil || cost < bcrypt.MinCost {
+	if !eligible || costErr != nil || cost != currentPasswordBcryptCost {
 		hash = []byte(passwordTimingEqualizerHash)
 		candidate = []byte("portico-invalid-password")
 		eligible = false
@@ -74,43 +71,19 @@ func verifyAccountPasswordSnapshot(ctx context.Context, callsite kdfCallsite, pa
 		return bcrypt.CompareHashAndPassword(hash, candidate), nil
 	})
 	if err != nil {
-		return false, false, "", err
+		return false, "", err
 	}
 	if compareErr != nil || !eligible {
-		return false, false, "", nil
+		return false, "", nil
 	}
-	return true, cost < currentPasswordBcryptCost, passwordHash, nil
+	return true, passwordHash, nil
 }
 
-func verifyAccountPassword(ctx context.Context, callsite kdfCallsite, passwordHash, password string) (valid bool, upgrade bool, err error) {
-	valid, upgrade, _, err = verifyAccountPasswordSnapshot(ctx, callsite, passwordHash, password)
-	return valid, upgrade, err
+func verifyAccountPassword(ctx context.Context, callsite kdfCallsite, passwordHash, password string) (bool, error) {
+	valid, _, err := verifyAccountPasswordSnapshot(ctx, callsite, passwordHash, password)
+	return valid, err
 }
 
-func (s *Server) verifyAndUpgradeLocalPassword(ctx context.Context, callsite kdfCallsite, userID, passwordHash, password string) (bool, error) {
-	valid, upgrade, _, err := verifyAccountPasswordSnapshot(ctx, callsite, passwordHash, password)
-	if err != nil {
-		return false, err
-	}
-	if !valid {
-		return false, nil
-	}
-	if upgrade {
-		// Authentication completion never performs a second expensive bcrypt.
-		// A bounded, de-duplicated worker upgrades the exact hash with CAS after
-		// the successful login has left the cold-start wave.
-		schedulePasswordHashUpgrade(s, userID, passwordHash, password)
-	}
-	return true, nil
-}
-
-func (s *Server) verifyAndUpgradeLocalPasswordSnapshot(ctx context.Context, callsite kdfCallsite, userID, passwordHash, password string) (bool, string, error) {
-	valid, upgrade, verifiedHash, err := verifyAccountPasswordSnapshot(ctx, callsite, passwordHash, password)
-	if err != nil || !valid {
-		return valid, "", err
-	}
-	if upgrade {
-		schedulePasswordHashUpgrade(s, userID, verifiedHash, password)
-	}
-	return true, verifiedHash, nil
+func (s *Server) verifyCanonicalPasswordSnapshot(ctx context.Context, callsite kdfCallsite, passwordHash, password string) (bool, string, error) {
+	return verifyAccountPasswordSnapshot(ctx, callsite, passwordHash, password)
 }

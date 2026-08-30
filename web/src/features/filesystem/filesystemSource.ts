@@ -33,7 +33,7 @@ export function classifyFilesystemFailure(reason: unknown): FilesystemFailure {
   }
   const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
   if (offline || reason instanceof TypeError || code.includes('network') || code.includes('offline')) {
-    return { kind: 'offline', message: 'Portico could not reach the server filesystem. Check the server connection and try again.' };
+    return { kind: 'offline', message: 'Portico could not reach the server filesystem. Save the server connection and try again.' };
   }
   return { kind: 'failure', message: message || 'The server could not open this folder.' };
 }

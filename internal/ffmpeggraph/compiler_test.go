@@ -96,6 +96,27 @@ func TestCompileUsesSealedToneMapAlgorithm(t *testing.T) {
 	}
 }
 
+func TestCompileConvertsMain10SourceToCanonicalEightBitH264(t *testing.T) {
+	f := exactFacts()
+	f.Video[0].FieldOrder = "progressive"
+	p := planFor(f)
+	p.Color = &playbackplan.ColorDecision{Input: "sdr", Output: "sdr", Action: "preserve"}
+	p.Subtitle = playbackplan.SubtitleDecision{Action: playbackplan.Drop}
+	p.Selection.SubtitleIndex = nil
+	p.Streams = p.Streams[:2]
+	p.Stages = []playbackplan.Stage{{Kind: "video", Operation: "decode", Execution: "software"}, {Kind: "video", Operation: "encode", Execution: "software"}, {Kind: "audio", Operation: "encode", Execution: "software"}, {Kind: "mux", Operation: "package", Execution: "stream"}}
+	p.Constraints = playbackplan.Constraints{}
+	p.Digest, _ = p.ComputeDigest()
+
+	result, err := Compile(Request{X264Preset: "medium", Plan: p, Facts: f, SourcePath: "/media/main10.mkv", Output: Output{ManifestPath: "/work/index.m3u8", SegmentPattern: "/work/segment_%05d.ts", SegmentSeconds: 4}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(result.VideoFilter, "format=yuv420p") || strings.Contains(result.VideoFilter, "format=yuv420p10le") {
+		t.Fatalf("H.264 graph did not seal 8-bit 4:2:0 output: %q", result.VideoFilter)
+	}
+}
+
 func TestCompileUsesAndValidatesSealedX264Preset(t *testing.T) {
 	f := exactFacts()
 	p := planFor(f)

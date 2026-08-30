@@ -2,14 +2,18 @@ const MAX_TOKEN_LENGTH = 16_384;
 const MAX_CURSOR_LENGTH = 4_096;
 const MAX_PAGE_ITEMS = 10_000;
 
-export function decodeHighRiskResponse(path: string, method: string, value: unknown): unknown {
+export function decodeHighRiskResponse(
+  path: string,
+  method: string,
+  value: unknown,
+  api: "server" | "hosted" = "server",
+): unknown {
   const pathname = path.split("?", 1)[0] ?? path;
   const verb = method.toUpperCase();
 
-  if (verb === "POST" && isNativeCredentialPath(pathname)) return nativeCredentials(value);
+  if (verb === "POST" && isNativeCredentialPath(pathname)) return nativeCredentials(value, api);
   if (verb === "POST" && pathname === "/api/auth/sessions/refresh") return credentialRotation(value);
-  if (verb === "POST" && /^\/api\/download-preparations\/[^/]+\/grant$/.test(pathname)) return downloadGrant(value, true);
-  if (verb === "POST" && /^\/api\/media\/[^/]+\/download-grants$/.test(pathname)) return downloadGrant(value, false);
+  if (verb === "POST" && /^\/api\/download-preparations\/[^/]+\/grant$/.test(pathname)) return downloadGrant(value, false);
   if (verb === "POST" && /^\/api\/playback-sessions\/[^/]+\/media-grant$/.test(pathname)) return mediaGrant(value);
   if (/^\/api\/playback-sessions\/[^/]+\/continuation$/.test(pathname)) {
     if (verb === "GET") return continuationState(value);
@@ -55,10 +59,22 @@ function playbackRouteResponse(pathname: string, value: unknown): unknown {
     nonNegativeInteger(record.playbackRevision, "prepared playback revision");
     nonNegativeInteger(record.queueRevision, "prepared queue revision");
     if (!Array.isArray(record.queue) || record.queue.length > 10_000) throw new TypeError("prepared playback queue is invalid");
-    playbackResponse(record.playback);
+    preparedPlaybackResponse(record.playback);
     return value;
   }
   return playbackResponse(value);
+}
+
+function preparedPlaybackResponse(value: unknown): unknown {
+  const record = object(value, "prepared playback descriptor");
+  // Preparation is a credential-free preload view owned by the still-active
+  // source session. A continuation bearer is minted only when handoff commits.
+  // Accept the wire's explicit JSON null (and omission for a credential-free
+  // descriptor), but fail closed if this boundary ever leaks a bearer.
+  if (record.continuationCredential !== null && record.continuationCredential !== undefined) {
+    throw new TypeError("prepared playback descriptor contains a continuation credential");
+  }
+  return playbackResponse(value, true);
 }
 
 function isAuthLifecyclePath(pathname: string, verb: string): boolean {
@@ -91,10 +107,12 @@ function routeDocument(value: unknown): unknown {
   timestamp(record.expiresAt, "Hosted route expiry");
   if (record.documentVersion !== 1) throw new TypeError("Hosted route document version is invalid");
   if (!Array.isArray(record.routes) || record.routes.length > 64) throw new TypeError("Hosted routes are invalid");
+	const canonicalRouteTypes = new Set(["lan", "lan_discovered", "lan_ip_encoded", "public_console_origin", "public_direct", "public_direct_ip_encoded"]);
   for (const candidate of record.routes) {
     const route = object(candidate, "Hosted route");
     if (Object.prototype.hasOwnProperty.call(route, "serverToken")) throw new TypeError("Hosted route contains a protected field");
     boundedString(route.type, "Hosted route type", 64);
+		if (!canonicalRouteTypes.has(String(route.type))) throw new TypeError("Hosted route type is invalid");
     boundedString(route.url, "Hosted route URL", 8_192);
     boundedString(route.quality, "Hosted route quality", 64);
   }
@@ -130,7 +148,7 @@ function looksLikePlaybackResponse(value: unknown): boolean {
   return Object.prototype.hasOwnProperty.call(record, "sessionId") && Object.prototype.hasOwnProperty.call(record, "sourceUrl") && Object.prototype.hasOwnProperty.call(record, "decision");
 }
 
-function playbackResponse(value: unknown): unknown {
+function playbackResponse(value: unknown, credentialFreePrepared = false): unknown {
   const record = object(value, "playback response");
   // These are deliberately structured, short-lived playback grants. They
   // remain validated below; allowing the envelope names here prevents the
@@ -144,7 +162,7 @@ function playbackResponse(value: unknown): unknown {
   object(record.decision, "playback decision");
   object(record.media, "playback media");
   mediaGrant(record.mediaGrant);
-  continuationCredential(record.continuationCredential);
+  if (!credentialFreePrepared) continuationCredential(record.continuationCredential);
   for (const field of ["resources", "audioStreams", "subtitleStreams", "chapters", "qualities", "queue"] as const) {
     if (!Array.isArray(record[field]) || record[field].length > 10_000) throw new TypeError(`playback ${field} is invalid`);
   }
@@ -193,9 +211,8 @@ function playbackUrl(value: unknown, name: string): string {
   if ((parsed.protocol !== "http:" && parsed.protocol !== "https:") || parsed.username || parsed.password || parsed.hash) {
     throw new TypeError(`${name} is invalid`);
   }
-  const credentialParameters = new Set(["access_token", "authorization", "cookie", "download_grant", "jwt", "media_grant", "password", "secret", "token"]);
   for (const key of parsed.searchParams.keys()) {
-    if (credentialParameters.has(key.toLowerCase())) throw new TypeError(`${name} is invalid`);
+    if (/(?:authorization|cookie|credential|grant|jwt|password|secret|token)/i.test(key)) throw new TypeError(`${name} is invalid`);
   }
   return candidate;
 }
@@ -205,13 +222,20 @@ function isNativeCredentialPath(pathname: string): boolean {
     pathname === "/api/auth/quick-connect/exchange";
 }
 
-function nativeCredentials(value: unknown): unknown {
+function nativeCredentials(value: unknown, api: "server" | "hosted"): unknown {
   const record = object(value, "native session credentials");
   rejectTopLevelCredentialFields(record, ["accessToken", "refreshToken"]);
   boundedString(record.tokenType, "credential token type", 16, "Bearer");
-  boundedString(record.authority, "credential authority", 16, ["local", "hosted"]);
   for (const field of ["accessToken", "refreshToken"] as const) boundedString(record[field], `credential ${field}`, MAX_TOKEN_LENGTH);
-  for (const field of ["accountId", "serverId", "profileId", "authorizationRevision"] as const) boundedString(record[field], `credential ${field}`, 512);
+  if (api === "server") {
+    boundedString(record.authority, "credential authority", 16, ["local", "hosted"]);
+    for (const field of ["accountId", "serverId", "profileId", "authorizationRevision"] as const) boundedString(record[field], `credential ${field}`, 512);
+  } else {
+    boundedString(record.authority, "credential authority", 16, "hosted");
+    for (const field of ["accountId", "serverId", "profileId", "authorizationRevision"] as const) {
+      if (field in record) throw new TypeError(`Hosted credentials contain server-only ${field}`);
+    }
+  }
   timestamp(record.accessExpiresAt, "credential access expiry");
   timestamp(record.refreshExpiresAt, "credential refresh expiry");
   object(record.user, "credential user");

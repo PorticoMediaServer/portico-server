@@ -13,7 +13,7 @@ func TestGeneratedRoutePrincipalMatrixUsesCentralPolicy(t *testing.T) {
 		t.Fatal("server did not build the API registry")
 	}
 
-	owner := User{ID: "owner", AccountID: "owner", Role: "owner", AuthProvider: "local", Permissions: ownerPermissions()}
+	owner := User{ID: "owner", AccountID: "owner", ProfileID: "owner", ProfileIsPrimary: true, Role: "owner", AuthProvider: "local", Permissions: ownerPermissions()}
 	viewer := User{
 		ID: "viewer", AccountID: "viewer", ProfileID: "viewer", ProfileIsPrimary: true, Role: "user", AuthProvider: "local",
 		Permissions: map[string]bool{

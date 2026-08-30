@@ -1,39 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { FixturePorticoDataSource } from './fixtureSource';
 
-function input(overrides = {}) {
-  return {
-    kind: 'movies' as const,
-    pivot: 'Movies',
-    filter: 'All items',
-    sort: 'Title',
-    direction: 'ascending' as const,
-    ...overrides,
-  };
-}
-
 describe('FixturePorticoDataSource', () => {
-  it('returns only the requested library kind in catalogue order', async () => {
-    const result = await new FixturePorticoDataSource().browseLibrary(input(), new AbortController().signal);
-    expect(result.items.length).toBeGreaterThan(5);
-    expect(result.items.every((item) => item.type === 'movie')).toBe(true);
-    expect(result.items[0].title).toBe('Blade Runner 2049');
-  });
-
-  it('supports filter and direction without changing the fixture collection', async () => {
-    const source = new FixturePorticoDataSource();
-    const descending = await source.browseLibrary(input({ direction: 'descending' as const }), new AbortController().signal);
-    const unwatched = await source.browseLibrary(input({ filter: 'Unwatched' }), new AbortController().signal);
-    expect(descending.items[0].title).toBe('Run Lola Run');
-    expect(unwatched.total).toBe(descending.total);
-  });
-
-  it('rejects an already aborted request', async () => {
-    const controller = new AbortController();
-    controller.abort();
-    await expect(new FixturePorticoDataSource().browseLibrary(input(), controller.signal)).rejects.toMatchObject({ name: 'AbortError' });
-  });
-
   it('publishes independently loadable Home row descriptors', async () => {
     const source = new FixturePorticoDataSource();
     const signal = new AbortController().signal;
@@ -67,13 +35,13 @@ describe('FixturePorticoDataSource', () => {
     expect(result.groups).toHaveLength(1);
     expect(result.groups[0]).toMatchObject({ id: 'music', entityKind: 'track', title: 'Music' });
     expect(result.groups[0].items).not.toHaveLength(0);
-    expect(result.groups[0].items.every((item) => item.kind === 'artist')).toBe(true);
+    expect(result.groups[0].items.every((item) => item.entityKind === 'artist')).toBe(true);
   });
 
   it('keeps detail operations functional without inventing completed server work', async () => {
     const source = new FixturePorticoDataSource();
     const signal = new AbortController().signal;
-    const item = (await source.browseLibrary(input(), signal)).items[0];
+    const item = await source.media('fargo', signal);
     const refresh = await source.queueMediaJob(item.id, 'metadata_refresh', {}, signal);
     const optimized = await source.createOptimizedVersion(item.id, '720p-medium', signal);
     const options = await source.mediaDownloadOptions(item.id, signal);
@@ -87,7 +55,7 @@ describe('FixturePorticoDataSource', () => {
   it('models upload, preferred selection, ordering, and removal for artwork review', async () => {
     const source = new FixturePorticoDataSource();
     const signal = new AbortController().signal;
-    const item = (await source.browseLibrary(input(), signal)).items[0];
+    const item = await source.media('fargo', signal);
 
     await source.uploadMediaImage(item.id, 'poster', new File(['image'], 'poster.png', { type: 'image/png' }), 1, signal);
     let detail = await source.media(item.id, signal);

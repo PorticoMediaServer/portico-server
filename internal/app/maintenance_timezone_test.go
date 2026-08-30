@@ -5,12 +5,12 @@ import (
 	"time"
 )
 
-func TestMaintenanceTimezoneDefaultsToExplicitUTC(t *testing.T) {
-	if got := normalizeMaintenanceTimezone(""); got != "UTC" {
-		t.Fatalf("empty maintenance timezone = %q, want UTC", got)
+func TestMaintenanceTimezoneRejectsMissingOrInvalidState(t *testing.T) {
+	if got := normalizeMaintenanceTimezone(""); got != "" {
+		t.Fatalf("empty maintenance timezone = %q, want rejection", got)
 	}
-	if got := normalizeMaintenanceTimezone("not/a-zone"); got != "UTC" {
-		t.Fatalf("invalid maintenance timezone = %q, want UTC", got)
+	if got := normalizeMaintenanceTimezone("not/a-zone"); got != "" {
+		t.Fatalf("invalid maintenance timezone = %q, want rejection", got)
 	}
 }
 

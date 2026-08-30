@@ -35,7 +35,7 @@ func (s *Server) openLiveTVSourceSecret(sourceID, envelope string) (string, erro
 		return "", nil
 	}
 	if !strings.HasPrefix(envelope, liveTVSecretPrefix) {
-		return "", errors.New("legacy plaintext Live TV source credential requires owner replacement")
+		return "", errors.New("invalid Live TV source credential")
 	}
 	encoded := strings.TrimPrefix(envelope, liveTVSecretPrefix)
 	sealed, err := base64.RawURLEncoding.DecodeString(encoded)

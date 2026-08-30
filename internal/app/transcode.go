@@ -430,6 +430,7 @@ func (s *Server) handleMediaHLSManifest(w http.ResponseWriter, r *http.Request, 
 	// generated playlist and let the producer add ENDLIST at finite-source EOF.
 	session, err := s.ensurePlannedVODHLSSession(r.Context(), user.ID, item, binding, identity, 0, "", false)
 	if err != nil {
+		s.log.Warn("planned VOD manifest launch rejected", "request_id", strings.TrimSpace(r.Header.Get(requestIDHeader)), "media_id", item.ID, "failure_class", plannedTranscodeFailureClass(err))
 		writeError(w, http.StatusServiceUnavailable, "transcode_unavailable", err.Error())
 		return
 	}
@@ -603,13 +604,18 @@ func (s *Server) handleMediaHLSSegment(w http.ResponseWriter, r *http.Request, u
 		writeError(w, http.StatusBadRequest, "audio_stream_not_found", "The requested audio stream was not found.")
 		return
 	}
-	startSeconds := 0
+	requestedStartSeconds := 0
 	if item.DurationSeconds > 0 && name != "init.mp4" {
-		startSeconds = mediaHLSSegmentStartSeconds(0, name, item.DurationSeconds)
+		requestedStartSeconds = mediaHLSSegmentStartSeconds(0, name, item.DurationSeconds)
 	}
 	for recoveryPass := 0; recoveryPass < 2; recoveryPass++ {
+		startSeconds := requestedStartSeconds
+		if recoveryPass == 0 {
+			startSeconds = s.plannedVODSegmentStartSeconds(item.ID, binding, identity, name, requestedStartSeconds)
+		}
 		session, err := s.ensurePlannedVODHLSSession(r.Context(), user.ID, item, binding, identity, startSeconds, name, false)
 		if err != nil {
+			s.log.Warn("planned VOD segment launch rejected", "request_id", strings.TrimSpace(r.Header.Get(requestIDHeader)), "media_id", item.ID, "failure_class", plannedTranscodeFailureClass(err))
 			writeError(w, http.StatusServiceUnavailable, "transcode_unavailable", err.Error())
 			return
 		}
@@ -668,6 +674,32 @@ func (s *Server) handleMediaHLSSegment(w http.ResponseWriter, r *http.Request, u
 		return
 	}
 	writeError(w, http.StatusServiceUnavailable, "transcode_unavailable", "The HLS transcode session could not recover in time.")
+}
+
+// plannedVODSegmentStartSeconds keeps sequential segment demand on the
+// already-published full-timeline producer. Starting one producer per segment
+// races admission limits and makes a healthy VOD manifest return 503s. A
+// seek-scoped generation remains available when no origin producer exists, or
+// on the handler's bounded recovery pass after an origin producer cannot serve.
+func (s *Server) plannedVODSegmentStartSeconds(mediaID string, binding playbackExecutionBinding, identity plannedTranscodeIdentity, segmentName string, requestedStartSeconds int) int {
+	if s == nil {
+		return requestedStartSeconds
+	}
+	originKey := plannedTranscodeSessionKey(mediaID, binding, identity, 0)
+	s.transcodeMu.Lock()
+	origin := s.transcodes[originKey]
+	s.transcodeMu.Unlock()
+	if origin == nil {
+		return requestedStartSeconds
+	}
+	state := origin.snapshot()
+	if state.stopped || state.err != nil {
+		return requestedStartSeconds
+	}
+	if origin.isRunning() || origin.completedSuccessfully() || transcodeSessionHasSegment(origin, segmentName) {
+		return 0
+	}
+	return requestedStartSeconds
 }
 
 func validHLSSegmentName(name string) bool {
@@ -769,14 +801,6 @@ func transcodeModePathComponent(directStream bool) string {
 		return "direct_stream"
 	}
 	return "video_transcode"
-}
-
-func hlsDirectStreamRemuxRequested(query url.Values) bool {
-	// Full-timeline VOD currently guarantees exact segment boundaries by
-	// encoding on a fixed grid. A caller cannot opt back into keyframe-snapped
-	// copy-remux behavior through a query parameter.
-	_ = query
-	return false
 }
 
 func (s *Server) ensureTranscodeSession(userID string, item MediaItem, quality string, subtitleID string, startSeconds int, audioMode string, audioStreamID string, directStream bool) (*transcodeSession, error) {
@@ -2026,45 +2050,6 @@ func (s *Server) stopTranscodeSessions(sessions []*transcodeSession) {
 	}
 }
 
-func (s *Server) shutdownLegacyTranscodes(ctx context.Context) error {
-	s.transcodeMu.Lock()
-	sessions := make([]*transcodeSession, 0, len(s.transcodes))
-	for key, session := range s.transcodes {
-		if session != nil && session.supervisor == nil {
-			sessions = append(sessions, session)
-			delete(s.transcodes, key)
-		}
-	}
-	s.transcodeMu.Unlock()
-	if len(sessions) == 0 {
-		return nil
-	}
-	for _, session := range sessions {
-		session.requestStop()
-	}
-	type stopResult struct {
-		session *transcodeSession
-		err     error
-	}
-	results := make(chan stopResult, len(sessions))
-	for _, session := range sessions {
-		go func(session *transcodeSession) {
-			results <- stopResult{session: session, err: session.stopAndWait(1500 * time.Millisecond)}
-		}(session)
-	}
-	var joined error
-	for range sessions {
-		select {
-		case result := <-results:
-			_ = cleanupTranscodeSessionFiles(result.session)
-			joined = errors.Join(joined, result.err)
-		case <-ctx.Done():
-			return errors.Join(ctx.Err(), joined)
-		}
-	}
-	return joined
-}
-
 func (s *Server) noteTranscodeSegmentServed(session *transcodeSession, name string) {
 	session.noteRecoveryProgress()
 	removed, err := cleanupPlayedTranscodeSegments(session, name)
@@ -2463,7 +2448,9 @@ func (s *Server) readTranscodeManifestContext(ctx context.Context, session *tran
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	deadline := time.Now().Add(transcodeManifestReadTimeout(directStream))
+	startedWaiting := time.Now()
+	deadline := startedWaiting.Add(transcodeManifestReadTimeout(directStream))
+	hardDeadline := startedWaiting.Add(14 * time.Second)
 	var lastManifestErr error
 	for {
 		if err := ctx.Err(); err != nil {
@@ -2480,6 +2467,12 @@ func (s *Server) readTranscodeManifestContext(ctx context.Context, session *tran
 			lastManifestErr = err
 		}
 		state := session.snapshot()
+		// An encode producer that has published at least one segment is making
+		// concrete forward progress. Permit it the same bounded 14-second ceiling
+		// as remux startup instead of failing at six seconds while its canonical
+		// VOD manifest is about to be atomically published. A stalled producer gets
+		// no extension, and every producer remains bounded by hardDeadline.
+		deadline = transcodeManifestProgressDeadline(directStream, state, deadline, hardDeadline)
 		if session.completedSuccessfully() && lastManifestErr != nil {
 			return "", lastManifestErr
 		}
@@ -2579,7 +2572,10 @@ func validateGeneratedHLSManifest(session *transcodeSession, manifest string) er
 		case strings.HasPrefix(line, "#"):
 			continue
 		default:
-			if pendingDuration <= 0 || targetDuration <= 0 || pendingDuration > targetDuration+0.001 {
+			// HLS compares EXT-X-TARGETDURATION with each EXTINF after rounding
+			// the segment duration to the nearest integer. FFmpeg legitimately
+			// emits values such as 4.004 beside TARGETDURATION:4.
+			if pendingDuration <= 0 || targetDuration <= 0 || math.Round(pendingDuration) > targetDuration {
 				return errors.New("HLS segment duration exceeds or lacks its target duration")
 			}
 			if line != filepath.Base(line) {
@@ -2630,6 +2626,13 @@ func transcodeManifestReadTimeout(directStream bool) time.Duration {
 		return 14 * time.Second
 	}
 	return 6 * time.Second
+}
+
+func transcodeManifestProgressDeadline(directStream bool, state transcodeSessionSnapshot, deadline, hardDeadline time.Time) time.Time {
+	if !directStream && state.lastProducedSegment >= 0 && deadline.Before(hardDeadline) {
+		return hardDeadline
+	}
+	return deadline
 }
 
 func transcodeManifestReadyForPlayback(session *transcodeSession, manifest string, directStream bool) bool {

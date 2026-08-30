@@ -5,8 +5,7 @@ export type ContextTarget = {
   id: string;
   title: string;
   subtitle: string;
-  kind: MediaKind;
-  type: MediaItem['type'];
+  entityKind: MediaKind;
   poster: string;
   backdrop: string;
   actions?: string[];
@@ -25,8 +24,7 @@ export function targetFromMedia(item: MediaItem): ContextTarget {
     id: item.id,
     title: item.title,
     subtitle: item.subtitle || [item.year || undefined, item.length || undefined].filter(Boolean).join(' · '),
-    kind: normalizedContextKind(item),
-    type: item.type,
+    entityKind: normalizedContextKind(item),
     poster: item.poster,
     backdrop: item.backdrop,
     actions: item.actions,

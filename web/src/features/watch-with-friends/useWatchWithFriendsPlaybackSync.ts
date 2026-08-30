@@ -5,6 +5,7 @@ import {
 } from "@porticomediaserver/client-core";
 import { useCallback, useEffect, useRef } from "react";
 import { useOptionalPlaybackSession } from "../player/PlayerSurface";
+import { secureRandomUUID } from "../../runtime/secureRandomUUID";
 import {
   groupIncludesViewer,
   viewerCanHost,
@@ -230,7 +231,7 @@ export function useWatchWithFriendsPlaybackSync({
                 positionSeconds: currentPosition(media),
                 playbackRate: media.playbackRate,
                 expectedRevision: activeGroup.revision,
-                idempotencyKey: globalThis.crypto.randomUUID(),
+                idempotencyKey: secureRandomUUID(),
               }),
             );
           } catch {

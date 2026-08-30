@@ -81,36 +81,22 @@ export function mediaActionsForSurface(
 }
 
 export interface ContextualPlaybackMedia {
-  entityKind?: string;
-  kind?: string;
-  type?: string;
-  progress?: number;
-  progressSeconds?: number;
-  state?: { progressSeconds?: number };
-  seasonNumber?: number;
+	entityKind: string;
+	progressSeconds?: number;
+	seasonNumber?: number;
   episodeNumber?: number;
   playbackTarget?: ContextualPlaybackMedia;
 }
 
-const contextualKindAliases: Readonly<Record<string, string>> = Object.freeze({
-  audiobook: "book",
-  "audiobook-series": "series",
-  live_channel: "channel",
-  "live-channel": "channel",
-  live_recording: "recording",
-  "live-recording": "recording"
-});
-
 function contextualMediaKind(media: ContextualPlaybackMedia): string {
-  const raw = String(media.entityKind ?? media.kind ?? media.type ?? "")
+  return media.entityKind
     .trim()
     .toLocaleLowerCase()
     .replaceAll("_", "-");
-  return contextualKindAliases[raw] ?? raw;
 }
 
 function hasPlaybackProgress(media: ContextualPlaybackMedia): boolean {
-  return (media.progressSeconds ?? media.state?.progressSeconds ?? 0) > 0 || (media.progress ?? 0) > 0;
+  return (media.progressSeconds ?? 0) > 0;
 }
 
 function contextualEpisodeCode(media: ContextualPlaybackMedia): string {

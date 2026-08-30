@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -56,7 +57,7 @@ func TestPlaybackHardwareRuntimeRequiresExecutableEvidence(t *testing.T) {
 	if result.SoftwareOnly || result.Evidence == nil || !result.Evidence.Executable || !result.Evidence.Complete {
 		t.Fatalf("expected a verified hardware route, got %#v", result)
 	}
-	if result.Backend != playbackhw.VideoToolbox || len(result.Plan.Stages) != 2 {
+	if result.Backend != playbackhw.VideoToolbox || len(result.Plan.Stages) != 3 || result.Plan.Stages[1].Operation != playbackhw.Download {
 		t.Fatalf("unexpected hardware plan: %#v", result.Plan)
 	}
 	for _, command := range executor.commands {
@@ -149,16 +150,26 @@ func TestPlaybackHardwareRuntimeHonorsDisabledHEVCDecodeWithHardwareEncode(t *te
 	}
 }
 
-func TestPlaybackHardwareRuntimeDeclinesUnverifiedVideoToolboxCrossover(t *testing.T) {
+func TestPlaybackHardwareRuntimeVerifiesVideoToolboxSoftwareFrameCrossover(t *testing.T) {
 	executor := &playbackHardwareFakeExecutor{}
 	req := playbackHardwareTestRequest()
 	req.Pipeline.Deinterlace = true
 	result := newPlaybackHardwareRuntime(executor).Resolve(context.Background(), req)
-	if !result.SoftwareOnly || result.Reason != "videotoolbox software-filter crossover has no verified device context" {
-		t.Fatalf("unexpected VideoToolbox fallback: %#v", result)
+	if result.SoftwareOnly || result.Evidence == nil || !slices.Contains(result.Evidence.CrossoverStages, playbackhw.Download) || slices.Contains(result.Evidence.CrossoverStages, playbackhw.Upload) {
+		t.Fatalf("VideoToolbox software-frame crossover was not verified exactly: %#v", result)
 	}
-	if executor.count() != 0 {
-		t.Fatal("an unconstructable VideoToolbox crossover must fail before probing")
+	found := false
+	for _, command := range executor.commands {
+		joined := strings.Join(command.Args, " ")
+		if strings.Contains(joined, "bwdif") {
+			found = true
+			if strings.Contains(joined, "hwdownload") || strings.Contains(joined, "hwupload") || !strings.Contains(joined, "-hwaccel videotoolbox") || !strings.Contains(joined, "-c:v h264_videotoolbox") {
+				t.Fatalf("VideoToolbox crossover did not use software frames directly: %s", joined)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("VideoToolbox crossover probe did not execute")
 	}
 }
 
@@ -187,6 +198,28 @@ func TestConfiguredPlaybackHardwareBackendPlatformMatrix(t *testing.T) {
 	}
 }
 
+func TestDarwinPlatformIdentityIgnoresVolatileIORegistryCounters(t *testing.T) {
+	first := `+-o J614sAP <class IOPlatformExpertDevice, busy 0 (10 ms), retain 31>
+      "model" = <"Mac16,8">
+      "IOPlatformUUID" = "D21B8AA0-7379-5D4F-9385-0B2E85C249A8"`
+	second := `+-o J614sAP <class IOPlatformExpertDevice, busy 1 (90000 ms), retain 42>
+      "model" = <"Mac16,8">
+      "IOPlatformUUID" = "D21B8AA0-7379-5D4F-9385-0B2E85C249A8"`
+	a, ok := playbackHardwareDarwinPlatformIdentity(first)
+	if !ok {
+		t.Fatal("first stable identity was rejected")
+	}
+	b, ok := playbackHardwareDarwinPlatformIdentity(second)
+	if !ok || a != b {
+		t.Fatalf("volatile ioreg counters changed identity: %q != %q", a, b)
+	}
+	changed := strings.ReplaceAll(second, "D21B8AA0-7379-5D4F-9385-0B2E85C249A8", "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE")
+	c, ok := playbackHardwareDarwinPlatformIdentity(changed)
+	if !ok || c == a {
+		t.Fatal("different platform UUID shared an execution identity")
+	}
+}
+
 func TestPlaybackHardwareProbesUseExplicitQSVDeviceAndCorpus(t *testing.T) {
 	pipeline := playbackhw.Request{
 		Device:     playbackhw.DeviceContext{DevicePath: "/dev/dri/renderD128"},
@@ -205,6 +238,19 @@ func TestPlaybackHardwareProbesUseExplicitQSVDeviceAndCorpus(t *testing.T) {
 	for _, required := range []string{"vaapi=portico_vaapi:/dev/dri/renderD128", "qsv=portico_probe@portico_vaapi", "/vectors/hevc-main10.mkv", "h264_qsv"} {
 		if !strings.Contains(joined, required) {
 			t.Fatalf("probe set does not bind %q:\n%s", required, joined)
+		}
+	}
+}
+
+func TestVideoToolboxSyntheticProbeUsesSoftwareFramesDirectly(t *testing.T) {
+	args := playbackHardwareSyntheticEncodeArgs(playbackhw.VideoToolbox, playbackhw.H264, 8, "platform-default", nil)
+	joined := strings.Join(args, " ")
+	if strings.Contains(joined, "hwupload") {
+		t.Fatalf("VideoToolbox probe used an unbound generic upload filter: %s", joined)
+	}
+	for _, required := range []string{"format=nv12", "-c:v h264_videotoolbox"} {
+		if !strings.Contains(joined, required) {
+			t.Fatalf("VideoToolbox probe is missing %q: %s", required, joined)
 		}
 	}
 }

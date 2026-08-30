@@ -188,5 +188,5 @@ func analysisProgressArgs() []string {
 }
 
 func redactedAnalysisOutput(output []byte, sourcePath string) string {
-	return redaction.RedactString(string(output), sourcePath)
+	return (redaction.Policy{SensitivePaths: []string{sourcePath}}).RedactString(string(output))
 }

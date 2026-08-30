@@ -23,7 +23,7 @@ func (s *Server) verifyLocalPasswordSnapshot(ctx context.Context, callsite kdfCa
 	if err := s.queryUserRow(ctx, `SELECT COALESCE(password_hash, '') FROM users WHERE id = ? AND COALESCE(disabled_at, '') = ''`, accountID).Scan(&passwordHash); err != nil {
 		return "", err
 	}
-	valid, _, verifiedHash, err := verifyAccountPasswordSnapshot(ctx, callsite, passwordHash, password)
+	valid, verifiedHash, err := verifyAccountPasswordSnapshot(ctx, callsite, passwordHash, password)
 	if err != nil {
 		return "", err
 	}

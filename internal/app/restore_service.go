@@ -281,7 +281,7 @@ func (s *Server) verifyRestoreReauthenticationSnapshot(w http.ResponseWriter, r 
 		writeDatabaseAccessError(w, err, http.StatusServiceUnavailable, "restore_reauthentication_unavailable", "Portico could not verify the restore authorization.")
 		return "", "", false
 	}
-	valid, verifiedPasswordHash, err := s.verifyAndUpgradeLocalPasswordSnapshot(r.Context(), kdfRestoreReauthCompare, accountID, passwordHash, password)
+	valid, verifiedPasswordHash, err := s.verifyCanonicalPasswordSnapshot(r.Context(), kdfRestoreReauthCompare, passwordHash, password)
 	if err != nil {
 		if writeKDFUnavailable(w, err) {
 			return "", "", false

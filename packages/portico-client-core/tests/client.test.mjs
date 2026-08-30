@@ -18,6 +18,7 @@ import {
   groupLibraryCategories,
   hostedDirectRouteAllowed,
   HostedRouteDiscoveryTimeoutError,
+  HostedRoutePublicationPendingError,
   HostedRouteRetryLaterError,
   HostedTerminalMutationCommittedError,
   HostedTerminalMutationUncertainError,
@@ -47,6 +48,7 @@ import {
 } from "./helpers/porticoAttachment.mjs";
 
 const hostedSystemFixture = Object.freeze(JSON.parse(readFileSync(new URL("../fixtures/hosted-api-v1-conformance.json", import.meta.url), "utf8")).system);
+const goSerializedRouteFixture = Object.freeze(JSON.parse(readFileSync(new URL("../fixtures/signing/document-signing-fixture.json", import.meta.url), "utf8")).routeDocument);
 
 function jsonResponse(body, init = {}) {
   return new Response(JSON.stringify(body), {
@@ -54,6 +56,26 @@ function jsonResponse(body, init = {}) {
     headers: { "Content-Type": "application/json" },
     ...init
   });
+}
+
+function acceptedPlayback(sessionId, nextEventSequence = 1) {
+  return {
+    sessionId,
+    media: { id: "m1", title: "Movie", type: "movie", state: {} },
+    sourceUrl: "/api/media/m1/stream",
+    directPlay: true,
+    generation: 1,
+    nextEventSequence,
+    playbackRevision: 1,
+    queueRevision: 1,
+    repeatMode: "off",
+    timeline: { type: "vod", durationSeconds: 60, canPause: true, canSeek: true },
+    continuationCredential: { token: "continuation", origin: "https://server.example", generation: 1, expiresAt: "2026-08-06T01:00:00Z" },
+    mediaGrant: { token: "grant", expiresAt: "2026-08-06T01:00:00Z" },
+    decision: { mode: "direct_play", reason: "", requiresTranscode: false, isProxied: true, isServerCached: false },
+    qualities: [], audioStreams: [], subtitleStreams: [], chapters: [], queue: [],
+    resources: [{ id: "movie-active", sourceUrl: "/api/media/m1/stream", streamFormat: "http", default: true }],
+  };
 }
 
 function compatibleLocalClient(serverId, audience, overrides = {}) {
@@ -1799,7 +1821,7 @@ test("form uploads avoid JSON content-type and keep CSRF", async () => {
   assert.equal(calls[0].init.body, form);
 });
 
-test("empty-body mutations avoid JSON content-type while keeping CSRF", async () => {
+test("atomic playback stop sends its required terminal body with CSRF", async () => {
   const calls = [];
   const client = createPorticoClient({
     apiBaseUrl: "https://server.example",
@@ -1812,12 +1834,79 @@ test("empty-body mutations avoid JSON content-type while keeping CSRF", async ()
     }
   });
 
-  await client.stopPlayback("session-1");
+  client.acceptPlaybackSession(acceptedPlayback("session-1"));
+  await client.stopPlayback("session-1", { disposition: "stopped", positionSeconds: 12, durationSeconds: 60 });
   assert.equal(calls[0].input, "https://server.example/api/playback-sessions/session-1");
   assert.equal(calls[0].init.method, "DELETE");
-  assert.equal(calls[0].init.headers["Content-Type"], undefined);
+  assert.equal(calls[0].init.headers["Content-Type"], "application/json");
   assert.equal(calls[0].init.headers["X-Portico-CSRF"], "1");
-  assert.equal(calls[0].init.body, undefined);
+  const stopped = JSON.parse(calls[0].init.body);
+  assert.deepEqual({ ...stopped, recordedAt: "<timestamp>" }, {
+    disposition: "stopped", generation: 1, eventSequence: 1,
+    recordedAt: "<timestamp>", positionSeconds: 12, durationSeconds: 60,
+  });
+  assert.match(stopped.recordedAt, /^\d{4}-\d{2}-\d{2}T/);
+});
+
+test("continuation revoke requires and sends the canonical atomic terminal body", async () => {
+  const calls = [];
+  const client = createPorticoClient({
+    apiBaseUrl: "https://server.example",
+    transport: { fetch: async (input, init) => {
+      calls.push({ input: String(input), init });
+      return jsonResponse({ ok: true });
+    } }
+  });
+  const credential = { token: "continuation", origin: "https://server.example", generation: 1, expiresAt: "2026-08-28T20:00:00Z" };
+  const body = {
+    disposition: "stopped", generation: 1, eventSequence: 7,
+    recordedAt: "2026-08-28T18:00:00.000Z", positionSeconds: 18, durationSeconds: 60,
+  };
+
+  await client.revokePlaybackContinuation("session-1", credential, body);
+
+  assert.equal(calls[0].input, "https://server.example/api/playback-sessions/session-1/continuation");
+  assert.equal(calls[0].init.method, "DELETE");
+  assert.deepEqual(JSON.parse(calls[0].init.body), body);
+});
+
+test("stop dispatches its authoritative DELETE when progress delivery stalls", async () => {
+  const calls = [];
+  let releaseProgress;
+  let markProgressStarted;
+  const stalledProgress = new Promise(resolve => { releaseProgress = resolve; });
+  const progressStarted = new Promise(resolve => { markProgressStarted = resolve; });
+  const client = createPorticoClient({
+    apiBaseUrl: "https://server.example",
+    csrfToken: "1",
+    transport: {
+      fetch: async (input, init) => {
+        calls.push({ input: String(input), init });
+        if (init.method === "PATCH") {
+          markProgressStarted();
+          return stalledProgress;
+        }
+        return jsonResponse({ ok: true });
+      }
+    }
+  });
+
+  client.acceptPlaybackSession(acceptedPlayback("session-stalled"));
+  const progress = client.touchPlayback("session-stalled", { positionSeconds: 12 });
+  await progressStarted;
+  await client.stopPlayback("session-stalled", { disposition: "completed", positionSeconds: 60, durationSeconds: 60 });
+
+  assert.deepEqual(calls.map(call => call.init.method), ["PATCH", "DELETE"]);
+  assert.equal(calls[1].input, "https://server.example/api/playback-sessions/session-stalled");
+  assert.equal(calls.filter(call => call.init.method === "DELETE").length, 1);
+  const completed = JSON.parse(calls[1].init.body);
+  assert.deepEqual({ ...completed, recordedAt: "<timestamp>" }, {
+    disposition: "completed", generation: 1, eventSequence: 2,
+    recordedAt: "<timestamp>", positionSeconds: 60, durationSeconds: 60,
+  });
+  assert.match(completed.recordedAt, /^\d{4}-\d{2}-\d{2}T/);
+  releaseProgress(jsonResponse({ accepted: true, duplicate: false, stale: false, highestEventSequence: 1 }));
+  await assert.rejects(progress, error => error instanceof ApiError && error.code === "playback_progress_stopped");
 });
 
 test("playback progress events carry a monotonic session sequence and observation time", async () => {
@@ -1931,7 +2020,7 @@ test("playback progress retries an uncertain event exactly before delivering its
   assert.equal(successorAck.highestEventSequence, 2);
 });
 
-test("durable playback progress survives restart and is reconciled before stop", async () => {
+test("legacy completed progress is discarded and completion uses only atomic stop", async () => {
   const records = new Map();
   const durability = {
     load: async () => [...records.values()].map(value => structuredClone(value)),
@@ -1942,13 +2031,13 @@ test("durable playback progress survives restart and is reconciled before stop",
     apiBaseUrl: "https://server.example", serverId: "server-1", authority: "local",
     accountId: "account-1", profileId: "profile-1", accessToken: "access"
   });
-  const first = createPorticoClient({
-    sessionStore,
-    playbackProgressDurabilityAdapter: durability,
-    transport: { fetch: async () => { throw new Error("process interrupted"); } }
+  const legacyKey = JSON.stringify(["server-1", "local", "account-1", "profile-1", "session-1", 1]);
+  records.set(legacyKey, {
+    version: "v1",
+    key: legacyKey,
+    events: [{ completed: true, positionSeconds: 12, eventSequence: 1, recordedAt: "2026-08-29T01:00:00.000Z" }],
+    updatedAt: "2026-08-29T01:00:00.000Z"
   });
-  await assert.rejects(first.touchPlayback("session-1", { positionSeconds: 12, completed: true }), /process interrupted/);
-  assert.equal(records.size, 1);
 
   const calls = [];
   const restarted = createPorticoClient({
@@ -1961,10 +2050,19 @@ test("durable playback progress survives restart and is reconciled before stop",
         : {ok: true});
     } }
   });
-  await restarted.stopPlayback("session-1");
-  assert.deepEqual(calls.map(call => call.method), ["PATCH", "DELETE"]);
-  assert.equal(calls[0].body.completed, true);
+  restarted.acceptPlaybackSession(acceptedPlayback("session-1", 1));
+  await restarted.stopPlayback("session-1", { disposition: "completed", positionSeconds: 12, durationSeconds: 60 });
+  assert.deepEqual(calls.map(call => call.method), ["DELETE"]);
+  assert.equal(calls[0].body.disposition, "completed");
   assert.equal(records.size, 0);
+});
+
+test("playback progress cannot use the retired completion flag", async () => {
+  const client = createPorticoClient({ apiBaseUrl: "https://server.example" });
+  await assert.rejects(
+    client.touchPlayback("session-1", { positionSeconds: 12, completed: true }),
+    /atomic stop operation/,
+  );
 });
 
 test("chunked JSON responses are cancelled at the byte limit before full buffering", async () => {
@@ -2060,42 +2158,6 @@ test("a queued playback successor is rebased above a newer durable server sequen
 
   assert.deepEqual(calls.map(event => event.eventSequence), [1, 11]);
   assert.equal(calls[1].positionSeconds, 2);
-});
-
-test("playback progress never coalesces a terminal event away", async () => {
-  const calls = [];
-  const releases = [];
-  const client = createPorticoClient({
-    apiBaseUrl: "https://server.example",
-    transport: {
-      fetch: async (_input, init) => {
-        const event = JSON.parse(init.body);
-        calls.push(event);
-        return new Promise((resolve) => releases.push(() => resolve(jsonResponse({
-          accepted: true,
-          duplicate: false,
-          stale: false,
-          highestEventSequence: event.eventSequence,
-          sessionState: event.completed ? "stopped" : "playing"
-        }))));
-      }
-    }
-  });
-
-  const first = client.touchPlayback("session-terminal", { state: "playing", positionSeconds: 50 });
-  await new Promise(resolve => setImmediate(resolve));
-  const terminal = client.touchPlayback("session-terminal", { completed: true, positionSeconds: 60 });
-  const late = client.touchPlayback("session-terminal", { state: "playing", positionSeconds: 61 });
-  releases.shift()();
-  await first;
-  await new Promise(resolve => setImmediate(resolve));
-  assert.equal(calls.length, 2);
-  assert.equal(calls[1].completed, true);
-  assert.equal(calls[1].positionSeconds, 60);
-  releases.shift()();
-  const [terminalAck, lateAck] = await Promise.all([terminal, late]);
-  assert.equal(terminalAck.sessionState, "stopped");
-  assert.equal(lateAck.sessionState, "stopped");
 });
 
 test("playback progress mailboxes do not cross Client instances or authenticated principals", async () => {
@@ -2651,6 +2713,86 @@ test("route discovery owns one three-request retry budget with stable cohort jit
   assert.ok(first[1] >= 1 && first[1] <= 20);
 });
 
+test("route discovery preserves an explicit publication-pending outcome until a route generation appears", async () => {
+  const server = { ...testServerIdentity(), id: "srv_setup_pending", name: "Setup pending", preferredAuthMode: "portico" };
+  const pending = signedRouteDocument({
+    endpointGeneration: 0,
+    serverId: server.id,
+    serverName: server.name,
+    assignedHostname: "setup-pending.direct.getportico.tv",
+    issuedAt: "2026-05-23T00:00:00Z",
+    expiresAt: "2026-05-23T00:05:00Z",
+    authModes: ["portico"],
+    certificate: {status: "pending"},
+    membership: {role: "owner"},
+    routes: [],
+  });
+  const ready = signedRouteDocument({
+    endpointGeneration: 1,
+    serverId: server.id,
+    serverName: server.name,
+    assignedHostname: "setup-pending.direct.getportico.tv",
+    issuedAt: "2026-05-23T00:00:00Z",
+    expiresAt: "2026-05-23T00:05:00Z",
+    authModes: ["portico"],
+    certificate: {status: "valid"},
+    membership: {role: "owner"},
+    routes: [{type: "public_direct", url: "https://setup-pending.direct.getportico.tv", quality: "reachable"}],
+  });
+  let calls = 0;
+  const result = await discoverHostedServerRoute(server, {
+    hostedClient: {routes: async () => (++calls < 3 ? pending : ready)},
+    routeProbeFetch: async () => jsonResponse({serverId: server.id, serverPublicKeyFingerprint: testServerPublicKeyFingerprint, remoteAccessEnabled: true}),
+    retryDelaysMs: [1, 1],
+    retryDelay: async () => {},
+    trustedHostedDocumentKeys: {[hostedDocumentTestKeyId]: hostedDocumentTestPublicKey},
+    runtime: clientAttachmentRuntime,
+    now: () => new Date("2026-05-23T00:01:00Z"),
+  });
+  assert.equal(calls, 3);
+  assert.equal(result.routeDocument.endpointGeneration, 1);
+});
+
+test("route discovery does not classify current route probe failures as publication pending", async () => {
+  const server = { ...testServerIdentity(), id: "srv_current_probe_failure", name: "Current probe failure", preferredAuthMode: "portico" };
+  const document = signedRouteDocument({
+    endpointGeneration: 7,
+    serverId: server.id,
+    serverName: server.name,
+    assignedHostname: "current-probe-failure.direct.getportico.tv",
+    issuedAt: "2026-05-23T00:00:00Z",
+    expiresAt: "2026-05-23T00:05:00Z",
+    authModes: ["portico"], certificate: {status: "valid"}, membership: {role: "owner"},
+    routes: [{type: "public_direct", url: "https://current-probe-failure.direct.getportico.tv", quality: "reachable"}],
+  });
+  await assert.rejects(discoverHostedServerRoute(server, {
+    hostedClient: {routes: async () => document},
+    routeProbeFetch: async () => { throw new TypeError("transport failed"); },
+    retryDelaysMs: [],
+    trustedHostedDocumentKeys: {[hostedDocumentTestKeyId]: hostedDocumentTestPublicKey},
+    runtime: clientAttachmentRuntime,
+    now: () => new Date("2026-05-23T00:01:00Z"),
+  }), error => !(error instanceof HostedRoutePublicationPendingError));
+});
+
+test("route discovery exposes exhausted setup and certificate projection as publication pending", async () => {
+  const server = { ...testServerIdentity(), id: "srv_cert_pending", name: "Certificate pending", preferredAuthMode: "portico" };
+  const document = signedRouteDocument({
+    endpointGeneration: 3,
+    serverId: server.id, serverName: server.name,
+    assignedHostname: "cert-pending.direct.getportico.tv",
+    issuedAt: "2026-05-23T00:00:00Z", expiresAt: "2026-05-23T00:05:00Z",
+    authModes: ["portico"], certificate: {status: "issued"}, membership: {role: "owner"}, routes: [],
+  });
+  await assert.rejects(discoverHostedServerRoute(server, {
+    hostedClient: {routes: async () => document},
+    retryDelaysMs: [],
+    trustedHostedDocumentKeys: {[hostedDocumentTestKeyId]: hostedDocumentTestPublicKey},
+    runtime: clientAttachmentRuntime,
+    now: () => new Date("2026-05-23T00:01:00Z"),
+  }), HostedRoutePublicationPendingError);
+});
+
 test("route retry full jitter spreads a 100K persisted fleet across the complete cap", () => {
   const cap = 2500;
   const bucketWidth = 100;
@@ -3164,6 +3306,142 @@ test("browser public-first routing never probes LAN while a verified public rout
   assert.equal(sessionSet.apiBaseUrl, "https://browser-public.direct.getportico.tv");
 });
 
+test("browser public routing falls back across independently verified address families", async () => {
+  const calls = [];
+  let sessionSet;
+  const ipv6Route = "https://2001-db8--10-mac.ptc-dual.direct.getportico.tv:32500";
+  const ipv4Route = "https://198-51-100-10-mac.ptc-dual.direct.getportico.tv:32500";
+  const hostedClient = {
+    routes: async () => signedRouteDocument({
+      serverId: "srv_dual_public",
+      serverName: "Dual Public",
+      assignedHostname: "ptc-dual.direct.getportico.tv",
+      issuedAt: "2026-05-23T00:00:00Z",
+      expiresAt: "2026-05-23T00:05:00Z",
+      serverPublicKeyFingerprint: testServerPublicKeyFingerprint,
+      authModes: ["portico"],
+      certificate: { status: "valid" },
+      membership: { role: "owner" },
+      routes: [
+        { type: "public_direct_ip_encoded", url: ipv6Route, quality: "reachable" },
+        { type: "public_direct_ip_encoded", url: ipv4Route, quality: "reachable" }
+      ]
+    }),
+    porticoSession: async () => ({ tokenType: "Bearer", accessToken: "access", accessExpiresAt: "2026-05-23T01:00:00Z", refreshToken: "refresh", refreshExpiresAt: "2026-06-23T00:00:00Z" }),
+    reportRouteFailure: async () => ({ ok: true, matched: true })
+  };
+  await connectHostedServer({ ...testServerIdentity(), id: "srv_dual_public", name: "Dual Public", preferredAuthMode: "portico" }, {
+    ...hostedProfileBinding("srv_dual_public"),
+    hostedClient,
+    localClient: compatibleLocalClient("srv_dual_public", ipv4Route),
+    sessionStore: { set: (session) => { sessionSet = session; }, clear: () => {} },
+    routeProbeFetch: async (input) => {
+      const url = String(input);
+      calls.push(url);
+      if (url.startsWith(ipv6Route)) throw new TypeError("IPv6 is unavailable on this client");
+      return jsonResponse({ serverId: "srv_dual_public", serverPublicKeyFingerprint: testServerPublicKeyFingerprint, remoteAccessEnabled: true });
+    },
+    routePreference: "public-first",
+    retryDelaysMs: [],
+    trustedHostedDocumentKeys: { [hostedDocumentTestKeyId]: hostedDocumentTestPublicKey },
+    runtime: clientAttachmentRuntime,
+    now: () => new Date("2026-05-23T00:01:00Z")
+  });
+
+  assert.equal(calls.length, 2);
+  assert.ok(calls.includes(`${ipv6Route}/api/remote-access/health`));
+  assert.ok(calls.includes(`${ipv4Route}/api/remote-access/health`));
+  assert.equal(sessionSet.apiBaseUrl, ipv4Route);
+});
+
+test("browser public routing falls through failed direct addresses to the verified public console origin", async () => {
+  const calls = [];
+  const reports = [];
+  let sessionSet;
+  const ipv4Route = "https://198-51-100-12-mac.ptc-console.direct.getportico.tv:32500";
+  const ipv6Route = "https://2001-db8--12-mac.ptc-console.direct.getportico.tv:32500";
+  const consoleRoute = "https://demo.getportico.tv";
+  const hostedClient = {
+    routes: async () => signedRouteDocument({
+      serverId: "srv_console_fallback", serverName: "Console Fallback", assignedHostname: "ptc-console.direct.getportico.tv",
+      issuedAt: "2026-05-23T00:00:00Z", expiresAt: "2026-05-23T00:05:00Z",
+      serverPublicKeyFingerprint: testServerPublicKeyFingerprint, authModes: ["portico"], certificate: {status: "valid"},
+      membership: {role: "owner"}, routes: [
+        {type: "public_direct_ip_encoded", url: ipv4Route, quality: "reachable"},
+        {type: "public_direct_ip_encoded", url: ipv6Route, quality: "reachable"},
+        {type: "public_console_origin", url: consoleRoute, quality: "reachable"}
+      ]
+    }),
+    porticoSession: async () => ({tokenType: "Bearer", accessToken: "access", accessExpiresAt: "2026-05-23T01:00:00Z", refreshToken: "refresh", refreshExpiresAt: "2026-06-23T00:00:00Z"}),
+    reportRouteFailure: async (_serverId, report) => { reports.push(report); return {ok: true, matched: true}; }
+  };
+  await connectHostedServer({...testServerIdentity(), id: "srv_console_fallback", name: "Console Fallback", preferredAuthMode: "portico"}, {
+    ...hostedProfileBinding("srv_console_fallback"), hostedClient,
+    localClient: compatibleLocalClient("srv_console_fallback", consoleRoute),
+    sessionStore: {set: (session) => { sessionSet = session; }, clear: () => {}},
+    routeProbeFetch: async (input) => {
+      const url = String(input); calls.push(url);
+      if (!url.startsWith(consoleRoute)) throw new TypeError("direct address unavailable");
+      return jsonResponse({serverId: "srv_console_fallback", serverPublicKeyFingerprint: testServerPublicKeyFingerprint, remoteAccessEnabled: true});
+    },
+    routePreference: "public-first", retryDelaysMs: [],
+    trustedHostedDocumentKeys: {[hostedDocumentTestKeyId]: hostedDocumentTestPublicKey}, runtime: clientAttachmentRuntime,
+    now: () => new Date("2026-05-23T00:01:00Z")
+  });
+  assert.equal(sessionSet.apiBaseUrl, consoleRoute);
+  assert.ok(calls.includes(`${consoleRoute}/api/remote-access/health`));
+  assert.ok(reports.length >= 1);
+  assert.ok(reports.every((report) => report.routeType === "public_direct_ip_encoded"));
+});
+
+test("browser public routing also falls back from IPv4 to IPv6", async () => {
+  const calls = [];
+  let sessionSet;
+  const ipv4Route = "https://198-51-100-11-mac.ptc-dual-inverse.direct.getportico.tv:32500";
+  const ipv6Route = "https://2001-db8--11-mac.ptc-dual-inverse.direct.getportico.tv:32500";
+  const hostedClient = {
+    routes: async () => signedRouteDocument({
+      serverId: "srv_dual_public_inverse",
+      serverName: "Dual Public Inverse",
+      assignedHostname: "ptc-dual-inverse.direct.getportico.tv",
+      issuedAt: "2026-05-23T00:00:00Z",
+      expiresAt: "2026-05-23T00:05:00Z",
+      serverPublicKeyFingerprint: testServerPublicKeyFingerprint,
+      authModes: ["portico"],
+      certificate: { status: "valid" },
+      membership: { role: "owner" },
+      routes: [
+        { type: "public_direct_ip_encoded", url: ipv4Route, quality: "reachable" },
+        { type: "public_direct_ip_encoded", url: ipv6Route, quality: "reachable" }
+      ]
+    }),
+    porticoSession: async () => ({ tokenType: "Bearer", accessToken: "access", accessExpiresAt: "2026-05-23T01:00:00Z", refreshToken: "refresh", refreshExpiresAt: "2026-06-23T00:00:00Z" }),
+    reportRouteFailure: async () => ({ ok: true, matched: true })
+  };
+  await connectHostedServer({ ...testServerIdentity(), id: "srv_dual_public_inverse", name: "Dual Public Inverse", preferredAuthMode: "portico" }, {
+    ...hostedProfileBinding("srv_dual_public_inverse"),
+    hostedClient,
+    localClient: compatibleLocalClient("srv_dual_public_inverse", ipv6Route),
+    sessionStore: { set: (session) => { sessionSet = session; }, clear: () => {} },
+    routeProbeFetch: async (input) => {
+      const url = String(input);
+      calls.push(url);
+      if (url.startsWith(ipv4Route)) throw new TypeError("IPv4 is unavailable on this client");
+      return jsonResponse({ serverId: "srv_dual_public_inverse", serverPublicKeyFingerprint: testServerPublicKeyFingerprint, remoteAccessEnabled: true });
+    },
+    routePreference: "public-first",
+    retryDelaysMs: [],
+    trustedHostedDocumentKeys: { [hostedDocumentTestKeyId]: hostedDocumentTestPublicKey },
+    runtime: clientAttachmentRuntime,
+    now: () => new Date("2026-05-23T00:01:00Z")
+  });
+
+  assert.equal(calls.length, 2);
+  assert.ok(calls.includes(`${ipv4Route}/api/remote-access/health`));
+  assert.ok(calls.includes(`${ipv6Route}/api/remote-access/health`));
+  assert.equal(sessionSet.apiBaseUrl, ipv6Route);
+});
+
 test("browser public-first routing falls back to LAN only after public verification fails", async () => {
   const calls = [];
   let sessionSet;
@@ -3397,7 +3675,6 @@ test("documented resource URL helpers do not leak account credentials", () => {
   const client = createPorticoClient({ sessionStore, baseHref: "https://web.example" });
 
   assert.equal(client.mediaStreamUrl("m 1"), "https://server.example/api/media/m%201/stream");
-  assert.equal(client.mediaDownloadUrl("m1", "720p-medium"), "https://server.example/api/media/m1/download?profile=720p-medium");
   assert.equal(client.mediaAttachmentUrl("m1", "font/1"), "https://server.example/api/media/m1/attachments/font%2F1");
   assert.equal(client.mediaTrickplayPlaylistUrl("m1", "set1"), "https://server.example/api/media/m1/trickplay/set1/tiles.m3u8");
   assert.equal(client.mediaTrickplayTileUrl("m1", "set1", 4), "https://server.example/api/media/m1/trickplay/set1/tiles/4.jpg");
@@ -3409,7 +3686,7 @@ test("documented resource URL helpers do not leak account credentials", () => {
   assert.equal(client.logsStreamUrl(), "https://server.example/api/logs/stream");
 });
 
-test("public metadata and live TV methods use documented API paths", async () => {
+test("current public metadata and live TV methods use documented API paths", async () => {
   const calls = [];
   const client = createPorticoClient({
     apiBaseUrl: "https://server.example",
@@ -3431,6 +3708,8 @@ test("public metadata and live TV methods use documented API paths", async () =>
           nextEventSequence: 1,
           playbackRevision: 1,
           queueRevision: 1,
+          repeatMode: "off",
+          timeline: { type: "live", canPause: false, canSeek: false },
           continuationCredential: { token: "continuation", origin: "https://server.example", generation: 1, expiresAt: "2026-08-06T01:00:00Z" },
           mediaGrant: { token: "grant", expiresAt: "2026-08-06T01:00:00Z" },
           isLive: true,
@@ -3448,26 +3727,24 @@ test("public metadata and live TV methods use documented API paths", async () =>
 
   await client.system();
   await client.branding();
-  await client.localization();
   await client.remoteAccessHealth();
-  await client.openLiveTvStream("chan1", { intent: { networkClass: "wifi", qualityProfile: "high" } });
+  await client.openLiveTvStream("chan1", { intent: { transportClass: "wifi", qualityProfile: "high" } });
   await client.closeLiveTvStream("chan1", "live1");
   await client.playDvrRecording("rec 1", { startSeconds: 42 });
 
   assert.deepEqual(calls.map((call) => call.input), [
     "https://server.example/api/system",
     "https://server.example/api/branding",
-    "https://server.example/api/localization",
     "https://server.example/api/remote-access/health",
     "https://server.example/api/live-tv/streams/chan1/open",
     "https://server.example/api/live-tv/streams/chan1/close",
     "https://server.example/api/dvr/recordings/rec%201/playback"
   ]);
-  assert.equal(JSON.parse(calls[4].init.body).clientProfile.maxAudioChannels, 6);
-  assert.equal(JSON.parse(calls[4].init.body).clientInstanceId, "test-client");
-  assert.deepEqual(JSON.parse(calls[4].init.body).intent, { networkClass: "wifi", qualityProfile: "high" });
-  assert.equal(JSON.parse(calls[5].init.body).sessionId, "live1");
-  assert.deepEqual(JSON.parse(calls[6].init.body), {
+  assert.equal(JSON.parse(calls[3].init.body).clientProfile.maxAudioChannels, 6);
+  assert.equal(JSON.parse(calls[3].init.body).clientInstanceId, "test-client");
+  assert.deepEqual(JSON.parse(calls[3].init.body).intent, { transportClass: "wifi", qualityProfile: "high" });
+  assert.equal(JSON.parse(calls[4].init.body).sessionId, "live1");
+  assert.deepEqual(JSON.parse(calls[5].init.body), {
     startSeconds: 42,
     clientInstanceId: "test-client",
     clientProfile: { platform: "tv-test", supportsHls: true, maxAudioChannels: 6 }
@@ -3492,6 +3769,8 @@ test("playback methods inject provided playback profile and accept canonical arr
           nextEventSequence: 1,
           playbackRevision: 1,
           queueRevision: 1,
+          repeatMode: "off",
+          timeline: { type: "vod", canPause: true, canSeek: true },
           continuationCredential: { token: "continuation", origin: "https://server.example", generation: 1, expiresAt: "2026-08-06T01:00:00Z" },
           mediaGrant: { token: "grant", expiresAt: "2026-08-06T01:00:00Z" },
           decision: { mode: "direct_play", reason: "", requiresTranscode: false, isProxied: true, isServerCached: false },
@@ -3662,21 +3941,6 @@ test("playbackSourceFor does not rewrite server-owned query semantics", () => {
   assert.equal(source, "https://server.example/opaque/rendition?start=server-value&startSeconds=server-value");
 });
 
-test("playback resource URLs never place credentials in the URL", () => {
-  const playback = {
-    sessionId: "play-1",
-    mediaGrant: { token: "ptc_mg_short_lived", expiresAt: "2026-07-09T20:00:00Z" },
-    media: { id: "movie-1" }
-  };
-  const result = playbackResourceUrl(
-    playback,
-    "/api/media/movie-1/trickplay/set-1/tiles/2.jpg?media_grant=must-remove&download_grant=must-remove&access_token=must-remove",
-    (path) => `https://server.example${path}`,
-    "https://web.example"
-  );
-  assert.equal(result, "https://server.example/api/media/movie-1/trickplay/set-1/tiles/2.jpg");
-});
-
 test("playbackSourceFor selects a server-issued HLS audio resource", () => {
   const source = playbackSourceFor({
     sessionId: "s1",
@@ -3757,6 +4021,35 @@ test("hosted services client uses hosted CSRF on mutations", async () => {
   assert.equal(calls[1].input, "https://api.example/api/auth/login");
   assert.equal(calls[1].init.headers["X-Portico-CSRF"], "hosted-csrf");
   assert.match(calls[1].init.headers["Idempotency-Key"], /\S{8,}/);
+});
+
+test("exported Hosted routes path consumes the exact Go-serialized route shape and rejects a separate server token", async () => {
+  const calls = [];
+  let routeBody = goSerializedRouteFixture;
+  const hosted = createHostedServicesClient({
+    hostedApiBaseUrl: "https://api.example",
+    transport: {fetch: async (input) => {
+      const url = String(input);
+      calls.push(url);
+      if (url.endsWith("/api/system")) return jsonResponse(hostedSystemFixture);
+      if (url.endsWith("/api/account/servers/srv_fixture/routes")) return jsonResponse(routeBody);
+      throw new Error(`Unexpected request ${url}`);
+    }}
+  });
+
+  assert.deepEqual(await hosted.routes("srv_fixture"), goSerializedRouteFixture);
+  assert.deepEqual(calls, [
+    "https://api.example/api/system",
+    "https://api.example/api/account/servers/srv_fixture/routes"
+  ]);
+
+  routeBody = {
+    ...goSerializedRouteFixture,
+    routes: [{...goSerializedRouteFixture.routes[0], serverToken: "must-not-be-exposed"}]
+  };
+  await assert.rejects(hosted.routes("srv_fixture"), error =>
+    error instanceof ApiError && error.code === "invalid_response" && !error.message.includes("must-not-be-exposed")
+  );
 });
 
 test("hosted account and claim mutations forward cancellation signals", async () => {
@@ -4606,6 +4899,49 @@ test("browser playback profile falls back outside a browser", () => {
   assert.equal(browserPlaybackClientProfile().requiresServerProxy, true);
 });
 
+test("browser playback profile seals progressive audio formats and an exact generated HLS target", () => {
+  const playable = new Set([
+    "video/mp4",
+    'video/mp4; codecs="avc1.42E01E"',
+    'audio/mp4; codecs="mp4a.40.2"',
+    "audio/mpeg",
+    "audio/flac",
+    'audio/ogg; codecs="opus"',
+    'audio/webm; codecs="opus"',
+    'audio/ogg; codecs="vorbis"',
+    'audio/webm; codecs="vorbis"'
+  ]);
+  const restore = [
+    setGlobal("document", { createElement: () => ({ canPlayType: (type) => playable.has(type) ? "probably" : "" }) }),
+    setGlobal("navigator", {
+      userAgent: "Mozilla/5.0 Chrome/148.0.0.0 Safari/537.36",
+      platform: "MacIntel"
+    }),
+    setGlobal("screen", { width: 1920, height: 1080 }),
+    setGlobal("MediaSource", function MediaSource() {}),
+    setGlobal("devicePixelRatio", 2)
+  ];
+  try {
+    const profile = browserPlaybackClientProfile();
+    const tuples = profile.capabilityEvidence[0].tuples;
+    for (const [container, codec] of [["mp3", "mp3"], ["flac", "flac"], ["ogg", "opus"], ["webm", "opus"], ["ogg", "vorbis"], ["webm", "vorbis"]]) {
+      for (const [layout, channels] of [["mono", 1], ["stereo", 2]]) {
+        assert.ok(tuples.some((tuple) => tuple.mediaKind === "audio" && tuple.protocol === "http" && tuple.container === container && tuple.audio?.codec === codec && tuple.audio.layout === layout && tuple.audio.maxChannels === channels));
+      }
+    }
+    for (const [layout, channels] of [["mono", 1], ["stereo", 2]]) {
+      assert.ok(tuples.some((tuple) => tuple.mediaKind === "audio" && tuple.protocol === "hls" && tuple.container === "mpegts" && tuple.audio?.codec === "aac" && tuple.audio.profile === "lc" && tuple.audio.layout === layout && tuple.audio.maxChannels === channels));
+    }
+    assert.equal(profile.supportedContainers.includes("flac"), true);
+    assert.equal(profile.supportedContainers.includes("ogg"), true);
+    assert.equal(profile.supportedAudioCodecs.includes("flac"), true);
+    assert.equal(profile.supportedAudioCodecs.includes("opus"), true);
+    assert.equal(profile.supportedAudioCodecs.includes("vorbis"), true);
+  } finally {
+    for (const restoreGlobal of restore.reverse()) restoreGlobal();
+  }
+});
+
 test("browser playback profile keeps Safari audio and HEVC conservative", () => {
   const restore = [
     setGlobal("document", {
@@ -4725,8 +5061,8 @@ test("failed requests throw ApiError with server payload details", async () => {
   });
 });
 
-test("normalizePlaybackResponse tolerates missing arrays", () => {
-  const normalized = normalizePlaybackResponse({
+test("normalizePlaybackResponse rejects an obsolete incomplete playback shape", () => {
+  assert.throws(() => normalizePlaybackResponse({
     sessionId: "s1",
     media: { id: "m1", title: "Movie", type: "movie", state: {} },
     sourceUrl: "/api/media/m1/stream",
@@ -4737,10 +5073,7 @@ test("normalizePlaybackResponse tolerates missing arrays", () => {
     subtitleStreams: undefined,
     chapters: undefined,
     queue: undefined
-  });
-  assert.deepEqual(normalized.queue, []);
-  assert.equal(normalized.repeatMode, "off");
-  assert.equal(normalized.queueRevision, 0);
+  }), /qualities must be an array/);
 });
 
 test("download and Watch With Friends lifecycle requests forward cancellation signals", async () => {

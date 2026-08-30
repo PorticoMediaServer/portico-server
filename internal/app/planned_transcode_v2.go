@@ -157,7 +157,7 @@ func (s *Server) acquirePlannedTranscodeAdmission(key string, generation int, se
 	if !hardware && settings.MaxSoftwareSessions > 0 && softwareActive >= settings.MaxSoftwareSessions {
 		return nil, errors.New("the software transcode session limit has been reached")
 	}
-	// Legacy semantics intentionally treat zero background capacity as disabled.
+	// Zero background capacity explicitly disables background work.
 	if background && (settings.MaxBackgroundSessions <= 0 || backgroundActive >= settings.MaxBackgroundSessions) {
 		return nil, errors.New("the background transcode session limit has been reached")
 	}
@@ -760,6 +760,19 @@ func (s *Server) ensurePlannedVODHLSSession(ctx context.Context, userID string, 
 	release := func(result ffmpegsupervisor.Release) {
 		diagnostics := diagnosticRecorder.Report(result.Err)
 		diagnosticAPI := diagnostics.API()
+		if result.Err != nil {
+			s.log.Warn("planned VOD producer failed",
+				"media_id", item.ID,
+				"failure_class", plannedTranscodeFailureClass(result.Err),
+				"command", diagnostics.CommandIdentity,
+				"exit_code", diagnostics.ExitCode,
+				"signal", diagnostics.Signal,
+				"stderr_bytes", diagnostics.Bytes,
+				"stderr_lines", diagnostics.Lines,
+				"error_lines", diagnostics.ErrorLines,
+				"progress_lines", diagnostics.ProgressLines,
+				"duration_ms", maxInt64(0, diagnostics.Duration.Milliseconds()))
+		}
 		if lease != nil {
 			lease.Release(result.Err)
 		}
@@ -840,6 +853,38 @@ func (s *Server) ensurePlannedVODHLSSession(ctx context.Context, userID string, 
 		TranscodeFilter: session.filter, FFmpegContext: redactedFFmpegContext(command.Args),
 	})
 	return session, nil
+}
+
+// plannedTranscodeFailureClass is deliberately path- and payload-free. It
+// provides production operators the first failed invariant without logging a
+// media path, title, token, raw request, or FFmpeg stderr.
+func plannedTranscodeFailureClass(err error) string {
+	if err == nil {
+		return "none"
+	}
+	message := strings.ToLower(err.Error())
+	for _, candidate := range []struct{ fragment, class string }{
+		{"invalid binding", "invalid_binding"},
+		{"invalid playback identity", "invalid_playback_identity"},
+		{"invalid plan", "invalid_plan"},
+		{"plan is not vod hls", "invalid_protocol"},
+		{"unverified hardware route", "unverified_hardware_route"},
+		{"hardware execution identity changed", "hardware_identity_changed"},
+		{"media facts changed", "media_facts_changed"},
+		{"source identity changed", "source_identity_changed"},
+		{"hardware route", "hardware_graph_mismatch"},
+		{"media resources", "resource_admission"},
+		{"transcode session limit", "resource_admission"},
+	} {
+		if strings.Contains(message, candidate.fragment) {
+			return candidate.class
+		}
+	}
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		return "producer_exit"
+	}
+	return "producer_start"
 }
 
 func plannedTranscodeSessionCanServeSegment(session *transcodeSession, segmentName string) bool {

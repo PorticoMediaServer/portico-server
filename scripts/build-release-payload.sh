@@ -54,15 +54,24 @@ cp "$ROOT/media-toolchain/NOTICE.md" "$OUTPUT_ROOT/licenses/FFMPEG-NOTICE.md"
 if [[ -d "$FFMPEG_ROOT/LICENSES" ]]; then cp -R "$FFMPEG_ROOT/LICENSES/." "$OUTPUT_ROOT/licenses/"; fi
 if [[ -f "$FFMPEG_ROOT/build-info.json" ]]; then cp "$FFMPEG_ROOT/build-info.json" "$OUTPUT_ROOT/licenses/ffmpeg-build-info.json"; fi
 
+# Finder provenance and quarantine metadata are host state, never release
+# identity. Strip them before both the manifest and archive boundary.
+if command -v xattr >/dev/null 2>&1; then
+  xattr -cr "$OUTPUT_ROOT"
+fi
+
 cat > "$OUTPUT_ROOT/release.json" <<EOF
 {
   "schemaVersion": 1,
   "product": "Portico Media Server",
   "version": "$VERSION",
+  "buildNumber": "$BUILD_NUMBER",
   "commit": "$COMMIT",
   "builtAt": "$BUILT_AT",
   "platform": "$TARGET_OS-$TARGET_ARCH",
-  "signed": false
+  "signed": false,
+  "channel": "stable",
+  "releaseSafetyClass": "protected"
 }
 EOF
 

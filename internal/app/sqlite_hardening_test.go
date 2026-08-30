@@ -249,3 +249,39 @@ func TestAudioPlaybackSessionsSurviveMobileBackgroundGrace(t *testing.T) {
 		t.Fatalf("expired movie session should not restore")
 	}
 }
+
+func TestPlaybackMaintenanceRevokesAuthorityForAlreadyStoppedSession(t *testing.T) {
+	server := newScannerTestServer(t)
+	now := time.Date(2026, 8, 30, 1, 30, 0, 0, time.UTC)
+	stamp := now.Format(time.RFC3339)
+	if _, err := server.db.Exec(`
+		INSERT INTO users (id, username, email, display_name, role, permissions_json, preferences_json, created_at, updated_at)
+		VALUES ('usr_terminal_residue', 'terminal-residue', 'terminal-residue@example.test', 'Terminal Residue', 'owner', '{}', '{}', ?, ?);
+		INSERT INTO media_items (id, type, title, sort_title, genres_json, added_at)
+		VALUES ('movie_terminal_residue', 'movie', 'Terminal Residue', 'Terminal Residue', '[]', ?);
+		INSERT INTO playback_sessions (id, user_id, profile_id, media_id, media_type, title, started_at, last_seen_at, ended_at, client_instance_id, state)
+		VALUES ('play_terminal_residue', 'usr_terminal_residue', 'usr_terminal_residue', 'movie_terminal_residue', 'movie', 'Terminal Residue', ?, ?, ?, 'ios-terminal-residue', 'stopped');
+		INSERT INTO playback_media_grants (id, token_hash, playback_session_id, principal_user_id, profile_id, resource_kind, resource_id, operation_classes_json, issued_at, expires_at)
+		VALUES ('mgr_terminal_residue', 'grant-terminal-residue', 'play_terminal_residue', 'usr_terminal_residue', 'usr_terminal_residue', 'media', 'movie_terminal_residue', '["media"]', ?, ?);
+		INSERT INTO playback_session_continuation_credentials (playback_session_id, token_hash, user_id, profile_id, client_instance_id, origin, issued_at, expires_at, absolute_expires_at, previous_valid_until)
+		VALUES ('play_terminal_residue', 'continuation-terminal-residue', 'usr_terminal_residue', 'usr_terminal_residue', 'ios-terminal-residue', 'https://demo.example.test', ?, ?, ?, ?)`,
+		stamp, stamp, stamp,
+		stamp, stamp, stamp,
+		stamp, now.Add(time.Hour).Format(time.RFC3339),
+		stamp, now.Add(time.Minute*5).Format(time.RFC3339), now.Add(time.Hour).Format(time.RFC3339), now.Add(time.Second*30).Format(time.RFC3339)); err != nil {
+		t.Fatalf("seed stopped-session authority residue: %v", err)
+	}
+	if err := server.expireStalePlaybackSessions(now); err != nil {
+		t.Fatalf("reconcile stopped-session authority: %v", err)
+	}
+	var activeGrants, activeContinuations int
+	if err := server.db.QueryRow(`SELECT COUNT(*) FROM playback_media_grants WHERE playback_session_id = 'play_terminal_residue' AND revoked_at = ''`).Scan(&activeGrants); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.db.QueryRow(`SELECT COUNT(*) FROM playback_session_continuation_credentials WHERE playback_session_id = 'play_terminal_residue' AND revoked_at = ''`).Scan(&activeContinuations); err != nil {
+		t.Fatal(err)
+	}
+	if activeGrants != 0 || activeContinuations != 0 {
+		t.Fatalf("stopped session retained authority: grants=%d continuations=%d", activeGrants, activeContinuations)
+	}
+}

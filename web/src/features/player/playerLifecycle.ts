@@ -5,19 +5,35 @@ export type SeekTransaction = {
   cancel(): void;
 };
 
-function clampToSeekable(media: HTMLMediaElement, targetSeconds: number): number {
+const SEEK_END_EPSILON_SECONDS = 0.1;
+
+function clampToSeekable(media: HTMLMediaElement, targetSeconds: number): { target: number; completes: boolean } {
   const duration = Number.isFinite(media.duration) ? media.duration : Number.POSITIVE_INFINITY;
   let target = Math.max(0, Math.min(duration, targetSeconds));
-  if (media.seekable.length === 0) return target;
+  const completes = Number.isFinite(duration) && targetSeconds >= duration;
+  if (media.seekable.length === 0) {
+    return {
+      target: completes ? Math.max(0, duration - SEEK_END_EPSILON_SECONDS) : target,
+      completes,
+    };
+  }
   for (let index = 0; index < media.seekable.length; index += 1) {
     const start = media.seekable.start(index);
     const end = media.seekable.end(index);
-    if (target >= start && target <= end) return target;
+    if (target >= start && target < end) return {
+      target: completes ? Math.max(start, target - SEEK_END_EPSILON_SECONDS) : target,
+      completes,
+    };
+    if (target === end) return { target: Math.max(start, end - SEEK_END_EPSILON_SECONDS), completes: true };
   }
   const first = media.seekable.start(0);
   const last = media.seekable.end(media.seekable.length - 1);
   target = Math.max(first, Math.min(last, target));
-  return target;
+  const reachesEnd = completes || target >= last;
+  return {
+    target: reachesEnd ? Math.max(first, last - SEEK_END_EPSILON_SECONDS) : target,
+    completes: reachesEnd,
+  };
 }
 
 /** Owns exactly one bounded seek. A newer seek fences every callback from the old one. */
@@ -34,9 +50,10 @@ export function createSeekTransaction(media: HTMLMediaElement, timeoutMs = 8_000
     seek(targetSeconds) {
       cancel();
       const transaction = generation;
-      const shouldResume = !media.paused;
+      const clamped = clampToSeekable(media, targetSeconds);
+      const shouldResume = !media.paused || clamped.completes;
       media.pause();
-      media.currentTime = clampToSeekable(media, targetSeconds);
+      media.currentTime = clamped.target;
       return new Promise<SeekResult>((resolve) => {
         let settled = false;
         const finish = (result: SeekResult) => {

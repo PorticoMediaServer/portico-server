@@ -1347,3 +1347,20 @@
   .library-channel-block-times { grid-template-columns: 1fr; }
   .library-channel-editor-grid .wide { grid-column: auto; }
 }
+.runtime-account-settings-sections {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0 1.5rem 1rem;
+}
+
+.runtime-account-settings-sections button {
+  border: 1px solid var(--border-subtle);
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  padding: 0.5rem 0.9rem;
+}
+
+.runtime-account-settings-sections button[aria-current="page"] {
+  background: var(--surface-raised);
+}

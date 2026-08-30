@@ -67,26 +67,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/account/preferences": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get the legacy projection of the current user's localization and playback preferences
-         * @description Read-only compatibility projection. New clients use /preferences for complete revisioned preference documents.
-         */
-        get: operations["getAccountPreferences"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/account/profile": {
         parameters: {
             query?: never;
@@ -2984,26 +2964,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/localization": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get localization options and rating systems
-         * @description Returns safe static locale, language, time-zone, and content-rating system metadata for first-party and native clients.
-         */
-        get: operations["getLocalization"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/logs": {
         parameters: {
             query?: never;
@@ -3171,26 +3131,6 @@ export interface paths {
         options?: never;
         /** Inspect downloadable media headers without transferring the body */
         head: operations["headMediaIdDownload"];
-        patch?: never;
-        trace?: never;
-    };
-    "/media/{id}/download-grants": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Prepare a bounded transfer URL for a permitted, already-ready media version
-         * @description Compatibility operation for already-ready artifacts. New clients create a download preparation first. The opaque grant is authorization-revision and exact-version bound, range-safe until expiry, and never an account credential.
-         */
-        post: operations["postMediaIdDownloadGrants"];
-        delete?: never;
-        options?: never;
-        head?: never;
         patch?: never;
         trace?: never;
     };
@@ -4018,7 +3958,7 @@ export interface paths {
         post?: never;
         /**
          * End a playback session
-         * @description Marks the session stopped so it leaves the live dashboard and remains available in history.
+         * @description Atomically records the final playback position and terminal disposition, then ends the session and revokes its playback authority.
          */
         delete: operations["deletePlaybackSessionsSessionId"];
         options?: never;
@@ -4111,7 +4051,7 @@ export interface paths {
         put?: never;
         /** Rotate a native playback continuation credential */
         post: operations["rotatePlaybackContinuation"];
-        /** Revoke playback continuation and stop the session */
+        /** Atomically stop native playback and revoke its continuation authority */
         delete: operations["revokePlaybackContinuation"];
         options?: never;
         head?: never;
@@ -6172,11 +6112,6 @@ export interface components {
             clientInstanceId: string;
             clientProfile: components["schemas"]["PlaybackClientProfile"];
             intent?: components["schemas"]["PlaybackIntent"];
-            /**
-             * @deprecated
-             * @description Compatibility alias for sourceId when sourceKind is media. New clients use the discriminated sourceKind/sourceId pair.
-             */
-            mediaId?: string;
             queueMediaIds?: string[];
             /** @description Non-secret receiver-generated challenge bound into the encrypted envelope. */
             receiverChallenge: string;
@@ -7010,6 +6945,13 @@ export interface components {
             /** @description source/original or an optimized profile returned by download-options. */
             qualityProfile?: string;
         } | unknown | unknown | unknown | unknown;
+        DownloadPreparationGrantRequest: {
+            /**
+             * @description Browser delivery uses only an HttpOnly cookie. Native delivery returns the ephemeral transfer credential for the PorticoDownload authorization scheme.
+             * @enum {string}
+             */
+            delivery: "browser" | "native";
+        };
         DownloadPreparationUpdateRequest: {
             /** @enum {string} */
             action: "pause" | "resume" | "cancel" | "retry" | "remove";
@@ -7215,14 +7157,13 @@ export interface components {
              */
             artworkShape?: "square" | "poster" | "landscape";
             cacheTtlSeconds?: number;
-            controls?: ("hide" | "reorder" | "pin")[];
             critical?: boolean;
             cursorCapable?: boolean;
             defaultVisible: boolean;
             endpoint?: string;
             explanation?: string;
             hasMore?: boolean;
-            /** @description Server-owned policy. Clients must default to false when consuming older contracts. */
+            /** @description Server-owned policy. */
             hideable: boolean;
             id: string;
             items?: components["schemas"]["MediaItem"][];
@@ -8351,40 +8292,6 @@ export interface components {
             pin?: string;
             profileId: string;
         };
-        LocalizationInfo: {
-            countries: components["schemas"]["LocalizationOption"][];
-            /** Format: date-time */
-            generatedAt: string;
-            languages: components["schemas"]["LocalizationOption"][];
-            locales: components["schemas"]["LocalizationOption"][];
-            ratingSystems: components["schemas"]["LocalizationRatingSet"][];
-            timeZones: string[];
-        };
-        LocalizationOption: {
-            id: string;
-            label: string;
-            labels?: {
-                [key: string]: string;
-            };
-        };
-        LocalizationRating: {
-            id: string;
-            label: string;
-            labels?: {
-                [key: string]: string;
-            };
-            minimumAge?: number;
-            rank: number;
-        };
-        LocalizationRatingSet: {
-            country: string;
-            label?: string;
-            labels?: {
-                [key: string]: string;
-            };
-            ratings: components["schemas"]["LocalizationRating"][];
-            system: string;
-        };
         LogEvent: {
             fields?: {
                 [key: string]: string;
@@ -8489,7 +8396,7 @@ export interface components {
             pathTemplate?: string;
             requiredInputs?: string[];
             /** @enum {string} */
-            resultHandling: "json" | "job" | "playback-session" | "download-grant" | "flow";
+            resultHandling: "json" | "job" | "playback-session" | "download-preparation" | "flow";
             staticBody?: {
                 [key: string]: unknown;
             };
@@ -8558,13 +8465,6 @@ export interface components {
         MediaChildrenResponse: {
             items: components["schemas"]["MediaCard"][];
             pageInfo: components["schemas"]["CursorPageInfo"];
-        };
-        MediaDownloadGrantRequest: {
-            /**
-             * @description Source/original, default/optimized, or a concrete optimized profile listed by the download-options operation.
-             * @default source
-             */
-            profile: string;
         };
         MediaDownloadGrantResponse: {
             /** @description Clean same-server artifact URL. Browsers use the HttpOnly grant cookie; native transfer adapters send grantToken in Authorization and never persist either value. */
@@ -8684,6 +8584,7 @@ export interface components {
             displayImages?: components["schemas"]["DisplayImageSet"];
             durationSeconds?: number;
             edition?: string;
+            entityKind: string;
             episodeNumber?: number;
             extras?: components["schemas"]["MediaExtraRelationship"][];
             fileCount?: number;
@@ -8729,7 +8630,6 @@ export interface components {
             tagline?: string;
             tags: string[];
             title: string;
-            type: string;
             typedMetadata?: {
                 [key: string]: string;
             };
@@ -9634,11 +9534,6 @@ export interface components {
             maxAudioBitrateKbps?: number;
             maxVideoBitrateMbps?: number;
             maxVideoHeight?: number;
-            /**
-             * @description Compatibility quality bucket. The server resolves locality independently and never trusts this value for authorization or remote-access clamps.
-             * @enum {string}
-             */
-            networkClass?: "local" | "wifi" | "cellular" | "unknown";
             /** @description Preferred BCP-47 audio language resolved by the server before resource selection. */
             preferredAudioLanguage?: string;
             /** @description Ordered BCP-47 audio language policy. The server selects the first authorized matching stream before applying fallback. */
@@ -10009,6 +9904,19 @@ export interface components {
             sessionId: string;
             sourceContext?: components["schemas"]["PlaybackSourceContext"];
             total: number;
+        };
+        PlaybackSessionStopRequest: {
+            /** @enum {string} */
+            disposition: "stopped" | "completed";
+            /** @description Required terminal timeline duration. May be zero only for stopped indefinite/live playback; completed playback requires a positive value. */
+            durationSeconds: number;
+            /** Format: int64 */
+            eventSequence: number;
+            /** Format: int64 */
+            generation: number;
+            positionSeconds: number;
+            /** Format: date-time */
+            recordedAt: string;
         };
         PlaybackSourceContext: {
             id?: string;
@@ -11193,7 +11101,7 @@ export interface components {
              * @enum {string}
              */
             direction?: "asc" | "desc";
-            entityKinds?: ("movies" | "movie" | "shows" | "show" | "anime" | "season" | "episodes" | "episode" | "people" | "person" | "music" | "artist" | "album" | "track" | "audiobooks" | "audiobook" | "book" | "live-tv" | "live-channel" | "live_channel")[];
+            entityKinds?: ("movie" | "show" | "season" | "episode" | "person" | "artist" | "album" | "track" | "book" | "live-channel")[];
             /** @enum {string} */
             group?: "movies" | "shows" | "episodes" | "people" | "music" | "audiobooks" | "live-tv";
             libraryIds?: string[];
@@ -12712,98 +12620,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SuccessResponse"];
-                };
-            };
-            /** @description 400 Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Error"];
-                };
-            };
-            /** @description 401 Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Error"];
-                };
-            };
-            /** @description 403 Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Error"];
-                };
-            };
-            /** @description 404 Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Error"];
-                };
-            };
-            /** @description 405 Method Not Allowed */
-            405: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Error"];
-                };
-            };
-            /** @description 409 Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Error"];
-                };
-            };
-            /** @description 429 Too Many Requests */
-            429: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Error"];
-                };
-            };
-            /** @description 500 Internal Server Error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Error"];
-                };
-            };
-        };
-    };
-    getAccountPreferences: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description User preferences */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["UserPreferences"];
                 };
             };
             /** @description 400 Bad Request */
@@ -22572,7 +22388,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DownloadPreparationGrantRequest"];
+            };
+        };
         responses: {
             /** @description Transfer grant created */
             201: {
@@ -31169,98 +30989,6 @@ export interface operations {
             };
         };
     };
-    getLocalization: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Localization metadata */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["LocalizationInfo"];
-                };
-            };
-            /** @description 400 Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Error"];
-                };
-            };
-            /** @description 401 Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Error"];
-                };
-            };
-            /** @description 403 Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Error"];
-                };
-            };
-            /** @description 404 Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Error"];
-                };
-            };
-            /** @description 405 Method Not Allowed */
-            405: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Error"];
-                };
-            };
-            /** @description 409 Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Error"];
-                };
-            };
-            /** @description 429 Too Many Requests */
-            429: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Error"];
-                };
-            };
-            /** @description 500 Internal Server Error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Error"];
-                };
-            };
-        };
-    };
     getLogs: {
         parameters: {
             query?: {
@@ -32393,104 +32121,6 @@ export interface operations {
                 };
             };
             /** @description 409 Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Error"];
-                };
-            };
-            /** @description 429 Too Many Requests */
-            429: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Error"];
-                };
-            };
-            /** @description 500 Internal Server Error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Error"];
-                };
-            };
-        };
-    };
-    postMediaIdDownloadGrants: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["MediaDownloadGrantRequest"];
-            };
-        };
-        responses: {
-            /** @description Browser download grant created */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MediaDownloadGrantResponse"];
-                };
-            };
-            /** @description 400 Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Error"];
-                };
-            };
-            /** @description 401 Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Error"];
-                };
-            };
-            /** @description User lacks download permission */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Media item is not visible to the user */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Error"];
-                };
-            };
-            /** @description 405 Method Not Allowed */
-            405: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Requested media version is not currently downloadable */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -37676,7 +37306,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlaybackSessionStopRequest"];
+            };
+        };
         responses: {
             /** @description Playback session ended */
             200: {
@@ -38447,7 +38081,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlaybackSessionStopRequest"];
+            };
+        };
         responses: {
             /** @description Continuation revoked */
             200: {

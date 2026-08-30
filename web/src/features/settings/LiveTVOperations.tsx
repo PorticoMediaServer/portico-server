@@ -1,17 +1,5 @@
 import type { LiveTVSource, LiveTVSourceRequest } from '@porticomediaserver/client-core';
-import {
-  AlertTriangle,
-  Antenna,
-  CheckCircle2,
-  Clock3,
-  HardDrive,
-  Pencil,
-  Plus,
-  RadioTower,
-  RefreshCw,
-  Trash2,
-  X,
-} from '#portico-icons';
+import { StatusWarningIcon, DeviceNetworkIcon, StatusSuccessIcon, MetadataTimeIcon, DeviceStorageIcon, ActionEditIcon, ActionAddIcon, StatusLiveIcon, ActionRefreshIcon, ActionDeleteIcon, ActionCloseIcon } from '#portico-icons';
 import { useCallback, useState } from 'react';
 import { IconButton, PrimaryButton, SecondaryButton } from '../../components/controls/Buttons';
 import { ModalOverlay } from '../../components/overlay/OverlayPortal';
@@ -135,7 +123,7 @@ function SourceEditor({ source, dataSource, onDismiss, onSaved }: {
   };
 
   return <ModalOverlay labelledBy="portico-live-source-editor-title" className="portico-settings-dialog portico-live-source-dialog" onDismiss={onDismiss}>
-    <header><div><h2 id="portico-live-source-editor-title">{source ? `Edit ${source.name}` : 'Add Live TV source'}</h2><p>Connection, import, and guide policy</p></div><IconButton label="Close" onClick={onDismiss}><X /></IconButton></header>
+    <header><div><h2 id="portico-live-source-editor-title">{source ? `Edit ${source.name}` : 'Add Live TV source'}</h2><p>Connection, import, and guide policy</p></div><IconButton label="Close" onClick={onDismiss}><ActionCloseIcon /></IconButton></header>
     <div className="portico-settings-dialog-fields">
       <div className="portico-live-source-basics">
         <label><span>Name</span><TextControl label="Source name" value={name} onChange={setName} /></label>
@@ -185,7 +173,7 @@ function SourceEditor({ source, dataSource, onDismiss, onSaved }: {
         </div>
         <label className="portico-live-source-check"><input type="checkbox" checked={filterRequireEpg} onChange={(event) => setFilterRequireEpg(event.target.checked)} /><span>Only import channels with matching guide data</span></label>
       </fieldset>
-      {error && <p className="portico-settings-dialog-error" role="alert"><AlertTriangle />{error}</p>}
+      {error && <p className="portico-settings-dialog-error" role="alert"><StatusWarningIcon />{error}</p>}
     </div>
     <footer>
       <SecondaryButton disabled={mutation.busy} onClick={onDismiss}>Cancel</SecondaryButton>
@@ -229,25 +217,25 @@ function SourceInventory({ dataSource, canManage }: { dataSource: SettingsDataSo
     }
   };
 
-  return <SettingsGroup title="Live TV sources" description="Provider connections, imported channel counts, guide cache, and source health." actions={canManage ? <PrimaryButton onClick={() => setEditor('new')}><Plus /> Add source</PrimaryButton> : undefined}>
+  return <SettingsGroup title="Live TV sources" description="Provider connections, imported channel counts, guide cache, and source health." actions={canManage ? <PrimaryButton onClick={() => setEditor('new')}><ActionAddIcon /> Add source</PrimaryButton> : undefined}>
     {(feedback || error) && <InlineNotice tone={error ? 'error' : 'success'}>{error || feedback}</InlineNotice>}
-    {!canManage && <div className="portico-settings-readonly-note"><Antenna />Your account cannot inspect or manage server source credentials.</div>}
+    {!canManage && <div className="portico-settings-readonly-note"><DeviceNetworkIcon />Your account cannot inspect or manage server source credentials.</div>}
     {canManage && query.status === 'loading' && <SettingsLoading label="Loading Live TV sources" />}
     {canManage && query.status === 'error' && <SettingsError title="Live TV sources are unavailable" message={reviewedProductErrorText(query.error, 'live-tv.load-failed', { featureName: 'Live TV sources' })} onRetry={reload} />}
     {canManage && query.status === 'success' && (query.data.length === 0
-      ? <div className="portico-settings-state"><Antenna /><strong>No Live TV sources</strong><p>Add an M3U, XMLTV, Xtream, or HDHomeRun source to begin importing channels.</p><PrimaryButton onClick={() => setEditor('new')}><Plus /> Add source</PrimaryButton></div>
+      ? <div className="portico-settings-state"><DeviceNetworkIcon /><strong>No Live TV sources</strong><p>Add an M3U, XMLTV, Xtream, or HDHomeRun source to begin importing channels.</p><PrimaryButton onClick={() => setEditor('new')}><ActionAddIcon /> Add source</PrimaryButton></div>
       : <div className="portico-live-source-list">{query.data.map((source) => {
         const actions = new Set(source.actions ?? []);
         return <article key={source.id} className={source.lastError ? 'error' : ''}>
-          <span className={`portico-live-source-icon ${source.enabled ? 'enabled' : ''}`}>{source.lastError ? <AlertTriangle /> : <Antenna />}</span>
+          <span className={`portico-live-source-icon ${source.enabled ? 'enabled' : ''}`}>{source.lastError ? <StatusWarningIcon /> : <DeviceNetworkIcon />}</span>
           <span className="portico-live-source-copy"><strong>{source.name}</strong><small>{source.type.toLocaleUpperCase()} · {source.enabled ? 'enabled' : 'disabled'} · refreshed {timeLabel(source.lastRefreshedAt)}</small>{source.lastError && <em>{requestError({ code: 'live_tv_guide_unavailable' }, 'live-tv.guide-unavailable')}</em>}</span>
           <dl><div><dt>Channels</dt><dd>{source.channelCount}</dd></div><div><dt>Guide</dt><dd>{source.programCount}</dd></div><div><dt>Tuners</dt><dd>{source.tunerCount} <small>{source.tunerCountMode}</small></dd></div></dl>
           <div className="portico-live-source-actions">
-            {actions.has('live.source.refresh') && <SecondaryButton disabled={mutation.busy} onClick={() => void refresh(source)}><RefreshCw className={mutation.busy ? 'portico-settings-spinner' : ''} /> Refresh</SecondaryButton>}
-            {actions.has('live.source.edit') && <IconButton label={`Edit ${source.name}`} disabled={mutation.busy} onClick={() => setEditor(source)}><Pencil /></IconButton>}
+            {actions.has('live.source.refresh') && <SecondaryButton disabled={mutation.busy} onClick={() => void refresh(source)}><ActionRefreshIcon className={mutation.busy ? 'portico-settings-spinner' : ''} /> Refresh</SecondaryButton>}
+            {actions.has('live.source.edit') && <IconButton label={`Edit ${source.name}`} disabled={mutation.busy} onClick={() => setEditor(source)}><ActionEditIcon /></IconButton>}
             {actions.has('live.source.delete') && (confirmDelete === source.id
               ? <div className="portico-inline-confirm"><span>Delete {source.name}? Portico will remove this source and its guide cache; the upstream tuner or playlist is unchanged.</span><button type="button" onClick={() => setConfirmDelete('')}>Cancel</button><button type="button" className="danger" disabled={mutation.busy} onClick={() => void remove(source)}>Delete source</button></div>
-              : <IconButton label={`Delete ${source.name}`} disabled={mutation.busy} onClick={() => setConfirmDelete(source.id)}><Trash2 /></IconButton>)}
+              : <IconButton label={`Delete ${source.name}`} disabled={mutation.busy} onClick={() => setConfirmDelete(source.id)}><ActionDeleteIcon /></IconButton>)}
           </div>
         </article>;
       })}</div>)}
@@ -259,27 +247,27 @@ function DVRStatusPanel({ dataSource, canView }: { dataSource: SettingsDataSourc
   const [revision, setRevision] = useState(0);
   const load = useCallback((source: SettingsDataSource, signal: AbortSignal) => canView ? source.dvrStatus(undefined, signal) : Promise.resolve(null), [canView]);
   const query = useSettingsQuery<DVRStatusSnapshot | null>(load, dataSource, revision);
-  if (!canView) return <SettingsGroup title="DVR operations" description="Guide, tuners, conflicts, and recording storage."><div className="portico-settings-readonly-note"><RadioTower />Your account cannot view DVR operations.</div></SettingsGroup>;
+  if (!canView) return <SettingsGroup title="DVR operations" description="Guide, tuners, conflicts, and recording storage."><div className="portico-settings-readonly-note"><StatusLiveIcon />Your account cannot view DVR operations.</div></SettingsGroup>;
   if (query.status === 'loading') return <SettingsGroup title="DVR operations" description="Guide, tuners, conflicts, and recording storage."><SettingsLoading label="Loading DVR status" /></SettingsGroup>;
   if (query.status === 'error') return <SettingsGroup title="DVR operations" description="Guide, tuners, conflicts, and recording storage."><SettingsError title="DVR status is unavailable" message={reviewedProductErrorText(query.error, 'live-tv.load-failed', { featureName: 'DVR status' })} onRetry={() => setRevision((current) => current + 1)} /></SettingsGroup>;
   const status = query.data;
   if (!status) return null;
-  if (!status.configured) return <SettingsGroup title="DVR operations" description="Guide, tuners, conflicts, and recording storage."><div className="portico-settings-state"><RadioTower /><strong>DVR is not configured</strong><p>Add a compatible Live TV source and recording storage before scheduling recordings.</p></div></SettingsGroup>;
+  if (!status.configured) return <SettingsGroup title="DVR operations" description="Guide, tuners, conflicts, and recording storage."><div className="portico-settings-state"><StatusLiveIcon /><strong>DVR is not configured</strong><p>Add a compatible Live TV source and recording storage before scheduling recordings.</p></div></SettingsGroup>;
 
   const busyTuners = status.tuners.filter((tuner) => tuner.state !== 'idle').length;
   const totalStorage = status.storage.usedBytes + status.storage.availableBytes;
   const usedPercent = totalStorage > 0 ? Math.round((status.storage.usedBytes / totalStorage) * 100) : 0;
-  return <SettingsGroup title="DVR operations" description="Guide, tuners, conflicts, and recording storage." actions={<SecondaryButton onClick={() => setRevision((current) => current + 1)}><RefreshCw /> Refresh status</SecondaryButton>}>
+  return <SettingsGroup title="DVR operations" description="Guide, tuners, conflicts, and recording storage." actions={<SecondaryButton onClick={() => setRevision((current) => current + 1)}><ActionRefreshIcon /> Refresh status</SecondaryButton>}>
     {!status.available && <InlineNotice tone="error">DVR is configured but currently unavailable.</InlineNotice>}
     <div className="portico-dvr-ledger">
-      <div><Clock3 /><span><small>Guide</small><strong>{status.guide.state.replace('-', ' ')}</strong><em>{status.guide.messageId ? requestError({ messageId: status.guide.messageId }, 'live-tv.guide-unavailable') : `Updated ${timeLabel(status.guide.lastRefreshedAt)}`}</em></span></div>
-      <div><RadioTower /><span><small>Tuners</small><strong>{busyTuners} busy · {status.tuners.length} total</strong><em>{status.tuners.filter((tuner) => tuner.state === 'offline').length} offline</em></span></div>
-      <div><HardDrive /><span><small>Recording storage</small><strong>{bytes(status.storage.usedBytes)} used</strong><em>{usedPercent}% · {bytes(status.storage.availableBytes)} available</em></span></div>
-      <div><CheckCircle2 /><span><small>Forecast</small><strong>{status.storage.forecastDays === undefined ? 'Unavailable' : `${status.storage.forecastDays} days`}</strong><em>{status.storage.state}</em></span></div>
+      <div><MetadataTimeIcon /><span><small>Guide</small><strong>{status.guide.state.replace('-', ' ')}</strong><em>{status.guide.messageId ? requestError({ messageId: status.guide.messageId }, 'live-tv.guide-unavailable') : `Updated ${timeLabel(status.guide.lastRefreshedAt)}`}</em></span></div>
+      <div><StatusLiveIcon /><span><small>Tuners</small><strong>{busyTuners} busy · {status.tuners.length} total</strong><em>{status.tuners.filter((tuner) => tuner.state === 'offline').length} offline</em></span></div>
+      <div><DeviceStorageIcon /><span><small>Recording storage</small><strong>{bytes(status.storage.usedBytes)} used</strong><em>{usedPercent}% · {bytes(status.storage.availableBytes)} available</em></span></div>
+      <div><StatusSuccessIcon /><span><small>Forecast</small><strong>{status.storage.forecastDays === undefined ? 'Unavailable' : `${status.storage.forecastDays} days`}</strong><em>{status.storage.state}</em></span></div>
     </div>
     <div className="portico-dvr-columns">
-      <section><header><h3>Tuners</h3><span>{status.tuners.length}</span></header>{status.tuners.length === 0 ? <div className="portico-status-empty compact"><Antenna /><span><strong>No tuners reported</strong><p>The server did not return tuner inventory.</p></span></div> : <div className="portico-dvr-tuner-list">{status.tuners.map((tuner) => <div key={tuner.id}><span className={tuner.state}><RadioTower /></span><span><strong>{tuner.name}</strong><small>{tuner.state}{tuner.channelId ? ` · channel ${tuner.channelId}` : ''}</small></span></div>)}</div>}</section>
-      <section><header><h3>Conflicts</h3><span>{status.conflicts.length}</span></header>{status.conflicts.length === 0 ? <div className="portico-status-empty compact healthy"><CheckCircle2 /><span><strong>No recording conflicts</strong><p>Current recording windows fit available tuners.</p></span></div> : <div className="portico-dvr-conflict-list">{status.conflicts.map((conflict) => <div key={conflict.id}><AlertTriangle /><span><strong>{requestError({ messageId: conflict.messageId, details: { capacity: conflict.capacity, demand: conflict.demand } }, 'dvr.conflict', { capacity: conflict.capacity, demand: conflict.demand })}</strong><small>{timeLabel(conflict.startsAt)}–{timeLabel(conflict.endsAt)} · {conflict.recordingIds.length} recordings</small></span></div>)}</div>}</section>
+      <section><header><h3>Tuners</h3><span>{status.tuners.length}</span></header>{status.tuners.length === 0 ? <div className="portico-status-empty compact"><DeviceNetworkIcon /><span><strong>No tuners reported</strong><p>The server did not return tuner inventory.</p></span></div> : <div className="portico-dvr-tuner-list">{status.tuners.map((tuner) => <div key={tuner.id}><span className={tuner.state}><StatusLiveIcon /></span><span><strong>{tuner.name}</strong><small>{tuner.state}{tuner.channelId ? ` · channel ${tuner.channelId}` : ''}</small></span></div>)}</div>}</section>
+      <section><header><h3>Conflicts</h3><span>{status.conflicts.length}</span></header>{status.conflicts.length === 0 ? <div className="portico-status-empty compact healthy"><StatusSuccessIcon /><span><strong>No recording conflicts</strong><p>Current recording windows fit available tuners.</p></span></div> : <div className="portico-dvr-conflict-list">{status.conflicts.map((conflict) => <div key={conflict.id}><StatusWarningIcon /><span><strong>{requestError({ messageId: conflict.messageId, details: { capacity: conflict.capacity, demand: conflict.demand } }, 'dvr.conflict', { capacity: conflict.capacity, demand: conflict.demand })}</strong><small>{timeLabel(conflict.startsAt)}–{timeLabel(conflict.endsAt)} · {conflict.recordingIds.length} recordings</small></span></div>)}</div>}</section>
     </div>
   </SettingsGroup>;
 }

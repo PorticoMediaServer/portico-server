@@ -3,24 +3,7 @@ import type {
   PlaybackSession,
   RemoteAccessStatus,
 } from "@porticomediaserver/client-core";
-import {
-  Activity,
-  AlertTriangle,
-  CheckCircle2,
-  ChevronDown,
-  CircleOff,
-  Cpu,
-  Gauge,
-  Globe2,
-  HardDrive,
-  MemoryStick,
-  Network,
-  Play,
-  RefreshCw,
-  ShieldCheck,
-  Square,
-  Wifi,
-} from "#portico-icons";
+import { PlaybackTechnicalStatsIcon, StatusWarningIcon, StatusSuccessIcon, NavigationExpandIcon, StatusErrorIcon, PlaybackQualityIcon, DeviceNetworkIcon, DeviceStorageIcon, PlaybackPlayIcon, ActionRefreshIcon, StatusSecureIcon, StatusActiveIcon, DeviceWifiIcon } from "#portico-icons";
 import { useMemo, useState } from "react";
 import { reviewedProductErrorText } from "../../components/ProductLanguage";
 import { Link } from "react-router-dom";
@@ -170,7 +153,7 @@ function TelemetryStatusRow({
 }: {
   label: string;
   metric: TelemetryPresentation;
-  icon: typeof Cpu;
+  icon: typeof PlaybackTechnicalStatsIcon;
   testId: string;
 }) {
   return (
@@ -257,7 +240,7 @@ function ResourceLedger({ snapshot }: { snapshot: SettingsStatusSnapshot }) {
   return (
     <section className="portico-resource-ledger" aria-label="Server resources">
       <div data-testid="server-resource-cpu">
-        <Cpu />
+        <PlaybackTechnicalStatsIcon />
         <span>
           <small>CPU</small>
           <TelemetryReadout
@@ -271,14 +254,14 @@ function ResourceLedger({ snapshot }: { snapshot: SettingsStatusSnapshot }) {
         </span>
       </div>
       <div data-testid="server-resource-memory">
-        <MemoryStick />
+        <DeviceStorageIcon />
         <span>
           <small>Memory</small>
           <TelemetryReadout metric={memory} okDetail={memoryDetail} />
         </span>
       </div>
       <div>
-        <HardDrive />
+        <DeviceStorageIcon />
         <span>
           <small>Portico data</small>
           <strong>{bytes(snapshot.storage?.totalBytes)}</strong>
@@ -290,7 +273,7 @@ function ResourceLedger({ snapshot }: { snapshot: SettingsStatusSnapshot }) {
         </span>
       </div>
       <div>
-        <Network />
+        <DeviceNetworkIcon />
         <span>
           <small>Outbound</small>
           <strong>
@@ -371,25 +354,25 @@ function GPUTelemetry({ snapshot }: { snapshot: SettingsStatusSnapshot }) {
         <TelemetryStatusRow
           label="Usage"
           metric={usage}
-          icon={Cpu}
+          icon={PlaybackTechnicalStatsIcon}
           testId="gpu-telemetry-usage"
         />
         <TelemetryStatusRow
           label="Memory"
           metric={memory}
-          icon={MemoryStick}
+          icon={DeviceStorageIcon}
           testId="gpu-telemetry-memory"
         />
         <TelemetryStatusRow
           label="Encoder"
           metric={encoder}
-          icon={Gauge}
+          icon={PlaybackQualityIcon}
           testId="gpu-telemetry-encoder"
         />
         <TelemetryStatusRow
           label="Headroom"
           metric={headroom}
-          icon={Gauge}
+          icon={PlaybackQualityIcon}
           testId="gpu-telemetry-headroom"
         />
       </div>
@@ -440,7 +423,7 @@ function StreamRow({
       >
         <span className="portico-stream-title">
           <span className="portico-stream-art">
-            {artwork ? <img src={artwork} alt="" /> : <Play />}
+            {artwork ? <img src={artwork} alt="" /> : <PlaybackPlayIcon />}
           </span>
           <span>
             <strong>{stream.media.title}</strong>
@@ -468,7 +451,7 @@ function StreamRow({
           </small>
         </span>
         <span>{stream.bandwidthMbps.toFixed(1)} Mbps</span>
-        <ChevronDown />
+        <NavigationExpandIcon />
       </button>
       {expanded && (
         <div className="portico-stream-disclosure">
@@ -521,7 +504,7 @@ function StreamRow({
                   disabled={busy}
                   onClick={() => void stop()}
                 >
-                  <Square />
+                  <StatusActiveIcon />
                   {busy ? "Stopping…" : "Stop stream"}
                 </button>
               </>
@@ -531,7 +514,7 @@ function StreamRow({
                 className="button secondary portico-destructive-button"
                 onClick={() => setConfirming(true)}
               >
-                <Square /> Stop stream
+                <StatusActiveIcon /> Stop stream
               </button>
             )}
           </div>
@@ -570,7 +553,7 @@ function ActiveStreams({
       </header>
       {streams.length === 0 ? (
         <div className="portico-status-empty">
-          <CircleOff />
+          <StatusErrorIcon />
           <span>
             <strong>No active streams</strong>
             <p>Playback sessions will appear here while they are active.</p>
@@ -598,7 +581,7 @@ function ActiveStreams({
               }
               onStop={async () => {
                 try {
-                  await run((signal) => source.stopPlayback(stream.id, signal));
+                  await run((signal) => source.stopPlayback(stream, signal));
                 } finally {
                   onChanged();
                 }
@@ -637,7 +620,7 @@ function ConnectivityLedger({
       </header>
       <div className="portico-health-list">
         <div>
-          <Globe2 />
+          <DeviceNetworkIcon />
           <span>
             <strong>Public route</strong>
             <small>
@@ -653,7 +636,7 @@ function ConnectivityLedger({
           </b>
         </div>
         <div>
-          <ShieldCheck />
+          <StatusSecureIcon />
           <span>
             <strong>TLS certificate</strong>
             <small>
@@ -668,7 +651,7 @@ function ConnectivityLedger({
           </b>
         </div>
         <div>
-          <Wifi />
+          <DeviceWifiIcon />
           <span>
             <strong>Router mapping</strong>
             <small>
@@ -683,7 +666,7 @@ function ConnectivityLedger({
           </b>
         </div>
         <div>
-          <Gauge />
+          <PlaybackQualityIcon />
           <span>
             <strong>Hosted control plane</strong>
             <small>
@@ -729,7 +712,7 @@ function WorkLedger({ snapshot }: { snapshot: SettingsStatusSnapshot }) {
       </header>
       {jobs.length === 0 ? (
         <div className="portico-status-empty compact">
-          <Activity />
+          <PlaybackTechnicalStatsIcon />
           <span>
             <strong>No recent server work</strong>
             <p>Scans, backups, and maintenance jobs will appear here.</p>
@@ -740,7 +723,7 @@ function WorkLedger({ snapshot }: { snapshot: SettingsStatusSnapshot }) {
           {jobs.map((job) => (
             <div key={job.id}>
               <span className={`portico-job-state ${job.status}`}>
-                <Activity />
+                <PlaybackTechnicalStatsIcon />
               </span>
               <span>
                   <strong>{job.message || job.type.replaceAll("_", " ")}</strong>
@@ -776,7 +759,7 @@ function AlertsLedger({ snapshot }: { snapshot: SettingsStatusSnapshot }) {
         <div className="portico-alert-list">
           {alerts.map((alert) => (
             <div className={alert.level} key={alert.id}>
-              <AlertTriangle />
+              <StatusWarningIcon />
               <span>
                 <strong>{alert.title}</strong>
                 <small>
@@ -788,7 +771,7 @@ function AlertsLedger({ snapshot }: { snapshot: SettingsStatusSnapshot }) {
         </div>
       ) : (
         <div className="portico-status-empty compact healthy">
-          <CheckCircle2 />
+          <StatusSuccessIcon />
           <span>
             <strong>No action is required</strong>
             <p>Portico has not reported any active server alerts.</p>
@@ -836,7 +819,7 @@ export function StatusDashboard({
         className={`portico-status-command ${health.healthy ? "healthy" : "warn"}`}
       >
         <div>
-          {health.healthy ? <CheckCircle2 /> : <AlertTriangle />}
+          {health.healthy ? <StatusSuccessIcon /> : <StatusWarningIcon />}
           <span>
             <strong>{statusHeadline}</strong>
             <small>
@@ -864,7 +847,7 @@ export function StatusDashboard({
                 );
             }}
           >
-            <RefreshCw
+            <ActionRefreshIcon
               className={checks.busy ? "portico-settings-spinner" : ""}
             />
             {checks.busy ? "Checking…" : "Run checks"}

@@ -29,6 +29,7 @@ import type {
   PlaybackPreparedResponse,
   PlaybackProgressAcknowledgement,
   PlaybackProgressInput,
+  PlaybackSessionStopInput,
   PlaybackRenegotiationRequest,
   PlaybackRepeatMode,
   PlaybackResponse,
@@ -98,7 +99,7 @@ export type LibraryNavigationPreferences = {
   pinnedLibraryIds: string[];
 };
 
-export type MediaKind = 'show' | 'movie' | 'season' | 'episode' | 'special' | 'artist' | 'album' | 'track' | 'collection' | 'playlist' | 'category' | 'author' | 'audiobook-series' | 'book' | 'chapter' | 'recording' | 'live-channel' | 'live-program' | 'person' | 'extra' | 'unsupported' | (string & Record<never, never>);
+export type MediaKind = 'show' | 'movie' | 'season' | 'episode' | 'artist' | 'album' | 'track' | 'collection' | 'playlist' | 'category' | 'author' | 'audiobook-series' | 'audiobook' | 'chapter' | 'recording' | 'live-channel' | 'live-program' | 'person' | 'extra' | 'unsupported' | (string & Record<never, never>);
 
 export type MediaProviderIdentity = {
   provider: string;
@@ -306,8 +307,7 @@ export type MediaItem = {
   title: string;
   subtitle: string;
   year: number;
-  type: 'show' | 'movie' | 'music';
-  kind: MediaKind;
+  entityKind: MediaKind;
   poster: string;
   backdrop: string;
   /** Role-keyed artwork preserved from the Product Contract wire model. */
@@ -321,7 +321,6 @@ export type MediaItem = {
   libraryId?: string;
   libraryName?: string;
   counts?: MediaHierarchyCounts;
-  entityKind?: string;
   actions?: string[];
   availability?: 'available' | 'partial' | 'unavailable';
   missing?: boolean;
@@ -385,7 +384,6 @@ export type HomeRow = {
   nextCursor?: string | null;
   endpoint?: string;
   explanation?: string;
-  controls?: Array<'hide' | 'reorder' | 'pin'>;
   required?: boolean;
   hideable?: boolean;
   reorderable?: boolean;
@@ -560,47 +558,6 @@ export type AuthCapabilities = {
   serverFriendlyName: string;
   publicUserPickerEnabled: boolean;
   visibleUsers: Array<{ id: string; displayName: string }>;
-};
-
-export type BrowsePivot = {
-  id: string;
-  label: string;
-  entityKinds: string[];
-  defaultView: string;
-  supportedViews: string[];
-  browseSupported: boolean;
-  endpointTemplate: string;
-};
-
-export type BrowseSortOption = {
-  id: string;
-  label: string;
-  defaultDirection: 'asc' | 'desc';
-};
-
-export type LibraryCapabilities = {
-  apiVersion: 'v1';
-  pivots: BrowsePivot[];
-  sorts: BrowseSortOption[];
-  actions: string[];
-};
-
-export type LibraryBrowseInput = {
-  kind: LibraryKind;
-  pivot: string;
-  filter: string;
-  sort: string;
-  direction: 'ascending' | 'descending';
-  search?: string;
-};
-
-export type LibraryBrowseResult = {
-  items: MediaItem[];
-  total: number;
-  libraryId?: string;
-  nextCursor?: string | null;
-  hasMore?: boolean;
-  capabilities?: LibraryCapabilities;
 };
 
 export type SearchResult = MediaItem;
@@ -850,7 +807,6 @@ export interface PorticoDataSource {
   libraryNavigation(signal: AbortSignal): Promise<LibraryNavigationPreferences>;
   updateLibraryNavigation(pinnedLibraryIds: string[], signal: AbortSignal): Promise<LibraryNavigationPreferences>;
   libraries(signal: AbortSignal): Promise<LibrarySummary[]>;
-  browseLibrary(input: LibraryBrowseInput, signal: AbortSignal): Promise<LibraryBrowseResult>;
   search(query: string, signal: AbortSignal, limit?: number): Promise<SearchResult[]>;
   searchPage(input: SearchPageInput, signal: AbortSignal): Promise<SearchPageResult>;
   searchHistory(signal: AbortSignal): Promise<SearchHistoryItem[]>;
@@ -902,7 +858,7 @@ export interface PorticoDataSource {
   touchPlayback(sessionId: string, event: PlaybackProgressInput, signal?: AbortSignal, keepalive?: boolean): Promise<PlaybackProgressAcknowledgement>;
   renewPlaybackMediaGrant(sessionId: string, signal: AbortSignal): Promise<MediaGrant>;
   renegotiatePlayback(sessionId: string, request: PlaybackRenegotiationRequest, signal: AbortSignal): Promise<PlaybackResponse>;
-  stopPlayback(sessionId: string, signal?: AbortSignal, keepalive?: boolean): Promise<void>;
+  stopPlayback(sessionId: string, request: PlaybackSessionStopInput, signal?: AbortSignal, keepalive?: boolean): Promise<void>;
   playbackSessionQueue(sessionId: string, signal: AbortSignal): Promise<PlaybackSessionQueueResponse>;
   updatePlaybackSessionQueue(sessionId: string, request: PlaybackSessionQueueReplaceRequest, signal: AbortSignal): Promise<PlaybackSessionQueueResponse>;
   mutatePlaybackSessionQueue(sessionId: string, request: PlaybackSessionQueueRequest, signal: AbortSignal): Promise<PlaybackSessionQueueResponse>;

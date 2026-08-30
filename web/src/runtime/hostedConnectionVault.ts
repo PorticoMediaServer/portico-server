@@ -10,9 +10,10 @@ import {
 	type TrustedServerConnectionRecord,
 	type TrustedServerRemovalTombstone,
 } from '@porticomediaserver/client-core';
+import { secureRandomUUID } from './secureRandomUUID';
 
-const DATABASE_NAME = 'portico-hosted-web';
-const DATABASE_VERSION = 3;
+const DATABASE_NAME = 'portico-hosted-web-canonical-v1';
+const DATABASE_VERSION = 1;
 const ACCOUNTS_STORE = 'accounts';
 const CONNECTIONS_STORE = 'connections';
 const METADATA_STORE = 'metadata';
@@ -66,8 +67,8 @@ export interface HostedConnectionVaultStorage {
   delete(storeName: string, key: IDBValidKey): Promise<void>;
   getAll<T>(storeName: string): Promise<T[]>;
   /** Production storage implements these operations in one read/write transaction. */
-  compareAndSwapConnection?(key: string, expectedVersion: number, value: StoredConnection): Promise<boolean>;
-  replaceConnectionWithTombstone?(key: string, value: StoredConnectionTombstone): Promise<void>;
+  compareAndSwapConnection(key: string, expectedVersion: number, value: StoredConnection): Promise<boolean>;
+  replaceConnectionWithTombstone(key: string, value: StoredConnectionTombstone): Promise<void>;
 }
 
 export interface HostedConnectionVault extends TrustedServerConnectionAdapter {
@@ -133,14 +134,6 @@ export function createHostedConnectionVault(
   options: { persistCredentials?: boolean } = {},
 ): HostedConnectionVault {
   const persistCredentials = options.persistCredentials ?? true;
-  const mutationQueues = new Map<string, Promise<unknown>>();
-  const serialMutation = <T,>(key: string, operation: () => Promise<T>): Promise<T> => {
-    const previous = mutationQueues.get(key) ?? Promise.resolve();
-    const next = previous.catch(() => undefined).then(operation);
-    mutationQueues.set(key, next);
-    void next.finally(() => { if (mutationQueues.get(key) === next) mutationQueues.delete(key); }).catch(() => undefined);
-    return next;
-  };
   const remove = async (accountId: string, serverId: string) => {
     await storage.delete(CONNECTIONS_STORE, connectionKey(accountId, serverId));
   };
@@ -152,16 +145,7 @@ export function createHostedConnectionVault(
       await remove(accountId, serverId);
       return undefined;
     }
-    if (!persistCredentials && stored.record) {
-      // Scrub legacy durable records on sight. Their reusable access/refresh
-      // credentials are never returned to a fresh browser process.
-      await storage.put<StoredConnection>(CONNECTIONS_STORE, {
-        ...stored,
-        metadata: stored.metadata ?? connectionMetadata(stored.record),
-        record: undefined,
-      });
-      return undefined;
-    }
+    if (!persistCredentials) return undefined;
     return stored.record;
   };
 
@@ -176,14 +160,7 @@ export function createHostedConnectionVault(
         await remove(stored.accountId, stored.serverId);
         return;
       }
-      if (!persistCredentials && stored.record) {
-        await storage.put<StoredConnection>(CONNECTIONS_STORE, {
-          ...stored,
-          metadata: stored.metadata ?? connectionMetadata(stored.record),
-          record: undefined,
-        });
-        return;
-      }
+      if (!persistCredentials) return;
       if (stored.record) matches.push(stored.record);
     }));
     return matches.sort((left, right) => Date.parse(right.lastSuccessfulConnectionAt) - Date.parse(left.lastSuccessfulConnectionAt));
@@ -191,6 +168,7 @@ export function createHostedConnectionVault(
 
   return {
     persistencePolicy: persistCredentials ? 'saved-session' : 'reauthorize-on-start',
+    ready: async () => {},
     durability: () => 'durable',
     load,
     save: async (record) => {
@@ -213,25 +191,12 @@ export function createHostedConnectionVault(
         metadata: connectionMetadata(record),
         record: persistCredentials ? record : undefined,
       };
-      if (storage.compareAndSwapConnection) return storage.compareAndSwapConnection(key, expectedVersion, value);
-      return serialMutation(key, async () => {
-        const current = await storage.get<StoredConnectionEntry>(CONNECTIONS_STORE, key);
-        const currentVersion = current
-          ? isConnectionTombstone(current) ? current.mutationVersion : (current.record?.mutationVersion ?? current.metadata.mutationVersion ?? 0)
-          : 0;
-        if (currentVersion !== expectedVersion) return false;
-        await storage.put(CONNECTIONS_STORE, value);
-        return true;
-      });
+      return storage.compareAndSwapConnection(key, expectedVersion, value);
     },
     removeWithTombstone: async (tombstone) => {
       const key = connectionKey(tombstone.accountId, tombstone.serverId);
       const value: StoredConnectionTombstone = { ...tombstone, key, kind: 'removal-tombstone' };
-      if (storage.replaceConnectionWithTombstone) {
-        await storage.replaceConnectionWithTombstone(key, value);
-        return;
-      }
-      await serialMutation(key, () => storage.put(CONNECTIONS_STORE, value));
+      await storage.replaceConnectionWithTombstone(key, value);
     },
     loadRemovalTombstone: async (accountId, serverId) => {
       const stored = await storage.get<StoredConnectionEntry>(CONNECTIONS_STORE, connectionKey(accountId, serverId));
@@ -248,7 +213,7 @@ export function createHostedConnectionVault(
     installationId: async () => {
       const existing = await storage.get<StoredMetadata>(METADATA_STORE, INSTALLATION_ID_KEY);
       if (typeof existing?.value === 'string' && existing.value) return existing.value;
-      const value = globalThis.crypto?.randomUUID?.() ?? `web-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const value = `web-${secureRandomUUID()}`;
       await storage.put<StoredMetadata>(METADATA_STORE, { key: INSTALLATION_ID_KEY, value });
       return value;
     },
@@ -399,18 +364,11 @@ export function createIndexedDBHostedConnectionVault(factory: IDBFactory = index
     if (!databasePromise) {
       databasePromise = new Promise<IDBDatabase>((resolve, reject) => {
         const request = factory.open(DATABASE_NAME, DATABASE_VERSION);
-        request.addEventListener('upgradeneeded', (event) => {
+        request.addEventListener('upgradeneeded', () => {
           const db = request.result;
           if (!db.objectStoreNames.contains(ACCOUNTS_STORE)) db.createObjectStore(ACCOUNTS_STORE, { keyPath: 'accountId' });
           if (!db.objectStoreNames.contains(CONNECTIONS_STORE)) db.createObjectStore(CONNECTIONS_STORE, { keyPath: 'key' });
           if (!db.objectStoreNames.contains(METADATA_STORE)) db.createObjectStore(METADATA_STORE, { keyPath: 'key' });
-          // Version 2 keyed automatic profile trust by installation ID. Installation
-          // metadata is no longer authorization proof, so discard only those old
-          // trust records and let the user establish fresh account/server/profile
-          // trust. Installation-scoped launch preferences remain untouched.
-          if ((event as IDBVersionChangeEvent).oldVersion < 3 && db.objectStoreNames.contains(PROFILE_TRUSTS_STORE)) {
-            db.deleteObjectStore(PROFILE_TRUSTS_STORE);
-          }
           if (!db.objectStoreNames.contains(PROFILE_TRUSTS_STORE)) db.createObjectStore(PROFILE_TRUSTS_STORE, { keyPath: 'key' });
         });
         request.addEventListener('success', () => resolve(request.result), { once: true });
@@ -451,7 +409,7 @@ export function createIndexedDBHostedConnectionVault(factory: IDBFactory = index
         request.addEventListener('success', () => {
           const current = request.result;
           const currentVersion = current
-            ? isConnectionTombstone(current) ? current.mutationVersion : (current.record?.mutationVersion ?? current.metadata.mutationVersion ?? 0)
+            ? isConnectionTombstone(current) ? current.mutationVersion : current.metadata.mutationVersion
             : 0;
           if (currentVersion !== expectedVersion) {
             resolve(false);
@@ -496,7 +454,7 @@ function createMemoryVaultStorage(): HostedConnectionVaultStorage {
     compareAndSwapConnection: async (key, expectedVersion, value) => {
       const current = store(CONNECTIONS_STORE).get(keyFor(key)) as StoredConnectionEntry | undefined;
       const currentVersion = current
-        ? isConnectionTombstone(current) ? current.mutationVersion : (current.record?.mutationVersion ?? current.metadata.mutationVersion ?? 0)
+        ? isConnectionTombstone(current) ? current.mutationVersion : current.metadata.mutationVersion
         : 0;
       if (currentVersion !== expectedVersion) return false;
       store(CONNECTIONS_STORE).set(keyFor(key), value);
@@ -566,6 +524,7 @@ export function createBrowserHostedConnectionVaultWithDurableMetadata(indexed: H
   };
   return {
     persistencePolicy: 'reauthorize-on-start',
+    ready: async () => { await indexed.ready(); },
     // Healthy restart metadata is durable even though the explicit policy
     // requires Hosted reauthorization to mint a new server credential family.
     durability: () => durableMetadata ? 'durable' : 'memory-only',
@@ -576,13 +535,11 @@ export function createBrowserHostedConnectionVaultWithDurableMetadata(indexed: H
     list: async (accountId) => {
       const active = await memory.list(accountId);
       if (active.length > 0) return active;
-      await indexed.list(accountId); // Scrubs any legacy durable credential payloads.
       return [];
     },
     load: async (accountId, serverId) => {
       const active = await memory.load(accountId, serverId);
       if (active) return active;
-      await indexed.load(accountId, serverId); // Scrubs and deliberately ignores legacy credentials.
       return undefined;
     },
     save: saveCredentialWithAuxiliaryMetadata,

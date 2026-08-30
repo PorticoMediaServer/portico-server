@@ -1,4 +1,4 @@
-import { AlertTriangle, Check, KeyRound, RefreshCw, RotateCcw, Save, X } from '#portico-icons';
+import { StatusWarningIcon, ActionConfirmIcon, AccountSecurityIcon, ActionRefreshIcon, ActionResetIcon, ActionCloseIcon } from '#portico-icons';
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PrimaryButton, SecondaryButton } from '../../components/controls/Buttons';
@@ -65,8 +65,8 @@ export type SecretChange = { remove?: boolean; replacement?: string } | undefine
 export function SecretControl({ label, present, value, onChange, disabled = false }: { label: string; present: boolean; value: SecretChange; onChange: (value: SecretChange) => void; disabled?: boolean }) {
   const [editing, setEditing] = useState(Boolean(value?.replacement));
   const replacement = value?.replacement ?? '';
-  if (editing) return <div className="portico-secret-editor"><TextControl label={label} type="password" value={replacement} disabled={disabled} placeholder="Enter replacement" onChange={(next) => onChange(next ? { replacement: next } : undefined)} /><button type="button" aria-label={`Cancel ${label} replacement`} disabled={disabled} onClick={() => { setEditing(false); onChange(undefined); }}><X /></button></div>;
-  return <div className="portico-secret-state"><span className={present && !value?.remove ? 'present' : ''}><KeyRound />{value?.remove ? 'Will be removed' : present ? 'Configured' : 'Not configured'}</span><SecondaryButton disabled={disabled} onClick={() => { setEditing(true); onChange(undefined); }}>{present ? 'Replace' : 'Add'}</SecondaryButton>{present && !value?.remove && <button type="button" className="portico-text-button danger" disabled={disabled} onClick={() => onChange({ remove: true })}>Remove</button>}{value?.remove && <button type="button" className="portico-text-button" disabled={disabled} onClick={() => onChange(undefined)}>Undo</button>}</div>;
+  if (editing) return <div className="portico-secret-editor"><TextControl label={label} type="password" value={replacement} disabled={disabled} placeholder="Enter replacement" onChange={(next) => onChange(next ? { replacement: next } : undefined)} /><button type="button" aria-label={`Cancel ${label} replacement`} disabled={disabled} onClick={() => { setEditing(false); onChange(undefined); }}><ActionCloseIcon /></button></div>;
+  return <div className="portico-secret-state"><span className={present && !value?.remove ? 'present' : ''}><AccountSecurityIcon />{value?.remove ? 'Will be removed' : present ? 'Configured' : 'Not configured'}</span><SecondaryButton disabled={disabled} onClick={() => { setEditing(true); onChange(undefined); }}>{present ? 'Replace' : 'Add'}</SecondaryButton>{present && !value?.remove && <button type="button" className="portico-text-button danger" disabled={disabled} onClick={() => onChange({ remove: true })}>Remove</button>}{value?.remove && <button type="button" className="portico-text-button" disabled={disabled} onClick={() => onChange(undefined)}>Undo</button>}</div>;
 }
 
 export function ReadOnlyValue({ children, tone }: { children: ReactNode; tone?: 'healthy' | 'warn' | 'danger' }) {
@@ -154,13 +154,13 @@ export function SettingsSaveCoordinator({ children }: { children: ReactNode }) {
   return <SaveCoordinatorContext.Provider value={coordinator}>
     {children}
     {entries.length > 0 && <div className="portico-settings-save-bar portico-settings-page-save">
-      <div aria-live="polite" className={errors.length ? 'error' : ''}>{errors.length ? <><AlertTriangle />{errors[0]}</> : dirty ? 'Unsaved changes' : null}</div>
-      {dirty && <SecondaryButton disabled={busy} onClick={() => entries.forEach((entry) => entry.dirty && entry.onReset())}><RotateCcw /> Reset</SecondaryButton>}
-      <PrimaryButton disabled={!dirty || busy} onClick={() => void saveAll()}>{busy ? <><RefreshCw className="portico-settings-spinner" /> Saving…</> : <><Save /> Save changes</>}</PrimaryButton>
+      <div aria-live="polite" className={errors.length ? 'error' : ''}>{errors.length ? <><StatusWarningIcon />{errors[0]}</> : dirty ? 'Unsaved changes' : null}</div>
+      {dirty && <SecondaryButton disabled={busy} onClick={() => entries.forEach((entry) => entry.dirty && entry.onReset())}><ActionResetIcon /> Reset</SecondaryButton>}
+      <PrimaryButton disabled={!dirty || busy} onClick={() => void saveAll()}>{busy ? <><ActionRefreshIcon className="portico-settings-spinner" /> Saving…</> : <><ActionConfirmIcon /> Save changes</>}</PrimaryButton>
     </div>}
-    {showSaved && errors.length === 0 && <div className="portico-settings-saved-toast" role="status" aria-live="polite"><Check /> Settings Saved</div>}
+    {showSaved && errors.length === 0 && <div className="portico-settings-saved-toast" role="status" aria-live="polite"><ActionConfirmIcon /> Settings Saved</div>}
     {(pendingDestination || blockedNavigation) && <ModalOverlay className="portico-settings-dialog portico-settings-unsaved-dialog" labelledBy="settings-unsaved-title" describedBy="settings-unsaved-description" onDismiss={stayOnCurrentSettings}>
-        <div><AlertTriangle /><h2 id="settings-unsaved-title">Unsaved settings</h2><p id="settings-unsaved-description">Save or discard your changes before opening another settings section.</p></div>
+        <div><StatusWarningIcon /><h2 id="settings-unsaved-title">Unsaved settings</h2><p id="settings-unsaved-description">Save or discard your changes before opening another settings section.</p></div>
         <footer>
           <SecondaryButton disabled={busy} onClick={stayOnCurrentSettings}>Stay</SecondaryButton>
           <SecondaryButton disabled={busy} onClick={() => { entries.forEach((entry) => entry.dirty && entry.onReset()); const destination = pendingDestination; const blocked = blockedNavigation; setBlockedNavigation(undefined); setPendingDestination(undefined); if (blocked) blocked.proceed(); else if (destination) navigate(destination); }}>Discard</SecondaryButton>
@@ -185,20 +185,20 @@ export function SaveBar(props: { dirty: boolean; busy: boolean; feedback?: strin
     const timer = window.setTimeout(() => setShowSaved(false), 2800);
     return () => window.clearTimeout(timer);
   }, [feedback]);
-  if (coordinator) return error ? <div className="portico-settings-inline-save-error" role="alert"><AlertTriangle />{error}</div> : null;
+  if (coordinator) return error ? <div className="portico-settings-inline-save-error" role="alert"><StatusWarningIcon />{error}</div> : null;
   return <><div className="portico-settings-save-bar">
-    <div aria-live="polite" className={error ? 'error' : ''}>{error ? <><AlertTriangle />{error}</> : dirty ? 'Unsaved changes' : null}</div>
-    {dirty && <SecondaryButton disabled={busy} onClick={onReset}><RotateCcw /> Reset</SecondaryButton>}
-    <PrimaryButton disabled={!dirty || busy} onClick={onSave}>{busy ? <><RefreshCw className="portico-settings-spinner" /> Saving…</> : <><Save /> Save changes</>}</PrimaryButton>
-  </div>{showSaved && !error && <div className="portico-settings-saved-toast" role="status" aria-live="polite"><Check /> Settings Saved</div>}</>;
+    <div aria-live="polite" className={error ? 'error' : ''}>{error ? <><StatusWarningIcon />{error}</> : dirty ? 'Unsaved changes' : null}</div>
+    {dirty && <SecondaryButton disabled={busy} onClick={onReset}><ActionResetIcon /> Reset</SecondaryButton>}
+    <PrimaryButton disabled={!dirty || busy} onClick={onSave}>{busy ? <><ActionRefreshIcon className="portico-settings-spinner" /> Saving…</> : <><ActionConfirmIcon /> Save changes</>}</PrimaryButton>
+  </div>{showSaved && !error && <div className="portico-settings-saved-toast" role="status" aria-live="polite"><ActionConfirmIcon /> Settings Saved</div>}</>;
 }
 
 export function SettingsLoading({ label = 'Loading settings' }: { label?: string }) {
-  return <div className="portico-settings-state" aria-live="polite" aria-busy="true"><RefreshCw className="portico-settings-spinner" /><strong>{label}</strong></div>;
+  return <div className="portico-settings-state" aria-live="polite" aria-busy="true"><ActionRefreshIcon className="portico-settings-spinner" /><strong>{label}</strong></div>;
 }
 
 export function SettingsError({ title, message, onRetry }: { title: string; message: string; onRetry?: () => void }) {
-  return <div className="portico-settings-state error" role="alert"><AlertTriangle /><strong>{title}</strong><p>{message}</p>{onRetry && <SecondaryButton onClick={onRetry}><RefreshCw /> {productText('action.retry')}</SecondaryButton>}</div>;
+  return <div className="portico-settings-state error" role="alert"><StatusWarningIcon /><strong>{title}</strong><p>{message}</p>{onRetry && <SecondaryButton onClick={onRetry}><ActionRefreshIcon /> {productText('action.retry')}</SecondaryButton>}</div>;
 }
 
 export function InlineNotice({ children, tone = 'info', action }: { children: ReactNode; tone?: 'info' | 'success' | 'warn' | 'error'; action?: ReactNode }) {

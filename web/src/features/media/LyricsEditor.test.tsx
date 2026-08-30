@@ -26,7 +26,9 @@ describe('LyricsEditor', () => {
     fireEvent.change(document.querySelector('.technical-file-input')!, { target: { files: [file] } });
     await waitFor(() => expect(actions.onUpload).toHaveBeenCalledWith(file, 'en'));
 
-    fireEvent.click(screen.getByRole('button', { name: 'Find automatically' }));
+    const findAutomatically = screen.getByRole('button', { name: 'Find automatically' });
+    await waitFor(() => expect(findAutomatically).toBeEnabled());
+    fireEvent.click(findAutomatically);
     await waitFor(() => expect(actions.onFetch).toHaveBeenCalledTimes(1));
 
     fireEvent.click(screen.getByRole('button', { name: 'Search' }));

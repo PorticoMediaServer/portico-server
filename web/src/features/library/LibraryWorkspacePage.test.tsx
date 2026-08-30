@@ -38,15 +38,14 @@ function item(id: string, title: string): MediaItem {
     title,
     subtitle: 'Movie',
     year: 2026,
-    type: 'movie',
-    kind: 'movie',
+    entityKind: 'movie',
     poster: '/brand/portico-icon.svg',
     backdrop: '/brand/portico-icon.svg',
     rating: '8.0',
     length: '2h',
     genre: 'Drama',
     libraryId: library.id,
-    entityKind: 'movie',
+
     availability: 'available',
     actions: [],
   };

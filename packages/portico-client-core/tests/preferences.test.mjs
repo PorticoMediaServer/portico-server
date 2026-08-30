@@ -146,7 +146,6 @@ test("playback intent consumes the structured preference schema without a remote
     }
   };
   assert.deepEqual(playbackIntentFromPreferences(preferences, "cellular", policy, portablePreferences), {
-    networkClass: "cellular",
     transportClass: "cellular",
     qualityProfile: "data_saver",
     directPlayPolicy: "allow",

@@ -10,6 +10,32 @@ import (
 func fullEvidence(b Backend, os OS, vendor DeviceVendor) *VerifiedEvidence {
 	return &VerifiedEvidence{Complete: true, Executable: true, Backend: b, OS: os, Vendor: vendor, DeviceIdentity: "device-identity", BinaryFingerprint: "ffmpeg-sha256", ProbeRevision: "w5-v1", Decode: []Codec{H264, HEVC, AV1}, Encode: []Codec{H264, HEVC, AV1}, BitDepths: []int{8, 10}, PixelFormats: []PixelFormat{YUV420P, NV12, YUV420P10LE, P010LE}, HardwareStages: []Operation{Decode, Scale, Deinterlace, ToneMap, Encode}, SoftwareStages: []Operation{Scale, Deinterlace, ToneMap, SubtitleBurn}, CrossoverStages: []Operation{Upload, Download}}
 }
+
+func TestVideoToolboxPlanSealsTenToEightBitSoftwareFormatConversion(t *testing.T) {
+	r := verifiedRequest(VideoToolbox, Darwin, Apple)
+	r.InputCodec = HEVC
+	r.InputBitDepth = 10
+	r.InputPixelFormat = YUV420P10LE
+	r.OutputCodec = H264
+	r.OutputBitDepth = 8
+	r.OutputPixelFormat = YUV420P
+	p, err := PlanPipeline(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Filter != "format=yuv420p" {
+		t.Fatalf("filter = %q, want explicit 8-bit software conversion", p.Filter)
+	}
+	found := false
+	for _, stage := range p.Stages {
+		if stage.Operation == Scale && stage.Execution == Software && len(stage.Args) == 1 && stage.Args[0] == "format=yuv420p" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("software format stage missing from %#v", p.Stages)
+	}
+}
 func verifiedRequest(b Backend, os OS, vendor DeviceVendor) Request {
 	path := ""
 	if b == VAAPI {
@@ -88,11 +114,11 @@ func TestPlanPipelineGolden(t *testing.T) {
 		output []string
 		stages []Operation
 	}{
-		{"videotoolbox", vt, []string{"-hwaccel", "videotoolbox", "-hwaccel_output_format", "videotoolbox_vld"}, "hwdownload,format=yuv420p10le,zscale=transfer=linear,tonemap=mobius,zscale=transfer=bt709:primaries=bt709:matrix=bt709,scale=1920:1080,format=nv12,hwupload", []string{"-c:v", "h264_videotoolbox", "-pix_fmt", "yuv420p"}, []Operation{Decode, Download, ToneMap, Scale, Upload, Encode}},
+		{"videotoolbox", vt, []string{"-hwaccel", "videotoolbox"}, "zscale=transfer=linear,tonemap=mobius,zscale=transfer=bt709:primaries=bt709:matrix=bt709,scale=1920:1080,format=yuv420p", []string{"-c:v", "h264_videotoolbox", "-pix_fmt", "yuv420p"}, []Operation{Decode, Download, ToneMap, Scale, Scale, Encode}},
 		{"qsv", qsv, []string{"-init_hw_device", "vaapi=portico_vaapi:/dev/dri/renderD129", "-init_hw_device", "qsv=portico_hw@portico_vaapi", "-filter_hw_device", "portico_hw", "-hwaccel", "qsv", "-hwaccel_output_format", "qsv"}, "scale_qsv=3840:2160", []string{"-c:v", "hevc_qsv", "-pix_fmt", "yuv420p10le"}, []Operation{Decode, Scale, Encode}},
-		{"vaapi", va, []string{"-init_hw_device", "vaapi=portico_hw:/dev/dri/renderD128", "-filter_hw_device", "portico_hw", "-hwaccel", "vaapi", "-hwaccel_output_format", "vaapi"}, "tonemap_vaapi=format=nv12,hwdownload,format=yuv420p,subtitles='/media/a\\:b\\'s.srt',format=nv12,hwupload", []string{"-c:v", "h264_vaapi", "-pix_fmt", "yuv420p"}, []Operation{Decode, ToneMap, Download, SubtitleBurn, Upload, Encode}},
+		{"vaapi", va, []string{"-init_hw_device", "vaapi=portico_hw:/dev/dri/renderD128", "-filter_hw_device", "portico_hw", "-hwaccel", "vaapi", "-hwaccel_output_format", "vaapi"}, "tonemap_vaapi=format=nv12,hwdownload,format=yuv420p,subtitles='/media/a\\:b\\'s.srt',format=yuv420p,format=nv12,hwupload", []string{"-c:v", "h264_vaapi", "-pix_fmt", "yuv420p"}, []Operation{Decode, ToneMap, Download, SubtitleBurn, Scale, Upload, Encode}},
 		{"nvidia", nv, []string{"-init_hw_device", "cuda=portico_hw:0", "-filter_hw_device", "portico_hw", "-hwaccel", "cuda", "-hwaccel_output_format", "cuda"}, "yadif_cuda", []string{"-c:v", "av1_nvenc", "-pix_fmt", "yuv420p"}, []Operation{Decode, Deinterlace, Encode}},
-		{"amf", amf, nil, "", []string{"-c:v", "hevc_amf", "-pix_fmt", "yuv420p10le"}, []Operation{Encode}},
+		{"amf", amf, nil, "format=yuv420p10le", []string{"-c:v", "hevc_amf", "-pix_fmt", "yuv420p10le"}, []Operation{Scale, Encode}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

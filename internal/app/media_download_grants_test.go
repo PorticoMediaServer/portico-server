@@ -234,7 +234,7 @@ func TestSourceDownloadPreparationIsDurableRangeSafeAndRemovable(t *testing.T) {
 		t.Fatalf("list source preparation status=%d body=%s list=%#v", status, body, listed)
 	}
 	var grant MediaDownloadGrantResponse
-	status, body = doJSON(t, client, http.MethodPost, serverURL+"/api/download-preparations/"+url.PathEscape(preparation.ID)+"/grant", nil, &grant)
+	status, body = doJSON(t, client, http.MethodPost, serverURL+"/api/download-preparations/"+url.PathEscape(preparation.ID)+"/grant", downloadPreparationGrantRequest{Delivery: "native"}, &grant)
 	if status != http.StatusCreated || grant.DownloadURL == "" {
 		t.Fatalf("create preparation grant status=%d body=%s grant=%#v", status, body, grant)
 	}
@@ -530,8 +530,13 @@ func seedDownloadGrantEpisodes(t *testing.T, db *sql.DB, sourcePath string) {
 
 func createDownloadGrantForTest(t *testing.T, client *http.Client, serverURL, mediaID, profile string) MediaDownloadGrantResponse {
 	t.Helper()
+	var preparation downloadPreparationView
+	status, body := doJSON(t, client, http.MethodPost, serverURL+"/api/download-preparations", DownloadPreparationCreateRequest{MediaID: mediaID, QualityProfile: profile}, &preparation)
+	if status != http.StatusCreated {
+		t.Fatalf("create download preparation status=%d body=%s", status, body)
+	}
 	var grant MediaDownloadGrantResponse
-	status, body := doJSON(t, client, http.MethodPost, serverURL+"/api/media/"+url.PathEscape(mediaID)+"/download-grants", MediaDownloadGrantRequest{Profile: profile}, &grant)
+	status, body = doJSON(t, client, http.MethodPost, serverURL+"/api/download-preparations/"+url.PathEscape(preparation.ID)+"/grant", downloadPreparationGrantRequest{Delivery: "browser"}, &grant)
 	if status != http.StatusCreated {
 		t.Fatalf("create download grant status=%d body=%s", status, body)
 	}

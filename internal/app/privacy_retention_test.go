@@ -277,11 +277,15 @@ func TestEndingPlaybackSessionRetainsClientAddressByDefault(t *testing.T) {
 	if err := db.QueryRow(`SELECT id FROM users LIMIT 1`).Scan(&userID); err != nil {
 		t.Fatalf("load user: %v", err)
 	}
+	var profileID string
+	if err := db.QueryRow(`SELECT id FROM profiles WHERE account_id = ? AND is_primary = 1`, userID).Scan(&profileID); err != nil {
+		t.Fatalf("load primary profile: %v", err)
+	}
 	now := time.Now().UTC().Format(time.RFC3339)
-	if _, err := db.Exec(`INSERT INTO playback_sessions (id, user_id, profile_id, media_id, media_type, title, started_at, last_seen_at, client_ip) VALUES ('end-address-test', ?, ?, 'movie-test', 'movie', 'Test', ?, ?, '203.0.113.40')`, userID, userID, now, now); err != nil {
+	if _, err := db.Exec(`INSERT INTO playback_sessions (id, user_id, profile_id, media_id, media_type, title, started_at, last_seen_at, client_ip) VALUES ('end-address-test', ?, ?, 'movie-test', 'movie', 'Test', ?, ?, '203.0.113.40')`, userID, profileID, now, now); err != nil {
 		t.Fatalf("insert playback: %v", err)
 	}
-	if err := server.endPlaybackSession(User{ID: userID}, "end-address-test"); err != nil {
+	if err := server.endPlaybackSession(User{ID: userID, AccountID: userID, ProfileID: profileID, ProfileIsPrimary: true}, "end-address-test"); err != nil {
 		t.Fatalf("end playback: %v", err)
 	}
 	assertStringValue(t, db, `SELECT client_ip FROM playback_sessions WHERE id = 'end-address-test'`, "203.0.113.40")

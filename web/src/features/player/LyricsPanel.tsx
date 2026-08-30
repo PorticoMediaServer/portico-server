@@ -1,4 +1,4 @@
-import { Mic2 } from '#portico-icons';
+import { CommunicationMicrophoneIcon } from '#portico-icons';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { activeLyricCueIndex, type LyricDocument } from './lyrics';
 
@@ -26,11 +26,11 @@ export function LyricsPanel({ document, currentTime }: { document: LyricDocument
     if (following) scrollToActive();
   }, [following, scrollToActive]);
 
-  if (!document.synchronized) return <div className="lyrics-plain" aria-label="Lyrics"><div className="lyrics-heading"><strong><Mic2 /> Lyrics</strong></div><p>{document.plainText}</p></div>;
+  if (!document.synchronized) return <div className="lyrics-plain" aria-label="Lyrics"><div className="lyrics-heading"><strong><CommunicationMicrophoneIcon /> Lyrics</strong></div><p>{document.plainText}</p></div>;
 
   const stopFollowing = () => setFollowing(false);
   return <div className="lyrics-synced">
-    <div className="lyrics-heading"><strong><Mic2 /> Lyrics</strong>{!following && <button type="button" aria-label="Follow current lyric" onClick={() => setFollowing(true)}>Follow</button>}</div>
+    <div className="lyrics-heading"><strong><CommunicationMicrophoneIcon /> Lyrics</strong>{!following && <button type="button" aria-label="Follow current lyric" onClick={() => setFollowing(true)}>Follow</button>}</div>
     <div
       ref={scrollerRef}
       className="lyrics-cues"

@@ -513,7 +513,11 @@ func (s *Server) publicViewerPreferenceIdentity(ctx context.Context, user User, 
 		return identity, nil
 	}
 
-	identity.AccountID, identity.ProfileID = s.publicViewerIdentityForUserContext(ctx, user, "portico")
+	var err error
+	identity.AccountID, identity.ProfileID, err = s.publicViewerIdentityForUserContext(ctx, user, "portico")
+	if err != nil {
+		return preferenceScopeIdentity{}, err
+	}
 	settings, err := s.loadSettingsContext(ctx)
 	if err != nil {
 		return preferenceScopeIdentity{}, err
@@ -563,35 +567,32 @@ func (s *Server) viewerPreferenceDefaults(ctx context.Context, user User, device
 	return result, nil
 }
 
-func defaultProfileServerValues(user User) profileServerPreferenceValues {
+func defaultProfileServerValues(_ User) profileServerPreferenceValues {
 	var result profileServerPreferenceValues
-	result.Localization.Locale = firstNonBlank(user.Preferences.Locale, "en-US")
-	result.Localization.TimeZone = firstNonBlank(user.Preferences.TimeZone, "UTC")
-	result.Localization.DateFormat = firstNonBlank(user.Preferences.DateFormat, "medium")
-	result.Localization.HourCycle = firstNonBlank(user.Preferences.HourCycle, "auto")
+	result.Localization.Locale = "en-US"
+	result.Localization.TimeZone = "UTC"
+	result.Localization.DateFormat = "medium"
+	result.Localization.HourCycle = "auto"
 	result.Home.RowOrder, result.Home.HiddenRowIDs = []string{}, []string{}
 	result.Playback.AutoplayNext = true
 	result.Playback.UpNextCountdownSeconds = 10
 	result.Playback.PassoutProtection = true
 	result.Playback.PassoutAfterEpisodes = 3
 	result.Playback.IntroSkip, result.Playback.CreditsSkip = "ask", "ask"
-	result.Playback.StartedThresholdPercent = defaultInt(user.Preferences.PlaybackProgress.StartedThresholdPercent, 5)
-	result.Playback.PlayedThresholdPercent = defaultInt(user.Preferences.PlaybackProgress.PlayedThresholdPercent, 95)
+	result.Playback.StartedThresholdPercent = 5
+	result.Playback.PlayedThresholdPercent = 95
 	result.Playback.SkipBackSeconds, result.Playback.SkipForwardSeconds = 10, 30
 	result.Playback.DefaultSpeed = 1
-	result.Playback.PreferredAudioLanguages = []string{firstNonBlank(user.Preferences.AudioLanguage, "original")}
+	result.Playback.PreferredAudioLanguages = []string{"original"}
 	result.Playback.PreferredSubtitleLanguages = []string{}
 	result.Playback.SubtitleSize, result.Playback.SubtitleBackground = "medium", "subtle"
 	result.Playback.ShowSyncedLyrics = true
-	result.Music.ShuffleDefault = user.Preferences.MusicPlayback.ShuffleDefault
-	result.Music.RepeatDefault = firstNonBlank(user.Preferences.MusicPlayback.RepeatDefault, "none")
-	result.Music.AutoplayDefault = user.Preferences.MusicPlayback.AutoplayDefault
-	result.Music.AudioNormalization = firstNonBlank(user.Preferences.MusicPlayback.NormalizationMode, "off")
-	result.Music.CrossfadeSeconds = user.Preferences.MusicPlayback.CrossfadeSeconds
-	result.Music.Gapless = user.Preferences.MusicPlayback.Gapless
-	result.Privacy.PauseWatchHistory = user.Preferences.Privacy.PauseWatchHistory
-	result.Privacy.ShowActivityToMembers = user.Preferences.Privacy.ShowActivityToMembers
-	result.Privacy.IncludeInWatchWithFriends = user.Preferences.Privacy.IncludeInWatchWithFriends
+	result.Music.RepeatDefault = "none"
+	result.Music.AutoplayDefault = true
+	result.Music.AudioNormalization = "off"
+	result.Music.Gapless = true
+	result.Privacy.ShowActivityToMembers = true
+	result.Privacy.IncludeInWatchWithFriends = true
 	result.Search.RememberHistory, result.Search.RecentQueries = true, []string{}
 	result.Downloads.Quality.Mode = "ask"
 	return result
@@ -776,11 +777,6 @@ func (s *Server) patchViewerPreferenceDocument(ctx context.Context, user User, s
 		if rows != 1 {
 			return errPreferenceConflict
 		}
-		if scope.Type == "profile-server" {
-			if err := syncProfileServerLegacyPreferencesTx(tx, scope, normalized, now); err != nil {
-				return err
-			}
-		}
 		result = preferenceDocument{Version: viewerPreferencesVersion, Revision: current.Revision + 1, Values: normalized}
 		return nil
 	})
@@ -837,58 +833,6 @@ func (s *Server) recordAuthoritativeProfileActivation(ctx context.Context, user 
 		return nil
 	})
 	return result, err
-}
-
-func syncProfileServerLegacyPreferencesTx(tx *sql.Tx, scope preferenceScope, raw json.RawMessage, now string) error {
-	var value profileServerPreferenceValues
-	if err := json.Unmarshal(raw, &value); err != nil {
-		return err
-	}
-	var legacyRaw string
-	var primary int
-	if err := tx.QueryRow(`SELECT preferences_json, is_primary FROM profiles WHERE id = ? AND account_id = ? AND disabled_at = ''`, scope.ProfileID, scope.AccountID).Scan(&legacyRaw, &primary); err != nil {
-		return err
-	}
-	legacy := map[string]any{}
-	if strings.TrimSpace(legacyRaw) != "" {
-		_ = json.Unmarshal([]byte(legacyRaw), &legacy)
-	}
-	legacy["locale"] = value.Localization.Locale
-	legacy["timeZone"] = value.Localization.TimeZone
-	legacy["dateFormat"] = value.Localization.DateFormat
-	legacy["hourCycle"] = value.Localization.HourCycle
-	if len(value.Playback.PreferredAudioLanguages) > 0 {
-		legacy["audioLanguage"] = value.Playback.PreferredAudioLanguages[0]
-	}
-	if len(value.Playback.PreferredSubtitleLanguages) > 0 {
-		legacy["subtitleLanguage"] = value.Playback.PreferredSubtitleLanguages[0]
-	} else {
-		legacy["subtitleLanguage"] = ""
-	}
-	legacy["playbackProgress"] = map[string]any{
-		"startedThresholdPercent": value.Playback.StartedThresholdPercent,
-		"playedThresholdPercent":  value.Playback.PlayedThresholdPercent,
-	}
-	legacy["musicPlayback"] = map[string]any{
-		"shuffleDefault": value.Music.ShuffleDefault, "repeatDefault": value.Music.RepeatDefault,
-		"autoplayDefault": value.Music.AutoplayDefault, "normalizationMode": value.Music.AudioNormalization,
-		"crossfadeSeconds": value.Music.CrossfadeSeconds, "gapless": value.Music.Gapless,
-	}
-	legacy["privacy"] = map[string]any{
-		"pauseWatchHistory": value.Privacy.PauseWatchHistory, "showActivityToMembers": value.Privacy.ShowActivityToMembers,
-		"includeInWatchWithFriends": value.Privacy.IncludeInWatchWithFriends,
-	}
-	encoded, err := json.Marshal(legacy)
-	if err != nil {
-		return err
-	}
-	if _, err := tx.Exec(`UPDATE profiles SET preferences_json = ?, updated_at = ? WHERE id = ? AND account_id = ?`, string(encoded), now, scope.ProfileID, scope.AccountID); err != nil {
-		return err
-	}
-	if primary == 1 {
-		_, err = tx.Exec(`UPDATE users SET preferences_json = ?, updated_at = ? WHERE id = ?`, string(encoded), now, scope.AccountID)
-	}
-	return err
 }
 
 func validatePreferenceReferencesTx(tx *sql.Tx, scope preferenceScope, raw json.RawMessage, availableLibraries map[string]bool) error {

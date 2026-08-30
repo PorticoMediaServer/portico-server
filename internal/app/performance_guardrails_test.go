@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
@@ -591,22 +592,6 @@ func TestWatchlistEndpointUsesDedicatedBoundedList(t *testing.T) {
 	}
 }
 
-func TestWatchlistRejectsDeepLegacyOffsets(t *testing.T) {
-	serverURL := newAuthTestServer(t)
-	jar, _ := cookiejar.New(nil)
-	client := &http.Client{Jar: jar}
-	loginUser(t, client, serverURL)
-
-	var response map[string]any
-	status, body := doJSON(t, client, http.MethodGet, serverURL+"/api/watchlist?limit=50&offset=5001", nil, &response)
-	if status != http.StatusBadRequest {
-		t.Fatalf("deep watchlist offset status=%d body=%s", status, body)
-	}
-	if response["code"] != "invalid_cursor" {
-		t.Fatalf("deep watchlist offset response = %#v", response)
-	}
-}
-
 func TestAdminListsSupportCursorPagination(t *testing.T) {
 	_, db, server := newDiscoveryTestServer(t, config.Config{})
 	createdAt := "2035-01-02T03:04:05Z"
@@ -808,38 +793,6 @@ func TestLibrarySourcesUseOpaqueCursorPagination(t *testing.T) {
 	}
 	if first.Items[0].ID == second.Items[0].ID || first.Items[1].ID == second.Items[0].ID {
 		t.Fatalf("source cursor repeated an item: first=%#v second=%#v", first.Items, second.Items)
-	}
-}
-
-func TestPlaybackHistoryRejectsDeepLegacyOffsets(t *testing.T) {
-	serverURL, _, _ := newDiscoveryTestServer(t, config.Config{})
-	jar, _ := cookiejar.New(nil)
-	client := &http.Client{Jar: jar}
-	loginUser(t, client, serverURL)
-
-	var response map[string]any
-	status, body := doJSON(t, client, http.MethodGet, serverURL+"/api/playback/history?limit=50&offset=20001", nil, &response)
-	if status != http.StatusBadRequest {
-		t.Fatalf("deep playback history offset status=%d body=%s", status, body)
-	}
-	if response["code"] != "invalid_cursor" {
-		t.Fatalf("deep playback history offset response = %#v", response)
-	}
-}
-
-func TestHomeRowsRejectDeepLegacyOffsets(t *testing.T) {
-	serverURL, _, _ := newDiscoveryTestServer(t, config.Config{})
-	jar, _ := cookiejar.New(nil)
-	client := &http.Client{Jar: jar}
-	loginUser(t, client, serverURL)
-
-	var response map[string]any
-	status, body := doJSON(t, client, http.MethodGet, serverURL+"/api/home/rows/ondeck?limit=50&offset=5001", nil, &response)
-	if status != http.StatusBadRequest {
-		t.Fatalf("deep home row offset status=%d body=%s", status, body)
-	}
-	if response["code"] != "offset_not_supported" {
-		t.Fatalf("deep home row offset response = %#v", response)
 	}
 }
 
@@ -1083,29 +1036,6 @@ func TestDVRListsUseBoundedCountNonePages(t *testing.T) {
 	}
 	if len(rules.Items) != 2 || !rules.PageInfo.HasMore || rules.PageInfo.NextCursor == nil || rules.PageInfo.Total != nil {
 		t.Fatalf("unexpected dvr rules page: %#v", rules)
-	}
-}
-
-func TestDVRListsRejectDeepLegacyOffsets(t *testing.T) {
-	serverURL, _, _ := newDiscoveryTestServer(t, config.Config{})
-	jar, _ := cookiejar.New(nil)
-	client := &http.Client{Jar: jar}
-	loginUser(t, client, serverURL)
-
-	paths := []string{
-		"/api/dvr/rules?limit=50&offset=10001",
-		"/api/dvr/recordings?limit=50&offset=10001",
-		"/api/dvr/recording-groups?limit=50&offset=10001",
-	}
-	for _, path := range paths {
-		var response map[string]any
-		status, body := doJSON(t, client, http.MethodGet, serverURL+path, nil, &response)
-		if status != http.StatusBadRequest {
-			t.Fatalf("%s deep offset status=%d body=%s", path, status, body)
-		}
-		if response["code"] != "invalid_cursor" {
-			t.Fatalf("%s deep offset response = %#v", path, response)
-		}
 	}
 }
 
@@ -2237,9 +2167,13 @@ func TestPlaybackSessionActiveHelperUsesExistenceCheck(t *testing.T) {
 
 func TestPlaybackReceiverTouchCoalescesFreshHeartbeats(t *testing.T) {
 	_, db, server := newDiscoveryTestServer(t, config.Config{})
+	adminID := adminUserID(t, db)
 	user := User{
-		ID:          adminUserID(t, db),
-		Permissions: map[string]bool{"manageServer": true},
+		ID:               adminID,
+		AccountID:        adminID,
+		ProfileID:        adminID,
+		ProfileIsPrimary: true,
+		Permissions:      map[string]bool{"manageServer": true},
 	}
 	receiver, err := server.createPlaybackReceiver(user, PlaybackReceiverRequest{Name: "Living Room", App: "Portico Web", Platform: "Browser"})
 	if err != nil {
@@ -2575,6 +2509,10 @@ func TestMediaBulkStateRejectsInvisibleIDsBeforeWriting(t *testing.T) {
 		now, now); err != nil {
 		t.Fatalf("insert restricted bulk user: %v", err)
 	}
+	var bulkProfileID string
+	if err := db.QueryRow(`SELECT id FROM profiles WHERE account_id = 'usr_bulk_restricted' AND is_primary = 1`).Scan(&bulkProfileID); err != nil {
+		t.Fatalf("load restricted bulk profile: %v", err)
+	}
 	if _, err := db.Exec(`INSERT INTO user_library_access (user_id, library_id, created_at) VALUES ('usr_bulk_restricted', 'lib_bulk_visibility', ?)`, now); err != nil {
 		t.Fatalf("grant bulk visibility library: %v", err)
 	}
@@ -2590,7 +2528,7 @@ func TestMediaBulkStateRejectsInvisibleIDsBeforeWriting(t *testing.T) {
 	body := strings.NewReader(`{"mediaIds":["bulk_visible_movie","bulk_hidden_movie"],"watchlisted":true}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/media/bulk/state", body)
 	rec := httptest.NewRecorder()
-	server.handleMediaBulkState(rec, req, User{ID: "usr_bulk_restricted"})
+	server.handleMediaBulkState(rec, req, User{ID: "usr_bulk_restricted", AccountID: "usr_bulk_restricted", ProfileID: bulkProfileID, ProfileIsPrimary: true})
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("bulk state status=%d body=%s", rec.Code, rec.Body.String())
 	}
@@ -3585,6 +3523,10 @@ func TestRestrictedUserLibraryAndSearchPagesFilterBeforeLimit(t *testing.T) {
 		string(preferencesJSON), now, now); err != nil {
 		t.Fatalf("insert visibility guard user: %v", err)
 	}
+	var visibilityProfileID string
+	if err := db.QueryRow(`SELECT id FROM profiles WHERE account_id = 'usr_visibility_page_guard' AND is_primary = 1`).Scan(&visibilityProfileID); err != nil {
+		t.Fatalf("load visibility guard profile: %v", err)
+	}
 	if _, err := db.Exec(`INSERT INTO user_library_access (user_id, library_id, created_at) VALUES ('usr_visibility_page_guard', 'lib_visibility_page_guard', ?)`, now); err != nil {
 		t.Fatalf("grant visibility guard library: %v", err)
 	}
@@ -3602,7 +3544,7 @@ func TestRestrictedUserLibraryAndSearchPagesFilterBeforeLimit(t *testing.T) {
 		}
 		if _, err := db.Exec(`
 			INSERT INTO user_media_state (profile_id, user_id, media_id, watchlisted, updated_at)
-			VALUES ('usr_visibility_page_guard', 'usr_visibility_page_guard', ?, 1, ?)`, id, now); err != nil {
+			VALUES (?, 'usr_visibility_page_guard', ?, 1, ?)`, visibilityProfileID, id, now); err != nil {
 			t.Fatalf("insert blocked visibility state %d: %v", i, err)
 		}
 	}
@@ -3620,7 +3562,7 @@ func TestRestrictedUserLibraryAndSearchPagesFilterBeforeLimit(t *testing.T) {
 		}
 		if _, err := db.Exec(`
 			INSERT INTO user_media_state (profile_id, user_id, media_id, watchlisted, updated_at)
-			VALUES ('usr_visibility_page_guard', 'usr_visibility_page_guard', ?, 1, ?)`, id, now); err != nil {
+			VALUES (?, 'usr_visibility_page_guard', ?, 1, ?)`, visibilityProfileID, id, now); err != nil {
 			t.Fatalf("insert allowed visibility state %d: %v", i, err)
 		}
 	}
@@ -3628,7 +3570,7 @@ func TestRestrictedUserLibraryAndSearchPagesFilterBeforeLimit(t *testing.T) {
 		t.Fatalf("rebuild visibility facets: %v", err)
 	}
 
-	items, total, _, _, err := server.listLibraryItems("usr_visibility_page_guard", "lib_visibility_page_guard", "title", "all", "asc", 5, 0)
+	items, total, _, _, err := server.listLibraryItems(visibilityProfileID, "lib_visibility_page_guard", "title", "all", "asc", 5, 0)
 	if err != nil {
 		t.Fatalf("list restricted library page: %v", err)
 	}
@@ -3641,7 +3583,7 @@ func TestRestrictedUserLibraryAndSearchPagesFilterBeforeLimit(t *testing.T) {
 		}
 	}
 
-	searchItems, err := server.searchMedia("usr_visibility_page_guard", "Common Visibility", 5)
+	searchItems, err := server.searchMedia(visibilityProfileID, "Common Visibility", 5)
 	if err != nil {
 		t.Fatalf("search restricted page: %v", err)
 	}
@@ -3654,7 +3596,7 @@ func TestRestrictedUserLibraryAndSearchPagesFilterBeforeLimit(t *testing.T) {
 		}
 	}
 
-	homeRow, err, ok := server.homeRowPageContext(context.Background(), User{ID: "usr_visibility_page_guard", Role: "user", Preferences: defaultUserPreferences()}, "watchlist", 5, 0)
+	homeRow, err, ok := server.homeRowPageContext(context.Background(), User{ID: "usr_visibility_page_guard", AccountID: "usr_visibility_page_guard", ProfileID: visibilityProfileID, ProfileIsPrimary: true, Role: "user", Preferences: defaultUserPreferences()}, "watchlist", 5, 0)
 	if !ok || err != nil {
 		t.Fatalf("home watchlist ok=%v err=%v", ok, err)
 	}
@@ -3667,7 +3609,7 @@ func TestRestrictedUserLibraryAndSearchPagesFilterBeforeLimit(t *testing.T) {
 		}
 	}
 
-	rawListItems, err := server.queryMediaListItemsContext(context.Background(), "usr_visibility_page_guard", `
+	rawListItems, err := server.queryMediaListItemsContext(context.Background(), visibilityProfileID, `
 		WHERE m.library_id = ?
 		ORDER BY m.sort_title ASC
 		LIMIT ?`, []any{"lib_visibility_page_guard", 1})
@@ -3678,7 +3620,7 @@ func TestRestrictedUserLibraryAndSearchPagesFilterBeforeLimit(t *testing.T) {
 		t.Fatalf("raw list helper should inject visibility before LIMIT, got %#v", rawListItems)
 	}
 
-	rawDetailItems, err := server.queryMediaContext(context.Background(), "usr_visibility_page_guard", `
+	rawDetailItems, err := server.queryMediaContext(context.Background(), visibilityProfileID, `
 		WHERE m.library_id = ?
 		ORDER BY m.sort_title ASC
 		LIMIT ?`, []any{"lib_visibility_page_guard", 1})
@@ -4078,6 +4020,8 @@ func TestLargeLibraryEndpointPerformanceBudgets(t *testing.T) {
 
 func TestMixedUserBrowsingLoadSmoke(t *testing.T) {
 	serverURL, db, server := newDiscoveryTestServer(t, config.Config{})
+	var serverLog bytes.Buffer
+	server.log = slog.New(slog.NewTextHandler(&serverLog, nil))
 	tier := currentPerformanceTestTier()
 	seedPerformanceLibrary(t, db, "lib_load_movies", tier.catalogItems)
 	seedExactPlaybackFactsForFixture(t, server, "perf_movie_0001")
@@ -4159,7 +4103,7 @@ func TestMixedUserBrowsingLoadSmoke(t *testing.T) {
 					BandwidthMbps:   8.5,
 				}, nil)
 			}
-			results <- timedRequest(client, http.MethodDelete, serverURL+"/api/playback-sessions/"+playback.SessionID, nil)
+			results <- timedJSONRequest(client, http.MethodDelete, serverURL+"/api/playback-sessions/"+playback.SessionID, stoppedPlaybackRequest(playback), nil)
 		}(i, client)
 	}
 	close(start)
@@ -4224,7 +4168,7 @@ func TestMixedUserBrowsingLoadSmoke(t *testing.T) {
 		for _, key := range keys {
 			counts = append(counts, fmt.Sprintf("%s: %d", key, failureCounts[key]))
 		}
-		t.Fatalf("mixed load smoke had %d failed requests (%s); first %d:\n%s", totalFailures, strings.Join(counts, ", "), len(failures), strings.Join(failures, "\n"))
+		t.Fatalf("mixed load smoke had %d failed requests (%s); first %d:\n%s\nserver log:\n%s", totalFailures, strings.Join(counts, ", "), len(failures), strings.Join(failures, "\n"), serverLog.String())
 	}
 	sort.Slice(durations, func(i, j int) bool { return durations[i] < durations[j] })
 	for _, routeDurations := range durationsByRoute {

@@ -1,4 +1,4 @@
-import { RefreshCw, UserRound } from '#portico-icons';
+import { ActionRefreshIcon, AccountUserIcon } from '#portico-icons';
 import { productMessage, type ProductMessagePresentation } from '@porticomediaserver/client-core';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
@@ -41,7 +41,7 @@ export function PersonDetailPage() {
   if (detail.status === 'loading') return <div className="standard-page"><div className="library-state" aria-live="polite" aria-busy="true"><ProductLanguageIcon presentation={loadingMessage} /><strong>{loadingMessage.title}</strong><p>{loadingMessage.body}</p></div></div>;
   if (detail.status === 'error') {
     const presentation = productLanguageProblem(detail.error, 'media.detail-unavailable');
-    return <div className="standard-page"><div className="library-state error" role="alert"><ProductLanguageIcon presentation={presentation} /><strong>{presentation.title}</strong><p>{presentation.body}</p><SecondaryButton onClick={() => setReloadKey((value) => value + 1)}><RefreshCw /> {retryLabel}</SecondaryButton></div></div>;
+    return <div className="standard-page"><div className="library-state error" role="alert"><ProductLanguageIcon presentation={presentation} /><strong>{presentation.title}</strong><p>{presentation.body}</p><SecondaryButton onClick={() => setReloadKey((value) => value + 1)}><ActionRefreshIcon /> {retryLabel}</SecondaryButton></div></div>;
   }
 
   const person = page ?? detail.data;
@@ -72,14 +72,14 @@ export function PersonDetailPage() {
   return <div className="standard-page portico-person-detail-page">
     <nav className="portico-detail-breadcrumbs" aria-label={productMessage('person.breadcrumb-label').text}><Link to="/search">{productMessage('destination.search').text}</Link><span>/</span><strong aria-current="page">{person.name}</strong></nav>
     <header className="portico-person-detail-header">
-      <div className="portico-person-detail-portrait">{person.imageUrl ? <img src={person.imageUrl} alt="" /> : <><UserRound aria-hidden="true" /><strong>{initials(person.name)}</strong></>}</div>
+      <div className="portico-person-detail-portrait">{person.imageUrl ? <img src={person.imageUrl} alt="" /> : <><AccountUserIcon aria-hidden="true" /><strong>{initials(person.name)}</strong></>}</div>
       <div><p className="portico-detail-kind">{productMessage('person.kind-label').text}</p><h1>{person.name}</h1>{person.knownFor && <p className="portico-person-known-for">{productMessage('person.known-for', { title: person.knownFor }).text}</p>}{person.biography && <p>{person.biography}</p>}</div>
     </header>
     <section className="portico-detail-section">
       <SectionHeading title={productMessage('person.credits-title').text ?? ''} detail={productMessage('person.credits-count', { count: `${person.credits.length}${person.hasMore ? '+' : ''}` }).text} />
       {person.credits.length > 0 ? <SelectableMediaGrid items={person.credits} className="person-credit-grid" playbackContext={{ type: 'search', id: person.id, title: person.name }} /> : <div className="portico-detail-inline-state empty" role="status"><ProductLanguageIcon presentation={emptyMessage} /><span><strong>{emptyMessage.title}</strong><small>{emptyMessage.body}</small></span></div>}
-      {pageError && <div className="portico-detail-inline-state error" role="alert"><ProductLanguageIcon presentation={pageError} /><span><strong>{pageError.title}</strong><small>{pageError.body}</small></span><SecondaryButton onClick={() => void loadMore()}><RefreshCw /> {retryLabel}</SecondaryButton></div>}
-      {person.hasMore && person.nextCursor && <SecondaryButton disabled={loadingMore} onClick={() => void loadMore()}>{loadingMore ? <RefreshCw className="state-spinner" /> : null} {loadingMore ? loadingMoreMessage.title : moreCreditsLabel}</SecondaryButton>}
+      {pageError && <div className="portico-detail-inline-state error" role="alert"><ProductLanguageIcon presentation={pageError} /><span><strong>{pageError.title}</strong><small>{pageError.body}</small></span><SecondaryButton onClick={() => void loadMore()}><ActionRefreshIcon /> {retryLabel}</SecondaryButton></div>}
+      {person.hasMore && person.nextCursor && <SecondaryButton disabled={loadingMore} onClick={() => void loadMore()}>{loadingMore ? <ActionRefreshIcon className="state-spinner" /> : null} {loadingMore ? loadingMoreMessage.title : moreCreditsLabel}</SecondaryButton>}
     </section>
   </div>;
 }

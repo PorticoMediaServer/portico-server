@@ -5,7 +5,7 @@ import { DLNAOperations } from './IntegrationOperations';
 import { LiveTVOperations } from './LiveTVOperations';
 import { PlaybackOperations } from './PlaybackOperations';
 import { PeopleOperations } from './PeopleOperations';
-import type { SettingsViewer } from './settingsTypes';
+import type { SettingsDataSource, SettingsViewer } from './settingsTypes';
 
 const owner: SettingsViewer = {
   id: 'fixture-owner',
@@ -80,5 +80,38 @@ describe('operational Settings surfaces', () => {
     expect(screen.queryByText(/dead-letter|queued|SMTP|outbox/i)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Retry email' }));
     await waitFor(() => expect(resend).toHaveBeenCalledWith('invite-delivery-problem', expect.any(AbortSignal)));
+  });
+
+  it('submits only canonical Hosted permission keys from the visible invitation form', async () => {
+    const source = new FixtureSettingsDataSource();
+    const operations = await source.settingsOperations();
+    operations.users[0] = { ...operations.users[0]!, authOrigin: 'portico' };
+    operations.capabilities.permissionCatalog = ['PlayMedia', 'ViewLiveTV', 'PlayLiveTV'];
+    const create = vi.fn<SettingsDataSource['createPorticoMemberInvite']>().mockResolvedValue({ inviteUrl: 'https://web.getportico.tv/invite/example' });
+    (source as unknown as SettingsDataSource).createPorticoMemberInvite = create;
+    render(<PeopleOperations operations={operations} source={source as unknown as SettingsDataSource} onChanged={() => undefined} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Invite account' }));
+    const dialog = screen.getByRole('dialog');
+    const email = within(dialog).getByRole('textbox', { name: 'Portico Account email' });
+    email.focus();
+    fireEvent.input(email, { target: { value: 'justin+portico-qa-ios-20260827-2005@getportico.tv' } });
+    expect(email).toHaveFocus();
+    expect(email).toHaveValue('justin+portico-qa-ios-20260827-2005@getportico.tv');
+    fireEvent.click(within(dialog).getByRole('radio', { name: 'Create a link to share yourself' }));
+    expect(email).toHaveValue('justin+portico-qa-ios-20260827-2005@getportico.tv');
+    fireEvent.click(within(dialog).getByRole('checkbox', { name: /Play media/ }));
+    fireEvent.click(within(dialog).getByRole('checkbox', { name: /View Live TV/ }));
+    fireEvent.click(within(dialog).getByRole('checkbox', { name: /Play Live TV/ }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Create link' }));
+
+    await waitFor(() => expect(create).toHaveBeenCalledWith(expect.objectContaining({
+      recipient: 'justin+portico-qa-ios-20260827-2005@getportico.tv',
+      email: 'justin+portico-qa-ios-20260827-2005@getportico.tv',
+      deliveryMode: 'link',
+      permissionTemplate: { permissions: { playMedia: true, viewLiveTV: true, playLiveTV: true } },
+    }), expect.any(AbortSignal)));
+    expect(JSON.stringify(create.mock.calls[0]?.[0])).not.toMatch(/PlayMedia|ViewLiveTV|PlayLiveTV/);
+    expect(create.mock.calls[0]?.[0]).not.toHaveProperty('role');
   });
 });

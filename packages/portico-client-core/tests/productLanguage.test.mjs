@@ -7,6 +7,7 @@ import {
   knownSemanticIconId,
   productLanguageCatalog,
   productMessage,
+  productMessageIdForProblemCode,
   resolveProductProblem,
   safeProductMessage,
   semanticIcon
@@ -61,6 +62,20 @@ test("unknown API details do not replace normalized product copy", () => {
   const presentation = resolveProductProblem({ code: "future_private_error", status: 500, details: { path: "/secret/media" } });
   assert.equal(presentation.id, "problem.request-failed");
   assert.doesNotMatch(presentation.body, /secret|media/i);
+});
+
+test("malformed problem identifiers fail closed to reviewed copy without throwing", () => {
+  const malformed = resolveProductProblem({
+    code: { private: "filesystem path" },
+    messageId: ["auth.session-expired"],
+    status: 500,
+    details: { path: "/secret/media" }
+  });
+  assert.equal(malformed.id, "problem.request-failed");
+  assert.doesNotMatch(malformed.body, /filesystem|secret|media|session/i);
+  assert.equal(productMessageIdForProblemCode({ code: "server_not_found" }), undefined);
+  assert.equal(knownProductMessageId(["auth.session-expired"]), undefined);
+  assert.equal(knownSemanticIconId({ icon: "status.notification" }), undefined);
 });
 
 test("unknown runtime message identifiers fail soft instead of crashing a screen", () => {

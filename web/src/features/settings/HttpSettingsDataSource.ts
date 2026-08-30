@@ -26,6 +26,7 @@ import {
   type PorticoAccountUser,
   type PorticoMFAStatus,
   type PorticoInvite,
+  type PlaybackSession,
   type RemoteAccessSettingsPatch,
   type RemoteAccessStatus,
   type RemoteStorageSource,
@@ -41,7 +42,6 @@ import {
   type SystemStorageReport,
   type TranscodeCapacityReport,
   type User,
-  type UserPreferences,
   type UserCreateRequest,
   type UserPatchRequest,
 } from "@porticomediaserver/client-core";
@@ -71,11 +71,12 @@ import {
   rememberHostedCSRFToken,
 } from "../../runtime/hostedBrowserSecurity";
 import { browserHostedTerminalMutationDurability } from "../../runtime/hostedTerminalMutationDurability";
+import { reviewedProductErrorText } from "../../components/ProductLanguage";
 
-function reasonMessage(reason: unknown): string {
-  return reason instanceof Error && reason.message.trim()
-    ? reason.message
-    : "This data source is temporarily unavailable.";
+function reasonMessage(reason: unknown, sectionName: string): string {
+  return reviewedProductErrorText(reason, "settings.load-failed", {
+    sectionName,
+  });
 }
 
 function abortIfRequested(signal: AbortSignal): void {
@@ -122,7 +123,10 @@ export class HttpSettingsDataSource implements SettingsDataSource {
   constructor(
     private readonly client: PorticoClient,
     hosted?: HostedServicesClient,
-    options: { syncHostedIdentityToServer?: boolean } = {},
+    options: {
+      syncHostedIdentityToServer?: boolean;
+      authoritativeServerId?: string;
+    } = {},
   ) {
     this.hosted =
       hosted ??
@@ -135,7 +139,14 @@ export class HttpSettingsDataSource implements SettingsDataSource {
       });
     this.syncHostedIdentityToServer =
       options.syncHostedIdentityToServer !== false;
+    const authoritativeServerId: unknown = options.authoritativeServerId;
+    if (authoritativeServerId !== undefined && typeof authoritativeServerId !== "string") {
+      throw new TypeError("Portico Settings server identity has an invalid runtime shape.");
+    }
+    this.authoritativeServerId = authoritativeServerId?.trim() ?? "";
   }
+
+  private readonly authoritativeServerId: string;
 
   private hostedProfileImageUrl(value?: string): string {
     const path = value?.trim() ?? "";
@@ -217,7 +228,7 @@ export class HttpSettingsDataSource implements SettingsDataSource {
     results.forEach((result, index) => {
       const key = keys[index];
       if (result.status === "rejected")
-        failures[key] = reasonMessage(result.reason);
+        failures[key] = reasonMessage(result.reason, "Server status");
     });
     if (results[0]?.status === "fulfilled")
       snapshot.activity = results[0].value;
@@ -238,9 +249,14 @@ export class HttpSettingsDataSource implements SettingsDataSource {
     );
   }
 
-  async stopPlayback(sessionId: string, signal: AbortSignal): Promise<void> {
+  async stopPlayback(session: PlaybackSession, signal: AbortSignal): Promise<void> {
     try {
-      await this.client.stopPlayback(sessionId, { signal });
+      const positionSeconds = Math.max(0, session.positionSeconds);
+      await this.client.stopPlayback(session.id, {
+        disposition: "stopped",
+        positionSeconds,
+        durationSeconds: Math.max(0, session.media.durationSeconds ?? positionSeconds),
+      }, { signal });
     } catch (reason) {
       if (!(reason instanceof ApiError) || reason.status !== 404) throw reason;
     }
@@ -320,14 +336,41 @@ export class HttpSettingsDataSource implements SettingsDataSource {
         return { panel, value: await promise };
       } catch (reason) {
         abortIfRequested(signal);
-        return { panel, error: reasonMessage(reason) };
+        return { panel, error: reasonMessage(reason, "Settings") };
       }
     };
+    const usersPromise = required("people")
+      ? this.client.users({ signal })
+      : empty({ items: [] as User[], total: 0 });
+    // A runtime-published server identity is already account-fenced authority;
+    // it must not wait for a failing Server read before Hosted invitations can
+    // load. Bundled connections without that identity still derive eligibility
+    // from the canonical Server owner row before resolving remote-access state.
+    const invitesPromise = required("people")
+      ? (this.authoritativeServerId ? (async () => {
+          const serverId = await this.remoteAccessServerID(signal);
+          const invitePage = await this.hosted.request<{
+            items: PorticoInvite[];
+          }>(
+            `/api/account/servers/${encodeURIComponent(serverId)}/invites?limit=100`,
+            { signal },
+          );
+          return invitePage.items;
+        })() : usersPromise.then(async (users) => {
+          if (!users.items.some((user) => user.role === "owner" && user.authOrigin === "portico")) return [] as PorticoInvite[];
+          const serverId = await this.remoteAccessServerID(signal);
+          const invitePage = await this.hosted.request<{ items: PorticoInvite[] }>(
+            `/api/account/servers/${encodeURIComponent(serverId)}/invites?limit=100`,
+            { signal },
+          );
+          return invitePage.items;
+        }))
+      : empty([] as PorticoInvite[]);
     const panels = await Promise.all([
       settle('libraries', required("media", "people")
         ? this.client.libraries({ signal })
         : empty({ items: [], total: 0 })),
-      settle('users', required("people") ? this.client.users({ signal }) : empty({ items: [], total: 0 })),
+      settle('users', usersPromise),
       settle('devices', required("people")
         ? this.client.devices({ signal })
         : empty({ items: [], total: 0 })),
@@ -376,23 +419,14 @@ export class HttpSettingsDataSource implements SettingsDataSource {
     const capabilities = page('capabilities', {} as SettingsOperationalSnapshot['capabilities']);
     const storage = page('storage', {} as SettingsOperationalSnapshot['storage']);
     let porticoInvites: PorticoInvite[] = [];
-    if (
-      required("people") &&
-      users.items.some(
-        (user) => user.role === "owner" && user.authOrigin === "portico",
-      )
-    ) {
-      try {
-        const serverId = await this.remoteAccessServerID(signal);
-        const invitePage = await this.hosted.request<{ items: PorticoInvite[] }>(
-          `/api/account/servers/${encodeURIComponent(serverId)}/invites?limit=100`,
-          { signal },
-        );
-        porticoInvites = invitePage.items;
-      } catch (reason) {
-        abortIfRequested(signal);
-        failureMap.porticoInvites = reasonMessage(reason);
-      }
+    try {
+      porticoInvites = await invitesPromise;
+    } catch (reason) {
+      abortIfRequested(signal);
+      failureMap.porticoInvites = reasonMessage(
+        reason,
+        "Portico Account invitations",
+      );
     }
     return {
       libraries: libraries.items,
@@ -831,6 +865,7 @@ export class HttpSettingsDataSource implements SettingsDataSource {
   }
 
   private async remoteAccessServerID(signal: AbortSignal): Promise<string> {
+    if (this.authoritativeServerId) return this.authoritativeServerId;
     const status = await this.client.remoteAccessStatus({ signal });
     const serverId = status.settings.serverId.trim();
     if (!serverId)
@@ -965,23 +1000,6 @@ export class HttpSettingsDataSource implements SettingsDataSource {
     signal: AbortSignal,
   ): Promise<ListResponse<LogEvent>> {
     return this.client.logs({ ...input, init: { signal } });
-  }
-
-  preferences(signal: AbortSignal): Promise<UserPreferences> {
-    return this.client.request<UserPreferences>("/api/account/preferences", {
-      signal,
-    });
-  }
-
-  updatePreferences(
-    input: UserPreferences,
-    signal: AbortSignal,
-  ): Promise<User> {
-    return this.client.request<User>("/api/account/preferences", {
-      method: "PATCH",
-      body: input,
-      signal,
-    });
   }
 
   async signedInDevices(

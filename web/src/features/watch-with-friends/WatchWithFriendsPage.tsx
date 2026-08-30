@@ -1,8 +1,9 @@
 import type { WatchWithFriendsCreateRequest, WatchWithFriendsGroup } from '@porticomediaserver/client-core';
-import { CircleAlert, LoaderCircle, Plus, RefreshCw, UsersRound, X } from '#portico-icons';
+import { StatusWarningIcon, StatusLoadingIcon, ActionAddIcon, ActionRefreshIcon, AccountWatchTogetherIcon, ActionCloseIcon } from '#portico-icons';
 import { useCallback, useEffect, useState } from 'react';
 import { PrimaryButton, SecondaryButton } from '../../components/controls/Buttons';
 import { reviewedProductErrorText } from '../../components/ProductLanguage';
+import { secureRandomUUID } from '../../runtime/secureRandomUUID';
 import { CreateGroupForm, GroupDirectory } from './GroupDirectory';
 import { GroupWorkspace, type GroupWorkspaceActions } from './GroupWorkspace';
 import {
@@ -150,7 +151,7 @@ export function WatchWithFriendsPage({ source, viewer, initialGroupId = '', init
       setBusy('end');
       setOperationError('');
       try {
-        await source.endGroup(selectedGroup.id, selectedGroup.revision, globalThis.crypto.randomUUID());
+        await source.endGroup(selectedGroup.id, selectedGroup.revision, secureRandomUUID());
         setGroups((current) => current.filter((group) => group.id !== selectedGroup.id));
         setSelectedId('');
         await refreshGroups();
@@ -176,38 +177,38 @@ export function WatchWithFriendsPage({ source, viewer, initialGroupId = '', init
       return Boolean(await runGroupMutation('playback', () => source.updatePlaybackState(selectedGroup.id, {
         ...request,
         expectedRevision: selectedGroup.revision,
-        idempotencyKey: globalThis.crypto.randomUUID(),
+        idempotencyKey: secureRandomUUID(),
       })));
     },
     updateSettings: async (request) => {
-      return Boolean(await runGroupMutation('settings', () => source.updateSettings(selectedGroup.id, { ...request, expectedRevision: selectedGroup.revision, idempotencyKey: globalThis.crypto.randomUUID() })));
+      return Boolean(await runGroupMutation('settings', () => source.updateSettings(selectedGroup.id, { ...request, expectedRevision: selectedGroup.revision, idempotencyKey: secureRandomUUID() })));
     },
     addQueueItem: async (mediaId) => {
-      return Boolean(await runGroupMutation('queue:add', () => source.addQueueItem(selectedGroup.id, { mediaId, expectedRevision: selectedGroup.revision, idempotencyKey: globalThis.crypto.randomUUID() })));
+      return Boolean(await runGroupMutation('queue:add', () => source.addQueueItem(selectedGroup.id, { mediaId, expectedRevision: selectedGroup.revision, idempotencyKey: secureRandomUUID() })));
     },
     reorderQueue: async (mediaIds) => {
-      return Boolean(await runGroupMutation('queue:order', () => source.reorderQueue(selectedGroup.id, { mediaIds, expectedRevision: selectedGroup.revision, idempotencyKey: globalThis.crypto.randomUUID() })));
+      return Boolean(await runGroupMutation('queue:order', () => source.reorderQueue(selectedGroup.id, { mediaIds, expectedRevision: selectedGroup.revision, idempotencyKey: secureRandomUUID() })));
     },
     removeQueueItem: async (mediaId) => {
-      return Boolean(await runGroupMutation(`queue:remove:${mediaId}`, () => source.removeQueueItem(selectedGroup.id, mediaId, selectedGroup.revision, globalThis.crypto.randomUUID())));
+      return Boolean(await runGroupMutation(`queue:remove:${mediaId}`, () => source.removeQueueItem(selectedGroup.id, mediaId, selectedGroup.revision, secureRandomUUID())));
     },
   } : undefined;
 
-  if (!viewer.canUse) return <div className="standard-page watch-page"><section className="watch-access-state" role="alert"><CircleAlert /><h1>Watch With Friends is unavailable</h1><p>This account does not have permission to create or join synchronized playback groups.</p></section></div>;
+  if (!viewer.canUse) return <div className="standard-page watch-page"><section className="watch-access-state" role="alert"><StatusWarningIcon /><h1>Watch With Friends is unavailable</h1><p>This account does not have permission to create or join synchronized playback groups.</p></section></div>;
 
   return <div className="standard-page watch-page">
-    <header className="page-header watch-page-header"><div><h1>Watch With Friends</h1><p>Synchronized playback, readiness, and a shared queue.</p></div><PrimaryButton onClick={() => setCreating((current) => !current)}>{creating ? <X /> : <Plus />} {creating ? 'Close' : 'Create group'}</PrimaryButton></header>
+    <header className="page-header watch-page-header"><div><h1>Watch With Friends</h1><p>Synchronized playback, readiness, and a shared queue.</p></div><PrimaryButton onClick={() => setCreating((current) => !current)}>{creating ? <ActionCloseIcon /> : <ActionAddIcon />} {creating ? 'Close' : 'Create group'}</PrimaryButton></header>
     {creating && <CreateGroupForm initialMediaId={initialMediaId} busy={busy === 'create'} onCancel={() => setCreating(false)} onCreate={createGroup} />}
-    {loadError && <div className="watch-load-error" role="alert"><CircleAlert /><span><strong>Groups could not be loaded</strong><span>{loadError}</span></span><SecondaryButton onClick={() => { setLoading(true); setLoadError(''); refreshGroups().catch((reason) => setLoadError(reviewedProductErrorText(reason, 'watch-with-friends.load-failed'))).finally(() => setLoading(false)); }}><RefreshCw /> Try again</SecondaryButton></div>}
-    {operationError && <div className="watch-alert watch-operation-error" role="alert"><CircleAlert /><span>{operationError}</span></div>}
+    {loadError && <div className="watch-load-error" role="alert"><StatusWarningIcon /><span><strong>Groups could not be loaded</strong><span>{loadError}</span></span><SecondaryButton onClick={() => { setLoading(true); setLoadError(''); refreshGroups().catch((reason) => setLoadError(reviewedProductErrorText(reason, 'watch-with-friends.load-failed'))).finally(() => setLoading(false)); }}><ActionRefreshIcon /> Try again</SecondaryButton></div>}
+    {operationError && <div className="watch-alert watch-operation-error" role="alert"><StatusWarningIcon /><span>{operationError}</span></div>}
     {loading
-      ? <section className="watch-loading" aria-busy="true"><LoaderCircle className="watch-spin" /><strong>Loading groups</strong></section>
+      ? <section className="watch-loading" aria-busy="true"><StatusLoadingIcon className="watch-spin" /><strong>Loading groups</strong></section>
       : !loadError && <div className="watch-layout">
         <GroupDirectory groups={groups} selectedId={selectedId} viewer={viewer} busy={busy} onSelect={(group) => { setSelectedId(group.id); setOperationError(''); }} onJoin={joinGroup} onRefresh={() => { void refreshGroups().catch((reason) => setLoadError(reviewedProductErrorText(reason, 'watch-with-friends.load-failed'))); }} />
         <main className="watch-workspace">
           {selectedGroup && activeActions
             ? <GroupWorkspace group={selectedGroup} viewer={viewer} connection={connection} connectionError={connectionError} busy={busy} actions={activeActions} />
-            : <section className="watch-no-selection"><UsersRound /><h2>{groups.length ? 'Choose a group' : 'No group selected'}</h2><p>{groups.length ? 'Open an active group to see playback and readiness.' : 'Create a group from a media item when you are ready to watch.'}</p></section>}
+            : <section className="watch-no-selection"><AccountWatchTogetherIcon /><h2>{groups.length ? 'Choose a group' : 'No group selected'}</h2><p>{groups.length ? 'Open an active group to see playback and readiness.' : 'Create a group from a media item when you are ready to watch.'}</p></section>}
         </main>
       </div>}
   </div>;

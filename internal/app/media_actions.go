@@ -113,7 +113,7 @@ func canonicalMediaActionCapabilities() []MediaActionCapability {
 	return []MediaActionCapability{
 		api(mediaActionPlay, false, false, "POST", "/api/playback-sessions", "playback-session", nil, []string{"mediaId", "clientProfile"}, []string{"playback.active", "activity"}, false),
 		api(mediaActionPlayBeginning, false, false, "POST", "/api/playback-sessions", "playback-session", map[string]any{"startSeconds": 0}, []string{"mediaId", "clientProfile"}, []string{"playback.active", "activity"}, false),
-		api(mediaActionDownload, false, true, "POST", "/api/media/{mediaId}/download-grants", "download-grant", map[string]any{"profile": "source"}, []string{"mediaId"}, nil, false),
+		api(mediaActionDownload, false, true, "POST", "/api/download-preparations", "download-preparation", map[string]any{"qualityProfile": "source"}, []string{"mediaId"}, []string{"downloads"}, false),
 		flow(mediaActionQueueAdd, true, true, "queue-selection", []string{"playback.queue"}),
 		api(mediaActionWatchlistAdd, true, true, "POST", "/api/media/{mediaId}/watchlist", "json", map[string]any{"watchlisted": true}, []string{"mediaId"}, []string{"media", "watchlist", "home"}, false),
 		api(mediaActionWatchlistRemove, true, true, "POST", "/api/media/{mediaId}/watchlist", "json", map[string]any{"watchlisted": false}, []string{"mediaId"}, []string{"media", "watchlist", "home"}, false),

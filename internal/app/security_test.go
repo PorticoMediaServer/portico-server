@@ -93,6 +93,31 @@ func TestSecurityHeadersDoNotTreatWildcardAsCredentialedOrigin(t *testing.T) {
 	}
 }
 
+func TestCSRFAttachmentSessionUsesCryptographicProofBoundary(t *testing.T) {
+	server := &Server{cfg: config.Config{AllowedOrigins: []string{"https://web.getportico.tv"}}}
+
+	attachment := httptest.NewRequest(http.MethodPost, "https://demo.getportico.tv/api/auth/portico/sessions", strings.NewReader(`{}`))
+	attachment.Header.Set("Origin", "https://web.getportico.tv")
+	attachment.Header.Set("Sec-Fetch-Site", "same-site")
+	attachment.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "ambient-local-session"})
+	if !server.csrfAllowed(attachment) {
+		t.Fatal("proof-bound attachment session was rejected before cryptographic validation")
+	}
+
+	ordinaryMutation := httptest.NewRequest(http.MethodPost, "https://demo.getportico.tv/api/auth/login", strings.NewReader(`{}`))
+	ordinaryMutation.Header.Set("Origin", "https://web.getportico.tv")
+	ordinaryMutation.Header.Set("Sec-Fetch-Site", "same-site")
+	if server.csrfAllowed(ordinaryMutation) {
+		t.Fatal("ordinary browser-origin mutation bypassed CSRF protection")
+	}
+
+	wrongMethod := httptest.NewRequest(http.MethodPut, "https://demo.getportico.tv/api/auth/portico/sessions", strings.NewReader(`{}`))
+	wrongMethod.Header.Set("Origin", "https://web.getportico.tv")
+	if server.csrfAllowed(wrongMethod) {
+		t.Fatal("non-canonical attachment method bypassed CSRF protection")
+	}
+}
+
 func TestSecurityHeadersAllowSameOrigin(t *testing.T) {
 	serverURL := newAuthTestServer(t)
 	req, err := http.NewRequest(http.MethodGet, serverURL+"/api/auth/me", nil)

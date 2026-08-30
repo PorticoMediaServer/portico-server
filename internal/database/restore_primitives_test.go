@@ -1564,10 +1564,10 @@ func TestRestoreRealDatabaseClassificationMatrixAndRawImportAuthority(t *testing
 			_, err := candidate.Exec(`CREATE TABLE foreign_only (id TEXT)`)
 			return err
 		}, want: "restore_unidentified_database"},
-		{name: "newer database format", mutate: func(candidate *sql.DB) error {
+		{name: "noncanonical database format", mutate: func(candidate *sql.DB) error {
 			_, err := candidate.Exec(`UPDATE portico_database_identity SET format_version = 3 WHERE id = 1`)
 			return err
-		}, want: "restore_forward_incompatible_database"},
+		}, want: "restore_foreign_database"},
 	}
 	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) {

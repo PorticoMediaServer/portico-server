@@ -2295,6 +2295,12 @@ export const productLanguageCatalog = {
       "icon": "status.empty",
       "tone": "neutral"
     },
+    "live-tv.channels-filter-empty": {
+      "title": "No channels match",
+      "body": "Clear a filter or search for another channel.",
+      "icon": "status.empty",
+      "tone": "neutral"
+    },
     "live-tv.offline": {
       "title": "Live TV is offline",
       "body": "Portico can't reach the tuner or guide provider. Recorded and library media remain available.",

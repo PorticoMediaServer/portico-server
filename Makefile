@@ -38,7 +38,10 @@ dev-web: build-client-core
 	cd web && npm run dev
 
 test: api-check
-	go test ./...
+	# Performance guardrails own an explicit host-resource envelope. Serialize
+	# packages so unrelated package tests cannot consume that envelope while the
+	# mixed-user smoke measures Server latency and SQLite continuity.
+	go test -p 1 ./...
 	$(MAKE) build-web
 
 build-client-core:

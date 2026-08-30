@@ -1094,7 +1094,7 @@ func (s *Server) replaceMediaCategoryFacets(mediaID string) error {
 		return nil
 	}
 	return s.withBackgroundTxTagged(context.Background(), []string{"libraries", "library-items"}, func(tx *sql.Tx) error {
-		return replaceMediaCategoryFacetsTx(context.Background(), tx, mediaID, 0, "legacy")
+		return replaceMediaCategoryFacetsTx(context.Background(), tx, mediaID, 0, "read-model-repair")
 	})
 }
 

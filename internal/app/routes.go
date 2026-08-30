@@ -44,7 +44,6 @@ func (s *Server) registerAccountRoutes(reg *apiroute.Registry) {
 	reg.Session("/api/account/profile", s.withAuth(s.handleAccountProfile))
 	reg.Session("/api/account/password", s.withAuth(s.handleAccountPassword))
 	reg.Session("/api/account/image", s.withAuth(s.handleAccountImage))
-	reg.Session("/api/account/preferences", s.withAuth(s.handleAccountPreferences))
 	reg.Session("/api/account/library-navigation", s.withAuth(s.handleLibraryNavigationPreferences))
 	reg.Session("/api/account/sessions", s.withAuth(s.handleAccountSessions))
 	reg.Session("/api/account/sessions/", s.withAuth(s.handleAccountSessionRoute))
@@ -62,7 +61,6 @@ func (s *Server) registerAccountRoutes(reg *apiroute.Registry) {
 	reg.Session("/api/feedback", s.withAuth(s.handleViewerFeedback))
 	reg.Session("/api/feedback/capabilities", s.withAuth(s.handleViewerFeedbackCapabilities))
 	reg.Session("/api/display-preferences/", s.withAuth(s.handleDisplayPreferences))
-	reg.Public("/api/localization", s.handleLocalization)
 }
 
 func (s *Server) registerSystemRoutes(reg *apiroute.Registry) {
@@ -114,7 +112,6 @@ func (s *Server) registerLibraryAndMediaRoutes(reg *apiroute.Registry) {
 	reg.Session("/api/metadata/repair", s.withAuth(s.handleMetadataRepair))
 	reg.Session("/api/download-preparations", s.withAuth(s.handleDownloadPreparations))
 	reg.Session("/api/download-preparations/", s.withAuth(s.handleDownloadPreparations))
-	reg.Session("/api/media/{id}/download-grants", s.withAuth(s.handleMediaDownloadGrantRoute))
 	reg.Media("/api/media/", s.withMediaResourceAuth(s.handleMediaRoute))
 	reg.Session("/api/instant-mix/", s.withAuth(s.handleInstantMix))
 	reg.Session("/api/search", s.withAuth(s.handleSearch))

@@ -8,8 +8,7 @@ const item: MediaItem = {
   title: 'Fargo',
   subtitle: 'The Castle',
   year: 2015,
-  type: 'show',
-  kind: 'episode',
+  entityKind: 'episode',
   poster: '/poster.jpg',
   backdrop: '/backdrop.jpg',
   rating: 'TV-MA',
@@ -135,8 +134,10 @@ describe('TechnicalMediaEditor', () => {
     expect(await screen.findByText('/media/Fargo/Season 2/The Castle.mkv')).toBeInTheDocument();
     expect(screen.getByText('The Castle.mkv')).toBeInTheDocument();
     expect(screen.getByText(/HEVC · 3840 × 2160 · 16:9 aspect · 23.976 fps · Profile Main 10 · 10-bit/)).toBeInTheDocument();
-    expect(screen.getAllByText(/EAC3 · 6 channels · 5.1 · 48 kHz/)).toHaveLength(2);
+    expect(screen.getAllByText(/EAC3 · 6 channels · 5.1 · 48 kHz/)).toHaveLength(3);
     expect(screen.getByText('1080p alternate')).toBeInTheDocument();
     expect(screen.getByText('Unavailable')).toBeInTheDocument();
+    expect(screen.getByText('2 streams')).toBeInTheDocument();
+    expect(screen.queryByText('No analyzed streams')).not.toBeInTheDocument();
   });
 });

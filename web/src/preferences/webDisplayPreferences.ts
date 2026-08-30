@@ -91,7 +91,6 @@ function cardSize(value: unknown): number {
 
 export function normalizeWebDisplayPreferences(value: unknown): WebDisplayPreferences {
   const source = value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
-  const legacySkip = typeof source.skipIntroPrompts === 'boolean' ? source.skipIntroPrompts : true;
   const quality = source.playbackQuality && typeof source.playbackQuality === 'object' && !Array.isArray(source.playbackQuality)
     ? source.playbackQuality as Partial<Record<WebNetworkClass, unknown>>
     : {};
@@ -113,11 +112,11 @@ export function normalizeWebDisplayPreferences(value: unknown): WebDisplayPrefer
     subtitleBackground: choice(source.subtitleBackground, ['none', 'subtle', 'solid'] as const, defaultWebDisplayPreferences.subtitleBackground),
     showSyncedLyrics: typeof source.showSyncedLyrics === 'boolean' ? source.showSyncedLyrics : defaultWebDisplayPreferences.showSyncedLyrics,
     playbackDiagnostics: typeof source.playbackDiagnostics === 'boolean' ? source.playbackDiagnostics : defaultWebDisplayPreferences.playbackDiagnostics,
-    introSkip: choice(source.introSkip === 'never' ? 'off' : source.introSkip, ['ask', 'automatic', 'off'] as const, legacySkip ? 'ask' : 'off'),
-    creditsSkip: choice(source.creditsSkip === 'never' ? 'off' : source.creditsSkip, ['ask', 'automatic', 'off'] as const, legacySkip ? 'ask' : 'off'),
+		introSkip: choice(source.introSkip, ['ask', 'automatic', 'off'] as const, defaultWebDisplayPreferences.introSkip),
+		creditsSkip: choice(source.creditsSkip, ['ask', 'automatic', 'off'] as const, defaultWebDisplayPreferences.creditsSkip),
     passoutProtection: typeof source.passoutProtection === 'boolean' ? source.passoutProtection : defaultWebDisplayPreferences.passoutProtection,
     passoutAfterEpisodes: choice(source.passoutAfterEpisodes, [2, 3, 4, 5] as const, defaultWebDisplayPreferences.passoutAfterEpisodes),
-    deliveryRequest: normalizeDeliveryRequest(source.deliveryRequest ?? source.deliveryPreference),
+		deliveryRequest: normalizeDeliveryRequest(source.deliveryRequest),
     playbackQuality: {
       local: normalizeQuality(quality.local, defaultWebDisplayPreferences.playbackQuality.local),
       wifi: normalizeQuality(quality.wifi, defaultWebDisplayPreferences.playbackQuality.wifi),
@@ -147,8 +146,7 @@ export function browserNetworkClass(browser: Pick<Window, 'location' | 'navigato
 
 export function webPlaybackIntent(preferences: WebDisplayPreferences, browser?: Pick<Window, 'location' | 'navigator'>): PlaybackIntent {
   const networkClass = browserNetworkClass(browser ?? window);
-  // Local storage remains only a legacy display adapter until b730's
-  // authoritative preference documents land. Playback compilation itself is
+	// Local storage contains installation-scoped display state only. Playback compilation itself is
   // exclusively Client Core-owned and consumes the canonical network buckets.
   const canonical = defaultProfileDeviceClassPreferences('web') as ProfileDeviceClassPreferences;
   (canonical.playback as unknown as { deliveryRequest: WebDeliveryPreference }).deliveryRequest = preferences.deliveryRequest;

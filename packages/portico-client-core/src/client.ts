@@ -30,7 +30,6 @@ import type {
   DownloadPreparationNextEpisodeRequest,
   DownloadPreparationSingleCreateRequest,
   DownloadPreparationUpdateRequest,
-  MediaDownloadGrantRequest,
   MediaDownloadGrantResponse,
   DVRRecording,
   DVRRecordingGroup,
@@ -58,7 +57,6 @@ import type {
   ProductLanguageCatalog,
   CursorListResponse,
   ListResponse,
-  LocalizationInfo,
   LiveTVChannel,
   LiveTVChannelBrowseParams,
   LiveTVChannelPageResponse,
@@ -141,6 +139,8 @@ import type {
   PlaybackProgressAcknowledgement,
   PlaybackProgressEvent,
   PlaybackProgressInput,
+  PlaybackSessionStopInput,
+  PlaybackSessionStopRequest,
   PlaybackContinuationCredential,
   PlaybackContinuationState,
   PlaybackContinuationRotateRequest,
@@ -1143,6 +1143,11 @@ const MAX_PLAYBACK_PROGRESS_SEQUENCES = 256;
 function normalizedPlaybackProgressInput(
   event: PlaybackProgressInput,
 ): PlaybackProgressInput {
+  if (event.completed) {
+    throw new TypeError(
+      "Playback completion requires the atomic stop operation.",
+    );
+  }
   const normalized = { ...event };
   if (normalized.progressSeconds !== undefined) {
     if (!Number.isFinite(normalized.progressSeconds))
@@ -1174,6 +1179,32 @@ function normalizedPlaybackProgressInput(
     );
   }
   return normalized;
+}
+
+function assertPlaybackSessionStopRequest(
+  body: PlaybackSessionStopInput | PlaybackSessionStopRequest,
+): void {
+  if (!Number.isFinite(body.positionSeconds) || body.positionSeconds < 0) {
+    throw new TypeError("Playback stop position must be a finite non-negative number.");
+  }
+  if (
+    !Number.isFinite(body.durationSeconds) ||
+    body.durationSeconds < 0 ||
+    (body.disposition === "completed" && body.durationSeconds <= 0)
+  ) {
+    throw new TypeError("Playback stop duration is invalid for its disposition.");
+  }
+  if ("generation" in body) {
+    if (!Number.isSafeInteger(body.generation) || body.generation <= 0) {
+      throw new TypeError("Playback stop generation must be a positive integer.");
+    }
+    if (!Number.isSafeInteger(body.eventSequence) || body.eventSequence <= 0) {
+      throw new TypeError("Playback stop event sequence must be a positive integer.");
+    }
+    if (!Number.isFinite(Date.parse(body.recordedAt))) {
+      throw new TypeError("Playback stop observation time must be RFC 3339.");
+    }
+  }
 }
 
 function orderedDurablePlaybackProgressEvent(
@@ -1422,7 +1453,7 @@ export function createPorticoClient(options: PorticoClientOptions = {}) {
       return;
     durablePlaybackProgressLoad ??= options.playbackProgressDurabilityAdapter
       .load()
-      .then((records) => {
+      .then(async (records) => {
         if (records.length > MAX_PLAYBACK_PROGRESS_MAILBOXES)
           throw new TypeError(
             "The durable playback progress outbox is too large.",
@@ -1452,6 +1483,10 @@ export function createPorticoClient(options: PorticoClientOptions = {}) {
             throw new TypeError(
               "A durable playback progress identity is invalid.",
             );
+          }
+          if (record.events.some((event) => event.completed)) {
+            await options.playbackProgressDurabilityAdapter!.remove(record.key);
+            continue;
           }
           const events = record.events.map((event) =>
             orderedDurablePlaybackProgressEvent(event),
@@ -1735,6 +1770,20 @@ export function createPorticoClient(options: PorticoClientOptions = {}) {
     }
     return Promise.all(waits).then(() => undefined);
   };
+  const drainPendingPlaybackProgressBeforeStop = async (
+    sessionId: string,
+  ): Promise<void> => {
+    const pending = waitForPendingPlaybackProgress(sessionId);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    await Promise.race([
+      pending,
+      new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, 500);
+      }),
+    ]).finally(() => {
+      if (timer !== undefined) clearTimeout(timer);
+    });
+  };
   const normalizeSessionPlayback = (response: PlaybackResponse) => {
     const generation = Number.isFinite(response.generation)
       ? Math.max(0, Math.trunc(response.generation))
@@ -1810,7 +1859,6 @@ export function createPorticoClient(options: PorticoClientOptions = {}) {
         await request<SystemStatusResponse>("/api/system", init),
       ),
     branding: () => request<BrandingInfo>("/api/branding"),
-    localization: () => request<LocalizationInfo>("/api/localization"),
     authCapabilities: () =>
       request<AuthCapabilitiesResponse>("/api/auth/capabilities"),
     me: (init?: Pick<RequestInit, "signal">) =>
@@ -2291,7 +2339,6 @@ export function createPorticoClient(options: PorticoClientOptions = {}) {
           { ...init, method: "POST", body },
         ),
       ),
-    preferences: () => request<UserPreferences>("/api/account/preferences"),
     accountSessions: (init?: Pick<RequestInit, "signal">) =>
       request<ListResponse<AccountSession>>("/api/account/sessions", init),
     revokeAccountSession: (id: string) =>
@@ -2763,14 +2810,6 @@ export function createPorticoClient(options: PorticoClientOptions = {}) {
       ),
     mediaStreamUrl: (id: string) =>
       resourceUrl(`/api/media/${encodeURIComponent(id)}/stream`),
-    mediaDownloadUrl: (id: string, profileId?: string) => {
-      const search = new URLSearchParams();
-      if (profileId) search.set("profile", profileId);
-      const query = search.toString();
-      return resourceUrl(
-        `/api/media/${encodeURIComponent(id)}/download${query ? `?${query}` : ""}`,
-      );
-    },
     mediaAttachmentUrl: (id: string, attachmentId: string) =>
       resourceUrl(
         `/api/media/${encodeURIComponent(id)}/attachments/${encodeURIComponent(attachmentId)}`,
@@ -3080,18 +3119,13 @@ export function createPorticoClient(options: PorticoClientOptions = {}) {
         `/api/download-preparations/${encodeURIComponent(id)}`,
         { ...init, method: "DELETE" },
       ),
-    createDownloadPreparationGrant: (id: string, init?: RequestSignal) =>
-      request<MediaDownloadGrantResponse>(
-        `/api/download-preparations/${encodeURIComponent(id)}/grant`,
-        { ...init, method: "POST" },
-      ),
-    createMediaDownloadGrant: (
+    createDownloadPreparationGrant: (
       id: string,
-      body: MediaDownloadGrantRequest = { profile: "source" },
+      body: { delivery: "browser" | "native" },
       init?: RequestSignal,
     ) =>
       request<MediaDownloadGrantResponse>(
-        `/api/media/${encodeURIComponent(id)}/download-grants`,
+        `/api/download-preparations/${encodeURIComponent(id)}/grant`,
         { ...init, method: "POST", body },
       ),
     optimizedVersions: (id: string) =>
@@ -3362,9 +3396,11 @@ export function createPorticoClient(options: PorticoClientOptions = {}) {
     revokePlaybackContinuation: (
       sessionId: string,
       credential: PlaybackContinuationCredential,
+      body: PlaybackSessionStopRequest,
       init?: RequestSignal,
-    ) =>
-      request<{ ok: boolean }>(
+    ) => {
+      assertPlaybackSessionStopRequest(body);
+      return request<{ ok: boolean }>(
         `/api/playback-sessions/${encodeURIComponent(sessionId)}/continuation`,
         {
           ...init,
@@ -3374,14 +3410,21 @@ export function createPorticoClient(options: PorticoClientOptions = {}) {
             token: credential.token,
             origin: credential.origin,
           },
+          body,
         },
-      ),
+      );
+    },
     renewPlaybackMediaGrant: (sessionId: string, init?: RequestSignal) =>
       request<MediaGrant>(
         `/api/playback-sessions/${encodeURIComponent(sessionId)}/media-grant`,
         { ...init, method: "POST" },
       ),
-    stopPlayback: async (sessionId: string, init?: RequestSignal) => {
+    stopPlayback: async (
+      sessionId: string,
+      body: PlaybackSessionStopInput,
+      init?: RequestSignal,
+    ) => {
+      assertPlaybackSessionStopRequest(body);
       if (playbackStoppingSessions.has(sessionId)) {
         throw new ApiError(
           409,
@@ -3402,10 +3445,45 @@ export function createPorticoClient(options: PorticoClientOptions = {}) {
             ),
           );
         }
-        await waitForPendingPlaybackProgress(sessionId);
+        // Progress is best-effort telemetry at this boundary. A stalled PATCH
+        // must never prevent the authoritative stop mutation from reaching the
+        // server and leaking a playback session or transcoder process.
+        await drainPendingPlaybackProgressBeforeStop(sessionId);
+        const session = await credentials.current();
+        const generation = playbackSessionGenerations.get(sessionId) ?? 0;
+        if (!Number.isSafeInteger(generation) || generation <= 0) {
+          throw new ApiError(
+            409,
+            "playback_session_authority_unavailable",
+            "Playback session authority is unavailable.",
+          );
+        }
+        const key = playbackProgressKey(sessionId, generation, session);
+        seedClientPlaybackProgressSequence(
+          key,
+          playbackSessionNextEventSequences.get(sessionId) ?? 1,
+        );
+        const terminal = orderedClientPlaybackProgressEvent(key, {
+          positionSeconds: body.positionSeconds,
+          durationSeconds: body.durationSeconds,
+          state: "paused",
+        });
+        const requestBody: PlaybackSessionStopRequest = {
+          disposition: body.disposition,
+          generation,
+          eventSequence: terminal.eventSequence,
+          recordedAt: terminal.recordedAt,
+          positionSeconds: body.positionSeconds,
+          durationSeconds: body.durationSeconds,
+        };
+        assertPlaybackSessionStopRequest(requestBody);
         const response = await request<{ ok: boolean }>(
           `/api/playback-sessions/${encodeURIComponent(sessionId)}`,
-          { ...init, method: "DELETE" },
+          {
+            ...init,
+            method: "DELETE",
+            body: requestBody,
+          },
         );
         forgetClientPlaybackProgress(sessionId);
         return response;
@@ -5549,6 +5627,7 @@ export function createHostedServicesClient(
         localOrigin: string;
         state: string;
         serverPublicKeyFingerprint: string;
+        publicConsoleOriginGeneration: number;
         profileId: string;
         pin?: string;
         installationId?: string;
@@ -6517,6 +6596,7 @@ async function hostedRequest<T>(
       path,
       config.onMutation,
       context.signal,
+      "hosted",
     );
   };
   if (coalesceKey) {
@@ -6846,6 +6926,7 @@ async function hostedFormRequest<T>(
       path,
       config.onMutation,
       context.signal,
+      "hosted",
     );
   };
   return runTransportOperation(
@@ -6923,13 +7004,14 @@ async function handleResponse<T>(
   path: string,
   onMutation?: (tags: DataTag[], path: string) => void,
   signal?: AbortSignal,
+  api: "server" | "hosted" = "server",
 ): Promise<T> {
   if (!response.ok) await throwApiError(response, undefined, undefined, signal);
   if (response.status === 204) return undefined as T;
   const text = await boundedResponseText(response, 4 * 1024 * 1024, signal);
   if (!text) return undefined as T;
   try {
-    const parsed = decodeHighRiskResponse(path, method, JSON.parse(text)) as T;
+    const parsed = decodeHighRiskResponse(path, method, JSON.parse(text), api) as T;
     if (method !== "GET" && method !== "HEAD" && onMutation) {
       try {
         onMutation(dataTagsForMutation(path), path);
@@ -8076,16 +8158,12 @@ async function streamViewerNotificationInvalidations(
   assertPorticoEventStreamContentType(response.headers?.get?.("Content-Type"));
   await onConnected?.();
   if (signal.aborted) return;
-  // Notification invalidations are hints rather than authoritative state. Preserve
-  // the established forward-compatible behavior: discard an unknown payload and
-  // continue with later frames, while retaining strict framing/size enforcement.
   await consumePorticoSSE(
     config,
     response,
     signal,
     parseNotificationInvalidation,
     onInvalidation,
-    { ignoreInvalidPayloads: true },
   );
 }
 

@@ -208,7 +208,6 @@ describe('HttpSettingsDataSource account contracts', () => {
     const input = {
       recipient: 'member@example.test',
       email: 'member@example.test',
-      role: 'user' as const,
 	  permissionTemplate: { permissions: { download: true } },
 	  deliveryMode: 'email' as const,
     };

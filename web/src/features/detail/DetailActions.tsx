@@ -1,4 +1,4 @@
-import { AlertTriangle, CircleCheck, Play, RefreshCw, X } from '#portico-icons';
+import { StatusWarningIcon, StatusSuccessIcon, PlaybackPlayIcon, ActionRefreshIcon, ActionCloseIcon } from '#portico-icons';
 import { contextualMediaPlayAction, productMessage } from '@porticomediaserver/client-core';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -32,15 +32,11 @@ const primaryActionNames = new Set([
   'dvr.play',
   'watchlist.add',
   'watchlist.remove',
-  'watchlist.update',
   'favorite.add',
   'favorite.remove',
-  'favorite.update',
   'watched.set',
   'watched.mark',
   'watched.unmark',
-  'watched.update',
-  'play-state.update',
   'play.from-beginning',
 ]);
 
@@ -76,18 +72,26 @@ export function DetailActions({ item, onMetadataChange }: { item: MediaItem; onM
   useEffect(() => setNotice(undefined), [item.id]);
 
   const canPlay = supports(actions, ['play', 'live.play', 'dvr.play']);
-  const canWatchlist = supports(actions, ['watchlist.add', 'watchlist.remove', 'watchlist.update']);
+  const canWatchlist = supports(actions, ['watchlist.add', 'watchlist.remove']);
   const canRestart = actions.has('play.from-beginning') && canPlay && !isChannelDetail(item);
-  const canFavorite = supports(actions, ['favorite.add', 'favorite.remove', 'favorite.update']);
-  const canMarkWatched = supports(actions, ['watched.set', 'watched.mark', 'watched.unmark', 'watched.update', 'play-state.update']);
+  const canFavorite = supports(actions, ['favorite.add', 'favorite.remove']);
+  const canMarkWatched = supports(actions, ['watched.set', 'watched.mark', 'watched.unmark']);
   const remainingActions = presentedActions.map((candidate) => candidate.id).filter((candidate) => !primaryActionNames.has(candidate));
   const hasPlayableVersions = (item.mediaFiles ?? []).filter((version) => version.available).length > 1;
   const hasMenuActions = hasPlayableVersions || remainingActions.some((action) => menuActionNames.has(action));
   const canWatchWithFriends = canPlay && !isChannelDetail(item) && actions.has('watch-with-friends.start');
   const primaryPlayAction = action('play', 'live.play', 'dvr.play');
   const contextualPlayAction = contextualMediaPlayAction(primaryPlayAction, {
-    ...item,
-    playbackTarget: showTarget,
+    entityKind: item.entityKind,
+    progressSeconds: item.progressSeconds,
+    seasonNumber: item.seasonNumber,
+    episodeNumber: item.episodeNumber,
+    playbackTarget: showTarget ? {
+      entityKind: showTarget.entityKind,
+      progressSeconds: showTarget.progressSeconds,
+      seasonNumber: showTarget.seasonNumber,
+      episodeNumber: showTarget.episodeNumber,
+    } : undefined,
   });
 
   const run = async (name: string, operation: () => Promise<MediaItem>, apply: (updated: MediaItem) => void, rollback?: () => void) => {
@@ -183,26 +187,26 @@ export function DetailActions({ item, onMetadataChange }: { item: MediaItem; onM
   return <>
     <div className="action-row portico-detail-actions">
       {canPlay && <PrimaryButton disabled={Boolean(busy)} onClick={() => void startPlayback()}>
-        {busy === 'play' ? <RefreshCw className="state-spinner" /> : contextualPlayAction ? <MediaActionIcon action={contextualPlayAction} /> : <Play fill="currentColor" />}
+        {busy === 'play' ? <ActionRefreshIcon className="state-spinner" /> : contextualPlayAction ? <MediaActionIcon action={contextualPlayAction} /> : <PlaybackPlayIcon fill="currentColor" />}
         {contextualPlayAction?.label}
       </PrimaryButton>}
-      {canRestart && action('play.from-beginning') && <SecondaryButton disabled={Boolean(busy)} onClick={() => void startFromBeginning()}>{busy === 'restart' ? <RefreshCw className="state-spinner" /> : <MediaActionIcon action={action('play.from-beginning')!} />} {action('play.from-beginning')!.label}</SecondaryButton>}
+      {canRestart && action('play.from-beginning') && <SecondaryButton disabled={Boolean(busy)} onClick={() => void startFromBeginning()}>{busy === 'restart' ? <ActionRefreshIcon className="state-spinner" /> : <MediaActionIcon action={action('play.from-beginning')!} />} {action('play.from-beginning')!.label}</SecondaryButton>}
       {canWatchlist && <SecondaryButton disabled={Boolean(busy)} selected={saved} onClick={() => void toggleSaved()}>
-        <MediaActionIcon action={action('watchlist.add', 'watchlist.remove', 'watchlist.update')!} /> {detailSavedLabel(item, saved)}
+        <MediaActionIcon action={action('watchlist.add', 'watchlist.remove')!} /> {detailSavedLabel(item, saved)}
       </SecondaryButton>}
       {canFavorite && <SecondaryButton disabled={Boolean(busy)} selected={favorite} onClick={() => void toggleFavorite()}>
-        <MediaActionIcon action={action('favorite.add', 'favorite.remove', 'favorite.update')!} /> {action('favorite.add', 'favorite.remove', 'favorite.update')!.label}
+        <MediaActionIcon action={action('favorite.add', 'favorite.remove')!} /> {action('favorite.add', 'favorite.remove')!.label}
       </SecondaryButton>}
       {canMarkWatched && <SecondaryButton disabled={Boolean(busy)} selected={watched} onClick={() => void toggleWatched()}>
-        <MediaActionIcon action={action('watched.mark', 'watched.unmark', 'watched.set', 'watched.update', 'play-state.update')!} /> {detailWatchedLabel(item, watched)}
+        <MediaActionIcon action={action('watched.mark', 'watched.unmark', 'watched.set')!} /> {detailWatchedLabel(item, watched)}
       </SecondaryButton>}
       {(hasMenuActions || canWatchWithFriends) && <DetailActionMenu item={{ ...item, actions: remainingActions, watchlisted: saved, favorite, watched }} allowWatchWithFriends={canWatchWithFriends} onPlayVersion={(versionId) => navigate(`/watch/${item.id}`, { state: watchNavigationState({ versionId }) })} onMetadataChange={onMetadataChange} onNotice={setNotice} />}
     </div>
     {error && <p className="hero-action-error" role="alert">{error}</p>}
     {notice && <div className={`portico-detail-operation-notice ${notice.tone}`} role={notice.tone === 'error' ? 'alert' : 'status'} aria-live="polite">
-      {notice.tone === 'pending' ? <RefreshCw className="state-spinner" /> : notice.tone === 'success' ? <CircleCheck /> : <AlertTriangle />}
+      {notice.tone === 'pending' ? <ActionRefreshIcon className="state-spinner" /> : notice.tone === 'success' ? <StatusSuccessIcon /> : <StatusWarningIcon />}
       <span><strong>{notice.title}</strong>{notice.detail && <small>{notice.detail}</small>}{notice.job && <small className="portico-detail-job-reference">{notice.job.status === 'queued' ? productMessage('media.job-queued').text : notice.job.status}{notice.job.progress > 0 ? ` · ${notice.job.progress}%` : ''}</small>}</span>
-      {notice.tone !== 'pending' && <IconButton label={productMessage('action.dismiss-status').text ?? ''} onClick={() => setNotice(undefined)}><X /></IconButton>}
+      {notice.tone !== 'pending' && <IconButton label={productMessage('action.dismiss-status').text ?? ''} onClick={() => setNotice(undefined)}><ActionCloseIcon /></IconButton>}
     </div>}
   </>;
 }

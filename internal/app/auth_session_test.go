@@ -32,7 +32,7 @@ func TestPorticoLoginFailureRedirectUsesCanonicalMessageID(t *testing.T) {
 	server.redirectPorticoLoginResult(
 		recorder,
 		request,
-		"http://localhost:32500/#/home",
+		"http://localhost:32500/#/",
 		false,
 		"auth.profile-selection-failed",
 	)
@@ -428,7 +428,7 @@ func TestPorticoAccountLocalLoginRedirectCallbackCreatesSession(t *testing.T) {
 			return http.ErrUseLastResponse
 		},
 	}
-	startURL := serverURL + "/api/auth/portico/start?returnUrl=" + url.QueryEscape(serverURL+"/#/home") + "&installationId=" + url.QueryEscape(installationID)
+	startURL := serverURL + "/api/auth/portico/start?returnUrl=" + url.QueryEscape(serverURL+"/#/") + "&installationId=" + url.QueryEscape(installationID)
 	resp, err := client.Get(startURL)
 	if err != nil {
 		t.Fatalf("start Portico login: %v", err)
@@ -497,15 +497,17 @@ func TestPorticoAccountLocalLoginRedirectCallbackCreatesSession(t *testing.T) {
 func TestPorticoLoginStartKeepsRequestOriginDespitePersistedPublicReachability(t *testing.T) {
 	serverURL, db, server := newAuthTestServerWithInstance(t)
 	upsertJSONSetting(t, db, remoteAccessSettingsKey, map[string]any{
-		"enabled":                 true,
-		"hostedBaseUrl":           "https://accounts.getportico.tv",
-		"claimStatus":             "claimed",
-		"serverId":                "srv_public_callback",
-		"assignedHostname":        "ptc-public-callback.direct.getportico.tv",
-		"preferredRemoteAuthMode": "portico",
-		"manualPublicPort":        32500,
-		"certificateStatus":       "valid",
-		"lastReachabilityResult":  "public_reachable",
+		"enabled":                       true,
+		"hostedBaseUrl":                 "https://accounts.getportico.tv",
+		"claimStatus":                   "claimed",
+		"serverId":                      "srv_public_callback",
+		"assignedHostname":              "ptc-public-callback.direct.getportico.tv",
+		"preferredRemoteAuthMode":       "portico",
+		"manualPublicPort":              32500,
+		"certificateStatus":             "valid",
+		"lastReachabilityResult":        "public_reachable",
+		"publicConsoleOrigin":           "https://demo.getportico.tv",
+		"publicConsoleOriginGeneration": 7,
 	})
 	if err := server.saveSecretSetting(remoteAccessCredentialKey, "ptc_srv_public_callback"); err != nil {
 		t.Fatalf("save public callback credential: %v", err)
@@ -538,6 +540,9 @@ func TestPorticoLoginStartKeepsRequestOriginDespitePersistedPublicReachability(t
 	}
 	if got := parameters.Get("callbackUrl"); got != wantOrigin+"/api/auth/portico/callback" {
 		t.Fatalf("callbackUrl=%q, want same-origin callback", got)
+	}
+	if got := parameters.Get("publicConsoleOriginGeneration"); got != "7" {
+		t.Fatalf("publicConsoleOriginGeneration=%q, want 7", got)
 	}
 }
 

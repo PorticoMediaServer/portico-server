@@ -1,4 +1,4 @@
-import { LibraryBig } from '#portico-icons';
+import { NavigationLibraryIcon } from '#portico-icons';
 import { lazy, Suspense, useEffect } from 'react';
 import { Link, Route, Routes, useLocation } from 'react-router-dom';
 import { AppShell } from './app/AppShell';
@@ -108,7 +108,7 @@ function RouteLoading() {
 
 function NotFoundPage() {
   return <div className="standard-page"><div className="library-state error" role="status">
-    <LibraryBig />
+    <NavigationLibraryIcon />
     <strong>This page isn’t available</strong>
     <p>The address may be old, or this server no longer exposes that part of Portico.</p>
     <div className="route-recovery-links"><Link className="button primary" to="/">Open Home</Link><Link className="button secondary" to="/libraries">Browse libraries</Link></div>
@@ -118,7 +118,6 @@ function NotFoundPage() {
 function AppRoutes({ viewer }: { viewer: Viewer }) {
   return <Suspense fallback={<RouteLoading />}><Routes>
     <Route path="/" element={<HomePage />} />
-    <Route path="/home" element={<HomePage />} />
     <Route path="/libraries" element={<LibrariesHubPage />} />
     <Route path="/library/:libraryId" element={<LibraryWorkspaceRoute />} />
     <Route path="/media/:id" element={<DetailPage />} />

@@ -66,8 +66,8 @@ const problemCodeMessages: Readonly<Record<string, ProductMessageId>> = Object.f
   rate_limit_unavailable: "problem.hosted-busy",
   credential_verification_unavailable: "problem.hosted-busy",
   local_profile_pin_invalid: "auth.local-profile-pin-invalid",
-  // Library Channel problems are also emitted with messageId by the server.
-  // These mappings keep older servers and third-party transports consistent.
+  // Library Channel problem codes map to the same current Product Language
+  // entries used by their server-issued message identifiers.
   library_channel_generation_in_progress: "library-channel.generation-in-progress",
   library_channel_generation_timeout: "library-channel.generation-timeout",
   library_channel_invalid_request: "problem.invalid-request",
@@ -228,7 +228,7 @@ export function resolveProductProblem(
 ): ProductMessagePresentation {
   const messageId = knownProductMessageId(problem.messageId);
   if (messageId) return productMessage(messageId, variablesFromProblem(problem, variables));
-  const code = problem.code?.trim();
+  const code = normalizedProductIdentifier(problem.code);
   const explicit = productMessageIdForProblemCode(code);
   if (explicit) return productMessage(explicit, variablesFromProblem(problem, variables));
   // A bare 401 is contextual: it can mean invalid login credentials, a stale
@@ -244,13 +244,13 @@ export function resolveProductProblem(
   return productMessage("problem.request-failed", variables);
 }
 
-export function productMessageIdForProblemCode(code: string | undefined): ProductMessageId | undefined {
-  const normalized = code?.trim();
+export function productMessageIdForProblemCode(code: unknown): ProductMessageId | undefined {
+  const normalized = normalizedProductIdentifier(code);
   return normalized ? problemCodeMessages[normalized] : undefined;
 }
 
-export function knownProductMessageId(value: string | undefined): ProductMessageId | undefined {
-  const normalized = value?.trim();
+export function knownProductMessageId(value: unknown): ProductMessageId | undefined {
+  const normalized = normalizedProductIdentifier(value);
   if (!normalized || !Object.prototype.hasOwnProperty.call(productLanguageCatalog.messages, normalized)) return undefined;
   return normalized as ProductMessageId;
 }
@@ -259,10 +259,16 @@ export function semanticIcon(id: SemanticIconId) {
   return productLanguageCatalog.icons[id];
 }
 
-export function knownSemanticIconId(value: string | undefined): SemanticIconId | undefined {
-  const normalized = value?.trim();
+export function knownSemanticIconId(value: unknown): SemanticIconId | undefined {
+  const normalized = normalizedProductIdentifier(value);
   if (!normalized || !Object.prototype.hasOwnProperty.call(productLanguageCatalog.icons, normalized)) return undefined;
   return normalized as SemanticIconId;
+}
+
+function normalizedProductIdentifier(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const normalized = value.trim();
+  return normalized || undefined;
 }
 
 export function interpolateProductText(template: string, variables: ProductMessageVariables): string {

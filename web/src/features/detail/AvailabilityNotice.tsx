@@ -1,4 +1,4 @@
-import { AlertTriangle } from '#portico-icons';
+import { StatusWarningIcon } from '#portico-icons';
 import { productMessage, type MediaViewModel } from '@porticomediaserver/client-core';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -29,7 +29,7 @@ export function AvailabilityNotice({ item, availability, onMetadataChange }: { i
   const library = detailLibraryDestination(item);
   return <>
     <div className={`portico-detail-availability ${partial ? 'partial' : 'unavailable'}`} role="status">
-      <AlertTriangle />
+      <StatusWarningIcon />
       <span>
         <strong>{productMessage(partial ? 'media.availability-partial-title' : 'media.availability-unavailable-title').text}</strong>
         <small>{availabilityCopy(availability)}</small>

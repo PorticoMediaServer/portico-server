@@ -1,23 +1,5 @@
 import type { Job, Library } from '@porticomediaserver/client-core';
-import {
-  AlertTriangle,
-  Ban,
-  ChevronDown,
-  ChevronUp,
-  CheckCircle2,
-  Clock3,
-  Film,
-  FolderOpen,
-  Music2,
-  Pencil,
-  Plus,
-  RefreshCw,
-  RotateCcw,
-  ScanSearch,
-  Trash2,
-  Tv,
-  X,
-} from '#portico-icons';
+import { StatusWarningIcon, StatusErrorIcon, NavigationExpandIcon, NavigationCollapseIcon, StatusSuccessIcon, MetadataTimeIcon, MediaMovieIcon, LibraryCollectionIcon, MediaMusicIcon, ActionEditIcon, ActionAddIcon, ActionRefreshIcon, ActionResetIcon, NavigationSearchIcon, ActionDeleteIcon, DeviceTvIcon, ActionCloseIcon } from '#portico-icons';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { IconButton, PrimaryButton, SecondaryButton } from '../../components/controls/Buttons';
@@ -39,9 +21,9 @@ function libraryRoute(library: Library): string {
 }
 
 function LibraryIcon({ type }: { type: Library['type'] }) {
-  if (type === 'movie') return <Film />;
-  if (type === 'music' || type === 'audiobook') return <Music2 />;
-  return <Tv />;
+  if (type === 'movie') return <MediaMovieIcon />;
+  if (type === 'music' || type === 'audiobook') return <MediaMusicIcon />;
+  return <DeviceTvIcon />;
 }
 
 function scanStateLabel(status?: string) {
@@ -347,7 +329,7 @@ function LibraryEditor({
     <ModalOverlay labelledBy="portico-library-editor-title" className="portico-settings-dialog portico-library-dialog" initialFocusRef={nameInput} onDismiss={dismiss}>
       <header>
         <div><h2 id="portico-library-editor-title">{heading}</h2><p>Library identity and server media folders</p></div>
-        <IconButton label="Close" disabled={mutation.busy} onClick={dismiss}><X /></IconButton>
+        <IconButton label="Close" disabled={mutation.busy} onClick={dismiss}><ActionCloseIcon /></IconButton>
       </header>
       <div className="portico-settings-dialog-fields">
         <div className="portico-library-identity-fields">
@@ -388,16 +370,16 @@ function LibraryEditor({
                 autoComplete="off"
               />
               {browseAvailable && <SecondaryButton disabled={mutation.busy} onClick={() => setPickerTarget({ kind: 'replace', index })}>{path.trim() ? 'Replace' : 'Browse'}</SecondaryButton>}
-              <IconButton label={`Remove media folder ${index + 1}`} disabled={mutation.busy || (paths.length === 1 && !path.trim())} onClick={() => removePath(index)}><Trash2 /></IconButton>
+              <IconButton label={`Remove media folder ${index + 1}`} disabled={mutation.busy || (paths.length === 1 && !path.trim())} onClick={() => removePath(index)}><ActionDeleteIcon /></IconButton>
             </div>)}
           </div>
           <div className="portico-library-path-footer">
-            <SecondaryButton disabled={mutation.busy} onClick={() => setPaths((current) => [...current, ''])}><Plus /> Add path manually</SecondaryButton>
-            {browseAvailable && <SecondaryButton disabled={mutation.busy} onClick={() => setPickerTarget({ kind: 'add' })}><FolderOpen /> Browse server</SecondaryButton>}
+            <SecondaryButton disabled={mutation.busy} onClick={() => setPaths((current) => [...current, ''])}><ActionAddIcon /> Add path manually</SecondaryButton>
+            {browseAvailable && <SecondaryButton disabled={mutation.busy} onClick={() => setPickerTarget({ kind: 'add' })}><LibraryCollectionIcon /> Browse server</SecondaryButton>}
             {pathNotice && <p role="status">{pathNotice}</p>}
           </div>
         </fieldset>
-        {error && <p className="portico-settings-dialog-error" role="alert"><AlertTriangle />{error}</p>}
+        {error && <p className="portico-settings-dialog-error" role="alert"><StatusWarningIcon />{error}</p>}
       </div>
       <footer>
         <SecondaryButton disabled={mutation.busy} onClick={dismiss}>Cancel</SecondaryButton>
@@ -459,7 +441,7 @@ function RemoveMissingDialog({
   return <ModalOverlay labelledBy="portico-remove-missing-title" className="portico-settings-dialog portico-scan-confirm-dialog" onDismiss={busy ? () => undefined : onDismiss}>
     <header>
       <div><h2 id="portico-remove-missing-title">Remove missing items</h2><p>Review reconciliation evidence for {library.name}</p></div>
-      <IconButton label="Close" disabled={busy} onClick={onDismiss}><X /></IconButton>
+      <IconButton label="Close" disabled={busy} onClick={onDismiss}><ActionCloseIcon /></IconButton>
     </header>
     <div className="portico-settings-dialog-fields portico-scan-reconciliation-review">
       <InlineNotice tone={blocked ? 'error' : 'warn'}>
@@ -758,7 +740,7 @@ export function LibraryOperations({
       setError(productProblemText(reason, 'settings.action-failed', { actionName: `remove ${library.name}` }));
     }
   };
-  return <SettingsGroup title="Libraries" description="Media roots, scan state, and library ownership." actions={canManage && displayedLibraries.length > 0 ? <PrimaryButton onClick={openNewLibrary}><Plus /> New library</PrimaryButton> : undefined}>
+  return <SettingsGroup title="Libraries" description="Media roots, scan state, and library ownership." actions={canManage && displayedLibraries.length > 0 ? <PrimaryButton onClick={openNewLibrary}><ActionAddIcon /> New library</PrimaryButton> : undefined}>
     {(feedback || error) && <InlineNotice tone={error ? 'error' : 'success'}>{error || feedback}</InlineNotice>}
     {createdState && <InlineNotice
       tone={createdState.scanError ? 'warn' : 'success'}
@@ -769,15 +751,15 @@ export function LibraryOperations({
     {displayedLibraries.length === 0
       ? canManage
         ? <section className="portico-first-library">
-          <div className="portico-first-library-heading"><FolderOpen /><span><strong>Add your first library</strong><p>Portico indexes media where it already lives on this server.</p></span></div>
+          <div className="portico-first-library-heading"><LibraryCollectionIcon /><span><strong>Add your first library</strong><p>Portico indexes media where it already lives on this server.</p></span></div>
           <ol>
             <li><span>1</span><div><strong>Name the library</strong><p>Choose Movies, TV, Music, or another matching media type.</p></div></li>
             <li><span>2</span><div><strong>Add media folders</strong><p>Browse server storage or enter one or more absolute paths.</p></div></li>
             <li><span>3</span><div><strong>Start the first scan</strong><p>Creating the library queues a real scan and reports its server state here.</p></div></li>
           </ol>
-          <div className="portico-first-library-action"><PrimaryButton onClick={openNewLibrary}><Plus /> Create first library</PrimaryButton><small>Source files stay in place.</small></div>
+          <div className="portico-first-library-action"><PrimaryButton onClick={openNewLibrary}><ActionAddIcon /> Create first library</PrimaryButton><small>Source files stay in place.</small></div>
         </section>
-        : <div className="portico-settings-state"><FolderOpen /><strong>No libraries are shared with this account</strong><p>The server owner can add a library or grant this account access to an existing one.</p></div>
+        : <div className="portico-settings-state"><LibraryCollectionIcon /><strong>No libraries are shared with this account</strong><p>The server owner can add a library or grant this account access to an existing one.</p></div>
       : <div className="portico-library-list">{displayedLibraries.map((library) => {
         const justCreated = createdState?.library.id === library.id ? createdState : undefined;
         const operations = scanOperations[library.id];
@@ -797,25 +779,25 @@ export function LibraryOperations({
           </Link>
           <div className="portico-library-operation-actions">
             {justCreated
-              ? <span className={`portico-settings-capability ${justCreated.scanError ? 'warning' : 'configured'}`}>{justCreated.scanError ? <AlertTriangle /> : ['complete', 'completed'].includes(justCreated.scanJob?.status ?? '') ? <CheckCircle2 /> : <RefreshCw className="portico-settings-spinner" />} {scanLabel}</span>
-              : active ? <span className="portico-settings-capability configured"><RefreshCw className="portico-settings-spinner" /> {phaseLabel(summary)}</span>
-                : isCompletedScan(summary) ? <span className="portico-settings-capability configured"><CheckCircle2 /> Complete</span>
-                  : summary?.status === 'failed' ? <span className="portico-settings-capability warning"><AlertTriangle /> Failed</span>
-                    : summary?.status === 'cancelled' ? <span className="portico-settings-capability"><Ban /> Cancelled</span> : null}
+              ? <span className={`portico-settings-capability ${justCreated.scanError ? 'warning' : 'configured'}`}>{justCreated.scanError ? <StatusWarningIcon /> : ['complete', 'completed'].includes(justCreated.scanJob?.status ?? '') ? <StatusSuccessIcon /> : <ActionRefreshIcon className="portico-settings-spinner" />} {scanLabel}</span>
+              : active ? <span className="portico-settings-capability configured"><ActionRefreshIcon className="portico-settings-spinner" /> {phaseLabel(summary)}</span>
+                : isCompletedScan(summary) ? <span className="portico-settings-capability configured"><StatusSuccessIcon /> Complete</span>
+                  : summary?.status === 'failed' ? <span className="portico-settings-capability warning"><StatusWarningIcon /> Failed</span>
+                    : summary?.status === 'cancelled' ? <span className="portico-settings-capability"><StatusErrorIcon /> Cancelled</span> : null}
             {active && summary?.jobId && (operations?.actions.canCancel ?? true)
-              ? <SecondaryButton disabled={mutation.busy} onClick={() => void cancelScan(library)}><Ban /> Cancel</SecondaryButton>
+              ? <SecondaryButton disabled={mutation.busy} onClick={() => void cancelScan(library)}><StatusErrorIcon /> Cancel</SecondaryButton>
               : canRetry
-                ? <SecondaryButton disabled={mutation.busy} onClick={() => void retryScan(library, operations?.lastRun?.id)}><RotateCcw /> Retry</SecondaryButton>
-                : <SecondaryButton disabled={mutation.busy || active} onClick={() => void scan(library, 'quick')}><ScanSearch /> Quick scan</SecondaryButton>}
+                ? <SecondaryButton disabled={mutation.busy} onClick={() => void retryScan(library, operations?.lastRun?.id)}><ActionResetIcon /> Retry</SecondaryButton>
+                : <SecondaryButton disabled={mutation.busy || active} onClick={() => void scan(library, 'quick')}><NavigationSearchIcon /> Quick scan</SecondaryButton>}
             <IconButton label={`${expanded ? 'Hide' : 'Show'} scan details for ${library.name}`} onClick={() => setExpandedScans((current) => {
               const next = new Set(current);
               if (next.has(library.id)) next.delete(library.id); else next.add(library.id);
               return next;
-            })}>{expanded ? <ChevronUp /> : <ChevronDown />}</IconButton>
-          {canManage && <IconButton label={`Edit ${library.name}`} onClick={() => { setCreatedState(undefined); setEditor(library); }}><Pencil /></IconButton>}
+            })}>{expanded ? <NavigationCollapseIcon /> : <NavigationExpandIcon />}</IconButton>
+          {canManage && <IconButton label={`Edit ${library.name}`} onClick={() => { setCreatedState(undefined); setEditor(library); }}><ActionEditIcon /></IconButton>}
           {canManage && (confirmDelete === library.id
             ? <div className="portico-inline-confirm"><span>Remove {library.name} from Portico? Its library records and configuration will be removed; media files remain on disk.</span><button type="button" onClick={() => setConfirmDelete('')}>Cancel</button><button type="button" className="danger" disabled={mutation.busy} onClick={() => void remove(library)}>Remove library</button></div>
-            : <IconButton label={`Remove ${library.name}`} onClick={() => setConfirmDelete(library.id)}><Trash2 /></IconButton>)}
+            : <IconButton label={`Remove ${library.name}`} onClick={() => setConfirmDelete(library.id)}><ActionDeleteIcon /></IconButton>)}
           </div>
         </div>
         {expanded && <section className="portico-library-scan-panel" aria-label={`${library.name} scan details`}>
@@ -830,12 +812,12 @@ export function LibraryOperations({
               <progress aria-label={`${library.name} scan progress`} max="100" value={progress}>{progress}%</progress>
             </div>}
             <dl className="portico-library-scan-timing">
-              <div><dt>Last run</dt><dd><Clock3 /> {formatScanTime(summary?.completedAt ?? summary?.lastRunAt ?? (isCompletedScan(summary) ? summary?.updatedAt : undefined))}</dd></div>
-              <div><dt>Next run</dt><dd><Clock3 /> {formatScanTime(summary?.nextRunAt)}</dd></div>
+              <div><dt>Last run</dt><dd><MetadataTimeIcon /> {formatScanTime(summary?.completedAt ?? summary?.lastRunAt ?? (isCompletedScan(summary) ? summary?.updatedAt : undefined))}</dd></div>
+              <div><dt>Next run</dt><dd><MetadataTimeIcon /> {formatScanTime(summary?.nextRunAt)}</dd></div>
             </dl>
           </div>
           {warnings.length > 0 && <div className="portico-library-scan-warnings" role="status">
-            <AlertTriangle />
+            <StatusWarningIcon />
             <div><strong>{degradedRoots.length > 0 ? `${degradedRoots.length} ${degradedRoots.length === 1 ? 'source needs' : 'sources need'} attention` : 'Scan warning'}</strong>
               {warnings.slice(0, 4).map((warning, index) => <p key={`${warning}:${index}`}>{warning}</p>)}
               {degradedRoots.map((root, index) => <small key={root.id ?? root.path ?? index}>{root.path || `Source ${index + 1}`}{root.status ? ` · ${root.status}` : ''}{root.latencyMillis !== undefined ? ` · ${root.latencyMillis} ms` : ''}</small>)}

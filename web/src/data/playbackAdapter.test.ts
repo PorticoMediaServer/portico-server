@@ -7,6 +7,16 @@ function playback(nextEventSequence: number, sessionId = 'session-1'): PlaybackR
     sessionId,
     nextEventSequence,
     media: { id: 'movie-1', type: 'movie' },
+    generation: 1,
+    queueRevision: 1,
+    repeatMode: 'off',
+    timeline: { type: 'vod', canPause: true, canSeek: true },
+    qualities: [],
+    audioStreams: [],
+    subtitleStreams: [],
+    chapters: [],
+    queue: [],
+    resources: [],
   } as unknown as PlaybackResponse;
 }
 

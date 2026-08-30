@@ -1,14 +1,4 @@
-import {
-  CircleCheck,
-  Download,
-  Ellipsis,
-  Film,
-  Gauge,
-  RefreshCw,
-  ScanSearch,
-  WandSparkles,
-  X,
-} from '#portico-icons';
+import { StatusSuccessIcon, ActionDownloadIcon, ActionMoreIcon, MediaMovieIcon, PlaybackQualityIcon, ActionRefreshIcon, NavigationSearchIcon, ActionCustomizeIcon, ActionCloseIcon } from '#portico-icons';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { productMessage } from '@porticomediaserver/client-core';
 import { useNavigate } from 'react-router-dom';
@@ -58,10 +48,10 @@ function PlayVersionDialog({ item, onDismiss, onPlay }: {
   const headingId = 'detail-play-version-title';
   const versions = (item.mediaFiles ?? []).filter((version) => version.available);
   return <ModalOverlay labelledBy={headingId} className="detail-operation-dialog detail-analysis-dialog" onDismiss={onDismiss}>
-    <header><div><p>{productText('playback.version-description')}</p><h2 id={headingId}>{productText('playback.version-title')}</h2></div><IconButton label={`${productText('action.close')} ${productText('playback.version-title')}`} onClick={onDismiss}><X /></IconButton></header>
+    <header><div><p>{productText('playback.version-description')}</p><h2 id={headingId}>{productText('playback.version-title')}</h2></div><IconButton label={`${productText('action.close')} ${productText('playback.version-title')}`} onClick={onDismiss}><ActionCloseIcon /></IconButton></header>
     <div className="detail-analysis-options">
       {versions.map((version) => <button type="button" key={version.id} onClick={() => onPlay(version.id)}>
-        <Film />
+        <MediaMovieIcon />
         <span><strong>{mediaVersionLabel(version)}{version.selected ? ` · ${productText('media.default-version')}` : ''}</strong><small>{mediaVersionDetail(version)}</small></span>
       </button>)}
     </div>
@@ -69,7 +59,7 @@ function PlayVersionDialog({ item, onDismiss, onPlay }: {
   </ModalOverlay>;
 }
 
-type MediaOperationTarget = Pick<MediaItem, 'id' | 'title' | 'kind' | 'actions'>;
+type MediaOperationTarget = Pick<MediaItem, 'id' | 'title' | 'entityKind' | 'actions'>;
 
 function errorMessage(reason: unknown) {
   const presentation = productLanguageProblem(reason);
@@ -85,10 +75,10 @@ export function AnalyzeMediaDialog({ item, onDismiss, onQueue }: { item: Pick<Me
   const headingId = 'detail-analyze-media-title';
   const analyzeLabel = productMessage('action.analyze-media').text;
   return <ModalOverlay labelledBy={headingId} className="detail-operation-dialog detail-analysis-dialog" onDismiss={onDismiss}>
-    <header><div><p>{analyzeLabel}</p><h2 id={headingId}>{analyzeLabel} · {item.title}</h2></div><IconButton label={productMessage('action.close-analysis-options').text ?? ''} onClick={onDismiss}><X /></IconButton></header>
+    <header><div><p>{analyzeLabel}</p><h2 id={headingId}>{analyzeLabel} · {item.title}</h2></div><IconButton label={productMessage('action.close-analysis-options').text ?? ''} onClick={onDismiss}><ActionCloseIcon /></IconButton></header>
     <div className="detail-analysis-options">
-      <button type="button" onClick={() => onQueue('probe')}><ScanSearch /><span><strong>{productMessage('action.stream-inspection').text}</strong><small>{productMessage('media.stream-inspection-body').text}</small></span></button>
-      <button type="button" onClick={() => onQueue('full')}><Gauge /><span><strong>{productMessage('action.full-media-analysis').text}</strong><small>{productMessage('media.full-analysis-body').text}</small></span></button>
+      <button type="button" onClick={() => onQueue('probe')}><NavigationSearchIcon /><span><strong>{productMessage('action.stream-inspection').text}</strong><small>{productMessage('media.stream-inspection-body').text}</small></span></button>
+      <button type="button" onClick={() => onQueue('full')}><PlaybackQualityIcon /><span><strong>{productMessage('action.full-media-analysis').text}</strong><small>{productMessage('media.full-analysis-body').text}</small></span></button>
     </div>
     <footer><SecondaryButton onClick={onDismiss}>{productMessage('action.cancel').text}</SecondaryButton></footer>
   </ModalOverlay>;
@@ -192,9 +182,9 @@ export function MediaVersionsDialog({
     : [];
 
   return <ModalOverlay labelledBy={headingId} className="detail-operation-dialog detail-versions-dialog" onDismiss={onDismiss}>
-    <header><div><p>{item.title}</p><h2 id={headingId}>{mode === 'download' ? productMessage('download.dialog-title').text : 'Optimized versions'}</h2></div><IconButton label={mode === 'download' ? productMessage('action.close-download-options').text ?? '' : `Close ${mode} options`} onClick={onDismiss}>{mode === 'download' ? <ProductLanguageIcon id="action.close" /> : <X />}</IconButton></header>
-    {state.status === 'loading' && <div className="detail-operation-state" aria-live="polite" aria-busy="true">{mode === 'download' ? <ProductLanguageIcon id="status.loading" className="state-spinner" /> : <RefreshCw className="state-spinner" />}<strong>{mode === 'download' ? productMessage('download.options-loading').title : 'Loading media versions…'}</strong></div>}
-    {state.status === 'error' && <div className="detail-operation-state error" role="alert"><strong>{mode === 'download' ? productMessage('download.options-failed').title : productMessage('media.load-failed', { featureName: 'Media versions' }).title}</strong><p>{mode === 'download' ? productProblemText(state.error, 'download.options-failed') : productProblemText(state.error, 'media.load-failed', { featureName: 'Media versions' })}</p><SecondaryButton onClick={() => void load()}>{mode === 'download' ? <ProductLanguageIcon id="action.retry" /> : <RefreshCw />} {productMessage('action.retry').text}</SecondaryButton></div>}
+    <header><div><p>{item.title}</p><h2 id={headingId}>{mode === 'download' ? productMessage('download.dialog-title').text : 'Optimized versions'}</h2></div><IconButton label={mode === 'download' ? productMessage('action.close-download-options').text ?? '' : `Close ${mode} options`} onClick={onDismiss}>{mode === 'download' ? <ProductLanguageIcon id="action.close" /> : <ActionCloseIcon />}</IconButton></header>
+    {state.status === 'loading' && <div className="detail-operation-state" aria-live="polite" aria-busy="true">{mode === 'download' ? <ProductLanguageIcon id="status.loading" className="state-spinner" /> : <ActionRefreshIcon className="state-spinner" />}<strong>{mode === 'download' ? productMessage('download.options-loading').title : 'Loading media versions…'}</strong></div>}
+    {state.status === 'error' && <div className="detail-operation-state error" role="alert"><strong>{mode === 'download' ? productMessage('download.options-failed').title : productMessage('media.load-failed', { featureName: 'Media versions' }).title}</strong><p>{mode === 'download' ? productProblemText(state.error, 'download.options-failed') : productProblemText(state.error, 'media.load-failed', { featureName: 'Media versions' })}</p><SecondaryButton onClick={() => void load()}>{mode === 'download' ? <ProductLanguageIcon id="action.retry" /> : <ActionRefreshIcon />} {productMessage('action.retry').text}</SecondaryButton></div>}
     {state.status === 'success' && <div className="detail-version-options">
       {!shownOptions.length && <div className="detail-operation-state"><strong>{mode === 'download' ? productMessage('download.options-empty').title : 'No versions are available for this item.'}</strong>{mode === 'download' && <p>{productMessage('download.options-empty').body}</p>}</div>}
       {shownOptions.map((option) => {
@@ -202,11 +192,11 @@ export function MediaVersionsDialog({
         const profileInfo = state.data.profiles.find((candidate) => candidate.id === profile);
         const technical = [option.container?.toLocaleUpperCase(), option.videoCodec?.toLocaleUpperCase(), option.audioCodec?.toLocaleUpperCase(), option.sizeBytes ? formatDetailBytes(option.sizeBytes) : undefined].filter(Boolean).join(' · ');
         return <article key={option.id} className={option.available ? 'available' : option.job ? 'pending' : 'unavailable'}>
-          <span className="detail-version-mark">{option.kind === 'source' ? mode === 'download' ? <ProductLanguageIcon id="action.download" /> : <Download /> : mode === 'download' ? <ProductLanguageIcon id={option.available ? 'status.success' : 'status.preparation'} /> : option.available ? <CircleCheck /> : <WandSparkles />}</span>
+          <span className="detail-version-mark">{option.kind === 'source' ? mode === 'download' ? <ProductLanguageIcon id="action.download" /> : <ActionDownloadIcon /> : mode === 'download' ? <ProductLanguageIcon id={option.available ? 'status.success' : 'status.preparation'} /> : option.available ? <StatusSuccessIcon /> : <ActionCustomizeIcon />}</span>
           <div><strong>{option.label}{profile === state.data.defaultProfile && <small>{mode === 'download' ? productMessage('download.option-default').text : 'Default'}</small>}</strong><p>{option.description}</p>{technical && <span>{technical}</span>}{profileInfo && !technical && <span>{mode === 'download' ? productMessage('download.profile-video-kbps', { height: profileInfo.height, bitrate: profileInfo.videoKbps.toLocaleString() }).text : `${profileInfo.height}p · ${profileInfo.videoKbps.toLocaleString()} Kbps video`}</span>}{option.job && <span className="detail-job-state">{jobStatus(option.job)}</span>}</div>
           <div className="detail-version-command">
             {mode === 'download' && state.data.canDownload && <PrimaryButton disabled={Boolean(busy)} onClick={() => void downloadVersion(profile)}>{busy === profile ? <ProductLanguageIcon id="status.loading" className="state-spinner" /> : <ProductLanguageIcon id="action.download" />} {productMessage('action.download').text}</PrimaryButton>}
-            {!option.available && !option.job && option.kind === 'optimized' && canOptimize && <SecondaryButton disabled={Boolean(busy)} onClick={() => void createVersion(profile, option.label)}>{busy === profile ? <RefreshCw className="state-spinner" /> : <WandSparkles />} Create</SecondaryButton>}
+            {!option.available && !option.job && option.kind === 'optimized' && canOptimize && <SecondaryButton disabled={Boolean(busy)} onClick={() => void createVersion(profile, option.label)}>{busy === profile ? <ActionRefreshIcon className="state-spinner" /> : <ActionCustomizeIcon />} Create</SecondaryButton>}
             {option.job && <span>{jobStatus(option.job)}</span>}
             {!option.available && !option.job && option.kind === 'source' && <span>{mode === 'download' ? productMessage('download.option-unavailable').text : 'Unavailable'}</span>}
             {option.available && mode === 'optimize' && <span>Ready</span>}
@@ -329,11 +319,11 @@ export function DetailActionMenu({
   if (!hasActions) return null;
   return <>
     <div className="more-actions" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()}>
-      <IconButton ref={triggerRef} label={productMessage('action.more-for', { title: item.title }).text ?? ''} className={open ? 'selected' : ''} onClick={() => setOpen((value) => !value)}><Ellipsis /></IconButton>
+      <IconButton ref={triggerRef} label={productMessage('action.more-for', { title: item.title }).text ?? ''} className={open ? 'selected' : ''} onClick={() => setOpen((value) => !value)}><ActionMoreIcon /></IconButton>
       {open && <AnchoredOverlay anchorRef={triggerRef} placement="bottom-end" className="context-menu detail-context-menu" role="menu" onDismiss={closeMenu}>
-        <div className="context-title">{item.poster ? <img src={item.poster} alt="" /> : <span className="context-artwork-fallback"><Film /></span>}<span><strong>{item.title}</strong><small>{item.subtitle}</small></span></div>
+        <div className="context-title">{item.poster ? <img src={item.poster} alt="" /> : <span className="context-artwork-fallback"><MediaMovieIcon /></span>}<span><strong>{item.title}</strong><small>{item.subtitle}</small></span></div>
         <div className="context-section">
-          {canPlayVersion && <button type="button" onClick={() => { closeMenu(); setPlayVersionOpen(true); }}><Film /> {productText('action.play-version')}</button>}
+          {canPlayVersion && <button type="button" onClick={() => { closeMenu(); setPlayVersionOpen(true); }}><MediaMovieIcon /> {productText('action.play-version')}</button>}
           {allowWatchWithFriends && action('watch-with-friends.start') && <button type="button" onClick={() => { closeMenu(); navigate(`/watch-with-friends?media=${encodeURIComponent(item.id)}`); }}><MediaActionIcon action={action('watch-with-friends.start')!} /> {action('watch-with-friends.start')!.label}</button>}
           {canQueue && queueAction && <button type="button" onClick={() => void updatePlaybackQueue('append')}><MediaActionIcon action={queueAction} /> {queueAction.label}</button>}
           {canQueue && queueAction && <button type="button" onClick={() => void updatePlaybackQueue('next')}><MediaActionIcon action={queueAction} /> {productMessage('action.play-next').text}</button>}
@@ -378,7 +368,7 @@ export function DetailActionMenu({
         }
         const removed = productMessage('media.removed');
         onNotice({ tone: 'success', title: removed.title ?? '', detail: removed.body });
-        navigate(item.libraryId ? `/library/${item.libraryId}` : '/home', { replace: true });
+        navigate(item.libraryId ? `/library/${item.libraryId}` : '/', { replace: true });
       }}
     />}
     {ratingOpen && <MediaRatingDialog title={item.title} value={userRating} onDismiss={() => setRatingOpen(false)} onSave={async (rating) => {

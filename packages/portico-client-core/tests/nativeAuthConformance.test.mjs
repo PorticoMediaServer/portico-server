@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
@@ -191,7 +192,13 @@ test("hosted account tokens can switch without rebuilding the client and scoped 
       if (String(input).endsWith("/api/system")) {
         return jsonResponse(hostedSystemFixture);
       }
-      if (String(input).endsWith("/api/auth/sessions")) return jsonResponse(credentials("hosted-access", "hosted-refresh"), { status: 201 });
+      if (String(input).endsWith("/api/auth/sessions")) return jsonResponse(credentials("hosted-access", "hosted-refresh", {
+        authority: "hosted",
+        accountId: undefined,
+        serverId: undefined,
+        profileId: undefined,
+        authorizationRevision: undefined
+      }), { status: 201 });
       if (String(input).endsWith("/refresh")) return jsonResponse(credentials("hosted-access-2", "hosted-refresh-2"));
       return jsonResponse({ authenticated: true, ok: true, user: { id: activeAccountToken } });
     } }
@@ -207,6 +214,54 @@ test("hosted account tokens can switch without rebuilding the client and scoped 
   assert.deepEqual(calls.slice(1, 3).map((call) => call.authorization), ["Bearer account-a", "Bearer account-b"]);
   assert.equal(calls.every((call) => !call.url.includes("hosted-refresh")), true);
 	assert.equal(calls.some((call) => call.url.includes("/portico-sessions/")), false);
+});
+
+test("the exported Hosted native-session call validates the canonical Hosted serializer shape in Hosted context", async () => {
+  const serializedHostedResponse = JSON.parse(await readFile(
+    new URL("./fixtures/hosted-native-session-credentials.json", import.meta.url), "utf8"
+  ));
+  const calls = [];
+  const hosted = createHostedServicesClient({
+    hostedApiBaseUrl: "https://hosted.example",
+    transport: { fetch: async (input) => {
+      calls.push(String(input));
+      if (String(input).endsWith("/api/system")) return jsonResponse(hostedSystemFixture);
+      return jsonResponse(serializedHostedResponse, { status: 201 });
+    } }
+  });
+
+  const result = await hosted.createNativeSession({
+    login: "owner", password: "secret", installationId: "install-1",
+    deviceName: "Portico iPhone", devicePlatform: "iOS"
+  });
+  assert.deepEqual(result, serializedHostedResponse);
+  assert.deepEqual(calls, [
+    "https://hosted.example/api/system",
+    "https://hosted.example/api/auth/sessions",
+    "https://hosted.example/api/system"
+  ]);
+
+  for (const mutation of [
+    value => { delete value.authority; },
+    value => { value.authority = "local"; },
+    value => { value.accountId = "acct_legacy"; },
+    value => { value.serverId = "srv_legacy"; },
+    value => { value.profileId = "profile_legacy"; },
+    value => { value.authorizationRevision = "1"; },
+  ]) {
+    const invalid = structuredClone(serializedHostedResponse);
+    mutation(invalid);
+    const rejectingHosted = createHostedServicesClient({
+      hostedApiBaseUrl: "https://hosted.example",
+      transport: { fetch: async (input) => String(input).endsWith("/api/system")
+        ? jsonResponse(hostedSystemFixture)
+        : jsonResponse(invalid, { status: 201 }) }
+    });
+    await assert.rejects(rejectingHosted.createNativeSession({
+      login: "owner", password: "secret", installationId: "install-1",
+      deviceName: "Portico iPhone", devicePlatform: "iOS"
+    }), error => error?.code === "invalid_response");
+  }
 });
 
 test("hosted route failover verifies identity and commits a selected server atomically", async () => {

@@ -10,11 +10,13 @@ import (
 
 func TestHomeProjectionKeySharesOnlyEquivalentCatalogueAuthorization(t *testing.T) {
 	primary := User{
-		ID: "profile-primary", Role: "user", LibraryIDs: []string{"library-b", "library-a"},
+		ID: "account-primary", AccountID: "account-primary", ProfileID: "profile-primary", Role: "user", LibraryIDs: []string{"library-b", "library-a"},
 		Permissions: map[string]bool{"stream": true}, Preferences: defaultUserPreferences(),
 	}
 	secondary := primary
-	secondary.ID = "profile-secondary"
+	secondary.ID = "account-secondary"
+	secondary.AccountID = "account-secondary"
+	secondary.ProfileID = "profile-secondary"
 	secondary.LibraryIDs = []string{"library-a", "library-b"}
 	if homeProjectionCacheKey(primary) != homeProjectionCacheKey(secondary) {
 		t.Fatal("equivalent profile catalogue policies should share one projection")

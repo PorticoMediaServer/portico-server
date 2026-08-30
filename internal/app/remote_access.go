@@ -22,6 +22,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -71,6 +72,8 @@ type RemoteAccessSettings struct {
 	ClaimStatus                     string `json:"claimStatus"`
 	ServerID                        string `json:"serverId"`
 	AssignedHostname                string `json:"assignedHostname"`
+	PublicConsoleOrigin             string `json:"publicConsoleOrigin"`
+	PublicConsoleOriginGeneration   int64  `json:"publicConsoleOriginGeneration"`
 	PublicPortMode                  string `json:"publicPortMode"`
 	ManualPublicPort                int    `json:"manualPublicPort"`
 	PreferredRemoteAuthMode         string `json:"preferredRemoteAuthMode"`
@@ -320,6 +323,25 @@ func (s *Server) handleRemoteAccessSettings(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	s.configureRemoteTLS(settings)
+	if (previous.Enabled != settings.Enabled || previous.LastHeartbeatError != "") && settings.ClaimStatus == "claimed" && strings.TrimSpace(settings.ServerID) != "" && strings.TrimSpace(s.secretSetting(remoteAccessCredentialKey)) != "" {
+		// Availability is a security/lifecycle state, not a lease-period hint.
+		// Publish the exact transition before acknowledging the owner's save so
+		// Hosted cannot keep issuing stale signed routes while the listener is off.
+		heartbeatCtx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
+		heartbeatErr := s.sendRemoteAccessHeartbeatWithOptions(heartbeatCtx, settings, remoteAccessHeartbeatOptions{SyncPolicy: false})
+		cancel()
+		if heartbeatErr != nil {
+			settings.LastReachabilityCheckAt = time.Now().UTC().Format(time.RFC3339)
+			settings.LastReachabilityResult = "heartbeat_failed"
+			settings.LastHeartbeatError = remoteAccessFailureCode(heartbeatErr)
+			_ = s.saveRemoteAccessSettings(settings)
+			writeError(w, http.StatusBadGateway, "remote_access_publication_failed", "The local setting changed, but Portico could not publish the remote access state. Try again after the connection recovers.")
+			return
+		}
+		if refreshed, loadErr := s.remoteAccessSettings(); loadErr == nil {
+			settings = refreshed
+		}
+	}
 	s.recordAudit(r, user, "remote_access.settings_updated", "remote_access", settings.ServerID, "warn", map[string]string{
 		"enabled":                strconv.FormatBool(settings.Enabled),
 		"authMode":               settings.PreferredRemoteAuthMode,
@@ -1305,11 +1327,22 @@ func (s *Server) finishRemoteAccessClaimActivation(ctx context.Context, claim Re
 		ctx = context.Background()
 	}
 	if credential := s.secretSetting(remoteAccessCredentialKey); credential != "" {
-		syncCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
-		if err := s.syncRemoteAccessMembers(syncCtx, settings, credential); err != nil {
-			s.recordLog("warn", "Portico account member sync after claim failed", map[string]string{"error": err.Error()})
-		}
+		// A newly claimed server has no durable compatibility identity at Hosted
+		// Services yet. Policy authority is intentionally unavailable until a
+		// valid heartbeat publishes that build/capability envelope, so heartbeat
+		// must precede the first policy snapshot request.
+		heartbeatCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
+		heartbeatErr := s.sendRemoteAccessHeartbeatWithOptions(heartbeatCtx, settings, remoteAccessHeartbeatOptions{SyncPolicy: false})
 		cancel()
+		if heartbeatErr != nil {
+			s.recordLog("warn", "Portico compatibility heartbeat after claim failed", map[string]string{"error": heartbeatErr.Error()})
+		} else {
+			syncCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
+			if err := s.syncRemoteAccessMembers(syncCtx, settings, credential); err != nil {
+				s.recordLog("warn", "Portico account member sync after claim failed", map[string]string{"error": err.Error()})
+			}
+			cancel()
+		}
 	}
 	_ = s.linkClaimingOwnerProfile(claim)
 	s.startRemoteAccessPostClaimProvisioning(settings)
@@ -1484,7 +1517,7 @@ func (s *Server) startRemoteAccessPostClaimProvisioning(settings RemoteAccessSet
 		}
 		settings = updated
 		s.configureRemoteTLS(settings)
-		if err := s.sendRemoteAccessHeartbeatWithOptions(ctx, settings, remoteAccessHeartbeatOptions{}); err != nil {
+		if err := s.sendRemoteAccessHeartbeatWithOptions(ctx, settings, remoteAccessHeartbeatOptions{SyncPolicy: true}); err != nil {
 			s.recordLog("warn", "Remote access certificate publication after claim failed", map[string]string{"error": err.Error()})
 		}
 	})
@@ -1500,6 +1533,16 @@ func (s *Server) finishPorticoSetupActivation(ctx context.Context, status Remote
 	credential := s.secretSetting(remoteAccessCredentialKey)
 	if credential == "" {
 		return errors.New("Portico server credential is unavailable")
+	}
+	// Setup may resume from a claimed state whose post-claim one-shot was
+	// interrupted or whose first response raced the browser's status poll.
+	// Republish compatibility before requesting signed owner policy so recovery
+	// never depends on an earlier asynchronous heartbeat having won that race.
+	heartbeatCtx, heartbeatCancel := context.WithTimeout(ctx, 8*time.Second)
+	heartbeatErr := s.sendRemoteAccessHeartbeatWithOptions(heartbeatCtx, status.Settings, remoteAccessHeartbeatOptions{SyncPolicy: false})
+	heartbeatCancel()
+	if heartbeatErr != nil {
+		return fmt.Errorf("publish Portico compatibility heartbeat: %w", heartbeatErr)
 	}
 	syncCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
 	defer cancel()
@@ -1581,9 +1624,6 @@ func (s *Server) ensurePorticoSetupOwnerProfile() error {
 			email = member.PorticoUserID + "@portico-account.invalid"
 		}
 		err = s.withUserTxTagged(context.Background(), []string{"settings"}, func(tx *sql.Tx) error {
-			if err := releaseDisposablePorticoEmailCollisionTx(tx, email, "", member, now); err != nil {
-				return err
-			}
 			username := uniquePorticoAccountUsername(tx, member)
 			displayName := porticoDisplayName(member)
 			if _, err := tx.Exec(`
@@ -1652,6 +1692,14 @@ func (s *Server) sendRemoteAccessHeartbeatWithOptions(ctx context.Context, setti
 	if digest, digestErr := normalizedSHA256Digest(policyState.PolicyDigest); digestErr == nil {
 		policyDigest = digest
 	}
+	publicConsoleOrigin := canonicalConfiguredPublicConsoleOrigin(s.cfg.PublicOrigin)
+	if settings.PublicConsoleOriginGeneration <= 0 || publicConsoleOrigin != settings.PublicConsoleOrigin {
+		settings.PublicConsoleOriginGeneration++
+		if settings.PublicConsoleOriginGeneration <= 0 {
+			settings.PublicConsoleOriginGeneration = 1
+		}
+		settings.PublicConsoleOrigin = publicConsoleOrigin
+	}
 	payload := map[string]any{
 		"serverId":                      settings.ServerID,
 		"serverName":                    serverName,
@@ -1672,7 +1720,9 @@ func (s *Server) sendRemoteAccessHeartbeatWithOptions(ctx context.Context, setti
 		"forwardCompatibility":          compatibility.ForwardCompatibility,
 		"capabilities":                  compatibility.Capabilities,
 		"publicPort":                    settings.ManualPublicPort,
-		"publicIpCandidate":             settings.LastPublicIPAddress,
+		"publicConsoleOrigin":           settings.PublicConsoleOrigin,
+		"publicConsoleOriginGeneration": settings.PublicConsoleOriginGeneration,
+		"publicIpCandidates":            publicInterfaceHosts(),
 		"certificateStatus":             settings.CertificateStatus,
 		"certificateExpiresAt":          settings.CertificateExpiresAt,
 		"remoteAccessEnabled":           settings.Enabled,
@@ -1714,23 +1764,27 @@ func (s *Server) sendRemoteAccessHeartbeatWithOptions(ctx context.Context, setti
 		}
 	}
 	var response struct {
-		AssignedHostname    string                    `json:"assignedHostname"`
-		RemoteAccessEnabled *bool                     `json:"remoteAccessEnabled,omitempty"`
-		PublicIP            string                    `json:"publicIp,omitempty"`
-		LeaseSeconds        int64                     `json:"leaseSeconds,omitempty"`
-		RepairPollSeconds   int64                     `json:"repairPollSeconds,omitempty"`
-		StateChanged        bool                      `json:"stateChanged,omitempty"`
-		TopologyChanged     bool                      `json:"topologyChanged,omitempty"`
-		Repair              *remoteAccessRepairSignal `json:"repair,omitempty"`
-		PolicyDigest        string                    `json:"policyDigest,omitempty"`
-		PolicyRevision      int64                     `json:"policyRevision,omitempty"`
-		PolicyRoot          string                    `json:"policyRoot,omitempty"`
-		PolicyChanged       bool                      `json:"policyChanged,omitempty"`
+		AssignedHostname              string                    `json:"assignedHostname"`
+		RemoteAccessEnabled           *bool                     `json:"remoteAccessEnabled,omitempty"`
+		PublicIP                      string                    `json:"publicIp,omitempty"`
+		LeaseSeconds                  int64                     `json:"leaseSeconds,omitempty"`
+		RepairPollSeconds             int64                     `json:"repairPollSeconds,omitempty"`
+		StateChanged                  bool                      `json:"stateChanged,omitempty"`
+		TopologyChanged               bool                      `json:"topologyChanged,omitempty"`
+		Repair                        *remoteAccessRepairSignal `json:"repair,omitempty"`
+		PolicyDigest                  string                    `json:"policyDigest,omitempty"`
+		PolicyRevision                int64                     `json:"policyRevision,omitempty"`
+		PolicyRoot                    string                    `json:"policyRoot,omitempty"`
+		PolicyChanged                 bool                      `json:"policyChanged,omitempty"`
+		PublicConsoleOriginGeneration int64                     `json:"publicConsoleOriginGeneration"`
 	}
 	if len(bytes.TrimSpace(responseBytes)) > 0 {
 		if err := json.Unmarshal(responseBytes, &response); err != nil {
 			return err
 		}
+	}
+	if response.PublicConsoleOriginGeneration != settings.PublicConsoleOriginGeneration {
+		return errors.New("Hosted Services did not commit the current public console origin generation")
 	}
 	if response.AssignedHostname != "" && response.AssignedHostname != settings.AssignedHostname {
 		settings.AssignedHostname = response.AssignedHostname
@@ -2633,9 +2687,8 @@ func (s *Server) remoteAccessCertificateRenewalDue(settings RemoteAccessSettings
 		return true, errors.New("assigned hostname is not a Portico direct-access hostname")
 	}
 	if err := s.certificateKeyPairCoversHostname(certificateHostname); err != nil {
-		// A certificate issued for the legacy unencoded hostname remains unexpired,
-		// but it cannot authenticate the stateless IP-encoded route. Replace it
-		// immediately instead of waiting for the ordinary expiry window.
+		// An installed key pair that cannot authenticate the assigned authority is
+		// unusable regardless of its expiry. Repair it immediately.
 		return true, nil
 	}
 	expiresAt := strings.TrimSpace(settings.CertificateExpiresAt)
@@ -2912,11 +2965,13 @@ func (s *Server) generateCertificateCSR(hostname string) (*ecdsa.PrivateKey, []b
 
 func (s *Server) runRemoteAccessHeartbeat(ctx context.Context) {
 	initialDelay := time.Duration(0)
-	if settings, err := s.remoteAccessSettings(); err == nil && settings.Enabled && settings.ClaimStatus == "claimed" && settings.ServerID != "" {
-		lastHeartbeat, parseErr := time.Parse(time.RFC3339, settings.LastHeartbeatAt)
-		if parseErr != nil || time.Since(lastHeartbeat) >= s.remoteAccessLeaseInterval() {
-			initialDelay = remoteAccessFleetCohortWait(settings.ServerID, s.remoteAccessStartupCohortWindow(), time.Now().UTC())
-		}
+	startupHeartbeatPending := false
+	if settings, err := s.remoteAccessSettings(); err == nil && (settings.Enabled || settings.LastHeartbeatError != "") && settings.ClaimStatus == "claimed" && settings.ServerID != "" {
+		// Every new binary generation may publish changed capabilities or network
+		// candidates even while the prior lease remains fresh. Spread that first
+		// publication across the fleet, but never suppress it until lease expiry.
+		startupHeartbeatPending = true
+		initialDelay = remoteAccessFleetCohortWait(settings.ServerID, s.remoteAccessStartupCohortWindow(), time.Now().UTC())
 	}
 	timer := time.NewTimer(initialDelay)
 	defer timer.Stop()
@@ -2931,7 +2986,7 @@ func (s *Server) runRemoteAccessHeartbeat(ctx context.Context) {
 		nextInterval := s.remoteAccessLeaseInterval()
 		retryCohortID := ""
 		settings, err := s.remoteAccessSettings()
-		if err == nil && settings.Enabled && settings.ClaimStatus == "claimed" && settings.ServerID != "" {
+		if err == nil && (settings.Enabled || settings.LastHeartbeatError != "") && settings.ClaimStatus == "claimed" && settings.ServerID != "" {
 			retryCohortID = settings.ServerID
 			now := time.Now().UTC()
 			if lastHeartbeat.IsZero() && settings.LastHeartbeatAt != "" {
@@ -2954,7 +3009,7 @@ func (s *Server) runRemoteAccessHeartbeat(ctx context.Context) {
 				settings.LastReachabilityCheckAt = now.Format(time.RFC3339)
 				settings.LastReachabilityResult = "repair_" + repairReason
 			}
-			heartbeatDue := lastHeartbeat.IsZero() || now.Sub(lastHeartbeat) >= s.remoteAccessLeaseInterval() || repairReason != "" || consecutiveFailures > 0
+			heartbeatDue := startupHeartbeatPending || lastHeartbeat.IsZero() || now.Sub(lastHeartbeat) >= s.remoteAccessLeaseInterval() || repairReason != "" || consecutiveFailures > 0 || settings.LastHeartbeatError != ""
 			if !heartbeatDue {
 				// The Hosted lease is still current. Any pending repair directive
 				// arrives in the next heartbeat response without a separate poll.
@@ -2970,23 +3025,9 @@ func (s *Server) runRemoteAccessHeartbeat(ctx context.Context) {
 					nextInterval = retryAfter
 				}
 			} else {
+				startupHeartbeatPending = false
 				consecutiveFailures = 0
 				lastHeartbeat = now
-				if refreshed, loadErr := s.remoteAccessSettings(); loadErr == nil {
-					settings = refreshed
-				}
-				previousCertificateStatus, previousCertificateExpiry := settings.CertificateStatus, settings.CertificateExpiresAt
-				if updated, renewErr := s.ensureRemoteAccessCertificateFresh(ctx, settings); renewErr != nil {
-					s.recordLog("warn", "Remote access certificate renewal failed", map[string]string{"error": renewErr.Error()})
-				} else {
-					settings = updated
-					s.configureRemoteTLS(settings)
-					if settings.CertificateStatus != previousCertificateStatus || settings.CertificateExpiresAt != previousCertificateExpiry {
-						if publishErr := s.sendRemoteAccessHeartbeatWithOptions(ctx, settings, remoteAccessHeartbeatOptions{SyncPolicy: false}); publishErr != nil {
-							s.recordLog("warn", "Remote access certificate publication heartbeat failed", map[string]string{"error": publishErr.Error()})
-						}
-					}
-				}
 			}
 		}
 		if consecutiveFailures > 0 && retryCohortID != "" {
@@ -2995,6 +3036,38 @@ func (s *Server) runRemoteAccessHeartbeat(ctx context.Context) {
 			nextInterval = jitterRemoteAccessInterval(nextInterval)
 		}
 		timer.Reset(nextInterval)
+	}
+}
+
+// runRemoteAccessCertificateMaintenance owns proactive certificate renewal.
+// Heartbeat lease publication must never wait behind certificate I/O or its
+// process-wide singleflight: either operation can be slow independently, and
+// a blocked renewal must not make an otherwise healthy server appear offline.
+func (s *Server) runRemoteAccessCertificateMaintenance(ctx context.Context) {
+	timer := time.NewTimer(0)
+	defer timer.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-timer.C:
+		}
+		settings, err := s.remoteAccessSettings()
+		if err == nil && settings.Enabled && settings.ClaimStatus == "claimed" && settings.ServerID != "" {
+			previousStatus, previousExpiry := settings.CertificateStatus, settings.CertificateExpiresAt
+			if updated, renewErr := s.ensureRemoteAccessCertificateFresh(ctx, settings); renewErr != nil {
+				s.recordLog("warn", "Remote access certificate renewal failed", map[string]string{"error": renewErr.Error()})
+			} else {
+				settings = updated
+				s.configureRemoteTLS(settings)
+				if settings.CertificateStatus != previousStatus || settings.CertificateExpiresAt != previousExpiry {
+					if publishErr := s.sendRemoteAccessHeartbeatWithOptions(ctx, settings, remoteAccessHeartbeatOptions{SyncPolicy: false}); publishErr != nil {
+						s.recordLog("warn", "Remote access certificate publication heartbeat failed", map[string]string{"error": publishErr.Error()})
+					}
+				}
+			}
+		}
+		timer.Reset(6 * time.Hour)
 	}
 }
 
@@ -3047,6 +3120,9 @@ func remoteAccessRetryCohortDelay(serverID string, failure int, floor time.Durat
 }
 
 func (s *Server) remoteAccessLeaseInterval() time.Duration {
+	if configured := time.Duration(s.remoteAccessHeartbeatIntervalNanos.Load()); configured > 0 {
+		return configured
+	}
 	seconds := s.remoteAccessLeaseSeconds.Load()
 	if seconds < 60 || seconds > 3600 {
 		return 30 * time.Minute
@@ -3600,6 +3676,86 @@ func localPrivateInterfaceHosts() []string {
 	return result
 }
 
+func publicInterfaceHosts() []string {
+	var raw []string
+	if interfaces, err := net.Interfaces(); err == nil {
+		for _, iface := range interfaces {
+			if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
+				continue
+			}
+			addrs, err := iface.Addrs()
+			if err != nil {
+				continue
+			}
+			for _, addr := range addrs {
+				raw = append(raw, addr.String())
+			}
+		}
+	}
+	return publicInterfaceHostsFromAddresses(raw)
+}
+
+func publicInterfaceHostsFromAddresses(raw []string) []string {
+	hosts := make([]string, 0, 4)
+	seen := map[string]struct{}{}
+	for _, value := range raw {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if ip, _, err := net.ParseCIDR(value); err == nil {
+			value = ip.String()
+		}
+		ip := net.ParseIP(strings.Trim(value, "[]"))
+		address, addressErr := netip.ParseAddr(strings.Trim(value, "[]"))
+		if ip == nil || addressErr != nil || !publicHeartbeatAddress(address) {
+			continue
+		}
+		host := ip.String()
+		if _, exists := seen[host]; exists {
+			continue
+		}
+		seen[host] = struct{}{}
+		hosts = append(hosts, host)
+	}
+	sort.Strings(hosts)
+	// The Hosted contract independently validates at most four public routes.
+	// Publish every discovered address within that fixed amplification bound.
+	if len(hosts) > 4 {
+		hosts = hosts[:4]
+	}
+	return hosts
+}
+
+var nonPublicHeartbeatPrefixes = []netip.Prefix{
+	netip.MustParsePrefix("0.0.0.0/8"), netip.MustParsePrefix("10.0.0.0/8"), netip.MustParsePrefix("100.64.0.0/10"),
+	netip.MustParsePrefix("127.0.0.0/8"), netip.MustParsePrefix("169.254.0.0/16"), netip.MustParsePrefix("172.16.0.0/12"),
+	netip.MustParsePrefix("192.0.0.0/24"), netip.MustParsePrefix("192.0.2.0/24"), netip.MustParsePrefix("192.88.99.0/24"),
+	netip.MustParsePrefix("192.168.0.0/16"), netip.MustParsePrefix("198.18.0.0/15"), netip.MustParsePrefix("198.51.100.0/24"),
+	netip.MustParsePrefix("203.0.113.0/24"), netip.MustParsePrefix("224.0.0.0/4"), netip.MustParsePrefix("240.0.0.0/4"),
+	netip.MustParsePrefix("::/128"), netip.MustParsePrefix("::1/128"), netip.MustParsePrefix("100::/64"),
+	netip.MustParsePrefix("2001:db8::/32"), netip.MustParsePrefix("fc00::/7"), netip.MustParsePrefix("fe80::/10"), netip.MustParsePrefix("ff00::/8"),
+}
+
+// publicHeartbeatAddress mirrors Hosted endpoint admission. The Server must not
+// poison the entire heartbeat by advertising a locally assigned special-use
+// address such as a VPN's carrier-grade NAT address as a public route.
+func publicHeartbeatAddress(address netip.Addr) bool {
+	if !address.IsValid() {
+		return false
+	}
+	address = address.Unmap()
+	if !address.IsGlobalUnicast() || address.IsPrivate() || address.IsLoopback() || address.IsLinkLocalUnicast() || address.IsLinkLocalMulticast() || address.IsMulticast() || address.IsUnspecified() {
+		return false
+	}
+	for _, prefix := range nonPublicHeartbeatPrefixes {
+		if prefix.Contains(address) {
+			return false
+		}
+	}
+	return true
+}
+
 func (s *Server) remoteAccessSettings() (RemoteAccessSettings, error) {
 	defaults := RemoteAccessSettings{
 		Enabled:                         false,
@@ -3623,6 +3779,8 @@ func (s *Server) remoteAccessSettings() (RemoteAccessSettings, error) {
 	defaults.ClaimStatus = settingString(group, "claimStatus", defaults.ClaimStatus)
 	defaults.ServerID = settingString(group, "serverId", "")
 	defaults.AssignedHostname = settingString(group, "assignedHostname", "")
+	defaults.PublicConsoleOrigin = settingString(group, "publicConsoleOrigin", "")
+	defaults.PublicConsoleOriginGeneration = int64(settingInt(group, "publicConsoleOriginGeneration", 0))
 	defaults.PublicPortMode = settingString(group, "publicPortMode", defaults.PublicPortMode)
 	defaults.ManualPublicPort = settingInt(group, "manualPublicPort", defaults.ManualPublicPort)
 	defaults.PreferredRemoteAuthMode = settingString(group, "preferredRemoteAuthMode", defaults.PreferredRemoteAuthMode)
@@ -3643,10 +3801,6 @@ func (s *Server) remoteAccessSettings() (RemoteAccessSettings, error) {
 	defaults.LastPublicIPAddress = settingString(group, "lastPublicIpAddress", "")
 	defaults.LastPublicIPCheckAt = settingString(group, "lastPublicIpCheckAt", "")
 	defaults.LastNetworkSignature = settingString(group, "lastNetworkSignature", "")
-	legacyNetworkSignature := defaults.LastNetworkSignature != "" && !strings.HasPrefix(defaults.LastNetworkSignature, "hmac-sha256:")
-	if legacyNetworkSignature {
-		defaults.LastNetworkSignature = ""
-	}
 	defaults.LastNetworkChangeAt = settingString(group, "lastNetworkChangeAt", "")
 	defaults.LastRouteRepairAt = settingString(group, "lastRouteRepairAt", "")
 	defaults.LastRouteRepairReason = settingString(group, "lastRouteRepairReason", "")
@@ -3656,9 +3810,6 @@ func (s *Server) remoteAccessSettings() (RemoteAccessSettings, error) {
 	defaults.RouterMappingStatus = settingString(group, "routerMappingStatus", "")
 	defaults.LastRouterMappingAt = settingString(group, "lastRouterMappingAt", "")
 	defaults.RouterMappingError = settingString(group, "routerMappingError", "")
-	if legacyNetworkSignature {
-		_ = s.saveRemoteAccessSettings(defaults)
-	}
 	if defaults.ServerID != "" && s.secretSetting(remoteAccessCredentialKey) != "" {
 		if s.secretSetting(remoteAccessClaimReceiptKey) == "" {
 			_ = s.deleteSetting(remoteAccessClaimKey)
@@ -3672,12 +3823,35 @@ func (s *Server) remoteAccessSettings() (RemoteAccessSettings, error) {
 	return defaults, s.validateRemoteAccessSettings(defaults)
 }
 
+func canonicalConfiguredPublicConsoleOrigin(raw string) string {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil || parsed.Path != "" || parsed.RawPath != "" || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return ""
+	}
+	host := strings.ToLower(parsed.Hostname())
+	if host == "" || net.ParseIP(host) != nil || !strings.Contains(host, ".") || parsed.Port() != "" && parsed.Port() != "443" {
+		return ""
+	}
+	for _, char := range host {
+		if (char >= 'a' && char <= 'z') || (char >= '0' && char <= '9') || char == '-' || char == '.' {
+			continue
+		}
+		return ""
+	}
+	for _, label := range strings.Split(host, ".") {
+		if label == "" || len(label) > 63 || strings.HasPrefix(label, "-") || strings.HasSuffix(label, "-") {
+			return ""
+		}
+	}
+	return "https://" + host
+}
+
 func (s *Server) saveRemoteAccessSettings(settings RemoteAccessSettings) error {
 	bytes, err := json.Marshal(settings)
 	if err != nil {
 		return err
 	}
-	_, err = s.execUserWrite(context.Background(), `INSERT INTO settings (key, value_json, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at = excluded.updated_at`, remoteAccessSettingsKey, string(bytes), time.Now().UTC().Format(time.RFC3339))
+	_, err = s.execUserWriteTagged(context.Background(), []string{"remote-access", "settings"}, `INSERT INTO settings (key, value_json, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at = excluded.updated_at`, remoteAccessSettingsKey, string(bytes), time.Now().UTC().Format(time.RFC3339))
 	return err
 }
 
@@ -4085,12 +4259,6 @@ func (s *Server) provisionPorticoProfileTx(tx *sql.Tx, member RemoteAccessMember
 			return "", policyErr
 		}
 		permissionsJSON, _ := json.Marshal(permissions)
-		if err := releaseDisposablePorticoEmailCollisionTx(tx, member.Email, existingID, member, now); err != nil {
-			return existingID, err
-		}
-		if err := releaseDisposablePorticoSubjectCollisionTx(tx, member.PorticoUserID, existingID); err != nil {
-			return existingID, err
-		}
 		_, err = tx.Exec(`
 			UPDATE users
 			SET portico_user_id = ?, portico_membership_id = ?, auth_origin = 'portico',
@@ -4132,13 +4300,13 @@ func (s *Server) provisionPorticoProfileTx(tx *sql.Tx, member RemoteAccessMember
 	if email == "" {
 		email = member.PorticoUserID + "@portico-account.invalid"
 	}
+	var conflictingAuthOrigin string
+	if err := tx.QueryRow(`SELECT COALESCE(auth_origin, 'local') FROM users WHERE lower(email) = lower(?) LIMIT 1`, email).Scan(&conflictingAuthOrigin); err == nil {
+		return "", errPorticoIdentityLinkRequired
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return "", err
+	}
 	displayName := porticoDisplayName(member)
-	if err := releaseDisposablePorticoEmailCollisionTx(tx, email, "", member, now); err != nil {
-		return "", err
-	}
-	if err := releaseDisposablePorticoSubjectCollisionTx(tx, member.PorticoUserID, ""); err != nil {
-		return "", err
-	}
 	userID := randomID("usr")
 	username := uniquePorticoAccountUsername(tx, member)
 	if _, err := tx.Exec(`
@@ -4151,178 +4319,6 @@ func (s *Server) provisionPorticoProfileTx(tx *sql.Tx, member RemoteAccessMember
 		return "", err
 	}
 	return userID, nil
-}
-
-func releaseDisposablePorticoEmailCollisionTx(tx *sql.Tx, email, targetUserID string, member RemoteAccessMember, now string) error {
-	email = strings.ToLower(strings.TrimSpace(email))
-	if email == "" || strings.HasSuffix(email, ".invalid") {
-		return nil
-	}
-	rows, err := tx.Query(`
-		SELECT id, COALESCE(auth_origin, 'local'), role, COALESCE(password_hash, ''),
-			COALESCE(portico_user_id, ''), COALESCE(portico_membership_id, ''),
-			(SELECT COUNT(*) FROM sessions WHERE user_id = users.id),
-			(SELECT COUNT(*) FROM native_refresh_tokens WHERE user_id = users.id),
-			(SELECT COUNT(*) FROM devices WHERE user_id = users.id),
-			(SELECT COUNT(*) FROM api_keys WHERE user_id = users.id),
-			(SELECT COUNT(*) FROM browser_account_entries WHERE user_id = users.id),
-			(SELECT COUNT(*) FROM local_credentials lc JOIN profile_identities pi ON pi.id = lc.profile_identity_id WHERE pi.profile_id = users.id),
-			(SELECT COUNT(*) FROM remote_access_members ram WHERE ram.local_user_id = users.id AND ram.status = 'active')
-		FROM users
-		WHERE lower(email) = lower(?)
-			AND id <> ?`, email, targetUserID)
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
-	type collision struct {
-		userID              string
-		authOrigin          string
-		role                string
-		passwordHash        string
-		porticoUserID       string
-		porticoMembershipID string
-		sessions            int
-		refreshCredentials  int
-		devices             int
-		apiKeys             int
-		browserEntries      int
-		localCredentials    int
-		activeRemoteLinks   int
-	}
-	var collisions []collision
-	for rows.Next() {
-		var current collision
-		if err := rows.Scan(
-			&current.userID, &current.authOrigin, &current.role, &current.passwordHash,
-			&current.porticoUserID, &current.porticoMembershipID,
-			&current.sessions, &current.refreshCredentials, &current.devices,
-			&current.apiKeys, &current.browserEntries, &current.localCredentials, &current.activeRemoteLinks,
-		); err != nil {
-			return err
-		}
-		collisions = append(collisions, current)
-	}
-	if err := rows.Err(); err != nil {
-		return err
-	}
-	for _, current := range collisions {
-		authOrigin := strings.ToLower(strings.TrimSpace(current.authOrigin))
-		disposableOrigin := authOrigin == "local"
-		if strings.TrimSpace(current.porticoUserID) != "" || strings.TrimSpace(current.porticoMembershipID) != "" {
-			return fmt.Errorf("%w: email belongs to a different Portico subject", errPorticoIdentityConflict)
-		}
-		if !disposableOrigin || strings.EqualFold(strings.TrimSpace(current.role), "owner") || strings.TrimSpace(current.passwordHash) != "" || current.sessions > 0 || current.refreshCredentials > 0 || current.devices > 0 || current.apiKeys > 0 || current.browserEntries > 0 || current.localCredentials > 0 || current.activeRemoteLinks > 0 {
-			return fmt.Errorf("%w: authenticate the existing local profile before linking this Portico account", errPorticoIdentityLinkRequired)
-		}
-	}
-	for _, current := range collisions {
-		deletedEmail, err := uniqueDeletedPorticoPrincipalEmailTx(tx, member.PorticoUserID, current.userID)
-		if err != nil {
-			return err
-		}
-		deletedUsername, err := uniqueDeletedPorticoPrincipalUsernameTx(tx, member.PorticoUserID, current.userID)
-		if err != nil {
-			return err
-		}
-		// Remove the abandoned identity projection before quarantining the empty
-		// local placeholder so the authoritative provider/subject key stays unique.
-		if _, err := tx.Exec(`DELETE FROM profile_identities WHERE profile_id = ? AND provider = 'portico'`, current.userID); err != nil {
-			return err
-		}
-		if _, err := tx.Exec(`
-			UPDATE users
-			SET auth_origin = 'portico_deleted',
-				portico_user_id = '',
-				portico_membership_id = '',
-				email = ?,
-				username = ?,
-				password_hash = NULL,
-				updated_at = ?
-			WHERE id = ?`,
-			deletedEmail,
-			deletedUsername,
-			now,
-			current.userID); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func releaseDisposablePorticoSubjectCollisionTx(tx *sql.Tx, porticoUserID, targetUserID string) error {
-	porticoUserID = strings.TrimSpace(porticoUserID)
-	if porticoUserID == "" {
-		return nil
-	}
-	rows, err := tx.Query(`
-		SELECT pi.id, pi.profile_id, COALESCE(u.auth_origin, 'local'), u.role,
-			COALESCE(u.password_hash, ''), COALESCE(u.portico_user_id, ''), COALESCE(u.portico_membership_id, ''),
-			(SELECT COUNT(*) FROM sessions s WHERE s.user_id = u.id OR s.profile_id = u.id OR s.profile_identity_id = pi.id),
-			(SELECT COUNT(*) FROM native_refresh_tokens nrt WHERE nrt.user_id = u.id),
-			(SELECT COUNT(*) FROM devices d WHERE d.user_id = u.id),
-			(SELECT COUNT(*) FROM api_keys ak WHERE ak.user_id = u.id),
-			(SELECT COUNT(*) FROM browser_account_entries bae WHERE bae.user_id = u.id OR bae.profile_identity_id = pi.id),
-			(SELECT COUNT(*) FROM local_credentials lc JOIN profile_identities linked ON linked.id = lc.profile_identity_id WHERE linked.profile_id = u.id),
-			(SELECT COUNT(*) FROM remote_access_members ram WHERE ram.local_user_id = u.id AND ram.status = 'active')
-		FROM profile_identities pi
-		JOIN users u ON u.id = pi.profile_id
-		WHERE pi.provider = 'portico' AND pi.subject = ? AND pi.profile_id <> ?`, porticoUserID, targetUserID)
-	if err != nil {
-		return err
-	}
-	type collision struct {
-		identityID          string
-		profileID           string
-		authOrigin          string
-		role                string
-		passwordHash        string
-		linkedPorticoUserID string
-		membershipID        string
-		sessions            int
-		refreshCredentials  int
-		devices             int
-		apiKeys             int
-		browserEntries      int
-		localCredentials    int
-		activeRemoteLinks   int
-	}
-	var collisions []collision
-	for rows.Next() {
-		var current collision
-		if err := rows.Scan(
-			&current.identityID, &current.profileID, &current.authOrigin, &current.role,
-			&current.passwordHash, &current.linkedPorticoUserID, &current.membershipID,
-			&current.sessions, &current.refreshCredentials, &current.devices, &current.apiKeys,
-			&current.browserEntries, &current.localCredentials, &current.activeRemoteLinks,
-		); err != nil {
-			rows.Close()
-			return err
-		}
-		collisions = append(collisions, current)
-	}
-	if err := rows.Err(); err != nil {
-		rows.Close()
-		return err
-	}
-	rows.Close()
-
-	for _, current := range collisions {
-		authOrigin := strings.ToLower(strings.TrimSpace(current.authOrigin))
-		disposableOrigin := authOrigin == "cloud" || authOrigin == "local" || authOrigin == "cloud_deleted" || authOrigin == "portico_deleted"
-		if !disposableOrigin || strings.EqualFold(strings.TrimSpace(current.role), "owner") ||
-			strings.TrimSpace(current.passwordHash) != "" || strings.TrimSpace(current.linkedPorticoUserID) != "" || strings.TrimSpace(current.membershipID) != "" ||
-			current.sessions > 0 || current.refreshCredentials > 0 || current.devices > 0 || current.apiKeys > 0 ||
-			current.browserEntries > 0 || current.localCredentials > 0 || current.activeRemoteLinks > 0 {
-			return fmt.Errorf("%w: Portico subject is linked to an existing protected profile", errPorticoIdentityConflict)
-		}
-	}
-	for _, current := range collisions {
-		if _, err := tx.Exec(`DELETE FROM profile_identities WHERE id = ?`, current.identityID); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 func sanitizePorticoCacheIdentifier(value string) string {
@@ -4544,12 +4540,6 @@ func applyRemoteAccessSettingsPatch(settings *RemoteAccessSettings, patch Remote
 }
 
 func (s *Server) defaultHostedBaseURL() string {
-	// Tests and embedded callers that construct a zero Config retain the
-	// historical fixture authority. Real runtime configuration always carries
-	// the explicit Foundation environment and generated/default authority.
-	if strings.TrimSpace(s.cfg.Environment) == "" {
-		return defaultHostedBaseURL
-	}
 	if authority := strings.TrimSpace(s.cfg.HostedAPIAuthority); authority != "" && authority != "REQUIRED_EXTERNAL_CONFIGURATION" {
 		return strings.TrimRight(authority, "/")
 	}

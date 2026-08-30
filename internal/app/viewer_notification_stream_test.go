@@ -48,8 +48,8 @@ func newNotificationStreamFixture(t *testing.T) notificationStreamFixture {
 	sessionToken := "notification-stream-session-token"
 	now := time.Now().UTC()
 	if _, err := server.db.Exec(`
-		INSERT INTO sessions (id, user_id, profile_id, auth_provider, device_id, token_hash, expires_at, created_at, last_seen_at)
-		VALUES (?, ?, ?, 'local', ?, ?, ?, ?, ?)`, sessionID, account.ID, account.ID, deviceID, hashToken(sessionToken),
+		INSERT INTO sessions (id, user_id, profile_id, profile_identity_id, auth_provider, device_id, token_hash, expires_at, created_at, last_seen_at)
+		VALUES (?, ?, ?, ?, 'local', ?, ?, ?, ?, ?)`, sessionID, account.ID, profile.ProfileID, profile.ProfileIdentityID, deviceID, hashToken(sessionToken),
 		now.Add(time.Hour).Format(time.RFC3339Nano), now.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano)); err != nil {
 		t.Fatalf("seed notification stream session: %v", err)
 	}

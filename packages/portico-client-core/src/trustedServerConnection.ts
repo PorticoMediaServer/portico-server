@@ -49,7 +49,7 @@ export interface TrustedServerConnectionRecord {
   session: LocalServerSession;
   lastSuccessfulConnectionAt: string;
   /** Monotonic adapter-owned revision for CAS-capable persistence. */
-  mutationVersion?: number;
+  mutationVersion: number;
 }
 
 export interface TrustedServerRemovalTombstone {
@@ -64,15 +64,15 @@ export type TrustedServerPersistencePolicy = "saved-session" | "reauthorize-on-s
 
 export interface TrustedServerConnectionAdapter {
   /** Resolves only after durable state has been hydrated and is safe to read. */
-  ready?(): Promise<void>;
+  ready(): Promise<void>;
   /**
    * Current persistence health. A healthy adapter reports `durable` even when
    * its explicit restart policy requires reauthorization; `memory-only` is
    * reserved for an unexpected inability to save restart metadata.
    */
-  durability?(): "durable" | "memory-only";
+  durability(): "durable" | "memory-only";
   /** Whether a fresh process may restore a saved server session or must remint it. */
-  readonly persistencePolicy?: TrustedServerPersistencePolicy;
+  readonly persistencePolicy: TrustedServerPersistencePolicy;
   list(accountId: string): Promise<TrustedServerConnectionRecord[]>;
   load(accountId: string, serverId: string): Promise<TrustedServerConnectionRecord | undefined>;
   /**
@@ -104,30 +104,30 @@ export function createSerializedTrustedServerConnectionAdapter(delegate: Trusted
   };
   return {
     persistencePolicy: delegate.persistencePolicy,
-    durability: delegate.durability?.bind(delegate),
-    ready: delegate.ready?.bind(delegate),
+    durability: delegate.durability.bind(delegate),
+    ready: delegate.ready.bind(delegate),
     list: accountId => serial(`${accountId}\n*`, async () => {
       const records = await delegate.list(accountId);
       const visible: TrustedServerConnectionRecord[] = [];
       for (const record of records) {
         const tombstone = await delegate.loadRemovalTombstone(accountId, record.serverId);
-        if (!tombstone || tombstone.mutationVersion < (record.mutationVersion ?? 0)) visible.push(record);
+        if (!tombstone || tombstone.mutationVersion < record.mutationVersion) visible.push(record);
       }
       return visible;
     }),
     load: (accountId, serverId) => serial(`${accountId}\n*`, async () => {
       const [record, tombstone] = await Promise.all([delegate.load(accountId, serverId), delegate.loadRemovalTombstone(accountId, serverId)]);
-      return tombstone && (!record?.mutationVersion || tombstone.mutationVersion >= record.mutationVersion) ? undefined : record;
+      return tombstone && (!record || tombstone.mutationVersion >= record.mutationVersion) ? undefined : record;
     }),
     save: record => serial(`${record.accountId}\n*`, async () => {
       const current = await delegate.load(record.accountId, record.serverId);
       const tombstone = await delegate.loadRemovalTombstone(record.accountId, record.serverId);
-      if (tombstone && (record.mutationVersion === undefined || tombstone.mutationVersion >= record.mutationVersion)) throw new TrustedServerPublicationBlockedError(tombstone);
-      const stale = current !== undefined && (record.mutationVersion === undefined || (current.mutationVersion ?? 0) >= record.mutationVersion);
+      if (tombstone && tombstone.mutationVersion >= record.mutationVersion) throw new TrustedServerPublicationBlockedError(tombstone);
+      const stale = current !== undefined && current.mutationVersion >= record.mutationVersion;
       if (stale) throw new TrustedServerPublicationBlockedError(new Error("The trusted server record is stale."));
       const next = {
         ...(current ?? {}), ...record,
-        mutationVersion: Math.max(current?.mutationVersion ?? 0, tombstone?.mutationVersion ?? 0, record.mutationVersion ?? 0) + 1
+        mutationVersion: Math.max(current?.mutationVersion ?? 0, tombstone?.mutationVersion ?? 0, record.mutationVersion) + 1
       } as TrustedServerConnectionRecord;
       const saved = await delegate.compareAndSwap(current?.mutationVersion ?? 0, next);
       if (!saved) throw new TrustedServerPublicationBlockedError(new Error("The trusted server record changed concurrently."));
@@ -152,14 +152,14 @@ export function createSerializedTrustedServerConnectionAdapter(delegate: Trusted
           schemaVersion: 1,
           accountId,
           serverId: record.serverId,
-          mutationVersion: Math.max(record.mutationVersion ?? 0, previousTombstone?.mutationVersion ?? 0) + 1,
+          mutationVersion: Math.max(record.mutationVersion, previousTombstone?.mutationVersion ?? 0) + 1,
           removedAt: new Date().toISOString()
         });
       }
     }),
     compareAndSwap: (expectedVersion, record) => serial(`${record.accountId}\n*`, async () => {
       const tombstone = await delegate.loadRemovalTombstone(record.accountId, record.serverId);
-      if (tombstone && tombstone.mutationVersion >= (record.mutationVersion ?? 0)) {
+      if (tombstone && tombstone.mutationVersion >= record.mutationVersion) {
         throw new TrustedServerPublicationBlockedError(tombstone);
       }
       return delegate.compareAndSwap(expectedVersion, record);
@@ -352,7 +352,7 @@ export async function connectTrustedServerRecord(
   record: TrustedServerConnectionRecord,
   options: Omit<TrustedServerConnectorOptions, "accountId"> & { accountId?: string }
 ): Promise<TrustedServerConnectionResult> {
-  await options.connectionAdapter.ready?.();
+  await options.connectionAdapter.ready();
   throwIfConnectionAborted(options.signal);
   const accountId = options.accountId ?? record.accountId;
   assertTrustedRecord(record, accountId, record.serverId);
@@ -383,7 +383,7 @@ export async function refreshTrustedServerRoute(
   server: HostedServer,
   options: TrustedServerRouteRefreshOptions
 ): Promise<TrustedServerConnectionResult> {
-  await options.connectionAdapter.ready?.();
+  await options.connectionAdapter.ready();
   throwIfConnectionAborted(options.signal);
   assertTrustedRecord(record, options.accountId, server.id);
   const trustedHostedDocumentKeys = await options.loadTrustedHostedDocumentKeys();
@@ -453,7 +453,7 @@ export async function connectResilientHostedServer(
   server: HostedServer,
   options: ResilientHostedServerConnectorOptions
 ): Promise<TrustedServerConnectionResult> {
-  await options.connectionAdapter.ready?.();
+  await options.connectionAdapter.ready();
   throwIfConnectionAborted(options.signal);
   const existing = await options.connectionAdapter.load(options.accountId, server.id);
   throwIfConnectionAborted(options.signal);
@@ -663,14 +663,14 @@ export function createTrustedServerCredentialAdapter(
   connections: TrustedServerConnectionAdapter
 ) {
   return {
-    load: async () => { await connections.ready?.(); return (await connections.load(accountId, serverId))?.session; },
+    load: async () => { await connections.ready(); return (await connections.load(accountId, serverId))?.session; },
     save: async (session: LocalServerSession) => {
-      await connections.ready?.();
+      await connections.ready();
       const current = await connections.load(accountId, serverId);
       if (!current) throw new Error("The trusted server record no longer exists.");
-      await connections.save({ ...current, session, mutationVersion: (current.mutationVersion ?? 0) + 1 });
+      await connections.save({ ...current, session, mutationVersion: current.mutationVersion + 1 });
     },
-    clear: async () => { await connections.ready?.(); return connections.remove(accountId, serverId); }
+    clear: async () => { await connections.ready(); return connections.remove(accountId, serverId); }
   };
 }
 
@@ -976,7 +976,7 @@ async function commitCandidate(
   try {
     await options.connectionAdapter.save(record);
     durableCommitted = true;
-    if (options.connectionAdapter.durability?.() === "memory-only") {
+    if (options.connectionAdapter.durability() === "memory-only") {
       durability = "memory-only";
     }
   } catch (error) {
@@ -1224,9 +1224,7 @@ async function removeTrustedServerRecord(
   serverId: string
 ): Promise<void> {
   const current = await adapter.load(accountId, serverId);
-  const previousTombstone = typeof adapter.loadRemovalTombstone === "function"
-    ? await adapter.loadRemovalTombstone(accountId, serverId)
-    : undefined;
+  const previousTombstone = await adapter.loadRemovalTombstone(accountId, serverId);
   const tombstone: TrustedServerRemovalTombstone = {
     schemaVersion: 1,
     accountId,
@@ -1234,13 +1232,7 @@ async function removeTrustedServerRecord(
     mutationVersion: Math.max(current?.mutationVersion ?? 0, previousTombstone?.mutationVersion ?? 0) + 1,
     removedAt: new Date().toISOString()
   };
-  if (typeof adapter.removeWithTombstone === "function") {
-    await adapter.removeWithTombstone(tombstone);
-    return;
-  }
-  // Older in-memory test/platform adapters can still be cleared, but durable
-  // adapters must implement removeWithTombstone to satisfy the interface.
-  await adapter.remove(accountId, serverId);
+  await adapter.removeWithTombstone(tombstone);
 }
 
 async function restoreTrustedServerRecord(input: CandidateTransactionRollback): Promise<void> {
@@ -1249,15 +1241,8 @@ async function restoreTrustedServerRecord(input: CandidateTransactionRollback): 
   if (!current || !samePublishedTrustedRecord(current, input.durableRecord)) {
     throw new TrustedServerPublicationBlockedError(new Error("The trusted server record changed while rollback was in progress."));
   }
-  if (typeof input.options.connectionAdapter.compareAndSwap === "function") {
-    const restored = await input.options.connectionAdapter.compareAndSwap(current.mutationVersion ?? 0, input.existing!);
-    if (!restored) throw new TrustedServerPublicationBlockedError(new Error("The trusted server record changed while rollback was in progress."));
-    return;
-  }
-  // Compatibility adapters without CAS can only restore after the full
-  // published-value comparison above. Preserve the exact prior record,
-  // including an absent mutationVersion.
-  await input.options.connectionAdapter.save(input.existing!);
+  const restored = await input.options.connectionAdapter.compareAndSwap(current.mutationVersion, input.existing!);
+  if (!restored) throw new TrustedServerPublicationBlockedError(new Error("The trusted server record changed while rollback was in progress."));
 }
 
 function samePublishedTrustedRecord(left: TrustedServerConnectionRecord, right: TrustedServerConnectionRecord): boolean {
@@ -1344,7 +1329,7 @@ function assertCandidateViewerScope(
 function routeHintFromSession(session: LocalServerSession, now: Date): VerifiedServerRouteHint {
   return {
     url: session.apiBaseUrl!,
-    type: session.routeType ?? "direct",
+    type: session.routeType ?? "public_direct",
     address: session.routeAddress,
     verifiedAt: now.toISOString()
   };

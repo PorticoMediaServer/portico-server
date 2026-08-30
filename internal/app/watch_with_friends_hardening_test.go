@@ -333,7 +333,7 @@ func TestWatchWithFriendsHostMutationsRequireIdempotencyAndReplayCurrentSnapshot
 }
 
 func TestWatchWithFriendsRevokedAndStaleMembersCannotDeadlockGroup(t *testing.T) {
-	serverURL, db := newAuthTestServerWithDB(t)
+	serverURL, db, server := newAuthTestServerWithInstance(t)
 	hostJar, _ := cookiejar.New(nil)
 	hostClient := &http.Client{Jar: hostJar}
 	loginUser(t, hostClient, serverURL)
@@ -415,8 +415,11 @@ func TestWatchWithFriendsRevokedAndStaleMembersCannotDeadlockGroup(t *testing.T)
 		t.Fatalf("stale queue add status=%d want=%d", status, http.StatusConflict)
 	}
 
-	if _, err := db.Exec(`UPDATE users SET permissions_json = '{}' WHERE id = ?`, accountIDForUser(guest)); err != nil {
+	if _, err := server.execUserWrite(context.Background(), `UPDATE users SET permissions_json = '{}' WHERE id = ?`, guest.ID); err != nil {
 		t.Fatalf("revoke guest permission: %v", err)
+	}
+	if server.watchWithFriendsProfilePermissionAllowedContext(context.Background(), viewerProfileID(guest)) {
+		t.Fatal("revoked guest retained Watch With Friends permission")
 	}
 	streamClosed := make(chan error, 1)
 	go func() {
@@ -448,7 +451,7 @@ func TestWatchWithFriendsRevokedAndStaleMembersCannotDeadlockGroup(t *testing.T)
 		t.Fatalf("stale queue remove status=%d want=%d", status, http.StatusConflict)
 	}
 
-	if _, err := db.Exec(`UPDATE users SET permissions_json = ? WHERE id = ?`, mustWatchWithFriendsJSONForTest(t, permissions), accountIDForUser(guest)); err != nil {
+	if _, err := server.execUserWrite(context.Background(), `UPDATE users SET permissions_json = ? WHERE id = ?`, mustWatchWithFriendsJSONForTest(t, permissions), guest.ID); err != nil {
 		t.Fatalf("restore guest permission: %v", err)
 	}
 	status, body = doJSON(t, guestClient, http.MethodPost, serverURL+"/api/watch-with-friends/groups/"+group.ID+"/join", nil, &group)

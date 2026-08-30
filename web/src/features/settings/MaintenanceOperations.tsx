@@ -1,5 +1,5 @@
 import type { BackupInfo, ScheduledTask, SystemReleaseInfo, SystemStorageReport } from '@porticomediaserver/client-core';
-import { AlertTriangle, ArchiveRestore, CheckCircle2, Clock3, DatabaseBackup, HardDrive, Play, RefreshCw } from '#portico-icons';
+import { StatusWarningIcon, ActionUndoIcon, StatusSuccessIcon, MetadataTimeIcon, ActionArchiveIcon, DeviceStorageIcon, PlaybackPlayIcon, ActionRefreshIcon } from '#portico-icons';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { PrimaryButton, SecondaryButton } from '../../components/controls/Buttons';
 import { reviewedProductErrorText } from '../../components/ProductLanguage';
@@ -155,7 +155,7 @@ function TasksPanel({ tasks, source, onChanged }: { tasks: ScheduledTask[]; sour
   };
   return <SettingsGroup title="Scheduled tasks" description="Individual maintenance jobs and their current schedules.">
     {(feedback || error) && <InlineNotice tone={error ? 'error' : 'success'}>{error || feedback}</InlineNotice>}
-    {tasks.length === 0 ? <div className="portico-settings-state"><Clock3 /><strong>No scheduled tasks</strong><p>This server did not report any runnable maintenance tasks.</p></div> : <div className="portico-task-list">{tasks.map((task) => <article key={task.id}><span className={`portico-task-icon ${task.running ? 'running' : ''}`}>{task.running ? <RefreshCw className="portico-settings-spinner" /> : <Clock3 />}</span><span><strong>{task.title}</strong><small>{task.description} · {task.schedule}{task.lastJob ? ` · last ${task.lastJob.status}` : ''}</small></span><div><label className="portico-inline-toggle"><span>Enabled</span><ToggleControl label={`Enable ${task.title}`} value={task.enabled} disabled={mutation.busy} onChange={(enabled) => void update(task, enabled)} /></label><SecondaryButton disabled={mutation.busy || task.running} onClick={() => void run(task)}><Play />{task.running ? 'Running' : 'Run now'}</SecondaryButton></div></article>)}</div>}
+    {tasks.length === 0 ? <div className="portico-settings-state"><MetadataTimeIcon /><strong>No scheduled tasks</strong><p>This server did not report any runnable maintenance tasks.</p></div> : <div className="portico-task-list">{tasks.map((task) => <article key={task.id}><span className={`portico-task-icon ${task.running ? 'running' : ''}`}>{task.running ? <ActionRefreshIcon className="portico-settings-spinner" /> : <MetadataTimeIcon />}</span><span><strong>{task.title}</strong><small>{task.description} · {task.schedule}{task.lastJob ? ` · last ${task.lastJob.status}` : ''}</small></span><div><label className="portico-inline-toggle"><span>Enabled</span><ToggleControl label={`Enable ${task.title}`} value={task.enabled} disabled={mutation.busy} onChange={(enabled) => void update(task, enabled)} /></label><SecondaryButton disabled={mutation.busy || task.running} onClick={() => void run(task)}><PlaybackPlayIcon />{task.running ? 'Running' : 'Run now'}</SecondaryButton></div></article>)}</div>}
   </SettingsGroup>;
 }
 
@@ -281,13 +281,13 @@ function BackupsPanel({ backups, source, onChanged }: { backups: BackupInfo[]; s
       });
       pollingOperation.current = undefined;
       setImportFile(undefined); setPassword('');
-      setFeedback(final.instruction || `Database import ${final.state}.`);
+      setFeedback(final.instruction || `Storage import ${final.state}.`);
       if (final.state === 'recovery-required' || final.recoveryRequired) setError('Portico requires supervised recovery before normal service can resume.');
       if (final.state === 'complete' && typeof window !== 'undefined') window.setTimeout(() => window.location.reload(), 250);
       onChanged();
     } catch (reason) { setError(reviewedProductErrorText(reason, 'settings.action-failed', { actionName: 'import a database' })); }
   };
-  return <SettingsGroup title="Backups" description="Verified SQLite backups and supervised database restore." actions={<PrimaryButton disabled={mutation.busy} onClick={() => void create()}><DatabaseBackup />{mutation.busy ? 'Working…' : 'Back up now'}</PrimaryButton>}>
+  return <SettingsGroup title="Backups" description="Verified SQLite backups and supervised database restore." actions={<PrimaryButton disabled={mutation.busy} onClick={() => void create()}><ActionArchiveIcon />{mutation.busy ? 'Working…' : 'Back up now'}</PrimaryButton>}>
     {(feedback || error) && <InlineNotice tone={error ? 'error' : operation?.recoveryRequired ? 'warn' : 'success'}>{error || feedback}</InlineNotice>}
     {operation && !error && <InlineNotice tone="warn">{operation.phase} · {operation.progress}% · {operation.instruction}</InlineNotice>}
     <div className="portico-inline-confirm">
@@ -295,13 +295,13 @@ function BackupsPanel({ backups, source, onChanged }: { backups: BackupInfo[]; s
       <label>Import database <input type="file" accept=".db,application/vnd.sqlite3,application/octet-stream" onChange={(event) => setImportFile(event.target.files?.[0])} /></label>
       <button type="button" className="danger" disabled={mutation.busy || !importFile || !password} onClick={() => void upload()}>Verify and import</button>
     </div>
-    {backups.length === 0 ? <div className="portico-settings-state"><DatabaseBackup /><strong>No backups found</strong><p>Create a backup before changing storage or performing server maintenance.</p></div> : <div className="portico-backup-list">{backups.map((backup) => <article key={backup.name}><span className={backup.integrity === 'ok' ? 'healthy' : 'danger'}>{backup.integrity === 'ok' ? <CheckCircle2 /> : <AlertTriangle />}</span><span><strong>{backup.name}</strong><small>{new Date(backup.createdAt).toLocaleString()} · {bytes(backup.sizeBytes)} · {backup.manifestPresent ? 'verified manifest' : `not restore-ready${backup.validationCode ? ` · ${backup.validationCode}` : ''}`}</small></span><div>{backup.restoreReady ? (confirmRestore === backup.name ? <div className="portico-inline-confirm"><span>Confirm <code>restore:{backup.name}</code></span><button type="button" onClick={() => setConfirmRestore('')}>Cancel</button><button type="button" className="danger" disabled={mutation.busy || !password} onClick={() => void restore(backup)}>Restore</button></div> : <SecondaryButton disabled={mutation.busy} onClick={() => setConfirmRestore(backup.name)}><ArchiveRestore /> Restore</SecondaryButton>) : <span className="portico-settings-capability">Not restore-ready</span>}</div></article>)}</div>}
+    {backups.length === 0 ? <div className="portico-settings-state"><ActionArchiveIcon /><strong>No backups found</strong><p>Create a backup before changing storage or performing server maintenance.</p></div> : <div className="portico-backup-list">{backups.map((backup) => <article key={backup.name}><span className={backup.integrity === 'ok' ? 'healthy' : 'danger'}>{backup.integrity === 'ok' ? <StatusSuccessIcon /> : <StatusWarningIcon />}</span><span><strong>{backup.name}</strong><small>{new Date(backup.createdAt).toLocaleString()} · {bytes(backup.sizeBytes)} · {backup.manifestPresent ? 'verified manifest' : `not restore-ready${backup.validationCode ? ` · ${backup.validationCode}` : ''}`}</small></span><div>{backup.restoreReady ? (confirmRestore === backup.name ? <div className="portico-inline-confirm"><span>Confirm <code>restore:{backup.name}</code></span><button type="button" onClick={() => setConfirmRestore('')}>Cancel</button><button type="button" className="danger" disabled={mutation.busy || !password} onClick={() => void restore(backup)}>Restore</button></div> : <SecondaryButton disabled={mutation.busy} onClick={() => setConfirmRestore(backup.name)}><ActionUndoIcon /> Restore</SecondaryButton>) : <span className="portico-settings-capability">Not restore-ready</span>}</div></article>)}</div>}
   </SettingsGroup>;
 }
 
 function StoragePanel({ storage }: { storage: SystemStorageReport }) {
   return <SettingsGroup title="Storage" description={`Portico currently manages ${bytes(storage.totalBytes)} across the paths below.`}>
-    <div className="portico-storage-list">{storage.categories.map((category) => <article key={category.key}><HardDrive /><span><strong>{category.label}</strong><small>{category.available ? `${bytes(category.sizeBytes)} · ${category.fileCount} ${category.fileCount === 1 ? 'file' : 'files'} · ${category.writable ? 'writable' : 'read only'}` : category.error || 'Unavailable'}</small></span>{category.cleanupSupported && <span className="portico-settings-capability configured">Cleanup supported</span>}</article>)}</div>
+    <div className="portico-storage-list">{storage.categories.map((category) => <article key={category.key}><DeviceStorageIcon /><span><strong>{category.label}</strong><small>{category.available ? `${bytes(category.sizeBytes)} · ${category.fileCount} ${category.fileCount === 1 ? 'file' : 'files'} · ${category.writable ? 'writable' : 'read only'}` : category.error || 'Unavailable'}</small></span>{category.cleanupSupported && <span className="portico-settings-capability configured">Cleanup supported</span>}</article>)}</div>
   </SettingsGroup>;
 }
 
@@ -317,7 +317,7 @@ function UpdaterPanel({ release }: { release?: SystemReleaseInfo }) {
 }
 
 export function MaintenanceOperations({ tasks, backups, storage, release, failures, source, onChanged }: { tasks: ScheduledTask[]; backups: BackupInfo[]; storage: SystemStorageReport; release?: SystemReleaseInfo; failures?: SettingsOperationalSnapshot['failures']; source: SettingsDataSource; onChanged: () => void }) {
-  const unavailable = (title: string) => <SettingsGroup title={title} description="This panel could not be refreshed independently."><div className="portico-settings-state error"><AlertTriangle /><strong>{title} are unavailable</strong><p>Retry the failed panel before making changes. No empty result is being inferred.</p></div></SettingsGroup>;
+  const unavailable = (title: string) => <SettingsGroup title={title} description="This panel could not be refreshed independently."><div className="portico-settings-state error"><StatusWarningIcon /><strong>{title} are unavailable</strong><p>Retry the failed panel before making changes. No empty result is being inferred.</p></div></SettingsGroup>;
   return <div className="portico-settings-form">
     {failures?.release ? unavailable('Server updates') : <UpdaterPanel release={release} />}
     {failures?.tasks ? unavailable('Scheduled tasks') : <TasksPanel tasks={tasks} source={source} onChanged={onChanged} />}

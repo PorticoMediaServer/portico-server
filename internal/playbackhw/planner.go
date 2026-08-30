@@ -88,6 +88,15 @@ func PlanPipeline(req Request) (Plan, error) {
 		plan.InputArgs = append(plan.InputArgs, args...)
 		plan.Stages = append(plan.Stages, Stage{Decode, Hardware, args})
 		onHardware = true
+		if req.Backend == VideoToolbox {
+			// FFmpeg's VideoToolbox decoder transfers frames back to software when
+			// no hardware output format is forced. That is the executable bridge
+			// required by h264_videotoolbox for 10-bit HEVC -> 8-bit H.264 and by
+			// software subtitle compositing. Keeping videotoolbox_vld frames here
+			// makes the mandatory format conversion fail before the first frame.
+			plan.Stages = append(plan.Stages, Stage{Download, Hardware, nil})
+			onHardware = false
+		}
 	}
 
 	filters := []string{}
@@ -133,9 +142,16 @@ func PlanPipeline(req Request) (Plan, error) {
 	if req.SubtitleFile != "" {
 		addSoftwareFilter(SubtitleBurn, "subtitles="+escapeFilterValue(req.SubtitleFile))
 	}
+	// VideoToolbox returns software frames when its hardware output format is not
+	// forced. Seal the requested pixel-format/depth conversion into the graph;
+	// encoder-side auto-scale is not executable evidence for the product path.
+	if !onHardware && (req.InputPixelFormat != req.OutputPixelFormat || softwareDepth != req.OutputBitDepth) {
+		addSoftwareFilter(Scale, "format="+string(req.OutputPixelFormat))
+		softwareDepth = req.OutputBitDepth
+	}
 
 	requiresUpload := req.Backend == QSV || req.Backend == VAAPI || req.Backend == NVIDIA
-	if (!encodeOnly || requiresUpload) && !onHardware {
+	if requiresUpload && !onHardware {
 		upload := uploadFilter(req.Backend, req.OutputBitDepth)
 		filters = append(filters, upload)
 		plan.Stages = append(plan.Stages, Stage{Upload, Hardware, []string{upload}})
@@ -248,7 +264,7 @@ func escapeFilterValue(v string) string {
 func decoderArgs(r Request) []string {
 	switch r.Backend {
 	case VideoToolbox:
-		return []string{"-hwaccel", "videotoolbox", "-hwaccel_output_format", "videotoolbox_vld"}
+		return []string{"-hwaccel", "videotoolbox"}
 	case QSV:
 		if r.OS == Linux {
 			return []string{"-init_hw_device", "vaapi=portico_vaapi:" + r.Device.DevicePath, "-init_hw_device", "qsv=portico_hw@portico_vaapi", "-filter_hw_device", "portico_hw", "-hwaccel", "qsv", "-hwaccel_output_format", "qsv"}

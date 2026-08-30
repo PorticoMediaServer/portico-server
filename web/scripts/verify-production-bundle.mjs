@@ -57,6 +57,26 @@ if (expectedRuntimeMode) {
 	if (buildManifest.mode !== expectedRuntimeMode || buildManifest.hostedApiBaseUrl !== expectedHostedAPIBaseURL) {
 		findings.push('build manifest runtime authority does not match the hosted deployment contract');
 	}
+	const assetScope = JSON.parse(await readFile(resolve(dist, 'portico-asset-scope.json'), 'utf8'));
+	const expectedPrefix = `/assets/${buildManifest.buildId}/`;
+	if (assetScope.buildId !== buildManifest.buildId || assetScope.assetPrefix !== expectedPrefix) {
+		findings.push('asset scope and runtime build identity do not match');
+	}
+	for (const path of bundleFiles) {
+		const contents = await readFile(path, 'utf8');
+		for (const match of contents.matchAll(/(?:\/|["'])assets\/[^\s"')]+/g)) {
+			const reference = match[0].replace(/^["']/, '/');
+			if (!reference.startsWith(expectedPrefix)) findings.push(`${path.slice(dist.length + 1)} contains unscoped or cross-build asset reference ${JSON.stringify(match[0])}`);
+		}
+	}
+	const scopedDirectory = resolve(dist, 'assets', buildManifest.buildId);
+	try {
+		if (!(await stat(scopedDirectory)).isDirectory()) findings.push('scoped asset directory is missing');
+		const assetRoots = await readdir(resolve(dist, 'assets'));
+		if (assetRoots.length !== 1 || assetRoots[0] !== buildManifest.buildId) findings.push('dist/assets contains an asset graph outside the current build scope');
+	} catch {
+		findings.push('scoped asset directory is missing');
+	}
 }
 
 for (const path of bundleFiles) {

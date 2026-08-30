@@ -15,34 +15,26 @@ export class PlaybackResourceUnavailableError extends Error {
 }
 
 export function normalizePlaybackResponse(playback: PlaybackResponse): PlaybackResponse {
-  const repeatMode = playback.repeatMode === "one" || playback.repeatMode === "all" ? playback.repeatMode : "off";
-  return {
-    ...playback,
-    nextEventSequence: Number.isFinite(playback.nextEventSequence) && playback.nextEventSequence > 0 ? Math.trunc(playback.nextEventSequence) : 1,
-    timeline: playback.timeline ?? {
-      type: playback.isLive || playback.media.type === "live_channel" ? "live" : "vod",
-      durationSeconds: playback.media.durationSeconds,
-      segmentSeconds: playback.isLive ? undefined : 4
-    },
-    generation: Number.isFinite(playback.generation) ? playback.generation : 0,
-    qualities: asArray(playback.qualities),
-    audioStreams: asArray(playback.audioStreams),
-    subtitleStreams: asArray(playback.subtitleStreams),
-    chapters: asArray(playback.chapters),
-    queue: asArray(playback.queue),
-    resources: asArray(playback.resources),
-    repeatMode,
-    queueRevision: Number.isFinite(playback.queueRevision) && playback.queueRevision >= 0 ? Math.trunc(playback.queueRevision) : 0
-  };
+  for (const [name, value] of Object.entries({
+    qualities: playback.qualities,
+    audioStreams: playback.audioStreams,
+    subtitleStreams: playback.subtitleStreams,
+    chapters: playback.chapters,
+    queue: playback.queue,
+    resources: playback.resources,
+  })) {
+    if (!Array.isArray(value)) throw new TypeError(`Playback response ${name} must be an array.`);
+  }
+  if (!playback.timeline || !Number.isFinite(playback.generation) || !Number.isFinite(playback.nextEventSequence) || playback.nextEventSequence < 1 || !Number.isFinite(playback.queueRevision) || playback.queueRevision < 0 || !["off", "one", "all"].includes(playback.repeatMode)) {
+    throw new TypeError("Playback response is missing current session state.");
+  }
+  return playback;
 }
 
 export function playbackResourceUrl(playback: PlaybackResponse, path: string, resourceUrl: (path: string) => string, baseHref = "http://portico.local"): string {
   void playback;
   const resolved = resourceUrl(path);
   const url = new URL(resolved, baseHref);
-  url.searchParams.delete("media_grant");
-  url.searchParams.delete("download_grant");
-  url.searchParams.delete("access_token");
   return url.toString();
 }
 
@@ -74,7 +66,7 @@ export function activePlaybackSegment(segments: MediaSegment[] | undefined, curr
 }
 
 export function supportsTrickplayPreview(item: MediaItem): boolean {
-  return ["movie", "episode"].includes(item.type);
+  return ["movie", "episode"].includes(item.entityKind);
 }
 
 export function activeTrickplaySet(sets: MediaTrickplaySet[]): MediaTrickplaySet | undefined {
@@ -102,13 +94,13 @@ export function subtitleStyleLabel(style: SubtitleStyle): string {
 }
 
 export function isAudioContent(item: MediaItem): boolean {
-  return ["album", "track", "audiobook", "music"].includes(item.type);
+  return ["album", "track", "audiobook", "music"].includes(item.entityKind);
 }
 
 export function playerContentMode(item: MediaItem, isLive = false): PlayerContentMode {
-  if (isLive || item.type === "live_channel") return "live";
-  if (item.type === "audiobook") return "audiobook";
-  if (["album", "track", "music"].includes(item.type)) return "music";
+  if (isLive || item.entityKind === "live-channel") return "live";
+  if (item.entityKind === "audiobook") return "audiobook";
+  if (["album", "track", "music"].includes(item.entityKind)) return "music";
   return "video";
 }
 
@@ -137,10 +129,7 @@ export function playbackSourceFor(
 }
 
 export function defaultPlaybackQuality(playback: PlaybackResponse): string {
-  // Older servers and deliberately minimal test/third-party payloads may omit
-  // optional selection collections.  Playback defaults must remain usable and
-  // must never crash the player while a contract mismatch is being surfaced.
-  const available = (playback.qualities ?? []).filter((quality) => quality.available !== false);
+  const available = playback.qualities.filter((quality) => quality.available !== false);
   // A new session starts at source quality unless a caller supplied an
   // explicit saved preference. selectedQualityId/default resources describe
   // the server's initial transport decision, not a viewer preference.
@@ -150,12 +139,12 @@ export function defaultPlaybackQuality(playback: PlaybackResponse): string {
 }
 
 export function playbackSelectionRequiresHLS(playback: PlaybackResponse, quality: string, audioStreamId: string): boolean {
-  if (playback.isLive || playback.media.type === "live_channel") return false;
+  if (playback.isLive || playback.media.entityKind === "live-channel") return false;
   if (playback.streamFormat === "hls") return true;
-  const selectedQuality = (playback.qualities ?? []).find((candidate) => candidate.id === quality);
+  const selectedQuality = playback.qualities.find((candidate) => candidate.id === quality);
   if (quality && quality !== "auto" && quality !== "original") return true;
   if (selectedQuality?.requiresTranscode) return true;
-  const baselineAudioStreamId = playback.selectedAudioStreamId ?? playback.audioStreams?.[0]?.id;
+  const baselineAudioStreamId = playback.selectedAudioStreamId ?? playback.audioStreams[0]?.id;
   return Boolean(audioStreamId && baselineAudioStreamId && audioStreamId !== baselineAudioStreamId);
 }
 

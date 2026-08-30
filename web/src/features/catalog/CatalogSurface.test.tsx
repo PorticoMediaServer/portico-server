@@ -20,8 +20,7 @@ function media(actions: string[], watched = false): MediaItem {
     title: 'Arrival',
     subtitle: '',
     year: 2016,
-    type: 'movie',
-    kind: 'movie',
+    entityKind: 'movie',
     poster: '',
     backdrop: '',
     rating: '',
@@ -40,8 +39,8 @@ function renderMenu(item: MediaItem, activeViewer = viewer, source = new Fixture
 
 describe('catalog action contracts', () => {
   it('routes synthetic collection and playlist summaries to their real resource details', () => {
-    expect(mediaDetailPath({ ...media([]), id: 'collection/1', kind: 'collection', entityKind: 'collection' })).toBe('/saved/collections/collection%2F1');
-    expect(mediaDetailPath({ ...media([]), id: 'playlist/1', kind: 'playlist', entityKind: 'playlist' })).toBe('/saved/playlists/playlist%2F1');
+    expect(mediaDetailPath({ ...media([]), id: 'collection/1', entityKind: 'collection' })).toBe('/saved/collections/collection%2F1');
+    expect(mediaDetailPath({ ...media([]), id: 'playlist/1', entityKind: 'playlist' })).toBe('/saved/playlists/playlist%2F1');
   });
 
   it('resolves card artwork, destination, and selection accessibility copy through Product Language', () => {
@@ -141,7 +140,7 @@ describe('catalog action contracts', () => {
   });
 
   it('uses canonical landscape artwork and a truthful details affordance for episodes', () => {
-    const episode = { ...media([]), kind: 'episode', entityKind: 'episode', title: 'The Arrival' };
+    const episode = { ...media([]), entityKind: 'episode', title: 'The Arrival' };
     const { container } = render(<DataProvider source={new FixturePorticoDataSource(viewer)} initialViewer={viewer}>
       <MemoryRouter><MediaListRow item={episode} /></MemoryRouter>
     </DataProvider>);
@@ -173,7 +172,6 @@ describe('catalog action contracts', () => {
       id: 'future-channel-1',
       title: 'Future Channel',
       entityKind: 'spatial-channel',
-      kind: 'spatial-channel',
       poster: '',
       artwork: { logo: '/future-channel-logo.svg' },
     };

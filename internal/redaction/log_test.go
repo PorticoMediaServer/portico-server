@@ -12,7 +12,7 @@ import (
 func TestRedactStringRemovesConfiguredAndAbsolutePaths(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "private-data")
 	message := "open " + filepath.Join(root, "portico.db") + ": permission denied"
-	redacted := RedactString(message, root)
+	redacted := (Policy{SensitivePaths: []string{root}}).RedactString(message)
 	if strings.Contains(redacted, root) || strings.Contains(redacted, "portico.db") {
 		t.Fatalf("redacted message leaked a private path: %q", redacted)
 	}

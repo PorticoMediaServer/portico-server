@@ -1,27 +1,4 @@
-import {
-  Bookmark,
-  BookmarkPlus,
-  Check,
-  Download,
-  Ellipsis,
-  FolderHeart,
-  Gauge,
-  Heart,
-  Library,
-  ListMusic,
-  ListPlus,
-  Pencil,
-  Play,
-  RefreshCw,
-  RotateCw,
-  RotateCcw,
-  ScanSearch,
-  Star,
-  ThumbsUp,
-  Trash2,
-  UsersRound,
-  WandSparkles,
-} from '#portico-icons';
+import { ActionWatchlistIcon, ActionAddToListIcon, ActionConfirmIcon, ActionDownloadIcon, ActionMoreIcon, LibrarySavedIcon, PlaybackQualityIcon, ActionFavoriteIcon, NavigationLibraryIcon, MediaPlaylistIcon, ActionEditIcon, PlaybackPlayIcon, ActionRefreshIcon, PlaybackSeekForwardIcon, ActionResetIcon, NavigationSearchIcon, ActionRateIcon, ActionLikeIcon, ActionDeleteIcon, AccountWatchTogetherIcon, ActionCustomizeIcon } from '#portico-icons';
 import { mediaActionsForSurface, type MediaActionSurface, type PresentedMediaAction } from '@porticomediaserver/client-core';
 import { useMemo } from 'react';
 import { useAuthSession, useProductContract } from '../../data/DataProvider';
@@ -51,26 +28,26 @@ export function actionPresentation(actions: readonly PresentedMediaAction[], ...
 
 export function MediaActionIcon({ action }: { action: PresentedMediaAction }) {
   const glyph: string = action.icon.glyph;
-  if (glyph === 'Play') return <Play />;
-  if (glyph === 'RotateCcw') return <RotateCcw />;
-  if (glyph === 'Bookmark') return <Bookmark />;
-  if (glyph === 'BookmarkPlus') return <BookmarkPlus />;
-  if (glyph === 'Heart') return <Heart />;
-  if (glyph === 'CircleCheck') return <Check />;
-  if (glyph === 'Download') return <Download />;
-  if (glyph === 'ListPlus') return <ListPlus />;
-  if (glyph === 'FolderHeart') return <FolderHeart />;
-  if (glyph === 'Library') return <Library />;
-  if (glyph === 'ListMusic') return <ListMusic />;
-  if (glyph === 'Pencil') return <Pencil />;
-  if (glyph === 'RefreshCw') return <RefreshCw />;
-  if (glyph === 'RotateCw') return <RotateCw />;
-  if (glyph === 'ScanSearch') return <ScanSearch />;
-  if (glyph === 'WandSparkles') return <WandSparkles />;
-  if (glyph === 'Gauge') return <Gauge />;
-  if (glyph === 'Trash2') return <Trash2 />;
-  if (glyph === 'UsersRound') return <UsersRound />;
-  if (glyph === 'Star') return <Star />;
-  if (glyph === 'ThumbsUp') return <ThumbsUp />;
-  return <Ellipsis />;
+  if (glyph === 'Play') return <PlaybackPlayIcon />;
+  if (glyph === 'RotateCcw') return <ActionResetIcon />;
+  if (glyph === 'Bookmark') return <ActionWatchlistIcon />;
+  if (glyph === 'BookmarkPlus') return <ActionAddToListIcon />;
+  if (glyph === 'Heart') return <ActionFavoriteIcon />;
+  if (glyph === 'CircleCheck') return <ActionConfirmIcon />;
+  if (glyph === 'Download') return <ActionDownloadIcon />;
+  if (glyph === 'ListPlus') return <ActionAddToListIcon />;
+  if (glyph === 'FolderHeart') return <LibrarySavedIcon />;
+  if (glyph === 'Library') return <NavigationLibraryIcon />;
+  if (glyph === 'ListMusic') return <MediaPlaylistIcon />;
+  if (glyph === 'Pencil') return <ActionEditIcon />;
+  if (glyph === 'RefreshCw') return <ActionRefreshIcon />;
+  if (glyph === 'RotateCw') return <PlaybackSeekForwardIcon />;
+  if (glyph === 'ScanSearch') return <NavigationSearchIcon />;
+  if (glyph === 'WandSparkles') return <ActionCustomizeIcon />;
+  if (glyph === 'Gauge') return <PlaybackQualityIcon />;
+  if (glyph === 'Trash2') return <ActionDeleteIcon />;
+  if (glyph === 'UsersRound') return <AccountWatchTogetherIcon />;
+  if (glyph === 'Star') return <ActionRateIcon />;
+  if (glyph === 'ThumbsUp') return <ActionLikeIcon />;
+  return <ActionMoreIcon />;
 }

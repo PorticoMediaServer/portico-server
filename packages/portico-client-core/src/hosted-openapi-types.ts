@@ -2074,7 +2074,9 @@ export interface components {
             preferredAuthMode: string;
             protocolMaximum: number;
             protocolMinimum: number;
-            publicIpCandidate: string;
+            publicConsoleOrigin: string;
+            publicConsoleOriginGeneration: number;
+            publicIpCandidates?: string[];
             publicPort: number;
             remoteAccessEnabled: boolean;
             requiredSemantics: string[];
@@ -2094,6 +2096,7 @@ export interface components {
             policyDigest?: string;
             policyRevision?: number;
             policyRoot?: string;
+            publicConsoleOriginGeneration: number;
             publicIp?: string;
             remoteAccessEnabled: boolean;
             repair?: components["schemas"]["RepairSignalResponse"];
@@ -2235,6 +2238,8 @@ export interface components {
             localOrigin: string;
             pin?: string;
             profileId: string;
+            /** Format: int64 */
+            publicConsoleOriginGeneration: number;
             serverPublicKeyFingerprint?: string;
             state: string;
         };
@@ -2366,6 +2371,7 @@ export interface components {
             /** Format: date-time */
             accessExpiresAt: string;
             accessToken: string;
+            authority: string;
             device: components["schemas"]["Device"];
             /** Format: date-time */
             refreshExpiresAt: string;
@@ -2804,8 +2810,8 @@ export interface components {
                 redirectAuthority?: string;
                 scope?: string;
                 serverPublicKeyFingerprint?: string;
-                serverToken?: string;
-                type: string;
+                /** @enum {string} */
+                type: "lan" | "lan_discovered" | "lan_ip_encoded" | "public_console_origin" | "public_direct" | "public_direct_ip_encoded";
                 url: string;
             }[];
             scope?: string;
@@ -2820,7 +2826,8 @@ export interface components {
         RouteFailureRequest: {
             category: string;
             endpointGeneration: number;
-            routeType: string;
+            /** @enum {string} */
+            routeType: "public_console_origin" | "public_direct" | "public_direct_ip_encoded";
         };
         SSOOnboardingCompleteRequest: {
             contactEmail?: string;

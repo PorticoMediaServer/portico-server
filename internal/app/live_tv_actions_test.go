@@ -41,7 +41,7 @@ func TestLiveTVActionsArePermissionAndResourceStateFiltered(t *testing.T) {
 }
 
 func TestDVRResourceActionsUseOwnershipPermissionAndStatus(t *testing.T) {
-	scheduler := User{ID: "usr_scheduler", Permissions: map[string]bool{"scheduleDVR": true, "viewDVR": true, "playMedia": true}}
+	scheduler := User{ID: "usr_scheduler", AccountID: "usr_scheduler", ProfileID: "usr_scheduler", ProfileIsPrimary: true, Permissions: map[string]bool{"scheduleDVR": true, "viewDVR": true, "playMedia": true}}
 	rule := DVRRecordingRule{ID: "rule_1", UserID: scheduler.ID, Enabled: true}
 	actions := stringSet(dvrRuleActionsForUser(rule, scheduler))
 	for _, required := range []string{liveTVActionDVREdit, liveTVActionDVRDisable, liveTVActionDVRDelete} {

@@ -1,5 +1,5 @@
 import type { LibraryChannelsGuide } from '@porticomediaserver/client-core';
-import { AlertTriangle, ChevronLeft, ChevronRight, Clock3, Play, Search, TvMinimalPlay } from '#portico-icons';
+import { StatusWarningIcon, NavigationPreviousIcon, NavigationDisclosureIcon, MetadataTimeIcon, PlaybackPlayIcon, NavigationSearchIcon, MediaLiveTvIcon } from '#portico-icons';
 import { type ComponentType, useDeferredValue, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { IconButton, PrimaryButton, SecondaryButton } from '../../components/controls/Buttons';
@@ -98,18 +98,18 @@ export function LibraryChannelsWorkspace({ StateSurface }: { StateSurface: State
   const explainer = productState('library-channel.explainer');
 
   return <div className="live-workspace guide-workspace library-channel-workspace">
-    <div className="library-channel-source-note"><TvMinimalPlay /><span><strong>{explainer.title}</strong><span>{explainer.message}</span></span></div>
+    <div className="library-channel-source-note"><MediaLiveTvIcon /><span><strong>{explainer.title}</strong><span>{explainer.message}</span></span></div>
     {focusedChannel && focused && <section className="live-focus-strip" aria-label="Selected Library Channel and program">
-      <span className="live-focus-channel"><span className="channel-mark compact">{focusedChannel.logoUrl ? <img src={source.playbackResourceUrl(focusedChannel.logoUrl)} alt="" /> : <TvMinimalPlay />}</span></span>
+      <span className="live-focus-channel"><span className="channel-mark compact">{focusedChannel.logoUrl ? <img src={source.playbackResourceUrl(focusedChannel.logoUrl)} alt="" /> : <MediaLiveTvIcon />}</span></span>
       <div className="live-focus-copy"><p><span className={entryIsNow(focused, now) ? 'live-indicator' : 'program-time-indicator'}>{entryIsNow(focused, now) ? 'Live' : dateLabel(focused.startsAt)}</span>Library Channel</p><h2>{focused.title || productState('library-channel.program-unavailable').title}</h2><span>{focusedChannel.name} · {timeLabel(focused.startsAt)}–{timeLabel(focused.endsAt)}</span>{(focused.summary || focused.subtitle) && <p className="live-focus-description">{focused.summary || focused.subtitle}</p>}</div>
-      <div className="live-focus-actions"><PrimaryButton disabled={busy || focused.availability !== 'available' || !focusedChannel.actions.includes('live.play')} onClick={() => void tune()}><Play fill="currentColor" /> {busy ? productText('state.opening', { destination: productText('destination.live-tv') }) : productText('action.watch-live')}</PrimaryButton></div>
+      <div className="live-focus-actions"><PrimaryButton disabled={busy || focused.availability !== 'available' || !focusedChannel.actions.includes('live.play')} onClick={() => void tune()}><PlaybackPlayIcon fill="currentColor" /> {busy ? productText('state.opening', { destination: productText('destination.live-tv') }) : productText('action.watch-live')}</PrimaryButton></div>
     </section>}
     <div className="live-toolbar guide-toolbar">
-      <div className="guide-window-control"><IconButton label="Earlier programs" disabled={!canShiftEarlier} onClick={() => shiftWindow(-guideHours)}><ChevronLeft /></IconButton><label className="guide-day-field"><span>Day</span><input type="date" min={localDay(today)} max={localDay(horizonEnd)} value={localDay(windowStart)} onChange={(event) => selectDay(event.target.value)} /></label><button type="button" className="guide-now-button" onClick={() => setWindowStart(initialGuideStart())}><Clock3 /> Now</button><IconButton label="Later programs" disabled={!canShiftLater} onClick={() => shiftWindow(guideHours)}><ChevronRight /></IconButton></div>
-      <label className="guide-search"><Search /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search Library Channels" aria-label="Search Library Channels" /></label>
+      <div className="guide-window-control"><IconButton label="Earlier programs" disabled={!canShiftEarlier} onClick={() => shiftWindow(-guideHours)}><NavigationPreviousIcon /></IconButton><label className="guide-day-field"><span>Day</span><input type="date" min={localDay(today)} max={localDay(horizonEnd)} value={localDay(windowStart)} onChange={(event) => selectDay(event.target.value)} /></label><button type="button" className="guide-now-button" onClick={() => setWindowStart(initialGuideStart())}><MetadataTimeIcon /> Now</button><IconButton label="Later programs" disabled={!canShiftLater} onClick={() => shiftWindow(guideHours)}><NavigationDisclosureIcon /></IconButton></div>
+      <label className="guide-search"><NavigationSearchIcon /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search Library Channels" aria-label="Search Library Channels" /></label>
       <SecondaryButton selected={onlyAvailable} onClick={() => setOnlyAvailable((currentOnly) => !currentOnly)}>Available only</SecondaryButton>
     </div>
-    {error && <p className="live-action-message error" role="alert"><AlertTriangle /> {error}</p>}
+    {error && <p className="live-action-message error" role="alert"><StatusWarningIcon /> {error}</p>}
     {guide.status === 'loading' && <StateSurface kind="loading" {...productState('library-channel.loading')} />}
     {guide.status === 'error' && <StateSurface kind={(guide.error as Error & { status?: number }).status === 403 ? 'permission' : 'error'} title={productState('library-channel.load-failed').title} message={requestError(guide.error, 'library-channel.load-failed')} onRetry={() => setRevision((value) => value + 1)} />}
     {guide.status === 'success' && !rawChannels.length && <StateSurface kind="empty" {...productState('library-channel.empty')} />}

@@ -1269,8 +1269,17 @@
           "protocolMinimum": {
             "type": "integer"
           },
-          "publicIpCandidate": {
+          "publicConsoleOrigin": {
             "type": "string"
+          },
+          "publicConsoleOriginGeneration": {
+            "type": "integer"
+          },
+          "publicIpCandidates": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           },
           "publicPort": {
             "type": "integer"
@@ -1320,7 +1329,8 @@
           "preferredAuthMode",
           "protocolMaximum",
           "protocolMinimum",
-          "publicIpCandidate",
+          "publicConsoleOrigin",
+          "publicConsoleOriginGeneration",
           "publicPort",
           "remoteAccessEnabled",
           "requiredSemantics",
@@ -1355,6 +1365,9 @@
           "policyRoot": {
             "type": "string"
           },
+          "publicConsoleOriginGeneration": {
+            "type": "integer"
+          },
           "publicIp": {
             "type": "string"
           },
@@ -1382,6 +1395,7 @@
           "leaseSeconds",
           "ok",
           "policyChanged",
+          "publicConsoleOriginGeneration",
           "remoteAccessEnabled",
           "serverId",
           "stateChanged",
@@ -1849,6 +1863,11 @@
             "minLength": 1,
             "type": "string"
           },
+          "publicConsoleOriginGeneration": {
+            "format": "int64",
+            "minimum": 1,
+            "type": "integer"
+          },
           "serverPublicKeyFingerprint": {
             "type": "string"
           },
@@ -1862,7 +1881,8 @@
           "callbackUrl",
           "localOrigin",
           "state",
-          "profileId"
+          "profileId",
+          "publicConsoleOriginGeneration"
         ],
         "type": "object"
       },
@@ -2320,6 +2340,9 @@
           "accessToken": {
             "type": "string"
           },
+          "authority": {
+            "type": "string"
+          },
           "device": {
             "$ref": "#/components/schemas/Device"
           },
@@ -2340,6 +2363,7 @@
         "required": [
           "accessExpiresAt",
           "accessToken",
+          "authority",
           "device",
           "refreshExpiresAt",
           "refreshToken",
@@ -3960,10 +3984,15 @@
                 "serverPublicKeyFingerprint": {
                   "type": "string"
                 },
-                "serverToken": {
-                  "type": "string"
-                },
                 "type": {
+                  "enum": [
+                    "lan",
+                    "lan_discovered",
+                    "lan_ip_encoded",
+                    "public_console_origin",
+                    "public_direct",
+                    "public_direct_ip_encoded"
+                  ],
                   "type": "string"
                 },
                 "url": {
@@ -4035,6 +4064,11 @@
             "type": "integer"
           },
           "routeType": {
+            "enum": [
+              "public_console_origin",
+              "public_direct",
+              "public_direct_ip_encoded"
+            ],
             "type": "string"
           }
         },

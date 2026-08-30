@@ -24,6 +24,13 @@ function memoryStorage(): HostedConnectionVaultStorage {
     },
     delete: async (name, id) => { store(name).delete(key(id)); },
     getAll: async <T,>(name: string) => [...store(name).values()] as T[],
+    compareAndSwapConnection: async (id, expectedVersion, value) => {
+      const current = store('connections').get(key(id)) as { metadata?: { mutationVersion?: number }; mutationVersion?: number } | undefined;
+      if ((current?.metadata?.mutationVersion ?? current?.mutationVersion ?? 0) !== expectedVersion) return false;
+      store('connections').set(key(id), value);
+      return true;
+    },
+    replaceConnectionWithTombstone: async (id, value) => { store('connections').set(key(id), value); },
   };
 }
 
@@ -45,6 +52,7 @@ function connection(accountId: string, serverId: string, connectedAt: string): T
       serverPublicKeyFingerprint: `sha256:${serverId}`,
     },
     lastSuccessfulConnectionAt: connectedAt,
+    mutationVersion: 1,
   };
 }
 
@@ -149,19 +157,6 @@ describe('Hosted Web trusted connection vault', () => {
     expect(await freshProcess.list('account-1')).toEqual([]);
     expect(JSON.stringify(await durableStorage.getAll('connections'))).not.toContain('refresh-server-1');
     expect(JSON.stringify(await durableStorage.getAll('connections'))).not.toContain('access-server-1');
-  });
-
-  it('scrubs and ignores a legacy durable credential payload instead of restoring it', async () => {
-    const storage = memoryStorage();
-    const legacy = createHostedConnectionVault(storage, () => new Date('2026-07-14T12:00:00.000Z'));
-    await legacy.save(connection('account-1', 'server-1', '2026-07-14T11:00:00.000Z'));
-    expect(JSON.stringify(await storage.getAll('connections'))).toContain('refresh-server-1');
-
-    const freshProcess = createBrowserHostedConnectionVaultWithDurableMetadata(
-      createHostedConnectionVault(storage, () => new Date('2026-07-14T12:01:00.000Z'), { persistCredentials: false }),
-    );
-    expect(await freshProcess.load('account-1', 'server-1')).toBeUndefined();
-    expect(JSON.stringify(await storage.getAll('connections'))).not.toContain('refresh-server-1');
   });
 
   it('keeps a verified process-memory credential live when auxiliary metadata hits quota', async () => {

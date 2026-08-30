@@ -23,7 +23,7 @@ describe('detail browser downloads', () => {
     const notice = vi.fn();
 
     render(<DataProvider source={source}>
-      <MediaVersionsDialog item={{ id: 'movie', title: 'Movie', kind: 'movie', actions: ['download'] }} mode="download" onDismiss={vi.fn()} onNotice={notice} onChanged={vi.fn()} />
+      <MediaVersionsDialog item={{ id: 'movie', title: 'Movie', entityKind: 'movie', actions: ['download'] }} mode="download" onDismiss={vi.fn()} onNotice={notice} onChanged={vi.fn()} />
     </DataProvider>);
 
     expect(await screen.findByText('Original source')).toBeInTheDocument();

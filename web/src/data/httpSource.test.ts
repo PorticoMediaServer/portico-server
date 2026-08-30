@@ -62,13 +62,58 @@ describe('HttpPorticoDataSource', () => {
 		});
 	});
 
-	it('roots bundled playback resources at the current Portico server', () => {
+  it('roots bundled playback resources at the current Portico server', () => {
     const source = new HttpPorticoDataSource();
     const resource = new URL(source.playbackResourceUrl('/api/media/episode-1/hls/master.m3u8'));
 
     expect(resource.origin).toBe(window.location.origin);
     expect(resource.pathname).toBe('/api/media/episode-1/hls/master.m3u8');
     expect(resource.hostname).not.toBe('portico.local');
+  });
+
+  it('dispatches the production playback DELETE when progress delivery is stalled', async () => {
+    const calls: Array<{ url: string; method: string; body?: string; keepalive?: boolean }> = [];
+    let releaseProgress!: (response: Response) => void;
+    let markProgressStarted!: () => void;
+    const stalledProgress = new Promise<Response>((resolve) => { releaseProgress = resolve; });
+    const progressStarted = new Promise<void>((resolve) => { markProgressStarted = resolve; });
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const method = init?.method ?? 'GET';
+      calls.push({ url: String(input), method, body: typeof init?.body === 'string' ? init.body : undefined, keepalive: init?.keepalive });
+      if (method === 'PATCH') {
+        markProgressStarted();
+        return stalledProgress;
+      }
+      return jsonResponse({ ok: true });
+    }));
+    const source = new HttpPorticoDataSource();
+    source.porticoClient().acceptPlaybackSession({
+      sessionId: 'session-stalled',
+      media: { id: 'm1', title: 'Movie', type: 'movie', state: {} },
+      sourceUrl: '/api/media/m1/stream', directPlay: true,
+      generation: 1, nextEventSequence: 1, playbackRevision: 1, queueRevision: 1, repeatMode: 'off',
+      timeline: { type: 'vod', durationSeconds: 60, canPause: true, canSeek: true },
+      continuationCredential: { token: 'continuation', origin: window.location.origin, generation: 1, expiresAt: '2026-08-28T20:00:00Z' },
+      mediaGrant: { token: 'grant', expiresAt: '2026-08-28T20:00:00Z' },
+      decision: { mode: 'direct_play', reason: '', requiresTranscode: false, isProxied: true, isServerCached: false },
+      qualities: [], audioStreams: [], subtitleStreams: [], chapters: [], queue: [],
+      resources: [{ id: 'movie-active', sourceUrl: '/api/media/m1/stream', streamFormat: 'http', default: true }],
+    } as unknown as Parameters<PorticoClient['acceptPlaybackSession']>[0]);
+
+    const progress = source.touchPlayback('session-stalled', { positionSeconds: 12 });
+    await progressStarted;
+    await source.stopPlayback('session-stalled', { disposition: 'completed', positionSeconds: 60, durationSeconds: 60 }, undefined, true);
+
+    expect(calls.map(({ method }) => method)).toEqual(['PATCH', 'DELETE']);
+    expect(calls[1]?.url).toContain('/api/playback-sessions/session-stalled');
+    expect(JSON.parse(calls[1]?.body ?? '{}')).toMatchObject({
+      disposition: 'completed', generation: 1, eventSequence: 2,
+      positionSeconds: 60, durationSeconds: 60,
+    });
+    expect(JSON.parse(calls[1]?.body ?? '{}').recordedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(calls[1]?.keepalive).toBe(true);
+    releaseProgress(jsonResponse({ accepted: true, duplicate: false, stale: false, highestEventSequence: 1 }));
+    await expect(progress).rejects.toMatchObject({ code: 'playback_progress_stopped' });
   });
 
   it('configures the bundled client with measured browser playback capabilities', async () => {
@@ -79,12 +124,17 @@ describe('HttpPorticoDataSource', () => {
       const source = new HttpPorticoDataSource();
       await expect(source.porticoClient().startPlayback('movie-1')).rejects.toThrow();
 
-      const request = JSON.parse(String(fetchMock.mock.calls[0][1]?.body)) as { clientProfile?: { capabilitySchemaVersion?: string; clientFamily?: string; platform?: string } };
+      const request = JSON.parse(String(fetchMock.mock.calls[0][1]?.body)) as { clientProfile?: { capabilitySchemaVersion?: string; clientFamily?: string; platform?: string; capabilityEvidence?: Array<{ tuples?: Array<{ mediaKind?: string; audio?: { codec?: string; layout?: string; maxChannels?: number } }> }> } };
       expect(request.clientProfile).toEqual(expect.objectContaining({
         capabilitySchemaVersion: 'playback-capability-v2',
         clientFamily: expect.stringMatching(/^(chromium|edge|safari|firefox)$/),
         platform: 'web',
       }));
+      const tuples = request.clientProfile?.capabilityEvidence?.flatMap((evidence) => evidence.tuples ?? []) ?? [];
+      expect(tuples).toEqual(expect.arrayContaining([
+        expect.objectContaining({ mediaKind: 'audiovisual', audio: expect.objectContaining({ codec: 'aac', layout: 'mono', maxChannels: 1 }) }),
+        expect.objectContaining({ mediaKind: 'audiovisual', audio: expect.objectContaining({ codec: 'aac', layout: 'stereo', maxChannels: 2 }) }),
+      ]));
     } finally {
       canPlayType.mockRestore();
     }
@@ -189,29 +239,6 @@ describe('HttpPorticoDataSource', () => {
     expect(String(fetchMock.mock.calls[3][0])).toContain('/api/product-contract');
   });
 
-  it('contains transitional wire shapes inside the adapter', async () => {
-    const fetchMock = vi.fn()
-      .mockResolvedValueOnce(jsonResponse({ apiVersion: 'v1', libraryKinds: [], entityKinds: [], browseFields: [], browseSorts: [], browseOperators: [], presentationFields: [], queryLimits: {}, serverCapabilities: [] }))
-      .mockResolvedValueOnce(jsonResponse({ items: [{ id: 'lib_movies', name: 'Movies', type: 'movie', sortOrder: 0, paths: [], count: 1, settings: {} }], total: 1 }))
-      .mockResolvedValueOnce(jsonResponse({ apiVersion: 'v1', library: { id: 'lib_movies', name: 'Movies', kind: 'movies' }, pivots: [{ id: 'movies', label: 'Movies', entityKinds: ['movie'], defaultView: 'grid', supportedViews: ['grid', 'list'], defaultSort: [{ field: 'title', direction: 'asc' }], browseSupported: true, endpointTemplate: '/api/libraries/{libraryId}/browse', presentationFields: [] }], fields: [], sorts: [{ id: 'title', label: 'Title', directions: ['asc', 'desc'], defaultDirection: 'asc', expensive: false }], presentationFields: [], actions: [], queryLimits: {} }))
-      .mockResolvedValueOnce(jsonResponse({ items: [{ id: 'media_1', libraryId: 'lib_movies', entityKind: 'movie', title: 'Arrival', year: 2016, artwork: { poster: '/api/artwork/media_1', backdrop: '', thumb: '' }, userState: { watchlisted: false, favorite: false, watched: false, progressSeconds: 0 }, availability: { status: 'available', fileCount: 1, missingFileCount: 0 }, actions: [] }], pageInfo: { nextCursor: null, hasMore: false, total: 1 }, applied: { pivot: 'movies', sort: [{ field: 'title', direction: 'asc' }], presentationFields: [] } }));
-    vi.stubGlobal('fetch', fetchMock);
-
-    const result = await new HttpPorticoDataSource().browseLibrary({ kind: 'movies', pivot: 'Movies', filter: 'All items', sort: 'Title', direction: 'ascending' }, new AbortController().signal);
-
-    expect(result).toMatchObject({ total: 1, libraryId: 'lib_movies' });
-    expect(result.items[0]).toMatchObject({
-      id: 'media_1',
-      title: 'Arrival',
-      type: 'movie',
-      poster: 'http://localhost:3000/api/artwork/media_1?width=480&height=720',
-    });
-    expect(String(fetchMock.mock.calls[0][0])).toContain('/api/product-contract');
-    expect(String(fetchMock.mock.calls[1][0])).toContain('/api/libraries');
-    expect(String(fetchMock.mock.calls[3][0])).toContain('/api/libraries/lib_movies/browse');
-    expect(fetchMock.mock.calls[3][1]).toEqual(expect.objectContaining({ credentials: 'include', method: 'POST' }));
-  });
-
   it('surfaces an HTTP failure instead of inventing empty data', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({}, false, 503)));
     await expect(new HttpPorticoDataSource().search('Fargo', new AbortController().signal)).rejects.toThrow('Service Unavailable');
@@ -257,17 +284,17 @@ describe('HttpPorticoDataSource', () => {
       images: {}, state: { watchlisted: false, favorite: false, watched: false, progressSeconds: 0, rating: 0 }, actions: [],
     };
     const playbackTarget = {
-      ...base, id: 'episode-9', type: 'episode', title: 'The Castle', sortTitle: 'The Castle',
+      ...base, id: 'episode-9', entityKind: 'episode', title: 'The Castle', sortTitle: 'The Castle',
       seasonNumber: 2, episodeNumber: 9, durationSeconds: 2880,
       state: { ...base.state, progressSeconds: 330 }, actions: ['play'],
     };
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({
-      ...base, id: 'show-1', type: 'show', title: 'Fargo', sortTitle: 'Fargo',
+      ...base, id: 'show-1', entityKind: 'show', title: 'Fargo', sortTitle: 'Fargo',
       childrenTruncated: true,
       children: [{
-        ...base, id: 'season-2', type: 'season', title: 'Season 2', sortTitle: 'Season 2', seasonNumber: 2,
+        ...base, id: 'season-2', entityKind: 'season', title: 'Season 2', sortTitle: 'Season 2', seasonNumber: 2,
         childrenTruncated: true,
-        children: [{ ...base, id: 'episode-9', type: 'episode', title: 'The Castle', sortTitle: 'The Castle', seasonNumber: 2, episodeNumber: 9 }],
+        children: [{ ...base, id: 'episode-9', entityKind: 'episode', title: 'The Castle', sortTitle: 'The Castle', seasonNumber: 2, episodeNumber: 9 }],
       }],
       playbackTarget,
     })));
@@ -276,36 +303,9 @@ describe('HttpPorticoDataSource', () => {
 
     expect(detail.children).toHaveLength(1);
     expect(detail.childrenTruncated).toBe(true);
-    expect(detail.children?.[0]).toMatchObject({ id: 'season-2', type: 'season', childrenTruncated: true });
-    expect(detail.children?.[0].children?.[0]).toMatchObject({ id: 'episode-9', type: 'episode', episodeNumber: 9 });
-    expect(detail.playbackTarget).toMatchObject({ id: 'episode-9', type: 'episode', seasonNumber: 2, episodeNumber: 9, progressSeconds: 330, actions: ['play'] });
-  });
-
-  it('keeps server-declared non-browse pivots and routes Discover to its GET endpoint', async () => {
-    const detail = {
-      id: 'media_1', libraryId: 'lib_movies', type: 'movie', title: 'Arrival', sortTitle: 'Arrival', year: 2016,
-      images: { poster: '/api/artwork/media_1/poster', backdrop: '/api/artwork/media_1/backdrop', thumb: '' },
-      state: { watchlisted: false, favorite: false, watched: false, progressSeconds: 0, rating: 0 },
-      genres: ['Science fiction'], tags: [], durationSeconds: 6960, missing: false, missingFileCount: 0,
-    };
-    const fetchMock = vi.fn()
-      .mockResolvedValueOnce(jsonResponse({ apiVersion: 'v1', libraryKinds: [], entityKinds: [], browseFields: [], browseSorts: [], browseOperators: [], presentationFields: [], queryLimits: {}, serverCapabilities: [] }))
-      .mockResolvedValueOnce(jsonResponse({ items: [{ id: 'lib_movies', name: 'Movies', type: 'movie', sortOrder: 0, paths: [], count: 1, settings: {} }], total: 1 }))
-      .mockResolvedValueOnce(jsonResponse({ apiVersion: 'v1', library: { id: 'lib_movies', name: 'Movies', kind: 'movies' }, pivots: [
-        { id: 'discover', label: 'Discover', entityKinds: ['movie'], defaultView: 'shelves', supportedViews: ['shelves'], defaultSort: [{ field: 'dateAdded', direction: 'desc' }], browseSupported: false, endpointTemplate: '/api/libraries/{libraryId}/discover', presentationFields: [] },
-        { id: 'movies', label: 'Movies', entityKinds: ['movie'], defaultView: 'compact', supportedViews: ['grid', 'compact'], defaultSort: [{ field: 'title', direction: 'asc' }], browseSupported: true, endpointTemplate: '/api/libraries/{libraryId}/browse', presentationFields: [] },
-      ], fields: [], sorts: [{ id: 'title', label: 'Title', directions: ['asc', 'desc'], defaultDirection: 'asc', expensive: false }], presentationFields: [], actions: [], queryLimits: {} }))
-      .mockResolvedValueOnce(jsonResponse({ generatedAt: new Date().toISOString(), items: [{ item: detail, reason: 'Recently added', score: 1, source: 'library' }], total: 1 }));
-    vi.stubGlobal('fetch', fetchMock);
-
-    const result = await new HttpPorticoDataSource().browseLibrary({ kind: 'movies', pivot: 'Discover', filter: 'All items', sort: 'Title', direction: 'ascending' }, new AbortController().signal);
-
-    expect(result.items[0]).toMatchObject({ id: 'media_1', title: 'Arrival' });
-    expect(result.capabilities?.pivots.map((pivot) => pivot.label)).toEqual(['Discover', 'Movies']);
-		expect(result.capabilities?.pivots[1]).toMatchObject({ defaultView: 'compact-grid', supportedViews: ['grid', 'compact-grid'] });
-    expect(String(fetchMock.mock.calls[3][0])).toContain('/api/libraries/lib_movies/discover');
-    expect(fetchMock.mock.calls[3][1]).toEqual(expect.objectContaining({ credentials: 'include' }));
-    expect(fetchMock.mock.calls[3][1]).not.toHaveProperty('method', 'POST');
+    expect(detail.children?.[0]).toMatchObject({ id: 'season-2', entityKind: 'season', childrenTruncated: true });
+    expect(detail.children?.[0].children?.[0]).toMatchObject({ id: 'episode-9', entityKind: 'episode', episodeNumber: 9 });
+    expect(detail.playbackTarget).toMatchObject({ id: 'episode-9', entityKind: 'episode', seasonNumber: 2, episodeNumber: 9, progressSeconds: 330, actions: ['play'] });
   });
 
   it('uses authoritative media-job, version, and authenticated download routes', async () => {
@@ -315,6 +315,11 @@ describe('HttpPorticoDataSource', () => {
       .mockResolvedValueOnce(jsonResponse(job, true, 201))
       .mockResolvedValueOnce(jsonResponse(options))
       .mockResolvedValueOnce(jsonResponse({ ...job, type: 'optimize_version' }, true, 201))
+      .mockResolvedValueOnce(jsonResponse({
+        id: 'preparation-1', mediaId: 'movie/1', mediaTitle: 'Movie', qualityProfile: 'source', state: 'ready',
+        progress: 100, sizeKind: 'unknown', canPause: false, canCancel: false, canRetry: false, canRemove: true,
+        createdAt: '2026-07-11T00:00:00Z', updatedAt: '2026-07-11T00:00:00Z',
+      }, true, 201))
       .mockResolvedValueOnce(jsonResponse({
         downloadUrl: '/api/media/movie%2F1/download?profile=source',
         expiresAt: '2026-07-11T00:02:00Z',
@@ -333,20 +338,27 @@ describe('HttpPorticoDataSource', () => {
     expect(fetchMock.mock.calls[0][1]).toEqual(expect.objectContaining({ method: 'POST', body: JSON.stringify({ type: 'media_analyze', analysisMode: 'probe' }) }));
     expect(String(fetchMock.mock.calls[1][0])).toContain('/api/media/movie%2F1/download-options');
     expect(String(fetchMock.mock.calls[2][0])).toContain('/api/media/movie%2F1/optimized');
-    expect(String(fetchMock.mock.calls[3][0])).toContain('/api/media/movie%2F1/download-grants');
+    expect(String(fetchMock.mock.calls[3][0])).toContain('/api/download-preparations');
     expect(fetchMock.mock.calls[3][1]).toEqual(expect.objectContaining({
       method: 'POST',
       credentials: 'include',
-      body: JSON.stringify({ profile: 'source' }),
+      body: JSON.stringify({ mediaId: 'movie/1', qualityProfile: 'source' }),
     }));
-    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(String(fetchMock.mock.calls[4][0])).toContain('/api/download-preparations/preparation-1/grant');
+    expect(fetchMock.mock.calls[4][1]).toEqual(expect.objectContaining({
+      method: 'POST',
+      credentials: 'include',
+      body: JSON.stringify({ delivery: 'browser' }),
+    }));
+    expect(fetchMock).toHaveBeenCalledTimes(5);
     expect(url).toContain('/api/media/movie%2F1/download?profile=source');
     expect(url).not.toContain('grant=');
   });
 
   it('rejects cross-origin download grants and artwork URLs', async () => {
     const client = {
-      createMediaDownloadGrant: vi.fn().mockResolvedValue({ downloadUrl: 'https://attacker.example/collect?grant=secret' }),
+      createDownloadPreparation: vi.fn().mockResolvedValue({ id: 'preparation-1', state: 'ready' }),
+      createDownloadPreparationGrant: vi.fn().mockResolvedValue({ downloadUrl: 'https://attacker.example/collect?grant=secret' }),
       resourceUrl: (path: string) => new URL(path, 'https://server.example').toString(),
     } as unknown as PorticoClient;
     const source = new HttpPorticoDataSource(client);
@@ -631,7 +643,7 @@ describe('HttpPorticoDataSource', () => {
     const client = { request, accountProfiles } as unknown as PorticoClient;
     const createProfileAdministrationSession = vi.fn().mockResolvedValue({ token: 'cloud-proof', expiresAt: '2099-01-01T00:00:00Z' });
     const createProfile = vi.fn().mockResolvedValue({ revision: 8, profile: { ...profiles[1], id: 'guest', name: 'Guest', hasPIN: false, pinRevision: 0 } });
-    const hosted = { profiles: vi.fn().mockResolvedValue({ accountId: 'hosted-account-1', revision: 7, total: 2, profiles }), createProfileAdministrationSession, createProfile } as unknown as HostedServicesClient;
+    const hosted = { request: vi.fn(), profiles: vi.fn().mockResolvedValue({ accountId: 'hosted-account-1', revision: 7, total: 2, profiles }), createProfileAdministrationSession, createProfile } as unknown as HostedServicesClient;
     const switchHostedProfile = vi.fn().mockResolvedValue({ authenticated: true, setupRequired: false, serverName: 'Family Media', viewerScope: { authority: 'hosted', accountId: 'account-1', serverId: 'server-1', profileId: 'kids', authorizationRevision: 'revision-2' } });
     const source = new HttpPorticoDataSource(client, { hostedClient: hosted, connectionVault: createBrowserHostedConnectionVault(undefined), switchHostedProfile });
     const signal = new AbortController().signal;
@@ -687,7 +699,7 @@ describe('HttpPorticoDataSource', () => {
     const requestPasswordReset = vi.fn().mockResolvedValue({ ok: true });
     const setProfilePIN = vi.fn().mockResolvedValue({ ok: true, pinRevision: 4 });
     const clearProfilePIN = vi.fn().mockResolvedValue({ ok: true });
-    const hosted = { createProfileAdministrationSession, mfaStatus, requestPasswordReset, setProfilePIN, clearProfilePIN } as unknown as HostedServicesClient;
+    const hosted = { request: vi.fn(), createProfileAdministrationSession, mfaStatus, requestPasswordReset, setProfilePIN, clearProfilePIN } as unknown as HostedServicesClient;
     const source = new HttpPorticoDataSource({ request: vi.fn().mockResolvedValue(viewerResponse) } as unknown as PorticoClient, {
       hostedClient: hosted,
       connectionVault: createBrowserHostedConnectionVault(undefined),

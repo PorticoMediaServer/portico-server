@@ -1,4 +1,4 @@
-import { ChevronRight, Info } from '#portico-icons';
+import { NavigationDisclosureIcon, MetadataInfoIcon } from '#portico-icons';
 import { productMessage, type MediaViewModel } from '@porticomediaserver/client-core';
 import { useMemo, useSyncExternalStore } from 'react';
 import { Link } from 'react-router-dom';
@@ -58,7 +58,7 @@ export function musicRecommendationItems(items: MediaItem[]) {
   const order: string[] = [];
   const grouped = new Map<string, MediaItem>();
   items.forEach((candidate) => {
-    const kind = String(candidate.entityKind || candidate.kind).replaceAll('_', '-').toLocaleLowerCase();
+    const kind = String(candidate.entityKind).replaceAll('_', '-').toLocaleLowerCase();
     const isTrack = kind === 'track';
     const albumIdentity = isTrack && (candidate.parentId || candidate.parentTitle)
       ? candidate.parentId || `${candidate.parentTitle}\u0000${candidate.grandparentTitle || candidate.subtitle}`.toLocaleLowerCase()
@@ -69,7 +69,6 @@ export function musicRecommendationItems(items: MediaItem[]) {
       id: candidate.parentId || key,
       title: candidate.parentTitle,
       subtitle: candidate.grandparentTitle || candidate.typedMetadata?.trackArtist || candidate.typedMetadata?.artist || '',
-      kind: 'album' as const,
       entityKind: 'album',
       parentId: candidate.grandparentId,
       parentTitle: candidate.grandparentTitle,
@@ -184,7 +183,7 @@ export function MediaInformation({ item, availability }: { item: MediaItem; avai
   const missing = availability?.missingFileCount ? productMessage('media.missing-count', { count: availability.missingFileCount }).text : undefined;
 
   return <details className="portico-technical-details">
-    <summary><Info /> {productMessage('media.information-title').text} <ChevronRight /></summary>
+    <summary><MetadataInfoIcon /> {productMessage('media.information-title').text} <NavigationDisclosureIcon /></summary>
     <div className="portico-technical-content">
       {(item.edition || availability || files || metadata.length > 0) && <dl className="portico-fact-grid">
         {item.edition && <div><dt>{productMessage('media.edition-label').text}</dt><dd>{item.edition}</dd></div>}

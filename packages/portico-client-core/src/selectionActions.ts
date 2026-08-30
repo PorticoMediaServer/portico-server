@@ -3,7 +3,7 @@ import type { MediaItem } from "./types.js";
 export type PlayHandler = (item: MediaItem, options?: { queue?: MediaItem[] }) => void;
 
 export function isPlayableMedia(item: MediaItem): boolean {
-  return !["show", "anime", "season", "album", "artist"].includes(item.type);
+  return !["show", "anime", "season", "album", "artist"].includes(item.entityKind);
 }
 
 export function selectionCanShareMetadataEditor(items: MediaItem[]): boolean {
@@ -19,5 +19,5 @@ export function metadataEditorDisabledReason(items: MediaItem[], canEdit: boolea
 }
 
 function metadataEditorScopeKey(item: MediaItem): string {
-  return `${item.libraryId || "unknown-library"}:${item.type || "unknown-type"}`;
+  return `${item.libraryId || "unknown-library"}:${item.entityKind}`;
 }

@@ -11,6 +11,11 @@ export type RuntimeContextValue = {
   initialViewer?: Viewer;
   /** Cosmetic only; populated only after the account publication fence passes. */
   restoredPresentation?: { accountId: string; displayName: string };
+  /** The account-fenced server selection published before transport activation. */
+  selectedHostedServerId?: string;
+  accountSettingsOpen: boolean;
+  openAccountSettings: () => void;
+  closeAccountSettings: () => void;
   expectedViewerScope?: ViewerScope;
   viewerRuntime: WebViewerRuntime;
   connectionWarning?: ProductMessageId;
@@ -28,6 +33,7 @@ export type RuntimeContextValue = {
   nativeDeviceAuthorizationReturn: boolean;
   serverClaimName?: string;
   localLoginServerName?: string;
+  hasLocalLoginIntent: boolean;
   retry: () => void;
   tryNearbyConnection: () => Promise<void>;
   recoverActiveRoute: () => Promise<void>;
@@ -43,6 +49,7 @@ export type RuntimeContextValue = {
   completeSSOOnboarding: (details: { onboardingToken: string; username: string; contactEmail?: string }) => Promise<void>;
   hostedLogout: () => Promise<void>;
   refreshMemberships: () => Promise<void>;
+  canSelectHostedServer?: boolean;
   claimServer: (claimCode: string) => Promise<void>;
   acceptInvite: (inviteId: string) => Promise<void>;
   previewTVSetup: (code: string, signal?: AbortSignal) => Promise<HostedTVSetupPreviewResponse>;

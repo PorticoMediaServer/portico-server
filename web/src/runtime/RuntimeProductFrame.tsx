@@ -1,6 +1,6 @@
-import { Bookmark, ChevronDown, Home, LibraryBig, LogOut, Menu, Radio, Search, Server, Settings, UserRound } from '#portico-icons';
+import { ActionWatchlistIcon, NavigationExpandIcon, NavigationHomeIcon, NavigationLibraryIcon, AccountSignOutIcon, ViewListIcon, NavigationChannelsIcon, NavigationSearchIcon, DeviceServerIcon, NavigationSettingsIcon, AccountUserIcon } from '#portico-icons';
 import { productMessage } from '@porticomediaserver/client-core';
-import { createContext, type CSSProperties, lazy, type ReactNode, type RefObject, Suspense, useCallback, useContext, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createContext, type CSSProperties, lazy, type ReactNode, type RefObject, Suspense, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { AnchoredOverlay } from '../components/overlay/OverlayPortal';
 import { runtimeFrameServerName } from './runtimeFramePolicy';
 import { useRuntime } from './RuntimeContext';
@@ -10,12 +10,21 @@ const HostedAccountSettingsDialog = lazy(() => import('./HostedAccountSettingsDi
 })));
 
 const destinations = [
-  ['navigation.home', Home],
-  ['navigation.libraries', LibraryBig],
-  ['navigation.live-tv', Radio],
-  ['navigation.search', Search],
-  ['navigation.saved', Bookmark],
+  ['navigation.home', NavigationHomeIcon],
+  ['navigation.libraries', NavigationLibraryIcon],
+  ['navigation.live-tv', NavigationChannelsIcon],
+  ['navigation.search', NavigationSearchIcon],
+  ['navigation.saved', ActionWatchlistIcon],
 ] as const;
+
+type RuntimeDestination = typeof destinations[number][0];
+
+const unavailableDestinationCopy: Record<Exclude<RuntimeDestination, 'navigation.home'>, { title: string; body: string }> = {
+  'navigation.libraries': { title: 'No libraries available', body: 'Claim a server or accept an invitation to browse its libraries.' },
+  'navigation.live-tv': { title: 'Live TV is unavailable', body: 'Connect a server with Live TV configured to browse channels and the guide.' },
+  'navigation.search': { title: 'Search needs a server', body: 'Claim a server or accept an invitation before searching media.' },
+  'navigation.saved': { title: 'Nothing saved yet', body: 'Saved media will appear here after you connect a server.' },
+};
 
 export type PersistentFramePresentation = {
   shellClassName: string;
@@ -73,6 +82,7 @@ export function RuntimeProductFrame({ children, connected = false }: { children:
   const [connectedContentActive, setConnectedContentActive] = useState(false);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [accountSettingsOpen, setAccountSettingsOpen] = useState(false);
+  const [runtimeDestination, setRuntimeDestination] = useState<RuntimeDestination>('navigation.home');
   const profileButton = useRef<HTMLButtonElement>(null);
   const context = useMemo<PersistentFrameContextValue>(() => ({ sidebar, topbar, warning, main, player, backdrop, mobileTabs, setPresentation, setConnectedContentActive }), []);
   useLayoutEffect(() => {
@@ -80,6 +90,16 @@ export function RuntimeProductFrame({ children, connected = false }: { children:
     setPresentation(defaultPresentation);
     setConnectedContentActive(false);
   }, [connected]);
+  const noServers = !connectedContentActive && runtime.state.id === 'no-memberships';
+  const degradedServer = !connectedContentActive
+    && runtime.state.id === 'runtime-recovery'
+    && !['route-security', 'session-expired'].includes(runtime.state.classification)
+    && Boolean(runtime.state.serverName || runtime.state.selectedServer)
+    && Boolean(runtime.restoredPresentation);
+  const shellInteractive = noServers || degradedServer;
+  useEffect(() => {
+    if (!shellInteractive) setRuntimeDestination('navigation.home');
+  }, [shellInteractive]);
   const serverName = runtimeFrameServerName(runtime.state);
   const displayName = runtime.restoredPresentation?.displayName;
   const accountLabel = displayName || 'Portico Account';
@@ -92,27 +112,35 @@ export function RuntimeProductFrame({ children, connected = false }: { children:
   const openAccountSettings = () => {
     setProfileMenuOpen(false);
     setAccountSettingsOpen(true);
+    runtime.openAccountSettings();
   };
   return <PersistentFrameContext.Provider value={context}>
     <div className={connectedPresentation ? activePresentation.shellClassName : 'shell runtime-product-frame'} data-runtime-state={connectedPresentation ? undefined : runtime.state.id} data-reduce-motion={connectedPresentation && activePresentation.reduceMotion ? 'true' : undefined} style={connectedPresentation ? activePresentation.shellStyle : undefined}>
       <a className="skip-link" href="#main-content" inert={!connectedPresentation || pageInactive} aria-hidden={!connectedPresentation || activePresentation.pageHidden || undefined}>{productMessage('navigation.skip-content').text}</a>
-      <aside ref={sidebar} className={connectedPresentation ? activePresentation.sidebarClassName : 'sidebar'} inert={connectedPresentation ? activePresentation.sidebarInert : true} aria-hidden={connectedPresentation ? activePresentation.sidebarHidden : true} aria-label={connectedPresentation ? activePresentation.sidebarLabel : productMessage('navigation.primary-label').text} aria-modal={connectedPresentation ? activePresentation.sidebarModal : undefined} role={connectedPresentation ? activePresentation.sidebarRole : undefined} tabIndex={connectedPresentation ? activePresentation.sidebarTabIndex : undefined}>
+      <aside ref={sidebar} className={connectedPresentation ? activePresentation.sidebarClassName : 'sidebar'} inert={connectedPresentation ? activePresentation.sidebarInert : shellInteractive ? undefined : true} aria-hidden={connectedPresentation ? activePresentation.sidebarHidden : shellInteractive ? undefined : true} aria-label={connectedPresentation ? activePresentation.sidebarLabel : productMessage('navigation.primary-label').text} aria-modal={connectedPresentation ? activePresentation.sidebarModal : undefined} role={connectedPresentation ? activePresentation.sidebarRole : undefined} tabIndex={connectedPresentation ? activePresentation.sidebarTabIndex : undefined}>
         {!connectedContentActive && <>
           <div className="brand-row"><img src="/brand/portico-wordmark-white.svg" className="brand" alt="Portico" /></div>
-          <nav className="primary-nav" aria-label={productMessage('navigation.primary-label').text} aria-disabled="true">
-            {destinations.map(([messageId, Icon], index) => <span key={messageId} className={`nav-item ${index === 0 ? 'active' : ''}`} aria-disabled="true"><Icon aria-hidden="true" /><span>{productMessage(messageId).text}</span></span>)}
+          <nav className="primary-nav" aria-label={productMessage('navigation.primary-label').text} aria-disabled={shellInteractive ? undefined : 'true'}>
+            {destinations.map(([messageId, Icon], index) => shellInteractive
+              ? <button key={messageId} type="button" className={`nav-item ${runtimeDestination === messageId ? 'active' : ''}`} aria-current={runtimeDestination === messageId ? 'page' : undefined} onClick={() => setRuntimeDestination(messageId)}><Icon aria-hidden="true" /><span>{productMessage(messageId).text}</span></button>
+              : <span key={messageId} className={`nav-item ${index === 0 ? 'active' : ''}`} aria-disabled="true"><Icon aria-hidden="true" /><span>{productMessage(messageId).text}</span></span>)}
           </nav>
           <div className="sidebar-spacer" />
-          {serverName && <div className="server-card" aria-disabled="true"><Server aria-hidden="true" /><span><strong>{serverName}</strong><small>Connecting</small></span><span className="health-dot pending" aria-label="Server connection pending" /></div>}
-          <span className="nav-item compact" aria-disabled="true"><Settings aria-hidden="true" /><span>Settings</span></span>
+          {serverName && (degradedServer
+            ? <button type="button" className="server-card runtime-no-server-card" onClick={() => setRuntimeDestination('navigation.home')}><DeviceServerIcon aria-hidden="true" /><span><strong>{serverName}</strong><small>Connection unavailable</small></span><span className="health-dot pending" aria-label="Server connection unavailable" /></button>
+            : <div className="server-card" aria-disabled="true"><DeviceServerIcon aria-hidden="true" /><span><strong>{serverName}</strong><small>Connecting</small></span><span className="health-dot pending" aria-label="Server connection pending" /></div>)}
+          {noServers && <button type="button" className="server-card runtime-no-server-card" onClick={() => setRuntimeDestination('navigation.home')}><DeviceServerIcon aria-hidden="true" /><span><strong>No server connected</strong><small>Claim or accept access</small></span></button>}
+          {shellInteractive
+            ? <button type="button" className="nav-item compact" onClick={openAccountSettings}><NavigationSettingsIcon aria-hidden="true" /><span>Settings</span></button>
+            : <span className="nav-item compact" aria-disabled="true"><NavigationSettingsIcon aria-hidden="true" /><span>Settings</span></span>}
         </>}
       </aside>
       <div ref={backdrop} className="persistent-frame-backdrop-host" />
       <div className="app-frame" inert={pageInactive} aria-hidden={activePresentation.pageHidden || undefined}>
         <header ref={topbar} className="topbar">
           {!connectedContentActive && <>
-            <button type="button" className="icon-button menu-button" disabled aria-label={productMessage('navigation.open').text}><Menu /></button>
-            <div className="topbar-search"><div className="global-search" aria-disabled="true"><Search aria-hidden="true" /><span>{serverName ? productMessage('search.input-placeholder', { serverName }).text : 'Search Portico'}</span></div></div>
+            <button type="button" className="icon-button menu-button" disabled aria-label={productMessage('navigation.open').text}><ViewListIcon /></button>
+            <div className="topbar-search"><div className="global-search" aria-disabled="true"><NavigationSearchIcon aria-hidden="true" /><span>{serverName ? productMessage('search.input-placeholder', { serverName }).text : 'Search Portico'}</span></div></div>
             <div className="toolbar-spacer" />
             <button
               ref={profileButton}
@@ -124,9 +152,9 @@ export function RuntimeProductFrame({ children, connected = false }: { children:
               aria-expanded={accountControlsAvailable ? profileMenuOpen : undefined}
               onClick={() => accountControlsAvailable && setProfileMenuOpen((open) => !open)}
             >
-              <span className="avatar">{initial || <UserRound aria-hidden="true" />}</span>
+              <span className="avatar">{initial || <AccountUserIcon aria-hidden="true" />}</span>
               <span><strong>{accountLabel}</strong><small>{serverName || 'No server selected'}</small></span>
-              {accountControlsAvailable && <ChevronDown aria-hidden="true" />}
+              {accountControlsAvailable && <NavigationExpandIcon aria-hidden="true" />}
             </button>
             {profileMenuOpen && accountControlsAvailable && <AnchoredOverlay
               anchorRef={profileButton}
@@ -137,21 +165,25 @@ export function RuntimeProductFrame({ children, connected = false }: { children:
               role="menu"
             >
               <div className="profile-menu-current">
-                <span className="avatar">{initial || <UserRound aria-hidden="true" />}</span>
+                <span className="avatar">{initial || <AccountUserIcon aria-hidden="true" />}</span>
                 <span><strong>{accountLabel}</strong><small>Portico Account</small></span>
               </div>
-              <button type="button" role="menuitem" onClick={openAccountSettings}><Settings /> Account settings</button>
-              <button type="button" role="menuitem" onClick={() => { setProfileMenuOpen(false); void runtime.reselectServer(); }}><Server /> Choose another server</button>
-              <button type="button" role="menuitem" onClick={() => { setProfileMenuOpen(false); void runtime.hostedLogout(); }}><LogOut /> Sign out</button>
+              <button type="button" role="menuitem" onClick={openAccountSettings}><NavigationSettingsIcon /> Account settings</button>
+              <button type="button" role="menuitem" onClick={() => { setProfileMenuOpen(false); void runtime.reselectServer(); }}><DeviceServerIcon /> Choose another server</button>
+              <button type="button" role="menuitem" onClick={() => { setProfileMenuOpen(false); void runtime.hostedLogout(); }}><AccountSignOutIcon /> Sign out</button>
             </AnchoredOverlay>}
           </>}
         </header>
         <div ref={warning} className="persistent-frame-warning-host" />
-        <main ref={main} id="main-content" className="main route-surface" tabIndex={-1}>{children}</main>
+        <main ref={main} id="main-content" className="main route-surface" tabIndex={-1}>{degradedServer
+          ? <section className="runtime-unavailable-destination" aria-labelledby="runtime-unavailable-title"><h1 id="runtime-unavailable-title">{runtimeDestination === 'navigation.home' ? `${serverName} is unavailable` : unavailableDestinationCopy[runtimeDestination].title}</h1><p>{runtimeDestination === 'navigation.home' ? 'Portico could not reach this server through its current secure connection. Your account and navigation remain available while you retry.' : `${serverName} is currently unavailable. Retry the secure connection to open this destination.`}</p><button type="button" className="button secondary" onClick={runtime.retry}>Retry connection</button></section>
+          : noServers && runtimeDestination !== 'navigation.home'
+            ? <section className="runtime-unavailable-destination" aria-labelledby="runtime-unavailable-title"><h1 id="runtime-unavailable-title">{unavailableDestinationCopy[runtimeDestination].title}</h1><p>{unavailableDestinationCopy[runtimeDestination].body}</p><button type="button" className="button secondary" onClick={() => setRuntimeDestination('navigation.home')}>Add a server</button></section>
+          : children}</main>
       </div>
       <div ref={player} className="shell-player-host" inert={pageInactive} aria-hidden={activePresentation.pageHidden || undefined} />
       <nav ref={mobileTabs} className="mobile-tabs" inert={pageInactive} aria-hidden={activePresentation.pageHidden || undefined} />
-      {accountSettingsOpen && <Suspense fallback={null}><HostedAccountSettingsDialog onDismiss={() => setAccountSettingsOpen(false)} /></Suspense>}
+      {(accountSettingsOpen || runtime.accountSettingsOpen) && <Suspense fallback={null}><HostedAccountSettingsDialog onDismiss={() => { setAccountSettingsOpen(false); runtime.closeAccountSettings(); }} /></Suspense>}
     </div>
   </PersistentFrameContext.Provider>;
 }

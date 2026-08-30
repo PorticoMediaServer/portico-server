@@ -270,7 +270,7 @@ function appendQuery(path: string, entries: readonly [string, string | undefined
 function destinationPath(destination: PorticoDestination): string {
   const segment = (value: string) => encodeURIComponent(value);
   switch (destination.destination) {
-    case "home": return "home";
+    case "home": return "";
     case "library": return appendQuery(destination.libraryId ? `library/${segment(destination.libraryId)}` : "library", [["pivot", destination.pivot]]);
     case "channels": return appendQuery("channels", [["tab", destination.tab]]);
     case "saved": return appendQuery("saved", [["tab", destination.tab]]);
@@ -293,6 +293,12 @@ export function serializePorticoLink(value: PorticoDestination, baseURL = "porti
   if (baseURL.toLowerCase() === "portico://") return `portico://${path}`;
   const base = new URL(baseURL);
   if (base.protocol !== "https:" && base.protocol !== "http:") throw new TypeError("Portico link base URL must use HTTP or HTTPS");
+  if (destination.destination === "home") {
+    base.pathname = "/";
+    base.search = "";
+    base.hash = "";
+    return base.toString();
+  }
   const root = base.pathname.replace(/\/+$/, "");
   base.pathname = `${root}/${path.split("?")[0]}`.replace(/\/{2,}/g, "/");
   base.search = path.includes("?") ? path.slice(path.indexOf("?")) : "";
@@ -335,7 +341,7 @@ export function parsePorticoLink(value: string, options: ParsePorticoLinkOptions
       media: ["season", "episode", "kind"], play: ["context", "group", "download"]
     };
     const maximumSegments: Record<string, number> = {
-      home: 1, library: 2, channels: 1, saved: 1, downloads: 1, search: 1,
+      library: 2, channels: 1, saved: 1, downloads: 1, search: 1,
       settings: 2, person: 2, media: 2, notifications: 1,
       "watch-with-friends": 2, play: 2
     };
@@ -346,7 +352,7 @@ export function parsePorticoLink(value: string, options: ParsePorticoLinkOptions
     } else if ([...url.searchParams.keys()].length) return undefined;
     const second = decodeSegment(segments[1]);
     let candidate: unknown;
-    if (!first || first === "home") candidate = {destination: "home"};
+    if (!first) candidate = {destination: "home"};
     else if (first === "library") candidate = {destination: "library", ...(second ? {libraryId: second} : {}), ...(url.searchParams.get("pivot") ? {pivot: url.searchParams.get("pivot")} : {})};
     else if (first === "channels") candidate = {destination: "channels", ...(url.searchParams.get("tab") ? {tab: url.searchParams.get("tab")} : {})};
     else if (first === "saved") candidate = {destination: "saved", ...(url.searchParams.get("tab") ? {tab: url.searchParams.get("tab")} : {})};

@@ -82,6 +82,28 @@ func TestAudioDownmixUsesExplicitMatrixHeadroomLFEAndLimiter(t *testing.T) {
 	}
 }
 
+func TestAudioOnlyGeneratedHLSCompilesToAACMPEGTS(t *testing.T) {
+	req := audioConversionFixture("flac", "mono", 1, "aac", "mono", 1)
+	req.Plan.Protocol = "hls"
+	req.Plan.Container = "mpegts"
+	req.Plan.SegmentFormat = "mpegts"
+	req.Plan.Digest, _ = req.Plan.ComputeDigest()
+	req.Output = Output{ManifestPath: "/audio/master.m3u8", SegmentPattern: "/audio/segment-%05d.ts", SegmentSeconds: 4}
+	result, err := Compile(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	args := strings.Join(result.Args, " ")
+	for _, want := range []string{"-map 0:5", "-c:a aac", "-ac 1", "-channel_layout mono", "-f hls", "-hls_segment_options mpegts_copyts=0"} {
+		if !strings.Contains(args, want) {
+			t.Fatalf("audio-only HLS graph missing %q: %s", want, args)
+		}
+	}
+	if result.VideoMap != "" || result.AudioMap != "0:5" || result.SegmentFormat != "mpegts" {
+		t.Fatalf("audio-only HLS result = %#v", result)
+	}
+}
+
 func TestAudioLayoutPreservationHasNoImplicitDownmix(t *testing.T) {
 	r, err := Compile(audioConversionFixture("dts", "5.1", 6, "flac", "5.1", 6))
 	if err != nil {

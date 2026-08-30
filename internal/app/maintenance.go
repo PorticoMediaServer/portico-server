@@ -174,8 +174,11 @@ func (s *Server) queueScheduledTasks(now time.Time) {
 	s.queueScheduledLiveTVSourceRefreshes(now)
 
 	settings := s.scheduledTaskSettings()
+	if !settings.Enabled {
+		return
+	}
 	localNow := now.In(maintenanceLocation(settings.MaintenanceTimezone))
-	if !settings.Enabled || !withinScheduledDays(localNow, settings.MaintenanceDays) || !withinScheduledWindow(localNow, settings.StartHour, settings.EndHour) {
+	if !withinScheduledDays(localNow, settings.MaintenanceDays) || !withinScheduledWindow(localNow, settings.StartHour, settings.EndHour) {
 		return
 	}
 	runKey := localNow.Format("2006-01-02-15")
@@ -210,12 +213,16 @@ func (s *Server) scheduledTaskSettings() scheduledTaskSettings {
 	}
 	group, _ := settings["scheduledTasks"].(map[string]any)
 	maintenanceWindow := normalizeMaintenanceWindow(settingString(group, "maintenanceWindow", ""))
+	maintenanceTimezone := normalizeMaintenanceTimezone(settingString(group, "maintenanceTimezone", "UTC"))
+	if maintenanceTimezone == "" {
+		return scheduledTaskSettings{Enabled: false}
+	}
 	startHour, endHour := scheduledWindowHours(maintenanceWindow, settingInt(group, "startHour", 2), settingInt(group, "endHour", 5))
 	return scheduledTaskSettings{
 		Enabled:                  settingBool(group, "enabled", true),
 		MaintenanceWindow:        maintenanceWindow,
 		MaintenanceDays:          normalizeMaintenanceDays(settingString(group, "maintenanceDays", "every-day")),
-		MaintenanceTimezone:      normalizeMaintenanceTimezone(settingString(group, "maintenanceTimezone", "UTC")),
+		MaintenanceTimezone:      maintenanceTimezone,
 		StartHour:                startHour,
 		EndHour:                  endHour,
 		BackupDatabase:           settingBool(group, "backupDatabase", true),
@@ -304,16 +311,13 @@ func normalizeMaintenanceDays(value string) string {
 	}
 }
 
-// normalizeMaintenanceTimezone is fail-closed for persisted legacy settings:
-// an absent value means the explicit UTC authority, while an invalid supplied
-// value is rejected by the settings validator before it can be published.
 func normalizeMaintenanceTimezone(value string) string {
 	value = strings.TrimSpace(value)
 	if value == "" {
-		return "UTC"
+		return ""
 	}
 	if _, err := time.LoadLocation(value); err != nil {
-		return "UTC"
+		return ""
 	}
 	return value
 }
@@ -322,7 +326,7 @@ func maintenanceLocation(value string) *time.Location {
 	zone := normalizeMaintenanceTimezone(value)
 	location, err := time.LoadLocation(zone)
 	if err != nil {
-		return time.UTC
+		return nil
 	}
 	return location
 }

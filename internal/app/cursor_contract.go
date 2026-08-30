@@ -24,9 +24,6 @@ func collectionCursorScope(parts ...string) string {
 }
 
 func (s *Server) decodeCollectionCursor(r *http.Request, scope, principal string, now time.Time, target any) error {
-	if r.URL.Query().Has("offset") || r.URL.Query().Has("nextOffset") {
-		return fmt.Errorf("%w: offset pagination is not supported", errInvalidCursor)
-	}
 	token := strings.TrimSpace(r.URL.Query().Get("cursor"))
 	if token == "" {
 		return nil
@@ -34,16 +31,6 @@ func (s *Server) decodeCollectionCursor(r *http.Request, scope, principal string
 	var raw json.RawMessage
 	if err := s.decodeContractCursor(token, scope, principal, &raw, now); err != nil {
 		return err
-	}
-	var fields map[string]json.RawMessage
-	if err := json.Unmarshal(raw, &fields); err != nil {
-		return fmt.Errorf("%w: malformed collection payload", errInvalidCursor)
-	}
-	if _, legacy := fields["offset"]; legacy {
-		return fmt.Errorf("%w: offset cursor payloads are retired", errInvalidCursor)
-	}
-	if _, legacy := fields["nextOffset"]; legacy {
-		return fmt.Errorf("%w: offset cursor payloads are retired", errInvalidCursor)
 	}
 	if target == nil {
 		return nil

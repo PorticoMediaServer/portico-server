@@ -68,10 +68,10 @@ func TestAccountPasswordChangeRequiresCurrentPasswordAndUpdatesLocalCredential(t
 	if userHash == originalHash || credentialHash != userHash {
 		t.Fatalf("password change did not atomically update compatibility and identity stores")
 	}
-	if valid, _, err := verifyAccountPassword(t.Context(), kdfPasswordChangeCompare, userHash, replacement); !valid || err != nil {
+	if valid, err := verifyAccountPassword(t.Context(), kdfPasswordChangeCompare, userHash, replacement); !valid || err != nil {
 		t.Fatalf("replacement password does not verify")
 	}
-	if valid, _, err := verifyAccountPassword(t.Context(), kdfPasswordChangeCompare, userHash, "Password1234"); valid || err != nil {
+	if valid, err := verifyAccountPassword(t.Context(), kdfPasswordChangeCompare, userHash, "Password1234"); valid || err != nil {
 		t.Fatalf("previous password still verifies")
 	}
 

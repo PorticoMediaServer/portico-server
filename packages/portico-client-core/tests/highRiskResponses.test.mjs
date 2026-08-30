@@ -18,6 +18,37 @@ test("high-risk credential responses reject missing secrets and invalid dates", 
   }), error => error instanceof TypeError && !error.message.includes("do-not-expose"));
 });
 
+test("Hosted account credentials use the generated Hosted contract without local server authority fields", () => {
+  const credentials = JSON.parse('{"authority":"hosted","tokenType":"Bearer","accessToken":"account-access","accessExpiresAt":"2026-08-07T00:05:00Z","refreshToken":"account-refresh","refreshExpiresAt":"2026-09-07T00:00:00Z","user":{"id":"usr_1"},"device":{"id":"dev_1"}}');
+  assert.equal(decodeHighRiskResponse("/api/auth/sessions", "POST", credentials, "hosted"), credentials);
+  assert.throws(
+    () => decodeHighRiskResponse("/api/auth/sessions", "POST", {...credentials, authority: undefined}, "hosted"),
+    /credential authority is invalid/
+  );
+  assert.throws(
+    () => decodeHighRiskResponse("/api/auth/sessions", "POST", credentials),
+    /credential accountId is invalid/
+  );
+
+  const serverCredentials = {
+    ...credentials,
+    authority: "local",
+    accountId: "acct_1",
+    serverId: "srv_1",
+    profileId: "profile_1",
+    authorizationRevision: "1",
+  };
+  assert.equal(decodeHighRiskResponse("/api/auth/sessions", "POST", serverCredentials, "server"), serverCredentials);
+  for (const field of ["accountId", "serverId", "profileId", "authorizationRevision"]) {
+    const missing = {...serverCredentials};
+    delete missing[field];
+    assert.throws(
+      () => decodeHighRiskResponse("/api/auth/sessions", "POST", missing, "server"),
+      new RegExp(`credential ${field} is invalid`)
+    );
+  }
+});
+
 test("high-risk route responses reject credential-shaped fields without echoing them", () => {
   assert.throws(() => decodeHighRiskResponse("/api/account/servers/server/routes", "GET", {
     kind: "route-document",
@@ -47,20 +78,21 @@ test("high-risk route responses reject credential-shaped fields without echoing 
     expiresAt: "2026-08-07T00:05:00Z",
     routes: []
   }), /kind/i);
+	for (const legacyType of ["direct", "direct_ip_encoded"]) {
+		assert.throws(() => decodeHighRiskResponse("/api/account/servers/server/routes", "GET", {
+			kind: "route-document", documentVersion: 1, serverId: "server", serverName: "Home",
+			serverPublicKey: "key", serverPublicKeyFingerprint: "sha256:fingerprint", signature: "signature",
+			signatureAlgorithm: "ed25519", audience: "portico-media-server",
+			issuedAt: "2026-08-07T00:00:00Z", expiresAt: "2026-08-07T00:05:00Z",
+			routes: [{type: legacyType, url: "https://home.example", quality: "reachable"}]
+		}), /route type is invalid/i);
+	}
 });
 
 test("high-risk grants and playback state reject invalid runtime fields", () => {
-  assert.throws(() => decodeHighRiskResponse("/api/media/media/download-grants", "POST", {
-    downloadUrl: "/api/download", expiresAt: "invalid", grantToken: "grant", profile: "source"
-  }), /download grant expiry is invalid/);
-  assert.deepEqual(decodeHighRiskResponse("/api/media/media/download-grants", "POST", {
-    downloadUrl: "/api/media/media/download?profile=source", expiresAt: "2099-08-07T00:00:00Z", profile: "source"
-  }), {
-    downloadUrl: "/api/media/media/download?profile=source", expiresAt: "2099-08-07T00:00:00Z", profile: "source"
-  });
   assert.throws(() => decodeHighRiskResponse("/api/download-preparations/preparation/grant", "POST", {
-    downloadUrl: "/api/media/media/download?profile=source", expiresAt: "2099-08-07T00:00:00Z", profile: "source"
-  }), /download grant token is invalid/);
+    downloadUrl: "/api/media/media/download?profile=source", expiresAt: "invalid", profile: "source"
+  }), /download grant expiry is invalid/);
   assert.throws(() => decodeHighRiskResponse("/api/playback-sessions/session/continuation", "GET", {
     generation: 1, highestEventSequence: 2, playbackRevision: 1, queueRevision: 1,
     positionSeconds: Number.NaN, sessionId: "session", state: "playing"
@@ -81,8 +113,8 @@ test("high-risk playback responses require one credential-free default resource"
   assert.equal(decodeHighRiskResponse("/api/playback-sessions", "POST", response), response);
   assert.throws(() => decodeHighRiskResponse("/api/playback-sessions", "POST", {
     ...response,
-    sourceUrl: "/api/media/movie/hls/master.m3u8?media_grant=secret",
-    resources: [{...response.resources[0], sourceUrl: "/api/media/movie/hls/master.m3u8?media_grant=secret"}]
+    sourceUrl: "/api/media/movie/hls/master.m3u8?sessionCredential=secret",
+    resources: [{...response.resources[0], sourceUrl: "/api/media/movie/hls/master.m3u8?sessionCredential=secret"}]
   }), /playback source URL is invalid/);
   assert.throws(() => decodeHighRiskResponse("/api/playback-sessions", "POST", {
     ...response,
@@ -123,12 +155,21 @@ test("high-risk playback responses require one credential-free default resource"
     playbackRevision: 2,
     queueRevision: 4,
     queue: [],
-    playback: response
+    playback: {...response, continuationCredential: null}
   };
   assert.equal(decodeHighRiskResponse("/api/playback-sessions/session/prepare-next", "POST", prepared), prepared);
+  const credentialOmitted = {
+    ...prepared,
+    playback: Object.fromEntries(Object.entries(prepared.playback).filter(([key]) => key !== "continuationCredential"))
+  };
+  assert.equal(decodeHighRiskResponse("/api/playback-sessions/session/prepare-next", "POST", credentialOmitted), credentialOmitted);
   assert.throws(() => decodeHighRiskResponse("/api/playback-sessions/session/prepare-next", "POST", {
     ...prepared,
-    playback: {...response, sourceUrl: "/api/media/movie/not-the-default"}
+    playback: response
+  }), /contains a continuation credential/);
+  assert.throws(() => decodeHighRiskResponse("/api/playback-sessions/session/prepare-next", "POST", {
+    ...prepared,
+    playback: {...response, continuationCredential: null, sourceUrl: "/api/media/movie/not-the-default"}
   }), /default resource/);
 
   for (const path of [

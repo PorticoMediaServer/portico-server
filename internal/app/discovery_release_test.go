@@ -479,7 +479,7 @@ func TestConsumerMediaDetailProjectionRemovesPrivateEvidenceAndAdminActions(t *t
 	if err != nil {
 		t.Fatal(err)
 	}
-	serverAdmin := consumerMediaDetailProjection(item, User{Role: "owner", AuthProvider: "local", Permissions: ownerPermissions()})
+	serverAdmin := consumerMediaDetailProjection(item, User{ID: "owner", AccountID: "owner", ProfileID: "owner", ProfileIsPrimary: true, Role: "owner", AuthProvider: "local", Permissions: ownerPermissions()})
 	if serverAdmin.MediaFiles[0].Path != "/private/movie.mkv" || serverAdmin.MediaFiles[0].OriginalFilename != "private-original.mkv" {
 		t.Fatalf("server administrator did not receive source file details: %#v", serverAdmin.MediaFiles[0])
 	}
@@ -623,11 +623,11 @@ func TestChildrenAndPersonWindowsApplyAccessBeforeLimit(t *testing.T) {
 
 func TestHomeRowPolicyKeepsEssentialRowsVisible(t *testing.T) {
 	critical := homeRowDescriptor("continue", "Continue Watching", "continue-watching", "continue", "", 10, true)
-	if !critical.Required || critical.Hideable || !critical.Reorderable || !reflect.DeepEqual(critical.Controls, []string{"reorder"}) {
+	if !critical.Required || critical.Hideable || !critical.Reorderable {
 		t.Fatalf("critical Home policy=%#v", critical)
 	}
 	optional := homeRowDescriptor("favorites", "Favorites", "favorites", "poster", "", 80, false)
-	if optional.Required || !optional.Hideable || !optional.Reorderable || !reflect.DeepEqual(optional.Controls, []string{"hide", "reorder"}) {
+	if optional.Required || !optional.Hideable || !optional.Reorderable {
 		t.Fatalf("optional Home policy=%#v", optional)
 	}
 }

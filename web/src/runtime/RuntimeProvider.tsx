@@ -8,6 +8,7 @@ import {
   createPorticoClient,
   decideProfileSelection,
   defaultAccountServerInstallationPreferences,
+  HostedRoutePublicationPendingError,
   isTerminalServerAuthorizationFailure,
   LocalNetworkRouteUnavailableError,
   NearbyRouteAvailableError,
@@ -60,7 +61,10 @@ import {
   type RuntimeConfig,
 } from "./runtimeMachine";
 import { RuntimeContext, type RuntimeContextValue } from "./RuntimeContext";
-import { createHostedAvailabilityRetryCohort } from "./hostedAvailability";
+import {
+  automaticHostedAvailabilityRetry,
+  createHostedAvailabilityRetryCohort,
+} from "./hostedAvailability";
 import {
   hostedCSRFToken,
   rememberHostedCSRFToken,
@@ -91,11 +95,11 @@ import {
   SignedOutAccountRestoreBlockedError,
 } from "./signedOutAccountLedger";
 import { ambientCookieRestoreStatus } from "./ambientCookieQuarantine";
-import { automaticHostedAvailabilityRetry } from "./hostedAvailability";
 import {
   localHTTPHostname,
   validServerSetupReturnUrl,
 } from "./serverSetupReturnUrl";
+import { routePublicationRetryPlan } from "./routePublicationRetry";
 
 function profileSelectionMessageId(reason: unknown): ProductMessageId {
   const candidate = reason as
@@ -196,6 +200,7 @@ export type HostedLocalLoginIntent = {
   localOrigin: string;
   state: string;
   serverPublicKeyFingerprint: string;
+  publicConsoleOriginGeneration: number;
   installationId?: string;
 };
 
@@ -213,6 +218,7 @@ type HostedBootstrapIntent = {
   genericDeviceAuthorizationProvider?: "google" | "apple";
   genericDeviceAuthorizationNativeReturn?: boolean;
   localLogin?: HostedLocalLoginIntent;
+  localLoginRecoveryFailure?: "expired" | "unavailable" | "lost";
 };
 
 const LOCAL_LOGIN_HANDOFF_STORAGE_KEY = "portico.hosted.local-login-handoff.v1";
@@ -649,9 +655,8 @@ export function extractHostedBootstrapIntent(value: string): {
     url.pathname === "/auth/sso/onboarding"
       ? url.searchParams.get("token")?.trim()
       : undefined;
-  const queryClaimCode =
-    url.searchParams.get("claim") ??
-    (url.pathname === "/claim" ? url.searchParams.get("code") : null);
+	const queryClaimCode =
+		url.pathname === "/claim" ? url.searchParams.get("code") : null;
   const rawClaimServerName = queryClaimCode
     ? url.searchParams.get("serverName")?.trim().replace(/\s+/g, " ")
     : undefined;
@@ -666,16 +671,11 @@ export function extractHostedBootstrapIntent(value: string): {
     ? rawClaimReturnUrl
     : undefined;
   const intent: HostedBootstrapIntent = {
-    inviteId:
-      url.searchParams.get("invite") ??
-      url.pathname.match(/^\/invites\/([^/]+)$/)?.[1],
-    claimCode: queryClaimCode ?? url.pathname.match(/^\/claim\/([^/]+)$/)?.[1],
+		inviteId: url.pathname.match(/^\/invites\/([^/]+)$/)?.[1],
+		claimCode: queryClaimCode ?? undefined,
     ...(claimServerName ? { claimServerName } : {}),
     ...(claimReturnUrl ? { claimReturnUrl } : {}),
-    resetToken:
-      url.searchParams.get("resetToken") ??
-      (ssoOnboardingToken ? undefined : url.searchParams.get("token")) ??
-      url.pathname.match(/^\/account\/password-reset\/([^/]+)$/)?.[1],
+		resetToken: url.pathname.match(/^\/account\/password-reset\/([^/]+)$/)?.[1],
     ...(ssoOnboardingToken ? { ssoOnboardingToken } : {}),
   };
   const fragment = url.hash.startsWith("#") ? url.hash.slice(1) : url.hash;
@@ -710,12 +710,17 @@ export function extractHostedBootstrapIntent(value: string): {
       const state = handoff.searchParams.get("state")?.trim() ?? "";
       const serverPublicKeyFingerprint =
         handoff.searchParams.get("serverPublicKeyFingerprint")?.trim() ?? "";
+      const rawOriginGeneration =
+        handoff.searchParams.get("publicConsoleOriginGeneration")?.trim() ?? "";
+      const publicConsoleOriginGeneration = Number(rawOriginGeneration);
       if (
         serverId &&
         callbackUrl &&
         localOrigin &&
         state &&
-        serverPublicKeyFingerprint
+        serverPublicKeyFingerprint &&
+        /^[1-9][0-9]*$/.test(rawOriginGeneration) &&
+        Number.isSafeInteger(publicConsoleOriginGeneration)
       ) {
         intent.localLogin = {
           serverId,
@@ -725,6 +730,7 @@ export function extractHostedBootstrapIntent(value: string): {
           localOrigin,
           state,
           serverPublicKeyFingerprint,
+          publicConsoleOriginGeneration,
           ...(handoff.searchParams.get("installationId")?.trim()
             ? {
                 installationId: handoff.searchParams
@@ -740,9 +746,8 @@ export function extractHostedBootstrapIntent(value: string): {
   if (url.pathname === "/device") intent.deviceAuthorizationRequested = true;
   if (url.pathname === "/authorize-device")
     intent.genericDeviceAuthorizationRequested = true;
-  ["invite", "claim", "resetToken", "token"].forEach((key) =>
-    url.searchParams.delete(key),
-  );
+  if (ssoOnboardingToken) url.searchParams.delete("token");
+  url.searchParams.delete("localLoginResume");
   if (intent.claimCode && url.pathname === "/claim") {
     url.searchParams.delete("code");
     url.searchParams.delete("serverName");
@@ -894,7 +899,6 @@ export function extractPorticoLoginResult(value: string): {
   // Language supplies stable client copy, while the URL is made safe for
   // reload, sharing, browser history, and diagnostics immediately.
   url.searchParams.delete("porticoLogin");
-  url.searchParams.delete("porticoLoginError");
   url.searchParams.delete("porticoLoginMessageId");
   return {
     result,
@@ -930,6 +934,8 @@ function validRecoverableLocalLoginIntent(
     !intent.serverPublicKeyFingerprint.trim() ||
     intent.serverPublicKeyFingerprint.length > 1024 ||
     (intent.installationId?.length ?? 0) > 512
+    || !Number.isSafeInteger(intent.publicConsoleOriginGeneration)
+    || intent.publicConsoleOriginGeneration <= 0
   )
     return false;
   try {
@@ -978,11 +984,11 @@ function saveRecoverableLocalLoginIntent(intent: HostedLocalLoginIntent): void {
   }
 }
 
-function loadRecoverableLocalLoginIntent(): HostedLocalLoginIntent | undefined {
-  if (typeof window === "undefined") return undefined;
+function loadRecoverableLocalLoginIntent(): { intent?: HostedLocalLoginIntent; failure?: "expired" | "unavailable" | "lost" } {
+  if (typeof window === "undefined") return { failure: "lost" };
   try {
     const raw = window.sessionStorage.getItem(LOCAL_LOGIN_HANDOFF_STORAGE_KEY);
-    if (!raw) return undefined;
+    if (!raw) return { failure: "lost" };
     const record = JSON.parse(raw) as Partial<StoredLocalLoginHandoff>;
     if (
       record.version !== 1 ||
@@ -992,12 +998,12 @@ function loadRecoverableLocalLoginIntent(): HostedLocalLoginIntent | undefined {
       !validRecoverableLocalLoginIntent(record.intent)
     ) {
       clearRecoverableLocalLoginIntent();
-      return undefined;
+      return { failure: record.expiresAt !== undefined && typeof record.expiresAt === "number" && record.expiresAt <= Date.now() ? "expired" : "lost" };
     }
-    return record.intent;
+    return { intent: record.intent };
   } catch {
     clearRecoverableLocalLoginIntent();
-    return undefined;
+    return { failure: "unavailable" };
   }
 }
 
@@ -1164,7 +1170,9 @@ function recoverHostedBootstrapIntent(value: string): {
     return extracted;
   }
   const recovered = loadRecoverableLocalLoginIntent();
-  if (recovered) extracted.intent.localLogin = recovered;
+  if (recovered.intent) extracted.intent.localLogin = recovered.intent;
+  else if (inputURL.searchParams.get("localLoginResume") === "1")
+    extracted.intent.localLoginRecoveryFailure = recovered.failure ?? "lost";
   return extracted;
 }
 
@@ -1261,6 +1269,7 @@ export function RuntimeProvider({
   }>();
   const [expectedViewerScope, setExpectedViewerScope] = useState<ViewerScope>();
   const [busy, setBusy] = useState(false);
+  const [accountSettingsOpen, setAccountSettingsOpen] = useState(false);
   const [mfaRequired, setMfaRequired] = useState(false);
   const [revision, setRevision] = useState(0);
   const [hostedServers, setHostedServers] = useState<HostedServer[]>([]);
@@ -1280,11 +1289,17 @@ export function RuntimeProvider({
   const activeServerConnection = useRef<
     { accountId: string; serverId: string } | undefined
   >(undefined);
+  const [publishedServerIdentity, setPublishedServerIdentity] = useState<
+    { accountId: string; serverId: string } | undefined
+  >(undefined);
   const remoteUnclaimedConnections = useRef(new Set<string>());
   const membershipRefresh = useRef<(() => Promise<void>) | undefined>(
     undefined,
   );
   const membershipRefreshInFlight = useRef<Promise<void> | undefined>(
+    undefined,
+  );
+  const ssoOnboardingCompletionInFlight = useRef<Promise<void> | undefined>(
     undefined,
   );
   const initialBootstrapIntent = useMemo(
@@ -1309,6 +1324,9 @@ export function RuntimeProvider({
     undefined,
   );
   const routeRecoveryInFlight = useRef<Promise<void> | undefined>(undefined);
+  const routePublicationRetryAttempt = useRef<
+    { key: string; attempt: number; startedAt: number } | undefined
+  >(undefined);
   const rawConnectionVault = useMemo(
     () => hostedConnectionVault ?? createBrowserHostedConnectionVault(),
     [hostedConnectionVault],
@@ -1535,6 +1553,7 @@ export function RuntimeProvider({
       activeHostedAccount.current = undefined;
       setRestoredPresentation(undefined);
       activeServerConnection.current = undefined;
+      setPublishedServerIdentity(undefined);
       setSource(undefined);
       setInitialViewer(undefined);
       setExpectedViewerScope(undefined);
@@ -1773,6 +1792,7 @@ export function RuntimeProvider({
     suppliedSelectionEnvelope?: HostedProfileSelectionEnvelope,
     expectedProfileId?: string,
     routePreference: HostedRoutePreference = "lan-first",
+    automaticRoutePublicationRecovery = false,
   ) => {
     const summaries = mergeServerSummaries(allServers, remembered);
     const previousSource = source;
@@ -1899,6 +1919,10 @@ export function RuntimeProvider({
                     accountId: account.accountId,
                     serverId: summary.id,
                   };
+                  setPublishedServerIdentity({
+                    accountId: account.accountId,
+                    serverId: summary.id,
+                  });
                   await staged.publish();
                   throwIfSelectionStale(
                     selection.generation,
@@ -1914,6 +1938,7 @@ export function RuntimeProvider({
                   becomeReady(
                     new HttpPorticoDataSource(localClient, {
                       hostedClient,
+                      hostedServerId: summary.id,
                       connectionVault,
                       switchHostedProfile: async (profileId, pin, signal) => {
                         const envelope =
@@ -1962,6 +1987,7 @@ export function RuntimeProvider({
               // unable to execute before Client Core restores any A credential.
               activeServerConnection.current = undefined;
               if (rollbackFenceMode === "fail-closed") {
+                setPublishedServerIdentity(undefined);
                 setSource(undefined);
                 setInitialViewer(undefined);
                 setExpectedViewerScope(undefined);
@@ -2025,6 +2051,7 @@ export function RuntimeProvider({
                       }
                     } else {
                       activeServerConnection.current = undefined;
+                      setPublishedServerIdentity(undefined);
                       setSource(undefined);
                       setInitialViewer(undefined);
                       setExpectedViewerScope(undefined);
@@ -2034,6 +2061,7 @@ export function RuntimeProvider({
                 );
               } catch (reason) {
                 activeServerConnection.current = undefined;
+                setPublishedServerIdentity(undefined);
                 throw reason;
               }
             },
@@ -2275,6 +2303,7 @@ export function RuntimeProvider({
           /* Runtime and UI remain fenced even if memory cleanup also fails. */
         }
         activeServerConnection.current = undefined;
+        setPublishedServerIdentity(undefined);
         setSource(undefined);
         setInitialViewer(undefined);
         setExpectedViewerScope(undefined);
@@ -2295,6 +2324,7 @@ export function RuntimeProvider({
           /* UI and runtime remain fenced. */
         }
         activeServerConnection.current = undefined;
+        setPublishedServerIdentity(undefined);
         setSource(undefined);
         setInitialViewer(undefined);
         setExpectedViewerScope(undefined);
@@ -2350,6 +2380,9 @@ export function RuntimeProvider({
             ? "session-expired"
             : "profile-directory"
           : classifyRuntimeFailure(reason, "no-route");
+      const routePublicationPending =
+        automaticRoutePublicationRecovery &&
+        reason instanceof HostedRoutePublicationPendingError;
       const restoredScope = viewerRuntime.activeScope();
       const restoredPrevious =
         previousSource &&
@@ -2372,6 +2405,7 @@ export function RuntimeProvider({
         viewerRuntime.failClosed();
         sessionStore.clear?.();
         activeServerConnection.current = undefined;
+        if (terminal) setPublishedServerIdentity(undefined);
         setSource(undefined);
         setInitialViewer(undefined);
         setExpectedViewerScope(undefined);
@@ -2400,6 +2434,9 @@ export function RuntimeProvider({
           reason.phase === "profile-directory"
             ? hostedAvailabilityRetryFields(reason.reason)
             : {}),
+          ...(routePublicationPending
+            ? { automaticRoutePublicationRetry: true }
+            : {}),
           serverName: summary.name,
           selectedServer: summary,
           servers: summaries,
@@ -2413,6 +2450,54 @@ export function RuntimeProvider({
       if (selection.generation === selectionGeneration.current) setBusy(false);
     }
   };
+
+  useEffect(() => {
+    if (
+      state.id !== "runtime-recovery" ||
+      state.automaticRoutePublicationRetry !== true ||
+      !state.selectedServer
+    ) {
+      // Preserve the attempt across the route-discovery state entered by this
+      // retry owner. Every settled destination clears it.
+      if (state.id !== "route-discovery")
+        routePublicationRetryAttempt.current = undefined;
+      return;
+    }
+    const accountId = activeHostedAccount.current?.accountId;
+    if (!accountId) return;
+    const selectedServer = state.selectedServer;
+    const key = `${accountId}\u0000${selectedServer.id}`;
+    const previous = routePublicationRetryAttempt.current;
+    const attempt = previous?.key === key ? previous.attempt : 0;
+    const startedAt = previous?.key === key ? previous.startedAt : Date.now();
+    const plan = routePublicationRetryPlan(
+      attempt,
+      Date.now() - startedAt,
+      hostedRetryCohortRef.current,
+      selectedServer.id,
+    );
+    if (!plan) {
+      routePublicationRetryAttempt.current = undefined;
+      return;
+    }
+    routePublicationRetryAttempt.current = { key, attempt: attempt + 1, startedAt };
+    const timer = window.setTimeout(() => {
+      if (document.visibilityState === "hidden" || !navigator.onLine) return;
+      void runLatestSelection((selection) =>
+        connectServer(
+          selectedServer,
+          selection,
+          hostedServers,
+          trustedConnections,
+          undefined,
+          undefined,
+          "lan-first",
+          true,
+        ),
+      ).catch(() => undefined);
+    }, plan.delayMs);
+    return () => window.clearTimeout(timer);
+  }, [state, hostedServers, trustedConnections]);
 
   useEffect(() => {
     const recover = async () => {
@@ -2539,6 +2624,7 @@ export function RuntimeProvider({
     generation = hostedAccountGeneration.current,
     account = activeHostedAccount.current,
   ) => {
+    const preserveExplicitChooser = state.id === "server-selection";
     const activeAtStart = activeServerConnection.current;
     const retainingActiveRuntime = Boolean(
       account && activeAtStart?.accountId === account.accountId,
@@ -2550,14 +2636,11 @@ export function RuntimeProvider({
       let response = await withCancellableRuntimeDeadline(
         12_000,
         "Portico could not load your servers in time.",
-        (signal) => hostedClient.servers({ limit: 100 }, { signal }),
+        (signal) => hostedClient.servers({ limit: 50 }, { signal }),
       );
       servers = [...response.items];
       const cursors = new Set<string>();
-      // Older Hosted Services deployments returned only `items` and `total`.
-      // Treat that legacy shape as a complete page while current deployments
-      // expose the cursor contract below.
-      while (response.pageInfo?.hasMore) {
+      while (response.pageInfo.hasMore) {
         const cursor = response.pageInfo.nextCursor;
         if (!cursor)
           throw new Error("Portico returned an incomplete server-list page.");
@@ -2567,7 +2650,7 @@ export function RuntimeProvider({
         response = await withCancellableRuntimeDeadline(
           12_000,
           "Portico could not finish loading your servers in time.",
-          (signal) => hostedClient.servers({ limit: 100, cursor }, { signal }),
+          (signal) => hostedClient.servers({ limit: 50, cursor }, { signal }),
         );
         servers.push(...response.items);
       }
@@ -2618,6 +2701,7 @@ export function RuntimeProvider({
           /* The generation fence remains authoritative. */
         }
         activeServerConnection.current = undefined;
+        setPublishedServerIdentity(undefined);
         setSource(undefined);
         setInitialViewer(undefined);
         setExpectedViewerScope(undefined);
@@ -2687,18 +2771,24 @@ export function RuntimeProvider({
       // without reconnecting or blanking its already verified viewer scope.
       return;
     } else if (
+      !preserveExplicitChooser &&
       summaries.length === 1 &&
       summaries[0].remoteAccessEnabled &&
       summaries[0].preferredAuthMode === "portico"
     ) {
       await runLatestSelection((selection) =>
-        connectServer(summaries[0], selection, servers, remembered),
+        connectServer(
+          summaries[0],
+          selection,
+          servers,
+          remembered,
+          undefined,
+          undefined,
+          "lan-first",
+          true,
+        ),
       );
     } else dispatch({ type: "MEMBERSHIPS_READY", servers: summaries });
-  };
-
-  membershipRefresh.current = async () => {
-    await loadMemberships();
   };
 
   useEffect(() => {
@@ -2712,12 +2802,7 @@ export function RuntimeProvider({
         return;
       const refresh = membershipRefresh.current;
       if (!refresh) return;
-      const pending = refresh().finally(() => {
-        if (membershipRefreshInFlight.current === pending)
-          membershipRefreshInFlight.current = undefined;
-      });
-      membershipRefreshInFlight.current = pending;
-      void pending.catch(() => undefined);
+      void refresh().catch(() => undefined);
     };
     window.addEventListener("focus", reconcile);
     window.addEventListener("online", reconcile);
@@ -2787,11 +2872,11 @@ export function RuntimeProvider({
     let response = await withCancellableRuntimeDeadline(
       12_000,
       "Portico could not load your servers in time.",
-      (signal) => hostedClient.servers({ limit: 100 }, { signal }),
+      (signal) => hostedClient.servers({ limit: 50 }, { signal }),
     );
     const servers = [...response.items];
     const cursors = new Set<string>();
-    while (response.pageInfo?.hasMore) {
+    while (response.pageInfo.hasMore) {
       const cursor = response.pageInfo.nextCursor;
       if (!cursor || cursors.has(cursor))
         throw new Error("Portico returned an incomplete server list.");
@@ -2799,7 +2884,7 @@ export function RuntimeProvider({
       response = await withCancellableRuntimeDeadline(
         12_000,
         "Portico could not finish loading your servers in time.",
-        (signal) => hostedClient.servers({ limit: 100, cursor }, { signal }),
+        (signal) => hostedClient.servers({ limit: 50, cursor }, { signal }),
       );
       servers.push(...response.items);
     }
@@ -2876,6 +2961,8 @@ export function RuntimeProvider({
               localOrigin: intent.localOrigin,
               state: intent.state,
               serverPublicKeyFingerprint: intent.serverPublicKeyFingerprint,
+              publicConsoleOriginGeneration:
+                intent.publicConsoleOriginGeneration,
               profileId,
               ...(pin?.trim() ? { pin: pin.trim() } : {}),
               ...(intent.installationId
@@ -2887,12 +2974,31 @@ export function RuntimeProvider({
       );
       const redirectUrl = (raw as unknown as { redirectUrl?: unknown })
         .redirectUrl;
+      const returnedLocalOrigin = (raw as unknown as { localOrigin?: unknown })
+        .localOrigin;
+      if (
+        typeof returnedLocalOrigin !== "string" ||
+        new URL(returnedLocalOrigin).origin !== new URL(intent.localOrigin).origin
+      )
+        throw new Error(
+          "Portico returned a different local server origin than the one requested.",
+        );
+      const returnedOriginGeneration = (
+        raw as unknown as { publicConsoleOriginGeneration?: unknown }
+      ).publicConsoleOriginGeneration;
+      if (
+        returnedOriginGeneration !== undefined &&
+        returnedOriginGeneration !== intent.publicConsoleOriginGeneration
+      )
+        throw new Error(
+          "Portico returned a different public server address generation than the one requested.",
+        );
       target = verifiedLocalLoginRedirect(intent, redirectUrl);
     } catch (reason) {
       throw new HostedContinuationError("local-login-authorization", reason);
     }
     // Keep the short-lived same-tab handoff until its TTL elapses. Top-level
-    // navigation to localhost can be denied by browser Local Network policy,
+    // navigation to localhost can be denied by browser Local Network Access policy,
     // and location assignment cannot report that failure to JavaScript. If the
     // user returns to this tab, the preserved proof-bound intent can authorize
     // a fresh one-time callback without asking for account credentials again.
@@ -2907,6 +3013,21 @@ export function RuntimeProvider({
         "hosted-session",
       );
       const localLogin = bootstrapIntent.current.localLogin;
+      if (
+        reason.phase === "local-login-authorization" &&
+        reason.reason instanceof ApiError &&
+        [
+          "invalid_callback_url",
+          "public_console_origin_unverified",
+          "public_console_origin_generation_mismatch",
+        ].includes(reason.reason.code)
+      ) {
+        dispatch({
+          type: "LOCAL_LOGIN_RECOVERY_REQUIRED",
+          reason: "callback-policy",
+        });
+        return;
+      }
       if (classification === "session-expired") {
         dispatch({
           type: "HOSTED_SIGN_IN_REQUIRED",
@@ -3276,6 +3397,7 @@ export function RuntimeProvider({
       viewerRuntime.failClosed();
       sessionStore.clear?.();
       activeServerConnection.current = undefined;
+      setPublishedServerIdentity(undefined);
       setSource(undefined);
       setInitialViewer(undefined);
       setExpectedViewerScope(undefined);
@@ -3432,6 +3554,13 @@ export function RuntimeProvider({
 
       if (bootstrapIntent.current.ssoOnboardingToken) {
         dispatch({ type: "SSO_ONBOARDING" });
+        return;
+      }
+      if (bootstrapIntent.current.localLoginRecoveryFailure) {
+        dispatch({
+          type: "LOCAL_LOGIN_RECOVERY_REQUIRED",
+          reason: bootstrapIntent.current.localLoginRecoveryFailure,
+        });
         return;
       }
       dispatch({ type: "CHECK_HOSTED_SESSION" });
@@ -3618,12 +3747,54 @@ export function RuntimeProvider({
     revision,
   ]);
 
+  const refreshHostedMemberships = async (): Promise<void> => {
+    const generation = hostedAccountGeneration.current;
+    let account = activeHostedAccount.current;
+    if (!account) {
+      const identity = await withCancellableRuntimeDeadline(
+        12_000,
+        "Portico Account sign-in did not answer in time.",
+        (signal) => hostedClient.me({ signal }),
+      );
+      if (!identity.authenticated || !identity.user)
+        throw new Error("The Portico Account session is no longer active.");
+      account = await rememberHostedAccount(identity);
+    }
+    if (generation !== hostedAccountGeneration.current) return;
+    await loadMemberships(generation, account);
+  };
+  const refreshHostedMembershipDirectory = (): Promise<void> => {
+    const active = membershipRefreshInFlight.current;
+    if (active) return active;
+    const pending = refreshHostedMemberships().finally(() => {
+      if (membershipRefreshInFlight.current === pending)
+        membershipRefreshInFlight.current = undefined;
+    });
+    membershipRefreshInFlight.current = pending;
+    return pending;
+  };
+  // Directory refresh is the sole recovery owner for a remembered chooser.
+  // It first republishes the authenticated account, then replaces the visible
+  // directory. A displayed server can therefore never remain an enabled but
+  // inert remembered-only button after Hosted Services recovers.
+  membershipRefresh.current = refreshHostedMembershipDirectory;
+
+  const selectedHostedServerId: unknown =
+    publishedServerIdentity &&
+    publishedServerIdentity.accountId === activeHostedAccount.current?.accountId
+      ? publishedServerIdentity.serverId
+      : undefined;
   const value: RuntimeContextValue = {
     config,
     state,
     source,
     initialViewer,
     restoredPresentation,
+    selectedHostedServerId:
+      typeof selectedHostedServerId === "string" ? selectedHostedServerId : undefined,
+    accountSettingsOpen,
+    openAccountSettings: () => setAccountSettingsOpen(true),
+    closeAccountSettings: () => setAccountSettingsOpen(false),
     expectedViewerScope,
     viewerRuntime,
     connectionWarning,
@@ -3648,6 +3819,7 @@ export function RuntimeProvider({
       bootstrapIntent.current.genericDeviceAuthorizationNativeReturn === true,
     serverClaimName: bootstrapIntent.current.claimServerName,
     localLoginServerName: bootstrapIntent.current.localLogin?.serverName,
+    hasLocalLoginIntent: Boolean(bootstrapIntent.current.localLogin),
     retry: () => {
       void cancelActiveSelection().then(() =>
         setRevision((current) => current + 1),
@@ -3682,10 +3854,23 @@ export function RuntimeProvider({
       await recovery;
     },
     continueWithHostedAccount,
-    selectServer: (server) =>
-      runLatestSelection((selection) => connectServer(server, selection)).catch(
-        () => undefined,
-      ),
+    selectServer: async (server) => {
+      const account = activeHostedAccount.current;
+      if (!account) return;
+      // The server object comes from the currently published Hosted directory.
+      // Do not re-authorize it through separately scheduled React state arrays:
+      // Hosted profile/envelope issuance remains the membership authority.
+      // The Hosted membership selection is the one durable owner of this
+      // identity. Server transport publication may follow or fail, but
+      // account-only operations must retain the selected, account-fenced ID.
+      setPublishedServerIdentity({
+        accountId: account.accountId,
+        serverId: server.id,
+      });
+      await runLatestSelection((selection) =>
+        connectServer(server, selection),
+      );
+    },
     selectProfile: async (profileId, pin) => {
       if (state.id !== "profile-selection") return;
       const selectionState = state;
@@ -3972,51 +4157,63 @@ export function RuntimeProvider({
       };
     },
     completeSSOOnboarding: async (details) => {
-      setBusy(true);
-      try {
-        const raw = await withCancellableRuntimeDeadline(
-          12_000,
-          "Portico could not finish account setup in time.",
-          (signal) =>
-            hostedClient.request<unknown>("/api/auth/sso/onboarding/complete", {
-              method: "POST",
-              body: details,
-              signal,
-            }),
-        );
-        if (!raw || typeof raw !== "object" || Array.isArray(raw))
-          throw new Error(
-            "Portico returned an invalid account setup response.",
+      const existing = ssoOnboardingCompletionInFlight.current;
+      if (existing) return existing;
+      const completionRequest = (async () => {
+        setBusy(true);
+        try {
+          const raw = await withCancellableRuntimeDeadline(
+            12_000,
+            "Portico could not finish account setup in time.",
+            (signal) =>
+              hostedClient.request<unknown>("/api/auth/sso/onboarding/complete", {
+                method: "POST",
+                body: details,
+                signal,
+              }),
           );
-        const completion = raw as Record<string, unknown>;
-        if (
-          completion.usernameUnavailable === true &&
-          completion.onboardingRequired === true
-        ) {
-          if (
-            typeof completion.onboardingToken !== "string" ||
-            !completion.onboardingToken.trim()
-          ) {
+          if (!raw || typeof raw !== "object" || Array.isArray(raw))
             throw new Error(
-              "Portico could not safely retry account setup. Start again with Google or Apple.",
+              "Portico returned an invalid account setup response.",
             );
+          const completion = raw as Record<string, unknown>;
+          if (
+            completion.usernameUnavailable === true &&
+            completion.onboardingRequired === true
+          ) {
+            if (
+              typeof completion.onboardingToken !== "string" ||
+              !completion.onboardingToken.trim()
+            ) {
+              throw new Error(
+                "Portico could not safely retry account setup. Start again with Google or Apple.",
+              );
+            }
+            saveRecoverableSSOOnboarding(completion.onboardingToken.trim());
+            throw Object.assign(new Error("That username is already in use."), {
+              code: "username_unavailable",
+              usernameUnavailable: true,
+              onboardingToken: completion.onboardingToken.trim(),
+            });
           }
-          saveRecoverableSSOOnboarding(completion.onboardingToken.trim());
-          throw Object.assign(new Error("That username is already in use."), {
-            code: "username_unavailable",
-            usernameUnavailable: true,
-            onboardingToken: completion.onboardingToken.trim(),
-          });
+          if (completion.authenticated !== true)
+            throw new Error(
+              "Portico did not finish account setup. Start again with Google or Apple.",
+            );
+          delete bootstrapIntent.current.ssoOnboardingToken;
+          clearRecoverableSSOOnboarding();
+          setRevision((current) => current + 1);
+        } finally {
+          setBusy(false);
         }
-        if (completion.authenticated !== true)
-          throw new Error(
-            "Portico did not finish account setup. Start again with Google or Apple.",
-          );
-        delete bootstrapIntent.current.ssoOnboardingToken;
-        clearRecoverableSSOOnboarding();
-        setRevision((current) => current + 1);
+      })();
+      ssoOnboardingCompletionInFlight.current = completionRequest;
+      try {
+        await completionRequest;
       } finally {
-        setBusy(false);
+        if (ssoOnboardingCompletionInFlight.current === completionRequest) {
+          ssoOnboardingCompletionInFlight.current = undefined;
+        }
       }
     },
     hostedLogout: async () => {
@@ -4052,6 +4249,7 @@ export function RuntimeProvider({
       activeHostedAccount.current = undefined;
       setRestoredPresentation(undefined);
       activeServerConnection.current = undefined;
+      setPublishedServerIdentity(undefined);
       setMfaRequired(false);
       setSource(undefined);
       setInitialViewer(undefined);
@@ -4264,7 +4462,8 @@ export function RuntimeProvider({
         });
       }
     },
-    refreshMemberships: () => loadMemberships(),
+    refreshMemberships: refreshHostedMembershipDirectory,
+    canSelectHostedServer: Boolean(activeHostedAccount.current),
     claimServer: async (claimCode) => {
       setBusy(true);
       try {

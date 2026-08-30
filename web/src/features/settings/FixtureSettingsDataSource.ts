@@ -32,7 +32,6 @@ import type {
   SystemStorageReport,
   TranscodeCapacityReport,
   User,
-  UserPreferences,
   UserCreateRequest,
   UserPatchRequest,
 } from '@porticomediaserver/client-core';
@@ -65,14 +64,9 @@ const permissionCatalog = [
   'deleteDVRRecordings', 'transcode', 'manageServer',
 ];
 
-const defaultPreferences: UserPreferences = {
-  locale: 'en-CA',
-  timeZone: 'America/Halifax',
-  dateFormat: 'medium',
-  hourCycle: 'auto',
-  audioLanguage: 'en',
-  subtitleLanguage: 'en',
-  sidebarOrder: ['home', 'library:fixture-tv', 'library:fixture-music', 'library:fixture-movies', 'live-tv', 'saved'],
+const defaultPreferences = {
+  locale: 'en-CA', timeZone: 'America/Halifax', dateFormat: 'medium', hourCycle: 'auto',
+  audioLanguage: 'en', subtitleLanguage: 'en', sidebarOrder: [] as string[],
   playbackProgress: { startedThresholdPercent: 5, playedThresholdPercent: 95 },
   musicPlayback: { autoplayDefault: true, crossfadeSeconds: 0, gapless: true, normalizationMode: 'attenuate', repeatDefault: 'none', shuffleDefault: false },
   privacy: { includeInWatchWithFriends: true, pauseWatchHistory: false, showActivityToMembers: true },
@@ -148,7 +142,7 @@ function summaryGroups(): SettingsSummaryResponse['groups'] {
     ['users', 'Users', 'Profiles and permissions'], ['devices', 'Devices', 'Trusted application installations'],
     ['api-keys', 'API keys', 'Integration credentials'], ['scheduled-tasks', 'Scheduled tasks', 'Maintenance automation'],
     ['storage', 'Storage', 'Managed server data'], ['backups', 'Backups', 'Verified database backups'],
-    ['notifications', 'Notifications', 'Administrator alerts'], ['retention', 'History & Retention', 'Owner-controlled local data retention'], ['troubleshooting', 'Troubleshooting', 'Diagnostic policy'],
+    ['notifications', 'Notifications', 'Administrator alerts'], ['retention', 'History & retention', 'Owner-controlled local data retention'], ['troubleshooting', 'Troubleshooting', 'Diagnostic policy'],
     ['console', 'Server console', 'Recent redacted events'],
   ];
   return definitions.map(([id, label, summary]) => ({
@@ -304,7 +298,7 @@ function operationalSnapshot(): SettingsOperationalSnapshot {
     tasks: [
       { id: 'library_scan', category: 'library', title: 'Library scan', description: 'Find new and changed media', enabled: true, running: true, schedule: 'Daily at 2:00 AM', jobType: 'library_scan', trigger: { enabled: true, intervalHours: 24 }, lastJob: job('scan-tv', 'Scanning TV Shows', 'running', 62, 1) },
       { id: 'metadata_refresh', category: 'metadata', title: 'Metadata refresh', description: 'Refresh stale metadata and artwork', enabled: true, running: false, schedule: 'Weekly', jobType: 'metadata_refresh', trigger: { enabled: true, intervalHours: 168 }, lastJob: job('metadata-last', 'Metadata refresh completed', 'complete', 100, 680) },
-      { id: 'database_backup', category: 'maintenance', title: 'Database backup', description: 'Create a verified SQLite backup', enabled: true, running: false, schedule: 'Daily at 3:00 AM', jobType: 'database_backup', trigger: { enabled: true, intervalHours: 24 }, lastJob: job('backup-last', 'Database backup completed', 'complete', 100, 310) },
+      { id: 'database_backup', category: 'maintenance', title: 'Storage backup', description: 'Create a verified SQLite backup', enabled: true, running: false, schedule: 'Daily at 3:00 AM', jobType: 'database_backup', trigger: { enabled: true, intervalHours: 24 }, lastJob: job('backup-last', 'Storage backup completed', 'complete', 100, 310) },
     ],
     backups: [{ name: 'portico-2026-07-11T03-00-00.db', createdAt: ago(310), integrity: 'ok', manifestPresent: true, restoreReady: true, sizeBytes: 34865152 }],
     sessions: [
@@ -328,7 +322,7 @@ function operationalSnapshot(): SettingsOperationalSnapshot {
     },
     capabilities: { version: '0.0.0-development', apiVersion: 'v1', generatedAt: now(), features: { remoteAccess: true, liveTV: true, dvr: true, watchWithFriends: true }, permissionCatalog, permissions: Object.fromEntries(permissionCatalog.map((key) => [key, true])), markerTypes: ['intro', 'recap', 'credits', 'commercial', 'chapter', 'preview'], extraTypes: ['trailer', 'featurette', 'deleted_scene', 'behind_the_scenes', 'interview', 'scene', 'short', 'other'] },
     storage: { generatedAt: now(), totalBytes: 39728447488, categories: [
-      { key: 'database', label: 'Database and backups', sizeBytes: 268435456, fileCount: 18, available: true, writable: true, cleanupSupported: false },
+      { key: 'database', label: 'Storage and backups', sizeBytes: 268435456, fileCount: 18, available: true, writable: true, cleanupSupported: false },
       { key: 'transcode', label: 'Transcode cache', sizeBytes: 25769803776, fileCount: 642, available: true, writable: true, cleanupSupported: true },
       { key: 'optimized', label: 'Optimized versions', sizeBytes: 13690208256, fileCount: 28, available: true, writable: true, cleanupSupported: true },
     ] },
@@ -337,7 +331,6 @@ function operationalSnapshot(): SettingsOperationalSnapshot {
 
 export class FixtureSettingsDataSource implements SettingsDataSource {
   private document: SettingsDocument = asFixture({ revision: 'fixture-settings-1', updatedAt: now(), groups: settingGroups(), restartRequired: false, restartRequiredFields: [], applyImpact: { changedFields: [], restartRequired: false, restartRequiredFields: [] }, generation: { mode: 'next-operation', activeRevision: 'fixture-settings-1', instruction: 'New operations use this committed settings revision.' } });
-  private preferencesValue = structuredClone(defaultPreferences);
   private operations = operationalSnapshot();
   private remote = remoteStatus();
   private liveTVSourceValue = liveTVSources();
@@ -370,7 +363,7 @@ export class FixtureSettingsDataSource implements SettingsDataSource {
     }));
   }
   runConnectivityCheck(): Promise<RemoteAccessStatus> { this.remote = { ...this.remote, generatedAt: now(), settings: { ...this.remote.settings, lastReachabilityCheckAt: now(), lastReachabilityResult: 'reachable' } }; return Promise.resolve(structuredClone(this.remote)); }
-  stopPlayback(sessionId: string): Promise<void> { this.streams = this.streams.filter((stream) => stream.id !== sessionId); return Promise.resolve(); }
+  stopPlayback(session: PlaybackSession): Promise<void> { this.streams = this.streams.filter((stream) => stream.id !== session.id); return Promise.resolve(); }
   remoteAccess(): Promise<RemoteAccessStatus> { return Promise.resolve(structuredClone(this.remote)); }
   updateRemoteAccess(input: RemoteAccessSettingsPatch): Promise<RemoteAccessStatus> { this.remote = { ...this.remote, generatedAt: now(), settings: { ...this.remote.settings, ...input } }; return Promise.resolve(structuredClone(this.remote)); }
   startRemoteAccessClaim(): Promise<RemoteAccessStatus> { this.remote = asFixture({ ...this.remote, claim: { claimId: 'fixture-claim', claimUrl: 'https://app.getportico.tv/claim/fixture', expiresAt: new Date(Date.now() + 900000).toISOString(), hostedReady: true, startedAt: now(), status: 'pending' } }); return Promise.resolve(structuredClone(this.remote)); }
@@ -545,15 +538,13 @@ export class FixtureSettingsDataSource implements SettingsDataSource {
   runScheduledTask(id: string): Promise<ScheduledTaskRunResponse> { const queued = job(`fixture-${id}-${Date.now()}`, `Queued ${id.replaceAll('_', ' ')}`, 'queued', 0, 0); return Promise.resolve({ taskId: id, jobs: [queued] }); }
   createBackup(): Promise<BackupInfo> { const backup = asFixture<BackupInfo>({ name: `portico-${now().replaceAll(':', '-')}.db`, createdAt: now(), integrity: 'ok', manifestPresent: true, restoreReady: true, sizeBytes: 34865152 }); this.operations.backups.unshift(backup); return Promise.resolve(structuredClone(backup)); }
   restoreBackup(name: string, _password: string, _confirmation: string): Promise<RestoreWorkflowResponse> { return Promise.resolve(asFixture<RestoreWorkflowResponse>({ ok: true, name, operationId: `fixture-restore-${Date.now()}`, state: 'staged', phase: 'staged', progress: 25, instruction: 'Backup is staged for supervised restore; it is not restored yet.', statusToken: `fixture-status-${Date.now()}` })); }
-  restoreUploadedDatabase(file: File, _password: string, _confirmation: string): Promise<RestoreWorkflowResponse> { return Promise.resolve(asFixture<RestoreWorkflowResponse>({ ok: true, name: file.name, operationId: `fixture-restore-${Date.now()}`, state: 'staged', phase: 'staged', progress: 25, sourceKind: 'raw-import', manifestVerified: false, instruction: 'Database import is staged for supervised restore; it is not restored yet.', statusToken: `fixture-status-${Date.now()}` })); }
+  restoreUploadedDatabase(file: File, _password: string, _confirmation: string): Promise<RestoreWorkflowResponse> { return Promise.resolve(asFixture<RestoreWorkflowResponse>({ ok: true, name: file.name, operationId: `fixture-restore-${Date.now()}`, state: 'staged', phase: 'staged', progress: 25, sourceKind: 'raw-import', manifestVerified: false, instruction: 'Storage import is staged for supervised restore; it is not restored yet.', statusToken: `fixture-status-${Date.now()}` })); }
   restoreStatus(operationId: string, _statusToken: string): Promise<RestoreWorkflowResponse> { return Promise.resolve(asFixture<RestoreWorkflowResponse>({ ok: true, name: 'fixture-backup', operationId, state: 'complete', phase: 'complete', progress: 100, instruction: 'Restore completed and health checks passed.' })); }
   logs(input: { limit?: number }): Promise<ListResponse<LogEvent>> { const items = [
     asFixture<LogEvent>({ id: 'log-1', time: ago(1), level: 'info', message: 'Library scan progress updated', fields: { library: 'TV Shows', progress: '62%' } }),
     asFixture<LogEvent>({ id: 'log-2', time: ago(2), level: 'info', message: 'Remote reachability check completed', fields: { result: 'reachable' } }),
     asFixture<LogEvent>({ id: 'log-3', time: ago(8), level: 'warn', message: 'Recording rule has no upcoming matches', fields: { rule: 'Fargo' } }),
   ].slice(0, input.limit ?? 200); return Promise.resolve(asFixture({ items, total: items.length, limit: input.limit ?? 200, offset: 0, hasMore: false })); }
-  preferences(): Promise<UserPreferences> { return Promise.resolve(structuredClone(this.preferencesValue)); }
-  updatePreferences(input: UserPreferences): Promise<User> { this.preferencesValue = structuredClone(input); const owner = this.operations.users[0]; this.operations.users[0] = { ...owner, preferences: structuredClone(input) }; return Promise.resolve(structuredClone(this.operations.users[0])); }
   signedInDevices(origin: AccountOrigin): Promise<AccountSignedInDevice[]> {
     if (origin === 'portico') {
       return Promise.resolve(structuredClone(this.porticoDevices));

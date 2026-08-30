@@ -1,4 +1,4 @@
-import { AlertTriangle } from '#portico-icons';
+import { StatusWarningIcon } from '#portico-icons';
 import { useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuthSession, usePorticoDataSource, useViewerRuntime } from '../data/DataProvider';
@@ -58,7 +58,7 @@ export function WatchWithFriendsRoute({ viewer }: { viewer: Viewer }) {
   }, [auth.registerRuntimeTeardown, dataSource, runtime, watchViewer]);
 
   if (!watchViewer || !watchSource) {
-    return <div className="standard-page"><div className="library-state error"><AlertTriangle /><strong>Watch With Friends isn’t available</strong><p>Reconnect to a compatible Portico server and try again.</p></div></div>;
+    return <div className="standard-page"><div className="library-state error"><StatusWarningIcon /><strong>Watch With Friends isn’t available</strong><p>Reconnect to a compatible Portico server and try again.</p></div></div>;
   }
   return <WatchWithFriendsPage
     source={watchSource}

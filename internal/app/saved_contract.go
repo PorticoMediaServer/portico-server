@@ -536,6 +536,10 @@ func (s *Server) handleSavedResourceDetail(w http.ResponseWriter, r *http.Reques
 }
 
 func (s *Server) handleSavedResourceItems(w http.ResponseWriter, r *http.Request, user User, kind, label, resourceID string) {
+	if _, present := r.URL.Query()["offset"]; present {
+		writeError(w, http.StatusBadRequest, "offset_not_supported", "Use the opaque cursor to continue saved items.")
+		return
+	}
 	limit, ok := savedLimitFromRequest(w, r)
 	if !ok {
 		return

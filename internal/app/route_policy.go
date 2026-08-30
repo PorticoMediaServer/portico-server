@@ -114,14 +114,8 @@ func (s *Server) enforceRoutePolicy(w http.ResponseWriter, r *http.Request, user
 		return false
 	}
 	if !ok {
-		// Direct maintenance/test adapters are not generated API routes. Preserve
-		// the older API-key limiter for those deliberately narrow call paths.
-		if allowed, retryAfter := s.allowAPIKeyRequest(user); !allowed {
-			w.Header().Set("Retry-After", itoa(retryAfter))
-			writeError(w, http.StatusTooManyRequests, "api_key_rate_limited", "This API key is sending requests too quickly.")
-			return false
-		}
-		return true
+		writeProductError(w, http.StatusInternalServerError, "route_policy_misconfigured", "The request route is missing its generated authorization policy.")
+		return false
 	}
 	if route.Auth == apiroute.AuthPublic {
 		writeProductError(w, http.StatusInternalServerError, "route_policy_misconfigured", "The generated route authorization policy is inconsistent.")

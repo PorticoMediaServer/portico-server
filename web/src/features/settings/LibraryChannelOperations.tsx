@@ -1,5 +1,5 @@
 import type { LibraryChannelAggregate, LibraryChannelBlock, LibraryChannelBlockPreset, LibraryChannelConfigurationRequest, LibraryChannelRule } from '@porticomediaserver/client-core';
-import { AlertTriangle, CalendarClock, Pencil, Plus, RefreshCw, RotateCcw, Sparkles, Trash2, TvMinimalPlay, Upload, X } from '#portico-icons';
+import { StatusWarningIcon, MetadataTimeIcon, ActionEditIcon, ActionAddIcon, ActionRefreshIcon, ActionResetIcon, ActionCustomizeIcon, ActionDeleteIcon, MediaLiveTvIcon, ActionSendIcon, ActionCloseIcon } from '#portico-icons';
 import { type ChangeEvent, useCallback, useState } from 'react';
 import { IconButton, PrimaryButton, SecondaryButton } from '../../components/controls/Buttons';
 import { ModalOverlay } from '../../components/overlay/OverlayPortal';
@@ -8,12 +8,21 @@ import { useAbortableMutation, useSettingsQuery } from './settingsHooks';
 import type { SettingsDataSource, SettingsViewer } from './settingsTypes';
 import { canManageServer } from '../../data/authority';
 import { requestError } from '../live-tv/liveFormat';
+import { secureRandomUUID } from '../../runtime/secureRandomUUID';
 
 const weekdayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const defaultTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
 
+export const libraryChannelQualityOptions: Array<{ value: string; label: string }> = [
+  { value: 'auto', label: 'Automatic' },
+  { value: 'original', label: 'Original Quality' },
+  { value: '1080p-medium', label: '1080p · 5 Mbps' },
+  { value: '720p-medium', label: '720p · 2.5 Mbps' },
+  { value: '480p', label: '480p · 1.5 Mbps' },
+];
+
 function id(prefix: string) {
-  return `${prefix}-${globalThis.crypto.randomUUID()}`;
+  return `${prefix}-${secureRandomUUID()}`;
 }
 
 function csv(value: string) {
@@ -118,14 +127,14 @@ function ChannelEditor({ aggregate: initial, presets, source, onDismiss, onSaved
   };
 
   return <ModalOverlay labelledBy="library-channel-editor-title" className="portico-settings-dialog library-channel-editor" onDismiss={onDismiss}>
-    <header><div><h2 id="library-channel-editor-title">{channel.id ? `Edit ${channel.name}` : 'Create Library Channel'}</h2><p>Library rules, programming order, schedule blocks, and stream branding</p></div><IconButton label="Close" onClick={onDismiss}><X /></IconButton></header>
+    <header><div><h2 id="library-channel-editor-title">{channel.id ? `Edit ${channel.name}` : 'Create Library Channel'}</h2><p>Library rules, programming order, schedule blocks, and stream branding</p></div><IconButton label="Close" onClick={onDismiss}><ActionCloseIcon /></IconButton></header>
     <div className="portico-settings-dialog-fields">
       <fieldset><legend>Channel</legend><div className="library-channel-editor-grid">
         <label><span>Name</span><TextControl label="Channel name" value={channel.name} onChange={(name) => setChannel({ name })} /></label>
         <label><span>Timezone</span><TextControl label="Channel timezone" value={channel.timezone} onChange={(timezone) => setChannel({ timezone })} /></label>
         <label className="wide"><span>Description</span><TextControl label="Channel description" multiline value={channel.description} onChange={(description) => setChannel({ description })} /></label>
         <label><span>Published</span><ToggleControl label="Publish channel" value={channel.enabled} onChange={(enabled) => setChannel({ enabled })} /></label>
-        <div><span>Stream quality</span><ChoiceControl label="Stream quality" value={channel.qualityProfile} options={['auto', 'original', '1080p-medium', '720p-medium', '480p'].map((value) => ({ value, label: value === 'auto' ? 'Automatic' : value }))} onChange={(qualityProfile) => setChannel({ qualityProfile: qualityProfile as typeof channel.qualityProfile })} /></div>
+        <div><span>Stream quality</span><ChoiceControl label="Stream quality" value={channel.qualityProfile} options={libraryChannelQualityOptions} onChange={(qualityProfile) => setChannel({ qualityProfile: qualityProfile as typeof channel.qualityProfile })} /></div>
       </div></fieldset>
 
       <fieldset><legend>Library rule</legend><div className="library-channel-editor-grid">
@@ -142,25 +151,25 @@ function ChannelEditor({ aggregate: initial, presets, source, onDismiss, onSaved
       <fieldset><legend>Programming blocks <small>Optional weekly overrides</small></legend>
         {presets.length > 0 && <div className="library-channel-block-presets" aria-label="Programming block presets">{presets.map((preset) => <button key={preset.key} type="button" onClick={() => setAggregate((current) => ({ ...current, blocks: [...current.blocks, { ...defaultBlock(rule.id, current.blocks.length), name: preset.name, weekdayMask: preset.weekdays, startMinute: preset.startMinute, endMinute: preset.endMinute, anchored: preset.anchored, allowOverrun: preset.allowOverrun, templateKey: preset.key, templateVersion: preset.version }] }))}><strong>{preset.name}</strong><span>{preset.description}</span></button>)}</div>}
         <div className="library-channel-blocks">{aggregate.blocks.map((block, index) => <article key={block.id}>
-          <div className="library-channel-block-heading"><CalendarClock /><TextControl label="Block name" value={block.name} onChange={(name) => updateBlock(index, { name })} /><IconButton label={`Remove ${block.name}`} onClick={() => setAggregate((current) => ({ ...current, blocks: current.blocks.filter((_, blockIndex) => blockIndex !== index) }))}><Trash2 /></IconButton></div>
+          <div className="library-channel-block-heading"><MetadataTimeIcon /><TextControl label="Block name" value={block.name} onChange={(name) => updateBlock(index, { name })} /><IconButton label={`Remove ${block.name}`} onClick={() => setAggregate((current) => ({ ...current, blocks: current.blocks.filter((_, blockIndex) => blockIndex !== index) }))}><ActionDeleteIcon /></IconButton></div>
           <div className="library-channel-weekdays">{weekdayNames.map((day, dayIndex) => <label key={day}><input type="checkbox" checked={(block.weekdayMask & (1 << dayIndex)) !== 0} onChange={(event) => updateBlock(index, { weekdayMask: event.target.checked ? block.weekdayMask | (1 << dayIndex) : block.weekdayMask & ~(1 << dayIndex) })} />{day}</label>)}</div>
           <div className="library-channel-block-times"><label>Starts <NumberControl label="Block start minute" value={block.startMinute} min={0} max={1439} unit="minute" onChange={(startMinute) => updateBlock(index, { startMinute: startMinute ?? 0 })} /></label><label>Ends <NumberControl label="Block end minute" value={block.endMinute} min={0} max={1439} unit="minute" onChange={(endMinute) => updateBlock(index, { endMinute: endMinute ?? 0 })} /></label><label>Priority <NumberControl label="Block priority" value={block.priority} min={0} max={1000} onChange={(priority) => updateBlock(index, { priority: priority ?? 0 })} /></label></div>
           <div className="library-channel-block-options"><label><input type="checkbox" checked={block.anchored} onChange={(event) => updateBlock(index, { anchored: event.target.checked })} /> Start on schedule</label><label><input type="checkbox" checked={block.allowOverrun} onChange={(event) => updateBlock(index, { allowOverrun: event.target.checked })} /> Allow final program to finish</label></div>
         </article>)}</div>
-        <SecondaryButton onClick={() => setAggregate((current) => ({ ...current, blocks: [...current.blocks, defaultBlock(rule.id, current.blocks.length)] }))}><Plus /> Add programming block</SecondaryButton>
+        <SecondaryButton onClick={() => setAggregate((current) => ({ ...current, blocks: [...current.blocks, defaultBlock(rule.id, current.blocks.length)] }))}><ActionAddIcon /> Add programming block</SecondaryButton>
       </fieldset>
 
       <fieldset><legend>Logo and on-screen bug</legend><div className="library-channel-editor-grid">
-        <label className="library-channel-logo-upload"><span>Channel logo</span><input type="file" accept="image/png,image/webp,image/svg+xml" onChange={(event) => void uploadLogo(event)} /><span><Upload /> Upload PNG, WebP, or SVG</span></label>
+        <label className="library-channel-logo-upload"><span>Channel logo</span><input type="file" accept="image/png,image/webp,image/svg+xml" onChange={(event) => void uploadLogo(event)} /><span><ActionSendIcon /> Upload PNG, WebP, or SVG</span></label>
         <SecondaryButton disabled={channel.logo.source === 'none'} onClick={() => setChannel({ logo: { ...channel.logo, source: 'none', ref: undefined, url: undefined, mimeType: undefined, bugEnabled: false, bugOverheadAccepted: false } })}>Remove logo</SecondaryButton>
         <label><span>Show logo over video</span><ToggleControl label="Show logo over video" value={channel.logo.bugEnabled} onChange={(bugEnabled) => setChannel({ logo: { ...channel.logo, bugEnabled, bugOverheadAccepted: bugEnabled ? channel.logo.bugOverheadAccepted : false } })} /></label>
         {channel.logo.bugEnabled && <><div><span>Corner</span><ChoiceControl label="Logo bug corner" value={channel.logo.bugCorner} options={[{ value: 'top_left', label: 'Top left' }, { value: 'top_right', label: 'Top right' }, { value: 'bottom_left', label: 'Bottom left' }, { value: 'bottom_right', label: 'Bottom right' }]} onChange={(bugCorner) => setChannel({ logo: { ...channel.logo, bugCorner: bugCorner as typeof channel.logo.bugCorner } })} /></div><label><span>Width</span><NumberControl label="Logo bug width" value={channel.logo.bugWidthPercent} min={2} max={20} step={0.5} unit="%" onChange={(bugWidthPercent) => setChannel({ logo: { ...channel.logo, bugWidthPercent: bugWidthPercent ?? 9 } })} /></label><label><span>Edge inset</span><NumberControl label="Logo bug edge inset" value={channel.logo.bugInsetPercent} min={0} max={10} step={0.5} unit="%" onChange={(bugInsetPercent) => setChannel({ logo: { ...channel.logo, bugInsetPercent: bugInsetPercent ?? 2 } })} /></label><div><span>Color</span><ChoiceControl label="Logo bug color" value={channel.logo.bugTreatment} options={[{ value: 'color', label: 'Original color' }, { value: 'white', label: 'White' }, { value: 'black', label: 'Black' }]} onChange={(bugTreatment) => setChannel({ logo: { ...channel.logo, bugTreatment: bugTreatment as typeof channel.logo.bugTreatment } })} /></div></>}
       </div>
       {channel.logo.bugEnabled && <InlineNotice tone="warn">Adding a logo to the video forces a transcoded rendition and uses extra server capacity. <label><input type="checkbox" checked={channel.logo.bugOverheadAccepted} onChange={(event) => setChannel({ logo: { ...channel.logo, bugOverheadAccepted: event.target.checked } })} /> I accept the transcode overhead.</label></InlineNotice>}
       </fieldset>
-      {error && <InlineNotice tone="error"><AlertTriangle /> {error}</InlineNotice>}
+      {error && <InlineNotice tone="error"><StatusWarningIcon /> {error}</InlineNotice>}
     </div>
-    <footer><SecondaryButton disabled={mutation.busy} onClick={onDismiss}>Cancel</SecondaryButton><PrimaryButton disabled={mutation.busy} onClick={() => void save()}>{mutation.busy ? <><RefreshCw className="portico-settings-spinner" /> Saving…</> : 'Save channel'}</PrimaryButton></footer>
+    <footer><SecondaryButton disabled={mutation.busy} onClick={onDismiss}>Cancel</SecondaryButton><PrimaryButton disabled={mutation.busy} onClick={() => void save()}>{mutation.busy ? <><ActionRefreshIcon className="portico-settings-spinner" /> Saving…</> : 'Save channel'}</PrimaryButton></footer>
   </ModalOverlay>;
 }
 
@@ -208,18 +217,18 @@ export function LibraryChannelOperations({ source, viewer }: { source: SettingsD
     catch (reason) { setError(requestError(reason, 'problem.request-failed')); }
   };
 
-  return <SettingsGroup title="Library Channels" description="Owner-only channels scheduled from library metadata. These remain separate from real tuner Live TV." actions={<PrimaryButton disabled={mutation.busy} onClick={() => void open()}><Plus /> Create channel</PrimaryButton>}>
-    <InlineNotice><TvMinimalPlay /> The rolling guide is generated deterministically for seven days. Viewers see these channels only inside the Library Channels guide.</InlineNotice>
-    <div className="library-channel-defaults"><div><Sparkles /><span><strong>{templates.status === 'success' ? `${templates.data.templates.length} packaged channel templates` : 'Packaged channel templates'}</strong><small>Eras, genres, documentaries, cartoons, movie nights, and more. Existing channels are never overwritten.</small></span></div><SecondaryButton disabled={mutation.busy} onClick={() => void restore('recommended')}><RotateCcw /> Restore recommended</SecondaryButton><SecondaryButton disabled={mutation.busy} onClick={() => void restore('all')}><RotateCcw /> Add all defaults</SecondaryButton></div>
+  return <SettingsGroup title="Library Channels" description="Owner-only channels scheduled from library metadata. These remain separate from real tuner Live TV." actions={<PrimaryButton disabled={mutation.busy} onClick={() => void open()}><ActionAddIcon /> Create channel</PrimaryButton>}>
+    <InlineNotice><MediaLiveTvIcon /> The rolling guide is generated deterministically for seven days. Viewers see these channels only inside the Library Channels guide.</InlineNotice>
+    <div className="library-channel-defaults"><div><ActionCustomizeIcon /><span><strong>{templates.status === 'success' ? `${templates.data.templates.length} packaged channel templates` : 'Packaged channel templates'}</strong><small>Eras, genres, documentaries, cartoons, movie nights, and more. Existing channels are never overwritten.</small></span></div><SecondaryButton disabled={mutation.busy} onClick={() => void restore('recommended')}><ActionResetIcon /> Restore recommended</SecondaryButton><SecondaryButton disabled={mutation.busy} onClick={() => void restore('all')}><ActionResetIcon /> Add all defaults</SecondaryButton></div>
     {notice && <InlineNotice tone="success">{notice}</InlineNotice>}
-    {error && <InlineNotice tone="error"><AlertTriangle /> {error}</InlineNotice>}
+    {error && <InlineNotice tone="error"><StatusWarningIcon /> {error}</InlineNotice>}
     {channels.status === 'loading' && <SettingsLoading label="Loading Library Channels" />}
     {channels.status === 'error' && <SettingsError title="Library Channels are unavailable" message={requestError(channels.error, 'library-channel.load-failed')} onRetry={() => setRevision((value) => value + 1)} />}
-    {channels.status === 'success' && !channels.data.items.length && <div className="portico-settings-state"><TvMinimalPlay /><strong>No Library Channels</strong><p>Start blank or restore the recommended defaults.</p></div>}
+    {channels.status === 'success' && !channels.data.items.length && <div className="portico-settings-state"><MediaLiveTvIcon /><strong>No Library Channels</strong><p>Start blank or restore the recommended defaults.</p></div>}
     {channels.status === 'success' && <div className="library-channel-admin-list">{channels.data.items.map((channel) => <article key={channel.id}>
-      <span className="library-channel-admin-logo">{channel.logo.url ? <img src={channel.logo.url} alt="" /> : <TvMinimalPlay />}</span>
+      <span className="library-channel-admin-logo">{channel.logo.url ? <img src={channel.logo.url} alt="" /> : <MediaLiveTvIcon />}</span>
       <div><strong>{channel.name}</strong><small>{channel.description || 'No description'}</small><span className={channel.healthState}>{channel.enabled ? channel.healthState : 'disabled'} · {channel.generatedThrough ? `scheduled through ${new Date(channel.generatedThrough).toLocaleDateString()}` : 'schedule pending'}</span></div>
-      <div className="library-channel-admin-actions"><IconButton label={`Edit ${channel.name}`} disabled={mutation.busy} onClick={() => void open(channel.id)}><Pencil /></IconButton><IconButton label={`Update ${channel.name} schedule`} disabled={mutation.busy} onClick={() => void regenerate(channel)}><RefreshCw /></IconButton><IconButton label={`Delete ${channel.name}`} disabled={mutation.busy} onClick={() => void remove(channel)}><Trash2 /></IconButton></div>
+      <div className="library-channel-admin-actions"><IconButton label={`Edit ${channel.name}`} disabled={mutation.busy} onClick={() => void open(channel.id)}><ActionEditIcon /></IconButton><IconButton label={`Update ${channel.name} schedule`} disabled={mutation.busy} onClick={() => void regenerate(channel)}><ActionRefreshIcon /></IconButton><IconButton label={`Delete ${channel.name}`} disabled={mutation.busy} onClick={() => void remove(channel)}><ActionDeleteIcon /></IconButton></div>
     </article>)}</div>}
     {editor && <ChannelEditor aggregate={editor} presets={templates.status === 'success' ? templates.data.blockPresets : []} source={source} onDismiss={() => setEditor(undefined)} onSaved={(message) => { setEditor(undefined); setNotice(message); setRevision((value) => value + 1); }} />}
   </SettingsGroup>;

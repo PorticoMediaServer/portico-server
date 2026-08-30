@@ -21,7 +21,7 @@ import (
 )
 
 func restoreOwnerUser() User {
-	return User{ID: "owner", AccountID: "owner", Role: "owner", AuthOrigin: "local", AuthProvider: "local", HasLocalPassword: true, Permissions: map[string]bool{"manageServer": true}}
+	return User{ID: "owner", AccountID: "owner", ProfileID: "owner", ProfileIsPrimary: true, Role: "owner", AuthOrigin: "local", AuthProvider: "local", HasLocalPassword: true, Permissions: map[string]bool{"manageServer": true}}
 }
 
 func TestRestorePrincipalRequiresInteractiveOwnerAndExcludesAPIKeys(t *testing.T) {
@@ -58,7 +58,7 @@ func TestRestoreReauthenticationRejectsHostedSessionPossessionLocalAbsenceAndPro
 		status int
 		code   string
 	}{
-		{name: "hosted owner requires W2 proof", user: User{Role: "owner", AuthOrigin: "portico", AuthProvider: "portico", Permissions: map[string]bool{"manageServer": true}}, secret: "", status: http.StatusConflict, code: "restore_hosted_reauthentication_required"},
+		{name: "hosted owner requires W2 proof", user: User{ID: "owner", AccountID: "owner", ProfileID: "profile", ProfileIsPrimary: true, Role: "owner", AuthOrigin: "portico", AuthProvider: "portico", Permissions: map[string]bool{"manageServer": true}}, secret: "", status: http.StatusConflict, code: "restore_hosted_reauthentication_required"},
 		{name: "local session possession without password", user: restoreOwnerUser(), secret: "", status: http.StatusUnauthorized, code: "restore_reauthentication_required"},
 		{name: "primary profile PIN is not account password", user: restoreOwnerUser(), secret: "", status: http.StatusUnauthorized, code: "restore_reauthentication_required"},
 	}

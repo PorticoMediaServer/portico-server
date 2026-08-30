@@ -52,9 +52,9 @@ export const serverSettingFieldGroups: Record<string, SettingsFieldGroup[]> = {
     {
       id: 'library-scanning', capabilityId: 'library-settings', title: 'Library scanning', settingsKey: 'library', fields: [
         yesNo('scanAutomatically', 'Automatic scans', 'Schedule library scans without requiring a manual request.'),
-        yesNo('scanOnFilesystemChanges', 'Check folders for changes', 'Use bounded adaptive checks to detect changes without relying on fragile recursive filesystem watchers.'),
+        yesNo('scanOnFilesystemChanges', 'Save folders for changes', 'Use bounded adaptive checks to detect changes without relying on fragile recursive filesystem watchers.'),
         {
-          ...choice('analysisTier', 'Analysis tier', 'Inventory always completes first, and background analysis yields to playback. Basic adds technical facts and representative thumbnails. Complete enables deep whole-file compute such as sonic analysis, loudness, and intro/credit detection. Custom uses the controls below.', [option('file_list_only', 'File List Only'), option('basic', 'Basic (recommended)'), option('complete', 'Complete'), option('custom', 'Custom')]),
+          ...choice('analysisTier', 'Analysis tier', 'Inventory always completes first, and background analysis yields to playback. Basic adds technical facts and representative thumbnails. Complete enables deep whole-file compute such as sonic analysis, loudness, and intro/credit detection. Custom uses the controls below.', [option('file_list_only', 'File Clipboard Only'), option('basic', 'Basic (recommended)'), option('complete', 'Complete'), option('custom', 'Custom')]),
           defaultValue: 'basic',
           warningByValue: {
             complete: 'Complete can perform sustained/full-file reads and may require significantly more storage for generated files.',

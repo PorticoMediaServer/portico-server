@@ -91,7 +91,7 @@ func TestHostedViewerPreferenceBundleProjectsPublicIdentityWithoutChangingStorag
 	}
 }
 
-func TestViewerPreferenceDefaultsLimitsDeviceIsolationAndLegacyConsumption(t *testing.T) {
+func TestViewerPreferenceDefaultsLimitsDeviceIsolationAndCanonicalConsumption(t *testing.T) {
 	server := newScannerTestServer(t)
 	account, _ := createProfileProtocolAccount(t, server)
 	user := explicitPrimaryUser(account)
@@ -185,7 +185,7 @@ func TestViewerPreferenceDefaultsLimitsDeviceIsolationAndLegacyConsumption(t *te
 	}
 }
 
-func TestViewerPreferencesBackfillPatchConflictAndPolicyClamp(t *testing.T) {
+func TestViewerPreferencesInitialPatchConflictAndPolicyClamp(t *testing.T) {
 	server := newScannerTestServer(t)
 	account, _ := createProfileProtocolAccount(t, server)
 	user := explicitPrimaryUser(account)
@@ -199,7 +199,7 @@ func TestViewerPreferencesBackfillPatchConflictAndPolicyClamp(t *testing.T) {
 		t.Fatalf("load initial bundle: %v", err)
 	}
 	if bundle.ProfileServer.Revision != 0 || bundle.ProfileDeviceClass.Revision != 0 || bundle.AccountServerInstallation.Revision != 0 {
-		t.Fatalf("legacy backfill revisions = %#v", bundle)
+		t.Fatalf("initial revisions = %#v", bundle)
 	}
 	var effective profileDeviceClassPreferenceValues
 	if err := json.Unmarshal(bundle.EffectiveProfileDeviceClass.Values, &effective); err != nil {

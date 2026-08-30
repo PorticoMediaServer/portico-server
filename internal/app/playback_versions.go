@@ -52,8 +52,7 @@ func selectedPlaybackVersionID(item MediaItem) string {
 // playbackStreamsForSelectedVersion keeps stream selection tied to the file
 // that playback will actually open. A media item can expose streams from
 // several indexed versions, but ffmpeg stream indexes and audio ordinals are
-// only meaningful within one input file. Streams without a file id are kept
-// for backwards compatibility with older scans and source-wide sidecars.
+// only meaningful within one input file.
 func playbackStreamsForSelectedVersion(item MediaItem) []Stream {
 	selectedFileID := ""
 	for _, version := range item.MediaFiles {
@@ -72,7 +71,7 @@ func playbackStreamsForSelectedVersion(item MediaItem) []Stream {
 	streams := make([]Stream, 0, len(item.Streams))
 	for _, stream := range item.Streams {
 		fileID := strings.TrimSpace(stream.FileID)
-		if fileID == "" || fileID == selectedFileID {
+		if fileID == selectedFileID {
 			streams = append(streams, stream)
 		}
 	}
