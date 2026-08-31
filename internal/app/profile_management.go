@@ -497,7 +497,7 @@ func (s *Server) updateManagedProfileContext(ctx context.Context, accountID, pro
 		return AccountProfile{}, err
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	err = s.withUserTxTagged(ctx, []string{"profiles"}, func(tx *sql.Tx) error {
+	err = s.withSecurityFenceTxTagged(ctx, []string{"profiles"}, func(tx *sql.Tx) error {
 		result, err := tx.Exec(`UPDATE profiles SET display_name = ?, avatar_url = ?, restrictions_json = ?, policy_updated_at = ?, updated_at = ? WHERE id = ? AND account_id = ? AND origin = 'local' AND disabled_at = ''`,
 			name, avatarURL, policyJSON, now, now, profileID, accountID)
 		if err != nil {
@@ -533,7 +533,7 @@ func (s *Server) deleteManagedProfileContext(ctx context.Context, accountID, pro
 	watchGroupIDs := s.profileWatchGroupIDsContext(ctx, accountID, profileID)
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	var operationID string
-	err := s.withUserTxTagged(ctx, []string{"profiles", "sessions", "native_refresh_tokens", "playback", "saved", "dvr", "notifications", "preferences"}, func(tx *sql.Tx) error {
+	err := s.withSecurityFenceTxTagged(ctx, []string{"profiles", "sessions", "native_refresh_tokens", "playback", "saved", "dvr", "notifications", "preferences"}, func(tx *sql.Tx) error {
 		var err error
 		operationID, err = s.eraseSecondaryProfileTx(ctx, tx, accountID, profileID, "local", now)
 		return err
@@ -678,7 +678,7 @@ func (s *Server) handleAutomaticProfileTrusts(w http.ResponseWriter, r *http.Req
 			InstallationID: binding.InstallationID, ProfileID: viewerProfileID(user), PINRevision: pinRevision, ExpiresAt: expires.Format(time.RFC3339Nano),
 		})
 	case http.MethodDelete:
-		_, err := s.execUserWrite(r.Context(), `UPDATE automatic_profile_selection_trusts SET revoked_at = ?, updated_at = ? WHERE authority = ? AND account_id = ? AND server_id = ? AND device_id = ? AND revoked_at = ''`,
+		_, err := s.execSecurityFenceWriteTagged(r.Context(), []string{"automatic_profile_selection_trusts"}, `UPDATE automatic_profile_selection_trusts SET revoked_at = ?, updated_at = ? WHERE authority = ? AND account_id = ? AND server_id = ? AND device_id = ? AND revoked_at = ''`,
 			time.Now().UTC().Format(time.RFC3339Nano), time.Now().UTC().Format(time.RFC3339Nano), authority, accountIDForUser(user), serverID, binding.DeviceID)
 		if err != nil {
 			writeDatabaseAccessError(w, err, http.StatusInternalServerError, "profile_trust_failed", "Unable to forget this profile.")

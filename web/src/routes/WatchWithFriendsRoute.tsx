@@ -21,7 +21,7 @@ function scopedWatchSource(source: WatchWithFriendsSource, runtime: ReturnType<t
     updateSettings: (id, request) => run('updateSettings', [id, request], (signal) => source.updateSettings(id, request, signal)),
     addQueueItem: (id, request) => run('addQueueItem', [id, request], (signal) => source.addQueueItem(id, request, signal)),
     reorderQueue: (id, request) => run('reorderQueue', [id, request], (signal) => source.reorderQueue(id, request, signal)),
-    removeQueueItem: (id, mediaId, expectedRevision, idempotencyKey) => run('removeQueueItem', [id, mediaId, expectedRevision, idempotencyKey], (signal) => source.removeQueueItem(id, mediaId, expectedRevision, idempotencyKey, signal)),
+    removeQueueItem: (id, entryId, expectedRevision, idempotencyKey) => run('removeQueueItem', [id, entryId, expectedRevision, idempotencyKey], (signal) => source.removeQueueItem(id, entryId, expectedRevision, idempotencyKey, signal)),
     subscribe: (id, subscription) => {
       const close = source.subscribe(id, subscription);
       const unregister = auth.registerRuntimeTeardown('realtime', close);

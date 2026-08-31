@@ -62,6 +62,7 @@ func TestPlaybackAdmissionRejectsUnknownBurnInSubtitleBeforeSessionCreation(t *t
 		MediaID:          item.ID,
 		SkipPreroll:      true,
 		BurnInSubtitleID: "missing_subtitle",
+		Intent:           automaticPlaybackIntent(),
 	})
 	if startErr == nil || startErr.status != http.StatusBadRequest || startErr.code != "subtitle_stream_not_found" {
 		t.Fatalf("unexpected playback admission result: %#v", startErr)
@@ -97,7 +98,7 @@ func TestPlaybackSessionPersistsBurnInSubtitleDiagnostics(t *testing.T) {
 	decision := PlaybackDecision{Mode: "transcode_required", Reason: "subtitle burn-in requested", Protocol: "hls", RequiresTranscode: true}
 	decision = playbackDecisionWithTestPlan(t, decision, item.ID, "burn_in", "movie_subtitle_admission_probe_2")
 	req := httptest.NewRequest(http.MethodPost, "/api/playback-sessions", nil)
-	if err := server.createPlaybackSession(req, user, item, "play_subtitle_diag", decision, profile, PlaybackIntent{}, "movie_subtitle_admission_probe_2", "", false, "subtitle-client", PlaybackSourceContext{}, "off"); err != nil {
+	if err := server.createPlaybackSession(req, user, item, "qentry_subtitle_diag", "play_subtitle_diag", decision, profile, PlaybackIntent{}, "movie_subtitle_admission_probe_2", "", false, "subtitle-client", PlaybackSourceContext{}, "off"); err != nil {
 		t.Fatalf("create playback session: %v", err)
 	}
 	var subtitleDecision string

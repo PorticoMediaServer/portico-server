@@ -355,19 +355,20 @@ func (s *Server) reconcileHostedProfileSelectionEnvelopeFencedContext(ctx contex
 		if origin != "portico" {
 			return errors.New("hosted profile envelopes require a Portico account membership")
 		}
-		var previousDigest string
+		var previousDigest, quarantinedAt string
 		var previousRevision int64
-		stateErr := tx.QueryRow(`SELECT revision, payload_digest FROM hosted_profile_snapshot_state WHERE account_id = ?`, accountID).
-			Scan(&previousRevision, &previousDigest)
+		stateErr := tx.QueryRow(`SELECT revision, payload_digest, quarantined_at FROM hosted_profile_snapshot_state WHERE account_id = ?`, accountID).
+			Scan(&previousRevision, &previousDigest, &quarantinedAt)
 		if stateErr != nil && !errors.Is(stateErr, sql.ErrNoRows) {
 			return stateErr
 		}
-		if stateErr == nil {
+		quarantined := stateErr == nil && quarantinedAt != ""
+		if stateErr == nil && !quarantined {
 			if envelope.AccountRevision < previousRevision || envelope.AccountRevision == previousRevision && digest != previousDigest {
 				return errStaleHostedProfileSnapshot
 			}
 			if envelope.AccountRevision == previousRevision && digest == previousDigest {
-				_, err := tx.Exec(`UPDATE hosted_profile_snapshot_state SET checked_at = ?, max_age_seconds = ?, stale_if_error_seconds = ? WHERE account_id = ?`,
+				_, err := tx.Exec(`UPDATE hosted_profile_snapshot_state SET checked_at = ?, max_age_seconds = ?, stale_if_error_seconds = ?, quarantined_at = '' WHERE account_id = ?`,
 					nowValue, int(hostedProfileFreshnessLease/time.Second), int(hostedProfileStaleIfError/time.Second), accountID)
 				return err
 			}
@@ -406,7 +407,7 @@ func (s *Server) reconcileHostedProfileSelectionEnvelopeFencedContext(ctx contex
 			if existingErr != nil && !errors.Is(existingErr, sql.ErrNoRows) {
 				return existingErr
 			}
-			if existingErr == nil {
+			if existingErr == nil && !quarantined {
 				if incoming.PINRevision < existingPINRevision {
 					return errStaleHostedProfileSnapshot
 				}
@@ -467,12 +468,13 @@ func (s *Server) reconcileHostedProfileSelectionEnvelopeFencedContext(ctx contex
 			}
 		}
 		_, err = tx.Exec(`
-			INSERT INTO hosted_profile_snapshot_state (account_id, snapshot_id, revision, payload_digest, issued_at, expires_at, applied_at, checked_at, max_age_seconds, stale_if_error_seconds)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			INSERT INTO hosted_profile_snapshot_state (account_id, snapshot_id, revision, payload_digest, issued_at, expires_at, applied_at, checked_at, max_age_seconds, stale_if_error_seconds, quarantined_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '')
 			ON CONFLICT(account_id) DO UPDATE SET snapshot_id = excluded.snapshot_id, revision = excluded.revision,
 				payload_digest = excluded.payload_digest, issued_at = excluded.issued_at,
 				expires_at = excluded.expires_at, applied_at = excluded.applied_at, checked_at = excluded.checked_at,
-				max_age_seconds = excluded.max_age_seconds, stale_if_error_seconds = excluded.stale_if_error_seconds`,
+				max_age_seconds = excluded.max_age_seconds, stale_if_error_seconds = excluded.stale_if_error_seconds,
+				quarantined_at = ''`,
 			accountID, envelope.AssertionID, envelope.AccountRevision, digest, envelope.IssuedAt, envelope.ExpiresAt, nowValue, nowValue,
 			int(hostedProfileFreshnessLease/time.Second), int(hostedProfileStaleIfError/time.Second))
 		return err

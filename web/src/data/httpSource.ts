@@ -29,7 +29,7 @@ import {
   type LyricSearchCandidate,
   type MediaGrant,
   type MediaTrickplaySet,
-  type PlaybackHandoffRequest,
+  type PlaybackHandoffInput,
   type PlaybackPrepareNextRequest,
   type PlaybackPreparedResponse,
   type PlaybackProgressAcknowledgement,
@@ -118,10 +118,20 @@ import type {
   ProfileAdministrationProofInput,
   ProfilePINReauthentication,
 } from "./models";
-import { createPlaybackSessionAdapter } from "./playbackAdapter";
 import { validServerSetupReturnUrl } from "../runtime/serverSetupReturnUrl";
 
 const LOCAL_PROFILE_INSTALLATION_KEY = "portico.web.installation-id.v1";
+
+function terminalRecoveryFailureIsAmbiguous(reason: unknown) {
+  if (reason instanceof DOMException && reason.name === "AbortError") return true;
+  const metadata = reason as { ambiguous?: boolean; retryable?: boolean } | undefined;
+  if (metadata?.ambiguous === true || metadata?.retryable === true) return true;
+  if (!(reason instanceof ApiError)) return true;
+  return reason.status === 401 || reason.status === 404 || reason.status === 408
+    || reason.status === 425 || reason.status === 429 || reason.status >= 500
+    || reason.code === "handoff_in_progress"
+    || reason.code === "prepared_handoff_in_progress";
+}
 
 export function trustedSetupClaimURL(raw: string): string {
   const claimURL = new URL(raw);
@@ -835,7 +845,6 @@ export class HttpPorticoDataSource implements PorticoDataSource {
   private readonly client: PorticoClient;
   private readonly installationId: () => Promise<string>;
   private readonly playbackClientInstanceId = `web-${secureRandomUUID()}`;
-  private readonly playbackAdapter = createPlaybackSessionAdapter();
   private contract?: ApiProductContract;
   private contractRequest?: ProductContractRequest;
   private contractGeneration = 0;
@@ -3064,9 +3073,7 @@ export class HttpPorticoDataSource implements PorticoDataSource {
         },
       },
     );
-    return this.playbackAdapter.acceptPlayback(
-      this.client.acceptPlaybackSession(response),
-    );
+    return this.client.acceptPlaybackSession(response);
   }
 
   async mediaTrickplay(
@@ -3094,10 +3101,64 @@ export class HttpPorticoDataSource implements PorticoDataSource {
       },
     );
     if (!response.playback) return response;
-    return this.playbackAdapter.acceptRestorePlayback({
+    return {
       ...response,
       playback: this.client.acceptPlaybackSession(response.playback),
-    });
+    };
+  }
+
+  async recoverPendingPlaybackTerminals(signal: AbortSignal): Promise<void> {
+    const pending = await this.client.pendingPlaybackTerminalMutations();
+    for (const mutation of pending) {
+      let committedReplacement: Extract<import("@porticomediaserver/client-core").PendingPlaybackTerminalRetryOutcome, { outcome: "committed-restore-required" }> | undefined;
+      const replay = async () => {
+        if (committedReplacement) {
+          await this.client.restoreCommittedPlaybackReplacement(committedReplacement, undefined, { signal });
+          committedReplacement = undefined;
+          return;
+        }
+        if (mutation.operation === "stop") {
+          await this.client.stopPlayback(mutation.sessionId, mutation.request, { signal, keepalive: true });
+          return;
+        }
+        if (mutation.operation === "handoff") {
+          await this.client.handoffPlayback(mutation.sessionId, mutation.request, { signal });
+          return;
+        }
+        const outcome = await this.client.retryPendingPlaybackTerminalMutation(mutation.sessionId, { signal });
+        if (outcome.outcome === "committed-restore-required") {
+          committedReplacement = outcome;
+          await this.client.restoreCommittedPlaybackReplacement(outcome, undefined, { signal });
+          committedReplacement = undefined;
+        }
+      };
+      try {
+        await replay();
+      } catch (reason) {
+        if (signal.aborted || !terminalRecoveryFailureIsAmbiguous(reason)) throw reason;
+        await replay();
+      }
+    }
+  }
+
+  replacePlaybackTarget<Target extends import("@porticomediaserver/client-core").PlaybackReplacementTarget>(
+    target: Target,
+    input: import("@porticomediaserver/client-core").PlaybackReplacementInput,
+    signal: AbortSignal,
+  ) {
+    return this.client.replacePlaybackTarget(target, input, { signal });
+  }
+
+  restoreCommittedPlaybackReplacement(
+    outcome: Extract<import("@porticomediaserver/client-core").PlaybackReplacementOutcome<unknown>, { outcome: "committed-restore-required" }>,
+    intent: import("@porticomediaserver/client-core").PlaybackIntent | undefined,
+    signal: AbortSignal,
+  ) {
+    return this.client.restoreCommittedPlaybackReplacement(outcome, intent, { signal });
+  }
+
+  retryPendingPlaybackTerminalMutation(sessionId: string, signal: AbortSignal) {
+    return this.client.retryPendingPlaybackTerminalMutation(sessionId, { signal });
   }
 
   touchPlayback(
@@ -3124,9 +3185,7 @@ export class HttpPorticoDataSource implements PorticoDataSource {
     request: import("@porticomediaserver/client-core").PlaybackRenegotiationRequest,
     signal: AbortSignal,
   ): Promise<PlaybackResponse> {
-    return this.playbackAdapter.normalizePlayback(
-      await this.client.renegotiatePlayback(sessionId, request, { signal }),
-    );
+    return this.client.renegotiatePlayback(sessionId, request, { signal });
   }
 
   async stopPlayback(
@@ -3135,13 +3194,7 @@ export class HttpPorticoDataSource implements PorticoDataSource {
     signal?: AbortSignal,
     keepalive = false,
   ): Promise<void> {
-    try {
-      await this.client.stopPlayback(sessionId, request, { signal, keepalive });
-    } catch (reason) {
-      if (!(reason instanceof ApiError) || reason.status !== 404) throw reason;
-    } finally {
-      this.playbackAdapter.releaseSession(sessionId);
-    }
+    await this.client.stopPlayback(sessionId, request, { signal, keepalive });
   }
 
   playbackSessionQueue(
@@ -3179,44 +3232,17 @@ export class HttpPorticoDataSource implements PorticoDataSource {
   async prepareNextPlayback(
     sessionId: string,
     signal: AbortSignal,
-    request: PlaybackPrepareNextRequest = {},
+    request: PlaybackPrepareNextRequest,
   ): Promise<PlaybackPreparedResponse> {
-    const response = await this.client.request<PlaybackPreparedResponse>(
-      `/api/playback-sessions/${encodeURIComponent(sessionId)}/prepare-next`,
-      {
-        method: "POST",
-        signal,
-        body: {
-          ...request,
-          clientProfile:
-            request.clientProfile ?? browserPlaybackClientProfile(),
-          commitPreviousEnd: request.commitPreviousEnd ?? true,
-        },
-      },
-    );
-    return this.playbackAdapter.acceptPreparedPlayback(response);
+    return this.client.prepareNextPlayback(sessionId, request, { signal });
   }
 
   async handoffPlayback(
     sessionId: string,
-    request: PlaybackHandoffRequest,
+    request: PlaybackHandoffInput,
     signal: AbortSignal,
   ): Promise<PlaybackResponse> {
-    const response = await this.client.request<PlaybackResponse>(
-      `/api/playback-sessions/${encodeURIComponent(sessionId)}/handoff`,
-      {
-        method: "POST",
-        signal,
-        body: {
-          ...request,
-          clientProfile:
-            request.clientProfile ?? browserPlaybackClientProfile(),
-        },
-      },
-    );
-    return this.playbackAdapter.acceptPlayback(
-      this.client.acceptPlaybackSession(response),
-    );
+    return this.client.handoffPlayback(sessionId, request, { signal });
   }
 
   playbackResourceUrl(path: string): string {
@@ -3328,9 +3354,7 @@ export class HttpPorticoDataSource implements PorticoDataSource {
         },
       },
     );
-    return this.playbackAdapter.acceptPlayback(
-      this.client.acceptPlaybackSession(response),
-    );
+    return this.client.acceptPlaybackSession(response);
   }
 
   async startDVRPlayback(
@@ -3348,9 +3372,7 @@ export class HttpPorticoDataSource implements PorticoDataSource {
         },
       },
     );
-    return this.playbackAdapter.acceptPlayback(
-      this.client.acceptPlaybackSession(response),
-    );
+    return this.client.acceptPlaybackSession(response);
   }
 
   libraryChannels(signal: AbortSignal): Promise<LibraryChannelListResponse> {
@@ -3400,9 +3422,7 @@ export class HttpPorticoDataSource implements PorticoDataSource {
         },
       },
     );
-    return this.playbackAdapter.acceptPlayback(
-      this.client.acceptPlaybackSession(response.playback),
-    );
+    return this.client.acceptPlaybackSession(response.playback);
   }
 
   adminLibraryChannels(

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"database/sql"
 	"encoding/json"
-	"errors"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
@@ -110,8 +109,11 @@ func TestPlaybackContinuationIsScopedRotatableAndDurablyAcknowledgesProgress(t *
 		t.Fatalf("lost-response rotation retry did not recover the exact credential: status=%d first=%#v recovered=%#v body=%s", status, rotated, recoveredRotation, body)
 	}
 	status, body = doPlaybackContinuationJSON(t, client, http.MethodDelete, continuationURL, rotated.Token, "", map[string]any{
-		"disposition": "stopped", "generation": rotated.Generation, "eventSequence": 2,
-		"recordedAt": time.Now().UTC().Format(time.RFC3339Nano), "positionSeconds": 2, "durationSeconds": 0,
+		"requestId": "continuation-stop-1",
+		"terminal": map[string]any{
+			"disposition": "stopped", "generation": rotated.Generation, "eventSequence": 2,
+			"recordedAt": time.Now().UTC().Format(time.RFC3339Nano), "positionSeconds": 2, "durationSeconds": 0,
+		},
 	}, nil)
 	if status != http.StatusOK {
 		t.Fatalf("continuation revoke status=%d body=%s", status, body)
@@ -353,7 +355,7 @@ func TestPlaybackRenegotiationValidatesBeforeAdvancingRevision(t *testing.T) {
 	status, body := doJSON(t, client, http.MethodPost, serverURL+"/api/playback-sessions", PlaybackSessionCreateRequest{
 		MediaID: "movie_meridian", SkipPreroll: true,
 		ClientProfile: attachAuthenticatedPlaybackRuntime(PlaybackClientProfile{Device: "iPhone", Platform: "ios", SupportsHLS: true, MaxWidth: 1920, MaxHeight: 1080}),
-		Intent:        PlaybackIntent{TransportClass: "wifi", QualityProfile: "standard", MaxVideoBitrateMbps: 12},
+		Intent:        PlaybackIntent{TransportClass: "wifi", Quality: PlaybackQualitySelection{Mode: playbackQualityModeAutomatic}},
 	}, &playback)
 	if status != http.StatusOK {
 		t.Fatalf("start playback status=%d body=%s", status, body)
@@ -373,20 +375,8 @@ func TestPlaybackRenegotiationValidatesBeforeAdvancingRevision(t *testing.T) {
 	if revision != 0 {
 		t.Fatalf("invalid renegotiation advanced revision to %d", revision)
 	}
-	if !strings.Contains(profileJSON, `"platform":"ios"`) || !strings.Contains(intentJSON, `"transportClass":"wifi"`) || !strings.Contains(intentJSON, `"maxVideoBitrateMbps":12`) {
+	if !strings.Contains(profileJSON, `"platform":"ios"`) || !strings.Contains(intentJSON, `"transportClass":"wifi"`) || !strings.Contains(intentJSON, `"mode":"automatic"`) {
 		t.Fatalf("canonical playback inputs were not persisted: profile=%s intent=%s", profileJSON, intentJSON)
-	}
-}
-
-func TestExplicitOriginalQualityRejectsVideoConversion(t *testing.T) {
-	if err := validateExplicitPlaybackQuality("video-original", PlaybackDecision{VideoTranscode: true}); !errors.Is(err, errExplicitOriginalPictureUnavailable) {
-		t.Fatalf("explicit Original accepted video conversion: %v", err)
-	}
-	if err := validateExplicitPlaybackQuality("original", PlaybackDecision{RequiresRemux: true, AudioTranscode: true}); err != nil {
-		t.Fatalf("explicit Original rejected picture-preserving conversion: %v", err)
-	}
-	if err := validateExplicitPlaybackQuality("video-standard", PlaybackDecision{VideoTranscode: true}); err != nil {
-		t.Fatalf("named transcoded quality was rejected: %v", err)
 	}
 }
 
@@ -410,16 +400,16 @@ func TestPlaybackRenegotiationPreservesOmittedSelectionsAndReplaysIdempotently(t
 	status, body := doJSON(t, client, http.MethodPost, serverURL+"/api/playback-sessions", PlaybackSessionCreateRequest{
 		MediaID: "movie_meridian", SkipPreroll: true,
 		ClientProfile: attachAuthenticatedPlaybackRuntime(PlaybackClientProfile{Device: "iPhone", Platform: "ios", SupportsHLS: true, MaxWidth: 1920, MaxHeight: 1080}),
-		Intent:        PlaybackIntent{TransportClass: "wifi", QualityProfile: "standard", MaxVideoBitrateMbps: 12},
+		Intent:        PlaybackIntent{TransportClass: "wifi", Quality: PlaybackQualitySelection{Mode: playbackQualityModeAutomatic}},
 	}, &started)
 	if status != http.StatusOK {
 		t.Fatalf("start playback status=%d body=%s", status, body)
 	}
-	var beforeQuality, beforeAudio, beforeSubtitle, beforeMode, beforeVersion string
+	var beforeAudio, beforeSubtitle, beforeMode, beforeVersion string
 	if err := db.QueryRow(`
-		SELECT selected_quality_id, selected_audio_stream_id, selected_subtitle_stream_id, selected_subtitle_mode, selected_version_id
+		SELECT selected_audio_stream_id, selected_subtitle_stream_id, selected_subtitle_mode, selected_version_id
 		FROM playback_sessions WHERE id = ?`, started.SessionID,
-	).Scan(&beforeQuality, &beforeAudio, &beforeSubtitle, &beforeMode, &beforeVersion); err != nil {
+	).Scan(&beforeAudio, &beforeSubtitle, &beforeMode, &beforeVersion); err != nil {
 		t.Fatal(err)
 	}
 
@@ -429,18 +419,18 @@ func TestPlaybackRenegotiationPreservesOmittedSelectionsAndReplaysIdempotently(t
 	if status != http.StatusOK || first.PlaybackRevision != 1 || first.ContinuationCredential == nil || first.ContinuationCredential.Token == "" {
 		t.Fatalf("first renegotiation status=%d revision=%d body=%s", status, first.PlaybackRevision, body)
 	}
-	var afterQuality, afterAudio, afterSubtitle, afterMode, afterVersion, profileJSON, intentJSON string
+	var afterAudio, afterSubtitle, afterMode, afterVersion, profileJSON, intentJSON string
 	if err := db.QueryRow(`
-		SELECT selected_quality_id, selected_audio_stream_id, selected_subtitle_stream_id, selected_subtitle_mode,
+		SELECT selected_audio_stream_id, selected_subtitle_stream_id, selected_subtitle_mode,
 			selected_version_id, client_profile_json, playback_intent_json
 		FROM playback_sessions WHERE id = ?`, started.SessionID,
-	).Scan(&afterQuality, &afterAudio, &afterSubtitle, &afterMode, &afterVersion, &profileJSON, &intentJSON); err != nil {
+	).Scan(&afterAudio, &afterSubtitle, &afterMode, &afterVersion, &profileJSON, &intentJSON); err != nil {
 		t.Fatal(err)
 	}
-	if beforeQuality != afterQuality || beforeAudio != afterAudio || beforeSubtitle != afterSubtitle || beforeMode != afterMode || beforeVersion != afterVersion {
-		t.Fatalf("omitted renegotiation fields changed selection: before=%q/%q/%q/%q/%q after=%q/%q/%q/%q/%q",
-			beforeQuality, beforeAudio, beforeSubtitle, beforeMode, beforeVersion,
-			afterQuality, afterAudio, afterSubtitle, afterMode, afterVersion)
+	if beforeAudio != afterAudio || beforeSubtitle != afterSubtitle || beforeMode != afterMode || beforeVersion != afterVersion {
+		t.Fatalf("omitted renegotiation fields changed selection: before=%q/%q/%q/%q after=%q/%q/%q/%q",
+			beforeAudio, beforeSubtitle, beforeMode, beforeVersion,
+			afterAudio, afterSubtitle, afterMode, afterVersion)
 	}
 	if !strings.Contains(profileJSON, `"platform":"ios"`) || !strings.Contains(intentJSON, `"transportClass":"wifi"`) {
 		t.Fatalf("omitted canonical inputs were not preserved: profile=%s intent=%s", profileJSON, intentJSON)
@@ -521,12 +511,15 @@ func TestAtomicCompletedPlaybackStopPersistsTerminalStateAndCannotBeRevived(t *t
 	}
 
 	status, body = doJSON(t, client, http.MethodDelete, serverURL+"/api/playback-sessions/"+playback.SessionID, map[string]any{
-		"disposition":     "completed",
-		"generation":      playback.Generation,
-		"eventSequence":   playback.NextEventSequence,
-		"recordedAt":      time.Now().UTC().Format(time.RFC3339Nano),
-		"positionSeconds": playbackProgressTestDurationSeconds,
-		"durationSeconds": playbackProgressTestDurationSeconds,
+		"requestId": "completed-stop-1",
+		"terminal": map[string]any{
+			"disposition":     "completed",
+			"generation":      playback.Generation,
+			"eventSequence":   playback.NextEventSequence,
+			"recordedAt":      time.Now().UTC().Format(time.RFC3339Nano),
+			"positionSeconds": playbackProgressTestDurationSeconds,
+			"durationSeconds": playbackProgressTestDurationSeconds,
+		},
 	}, nil)
 	if status != http.StatusOK {
 		t.Fatalf("atomic completed stop status=%d body=%s", status, body)
@@ -570,17 +563,18 @@ func TestAtomicPlaybackStopRejectsStaleAuthorityAndLegacyCompletedPatch(t *testi
 	if status != http.StatusOK {
 		t.Fatalf("create playback session status=%d body=%s", status, body)
 	}
-	terminal := map[string]any{
+	terminalEvent := map[string]any{
 		"disposition": "completed", "generation": playback.Generation,
 		"eventSequence": playback.NextEventSequence, "recordedAt": time.Now().UTC().Format(time.RFC3339Nano),
 		"positionSeconds": playbackProgressTestDurationSeconds, "durationSeconds": playbackProgressTestDurationSeconds,
 	}
-	terminal["generation"] = playback.Generation + 1
+	terminal := map[string]any{"requestId": "stale-terminal-1", "terminal": terminalEvent}
+	terminalEvent["generation"] = playback.Generation + 1
 	status, body = doJSON(t, client, http.MethodDelete, serverURL+"/api/playback-sessions/"+playback.SessionID, terminal, nil)
 	if status != http.StatusConflict || !strings.Contains(body, `"code":"playback_generation_stale"`) {
 		t.Fatalf("stale generation status=%d body=%s", status, body)
 	}
-	terminal["generation"] = playback.Generation
+	terminalEvent["generation"] = playback.Generation
 	status, body = doJSON(t, client, http.MethodPatch, serverURL+"/api/playback-sessions/"+playback.SessionID, map[string]any{
 		"eventSequence": playback.NextEventSequence, "generation": playback.Generation,
 		"recordedAt": time.Now().UTC().Format(time.RFC3339Nano), "positionSeconds": 10,
@@ -588,7 +582,7 @@ func TestAtomicPlaybackStopRejectsStaleAuthorityAndLegacyCompletedPatch(t *testi
 	if status != http.StatusOK {
 		t.Fatalf("seed progress status=%d body=%s", status, body)
 	}
-	terminal["eventSequence"] = playback.NextEventSequence
+	terminalEvent["eventSequence"] = playback.NextEventSequence
 	status, body = doJSON(t, client, http.MethodDelete, serverURL+"/api/playback-sessions/"+playback.SessionID, terminal, nil)
 	if status != http.StatusConflict || !strings.Contains(body, `"code":"playback_event_sequence_stale"`) {
 		t.Fatalf("stale sequence status=%d body=%s", status, body)
@@ -597,7 +591,7 @@ func TestAtomicPlaybackStopRejectsStaleAuthorityAndLegacyCompletedPatch(t *testi
 		"eventSequence": playback.NextEventSequence, "recordedAt": time.Now().UTC().Format(time.RFC3339Nano),
 		"positionSeconds": playbackProgressTestDurationSeconds, "durationSeconds": playbackProgressTestDurationSeconds, "completed": true,
 	}, nil)
-	if status != http.StatusBadRequest || !strings.Contains(body, `"code":"terminal_request_required"`) {
+	if status != http.StatusBadRequest || !strings.Contains(body, `"code":"bad_json"`) {
 		t.Fatalf("legacy completed PATCH status=%d body=%s", status, body)
 	}
 }

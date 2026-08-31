@@ -1,9 +1,13 @@
 package app
 
 import (
+	"bytes"
 	"context"
+	"crypto/ed25519"
 	"crypto/subtle"
 	"database/sql"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -21,6 +25,13 @@ import (
 const restoreUploadLease = 30 * time.Minute
 
 const (
+	hostedRestoreAuthorizationKind     = "restore-authorization"
+	hostedRestoreAuthorizationPurpose  = "server-restore"
+	hostedRestoreAuthorizationAudience = "portico-media-server"
+	hostedRestoreAuthorizationTTL      = 5 * time.Minute
+)
+
+const (
 	restoreMultipartOverhead = 256 << 10
 	restoreDrainTimeout      = 15 * time.Second
 	restoreStatusHeader      = "X-Portico-Restore-Status"
@@ -29,6 +40,11 @@ const (
 var restoreUploadReservationTestState struct {
 	sync.RWMutex
 	afterOwnerLock func()
+}
+
+var restoreAuthorizationCommitTestState struct {
+	sync.RWMutex
+	afterDatabaseCommit func() error
 }
 
 func setRestoreUploadReservationAfterOwnerLockForTest(hook func()) func() {
@@ -50,6 +66,28 @@ func runRestoreUploadReservationAfterOwnerLockHook() {
 	if hook != nil {
 		hook()
 	}
+}
+
+func setRestoreAuthorizationAfterDatabaseCommitForTest(hook func() error) func() {
+	restoreAuthorizationCommitTestState.Lock()
+	previous := restoreAuthorizationCommitTestState.afterDatabaseCommit
+	restoreAuthorizationCommitTestState.afterDatabaseCommit = hook
+	restoreAuthorizationCommitTestState.Unlock()
+	return func() {
+		restoreAuthorizationCommitTestState.Lock()
+		restoreAuthorizationCommitTestState.afterDatabaseCommit = previous
+		restoreAuthorizationCommitTestState.Unlock()
+	}
+}
+
+func runRestoreAuthorizationAfterDatabaseCommitHook() error {
+	restoreAuthorizationCommitTestState.RLock()
+	hook := restoreAuthorizationCommitTestState.afterDatabaseCommit
+	restoreAuthorizationCommitTestState.RUnlock()
+	if hook == nil {
+		return nil
+	}
+	return hook()
 }
 
 func (s *Server) restoreDatabaseLimit() int64 {
@@ -262,53 +300,191 @@ func (s *Server) checkRestorePrincipal(w http.ResponseWriter, user User) bool {
 	return true
 }
 
-// verifyRestoreReauthentication is intentionally distinct from profile PIN
-// administration proofs. A local restore always verifies the account password
-// even when the selected primary profile has a PIN. Hosted-origin owners do not
-// have a local secret; W2 must provide a signed recent Hosted step-up proof.
-func (s *Server) verifyRestoreReauthenticationSnapshot(w http.ResponseWriter, r *http.Request, user User, password string) (string, string, bool) {
+type hostedRestoreAuthorization struct {
+	Kind                 string `json:"kind"`
+	Version              int    `json:"version"`
+	Audience             string `json:"audience"`
+	AuthorizationID      string `json:"authorizationId"`
+	Purpose              string `json:"purpose"`
+	ServerID             string `json:"serverId"`
+	AccountID            string `json:"accountId"`
+	RestoreSecurityEpoch int64  `json:"restoreSecurityEpoch"`
+	IssuedAt             string `json:"issuedAt"`
+	ExpiresAt            string `json:"expiresAt"`
+	SignatureAlgorithm   string `json:"signatureAlgorithm"`
+	SignatureKeyID       string `json:"signatureKeyId"`
+	Signature            string `json:"signature"`
+}
+
+type restoreAuthorizationSnapshot struct {
+	SessionID                    string
+	ExpectedPasswordHash         string
+	HostedAuthorizationID        string
+	HostedAuthorizationServerID  string
+	HostedAuthorizationExpiresAt time.Time
+	PreRestoreSecurityEpoch      int64
+}
+
+func (s *Server) currentRestoreSecurityEpochContext(ctx context.Context) (int64, error) {
+	var epoch int64
+	err := s.queryUserRow(ctx, `SELECT restore_security_epoch FROM server_security_state WHERE id = 1`).Scan(&epoch)
+	if err != nil {
+		return 0, err
+	}
+	if epoch < 0 {
+		return 0, errors.New("restore security epoch is invalid")
+	}
+	return epoch, nil
+}
+
+func decodeHostedRestoreAuthorization(raw json.RawMessage) (hostedRestoreAuthorization, error) {
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	var document hostedRestoreAuthorization
+	if err := decoder.Decode(&document); err != nil {
+		return hostedRestoreAuthorization{}, err
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		return hostedRestoreAuthorization{}, errors.New("restore authorization contains trailing content")
+	}
+	return document, nil
+}
+
+func (s *Server) verifyHostedRestoreAuthorization(ctx context.Context, raw json.RawMessage, user User, expectedEpoch int64, now time.Time) (hostedRestoreAuthorization, error) {
+	document, err := decodeHostedRestoreAuthorization(raw)
+	if err != nil {
+		return hostedRestoreAuthorization{}, err
+	}
+	settings, err := s.remoteAccessSettings()
+	if err != nil || settings.ClaimStatus != "claimed" || strings.TrimSpace(settings.ServerID) == "" {
+		return hostedRestoreAuthorization{}, errors.New("server is not claimed by Hosted")
+	}
+	accountID := strings.TrimSpace(user.PorticoUserID)
+	if accountID == "" {
+		return hostedRestoreAuthorization{}, errors.New("Hosted owner account identity is missing")
+	}
+	document.AuthorizationID = strings.TrimSpace(document.AuthorizationID)
+	document.ServerID = strings.TrimSpace(document.ServerID)
+	document.AccountID = strings.TrimSpace(document.AccountID)
+	if document.Kind != hostedRestoreAuthorizationKind || document.Version != 1 || document.Audience != hostedRestoreAuthorizationAudience ||
+		document.Purpose != hostedRestoreAuthorizationPurpose || document.AuthorizationID == "" || len(document.AuthorizationID) > 200 ||
+		document.ServerID != strings.TrimSpace(settings.ServerID) || document.AccountID != accountID ||
+		document.RestoreSecurityEpoch != expectedEpoch || document.SignatureAlgorithm != hostedSignatureAlgorithm ||
+		strings.TrimSpace(document.SignatureKeyID) == "" || strings.TrimSpace(document.Signature) == "" {
+		return hostedRestoreAuthorization{}, errors.New("restore authorization binding is invalid")
+	}
+	issuedAt, err := time.Parse(time.RFC3339Nano, document.IssuedAt)
+	if err != nil {
+		return hostedRestoreAuthorization{}, errors.New("restore authorization issuedAt is invalid")
+	}
+	expiresAt, err := time.Parse(time.RFC3339Nano, document.ExpiresAt)
+	if err != nil || issuedAt.After(now.Add(hostedDocumentClockSkew)) || !expiresAt.After(now) || !expiresAt.After(issuedAt) || expiresAt.Sub(issuedAt) > hostedRestoreAuthorizationTTL {
+		return hostedRestoreAuthorization{}, errors.New("restore authorization validity window is invalid")
+	}
+	if err := s.ensureHostedDocumentKey(ctx, settings.HostedBaseURL, document.SignatureKeyID); err != nil {
+		return hostedRestoreAuthorization{}, err
+	}
+	publicKey, err := decodeHostedDocumentPublicKey(s.trustedHostedDocumentKey(document.SignatureKeyID))
+	if err != nil {
+		return hostedRestoreAuthorization{}, err
+	}
+	payload, err := canonicalHostedDocument(hostedRestoreAuthorizationKind, raw)
+	if err != nil {
+		return hostedRestoreAuthorization{}, err
+	}
+	signature, err := base64.RawURLEncoding.DecodeString(document.Signature)
+	if err != nil || len(signature) != ed25519.SignatureSize || !ed25519.Verify(publicKey, payload, signature) {
+		return hostedRestoreAuthorization{}, errors.New("restore authorization signature is invalid")
+	}
+	return document, nil
+}
+
+// verifyRestoreReauthenticationSnapshot is intentionally distinct from profile
+// PIN administration. Local owners prove the account password; Hosted owners
+// present Hosted's five-minute signed, server/owner/epoch-bound document.
+func (s *Server) verifyRestoreReauthenticationSnapshot(w http.ResponseWriter, r *http.Request, user User, password string, hostedRaw ...json.RawMessage) (restoreAuthorizationSnapshot, bool) {
 	if user.AuthOrigin == "portico" || user.AuthProvider == "portico" {
-		writeProductError(w, http.StatusConflict, "restore_hosted_reauthentication_required", "Hosted-origin restore requires the signed recent reauthentication boundary owned by W2.")
-		return "", "", false
+		if strings.TrimSpace(password) != "" {
+			writeProductError(w, http.StatusBadRequest, "restore_reauthentication_invalid", "Use the signed Portico Account restore authorization for this account.")
+			return restoreAuthorizationSnapshot{}, false
+		}
+		if len(hostedRaw) == 0 || len(hostedRaw[0]) == 0 {
+			writeProductError(w, http.StatusUnauthorized, "restore_hosted_reauthentication_required", "Verify your Portico Account before restoring this server.")
+			return restoreAuthorizationSnapshot{}, false
+		}
+		epoch, err := s.currentRestoreSecurityEpochContext(r.Context())
+		if err != nil {
+			writeDatabaseAccessError(w, err, http.StatusServiceUnavailable, "restore_reauthentication_unavailable", "Portico could not verify the restore authorization.")
+			return restoreAuthorizationSnapshot{}, false
+		}
+		document, verifyErr := s.verifyHostedRestoreAuthorization(r.Context(), hostedRaw[0], user, epoch, time.Now().UTC())
+		if verifyErr != nil {
+			writeProductError(w, http.StatusUnauthorized, "restore_hosted_reauthentication_invalid", "The Portico Account restore authorization is invalid, expired, or no longer current.")
+			return restoreAuthorizationSnapshot{}, false
+		}
+		sessionID, sessionErr := s.currentSessionIDContext(r.Context(), r, user)
+		if sessionErr != nil {
+			writeProductError(w, http.StatusUnauthorized, "restore_reauthentication_required", "Restore requires a current interactive owner session.")
+			return restoreAuthorizationSnapshot{}, false
+		}
+		expiresAt, _ := time.Parse(time.RFC3339Nano, document.ExpiresAt)
+		return restoreAuthorizationSnapshot{
+			SessionID:                    sessionID,
+			HostedAuthorizationID:        document.AuthorizationID,
+			HostedAuthorizationServerID:  document.ServerID,
+			HostedAuthorizationExpiresAt: expiresAt,
+			PreRestoreSecurityEpoch:      epoch,
+		}, true
+	}
+	if len(hostedRaw) > 0 && len(hostedRaw[0]) > 0 {
+		writeProductError(w, http.StatusBadRequest, "restore_reauthentication_invalid", "Use the current local account password for this account.")
+		return restoreAuthorizationSnapshot{}, false
 	}
 	if !user.HasLocalPassword || strings.TrimSpace(password) == "" {
 		writeProductError(w, http.StatusUnauthorized, "restore_reauthentication_required", "Enter the current account password to authorize this restore.")
-		return "", "", false
+		return restoreAuthorizationSnapshot{}, false
+	}
+	epoch, err := s.currentRestoreSecurityEpochContext(r.Context())
+	if err != nil {
+		writeDatabaseAccessError(w, err, http.StatusServiceUnavailable, "restore_reauthentication_unavailable", "Portico could not verify the restore authorization.")
+		return restoreAuthorizationSnapshot{}, false
 	}
 	accountID := accountIDForUser(user)
 	var passwordHash string
 	if err := s.queryUserRow(r.Context(), `SELECT COALESCE(password_hash, '') FROM users WHERE id = ?`, accountID).Scan(&passwordHash); err != nil {
 		writeDatabaseAccessError(w, err, http.StatusServiceUnavailable, "restore_reauthentication_unavailable", "Portico could not verify the restore authorization.")
-		return "", "", false
+		return restoreAuthorizationSnapshot{}, false
 	}
 	valid, verifiedPasswordHash, err := s.verifyCanonicalPasswordSnapshot(r.Context(), kdfRestoreReauthCompare, passwordHash, password)
 	if err != nil {
 		if writeKDFUnavailable(w, err) {
-			return "", "", false
+			return restoreAuthorizationSnapshot{}, false
 		}
 		writeDatabaseAccessError(w, err, http.StatusServiceUnavailable, "restore_reauthentication_unavailable", "Portico could not verify the restore authorization.")
-		return "", "", false
+		return restoreAuthorizationSnapshot{}, false
 	}
 	if !valid {
 		writeProductError(w, http.StatusUnauthorized, "restore_reauthentication_required", "The current account password is incorrect.")
-		return "", "", false
+		return restoreAuthorizationSnapshot{}, false
 	}
 	sessionID, err := s.currentSessionIDContext(r.Context(), r, user)
 	if err != nil {
 		writeProductError(w, http.StatusUnauthorized, "restore_reauthentication_required", "Restore requires a current interactive owner session.")
-		return "", "", false
+		return restoreAuthorizationSnapshot{}, false
 	}
-	return sessionID, verifiedPasswordHash, true
+	return restoreAuthorizationSnapshot{SessionID: sessionID, ExpectedPasswordHash: verifiedPasswordHash, PreRestoreSecurityEpoch: epoch}, true
 }
 
 func (s *Server) verifyRestoreReauthentication(w http.ResponseWriter, r *http.Request, user User, password string) (string, bool) {
-	sessionID, _, ok := s.verifyRestoreReauthenticationSnapshot(w, r, user, password)
-	return sessionID, ok
+	snapshot, ok := s.verifyRestoreReauthenticationSnapshot(w, r, user, password)
+	return snapshot.SessionID, ok
 }
 
 type restoreStartRequest struct {
-	Password     string `json:"password"`
-	Confirmation string `json:"confirmation"`
+	Password            string          `json:"password,omitempty"`
+	Confirmation        string          `json:"confirmation"`
+	HostedAuthorization json.RawMessage `json:"hostedAuthorization,omitempty"`
 }
 
 func restoreConfirmationFor(name string) string {
@@ -323,7 +499,7 @@ func (s *Server) enqueueExistingRestore(w http.ResponseWriter, r *http.Request, 
 	if !decodeJSON(w, r, &request) {
 		return RestoreBackupResponse{}, false
 	}
-	sessionID, expectedHash, ok := s.verifyRestoreReauthenticationSnapshot(w, r, user, request.Password)
+	authorization, ok := s.verifyRestoreReauthenticationSnapshot(w, r, user, request.Password, request.HostedAuthorization)
 	if !ok {
 		return RestoreBackupResponse{}, false
 	}
@@ -352,7 +528,7 @@ func (s *Server) enqueueExistingRestore(w http.ResponseWriter, r *http.Request, 
 		writeRestoreValidationError(w, err)
 		return RestoreBackupResponse{}, false
 	}
-	return s.createRestoreOperationAuthorized(w, r, user, sessionID, expectedHash, backupName, backupPath, manifest)
+	return s.createRestoreOperationAuthorized(w, r, user, authorization, backupName, backupPath, manifest)
 }
 
 func (s *Server) enqueueUploadedRestore(w http.ResponseWriter, r *http.Request, user User) (RestoreBackupResponse, bool) {
@@ -372,16 +548,17 @@ func (s *Server) enqueueUploadedRestoreStream(w http.ResponseWriter, r *http.Req
 	r.Body = http.MaxBytesReader(w, r.Body, s.restoreDatabaseLimit()+restoreMultipartOverhead)
 	reader, err := r.MultipartReader()
 	if err != nil {
-		writeProductError(w, http.StatusBadRequest, "restore_upload_invalid", "Use a bounded multipart upload with database, manifest, and password parts.")
+		writeProductError(w, http.StatusBadRequest, "restore_upload_invalid", "Use a bounded multipart upload with database, manifest, and restore authorization parts.")
 		return RestoreBackupResponse{}, false
 	}
 	var operation database.RestoreOperation
 	var statusToken string
 	var uploadOwnerRelease func()
 	var password string
-	var sessionID string
-	var expectedPasswordHash string
+	var authorization restoreAuthorizationSnapshot
+	var hostedAuthorization json.RawMessage
 	var reauthenticated, confirmed, reserved, manifestSeen, databaseSeen, passwordSeen, confirmationSeen, declaredBytesSeen bool
+	var hostedAuthorizationSeen bool
 	var declaredBytes int64
 	var manifest database.BackupManifest
 	failUpload := func(code string, status int, message string) (RestoreBackupResponse, bool) {
@@ -422,8 +599,29 @@ func (s *Server) enqueueUploadedRestoreStream(w http.ResponseWriter, r *http.Req
 				return failUpload("restore_reauthentication_required", http.StatusBadRequest, "A current account password is required.")
 			}
 			password = string(body)
+			if user.AuthOrigin != "portico" && user.AuthProvider != "portico" {
+				var ok bool
+				authorization, ok = s.verifyRestoreReauthenticationSnapshot(w, r, user, password)
+				if !ok {
+					_ = part.Close()
+					return RestoreBackupResponse{}, false
+				}
+				reauthenticated = true
+			}
+		case "hostedAuthorization":
+			if hostedAuthorizationSeen || databaseSeen {
+				_ = part.Close()
+				return failUpload("restore_upload_invalid", http.StatusBadRequest, "Only one Hosted restore authorization is accepted and it must precede the database part.")
+			}
+			hostedAuthorizationSeen = true
+			body, readErr := readRestoreMultipartText(part, 16<<10)
+			if readErr != nil {
+				_ = part.Close()
+				return failUpload("restore_hosted_reauthentication_invalid", http.StatusUnauthorized, "The Portico Account restore authorization is invalid.")
+			}
+			hostedAuthorization = append(json.RawMessage(nil), body...)
 			var ok bool
-			sessionID, expectedPasswordHash, ok = s.verifyRestoreReauthenticationSnapshot(w, r, user, password)
+			authorization, ok = s.verifyRestoreReauthenticationSnapshot(w, r, user, password, hostedAuthorization)
 			if !ok {
 				_ = part.Close()
 				return RestoreBackupResponse{}, false
@@ -486,7 +684,7 @@ func (s *Server) enqueueUploadedRestoreStream(w http.ResponseWriter, r *http.Req
 				if !reauthenticated {
 					code = "restore_reauthentication_required"
 					status = http.StatusUnauthorized
-					message = "The bounded password part must precede the database part."
+					message = "The bounded restore authorization part must precede the database part."
 				} else if !declaredBytesSeen {
 					code = "restore_upload_size_required"
 					message = "The declared database size must precede the database part."
@@ -502,7 +700,7 @@ func (s *Server) enqueueUploadedRestoreStream(w http.ResponseWriter, r *http.Req
 					_ = part.Close()
 					return failUpload("restore_insufficient_space", http.StatusInsufficientStorage, "There is not enough space to stage the database and retain rollback headroom.")
 				}
-				operation, statusToken, uploadOwnerRelease, err = s.reserveUploadedRestoreAuthorized(uploadContext, user, sessionID, expectedPasswordHash)
+				operation, statusToken, uploadOwnerRelease, err = s.reserveUploadedRestoreAuthorized(uploadContext, user, authorization)
 				if err != nil {
 					_ = part.Close()
 					if errors.Is(err, errPasswordCredentialChanged) || errors.Is(err, errPrivilegedSessionChanged) {
@@ -527,7 +725,7 @@ func (s *Server) enqueueUploadedRestoreStream(w http.ResponseWriter, r *http.Req
 				return failUpload("restore_upload_size_mismatch", http.StatusBadRequest, "The uploaded database did not match its declared size.")
 			}
 			operation.UploadComplete = true
-			if err := s.updateReservedUploadAuthorized(uploadContext, user, sessionID, expectedPasswordHash, operation); err != nil {
+			if err := s.updateReservedUploadAuthorized(uploadContext, user, authorization, operation); err != nil {
 				_ = part.Close()
 				if errors.Is(err, errPasswordCredentialChanged) || errors.Is(err, errPrivilegedSessionChanged) {
 					return failUpload("restore_reauthentication_required", http.StatusUnauthorized, "The account authorization changed while recording this restore. Sign in again and retry.")
@@ -577,7 +775,7 @@ func (s *Server) enqueueUploadedRestoreStream(w http.ResponseWriter, r *http.Req
 	}
 	operation.Phase, operation.State, operation.Progress = database.RestorePhaseStaged, database.RestorePhaseStaged, 25
 	operation.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
-	if err := s.updateReservedUploadAuthorized(uploadContext, user, sessionID, expectedPasswordHash, operation); err != nil {
+	if err := s.updateReservedUploadAuthorized(uploadContext, user, authorization, operation); err != nil {
 		if errors.Is(err, errPasswordCredentialChanged) || errors.Is(err, errPrivilegedSessionChanged) {
 			return failUpload("restore_reauthentication_required", http.StatusUnauthorized, "The account authorization changed while recording this restore. Sign in again and retry.")
 		}
@@ -631,11 +829,80 @@ func parseDeclaredRestoreBytes(value string, maximum int64) (int64, error) {
 
 var errRestoreBusy = errors.New("restore operation is busy")
 
-func (s *Server) reserveUploadedRestore(user User, sessionID string) (database.RestoreOperation, string, func(), error) {
-	return s.reserveUploadedRestoreAuthorized(context.Background(), user, sessionID, "")
+func validateRestoreReservationTx(tx *sql.Tx, user User, authorization restoreAuthorizationSnapshot, consumeHosted bool, now time.Time) error {
+	if strings.TrimSpace(user.ID) == "" {
+		return nil
+	}
+	if err := validatePasswordSessionTx(tx, accountIDForUser(user), viewerProfileID(user), authorization.SessionID, authorization.ExpectedPasswordHash, now); err != nil {
+		return err
+	}
+	var epoch int64
+	if err := tx.QueryRow(`SELECT restore_security_epoch FROM server_security_state WHERE id = 1`).Scan(&epoch); err != nil {
+		return err
+	}
+	if epoch != authorization.PreRestoreSecurityEpoch {
+		return errPrivilegedSessionChanged
+	}
+	if authorization.HostedAuthorizationID == "" {
+		return nil
+	}
+	if consumeHosted {
+		if strings.TrimSpace(authorization.HostedAuthorizationServerID) == "" || authorization.HostedAuthorizationExpiresAt.IsZero() || !authorization.HostedAuthorizationExpiresAt.After(now) {
+			return errPrivilegedSessionChanged
+		}
+		_, err := tx.Exec(`INSERT INTO hosted_restore_authorization_receipts (authorization_id, account_id, server_id, restore_security_epoch, consumed_at) VALUES (?, ?, ?, ?, ?)`,
+			authorization.HostedAuthorizationID, accountIDForUser(user), authorization.HostedAuthorizationServerID, epoch, now.UTC().Format(time.RFC3339Nano))
+		if err != nil {
+			return errPrivilegedSessionChanged
+		}
+		return nil
+	}
+	var count int
+	err := tx.QueryRow(`SELECT COUNT(*) FROM hosted_restore_authorization_receipts WHERE authorization_id = ? AND account_id = ? AND restore_security_epoch = ?`,
+		authorization.HostedAuthorizationID, accountIDForUser(user), epoch).Scan(&count)
+	if err != nil {
+		return err
+	}
+	if count != 1 {
+		return errPrivilegedSessionChanged
+	}
+	return nil
 }
 
-func (s *Server) reserveUploadedRestoreAuthorized(ctx context.Context, user User, sessionID, expectedHash string) (database.RestoreOperation, string, func(), error) {
+// commitRestoreReservationAuthorization bridges two durable owners without
+// pretending they share one transaction. The private operation marker is
+// published fail-closed first, the credential/receipt transaction commits
+// second, and only then does the marker become executable. A crash in the last
+// window burns the authorization but can never authorize a restore.
+func (s *Server) commitRestoreReservationAuthorization(ctx context.Context, user User, authorization restoreAuthorizationSnapshot, operation *database.RestoreOperation, consumeHosted bool, now time.Time) error {
+	if operation == nil {
+		return errors.New("restore operation is required")
+	}
+	operation.AuthorizationCommitted = false
+	if err := database.WriteRestoreOperation(s.cfg.AppDataDir, *operation); err != nil {
+		return err
+	}
+	if strings.TrimSpace(user.ID) != "" {
+		if err := s.withUserTxTagged(ctx, []string{"users", "sessions", "devices", "hosted_restore_authorization_receipts", "server_security_state"}, func(tx *sql.Tx) error {
+			return validateRestoreReservationTx(tx, user, authorization, consumeHosted, now)
+		}); err != nil {
+			operation.Phase, operation.State, operation.Progress = database.RestorePhaseFailed, database.RestorePhaseFailed, 100
+			operation.ErrorCode = "restore_authorization_not_committed"
+			operation.ErrorMessage = "The supervised restore authorization was not committed."
+			operation.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
+			_ = database.WriteRestoreOperation(s.cfg.AppDataDir, *operation)
+			return err
+		}
+	}
+	if err := runRestoreAuthorizationAfterDatabaseCommitHook(); err != nil {
+		return err
+	}
+	operation.AuthorizationCommitted = true
+	operation.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
+	return database.WriteRestoreOperation(s.cfg.AppDataDir, *operation)
+}
+
+func (s *Server) reserveUploadedRestoreAuthorized(ctx context.Context, user User, authorization restoreAuthorizationSnapshot) (database.RestoreOperation, string, func(), error) {
 	var operation database.RestoreOperation
 	statusToken := randomToken()
 	var ownerRelease func()
@@ -651,7 +918,8 @@ func (s *Server) reserveUploadedRestoreAuthorized(ctx context.Context, user User
 			Version: database.RestoreOperationVersion, OperationID: operationID, BackupName: "uploaded-database",
 			StagedPath: database.CanonicalRestoreStagedPath(s.cfg, operationID, true), ActivePath: s.cfg.DatabasePath,
 			SafetyCopyPath: database.CanonicalRestoreSafetyCopyPath(s.cfg, operationID), OldActivePath: database.CanonicalRestoreOldActivePath(s.cfg, operationID), InstallPath: database.CanonicalRestoreInstallPath(s.cfg, operationID),
-			AccountID: accountIDForUser(user), SessionID: sessionID, StatusTokenHash: hashToken(statusToken),
+			AccountID: accountIDForUser(user), SessionID: authorization.SessionID, StatusTokenHash: hashToken(statusToken),
+			PreRestoreSecurityEpoch: authorization.PreRestoreSecurityEpoch, HostedAuthorizationID: authorization.HostedAuthorizationID,
 			Phase: database.RestorePhaseValidating, State: database.RestorePhaseValidating, Progress: 5,
 			CreatedAt: now.Format(time.RFC3339Nano), UpdatedAt: now.Format(time.RFC3339Nano), RestoreMaxDatabaseBytes: s.restoreDatabaseLimit(),
 			UploadReserved: true, UploadOwnerLockPath: filepath.Join(s.cfg.AppDataDir, "restore", operationID+"-upload.db.owner.lock"), UploadOwnerPID: os.Getpid(), UploadLeaseUntil: now.Add(restoreUploadLease).Format(time.RFC3339Nano),
@@ -668,18 +936,7 @@ func (s *Server) reserveUploadedRestoreAuthorized(ctx context.Context, user User
 			return lockErr
 		}
 		runRestoreUploadReservationAfterOwnerLockHook()
-		writeOperation := func() error {
-			if expectedHash != "" {
-				return s.withUserTxTagged(ctx, []string{"users", "sessions", "devices"}, func(tx *sql.Tx) error {
-					if err := validatePasswordSessionTx(tx, accountIDForUser(user), viewerProfileID(user), sessionID, expectedHash, now); err != nil {
-						return err
-					}
-					return database.WriteRestoreOperation(s.cfg.AppDataDir, operation)
-				})
-			}
-			return database.WriteRestoreOperation(s.cfg.AppDataDir, operation)
-		}
-		if err := writeOperation(); err != nil {
+		if err := s.commitRestoreReservationAuthorization(ctx, user, authorization, &operation, true, now); err != nil {
 			ownerRelease()
 			ownerRelease = nil
 			_ = os.Remove(operation.UploadOwnerLockPath)
@@ -691,10 +948,10 @@ func (s *Server) reserveUploadedRestoreAuthorized(ctx context.Context, user User
 }
 
 func (s *Server) updateReservedUpload(operation database.RestoreOperation) error {
-	return s.updateReservedUploadAuthorized(context.Background(), User{}, operation.SessionID, "", operation)
+	return s.updateReservedUploadAuthorized(context.Background(), User{}, restoreAuthorizationSnapshot{SessionID: operation.SessionID, HostedAuthorizationID: operation.HostedAuthorizationID, PreRestoreSecurityEpoch: operation.PreRestoreSecurityEpoch}, operation)
 }
 
-func (s *Server) updateReservedUploadAuthorized(ctx context.Context, user User, sessionID, expectedHash string, operation database.RestoreOperation) error {
+func (s *Server) updateReservedUploadAuthorized(ctx context.Context, user User, authorization restoreAuthorizationSnapshot, operation database.RestoreOperation) error {
 	return database.WithRestoreOperationLock(s.cfg, func() error {
 		s.restoreOperationMu.Lock()
 		defer s.restoreOperationMu.Unlock()
@@ -709,18 +966,19 @@ func (s *Server) updateReservedUploadAuthorized(ctx context.Context, user User, 
 		operation.UploadOwnerLockPath = latest.UploadOwnerLockPath
 		operation.UploadOwnerPID = latest.UploadOwnerPID
 		operation.UploadLeaseUntil = latest.UploadLeaseUntil
-		writeOperation := func() error {
-			if expectedHash != "" {
-				return s.withUserTxTagged(ctx, []string{"users", "sessions", "devices"}, func(tx *sql.Tx) error {
-					if err := validatePasswordSessionTx(tx, accountIDForUser(user), viewerProfileID(user), sessionID, expectedHash, time.Now().UTC()); err != nil {
-						return err
-					}
-					return database.WriteRestoreOperation(s.cfg.AppDataDir, operation)
-				})
-			}
+		if !latest.AuthorizationCommitted {
+			return errors.New("restore authorization was not durably committed")
+		}
+		operation.AuthorizationCommitted = true
+		if strings.TrimSpace(user.ID) == "" {
 			return database.WriteRestoreOperation(s.cfg.AppDataDir, operation)
 		}
-		return writeOperation()
+		if err := s.withUserTxTagged(ctx, []string{"users", "sessions", "devices", "hosted_restore_authorization_receipts", "server_security_state"}, func(tx *sql.Tx) error {
+			return validateRestoreReservationTx(tx, user, authorization, false, time.Now().UTC())
+		}); err != nil {
+			return err
+		}
+		return database.WriteRestoreOperation(s.cfg.AppDataDir, operation)
 	})
 }
 
@@ -785,11 +1043,7 @@ func (s *Server) ensureRestoreSlotLocked() error {
 	return nil
 }
 
-func (s *Server) createRestoreOperation(w http.ResponseWriter, r *http.Request, user User, sessionID, name, source string, manifest database.BackupManifest, optional ...any) (RestoreBackupResponse, bool) {
-	return s.createRestoreOperationAuthorized(w, r, user, sessionID, "", name, source, manifest, optional...)
-}
-
-func (s *Server) createRestoreOperationAuthorized(w http.ResponseWriter, r *http.Request, user User, sessionID, expectedHash, name, source string, manifest database.BackupManifest, optional ...any) (RestoreBackupResponse, bool) {
+func (s *Server) createRestoreOperationAuthorized(w http.ResponseWriter, r *http.Request, user User, authorization restoreAuthorizationSnapshot, name, source string, manifest database.BackupManifest, optional ...any) (RestoreBackupResponse, bool) {
 	var response RestoreBackupResponse
 	var ok bool
 	if err := database.WithRestoreOperationLock(s.cfg, func() error {
@@ -799,7 +1053,7 @@ func (s *Server) createRestoreOperationAuthorized(w http.ResponseWriter, r *http
 			writeProductError(w, http.StatusConflict, "restore_busy", "Another supervised restore is already in progress.")
 			return nil
 		}
-		response, ok = s.createRestoreOperationLocked(w, r, user, sessionID, expectedHash, name, source, manifest, false, database.MigrationIdentity{}, optional...)
+		response, ok = s.createRestoreOperationLocked(w, r, user, authorization, name, source, manifest, false, database.MigrationIdentity{}, optional...)
 		return nil
 	}); err != nil {
 		writeProductError(w, http.StatusServiceUnavailable, "restore_storage_unavailable", "Portico could not reserve the supervised restore operation.")
@@ -808,7 +1062,7 @@ func (s *Server) createRestoreOperationAuthorized(w http.ResponseWriter, r *http
 	return response, ok
 }
 
-func (s *Server) createRestoreOperationLocked(w http.ResponseWriter, r *http.Request, user User, sessionID, expectedHash, name, source string, manifest database.BackupManifest, rawImport bool, importedIdentity database.MigrationIdentity, optional ...any) (RestoreBackupResponse, bool) {
+func (s *Server) createRestoreOperationLocked(w http.ResponseWriter, r *http.Request, user User, authorization restoreAuthorizationSnapshot, name, source string, manifest database.BackupManifest, rawImport bool, importedIdentity database.MigrationIdentity, optional ...any) (RestoreBackupResponse, bool) {
 	operationID := ""
 	statusToken := ""
 	stagedPath := ""
@@ -852,7 +1106,8 @@ func (s *Server) createRestoreOperationLocked(w http.ResponseWriter, r *http.Req
 		SafetyCopyPath: database.CanonicalRestoreSafetyCopyPath(s.cfg, operationID),
 		OldActivePath:  database.CanonicalRestoreOldActivePath(s.cfg, operationID),
 		InstallPath:    database.CanonicalRestoreInstallPath(s.cfg, operationID),
-		AccountID:      accountIDForUser(user), SessionID: sessionID, StatusTokenHash: hashToken(statusToken),
+		AccountID:      accountIDForUser(user), SessionID: authorization.SessionID, StatusTokenHash: hashToken(statusToken),
+		PreRestoreSecurityEpoch: authorization.PreRestoreSecurityEpoch, HostedAuthorizationID: authorization.HostedAuthorizationID,
 		Phase: database.RestorePhaseValidating, State: database.RestorePhaseValidating, Progress: 10,
 		CreatedAt: now, UpdatedAt: now, Manifest: manifest, RawImport: rawImport,
 		ImportedIdentity:        importedIdentity,
@@ -868,18 +1123,7 @@ func (s *Server) createRestoreOperationLocked(w http.ResponseWriter, r *http.Req
 			operation.ImportedChecksumSHA256 = validation.ChecksumSHA256
 		}
 	}
-	writeOperation := func() error {
-		if expectedHash != "" {
-			return s.withUserTxTagged(r.Context(), []string{"users", "sessions", "devices"}, func(tx *sql.Tx) error {
-				if err := validatePasswordSessionTx(tx, accountIDForUser(user), viewerProfileID(user), sessionID, expectedHash, time.Now().UTC()); err != nil {
-					return err
-				}
-				return database.WriteRestoreOperation(s.cfg.AppDataDir, operation)
-			})
-		}
-		return database.WriteRestoreOperation(s.cfg.AppDataDir, operation)
-	}
-	if err := writeOperation(); err != nil {
+	if err := s.commitRestoreReservationAuthorization(r.Context(), user, authorization, &operation, true, time.Now().UTC()); err != nil {
 		_ = os.Remove(stagedPath)
 		if errors.Is(err, errPasswordCredentialChanged) || errors.Is(err, errPrivilegedSessionChanged) {
 			writeProductError(w, http.StatusUnauthorized, "credentials_changed", "The account authorization changed while Portico was starting this restore. Sign in again and retry.")
@@ -903,7 +1147,7 @@ func (s *Server) runRestoreOperation(operationID string) {
 	defer releaseExecutor()
 	claimant := randomID("executor")
 	operation, claimed, err := database.ClaimRestoreOperationWithExecutorLock(s.cfg, operationID, claimant)
-	if err != nil || !claimed || operation.OperationID != operationID {
+	if err != nil || !claimed || operation.OperationID != operationID || !operation.AuthorizationCommitted {
 		return
 	}
 	if err := database.RenewRestoreOperationLease(s.cfg, operationID, claimant); err != nil {
@@ -1231,7 +1475,7 @@ func (s *Server) CompleteRestoreGeneration(ctx context.Context, operationID stri
 		// before the final health gate, complete marker, or handler is published.
 		// Rollback skips this step so the unchanged safety database retains its
 		// prior session truth.
-		if err := s.invalidateRestoredAuthentication(ctx); err != nil {
+		if err := s.fenceRestoredSecurityState(ctx, &operation); err != nil {
 			return err
 		}
 	}
@@ -1255,42 +1499,112 @@ func (s *Server) CompleteRestoreGeneration(ctx context.Context, operationID stri
 	return completionErr
 }
 
-// invalidateRestoredAuthentication is deliberately a narrow restore boundary,
-// not a new account/device policy. Every credential family that can authorize
-// an interactive request or mint a native/ephemeral grant is invalidated in
-// the restored database; W2 remains the owner of finer-grained revocation
-// policy and cross-origin account coordination.
-func (s *Server) invalidateRestoredAuthentication(ctx context.Context) error {
+// fenceRestoredSecurityState is the single post-install security boundary. It
+// advances the epoch once per restore operation, quarantines restored Hosted
+// profile authority, and invalidates every restored credential or ephemeral
+// authorization before the new runtime generation can be published.
+func (s *Server) fenceRestoredSecurityState(ctx context.Context, operation *database.RestoreOperation) error {
+	if operation == nil || strings.TrimSpace(operation.OperationID) == "" {
+		return errors.New("restore security fence operation is unavailable")
+	}
+	// Only the private out-of-database restore journal can prove this fence was
+	// already committed. The installed database is restore input and cannot be
+	// trusted to assert idempotence by preloading last_restore_operation_id.
+	if operation.SecurityFenceApplied && operation.AppliedSecurityEpoch > operation.PreRestoreSecurityEpoch {
+		return nil
+	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	err := s.withUserTxTagged(ctx, []string{"sessions", "devices", "native_refresh_tokens", "account", "profiles"}, func(tx *sql.Tx) error {
-		for _, statement := range []string{
-			`DELETE FROM sessions`,
-			`UPDATE native_refresh_tokens SET revoked_at = ? WHERE revoked_at = ''`,
-			`UPDATE api_keys SET revoked_at = ? WHERE revoked_at = ''`,
-			`UPDATE devices SET revoked_at = ? WHERE revoked_at = ''`,
-			`UPDATE browser_account_entries SET revoked_at = ? WHERE revoked_at = ''`,
-			`UPDATE browser_account_vaults SET revoked_at = ? WHERE revoked_at = ''`,
-			`UPDATE automatic_profile_selection_trusts SET revoked_at = ?, updated_at = ? WHERE revoked_at = ''`,
-			`DELETE FROM profile_selection_grants`,
-			`DELETE FROM playback_media_grants`,
-			`DELETE FROM media_download_grants`,
-			`DELETE FROM local_profile_admin_proofs`,
-			`UPDATE quick_connect_requests SET status = 'expired', updated_at = ? WHERE status IN ('pending', 'approved')`,
-			`UPDATE portico_login_requests SET status = 'expired', updated_at = ? WHERE status = 'pending'`,
-		} {
-			var args []any
-			if strings.Contains(statement, "?") {
-				if strings.Contains(statement, "automatic_profile_selection_trusts") {
-					args = []any{now, now}
-				} else {
-					args = []any{now}
-				}
-			}
-			if _, err := tx.ExecContext(ctx, statement, args...); err != nil {
-				return err
+	var appliedEpoch int64
+	err := s.withSecurityFenceTxTagged(ctx, []string{"sessions", "devices", "native_refresh_tokens", "account", "profiles", "hosted_profile_snapshot_state", "server_security_state"}, func(tx *sql.Tx) error {
+		var restoredEpoch int64
+		if err := tx.QueryRowContext(ctx, `SELECT restore_security_epoch FROM server_security_state WHERE id = 1`).Scan(&restoredEpoch); err != nil {
+			return err
+		}
+		nextEpoch := restoredEpoch
+		if operation.PreRestoreSecurityEpoch > nextEpoch {
+			nextEpoch = operation.PreRestoreSecurityEpoch
+		}
+		if nextEpoch == int64(^uint64(0)>>1) {
+			return errors.New("restore security epoch is exhausted")
+		}
+		nextEpoch++
+		if _, err := tx.ExecContext(ctx, `UPDATE server_security_state SET restore_security_epoch = ?, last_restore_operation_id = ?, updated_at = ? WHERE id = 1`, nextEpoch, operation.OperationID, now); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE hosted_profile_snapshot_state SET quarantined_at = ?, checked_at = '', refresh_retry_at = ''`, now); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM hosted_restore_authorization_receipts`); err != nil {
+			return err
+		}
+		if err := invalidateRestoredAuthenticationTx(ctx, tx, now); err != nil {
+			return err
+		}
+		appliedEpoch = nextEpoch
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	operation.SecurityFenceApplied = true
+	operation.AppliedSecurityEpoch = appliedEpoch
+	operation.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
+	if err := database.WriteRestoreOperation(s.cfg.AppDataDir, *operation); err != nil {
+		operation.SecurityFenceApplied = false
+		operation.AppliedSecurityEpoch = 0
+		return err
+	}
+	s.invalidateSessionCookieCache()
+	return nil
+}
+
+func invalidateRestoredAuthenticationTx(ctx context.Context, tx *sql.Tx, now string) error {
+	for _, statement := range []string{
+		`DELETE FROM sessions`,
+		`UPDATE native_refresh_tokens SET revoked_at = ? WHERE revoked_at = ''`,
+		`UPDATE api_keys SET revoked_at = ? WHERE revoked_at = ''`,
+		`UPDATE devices SET revoked_at = ? WHERE revoked_at = ''`,
+		`UPDATE browser_account_entries SET revoked_at = ? WHERE revoked_at = ''`,
+		`UPDATE browser_account_vaults SET revoked_at = ? WHERE revoked_at = ''`,
+		`UPDATE automatic_profile_selection_trusts SET revoked_at = ?, updated_at = ? WHERE revoked_at = ''`,
+		`DELETE FROM profile_selection_grants`,
+		`DELETE FROM profile_account_authentications`,
+		`DELETE FROM hosted_profile_selection_assertion_receipts`,
+		`DELETE FROM native_auth_exchange_receipts`,
+		`DELETE FROM playback_media_grants`,
+		`DELETE FROM media_download_grants`,
+		`DELETE FROM playback_session_continuation_credentials`,
+		`DELETE FROM playback_session_queue_receipts`,
+		`DELETE FROM watch_with_friends_command_receipts`,
+		`DELETE FROM local_profile_admin_proofs`,
+		`DELETE FROM cast_bootstraps`,
+		`UPDATE cast_receiver_sessions SET status = 'revoked', stopped_at = ? WHERE status = 'active'`,
+		`UPDATE quick_connect_requests SET status = 'expired', updated_at = ? WHERE status IN ('pending', 'approved')`,
+		`UPDATE portico_login_requests SET status = 'expired', updated_at = ? WHERE status = 'pending'`,
+		`DELETE FROM settings WHERE key LIKE '__portico_settings_receipt_%'`,
+	} {
+		var args []any
+		if strings.Contains(statement, "?") {
+			if strings.Contains(statement, "automatic_profile_selection_trusts") {
+				args = []any{now, now}
+			} else {
+				args = []any{now}
 			}
 		}
-		return nil
+		if _, err := tx.ExecContext(ctx, statement, args...); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// invalidateRestoredAuthentication remains a focused test/helper surface. The
+// production completion path uses fenceRestoredSecurityState so invalidation,
+// epoch advancement, and projection quarantine commit atomically.
+func (s *Server) invalidateRestoredAuthentication(ctx context.Context) error {
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	err := s.withSecurityFenceTxTagged(ctx, []string{"sessions", "devices", "native_refresh_tokens", "account", "profiles"}, func(tx *sql.Tx) error {
+		return invalidateRestoredAuthenticationTx(ctx, tx, now)
 	})
 	if err == nil {
 		s.invalidateSessionCookieCache()
@@ -1303,6 +1617,9 @@ func (s *Server) invalidateRestoredAuthentication(ctx context.Context) error {
 func (s *Server) ResumeRestoreOperation() {
 	operation, err := database.ReadRestoreOperation(s.cfg.AppDataDir)
 	if err != nil || operation.OperationID == "" {
+		return
+	}
+	if !operation.AuthorizationCommitted {
 		return
 	}
 	if operation.UploadReserved && !operation.UploadComplete {

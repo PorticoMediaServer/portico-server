@@ -115,7 +115,7 @@ func TestMigrationRestoresBoundedSQLiteResourcePolicy(t *testing.T) {
 	if err := db.QueryRow(`SELECT COUNT(*) FROM schema_migrations`).Scan(&migrationRows); err != nil {
 		t.Fatalf("read migration ledger after migration: %v", err)
 	}
-	if migrationRows != 1 {
-		t.Fatalf("migration ledger rows = %d, expected 1", migrationRows)
+	if migrationRows != len(expectedMigrationFiles) {
+		t.Fatalf("migration ledger rows = %d, expected %d", migrationRows, len(expectedMigrationFiles))
 	}
 }

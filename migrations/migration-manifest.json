@@ -1,10 +1,14 @@
 {
   "formatVersion": 1,
-  "reviewedHead": "001_initial",
+  "reviewedHead": "002_playback_receiver_authority",
   "migrations": [
     {
       "filename": "001_initial.sql",
-      "sha256": "1e5d57b8cd81d45885aa37c85c9c6c116fb40cb6fd772f3bccfb62ae2240b4f3"
+      "sha256": "c80ee6d3e4fa1714240f2cf7ac3c08584b50990a1cbed260bd20ae3828b7f866"
+    },
+    {
+      "filename": "002_playback_receiver_authority.sql",
+      "sha256": "417ef8b13c23a4f8c4a9214cc8af31364a21c6021ef97663078c877e5a91b749"
     }
   ]
 }

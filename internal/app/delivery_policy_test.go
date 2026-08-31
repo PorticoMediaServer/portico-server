@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/PorticoMediaServer/portico-server/internal/config"
+	"github.com/PorticoMediaServer/portico-server/internal/playbackplan"
 )
 
 func TestPlaybackPolicyUsesMediaAppropriateNetworkDefaults(t *testing.T) {
@@ -46,10 +47,15 @@ func TestLiveTVQualityResourcesCannotExceedResolvedPolicy(t *testing.T) {
 	if selected := liveTVQualityForResolvedPolicy(policy); selected != "1080p-high" {
 		t.Fatalf("remote standard policy selected %q", selected)
 	}
-	qualities := liveTVPlaybackQualitiesForPolicy("hls", policy)
-	for _, quality := range qualities {
-		if (quality.ID == "auto" || quality.ID == "source") && quality.Available {
-			t.Fatalf("unbounded quality %q escaped the remote policy: %#v", quality.ID, qualities)
+	policy.MaxVideoBitrateMbps = 8
+	policy.MaxVideoHeight = 1080
+	authority, err := issueContinuousPlaybackQualityOffers("channel", "version", "source", policy, []string{"1080p-high", "720p-high", "480p"}, true)
+	if err != nil {
+		t.Fatalf("issue quality offers: %v", err)
+	}
+	for _, offer := range authority.set.Offers {
+		if offer.Kind == playbackQualityKindOriginal {
+			t.Fatalf("unbounded Original escaped the remote policy: %#v", authority.set.Offers)
 		}
 	}
 	policy.MaxVideoBitrateMbps = 2
@@ -154,27 +160,6 @@ func TestResolvedPlaybackPolicyKeepsHairpinLocalityWhenClientReportsWiFi(t *test
 	}
 }
 
-func TestPlaybackIntentSelectsQualityWhileExplicitCeilingsStillClamp(t *testing.T) {
-	policy := defaultResolvedPlaybackPolicy("movie", "remote")
-	hdr := true
-	applyPlaybackIntent(&policy, "movie", PlaybackIntent{
-		QualityProfile:      "high",
-		MaxVideoBitrateMbps: 6,
-		MaxVideoHeight:      720,
-		AllowHDR:            &hdr,
-	})
-	if policy.QualityProfile != "high" || policy.MaxVideoBitrateMbps != 6 || policy.MaxVideoHeight != 720 {
-		t.Fatalf("intent did not preserve preference separately from explicit ceilings: %+v", policy)
-	}
-	for _, requested := range []string{"original", "high"} {
-		remote := defaultResolvedPlaybackPolicy("movie", "remote")
-		applyPlaybackIntent(&remote, "movie", PlaybackIntent{QualityProfile: requested})
-		if remote.QualityProfile != requested || remote.MaxVideoBitrateMbps != 0 || remote.MaxAudioBitrateKbps != 0 || remote.MaxVideoHeight != 0 {
-			t.Fatalf("remote %s preference was incorrectly converted into a server clamp: %+v", requested, remote)
-		}
-	}
-}
-
 func TestDeliveryPreferenceProducesExplainableModes(t *testing.T) {
 	item := MediaItem{Type: "movie", Streams: []Stream{
 		{ID: "video", Kind: "video", Codec: "h264", Height: 1080, Bitrate: 4_000_000},
@@ -204,16 +189,6 @@ func TestResolvedDeliveryProfileMapsToEnforcedMediaPreset(t *testing.T) {
 	}
 }
 
-func TestAudioDeliveryClampForcesAudioTranscode(t *testing.T) {
-	item := MediaItem{Type: "track", Streams: []Stream{{ID: "audio", Kind: "audio", Codec: "aac", Bitrate: 320_000}}}
-	decision := decideMediaPlayback(item, "song.m4a", PlaybackClientProfile{
-		SupportedContainers: []string{"m4a"}, SupportedAudioCodecs: []string{"aac"}, MaxAudioBitrateKbps: 128,
-	})
-	if !decision.RequiresTranscode || !decision.AudioTranscode || decision.VideoTranscode || !containsString(decision.ReasonCodes, "audio_bitrate_clamped") {
-		t.Fatalf("audio delivery cap was not enforced: %+v", decision)
-	}
-}
-
 func TestDirectStreamFailsClosedWithoutExactSeekEvidence(t *testing.T) {
 	item := MediaItem{Type: "movie", Streams: []Stream{{ID: "video", Kind: "video", Codec: "h264", Width: 1920, Height: 1080, Bitrate: 4_000_000}, {ID: "audio", Kind: "audio", Codec: "aac", Bitrate: 160_000}}}
 	decision := applyResolvedDeliveryMode(
@@ -233,18 +208,6 @@ func TestDirectStreamUsesPositiveExactSeekEvidence(t *testing.T) {
 	)
 	if decision.Mode != "direct_stream" || !decision.RequiresRemux || decision.RequiresTranscode {
 		t.Fatalf("positive exact-seek remux evidence was not honored: %+v", decision)
-	}
-}
-
-func TestFinalMediaContractCannotReintroducePolicyRejectedDirectStream(t *testing.T) {
-	server := newScannerTestServer(t)
-	item := MediaItem{ID: "policy-remux", Streams: []Stream{{Kind: "video", Codec: "h264"}}}
-	decision := PlaybackDecision{Mode: "direct_stream", RequiresRemux: true, ReasonCodes: []string{"compatible_remux"}}
-	policy := defaultResolvedPlaybackPolicy("movie", "local")
-	policy.DirectStreamPolicy = "never"
-	_, resolved := server.mediaPlaybackContract(item, decision, policy, PlaybackClientProfile{SupportsHLS: true, SupportedVideoCodecs: []string{"h264"}}, "", "")
-	if resolved.Mode != "transcode_required" || !resolved.RequiresTranscode || !resolved.VideoTranscode || resolved.RequiresRemux || !containsString(resolved.ReasonCodes, "direct_stream_policy_rejected") {
-		t.Fatalf("final contract bypassed resolved Direct Stream rejection: %+v", resolved)
 	}
 }
 
@@ -301,89 +264,22 @@ func TestResolvedDeliveryContradictoryPoliciesNeverTranscode(t *testing.T) {
 }
 
 func TestTextSubtitleChoiceRequiresRenegotiationUnderTranscodeNeverPolicy(t *testing.T) {
-	item := MediaItem{ID: "movie-text-subtitle", Type: "movie"}
-	resources := playbackResourcesForResponse(
-		item,
-		"/api/media/movie-text-subtitle/stream",
-		"http",
-		PlaybackDecision{Mode: "direct_play"},
-		ResolvedPlaybackPolicy{TranscodePolicy: "never"},
-		[]Quality{{ID: "original", Available: true}},
-		nil,
-		[]Stream{{ID: "sub_text", Kind: "subtitle", SourceURL: "/api/media/movie-text-subtitle/subtitles/sub_text"}},
-		"original",
-		"",
-		"",
-		MediaGrant{},
-		false,
-	)
+	plan := testPlaybackExecutionPlan(t, func(plan *playbackExecutionPlan) {
+		plan.Plan.Mode, plan.Plan.Protocol, plan.Plan.Container = playbackplan.DirectPlay, "http", "mp4"
+	})
+	resources := playbackResourcesForResponse("/api/media/movie-text-subtitle/stream", plan)
 	if len(resources) != 1 || !resources[0].Default || resources[0].SubtitleMode != "off" {
 		t.Fatalf("response published an unsealed subtitle resource: %#v", resources)
 	}
 }
 
 func TestQualityOffersDoNotPublishAlternateDirectResources(t *testing.T) {
-	item := MediaItem{
-		ID:   "movie-direct-auto",
-		Type: "movie",
-		Streams: []Stream{
-			{ID: "video", Kind: "video", Codec: "h264", Height: 1080, Bitrate: 5_100_000},
-			{ID: "audio", Kind: "audio", Codec: "aac", Channels: 2, Bitrate: 192_000},
-		},
-	}
-	decision := PlaybackDecision{Mode: "direct_play"}
-	policy := ResolvedPlaybackPolicy{TranscodePolicy: "allow"}
-	qualities := playbackQualities(item, decision, policy, true)
-	resources := playbackResourcesForResponse(item, "/api/media/movie-direct-auto/stream", "http", decision, policy, qualities, nil, nil, "original", "", "", MediaGrant{}, true)
+	plan := testPlaybackExecutionPlan(t, func(plan *playbackExecutionPlan) {
+		plan.Plan.Mode, plan.Plan.Protocol, plan.Plan.Container = playbackplan.DirectPlay, "http", "mp4"
+	})
+	resources := playbackResourcesForResponse("/api/media/movie-direct-auto/stream", plan)
 
 	if len(resources) != 1 || !resources[0].Default || resources[0].SourceURL != "/api/media/movie-direct-auto/stream" || resources[0].StreamFormat != "http" {
 		t.Fatalf("response published resources outside the active sealed plan: %#v", resources)
-	}
-}
-
-func TestPlaybackQualityLabelsAreCanonicalAcrossMediaFamilies(t *testing.T) {
-	find := func(qualities []Quality, id string) Quality {
-		t.Helper()
-		for _, quality := range qualities {
-			if quality.ID == id {
-				return quality
-			}
-		}
-		t.Fatalf("quality %q missing from %#v", id, qualities)
-		return Quality{}
-	}
-
-	audio := MediaItem{Type: "track", Streams: []Stream{{Kind: "audio", Codec: "flac", ChannelLayout: "stereo", Channels: 2, Bitrate: 1_120_000}}}
-	audioQualities := playbackQualities(audio, PlaybackDecision{Mode: "direct_play"}, ResolvedPlaybackPolicy{TranscodePolicy: "allow"}, true)
-	if got := find(audioQualities, "original"); got.Label != "Original Quality" || got.Description != "1120 kbps · Stereo" {
-		t.Fatalf("audio original copy = %#v", got)
-	}
-	if got := find(audioQualities, "audio-data-saver"); got.Label != "128 kbps Stereo" || got.Description != "Limits audio to 128 kbps stereo." {
-		t.Fatalf("audio quality copy = %#v", got)
-	}
-
-	video := MediaItem{Type: "movie", Streams: []Stream{{Kind: "video", Height: 1080, Bitrate: 7_500_000}, {Kind: "audio", ChannelLayout: "stereo", Channels: 2, Bitrate: 192_000}}}
-	videoQualities := playbackQualities(video, PlaybackDecision{Mode: "direct_play"}, ResolvedPlaybackPolicy{TranscodePolicy: "allow"}, true)
-	if got := find(videoQualities, "auto"); got.Label != "Automatic" || got.Description != "Best quality for this connection." {
-		t.Fatalf("automatic quality copy = %#v", got)
-	}
-	if got := find(videoQualities, "1080p-low"); got.Label != "1080p · 8 Mbps" || got.Description != "Limits video to 1080p at 8 Mbps." {
-		t.Fatalf("video quality copy = %#v", got)
-	}
-
-	live := liveTVPlaybackQualities("hls")
-	if got := find(live, "source"); got.Label != "Original Quality" || got.Description != "Uses the provider's original quality." {
-		t.Fatalf("Live TV original copy = %#v", got)
-	}
-	if got := find(live, "720p-medium"); got.Label != "720p · 2.5 Mbps" || got.Description != "Limits video to 720p at 2.5 Mbps." {
-		t.Fatalf("Live TV quality copy = %#v", got)
-	}
-
-	channel := libraryChannelPlaybackQualities("720p-medium")
-	if got := find(channel, "original"); got.Label != "Original Quality" {
-		t.Fatalf("Library Channel original copy = %#v", got)
-	}
-	if got := find(channel, "720p-medium"); got.Label != "720p · 4 Mbps" || got.Description != "Limits video to 720p at 4 Mbps · Channel default." {
-		t.Fatalf("Library Channel quality copy = %#v", got)
 	}
 }

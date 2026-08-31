@@ -96,9 +96,9 @@ func (s *Server) handleMediaStream(w http.ResponseWriter, r *http.Request, user 
 	}
 }
 
-func playbackSourceRevisionMatches(binding playbackExecutionBinding, currentRevision string) bool {
-	return strings.TrimSpace(binding.SourceRevision) != "" &&
-		strings.TrimSpace(binding.SourceRevision) == strings.TrimSpace(currentRevision)
+func playbackSourceRevisionMatches(binding playbackExecutionPlan, currentRevision string) bool {
+	return strings.TrimSpace(binding.Plan.SourceRevision) != "" &&
+		strings.TrimSpace(binding.Plan.SourceRevision) == strings.TrimSpace(currentRevision)
 }
 
 const maxConcurrentStreamsPerUser = 32

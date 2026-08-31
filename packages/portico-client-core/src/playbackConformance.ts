@@ -107,6 +107,20 @@ export interface PlaybackConformanceFixture {
   };
 }
 
+function automaticQuality(mediaId: string): Readonly<Record<string, unknown>> {
+  return {
+    qualityOffers: {
+      contractId: "PC-PLAYBACK", schemaVersion: "quality-offers.v1", mediaId,
+      versionId: `qver_${mediaId}`, sourceRevision: `qsrc_${mediaId}`, offerRevision: `qrev_${mediaId}`,
+      offers: [
+        {selectionId: "qsel_automatic", label: "Automatic", kind: "automatic"},
+        {selectionId: "qsel_original", label: "Original Quality", kind: "original"},
+      ],
+    },
+    qualitySelection: {mode: "automatic"},
+  };
+}
+
 /**
  * Transport-neutral fixtures for every playback state a first-party client
  * must handle before real media wiring. Apps may consume these directly in
@@ -118,7 +132,7 @@ export const playbackConformanceFixtures: readonly PlaybackConformanceFixture[] 
     version: PLAYBACK_CONFORMANCE_FIXTURE_VERSION,
     scenario: "direct_play",
     request: { mediaId: "movie_direct", route: "local", container: "mp4", videoCodec: "h264", audioCodec: "aac" },
-    response: { sessionId: "play_direct", sourceUrl: "/api/playback-resources/direct", resources: [{ id: "direct", sourceUrl: "/api/playback-resources/direct", streamFormat: "mp4", qualityId: "original", subtitleMode: "off", default: true }], streamFormat: "mp4", decision: { mode: "direct_play", requiresTranscode: false, requiresRemux: false } },
+    response: { sessionId: "play_direct", sourceUrl: "/api/playback-resources/direct", resources: [{ id: "direct", sourceUrl: "/api/playback-resources/direct", streamFormat: "mp4", subtitleMode: "off", default: true }], streamFormat: "mp4", decision: { mode: "direct_play", requiresTranscode: false, requiresRemux: false }, ...automaticQuality("movie_direct") },
     expected: { decisionMode: "direct_play", recovery: "play" }
   },
   {
@@ -126,7 +140,7 @@ export const playbackConformanceFixtures: readonly PlaybackConformanceFixture[] 
     version: PLAYBACK_CONFORMANCE_FIXTURE_VERSION,
     scenario: "remux",
     request: { mediaId: "movie_remux", route: "local", container: "mkv", videoCodec: "h264", audioCodec: "aac" },
-    response: { sessionId: "play_remux", sourceUrl: "/api/playback-resources/remux", resources: [{ id: "remux", sourceUrl: "/api/playback-resources/remux", streamFormat: "hls", qualityId: "original", subtitleMode: "off", default: true }], streamFormat: "hls", decision: { mode: "direct_stream", requiresTranscode: false, requiresRemux: true } },
+    response: { sessionId: "play_remux", sourceUrl: "/api/playback-resources/remux", resources: [{ id: "remux", sourceUrl: "/api/playback-resources/remux", streamFormat: "hls", subtitleMode: "off", default: true }], streamFormat: "hls", decision: { mode: "direct_stream", requiresTranscode: false, requiresRemux: true }, ...automaticQuality("movie_remux") },
     expected: { decisionMode: "direct_stream", recovery: "play" }
   },
   {
@@ -134,7 +148,7 @@ export const playbackConformanceFixtures: readonly PlaybackConformanceFixture[] 
     version: PLAYBACK_CONFORMANCE_FIXTURE_VERSION,
     scenario: "transcode",
     request: { mediaId: "movie_transcode", route: "remote", container: "mkv", videoCodec: "vp9", audioCodec: "dts" },
-    response: { sessionId: "play_transcode", sourceUrl: "/api/playback-resources/transcode", resources: [{ id: "transcode", sourceUrl: "/api/playback-resources/transcode", streamFormat: "hls", qualityId: "standard", subtitleMode: "off", default: true }], streamFormat: "hls", decision: { mode: "transcode_required", requiresTranscode: true, videoTranscode: true, audioTranscode: true } },
+    response: { sessionId: "play_transcode", sourceUrl: "/api/playback-resources/transcode", resources: [{ id: "transcode", sourceUrl: "/api/playback-resources/transcode", streamFormat: "hls", subtitleMode: "off", default: true }], streamFormat: "hls", decision: { mode: "transcode_required", requiresTranscode: true, videoTranscode: true, audioTranscode: true }, ...automaticQuality("movie_transcode") },
     expected: { decisionMode: "transcode_required", recovery: "play" }
   },
   {
@@ -149,7 +163,7 @@ export const playbackConformanceFixtures: readonly PlaybackConformanceFixture[] 
     id: "apple-stale-queue-revision",
     version: PLAYBACK_CONFORMANCE_FIXTURE_VERSION,
     scenario: "queue_conflict",
-    request: { sessionId: "play_queue", expectedRevision: 3, action: "reorder", fromIndex: 0, toIndex: 2 },
+    request: { sessionId: "play_queue", expectedRevision: 3, idempotencyKey: "queue-reorder-1", action: "reorder", entryId: "queue-entry-1", destinationEntryId: "queue-entry-3", placement: "after" },
     response: { status: 409, code: "queue_revision_conflict", detail: "The playback queue changed. Reload it and try again.", details: { currentRevision: 4 } },
     expected: { httpStatus: 409, code: "queue_revision_conflict", recovery: "reload_queue" }
   },

@@ -195,7 +195,7 @@ func (s *Server) revokeAPIKeyContext(ctx context.Context, keyID string) (APIKey,
 		return APIKey{}, errInvalidAPIKey("API key was not found.")
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
-	result, err := s.execUserWrite(ctx, `UPDATE api_keys SET revoked_at = ? WHERE id = ? AND revoked_at = ''`, now, keyID)
+	result, err := s.execSecurityFenceWrite(ctx, `UPDATE api_keys SET revoked_at = ? WHERE id = ? AND revoked_at = ''`, now, keyID)
 	if err != nil {
 		return APIKey{}, err
 	}

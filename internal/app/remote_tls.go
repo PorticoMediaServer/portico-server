@@ -111,8 +111,8 @@ func (s *Server) checkRemoteTLSListenerAndRepair(ctx context.Context) (bool, err
 	previousAddress, previousPort, previousError := s.remoteTLSStatus()
 	previousRevision := s.remoteTLSCertificateRevision()
 	if s.remoteTLSNeedsRepair(settings) {
-		if updated, renewErr := s.ensureRemoteAccessCertificateFresh(ctx, settings); renewErr == nil {
-			settings = updated
+		if _, _, queueErr := s.enqueueRemoteAccessCertificateMaintenance("listener_repair", false); queueErr != nil && queueErr != errRemoteAccessCertificateMaintenanceUnavailable {
+			s.recordLog("warn", "Shared-port TLS certificate repair queue failed", map[string]string{"error": queueErr.Error()})
 		}
 	}
 	s.configureRemoteTLS(settings)

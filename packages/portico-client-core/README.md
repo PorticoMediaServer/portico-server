@@ -196,6 +196,48 @@ close it with `DELETE /api/playback-sessions/{sessionId}`. Seed the local event
 counter from `nextEventSequence` on start or restore. Duplicate or stale
 sequences are acknowledged but never overwrite newer progress.
 
+Completion is an idempotent terminal operation, not a progress flag. A stop
+wraps one immutable terminal event with a stable request ID and accepts only a
+matching durable terminal receipt. Every handoff includes a stable request ID
+and `previousTerminal`; `startSeconds` separately controls replacement start
+intent. Client Core persists Core-owned terminal wire requests through the
+playback durability adapter and exposes `pendingPlaybackTerminalMutation()` so
+a lost response can be retried byte-for-byte after restart. Replay a pending
+handoff by passing its stored `request` back to `handoffPlayback`; replay a
+pending stop by passing its stored `request` back to `stopPlayback`. Do not
+reconstruct either body. Native sequence owners may pass the same complete
+stop request directly; Core forwards it unchanged. At process startup, call
+`pendingPlaybackTerminalMutations()` before accepting active-playback restore:
+it enumerates the bounded durable outbox by old source `sessionId`, including
+committed stops that restore no session and handoffs that restore only the new
+replacement session. `replacePlaybackTarget()` is the only active-session
+start/tune path for media, Live TV, DVR, and Library Channels. It persists the
+complete target plus source terminal before sending and returns an explicit
+`accepted`, `source-retained`, `source-closed`, or
+`committed-restore-required` outcome. `closeLiveTvStream()` uses the same exact
+terminal allocation and durable replay rules. Pass a
+`committed-restore-required` outcome to
+`restoreCommittedPlaybackReplacement()`; it verifies that active restore
+returns the exact safe replacement identity before exposing playback.
+
+Cast is a two-phase transfer. `createCastBootstrap()` persists a fresh
+bootstrap; `replacePlaybackWithCast()` adds the old actor's exact terminal
+authority. Both return only a `pending` outcome containing the
+short-lived receiver envelope. Keep the source actor alive while
+`castTransferStatus()` reports pending; relinquish it only after `accepted`
+status proves the exact request ID and previous terminal. Use
+`retryPendingCastTransfer()` after a lost bootstrap response and
+`pendingCastTransfers()` during startup. Receiver operations use
+`CastReceiverCredential` and never send viewer cookies; receiver stop and
+advance accept complete ordered terminal events.
+
+Terminal records use the v2 durable shape and are scoped
+to the exact server authority, account, profile, and authorization revision
+restored from credentials;
+records from another scope are never activated or replayed. Keep unresolved
+records until the matching durable outcome is reconciled—Core does not expire
+them or infer success from `401`/`404`.
+
 The older `POST /api/media/{id}/progress` mutation is fully retired. It is not
 registered by the server or published in OpenAPI and must not be used as a
 playback fallback.

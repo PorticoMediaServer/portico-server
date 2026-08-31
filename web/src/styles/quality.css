@@ -134,15 +134,6 @@ html[data-portico-reduce-motion='true'] .route-surface.route-entering {
   }
 }
 
-/* Stable chrome and contextual controls. Full-bleed artwork remains untouched. */
-.shell.has-connection-warning :is(.standard-page, .settings-page, .portico-settings-page) {
-  padding-top: calc(104px + var(--context-chrome-height));
-}
-
-.shell.has-connection-warning :is(.home-hero, .detail-identity, .artist-hero, .episode-detail-hero) {
-  padding-top: calc(140px + var(--context-chrome-height));
-}
-
 .library-pivots,
 .live-tabs {
   position: sticky;
@@ -171,14 +162,6 @@ html[data-portico-reduce-motion='true'] .route-surface.route-entering {
 }
 
 @media (max-width: 620px) {
-  .shell.has-connection-warning :is(.standard-page, .settings-page, .portico-settings-page) {
-    padding-top: calc(var(--chrome-safe-offset) + 24px);
-  }
-
-  .shell.has-connection-warning :is(.home-hero, .detail-identity, .artist-hero, .episode-detail-hero) {
-    padding-top: calc(122px + var(--context-chrome-height));
-  }
-
   .library-workspace-toolbar,
   .live-toolbar {
     top: calc(var(--chrome-safe-offset) + 46px);

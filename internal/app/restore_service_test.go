@@ -3,6 +3,9 @@ package app
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
+	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"mime/multipart"
@@ -19,6 +22,25 @@ import (
 	"github.com/PorticoMediaServer/portico-server/internal/config"
 	"github.com/PorticoMediaServer/portico-server/internal/database"
 )
+
+func signedRestoreAuthorizationForTest(t *testing.T, document hostedRestoreAuthorization) json.RawMessage {
+	t.Helper()
+	document.Signature = ""
+	raw, err := json.Marshal(document)
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload, err := canonicalHostedDocument(hostedRestoreAuthorizationKind, raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	document.Signature = base64.RawURLEncoding.EncodeToString(ed25519.Sign(testHostedDocumentPrivateKey(), payload))
+	raw, err = json.Marshal(document)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return raw
+}
 
 func restoreOwnerUser() User {
 	return User{ID: "owner", AccountID: "owner", ProfileID: "owner", ProfileIsPrimary: true, Role: "owner", AuthOrigin: "local", AuthProvider: "local", HasLocalPassword: true, Permissions: map[string]bool{"manageServer": true}}
@@ -58,7 +80,7 @@ func TestRestoreReauthenticationRejectsHostedSessionPossessionLocalAbsenceAndPro
 		status int
 		code   string
 	}{
-		{name: "hosted owner requires W2 proof", user: User{ID: "owner", AccountID: "owner", ProfileID: "profile", ProfileIsPrimary: true, Role: "owner", AuthOrigin: "portico", AuthProvider: "portico", Permissions: map[string]bool{"manageServer": true}}, secret: "", status: http.StatusConflict, code: "restore_hosted_reauthentication_required"},
+		{name: "hosted owner requires signed proof", user: User{ID: "owner", AccountID: "owner", ProfileID: "profile", ProfileIsPrimary: true, Role: "owner", AuthOrigin: "portico", AuthProvider: "portico", Permissions: map[string]bool{"manageServer": true}}, secret: "", status: http.StatusUnauthorized, code: "restore_hosted_reauthentication_required"},
 		{name: "local session possession without password", user: restoreOwnerUser(), secret: "", status: http.StatusUnauthorized, code: "restore_reauthentication_required"},
 		{name: "primary profile PIN is not account password", user: restoreOwnerUser(), secret: "", status: http.StatusUnauthorized, code: "restore_reauthentication_required"},
 	}
@@ -191,7 +213,7 @@ func TestRestoreAdmissionRejectsConcurrentDuplicateReservations(t *testing.T) {
 		wait.Add(1)
 		go func() {
 			defer wait.Done()
-			operation, _, release, err := server.reserveUploadedRestore(restoreOwnerUser(), "session")
+			operation, _, release, err := server.reserveUploadedRestoreAuthorized(context.Background(), User{}, restoreAuthorizationSnapshot{SessionID: "session"})
 			results <- result{operation: operation, release: release, err: err}
 		}()
 	}
@@ -201,6 +223,9 @@ func TestRestoreAdmissionRejectsConcurrentDuplicateReservations(t *testing.T) {
 	for result := range results {
 		if result.err == nil {
 			successes++
+			if !result.operation.AuthorizationCommitted {
+				t.Fatal("successful restore reservation did not publish committed authorization")
+			}
 			if result.release != nil {
 				result.release()
 			}
@@ -261,8 +286,247 @@ func TestRestoreRollbackDoesNotRevokePriorSession(t *testing.T) {
 	}
 }
 
+func TestHostedRestoreAuthorizationBindsExactServerOwnerEpochAndSignature(t *testing.T) {
+	_, _, server := newAuthTestServerWithInstance(t)
+	server.cfg.HostedDocumentPublicKeys = testHostedDocumentPublicKeys()
+	if err := server.saveRemoteAccessSettings(RemoteAccessSettings{
+		Enabled: true, HostedBaseURL: "https://hosted.invalid", ClaimStatus: "claimed", ServerID: "srv-restore",
+		PublicPortMode: "disabled", PreferredRemoteAuthMode: "portico",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	document := hostedRestoreAuthorization{
+		Kind: hostedRestoreAuthorizationKind, Version: 1, Audience: hostedRestoreAuthorizationAudience,
+		AuthorizationID: "sra_exact", Purpose: hostedRestoreAuthorizationPurpose, ServerID: "srv-restore", AccountID: "hosted-owner",
+		RestoreSecurityEpoch: 7, IssuedAt: now.Add(-time.Minute).Format(time.RFC3339Nano), ExpiresAt: now.Add(4 * time.Minute).Format(time.RFC3339Nano),
+		SignatureAlgorithm: hostedSignatureAlgorithm, SignatureKeyID: testHostedDocumentKeyID,
+	}
+	raw := signedRestoreAuthorizationForTest(t, document)
+	var signedDocument hostedRestoreAuthorization
+	if err := json.Unmarshal(raw, &signedDocument); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // configured bootstrap trust keeps this focused test offline
+	user := User{ID: "local-owner", PorticoUserID: "hosted-owner", AuthOrigin: "portico", AuthProvider: "portico"}
+	if _, err := server.verifyHostedRestoreAuthorization(ctx, raw, user, 7, now); err != nil {
+		t.Fatalf("valid exact restore authorization rejected: %v", err)
+	}
+	for name, mutate := range map[string]func(*hostedRestoreAuthorization){
+		"server":    func(value *hostedRestoreAuthorization) { value.ServerID = "srv-other" },
+		"owner":     func(value *hostedRestoreAuthorization) { value.AccountID = "other-owner" },
+		"epoch":     func(value *hostedRestoreAuthorization) { value.RestoreSecurityEpoch++ },
+		"signature": func(value *hostedRestoreAuthorization) { value.AuthorizationID = "sra_tampered" },
+	} {
+		t.Run(name, func(t *testing.T) {
+			candidate := document
+			mutate(&candidate)
+			candidateRaw := raw
+			if name != "signature" {
+				candidateRaw = signedRestoreAuthorizationForTest(t, candidate)
+			} else {
+				candidate.Signature = signedDocument.Signature
+				candidateRaw, _ = json.Marshal(candidate)
+			}
+			candidateContext, stop := context.WithCancel(context.Background())
+			stop()
+			if _, err := server.verifyHostedRestoreAuthorization(candidateContext, candidateRaw, user, 7, now); err == nil {
+				t.Fatalf("%s mismatch was accepted", name)
+			}
+		})
+	}
+}
+
+func TestRestoreSecurityFenceDistrustsCandidateIdempotenceClaimAndQuarantinesHostedProjection(t *testing.T) {
+	_, db, server := newAuthTestServerWithInstance(t)
+	var accountID string
+	if err := db.QueryRow(`SELECT id FROM users WHERE role = 'owner' LIMIT 1`).Scan(&accountID); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	if _, err := db.Exec(`INSERT INTO hosted_profile_snapshot_state (account_id, snapshot_id, revision, payload_digest, issued_at, expires_at, applied_at, checked_at) VALUES (?, 'restored', 99, 'restored-digest', ?, ?, ?, ?)`, accountID, now, now, now, now); err != nil {
+		t.Fatal(err)
+	}
+	operation := database.RestoreOperation{OperationID: "restore-epoch-once", PreRestoreSecurityEpoch: 8, AuthorizationCommitted: true}
+	// The installed database is hostile restore input. Preloading the current
+	// operation ID must not let it claim that the out-of-database fence ran.
+	if _, err := db.Exec(`UPDATE server_security_state SET restore_security_epoch = 4, last_restore_operation_id = ? WHERE id = 1`, operation.OperationID); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.fenceRestoredSecurityState(context.Background(), &operation); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.fenceRestoredSecurityState(context.Background(), &operation); err != nil {
+		t.Fatalf("idempotent fence retry failed: %v", err)
+	}
+	var epoch int64
+	var appliedOperationID, quarantinedAt string
+	if err := db.QueryRow(`SELECT restore_security_epoch, last_restore_operation_id FROM server_security_state WHERE id = 1`).Scan(&epoch, &appliedOperationID); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT quarantined_at FROM hosted_profile_snapshot_state WHERE account_id = ?`, accountID).Scan(&quarantinedAt); err != nil {
+		t.Fatal(err)
+	}
+	if epoch != 9 || appliedOperationID != operation.OperationID || quarantinedAt == "" {
+		t.Fatalf("fence state epoch=%d operation=%q quarantined=%q", epoch, appliedOperationID, quarantinedAt)
+	}
+	if !operation.SecurityFenceApplied || operation.AppliedSecurityEpoch != 9 {
+		t.Fatalf("out-of-database fence evidence=%+v", operation)
+	}
+	journaled, err := database.ReadRestoreOperation(server.cfg.AppDataDir)
+	if err != nil || !journaled.SecurityFenceApplied || journaled.AppliedSecurityEpoch != 9 {
+		t.Fatalf("durable out-of-database fence evidence=%+v err=%v", journaled, err)
+	}
+	if _, err := server.hostedProfileStateContext(context.Background(), accountID); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("quarantined Hosted projection remained authoritative: %v", err)
+	}
+	var sessions int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM sessions`).Scan(&sessions); err != nil || sessions != 0 {
+		t.Fatalf("restored sessions remained after fence: count=%d err=%v", sessions, err)
+	}
+}
+
+func TestRestoreAuthorizationReceiptConsumesOnceWithExactServerBinding(t *testing.T) {
+	serverURL, db, server := newAuthTestServerWithInstance(t)
+	client := http.DefaultClient
+	loginUser(t, client, serverURL)
+	var user User
+	if err := server.queryUserRow(context.Background(), `SELECT id, id, id, role FROM users WHERE role = 'owner' LIMIT 1`).Scan(&user.ID, &user.AccountID, &user.ProfileID, &user.Role); err != nil {
+		t.Fatal(err)
+	}
+	var sessionID string
+	if err := db.QueryRow(`SELECT id FROM sessions WHERE user_id = ? LIMIT 1`, user.ID).Scan(&sessionID); err != nil {
+		t.Fatal(err)
+	}
+	snapshot := restoreAuthorizationSnapshot{
+		SessionID: sessionID, HostedAuthorizationID: "sra_single_use", HostedAuthorizationServerID: "srv-exact",
+		HostedAuthorizationExpiresAt: time.Now().UTC().Add(time.Minute), PreRestoreSecurityEpoch: 0,
+	}
+	consume := func() error {
+		tx, err := db.Begin()
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback()
+		if err := validateRestoreReservationTx(tx, user, snapshot, true, time.Now().UTC()); err != nil {
+			return err
+		}
+		return tx.Commit()
+	}
+	if err := consume(); err != nil {
+		t.Fatalf("first receipt consumption failed: %v", err)
+	}
+	if err := consume(); !errors.Is(err, errPrivilegedSessionChanged) {
+		t.Fatalf("replayed receipt error=%v, want privileged-session fence", err)
+	}
+	expired := snapshot
+	expired.HostedAuthorizationID = "sra_expired_before_reservation"
+	expired.HostedAuthorizationExpiresAt = time.Now().UTC().Add(-time.Second)
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := validateRestoreReservationTx(tx, user, expired, true, time.Now().UTC()); !errors.Is(err, errPrivilegedSessionChanged) {
+		_ = tx.Rollback()
+		t.Fatalf("expired authorization reservation error=%v, want privileged-session fence", err)
+	}
+	_ = tx.Rollback()
+	var serverID string
+	if err := db.QueryRow(`SELECT server_id FROM hosted_restore_authorization_receipts WHERE authorization_id = ?`, snapshot.HostedAuthorizationID).Scan(&serverID); err != nil || serverID != "srv-exact" {
+		t.Fatalf("receipt server binding=%q err=%v", serverID, err)
+	}
+}
+
+func TestRestoreAuthorizationCommitGapFailsClosedForLocalAndHostedProofs(t *testing.T) {
+	serverURL, db, server := newAuthTestServerWithInstance(t)
+	client := http.DefaultClient
+	loginUser(t, client, serverURL)
+	var user User
+	var sessionID, passwordHash string
+	if err := db.QueryRow(`
+		SELECT u.id, u.id, COALESCE(NULLIF(session.profile_id, ''), u.id), u.role,
+		       session.id, COALESCE(u.password_hash, '')
+		FROM users u
+		JOIN sessions session ON session.user_id = u.id
+		WHERE u.role = 'owner'
+		LIMIT 1`).Scan(&user.ID, &user.AccountID, &user.ProfileID, &user.Role, &sessionID, &passwordHash); err != nil {
+		t.Fatal(err)
+	}
+	var epoch int64
+	if err := db.QueryRow(`SELECT restore_security_epoch FROM server_security_state WHERE id = 1`).Scan(&epoch); err != nil {
+		t.Fatal(err)
+	}
+	interrupted := errors.New("simulated process stop after SQLite authorization commit")
+	restoreHook := setRestoreAuthorizationAfterDatabaseCommitForTest(func() error { return interrupted })
+	defer restoreHook()
+
+	for _, test := range []struct {
+		name   string
+		hosted bool
+	}{
+		{name: "local password"},
+		{name: "Hosted receipt", hosted: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			operationID := "restore-commit-gap-" + strings.ReplaceAll(test.name, " ", "-")
+			now := time.Now().UTC()
+			authorization := restoreAuthorizationSnapshot{
+				SessionID: sessionID, ExpectedPasswordHash: passwordHash, PreRestoreSecurityEpoch: epoch,
+			}
+			if test.hosted {
+				authorization.ExpectedPasswordHash = ""
+				authorization.HostedAuthorizationID = "sra_commit_gap"
+				authorization.HostedAuthorizationServerID = "srv-exact"
+				authorization.HostedAuthorizationExpiresAt = now.Add(time.Minute)
+			}
+			operation := database.RestoreOperation{
+				Version: database.RestoreOperationVersion, OperationID: operationID, BackupName: "backup.db",
+				StagedPath: database.CanonicalRestoreStagedPath(server.cfg, operationID, false), ActivePath: server.cfg.DatabasePath,
+				SafetyCopyPath: database.CanonicalRestoreSafetyCopyPath(server.cfg, operationID),
+				OldActivePath:  database.CanonicalRestoreOldActivePath(server.cfg, operationID),
+				InstallPath:    database.CanonicalRestoreInstallPath(server.cfg, operationID),
+				AccountID:      user.AccountID, SessionID: sessionID, PreRestoreSecurityEpoch: epoch,
+				HostedAuthorizationID: authorization.HostedAuthorizationID,
+				Phase:                 database.RestorePhaseValidating, State: database.RestorePhaseValidating, Progress: 10,
+				CreatedAt: now.Format(time.RFC3339Nano), UpdatedAt: now.Format(time.RFC3339Nano),
+			}
+			if err := os.WriteFile(operation.StagedPath, []byte("untrusted staged candidate"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			err := server.commitRestoreReservationAuthorization(context.Background(), user, authorization, &operation, true, now)
+			if !errors.Is(err, interrupted) {
+				t.Fatalf("commit-gap error=%v, want simulated interruption", err)
+			}
+			journaled, err := database.ReadRestoreOperation(server.cfg.AppDataDir)
+			if err != nil || journaled.AuthorizationCommitted {
+				t.Fatalf("unconfirmed journal=%+v err=%v", journaled, err)
+			}
+			if _, claimed, err := database.ClaimRestoreOperation(server.cfg, operationID, "commit-gap-runner"); err != nil || claimed {
+				t.Fatalf("unconfirmed restore executor claim claimed=%v err=%v", claimed, err)
+			}
+			if test.hosted {
+				var receipts int
+				if err := db.QueryRow(`SELECT COUNT(*) FROM hosted_restore_authorization_receipts WHERE authorization_id = ?`, authorization.HostedAuthorizationID).Scan(&receipts); err != nil || receipts != 1 {
+					t.Fatalf("Hosted proof was not durably burned before interruption: count=%d err=%v", receipts, err)
+				}
+			}
+			if err := database.RecoverInterruptedRestoreBeforeOpen(server.cfg); err != nil {
+				t.Fatalf("recover uncommitted authorization: %v", err)
+			}
+			journaled, err = database.ReadRestoreOperation(server.cfg.AppDataDir)
+			if err != nil || journaled.Phase != database.RestorePhaseFailed || journaled.ErrorCode != "restore_authorization_not_committed" {
+				t.Fatalf("uncommitted restore recovery=%+v err=%v", journaled, err)
+			}
+			if _, err := os.Lstat(operation.StagedPath); !os.IsNotExist(err) {
+				t.Fatalf("uncommitted staged candidate remained executable: %v", err)
+			}
+		})
+	}
+}
+
 func TestRestoreResponseMarksRecoveryRequiredAsNonSuccess(t *testing.T) {
-	operation := database.RestoreOperation{OperationID: "restore-response-recovery", BackupName: "backup.db", Phase: database.RestorePhaseRollingBack, State: database.RestoreStateRecoveryNeeded, Progress: 100}
+	operation := database.RestoreOperation{OperationID: "restore-response-recovery", BackupName: "backup.db", AuthorizationCommitted: true, Phase: database.RestorePhaseRollingBack, State: database.RestoreStateRecoveryNeeded, Progress: 100}
 	response := restoreResponse(operation, "status-token")
 	if response.OK || !response.RecoveryRequired || response.StatusToken != "status-token" {
 		t.Fatalf("recovery response=%#v", response)
@@ -275,7 +539,8 @@ func TestRawImportIdentityMismatchIsRejectedBeforeRestoreController(t *testing.T
 		MinimumReader: "1",
 	}
 	operation := database.RestoreOperation{
-		RawImport: true, ImportedSizeBytes: 4096, ImportedChecksumSHA256: "checksum", ImportedIdentity: identity,
+		AuthorizationCommitted: true,
+		RawImport:              true, ImportedSizeBytes: 4096, ImportedChecksumSHA256: "checksum", ImportedIdentity: identity,
 	}
 	base := database.RestoreValidation{SizeBytes: 4096, ChecksumSHA256: "checksum", Migration: identity}
 	for _, mutate := range []func(*database.RestoreOperation, *database.RestoreValidation){
@@ -363,6 +628,67 @@ func TestRestoreRunnerJoinBlocksShutdownBeforeControllerEntry(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("host shutdown did not join the restore runner")
 	}
+}
+
+func TestRestoreRunnerKeepsExecutorLockThroughHostController(t *testing.T) {
+	_, _, server := newAuthTestServerWithInstance(t)
+	operation := restoreTestOperation(server, "restore-executor-host-boundary", false)
+	operation.Phase = database.RestorePhaseStaged
+	operation.State = database.RestorePhaseStaged
+	operation.Progress = 25
+	if err := database.WriteRestoreOperation(server.cfg.AppDataDir, operation); err != nil {
+		t.Fatalf("write staged restore operation: %v", err)
+	}
+
+	controllerStarted := make(chan struct{})
+	releaseController := make(chan struct{})
+	controllerReleased := false
+	defer func() {
+		if !controllerReleased {
+			close(releaseController)
+		}
+		server.restoreBarrier.unblock()
+	}()
+	server.SetRestoreRuntimeController(func(context.Context, string) error {
+		close(controllerStarted)
+		<-releaseController
+		return nil
+	})
+	runnerDone := make(chan struct{})
+	go func() {
+		server.runRestoreOperation(operation.OperationID)
+		close(runnerDone)
+	}()
+	select {
+	case <-controllerStarted:
+	case <-time.After(time.Second):
+		t.Fatal("restore runner did not reach the host controller")
+	}
+
+	release, acquired, err := database.TryAcquireRestoreExecutorLock(server.cfg)
+	if err != nil {
+		t.Fatalf("probe restore executor ownership: %v", err)
+	}
+	if acquired {
+		release()
+		t.Fatal("restore executor lock was reacquired while the host controller remained active")
+	}
+
+	close(releaseController)
+	controllerReleased = true
+	select {
+	case <-runnerDone:
+	case <-time.After(time.Second):
+		t.Fatal("restore runner did not return after the host controller completed")
+	}
+	release, acquired, err = database.TryAcquireRestoreExecutorLock(server.cfg)
+	if err != nil {
+		t.Fatalf("reacquire restore executor after controller: %v", err)
+	}
+	if !acquired {
+		t.Fatal("restore executor lock remained held after the host controller returned")
+	}
+	release()
 }
 
 func TestRestoreQuiescenceCancelsRegisteredTranscodeAfterAdmissionSeals(t *testing.T) {
@@ -504,7 +830,8 @@ func TestRestoreQuiescenceWaitsForRunningJobHeartbeatToExit(t *testing.T) {
 func restoreTestOperation(server *Server, operationID string, rollback bool) database.RestoreOperation {
 	return database.RestoreOperation{
 		Version: database.RestoreOperationVersion, OperationID: operationID, BackupName: "backup.db",
-		ActivePath: server.cfg.DatabasePath, StagedPath: database.CanonicalRestoreStagedPath(server.cfg, operationID, false),
+		AuthorizationCommitted: true,
+		ActivePath:             server.cfg.DatabasePath, StagedPath: database.CanonicalRestoreStagedPath(server.cfg, operationID, false),
 		SafetyCopyPath: database.CanonicalRestoreSafetyCopyPath(server.cfg, operationID),
 		OldActivePath:  database.CanonicalRestoreOldActivePath(server.cfg, operationID),
 		InstallPath:    database.CanonicalRestoreInstallPath(server.cfg, operationID),
@@ -514,7 +841,7 @@ func restoreTestOperation(server *Server, operationID string, rollback bool) dat
 }
 
 func TestRestoreUploadResponseDoesNotEchoFilesystemPaths(t *testing.T) {
-	operation := database.RestoreOperation{OperationID: "restore-path-free", BackupName: "uploaded-database", Phase: database.RestorePhaseStaged, State: database.RestorePhaseStaged, StagedPath: "/private/restore/path.db"}
+	operation := database.RestoreOperation{OperationID: "restore-path-free", BackupName: "uploaded-database", AuthorizationCommitted: true, Phase: database.RestorePhaseStaged, State: database.RestorePhaseStaged, StagedPath: "/private/restore/path.db"}
 	body, err := json.Marshal(restoreResponse(operation, "status"))
 	if err != nil {
 		t.Fatal(err)

@@ -808,7 +808,7 @@ func (s *Server) setLocalProfilePINAuthorizedContext(ctx context.Context, accoun
 	}
 	now := time.Now().UTC()
 	nowText := now.Format(time.RFC3339Nano)
-	return s.withUserTxTagged(ctx, []string{"profiles", "local_profile_pin_credentials"}, func(tx *sql.Tx) error {
+	return s.withSecurityFenceTxTagged(ctx, []string{"profiles", "local_profile_pin_credentials"}, func(tx *sql.Tx) error {
 		if expectedHash != "" || sessionID != "" {
 			if err := validatePasswordSessionTx(tx, accountID, accountID, sessionID, expectedHash, now); err != nil {
 				return err
@@ -841,7 +841,7 @@ func (s *Server) clearLocalProfilePINContext(ctx context.Context, accountID, pro
 func (s *Server) clearLocalProfilePINAuthorizedContext(ctx context.Context, accountID, profileID, expectedHash, sessionID string) error {
 	now := time.Now().UTC()
 	nowText := now.Format(time.RFC3339Nano)
-	return s.withUserTxTagged(ctx, []string{"profiles", "local_profile_pin_credentials"}, func(tx *sql.Tx) error {
+	return s.withSecurityFenceTxTagged(ctx, []string{"profiles", "local_profile_pin_credentials"}, func(tx *sql.Tx) error {
 		if expectedHash != "" || sessionID != "" {
 			if err := validatePasswordSessionTx(tx, accountID, accountID, sessionID, expectedHash, now); err != nil {
 				return err
@@ -1186,7 +1186,7 @@ func (s *Server) issueHostedProfileSelectionGrantForPurposeContext(ctx context.C
 			SELECT p.id, p.pin_revision, p.is_primary, COALESCE(u.allow_account_profiles, 1)
 			FROM profiles p
 			JOIN users u ON u.id = p.account_id
-			JOIN hosted_profile_snapshot_state snapshot ON snapshot.account_id = p.account_id
+			JOIN hosted_profile_snapshot_state snapshot ON snapshot.account_id = p.account_id AND snapshot.quarantined_at = ''
 			WHERE p.account_id = ? AND p.origin = 'hosted' AND p.external_profile_id = ? AND p.disabled_at = ''`,
 			accountID, envelope.ProfileID).Scan(&profileID, &pinRevision, &primary, &profilesAllowed); err != nil {
 			return fmt.Errorf("%w: hosted profile is absent from the current server snapshot", errInvalidHostedProfileSelectionAssertion)

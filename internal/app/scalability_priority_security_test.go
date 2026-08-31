@@ -2,11 +2,17 @@ package app
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/PorticoMediaServer/portico-server/internal/app/apiroute"
+	"github.com/PorticoMediaServer/portico-server/internal/database"
+	"github.com/PorticoMediaServer/portico-server/internal/foundationcontract"
 )
 
 func TestSettingsReadsObserveAuthoritativeOutOfBandMutation(t *testing.T) {
@@ -145,31 +151,35 @@ func TestVerifiedMediaGrantDeniesImmediatelyAfterObservedRevocation(t *testing.T
 
 func TestSQLiteWriteSchedulerStrictPriority(t *testing.T) {
 	var scheduler sqliteWriteScheduler
-	releaseActive, err := scheduler.acquire(context.Background(), sqliteWriteBackground)
+	releaseActive, err := scheduler.acquire(context.Background(), foundationcontract.WorkClassMaintenance)
 	if err != nil {
 		t.Fatal(err)
 	}
-	order := make(chan sqliteWritePriority, 3)
-	start := func(priority sqliteWritePriority) {
+	classes := foundationcontract.CanonicalWorkClasses()
+	order := make(chan foundationcontract.WorkClass, len(classes))
+	start := func(class foundationcontract.WorkClass) {
 		go func() {
-			release, acquireErr := scheduler.acquire(context.Background(), priority)
+			release, acquireErr := scheduler.acquire(context.Background(), class)
 			if acquireErr != nil {
 				return
 			}
-			order <- priority
+			order <- class
 			release()
 		}()
 	}
-	start(sqliteWriteBackground)
-	start(sqliteWriteInteractive)
-	start(sqliteWritePlayback)
+	for index := len(classes) - 1; index >= 0; index-- {
+		start(classes[index])
+	}
 	deadline := time.Now().Add(time.Second)
 	for {
-		playback, interactive := scheduler.pressure()
-		scheduler.mu.Lock()
-		background := len(scheduler.waitQueue[sqliteWriteBackground])
-		scheduler.mu.Unlock()
-		if playback == 1 && interactive == 1 && background == 1 {
+		allWaiting := true
+		for _, class := range classes {
+			if scheduler.waiting(class) != 1 {
+				allWaiting = false
+				break
+			}
+		}
+		if allWaiting {
 			break
 		}
 		if time.Now().After(deadline) {
@@ -178,7 +188,7 @@ func TestSQLiteWriteSchedulerStrictPriority(t *testing.T) {
 		time.Sleep(time.Millisecond)
 	}
 	releaseActive()
-	for _, expected := range []sqliteWritePriority{sqliteWritePlayback, sqliteWriteInteractive, sqliteWriteBackground} {
+	for _, expected := range classes {
 		select {
 		case actual := <-order:
 			if actual != expected {
@@ -186,6 +196,89 @@ func TestSQLiteWriteSchedulerStrictPriority(t *testing.T) {
 			}
 		case <-time.After(time.Second):
 			t.Fatal("timed out waiting for prioritized writer")
+		}
+	}
+}
+
+func TestSecurityFenceRequestAdmissionIsReservedFromOrdinarySaturation(t *testing.T) {
+	server := &Server{workloadLanes: newWorkloadLanes()}
+	ordinary := server.workloadLane(workloadLaneDefault)
+	releases := make([]func(), 0, ordinary.capacity)
+	for index := 0; index < ordinary.capacity; index++ {
+		if !ordinary.tryAcquireUncounted() {
+			t.Fatalf("ordinary lane saturated after %d of %d admissions", index, ordinary.capacity)
+		}
+		releases = append(releases, ordinary.release)
+	}
+	defer func() {
+		for _, release := range releases {
+			release()
+		}
+	}()
+
+	nextCalled := false
+	handler := server.workloadAdmission(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		nextCalled = true
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	request := httptest.NewRequest(http.MethodDelete, "/api/account/sessions/other", nil)
+	request = apiroute.WithRoute(request, apiroute.Route{
+		Method: http.MethodDelete, OperationID: "deleteAccountSessionsId",
+		RatePolicy: "state-mutation", WorkClass: foundationcontract.WorkClassSecurityFence,
+	})
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusNoContent || !nextCalled {
+		t.Fatalf("security fence queued behind ordinary saturation: status=%d body=%s", response.Code, response.Body.String())
+	}
+	if active := len(server.workloadLane(workloadLaneSecurityFence).tokens); active != 0 {
+		t.Fatalf("security fence admission leaked %d tokens", active)
+	}
+}
+
+func TestSecurityFenceSQLiteTransactionRunsBeforeQueuedOrdinaryMutation(t *testing.T) {
+	server := newScannerTestServer(t)
+	releaseActive, err := server.dbWriteScheduler.acquire(context.Background(), foundationcontract.WorkClassInteractive)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	order := make(chan foundationcontract.WorkClass, 2)
+	errors := make(chan error, 2)
+	run := func(class foundationcontract.WorkClass) {
+		go func() {
+			errors <- server.withWorkClassTxTaggedForViewer(context.Background(), class, "work_class_test", database.UserWriteRetry, "", "", nil, func(*sql.Tx) error {
+				order <- class
+				return nil
+			})
+		}()
+	}
+	run(foundationcontract.WorkClassInteractive)
+	run(foundationcontract.WorkClassSecurityFence)
+	deadline := time.Now().Add(time.Second)
+	for server.dbWriteScheduler.waiting(foundationcontract.WorkClassInteractive) != 1 || server.dbWriteScheduler.waiting(foundationcontract.WorkClassSecurityFence) != 1 {
+		if time.Now().After(deadline) {
+			releaseActive()
+			t.Fatal("writes did not enter the SQLite scheduler")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	releaseActive()
+
+	for _, expected := range []foundationcontract.WorkClass{
+		foundationcontract.WorkClassSecurityFence,
+		foundationcontract.WorkClassInteractive,
+	} {
+		select {
+		case actual := <-order:
+			if actual != expected {
+				t.Fatalf("SQLite transaction order=%q, expected %q", actual, expected)
+			}
+		case <-time.After(time.Second):
+			t.Fatal("timed out waiting for SQLite transaction")
+		}
+		if err := <-errors; err != nil {
+			t.Fatalf("SQLite transaction failed: %v", err)
 		}
 	}
 }

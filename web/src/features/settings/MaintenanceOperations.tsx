@@ -5,7 +5,7 @@ import { PrimaryButton, SecondaryButton } from '../../components/controls/Button
 import { reviewedProductErrorText } from '../../components/ProductLanguage';
 import { InlineNotice, SettingsGroup, ToggleControl } from './SettingsControls';
 import { useAbortableMutation } from './settingsHooks';
-import type { RestoreWorkflowResponse, SettingsDataSource, SettingsOperationalSnapshot } from './settingsTypes';
+import type { RestoreWorkflowResponse, SettingsDataSource, SettingsOperationalSnapshot, SettingsViewer } from './settingsTypes';
 
 function bytes(value: number): string {
   const units = ['B', 'KB', 'MB', 'GB', 'TB'];
@@ -159,16 +159,26 @@ function TasksPanel({ tasks, source, onChanged }: { tasks: ScheduledTask[]; sour
   </SettingsGroup>;
 }
 
-function BackupsPanel({ backups, source, onChanged }: { backups: BackupInfo[]; source: SettingsDataSource; onChanged: () => void }) {
+function BackupsPanel({ backups, viewer, source, onChanged }: { backups: BackupInfo[]; viewer: SettingsViewer; source: SettingsDataSource; onChanged: () => void }) {
   const mutation = useAbortableMutation();
   const [confirmRestore, setConfirmRestore] = useState('');
   const [password, setPassword] = useState('');
+  const [mfaCode, setMFACode] = useState('');
+  const [recoveryCode, setRecoveryCode] = useState('');
   const [importFile, setImportFile] = useState<File | undefined>();
   const [feedback, setFeedback] = useState('');
   const [error, setError] = useState('');
   const [operation, setOperation] = useState<{ name: string; phase: string; progress: number; instruction: string; recoveryRequired?: boolean }>();
   const pollingOperation = useRef<string | undefined>(undefined);
   const mounted = useRef(true);
+  const hostedOwner = viewer.authOrigin === 'portico' || viewer.authProvider === 'portico';
+  const stepUp = () => ({
+    origin: hostedOwner ? 'portico' as const : 'local' as const,
+    password: password || undefined,
+    mfaCode: mfaCode || undefined,
+    recoveryCode: recoveryCode || undefined,
+  });
+  const stepUpReady = hostedOwner || password.length > 0;
 
   const rememberRestore = useCallback((response: RestoreWorkflowResponse): RestoreCapability | undefined => {
     if (!response.operationId || !response.statusToken) return undefined;
@@ -254,14 +264,14 @@ function BackupsPanel({ backups, source, onChanged }: { backups: BackupInfo[]; s
     setFeedback(''); setError(''); setOperation(undefined);
     try {
       const final = await mutation.run(async (signal) => {
-        const response = await source.restoreBackup(backup.name, password, `restore:${backup.name}`, signal);
+        const response = await source.restoreBackup(backup.name, stepUp(), `restore:${backup.name}`, signal);
         const capability = rememberRestore(response);
         if (!capability) throw new Error('The restore did not return a status capability.');
         pollingOperation.current = response.operationId;
         return waitForRestore(response, capability, signal);
       });
       pollingOperation.current = undefined;
-      setConfirmRestore(''); setPassword('');
+      setConfirmRestore(''); setPassword(''); setMFACode(''); setRecoveryCode('');
       setFeedback(final.instruction || `Restore ${final.state}.`);
       if (final.state === 'recovery-required' || final.recoveryRequired) setError('Portico requires supervised recovery before normal service can resume.');
       if (final.state === 'complete' && typeof window !== 'undefined') window.setTimeout(() => window.location.reload(), 250);
@@ -273,14 +283,14 @@ function BackupsPanel({ backups, source, onChanged }: { backups: BackupInfo[]; s
     setFeedback(''); setError(''); setOperation(undefined);
     try {
       const final = await mutation.run(async (signal) => {
-        const response = await source.restoreUploadedDatabase(importFile, password, 'restore:uploaded-database', signal);
+        const response = await source.restoreUploadedDatabase(importFile, stepUp(), 'restore:uploaded-database', signal);
         const capability = rememberRestore(response);
         if (!capability) throw new Error('The database import did not return a status capability.');
         pollingOperation.current = response.operationId;
         return waitForRestore(response, capability, signal);
       });
       pollingOperation.current = undefined;
-      setImportFile(undefined); setPassword('');
+      setImportFile(undefined); setPassword(''); setMFACode(''); setRecoveryCode('');
       setFeedback(final.instruction || `Storage import ${final.state}.`);
       if (final.state === 'recovery-required' || final.recoveryRequired) setError('Portico requires supervised recovery before normal service can resume.');
       if (final.state === 'complete' && typeof window !== 'undefined') window.setTimeout(() => window.location.reload(), 250);
@@ -291,11 +301,13 @@ function BackupsPanel({ backups, source, onChanged }: { backups: BackupInfo[]; s
     {(feedback || error) && <InlineNotice tone={error ? 'error' : operation?.recoveryRequired ? 'warn' : 'success'}>{error || feedback}</InlineNotice>}
     {operation && !error && <InlineNotice tone="warn">{operation.phase} · {operation.progress}% · {operation.instruction}</InlineNotice>}
     <div className="portico-inline-confirm">
-      <label>Account password <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" /></label>
+      <label>{hostedOwner ? 'Portico Account password (if needed)' : 'Account password'} <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" /></label>
+      {hostedOwner && <label>MFA code <input inputMode="numeric" autoComplete="one-time-code" value={mfaCode} onChange={(event) => setMFACode(event.target.value)} /></label>}
+      {hostedOwner && <label>Recovery code <input autoComplete="one-time-code" value={recoveryCode} onChange={(event) => setRecoveryCode(event.target.value)} /></label>}
       <label>Import database <input type="file" accept=".db,application/vnd.sqlite3,application/octet-stream" onChange={(event) => setImportFile(event.target.files?.[0])} /></label>
-      <button type="button" className="danger" disabled={mutation.busy || !importFile || !password} onClick={() => void upload()}>Verify and import</button>
+      <button type="button" className="danger" disabled={mutation.busy || !importFile || !stepUpReady} onClick={() => void upload()}>Verify and import</button>
     </div>
-    {backups.length === 0 ? <div className="portico-settings-state"><ActionArchiveIcon /><strong>No backups found</strong><p>Create a backup before changing storage or performing server maintenance.</p></div> : <div className="portico-backup-list">{backups.map((backup) => <article key={backup.name}><span className={backup.integrity === 'ok' ? 'healthy' : 'danger'}>{backup.integrity === 'ok' ? <StatusSuccessIcon /> : <StatusWarningIcon />}</span><span><strong>{backup.name}</strong><small>{new Date(backup.createdAt).toLocaleString()} · {bytes(backup.sizeBytes)} · {backup.manifestPresent ? 'verified manifest' : `not restore-ready${backup.validationCode ? ` · ${backup.validationCode}` : ''}`}</small></span><div>{backup.restoreReady ? (confirmRestore === backup.name ? <div className="portico-inline-confirm"><span>Confirm <code>restore:{backup.name}</code></span><button type="button" onClick={() => setConfirmRestore('')}>Cancel</button><button type="button" className="danger" disabled={mutation.busy || !password} onClick={() => void restore(backup)}>Restore</button></div> : <SecondaryButton disabled={mutation.busy} onClick={() => setConfirmRestore(backup.name)}><ActionUndoIcon /> Restore</SecondaryButton>) : <span className="portico-settings-capability">Not restore-ready</span>}</div></article>)}</div>}
+    {backups.length === 0 ? <div className="portico-settings-state"><ActionArchiveIcon /><strong>No backups found</strong><p>Create a backup before changing storage or performing server maintenance.</p></div> : <div className="portico-backup-list">{backups.map((backup) => <article key={backup.name}><span className={backup.integrity === 'ok' ? 'healthy' : 'danger'}>{backup.integrity === 'ok' ? <StatusSuccessIcon /> : <StatusWarningIcon />}</span><span><strong>{backup.name}</strong><small>{new Date(backup.createdAt).toLocaleString()} · {bytes(backup.sizeBytes)} · {backup.manifestPresent ? 'verified manifest' : `not restore-ready${backup.validationCode ? ` · ${backup.validationCode}` : ''}`}</small></span><div>{backup.restoreReady ? (confirmRestore === backup.name ? <div className="portico-inline-confirm"><span>Confirm <code>restore:{backup.name}</code></span><button type="button" onClick={() => setConfirmRestore('')}>Cancel</button><button type="button" className="danger" disabled={mutation.busy || !stepUpReady} onClick={() => void restore(backup)}>Restore</button></div> : <SecondaryButton disabled={mutation.busy} onClick={() => setConfirmRestore(backup.name)}><ActionUndoIcon /> Restore</SecondaryButton>) : <span className="portico-settings-capability">Not restore-ready</span>}</div></article>)}</div>}
   </SettingsGroup>;
 }
 
@@ -316,12 +328,12 @@ function UpdaterPanel({ release }: { release?: SystemReleaseInfo }) {
   </SettingsGroup>;
 }
 
-export function MaintenanceOperations({ tasks, backups, storage, release, failures, source, onChanged }: { tasks: ScheduledTask[]; backups: BackupInfo[]; storage: SystemStorageReport; release?: SystemReleaseInfo; failures?: SettingsOperationalSnapshot['failures']; source: SettingsDataSource; onChanged: () => void }) {
+export function MaintenanceOperations({ tasks, backups, storage, release, failures, viewer, source, onChanged }: { tasks: ScheduledTask[]; backups: BackupInfo[]; storage: SystemStorageReport; release?: SystemReleaseInfo; failures?: SettingsOperationalSnapshot['failures']; viewer: SettingsViewer; source: SettingsDataSource; onChanged: () => void }) {
   const unavailable = (title: string) => <SettingsGroup title={title} description="This panel could not be refreshed independently."><div className="portico-settings-state error"><StatusWarningIcon /><strong>{title} are unavailable</strong><p>Retry the failed panel before making changes. No empty result is being inferred.</p></div></SettingsGroup>;
   return <div className="portico-settings-form">
     {failures?.release ? unavailable('Server updates') : <UpdaterPanel release={release} />}
     {failures?.tasks ? unavailable('Scheduled tasks') : <TasksPanel tasks={tasks} source={source} onChanged={onChanged} />}
-    {failures?.backups ? unavailable('Backups') : <BackupsPanel backups={backups} source={source} onChanged={onChanged} />}
+    {failures?.backups ? unavailable('Backups') : <BackupsPanel backups={backups} viewer={viewer} source={source} onChanged={onChanged} />}
     {failures?.storage ? unavailable('Storage') : <StoragePanel storage={storage} />}
   </div>;
 }

@@ -34,6 +34,7 @@ function jsonResponse(body, init = {}) {
 
 function credentials(accessToken, refreshToken, overrides = {}) {
   return {
+    ...testServerIdentity(),
     tokenType: "Bearer",
     accessToken,
     accessExpiresAt: "2026-07-11T01:00:00Z",
@@ -274,7 +275,7 @@ test("hosted route failover verifies identity and commits a selected server atom
   const probeCalls = [];
   const server = { ...testServerIdentity(), id: "srv_next", name: "Next", preferredAuthMode: "portico" };
   const document = routeDocument("srv_next", [
-    { type: "lan_ip_encoded", url: "https://10-0-0-8.direct.getportico.tv:32500", quality: "reported" },
+    { type: "lan_ip_encoded", url: "https://10-0-0-8.direct.getportico.tv:32500", quality: "probe_required" },
     { type: "public_direct", url: "https://srv-next.direct.getportico.tv:32500", quality: "reachable" }
   ]);
   await connectHostedServer(server, {

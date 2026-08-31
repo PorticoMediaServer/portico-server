@@ -23,9 +23,9 @@ func TestClientCompatibilityFixtureTracksServerContracts(t *testing.T) {
 			Compatibility CompatibilityEnvelope `json:"compatibility"`
 		} `json:"system"`
 		ProductContract struct {
-			APIVersion         string                `json:"apiVersion"`
-			ServerCapabilities []string              `json:"serverCapabilities"`
-			Compatibility      CompatibilityEnvelope `json:"compatibility"`
+			APIVersion         string                    `json:"apiVersion"`
+			ServerCapabilities []string                  `json:"serverCapabilities"`
+			SemanticIdentity   *SemanticDocumentIdentity `json:"semanticIdentity"`
 		} `json:"productContract"`
 		Negotiation struct {
 			UnknownCapabilitiesAreAllowed bool `json:"unknownCapabilitiesAreAllowed"`
@@ -76,7 +76,7 @@ func TestClientCompatibilityFixtureTracksServerContracts(t *testing.T) {
 	if code != http.StatusOK || contract.APIVersion != fixture.ProductContract.APIVersion {
 		t.Fatalf("Product Contract compatibility response status=%d body=%s response=%#v", code, body, contract)
 	}
-	if !reflect.DeepEqual(contract.Compatibility, fixture.ProductContract.Compatibility) || !reflect.DeepEqual(contract.ServerCapabilities, fixture.ProductContract.ServerCapabilities) {
+	if !reflect.DeepEqual(contract.SemanticIdentity, fixture.ProductContract.SemanticIdentity) || !reflect.DeepEqual(contract.ServerCapabilities, fixture.ProductContract.ServerCapabilities) {
 		t.Fatalf("Product Contract compatibility drifted from fixture")
 	}
 }
@@ -322,10 +322,12 @@ func TestCapabilityRegistryIsAnchoredToMountedRoutesAndSharedByProjections(t *te
 	if len(envelope.Capabilities) != len(serverCapabilityDefinitions) {
 		t.Fatalf("capability snapshot=%d registry=%d", len(envelope.Capabilities), len(serverCapabilityDefinitions))
 	}
-	available := availableServerCapabilityIDs(envelope.Capabilities)
-	contract := server.canonicalProductContract()
-	if !reflect.DeepEqual(contract.Compatibility.Capabilities, envelope.Capabilities) || !reflect.DeepEqual(contract.ServerCapabilities, available) {
-		t.Fatalf("System/Product projections do not share the registry snapshot")
+	contract := canonicalProductContract()
+	if !reflect.DeepEqual(contract.ServerCapabilities, serverCapabilityCatalogIDs()) {
+		t.Fatalf("Product Contract does not expose the stable capability catalog")
+	}
+	if contract.SemanticIdentity == nil || envelope.SemanticDocuments["productContract"] != *contract.SemanticIdentity {
+		t.Fatalf("System does not reference the stable Product Contract semantics")
 	}
 	states := map[string]string{}
 	for _, capability := range envelope.Capabilities {
@@ -349,6 +351,7 @@ func expectedBroadCapabilityRoutes() map[string]map[string]bool {
 	return map[string]map[string]bool{
 		"downloads": routes(
 			"GET /api/download-preparations", "POST /api/download-preparations", "GET /api/download-preparations/{}", "PATCH /api/download-preparations/{}", "DELETE /api/download-preparations/{}", "POST /api/download-preparations/{}/grant",
+			"POST /api/offline-download-authorizations/revalidate",
 			"GET /api/media/{}/download-options", "GET /api/media/{}/download", "HEAD /api/media/{}/download",
 		),
 		"home.lazy-rows":                routes("GET /api/home", "GET /api/home/rows/{}"),
@@ -371,7 +374,7 @@ func expectedBroadCapabilityRoutes() map[string]map[string]bool {
 			"GET /api/remote-access/status", "GET /api/remote-access/health", "GET /api/remote-access/routes/local", "POST /api/remote-access/claim/start", "POST /api/remote-access/claim/cancel", "PATCH /api/remote-access/settings", "POST /api/remote-access/policy-sync",
 			"POST /api/remote-access/certificates/renew", "PATCH /api/remote-access/members/{}", "POST /api/remote-access/test-direct", "POST /api/remote-access/unclaim",
 		),
-		"playback.google-cast-custom-receiver": routes("POST /api/playback/cast/bootstrap", "POST /api/playback/cast/reconnect", "POST /api/playback/cast/redeem", "GET /api/playback/cast/sessions/{}/state", "POST /api/playback/cast/sessions/{}/{}", "DELETE /api/playback/cast/sessions/{}/stop"),
+		"playback.google-cast-custom-receiver": routes("POST /api/playback/cast/bootstrap", "POST /api/playback/cast/reconnect", "POST /api/playback/cast/redeem", "GET /api/playback/cast/sessions/{}/state", "POST /api/playback/cast/sessions/{}/{}"),
 		"media.actions": routes(
 			"GET /api/product-contract", "POST /api/playback-sessions", "POST /api/download-preparations", "POST /api/media/{}/watchlist", "POST /api/media/{}/favorite", "POST /api/media/{}/watched", "POST /api/media/{}/reaction", "POST /api/media/{}/rating", "POST /api/media/{}/jobs", "DELETE /api/media/{}",
 			"POST /api/dvr/recordings", "POST /api/dvr/rules", "POST /api/dvr/recordings/{}/playback", "DELETE /api/dvr/recordings/{}", "PATCH /api/dvr/rules/{}",

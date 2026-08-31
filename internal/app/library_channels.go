@@ -159,16 +159,17 @@ type libraryChannelLinearGuideDocument struct {
 }
 
 type libraryChannelTuneRequest struct {
-	At               string                `json:"at,omitempty"`
-	ClientInstanceID string                `json:"clientInstanceId,omitempty"`
-	ClientProfile    PlaybackClientProfile `json:"clientProfile,omitempty"`
-	Intent           PlaybackIntent        `json:"intent,omitempty"`
+	At               string                      `json:"at,omitempty"`
+	ClientInstanceID string                      `json:"clientInstanceId,omitempty"`
+	ClientProfile    PlaybackClientProfile       `json:"clientProfile,omitempty"`
+	Intent           PlaybackIntent              `json:"intent,omitempty"`
+	Replacement      *PlaybackReplacementRequest `json:"replacement,omitempty"`
 }
 
 // startLibraryChannelPlaybackByID resolves the authoritative current program
 // and constructs the same canonical playback response used by the tune route.
 // Receiver clients use this instead of guessing a media item from guide data.
-func (s *Server) startLibraryChannelPlaybackByID(r *http.Request, user User, channelID string, clientProfile PlaybackClientProfile, intent PlaybackIntent, clientInstanceID string) (PlaybackResponse, *playbackStartHTTPError) {
+func (s *Server) startLibraryChannelPlaybackByID(r *http.Request, user User, channelID string, clientProfile PlaybackClientProfile, intent PlaybackIntent, clientInstanceID string, externalReplacement *playbackReplacementPlan) (PlaybackResponse, *playbackStartHTTPError) {
 	if !canPlayLiveTV(user) || !hasPermission(user, "playMedia") {
 		return PlaybackResponse{}, &playbackStartHTTPError{status: http.StatusForbidden, code: "forbidden", message: "This profile cannot play Library Channels."}
 	}
@@ -189,11 +190,17 @@ func (s *Server) startLibraryChannelPlaybackByID(r *http.Request, user User, cha
 	if len(entries) == 0 {
 		return PlaybackResponse{}, &playbackStartHTTPError{status: http.StatusNotFound, code: "library_channel_program_unavailable", message: "No Library Channel program is scheduled at this time."}
 	}
-	playback, err := s.startLibraryChannelPlayback(r, user, aggregate.Channel, entries[0], clientProfile, intent, clientInstanceID)
+	playback, err := s.startLibraryChannelPlayback(r, user, aggregate.Channel, entries[0], clientProfile, intent, clientInstanceID, nil, externalReplacement)
 	if err == nil {
 		return playback, nil
 	}
+	var startErr *playbackStartHTTPError
+	if errors.As(err, &startErr) {
+		return PlaybackResponse{}, startErr
+	}
 	switch {
+	case errors.Is(err, errPlaybackReplacementRequired):
+		return PlaybackResponse{}, &playbackStartHTTPError{status: http.StatusConflict, code: "replacement_required", message: "This client already owns active playback. Supply its exact replacement authority envelope."}
 	case errors.Is(err, errPlaybackSessionLimit):
 		return PlaybackResponse{}, &playbackStartHTTPError{status: http.StatusTooManyRequests, code: "playback_session_limit", message: "This profile has reached its active playback limit.", retryAfter: "15"}
 	case errors.Is(err, librarychannels.ErrProgramRestricted):
@@ -533,6 +540,10 @@ func (s *Server) handleLibraryChannelTune(w http.ResponseWriter, r *http.Request
 		writeProductError(w, http.StatusBadRequest, "library_channel_invalid_request", "A client instance identifier is required for playback ownership.")
 		return
 	}
+	if strings.TrimSpace(request.Intent.Quality.Mode) == "" {
+		writeProductError(w, http.StatusBadRequest, "invalid_playback_quality", "intent.quality is required and must be Automatic or an exact server-issued explicit offer.")
+		return
+	}
 	request.ClientProfile = normalizePlaybackProfile(request.ClientProfile)
 	now := time.Now().UTC().Truncate(time.Second)
 	if strings.TrimSpace(request.At) != "" && !isLibraryChannelOwner(user) {
@@ -572,8 +583,13 @@ func (s *Server) handleLibraryChannelTune(w http.ResponseWriter, r *http.Request
 	if aggregate.Channel.Logo.BugEnabled {
 		overlay = &libraryChannelVideoOverlayDocument{AssetURL: libraryChannelLogoURL(aggregate.Channel.Logo), Corner: aggregate.Channel.Logo.BugCorner, WidthPercent: aggregate.Channel.Logo.BugWidthPct, InsetPercent: aggregate.Channel.Logo.BugInsetPct, Treatment: aggregate.Channel.Logo.BugTreatment, RequiresTranscode: true}
 	}
-	playback, err := s.startLibraryChannelPlayback(r, user, aggregate.Channel, entry, request.ClientProfile, request.Intent, request.ClientInstanceID)
+	playback, err := s.startLibraryChannelPlayback(r, user, aggregate.Channel, entry, request.ClientProfile, request.Intent, request.ClientInstanceID, request.Replacement, nil)
 	if err != nil {
+		var startErr *playbackStartHTTPError
+		if errors.As(err, &startErr) {
+			writePlaybackStartError(w, startErr)
+			return
+		}
 		writeLibraryChannelPlaybackError(w, err)
 		return
 	}

@@ -9,9 +9,13 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/PorticoMediaServer/portico-server/internal/foundationcontract"
 )
 
 func TestMediaBodiesAndDownloadsUseDedicatedDeadlineFreeLanes(t *testing.T) {
+	server := &Server{}
+	_ = server.Handler()
 	for _, testCase := range []struct {
 		path string
 		lane string
@@ -23,10 +27,11 @@ func TestMediaBodiesAndDownloadsUseDedicatedDeadlineFreeLanes(t *testing.T) {
 		{"/api/live-tv/streams/channel", workloadLaneMediaBody},
 	} {
 		request := httptest.NewRequest(http.MethodGet, testCase.path, nil)
-		if lane := workloadLaneIDForRequest(request); lane != testCase.lane {
+		descriptor := server.requestWork(request)
+		if lane := descriptor.Lane; lane != testCase.lane {
 			t.Errorf("%s used lane %q, want %q", testCase.path, lane, testCase.lane)
 		}
-		if budget := requestBudgetForLane(request, testCase.lane); budget != 0 {
+		if budget := requestBudgetForWork(descriptor); budget != 0 {
 			t.Errorf("%s received body deadline %s", testCase.path, budget)
 		}
 	}
@@ -49,15 +54,15 @@ func TestMixedPressurePreservesEstablishedMediaDelivery(t *testing.T) {
 	delivery.release()
 
 	governor := &mediaResourceGovernor{cpuCapacity: 2, diskCapacity: 4, networkCapacity: 4}
-	releaseAnalysis, ok := governor.tryAcquire(mediaResourceRequest{cpu: 1, disk: 1, background: true})
+	releaseAnalysis, ok := governor.tryAcquire(mediaResourceRequest{class: foundationcontract.WorkClassBackgroundMedia, cpu: 1, disk: 1})
 	if !ok {
 		t.Fatal("expected one bounded analysis task to start")
 	}
 	defer releaseAnalysis()
-	if _, ok := governor.tryAcquire(mediaResourceRequest{cpu: 1, background: true}); ok {
+	if _, ok := governor.tryAcquire(mediaResourceRequest{class: foundationcontract.WorkClassBackgroundMedia, cpu: 1}); ok {
 		t.Fatal("background work consumed the CPU reserved for foreground playback")
 	}
-	releasePlayback, ok := governor.tryAcquire(mediaResourceRequest{cpu: 1, disk: 2})
+	releasePlayback, ok := governor.tryAcquire(mediaResourceRequest{class: foundationcontract.WorkClassPlaybackStart, cpu: 1, disk: 2})
 	if !ok {
 		t.Fatal("foreground playback could not use its reserved processing capacity")
 	}
@@ -108,15 +113,15 @@ func TestLiveTVSegmentCacheCoalescesFlights(t *testing.T) {
 
 func TestMediaResourceGovernorReservesForegroundCPU(t *testing.T) {
 	governor := &mediaResourceGovernor{cpuCapacity: 2, diskCapacity: 2, networkCapacity: 2}
-	releaseBackground, ok := governor.tryAcquire(mediaResourceRequest{cpu: 1, background: true})
+	releaseBackground, ok := governor.tryAcquire(mediaResourceRequest{class: foundationcontract.WorkClassBackgroundMedia, cpu: 1})
 	if !ok {
 		t.Fatal("first background task should be admitted")
 	}
 	defer releaseBackground()
-	if _, ok := governor.tryAcquire(mediaResourceRequest{cpu: 1, background: true}); ok {
+	if _, ok := governor.tryAcquire(mediaResourceRequest{class: foundationcontract.WorkClassBackgroundMedia, cpu: 1}); ok {
 		t.Fatal("background work must leave one CPU slot available")
 	}
-	releaseForeground, ok := governor.tryAcquire(mediaResourceRequest{cpu: 1})
+	releaseForeground, ok := governor.tryAcquire(mediaResourceRequest{class: foundationcontract.WorkClassPlaybackStart, cpu: 1})
 	if !ok {
 		t.Fatal("reserved foreground CPU slot should remain available")
 	}
@@ -125,14 +130,14 @@ func TestMediaResourceGovernorReservesForegroundCPU(t *testing.T) {
 
 func TestMediaResourceGovernorAcquireHonorsCancellation(t *testing.T) {
 	governor := &mediaResourceGovernor{cpuCapacity: 1, diskCapacity: 1, networkCapacity: 1}
-	release, ok := governor.tryAcquire(mediaResourceRequest{cpu: 1})
+	release, ok := governor.tryAcquire(mediaResourceRequest{class: foundationcontract.WorkClassPlaybackStart, cpu: 1})
 	if !ok {
 		t.Fatal("expected initial acquisition")
 	}
 	defer release()
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, err := governor.acquireContext(ctx, mediaResourceRequest{cpu: 1}); err == nil {
+	if _, err := governor.acquireContext(ctx, mediaResourceRequest{class: foundationcontract.WorkClassPlaybackStart, cpu: 1}); err == nil {
 		t.Fatal("cancelled acquisition should fail")
 	}
 }
@@ -158,16 +163,16 @@ func TestDueQueuedJobsFairIncludesEveryReadyLane(t *testing.T) {
 	for index := 0; index < 8; index++ {
 		created := now.Add(time.Duration(index-20) * time.Minute).Format(time.RFC3339)
 		if _, err := server.db.Exec(`INSERT INTO jobs
-			(id, type, status, progress, message, resource_type, resource_id, metadata_json, created_at, updated_at)
-			VALUES (?, 'media_analyze', 'queued', 0, 'Queued.', 'media', ?, '{}', ?, ?)`,
-			"analysis_fair_"+time.Duration(index).String(), "media_"+time.Duration(index).String(), created, created); err != nil {
+			(id, type, status, progress, message, resource_type, resource_id, metadata_json, priority, created_at, updated_at)
+			VALUES (?, 'media_analyze', 'queued', 0, 'Queued.', 'media', ?, '{}', ?, ?, ?)`,
+			"analysis_fair_"+time.Duration(index).String(), "media_"+time.Duration(index).String(), foundationcontract.WorkClassBackgroundMedia, created, created); err != nil {
 			t.Fatalf("insert analysis job: %v", err)
 		}
 	}
 	created := now.Add(-time.Minute).Format(time.RFC3339)
 	if _, err := server.db.Exec(`INSERT INTO jobs
-		(id, type, status, progress, message, resource_type, resource_id, metadata_json, created_at, updated_at)
-		VALUES ('maintenance_fair', 'system_storage_cleanup', 'queued', 0, 'Queued.', 'maintenance', 'storage', '{}', ?, ?)`, created, created); err != nil {
+		(id, type, status, progress, message, resource_type, resource_id, metadata_json, priority, created_at, updated_at)
+		VALUES ('maintenance_fair', 'system_storage_cleanup', 'queued', 0, 'Queued.', 'maintenance', 'storage', '{}', ?, ?, ?)`, foundationcontract.WorkClassMaintenance, created, created); err != nil {
 		t.Fatalf("insert maintenance job: %v", err)
 	}
 	jobs, err := server.dueQueuedJobsFair(now.Format(time.RFC3339))

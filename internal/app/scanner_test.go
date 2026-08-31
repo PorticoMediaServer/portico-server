@@ -1717,7 +1717,11 @@ func TestLibraryScannerIngestsTextSidecarSubtitles(t *testing.T) {
 			{Index: 1, CodecType: "audio", CodecName: "aac", Profile: "LC", Channels: 2, ChannelLayout: "stereo", SampleRate: "48000", TimeBase: "1/48000", Duration: "20"},
 		},
 	}
-	if err := server.persistFFprobeAnalysisInputs(context.Background(), detail, analyzedPath, analyzedPath, payload, mediaAnalysisOptions{}, true, now); err != nil {
+	revision, err := server.currentMediaAnalysisSourceRevision(context.Background(), detail)
+	if err != nil {
+		t.Fatalf("load analysis source revision: %v", err)
+	}
+	if err := server.persistFFprobeAnalysisInputs(context.Background(), detail, analyzedPath, analyzedPath, payload, mediaAnalysisOptions{ProbeStreams: true, ExpectedSourceRevision: revision}, true, now); err != nil {
 		t.Fatalf("persist technical analysis: %v", err)
 	}
 	projected, err := server.getMediaDetail("", detail.ID)
@@ -2438,9 +2442,12 @@ func TestMusicScanCanKeepFilenameTitleOverEmbeddedTitle(t *testing.T) {
 	}
 	library, err := server.createLibrary(CreateLibraryRequest{Name: "Music", Type: "music", Paths: []string{root}, Settings: map[string]any{
 		"preferEmbeddedTitles": false,
-		// This test invokes analysis directly below; do not race that call with
-		// the scanner's automatic media_analyze dispatch.
-		"analysisTier": analysisTierFileListOnly,
+		// The scanner test server does not run durable workers, so this explicit
+		// Custom grant authorizes the directly dispatched probe without racing it.
+		"analysisTier":        analysisTierCustom,
+		"probeStreams":        true,
+		"readEmbeddedTags":    true,
+		"readEmbeddedIndexes": true,
 	}})
 	if err != nil {
 		t.Fatalf("create library: %v", err)

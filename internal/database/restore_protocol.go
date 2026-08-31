@@ -243,6 +243,11 @@ type RestoreOperation struct {
 	AccountID                string            `json:"accountId"`
 	SessionID                string            `json:"sessionId"`
 	StatusTokenHash          string            `json:"statusTokenHash"`
+	PreRestoreSecurityEpoch  int64             `json:"preRestoreSecurityEpoch,omitempty"`
+	HostedAuthorizationID    string            `json:"hostedAuthorizationId,omitempty"`
+	AuthorizationCommitted   bool              `json:"authorizationCommitted"`
+	SecurityFenceApplied     bool              `json:"securityFenceApplied,omitempty"`
+	AppliedSecurityEpoch     int64             `json:"appliedSecurityEpoch,omitempty"`
 	RawImport                bool              `json:"rawImport,omitempty"`
 	UploadReserved           bool              `json:"uploadReserved,omitempty"`
 	UploadOwnerLockPath      string            `json:"uploadOwnerLockPath,omitempty"`
@@ -308,6 +313,13 @@ func claimRestoreOperation(cfg config.Config, operationID, claimant string, exec
 			operation = current
 			return nil
 		}
+		if !current.AuthorizationCommitted {
+			// The filesystem marker is deliberately published before the SQLite
+			// credential/receipt transaction. A false value is an incomplete
+			// cross-medium commit, never authority to execute a restore.
+			operation = current
+			return nil
+		}
 		if !restoreExecutorResumable(current) {
 			// Host-owned replacement phases are intentionally not transferable to
 			// the app goroutine. Filesystem reconciliation or the host coordinator
@@ -340,7 +352,7 @@ func claimRestoreOperation(cfg config.Config, operationID, claimant string, exec
 }
 
 func restoreExecutorResumable(operation RestoreOperation) bool {
-	if operation.State != operation.Phase {
+	if !operation.AuthorizationCommitted || operation.State != operation.Phase {
 		return false
 	}
 	switch operation.Phase {
@@ -2119,6 +2131,9 @@ func RecoverInterruptedRestoreBeforeOpenContext(ctx context.Context, cfg config.
 	if err != nil {
 		return fmt.Errorf("read durable restore operation before database open: %w", err)
 	}
+	if !operation.AuthorizationCommitted && operation.Phase != RestorePhaseComplete && operation.Phase != RestorePhaseFailed {
+		return recoverUncommittedRestoreAuthorization(cfg, &operation)
+	}
 	if operation.State == RestoreStateRecoveryNeeded {
 		if operation.ActiveMutationStarted {
 			if !restoreSafetyEvidenceRecorded(&operation) {
@@ -2198,6 +2213,49 @@ func RecoverInterruptedRestoreBeforeOpenContext(ctx context.Context, cfg config.
 	default:
 		return fmt.Errorf("unknown durable restore phase %q", operation.Phase)
 	}
+}
+
+// recoverUncommittedRestoreAuthorization resolves a crash between publishing
+// the private operation marker and confirming that the initiating credential
+// or Hosted authorization receipt committed in SQLite. The staged candidate is
+// untrusted and is quarantined; the active database is never touched.
+func recoverUncommittedRestoreAuthorization(cfg config.Config, operation *RestoreOperation) error {
+	if operation == nil || operation.AuthorizationCommitted {
+		return nil
+	}
+	if operation.ActiveMutationStarted {
+		return MarkRestoreRecoveryRequired(cfg, operation, "restore_recovery_required")
+	}
+	if err := restoreOperationPaths(cfg, operation); err != nil {
+		return err
+	}
+	ownerLock := RestoreUploadOwnerLockPath(*operation)
+	if ownerLock != "" {
+		release, acquired, err := TryAcquireRestoreArtifactLock(ownerLock)
+		if err != nil {
+			return err
+		}
+		if !acquired {
+			// A live uploader may be between the marker and SQLite commit. Leave
+			// the fail-closed marker untouched until that kernel owner exits.
+			return nil
+		}
+		release()
+	}
+	for _, candidate := range []string{operation.StagedPath, operation.SafetyCopyPath, operation.InstallPath} {
+		if err := quarantineRestoreSet(candidate, operation.OperationID); err != nil {
+			return err
+		}
+	}
+	if ownerLock != "" {
+		if err := os.Remove(ownerLock); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+		if err := syncDirectory(filepath.Dir(ownerLock)); err != nil {
+			return err
+		}
+	}
+	return markInterruptedRestoreFailed(cfg, operation, "restore_authorization_not_committed", errors.New("restore authorization commit was not durably confirmed"))
 }
 
 // cleanupOrphanedRestoreOwnerLocks removes only unlocked upload owner locks

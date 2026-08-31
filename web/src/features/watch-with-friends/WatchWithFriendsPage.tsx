@@ -1,6 +1,6 @@
 import type { WatchWithFriendsCreateRequest, WatchWithFriendsGroup } from '@porticomediaserver/client-core';
 import { StatusWarningIcon, StatusLoadingIcon, ActionAddIcon, ActionRefreshIcon, AccountWatchTogetherIcon, ActionCloseIcon } from '#portico-icons';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { PrimaryButton, SecondaryButton } from '../../components/controls/Buttons';
 import { reviewedProductErrorText } from '../../components/ProductLanguage';
 import { secureRandomUUID } from '../../runtime/secureRandomUUID';
@@ -37,6 +37,7 @@ export function WatchWithFriendsPage({ source, viewer, initialGroupId = '', init
   const [connection, setConnection] = useState<WatchConnectionState | 'idle'>('idle');
   const [connectionError, setConnectionError] = useState('');
   const [eventRevision, setEventRevision] = useState(0);
+  const intentKeysRef = useRef(new Map<string, string>());
   const selectedGroup = groups.find((group) => group.id === selectedId);
   const joined = selectedGroup ? groupIncludesViewer(selectedGroup, viewer) : false;
   const { applyGroupUpdate } = useWatchWithFriendsPlaybackSync({ group: joined ? selectedGroup : undefined, source, viewer });
@@ -121,6 +122,18 @@ export function WatchWithFriendsPage({ source, viewer, initialGroupId = '', init
     }
   };
 
+  const runIdempotentGroupMutation = async (
+    busyKey: string,
+    fingerprint: string,
+    operation: (idempotencyKey: string) => Promise<WatchWithFriendsGroup>,
+  ) => {
+    const idempotencyKey = intentKeysRef.current.get(fingerprint) ?? secureRandomUUID();
+    intentKeysRef.current.set(fingerprint, idempotencyKey);
+    const result = await runGroupMutation(busyKey, () => operation(idempotencyKey));
+    if (result) intentKeysRef.current.delete(fingerprint);
+    return Boolean(result);
+  };
+
   const createGroup = async (request: WatchWithFriendsCreateRequest) => {
     const group = await runGroupMutation('create', () => source.createGroup(request));
     if (group) setCreating(false);
@@ -151,7 +164,11 @@ export function WatchWithFriendsPage({ source, viewer, initialGroupId = '', init
       setBusy('end');
       setOperationError('');
       try {
-        await source.endGroup(selectedGroup.id, selectedGroup.revision, secureRandomUUID());
+        const fingerprint = `${selectedGroup.id}:end`;
+        const idempotencyKey = intentKeysRef.current.get(fingerprint) ?? secureRandomUUID();
+        intentKeysRef.current.set(fingerprint, idempotencyKey);
+        await source.endGroup(selectedGroup.id, selectedGroup.revision, idempotencyKey);
+        intentKeysRef.current.delete(fingerprint);
         setGroups((current) => current.filter((group) => group.id !== selectedGroup.id));
         setSelectedId('');
         await refreshGroups();
@@ -174,23 +191,26 @@ export function WatchWithFriendsPage({ source, viewer, initialGroupId = '', init
       return Boolean(await runGroupMutation('member', () => source.updateMemberState(selectedGroup.id, request)));
     },
     updatePlayback: async (request) => {
-      return Boolean(await runGroupMutation('playback', () => source.updatePlaybackState(selectedGroup.id, {
-        ...request,
-        expectedRevision: selectedGroup.revision,
-        idempotencyKey: secureRandomUUID(),
-      })));
+      const fingerprint = `${selectedGroup.id}:playback:${JSON.stringify(request)}`;
+      return runIdempotentGroupMutation('playback', fingerprint, (idempotencyKey) => source.updatePlaybackState(selectedGroup.id, {
+        ...request, expectedRevision: selectedGroup.revision, idempotencyKey,
+      }));
     },
     updateSettings: async (request) => {
-      return Boolean(await runGroupMutation('settings', () => source.updateSettings(selectedGroup.id, { ...request, expectedRevision: selectedGroup.revision, idempotencyKey: secureRandomUUID() })));
+      const fingerprint = `${selectedGroup.id}:settings:${JSON.stringify(request)}`;
+      return runIdempotentGroupMutation('settings', fingerprint, (idempotencyKey) => source.updateSettings(selectedGroup.id, { ...request, expectedRevision: selectedGroup.revision, idempotencyKey }));
     },
     addQueueItem: async (mediaId) => {
-      return Boolean(await runGroupMutation('queue:add', () => source.addQueueItem(selectedGroup.id, { mediaId, expectedRevision: selectedGroup.revision, idempotencyKey: secureRandomUUID() })));
+      const fingerprint = `${selectedGroup.id}:queue:add:${mediaId}`;
+      return runIdempotentGroupMutation('queue:add', fingerprint, (idempotencyKey) => source.addQueueItem(selectedGroup.id, { mediaId, expectedRevision: selectedGroup.revision, idempotencyKey }));
     },
-    reorderQueue: async (mediaIds) => {
-      return Boolean(await runGroupMutation('queue:order', () => source.reorderQueue(selectedGroup.id, { mediaIds, expectedRevision: selectedGroup.revision, idempotencyKey: secureRandomUUID() })));
+    reorderQueue: async (entryId, destinationEntryId, placement) => {
+      const fingerprint = `${selectedGroup.id}:queue:order:${entryId}:${destinationEntryId}:${placement}`;
+      return runIdempotentGroupMutation('queue:order', fingerprint, (idempotencyKey) => source.reorderQueue(selectedGroup.id, { entryId, destinationEntryId, placement, expectedRevision: selectedGroup.revision, idempotencyKey }));
     },
-    removeQueueItem: async (mediaId) => {
-      return Boolean(await runGroupMutation(`queue:remove:${mediaId}`, () => source.removeQueueItem(selectedGroup.id, mediaId, selectedGroup.revision, secureRandomUUID())));
+    removeQueueItem: async (entryId) => {
+      const fingerprint = `${selectedGroup.id}:queue:remove:${entryId}`;
+      return runIdempotentGroupMutation(`queue:remove:${entryId}`, fingerprint, (idempotencyKey) => source.removeQueueItem(selectedGroup.id, entryId, selectedGroup.revision, idempotencyKey));
     },
   } : undefined;
 

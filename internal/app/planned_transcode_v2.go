@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -23,7 +22,16 @@ import (
 	"github.com/PorticoMediaServer/portico-server/internal/playbackplan"
 )
 
-var errPlannedTranscode = errors.New("stored playback plan cannot be executed")
+var (
+	errPlannedTranscode                   = errors.New("stored playback plan cannot be executed")
+	errPlannedTranscodeBackgroundDeferred = errors.New("background transcode prewarm deferred while server is under load")
+	errPlannedTranscodeAlreadyAdmitting   = errors.New("the playback generation is already being admitted")
+	errPlannedTranscodeSessionLimit       = errors.New("the transcode session limit has been reached")
+	errPlannedTranscodeHardwareLimit      = errors.New("the hardware transcode session limit has been reached")
+	errPlannedTranscodeSoftwareLimit      = errors.New("the software transcode session limit has been reached")
+	errPlannedTranscodeBackgroundLimit    = errors.New("the background transcode session limit has been reached")
+	errPlannedTranscodeRestoreAdmission   = errors.New("restore admission is quiescing")
+)
 
 var renamePlannedVODGeneration = os.Rename
 
@@ -70,6 +78,28 @@ func (identity plannedTranscodeIdentity) validForGeneration(generation int) bool
 		generation > 0 && identity.PlaybackGeneration == generation
 }
 
+func (s *Server) plannedTranscodeIdentityIsActive(ctx context.Context, identity plannedTranscodeIdentity, mediaID string) bool {
+	if s == nil || !identity.validForGeneration(identity.PlaybackGeneration) || strings.TrimSpace(mediaID) == "" {
+		return false
+	}
+	var count int
+	err := s.queryUserRow(ctx, `
+		SELECT COUNT(*)
+		FROM playback_media_grants g
+		JOIN playback_sessions ps ON ps.id = g.playback_session_id
+		WHERE g.token_hash = ? AND g.playback_session_id = ?
+			AND g.principal_user_id = ? AND g.profile_id = ?
+			AND g.resource_kind = 'media' AND g.resource_id = ?
+			AND g.authorization_revision = ? AND g.playback_generation = ?
+			AND g.revoked_at = '' AND g.expires_at > ?
+			AND ps.ended_at = '' AND ps.state <> 'stopped'
+			AND ps.playback_generation = ?`,
+		identity.GrantTokenHash, identity.PlaybackSessionID, identity.UserID, identity.ProfileID,
+		strings.TrimSpace(mediaID), identity.AuthorizationRevision, identity.PlaybackGeneration,
+		time.Now().UTC().Format(time.RFC3339), identity.PlaybackGeneration).Scan(&count)
+	return err == nil && count == 1
+}
+
 // acquirePlannedTranscodeStart coalesces the manifest prewarm and the first
 // segment request for one immutable generation. The winning caller owns all
 // compilation/admission/publication work; followers wait for that attempt and
@@ -109,7 +139,7 @@ func (s *Server) acquirePlannedTranscodeAdmission(key string, generation int, se
 		s.plannedTranscodeClaims = make(map[string]plannedTranscodeAdmissionClaim)
 	}
 	if _, exists := s.plannedTranscodeClaims[claimKey]; exists {
-		return nil, errors.New("the playback generation is already being admitted")
+		return nil, errPlannedTranscodeAlreadyAdmitting
 	}
 	total, hardwareActive, softwareActive, backgroundActive := 0, 0, 0, 0
 	for sessionKey, session := range s.transcodes {
@@ -149,17 +179,17 @@ func (s *Server) acquirePlannedTranscodeAdmission(key string, generation int, se
 		}
 	}
 	if settings.MaxConcurrentSessions > 0 && total >= settings.MaxConcurrentSessions {
-		return nil, errors.New("the transcode session limit has been reached")
+		return nil, errPlannedTranscodeSessionLimit
 	}
 	if hardware && settings.MaxHardwareSessions > 0 && hardwareActive >= settings.MaxHardwareSessions {
-		return nil, errors.New("the hardware transcode session limit has been reached")
+		return nil, errPlannedTranscodeHardwareLimit
 	}
 	if !hardware && settings.MaxSoftwareSessions > 0 && softwareActive >= settings.MaxSoftwareSessions {
-		return nil, errors.New("the software transcode session limit has been reached")
+		return nil, errPlannedTranscodeSoftwareLimit
 	}
 	// Zero background capacity explicitly disables background work.
 	if background && (settings.MaxBackgroundSessions <= 0 || backgroundActive >= settings.MaxBackgroundSessions) {
-		return nil, errors.New("the background transcode session limit has been reached")
+		return nil, errPlannedTranscodeBackgroundLimit
 	}
 	s.plannedTranscodeClaims[claimKey] = plannedTranscodeAdmissionClaim{hardware: hardware, background: background}
 	var once sync.Once
@@ -177,7 +207,7 @@ func (s *Server) acquirePlannedTranscodeAdmission(key string, generation int, se
 // produced from verified probe evidence; this adapter never guesses a device.
 type plannedVODHLSRequest struct {
 	Item             MediaItem
-	Binding          playbackExecutionBinding
+	Binding          playbackExecutionPlan
 	Identity         plannedTranscodeIdentity
 	GenerationRoot   string
 	SegmentSeconds   int
@@ -209,17 +239,14 @@ type plannedVODHLSCommand struct {
 // current source facts and compiles one deterministic VOD HLS generation. It
 // creates only the private generation directory and never launches FFmpeg.
 func (s *Server) compilePlannedVODHLS(ctx context.Context, req plannedVODHLSRequest) (plannedVODHLSCommand, error) {
-	binding, err := decodePlaybackExecutionBinding(mustJSONPlaybackBinding(req.Binding))
+	binding, err := decodePlaybackExecutionPlan(mustJSONPlaybackExecutionPlan(req.Binding))
 	if err != nil {
 		return plannedVODHLSCommand{}, fmt.Errorf("%w: invalid binding", errPlannedTranscode)
 	}
-	if !req.Identity.validForGeneration(binding.Generation) {
+	if !req.Identity.validForGeneration(binding.generation()) {
 		return plannedVODHLSCommand{}, fmt.Errorf("%w: invalid playback identity", errPlannedTranscode)
 	}
-	var plan playbackplan.Plan
-	if err := json.Unmarshal(binding.Plan, &plan); err != nil || plan.Validate() != nil {
-		return plannedVODHLSCommand{}, fmt.Errorf("%w: invalid plan", errPlannedTranscode)
-	}
+	plan := binding.Plan
 	if plan.Protocol != "hls" || plan.Mode == playbackplan.DirectPlay {
 		return plannedVODHLSCommand{}, fmt.Errorf("%w: plan is not VOD HLS", errPlannedTranscode)
 	}
@@ -253,7 +280,7 @@ func (s *Server) compilePlannedVODHLS(ctx context.Context, req plannedVODHLSRequ
 	if err != nil || factsDigest == "" || factsDigest != binding.MediaFactsDigest {
 		return plannedVODHLSCommand{}, fmt.Errorf("%w: media facts changed", errPlannedTranscode)
 	}
-	if facts.Source.Revision != binding.SourceRevision || facts.Source.Revision != plan.SourceRevision || facts.Source.Fingerprint != plan.SourceFingerprint {
+	if facts.Source.Revision != plan.SourceRevision || facts.Source.Fingerprint != plan.SourceFingerprint {
 		return plannedVODHLSCommand{}, fmt.Errorf("%w: source identity changed", errPlannedTranscode)
 	}
 	sourcePath := "pipe:0"
@@ -307,7 +334,7 @@ func (s *Server) compilePlannedVODHLS(ctx context.Context, req plannedVODHLSRequ
 		subtitlePath = filepath.Clean(subtitlePath)
 	}
 
-	generationDir, err := privatePlaybackGenerationDir(req.GenerationRoot, req.Item.ID, binding.Generation, binding.Digest, req.StartNumber, req.Identity)
+	generationDir, err := privatePlaybackGenerationDir(req.GenerationRoot, req.Item.ID, binding.generation(), binding.Digest, req.StartNumber, req.Identity)
 	if err != nil {
 		return plannedVODHLSCommand{}, fmt.Errorf("%w: %v", errPlannedTranscode, err)
 	}
@@ -347,7 +374,7 @@ func (s *Server) compilePlannedVODHLS(ctx context.Context, req plannedVODHLSRequ
 	return plannedVODHLSCommand{
 		ExecutablePath: executablePath, Args: append([]string(nil), compiled.Args...), GenerationDir: generationDir,
 		ManifestPath: manifest, SegmentPattern: segments, InitFilename: initFilename,
-		PlanDigest: binding.Digest, SourceRevision: binding.SourceRevision,
+		PlanDigest: binding.Digest, SourceRevision: plan.SourceRevision,
 		MediaFactsDigest: factsDigest, UsesHardware: compiled.UsesHardware,
 		PredictedBytes: predictedPlaybackOutputBytes(plan, facts),
 	}, nil
@@ -449,19 +476,10 @@ func plannedVODMediaNamespaceToken(mediaID string) string {
 	return safeExecutionPathToken(mediaID) + "-m" + hex.EncodeToString(sum[:])[:16]
 }
 
-func plannedTranscodeSessionKey(mediaID string, binding playbackExecutionBinding, identity plannedTranscodeIdentity, startSeconds int) string {
+func plannedTranscodeSessionKey(mediaID string, binding playbackExecutionPlan, identity plannedTranscodeIdentity, startSeconds int) string {
 	startSeconds = normalizePlannedVODSeekSeconds(startSeconds)
-	executionInputs := strings.Join([]string{
-		strings.TrimSpace(binding.Digest),
-		normalizeTranscodeQuality(binding.Quality),
-		normalizeTranscodeAudioMode(binding.AudioMode),
-		normalizeSelectedAudioStreamID(binding.AudioStreamID),
-		strings.ToLower(strings.TrimSpace(binding.SubtitleMode)),
-		strings.ToLower(strings.TrimSpace(binding.SubtitleStreamID)),
-		strconv.FormatBool(binding.DirectStream),
-	}, "\x00")
-	executionSum := sha256.Sum256([]byte(executionInputs))
-	return "planned-v2:" + plannedVODMediaNamespaceToken(mediaID) + ":e" + hex.EncodeToString(executionSum[:]) + ":g" + strconv.Itoa(binding.Generation) + ":i" + identity.namespaceDigest() + ":" + strconv.Itoa(max(0, startSeconds))
+	executionSum := sha256.Sum256([]byte(strings.TrimSpace(binding.Digest)))
+	return "planned-v2:" + plannedVODMediaNamespaceToken(mediaID) + ":e" + hex.EncodeToString(executionSum[:]) + ":g" + strconv.Itoa(binding.generation()) + ":i" + identity.namespaceDigest() + ":" + strconv.Itoa(max(0, startSeconds))
 }
 
 func normalizePlannedVODSeekSeconds(startSeconds int) int {
@@ -534,7 +552,7 @@ func archivePlannedTranscodeGeneration(session *transcodeSession) error {
 // It compiles the sealed graph, admits the source through W3, and transfers
 // sole process ownership to the generation supervisor before publishing the
 // session in the reusable transcode registry.
-func (s *Server) ensurePlannedVODHLSSession(ctx context.Context, userID string, item MediaItem, binding playbackExecutionBinding, identity plannedTranscodeIdentity, startSeconds int, segmentName string, background bool) (*transcodeSession, error) {
+func (s *Server) ensurePlannedVODHLSSession(ctx context.Context, userID string, item MediaItem, binding playbackExecutionPlan, identity plannedTranscodeIdentity, startSeconds int, segmentName string, background bool) (*transcodeSession, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -543,13 +561,13 @@ func (s *Server) ensurePlannedVODHLSSession(ctx context.Context, userID string, 
 		return nil, errors.New("transcoding is disabled")
 	}
 	if background && s.shouldDeferBackgroundJobsForPressure() {
-		return nil, errors.New("background transcode prewarm deferred while server is under load")
+		return nil, errPlannedTranscodeBackgroundDeferred
 	}
-	quality, subtitleID, _, audioMode, audioStreamID, directStream, err := playbackBindingHLSValues(binding)
+	quality, subtitleID, _, audioMode, audioStreamID, directStream, err := playbackPlanHLSValues(binding)
 	if err != nil {
 		return nil, err
 	}
-	if !identity.validForGeneration(binding.Generation) || strings.TrimSpace(userID) != strings.TrimSpace(identity.UserID) {
+	if !identity.validForGeneration(binding.generation()) || strings.TrimSpace(userID) != strings.TrimSpace(identity.UserID) {
 		return nil, fmt.Errorf("%w: invalid playback identity", errPlannedTranscode)
 	}
 	// FFmpeg and the published segment namespace operate on the HLS seek grid.
@@ -566,6 +584,9 @@ func (s *Server) ensurePlannedVODHLSSession(ctx context.Context, userID string, 
 	if waiting != nil {
 		select {
 		case <-waiting:
+			if !s.plannedTranscodeIdentityIsActive(ctx, identity, item.ID) {
+				return nil, fmt.Errorf("%w: playback authorization ended during producer startup", errPlannedTranscode)
+			}
 			return s.ensurePlannedVODHLSSession(ctx, userID, item, binding, identity, startSeconds, segmentName, background)
 		case <-ctx.Done():
 			return nil, ctx.Err()
@@ -584,7 +605,7 @@ func (s *Server) ensurePlannedVODHLSSession(ctx context.Context, userID string, 
 			s.transcodeMu.Unlock()
 			return existing, nil
 		}
-		if state.err != nil && time.Since(state.errAt) < 750*time.Millisecond {
+		if state.err != nil || state.terminalErr != nil {
 			s.transcodeMu.Unlock()
 			return nil, existing.transcodeError()
 		}
@@ -604,11 +625,11 @@ func (s *Server) ensurePlannedVODHLSSession(ctx context.Context, userID string, 
 
 	admissionCtx, releaseAdmission, err := s.restoreBarrier.acquire(ctx)
 	if err != nil {
-		return nil, errors.New("restore admission is quiescing")
+		return nil, errPlannedTranscodeRestoreAdmission
 	}
 	defer releaseAdmission()
 	if admissionCtx.Err() != nil {
-		return nil, errors.New("restore admission is quiescing")
+		return nil, errPlannedTranscodeRestoreAdmission
 	}
 	var sourcePath string
 	err = s.withPlaybackStorageIO(admissionCtx, item.SourceURL, playbackStorageTranscode, "resolve VOD transcode source", func(_ context.Context, progress func()) error {
@@ -650,7 +671,7 @@ func (s *Server) ensurePlannedVODHLSSession(ctx context.Context, userID string, 
 	if err := ensureMediaWriteCapacity(filepath.Dir(root), mediaWriteMinimumFreeBytes); err != nil {
 		return nil, err
 	}
-	generationDir, err := privatePlaybackGenerationPath(root, item.ID, binding.Generation, binding.Digest, startSeconds/hlsSegmentSeconds, identity)
+	generationDir, err := privatePlaybackGenerationPath(root, item.ID, binding.generation(), binding.Digest, startSeconds/hlsSegmentSeconds, identity)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", errPlannedTranscode, err)
 	}
@@ -690,7 +711,7 @@ func (s *Server) ensurePlannedVODHLSSession(ctx context.Context, userID string, 
 			_ = os.RemoveAll(command.GenerationDir)
 		}
 	}()
-	admissionRelease, err := s.acquirePlannedTranscodeAdmission(key, binding.Generation, settings, command.UsesHardware, background)
+	admissionRelease, err := s.acquirePlannedTranscodeAdmission(key, binding.generation(), settings, command.UsesHardware, background)
 	if err != nil {
 		return nil, err
 	}
@@ -713,7 +734,7 @@ func (s *Server) ensurePlannedVODHLSSession(ctx context.Context, userID string, 
 		}
 	}
 	governor := s.mediaResourceGovernor()
-	request := mediaResourceRequest{cpu: 1, disk: 2, background: background}
+	request := mediaResourceRequest{class: mediaProcessingWorkClass(background), cpu: 1, disk: 2}
 	var resourceRelease func()
 	var acquired bool
 	if !background {
@@ -747,14 +768,14 @@ func (s *Server) ensurePlannedVODHLSSession(ctx context.Context, userID string, 
 	}
 	diagnosticRecorder := newFFmpegDiagnosticRecorder(command.ExecutablePath, command.Args)
 	session := &transcodeSession{
-		key: key, userID: strings.TrimSpace(userID), mediaID: item.ID, quality: quality,
+		key: key, userID: strings.TrimSpace(userID), playbackSessionID: identity.PlaybackSessionID, mediaID: item.ID, quality: quality,
 		subtitleID: subtitleID, audioMode: audioMode, audioStreamID: audioStreamID, directStream: directStream,
 		start: startSeconds, method: map[bool]string{true: "planned-v2-hardware", false: "planned-v2-software"}[command.UsesHardware], filter: "stored-playback-plan", root: root,
 		dir: command.GenerationDir, manifest: command.ManifestPath, startedAt: time.Now().UTC(), background: background,
 		done: make(chan struct{}), updateCh: make(chan struct{}), segmentSeconds: hlsSegmentSeconds,
 		playedRetentionSeconds: settings.PlayedRetentionSeconds, throttleBufferSeconds: settings.ThrottleBufferSeconds,
 		lastServedSegment: -1, lastProducedSegment: startSeconds/hlsSegmentSeconds - 1,
-		lastProducedAt: time.Now().UTC(), generation: binding.Generation, admissionActive: true,
+		lastProducedAt: time.Now().UTC(), generation: binding.generation(), admissionActive: true,
 		resourceRelease: combinedResourceRelease, storageLease: lease, supervisor: s.ffmpegSupervisor,
 	}
 	release := func(result ffmpegsupervisor.Release) {
@@ -777,6 +798,7 @@ func (s *Server) ensurePlannedVODHLSSession(ctx context.Context, userID string, 
 			lease.Release(result.Err)
 		}
 		session.stateMu.Lock()
+		unexpectedFailure := !session.stopped && result.Err != nil
 		session.admissionActive = false
 		session.ffmpegDiagnostics = diagnosticAPI
 		session.stderr = diagnostics.Text
@@ -795,6 +817,14 @@ func (s *Server) ensurePlannedVODHLSSession(ctx context.Context, userID string, 
 		}
 		session.releaseMediaResources()
 		session.doneOnce.Do(func() { close(session.done) })
+		if unexpectedFailure {
+			if err := s.terminalizePlannedPlaybackFailure(identity, session, result.Err); err != nil {
+				s.log.Error("planned VOD producer failure could not terminalize playback",
+					"playback_session_id", identity.PlaybackSessionID,
+					"failure_class", plannedTranscodeFailureClass(result.Err),
+					"terminalization_error", err.Error())
+			}
+		}
 	}
 	processFactory := supervisedExecFactoryV2(func(processCtx context.Context) (*exec.Cmd, error) {
 		cmd := exec.CommandContext(processCtx, command.ExecutablePath, command.Args...)
@@ -825,11 +855,15 @@ func (s *Server) ensurePlannedVODHLSSession(ctx context.Context, userID string, 
 		}
 		return nil, err
 	}
-	generationOwned = false
 	storageTransportOwned = false
 	admissionOwned = false
 	session.supervised = &handle
 	s.transcodeMu.Lock()
+	state := session.snapshot()
+	if state.err != nil || state.terminalErr != nil || state.stopped {
+		s.transcodeMu.Unlock()
+		return nil, session.transcodeError()
+	}
 	if existing := s.transcodes[key]; existing != nil {
 		s.transcodeMu.Unlock()
 		if stopErr := s.ffmpegSupervisor.Stop(handle); stopErr != nil && !errors.Is(stopErr, ffmpegsupervisor.ErrNotFound) {
@@ -839,6 +873,7 @@ func (s *Server) ensurePlannedVODHLSSession(ctx context.Context, userID string, 
 	}
 	s.transcodes[key] = session
 	s.transcodeMu.Unlock()
+	generationOwned = false
 	go monitorTranscodeBuffer(session)
 	if lease != nil {
 		go func() {
@@ -861,6 +896,12 @@ func (s *Server) ensurePlannedVODHLSSession(ctx context.Context, userID string, 
 func plannedTranscodeFailureClass(err error) string {
 	if err == nil {
 		return "none"
+	}
+	if errors.Is(err, errHLSManifestTimeout) {
+		return "manifest_timeout"
+	}
+	if errors.Is(err, errHLSSegmentTimeout) {
+		return "segment_timeout"
 	}
 	message := strings.ToLower(err.Error())
 	for _, candidate := range []struct{ fragment, class string }{

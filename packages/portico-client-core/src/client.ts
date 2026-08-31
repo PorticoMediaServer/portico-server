@@ -128,12 +128,36 @@ import type {
   CastReceiverSessionResponse,
   CastReceiverSessionState,
   CastReconnectRequest,
+  CastControlRequest,
+  CastProgressRequest,
+  CastRenewRequest,
+  CastRenewResponse,
+  CastStopRequest,
+  CastStopResponse,
+  CastAdvanceRequest,
+  CastAdvanceCancelRequest,
+  CastAdvanceResponse,
+  CastTransferStatusRequest,
+  CastTransferStatusResponse,
+  CastSegmentSkipRequest,
+  CastSegmentSkipResponse,
+  LiveTvStreamCloseRequest,
   PlaybackIntent,
   PlaybackCommand,
+  PlaybackHandoffInput,
   PlaybackHandoffRequest,
+  PlaybackReplacementRequest,
   PlaybackRenegotiationRequest,
   PlaybackReceiver,
-  PlaybackNextResponse,
+  PlaybackReceiverRequest,
+  PlaybackReceiverHeartbeatRequest,
+  PlaybackReceiverHeartbeatResponse,
+  PlaybackReceiverHandoffRequest,
+  PlaybackReceiverHandoffCommitRequest,
+  PlaybackReceiverHandoffStatusResponse,
+  ReceiverAuthorizationRequest,
+  ReceiverControllerGrant,
+  ReceiverAuthorizationRecord,
   PlaybackPreparedResponse,
   PlaybackPrepareNextRequest,
   PlaybackProgressAcknowledgement,
@@ -141,10 +165,12 @@ import type {
   PlaybackProgressInput,
   PlaybackSessionStopInput,
   PlaybackSessionStopRequest,
+  PlaybackSessionTerminalAcknowledgement,
+  PlaybackTerminalEvent,
+  PlaybackTerminalInput,
   PlaybackContinuationCredential,
   PlaybackContinuationState,
   PlaybackContinuationRotateRequest,
-  PlaybackQueueResponse,
   PlaybackRepeatMode,
   PlaybackRestoreResponse,
   PlaybackResponse,
@@ -225,6 +251,10 @@ import type {
   UserPatchRequest,
   UserPreferences,
 } from "./types.js";
+import type {
+  OfflineDownloadAuthorizationRevalidationRequest,
+  OfflineDownloadAuthorizationRevalidationResponse
+} from "./offlineDownloadAuthorization.js";
 import type {
   ApiOperationJSONBody,
   ApiOperationPath,
@@ -318,6 +348,7 @@ export type ApiRequestInit = Omit<RequestInit, "body" | "credentials"> & {
   authorization?:
     | { mode: "viewer" }
     | { mode: "playback-continuation"; token: string; origin: string }
+    | { mode: "cast-receiver"; token: string; origin: string }
     | { mode: "download-grant"; token: string }
     | { mode: "profile-admin-proof"; proof: string }
     | { mode: "anonymous" };
@@ -498,6 +529,23 @@ export function isAmbiguousPorticoError(error: unknown): boolean {
   );
 }
 
+function terminalMutationRejectionIsDefinitive(error: unknown): boolean {
+  return (
+    error instanceof ApiError &&
+    !error.ambiguous &&
+    !error.retryable &&
+    error.status !== 401 &&
+    error.status !== 404 &&
+    error.code !== "playback_terminal_request_conflict" &&
+    error.code !== "playback_stopping" &&
+    error.code !== "handoff_in_progress" &&
+    error.code !== "prepared_handoff_in_progress" &&
+    error.status >= 400 &&
+    error.status < 500 &&
+    error.status !== 408
+  );
+}
+
 /**
  * Raised when credential publication fails and one or more compensating
  * credential deletions also fail. Callers must treat this as a security latch:
@@ -531,6 +579,8 @@ export interface LocalServerSession {
   bootstrapAccessToken?: string;
   refreshToken?: string;
   accessToken?: string;
+  /** Canonical unpadded standard-base64 raw Ed25519 Server identity key. */
+  serverPublicKey?: string;
   serverPublicKeyFingerprint?: string;
   expiresAt?: string;
   refreshExpiresAt?: string;
@@ -595,13 +645,269 @@ export interface EventStreamAdapter {
   flush?(): string;
 }
 
-export interface DurablePlaybackProgressRecord {
+export interface DurablePlaybackEventRecord {
   version: "v1";
+  kind?: "progress";
   /** Opaque principal/server/session/generation identity created by Client Core. */
   key: string;
   /** Exact uncertain event followed by at most one coalesced successor. */
   events: readonly PlaybackProgressEvent[];
   updatedAt: string;
+}
+
+/**
+ * Complete durable playback authority partition: server, authority, account,
+ * profile, authorization revision.
+ */
+export type PlaybackAuthorityScope = readonly [
+  string,
+  string,
+  string,
+  string,
+  string,
+];
+
+export interface CommittedPlaybackReplacementOutcome {
+  outcome: "committed-restore-required";
+  sourceSessionId: string;
+  replacementSessionId: string;
+}
+
+export type DurablePlaybackTerminalRecord =
+  | {
+      version: "v2";
+      kind: "terminal";
+      key: string;
+      scope: PlaybackAuthorityScope;
+      sessionId: string;
+      operation: "stop";
+      request: PlaybackSessionStopRequest;
+      updatedAt: string;
+    }
+  | {
+      version: "v2";
+      kind: "terminal";
+      key: string;
+      scope: PlaybackAuthorityScope;
+      sessionId: string;
+      operation: "handoff";
+      request: PlaybackHandoffRequest;
+      updatedAt: string;
+    }
+  | {
+      version: "v2";
+      kind: "terminal";
+      key: string;
+      scope: PlaybackAuthorityScope;
+      sessionId: string;
+      operation: "replacement";
+      request: PlaybackReplacementRequest;
+      target: DurablePlaybackReplacementTarget;
+      /** Durable server-committed identity retained until exact active restore. */
+      committedOutcome?: CommittedPlaybackReplacementOutcome;
+      updatedAt: string;
+    }
+  | {
+      version: "v2";
+      kind: "terminal";
+      key: string;
+      scope: PlaybackAuthorityScope;
+      sessionId: string;
+      operation: "live-tv-close";
+      channelId: string;
+      request: LiveTvStreamCloseRequest;
+      updatedAt: string;
+    };
+
+export interface DurableCastTransferRecord {
+  version: "v1";
+  kind: "cast-transfer";
+  key: string;
+  scope: PlaybackAuthorityScope;
+  /** Exact immutable bootstrap target and optional source terminal envelope. */
+  request: CastBootstrapRequest;
+  updatedAt: string;
+}
+
+export type DurablePlaybackProgressRecord =
+  | DurablePlaybackEventRecord
+  | DurablePlaybackTerminalRecord
+  | DurableCastTransferRecord;
+
+export type PendingPlaybackTerminalMutation =
+  | { operation: "stop"; request: PlaybackSessionStopRequest }
+  | { operation: "handoff"; request: PlaybackHandoffRequest }
+  | {
+      operation: "live-tv-close";
+      channelId: string;
+      request: LiveTvStreamCloseRequest;
+    }
+  | {
+      operation: "replacement";
+      request: PlaybackReplacementRequest;
+      target: DurablePlaybackReplacementTarget;
+      committedOutcome?: CommittedPlaybackReplacementOutcome;
+    };
+
+export type PendingPlaybackTerminalMutationRecord =
+  PendingPlaybackTerminalMutation & { sessionId: string };
+
+export type PlaybackReplacementInput =
+  | (Omit<
+      PlaybackReplacementRequest,
+      "requestId" | "previousTerminal"
+    > & {
+      /** Core allocates the immutable request identity and terminal ordering. */
+      requestId?: never;
+      previousTerminal: PlaybackTerminalInput;
+    })
+  | PlaybackReplacementRequest;
+
+export interface MediaPlaybackStartOptions {
+  intent?: PlaybackIntent;
+  versionId?: string;
+  skipPreroll?: boolean;
+  burnInSubtitleId?: string;
+  subtitleStreamId?: string;
+  audioStreamId?: string;
+  startSeconds?: number;
+  queueMediaIds?: string[];
+  repeatMode?: PlaybackRepeatMode;
+  sourceContext?: PlaybackSourceContext;
+}
+
+export interface LiveTvPlaybackStartOptions {
+  clientProfile?: PlaybackClientProfile;
+  intent?: PlaybackIntent;
+}
+
+export type DvrPlaybackStartOptions = Omit<
+  DVRPlaybackSessionCreateRequest,
+  "intent" | "replacement"
+> & {
+  intent?: PlaybackIntent;
+};
+
+export type LibraryChannelPlaybackStartOptions = Omit<
+  LibraryChannelTuneRequest,
+  "clientInstanceId" | "intent" | "replacement"
+> & {
+  clientInstanceId?: string;
+  intent?: PlaybackIntent;
+};
+
+export type PlaybackReplacementTarget =
+  | {
+      kind: "media";
+      mediaId: string;
+      playbackOptions?: MediaPlaybackStartOptions;
+    }
+  | {
+      kind: "live-tv";
+      channelId: string;
+      playbackOptions?: LiveTvPlaybackStartOptions;
+    }
+  | {
+      kind: "live-tv-stream";
+      channelId: string;
+      playbackOptions?: LiveTvPlaybackStartOptions;
+    }
+  | {
+      kind: "dvr";
+      recordingId: string;
+      playbackOptions?: DvrPlaybackStartOptions;
+    }
+  | {
+      kind: "library-channel";
+      channelId: string;
+      playbackOptions?: LibraryChannelPlaybackStartOptions;
+    };
+
+export type PlaybackReplacementTargetResponse<
+  Target extends PlaybackReplacementTarget,
+> = Target extends { kind: "library-channel" }
+  ? LibraryChannelTuneResponse
+  : PlaybackResponse;
+
+export interface PlaybackReplacementRejection {
+  status: number;
+  code: string;
+  detail: string;
+}
+
+export type PlaybackReplacementOutcome<Value> =
+  | { outcome: "accepted"; value: Value }
+  | {
+      outcome: "source-inactive";
+      sourceSessionId: string;
+      rejection: PlaybackReplacementRejection;
+    }
+  | {
+      outcome: "source-retained";
+      sourceSessionId: string;
+      rejection: PlaybackReplacementRejection;
+    }
+  | {
+      outcome: "source-closed";
+      sourceSessionId: string;
+      rejection: PlaybackReplacementRejection;
+      terminal: PlaybackSessionTerminalAcknowledgement;
+    }
+  | CommittedPlaybackReplacementOutcome;
+
+export type PendingPlaybackTerminalRetryValue =
+  | PlaybackSessionTerminalAcknowledgement
+  | PlaybackResponse
+  | LibraryChannelTuneResponse;
+
+export type PendingPlaybackTerminalRetryOutcome =
+  PlaybackReplacementOutcome<PendingPlaybackTerminalRetryValue>;
+
+export interface CastReceiverCredential {
+  token: string;
+  origin: string;
+}
+
+export type CastBootstrapInput = Omit<
+  CastBootstrapRequest,
+  "clientInstanceId" | "requestId" | "replacement"
+> & {
+  clientInstanceId?: string;
+  /** Optional caller-owned identity; Core allocates one when omitted. */
+  requestId?: string;
+};
+
+export type CastTransferOutcome =
+  | {
+      outcome: "pending";
+      value: CastBootstrapResponse | CastTransferStatusResponse;
+    }
+  | { outcome: "accepted"; value: CastTransferStatusResponse }
+  | {
+      outcome: "source-inactive";
+      sourceSessionId: string;
+      rejection: PlaybackReplacementRejection;
+    }
+  | {
+      outcome: "source-retained";
+      sourceSessionId: string;
+      value?: CastTransferStatusResponse;
+      rejection?: PlaybackReplacementRejection;
+    }
+  | { outcome: "not-committed"; value: CastTransferStatusResponse };
+
+export interface PendingCastTransfer {
+  requestId: string;
+  sourceSessionId?: string;
+  replacementSessionId?: string;
+}
+
+export interface DurablePlaybackReplacementTarget {
+  kind: PlaybackReplacementTarget["kind"];
+  /** Exact opaque route resource ID; omitted only for the media start route. */
+  resourceId?: string;
+  /** Exact immutable target request body, including the replacement envelope. */
+  body: Readonly<Record<string, unknown>>;
 }
 
 export interface PlaybackProgressDurabilityAdapter {
@@ -1139,11 +1445,26 @@ interface PlaybackProgressMailbox {
 
 const MAX_PLAYBACK_PROGRESS_MAILBOXES = 128;
 const MAX_PLAYBACK_PROGRESS_SEQUENCES = 256;
+const MAX_PLAYBACK_TERMINAL_REQUESTS = 128;
+
+function deepFreezeJSON<T>(value: T): T {
+  if (value && typeof value === "object" && !Object.isFrozen(value)) {
+    for (const child of Object.values(value as Record<string, unknown>)) {
+      deepFreezeJSON(child);
+    }
+    Object.freeze(value);
+  }
+  return value;
+}
+
+function immutableJSONSnapshot<T>(value: T): T {
+  return deepFreezeJSON(JSON.parse(JSON.stringify(value)) as T);
+}
 
 function normalizedPlaybackProgressInput(
   event: PlaybackProgressInput,
 ): PlaybackProgressInput {
-  if (event.completed) {
+  if ("completed" in event) {
     throw new TypeError(
       "Playback completion requires the atomic stop operation.",
     );
@@ -1181,29 +1502,297 @@ function normalizedPlaybackProgressInput(
   return normalized;
 }
 
-function assertPlaybackSessionStopRequest(
-  body: PlaybackSessionStopInput | PlaybackSessionStopRequest,
+function assertPlaybackTerminalEvent(
+  body: PlaybackTerminalInput | PlaybackTerminalEvent,
 ): void {
+  if (!body || typeof body !== "object") {
+    throw new TypeError("Playback terminal event must be an object.");
+  }
+  if (body.disposition !== "stopped" && body.disposition !== "completed") {
+    throw new TypeError("Playback terminal disposition is invalid.");
+  }
   if (!Number.isFinite(body.positionSeconds) || body.positionSeconds < 0) {
-    throw new TypeError("Playback stop position must be a finite non-negative number.");
+    throw new TypeError("Playback terminal position must be a finite non-negative number.");
   }
   if (
     !Number.isFinite(body.durationSeconds) ||
     body.durationSeconds < 0 ||
     (body.disposition === "completed" && body.durationSeconds <= 0)
   ) {
-    throw new TypeError("Playback stop duration is invalid for its disposition.");
+    throw new TypeError("Playback terminal duration is invalid for its disposition.");
   }
-  if ("generation" in body) {
+  if (
+    body.disposition === "completed" &&
+    body.positionSeconds !== body.durationSeconds
+  ) {
+    throw new TypeError(
+      "Completed playback terminal position must equal its duration.",
+    );
+  }
+  const orderedAuthorityFields = [
+    "generation" in body,
+    "eventSequence" in body,
+    "recordedAt" in body,
+  ];
+  const orderedAuthorityFieldCount = orderedAuthorityFields.filter(Boolean).length;
+  if (
+    orderedAuthorityFieldCount !== 0 &&
+    orderedAuthorityFieldCount !== orderedAuthorityFields.length
+  ) {
+    throw new TypeError(
+      "Playback terminal ordering authority must be complete.",
+    );
+  }
+  if (
+    "generation" in body &&
+    "eventSequence" in body &&
+    "recordedAt" in body
+  ) {
     if (!Number.isSafeInteger(body.generation) || body.generation <= 0) {
-      throw new TypeError("Playback stop generation must be a positive integer.");
+      throw new TypeError("Playback terminal generation must be a positive integer.");
     }
     if (!Number.isSafeInteger(body.eventSequence) || body.eventSequence <= 0) {
-      throw new TypeError("Playback stop event sequence must be a positive integer.");
+      throw new TypeError("Playback terminal event sequence must be a positive integer.");
     }
-    if (!Number.isFinite(Date.parse(body.recordedAt))) {
-      throw new TypeError("Playback stop observation time must be RFC 3339.");
+    if (
+      typeof body.recordedAt !== "string" ||
+      !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(
+        body.recordedAt,
+      ) ||
+      !Number.isFinite(Date.parse(body.recordedAt))
+    ) {
+      throw new TypeError("Playback terminal observation time must be RFC 3339.");
     }
+  }
+}
+
+function isCompletePlaybackTerminalEvent(
+  body: PlaybackTerminalEvent | PlaybackTerminalInput,
+): body is PlaybackTerminalEvent {
+  return (
+    "generation" in body &&
+    "eventSequence" in body &&
+    "recordedAt" in body
+  );
+}
+
+function assertPlaybackSessionStopRequest(
+  body: PlaybackSessionStopRequest,
+): void {
+  if (!body || typeof body !== "object") {
+    throw new TypeError("Playback stop request must be an object.");
+  }
+  assertPlaybackTerminalRequestId(body.requestId);
+  assertPlaybackTerminalEvent(body.terminal);
+}
+
+function assertLiveTvStreamCloseRequest(
+  body: LiveTvStreamCloseRequest,
+): void {
+  assertPlaybackSessionStopRequest(body);
+  if (
+    typeof body.sessionId !== "string" ||
+    body.sessionId.length < 1 ||
+    body.sessionId.length > 512
+  ) {
+    throw new TypeError("Live TV close session ID is invalid.");
+  }
+}
+
+function isPlaybackSessionStopRequest(
+  body: PlaybackSessionStopInput,
+): body is PlaybackSessionStopRequest {
+  return "requestId" in body || "terminal" in body;
+}
+
+function assertPlaybackHandoffRequest(body: PlaybackHandoffRequest): void {
+  if (!body || typeof body !== "object") {
+    throw new TypeError("Playback handoff request must be an object.");
+  }
+  assertPlaybackTerminalRequestId(body.requestId);
+  if (
+    typeof body.entryId !== "string" ||
+    body.entryId.length < 1 ||
+    body.entryId.length > 512
+  ) {
+    throw new TypeError("Playback handoff entry ID is invalid.");
+  }
+  assertPlaybackTerminalEvent(body.previousTerminal);
+  if (
+    body.startSeconds !== undefined &&
+    (!Number.isSafeInteger(body.startSeconds) || body.startSeconds < 0)
+  ) {
+    throw new TypeError(
+      "Playback handoff start position must be a non-negative integer.",
+    );
+  }
+  for (const revision of [
+    body.expectedQueueRevision,
+    body.expectedPlaybackRevision,
+  ]) {
+    if (
+      revision !== undefined &&
+      (!Number.isSafeInteger(revision) || revision < 0)
+    ) {
+      throw new TypeError("Playback handoff revision is invalid.");
+    }
+  }
+}
+
+function assertPlaybackReplacementRequest(
+  body: PlaybackReplacementRequest | PlaybackReplacementInput,
+): void {
+  if (!body || typeof body !== "object") {
+    throw new TypeError("Playback replacement request must be an object.");
+  }
+  if (
+    typeof body.sourceSessionId !== "string" ||
+    body.sourceSessionId.length < 1 ||
+    body.sourceSessionId.length > 512
+  ) {
+    throw new TypeError("Playback replacement source session ID is invalid.");
+  }
+  assertPlaybackTerminalEvent(body.previousTerminal);
+  const completeTerminal = isCompletePlaybackTerminalEvent(
+    body.previousTerminal,
+  );
+  const hasRequestId = typeof body.requestId === "string";
+  if (completeTerminal !== hasRequestId) {
+    throw new TypeError(
+      "A native playback replacement must provide both its complete terminal event and request identity.",
+    );
+  }
+  if (hasRequestId) assertPlaybackTerminalRequestId(body.requestId!);
+  for (const revision of [
+    body.expectedQueueRevision,
+    body.expectedPlaybackRevision,
+  ]) {
+    if (
+      revision !== undefined &&
+      (!Number.isSafeInteger(revision) || revision < 0)
+    ) {
+      throw new TypeError("Playback replacement revision is invalid.");
+    }
+  }
+}
+
+function assertCastBootstrapRequest(body: CastBootstrapRequest): void {
+  if (!isRecord(body)) {
+    throw new TypeError("Cast bootstrap request must be an object.");
+  }
+  assertPlaybackTerminalRequestId(body.requestId);
+  if (
+    !new Set(["media", "live", "dvr", "library-channel"]).has(
+      body.sourceKind,
+    ) ||
+    typeof body.sourceId !== "string" ||
+    body.sourceId.length < 1 ||
+    body.sourceId.length > 2_048 ||
+    typeof body.clientInstanceId !== "string" ||
+    body.clientInstanceId.length < 1 ||
+    body.clientInstanceId.length > 512 ||
+    !isRecord(body.clientProfile) ||
+    typeof body.receiverId !== "string" ||
+    body.receiverId.length < 1 ||
+    body.receiverId.length > 160 ||
+    typeof body.receiverOrigin !== "string" ||
+    body.receiverOrigin.length < 1 ||
+    body.receiverOrigin.length > 2_048 ||
+    typeof body.receiverPublicKey !== "string" ||
+    body.receiverPublicKey.length < 16 ||
+    body.receiverPublicKey.length > 256 ||
+    typeof body.receiverChallenge !== "string" ||
+    body.receiverChallenge.length < 16 ||
+    body.receiverChallenge.length > 256
+  ) {
+    throw new TypeError("Cast bootstrap request is invalid.");
+  }
+  if (body.replacement) {
+    assertPlaybackReplacementRequest(body.replacement);
+    if (body.replacement.requestId !== body.requestId) {
+      throw new TypeError(
+        "Cast bootstrap and replacement request identities must match.",
+      );
+    }
+  }
+  if (JSON.stringify(body).length > 256 * 1024) {
+    throw new TypeError("Cast bootstrap request is too large.");
+  }
+}
+
+function assertDurablePlaybackReplacementTarget(
+  target: DurablePlaybackReplacementTarget,
+  request: PlaybackReplacementRequest,
+): void {
+  if (!target || typeof target !== "object") {
+    throw new TypeError("Playback replacement target must be an object.");
+  }
+  if (
+    !new Set<PlaybackReplacementTarget["kind"]>([
+      "media",
+      "live-tv",
+      "live-tv-stream",
+      "dvr",
+      "library-channel",
+    ]).has(target.kind)
+  ) {
+    throw new TypeError("Playback replacement target kind is invalid.");
+  }
+  const needsResourceId = target.kind !== "media" && target.kind !== "live-tv";
+  if (
+    needsResourceId !== Boolean(target.resourceId) ||
+    (target.resourceId !== undefined &&
+      (typeof target.resourceId !== "string" ||
+        target.resourceId.length > 2_048))
+  ) {
+    throw new TypeError("Playback replacement target identity is invalid.");
+  }
+  if (!isRecord(target.body)) {
+    throw new TypeError("Playback replacement target body is invalid.");
+  }
+  const serialized = JSON.stringify(target.body);
+  if (serialized.length > 256 * 1024) {
+    throw new TypeError("Playback replacement target body is too large.");
+  }
+  if (JSON.stringify(target.body.replacement) !== JSON.stringify(request)) {
+    throw new TypeError(
+      "Playback replacement target does not contain its exact authority envelope.",
+    );
+  }
+}
+
+function assertPlaybackTerminalRequestId(requestId: string): void {
+  if (
+    typeof requestId !== "string" ||
+    requestId.length < 8 ||
+    requestId.length > 128 ||
+    !/^[A-Za-z0-9._:-]+$/.test(requestId)
+  ) {
+    throw new TypeError("Playback terminal request ID is invalid.");
+  }
+}
+
+function assertPlaybackTerminalAcknowledgement(
+  acknowledgement: PlaybackSessionTerminalAcknowledgement,
+  sessionId: string,
+  request: PlaybackSessionStopRequest,
+): void {
+  const terminal = acknowledgement.terminal;
+  if (
+    acknowledgement.accepted !== true ||
+    typeof acknowledgement.duplicate !== "boolean" ||
+    acknowledgement.requestId !== request.requestId ||
+    acknowledgement.sessionId !== sessionId ||
+    terminal.disposition !== request.terminal.disposition ||
+    terminal.generation !== request.terminal.generation ||
+    terminal.eventSequence !== request.terminal.eventSequence ||
+    terminal.recordedAt !== request.terminal.recordedAt ||
+    terminal.positionSeconds !== request.terminal.positionSeconds ||
+    terminal.durationSeconds !== request.terminal.durationSeconds
+  ) {
+    throw new TypeError(
+      "Playback terminal acknowledgement does not match the requested event.",
+    );
   }
 }
 
@@ -1299,12 +1888,36 @@ export function createPorticoClient(options: PorticoClientOptions = {}) {
   const inFlightJSONRequests = new Map<string, InFlightJSONRequest>();
   const playbackProgressMailboxes = new Map<string, PlaybackProgressMailbox>();
   const playbackProgressSequences = new Map<string, number>();
+  const playbackProgressPersistence = new Map<string, Promise<void>>();
+  const supersededPlaybackProgressKeys = new Set<string>();
   const playbackSessionGenerations = new Map<string, number>();
   const playbackSessionNextEventSequences = new Map<string, number>();
   const playbackStoppingSessions = new Set<string>();
+  const playbackTerminalRequestsInFlight = new Set<string>();
+  const playbackTerminalRequests = new Map<
+    string,
+    PlaybackSessionStopRequest
+  >();
+  const playbackHandoffRequests = new Map<string, PlaybackHandoffRequest>();
+  const playbackLiveTvCloseRequests = new Map<
+    string,
+    { channelId: string; request: LiveTvStreamCloseRequest }
+  >();
+  const playbackReplacementRequests = new Map<
+    string,
+    {
+      request: PlaybackReplacementRequest;
+      target: DurablePlaybackReplacementTarget;
+      committedOutcome?: CommittedPlaybackReplacementOutcome;
+    }
+  >();
+  const playbackTerminalSessionIds = new Map<string, string>();
+  const playbackTerminalScopes = new Map<string, PlaybackAuthorityScope>();
+  const castTransferRequests = new Map<string, CastBootstrapRequest>();
+  const castTransferScopes = new Map<string, PlaybackAuthorityScope>();
   const durablePlaybackProgress = new Map<
     string,
-    DurablePlaybackProgressRecord
+    DurablePlaybackEventRecord
   >();
   let durablePlaybackProgressLoaded = false;
   let durablePlaybackProgressLoad: Promise<void> | undefined;
@@ -1426,13 +2039,10 @@ export function createPorticoClient(options: PorticoClientOptions = {}) {
     );
   };
 
-  const playbackProgressKey = (
-    sessionId: string,
-    generation: number,
+  const playbackAuthorityScope = (
     session = credentials.peek(),
     serverOrigin = "",
-  ) =>
-    JSON.stringify([
+  ): PlaybackAuthorityScope => [
       session?.serverId ||
         trimTrailingSlash(
           serverOrigin ||
@@ -1442,9 +2052,46 @@ export function createPorticoClient(options: PorticoClientOptions = {}) {
       session?.authority ?? "local",
       session?.accountId ?? "",
       session?.profileId ?? "",
+      session?.authorizationRevision ?? "",
+    ];
+  const playbackAuthorityScopesEqual = (
+    left: PlaybackAuthorityScope,
+    right: PlaybackAuthorityScope,
+  ) => left.every((part, index) => part === right[index]);
+  const validPlaybackAuthorityScope = (
+    scope: unknown,
+  ): scope is PlaybackAuthorityScope =>
+    Array.isArray(scope) &&
+    scope.length === 5 &&
+    scope.every(
+      (part) =>
+        typeof part === "string" && part.length <= 2_048,
+    );
+  const playbackProgressKey = (
+    sessionId: string,
+    generation: number,
+    session = credentials.peek(),
+    serverOrigin = "",
+  ) =>
+    JSON.stringify([
+      ...playbackAuthorityScope(session, serverOrigin),
       sessionId,
       Math.max(0, Math.trunc(generation)),
     ]);
+  const playbackTerminalKey = (
+    operation: "stop" | "handoff" | "replacement" | "live-tv-close",
+    sessionId: string,
+    requestId: string,
+    scope: PlaybackAuthorityScope,
+  ) => JSON.stringify([...scope, "terminal", operation, sessionId, requestId]);
+  const castTransferKey = (
+    requestId: string,
+    scope: PlaybackAuthorityScope,
+  ) => JSON.stringify([...scope, "cast-transfer", requestId]);
+  const playbackSessionFenceKey = (
+    sessionId: string,
+    scope: PlaybackAuthorityScope,
+  ) => JSON.stringify([...scope, "terminal-session", sessionId]);
   const loadDurablePlaybackProgress = async (): Promise<void> => {
     if (
       durablePlaybackProgressLoaded ||
@@ -1459,6 +2106,165 @@ export function createPorticoClient(options: PorticoClientOptions = {}) {
             "The durable playback progress outbox is too large.",
           );
         for (const record of records) {
+          if (record.kind === "cast-transfer") {
+            if (
+              record.version !== "v1" ||
+              !record.key ||
+              record.key.length > 4_096 ||
+              !validPlaybackAuthorityScope(record.scope)
+            ) {
+              await options.playbackProgressDurabilityAdapter!.remove(record.key);
+              continue;
+            }
+            assertCastBootstrapRequest(record.request);
+            if (
+              record.key !==
+              castTransferKey(record.request.requestId, record.scope)
+            ) {
+              throw new TypeError(
+                "A durable Cast transfer identity is invalid.",
+              );
+            }
+            castTransferRequests.set(
+              record.key,
+              immutableJSONSnapshot(record.request),
+            );
+            castTransferScopes.set(record.key, record.scope);
+            const sourceSessionId = record.request.replacement?.sourceSessionId;
+            if (sourceSessionId) {
+              playbackStoppingSessions.add(
+                playbackSessionFenceKey(sourceSessionId, record.scope),
+              );
+            }
+            continue;
+          }
+          if (record.kind === "terminal") {
+            if (
+              record.version !== "v2" ||
+              !record.key ||
+              record.key.length > 4_096 ||
+              !validPlaybackAuthorityScope(record.scope) ||
+              !record.sessionId ||
+              record.sessionId.length > 512
+            ) {
+              // Pre-release v1 terminal records lacked a principal/server
+              // partition and cannot be safely attributed after restart.
+              await options.playbackProgressDurabilityAdapter!.remove(record.key);
+              continue;
+            }
+            if (record.operation === "stop") {
+              assertPlaybackSessionStopRequest(record.request);
+              if (
+                record.key !==
+                playbackTerminalKey(
+                  "stop",
+                  record.sessionId,
+                  record.request.requestId,
+                  record.scope,
+                )
+              ) {
+                throw new TypeError(
+                  "A durable playback stop identity is invalid.",
+                );
+              }
+              playbackTerminalRequests.set(
+                record.key,
+                immutableJSONSnapshot(record.request),
+              );
+            } else if (record.operation === "handoff") {
+              assertPlaybackHandoffRequest(record.request);
+              if (
+                record.key !==
+                playbackTerminalKey(
+                  "handoff",
+                  record.sessionId,
+                  record.request.requestId,
+                  record.scope,
+                )
+              ) {
+                throw new TypeError(
+                  "A durable playback handoff identity is invalid.",
+                );
+              }
+              playbackHandoffRequests.set(
+                record.key,
+                immutableJSONSnapshot(record.request),
+              );
+            } else if (record.operation === "live-tv-close") {
+              assertLiveTvStreamCloseRequest(record.request);
+              if (
+                typeof record.channelId !== "string" ||
+                record.channelId.length < 1 ||
+                record.channelId.length > 2_048 ||
+                record.key !==
+                  playbackTerminalKey(
+                    "live-tv-close",
+                    record.sessionId,
+                    record.request.requestId,
+                    record.scope,
+                  ) ||
+                record.sessionId !== record.request.sessionId
+              ) {
+                throw new TypeError(
+                  "A durable Live TV close identity is invalid.",
+                );
+              }
+              playbackLiveTvCloseRequests.set(record.key, {
+                channelId: record.channelId,
+                request: immutableJSONSnapshot(record.request),
+              });
+            } else {
+              assertPlaybackReplacementRequest(record.request);
+              assertDurablePlaybackReplacementTarget(
+                record.target,
+                record.request,
+              );
+              if (
+                record.committedOutcome !== undefined &&
+                (record.committedOutcome.outcome !==
+                  "committed-restore-required" ||
+                  record.committedOutcome.sourceSessionId !== record.sessionId ||
+                  typeof record.committedOutcome.replacementSessionId !==
+                    "string" ||
+                  record.committedOutcome.replacementSessionId.length < 1 ||
+                  record.committedOutcome.replacementSessionId.length > 512)
+              ) {
+                throw new TypeError(
+                  "A durable committed playback replacement identity is invalid.",
+                );
+              }
+              if (
+                record.key !==
+                playbackTerminalKey(
+                  "replacement",
+                  record.sessionId,
+                  record.request.requestId,
+                  record.scope,
+                ) ||
+                record.sessionId !== record.request.sourceSessionId
+              ) {
+                throw new TypeError(
+                  "A durable playback replacement identity is invalid.",
+                );
+              }
+              playbackReplacementRequests.set(
+                record.key,
+                immutableJSONSnapshot({
+                  request: record.request,
+                  target: record.target,
+                  ...(record.committedOutcome
+                    ? { committedOutcome: record.committedOutcome }
+                    : {}),
+                }),
+              );
+            }
+            playbackTerminalSessionIds.set(record.key, record.sessionId);
+            playbackTerminalScopes.set(record.key, record.scope);
+            playbackStoppingSessions.add(
+              playbackSessionFenceKey(record.sessionId, record.scope),
+            );
+            continue;
+          }
           if (
             record.version !== "v1" ||
             !record.key ||
@@ -1472,10 +2278,20 @@ export function createPorticoClient(options: PorticoClientOptions = {}) {
           }
           const identity = JSON.parse(record.key) as unknown;
           if (
+            Array.isArray(identity) &&
+            identity.length === 6 &&
+            identity.slice(0, 4).every((part) => typeof part === "string")
+          ) {
+            // Pre-release progress identities omitted authorizationRevision.
+            // Their viewer authority cannot be attributed after restart.
+            await options.playbackProgressDurabilityAdapter!.remove(record.key);
+            continue;
+          }
+          if (
             !Array.isArray(identity) ||
-            identity.length !== 6 ||
+            identity.length !== 7 ||
             identity.some((part, index) =>
-              index === 5
+              index === 6
                 ? !Number.isSafeInteger(part) || Number(part) < 0
                 : typeof part !== "string" || part.length > 2_048,
             )
@@ -1484,7 +2300,7 @@ export function createPorticoClient(options: PorticoClientOptions = {}) {
               "A durable playback progress identity is invalid.",
             );
           }
-          if (record.events.some((event) => event.completed)) {
+          if (record.events.some((event) => "completed" in event)) {
             await options.playbackProgressDurabilityAdapter!.remove(record.key);
             continue;
           }
@@ -1505,8 +2321,9 @@ export function createPorticoClient(options: PorticoClientOptions = {}) {
     mailbox: PlaybackProgressMailbox,
   ): Promise<void> => {
     if (!options.playbackProgressDurabilityAdapter) return;
-    const record: DurablePlaybackProgressRecord = {
+    const record: DurablePlaybackEventRecord = {
       version: "v1",
+      kind: "progress",
       key,
       events: [
         mailbox.inFlight.event,
@@ -1514,13 +2331,68 @@ export function createPorticoClient(options: PorticoClientOptions = {}) {
       ],
       updatedAt: new Date(options.now?.() ?? Date.now()).toISOString(),
     };
-    await options.playbackProgressDurabilityAdapter.save(record);
-    durablePlaybackProgress.set(key, record);
+    if (supersededPlaybackProgressKeys.has(key)) {
+      await options.playbackProgressDurabilityAdapter.remove(key);
+      durablePlaybackProgress.delete(key);
+      return;
+    }
+    const previousPersistence = playbackProgressPersistence.get(key);
+    const persistence = (previousPersistence ?? Promise.resolve())
+      .catch(() => undefined)
+      .then(async () => {
+        if (supersededPlaybackProgressKeys.has(key)) {
+          await options.playbackProgressDurabilityAdapter!.remove(key);
+          durablePlaybackProgress.delete(key);
+          return;
+        }
+        await options.playbackProgressDurabilityAdapter!.save(record);
+        if (!supersededPlaybackProgressKeys.has(key)) {
+          durablePlaybackProgress.set(key, record);
+        }
+      });
+    playbackProgressPersistence.set(key, persistence);
+    try {
+      await persistence;
+    } finally {
+      if (playbackProgressPersistence.get(key) === persistence) {
+        playbackProgressPersistence.delete(key);
+      }
+      if (supersededPlaybackProgressKeys.has(key)) {
+        await options.playbackProgressDurabilityAdapter.remove(key);
+        durablePlaybackProgress.delete(key);
+        if (!playbackProgressPersistence.has(key)) {
+          supersededPlaybackProgressKeys.delete(key);
+        }
+      }
+    }
   };
   const removeDurablePlaybackProgress = async (key: string): Promise<void> => {
     if (options.playbackProgressDurabilityAdapter)
       await options.playbackProgressDurabilityAdapter.remove(key);
     durablePlaybackProgress.delete(key);
+  };
+  const persistPlaybackTerminalRequest = async (
+    record: DurablePlaybackTerminalRecord | DurableCastTransferRecord,
+  ): Promise<void> => {
+    await options.playbackProgressDurabilityAdapter?.save(record);
+  };
+  const removeDurablePlaybackTerminalRequest = async (
+    key: string,
+  ): Promise<void> => {
+    await options.playbackProgressDurabilityAdapter?.remove(key);
+  };
+  const assertPlaybackSessionMutationAllowed = async (
+    sessionId: string,
+  ): Promise<void> => {
+    await loadDurablePlaybackProgress();
+    const scope = playbackAuthorityScope(await credentials.current());
+    if (playbackStoppingSessions.has(playbackSessionFenceKey(sessionId, scope))) {
+      throw new ApiError(
+        409,
+        "playback_stopping",
+        "Playback has an unresolved terminal mutation and cannot be changed.",
+      );
+    }
   };
   const restoreDurablePlaybackProgress = (
     key: string,
@@ -1628,13 +2500,18 @@ export function createPorticoClient(options: PorticoClientOptions = {}) {
     mailbox.delivering = true;
     const delivery = mailbox.inFlight;
     void persistPlaybackProgressMailbox(key, mailbox)
-      .then(() => delivery.send(delivery.event))
+      .then(() => {
+        const current = playbackProgressMailboxes.get(key);
+        if (!current || current.inFlight !== delivery) return undefined;
+        return delivery.send(delivery.event);
+      })
       .then(async (ack) => {
+        if (!ack) return;
         const current = playbackProgressMailboxes.get(key);
         if (!current || current.inFlight !== delivery) return;
-        current.delivering = false;
         current.touchedAt = options.now?.() ?? Date.now();
         if (!acknowledgementIsDurable(ack)) {
+          current.delivering = false;
           rejectPlaybackProgressWaiters(
             current,
             new ApiError(
@@ -1647,7 +2524,7 @@ export function createPorticoClient(options: PorticoClientOptions = {}) {
         }
         seedClientPlaybackProgressSequence(key, ack.highestEventSequence + 1);
         for (const waiter of delivery.waiters.splice(0)) waiter.resolve(ack);
-        if (current.successor && !delivery.event.completed) {
+        if (current.successor) {
           if (
             current.successor.event.eventSequence <= ack.highestEventSequence
           ) {
@@ -1666,12 +2543,9 @@ export function createPorticoClient(options: PorticoClientOptions = {}) {
           current.inFlight = current.successor;
           current.successor = undefined;
           await persistPlaybackProgressMailbox(key, current);
+          current.delivering = false;
           deliverPlaybackProgress(key);
           return;
-        }
-        if (current.successor) {
-          for (const waiter of current.successor.waiters.splice(0))
-            waiter.resolve(ack);
         }
         await removeDurablePlaybackProgress(key);
         playbackProgressMailboxes.delete(key);
@@ -1679,7 +2553,7 @@ export function createPorticoClient(options: PorticoClientOptions = {}) {
       })
       .catch((error) => {
         const current = playbackProgressMailboxes.get(key);
-        if (!current || current.inFlight !== delivery) return;
+        if (!current || !current.delivering) return;
         current.delivering = false;
         current.touchedAt = options.now?.() ?? Date.now();
         rejectPlaybackProgressWaiters(current, error);
@@ -1715,17 +2589,11 @@ export function createPorticoClient(options: PorticoClientOptions = {}) {
           return;
         }
         mailbox.touchedAt = now;
-        if (mailbox.inFlight.event.completed) {
-          mailbox.inFlight.waiters.push(waiter);
-        } else if (mailbox.successor?.event.completed && !body.completed) {
-          mailbox.successor.waiters.push(waiter);
-        } else {
-          mailbox.successor = {
-            event: orderedClientPlaybackProgressEvent(key, body),
-            send,
-            waiters: [...(mailbox.successor?.waiters ?? []), waiter],
-          };
-        }
+        mailbox.successor = {
+          event: orderedClientPlaybackProgressEvent(key, body),
+          send,
+          waiters: [...(mailbox.successor?.waiters ?? []), waiter],
+        };
         if (!mailbox.delivering) {
           // Keep the progress event immutable, but use the newest live request
           // context so an aborted signal or rotated continuation token cannot
@@ -1735,12 +2603,33 @@ export function createPorticoClient(options: PorticoClientOptions = {}) {
         }
       });
     });
-  const forgetClientPlaybackProgress = (sessionId: string) => {
+  const forgetClientPlaybackProgress = async (
+    sessionId: string,
+    scope: PlaybackAuthorityScope,
+  ): Promise<void> => {
     playbackSessionGenerations.delete(sessionId);
     playbackSessionNextEventSequences.delete(sessionId);
+    const supersededKeys = new Set<string>();
+    for (const key of durablePlaybackProgress.keys()) {
+      const identity = JSON.parse(key) as unknown[];
+      if (
+        identity[5] === sessionId &&
+        playbackAuthorityScopesEqual(
+          identity.slice(0, 5) as unknown as PlaybackAuthorityScope,
+          scope,
+        )
+      ) supersededKeys.add(key);
+    }
     for (const [key, mailbox] of playbackProgressMailboxes) {
       const identity = JSON.parse(key) as unknown[];
-      if (identity[4] !== sessionId) continue;
+      if (
+        identity[5] !== sessionId ||
+        !playbackAuthorityScopesEqual(
+          identity.slice(0, 5) as unknown as PlaybackAuthorityScope,
+          scope,
+        )
+      ) continue;
+      supersededKeys.add(key);
       rejectPlaybackProgressWaiters(
         mailbox,
         new ApiError(
@@ -1752,12 +2641,41 @@ export function createPorticoClient(options: PorticoClientOptions = {}) {
       playbackProgressMailboxes.delete(key);
       playbackProgressSequences.delete(key);
     }
+    for (const key of supersededKeys) {
+      supersededPlaybackProgressKeys.add(key);
+    }
+    await Promise.allSettled(
+      [...supersededKeys]
+        .map((key) => playbackProgressPersistence.get(key))
+        .filter((persistence): persistence is Promise<void> => Boolean(persistence)),
+    );
+    const removals = await Promise.allSettled(
+      [...supersededKeys].map((key) => removeDurablePlaybackProgress(key)),
+    );
+    for (const key of supersededKeys) {
+      if (!playbackProgressPersistence.has(key)) {
+        supersededPlaybackProgressKeys.delete(key);
+      }
+    }
+    const failed = removals.find(
+      (result): result is PromiseRejectedResult => result.status === "rejected",
+    );
+    if (failed) throw failed.reason;
   };
-  const waitForPendingPlaybackProgress = (sessionId: string): Promise<void> => {
+  const waitForPendingPlaybackProgress = (
+    sessionId: string,
+    scope: PlaybackAuthorityScope,
+  ): Promise<void> => {
     const waits: Promise<unknown>[] = [];
     for (const [key, mailbox] of playbackProgressMailboxes) {
       const identity = JSON.parse(key) as unknown[];
-      if (identity[4] !== sessionId) continue;
+      if (
+        identity[5] !== sessionId ||
+        !playbackAuthorityScopesEqual(
+          identity.slice(0, 5) as unknown as PlaybackAuthorityScope,
+          scope,
+        )
+      ) continue;
       waits.push(
         new Promise<PlaybackProgressAcknowledgement>((resolve, reject) => {
           (mailbox.successor ?? mailbox.inFlight).waiters.push({
@@ -1772,17 +2690,194 @@ export function createPorticoClient(options: PorticoClientOptions = {}) {
   };
   const drainPendingPlaybackProgressBeforeStop = async (
     sessionId: string,
+    scope: PlaybackAuthorityScope,
   ): Promise<void> => {
-    const pending = waitForPendingPlaybackProgress(sessionId);
+    const pending = waitForPendingPlaybackProgress(sessionId, scope);
     let timer: ReturnType<typeof setTimeout> | undefined;
     await Promise.race([
-      pending,
+      pending.catch(() => undefined),
       new Promise<void>((resolve) => {
         timer = setTimeout(resolve, 500);
       }),
     ]).finally(() => {
       if (timer !== undefined) clearTimeout(timer);
     });
+  };
+  const terminalInputMatches = (
+    terminal: PlaybackTerminalEvent,
+    input: PlaybackTerminalInput,
+  ) =>
+    terminal.disposition === input.disposition &&
+    terminal.positionSeconds === input.positionSeconds &&
+    terminal.durationSeconds === input.durationSeconds;
+  const terminalEventMatches = (
+    left: PlaybackTerminalEvent,
+    right: PlaybackTerminalEvent,
+  ) =>
+    terminalInputMatches(left, right) &&
+    left.generation === right.generation &&
+    left.eventSequence === right.eventSequence &&
+    left.recordedAt === right.recordedAt;
+  const handoffInputMatches = (
+    cached: PlaybackHandoffRequest,
+    input: PlaybackHandoffInput,
+  ) => {
+    const terminalMatches = isCompletePlaybackTerminalEvent(
+      input.previousTerminal,
+    )
+      ? terminalEventMatches(cached.previousTerminal, input.previousTerminal)
+      : terminalInputMatches(cached.previousTerminal, input.previousTerminal);
+    return (
+      terminalMatches &&
+      cached.requestId === input.requestId &&
+      cached.entryId === input.entryId &&
+      cached.preparedSessionId === input.preparedSessionId &&
+      cached.expectedQueueRevision === input.expectedQueueRevision &&
+      cached.expectedPlaybackRevision === input.expectedPlaybackRevision &&
+      cached.startSeconds === input.startSeconds &&
+      JSON.stringify(cached.intent) === JSON.stringify(input.intent) &&
+      JSON.stringify(cached.sourceContext) === JSON.stringify(input.sourceContext) &&
+      (input.clientProfile === undefined ||
+        JSON.stringify(cached.clientProfile) ===
+          JSON.stringify(input.clientProfile))
+    );
+  };
+  const cachePlaybackTerminalRequest = (
+    key: string,
+    sessionId: string,
+    scope: PlaybackAuthorityScope,
+    terminalRequest: PlaybackSessionStopRequest,
+  ) => {
+    if (
+      !playbackTerminalRequests.has(key) &&
+      playbackTerminalRequests.size +
+          playbackHandoffRequests.size +
+          playbackReplacementRequests.size +
+          playbackLiveTvCloseRequests.size >=
+        MAX_PLAYBACK_TERMINAL_REQUESTS
+    ) {
+      throw new ApiError(
+        503,
+        "playback_terminal_outbox_full",
+        "Playback terminal recovery must finish before another session can close.",
+      );
+    }
+    const snapshot = immutableJSONSnapshot(terminalRequest);
+    playbackTerminalRequests.delete(key);
+    playbackTerminalRequests.set(key, snapshot);
+    playbackTerminalSessionIds.set(key, sessionId);
+    playbackTerminalScopes.set(key, scope);
+    return snapshot;
+  };
+  const cachePlaybackHandoffRequest = (
+    key: string,
+    sessionId: string,
+    scope: PlaybackAuthorityScope,
+    handoffRequest: PlaybackHandoffRequest,
+  ) => {
+    if (
+      !playbackHandoffRequests.has(key) &&
+      playbackTerminalRequests.size +
+          playbackHandoffRequests.size +
+          playbackReplacementRequests.size +
+          playbackLiveTvCloseRequests.size >=
+        MAX_PLAYBACK_TERMINAL_REQUESTS
+    ) {
+      throw new ApiError(
+        503,
+        "playback_terminal_outbox_full",
+        "Playback terminal recovery must finish before another handoff can begin.",
+      );
+    }
+    const snapshot = immutableJSONSnapshot(handoffRequest);
+    playbackHandoffRequests.set(key, snapshot);
+    playbackTerminalSessionIds.set(key, sessionId);
+    playbackTerminalScopes.set(key, scope);
+    return snapshot;
+  };
+  const cachePlaybackReplacementRequest = (
+    key: string,
+    sessionId: string,
+    scope: PlaybackAuthorityScope,
+    replacement: {
+      request: PlaybackReplacementRequest;
+      target: DurablePlaybackReplacementTarget;
+    },
+  ) => {
+    if (
+      !playbackReplacementRequests.has(key) &&
+      playbackTerminalRequests.size +
+          playbackHandoffRequests.size +
+          playbackReplacementRequests.size +
+          playbackLiveTvCloseRequests.size >=
+        MAX_PLAYBACK_TERMINAL_REQUESTS
+    ) {
+      throw new ApiError(
+        503,
+        "playback_terminal_outbox_full",
+        "Playback terminal recovery must finish before another replacement can begin.",
+      );
+    }
+    const snapshot = immutableJSONSnapshot(replacement);
+    playbackReplacementRequests.set(key, snapshot);
+    playbackTerminalSessionIds.set(key, sessionId);
+    playbackTerminalScopes.set(key, scope);
+    return snapshot;
+  };
+  const allocatePlaybackTerminalEvent = async (
+    sessionId: string,
+    body: PlaybackTerminalInput,
+    session: LocalServerSession | undefined,
+    scope: PlaybackAuthorityScope,
+    init?: RequestSignal,
+  ): Promise<PlaybackTerminalEvent> => {
+    assertPlaybackTerminalEvent(body);
+    await loadDurablePlaybackProgress();
+    for (const key of durablePlaybackProgress.keys()) {
+      const identity = JSON.parse(key) as unknown[];
+      if (
+        identity[5] !== sessionId ||
+        !playbackAuthorityScopesEqual(
+          identity.slice(0, 5) as unknown as PlaybackAuthorityScope,
+          scope,
+        )
+      ) continue;
+      restoreDurablePlaybackProgress(key, (event) =>
+        request<PlaybackProgressAcknowledgement>(
+          `/api/playback-sessions/${encodeURIComponent(sessionId)}`,
+          { ...init, method: "PATCH", body: event },
+        ),
+      );
+    }
+    await drainPendingPlaybackProgressBeforeStop(sessionId, scope);
+    const generation = playbackSessionGenerations.get(sessionId) ?? 0;
+    if (!Number.isSafeInteger(generation) || generation <= 0) {
+      throw new ApiError(
+        409,
+        "playback_session_authority_unavailable",
+        "Playback session authority is unavailable.",
+      );
+    }
+    const key = playbackProgressKey(sessionId, generation, session);
+    seedClientPlaybackProgressSequence(
+      key,
+      playbackSessionNextEventSequences.get(sessionId) ?? 1,
+    );
+    const ordered = orderedClientPlaybackProgressEvent(key, {
+      positionSeconds: body.positionSeconds,
+      durationSeconds: body.durationSeconds,
+      state: "paused",
+    });
+    const terminal: PlaybackTerminalEvent = {
+      disposition: body.disposition,
+      generation,
+      eventSequence: ordered.eventSequence,
+      recordedAt: ordered.recordedAt,
+      positionSeconds: body.positionSeconds,
+      durationSeconds: body.durationSeconds,
+    };
+    assertPlaybackTerminalEvent(terminal);
+    return terminal;
   };
   const normalizeSessionPlayback = (response: PlaybackResponse) => {
     const generation = Number.isFinite(response.generation)
@@ -1830,6 +2925,1453 @@ export function createPorticoClient(options: PorticoClientOptions = {}) {
   const clientInstanceId = () =>
     normalizeClientInstanceId(options.playbackClientInstanceId?.() ?? "");
 
+  const playbackReplacementTargetPath = (
+    target: DurablePlaybackReplacementTarget,
+  ): string => {
+    switch (target.kind) {
+      case "media":
+        return "/api/playback-sessions";
+      case "live-tv":
+        return "/api/live-tv/play";
+      case "live-tv-stream":
+        return `/api/live-tv/streams/${encodeURIComponent(target.resourceId!)}/open`;
+      case "dvr":
+        return `/api/dvr/recordings/${encodeURIComponent(target.resourceId!)}/playback`;
+      case "library-channel":
+        return `/api/library-channels/${encodeURIComponent(target.resourceId!)}/tune`;
+    }
+  };
+  const requiredPlaybackReplacementResourceId = (
+    value: string,
+    kind: PlaybackReplacementTarget["kind"],
+  ) => {
+    if (typeof value !== "string" || value.length < 1 || value.length > 2_048) {
+      throw new TypeError(`Playback replacement ${kind} identity is invalid.`);
+    }
+    return value;
+  };
+  const durablePlaybackReplacementTarget = (
+    target: PlaybackReplacementTarget,
+    replacement: PlaybackReplacementRequest,
+  ): DurablePlaybackReplacementTarget => {
+    let durableTarget: DurablePlaybackReplacementTarget;
+    switch (target.kind) {
+      case "media": {
+        const playbackOptions = target.playbackOptions ?? {};
+        durableTarget = {
+          kind: target.kind,
+          body: {
+            mediaId: requiredPlaybackReplacementResourceId(
+              target.mediaId,
+              target.kind,
+            ),
+            clientInstanceId: clientInstanceId(),
+            clientProfile: profile(),
+            intent: playbackOptions.intent ?? {
+              quality: { mode: "automatic" },
+            },
+            versionId: playbackOptions.versionId,
+            skipPreroll: playbackOptions.skipPreroll,
+            burnInSubtitleId: playbackOptions.burnInSubtitleId,
+            subtitleStreamId: playbackOptions.subtitleStreamId,
+            audioStreamId: playbackOptions.audioStreamId,
+            startSeconds: playbackOptions.startSeconds,
+            queueMediaIds: playbackOptions.queueMediaIds,
+            repeatMode: playbackOptions.repeatMode,
+            sourceContext: playbackOptions.sourceContext,
+            replacement,
+          },
+        };
+        break;
+      }
+      case "live-tv":
+      case "live-tv-stream": {
+        const playbackOptions = target.playbackOptions ?? {};
+        const channelId = requiredPlaybackReplacementResourceId(
+          target.channelId,
+          target.kind,
+        );
+        durableTarget = {
+          kind: target.kind,
+          ...(target.kind === "live-tv-stream"
+            ? { resourceId: channelId }
+            : {}),
+          body: {
+            channelId,
+            clientInstanceId: clientInstanceId(),
+            clientProfile: playbackOptions.clientProfile ?? profile(),
+            intent: playbackOptions.intent ?? {
+              quality: { mode: "automatic" },
+            },
+            replacement,
+          },
+        };
+        break;
+      }
+      case "dvr": {
+        const playbackOptions = target.playbackOptions ?? {};
+        const recordingId = requiredPlaybackReplacementResourceId(
+          target.recordingId,
+          target.kind,
+        );
+        durableTarget = {
+          kind: target.kind,
+          resourceId: recordingId,
+          body: {
+            ...playbackOptions,
+            intent: playbackOptions.intent ?? {
+              quality: { mode: "automatic" },
+            },
+            clientInstanceId:
+              playbackOptions.clientInstanceId ?? clientInstanceId(),
+            clientProfile: playbackOptions.clientProfile ?? profile(),
+            replacement,
+          },
+        };
+        break;
+      }
+      case "library-channel": {
+        const playbackOptions = target.playbackOptions ?? {};
+        const channelId = requiredPlaybackReplacementResourceId(
+          target.channelId,
+          target.kind,
+        );
+        durableTarget = {
+          kind: target.kind,
+          resourceId: channelId,
+          body: {
+            ...playbackOptions,
+            intent: playbackOptions.intent ?? {
+              quality: { mode: "automatic" },
+            },
+            clientInstanceId:
+              playbackOptions.clientInstanceId ?? clientInstanceId(),
+            clientProfile: playbackOptions.clientProfile ?? profile(),
+            replacement,
+          },
+        };
+        break;
+      }
+    }
+    const snapshot = immutableJSONSnapshot(durableTarget);
+    assertDurablePlaybackReplacementTarget(snapshot, replacement);
+    return snapshot;
+  };
+  const normalizePlaybackReplacementTargetResponse = (
+    kind: PlaybackReplacementTarget["kind"],
+    response: PlaybackResponse | LibraryChannelTuneResponse,
+  ): PlaybackResponse | LibraryChannelTuneResponse => {
+    if (kind === "library-channel") {
+      const tuneResponse = response as LibraryChannelTuneResponse;
+      return {
+        ...tuneResponse,
+        playback: tuneResponse.playback
+          ? normalizeSessionPlayback(tuneResponse.playback)
+          : tuneResponse.playback,
+      };
+    }
+    return normalizeSessionPlayback(response as PlaybackResponse);
+  };
+  const playbackReplacementRejection = (
+    error: ApiError,
+  ): PlaybackReplacementRejection => ({
+    status: error.status,
+    code: error.code,
+    detail: error.detail,
+  });
+  const isDefinitiveInactivePlaybackReplacement = (
+    error: unknown,
+  ): error is ApiError =>
+    error instanceof ApiError &&
+    error.code === "replacement_source_inactive" &&
+    !error.ambiguous &&
+    !error.retryable;
+  const stopPlaybackSession = async (
+    sessionId: string,
+    body: PlaybackSessionStopInput,
+    init?: RequestSignal,
+  ): Promise<PlaybackSessionTerminalAcknowledgement> => {
+    if (isPlaybackSessionStopRequest(body)) {
+      assertPlaybackSessionStopRequest(body);
+    } else {
+      assertPlaybackTerminalEvent(body);
+    }
+    await loadDurablePlaybackProgress();
+    const session = await credentials.current();
+    const scope = playbackAuthorityScope(session);
+    const fenceKey = playbackSessionFenceKey(sessionId, scope);
+    const requestedRequestId = isPlaybackSessionStopRequest(body)
+      ? body.requestId
+      : "core-owned";
+    const key = playbackTerminalKey(
+      "stop",
+      sessionId,
+      requestedRequestId,
+      scope,
+    );
+    const cachedStopKey = isPlaybackSessionStopRequest(body)
+      ? key
+      : [...playbackTerminalRequests.keys()].find(
+          (candidate) =>
+            playbackTerminalSessionIds.get(candidate) === sessionId &&
+            playbackAuthorityScopesEqual(
+              playbackTerminalScopes.get(candidate) ?? ["", "", "", "", ""],
+              scope,
+            ),
+        ) ?? key;
+    if (playbackTerminalRequestsInFlight.has(fenceKey)) {
+      throw new ApiError(
+        409,
+        "playback_stopping",
+        "Playback already has a terminal mutation in flight.",
+      );
+    }
+    const cached = playbackTerminalRequests.get(cachedStopKey);
+    if (playbackStoppingSessions.has(fenceKey) && !cached) {
+      throw new ApiError(
+        409,
+        "playback_terminal_request_conflict",
+        "This playback session already has a different uncertain terminal request.",
+      );
+    }
+    playbackStoppingSessions.add(fenceKey);
+    playbackTerminalRequestsInFlight.add(fenceKey);
+    let requestDispatched = false;
+    let requestKey = cached ? cachedStopKey : key;
+    try {
+      let requestBody = cached;
+      if (requestBody) {
+        const matches = isPlaybackSessionStopRequest(body)
+          ? requestBody.requestId === body.requestId &&
+            terminalEventMatches(requestBody.terminal, body.terminal)
+          : terminalInputMatches(requestBody.terminal, body);
+        if (!matches) {
+          throw new ApiError(
+            409,
+            "playback_terminal_request_conflict",
+            "This playback session already has an uncertain terminal request.",
+          );
+        }
+      } else if (isPlaybackSessionStopRequest(body)) {
+        requestBody = cachePlaybackTerminalRequest(
+          requestKey,
+          sessionId,
+          scope,
+          body,
+        );
+        await persistPlaybackTerminalRequest({
+          version: "v2",
+          kind: "terminal",
+          key: requestKey,
+          scope,
+          sessionId,
+          operation: "stop",
+          request: requestBody,
+          updatedAt: new Date(options.now?.() ?? Date.now()).toISOString(),
+        });
+      } else {
+        const terminal = await allocatePlaybackTerminalEvent(
+          sessionId,
+          body,
+          session,
+          scope,
+          init,
+        );
+        const requestId = createRequestId(options.requestId).slice(0, 128);
+        assertPlaybackTerminalRequestId(requestId);
+        requestBody = {
+          requestId,
+          terminal,
+        };
+        requestKey = playbackTerminalKey(
+          "stop",
+          sessionId,
+          requestId,
+          scope,
+        );
+        requestBody = cachePlaybackTerminalRequest(
+          requestKey,
+          sessionId,
+          scope,
+          requestBody,
+        );
+        await persistPlaybackTerminalRequest({
+          version: "v2",
+          kind: "terminal",
+          key: requestKey,
+          scope,
+          sessionId,
+          operation: "stop",
+          request: requestBody,
+          updatedAt: new Date(options.now?.() ?? Date.now()).toISOString(),
+        });
+      }
+      assertPlaybackSessionStopRequest(requestBody);
+      requestDispatched = true;
+      const response = await request<PlaybackSessionTerminalAcknowledgement>(
+        `/api/playback-sessions/${encodeURIComponent(sessionId)}`,
+        {
+          ...init,
+          method: "DELETE",
+          body: requestBody,
+        },
+      );
+      assertPlaybackTerminalAcknowledgement(response, sessionId, requestBody);
+      await forgetClientPlaybackProgress(sessionId, scope);
+      await removeDurablePlaybackTerminalRequest(requestKey);
+      playbackTerminalRequests.delete(requestKey);
+      playbackTerminalSessionIds.delete(requestKey);
+      playbackTerminalScopes.delete(requestKey);
+      playbackStoppingSessions.delete(fenceKey);
+      return response;
+    } catch (error) {
+      if (
+        (!requestDispatched && !cached) ||
+        terminalMutationRejectionIsDefinitive(error)
+      ) {
+        await removeDurablePlaybackTerminalRequest(requestKey);
+        playbackTerminalRequests.delete(requestKey);
+        playbackTerminalSessionIds.delete(requestKey);
+        playbackTerminalScopes.delete(requestKey);
+        playbackStoppingSessions.delete(fenceKey);
+      }
+      throw error;
+    } finally {
+      playbackTerminalRequestsInFlight.delete(fenceKey);
+    }
+  };
+  const closeLiveTvStream = async (
+    channelId: string,
+    sessionId: string,
+    body: PlaybackSessionStopInput,
+    init?: RequestSignal,
+  ): Promise<PlaybackSessionTerminalAcknowledgement> => {
+    requiredPlaybackReplacementResourceId(channelId, "live-tv-stream");
+    if (isPlaybackSessionStopRequest(body)) {
+      assertPlaybackSessionStopRequest(body);
+    } else {
+      assertPlaybackTerminalEvent(body);
+    }
+    await loadDurablePlaybackProgress();
+    const session = await credentials.current();
+    const scope = playbackAuthorityScope(session);
+    const fenceKey = playbackSessionFenceKey(sessionId, scope);
+    const cachedEntry = [...playbackLiveTvCloseRequests.entries()].find(
+      ([key, value]) =>
+        value.request.sessionId === sessionId &&
+        playbackAuthorityScopesEqual(
+          playbackTerminalScopes.get(key) ?? ["", "", "", "", ""],
+          scope,
+        ),
+    );
+    if (playbackStoppingSessions.has(fenceKey) && !cachedEntry) {
+      throw new ApiError(
+        409,
+        "playback_terminal_request_conflict",
+        "This Live TV session already has a different terminal request.",
+      );
+    }
+    if (playbackTerminalRequestsInFlight.has(fenceKey)) {
+      throw new ApiError(
+        409,
+        "playback_stopping",
+        "Playback already has a terminal mutation in flight.",
+      );
+    }
+    playbackStoppingSessions.add(fenceKey);
+    playbackTerminalRequestsInFlight.add(fenceKey);
+    let key = cachedEntry?.[0];
+    let requestBody = cachedEntry?.[1].request;
+    let dispatched = false;
+    try {
+      if (requestBody) {
+        const matches =
+          cachedEntry![1].channelId === channelId &&
+          (isPlaybackSessionStopRequest(body)
+            ? requestBody.requestId === body.requestId &&
+              terminalEventMatches(requestBody.terminal, body.terminal)
+            : terminalInputMatches(requestBody.terminal, body));
+        if (!matches) {
+          throw new ApiError(
+            409,
+            "playback_terminal_request_conflict",
+            "This Live TV session already has a different terminal request.",
+          );
+        }
+      } else {
+        if (
+          playbackTerminalRequests.size +
+            playbackHandoffRequests.size +
+            playbackReplacementRequests.size +
+            playbackLiveTvCloseRequests.size >=
+          MAX_PLAYBACK_TERMINAL_REQUESTS
+        ) {
+          throw new ApiError(
+            503,
+            "playback_terminal_outbox_full",
+            "Playback terminal recovery must finish before another Live TV session can close.",
+          );
+        }
+        const terminal = isPlaybackSessionStopRequest(body)
+          ? body.terminal
+          : await allocatePlaybackTerminalEvent(
+              sessionId,
+              body,
+              session,
+              scope,
+              init,
+            );
+        const requestId = isPlaybackSessionStopRequest(body)
+          ? body.requestId
+          : createRequestId(options.requestId).slice(0, 128);
+        requestBody = immutableJSONSnapshot({
+          sessionId,
+          requestId,
+          terminal,
+        });
+        assertLiveTvStreamCloseRequest(requestBody);
+        key = playbackTerminalKey(
+          "live-tv-close",
+          sessionId,
+          requestId,
+          scope,
+        );
+        playbackLiveTvCloseRequests.set(key, { channelId, request: requestBody });
+        playbackTerminalSessionIds.set(key, sessionId);
+        playbackTerminalScopes.set(key, scope);
+        await persistPlaybackTerminalRequest({
+          version: "v2",
+          kind: "terminal",
+          key,
+          scope,
+          sessionId,
+          operation: "live-tv-close",
+          channelId,
+          request: requestBody,
+          updatedAt: new Date(options.now?.() ?? Date.now()).toISOString(),
+        });
+      }
+      dispatched = true;
+      const response = await request<PlaybackSessionTerminalAcknowledgement>(
+        `/api/live-tv/streams/${encodeURIComponent(channelId)}/close`,
+        { ...init, method: "POST", body: requestBody },
+      );
+      assertPlaybackTerminalAcknowledgement(response, sessionId, requestBody);
+      await forgetClientPlaybackProgress(sessionId, scope);
+      await removeDurablePlaybackTerminalRequest(key!);
+      playbackLiveTvCloseRequests.delete(key!);
+      playbackTerminalSessionIds.delete(key!);
+      playbackTerminalScopes.delete(key!);
+      playbackStoppingSessions.delete(fenceKey);
+      return response;
+    } catch (error) {
+      if ((!dispatched && !cachedEntry) || terminalMutationRejectionIsDefinitive(error)) {
+        if (key) {
+          await removeDurablePlaybackTerminalRequest(key);
+          playbackLiveTvCloseRequests.delete(key);
+          playbackTerminalSessionIds.delete(key);
+          playbackTerminalScopes.delete(key);
+        }
+        playbackStoppingSessions.delete(fenceKey);
+      }
+      throw error;
+    } finally {
+      playbackTerminalRequestsInFlight.delete(fenceKey);
+    }
+  };
+  const clearPlaybackReplacementRequest = async (
+    key: string,
+    fenceKey: string,
+  ): Promise<void> => {
+    await removeDurablePlaybackTerminalRequest(key);
+    playbackReplacementRequests.delete(key);
+    playbackTerminalSessionIds.delete(key);
+    playbackTerminalScopes.delete(key);
+    playbackStoppingSessions.delete(fenceKey);
+  };
+  const executePlaybackReplacement = async (
+    key: string,
+    replacement: {
+      request: PlaybackReplacementRequest;
+      target: DurablePlaybackReplacementTarget;
+      committedOutcome?: CommittedPlaybackReplacementOutcome;
+    },
+    scope: PlaybackAuthorityScope,
+    init?: RequestSignal,
+    lockAcquired = false,
+  ): Promise<
+    PlaybackReplacementOutcome<PlaybackResponse | LibraryChannelTuneResponse>
+  > => {
+    const sourceSessionId = replacement.request.sourceSessionId;
+    const fenceKey = playbackSessionFenceKey(sourceSessionId, scope);
+    if (!lockAcquired) {
+      if (playbackTerminalRequestsInFlight.has(fenceKey)) {
+        throw new ApiError(
+          409,
+          "playback_stopping",
+          "Playback already has a terminal mutation in flight.",
+        );
+      }
+      playbackStoppingSessions.add(fenceKey);
+      playbackTerminalRequestsInFlight.add(fenceKey);
+    }
+    let completedFallback:
+      | {
+          rejection: PlaybackReplacementRejection;
+          terminal: PlaybackTerminalEvent;
+        }
+      | undefined;
+    try {
+      if (replacement.committedOutcome) {
+        return replacement.committedOutcome;
+      }
+      const response = await request<
+        PlaybackResponse | LibraryChannelTuneResponse
+      >(playbackReplacementTargetPath(replacement.target), {
+        ...init,
+        method: "POST",
+        body: replacement.target.body,
+      });
+      const normalized = normalizePlaybackReplacementTargetResponse(
+        replacement.target.kind,
+        response,
+      );
+      await forgetClientPlaybackProgress(sourceSessionId, scope);
+      await clearPlaybackReplacementRequest(key, fenceKey);
+      return { outcome: "accepted", value: normalized };
+    } catch (error) {
+      if (
+        error instanceof ApiError &&
+        error.code === "playback_replacement_committed_restore_required"
+      ) {
+        const replacementSessionId = error.details?.replacementSessionId;
+        if (
+          typeof replacementSessionId !== "string" ||
+          replacementSessionId.length < 1 ||
+          replacementSessionId.length > 512
+        ) {
+          // The server claims commit but did not provide the only safe public
+          // replacement identity. Preserve the exact request for reconciliation.
+          throw error;
+        }
+        const committedOutcome: CommittedPlaybackReplacementOutcome = {
+          outcome: "committed-restore-required",
+          sourceSessionId,
+          replacementSessionId,
+        };
+        await persistPlaybackTerminalRequest({
+          version: "v2",
+          kind: "terminal",
+          key,
+          scope,
+          sessionId: sourceSessionId,
+          operation: "replacement",
+          request: replacement.request,
+          target: replacement.target,
+          committedOutcome,
+          updatedAt: new Date(options.now?.() ?? Date.now()).toISOString(),
+        });
+        playbackReplacementRequests.set(
+          key,
+          immutableJSONSnapshot({ ...replacement, committedOutcome }),
+        );
+        await forgetClientPlaybackProgress(sourceSessionId, scope);
+        return committedOutcome;
+      }
+      if (isDefinitiveInactivePlaybackReplacement(error)) {
+        const rejection = playbackReplacementRejection(error);
+        await forgetClientPlaybackProgress(sourceSessionId, scope);
+        await clearPlaybackReplacementRequest(key, fenceKey);
+        return {
+          outcome: "source-inactive",
+          sourceSessionId,
+          rejection,
+        };
+      }
+      if (!terminalMutationRejectionIsDefinitive(error)) throw error;
+      const rejection = playbackReplacementRejection(error as ApiError);
+      await clearPlaybackReplacementRequest(key, fenceKey);
+      if (replacement.request.previousTerminal.disposition === "stopped") {
+        return {
+          outcome: "source-retained",
+          sourceSessionId,
+          rejection,
+        };
+      }
+      completedFallback = {
+        rejection,
+        terminal: replacement.request.previousTerminal,
+      };
+    } finally {
+      playbackTerminalRequestsInFlight.delete(fenceKey);
+    }
+    const stopRequestId = createRequestId(options.requestId).slice(0, 128);
+    assertPlaybackTerminalRequestId(stopRequestId);
+    const terminal = await stopPlaybackSession(
+      sourceSessionId,
+      {
+        requestId: stopRequestId,
+        terminal: completedFallback!.terminal,
+      },
+      init,
+    );
+    return {
+      outcome: "source-closed",
+      sourceSessionId,
+      rejection: completedFallback!.rejection,
+      terminal,
+    };
+  };
+  const replacementInputMatches = (
+    cached: PlaybackReplacementRequest,
+    input: PlaybackReplacementInput,
+  ): boolean => {
+    const terminalMatches = isCompletePlaybackTerminalEvent(
+      input.previousTerminal,
+    )
+      ? terminalEventMatches(cached.previousTerminal, input.previousTerminal)
+      : terminalInputMatches(cached.previousTerminal, input.previousTerminal);
+    return (
+      terminalMatches &&
+      cached.sourceSessionId === input.sourceSessionId &&
+      (input.requestId === undefined || cached.requestId === input.requestId) &&
+      cached.expectedQueueRevision === input.expectedQueueRevision &&
+      cached.expectedPlaybackRevision === input.expectedPlaybackRevision
+    );
+  };
+  const replacePlaybackTarget = async <
+    Target extends PlaybackReplacementTarget,
+  >(
+    target: Target,
+    input: PlaybackReplacementInput,
+    init?: RequestSignal,
+  ): Promise<
+    PlaybackReplacementOutcome<PlaybackReplacementTargetResponse<Target>>
+  > => {
+    assertPlaybackReplacementRequest(input);
+    await loadDurablePlaybackProgress();
+    const session = await credentials.current();
+    const scope = playbackAuthorityScope(session);
+    const fenceKey = playbackSessionFenceKey(input.sourceSessionId, scope);
+    const cachedEntry = [...playbackReplacementRequests.entries()].find(
+      ([key, replacement]) =>
+        playbackTerminalSessionIds.get(key) === input.sourceSessionId &&
+        playbackAuthorityScopesEqual(
+          playbackTerminalScopes.get(key) ?? ["", "", "", "", ""],
+          scope,
+        ) &&
+        (input.requestId === undefined ||
+          replacement.request.requestId === input.requestId),
+    );
+    if (playbackStoppingSessions.has(fenceKey) && !cachedEntry) {
+      throw new ApiError(
+        409,
+        "playback_terminal_request_conflict",
+        "This playback session already has a different uncertain terminal request.",
+      );
+    }
+    if (playbackTerminalRequestsInFlight.has(fenceKey)) {
+      throw new ApiError(
+        409,
+        "playback_stopping",
+        "Playback already has a terminal mutation in flight.",
+      );
+    }
+    const fenceWasAlreadySet = playbackStoppingSessions.has(fenceKey);
+    playbackStoppingSessions.add(fenceKey);
+    playbackTerminalRequestsInFlight.add(fenceKey);
+    let key: string | undefined;
+    let replacement: {
+      request: PlaybackReplacementRequest;
+      target: DurablePlaybackReplacementTarget;
+      committedOutcome?: CommittedPlaybackReplacementOutcome;
+    };
+    let executionStarted = false;
+    try {
+      if (cachedEntry) {
+        [key, replacement] = cachedEntry;
+        if (!replacementInputMatches(replacement.request, input)) {
+          throw new ApiError(
+            409,
+            "playback_terminal_request_conflict",
+            "This playback replacement identity already owns a different request body.",
+          );
+        }
+        const requestedTarget = durablePlaybackReplacementTarget(
+          target,
+          replacement.request,
+        );
+        if (JSON.stringify(requestedTarget) !== JSON.stringify(replacement.target)) {
+          throw new ApiError(
+            409,
+            "playback_terminal_request_conflict",
+            "This playback replacement identity already owns a different target.",
+          );
+        }
+      } else {
+        const previousTerminal = isCompletePlaybackTerminalEvent(
+          input.previousTerminal,
+        )
+          ? input.previousTerminal
+          : await allocatePlaybackTerminalEvent(
+              input.sourceSessionId,
+              input.previousTerminal,
+              session,
+              scope,
+              init,
+            );
+        const requestId =
+          input.requestId ?? createRequestId(options.requestId).slice(0, 128);
+        const requestBody: PlaybackReplacementRequest = {
+          sourceSessionId: input.sourceSessionId,
+          requestId,
+          previousTerminal,
+          ...(input.expectedQueueRevision !== undefined
+            ? { expectedQueueRevision: input.expectedQueueRevision }
+            : {}),
+          ...(input.expectedPlaybackRevision !== undefined
+            ? { expectedPlaybackRevision: input.expectedPlaybackRevision }
+            : {}),
+        };
+        assertPlaybackReplacementRequest(requestBody);
+        key = playbackTerminalKey(
+          "replacement",
+          input.sourceSessionId,
+          requestId,
+          scope,
+        );
+        replacement = cachePlaybackReplacementRequest(
+          key,
+          input.sourceSessionId,
+          scope,
+          {
+            request: requestBody,
+            target: durablePlaybackReplacementTarget(target, requestBody),
+          },
+        );
+        await persistPlaybackTerminalRequest({
+          version: "v2",
+          kind: "terminal",
+          key,
+          scope,
+          sessionId: input.sourceSessionId,
+          operation: "replacement",
+          request: replacement.request,
+          target: replacement.target,
+          updatedAt: new Date(options.now?.() ?? Date.now()).toISOString(),
+        });
+      }
+      if (!key || !replacement) {
+        throw new ApiError(
+          409,
+          "playback_terminal_outbox_conflict",
+          "The playback replacement could not be resolved exactly.",
+        );
+      }
+      executionStarted = true;
+      const outcome = await executePlaybackReplacement(
+        key,
+        replacement,
+        scope,
+        init,
+        true,
+      );
+      return outcome as PlaybackReplacementOutcome<
+        PlaybackReplacementTargetResponse<Target>
+      >;
+    } catch (error) {
+      if (!executionStarted) {
+        playbackTerminalRequestsInFlight.delete(fenceKey);
+        if (!cachedEntry) {
+          if (key) {
+            await removeDurablePlaybackTerminalRequest(key);
+            playbackReplacementRequests.delete(key);
+            playbackTerminalSessionIds.delete(key);
+            playbackTerminalScopes.delete(key);
+          }
+          if (!fenceWasAlreadySet) playbackStoppingSessions.delete(fenceKey);
+        }
+      }
+      throw error;
+    }
+  };
+
+  const castBootstrapInputMatches = (
+    cached: CastBootstrapRequest,
+    body: CastBootstrapInput,
+    replacement?: PlaybackReplacementInput,
+  ): boolean => {
+    const requested = {
+      ...body,
+      clientInstanceId: clientInstanceId() || body.clientInstanceId,
+    };
+    delete requested.requestId;
+    const existing = { ...cached } as Record<string, unknown>;
+    delete existing.requestId;
+    delete existing.replacement;
+    if (JSON.stringify(existing) !== JSON.stringify(requested)) return false;
+    if (!replacement) return cached.replacement === undefined;
+    return (
+      cached.replacement !== undefined &&
+      replacementInputMatches(cached.replacement, replacement)
+    );
+  };
+  const castTransferRequestForScope = (
+    requestId: string,
+    scope: PlaybackAuthorityScope,
+  ): [string, CastBootstrapRequest] | undefined =>
+    [...castTransferRequests.entries()].find(
+      ([key, requestBody]) =>
+        requestBody.requestId === requestId &&
+        playbackAuthorityScopesEqual(
+          castTransferScopes.get(key) ?? ["", "", "", "", ""],
+          scope,
+        ),
+    );
+  const clearCastTransferRequest = async (
+    key: string,
+    requestBody: CastBootstrapRequest,
+    scope: PlaybackAuthorityScope,
+  ): Promise<void> => {
+    await removeDurablePlaybackTerminalRequest(key);
+    castTransferRequests.delete(key);
+    castTransferScopes.delete(key);
+    const sourceSessionId = requestBody.replacement?.sourceSessionId;
+    if (sourceSessionId) {
+      playbackStoppingSessions.delete(
+        playbackSessionFenceKey(sourceSessionId, scope),
+      );
+    }
+  };
+  const assertCastTransferStatusResponse = (
+    response: CastTransferStatusResponse,
+    requestBody: CastBootstrapRequest,
+  ): void => {
+    if (
+      !response ||
+      response.version !== "v1" ||
+      response.requestId !== requestBody.requestId ||
+      typeof response.replacementSessionId !== "string" ||
+      response.replacementSessionId.length < 1 ||
+      typeof response.requestFingerprint !== "string" ||
+      response.requestFingerprint.length < 1 ||
+      !new Set(["pending", "committed", "expired", "failed"]).has(
+        response.status,
+      )
+    ) {
+      throw new ApiError(
+        0,
+        "invalid_cast_transfer_status",
+        "The Cast transfer status did not match its durable request.",
+      );
+    }
+    const replacement = requestBody.replacement;
+    if (!replacement) {
+      if (response.sourceSessionId || response.previousTerminal) {
+        throw new ApiError(
+          0,
+          "invalid_cast_transfer_status",
+          "A fresh Cast transfer returned replacement authority evidence.",
+        );
+      }
+      return;
+    }
+    if (
+      response.sourceSessionId !== replacement.sourceSessionId ||
+      !response.previousTerminal ||
+      !terminalEventMatches(
+        response.previousTerminal,
+        replacement.previousTerminal,
+      )
+    ) {
+      throw new ApiError(
+        0,
+        "invalid_cast_transfer_status",
+        "The Cast transfer status did not prove the exact source terminal.",
+      );
+    }
+  };
+  const reconcileStoredCastTransfer = async (
+    key: string,
+    requestBody: CastBootstrapRequest,
+    scope: PlaybackAuthorityScope,
+    init?: RequestSignal,
+  ): Promise<CastTransferOutcome> => {
+    const sourceSessionId = requestBody.replacement?.sourceSessionId;
+    let response: CastTransferStatusResponse;
+    try {
+      response = await request<CastTransferStatusResponse>(
+        "/api/playback/cast/transfer-status",
+        {
+          ...init,
+          method: "POST",
+          body: {
+            clientInstanceId: requestBody.clientInstanceId,
+            requestId: requestBody.requestId,
+            ...(sourceSessionId ? { sourceSessionId } : {}),
+          } satisfies CastTransferStatusRequest,
+        },
+      );
+    } catch (error) {
+      if (sourceSessionId && isDefinitiveInactivePlaybackReplacement(error)) {
+        await forgetClientPlaybackProgress(sourceSessionId, scope);
+        await clearCastTransferRequest(key, requestBody, scope);
+        return {
+          outcome: "source-inactive",
+          sourceSessionId,
+          rejection: playbackReplacementRejection(error),
+        };
+      }
+      throw error;
+    }
+    assertCastTransferStatusResponse(response, requestBody);
+    if (response.status === "pending") {
+      return { outcome: "pending", value: response };
+    }
+    if (response.status === "committed") {
+      if (sourceSessionId) {
+        await forgetClientPlaybackProgress(sourceSessionId, scope);
+      }
+      await clearCastTransferRequest(key, requestBody, scope);
+      return { outcome: "accepted", value: response };
+    }
+    await clearCastTransferRequest(key, requestBody, scope);
+    if (sourceSessionId) {
+      return {
+        outcome: "source-retained",
+        sourceSessionId,
+        value: response,
+      };
+    }
+    return { outcome: "not-committed", value: response };
+  };
+  const castBootstrapErrorIsAmbiguous = (error: unknown): boolean =>
+    !(error instanceof ApiError) ||
+    error.status === 0 ||
+    error.status === 408 ||
+    error.status === 429 ||
+    error.status >= 500 ||
+    [
+      "cast_bootstrap_pending",
+      "handoff_in_progress",
+      "prepared_handoff_in_progress",
+    ].includes(error.code);
+  const executeStoredCastBootstrap = async (
+    key: string,
+    requestBody: CastBootstrapRequest,
+    scope: PlaybackAuthorityScope,
+    init?: RequestSignal,
+  ): Promise<CastTransferOutcome> => {
+    try {
+      const response = await request<CastBootstrapResponse>(
+        "/api/playback/cast/bootstrap",
+        { ...init, method: "POST", body: requestBody },
+      );
+      if (
+        response.transferStatus !== "pending" ||
+        response.requestId !== requestBody.requestId ||
+        typeof response.replacementSessionId !== "string" ||
+        response.replacementSessionId.length < 1 ||
+        (requestBody.replacement
+          ? response.sourceSessionId !==
+            requestBody.replacement.sourceSessionId
+          : Boolean(response.sourceSessionId))
+      ) {
+        throw new ApiError(
+          0,
+          "invalid_cast_bootstrap_response",
+          "The Cast bootstrap response did not match its durable request.",
+        );
+      }
+      return { outcome: "pending", value: response };
+    } catch (error) {
+      if (
+        error instanceof ApiError &&
+        [
+          "cast_transfer_committed",
+          "cast_transfer_expired",
+          "cast_transfer_failed",
+        ].includes(error.code)
+      ) {
+        return reconcileStoredCastTransfer(key, requestBody, scope, init);
+      }
+      if (castBootstrapErrorIsAmbiguous(error)) throw error;
+      const sourceSessionId = requestBody.replacement?.sourceSessionId;
+      if (sourceSessionId && isDefinitiveInactivePlaybackReplacement(error)) {
+        await forgetClientPlaybackProgress(sourceSessionId, scope);
+        await clearCastTransferRequest(key, requestBody, scope);
+        return {
+          outcome: "source-inactive",
+          sourceSessionId,
+          rejection: playbackReplacementRejection(error),
+        };
+      }
+      await clearCastTransferRequest(key, requestBody, scope);
+      if (sourceSessionId && error instanceof ApiError) {
+        return {
+          outcome: "source-retained",
+          sourceSessionId,
+          rejection: playbackReplacementRejection(error),
+        };
+      }
+      throw error;
+    }
+  };
+  const prepareCastBootstrap = async (
+    body: CastBootstrapInput,
+    replacementInput?: PlaybackReplacementInput,
+    init?: RequestSignal,
+  ): Promise<CastTransferOutcome> => {
+    if (!body || typeof body !== "object") {
+      throw new TypeError("Cast bootstrap input must be an object.");
+    }
+    if ("replacement" in body) {
+      throw new TypeError(
+        "Cast replacement authority must be supplied through Client Core's replacement input.",
+      );
+    }
+    if (replacementInput) assertPlaybackReplacementRequest(replacementInput);
+    await loadDurablePlaybackProgress();
+    const session = await credentials.current();
+    const scope = playbackAuthorityScope(session);
+    const configuredClientInstanceId =
+      clientInstanceId() || body.clientInstanceId || "";
+    if (!configuredClientInstanceId) {
+      throw new TypeError("Cast bootstrap requires a stable client instance ID.");
+    }
+    const cachedEntry = [...castTransferRequests.entries()].find(
+      ([key, requestBody]) =>
+        playbackAuthorityScopesEqual(
+          castTransferScopes.get(key) ?? ["", "", "", "", ""],
+          scope,
+        ) &&
+        requestBody.clientInstanceId === configuredClientInstanceId &&
+        (body.requestId === undefined || requestBody.requestId === body.requestId) &&
+        (replacementInput === undefined ||
+          requestBody.replacement?.sourceSessionId ===
+            replacementInput.sourceSessionId),
+    );
+    if (cachedEntry) {
+      if (!castBootstrapInputMatches(cachedEntry[1], body, replacementInput)) {
+        throw new ApiError(
+          409,
+          "cast_transfer_request_conflict",
+          "This client instance already has a different pending Cast transfer.",
+        );
+      }
+      return executeStoredCastBootstrap(
+        cachedEntry[0],
+        cachedEntry[1],
+        scope,
+        init,
+      );
+    }
+    const sourceSessionId = replacementInput?.sourceSessionId;
+    const fenceKey = sourceSessionId
+      ? playbackSessionFenceKey(sourceSessionId, scope)
+      : undefined;
+    if (fenceKey && playbackStoppingSessions.has(fenceKey)) {
+      throw new ApiError(
+        409,
+        "playback_terminal_request_conflict",
+        "This playback session already has a different uncertain terminal request.",
+      );
+    }
+    if (castTransferRequests.size >= MAX_PLAYBACK_TERMINAL_REQUESTS) {
+      throw new ApiError(
+        503,
+        "cast_transfer_outbox_full",
+        "Cast transfer recovery must finish before another transfer can begin.",
+      );
+    }
+    if (fenceKey) playbackStoppingSessions.add(fenceKey);
+    let key: string | undefined;
+    let persistenceCompleted = false;
+    try {
+      if (
+        body.requestId &&
+        replacementInput?.requestId &&
+        body.requestId !== replacementInput.requestId
+      ) {
+        throw new TypeError(
+          "Cast bootstrap and native replacement request identities must match.",
+        );
+      }
+      const requestedId = replacementInput?.requestId ?? body.requestId;
+      const requestId =
+        requestedId ?? createRequestId(options.requestId).slice(0, 128);
+      assertPlaybackTerminalRequestId(requestId);
+      let replacement: PlaybackReplacementRequest | undefined;
+      if (replacementInput) {
+        const previousTerminal = isCompletePlaybackTerminalEvent(
+          replacementInput.previousTerminal,
+        )
+          ? replacementInput.previousTerminal
+          : await allocatePlaybackTerminalEvent(
+              replacementInput.sourceSessionId,
+              replacementInput.previousTerminal,
+              session,
+              scope,
+              init,
+            );
+        replacement = {
+          sourceSessionId: replacementInput.sourceSessionId,
+          requestId,
+          previousTerminal,
+          ...(replacementInput.expectedQueueRevision !== undefined
+            ? {
+                expectedQueueRevision:
+                  replacementInput.expectedQueueRevision,
+              }
+            : {}),
+          ...(replacementInput.expectedPlaybackRevision !== undefined
+            ? {
+                expectedPlaybackRevision:
+                  replacementInput.expectedPlaybackRevision,
+              }
+            : {}),
+        };
+      }
+      const requestBody: CastBootstrapRequest = {
+        ...body,
+        clientInstanceId: configuredClientInstanceId,
+        requestId,
+        ...(replacement ? { replacement } : {}),
+      };
+      assertCastBootstrapRequest(requestBody);
+      key = castTransferKey(requestId, scope);
+      const snapshot = immutableJSONSnapshot(requestBody);
+      castTransferRequests.set(key, snapshot);
+      castTransferScopes.set(key, scope);
+      await persistPlaybackTerminalRequest({
+        version: "v1",
+        kind: "cast-transfer",
+        key,
+        scope,
+        request: snapshot,
+        updatedAt: new Date(options.now?.() ?? Date.now()).toISOString(),
+      });
+      persistenceCompleted = true;
+      return executeStoredCastBootstrap(key, snapshot, scope, init);
+    } catch (error) {
+      if (key && persistenceCompleted && castTransferRequests.has(key)) {
+        // A persisted or dispatched exact request owns its recovery state.
+        throw error;
+      }
+      if (key) {
+        await removeDurablePlaybackTerminalRequest(key).catch(() => undefined);
+        castTransferRequests.delete(key);
+        castTransferScopes.delete(key);
+      }
+      if (fenceKey) playbackStoppingSessions.delete(fenceKey);
+      throw error;
+    }
+  };
+  const castTransferStatus = async (
+    requestId: string,
+    init?: RequestSignal,
+  ): Promise<CastTransferOutcome> => {
+    assertPlaybackTerminalRequestId(requestId);
+    await loadDurablePlaybackProgress();
+    const scope = playbackAuthorityScope(await credentials.current());
+    const stored = castTransferRequestForScope(requestId, scope);
+    if (!stored) {
+      throw new ApiError(
+        404,
+        "cast_transfer_request_not_pending",
+        "Cast has no pending transfer with this request identity.",
+      );
+    }
+    return reconcileStoredCastTransfer(stored[0], stored[1], scope, init);
+  };
+  const retryPendingCastTransfer = async (
+    requestId: string,
+    init?: RequestSignal,
+  ): Promise<CastTransferOutcome> => {
+    const status = await castTransferStatus(requestId, init);
+    if (status.outcome !== "pending") return status;
+    const scope = playbackAuthorityScope(await credentials.current());
+    const stored = castTransferRequestForScope(requestId, scope);
+    if (!stored) return status;
+    return executeStoredCastBootstrap(stored[0], stored[1], scope, init);
+  };
+  const pendingCastTransfers = async (): Promise<readonly PendingCastTransfer[]> => {
+    await loadDurablePlaybackProgress();
+    const scope = playbackAuthorityScope(await credentials.current());
+    return immutableJSONSnapshot(
+      [...castTransferRequests.entries()]
+        .filter(([key]) =>
+          playbackAuthorityScopesEqual(
+            castTransferScopes.get(key) ?? ["", "", "", "", ""],
+            scope,
+          ),
+        )
+        .map(([, requestBody]) => ({
+          requestId: requestBody.requestId,
+          ...(requestBody.replacement
+            ? { sourceSessionId: requestBody.replacement.sourceSessionId }
+            : {}),
+        }))
+        .sort((left, right) => left.requestId.localeCompare(right.requestId)),
+    );
+  };
+  const createCastBootstrap = (
+    body: CastBootstrapInput,
+    init?: RequestSignal,
+  ): Promise<CastTransferOutcome> =>
+    prepareCastBootstrap(body, undefined, init);
+  const replacePlaybackWithCast = (
+    body: CastBootstrapInput,
+    replacement: PlaybackReplacementInput,
+    init?: RequestSignal,
+  ): Promise<CastTransferOutcome> =>
+    prepareCastBootstrap(body, replacement, init);
+
+  const pendingPlaybackTerminalMutationRecords =
+    (scope: PlaybackAuthorityScope): readonly PendingPlaybackTerminalMutationRecord[] => {
+      const records: PendingPlaybackTerminalMutationRecord[] = [];
+      for (const [key, request] of playbackTerminalRequests) {
+        const recordScope = playbackTerminalScopes.get(key);
+        if (!recordScope || !playbackAuthorityScopesEqual(recordScope, scope)) continue;
+        const sessionId = playbackTerminalSessionIds.get(key);
+        if (!sessionId) {
+          throw new ApiError(
+            409,
+            "playback_terminal_outbox_conflict",
+            "A pending playback stop has no source session identity.",
+          );
+        }
+        records.push({ sessionId, operation: "stop", request });
+      }
+      for (const [key, request] of playbackHandoffRequests) {
+        const recordScope = playbackTerminalScopes.get(key);
+        if (!recordScope || !playbackAuthorityScopesEqual(recordScope, scope)) continue;
+        const sessionId = playbackTerminalSessionIds.get(key);
+        if (!sessionId) {
+          throw new ApiError(
+            409,
+            "playback_terminal_outbox_conflict",
+            "A pending playback handoff has no source session identity.",
+          );
+        }
+        records.push({ sessionId, operation: "handoff", request });
+      }
+      for (const [key, close] of playbackLiveTvCloseRequests) {
+        const recordScope = playbackTerminalScopes.get(key);
+        if (!recordScope || !playbackAuthorityScopesEqual(recordScope, scope)) continue;
+        const sessionId = playbackTerminalSessionIds.get(key);
+        if (!sessionId) {
+          throw new ApiError(
+            409,
+            "playback_terminal_outbox_conflict",
+            "A pending Live TV close has no source session identity.",
+          );
+        }
+        records.push({
+          sessionId,
+          operation: "live-tv-close",
+          channelId: close.channelId,
+          request: close.request,
+        });
+      }
+      for (const [key, replacement] of playbackReplacementRequests) {
+        const recordScope = playbackTerminalScopes.get(key);
+        if (!recordScope || !playbackAuthorityScopesEqual(recordScope, scope)) continue;
+        const sessionId = playbackTerminalSessionIds.get(key);
+        if (!sessionId) {
+          throw new ApiError(
+            409,
+            "playback_terminal_outbox_conflict",
+            "A pending playback replacement has no source session identity.",
+          );
+        }
+        records.push({
+          sessionId,
+          operation: "replacement",
+          request: replacement.request,
+          target: replacement.target,
+          ...(replacement.committedOutcome
+            ? { committedOutcome: replacement.committedOutcome }
+            : {}),
+        });
+      }
+      records.sort((left, right) =>
+        left.sessionId.localeCompare(right.sessionId) ||
+        left.operation.localeCompare(right.operation) ||
+        left.request.requestId.localeCompare(right.request.requestId),
+      );
+      const sessions = new Set<string>();
+      for (const record of records) {
+        if (sessions.has(record.sessionId)) {
+          throw new ApiError(
+            409,
+            "playback_terminal_outbox_conflict",
+            "Playback has more than one pending terminal mutation.",
+          );
+        }
+        sessions.add(record.sessionId);
+      }
+      return immutableJSONSnapshot(records);
+    };
+
+  const restoreActivePlayback = (
+    intent?: PlaybackIntent,
+    init?: RequestSignal,
+  ) =>
+    request<PlaybackRestoreResponse>("/api/playback/active", {
+      ...init,
+      method: "POST",
+      body: {
+        clientInstanceId: clientInstanceId(),
+        clientProfile: profile(),
+        intent,
+      },
+    }).then((response) => ({
+      ...response,
+      playback: response.playback
+        ? normalizeSessionPlayback(response.playback)
+        : undefined,
+    }));
+  const restoreCommittedPlaybackReplacement = async (
+    outcome: Extract<
+      PlaybackReplacementOutcome<unknown>,
+      { outcome: "committed-restore-required" }
+    >,
+    intent?: PlaybackIntent,
+    init?: RequestSignal,
+  ): Promise<PlaybackResponse> => {
+    await loadDurablePlaybackProgress();
+    const scope = playbackAuthorityScope(await credentials.current());
+    const durableCommittedEntry = [...playbackReplacementRequests.entries()].find(
+      ([key, replacement]) =>
+        replacement.committedOutcome?.sourceSessionId ===
+          outcome.sourceSessionId &&
+        replacement.committedOutcome.replacementSessionId ===
+          outcome.replacementSessionId &&
+        playbackAuthorityScopesEqual(
+          playbackTerminalScopes.get(key) ?? ["", "", "", "", ""],
+          scope,
+        ),
+    );
+    const restored = await restoreActivePlayback(intent, init);
+    if (restored.playback?.sessionId !== outcome.replacementSessionId) {
+      throw new ApiError(
+        409,
+        "playback_replacement_restore_mismatch",
+        "The active playback restore did not match the committed replacement.",
+        { replacementSessionId: outcome.replacementSessionId },
+      );
+    }
+    if (durableCommittedEntry) {
+      const [key] = durableCommittedEntry;
+      await clearPlaybackReplacementRequest(
+        key,
+        playbackSessionFenceKey(outcome.sourceSessionId, scope),
+      );
+    }
+    return restored.playback;
+  };
+
+  const retryPendingPlaybackTerminalMutation = async (
+    sessionId: string,
+    init?: RequestSignal,
+  ): Promise<PendingPlaybackTerminalRetryOutcome> => {
+    await loadDurablePlaybackProgress();
+    const scope = playbackAuthorityScope(await credentials.current());
+    const record = pendingPlaybackTerminalMutationRecords(scope).find(
+      (candidate) => candidate.sessionId === sessionId,
+    );
+    if (!record) {
+      throw new ApiError(
+        404,
+        "playback_terminal_request_not_pending",
+        "Playback has no pending terminal mutation to retry.",
+      );
+    }
+    if (record.operation === "stop") {
+      return {
+        outcome: "accepted",
+        value: await stopPlaybackSession(sessionId, record.request, init),
+      };
+    }
+    if (record.operation === "live-tv-close") {
+      return {
+        outcome: "accepted",
+        value: await closeLiveTvStream(
+          record.channelId,
+          sessionId,
+          record.request,
+          init,
+        ),
+      };
+    }
+    const fenceKey = playbackSessionFenceKey(sessionId, scope);
+    const key = playbackTerminalKey(
+      record.operation,
+      sessionId,
+      record.request.requestId,
+      scope,
+    );
+    if (record.operation === "replacement") {
+      const cached = playbackReplacementRequests.get(key);
+      if (!cached) {
+        throw new ApiError(
+          409,
+          "playback_terminal_outbox_conflict",
+          "The pending playback replacement could not be resolved exactly.",
+        );
+      }
+      return executePlaybackReplacement(key, cached, scope, init);
+    }
+    const cached = playbackHandoffRequests.get(key);
+    if (!cached) {
+      throw new ApiError(
+        409,
+        "playback_terminal_outbox_conflict",
+        "The pending playback handoff could not be resolved exactly.",
+      );
+    }
+    if (playbackTerminalRequestsInFlight.has(fenceKey)) {
+      throw new ApiError(
+        409,
+        "playback_stopping",
+        "Playback already has a terminal mutation in flight.",
+      );
+    }
+    playbackTerminalRequestsInFlight.add(fenceKey);
+    let requestDispatched = false;
+    try {
+      requestDispatched = true;
+      const response = normalizeSessionPlayback(
+        await request<PlaybackResponse>(
+          `/api/playback-sessions/${encodeURIComponent(sessionId)}/handoff`,
+          { ...init, method: "POST", body: cached },
+        ),
+      );
+      await forgetClientPlaybackProgress(sessionId, scope);
+      await removeDurablePlaybackTerminalRequest(key);
+      playbackHandoffRequests.delete(key);
+      playbackTerminalSessionIds.delete(key);
+      playbackTerminalScopes.delete(key);
+      playbackStoppingSessions.delete(fenceKey);
+      return { outcome: "accepted", value: response };
+    } catch (error) {
+      if (
+        (!requestDispatched && !cached) ||
+        terminalMutationRejectionIsDefinitive(error)
+      ) {
+        await removeDurablePlaybackTerminalRequest(key);
+        playbackHandoffRequests.delete(key);
+        playbackTerminalSessionIds.delete(key);
+        playbackTerminalScopes.delete(key);
+        playbackStoppingSessions.delete(fenceKey);
+      }
+      throw error;
+    } finally {
+      playbackTerminalRequestsInFlight.delete(fenceKey);
+    }
+  };
+
   return {
     request,
     formRequest,
@@ -1837,6 +4379,46 @@ export function createPorticoClient(options: PorticoClientOptions = {}) {
     // authoritative session generation/sequence into Client Core before they
     // enqueue durable progress.
     acceptPlaybackSession: normalizeSessionPlayback,
+    replacePlaybackTarget,
+    retryPendingPlaybackTerminalMutation,
+    pendingPlaybackTerminalMutation: async (
+      sessionId: string,
+    ): Promise<PendingPlaybackTerminalMutation | undefined> => {
+      await loadDurablePlaybackProgress();
+      const scope = playbackAuthorityScope(await credentials.current());
+      const record = pendingPlaybackTerminalMutationRecords(scope).find(
+        (candidate) => candidate.sessionId === sessionId,
+      );
+      if (!record) return undefined;
+      return record.operation === "stop"
+        ? immutableJSONSnapshot({ operation: "stop", request: record.request })
+        : record.operation === "handoff"
+          ? immutableJSONSnapshot({
+            operation: "handoff",
+            request: record.request,
+          })
+          : record.operation === "live-tv-close"
+            ? immutableJSONSnapshot({
+                operation: "live-tv-close",
+                channelId: record.channelId,
+                request: record.request,
+              })
+            : immutableJSONSnapshot({
+                operation: "replacement",
+                request: record.request,
+                target: record.target,
+                ...(record.committedOutcome
+                  ? { committedOutcome: record.committedOutcome }
+                  : {}),
+              });
+    },
+    pendingPlaybackTerminalMutations: async (): Promise<
+      readonly PendingPlaybackTerminalMutationRecord[]
+    > => {
+      await loadDurablePlaybackProgress();
+      const scope = playbackAuthorityScope(await credentials.current());
+      return pendingPlaybackTerminalMutationRecords(scope);
+    },
     apiUrl,
     resourceUrl,
     imageResourceUrl,
@@ -3128,6 +5710,14 @@ export function createPorticoClient(options: PorticoClientOptions = {}) {
         `/api/download-preparations/${encodeURIComponent(id)}/grant`,
         { ...init, method: "POST", body },
       ),
+    revalidateOfflineDownloadAuthorization: (
+      body: OfflineDownloadAuthorizationRevalidationRequest,
+      init?: RequestSignal,
+    ) =>
+      request<OfflineDownloadAuthorizationRevalidationResponse>(
+        "/api/offline-download-authorizations/revalidate",
+        {...init, method: "POST", body},
+      ),
     optimizedVersions: (id: string) =>
       request<OptimizedVersionListResponse>(
         `/api/media/${encodeURIComponent(id)}/optimized`,
@@ -3148,18 +5738,7 @@ export function createPorticoClient(options: PorticoClientOptions = {}) {
       ),
     startPlayback: (
       mediaId: string,
-      playbackOptions: {
-        intent?: PlaybackIntent;
-        versionId?: string;
-        skipPreroll?: boolean;
-        burnInSubtitleId?: string;
-        subtitleStreamId?: string;
-        audioStreamId?: string;
-        startSeconds?: number;
-        queueMediaIds?: string[];
-        repeatMode?: PlaybackRepeatMode;
-        sourceContext?: PlaybackSourceContext;
-      } = {},
+      playbackOptions: MediaPlaybackStartOptions = {},
       init?: RequestSignal,
     ) =>
       request<PlaybackResponse>("/api/playback-sessions", {
@@ -3169,7 +5748,7 @@ export function createPorticoClient(options: PorticoClientOptions = {}) {
           mediaId,
           clientInstanceId: clientInstanceId(),
           clientProfile: profile(),
-          intent: playbackOptions.intent,
+          intent: playbackOptions.intent ?? { quality: { mode: "automatic" } },
           versionId: playbackOptions.versionId,
           skipPreroll: playbackOptions.skipPreroll,
           burnInSubtitleId: playbackOptions.burnInSubtitleId,
@@ -3181,18 +5760,11 @@ export function createPorticoClient(options: PorticoClientOptions = {}) {
           sourceContext: playbackOptions.sourceContext,
         },
       }).then(normalizeSessionPlayback),
-    createCastBootstrap: (body: CastBootstrapRequest, init?: RequestSignal) =>
-      request<CastBootstrapResponse>("/api/playback/cast/bootstrap", {
-        ...init,
-        method: "POST",
-        // The configured installation identity is the same value attached to
-        // the source playback session. Never let a UI confuse a playback
-        // session id with the stable client instance during Cast handoff.
-        body: {
-          ...body,
-          clientInstanceId: clientInstanceId() || body.clientInstanceId,
-        },
-      }),
+    createCastBootstrap,
+    replacePlaybackWithCast,
+    castTransferStatus,
+    retryPendingCastTransfer,
+    pendingCastTransfers,
     redeemCastBootstrap: (body: CastRedeemRequest, init?: RequestSignal) =>
       request<CastReceiverSessionResponse>("/api/playback/cast/redeem", {
         ...init,
@@ -3208,107 +5780,365 @@ export function createPorticoClient(options: PorticoClientOptions = {}) {
         method: "POST",
         body,
       }),
-    nextPlayable: (mediaId: string, queueMediaIds: string[] = []) =>
-      request<PlaybackNextResponse>("/api/playback/next", {
-        method: "POST",
-        body: { mediaId, queueMediaIds },
-      }),
-    playbackQueue: (mediaId: string, queueMediaIds: string[] = []) =>
-      request<PlaybackQueueResponse>("/api/playback/queue", {
-        method: "POST",
-        body: { mediaId, queueMediaIds },
-      }),
+    castReceiverState: (
+      receiverSessionId: string,
+      credential: CastReceiverCredential,
+      init?: RequestSignal,
+    ) =>
+      request<CastReceiverSessionState>(
+        `/api/playback/cast/sessions/${encodeURIComponent(receiverSessionId)}/state`,
+        {
+          ...init,
+          authorization: {
+            mode: "cast-receiver",
+            token: credential.token,
+            origin: credential.origin,
+          },
+        },
+      ),
+    controlCastReceiver: (
+      receiverSessionId: string,
+      credential: CastReceiverCredential,
+      body: CastControlRequest,
+      init?: RequestSignal,
+    ) =>
+      request<PlaybackCommand>(
+        `/api/playback/cast/sessions/${encodeURIComponent(receiverSessionId)}/control`,
+        {
+          ...init,
+          method: "POST",
+          authorization: {
+            mode: "cast-receiver",
+            token: credential.token,
+            origin: credential.origin,
+          },
+          body,
+        },
+      ),
+    reportCastReceiverProgress: (
+      receiverSessionId: string,
+      credential: CastReceiverCredential,
+      body: CastProgressRequest,
+      init?: RequestSignal,
+    ) =>
+      request<PlaybackProgressAcknowledgement>(
+        `/api/playback/cast/sessions/${encodeURIComponent(receiverSessionId)}/progress`,
+        {
+          ...init,
+          method: "POST",
+          authorization: {
+            mode: "cast-receiver",
+            token: credential.token,
+            origin: credential.origin,
+          },
+          body,
+        },
+      ),
+    renewCastReceiver: (
+      receiverSessionId: string,
+      credential: CastReceiverCredential,
+      body: CastRenewRequest,
+      init?: RequestSignal,
+    ) =>
+      request<CastRenewResponse>(
+        `/api/playback/cast/sessions/${encodeURIComponent(receiverSessionId)}/renew`,
+        {
+          ...init,
+          method: "POST",
+          authorization: {
+            mode: "cast-receiver",
+            token: credential.token,
+            origin: credential.origin,
+          },
+          body,
+        },
+      ),
+    stopCastReceiver: (
+      receiverSessionId: string,
+      credential: CastReceiverCredential,
+      body: CastStopRequest,
+      init?: RequestSignal,
+    ) =>
+      request<CastStopResponse>(
+        `/api/playback/cast/sessions/${encodeURIComponent(receiverSessionId)}/stop`,
+        {
+          ...init,
+          method: "POST",
+          authorization: {
+            mode: "cast-receiver",
+            token: credential.token,
+            origin: credential.origin,
+          },
+          body,
+        },
+      ),
+    advanceCastReceiver: (
+      receiverSessionId: string,
+      credential: CastReceiverCredential,
+      body: CastAdvanceRequest,
+      init?: RequestSignal,
+    ) =>
+      request<CastAdvanceResponse>(
+        `/api/playback/cast/sessions/${encodeURIComponent(receiverSessionId)}/advance`,
+        {
+          ...init,
+          method: "POST",
+          authorization: {
+            mode: "cast-receiver",
+            token: credential.token,
+            origin: credential.origin,
+          },
+          body,
+        },
+      ).then((response) => ({
+        ...response,
+        playback: response.playback
+          ? normalizeSessionPlayback(response.playback)
+          : undefined,
+      })),
+    cancelCastReceiverAdvance: (
+      receiverSessionId: string,
+      credential: CastReceiverCredential,
+      body: CastAdvanceCancelRequest,
+      init?: RequestSignal,
+    ) =>
+      request<CastAdvanceResponse>(
+        `/api/playback/cast/sessions/${encodeURIComponent(receiverSessionId)}/advance-cancel`,
+        {
+          ...init,
+          method: "POST",
+          authorization: {
+            mode: "cast-receiver",
+            token: credential.token,
+            origin: credential.origin,
+          },
+          body,
+        },
+      ),
+    skipCastReceiverSegment: (
+      receiverSessionId: string,
+      credential: CastReceiverCredential,
+      body: CastSegmentSkipRequest,
+      init?: RequestSignal,
+    ) =>
+      request<CastSegmentSkipResponse>(
+        `/api/playback/cast/sessions/${encodeURIComponent(receiverSessionId)}/segment-skip`,
+        {
+          ...init,
+          method: "POST",
+          authorization: {
+            mode: "cast-receiver",
+            token: credential.token,
+            origin: credential.origin,
+          },
+          body,
+        },
+      ),
     playbackSessionQueue: (sessionId: string) =>
       request<PlaybackSessionQueueResponse>(
         `/api/playback-sessions/${encodeURIComponent(sessionId)}/queue`,
       ),
-    updatePlaybackSessionQueue: (
+    updatePlaybackSessionQueue: async (
       sessionId: string,
       body: PlaybackSessionQueueReplaceRequest,
       init?: RequestSignal,
-    ) =>
-      request<PlaybackSessionQueueResponse>(
+    ) => {
+      await assertPlaybackSessionMutationAllowed(sessionId);
+      return request<PlaybackSessionQueueResponse>(
         `/api/playback-sessions/${encodeURIComponent(sessionId)}/queue`,
         { ...init, method: "PUT", body },
-      ),
-    mutatePlaybackSessionQueue: (
+      );
+    },
+    mutatePlaybackSessionQueue: async (
       sessionId: string,
       body: PlaybackSessionQueueRequest,
       init?: RequestSignal,
-    ) =>
-      request<PlaybackSessionQueueResponse>(
+    ) => {
+      await assertPlaybackSessionMutationAllowed(sessionId);
+      return request<PlaybackSessionQueueResponse>(
         `/api/playback-sessions/${encodeURIComponent(sessionId)}/queue`,
         { ...init, method: "PATCH", body },
-      ),
-    prepareNextPlayback: (
+      );
+    },
+    prepareNextPlayback: async (
       sessionId: string,
-      body: PlaybackPrepareNextRequest = {},
+      body: PlaybackPrepareNextRequest,
       init?: RequestSignal,
-    ) =>
-      request<PlaybackPreparedResponse>(
+    ) => {
+      await assertPlaybackSessionMutationAllowed(sessionId);
+      const response = await request<PlaybackPreparedResponse>(
         `/api/playback-sessions/${encodeURIComponent(sessionId)}/prepare-next`,
         {
           ...init,
           method: "POST",
           body: { ...body, clientProfile: body.clientProfile ?? profile() },
         },
-      ).then((response) => ({
+      );
+      return {
         ...response,
         playback: normalizeSessionPlayback(response.playback),
-      })),
-    handoffPlayback: (
+      };
+    },
+    handoffPlayback: async (
       sessionId: string,
-      body: PlaybackHandoffRequest = {},
+      body: PlaybackHandoffInput,
       init?: RequestSignal,
-    ) =>
-      request<PlaybackResponse>(
-        `/api/playback-sessions/${encodeURIComponent(sessionId)}/handoff`,
-        {
-          ...init,
-          method: "POST",
-          body: { ...body, clientProfile: body.clientProfile ?? profile() },
-        },
-      ).then(normalizeSessionPlayback),
-    renegotiatePlayback: (
+    ) => {
+      assertPlaybackTerminalRequestId(body.requestId);
+      assertPlaybackTerminalEvent(body.previousTerminal);
+      if (
+        typeof body.entryId !== "string" ||
+        body.entryId.length < 1 ||
+        body.entryId.length > 512
+      ) {
+        throw new TypeError("Playback handoff entry ID is invalid.");
+      }
+      if (
+        body.startSeconds !== undefined &&
+        (!Number.isSafeInteger(body.startSeconds) || body.startSeconds < 0)
+      ) {
+        throw new TypeError(
+          "Playback handoff start position must be a non-negative integer.",
+        );
+      }
+      await loadDurablePlaybackProgress();
+      const session = await credentials.current();
+      const scope = playbackAuthorityScope(session);
+      const fenceKey = playbackSessionFenceKey(sessionId, scope);
+      const key = playbackTerminalKey(
+        "handoff",
+        sessionId,
+        body.requestId,
+        scope,
+      );
+      if (playbackTerminalRequestsInFlight.has(fenceKey)) {
+        throw new ApiError(
+          409,
+          "playback_stopping",
+          "Playback already has a terminal mutation in flight.",
+        );
+      }
+      const cached = playbackHandoffRequests.get(key);
+      if (playbackStoppingSessions.has(fenceKey) && !cached) {
+        throw new ApiError(
+          409,
+          "playback_terminal_request_conflict",
+          "This playback session already has a different uncertain terminal request.",
+        );
+      }
+      playbackStoppingSessions.add(fenceKey);
+      playbackTerminalRequestsInFlight.add(fenceKey);
+      let requestDispatched = false;
+      try {
+        let requestBody = cached;
+        if (requestBody) {
+          if (!handoffInputMatches(requestBody, body)) {
+            throw new ApiError(
+              409,
+              "playback_terminal_request_conflict",
+              "This playback handoff identity already owns a different request body.",
+            );
+          }
+        } else {
+          const previousTerminal = isCompletePlaybackTerminalEvent(
+            body.previousTerminal,
+          )
+            ? body.previousTerminal
+            : await allocatePlaybackTerminalEvent(
+                sessionId,
+                body.previousTerminal,
+                session,
+                scope,
+                init,
+              );
+          requestBody = {
+            ...body,
+            previousTerminal,
+            clientProfile: body.clientProfile ?? profile(),
+          };
+          assertPlaybackHandoffRequest(requestBody);
+          requestBody = cachePlaybackHandoffRequest(
+            key,
+            sessionId,
+            scope,
+            requestBody,
+          );
+          await persistPlaybackTerminalRequest({
+            version: "v2",
+            kind: "terminal",
+            key,
+            scope,
+            sessionId,
+            operation: "handoff",
+            request: requestBody,
+            updatedAt: new Date(options.now?.() ?? Date.now()).toISOString(),
+          });
+        }
+        requestDispatched = true;
+        const response = await request<PlaybackResponse>(
+          `/api/playback-sessions/${encodeURIComponent(sessionId)}/handoff`,
+          {
+            ...init,
+            method: "POST",
+            body: requestBody,
+          },
+        );
+        const normalized = normalizeSessionPlayback(response);
+        await forgetClientPlaybackProgress(sessionId, scope);
+        await removeDurablePlaybackTerminalRequest(key);
+        playbackHandoffRequests.delete(key);
+        playbackTerminalSessionIds.delete(key);
+        playbackTerminalScopes.delete(key);
+        playbackStoppingSessions.delete(fenceKey);
+        return normalized;
+      } catch (error) {
+        if (
+          (!requestDispatched && !cached) ||
+          terminalMutationRejectionIsDefinitive(error)
+        ) {
+          await removeDurablePlaybackTerminalRequest(key);
+          playbackHandoffRequests.delete(key);
+          playbackTerminalSessionIds.delete(key);
+          playbackTerminalScopes.delete(key);
+          playbackStoppingSessions.delete(fenceKey);
+        }
+        throw error;
+      } finally {
+        playbackTerminalRequestsInFlight.delete(fenceKey);
+      }
+    },
+    renegotiatePlayback: async (
       sessionId: string,
       body: PlaybackRenegotiationRequest,
       init?: RequestSignal,
-    ) =>
-      request<PlaybackResponse>(
+    ) => {
+      await assertPlaybackSessionMutationAllowed(sessionId);
+      return request<PlaybackResponse>(
         `/api/playback-sessions/${encodeURIComponent(sessionId)}/renegotiate`,
         {
           ...init,
           method: "POST",
           body: { ...body, clientProfile: body.clientProfile ?? profile() },
         },
-      ).then(normalizeSessionPlayback),
-    restoreActivePlayback: (intent?: PlaybackIntent) =>
-      request<PlaybackRestoreResponse>("/api/playback/active", {
-        method: "POST",
-        body: {
-          clientInstanceId: clientInstanceId(),
-          clientProfile: profile(),
-          intent,
-        },
-      }).then((response) => ({
-        ...response,
-        playback: response.playback
-          ? normalizeSessionPlayback(response.playback)
-          : undefined,
-      })),
+      ).then(normalizeSessionPlayback);
+    },
+    restoreActivePlayback,
+    restoreCommittedPlaybackReplacement,
     touchPlayback: async (
       sessionId: string,
       body: PlaybackProgressInput,
       init?: RequestSignal,
     ) => {
-      if (playbackStoppingSessions.has(sessionId)) {
+      await loadDurablePlaybackProgress();
+      const session = await credentials.current();
+      const scope = playbackAuthorityScope(session);
+      if (playbackStoppingSessions.has(playbackSessionFenceKey(sessionId, scope))) {
         throw new ApiError(
           409,
           "playback_stopping",
           "Playback is stopping and cannot accept more progress updates.",
         );
       }
-      const session = await credentials.current();
       const generation = playbackSessionGenerations.get(sessionId) ?? 0;
       const key = playbackProgressKey(sessionId, generation, session);
       seedClientPlaybackProgressSequence(
@@ -3344,14 +6174,16 @@ export function createPorticoClient(options: PorticoClientOptions = {}) {
       body: PlaybackProgressInput,
       init?: RequestSignal,
     ) => {
-      if (playbackStoppingSessions.has(sessionId)) {
+      await loadDurablePlaybackProgress();
+      const session = await credentials.current();
+      const scope = playbackAuthorityScope(session, credential.origin);
+      if (playbackStoppingSessions.has(playbackSessionFenceKey(sessionId, scope))) {
         throw new ApiError(
           409,
           "playback_stopping",
           "Playback is stopping and cannot accept more progress updates.",
         );
       }
-      const session = await credentials.current();
       const key = playbackProgressKey(
         sessionId,
         credential.generation,
@@ -3400,7 +6232,7 @@ export function createPorticoClient(options: PorticoClientOptions = {}) {
       init?: RequestSignal,
     ) => {
       assertPlaybackSessionStopRequest(body);
-      return request<{ ok: boolean }>(
+      return request<PlaybackSessionTerminalAcknowledgement>(
         `/api/playback-sessions/${encodeURIComponent(sessionId)}/continuation`,
         {
           ...init,
@@ -3412,85 +6244,21 @@ export function createPorticoClient(options: PorticoClientOptions = {}) {
           },
           body,
         },
-      );
+      ).then((acknowledgement) => {
+        assertPlaybackTerminalAcknowledgement(
+          acknowledgement,
+          sessionId,
+          body,
+        );
+        return acknowledgement;
+      });
     },
     renewPlaybackMediaGrant: (sessionId: string, init?: RequestSignal) =>
       request<MediaGrant>(
         `/api/playback-sessions/${encodeURIComponent(sessionId)}/media-grant`,
         { ...init, method: "POST" },
       ),
-    stopPlayback: async (
-      sessionId: string,
-      body: PlaybackSessionStopInput,
-      init?: RequestSignal,
-    ) => {
-      assertPlaybackSessionStopRequest(body);
-      if (playbackStoppingSessions.has(sessionId)) {
-        throw new ApiError(
-          409,
-          "playback_stopping",
-          "Playback is already stopping.",
-        );
-      }
-      playbackStoppingSessions.add(sessionId);
-      try {
-        await loadDurablePlaybackProgress();
-        for (const key of durablePlaybackProgress.keys()) {
-          const identity = JSON.parse(key) as unknown[];
-          if (identity[4] !== sessionId) continue;
-          restoreDurablePlaybackProgress(key, (event) =>
-            request<PlaybackProgressAcknowledgement>(
-              `/api/playback-sessions/${encodeURIComponent(sessionId)}`,
-              { ...init, method: "PATCH", body: event },
-            ),
-          );
-        }
-        // Progress is best-effort telemetry at this boundary. A stalled PATCH
-        // must never prevent the authoritative stop mutation from reaching the
-        // server and leaking a playback session or transcoder process.
-        await drainPendingPlaybackProgressBeforeStop(sessionId);
-        const session = await credentials.current();
-        const generation = playbackSessionGenerations.get(sessionId) ?? 0;
-        if (!Number.isSafeInteger(generation) || generation <= 0) {
-          throw new ApiError(
-            409,
-            "playback_session_authority_unavailable",
-            "Playback session authority is unavailable.",
-          );
-        }
-        const key = playbackProgressKey(sessionId, generation, session);
-        seedClientPlaybackProgressSequence(
-          key,
-          playbackSessionNextEventSequences.get(sessionId) ?? 1,
-        );
-        const terminal = orderedClientPlaybackProgressEvent(key, {
-          positionSeconds: body.positionSeconds,
-          durationSeconds: body.durationSeconds,
-          state: "paused",
-        });
-        const requestBody: PlaybackSessionStopRequest = {
-          disposition: body.disposition,
-          generation,
-          eventSequence: terminal.eventSequence,
-          recordedAt: terminal.recordedAt,
-          positionSeconds: body.positionSeconds,
-          durationSeconds: body.durationSeconds,
-        };
-        assertPlaybackSessionStopRequest(requestBody);
-        const response = await request<{ ok: boolean }>(
-          `/api/playback-sessions/${encodeURIComponent(sessionId)}`,
-          {
-            ...init,
-            method: "DELETE",
-            body: requestBody,
-          },
-        );
-        forgetClientPlaybackProgress(sessionId);
-        return response;
-      } finally {
-        playbackStoppingSessions.delete(sessionId);
-      }
-    },
+    stopPlayback: stopPlaybackSession,
     playbackCommand: (sessionId: string) =>
       request<PlaybackCommand>(
         `/api/playback-sessions/${encodeURIComponent(sessionId)}/command`,
@@ -3519,7 +6287,7 @@ export function createPorticoClient(options: PorticoClientOptions = {}) {
           ),
       );
     },
-    issuePlaybackCommand: (
+    issuePlaybackCommand: async (
       sessionId: string,
       body: {
         action: "play" | "pause" | "seek" | "stop" | "load";
@@ -3527,11 +6295,13 @@ export function createPorticoClient(options: PorticoClientOptions = {}) {
         positionSeconds?: number;
         message?: string;
       },
-    ) =>
-      request<PlaybackCommand>(
+    ) => {
+      await assertPlaybackSessionMutationAllowed(sessionId);
+      return request<PlaybackCommand>(
         `/api/playback-sessions/${encodeURIComponent(sessionId)}/command`,
         { method: "POST", body },
-      ),
+      );
+    },
     playbackTargets: (init?: Pick<RequestInit, "signal">) =>
       request<ListResponse<PlaybackTarget>>(
         `/api/playback/targets?clientInstanceId=${encodeURIComponent(clientInstanceId())}`,
@@ -3539,53 +6309,68 @@ export function createPorticoClient(options: PorticoClientOptions = {}) {
       ),
     playbackReceivers: () =>
       request<ListResponse<PlaybackReceiver>>("/api/playback/receivers"),
-    createPlaybackReceiver: (body: {
-      name: string;
-      app?: string;
-      platform?: string;
-      supportedCommands?: string[];
-    }) =>
+    registerPlaybackReceiver: (body: Omit<PlaybackReceiverRequest, "clientInstanceId">) =>
       request<PlaybackReceiver>("/api/playback/receivers", {
         method: "POST",
-        body,
+        body: { ...body, clientInstanceId: clientInstanceId() },
       }),
-    touchPlaybackReceiver: (id: string) =>
-      request<PlaybackReceiver>(
-        `/api/playback/receivers/${encodeURIComponent(id)}`,
-        { method: "PATCH" },
-      ),
-    issuePlaybackReceiverCommand: (
+    heartbeatPlaybackReceiver: (
       id: string,
-      body: { mediaId: string; positionSeconds?: number },
+      body: PlaybackReceiverHeartbeatRequest,
     ) =>
-      request<PlaybackCommand>(
-        `/api/playback/receivers/${encodeURIComponent(id)}/command`,
-        { method: "POST", body: { action: "load", ...body } },
+      request<PlaybackReceiverHeartbeatResponse>(
+        `/api/playback/receivers/${encodeURIComponent(id)}`,
+        { method: "PATCH", body },
       ),
-    playbackReceiverEventsUrl: (receiverId: string) =>
-      resourceUrl(
-        `/api/playback/receivers/${encodeURIComponent(receiverId)}/events`,
+    playbackReceiverAuthorizations: (
+      id: string,
+      receiverPublicKeyFingerprint: string,
+    ) =>
+      request<ListResponse<ReceiverAuthorizationRecord>>(
+        `/api/playback/receivers/${encodeURIComponent(id)}/authorizations?receiverPublicKeyFingerprint=${encodeURIComponent(receiverPublicKeyFingerprint)}`,
       ),
-    subscribePlaybackReceiverEvents: (
-      receiverId: string,
-      subscription: PorticoEventSubscriptionOptions<PlaybackReceiver>,
-    ) => {
-      const normalizedReceiverId = requiredEventResourceId(
-        receiverId,
-        "playback receiver",
-      );
-      return eventSubscriptions.run(
-        `playback-receiver-events:${normalizedReceiverId}`,
-        subscription.signal,
-        (signal) =>
-          subscribePlaybackReceiverEventTransport(
-            options,
-            credentials,
-            normalizedReceiverId,
-            { ...subscription, signal },
-          ),
-      );
-    },
+    authorizePlaybackReceiver: (
+      id: string,
+      body: Omit<ReceiverAuthorizationRequest, "clientInstanceId">,
+    ) =>
+      request<ReceiverControllerGrant>(
+        `/api/playback/receivers/${encodeURIComponent(id)}/authorizations`,
+        { method: "POST", body: { ...body, clientInstanceId: clientInstanceId() } },
+      ),
+    handoffPlaybackToReceiver: (
+      id: string,
+      body: PlaybackReceiverHandoffRequest,
+    ) =>
+      request<PlaybackResponse>(
+        `/api/playback/receivers/${encodeURIComponent(id)}/handoff`,
+        { method: "POST", body },
+      ),
+    commitPlaybackReceiverHandoff: (
+      id: string,
+      requestId: string,
+      body: PlaybackReceiverHandoffCommitRequest,
+    ) =>
+      request<PlaybackResponse>(
+        `/api/playback/receivers/${encodeURIComponent(id)}/handoffs/${encodeURIComponent(requestId)}/commit`,
+        { method: "POST", body },
+      ),
+    playbackReceiverHandoffStatus: (
+      id: string,
+      input: {
+        authorizationId: string;
+        receiverPublicKeyFingerprint: string;
+        requestId: string;
+        sourceSessionId: string;
+      },
+    ) =>
+      request<PlaybackReceiverHandoffStatusResponse>(
+        `/api/playback/receivers/${encodeURIComponent(id)}/handoffs/${encodeURIComponent(input.requestId)}?authorizationId=${encodeURIComponent(input.authorizationId)}&receiverPublicKeyFingerprint=${encodeURIComponent(input.receiverPublicKeyFingerprint)}&sourceSessionId=${encodeURIComponent(input.sourceSessionId)}`,
+      ),
+    revokePlaybackReceiverAuthorization: (id: string, authorizationId: string) =>
+      request<void>(
+        `/api/playback/receivers/${encodeURIComponent(id)}/authorizations/${encodeURIComponent(authorizationId)}`,
+        { method: "DELETE" },
+      ),
     watchWithFriendsGroups: (init?: RequestSignal) =>
       request<ListResponse<WatchWithFriendsGroup>>(
         "/api/watch-with-friends/groups",
@@ -3662,13 +6447,13 @@ export function createPorticoClient(options: PorticoClientOptions = {}) {
       ),
     removeWatchWithFriendsQueueItem: (
       id: string,
-      mediaId: string,
+      entryId: string,
       expectedRevision: number,
       idempotencyKey: string,
       init?: RequestSignal,
     ) =>
       request<WatchWithFriendsGroup>(
-        `/api/watch-with-friends/groups/${encodeURIComponent(id)}/queue/${encodeURIComponent(mediaId)}?expectedRevision=${encodeURIComponent(String(expectedRevision))}&idempotencyKey=${encodeURIComponent(idempotencyKey)}`,
+        `/api/watch-with-friends/groups/${encodeURIComponent(id)}/queue/${encodeURIComponent(entryId)}?expectedRevision=${encodeURIComponent(String(expectedRevision))}&idempotencyKey=${encodeURIComponent(idempotencyKey)}`,
         { ...init, method: "DELETE" },
       ),
     endWatchWithFriendsGroup: (
@@ -3991,6 +6776,11 @@ export function createPorticoClient(options: PorticoClientOptions = {}) {
     backups: (init?: Pick<RequestInit, "signal">) =>
       request<ListResponse<BackupInfo>>("/api/backups", init),
     createBackup: () => request<BackupInfo>("/api/backups", { method: "POST" }),
+    restoreAuthorizationContext: (init?: RequestSignal) =>
+      request<import("./types.js").RestoreAuthorizationContext>(
+        "/api/backups/restore-authorization-context",
+        init,
+      ),
     restoreBackup: (
       name: string,
       body: RestoreBackupRequest,
@@ -4005,7 +6795,13 @@ export function createPorticoClient(options: PorticoClientOptions = {}) {
       init?: RequestSignal,
     ) => {
       const form = new FormData();
-      form.append("password", input.password);
+      if (input.password !== undefined) form.append("password", input.password);
+      if (input.hostedAuthorization !== undefined) {
+        form.append(
+          "hostedAuthorization",
+          JSON.stringify(input.hostedAuthorization),
+        );
+      }
       form.append("confirmation", input.confirmation);
       form.append("databaseBytes", String(input.file.size));
       if (input.manifest !== undefined) {
@@ -4304,7 +7100,7 @@ export function createPorticoClient(options: PorticoClientOptions = {}) {
       request<DVRRecording>(`/api/dvr/recordings/${encodeURIComponent(id)}`),
     playDvrRecording: (
       id: string,
-      playbackOptions: DVRPlaybackSessionCreateRequest = {},
+      playbackOptions: DvrPlaybackStartOptions = {},
       init?: RequestSignal,
     ) =>
       request<PlaybackResponse>(
@@ -4314,6 +7110,7 @@ export function createPorticoClient(options: PorticoClientOptions = {}) {
           method: "POST",
           body: {
             ...playbackOptions,
+            intent: playbackOptions.intent ?? { quality: { mode: "automatic" } },
             clientInstanceId:
               playbackOptions.clientInstanceId ?? clientInstanceId(),
             clientProfile: playbackOptions.clientProfile ?? profile(),
@@ -4560,7 +7357,7 @@ export function createPorticoClient(options: PorticoClientOptions = {}) {
     },
     tuneLibraryChannel: (
       channelId: string,
-      body: LibraryChannelTuneRequest = {},
+      body: LibraryChannelPlaybackStartOptions = {},
       init?: Pick<RequestInit, "signal">,
     ) =>
       request<LibraryChannelTuneResponse>(
@@ -4570,6 +7367,7 @@ export function createPorticoClient(options: PorticoClientOptions = {}) {
           method: "POST",
           body: {
             ...body,
+            intent: body.intent ?? { quality: { mode: "automatic" } },
             clientInstanceId: body.clientInstanceId ?? clientInstanceId(),
             clientProfile: body.clientProfile ?? profile(),
           },
@@ -4783,10 +7581,7 @@ export function createPorticoClient(options: PorticoClientOptions = {}) {
       ),
     startLiveTvPlayback: (
       channelId: string,
-      playbackOptions: {
-        clientProfile?: PlaybackClientProfile;
-        intent?: PlaybackIntent;
-      } = {},
+      playbackOptions: LiveTvPlaybackStartOptions = {},
       init?: RequestSignal,
     ) =>
       request<PlaybackResponse>("/api/live-tv/play", {
@@ -4796,15 +7591,12 @@ export function createPorticoClient(options: PorticoClientOptions = {}) {
           channelId,
           clientInstanceId: clientInstanceId(),
           clientProfile: playbackOptions.clientProfile ?? profile(),
-          intent: playbackOptions.intent,
+          intent: playbackOptions.intent ?? { quality: { mode: "automatic" } },
         },
-      }).then(normalizePlaybackResponse),
+      }).then(normalizeSessionPlayback),
     openLiveTvStream: (
       channelId: string,
-      playbackOptions: {
-        clientProfile?: PlaybackClientProfile;
-        intent?: PlaybackIntent;
-      } = {},
+      playbackOptions: LiveTvPlaybackStartOptions = {},
       init?: RequestSignal,
     ) =>
       request<PlaybackResponse>(
@@ -4816,15 +7608,11 @@ export function createPorticoClient(options: PorticoClientOptions = {}) {
             channelId,
             clientInstanceId: clientInstanceId(),
             clientProfile: playbackOptions.clientProfile ?? profile(),
-            intent: playbackOptions.intent,
+            intent: playbackOptions.intent ?? { quality: { mode: "automatic" } },
           },
         },
-      ).then(normalizePlaybackResponse),
-    closeLiveTvStream: (channelId: string, sessionId: string) =>
-      request<{ ok: boolean }>(
-        `/api/live-tv/streams/${encodeURIComponent(channelId)}/close`,
-        { method: "POST", body: { sessionId } },
-      ),
+      ).then(normalizeSessionPlayback),
+    closeLiveTvStream,
   };
 }
 
@@ -4871,7 +7659,7 @@ function isHostedTerminalMutation(path: string, method: string): boolean {
     return true;
   if (
     (verb === "PATCH" || verb === "DELETE") &&
-    /^\/api\/(?:account\/)?servers\/[^/]+(?:\/members\/[^/]+|\/invites\/[^/]+)?$/.test(
+    /^\/api\/(?:account\/)?servers\/[^/]+(?:\/membership|\/members\/[^/]+|\/invites\/[^/]+)?$/.test(
       pathname,
     )
   )
@@ -5583,10 +8371,37 @@ export function createHostedServicesClient(
         `/api/account/servers/${encodeURIComponent(serverId)}`,
         { method: "PATCH", body },
       ),
-    deleteServer: (serverId: string) =>
+    createServerDeletionProof: (
+      serverId: string,
+      body: import("./types.js").HostedServerDeletionProofRequest,
+      init?: RequestSignal,
+    ) =>
+      request<import("./types.js").HostedServerDeletionProofResponse>(
+        `/api/account/servers/${encodeURIComponent(serverId)}/deletion-proofs`,
+        { ...init, method: "POST", body },
+      ),
+    createServerRestoreAuthorization: (
+      serverId: string,
+      body: import("./types.js").HostedServerRestoreAuthorizationRequest,
+      init?: RequestSignal,
+    ) =>
+      request<import("./types.js").HostedServerRestoreAuthorization>(
+        `/api/account/servers/${encodeURIComponent(serverId)}/restore-authorizations`,
+        { ...init, method: "POST", body },
+      ),
+    deleteServer: (
+      serverId: string,
+      body: import("./types.js").HostedServerDeleteRequest,
+      init?: RequestSignal,
+    ) =>
       request<{ ok: boolean }>(
         `/api/account/servers/${encodeURIComponent(serverId)}`,
-        { method: "DELETE" },
+        { ...init, method: "DELETE", body },
+      ),
+    leaveServer: (serverId: string, init?: RequestSignal) =>
+      request<{ ok: boolean }>(
+        `/api/account/servers/${encodeURIComponent(serverId)}/membership`,
+        { ...init, method: "DELETE" },
       ),
     serverAuditEvents: (serverId: string, limit = 50) =>
       request<ListResponse<AuditEvent>>(
@@ -5840,6 +8655,8 @@ type SessionCredentialRotation = Pick<
       | "serverId"
       | "profileId"
       | "authorizationRevision"
+      | "serverPublicKey"
+      | "serverPublicKeyFingerprint"
     >
   >;
 
@@ -6043,6 +8860,23 @@ function createCredentialLifecycle(
         "The server returned incomplete refreshed credentials.",
       );
     }
+    const serverPublicKey = credentials.serverPublicKey?.trim();
+    const serverPublicKeyFingerprint = credentials.serverPublicKeyFingerprint?.trim();
+    if (!serverPublicKey || !serverPublicKeyFingerprint) {
+      throw new ApiError(
+        401,
+        "invalid_refresh_response",
+        "The server returned credentials without its durable identity key.",
+      );
+    }
+    if ((source?.serverPublicKey && source.serverPublicKey !== serverPublicKey) ||
+        (source?.serverPublicKeyFingerprint && source.serverPublicKeyFingerprint !== serverPublicKeyFingerprint)) {
+      throw new ApiError(
+        401,
+        "server_identity_changed",
+        "The server identity changed while credentials were being refreshed.",
+      );
+    }
     return {
       ...source,
       apiBaseUrl:
@@ -6053,6 +8887,8 @@ function createCredentialLifecycle(
       refreshToken: credentials.refreshToken,
       expiresAt: credentials.accessExpiresAt,
       refreshExpiresAt: credentials.refreshExpiresAt,
+      serverPublicKey,
+      serverPublicKeyFingerprint,
       ...(credentials.authority ? { authority: credentials.authority } : {}),
       ...(credentials.accountId ? { accountId: credentials.accountId } : {}),
       ...(credentials.serverId ? { serverId: credentials.serverId } : {}),
@@ -6291,6 +9127,10 @@ function requestAuthorizationHeaders(
       return {
         Authorization: `PorticoPlayback ${boundedAuthorizationToken(mode.token, "Playback continuation")}`,
       };
+    case "cast-receiver":
+      return {
+        Authorization: `PorticoReceiver ${boundedAuthorizationToken(mode.token, "Cast receiver")}`,
+      };
     case "download-grant":
       return {
         Authorization: `PorticoDownload ${boundedAuthorizationToken(mode.token, "Download grant")}`,
@@ -6365,7 +9205,8 @@ async function localRequest<T>(
         )
       : sessionResult;
   const url =
-    authorization.mode === "playback-continuation"
+    authorization.mode === "playback-continuation" ||
+    authorization.mode === "cast-receiver"
       ? trustedAPIURL(authorization.origin, path, config.baseHref)
       : buildApiUrl(path, config, session);
   const principalIdentity = requestPrincipalIdentity(
@@ -6375,7 +9216,9 @@ async function localRequest<T>(
   const requestHeaders = {
     ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
     ...requestAuthorizationHeaders(authorization, session),
-    ...(method === "GET" || method === "HEAD"
+    ...(method === "GET" ||
+    method === "HEAD" ||
+    authorization.mode === "cast-receiver"
       ? {}
       : { "X-Portico-CSRF": resolveValue(config.csrfToken, "1") }),
     ...callerHeaders(options.headers),
@@ -6385,7 +9228,10 @@ async function localRequest<T>(
     ...rest,
     method,
     headers,
-    credentials: authorization.mode === "anonymous" ? "omit" : "include",
+    credentials:
+      authorization.mode === "anonymous" || authorization.mode === "cast-receiver"
+        ? "omit"
+        : "include",
   };
   if (body !== undefined) init.body = JSON.stringify(body);
   const coalesceKey = jsonRequestCoalesceKey(
@@ -7820,23 +10666,6 @@ function parsePlaybackCommandEvent(
   return command as PlaybackCommand;
 }
 
-function parsePlaybackReceiverEvent(value: unknown): PlaybackReceiver {
-  const receiver = eventRecord(value, "playback receiver event");
-  eventString(receiver.id, "playback receiver id");
-  eventString(receiver.name, "playback receiver name");
-  eventString(receiver.code, "playback receiver code");
-  eventTimestamp(receiver.createdAt, "playback receiver creation time");
-  eventTimestamp(receiver.lastSeenAt, "playback receiver heartbeat time");
-  if (
-    !Array.isArray(receiver.supportedCommands) ||
-    receiver.supportedCommands.some((command) => command !== "load")
-  ) {
-    throw new TypeError("playback receiver commands are invalid");
-  }
-  parsePlaybackCommandEvent(receiver.command, true);
-  return receiver as unknown as PlaybackReceiver;
-}
-
 function parseWatchWithFriendsGroupEvent(
   value: unknown,
 ): WatchWithFriendsGroup {
@@ -8033,46 +10862,6 @@ function subscribePlaybackCommandEventTransport(
         ),
       parseEvent: parsePlaybackCommandEvent,
       eventIdentity: (event) => event.id || undefined,
-    },
-    config.eventSubscriptionRuntime,
-  );
-}
-
-function subscribePlaybackReceiverEventTransport(
-  config: PorticoClientOptions,
-  credentials: CredentialLifecycle,
-  receiverId: string,
-  subscription: PorticoEventSubscriptionOptions<PlaybackReceiver>,
-): Promise<void> {
-  const path = `/api/playback/receivers/${encodeURIComponent(receiverId)}/events`;
-  return runPorticoEventSubscription(
-    subscription,
-    {
-      stream: (signal, onEvent, onConnected) =>
-        streamTypedJSONEvents(
-          config,
-          credentials,
-          path,
-          runtimeAbortSignal(signal),
-          onEvent,
-          parsePlaybackReceiverEvent,
-          "playback_receiver_stream_failed",
-          "Unable to open playback receiver updates.",
-          onConnected,
-        ),
-      poll: (request, signal) =>
-        pollEventEnvelope(
-          config,
-          credentials,
-          path,
-          request,
-          runtimeAbortSignal(signal),
-          "playback_receiver_poll_failed",
-          "Unable to poll playback receiver updates.",
-        ),
-      parseEvent: parsePlaybackReceiverEvent,
-      eventIdentity: (event) =>
-        `${event.id}:${event.command.id ?? ""}:${event.lastSeenAt}`,
     },
     config.eventSubscriptionRuntime,
   );

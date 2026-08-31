@@ -8,6 +8,8 @@ import { FixturePorticoDataSource } from '../../data/fixtureSource';
 import { continuePreloadedAudioUntilPrimaryPlays, MusicTransitionBridge, musicTransitionOwnerKey, musicTransitionRequest, nextCandidate } from './MusicTransitionBridge';
 import { PlaybackPreparationOwner } from './PlaybackPreparationOwner';
 
+const entry = (entryId: string, media: MediaItem) => ({ entryId, media });
+
 describe('music transitions', () => {
   afterEach(() => vi.restoreAllMocks());
   it('retains delayed zero-crossfade preparation, bypasses a pending preload play, and hands off once', async () => {
@@ -24,8 +26,8 @@ describe('music transitions', () => {
     mediaRef.current = media;
     const current = { id: 'track-1', title: 'One' } as MediaItem;
     const candidate = { id: 'track-2', title: 'Two' } as MediaItem;
-    const playback = { sessionId: 'session-1', media: current, queue: [candidate], timeline: { durationSeconds: 15 } } as PlaybackResponse;
-    const queue = { items: [current, candidate] } as PlaybackSessionQueueResponse;
+    const playback = { sessionId: 'session-1', currentQueueEntryId: 'entry-1', media: current, queue: [entry('entry-2', candidate)], timeline: { durationSeconds: 15 } } as unknown as PlaybackResponse;
+    const queue = { items: [entry('entry-2', candidate)] } as unknown as PlaybackSessionQueueResponse;
     const preferences = { shuffleDefault: false, repeatDefault: 'none' as const, autoplayDefault: true, normalizationMode: 'off' as const, crossfadeSeconds: 0, gapless: true };
     let resolve!: (value: PlaybackPreparedResponse) => void;
     const pending = new Promise<PlaybackPreparedResponse>((done) => { resolve = done; });
@@ -40,11 +42,13 @@ describe('music transitions', () => {
     await act(async () => resolve({ preparedSessionId: 'prepared-2', playback: {
       ...playback,
       sessionId: 'prepared',
+      currentQueueEntryId: 'entry-2',
       media: candidate,
       mediaGrant: { token: 'grant', expiresAt: '2099-01-01T00:00:00Z' },
       sourceUrl: '/next.flac',
-      resources: [{ id: 'direct', sourceUrl: '/next.flac', streamFormat: 'direct', qualityId: 'original', default: true }],
-      qualities: [{ id: 'original', label: 'Original', description: 'Original quality' }],
+      resources: [{ id: 'direct', sourceUrl: '/next.flac', streamFormat: 'direct', default: true }],
+      qualityOffers: { contractId: 'PC-PLAYBACK', schemaVersion: 'quality-offers.v1', mediaId: candidate.id, versionId: 'qver-track-2', sourceRevision: 'qsrc-track-2', offerRevision: 'qrev-track-2', offers: [{ selectionId: 'qsel-automatic', label: 'Automatic', kind: 'automatic' }, { selectionId: 'qsel-original', label: 'Original Quality', kind: 'original' }] },
+      qualitySelection: { mode: 'automatic' },
       streamFormat: 'direct',
       directPlay: true,
     }, expiresAt: new Date(Date.now() + 60_000).toISOString() } as PlaybackPreparedResponse));
@@ -55,28 +59,32 @@ describe('music transitions', () => {
     expect(firstHandoff).toHaveBeenCalledOnce();
     view.rerender(wrap(<MusicTransitionBridge playback={{ ...playback, sessionId: 'session-changed' }} queue={queue} mediaRef={mediaRef} preferences={preferences} volume={0.2} muted enabled onTransitioning={vi.fn()} handoff={firstHandoff} prepareNext={prepare} />));
     expect(rerenderedHandoff).toHaveBeenCalledOnce();
+    expect(rerenderedHandoff).toHaveBeenCalledWith(expect.objectContaining({
+      preparedSessionId: 'prepared-2',
+      previousTerminal: { disposition: 'completed', positionSeconds: 15, durationSeconds: 15 },
+    }));
     view.unmount();
   });
   it('uses the server queue as the canonical next-track order', () => {
     const current = { id: 'track-1' } as MediaItem;
     const fallback = { id: 'track-fallback' } as MediaItem;
     const queued = { id: 'track-2' } as MediaItem;
-    const playback = { media: current, queue: [fallback] } as PlaybackResponse;
-    const queue = { items: [queued] } as PlaybackSessionQueueResponse;
+    const playback = { media: current, queue: [entry('fallback-entry', fallback)] } as unknown as PlaybackResponse;
+    const queue = { items: [entry('queued-entry', queued)] } as unknown as PlaybackSessionQueueResponse;
     expect(nextCandidate(playback, queue)).toBe(queued);
   });
 
-  it('ignores an accidental duplicate of the current item', () => {
+  it('preserves a duplicate media occurrence as the next item', () => {
     const current = { id: 'track-1' } as MediaItem;
     const queued = { id: 'track-2' } as MediaItem;
-    expect(nextCandidate({ media: current, queue: [current, queued] } as PlaybackResponse, undefined)).toBe(queued);
+    expect(nextCandidate({ media: current, queue: [entry('duplicate-entry', current), entry('queued-entry', queued)] } as unknown as PlaybackResponse, undefined)).toBe(current);
   });
 
   it('keeps one preparation owner across equivalent queue projections', () => {
     const current = { id: 'track-1' } as MediaItem;
     const queued = { id: 'track-2' } as MediaItem;
     const remaining = { id: 'track-3' } as MediaItem;
-    const playback = { sessionId: 'session-1', playbackRevision: 3, media: current, queue: [current, queued, remaining] } as PlaybackResponse;
+    const playback = { sessionId: 'session-1', playbackRevision: 3, media: current, queue: [entry('entry-2', queued), entry('entry-3', remaining)] } as unknown as PlaybackResponse;
     const preferences = {
       shuffleDefault: false,
       repeatDefault: 'none' as const,
@@ -85,15 +93,15 @@ describe('music transitions', () => {
       crossfadeSeconds: 0,
       gapless: true,
     };
-    const first = musicTransitionOwnerKey(playback, { items: [current, queued, remaining] } as PlaybackSessionQueueResponse, preferences, defaultWebDisplayPreferences);
+    const first = musicTransitionOwnerKey(playback, { items: [entry('entry-2', queued), entry('entry-3', remaining)] } as unknown as PlaybackSessionQueueResponse, preferences, defaultWebDisplayPreferences);
     const projected = musicTransitionOwnerKey(
-      { ...playback, playbackRevision: 99, media: { ...current }, queue: [{ ...queued }, { ...remaining }] } as PlaybackResponse,
-      { items: [{ ...queued }, { ...remaining }] } as PlaybackSessionQueueResponse,
+      { ...playback, playbackRevision: 99, media: { ...current }, queue: [entry('entry-2', { ...queued }), entry('entry-3', { ...remaining })] } as PlaybackResponse,
+      { items: [entry('entry-2', { ...queued }), entry('entry-3', { ...remaining })] } as unknown as PlaybackSessionQueueResponse,
       { ...preferences },
       { ...defaultWebDisplayPreferences },
     );
     expect(projected).toBe(first);
-    expect(musicTransitionOwnerKey(playback, { items: [current, { id: 'track-4' } as MediaItem, remaining] } as PlaybackSessionQueueResponse, preferences, defaultWebDisplayPreferences)).not.toBe(first);
+    expect(musicTransitionOwnerKey(playback, { items: [entry('entry-4', { id: 'track-4' } as MediaItem), entry('entry-3', remaining)] } as unknown as PlaybackSessionQueueResponse, preferences, defaultWebDisplayPreferences)).not.toBe(first);
 
   });
 
@@ -181,16 +189,14 @@ describe('music transitions', () => {
     const current = { id: 'track-1' } as MediaItem;
     const candidate = { id: 'track-2' } as MediaItem;
     const remaining = { id: 'track-3' } as MediaItem;
-    const playback = { sessionId: 'session-1', media: current, queue: [candidate, remaining] } as PlaybackResponse;
-    const queue = { items: [current, candidate, remaining], sourceContext: { kind: 'album', id: 'album-1' } } as unknown as PlaybackSessionQueueResponse;
+    const playback = { sessionId: 'session-1', media: current, queue: [entry('entry-2', candidate), entry('entry-3', remaining)] } as unknown as PlaybackResponse;
+    const queue = { items: [entry('entry-2', candidate), entry('entry-3', remaining)], sourceContext: { type: 'album', id: 'album-1' } } as unknown as PlaybackSessionQueueResponse;
     const preferences = { shuffleDefault: false, repeatDefault: 'none' as const, autoplayDefault: true, normalizationMode: 'off' as const, crossfadeSeconds: 0, gapless: true };
     expect(musicTransitionRequest(playback, queue, preferences, defaultWebDisplayPreferences)).toEqual({
-      mediaId: 'track-2',
-      queueMediaIds: ['track-3'],
+      entryId: 'entry-2',
       crossfadeSeconds: 0,
       preferredHandoff: 'gapless',
       sourceContext: queue.sourceContext,
-      commitPreviousEnd: true,
       intent: expect.any(Object),
     });
   });

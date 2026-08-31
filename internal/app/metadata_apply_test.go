@@ -387,6 +387,98 @@ func TestMetadataApplyPersistsSupplementalProviderWithIndependentProvenance(t *t
 	}
 }
 
+func TestMetadataFillMissingPersistsSnapshotWithoutParallelRichAuthority(t *testing.T) {
+	_, _, server := newDiscoveryTestServer(t, config.Config{})
+	seed, err := server.getMedia("", "movie_meridian")
+	if err != nil {
+		t.Fatal(err)
+	}
+	primary := newProviderRichProposal("tmdb", map[string]any{"id": 42})
+	primary.Values = append(primary.Values, metadataProviderValueProposal{Field: "alternateTitle", Value: "Primary alternate"})
+	primary.Relationships = append(primary.Relationships, metadataRelationshipProposal{Kind: "franchise", Name: "Primary franchise"})
+	primary.Images = append(primary.Images, metadataProviderImageProposal{Kind: "logo", Path: "/primary-logo.png"})
+	primary.normalize()
+	first, err := server.applyMetadata(context.Background(), metadataApplyRequest{
+		MediaID: seed.ID, ExpectedRevision: seed.MetadataRevision, Origin: metadataSourceProvider,
+		Source: "provider-refresh", Provider: "tmdb", RefreshIntent: metadataRefreshUnlocked,
+		Identities: []metadataProviderIdentityProposal{{
+			Provider: "tmdb", ExternalType: "movie", ExternalID: "42", Confidence: 1,
+		}},
+		ProviderRich: &primary,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	fallback := newProviderRichProposal("tvdb", map[string]any{"id": 84})
+	fallback.Values = append(fallback.Values,
+		metadataProviderValueProposal{Field: "alternateTitle", Value: "Fallback alternate"},
+		metadataProviderValueProposal{Field: "format", Value: "Movie"},
+	)
+	fallback.Relationships = append(fallback.Relationships,
+		metadataRelationshipProposal{Kind: "franchise", Name: "Fallback franchise"},
+		metadataRelationshipProposal{Kind: "keyword", Name: "supplemental-keyword"},
+	)
+	fallback.Images = append(fallback.Images,
+		metadataProviderImageProposal{Kind: "logo", Path: "/fallback-logo.png"},
+		metadataProviderImageProposal{Kind: "backdrop", Path: "/fallback-backdrop.jpg"},
+	)
+	fallback.normalize()
+	second, err := server.applyMetadata(context.Background(), metadataApplyRequest{
+		MediaID: seed.ID, ExpectedRevision: first.Revision, Origin: metadataSourceProvider,
+		Source: "provider-supplement", Provider: "tvdb", RefreshIntent: metadataRefreshFillMissing,
+		Identities: []metadataProviderIdentityProposal{{
+			Provider: "tvdb", ExternalType: "movie", ExternalID: "84", Confidence: 1,
+		}},
+		ProviderRich: &fallback,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var snapshotCount, fallbackAlternate, fallbackFormat, fallbackFranchise, fallbackKeyword int
+	if err := server.db.QueryRow(`SELECT COUNT(*) FROM media_provider_snapshots WHERE media_id=? AND provider='tvdb'`, seed.ID).Scan(&snapshotCount); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.db.QueryRow(`
+		SELECT COUNT(*) FROM media_metadata_field_values f
+		JOIN media_metadata_revisions r ON r.id=f.revision_id
+		WHERE f.media_id=? AND r.revision=? AND f.provider='tvdb' AND f.field_key='alternateTitle'`, seed.ID, second.Revision).Scan(&fallbackAlternate); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.db.QueryRow(`
+		SELECT COUNT(*) FROM media_metadata_field_values f
+		JOIN media_metadata_revisions r ON r.id=f.revision_id
+		WHERE f.media_id=? AND r.revision=? AND f.provider='tvdb' AND f.field_key='format'`, seed.ID, second.Revision).Scan(&fallbackFormat); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.db.QueryRow(`
+		SELECT COUNT(*) FROM media_metadata_relationships rel
+		JOIN media_metadata_revisions r ON r.id=rel.revision_id
+		WHERE rel.media_id=? AND r.revision=? AND rel.provider='tvdb' AND rel.relationship_type='franchise'`, seed.ID, second.Revision).Scan(&fallbackFranchise); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.db.QueryRow(`
+		SELECT COUNT(*) FROM media_metadata_relationships rel
+		JOIN media_metadata_revisions r ON r.id=rel.revision_id
+		WHERE rel.media_id=? AND r.revision=? AND rel.provider='tvdb' AND rel.relationship_type='keyword'`, seed.ID, second.Revision).Scan(&fallbackKeyword); err != nil {
+		t.Fatal(err)
+	}
+	var fallbackLogo, fallbackBackdrop int
+	if err := server.db.QueryRow(`SELECT COUNT(*) FROM media_images WHERE media_id=? AND provider='tvdb' AND image_type='logo'`, seed.ID).Scan(&fallbackLogo); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.db.QueryRow(`SELECT COUNT(*) FROM media_images WHERE media_id=? AND provider='tvdb' AND image_type='backdrop'`, seed.ID).Scan(&fallbackBackdrop); err != nil {
+		t.Fatal(err)
+	}
+	if snapshotCount != 1 || fallbackAlternate != 0 || fallbackFranchise != 0 || fallbackLogo != 0 {
+		t.Fatalf("fallback became parallel authority: snapshots=%d alternate=%d franchise=%d logo=%d", snapshotCount, fallbackAlternate, fallbackFranchise, fallbackLogo)
+	}
+	if fallbackFormat != 1 || fallbackKeyword != 1 || fallbackBackdrop != 1 {
+		t.Fatalf("fallback did not fill missing classes: format=%d keyword=%d backdrop=%d", fallbackFormat, fallbackKeyword, fallbackBackdrop)
+	}
+}
+
 func TestCleanupUnreferencedStagedMetadataArtworkPreservesReferencedFiles(t *testing.T) {
 	_, _, server := newDiscoveryTestServer(t, config.Config{})
 	root := filepath.Join(server.cfg.AppDataDir, "artwork", "provider", "movie_meridian")

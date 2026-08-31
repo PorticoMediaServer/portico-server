@@ -1,10 +1,10 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiError, productMessage, type AppEvent } from '@porticomediaserver/client-core';
-import { DataProvider, useAuthSession, useHome, usePorticoDataSource } from './DataProvider';
+import { DataProvider, useAuthSession, useHome, useMediaDetail, usePorticoDataSource } from './DataProvider';
 import { FixturePorticoDataSource } from './fixtureSource';
-import type { HomeResult, LocalProfileLoginChallenge, LocalProfileSelection, Viewer } from './models';
+import type { HomeResult, LocalProfileLoginChallenge, LocalProfileSelection, MediaItem, Viewer } from './models';
 import { WebViewerRuntime } from './viewerRuntime';
 import { markLocalSessionSignedOut } from '../runtime/localSessionQuarantine';
 import { ambientCookieRestoreStatus } from '../runtime/ambientCookieQuarantine';
@@ -256,6 +256,16 @@ function ReplacementHome() {
   </>;
 }
 
+function MediaDetailState() {
+	const [reloadKey, setReloadKey] = useState(0);
+	const detail = useMediaDetail('missing-media', reloadKey);
+	return <>
+		<output aria-label="media-detail-state">{detail.status}</output>
+		<output aria-label="media-detail-result">{detail.status === 'success' ? detail.data.title : detail.status === 'error' ? detail.error.message : 'loading'}</output>
+		<button type="button" onClick={() => setReloadKey((current) => current + 1)}>Retry media</button>
+	</>;
+}
+
 function ReplacementProbe() {
   const auth = useAuthSession();
   return <>
@@ -333,6 +343,32 @@ describe('DataProvider viewer scope integration', () => {
 			expect(screen.getByLabelText('home-error')).toHaveTextContent('transient route failure');
 			expect(screen.getByLabelText('home-last-success')).toHaveTextContent('set');
 		});
+	});
+
+	it('keeps an authoritative not-found visible during background invalidation until refreshed data succeeds', async () => {
+		const pending = deferred<MediaItem>();
+		class MissingMediaSource extends LiveHomeSource {
+			mediaCalls = 0;
+			override async media() {
+				this.mediaCalls += 1;
+				if (this.mediaCalls === 1) throw new ApiError(404, 'media_not_found', 'Item not found');
+				return pending.promise;
+			}
+		}
+		const source = new MissingMediaSource(viewer('adult', 'policy-live'));
+		render(<DataProvider source={source}><MediaDetailState /></DataProvider>);
+		await waitFor(() => expect(screen.getByLabelText('media-detail-state')).toHaveTextContent('error'));
+
+		act(() => source.publish(['media']));
+		await waitFor(() => expect(source.mediaCalls).toBe(2));
+		expect(screen.getByLabelText('media-detail-state')).toHaveTextContent('error');
+		expect(screen.getByLabelText('media-detail-result')).toHaveTextContent('Item not found');
+
+		act(() => pending.resolve({
+			id: 'missing-media', title: 'Restored media', subtitle: '', year: 2026, entityKind: 'movie',
+			poster: '', backdrop: '', rating: '', length: '', genre: '', actions: [],
+		}));
+		await waitFor(() => expect(screen.getByLabelText('media-detail-result')).toHaveTextContent('Restored media'));
 	});
 
 	it('reconciles the authoritative viewer after an identity-sensitive application event', async () => {

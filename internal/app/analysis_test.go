@@ -440,7 +440,7 @@ func TestMediaAnalysisOptionsHonorLibraryFeatureSwitches(t *testing.T) {
 	if !full.ProbeStreams {
 		t.Fatalf("expected stream probing to remain enabled")
 	}
-	if full.GenerateThumbnails || full.ChapterThumbnails || full.GenerateTrickplay || full.AnalyzeAudio || full.DetectChapterSegments || full.ExtractEmbeddedCovers || full.ExtractEmbeddedAttachments {
+	if full.GenerateThumbnails || full.ChapterThumbnails || full.GenerateTrickplay || full.AnalyzeAudio || full.DetectSegments || full.ExtractEmbeddedCovers || full.ExtractEmbeddedAttachments {
 		t.Fatalf("full analysis ignored disabled library switches: %#v", full)
 	}
 	if !full.SonicFingerprinting {
@@ -451,11 +451,35 @@ func TestMediaAnalysisOptionsHonorLibraryFeatureSwitches(t *testing.T) {
 	if !probe.ProbeStreams {
 		t.Fatalf("expected probe mode to keep stream probing enabled")
 	}
-	if probe.GenerateThumbnails || probe.ChapterThumbnails || probe.GenerateTrickplay || probe.AnalyzeAudio || probe.SonicFingerprinting || probe.ExtractEmbeddedCovers || probe.ExtractEmbeddedAttachments {
+	if probe.GenerateThumbnails || probe.ChapterThumbnails || probe.GenerateTrickplay || probe.AnalyzeAudio || probe.SonicFingerprinting || probe.FullFileChecksum || probe.GenerateWaveforms || probe.ExtractEmbeddedCovers || probe.ExtractEmbeddedAttachments {
 		t.Fatalf("probe analysis should not enable heavy stages: %#v", probe)
 	}
-	if probe.DetectChapterSegments {
+	if probe.DetectSegments {
 		t.Fatalf("probe analysis should honor disabled chapter segment detection")
+	}
+}
+
+func TestCustomSelectedEmbeddedAssetUsesBoundedProbeWithoutFullAnalysis(t *testing.T) {
+	server := newScannerTestServer(t)
+	library, err := server.createLibrary(CreateLibraryRequest{
+		Name: "Selected Cover", Type: "music", Paths: []string{t.TempDir()},
+		Settings: map[string]any{
+			"analysisTier":                  analysisTierCustom,
+			"probeStreams":                  true,
+			"readEmbeddedIndexes":           true,
+			"extractSelectedEmbeddedAssets": true,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	item := MediaItem{ID: "track_selected_cover", Type: "track", LibraryID: library.ID}
+	probe := server.mediaAnalysisOptions(item, mediaAnalysisModeProbe)
+	if !probe.ExtractEmbeddedCovers || !probe.ReadEmbeddedIndexes {
+		t.Fatalf("selected embedded asset did not compile into the bounded probe: %#v", probe)
+	}
+	if server.analysisTierWantsFull(item) {
+		t.Fatal("selected embedded cover alone incorrectly authorized a full-file analysis pass")
 	}
 }
 
@@ -469,7 +493,7 @@ func TestFixedAnalysisTiersIgnoreCustomOperationDefaults(t *testing.T) {
 		t.Fatal(err)
 	}
 	complete := server.mediaAnalysisOptions(MediaItem{ID: "complete", Type: "movie", LibraryID: completeLibrary.ID}, mediaAnalysisModeFull)
-	if !complete.ProbeStreams || !complete.ReadEmbeddedTags || !complete.ReadEmbeddedIndexes || !complete.GenerateThumbnails || !complete.ChapterThumbnails || !complete.GenerateTrickplay || !complete.AnalyzeAudio || !complete.SonicFingerprinting || !complete.ExtractEmbeddedAttachments {
+	if !complete.ProbeStreams || !complete.ReadEmbeddedTags || !complete.ReadEmbeddedIndexes || !complete.GenerateThumbnails || !complete.ChapterThumbnails || !complete.GenerateTrickplay || !complete.AnalyzeAudio || !complete.SonicFingerprinting || !complete.FullFileChecksum || !complete.GenerateWaveforms || !complete.ExtractEmbeddedAttachments || !complete.ExtractEmbeddedCovers {
 		t.Fatalf("Complete omitted fixed deep-analysis work because Custom defaults are false: %#v", complete)
 	}
 	basicLibrary, err := server.createLibrary(CreateLibraryRequest{
@@ -482,7 +506,7 @@ func TestFixedAnalysisTiersIgnoreCustomOperationDefaults(t *testing.T) {
 	if !basic.ProbeStreams || !basic.ReadEmbeddedTags || !basic.ReadEmbeddedIndexes {
 		t.Fatalf("Basic omitted bounded technical facts: %#v", basic)
 	}
-	if basic.GenerateThumbnails || basic.ChapterThumbnails || basic.GenerateTrickplay || basic.AnalyzeAudio || basic.SonicFingerprinting || basic.ExtractEmbeddedAttachments {
+	if basic.GenerateThumbnails || basic.ChapterThumbnails || basic.GenerateTrickplay || basic.AnalyzeAudio || basic.SonicFingerprinting || basic.FullFileChecksum || basic.GenerateWaveforms || basic.ExtractEmbeddedAttachments || basic.ExtractEmbeddedCovers {
 		t.Fatalf("Basic authorized Complete-only work: %#v", basic)
 	}
 }
@@ -505,7 +529,7 @@ func TestMediaAnalysisQueueCanBeDisabledPerLibrary(t *testing.T) {
 		t.Fatalf("expected probeStreams=false to disable queued stream analysis")
 	}
 	options := server.mediaAnalysisOptions(item, mediaAnalysisModeFull)
-	if options.ProbeStreams || options.GenerateThumbnails || options.ChapterThumbnails || options.GenerateTrickplay || options.AnalyzeAudio || options.DetectChapterSegments || options.ExtractEmbeddedCovers || options.ExtractEmbeddedAttachments {
+	if options.ProbeStreams || options.GenerateThumbnails || options.ChapterThumbnails || options.GenerateTrickplay || options.AnalyzeAudio || options.FullFileChecksum || options.GenerateWaveforms || options.ValidateSeekBehavior || options.DetectSegments || options.ExtractEmbeddedCovers || options.ExtractEmbeddedAttachments {
 		t.Fatalf("probeStreams=false should disable all analysis work: %#v", options)
 	}
 }

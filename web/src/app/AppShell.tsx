@@ -1,5 +1,5 @@
 import { StatusWarningIcon, NavigationLibraryIcon, ActionWatchlistIcon, NavigationMoveDownIcon, NavigationMoveUpIcon, NavigationExpandIcon, NavigationDisclosureIcon, MediaMovieIcon, NavigationHomeIcon, StatusArtworkUnavailableIcon, AccountSignOutIcon, ViewListIcon, ActionMoreIcon, MediaMusicIcon, NavigationCollapseIcon, ActionUnpinIcon, NavigationChannelsIcon, NavigationSearchIcon, DeviceServerIcon, DeviceOfflineIcon, DeviceTvIcon, AccountProfilesIcon, AccountWatchTogetherIcon, AccountUserIcon, ActionCloseIcon } from '#portico-icons';
-import { productMessage, type ProductMessageId } from '@porticomediaserver/client-core';
+import { productMessage, type ProductMessageId, type ProductMessagePresentation } from '@porticomediaserver/client-core';
 import { type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, NavLink, useLocation, useNavigate, useNavigationType } from 'react-router-dom';
@@ -96,7 +96,15 @@ function PinnedLibraryNavItem({ library, active, first, last, onChange }: {
   </div>;
 }
 
-export function AppShell({ children, viewer, player }: { children: ReactNode; viewer: Viewer; player?: ReactNode }) {
+export function ConnectionStatusToast({ presentation, blocking = false }: { presentation?: ProductMessagePresentation; blocking?: boolean }) {
+  if (!presentation || blocking) return null;
+  return <div className="connection-status-toast" role="status" aria-live="polite" data-semantic-icon={presentation.icon}>
+    <StatusWarningIcon aria-hidden="true" />
+    <span><strong>{presentation.title}</strong><small>{presentation.body}</small></span>
+  </div>;
+}
+
+export function AppShell({ children, viewer, player, blockingRouteFailure = false }: { children: ReactNode; viewer: Viewer; player?: ReactNode; blockingRouteFailure?: boolean }) {
   const auth = useAuthSession();
   const runtime = useOptionalRuntime();
   const persistentFrame = usePersistentFrame();
@@ -114,7 +122,6 @@ export function AppShell({ children, viewer, player }: { children: ReactNode; vi
   const [feedbackOpen, setFeedbackOpen] = useState(false);
 	const [sidebarWidth, setSidebarWidth] = useState(retainedSidebarWidth);
 	const [sidebarResizing, setSidebarResizing] = useState(false);
-	const [connectionWarningHeight, setConnectionWarningHeight] = useState(52);
   const location = useLocation();
   const navigationType = useNavigationType();
   const navigate = useNavigate();
@@ -130,7 +137,6 @@ export function AppShell({ children, viewer, player }: { children: ReactNode; vi
   const sidebarResizeStart = useRef<{ pointerId: number; clientX: number; width: number } | undefined>(undefined);
   const standaloneMainContent = useRef<HTMLElement>(null);
   const mainContent = persistentFrame?.main ?? standaloneMainContent;
-  const connectionWarningRef = useRef<HTMLDivElement>(null);
   const libraries = useLibraries();
   const searchContract = useSearchContract();
   const displayName = viewer.user?.displayName || 'Portico user';
@@ -240,20 +246,6 @@ export function AppShell({ children, viewer, player }: { children: ReactNode; vi
     return () => { delete root.dataset.porticoReduceMotion; };
   }, [displayPreferences.reduceMotion]);
 
-  useLayoutEffect(() => {
-    if (!connectionWarningRef.current) return;
-    const warning = connectionWarningRef.current;
-    const update = () => setConnectionWarningHeight(Math.ceil(warning.getBoundingClientRect().height));
-    update();
-    const observer = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(update);
-    observer?.observe(warning);
-    window.addEventListener('resize', update);
-    return () => {
-      observer?.disconnect();
-      window.removeEventListener('resize', update);
-    };
-  }, [connectionWarning]);
-
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedQuickQuery(quickQuery.trim()), 180);
     setActiveSearchOptionId(undefined);
@@ -339,8 +331,8 @@ export function AppShell({ children, viewer, player }: { children: ReactNode; vi
   const drawerActive = mobileLayout && mobileOpen;
   const pageInactive = drawerActive || undefined;
   const sidebarCollapsed = displayPreferences.sidebarCollapsed && !mobileLayout;
-  const shellClassName = `shell ${connectionWarning ? 'has-connection-warning' : ''} ${sidebarCollapsed ? 'sidebar-collapsed' : ''} ${sidebarResizing ? 'sidebar-resizing' : ''}`.trim();
-  const shellStyle = useMemo(() => ({ '--sidebar-expanded-width': `${sidebarWidth}px`, '--catalog-card-scale': displayPreferences.cardSizePercent / 100, '--context-chrome-height': connectionWarning ? `${connectionWarningHeight}px` : '0px' } as CSSProperties), [connectionWarning, connectionWarningHeight, displayPreferences.cardSizePercent, sidebarWidth]);
+  const shellClassName = `shell ${sidebarCollapsed ? 'sidebar-collapsed' : ''} ${sidebarResizing ? 'sidebar-resizing' : ''}`.trim();
+  const shellStyle = useMemo(() => ({ '--sidebar-expanded-width': `${sidebarWidth}px`, '--catalog-card-scale': displayPreferences.cardSizePercent / 100, '--context-chrome-height': '0px' } as CSSProperties), [displayPreferences.cardSizePercent, sidebarWidth]);
   const sidebarClassName = `sidebar ${mobileOpen ? 'open' : ''}`;
 
   useLayoutEffect(() => {
@@ -459,10 +451,7 @@ export function AppShell({ children, viewer, player }: { children: ReactNode; vi
           </AnchoredOverlay>}
         </div>
   </>;
-  const warningContent = connectionWarning ? <div ref={connectionWarningRef} className="connection-durability-warning" role="status" aria-live="polite" data-semantic-icon={connectionWarning.icon}>
-        <StatusWarningIcon aria-hidden="true" />
-        <span><strong>{connectionWarning.title}</strong><small>{connectionWarning.body}</small></span>
-  </div> : null;
+  const warningContent = <ConnectionStatusToast presentation={connectionWarning} blocking={blockingRouteFailure} />;
   const mobileTabsContent = availableNavigation.map(([to, messageId, Icon]) => <NavLink key={to} to={to} end={to === '/'} className={({ isActive }) => isActive ? 'mobile-tab active' : 'mobile-tab'}><Icon /><span>{productMessage(messageId).text}</span></NavLink>);
   const localProfileSelectionRequired = profileSwitcherOpen && runtime?.config.mode !== 'hosted';
   const finishLocalProfileSelection = () => {

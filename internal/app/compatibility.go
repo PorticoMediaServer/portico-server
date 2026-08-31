@@ -19,6 +19,13 @@ type APIContractIdentity struct {
 	Digest          string `json:"digest"`
 }
 
+type SemanticDocumentIdentity struct {
+	ID              string `json:"id"`
+	Revision        string `json:"revision"`
+	DigestAlgorithm string `json:"digestAlgorithm"`
+	Digest          string `json:"digest"`
+}
+
 type CompatibilityCapability struct {
 	ID                string   `json:"id"`
 	Revision          int      `json:"revision"`
@@ -42,14 +49,15 @@ type ForwardCompatibilityPolicy struct {
 }
 
 type CompatibilityEnvelope struct {
-	EnvelopeRevision        int                        `json:"envelopeRevision"`
-	SupportedClientProtocol ProtocolRange              `json:"supportedClientProtocol"`
-	APIContract             APIContractIdentity        `json:"apiContract"`
-	Build                   BuildIdentity              `json:"build"`
-	SemanticRevisions       map[string]int             `json:"semanticRevisions"`
-	Capabilities            []CompatibilityCapability  `json:"capabilities"`
-	RequiredSemantics       []string                   `json:"requiredSemantics"`
-	ForwardCompatibility    ForwardCompatibilityPolicy `json:"forwardCompatibility"`
+	EnvelopeRevision        int                                 `json:"envelopeRevision"`
+	SupportedClientProtocol ProtocolRange                       `json:"supportedClientProtocol"`
+	APIContract             APIContractIdentity                 `json:"apiContract"`
+	Build                   BuildIdentity                       `json:"build"`
+	SemanticRevisions       map[string]int                      `json:"semanticRevisions"`
+	Capabilities            []CompatibilityCapability           `json:"capabilities"`
+	RequiredSemantics       []string                            `json:"requiredSemantics"`
+	ForwardCompatibility    ForwardCompatibilityPolicy          `json:"forwardCompatibility"`
+	SemanticDocuments       map[string]SemanticDocumentIdentity `json:"semanticDocuments"`
 }
 
 func (s *Server) compatibilityEnvelope() CompatibilityEnvelope {
@@ -69,8 +77,9 @@ func (s *Server) compatibilityEnvelope() CompatibilityEnvelope {
 	if value := strings.TrimSpace(s.cfg.BuildTimestamp); value != "" && value != "unknown" {
 		timestamp = &value
 	}
-	revisions := make(map[string]int, len(foundationcontract.SemanticRevisions))
-	for name, revision := range foundationcontract.SemanticRevisions {
+	foundationRevisions := foundationcontract.SemanticRevisions()
+	revisions := make(map[string]int, len(foundationRevisions))
+	for name, revision := range foundationRevisions {
 		revisions[name] = revision
 	}
 	return CompatibilityEnvelope{
@@ -86,6 +95,9 @@ func (s *Server) compatibilityEnvelope() CompatibilityEnvelope {
 			UnknownRequiredSemantics:      foundationcontract.UnknownRequiredSemanticsPolicy,
 			AuthorizationOnPartialUpgrade: foundationcontract.AuthorizationOnPartialUpgradePolicy,
 			APIContractDigestMismatch:     foundationcontract.APIContractDigestMismatchPolicy,
+		},
+		SemanticDocuments: map[string]SemanticDocumentIdentity{
+			"productContract": canonicalProductContractSemanticIdentity(),
 		},
 	}
 }
@@ -111,6 +123,7 @@ var serverCapabilityDefinitions = []serverCapabilityDefinition{
 	{"downloads", 1, []string{"product"}, []serverCapabilityRoute{
 		capabilityRoute("GET", "/api/download-preparations"), capabilityRoute("POST", "/api/download-preparations"),
 		capabilityRoute("GET", "/api/download-preparations/{preparationId}"), capabilityRoute("PATCH", "/api/download-preparations/{preparationId}"), capabilityRoute("DELETE", "/api/download-preparations/{preparationId}"), capabilityRoute("POST", "/api/download-preparations/{preparationId}/grant"),
+		capabilityRoute("POST", "/api/offline-download-authorizations/revalidate"),
 		capabilityRoute("GET", "/api/media/{id}/download-options"), capabilityRoute("GET", "/api/media/{id}/download"), capabilityRoute("HEAD", "/api/media/{id}/download"),
 	}, nil},
 	{"home.lazy-rows", 1, []string{"product"}, []serverCapabilityRoute{capabilityRoute("GET", "/api/home"), capabilityRoute("GET", "/api/home/rows/{id}")}, nil},
@@ -123,7 +136,7 @@ var serverCapabilityDefinitions = []serverCapabilityDefinition{
 	}, nil},
 	{"playback.google-cast-custom-receiver", 1, []string{"playback"}, []serverCapabilityRoute{
 		capabilityRoute("POST", "/api/playback/cast/bootstrap"), capabilityRoute("POST", "/api/playback/cast/reconnect"), capabilityRoute("POST", "/api/playback/cast/redeem"),
-		capabilityRoute("GET", "/api/playback/cast/sessions/{sessionId}/state"), capabilityRoute("POST", "/api/playback/cast/sessions/{sessionId}/{operation}"), capabilityRoute("DELETE", "/api/playback/cast/sessions/{sessionId}/stop"),
+		capabilityRoute("GET", "/api/playback/cast/sessions/{sessionId}/state"), capabilityRoute("POST", "/api/playback/cast/sessions/{sessionId}/{operation}"),
 	}, castCapabilityState},
 	{"remote-access.direct", 1, []string{"viewerProfileAuthority"}, []serverCapabilityRoute{
 		capabilityRoute("GET", "/api/remote-access/status"), capabilityRoute("GET", "/api/remote-access/health"), capabilityRoute("GET", "/api/remote-access/routes/local"),

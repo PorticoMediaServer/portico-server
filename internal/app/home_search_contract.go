@@ -155,7 +155,7 @@ func (s *Server) homeManifest(ctx context.Context, user User) (HomeResponse, err
 }
 
 func (s *Server) buildHomeManifest(ctx context.Context, user User) (HomeResponse, error) {
-	catalogueRows, err := s.sharedHomeCatalogueProjection(ctx, user)
+	catalogueRows, err := s.buildHomeCatalogueProjection(ctx, user)
 	if err != nil {
 		return HomeResponse{}, err
 	}
@@ -350,7 +350,6 @@ type searchResponseInFlightCall struct {
 	response      SearchResponse
 	sourceProfile string
 	err           error
-	expiresAt     time.Time
 }
 
 func (s *Server) beginSearchResponseInFlight(key string) (*searchResponseInFlightCall, bool) {
@@ -359,20 +358,8 @@ func (s *Server) beginSearchResponseInFlight(key string) (*searchResponseInFligh
 	if s.searchResponseInFlight == nil {
 		s.searchResponseInFlight = map[string]*searchResponseInFlightCall{}
 	}
-	now := time.Now()
-	for candidateKey, candidate := range s.searchResponseInFlight {
-		if candidate != nil && !candidate.expiresAt.IsZero() && !now.Before(candidate.expiresAt) {
-			delete(s.searchResponseInFlight, candidateKey)
-		}
-	}
 	if call := s.searchResponseInFlight[key]; call != nil {
 		return call, false
-	}
-	for len(s.searchResponseInFlight) >= 128 {
-		for candidateKey := range s.searchResponseInFlight {
-			delete(s.searchResponseInFlight, candidateKey)
-			break
-		}
 	}
 	call := &searchResponseInFlightCall{done: make(chan struct{})}
 	s.searchResponseInFlight[key] = call
@@ -381,34 +368,11 @@ func (s *Server) beginSearchResponseInFlight(key string) (*searchResponseInFligh
 
 func (s *Server) finishSearchResponseInFlight(key string, call *searchResponseInFlightCall, response SearchResponse, sourceProfile string, err error) {
 	s.searchResponseInFlightMu.Lock()
-	cacheable := err == nil && !searchResponseHasErrors(response)
-	if !cacheable && s.searchResponseInFlight[key] == call {
+	if s.searchResponseInFlight[key] == call {
 		delete(s.searchResponseInFlight, key)
 	}
 	call.response, call.sourceProfile, call.err = response, sourceProfile, err
-	if cacheable {
-		call.expiresAt = time.Now().Add(60 * time.Second)
-	}
 	close(call.done)
-	s.searchResponseInFlightMu.Unlock()
-}
-
-func searchResponseHasErrors(response SearchResponse) bool {
-	for _, group := range response.Groups {
-		if group.Status == "error" {
-			return true
-		}
-	}
-	return false
-}
-
-func (s *Server) invalidateSearchResponseCache() {
-	s.searchResponseInFlightMu.Lock()
-	for key, call := range s.searchResponseInFlight {
-		if call != nil && !call.expiresAt.IsZero() {
-			delete(s.searchResponseInFlight, key)
-		}
-	}
 	s.searchResponseInFlightMu.Unlock()
 }
 

@@ -125,7 +125,7 @@ func (s *Server) revokeAccountSessionContext(ctx context.Context, user User, ses
 		}
 		return s.revokeNativeCredentialFamily(ctx, familyID, time.Now().UTC())
 	}
-	result, err := s.execUserWrite(ctx, `DELETE FROM sessions WHERE id = ? AND user_id = ?`, sessionID, user.ID)
+	result, err := s.execSecurityFenceWrite(ctx, `DELETE FROM sessions WHERE id = ? AND user_id = ?`, sessionID, user.ID)
 	if err != nil {
 		return err
 	}

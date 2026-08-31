@@ -187,20 +187,25 @@ describe('runtime configuration and credential boundaries', () => {
     vi.unstubAllGlobals();
   });
 
-  it('derives LAN candidates only from signed-document HTTPS routes', () => {
-    const candidates = browserSafeLocalCandidates({ id: 'server-1' } as never, {
-      routes: [
-        { type: 'lan', url: 'http://192.168.1.4:32500', quality: 'reported' },
-        { type: 'lan', url: 'https://192.168.1.4:32500', quality: 'reported' },
-        { type: 'lan', url: 'https://[fd00::42]:32500', quality: 'reported' },
-        { type: 'lan_ip_encoded', url: 'https://192-168-1-4.direct.example', quality: 'reported' },
-        { type: 'public_direct', url: 'https://family.example.direct', quality: 'reachable' },
-        { type: 'lan_discovered', url: 'https://stale.direct.example', quality: 'tls_failed' },
-        { type: 'lan_ip_encoded', url: 'https://old-network.direct.example', quality: 'stale' },
-      ],
-    } as never);
-    expect(candidates).toEqual([{ type: 'lan_ip_encoded', url: 'https://192-168-1-4.direct.example', quality: 'reported' }]);
-  });
+	it('derives and ranks only the two signed browser-safe LAN qualities', () => {
+		const candidates = browserSafeLocalCandidates({ id: 'server-1' } as never, {
+			routes: [
+				{ type: 'lan_ip_encoded', url: 'https://probe.direct.example', quality: 'probe_required' },
+				{ type: 'lan', url: 'http://192.168.1.4:32500', quality: 'reachable' },
+				{ type: 'lan', url: 'https://192.168.1.4:32500', quality: 'reachable' },
+				{ type: 'lan', url: 'https://[fd00::42]:32500', quality: 'probe_required' },
+				{ type: 'lan_ip_encoded', url: 'https://reachable.direct.example', quality: 'reachable' },
+				{ type: 'public_direct', url: 'https://family.example.direct', quality: 'reachable' },
+				{ type: 'lan_discovered', url: 'https://stale.direct.example', quality: 'tls_failed' },
+				{ type: 'lan_ip_encoded', url: 'https://mismatch.direct.example', quality: 'identity_mismatch' },
+				{ type: 'lan_ip_encoded', url: 'https://unknown.direct.example', quality: 'unknown' },
+			],
+		} as never);
+		expect(candidates).toEqual([
+			{ type: 'lan_ip_encoded', url: 'https://reachable.direct.example', quality: 'reachable' },
+			{ type: 'lan_ip_encoded', url: 'https://probe.direct.example', quality: 'probe_required' },
+		]);
+	});
 
   it('consumes sensitive Hosted deep-link values into memory and returns a clean URL', () => {
     const reset = extractHostedBootstrapIntent('https://web.getportico.tv/account/password-reset/reset-secret?source=email');

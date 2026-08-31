@@ -17,6 +17,7 @@ export * from "./notifications.js";
 export * from "./nativeDownloads.js";
 export * from "./nativePlayback.js";
 export * from "./operationPolicy.js";
+export * from "./offlineDownloadAuthorization.js";
 export * from "./operationContract.generated.js";
 export {
   episodeCompactLabel,

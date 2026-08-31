@@ -10,12 +10,15 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/PorticoMediaServer/portico-server/internal/foundationcontract"
 )
 
 // storageIORequest is the common admission contract for every consumer that
 // touches owner-managed media storage. Playback, metadata and optimization can
 // use the same boundary without inheriting scanner implementation details.
 type storageIORequest struct {
+	WorkClass      foundationcontract.WorkClass
 	SourceID       string
 	AdmissionKey   string
 	Classification storageSourceClass
@@ -46,6 +49,8 @@ var (
 
 var storageIOGlobalAdmissionLimit = 64
 
+const storageIOReservedHighPriority = 8
+
 var storageIOOperationTimeout = func(class storageSourceClass) time.Duration {
 	switch class {
 	case storageSourceNetwork:
@@ -73,6 +78,9 @@ func (s *Server) boundedStorageProgressIO(ctx context.Context, request storageIO
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	if !request.WorkClass.Valid() {
+		return errInvalidWorkClass
+	}
 	if strings.EqualFold(strings.TrimSpace(request.CircuitState), "open") && !request.RecoveryProbe {
 		return fmt.Errorf("%w: %s", errStorageCircuitOpen, request.Operation)
 	}
@@ -96,7 +104,11 @@ func (s *Server) boundedStorageProgressIO(ctx context.Context, request storageIO
 		s.storageIOMu.Unlock()
 		return fmt.Errorf("%w: %s", errStorageIOBusy, request.Operation)
 	}
-	if storageIOGlobalAdmissionLimit > 0 && s.storageIOInFlight >= storageIOGlobalAdmissionLimit {
+	globalLimit := storageIOGlobalAdmissionLimit
+	if request.WorkClass.Priority() > foundationcontract.WorkClassEstablishedPlayback.Priority() {
+		globalLimit = max(1, globalLimit-storageIOReservedHighPriority)
+	}
+	if globalLimit > 0 && s.storageIOInFlight >= globalLimit {
 		s.storageIOMu.Unlock()
 		return fmt.Errorf("%w: %s", errStorageIOCapacity, request.Operation)
 	}
@@ -316,7 +328,8 @@ func (s *Server) storageReadFile(ctx context.Context, request storageIORequest, 
 
 func storageRequestForRoot(root scanRoot, operation string) storageIORequest {
 	return storageIORequest{
-		SourceID: root.sourceID, AdmissionKey: storagePhysicalSourceKey(root.configured, root.classification),
+		WorkClass: foundationcontract.WorkClassBackgroundMedia,
+		SourceID:  root.sourceID, AdmissionKey: storagePhysicalSourceKey(root.configured, root.classification),
 		Classification: root.classification, Operation: operation,
 	}
 }
@@ -342,12 +355,13 @@ func storagePhysicalSourceKey(path string, class storageSourceClass) string {
 	return "storage:" + string(class) + ":/" + strings.ToLower(strings.Join(parts[:count], "/"))
 }
 
-func (s *Server) storageRequestForPath(ctx context.Context, path, operation string) storageIORequest {
+func (s *Server) storageRequestForPath(ctx context.Context, workClass foundationcontract.WorkClass, path, operation string) storageIORequest {
 	clean := filepath.Clean(path)
-	class, _ := classifyStorageSource(clean, "")
+	storageClass, _ := classifyStorageSource(clean, "")
 	request := storageIORequest{
+		WorkClass:    workClass,
 		SourceID:     storageSourceID("unassigned", filepath.VolumeName(clean)+string(filepath.Separator)),
-		AdmissionKey: storagePhysicalSourceKey(clean, class), Classification: class, Operation: operation,
+		AdmissionKey: storagePhysicalSourceKey(clean, storageClass), Classification: storageClass, Operation: operation,
 	}
 	rows, err := s.queryBackgroundRead(ctx, `SELECT id, configured_path, resolved_path, classification, circuit_state FROM storage_sources`)
 	if err != nil {

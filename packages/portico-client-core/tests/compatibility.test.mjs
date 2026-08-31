@@ -9,6 +9,9 @@ import {
 
 const hostedFixture = JSON.parse(fs.readFileSync(new URL("../fixtures/hosted-api-v1-conformance.json", import.meta.url), "utf8"));
 const canonicalHostedFixture = JSON.parse(fs.readFileSync(new URL("../../../api/openapi/hosted/hosted-api-v1-conformance.json", import.meta.url), "utf8"));
+const productSemanticIdentity = Object.freeze({
+  id: "portico.product-contract", revision: "v2", digestAlgorithm: "sha256", digest: "a".repeat(64)
+});
 
 function envelope(overrides = {}) {
   return {
@@ -23,11 +26,12 @@ function envelope(overrides = {}) {
     ],
     requiredSemantics: Object.keys(PORTICO_FOUNDATION_COMPATIBILITY.semanticRevisions),
     forwardCompatibility: { ...PORTICO_FOUNDATION_COMPATIBILITY.forwardCompatibility },
+    semanticDocuments: { productContract: productSemanticIdentity },
     ...overrides
   };
 }
 function system(compatibility = envelope()) { return { name: "Portico", status: "ok", apiVersion: PORTICO_API_VERSION, compatibility }; }
-function product(compatibility = envelope()) { return { apiVersion: PORTICO_API_VERSION, serverCapabilities: compatibility.capabilities.filter(({state}) => state === "available").map(({id}) => id), compatibility }; }
+function product(overrides = {}) { return { apiVersion: PORTICO_API_VERSION, semanticIdentity: productSemanticIdentity, serverCapabilities: envelope().capabilities.map(({id}) => id), ...overrides }; }
 function releaseBuild(version = "1.0.0", commit = "1".repeat(40)) { return { version, buildNumber: "1", channel: "staging", commit, timestamp: "2026-08-17T00:00:00Z" }; }
 
 test("older compatible client accepts a newer build and preserves unknown optional capabilities", () => {
@@ -65,10 +69,10 @@ test("partial upgrade can never broaden authorization", () => {
   assert.throws(() => assertServerAPICompatibility(system(envelope({ forwardCompatibility: { ...PORTICO_FOUNDATION_COMPATIBILITY.forwardCompatibility, authorizationOnPartialUpgrade: "allow" } }))), (error) => error instanceof PorticoCompatibilityError && error.code === "unsafe_forward_compatibility_policy");
 });
 
-test("system and Product Contract must come from the same build", () => {
-  const status = system();
-	const contractEnvelope = envelope({ build: releaseBuild("1.0.0", "2".repeat(40)) });
-  assert.throws(() => evaluatePorticoCompatibility(status, product(contractEnvelope)), (error) => error instanceof PorticoCompatibilityError && error.code === "system_product_contract_mismatch");
+test("Product Contract compatibility is semantic and independent of the Server build", () => {
+  const status = system(envelope({ build: releaseBuild("1.0.0", "2".repeat(40)) }));
+  assert.doesNotThrow(() => evaluatePorticoCompatibility(status, product()));
+  assert.throws(() => evaluatePorticoCompatibility(status, product({ semanticIdentity: { ...productSemanticIdentity, digest: "b".repeat(64) } })), (error) => error instanceof PorticoCompatibilityError && error.code === "system_product_contract_mismatch");
 });
 
 test("Hosted uses the same Foundation envelope and typed failures", () => {
@@ -81,8 +85,8 @@ test("packaged and Cloud Hosted compatibility fixtures remain byte-equivalent in
   assert.equal(assertHostedServicesCompatibility(hostedFixture.system).apiVersion, "v1");
 });
 
-test("malformed and incomplete envelopes fail closed without silently inventing capabilities", () => {
-  for (const compatibility of [null, {}, envelope({ capabilities: undefined }), envelope({ requiredSemantics: [] }), envelope({ semanticRevisions: {} })]) {
+test("malformed and incomplete Server envelopes fail closed without silently inventing capabilities", () => {
+  for (const compatibility of [null, {}, envelope({ capabilities: undefined }), envelope({ requiredSemantics: [] }), envelope({ semanticRevisions: {} }), envelope({ semanticDocuments: undefined })]) {
     assert.throws(() => assertServerAPICompatibility(system(compatibility)), (error) => error instanceof PorticoCompatibilityError && error.code === "invalid_compatibility_envelope");
   }
 });
@@ -106,9 +110,10 @@ test("every API token other than the sole current v1 contract is rejected", () =
   }
 });
 
-test("Product Contract requires exact available capability projection", () => {
+test("Product Contract is build-independent and its stable capability catalog must match System", () => {
   assert.doesNotThrow(() => assertProductContractCompatibility(product()));
-  assert.throws(() => assertProductContractCompatibility({ ...product(), serverCapabilities: ["library.canonical-browse"] }), (error) => error instanceof PorticoCompatibilityError && error.code === "system_product_contract_mismatch");
+  assert.throws(() => assertProductContractCompatibility(product({ semanticIdentity: { ...productSemanticIdentity, digest: "short" } })), (error) => error instanceof PorticoCompatibilityError && error.code === "invalid_compatibility_envelope");
+  assert.throws(() => evaluatePorticoCompatibility(system(), product({ serverCapabilities: ["library.canonical-browse"] })), (error) => error instanceof PorticoCompatibilityError && error.code === "system_product_contract_mismatch");
 });
 
 test("PorticoClient compatibility bootstrap checks public System then authenticated Product Contract", async () => {

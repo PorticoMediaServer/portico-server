@@ -34,6 +34,7 @@ import (
 
 	"github.com/PorticoMediaServer/portico-server/internal/config"
 	"github.com/PorticoMediaServer/portico-server/internal/database"
+	"github.com/PorticoMediaServer/portico-server/internal/foundationcontract"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -323,13 +324,17 @@ func TestRemoteAccessHeartbeatCadenceDoesNotWaitForCertificateRenewal(t *testing
 	srv.remoteAccessStartupCohortWindowNanos.Store(int64(time.Millisecond))
 	srv.remoteAccessHeartbeatIntervalNanos.Store(int64(20 * time.Millisecond))
 	go srv.runRemoteAccessHeartbeat(ctx)
-	go srv.runRemoteAccessCertificateMaintenance(ctx)
 
 	select {
 	case <-heartbeatSeen:
 	case <-time.After(time.Second):
 		t.Fatal("startup heartbeat did not run before blocked certificate renewal")
 	}
+	job, _, err := srv.enqueueRemoteAccessCertificateMaintenance("scheduled", false)
+	if err != nil {
+		t.Fatalf("queue certificate maintenance: %v", err)
+	}
+	go srv.runJob(job)
 	select {
 	case <-certificateStarted:
 	case <-time.After(time.Second):
@@ -991,6 +996,19 @@ func TestRemoteAccessRepairSignalTriggersImmediateHeartbeat(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatal("repair signal did not trigger heartbeat")
+	}
+	if certificateOrderCount != 0 || certificateFinalizeCount != 0 {
+		t.Fatal("repair signal performed certificate maintenance synchronously")
+	}
+	job := onlyCertificateMaintenanceJob(t, srv)
+	if job.Metadata["trigger"] != "hosted_repair" || job.Metadata["force"] != "true" {
+		t.Fatalf("repair certificate job = %#v", job)
+	}
+	srv.runJob(job)
+	select {
+	case <-heartbeatSeen:
+	case <-time.After(time.Second):
+		t.Fatal("committed repair certificate state was not published")
 	}
 	updated, err := srv.remoteAccessSettings()
 	if err != nil {
@@ -2982,10 +3000,18 @@ func TestRemoteAccessStatusCompletesClaimAndSendsHeartbeat(t *testing.T) {
 	if got := server.secretSetting(remoteAccessClaimReceiptKey); got != "" {
 		t.Fatalf("claim receipt survived successful acknowledgement: %q", got)
 	}
+	job := onlyCertificateMaintenanceJob(t, server)
+	if job.Metadata["trigger"] != "post_claim" {
+		t.Fatalf("post-claim certificate job = %#v", job)
+	}
+	if certificateOrderCount != 0 || certificateFinalizeCount != 0 {
+		t.Fatal("post-claim trigger performed certificate maintenance synchronously")
+	}
+	server.runJob(job)
 	select {
 	case <-certificateProvisioned:
 	case <-time.After(3 * time.Second):
-		t.Fatal("post-claim certificate provisioning did not run asynchronously")
+		t.Fatal("post-claim certificate durable job did not complete")
 	}
 	deadline := time.Now().Add(3 * time.Second)
 	for {
@@ -3148,6 +3174,7 @@ func TestRemoteAccessStatusCompletesClaimAndSendsHeartbeat(t *testing.T) {
 func TestRemoteAccessCertificateRenewRequestsHostedCertificate(t *testing.T) {
 	var sawOrder bool
 	var sawFinalize bool
+	heartbeatCount := 0
 	var csrPEM string
 	var csrDNSNames []string
 	hosted := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -3185,13 +3212,22 @@ func TestRemoteAccessCertificateRenewRequestsHostedCertificate(t *testing.T) {
 				"certificateChainPem": certificateForCSR(t, csrPEM, time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)),
 				"expiresAt":           "2026-07-01T00:00:00Z",
 			})
+		case r.URL.Path == "/api/servers/srv_cert/heartbeat" && r.Method == http.MethodPost:
+			heartbeatCount++
+			writeJSON(w, http.StatusOK, map[string]any{
+				"ok":                            true,
+				"serverId":                      "srv_cert",
+				"assignedHostname":              "ptc-dddddddddddddddddddd.direct.getportico.tv",
+				"remoteAccessEnabled":           true,
+				"publicConsoleOriginGeneration": 1,
+			})
 		default:
 			t.Fatalf("unexpected hosted request: %s %s", r.Method, r.URL.Path)
 		}
 	}))
 	t.Cleanup(hosted.Close)
 
-	serverURL, appDataDir, _ := newRemoteAccessTestServer(t)
+	serverURL, appDataDir, app := newRemoteAccessTestServer(t)
 	jar, _ := cookiejar.New(nil)
 	client := &http.Client{Jar: jar}
 	loginUser(t, client, serverURL)
@@ -3218,32 +3254,52 @@ func TestRemoteAccessCertificateRenewRequestsHostedCertificate(t *testing.T) {
 		LANDiscoveryEnabled:     true,
 	}
 	db := openExistingTestDB(t, appDataDir)
-	srv := &Server{cfg: config.Config{AppDataDir: appDataDir}, db: db, log: slog.New(slog.NewTextHandler(io.Discard, nil))}
-	if err := srv.saveRemoteAccessSettings(settings); err != nil {
+	seedServer := &Server{cfg: config.Config{AppDataDir: appDataDir}, db: db, log: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	if err := seedServer.saveRemoteAccessSettings(settings); err != nil {
 		t.Fatalf("save settings: %v", err)
 	}
-	if err := srv.saveSecretSetting(remoteAccessCredentialKey, "server-credential-cert"); err != nil {
+	if err := seedServer.saveSecretSetting(remoteAccessCredentialKey, "server-credential-cert"); err != nil {
 		t.Fatalf("save credential: %v", err)
 	}
 	if err := db.Close(); err != nil {
 		t.Fatalf("close settings database: %v", err)
 	}
 	loginUser(t, client, serverURL)
-	var remoteStatus RemoteAccessStatus
-	status, body = doJSON(t, client, http.MethodPost, serverURL+"/api/remote-access/certificates/renew", nil, &remoteStatus)
-	if status != http.StatusOK {
+	var queued RemoteAccessCertificateRenewResponse
+	status, body = doJSON(t, client, http.MethodPost, serverURL+"/api/remote-access/certificates/renew", nil, &queued)
+	if status != http.StatusAccepted {
 		t.Fatalf("renew status = %d, body: %s", status, body)
 	}
+	if !queued.OK || !queued.Queued || queued.Existing || queued.Job.ID == "" || queued.Job.Type != remoteAccessCertificateMaintenanceJobType {
+		t.Fatalf("unexpected renewal operation response: %#v", queued)
+	}
+	if sawOrder || sawFinalize {
+		t.Fatal("manual renewal performed certificate work synchronously")
+	}
+	var duplicate RemoteAccessCertificateRenewResponse
+	status, body = doJSON(t, client, http.MethodPost, serverURL+"/api/remote-access/certificates/renew", nil, &duplicate)
+	if status != http.StatusAccepted || !duplicate.Existing || duplicate.Job.ID != queued.Job.ID {
+		t.Fatalf("duplicate renewal status=%d body=%s response=%#v", status, body, duplicate)
+	}
+	app.runJob(duplicate.Job)
 	if !sawOrder || !sawFinalize {
 		t.Fatalf("sawOrder=%v sawFinalize=%v", sawOrder, sawFinalize)
+	}
+	if heartbeatCount != 1 {
+		t.Fatalf("certificate publication heartbeat count = %d, want 1", heartbeatCount)
 	}
 	if len(csrDNSNames) != 1 || csrDNSNames[0] != "*.ptc-dddddddddddddddddddd.direct.getportico.tv" {
 		t.Fatalf("csr dns names = %#v", csrDNSNames)
 	}
-	if remoteStatus.Settings.CertificateStatus != "valid" {
-		t.Fatalf("certificate status = %q", remoteStatus.Settings.CertificateStatus)
+	updatedSettings, err := app.remoteAccessSettings()
+	if err != nil || updatedSettings.CertificateStatus != "valid" {
+		t.Fatalf("certificate settings = %#v, error = %v", updatedSettings, err)
 	}
-	generations, err := srv.publishedCertificateGenerations()
+	completed, err := app.getJob(queued.Job.ID)
+	if err != nil || completed.Status != "complete" || completed.AttemptCount != 1 {
+		t.Fatalf("completed certificate job = %#v, error = %v", completed, err)
+	}
+	generations, err := app.publishedCertificateGenerations()
 	if err != nil || len(generations) != 1 {
 		t.Fatalf("published certificate generations = %#v, error = %v", generations, err)
 	}
@@ -3315,7 +3371,7 @@ func TestRemoteAccessCertificateOrderPollsQueuedUntilValid(t *testing.T) {
 	if err := srv.saveSecretSetting(remoteAccessCredentialKey, "server-credential-async"); err != nil {
 		t.Fatalf("save credential: %v", err)
 	}
-	updated, err := srv.ensureRemoteAccessCertificateFresh(context.Background(), settings)
+	updated, err := srv.performRemoteAccessCertificateMaintenance(context.Background(), settings, false)
 	if err != nil {
 		t.Fatalf("ensure certificate: %v", err)
 	}
@@ -3374,7 +3430,7 @@ func TestRemoteAccessCertificateOrderResumesAfterRestartWithoutCreate(t *testing
 	}
 	// A new Server value with the same app-data directory models process restart.
 	restarted := &Server{cfg: config.Config{AppDataDir: appDataDir}, db: db, log: slog.New(slog.NewTextHandler(io.Discard, nil))}
-	if _, err := restarted.ensureRemoteAccessCertificateFresh(context.Background(), settings); err != nil {
+	if _, err := restarted.performRemoteAccessCertificateMaintenance(context.Background(), settings, false); err != nil {
 		t.Fatalf("resume certificate: %v", err)
 	}
 	if createCount != 0 {
@@ -3382,63 +3438,64 @@ func TestRemoteAccessCertificateOrderResumesAfterRestartWithoutCreate(t *testing
 	}
 }
 
-func TestRemoteAccessCertificateProvisioningCoalescesConcurrentRepairs(t *testing.T) {
-	chdirRepoRoot(t)
-	var mu sync.Mutex
-	createCount := 0
-	csrPEM := ""
-	hosted := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		mu.Lock()
-		defer mu.Unlock()
-		switch {
-		case r.URL.Path == "/api/servers/srv_single_cert/certificate-orders" && r.Method == http.MethodPost:
-			createCount++
-			var body struct {
-				CSRPem string `json:"csrPem"`
-			}
-			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-				t.Fatalf("decode CSR: %v", err)
-			}
-			csrPEM = body.CSRPem
-			writeJSON(w, http.StatusCreated, map[string]any{"id": "certord_single", "status": "pending"})
-		case r.URL.Path == "/api/servers/srv_single_cert/certificate-orders/certord_single/finalize" && r.Method == http.MethodPost:
-			writeJSON(w, http.StatusOK, map[string]any{"id": "certord_single", "status": "valid", "certificateChainPem": certificateForCSR(t, csrPEM, time.Now().UTC().Add(60*24*time.Hour)), "expiresAt": time.Now().UTC().Add(60 * 24 * time.Hour).Format(time.RFC3339)})
-		default:
-			t.Fatalf("unexpected hosted request: %s %s", r.Method, r.URL.Path)
-		}
-	}))
-	t.Cleanup(hosted.Close)
-	appDataDir := t.TempDir()
-	db, err := database.Open(config.Config{AppDataDir: appDataDir, DatabasePath: filepath.Join(appDataDir, "portico.db"), WebDistDir: filepath.Join("web", "dist"), SampleMediaURL: "https://media.example.test/sample.mp4"})
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
-	defer db.Close()
-	srv := &Server{cfg: config.Config{AppDataDir: appDataDir}, db: db, log: slog.New(slog.NewTextHandler(io.Discard, nil))}
-	settings := RemoteAccessSettings{Enabled: true, HostedBaseURL: hosted.URL, ClaimStatus: "claimed", ServerID: "srv_single_cert", AssignedHostname: "ptc-singleaaaaaaaaaaaaaa.direct.getportico.tv", PublicPortMode: "manual", ManualPublicPort: 32500, PreferredRemoteAuthMode: "portico", CertificateStatus: "not_requested"}
+func TestRemoteAccessCertificateDurableJobCoalescesConcurrentTriggers(t *testing.T) {
+	srv := newRemoteAccessUnitServer(t)
+	settings := RemoteAccessSettings{Enabled: true, HostedBaseURL: "http://127.0.0.1:32599", ClaimStatus: "claimed", ServerID: "srv_single_cert", AssignedHostname: "ptc-singleaaaaaaaaaaaaaa.direct.getportico.tv", PublicPortMode: "manual", ManualPublicPort: 32500, PreferredRemoteAuthMode: "portico", CertificateStatus: "not_requested"}
 	if err := srv.saveRemoteAccessSettings(settings); err != nil {
 		t.Fatalf("save settings: %v", err)
 	}
 	if err := srv.saveSecretSetting(remoteAccessCredentialKey, "server-credential-single"); err != nil {
 		t.Fatalf("save credential: %v", err)
 	}
+	type result struct {
+		job      Job
+		existing bool
+		err      error
+	}
 	start := make(chan struct{})
-	errs := make(chan error, 2)
-	for range 2 {
+	results := make(chan result, 16)
+	for index := range 16 {
 		go func() {
 			<-start
-			_, ensureErr := srv.ensureRemoteAccessCertificateFresh(context.Background(), settings)
-			errs <- ensureErr
+			force := index%2 == 0
+			trigger := "scheduled"
+			if force {
+				trigger = "manual"
+			}
+			job, existing, err := srv.enqueueRemoteAccessCertificateMaintenance(trigger, force)
+			results <- result{job: job, existing: existing, err: err}
 		}()
 	}
 	close(start)
-	for range 2 {
-		if err := <-errs; err != nil {
-			t.Fatalf("concurrent ensure: %v", err)
+	jobID := ""
+	existingCount := 0
+	for range 16 {
+		result := <-results
+		if result.err != nil {
+			t.Fatalf("concurrent enqueue: %v", result.err)
+		}
+		if jobID == "" {
+			jobID = result.job.ID
+		} else if result.job.ID != jobID {
+			t.Fatalf("deduplicated job ID = %q, want %q", result.job.ID, jobID)
+		}
+		if result.existing {
+			existingCount++
 		}
 	}
-	if createCount != 1 {
-		t.Fatalf("certificate create count = %d, want 1", createCount)
+	if existingCount != 15 {
+		t.Fatalf("existing response count = %d, want 15", existingCount)
+	}
+	job, err := srv.getJob(jobID)
+	if err != nil {
+		t.Fatalf("get certificate job: %v", err)
+	}
+	if job.Priority != foundationcontract.WorkClassMaintenance || jobLaneForType(job.Type) != jobLaneMaintenance || job.Metadata["force"] != "true" {
+		t.Fatalf("certificate descriptor/job = %#v lane=%q", job, jobLaneForType(job.Type))
+	}
+	var count int
+	if err := srv.db.QueryRow(`SELECT COUNT(*) FROM jobs WHERE type = ?`, remoteAccessCertificateMaintenanceJobType).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("certificate job count = %d, error = %v", count, err)
 	}
 }
 
@@ -3852,7 +3909,7 @@ func TestRemoteAccessCertificateAutoRenewWhenExpiring(t *testing.T) {
 		t.Fatalf("save credential: %v", err)
 	}
 
-	updated, err := srv.ensureRemoteAccessCertificateFresh(context.Background(), settings)
+	updated, err := srv.performRemoteAccessCertificateMaintenance(context.Background(), settings, false)
 	if err != nil {
 		t.Fatalf("ensure fresh certificate: %v", err)
 	}

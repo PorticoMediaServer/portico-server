@@ -26,19 +26,9 @@ func bindPlaybackSessionPlanForTest(t *testing.T, db *sql.DB, sessionID, mediaID
 		Timeline: playbackplan.Timeline{Mode: map[bool]string{true: "live", false: "vod"}[isLive], Dynamic: isLive, Generation: 1},
 		Subtitle: playbackplan.SubtitleDecision{Action: playbackplan.Drop},
 	}
-	plan.Digest, _ = plan.ComputeDigest()
-	planJSON, _ := json.Marshal(plan)
-	binding := playbackExecutionBinding{
-		SchemaVersion: 1, SourceRevision: plan.SourceRevision, CapabilityEvidenceID: plan.CapabilityEvidenceID,
-		Generation: 1, Mode: string(plan.Mode), Protocol: plan.Protocol, Container: plan.Container,
-		Quality: "original", AudioMode: "auto", SubtitleMode: "off", DirectStream: true,
-		X264Preset: "veryfast", Plan: planJSON,
-	}
-	if err := binding.seal(); err != nil {
-		t.Fatalf("seal test playback plan: %v", err)
-	}
+	binding := testPlaybackExecutionPlan(t, func(execution *playbackExecutionPlan) { execution.Plan = plan })
 	encoded, _ := json.Marshal(binding)
-	if _, err := db.Exec(`UPDATE playback_sessions SET plan_schema_version=?, plan_digest=?, plan_json=?, source_revision=?, capability_evidence_id=?, playback_generation=? WHERE id=?`, binding.SchemaVersion, binding.Digest, string(encoded), binding.SourceRevision, binding.CapabilityEvidenceID, binding.Generation, sessionID); err != nil {
+	if _, err := db.Exec(`UPDATE playback_sessions SET plan_schema_version=?, plan_digest=?, plan_json=?, source_revision=?, capability_evidence_id=?, playback_generation=? WHERE id=?`, binding.SchemaVersion, binding.Digest, string(encoded), binding.Plan.SourceRevision, binding.Plan.CapabilityEvidenceID, binding.generation(), sessionID); err != nil {
 		t.Fatalf("bind test playback plan: %v", err)
 	}
 }
@@ -62,20 +52,15 @@ func playbackDecisionWithTestPlan(t *testing.T, decision PlaybackDecision, media
 	} else if subtitleMode == "text" {
 		plan.Subtitle.Action = playbackplan.ExternalText
 	}
-	plan.Digest, _ = plan.ComputeDigest()
-	planJSON, _ := json.Marshal(plan)
-	binding := playbackExecutionBinding{
-		SchemaVersion: 1, SourceRevision: plan.SourceRevision, CapabilityEvidenceID: plan.CapabilityEvidenceID,
-		Generation: 1, Mode: string(plan.Mode), Protocol: "hls", Container: "mpegts",
-		Quality: "original", AudioMode: "auto", SubtitleMode: subtitleMode, SubtitleStreamID: subtitleID,
-		X264Preset: "veryfast", Plan: planJSON,
+	binding := testPlaybackExecutionPlan(t, func(execution *playbackExecutionPlan) {
+		execution.Plan = plan
+		execution.SubtitleStreamID = subtitleID
+	})
+	derived, err := playbackDecisionFromExecutionPlan(binding, MediaItem{ID: mediaID, SourceURL: "/media/" + mediaID})
+	if err != nil {
+		t.Fatalf("derive test playback decision: %v", err)
 	}
-	if err := binding.seal(); err != nil {
-		t.Fatalf("seal test decision: %v", err)
-	}
-	decision.Protocol, decision.Container, decision.DeliveryProfile = "hls", "mpegts", "original"
-	decision.execution = &binding
-	return decision
+	return derived
 }
 
 func TestPlaybackMediaGrantIsHashedScopedExpiringAndRevocable(t *testing.T) {
@@ -207,7 +192,7 @@ func TestMediaResourceAuthRejectsLongLivedAccountTokenInQuery(t *testing.T) {
 }
 
 func TestDirectPlaybackSourceRevisionFence(t *testing.T) {
-	binding := playbackExecutionBinding{SourceRevision: "revision-a"}
+	binding := testPlaybackExecutionPlan(t, func(plan *playbackExecutionPlan) { plan.Plan.SourceRevision = "revision-a" })
 	if !playbackSourceRevisionMatches(binding, "revision-a") {
 		t.Fatal("current direct-play source revision was rejected")
 	}
@@ -374,10 +359,13 @@ func TestLibraryChannelResolvedPlaybackPolicyIsOperationScoped(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, expected := range []string{`"deliveryMode":"server_hls"`, `"grantRequired":true`, `"allowedOperationClasses":["manifest","segment"]`, `"qualityProfile":"720p-medium"`, `"overlayTranscode":true`} {
+	for _, expected := range []string{`"deliveryMode":"server_hls"`, `"grantRequired":true`, `"allowedOperationClasses":["manifest","segment"]`, `"overlayTranscode":true`} {
 		if !strings.Contains(string(encoded), expected) {
 			t.Fatalf("Library Channel playback policy omitted %s: %s", expected, encoded)
 		}
+	}
+	if strings.Contains(string(encoded), `"qualityProfile"`) {
+		t.Fatalf("Library Channel response exposed private planner quality authority: %s", encoded)
 	}
 }
 

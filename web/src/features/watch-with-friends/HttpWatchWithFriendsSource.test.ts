@@ -10,6 +10,7 @@ const group: WatchWithFriendsGroup = {
   ownerName: 'Owner',
   mediaId: 'fargo',
   mediaTitle: 'Fargo',
+  currentEntryId: 'entry-fargo',
   state: 'paused',
   positionSeconds: 0,
   positionUpdatedAt: '2026-07-11T12:00:00.000Z',
@@ -79,15 +80,15 @@ describe('HttpWatchWithFriendsSource', () => {
     await expect(source.listGroups()).resolves.toEqual([group]);
     await source.createGroup({ mediaId: 'fargo', name: 'Friday screening' });
     await source.updatePlaybackState('group-1', { action: 'play', positionSeconds: 12, expectedRevision: 1, idempotencyKey: 'play-1' });
-    await source.reorderQueue('group-1', { mediaIds: ['fargo', 'rookie'], expectedRevision: 1, idempotencyKey: 'reorder-1' });
-    await source.removeQueueItem('group-1', 'rookie', 1, 'remove-1');
+    await source.reorderQueue('group-1', { entryId: 'entry-rookie', destinationEntryId: 'entry-fargo', placement: 'before', expectedRevision: 1, idempotencyKey: 'reorder-1' });
+    await source.removeQueueItem('group-1', 'entry-rookie', 1, 'remove-1');
     await source.endGroup('group-1', 1, 'end-1');
 
     expect(client.watchWithFriendsGroups).toHaveBeenCalledOnce();
     expect(client.createWatchWithFriendsGroup).toHaveBeenCalledWith({ mediaId: 'fargo', name: 'Friday screening' });
     expect(client.updateWatchWithFriendsState).toHaveBeenCalledWith('group-1', { action: 'play', positionSeconds: 12, expectedRevision: 1, idempotencyKey: 'play-1' });
-    expect(client.reorderWatchWithFriendsQueue).toHaveBeenCalledWith('group-1', { mediaIds: ['fargo', 'rookie'], expectedRevision: 1, idempotencyKey: 'reorder-1' });
-    expect(client.removeWatchWithFriendsQueueItem).toHaveBeenCalledWith('group-1', 'rookie', 1, 'remove-1');
+    expect(client.reorderWatchWithFriendsQueue).toHaveBeenCalledWith('group-1', { entryId: 'entry-rookie', destinationEntryId: 'entry-fargo', placement: 'before', expectedRevision: 1, idempotencyKey: 'reorder-1' });
+    expect(client.removeWatchWithFriendsQueueItem).toHaveBeenCalledWith('group-1', 'entry-rookie', 1, 'remove-1');
     expect(client.endWatchWithFriendsGroup).toHaveBeenCalledWith('group-1', 1, 'end-1');
   });
 

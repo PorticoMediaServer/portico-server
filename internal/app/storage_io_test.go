@@ -8,12 +8,14 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/PorticoMediaServer/portico-server/internal/foundationcontract"
 )
 
 func TestBoundedStorageIOQuarantinesOneBlockedCallPerSource(t *testing.T) {
 	server := &Server{}
 	release := make(chan struct{})
-	request := storageIORequest{SourceID: "source-a", Classification: storageSourceNetwork, Operation: "fault probe", Timeout: 15 * time.Millisecond}
+	request := storageIORequest{WorkClass: foundationcontract.WorkClassInteractive, SourceID: "source-a", Classification: storageSourceNetwork, Operation: "fault probe", Timeout: 15 * time.Millisecond}
 	err := server.boundedStorageIO(context.Background(), request, func() error {
 		<-release
 		return nil
@@ -42,7 +44,7 @@ func TestBoundedStorageIOKeepsHealthyLocalFastPathParallel(t *testing.T) {
 	server := &Server{}
 	release := make(chan struct{})
 	started := make(chan struct{}, 4)
-	request := storageIORequest{SourceID: "local-a", Classification: storageSourceLocal, Operation: "local read", Timeout: time.Second}
+	request := storageIORequest{WorkClass: foundationcontract.WorkClassInteractive, SourceID: "local-a", Classification: storageSourceLocal, Operation: "local read", Timeout: time.Second}
 	done := make(chan error, 4)
 	for range 4 {
 		go func() {
@@ -75,7 +77,7 @@ func TestBoundedStorageIOAppliesClassificationOverrideToExistingAdmission(t *tes
 	server := &Server{}
 	release := make(chan struct{})
 	started := make(chan struct{}, 1)
-	local := storageIORequest{SourceID: "reclassified", Classification: storageSourceLocal, Operation: "local read", Timeout: time.Second}
+	local := storageIORequest{WorkClass: foundationcontract.WorkClassInteractive, SourceID: "reclassified", Classification: storageSourceLocal, Operation: "local read", Timeout: time.Second}
 	done := make(chan error, 1)
 	go func() {
 		done <- server.boundedStorageIO(context.Background(), local, func() error {
@@ -89,7 +91,7 @@ func TestBoundedStorageIOAppliesClassificationOverrideToExistingAdmission(t *tes
 	case <-time.After(time.Second):
 		t.Fatal("local operation did not start")
 	}
-	network := storageIORequest{SourceID: local.SourceID, Classification: storageSourceNetwork, Operation: "network read", Timeout: time.Second}
+	network := storageIORequest{WorkClass: local.WorkClass, SourceID: local.SourceID, Classification: storageSourceNetwork, Operation: "network read", Timeout: time.Second}
 	if err := server.boundedStorageIO(context.Background(), network, func() error { return nil }); !errors.Is(err, errStorageIOBusy) {
 		t.Fatalf("reclassified operation error = %v, expected tightened admission", err)
 	}
@@ -108,7 +110,7 @@ func TestBoundedStorageIOEnforcesGlobalQuarantineBudget(t *testing.T) {
 	started := make(chan struct{}, 2)
 	done := make(chan error, 2)
 	for index := range 2 {
-		request := storageIORequest{SourceID: fmt.Sprintf("source-%d", index), Classification: storageSourceNetwork, Operation: "blocked read", Timeout: time.Second}
+		request := storageIORequest{WorkClass: foundationcontract.WorkClassEstablishedPlayback, SourceID: fmt.Sprintf("source-%d", index), Classification: storageSourceNetwork, Operation: "blocked read", Timeout: time.Second}
 		go func() {
 			done <- server.boundedStorageIO(context.Background(), request, func() error {
 				started <- struct{}{}
@@ -124,7 +126,7 @@ func TestBoundedStorageIOEnforcesGlobalQuarantineBudget(t *testing.T) {
 			t.Fatal("global-budget operation did not start")
 		}
 	}
-	third := storageIORequest{SourceID: "source-3", Classification: storageSourceNetwork, Operation: "third read", Timeout: time.Second}
+	third := storageIORequest{WorkClass: foundationcontract.WorkClassEstablishedPlayback, SourceID: "source-3", Classification: storageSourceNetwork, Operation: "third read", Timeout: time.Second}
 	if err := server.boundedStorageIO(context.Background(), third, func() error { return nil }); !errors.Is(err, errStorageIOCapacity) {
 		t.Fatalf("third operation error = %v, expected global capacity", err)
 	}
@@ -136,9 +138,53 @@ func TestBoundedStorageIOEnforcesGlobalQuarantineBudget(t *testing.T) {
 	}
 }
 
+func TestBoundedStorageIOReservesGlobalAdmissionForSecurityFence(t *testing.T) {
+	originalLimit := storageIOGlobalAdmissionLimit
+	storageIOGlobalAdmissionLimit = storageIOReservedHighPriority + 2
+	t.Cleanup(func() { storageIOGlobalAdmissionLimit = originalLimit })
+	server := &Server{}
+	release := make(chan struct{})
+	started := make(chan struct{}, 2)
+	done := make(chan error, 2)
+	for index := range 2 {
+		request := storageIORequest{
+			WorkClass: foundationcontract.WorkClassBackgroundMedia, SourceID: fmt.Sprintf("background-%d", index),
+			Classification: storageSourceNetwork, Operation: "background read", Timeout: time.Second,
+		}
+		go func() {
+			done <- server.boundedStorageIO(context.Background(), request, func() error {
+				started <- struct{}{}
+				<-release
+				return nil
+			})
+		}()
+	}
+	for range 2 {
+		select {
+		case <-started:
+		case <-time.After(time.Second):
+			t.Fatal("background operation did not start")
+		}
+	}
+	ordinary := storageIORequest{WorkClass: foundationcontract.WorkClassInteractive, SourceID: "ordinary-overflow", Classification: storageSourceNetwork, Operation: "ordinary overflow", Timeout: time.Second}
+	if err := server.boundedStorageIO(context.Background(), ordinary, func() error { return nil }); !errors.Is(err, errStorageIOCapacity) {
+		t.Fatalf("ordinary overflow error=%v, expected reserved capacity", err)
+	}
+	security := storageIORequest{WorkClass: foundationcontract.WorkClassSecurityFence, SourceID: "security-fence", Classification: storageSourceNetwork, Operation: "security fence", Timeout: time.Second}
+	if err := server.boundedStorageIO(context.Background(), security, func() error { return nil }); err != nil {
+		t.Fatalf("security fence did not receive reserved storage admission: %v", err)
+	}
+	close(release)
+	for range 2 {
+		if err := <-done; err != nil {
+			t.Fatalf("background operation failed: %v", err)
+		}
+	}
+}
+
 func TestBoundedStorageIORejectsOpenCircuitOutsideRecoveryProbe(t *testing.T) {
 	server := &Server{}
-	request := storageIORequest{SourceID: "open-source", Classification: storageSourceNetwork, CircuitState: "open", Operation: "read"}
+	request := storageIORequest{WorkClass: foundationcontract.WorkClassInteractive, SourceID: "open-source", Classification: storageSourceNetwork, CircuitState: "open", Operation: "read"}
 	if err := server.boundedStorageIO(context.Background(), request, func() error { return nil }); !errors.Is(err, errStorageCircuitOpen) {
 		t.Fatalf("open-circuit error = %v", err)
 	}
@@ -154,7 +200,7 @@ func TestStorageReadRangeContainsOpenSeekAndRead(t *testing.T) {
 	if err := os.WriteFile(path, []byte("0123456789"), 0o600); err != nil {
 		t.Fatalf("write sample: %v", err)
 	}
-	request := storageIORequest{SourceID: "read-source", Classification: storageSourceLocal, Operation: "sample range", Timeout: time.Second}
+	request := storageIORequest{WorkClass: foundationcontract.WorkClassInteractive, SourceID: "read-source", Classification: storageSourceLocal, Operation: "sample range", Timeout: time.Second}
 	result, err := server.storageReadRange(context.Background(), request, path, 3, 4)
 	if err != nil {
 		t.Fatalf("read range: %v", err)
@@ -189,7 +235,7 @@ func TestStorageErrorClassificationUsesWrappedErrno(t *testing.T) {
 
 func TestBoundedStorageProgressIOResetsOnlyOnProgress(t *testing.T) {
 	server := &Server{}
-	request := storageIORequest{SourceID: "source-progress", Operation: "copy", Timeout: 20 * time.Millisecond}
+	request := storageIORequest{WorkClass: foundationcontract.WorkClassInteractive, SourceID: "source-progress", Operation: "copy", Timeout: 20 * time.Millisecond}
 	err := server.boundedStorageProgressIO(context.Background(), request, func(progress func()) error {
 		for range 3 {
 			time.Sleep(10 * time.Millisecond)

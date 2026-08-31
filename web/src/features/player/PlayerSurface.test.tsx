@@ -24,8 +24,8 @@ import {
   PlaybackSessionProvider,
   PlayerDock,
   shouldUseNativeHLS,
-  stablePreparedHandoffRequestID,
-  normalizedPlaybackHandoffProgress,
+  immutablePlaybackHandoffIntent,
+  isAmbiguousPlaybackMutationFailure,
   usePlaybackSession,
   WatchPage,
 } from "./PlayerSurface";
@@ -111,6 +111,14 @@ function coreMedia(id: string, title: string): PlaybackResponse["media"] {
   };
 }
 
+function queueEntry(id: string, title: string, entryId = `entry-${id}`): PlaybackResponse["queue"][number] {
+  return { entryId, media: coreMedia(id, title) };
+}
+
+function historyEntry(id: string, title: string, entryId = `entry-${id}`): PlaybackSessionQueueResponse["history"][number] {
+  return { historyId: `history-${id}`, entryId, media: coreMedia(id, title) };
+}
+
 function playback(overrides: Partial<PlaybackResponse> = {}): PlaybackResponse {
   const value: PlaybackResponse = {
     sessionId: "session-1",
@@ -123,13 +131,13 @@ function playback(overrides: Partial<PlaybackResponse> = {}): PlaybackResponse {
       origin: "http://localhost:32500",
     },
     media: coreMedia("episode-1", "The Castle"),
+    currentQueueEntryId: "entry-episode-1",
     sourceUrl: "/api/media/episode-1/stream.mp4",
     resources: [
       {
         id: "direct-original-en",
         sourceUrl: "/api/media/episode-1/stream.mp4",
         streamFormat: "direct",
-        qualityId: "original",
         audioStreamId: "audio-1",
         subtitleMode: "off",
         default: true,
@@ -147,17 +155,21 @@ function playback(overrides: Partial<PlaybackResponse> = {}): PlaybackResponse {
     },
     policy: {
       networkClass: "local",
-      qualityProfile: "original",
       directPlayPolicy: "prefer",
       directStreamPolicy: "allow",
       transcodePolicy: "allow",
       allowHdr: true,
-      deliveryProfile: "video-original",
       serverClamps: [],
     },
-    qualities: [
-      { id: "original", label: "Original", description: "Original quality" },
-    ],
+    qualityOffers: {
+      contractId: "PC-PLAYBACK", schemaVersion: "quality-offers.v1", mediaId: "episode-1",
+      versionId: "qver-episode-1", sourceRevision: "qsrc-episode-1", offerRevision: "qrev-episode-1",
+      offers: [
+        { selectionId: "qsel-automatic", label: "Automatic", kind: "automatic" },
+        { selectionId: "qsel-original", label: "Original Quality", kind: "original" },
+      ],
+    },
+    qualitySelection: { mode: "automatic" },
     audioStreams: [
       {
         id: "audio-1",
@@ -170,7 +182,7 @@ function playback(overrides: Partial<PlaybackResponse> = {}): PlaybackResponse {
     selectedAudioStreamId: "audio-1",
     subtitleStreams: [],
     chapters: [],
-    queue: [coreMedia("episode-2", "Palindrome")],
+    queue: [queueEntry("episode-2", "Palindrome")],
     repeatMode: "off",
     queueRevision: 7,
     playbackRevision: 1,
@@ -191,12 +203,12 @@ function queue(
 ): PlaybackSessionQueueResponse {
   const value: PlaybackSessionQueueResponse = {
     sessionId: "session-1",
-    current: coreMedia("episode-1", "The Castle"),
+    current: queueEntry("episode-1", "The Castle"),
     items: [
-      coreMedia("episode-2", "Palindrome"),
-      coreMedia("episode-3", "The Myth of Sisyphus"),
+      queueEntry("episode-2", "Palindrome"),
+      queueEntry("episode-3", "The Myth of Sisyphus"),
     ],
-    history: [coreMedia("episode-0", "Waiting for Dutch")],
+    history: [historyEntry("episode-0", "Waiting for Dutch")],
     total: 2,
     canMutate: true,
     repeatMode: "off",
@@ -275,6 +287,24 @@ function PlaybackContractHarness() {
   );
 }
 
+function ReplacementTargetsHarness() {
+  const player = usePlaybackSession();
+  return <>
+    <button type="button" onClick={() => void player.start("episode-2")}>Target media</button>
+    <button type="button" onClick={() => void player.startLive("channel-2")}>Target live</button>
+    <button type="button" onClick={() => void player.startDVR("recording-2")}>Target DVR</button>
+    <button type="button" onClick={() => void player.startLibraryChannel("library-channel-2")}>Target library channel</button>
+  </>;
+}
+
+function LateSourceActivityHarness() {
+  const player = usePlaybackSession();
+  return <>
+    <button type="button" onClick={() => void player.touch({ state: "playing", positionSeconds: 40 })}>Send late progress</button>
+    <button type="button" onClick={() => void player.renewGrant()}>Send late renewal</button>
+  </>;
+}
+
 function CollapsedTrackStartHarness() {
   const playback = usePlaybackSession();
   return <button type="button" onClick={() => void playback.start("6b705dadddf08a29ee14be80ecf9b5cb01968814")}>Play track</button>;
@@ -326,18 +356,69 @@ afterEach(() => {
 });
 
 describe("production playback surface", () => {
-  it("reuses one nonempty prepared-handoff request ID across duplicate consumers and ambiguity", () => {
-    const cache = new Map<string, string>();
-    const first = stablePreparedHandoffRequestID(cache, "session-1", "prepared-2");
-    expect(first).toMatch(/^web-[0-9a-f-]{36}$/);
-    expect(stablePreparedHandoffRequestID(cache, "session-1", "prepared-2")).toBe(first);
-    expect(stablePreparedHandoffRequestID(cache, "session-1", "prepared-3")).not.toBe(first);
-    expect(stablePreparedHandoffRequestID(cache, "session-2", "prepared-2")).not.toBe(first);
+  it("reuses one immutable handoff request and terminal snapshot across duplicate consumers", () => {
+    const terminal = { disposition: "completed" as const, positionSeconds: 120, durationSeconds: 120 };
+    const first = immutablePlaybackHandoffIntent(undefined, "session-1", { preparedSessionId: "prepared-2", entryId: "entry-2" }, terminal);
+    const duplicate = immutablePlaybackHandoffIntent(first, "session-1", { preparedSessionId: "prepared-2", entryId: "entry-2" }, { ...terminal });
+    expect(first.request.requestId).toMatch(/^web-[0-9a-f-]{36}$/);
+    expect(duplicate).toBe(first);
+    expect(duplicate.request).toBe(first.request);
+    expect(Object.isFrozen(first.request)).toBe(true);
+    expect(Object.isFrozen(first.request.previousTerminal)).toBe(true);
+    expect(immutablePlaybackHandoffIntent(first, "session-1", { preparedSessionId: "prepared-3", entryId: "entry-3" }, terminal).request.requestId).not.toBe(first.request.requestId);
   });
-  it("normalizes fractional media time to the Server handoff integer wire contract", () => {
-    expect(normalizedPlaybackHandoffProgress(14.9)).toBe(14);
-    expect(normalizedPlaybackHandoffProgress(-1.2)).toBe(0);
-    expect(normalizedPlaybackHandoffProgress(Number.NaN)).toBeUndefined();
+  it("distinguishes ambiguous handoff transport failures from definitive contract rejections", () => {
+    expect(isAmbiguousPlaybackMutationFailure(new TypeError("network failed"))).toBe(true);
+    expect(isAmbiguousPlaybackMutationFailure(new ApiError(503, "unavailable", "Retry exactly."))).toBe(true);
+    expect(isAmbiguousPlaybackMutationFailure(new ApiError(401, "session_refresh_required", "Reconcile exactly."))).toBe(true);
+    expect(isAmbiguousPlaybackMutationFailure(new ApiError(404, "session_not_found", "Do not infer success."))).toBe(true);
+    expect(isAmbiguousPlaybackMutationFailure(new ApiError(409, "handoff_in_progress", "Reconcile exactly."))).toBe(true);
+    expect(isAmbiguousPlaybackMutationFailure(new ApiError(409, "prepared_handoff_in_progress", "Reconcile exactly."))).toBe(true);
+    expect(isAmbiguousPlaybackMutationFailure(new ApiError(409, "temporarily_blocked", "Retry exactly.", undefined, { retryable: true }))).toBe(true);
+    expect(isAmbiguousPlaybackMutationFailure(new ApiError(409, "stale_event", "Rejected."))).toBe(false);
+  });
+
+  it("drains the durable terminal outbox before restoring a replacement session", async () => {
+    const source = new FixturePorticoDataSource();
+    const replacement = playback({ sessionId: "session-recovered", media: coreMedia("episode-2", "Palindrome"), currentQueueEntryId: "entry-episode-2" });
+    const recover = vi.spyOn(source as PorticoDataSource, "recoverPendingPlaybackTerminals").mockResolvedValue(undefined);
+    const restore = vi.spyOn(source as PorticoDataSource, "restorePlayback").mockResolvedValue({ active: true, playback: replacement });
+
+    render(
+      <DataProvider source={source} initialViewer={viewer}>
+        <WebDisplayPreferencesProvider>
+          <MemoryRouter initialEntries={["/"]}>
+            <PlaybackSessionProvider><PlayerDock /></PlaybackSessionProvider>
+          </MemoryRouter>
+        </WebDisplayPreferencesProvider>
+      </DataProvider>,
+    );
+
+    await waitFor(() => expect(restore).toHaveBeenCalled());
+    expect(recover).toHaveBeenCalledWith(expect.any(AbortSignal));
+    expect(recover.mock.invocationCallOrder[0]).toBeLessThan(restore.mock.invocationCallOrder[0]);
+    expect(await screen.findByLabelText("Now playing Palindrome")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Now playing The Castle")).not.toBeInTheDocument();
+  });
+
+  it("drains a committed stop before an inactive restore and keeps playback closed", async () => {
+    const source = new FixturePorticoDataSource();
+    const recover = vi.spyOn(source as PorticoDataSource, "recoverPendingPlaybackTerminals").mockResolvedValue(undefined);
+    const restore = vi.spyOn(source as PorticoDataSource, "restorePlayback").mockResolvedValue({ active: false });
+
+    render(
+      <DataProvider source={source} initialViewer={viewer}>
+        <WebDisplayPreferencesProvider>
+          <MemoryRouter initialEntries={["/"]}>
+            <PlaybackSessionProvider><PlayerDock /></PlaybackSessionProvider>
+          </MemoryRouter>
+        </WebDisplayPreferencesProvider>
+      </DataProvider>,
+    );
+
+    await waitFor(() => expect(restore).toHaveBeenCalled());
+    expect(recover.mock.invocationCallOrder[0]).toBeLessThan(restore.mock.invocationCallOrder[0]);
+    expect(screen.queryByLabelText(/^Now playing /)).not.toBeInTheDocument();
   });
   it("shows a recoverable dock failure when collapsed track preparation is rejected", async () => {
     const source = new FixturePorticoDataSource();
@@ -431,6 +512,257 @@ describe("production playback surface", () => {
     finishRenewal?.({token: "renewed", expiresAt: "2099-01-02T00:00:00Z"});
   });
 
+  it("routes media, Live TV, DVR, and Library Channel replacements through one atomic Core adapter", async () => {
+    const source = new FixturePorticoDataSource();
+    vi.spyOn(source as PorticoDataSource, "startPlayback").mockResolvedValue(playback());
+    vi.spyOn(source as PorticoDataSource, "playbackSessionQueue").mockImplementation(async (sessionId) => queue({ sessionId, revision: 11 }));
+    const replacements = [
+      playback({ sessionId: "session-media", media: coreMedia("episode-2", "Media target"), playbackRevision: 2, queueRevision: 11 }),
+      playback({ sessionId: "session-live", media: coreMedia("channel-2", "Live target"), isLive: true, playbackRevision: 3, queueRevision: 11 }),
+      playback({ sessionId: "session-dvr", media: coreMedia("recording-2", "DVR target"), playbackRevision: 4, queueRevision: 11 }),
+      playback({ sessionId: "session-library", media: coreMedia("library-channel-2", "Library target"), isLive: true, playbackRevision: 5, queueRevision: 11 }),
+    ];
+    const replace = vi.spyOn(source as PorticoDataSource, "replacePlaybackTarget")
+      .mockResolvedValueOnce({ outcome: "accepted", value: replacements[0] })
+      .mockResolvedValueOnce({ outcome: "accepted", value: replacements[1] })
+      .mockResolvedValueOnce({ outcome: "accepted", value: replacements[2] })
+      .mockResolvedValueOnce({ outcome: "accepted", value: { sourceType: "library-channel", playback: replacements[3] } as never });
+    const rawLive = vi.spyOn(source as PorticoDataSource, "startLiveTVPlayback");
+    const rawDVR = vi.spyOn(source as PorticoDataSource, "startDVRPlayback");
+    const rawLibrary = vi.spyOn(source as PorticoDataSource, "startLibraryChannelPlayback");
+    renderPlayer(source, "episode-1", <ReplacementTargetsHarness />);
+    await screen.findByLabelText("Now playing The Castle");
+
+    for (const name of ["Target media", "Target live", "Target DVR", "Target library channel"]) {
+      fireEvent.click(screen.getByRole("button", { name }));
+      await waitFor(() => expect(replace).toHaveBeenCalledTimes(["Target media", "Target live", "Target DVR", "Target library channel"].indexOf(name) + 1));
+    }
+
+    expect(replace.mock.calls.map(([target]) => target.kind)).toEqual(["media", "live-tv", "dvr", "library-channel"]);
+    expect(replace.mock.calls[0][1]).toEqual(expect.objectContaining({
+      sourceSessionId: "session-1",
+      previousTerminal: { disposition: "stopped", positionSeconds: 12, durationSeconds: 120 },
+      expectedQueueRevision: 11,
+      expectedPlaybackRevision: 1,
+    }));
+    expect(rawLive).not.toHaveBeenCalled();
+    expect(rawDVR).not.toHaveBeenCalled();
+    expect(rawLibrary).not.toHaveBeenCalled();
+    expect(await screen.findByLabelText("Now playing Library target")).toBeInTheDocument();
+  });
+
+  it("retains usable current playback on a definitive replacement rejection", async () => {
+    const source = new FixturePorticoDataSource();
+    vi.spyOn(source as PorticoDataSource, "startPlayback").mockResolvedValue(playback());
+    vi.spyOn(source as PorticoDataSource, "playbackSessionQueue").mockResolvedValue(queue());
+    vi.spyOn(source as PorticoDataSource, "replacePlaybackTarget").mockResolvedValue({
+      outcome: "source-retained",
+      sourceSessionId: "session-1",
+      rejection: { status: 422, code: "delivery_policy_unsatisfied", detail: "The requested target has no legal playback plan." },
+    });
+    const stop = vi.spyOn(source as PorticoDataSource, "stopPlayback");
+    renderPlayer(source, "episode-1", <ReplacementTargetsHarness />);
+    await screen.findByLabelText("Now playing The Castle");
+    fireEvent.click(screen.getByRole("button", { name: "Target media" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("The requested target has no legal playback plan.");
+    expect(screen.getByLabelText("Now playing The Castle")).toBeInTheDocument();
+    expect(stop).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Try again" })).toBeInTheDocument();
+  });
+
+  it("clears old playback authority when Core reports the source closed", async () => {
+    const source = new FixturePorticoDataSource();
+    vi.spyOn(source as PorticoDataSource, "startPlayback").mockResolvedValue(playback());
+    vi.spyOn(source as PorticoDataSource, "playbackSessionQueue").mockResolvedValue(queue());
+    vi.spyOn(source as PorticoDataSource, "replacePlaybackTarget").mockResolvedValue({
+      outcome: "source-closed",
+      sourceSessionId: "session-1",
+      rejection: { status: 409, code: "replacement_failed_after_close", detail: "The old session closed before the target could be exposed." },
+      terminal: {} as never,
+    });
+    renderPlayer(source, "episode-1", <ReplacementTargetsHarness />);
+    await screen.findByLabelText("Now playing The Castle");
+    fireEvent.click(screen.getByRole("button", { name: "Target media" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("The old session closed before the target could be exposed.");
+    expect(screen.queryByLabelText("Now playing The Castle")).not.toBeInTheDocument();
+  });
+
+  it("treats source-inactive as proof old authority is gone and fences late activity", async () => {
+    const source = new FixturePorticoDataSource();
+    vi.spyOn(source as PorticoDataSource, "startPlayback").mockResolvedValue(playback());
+    vi.spyOn(source as PorticoDataSource, "playbackSessionQueue").mockResolvedValue(queue());
+    const touch = vi.spyOn(source as PorticoDataSource, "touchPlayback");
+    const renew = vi.spyOn(source as PorticoDataSource, "renewPlaybackMediaGrant");
+    const stop = vi.spyOn(source as PorticoDataSource, "stopPlayback");
+    vi.spyOn(source as PorticoDataSource, "replacePlaybackTarget").mockResolvedValue({
+      outcome: "source-inactive",
+      sourceSessionId: "session-1",
+      rejection: { status: 409, code: "playback_source_inactive", detail: "The old playback actor is no longer active." },
+    });
+    renderPlayer(source, "episode-1", <><ReplacementTargetsHarness /><LateSourceActivityHarness /></>);
+    await screen.findByLabelText("Now playing The Castle");
+    fireEvent.click(screen.getByRole("button", { name: "Target media" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("The old playback actor is no longer active.");
+    expect(screen.queryByLabelText("Now playing The Castle")).not.toBeInTheDocument();
+    const progressCalls = touch.mock.calls.length;
+    fireEvent.click(screen.getByRole("button", { name: "Send late progress" }));
+    fireEvent.click(screen.getByRole("button", { name: "Send late renewal" }));
+    await Promise.resolve();
+    expect(touch).toHaveBeenCalledTimes(progressCalls);
+    expect(renew).not.toHaveBeenCalled();
+    expect(stop).not.toHaveBeenCalled();
+  });
+
+  it("starts a queued newer target fresh after source-inactive reconciliation", async () => {
+    const source = new FixturePorticoDataSource();
+    vi.spyOn(source as PorticoDataSource, "startPlayback").mockResolvedValue(playback());
+    vi.spyOn(source as PorticoDataSource, "playbackSessionQueue").mockImplementation(async (sessionId) => queue({ sessionId }));
+    let resolveReplacement!: (outcome: { outcome: "source-inactive"; sourceSessionId: string; rejection: { status: number; code: string; detail: string } }) => void;
+    const inactive = new Promise<{ outcome: "source-inactive"; sourceSessionId: string; rejection: { status: number; code: string; detail: string } }>((resolve) => { resolveReplacement = resolve; });
+    const replace = vi.spyOn(source as PorticoDataSource, "replacePlaybackTarget").mockImplementationOnce(() => inactive);
+    const latest = playback({ sessionId: "session-fresh-live", media: coreMedia("channel-2", "Fresh live target"), isLive: true });
+    const rawLive = vi.spyOn(source as PorticoDataSource, "startLiveTVPlayback").mockResolvedValue(latest);
+    const stop = vi.spyOn(source as PorticoDataSource, "stopPlayback");
+    renderPlayer(source, "episode-1", <ReplacementTargetsHarness />);
+    await screen.findByLabelText("Now playing The Castle");
+    fireEvent.click(screen.getByRole("button", { name: "Target media" }));
+    await waitFor(() => expect(replace).toHaveBeenCalledOnce());
+    fireEvent.click(screen.getByRole("button", { name: "Target live" }));
+    resolveReplacement({
+      outcome: "source-inactive",
+      sourceSessionId: "session-1",
+      rejection: { status: 409, code: "playback_source_inactive", detail: "Source is gone." },
+    });
+
+    await screen.findByLabelText("Now playing Fresh live target");
+    expect(replace).toHaveBeenCalledOnce();
+    expect(rawLive).toHaveBeenCalledWith("channel-2", expect.any(AbortSignal));
+    expect(stop).not.toHaveBeenCalled();
+  });
+
+  it("restores and exact-verifies a committed replacement before adopting it", async () => {
+    const source = new FixturePorticoDataSource();
+    vi.spyOn(source as PorticoDataSource, "startPlayback").mockResolvedValue(playback());
+    vi.spyOn(source as PorticoDataSource, "playbackSessionQueue").mockResolvedValue(queue());
+    const committed = { outcome: "committed-restore-required" as const, sourceSessionId: "session-1", replacementSessionId: "session-restored" };
+    vi.spyOn(source as PorticoDataSource, "replacePlaybackTarget").mockResolvedValue(committed);
+    const restored = playback({ sessionId: "session-restored", media: coreMedia("episode-2", "Restored target") });
+    const restore = vi.spyOn(source as PorticoDataSource, "restoreCommittedPlaybackReplacement").mockResolvedValue(restored);
+    renderPlayer(source, "episode-1", <ReplacementTargetsHarness />);
+    await screen.findByLabelText("Now playing The Castle");
+    fireEvent.click(screen.getByRole("button", { name: "Target media" }));
+
+    await screen.findByLabelText("Now playing Restored target");
+    expect(restore).toHaveBeenCalledWith(committed, expect.any(Object), expect.any(AbortSignal));
+  });
+
+  it("keeps an ambiguous replacement fenced and exact-retries it without stop-then-start", async () => {
+    const source = new FixturePorticoDataSource();
+    const rawStart = vi.spyOn(source as PorticoDataSource, "startPlayback").mockResolvedValue(playback());
+    vi.spyOn(source as PorticoDataSource, "playbackSessionQueue").mockResolvedValue(queue());
+    const replace = vi.spyOn(source as PorticoDataSource, "replacePlaybackTarget").mockRejectedValue(new TypeError("replacement response lost"));
+    const recovered = playback({ sessionId: "session-retried", media: coreMedia("episode-2", "Retried target") });
+    const retryPending = vi.spyOn(source as PorticoDataSource, "retryPendingPlaybackTerminalMutation").mockResolvedValue({ outcome: "accepted", value: recovered });
+    const stop = vi.spyOn(source as PorticoDataSource, "stopPlayback");
+    renderPlayer(source, "episode-1", <ReplacementTargetsHarness />);
+    await screen.findByLabelText("Now playing The Castle");
+    fireEvent.click(screen.getByRole("button", { name: "Target media" }));
+    await screen.findByRole("alert");
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+
+    await screen.findByLabelText("Now playing Retried target");
+    expect(retryPending).toHaveBeenCalledWith("session-1", expect.any(AbortSignal));
+    expect(replace).toHaveBeenCalledOnce();
+    expect(rawStart).toHaveBeenCalledOnce();
+    expect(stop).not.toHaveBeenCalled();
+  });
+
+  it("reconciles an ambiguous target before atomically honoring a different later target", async () => {
+    const source = new FixturePorticoDataSource();
+    vi.spyOn(source as PorticoDataSource, "startPlayback").mockResolvedValue(playback());
+    vi.spyOn(source as PorticoDataSource, "playbackSessionQueue").mockImplementation(async (sessionId) => queue({ sessionId }));
+    const reconciled = playback({ sessionId: "session-reconciled", media: coreMedia("episode-2", "Reconciled media") });
+    const latest = playback({ sessionId: "session-latest", media: coreMedia("channel-2", "Latest live target"), isLive: true });
+    const replace = vi.spyOn(source as PorticoDataSource, "replacePlaybackTarget")
+      .mockRejectedValueOnce(new TypeError("replacement response lost"))
+      .mockResolvedValueOnce({ outcome: "accepted", value: latest });
+    const retryPending = vi.spyOn(source as PorticoDataSource, "retryPendingPlaybackTerminalMutation")
+      .mockResolvedValue({ outcome: "accepted", value: reconciled });
+    const rawLive = vi.spyOn(source as PorticoDataSource, "startLiveTVPlayback");
+    renderPlayer(source, "episode-1", <ReplacementTargetsHarness />);
+    await screen.findByLabelText("Now playing The Castle");
+    fireEvent.click(screen.getByRole("button", { name: "Target media" }));
+    await screen.findByRole("alert");
+    fireEvent.click(screen.getByRole("button", { name: "Target live" }));
+
+    await screen.findByLabelText("Now playing Latest live target");
+    expect(retryPending).toHaveBeenCalledWith("session-1", expect.any(AbortSignal));
+    expect(replace.mock.calls.map(([target]) => target.kind)).toEqual(["media", "live-tv"]);
+    expect(replace.mock.calls[1][1]).toEqual(expect.objectContaining({ sourceSessionId: "session-reconciled" }));
+    expect(rawLive).not.toHaveBeenCalled();
+  });
+
+  it("preserves committed replacement identity across restore failure before a later target", async () => {
+    const source = new FixturePorticoDataSource();
+    vi.spyOn(source as PorticoDataSource, "startPlayback").mockResolvedValue(playback());
+    vi.spyOn(source as PorticoDataSource, "playbackSessionQueue").mockImplementation(async (sessionId) => queue({ sessionId }));
+    const committed = { outcome: "committed-restore-required" as const, sourceSessionId: "session-1", replacementSessionId: "session-restored" };
+    const restored = playback({ sessionId: "session-restored", media: coreMedia("episode-2", "Exactly restored") });
+    const latest = playback({ sessionId: "session-after-restore", media: coreMedia("channel-2", "Live after restore"), isLive: true });
+    const replace = vi.spyOn(source as PorticoDataSource, "replacePlaybackTarget")
+      .mockResolvedValueOnce(committed)
+      .mockResolvedValueOnce({ outcome: "accepted", value: latest });
+    const restore = vi.spyOn(source as PorticoDataSource, "restoreCommittedPlaybackReplacement")
+      .mockRejectedValueOnce(new ApiError(409, "playback_replacement_restore_mismatch", "Active restore did not match."))
+      .mockResolvedValueOnce(restored);
+    renderPlayer(source, "episode-1", <ReplacementTargetsHarness />);
+    await screen.findByLabelText("Now playing The Castle");
+    fireEvent.click(screen.getByRole("button", { name: "Target media" }));
+    await screen.findByRole("alert");
+    expect(screen.queryByLabelText("Now playing The Castle")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Target live" }));
+
+    await screen.findByLabelText("Now playing Live after restore");
+    expect(restore).toHaveBeenCalledTimes(2);
+    expect(restore.mock.calls[0][0]).toEqual(committed);
+    expect(restore.mock.calls[1][0]).toEqual(committed);
+    expect(replace.mock.calls[1][1]).toEqual(expect.objectContaining({ sourceSessionId: "session-restored" }));
+  });
+
+  it("serializes a rapid later target behind the in-flight atomic replacement", async () => {
+    const source = new FixturePorticoDataSource();
+    vi.spyOn(source as PorticoDataSource, "startPlayback").mockResolvedValue(playback());
+    vi.spyOn(source as PorticoDataSource, "playbackSessionQueue").mockImplementation(async (sessionId) => queue({ sessionId }));
+    const first = playback({ sessionId: "session-first", media: coreMedia("episode-2", "First target") });
+    const second = playback({ sessionId: "session-rapid-second", media: coreMedia("channel-2", "Rapid second target"), isLive: true });
+    const latest = playback({ sessionId: "session-rapid-latest", media: coreMedia("recording-2", "Rapid latest target") });
+    let resolveFirst!: (outcome: { outcome: "accepted"; value: PlaybackResponse }) => void;
+    const firstOutcome = new Promise<{ outcome: "accepted"; value: PlaybackResponse }>((resolve) => { resolveFirst = resolve; });
+    const replace = vi.spyOn(source as PorticoDataSource, "replacePlaybackTarget")
+      .mockImplementationOnce((_target, _input, signal) => {
+        expect(signal.aborted).toBe(false);
+        return firstOutcome;
+      })
+      .mockResolvedValueOnce({ outcome: "accepted", value: second })
+      .mockResolvedValueOnce({ outcome: "accepted", value: latest });
+    renderPlayer(source, "episode-1", <ReplacementTargetsHarness />);
+    await screen.findByLabelText("Now playing The Castle");
+    fireEvent.click(screen.getByRole("button", { name: "Target media" }));
+    await waitFor(() => expect(replace).toHaveBeenCalledOnce());
+    fireEvent.click(screen.getByRole("button", { name: "Target live" }));
+    fireEvent.click(screen.getByRole("button", { name: "Target DVR" }));
+    expect(replace).toHaveBeenCalledOnce();
+    resolveFirst({ outcome: "accepted", value: first });
+
+    await screen.findByLabelText("Now playing Rapid latest target");
+    expect(replace).toHaveBeenCalledTimes(3);
+    expect(replace.mock.calls[1][1]).toEqual(expect.objectContaining({ sourceSessionId: "session-first" }));
+    expect(replace.mock.calls[2][1]).toEqual(expect.objectContaining({ sourceSessionId: "session-rapid-second" }));
+  });
+
   it("rebuilds a managed HLS adapter after manual route retry without blindly loading the media element", async () => {
     const source = new FixturePorticoDataSource();
     vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
@@ -445,7 +777,6 @@ describe("production playback surface", () => {
             id: "hls-original-en",
             sourceUrl: "/api/playback-resources/hls-original-en/index.m3u8",
             streamFormat: "hls",
-            qualityId: "original",
             audioStreamId: "audio-1",
             subtitleMode: "off",
             default: true,
@@ -689,7 +1020,7 @@ describe("production playback surface", () => {
       expect.objectContaining({
         intent: expect.objectContaining({
           transportClass: "unknown",
-          qualityProfile: "original",
+          quality: { mode: "automatic" },
         }),
       }),
       expect.any(AbortSignal),
@@ -842,10 +1173,30 @@ describe("production playback surface", () => {
     await waitFor(() =>
       expect(mutate).toHaveBeenCalledWith(
         "session-1",
-        { action: "reorder", expectedRevision: 7, fromIndex: 0, toIndex: 1 },
+        {
+          action: "reorder",
+          destinationEntryId: "entry-episode-3",
+          entryId: "entry-episode-2",
+          expectedRevision: 7,
+          idempotencyKey: expect.any(String),
+          placement: "after",
+        },
         expect.any(AbortSignal),
       ),
     );
+    fireEvent.click(within(queueDialog).getByRole("button", { name: "Shuffle" }));
+    await waitFor(() =>
+      expect(mutate).toHaveBeenCalledWith(
+        "session-1",
+        {
+          action: "shuffle",
+          expectedRevision: 7,
+          idempotencyKey: expect.any(String),
+        },
+        expect.any(AbortSignal),
+      ),
+    );
+    expect(mutate).toHaveBeenCalledTimes(2);
     fireEvent.click(
       within(queueDialog).getByRole("button", { name: "Close queue" }),
     );
@@ -956,7 +1307,7 @@ describe("production playback surface", () => {
     await waitFor(() =>
       expect(mutate).toHaveBeenCalledWith(
         "session-1",
-        { action: "append", expectedRevision: 7, mediaIds: ["episode-4"] },
+        { action: "append", expectedRevision: 7, idempotencyKey: expect.any(String), mediaIds: ["episode-4"] },
         expect.any(AbortSignal),
       ),
     );
@@ -964,7 +1315,7 @@ describe("production playback surface", () => {
     await waitFor(() =>
       expect(mutate).toHaveBeenLastCalledWith(
         "session-1",
-        { action: "play_next", expectedRevision: 8, mediaIds: ["episode-5"] },
+        { action: "play_next", expectedRevision: 8, idempotencyKey: expect.any(String), mediaIds: ["episode-5"] },
         expect.any(AbortSignal),
       ),
     );
@@ -1009,7 +1360,7 @@ describe("production playback surface", () => {
     expect(mutate).toHaveBeenCalledTimes(1);
     expect(mutate).toHaveBeenLastCalledWith(
       "session-1",
-      { action: "set_repeat", expectedRevision: 7, repeatMode: "all" },
+      { action: "set_repeat", expectedRevision: 7, idempotencyKey: expect.any(String), repeatMode: "all" },
       expect.any(AbortSignal),
     );
 
@@ -1024,23 +1375,25 @@ describe("production playback surface", () => {
     expect(mutate).toHaveBeenCalledTimes(2);
     expect(mutate).toHaveBeenLastCalledWith(
       "session-1",
-      { action: "set_repeat", expectedRevision: 9, repeatMode: "off" },
+      { action: "set_repeat", expectedRevision: 9, idempotencyKey: expect.any(String), repeatMode: "off" },
       expect.any(AbortSignal),
     );
   });
 
-  it("prepares Up Next, allows cancellation, and hands off the prepared session on demand", async () => {
+  it("retains terminal authority while Up Next prepares and atomically hands off on demand", async () => {
     const source = new FixturePorticoDataSource();
     const current = playback();
     const preparedPlayback = playback({
       sessionId: "session-prepared",
       media: coreMedia("episode-2", "Palindrome"),
-      queue: [coreMedia("episode-3", "The Myth of Sisyphus")],
+      currentQueueEntryId: "entry-episode-2",
+      queue: [queueEntry("episode-3", "The Myth of Sisyphus")],
     });
     const handedOff = playback({
       sessionId: "session-2",
       media: coreMedia("episode-2", "Palindrome"),
-      queue: [coreMedia("episode-3", "The Myth of Sisyphus")],
+      currentQueueEntryId: "entry-episode-2",
+      queue: [queueEntry("episode-3", "The Myth of Sisyphus")],
     });
     vi.spyOn(source as PorticoDataSource, "startPlayback").mockResolvedValue(
       current,
@@ -1087,29 +1440,20 @@ describe("production playback surface", () => {
       expect.objectContaining({ intent: expect.any(Object) }),
     );
     expect(prepare).toHaveBeenCalledTimes(1);
-    await waitFor(() => expect(stop).toHaveBeenCalledWith(
-      "session-1",
-      { disposition: "completed", positionSeconds: 120, durationSeconds: 120 },
-      expect.any(AbortSignal),
-      true,
-    ));
+    expect(stop).not.toHaveBeenCalled();
     const touchesAfterCompletion = touch.mock.calls.length;
     fireEvent.pause(endedMedia);
     fireEvent.timeUpdate(endedMedia);
     expect(touch).toHaveBeenCalledTimes(touchesAfterCompletion);
 
-    fireEvent.click(within(upNext).getByRole("button", { name: "Cancel" }));
-    expect(
-      within(upNext).getByText("Automatic playback cancelled"),
-    ).toBeInTheDocument();
-    expect(handoff).not.toHaveBeenCalled();
-
-    fireEvent.click(within(upNext).getByRole("button", { name: "Play next" }));
+    fireEvent.click(within(upNext).getByRole("button", { name: "Play now" }));
     await waitFor(() =>
       expect(handoff).toHaveBeenCalledWith(
         "session-1",
         expect.objectContaining({
           preparedSessionId: "prepared-2",
+          requestId: expect.stringMatching(/^web-[0-9a-f-]{36}$/),
+          previousTerminal: { disposition: "completed", positionSeconds: 120, durationSeconds: 120 },
           intent: expect.any(Object),
         }),
         expect.any(AbortSignal),
@@ -1118,23 +1462,191 @@ describe("production playback surface", () => {
     expect(
       await screen.findByLabelText("Now playing Palindrome"),
     ).toBeInTheDocument();
+    expect(stop).not.toHaveBeenCalled();
   });
 
-  it("shows queue exhaustion and can replay with a fresh canonical handoff", async () => {
+  it("closes an ended source exactly once when Up Next is cancelled", async () => {
+    const source = new FixturePorticoDataSource();
+    const current = playback();
+    const preparedPlayback = playback({
+      sessionId: "session-prepared",
+      media: coreMedia("episode-2", "Palindrome"),
+      currentQueueEntryId: "entry-episode-2",
+    });
+    vi.spyOn(source as PorticoDataSource, "startPlayback").mockResolvedValue(current);
+    vi.spyOn(source as PorticoDataSource, "playbackSessionQueue").mockResolvedValue(queue());
+    vi.spyOn(source as PorticoDataSource, "prepareNextPlayback").mockResolvedValue({
+      preparedSessionId: "prepared-2",
+      playback: preparedPlayback,
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    } as never);
+    const handoff = vi.spyOn(source as PorticoDataSource, "handoffPlayback");
+    const stop = vi.spyOn(source as PorticoDataSource, "stopPlayback").mockResolvedValue(undefined);
+
+    renderPlayer(source);
+    const media = (await screen.findByLabelText("Now playing The Castle")).querySelector("video") as HTMLVideoElement;
+    fireEvent.ended(media);
+    const upNext = await screen.findByRole("region", { name: "Up next" });
+    expect(stop).not.toHaveBeenCalled();
+    fireEvent.click(within(upNext).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(stop).toHaveBeenCalledWith(
+      "session-1",
+      { disposition: "completed", positionSeconds: 120, durationSeconds: 120 },
+      expect.any(AbortSignal),
+      true,
+    ));
+    fireEvent.ended(media);
+    expect(stop).toHaveBeenCalledTimes(1);
+    expect(handoff).not.toHaveBeenCalled();
+  });
+
+  it("exact-retries an ambiguous natural handoff with the same immutable request", async () => {
+    const source = new FixturePorticoDataSource();
+    const currentMedia = { ...coreMedia("track-1", "Signal One"), entityKind: "track" as const };
+    const nextMedia = { ...coreMedia("track-2", "Signal Two"), entityKind: "track" as const };
+    const current = playback({ media: currentMedia, currentQueueEntryId: "entry-track-1", queue: [{ entryId: "entry-track-2", media: nextMedia }] });
+    const replacement = playback({ sessionId: "session-2", media: nextMedia, currentQueueEntryId: "entry-track-2", queue: [] });
+    vi.spyOn(source as PorticoDataSource, "startPlayback").mockResolvedValue(current);
+    vi.spyOn(source as PorticoDataSource, "playbackSessionQueue").mockResolvedValue(queue({ current: { entryId: "entry-track-1", media: currentMedia }, items: [{ entryId: "entry-track-2", media: nextMedia }], total: 1 }));
+    vi.spyOn(source as PorticoDataSource, "prepareNextPlayback").mockResolvedValue({
+      preparedSessionId: "prepared-track-2",
+      playback: replacement,
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    } as never);
+    const handoff = vi.spyOn(source as PorticoDataSource, "handoffPlayback")
+      .mockRejectedValueOnce(new TypeError("response lost"))
+      .mockResolvedValueOnce(replacement);
+    const stop = vi.spyOn(source as PorticoDataSource, "stopPlayback").mockResolvedValue(undefined);
+
+    renderPlayer(source, "track-1");
+    const media = (await screen.findByLabelText("Now playing Signal One")).querySelector("video") as HTMLVideoElement;
+    fireEvent.ended(media);
+    await waitFor(() => expect(handoff).toHaveBeenCalledTimes(2));
+    expect(handoff.mock.calls[1][1]).toBe(handoff.mock.calls[0][1]);
+    expect(handoff.mock.calls[0][1]).toEqual(expect.objectContaining({
+      requestId: expect.stringMatching(/^web-[0-9a-f-]{36}$/),
+      previousTerminal: { disposition: "completed", positionSeconds: 120, durationSeconds: 120 },
+    }));
+    expect(await screen.findByLabelText("Now playing Signal Two")).toBeInTheDocument();
+    expect(stop).not.toHaveBeenCalled();
+  });
+
+  it("uses a stopped terminal snapshot for explicit Previous", async () => {
+    const source = new FixturePorticoDataSource();
+    const replacement = playback({ sessionId: "session-previous", media: coreMedia("episode-0", "Waiting for Dutch"), currentQueueEntryId: "entry-episode-0" });
+    vi.spyOn(source as PorticoDataSource, "startPlayback").mockResolvedValue(playback());
+    vi.spyOn(source as PorticoDataSource, "playbackSessionQueue").mockResolvedValue(queue());
+    const handoff = vi.spyOn(source as PorticoDataSource, "handoffPlayback").mockResolvedValue(replacement);
+    const stop = vi.spyOn(source as PorticoDataSource, "stopPlayback").mockResolvedValue(undefined);
+    renderPlayer(source);
+    const media = (await screen.findByLabelText("Now playing The Castle")).querySelector("video") as HTMLVideoElement;
+    media.currentTime = 37.5;
+    fireEvent.click(screen.getByRole("button", { name: "Previous item" }));
+    await waitFor(() => expect(handoff).toHaveBeenCalledWith(
+      "session-1",
+      expect.objectContaining({
+        entryId: "entry-episode-0",
+        startSeconds: 0,
+        previousTerminal: { disposition: "stopped", positionSeconds: 37.5, durationSeconds: 120 },
+      }),
+      expect.any(AbortSignal),
+    ));
+    expect(stop).not.toHaveBeenCalled();
+  });
+
+  it("uses a stopped terminal snapshot for explicit Next", async () => {
+    const source = new FixturePorticoDataSource();
+    const nextMedia = coreMedia("episode-2", "Palindrome");
+    const replacement = playback({ sessionId: "session-next", media: nextMedia, currentQueueEntryId: "entry-episode-2" });
+    vi.spyOn(source as PorticoDataSource, "startPlayback").mockResolvedValue(playback());
+    vi.spyOn(source as PorticoDataSource, "playbackSessionQueue").mockResolvedValue(queue());
+    vi.spyOn(source as PorticoDataSource, "prepareNextPlayback").mockResolvedValue({
+      preparedSessionId: "prepared-next",
+      playback: replacement,
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    } as never);
+    const handoff = vi.spyOn(source as PorticoDataSource, "handoffPlayback").mockResolvedValue(replacement);
+    const stop = vi.spyOn(source as PorticoDataSource, "stopPlayback").mockResolvedValue(undefined);
+    renderPlayer(source);
+    const media = (await screen.findByLabelText("Now playing The Castle")).querySelector("video") as HTMLVideoElement;
+    media.currentTime = 48.25;
+    fireEvent.click(screen.getByRole("button", { name: "Next item" }));
+    await waitFor(() => expect(handoff).toHaveBeenCalledWith(
+      "session-1",
+      expect.objectContaining({
+        preparedSessionId: "prepared-next",
+        entryId: "entry-episode-2",
+        previousTerminal: { disposition: "stopped", positionSeconds: 48.25, durationSeconds: 120 },
+      }),
+      expect.any(AbortSignal),
+    ));
+    expect(stop).not.toHaveBeenCalled();
+  });
+
+  it("keeps the old session authoritative when a deliberate handoff is definitively rejected", async () => {
+    const source = new FixturePorticoDataSource();
+    const nextMedia = coreMedia("episode-2", "Palindrome");
+    vi.spyOn(source as PorticoDataSource, "startPlayback").mockResolvedValue(playback());
+    vi.spyOn(source as PorticoDataSource, "playbackSessionQueue").mockResolvedValue(queue());
+    vi.spyOn(source as PorticoDataSource, "prepareNextPlayback").mockResolvedValue({
+      preparedSessionId: "prepared-next",
+      playback: playback({ sessionId: "prepared-next-session", media: nextMedia, currentQueueEntryId: "entry-episode-2" }),
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    } as never);
+    const handoff = vi.spyOn(source as PorticoDataSource, "handoffPlayback")
+      .mockRejectedValue(new ApiError(409, "stale_event", "The source remains active."));
+    const stop = vi.spyOn(source as PorticoDataSource, "stopPlayback").mockResolvedValue(undefined);
+    const touch = vi.spyOn(source as PorticoDataSource, "touchPlayback");
+    renderPlayer(source);
+    const surface = await screen.findByLabelText("Now playing The Castle");
+    const media = surface.querySelector("video") as HTMLVideoElement;
+    media.currentTime = 48.25;
+
+    fireEvent.click(screen.getByRole("button", { name: "Next item" }));
+    await waitFor(() => expect(handoff).toHaveBeenCalledTimes(1));
+    await screen.findByRole("alert");
+    expect(screen.getByLabelText("Now playing The Castle")).toBeInTheDocument();
+    expect(stop).not.toHaveBeenCalled();
+    const touchesBeforeResume = touch.mock.calls.length;
+    fireEvent.pause(media);
+    await waitFor(() => expect(touch.mock.calls.length).toBeGreaterThan(touchesBeforeResume));
+  });
+
+  it("atomically wraps repeat-all with a completed terminal and explicit restart", async () => {
+    const source = new FixturePorticoDataSource();
+    const repeatQueue = queue({ items: [], total: 0, repeatMode: "all", history: [historyEntry("episode-0", "Waiting for Dutch")] });
+    vi.spyOn(source as PorticoDataSource, "startPlayback").mockResolvedValue(playback({ queue: [], repeatMode: "all" }));
+    vi.spyOn(source as PorticoDataSource, "playbackSessionQueue").mockResolvedValue(repeatQueue);
+    const handoff = vi.spyOn(source as PorticoDataSource, "handoffPlayback").mockResolvedValue(playback({ sessionId: "session-wrap" }));
+    const stop = vi.spyOn(source as PorticoDataSource, "stopPlayback").mockResolvedValue(undefined);
+    renderPlayer(source);
+    const media = (await screen.findByLabelText("Now playing The Castle")).querySelector("video") as HTMLVideoElement;
+    fireEvent.ended(media);
+    await waitFor(() => expect(handoff).toHaveBeenCalledWith(
+      "session-1",
+      expect.objectContaining({
+        entryId: "entry-episode-0",
+        startSeconds: 0,
+        previousTerminal: { disposition: "completed", positionSeconds: 120, durationSeconds: 120 },
+      }),
+      expect.any(AbortSignal),
+    ));
+    expect(stop).not.toHaveBeenCalled();
+  });
+
+  it("shows queue exhaustion and replays with a fresh start after the source is closed", async () => {
     const source = new FixturePorticoDataSource();
     const current = playback({ queue: [] });
     const emptyQueue = { ...queue(), items: [], total: 0 };
-    vi.spyOn(source as PorticoDataSource, "startPlayback").mockResolvedValue(
-      current,
-    );
+    const start = vi.spyOn(source as PorticoDataSource, "startPlayback")
+      .mockResolvedValueOnce(current)
+      .mockResolvedValueOnce(playback({ sessionId: "session-replay", queue: [] }));
     vi.spyOn(
       source as PorticoDataSource,
       "playbackSessionQueue",
     ).mockResolvedValue(emptyQueue);
     const stop = vi.spyOn(source as PorticoDataSource, "stopPlayback").mockResolvedValue(undefined);
-    const handoff = vi
-      .spyOn(source as PorticoDataSource, "handoffPlayback")
-      .mockResolvedValue(playback({ sessionId: "session-replay", queue: [] }));
+    const handoff = vi.spyOn(source as PorticoDataSource, "handoffPlayback");
 
     renderPlayer(source);
     const surface = await screen.findByLabelText("Now playing The Castle");
@@ -1157,16 +1669,15 @@ describe("production playback surface", () => {
     ));
     fireEvent.click(within(complete).getByRole("button", { name: "Replay" }));
     await waitFor(() =>
-      expect(handoff).toHaveBeenCalledWith(
-        "session-1",
+      expect(start).toHaveBeenLastCalledWith(
+        "episode-1",
         expect.objectContaining({
-          mediaId: "episode-1",
-          progressSeconds: 0,
-          queueMediaIds: [],
+          startSeconds: 0,
         }),
         expect.any(AbortSignal),
       ),
     );
+    expect(handoff).not.toHaveBeenCalled();
   });
 
   it("shares one atomic terminal owner across natural end, completed UI close, and repeated cleanup events", async () => {
@@ -1211,17 +1722,17 @@ describe("production playback surface", () => {
     const currentMedia = { ...coreMedia("track-1", "Signal One"), entityKind: "track" as const };
     const nextMedia = { ...coreMedia("track-2", "Signal Two"), entityKind: "track" as const };
     const thirdMedia = { ...coreMedia("track-3", "Signal Three"), entityKind: "track" as const };
-    const current = playback({ media: currentMedia, queue: [currentMedia, nextMedia, thirdMedia] });
+    const current = playback({ media: currentMedia, currentQueueEntryId: "entry-track-1", queue: [{ entryId: "entry-track-2", media: nextMedia }, { entryId: "entry-track-3", media: thirdMedia }] });
     vi.spyOn(source as PorticoDataSource, "startPlayback").mockResolvedValue(current);
-    vi.spyOn(source as PorticoDataSource, "playbackSessionQueue").mockResolvedValue(queue({ current: currentMedia, items: [currentMedia, nextMedia, thirdMedia], total: 3 }));
-    const prepare = vi.spyOn(source as PorticoDataSource, "prepareNextPlayback").mockResolvedValue({ preparedSessionId: "prepared-track-2", playback: playback({ sessionId: "prepared", media: nextMedia, queue: [thirdMedia] }), expiresAt: new Date(Date.now() + 60_000).toISOString() } as never);
+    vi.spyOn(source as PorticoDataSource, "playbackSessionQueue").mockResolvedValue(queue({ current: { entryId: "entry-track-1", media: currentMedia }, items: [{ entryId: "entry-track-2", media: nextMedia }, { entryId: "entry-track-3", media: thirdMedia }], total: 2 }));
+    const prepare = vi.spyOn(source as PorticoDataSource, "prepareNextPlayback").mockResolvedValue({ preparedSessionId: "prepared-track-2", playback: playback({ sessionId: "prepared", media: nextMedia, currentQueueEntryId: "entry-track-2", queue: [{ entryId: "entry-track-3", media: thirdMedia }] }), expiresAt: new Date(Date.now() + 60_000).toISOString() } as never);
     let resolveHandoff!: (value: PlaybackResponse) => void;
     const handoff = vi.spyOn(source as PorticoDataSource, "handoffPlayback").mockImplementation(() => new Promise<PlaybackResponse>((resolve) => { resolveHandoff = resolve; }));
     const stop = vi.spyOn(source as PorticoDataSource, "stopPlayback").mockResolvedValue(undefined);
     renderPlayer(source, "track-1");
     const media = (await screen.findByLabelText("Now playing Signal One")).querySelector("video") as HTMLVideoElement;
     fireEvent.ended(media);
-    await waitFor(() => expect(prepare).toHaveBeenCalledWith("session-1", expect.any(AbortSignal), expect.objectContaining({ mediaId: "track-2" })));
+    await waitFor(() => expect(prepare).toHaveBeenCalledWith("session-1", expect.any(AbortSignal), expect.objectContaining({ entryId: "entry-track-2" })));
     await waitFor(() => expect(handoff).toHaveBeenCalledTimes(1));
     expect(prepare).toHaveBeenCalledTimes(1);
     expect(handoff).toHaveBeenCalledWith(
@@ -1229,12 +1740,13 @@ describe("production playback surface", () => {
       expect.objectContaining({
         preparedSessionId: "prepared-track-2",
         requestId: expect.stringMatching(/^web-[0-9a-f-]{36}$/),
+        previousTerminal: { disposition: "completed", positionSeconds: 120, durationSeconds: 120 },
       }),
       expect.any(AbortSignal),
     );
     expect(transitionTelemetry).toHaveBeenCalledWith("[portico-playback-handoff]", expect.stringMatching(/"phase":"request".*"sourceSessionId":"session-1".*"preparedSessionId":"prepared-track-2".*"requestId":"web-[0-9a-f-]{36}"/));
     expect(stop).not.toHaveBeenCalled();
-    resolveHandoff(playback({ sessionId: "session-2", media: nextMedia, queue: [thirdMedia] }));
+    resolveHandoff(playback({ sessionId: "session-2", media: nextMedia, queue: [queueEntry(thirdMedia.id, thirdMedia.title)] }));
     await waitFor(() => expect(screen.getByLabelText("Now playing Signal Two")).toBeInTheDocument());
     expect(stop).not.toHaveBeenCalled();
   });
@@ -1243,17 +1755,24 @@ describe("production playback surface", () => {
     const source = new FixturePorticoDataSource();
     const currentMedia = { ...coreMedia("track-1", "Signal One"), entityKind: "track" as const };
     const nextMedia = { ...coreMedia("track-2", "Signal Two"), entityKind: "track" as const };
-    const current = playback({ media: currentMedia, queue: [currentMedia, nextMedia] });
+    const current = playback({ media: currentMedia, currentQueueEntryId: "entry-track-1", queue: [{ entryId: "entry-track-2", media: nextMedia }] });
     vi.spyOn(source as PorticoDataSource, "startPlayback").mockResolvedValue(current);
-    vi.spyOn(source as PorticoDataSource, "playbackSessionQueue").mockResolvedValue(queue({ current: currentMedia, items: [currentMedia, nextMedia], total: 2 }));
-    vi.spyOn(source as PorticoDataSource, "prepareNextPlayback").mockResolvedValue({ preparedSessionId: "prepared-track-2", playback: playback({ sessionId: "prepared", media: nextMedia }), expiresAt: new Date(Date.now() + 60_000).toISOString() } as never);
-    vi.spyOn(source as PorticoDataSource, "handoffPlayback").mockRejectedValue(new Error("handoff failed"));
+    vi.spyOn(source as PorticoDataSource, "playbackSessionQueue").mockResolvedValue(queue({ current: { entryId: "entry-track-1", media: currentMedia }, items: [{ entryId: "entry-track-2", media: nextMedia }], total: 1 }));
+    vi.spyOn(source as PorticoDataSource, "prepareNextPlayback").mockResolvedValue({ preparedSessionId: "prepared-track-2", playback: playback({ sessionId: "prepared", media: nextMedia, currentQueueEntryId: "entry-track-2" }), expiresAt: new Date(Date.now() + 60_000).toISOString() } as never);
+    const handoff = vi.spyOn(source as PorticoDataSource, "handoffPlayback").mockRejectedValue(new ApiError(409, "prepared_session_expired", "handoff failed"));
     const touch = vi.spyOn(source as PorticoDataSource, "touchPlayback");
     const stop = vi.spyOn(source as PorticoDataSource, "stopPlayback").mockResolvedValue(undefined);
     renderPlayer(source, "track-1");
     const media = (await screen.findByLabelText("Now playing Signal One")).querySelector("video") as HTMLVideoElement;
     fireEvent.ended(media);
     await waitFor(() => expect(stop).toHaveBeenCalledTimes(1));
+    expect(handoff).toHaveBeenCalledTimes(1);
+    expect(stop).toHaveBeenCalledWith(
+      "session-1",
+      { disposition: "completed", positionSeconds: 120, durationSeconds: 120 },
+      expect.any(AbortSignal),
+      true,
+    );
     const touches = touch.mock.calls.length;
     fireEvent.timeUpdate(media);
     fireEvent.ended(media);
@@ -1338,7 +1857,7 @@ describe("production playback surface", () => {
       "playbackSessionQueue",
     ).mockResolvedValue({
       ...queue(),
-      current: liveMedia,
+      current: { entryId: "entry-channel-1", media: liveMedia },
       items: [],
       history: [],
       total: 0,
@@ -1393,7 +1912,7 @@ describe("production playback surface", () => {
     vi.spyOn(
       source as PorticoDataSource,
       "playbackSessionQueue",
-    ).mockResolvedValue(queue({ current: media }));
+    ).mockResolvedValue(queue({ current: { entryId: `entry-${media.id}`, media } }));
 
     renderPlayer(source);
     const surface = await screen.findByLabelText("Now playing The Castle");
@@ -1466,7 +1985,7 @@ describe("production playback surface", () => {
       "playbackSessionQueue",
     ).mockResolvedValue({
       ...queue(),
-      current: musicMedia,
+      current: { entryId: "entry-track-lyrics", media: musicMedia },
       items: [],
       history: [],
       total: 0,
@@ -1524,21 +2043,21 @@ describe("production playback surface", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("forces HLS when quality or alternate audio requires a server-selected stream", async () => {
+  it("uses one server-issued quality selection and adopts the returned sealed stream", async () => {
     const source = new FixturePorticoDataSource();
     vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
       "Mozilla/5.0 Safari/605.1.15",
     );
     let selectedPlayback = playback({
-      qualities: [
-        { id: "original", label: "Original", description: "Original quality" },
-        {
-          id: "720p",
-          label: "720p",
-          description: "4 Mbps",
-          requiresTranscode: true,
-        },
-      ],
+      qualityOffers: {
+        ...playback().qualityOffers,
+        offerRevision: "qrev-quality-choice",
+        offers: [
+          { selectionId: "qsel-automatic", label: "Automatic", kind: "automatic" },
+          { selectionId: "qsel-original", label: "Original Quality", kind: "original" },
+          { selectionId: "qsel-720p", label: "720p", kind: "fixed", maxVideoBitrateBps: 4_000_000, targetDisplayHeight: 720 },
+        ],
+      },
       audioStreams: [
         {
           id: "audio-1",
@@ -1562,9 +2081,10 @@ describe("production playback surface", () => {
     const renegotiate = vi
       .spyOn(source as PorticoDataSource, "renegotiatePlayback")
       .mockImplementation(async (_sessionId, request) => {
-        const nextQuality = request.qualityId ?? selectedPlayback.selectedQualityId ?? "original";
+        const nextSelection = request.quality ?? selectedPlayback.qualitySelection;
+        const nextQuality = nextSelection.mode === "explicit" ? nextSelection.selectionId : "automatic";
         const nextAudio = request.audioStreamId ?? selectedPlayback.selectedAudioStreamId ?? "audio-1";
-        const nextSource = nextQuality === "720p"
+        const nextSource = nextQuality === "qsel-720p"
           ? nextAudio === "audio-2"
             ? "/api/playback-resources/hls-720p-fr?signature=server-owned"
             : "/api/playback-resources/hls-720p-en?signature=server-owned"
@@ -1573,14 +2093,13 @@ describe("production playback surface", () => {
           ...selectedPlayback,
           playbackRevision: selectedPlayback.playbackRevision + 1,
           sourceUrl: nextSource,
-          streamFormat: nextQuality === "720p" ? "hls" : "direct",
-          selectedQualityId: nextQuality,
+          streamFormat: nextQuality === "qsel-720p" ? "hls" : "direct",
+          qualitySelection: nextSelection,
           selectedAudioStreamId: nextAudio,
           resources: [{
             id: `active-${nextQuality}-${nextAudio}`,
             sourceUrl: nextSource,
-            streamFormat: nextQuality === "720p" ? "hls" : "direct",
-            qualityId: nextQuality,
+            streamFormat: nextQuality === "qsel-720p" ? "hls" : "direct",
             audioStreamId: nextAudio,
             subtitleMode: "off",
             default: true,
@@ -1622,7 +2141,7 @@ describe("production playback surface", () => {
     expect(renegotiate).toHaveBeenNthCalledWith(
       1,
       "session-1",
-      expect.objectContaining({ qualityId: "720p", expectedRevision: 1 }),
+      expect.objectContaining({ quality: { mode: "explicit", selectionId: "qsel-720p", qualityOfferRevision: "qrev-quality-choice" }, expectedRevision: 1 }),
       expect.any(AbortSignal),
     );
     expect(renegotiate).toHaveBeenNthCalledWith(
@@ -1639,21 +2158,16 @@ describe("production playback surface", () => {
   it("supports keyboard traversal and restores focus after choosing a player setting", async () => {
     const source = new FixturePorticoDataSource();
     const initialPlayback = playback({
-      qualities: [
-        { id: "original", label: "Original Quality", description: "Server source detail" },
-        {
-          id: "720p",
-          label: "720p · 4 Mbps",
-          description: "Server transcode detail",
-          requiresTranscode: true,
-        },
-        {
-          id: "480p",
-          label: "480p · 1.5 Mbps",
-          description: "Server low-bandwidth detail",
-          requiresTranscode: true,
-        },
-      ],
+      qualityOffers: {
+        ...playback().qualityOffers,
+        offerRevision: "qrev-keyboard",
+        offers: [
+          { selectionId: "qsel-automatic", label: "Automatic", kind: "automatic" },
+          { selectionId: "qsel-original", label: "Original Quality", kind: "original" },
+          { selectionId: "qsel-720p", label: "720p · 4 Mbps", kind: "fixed", maxVideoBitrateBps: 4_000_000, targetDisplayHeight: 720 },
+          { selectionId: "qsel-480p", label: "480p · 1.5 Mbps", kind: "fixed", maxVideoBitrateBps: 1_500_000, targetDisplayHeight: 480 },
+        ],
+      },
     });
     vi.spyOn(source as PorticoDataSource, "startPlayback").mockResolvedValue(
       initialPlayback,
@@ -1664,7 +2178,7 @@ describe("production playback surface", () => {
     ).mockImplementation(async (_sessionId, request) => ({
       ...initialPlayback,
       playbackRevision: initialPlayback.playbackRevision + 1,
-      selectedQualityId: request.qualityId,
+      qualitySelection: request.quality ?? initialPlayback.qualitySelection,
       mediaGrant: { token: "grant-quality", expiresAt: "2099-01-01T00:00:00Z" },
     }));
     vi.spyOn(
@@ -1682,12 +2196,15 @@ describe("production playback surface", () => {
 
     quality.focus();
     fireEvent.keyDown(quality, { key: "ArrowDown" });
-    expect(within(settings).getByRole("option", { name: /Original QualityServer source detail/ })).toBeInTheDocument();
-    expect(within(settings).getByRole("option", { name: /720p · 4 MbpsServer transcode detail/ })).toBeInTheDocument();
-    const original = within(settings).getByRole("option", {
-      name: /Original/i,
+    expect(within(settings).getByRole("option", { name: /Original Quality/ })).toBeInTheDocument();
+    expect(within(settings).getByRole("option", { name: /720p · 4 Mbps/ })).toBeInTheDocument();
+    const automatic = within(settings).getByRole("option", {
+      name: /Automatic/i,
     });
-    await waitFor(() => expect(original).toHaveFocus());
+    await waitFor(() => expect(automatic).toHaveFocus());
+    fireEvent.keyDown(automatic, { key: "ArrowDown" });
+    const original = within(settings).getByRole("option", { name: /Original/i });
+    expect(original).toHaveFocus();
     fireEvent.keyDown(original, { key: "ArrowDown" });
     const medium = within(settings).getByRole("option", { name: /720p/i });
     expect(medium).toHaveFocus();
@@ -1742,7 +2259,7 @@ describe("production playback surface", () => {
     vi.spyOn(
       source as PorticoDataSource,
       "playbackSessionQueue",
-    ).mockResolvedValue(queue({ current: media }));
+    ).mockResolvedValue(queue({ current: { entryId: `entry-${media.id}`, media } }));
 
     renderPlayer(source);
     const surface = await screen.findByLabelText("Now playing The Castle");
@@ -2012,7 +2529,7 @@ describe("production playback surface", () => {
       "playbackSessionQueue",
     ).mockResolvedValue({
       ...queue(),
-      current: musicMedia,
+      current: { entryId: "entry-track-plain-lyrics", media: musicMedia },
       items: [],
       history: [],
       total: 0,
@@ -2056,7 +2573,7 @@ describe("production playback surface", () => {
         "playbackSessionQueue",
       ).mockResolvedValue({
         ...queue(),
-        current: media,
+        current: { entryId: `entry-${media.id}`, media },
         items: [],
         history: [],
         total: 0,

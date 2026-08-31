@@ -1,12 +1,11 @@
 import {
-  defaultPlaybackQuality,
   effectivePlaybackVolume,
   playbackResourceUrl,
   playbackSourceFor,
   type MediaItem,
-  type PlaybackHandoffRequest,
   type PlaybackPrepareNextRequest,
   type PlaybackPreparedResponse,
+  type PlaybackQueueEntry,
   type PlaybackResponse,
   type PlaybackSessionQueueResponse,
 } from '@porticomediaserver/client-core';
@@ -15,6 +14,7 @@ import { usePorticoDataSource } from '../../data/DataProvider';
 import type { MusicPlaybackPreferences } from '../../data/models';
 import { useOptionalWebDisplayPreferences } from '../../preferences/WebDisplayPreferencesProvider';
 import { defaultWebDisplayPreferences, webPlaybackIntent, type WebDisplayPreferences } from '../../preferences/webDisplayPreferences';
+import type { PlaybackHandoffTarget } from './PlayerSurface';
 
 type MusicTransitionBridgeProps = {
   playback: PlaybackResponse;
@@ -25,7 +25,7 @@ type MusicTransitionBridgeProps = {
   muted: boolean;
   enabled: boolean;
   onTransitioning: (transitioning: boolean) => void;
-  handoff: (request: PlaybackHandoffRequest) => Promise<PlaybackResponse | undefined>;
+  handoff: (request: PlaybackHandoffTarget) => Promise<PlaybackResponse | undefined>;
   prepareNext: (candidate: MediaItem, request: PlaybackPrepareNextRequest, force?: boolean) => Promise<PlaybackPreparedResponse>;
 };
 
@@ -123,10 +123,7 @@ export function MusicTransitionBridge({
         const response = await prepareNextRef.current(candidate, musicTransitionRequest(playback, queue, preferences, webPreferences));
         if (disposed || controller.signal.aborted) return;
         const resolve = (path: string) => playbackResourceUrl(response.playback, path, (value) => sourceRef.current.playbackResourceUrl(value), window.location.href);
-        const sourceURL = playbackSourceFor(response.playback, resolve, {
-          quality: defaultPlaybackQuality(response.playback),
-          baseHref: window.location.href,
-        });
+        const sourceURL = playbackSourceFor(response.playback, resolve);
         const isHLS = response.playback.streamFormat === 'hls' || sourceURL.includes('.m3u8');
         const canOverlap = !isHLS || Boolean(preload.canPlayType('application/vnd.apple.mpegurl') || preload.canPlayType('application/x-mpegURL'));
         preparedRef.current = { response, candidate, sourceURL, canOverlap };
@@ -187,7 +184,12 @@ export function MusicTransitionBridge({
         console.info('[portico-music-transition]', JSON.stringify({ phase: 'handoff', sourceSessionId: playback.sessionId, preparedSessionId: prepared.response.preparedSessionId }));
         next = await handoffRef.current({
           preparedSessionId: prepared.response.preparedSessionId,
-          progressSeconds: Number.isFinite(media.currentTime) ? media.currentTime : undefined,
+          entryId: prepared.response.playback.currentQueueEntryId,
+          previousTerminal: {
+            disposition: 'completed',
+            positionSeconds: media.duration,
+            durationSeconds: media.duration,
+          },
         });
       } catch (reason) {
         console.warn('[portico-music-transition]', JSON.stringify({ phase: 'handoff-rejected', sourceSessionId: playback.sessionId, preparedSessionId: prepared.response.preparedSessionId, failure: reason instanceof Error ? reason.name : 'unknown' }));
@@ -244,7 +246,11 @@ export function MusicTransitionBridge({
 }
 
 export function nextCandidate(playback: PlaybackResponse, queue: PlaybackSessionQueueResponse | undefined): MediaItem | undefined {
-  return (queue?.items ?? playback.queue).find((item) => item.id !== playback.media.id);
+  return nextQueueEntry(playback, queue)?.media;
+}
+
+export function nextQueueEntry(playback: PlaybackResponse, queue: PlaybackSessionQueueResponse | undefined): PlaybackQueueEntry | undefined {
+  return (queue?.items ?? playback.queue)[0];
 }
 
 export function musicTransitionOwnerKey(
@@ -254,16 +260,12 @@ export function musicTransitionOwnerKey(
   webPreferences: WebDisplayPreferences,
 ) {
   const queueItems = queue?.items ?? playback.queue;
-  const candidate = nextCandidate(playback, queue);
-  const candidateIndex = candidate ? queueItems.findIndex((item) => item.id === candidate.id) : -1;
-  const continuationMediaIds = candidateIndex >= 0
-    ? queueItems.slice(candidateIndex + 1).map((item) => item.id)
-    : queueItems.filter((item) => item.id !== playback.media.id && item.id !== candidate?.id).map((item) => item.id);
+  const candidate = nextQueueEntry(playback, queue);
   const intent = webPlaybackIntent(webPreferences);
   return JSON.stringify({
     sessionId: playback.sessionId,
-    candidateId: candidate?.id ?? '',
-    continuationMediaIds,
+    candidateEntryId: candidate?.entryId ?? '',
+    continuationEntryIds: queueItems.slice(1).map((item) => item.entryId),
     sourceContext: queue?.sourceContext ?? playback.sourceContext,
     gapless: preferences.gapless,
     crossfadeSeconds: preferences.crossfadeSeconds,
@@ -278,16 +280,13 @@ export function musicTransitionRequest(
   preferences: MusicPlaybackPreferences,
   webPreferences: WebDisplayPreferences,
 ): PlaybackPrepareNextRequest {
-  const candidate = nextCandidate(playback, queue);
-  const queueItems = queue?.items ?? playback.queue;
-  const candidateIndex = candidate ? queueItems.findIndex((item) => item.id === candidate.id) : -1;
+  const candidate = nextQueueEntry(playback, queue);
+  if (!candidate) throw new Error('Nothing else is queued.');
   return {
-    mediaId: candidate?.id,
-    queueMediaIds: (candidateIndex >= 0 ? queueItems.slice(candidateIndex + 1) : queueItems.filter((item) => item.id !== playback.media.id && item.id !== candidate?.id)).map((item) => item.id),
+    entryId: candidate.entryId,
     crossfadeSeconds: preferences.crossfadeSeconds,
     preferredHandoff: preferences.crossfadeSeconds > 0 ? 'crossfade' : 'gapless',
     sourceContext: queue?.sourceContext ?? playback.sourceContext,
-    commitPreviousEnd: true,
     intent: webPlaybackIntent(webPreferences),
   };
 }

@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"math"
 	"net/http"
 	"net/url"
 	"strings"
@@ -309,15 +308,32 @@ func (s *Server) extendPlaybackContinuation(r *http.Request, sessionID string) s
 	return expires.Format(time.RFC3339Nano)
 }
 
-func (s *Server) revokePlaybackContinuation(sessionID string) {
-	_, _ = s.execUserWrite(context.Background(), `UPDATE playback_session_continuation_credentials SET revoked_at = ?, previous_valid_until = '' WHERE playback_session_id = ? AND revoked_at = ''`, time.Now().UTC().Format(time.RFC3339Nano), sessionID)
-}
-
 func (s *Server) handlePlaybackContinuationRoute(w http.ResponseWriter, r *http.Request) {
 	sessionID := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/playback-sessions/"), "/")
 	sessionID = strings.TrimSuffix(sessionID, "/continuation")
 	user, credentialGeneration, err := s.userForPlaybackContinuation(r, sessionID)
 	if err != nil {
+		if r.Method == http.MethodDelete {
+			var req PlaybackSessionStopRequest
+			if !decodeJSON(w, r, &req) {
+				return
+			}
+			var validationErr *playbackStartHTTPError
+			req, validationErr = normalizePlaybackSessionStopRequest(req)
+			if validationErr != nil {
+				writeError(w, validationErr.status, validationErr.code, validationErr.message)
+				return
+			}
+			ack, receiptErr := s.playbackTerminalReceiptForCredential(r.Context(), sessionID, playbackContinuationTokenFromRequest(r), playbackContinuationOrigin(r), req)
+			if receiptErr == nil {
+				writeJSON(w, http.StatusOK, ack)
+				return
+			}
+			if errors.Is(receiptErr, errPlaybackTerminalReceiptConflict) {
+				writeError(w, http.StatusConflict, "playback_terminal_request_conflict", "The terminal request does not match the accepted terminal receipt.")
+				return
+			}
+		}
 		writeError(w, http.StatusUnauthorized, "playback_continuation_denied", "A valid PorticoPlayback credential is required.")
 		return
 	}
@@ -343,10 +359,6 @@ func (s *Server) handlePlaybackContinuationRoute(w http.ResponseWriter, r *http.
 		}
 		if _, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(req.RecordedAt)); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid_recorded_at", "recordedAt must be an RFC 3339 timestamp.")
-			return
-		}
-		if req.Completed != nil && *req.Completed {
-			writeError(w, http.StatusBadRequest, "terminal_request_required", "Complete playback with the atomic DELETE terminal request.")
 			return
 		}
 		if req.Generation != 0 && req.Generation != credentialGeneration {
@@ -411,36 +423,47 @@ func (s *Server) handlePlaybackContinuationRoute(w http.ResponseWriter, r *http.
 		if !decodeJSON(w, r, &req) {
 			return
 		}
-		req.Disposition = strings.ToLower(strings.TrimSpace(req.Disposition))
-		if req.Disposition != "stopped" && req.Disposition != "completed" {
-			writeError(w, http.StatusBadRequest, "invalid_playback_disposition", "disposition must be stopped or completed.")
+		var validationErr *playbackStartHTTPError
+		req, validationErr = normalizePlaybackSessionStopRequest(req)
+		if validationErr != nil {
+			writeError(w, validationErr.status, validationErr.code, validationErr.message)
 			return
 		}
-		if req.Generation <= 0 || req.Generation != credentialGeneration || req.EventSequence <= 0 {
+		if req.Terminal.Generation != credentialGeneration {
 			writeError(w, http.StatusConflict, "playback_generation_stale", "Playback progress authority changed. Reload the active playback session.")
 			return
 		}
-		if _, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(req.RecordedAt)); err != nil {
-			writeError(w, http.StatusBadRequest, "invalid_recorded_at", "recordedAt must be an RFC 3339 timestamp.")
-			return
-		}
-		if math.IsNaN(req.PositionSeconds) || math.IsInf(req.PositionSeconds, 0) || req.PositionSeconds < 0 || math.IsNaN(req.DurationSeconds) || math.IsInf(req.DurationSeconds, 0) || req.DurationSeconds < 0 || (req.Disposition == "completed" && req.DurationSeconds <= 0) {
-			writeError(w, http.StatusBadRequest, "invalid_playback_terminal_position", "positionSeconds and durationSeconds must be finite and non-negative; completed playback requires a positive durationSeconds.")
-			return
-		}
-		if err := s.endPlaybackSessionAtomically(user, sessionID, req); err != nil {
+		ack, err := s.terminatePlaybackWithReceipt(r.Context(), user, sessionID, req, playbackContinuationTokenFromRequest(r), playbackContinuationOrigin(r))
+		if err != nil {
+			if errors.Is(err, errPlaybackTerminalAuthorizationChanged) {
+				writeError(w, http.StatusConflict, "playback_terminal_scope_changed", "Playback authorization changed. Reconcile active playback before retrying the terminal request.")
+				return
+			}
+			if errors.Is(err, errPlaybackTerminalDurationMismatch) {
+				writeError(w, http.StatusConflict, "playback_terminal_duration_mismatch", "Completed playback duration does not match the server-authoritative media duration.")
+				return
+			}
 			if errors.Is(err, errPlaybackGenerationStale) || errors.Is(err, errPlaybackEventSequenceStale) {
 				writeError(w, http.StatusConflict, "playback_terminal_stale", "Playback terminal authority is stale.")
 				return
 			}
 			if errors.Is(err, sql.ErrNoRows) {
+				ack, receiptErr := s.playbackTerminalReceiptForCredential(r.Context(), sessionID, playbackContinuationTokenFromRequest(r), playbackContinuationOrigin(r), req)
+				if receiptErr == nil {
+					writeJSON(w, http.StatusOK, ack)
+					return
+				}
+				if errors.Is(receiptErr, errPlaybackTerminalReceiptConflict) {
+					writeError(w, http.StatusConflict, "playback_terminal_request_conflict", "The terminal request does not match the accepted terminal receipt.")
+					return
+				}
 				writeError(w, http.StatusNotFound, "playback_session_not_found", "Playback session was not found.")
 				return
 			}
 			writeError(w, http.StatusInternalServerError, "playback_session_failed", "Unable to end playback session.")
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+		writeJSON(w, http.StatusOK, ack)
 	default:
 		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "Use GET, PATCH, POST, or DELETE for this endpoint.")
 	}

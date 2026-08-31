@@ -7,7 +7,7 @@ SAFETY_CLASS ?= development
 LDFLAGS := -s -w -X main.version=$(VERSION) -X main.buildNumber=$(BUILD_NUMBER) -X main.channel=$(CHANNEL) -X main.commit=$(COMMIT) -X main.builtAt=$(BUILT_AT) -X main.releaseSafetyClass=$(SAFETY_CLASS)
 SERVER_OUTPUT ?= dist/porticod
 
-.PHONY: dev-api dev-api-tray dev-web test build-client-core build-web build-server build-server-tray performance-check performance-deep-check load-harness api-generate api-server-check api-check contract-check
+.PHONY: dev-api dev-web test build-client-core build-web build-server performance-check performance-deep-check load-harness api-generate api-server-check api-check contract-check
 
 api-generate:
 	go run ./cmd/genopenapi
@@ -31,9 +31,6 @@ contract-check: api-server-check
 dev-api:
 	go run ./cmd/porticod
 
-dev-api-tray: # gitleaks:allow -- Make target name, not a credential
-	CGO_ENABLED=1 go run -tags tray ./cmd/porticod --tray
-
 dev-web: build-client-core
 	cd web && npm run dev
 
@@ -53,9 +50,6 @@ build-web: build-client-core
 
 build-server:
 	go build -trimpath -ldflags="$(LDFLAGS)" -o "$(SERVER_OUTPUT)" ./cmd/porticod
-
-build-server-tray:
-	CGO_ENABLED=1 go build -tags tray -trimpath -ldflags="$(LDFLAGS)" -o dist/porticod-tray ./cmd/porticod
 
 performance-check:
 	./scripts/performance-release-check.sh

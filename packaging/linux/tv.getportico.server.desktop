@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Portico Media Server
+Comment=Show Portico Media Server status and controls
+Exec=/usr/lib/portico-media-server/portico-desktop
+Icon=portico-media-server
+Terminal=false
+NoDisplay=true
+X-GNOME-Autostart-enabled=true

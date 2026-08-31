@@ -2,10 +2,14 @@ package app
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
+	"sync"
 
 	"github.com/PorticoMediaServer/portico-server/internal/app/productlanguage"
 	"github.com/PorticoMediaServer/portico-server/internal/browsecontract"
@@ -13,13 +17,15 @@ import (
 )
 
 const (
-	productContractRevision = "v1"
-	mediaActionRevision     = "v1"
-	browseDefaultLimit      = 60
-	browseMaximumLimit      = 200
+	productContractRevision         = "v1"
+	productContractSemanticRevision = "v2"
+	mediaActionRevision             = "v1"
+	browseDefaultLimit              = 60
+	browseMaximumLimit              = 200
 )
 
 type CanonicalProductContract struct {
+	SemanticIdentity   *SemanticDocumentIdentity    `json:"semanticIdentity,omitempty"`
 	APIVersion         string                       `json:"apiVersion"`
 	ActionRevision     string                       `json:"actionRevision"`
 	Language           productlanguage.Reference    `json:"language"`
@@ -38,7 +44,6 @@ type CanonicalProductContract struct {
 	ApplicationEvents  ApplicationEventCapabilities `json:"applicationEvents"`
 	LongPoll           LongPollCapabilities         `json:"longPoll"`
 	ServerCapabilities []string                     `json:"serverCapabilities"`
-	Compatibility      CompatibilityEnvelope        `json:"compatibility"`
 }
 
 type ApplicationEventCapabilities struct {
@@ -270,8 +275,8 @@ type LibraryBrowseCapabilities struct {
 	QueryLimits        BrowseQueryLimits       `json:"queryLimits"`
 }
 
-func canonicalProductContract() CanonicalProductContract {
-	return CanonicalProductContract{
+func canonicalProductContractPayload() CanonicalProductContract {
+	contract := CanonicalProductContract{
 		APIVersion:         productContractRevision,
 		ActionRevision:     mediaActionRevision,
 		Language:           productlanguage.CanonicalReference(),
@@ -305,13 +310,37 @@ func canonicalProductContract() CanonicalProductContract {
 		},
 		ServerCapabilities: serverCapabilityCatalogIDs(),
 	}
+	return contract
 }
 
-func (s *Server) canonicalProductContract() CanonicalProductContract {
-	contract := canonicalProductContract()
-	contract.Compatibility = s.compatibilityEnvelope()
-	contract.ServerCapabilities = availableServerCapabilityIDs(contract.Compatibility.Capabilities)
+func canonicalProductContract() CanonicalProductContract {
+	contract := canonicalProductContractPayload()
+	identity := canonicalProductContractSemanticIdentity()
+	contract.SemanticIdentity = &identity
 	return contract
+}
+
+var (
+	productContractSemanticIdentityOnce sync.Once
+	productContractSemanticIdentity     SemanticDocumentIdentity
+)
+
+func canonicalProductContractSemanticIdentity() SemanticDocumentIdentity {
+	productContractSemanticIdentityOnce.Do(func() {
+		contract := canonicalProductContractPayload()
+		payload, err := json.Marshal(contract)
+		if err != nil {
+			panic("canonical Product Contract cannot be serialized: " + err.Error())
+		}
+		digest := sha256.Sum256(payload)
+		productContractSemanticIdentity = SemanticDocumentIdentity{
+			ID:              "portico.product-contract",
+			Revision:        productContractSemanticRevision,
+			DigestAlgorithm: "sha256",
+			Digest:          hex.EncodeToString(digest[:]),
+		}
+	})
+	return productContractSemanticIdentity
 }
 
 func canonicalSearchContract() SearchContract {
@@ -717,11 +746,15 @@ func (s *Server) handleProductContract(w http.ResponseWriter, r *http.Request, _
 		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "Use GET for this endpoint.")
 		return
 	}
-	// The contract embeds the active build identity. Reusing it across an atomic
-	// release switch can pair build N's contract with build N+1's System response
-	// and correctly trip the client's fail-closed compatibility check.
-	w.Header().Set("Cache-Control", "private, no-store")
-	writeJSON(w, http.StatusOK, s.canonicalProductContract())
+	contract := canonicalProductContract()
+	etag := `"` + contract.SemanticIdentity.Digest + `"`
+	w.Header().Set("Cache-Control", "private, no-cache")
+	w.Header().Set("ETag", etag)
+	if r.Header.Get("If-None-Match") == etag {
+		w.WriteHeader(http.StatusNotModified)
+		return
+	}
+	writeJSON(w, http.StatusOK, contract)
 }
 
 func (s *Server) handleLibraryBrowseCapabilities(w http.ResponseWriter, r *http.Request, user User) {

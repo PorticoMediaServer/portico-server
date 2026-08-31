@@ -14,6 +14,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/PorticoMediaServer/portico-server/internal/foundationcontract"
 )
 
 type storageSourceClass string
@@ -252,7 +254,8 @@ func (s *Server) probeLibraryRoot(ctx context.Context, item scanRootEvidence) sc
 		timeout = 15 * time.Second
 	}
 	request := storageIORequest{
-		SourceID: item.SourceID, AdmissionKey: storagePhysicalSourceKey(item.ConfiguredPath, item.Classification),
+		WorkClass: foundationcontract.WorkClassBackgroundMedia,
+		SourceID:  item.SourceID, AdmissionKey: storagePhysicalSourceKey(item.ConfiguredPath, item.Classification),
 		Classification: item.Classification, Operation: "scanner root admission", Timeout: timeout,
 	}
 	var resolved string

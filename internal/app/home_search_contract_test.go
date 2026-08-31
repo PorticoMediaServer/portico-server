@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -82,6 +83,61 @@ func TestSearchPreservesHealthyGroupsAndReportsPerGroupFailure(t *testing.T) {
 	if failed := response.Groups[1]; failed.ID != "people" || failed.Status != "error" || failed.ErrorCode != "search_group_unavailable" || failed.MessageID != "search.group-unavailable" || len(failed.Items) != 0 || failed.HasMore {
 		t.Fatalf("failed group did not expose the canonical partial-failure contract: %#v", failed)
 	}
+}
+
+func TestSearchResponseSingleflightCoalescesOnlyCurrentCalls(t *testing.T) {
+	server := &Server{}
+	leader, owner := server.beginSearchResponseInFlight("same-search")
+	if !owner {
+		t.Fatal("first search call should own the singleflight")
+	}
+
+	const waiterCount = 16
+	joined := make(chan *searchResponseInFlightCall, waiterCount)
+	owners := make(chan bool, waiterCount)
+	start := make(chan struct{})
+	var waiters sync.WaitGroup
+	waiters.Add(waiterCount)
+	for index := 0; index < waiterCount; index++ {
+		go func() {
+			defer waiters.Done()
+			<-start
+			call, callOwner := server.beginSearchResponseInFlight("same-search")
+			joined <- call
+			owners <- callOwner
+		}()
+	}
+	close(start)
+	waiters.Wait()
+	close(joined)
+	close(owners)
+	for call := range joined {
+		if call != leader {
+			t.Fatal("current search waiter did not join the active call")
+		}
+	}
+	for callOwner := range owners {
+		if callOwner {
+			t.Fatal("current search waiter unexpectedly became an owner")
+		}
+	}
+
+	want := SearchResponse{Groups: []SearchGroup{{ID: "movies", Status: "success", Items: []MediaItem{{ID: "result"}}}}}
+	server.finishSearchResponseInFlight("same-search", leader, want, "profile", nil)
+	select {
+	case <-leader.done:
+	default:
+		t.Fatal("completed search did not release its current waiters")
+	}
+	if len(leader.response.Groups) != 1 || len(leader.response.Groups[0].Items) != 1 || leader.response.Groups[0].Items[0].ID != "result" {
+		t.Fatalf("current waiters did not receive the completed response: %+v", leader.response)
+	}
+
+	fresh, owner := server.beginSearchResponseInFlight("same-search")
+	if !owner || fresh == leader {
+		t.Fatal("post-completion search call reused a completed response")
+	}
+	server.finishSearchResponseInFlight("same-search", fresh, SearchResponse{}, "profile", nil)
 }
 
 func TestSearchCanonicalSortsUseDeterministicKeysets(t *testing.T) {

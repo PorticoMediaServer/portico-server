@@ -23,8 +23,16 @@ import (
 
 const (
 	currentDatabaseFormatVersion  = 2
-	expectedMigrationHead         = "001_initial"
+	expectedMigrationHead         = "002_playback_receiver_authority"
 	reviewedMigrationManifestName = "migration-manifest.json"
+	// 0.1.74 shipped this exact reviewed 001 ledger before receiver authority
+	// became append-only migration 002. No other historical checksum is a
+	// supported upgrade source.
+	legacy074Migration001Checksum = "3efae2a9860854930ffe680d7acb65c48baf4491051cbf7357a7da7c9a3ce994"
+	legacy074Migration001Ledger   = "49b356a346fdda57dd3cfd8b635c2ba1930b4be49da7d4db57b0f10e1a044088"
+	legacy074MigrationHead        = "001_initial"
+	legacy074Forward001Checksum   = "c80ee6d3e4fa1714240f2cf7ac3c08584b50990a1cbed260bd20ae3828b7f866"
+	legacy074Forward002Checksum   = "417ef8b13c23a4f8c4a9214cc8af31364a21c6021ef97663078c877e5a91b749"
 )
 
 const MigrationLayoutRebuildRequiredCode = "database_layout_rebuild_required"
@@ -176,6 +184,7 @@ type migrationConnection interface {
 // checked-in manifest; auto-discovery is deliberately not supported.
 var expectedMigrationFiles = map[int]string{
 	1: "001_initial.sql",
+	2: "002_playback_receiver_authority.sql",
 }
 
 // ValidateEmbeddedMigrationBundle performs the release-time bundle check
@@ -450,6 +459,11 @@ func runMigrationsOnReservedConnection(ctx context.Context, conn migrationConnec
 	if err := validateDatabaseIdentity(ctx, conn, bundle); err != nil {
 		return err
 	}
+	if source.CanonicalBundle {
+		if _, err := canonicalizeLegacy074MigrationLedger(ctx, conn, bundle); err != nil {
+			return err
+		}
+	}
 	appliedAny := false
 	for _, item := range bundle.Migrations {
 		applied, checksum, filename, err := appliedMigration(ctx, conn, item.Version)
@@ -607,14 +621,87 @@ func validateDatabaseIdentity(ctx context.Context, conn migrationConnection, bun
 	if formatVersion != currentDatabaseFormatVersion {
 		return migrationLayoutError("database format does not match the canonical release")
 	}
-	if head != bundle.Head.Version {
-		return migrationLayoutError("migration head does not match the canonical release")
+	if head == legacy074MigrationHead && strings.EqualFold(strings.TrimSpace(ledgerHash), legacy074Migration001Ledger) {
+		return validateLegacy074DatabasePrefix(ctx, conn)
 	}
-	expectedLedger := bundle.LedgerHash
+	headNumber, err := migrationNumber(head)
+	if err != nil || headNumber > bundle.Head.Number {
+		return migrationLayoutError("migration head does not match a reviewed canonical prefix")
+	}
+	headMigration, ok := migrationForNumber(bundle, headNumber)
+	if !ok || headMigration.Version != head {
+		return migrationLayoutError("migration head does not match a reviewed canonical prefix")
+	}
+	expectedLedger := migrationPrefixLedgerHash(bundle.Migrations, headNumber)
 	if !strings.EqualFold(strings.TrimSpace(ledgerHash), expectedLedger) {
 		return migrationIntegrityError(fmt.Sprintf("migration ledger digest mismatch: database=%s binary=%s", ledgerHash, expectedLedger))
 	}
-	return validateDatabasePrefix(ctx, conn, bundle, bundle.Head.Number)
+	return validateDatabasePrefix(ctx, conn, bundle, headNumber)
+}
+
+func validateLegacy074DatabasePrefix(ctx context.Context, conn migrationConnection) error {
+	rows, err := conn.QueryContext(ctx, `SELECT rowid, version, filename, COALESCE(checksum_sha256, '') FROM schema_migrations ORDER BY rowid`)
+	if err != nil {
+		return fmt.Errorf("read deployed 0.1.74 migration prefix: %w", err)
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		return migrationLayoutError("deployed 0.1.74 identity has no migration row")
+	}
+	var rowID int64
+	var version, filename, checksum string
+	if err := rows.Scan(&rowID, &version, &filename, &checksum); err != nil {
+		return fmt.Errorf("read deployed 0.1.74 migration row: %w", err)
+	}
+	if version != legacy074MigrationHead || filename != "001_initial.sql" {
+		return migrationLayoutError(fmt.Sprintf("deployed 0.1.74 migration row %d is %s/%s", rowID, version, filename))
+	}
+	if !strings.EqualFold(strings.TrimSpace(checksum), legacy074Migration001Checksum) {
+		return migrationIntegrityError(fmt.Sprintf("deployed 0.1.74 migration checksum mismatch: database=%s reviewed=%s", checksum, legacy074Migration001Checksum))
+	}
+	if rows.Next() {
+		return migrationLayoutError("deployed 0.1.74 migration ledger contains an ambiguous extra row")
+	}
+	return rows.Err()
+}
+
+// canonicalizeLegacy074MigrationLedger changes metadata only, inside the same
+// transaction that applies 002. If 002 or identity publication fails, SQLite
+// rolls this update back with every other migration effect.
+func canonicalizeLegacy074MigrationLedger(ctx context.Context, conn migrationConnection, bundle migrationBundle) (bool, error) {
+	var head, ledger string
+	if err := conn.QueryRowContext(ctx, `SELECT migration_head, migration_ledger_sha256 FROM portico_database_identity WHERE id = 1`).Scan(&head, &ledger); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return false, nil
+		}
+		return false, err
+	}
+	if head != legacy074MigrationHead || !strings.EqualFold(strings.TrimSpace(ledger), legacy074Migration001Ledger) {
+		return false, nil
+	}
+	canonical001, ok := migrationForNumber(bundle, 1)
+	canonical002, has002 := migrationForNumber(bundle, 2)
+	if !ok || !has002 || canonical001.Version != legacy074MigrationHead || canonical001.Filename != "001_initial.sql" ||
+		!strings.EqualFold(canonical001.Checksum, legacy074Forward001Checksum) ||
+		canonical002.Version != expectedMigrationHead || canonical002.Filename != "002_playback_receiver_authority.sql" ||
+		!strings.EqualFold(canonical002.Checksum, legacy074Forward002Checksum) {
+		return false, migrationIntegrityError("canonical 001/002 bundle does not match the reviewed 0.1.74 forward bridge")
+	}
+	result, err := conn.ExecContext(ctx, `UPDATE schema_migrations
+		SET checksum_sha256 = ?, checksum_source = 'forward-equivalent:0.1.74+002'
+		WHERE version = ? AND filename = '001_initial.sql' AND checksum_sha256 = ?`,
+		canonical001.Checksum, legacy074MigrationHead, legacy074Migration001Checksum)
+	if err != nil {
+		return false, fmt.Errorf("canonicalize deployed 0.1.74 migration ledger: %w", err)
+	}
+	affected, affectedErr := result.RowsAffected()
+	if affectedErr != nil {
+		return false, fmt.Errorf("verify deployed 0.1.74 migration ledger canonicalization: %w", affectedErr)
+	}
+	if affected != 1 {
+		return false, migrationIntegrityError("deployed 0.1.74 migration ledger changed during upgrade")
+	}
+	return true, nil
 }
 
 func validateDatabasePrefix(ctx context.Context, conn migrationConnection, bundle migrationBundle, headNumber int) error {

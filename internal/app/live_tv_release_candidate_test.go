@@ -302,7 +302,7 @@ func TestDVRSchedulingRejectsBlockedAndMismatchedLiveTVReferences(t *testing.T) 
 	if _, err := server.db.Exec(`UPDATE live_tv_recordings SET status='complete',path=?,size_bytes=8 WHERE id=?`, recordingPath, recording.ID); err != nil {
 		t.Fatal(err)
 	}
-	playback := performDVRRouteRequest(server, user, http.MethodPost, "/api/dvr/recordings/"+recording.ID+"/playback", `{}`)
+	playback := performDVRRouteRequest(server, user, http.MethodPost, "/api/dvr/recordings/"+recording.ID+"/playback", `{"intent":{"quality":{"mode":"automatic"}}}`)
 	if playback.Code != http.StatusNotFound {
 		t.Fatalf("revoked DVR playback=%d body=%s", playback.Code, playback.Body.String())
 	}

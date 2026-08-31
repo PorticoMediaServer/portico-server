@@ -99,6 +99,43 @@ test("high-risk grants and playback state reject invalid runtime fields", () => 
   }), /playback continuation position is invalid/);
 });
 
+test("playback terminal receipts are exact, positive acknowledgements", () => {
+  const receipt = {
+    requestId: "terminal-request-1",
+    accepted: true,
+    duplicate: true,
+    sessionId: "session-1",
+    terminal: {
+      disposition: "completed",
+      generation: 2,
+      eventSequence: 9,
+      recordedAt: "2026-08-30T18:20:00.000Z",
+      positionSeconds: 60,
+      durationSeconds: 60,
+    },
+  };
+  assert.equal(
+    decodeHighRiskResponse("/api/playback-sessions/session-1", "DELETE", receipt),
+    receipt,
+  );
+  assert.throws(
+    () => decodeHighRiskResponse(
+      "/api/playback-sessions/session-1/continuation",
+      "DELETE",
+      { ...receipt, accepted: false },
+    ),
+    /receipt state/,
+  );
+  assert.throws(
+    () => decodeHighRiskResponse(
+      "/api/playback-sessions/session-1",
+      "DELETE",
+      { ...receipt, terminal: { ...receipt.terminal, eventSequence: 0 } },
+    ),
+    /ordering authority/,
+  );
+});
+
 test("high-risk playback responses require one credential-free default resource", () => {
   const response = {
     sessionId: "session", sourceUrl: "/api/media/movie/hls/master.m3u8", directPlay: false,
@@ -106,9 +143,10 @@ test("high-risk playback responses require one credential-free default resource"
     decision: {}, media: {},
     mediaGrant: {token: "grant", expiresAt: "2099-08-07T00:00:00Z"},
     continuationCredential: {token: "continuation", origin: "https://server.example", expiresAt: "2099-08-07T00:00:00Z", generation: 1},
-    selectedQualityId: "auto", selectedSubtitleMode: "off",
-    resources: [{id: "active", sourceUrl: "/api/media/movie/hls/master.m3u8", streamFormat: "hls", qualityId: "auto", subtitleMode: "off", default: true}],
-    audioStreams: [], subtitleStreams: [], chapters: [], qualities: [], queue: []
+    qualityOffers: {contractId: "PC-PLAYBACK", schemaVersion: "quality-offers.v1", mediaId: "movie", versionId: "qver-movie", sourceRevision: "qsrc-movie", offerRevision: "qrev-movie", offers: [{selectionId: "qsel-auto", label: "Automatic", kind: "automatic"}, {selectionId: "qsel-original", label: "Original Quality", kind: "original"}]},
+    qualitySelection: {mode: "automatic"}, selectedSubtitleMode: "off",
+    resources: [{id: "active", sourceUrl: "/api/media/movie/hls/master.m3u8", streamFormat: "hls", subtitleMode: "off", default: true}],
+    audioStreams: [], subtitleStreams: [], chapters: [], queue: []
   };
   assert.equal(decodeHighRiskResponse("/api/playback-sessions", "POST", response), response);
   assert.throws(() => decodeHighRiskResponse("/api/playback-sessions", "POST", {
@@ -131,8 +169,18 @@ test("high-risk playback responses require one credential-free default resource"
   }), /playback resources are invalid/);
   assert.throws(() => decodeHighRiskResponse("/api/playback-sessions", "POST", {
     ...response,
-    selectedQualityId: "original"
-  }), /selectedQualityId does not match/);
+    qualitySelection: {mode: "explicit", selectionId: "qsel-original", qualityOfferRevision: "qrev-stale"}
+  }), /explicit quality selection is stale/);
+  const audioOnlyFixed = {...response, qualityOffers: {...response.qualityOffers, offers: [...response.qualityOffers.offers, {selectionId: "qsel-audio", label: "Audio 128 kbps", kind: "fixed", maxAudioBitrateBps: 128000}]}};
+  assert.equal(decodeHighRiskResponse("/api/playback-sessions", "POST", audioOnlyFixed), audioOnlyFixed);
+  assert.throws(() => decodeHighRiskResponse("/api/playback-sessions", "POST", {
+    ...response,
+    qualityOffers: {...response.qualityOffers, offers: [...response.qualityOffers.offers, {selectionId: "qsel-empty", label: "Empty", kind: "fixed"}]}
+  }), /quality offer target is invalid/);
+  assert.throws(() => decodeHighRiskResponse("/api/playback-sessions", "POST", {
+    ...response,
+    qualityOffers: {...response.qualityOffers, offers: [{...response.qualityOffers.offers[0], maxAudioBitrateBps: 128000}, response.qualityOffers.offers[1]]}
+  }), /quality offer target is invalid/);
 
   assert.equal(decodeHighRiskResponse("/api/playback/active", "POST", {
     active: true,

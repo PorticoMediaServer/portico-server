@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>tv.getportico.server.companion</string>
+  <key>ProgramArguments</key><array><string>__PORTICO_COMPANION_EXECUTABLE__</string></array>
+  <key>EnvironmentVariables</key><dict>
+    <key>PORTICO_LOCAL_URL</key><string>http://127.0.0.1:32500</string>
+    <key>PORTICO_HOSTED_WEB_URL</key><string>https://web.getportico.tv</string>
+	<key>PORTICO_INSTALL_BUILD</key><string>__PORTICO_INSTALL_BUILD__</string>
+  </dict>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><false/>
+  <key>ProcessType</key><string>Interactive</string>
+  <key>StandardOutPath</key><string>__PORTICO_COMPANION_STDOUT__</string>
+  <key>StandardErrorPath</key><string>__PORTICO_COMPANION_STDERR__</string>
+</dict></plist>

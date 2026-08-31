@@ -22,7 +22,7 @@ import type {
   LibraryChannelRestoreDefaultsRequest,
   LibraryChannelRestoreDefaultsResponse,
   LibraryChannelTemplatesResponse,
-  PlaybackHandoffRequest,
+  PlaybackHandoffInput,
   PlaybackIntent,
   PlaybackPrepareNextRequest,
   MediaTrickplaySet,
@@ -34,6 +34,11 @@ import type {
   PlaybackRepeatMode,
   PlaybackResponse,
   PlaybackRestoreResponse,
+  PlaybackReplacementInput,
+  PlaybackReplacementOutcome,
+  PlaybackReplacementTarget,
+  PlaybackReplacementTargetResponse,
+  PendingPlaybackTerminalRetryOutcome,
   PlaybackSessionQueueRequest,
   PlaybackSessionQueueReplaceRequest,
   PlaybackSessionQueueResponse,
@@ -855,6 +860,10 @@ export interface PorticoDataSource {
   mutateSavedResourceItems<K extends SavedEditableResourceKind>(kind: K, id: string, mutation: SavedResourceItemsMutation<K>, signal: AbortSignal): Promise<SavedResourceSummary>;
   startPlayback(mediaId: string, options: PlaybackStartOptions, signal: AbortSignal): Promise<PlaybackResponse>;
   restorePlayback(signal: AbortSignal, intent?: PlaybackIntent): Promise<PlaybackRestoreResponse>;
+  recoverPendingPlaybackTerminals(signal: AbortSignal): Promise<void>;
+  replacePlaybackTarget<Target extends PlaybackReplacementTarget>(target: Target, input: PlaybackReplacementInput, signal: AbortSignal): Promise<PlaybackReplacementOutcome<PlaybackReplacementTargetResponse<Target>>>;
+  restoreCommittedPlaybackReplacement(outcome: Extract<PlaybackReplacementOutcome<unknown>, { outcome: 'committed-restore-required' }>, intent: PlaybackIntent | undefined, signal: AbortSignal): Promise<PlaybackResponse>;
+  retryPendingPlaybackTerminalMutation(sessionId: string, signal: AbortSignal): Promise<PendingPlaybackTerminalRetryOutcome>;
   touchPlayback(sessionId: string, event: PlaybackProgressInput, signal?: AbortSignal, keepalive?: boolean): Promise<PlaybackProgressAcknowledgement>;
   renewPlaybackMediaGrant(sessionId: string, signal: AbortSignal): Promise<MediaGrant>;
   renegotiatePlayback(sessionId: string, request: PlaybackRenegotiationRequest, signal: AbortSignal): Promise<PlaybackResponse>;
@@ -862,8 +871,8 @@ export interface PorticoDataSource {
   playbackSessionQueue(sessionId: string, signal: AbortSignal): Promise<PlaybackSessionQueueResponse>;
   updatePlaybackSessionQueue(sessionId: string, request: PlaybackSessionQueueReplaceRequest, signal: AbortSignal): Promise<PlaybackSessionQueueResponse>;
   mutatePlaybackSessionQueue(sessionId: string, request: PlaybackSessionQueueRequest, signal: AbortSignal): Promise<PlaybackSessionQueueResponse>;
-  prepareNextPlayback(sessionId: string, signal: AbortSignal, request?: PlaybackPrepareNextRequest): Promise<PlaybackPreparedResponse>;
-  handoffPlayback(sessionId: string, request: PlaybackHandoffRequest, signal: AbortSignal): Promise<PlaybackResponse>;
+  prepareNextPlayback(sessionId: string, signal: AbortSignal, request: PlaybackPrepareNextRequest): Promise<PlaybackPreparedResponse>;
+  handoffPlayback(sessionId: string, request: PlaybackHandoffInput, signal: AbortSignal): Promise<PlaybackResponse>;
   playbackResourceUrl(path: string): string;
   liveTVSources(signal: AbortSignal): Promise<ActionableLiveTVSource[]>;
   liveTVGuide(sourceId: string, input: LiveTVGuideInput, signal: AbortSignal): Promise<LiveTVGuideResult>;

@@ -1546,6 +1546,42 @@
         "action.report-problem"
       ]
     },
+    "onboarding.claim-code-unavailable": {
+      "title": "Check the server claim code",
+      "body": "This claim code is invalid, expired, or no longer available. Check the code on the server or create a new one, then try again.",
+      "icon": "status.warning",
+      "tone": "warning"
+    },
+    "sharing.invitation-not-found": {
+      "title": "Check the invitation code",
+      "body": "This invitation is invalid or no longer available. Check the code or ask the server owner for a new invitation.",
+      "icon": "status.warning",
+      "tone": "warning"
+    },
+    "sharing.invitation-expired": {
+      "title": "Invitation expired",
+      "body": "This invitation has expired. Ask the server owner for a new invitation.",
+      "icon": "status.warning",
+      "tone": "warning"
+    },
+    "sharing.invitation-revoked": {
+      "title": "Invitation cancelled",
+      "body": "This invitation was cancelled and can no longer grant access. Ask the server owner for a new invitation.",
+      "icon": "status.locked",
+      "tone": "warning"
+    },
+    "sharing.invitation-consumed": {
+      "title": "Invitation already used",
+      "body": "This invitation has already been used and can't be used again. Ask the server owner to check your access or send a new invitation.",
+      "icon": "status.account",
+      "tone": "neutral"
+    },
+    "sharing.invitation-wrong-recipient": {
+      "title": "Use the invited Portico Account",
+      "body": "This invitation can't be accepted by the Portico Account currently signed in. Sign in with the account that received it, or ask the server owner for a new invitation.",
+      "icon": "status.account",
+      "tone": "warning"
+    },
     "problem.cloud-unavailable": {
       "title": "Portico Account services unavailable",
       "body": "Portico couldn't reach account services. Check your connection and try again.",
@@ -3262,6 +3298,24 @@
       "body": "This browser has been signed out and its saved access has been cleared.",
       "icon": "status.success",
       "tone": "success"
+    },
+    "server.delete-confirmation-required": {
+      "title": "Server name changed",
+      "body": "Refresh the server list, enter the current exact server name, and try again.",
+      "icon": "status.warning",
+      "tone": "warning"
+    },
+    "server.delete-authorization-required": {
+      "title": "Verify this deletion again",
+      "body": "The deletion authorization expired or could not be used. Verify your identity again, then try Delete server again.",
+      "icon": "status.locked",
+      "tone": "warning"
+    },
+    "server.lifecycle-outcome-pending": {
+      "title": "Still confirming this change",
+      "body": "Do not repeat the action. Refresh the server list in a moment to confirm the result.",
+      "icon": "status.loading",
+      "tone": "neutral"
     },
     "account.load-failed": {
       "title": "Account couldn't load",

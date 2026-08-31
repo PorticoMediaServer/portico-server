@@ -2,47 +2,47 @@ package app
 
 import (
 	"context"
+	"errors"
 	"sync"
+
+	"github.com/PorticoMediaServer/portico-server/internal/foundationcontract"
 )
 
-// sqliteWritePriority is ordered from the work that must be protected most to
-// the work that must yield first. SQLite still has one writer; this scheduler
-// decides which Portico writer is allowed to compete for it next.
-type sqliteWritePriority uint8
+var errInvalidWorkClass = errors.New("work class is not declared by the Foundation contract")
 
-const (
-	sqliteWritePlayback sqliteWritePriority = iota
-	sqliteWriteInteractive
-	sqliteWriteBackground
-	sqliteWritePriorityCount
-)
-
+// sqliteWriteScheduler preserves SQLite's one-writer physical governor while
+// using the canonical Foundation class for semantic ordering. A waiting
+// security fence is therefore selected before every ordinary queued mutation;
+// an already-running SQLite transaction is allowed to reach its atomic commit.
 type sqliteWriteScheduler struct {
 	mu        sync.Mutex
 	active    bool
 	nextID    uint64
-	waitQueue [sqliteWritePriorityCount][]uint64
+	waitQueue map[foundationcontract.WorkClass][]uint64
 	notify    chan struct{}
 }
 
-func (q *sqliteWriteScheduler) acquire(ctx context.Context, priority sqliteWritePriority) (func(), error) {
+func (q *sqliteWriteScheduler) acquire(ctx context.Context, class foundationcontract.WorkClass) (func(), error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if priority >= sqliteWritePriorityCount {
-		priority = sqliteWriteBackground
+	if !class.Valid() {
+		return nil, errInvalidWorkClass
 	}
 
 	q.mu.Lock()
 	if q.notify == nil {
 		q.notify = make(chan struct{})
 	}
+	if q.waitQueue == nil {
+		q.waitQueue = map[foundationcontract.WorkClass][]uint64{}
+	}
 	q.nextID++
 	waiterID := q.nextID
-	q.waitQueue[priority] = append(q.waitQueue[priority], waiterID)
+	q.waitQueue[class] = append(q.waitQueue[class], waiterID)
 	for {
-		if !q.active && q.firstWaiter(priority) == waiterID && !q.higherPriorityWaiting(priority) {
-			q.waitQueue[priority] = q.waitQueue[priority][1:]
+		if !q.active && q.firstWaiter(class) == waiterID && !q.higherPriorityWaiting(class) {
+			q.waitQueue[class] = q.waitQueue[class][1:]
 			q.active = true
 			q.mu.Unlock()
 			var once sync.Once
@@ -60,7 +60,7 @@ func (q *sqliteWriteScheduler) acquire(ctx context.Context, priority sqliteWrite
 		select {
 		case <-ctx.Done():
 			q.mu.Lock()
-			q.removeWaiter(priority, waiterID)
+			q.removeWaiter(class, waiterID)
 			q.signalLocked()
 			q.mu.Unlock()
 			return nil, ctx.Err()
@@ -70,26 +70,27 @@ func (q *sqliteWriteScheduler) acquire(ctx context.Context, priority sqliteWrite
 	}
 }
 
-func (q *sqliteWriteScheduler) higherPriorityWaiting(priority sqliteWritePriority) bool {
-	for candidate := sqliteWritePlayback; candidate < priority; candidate++ {
-		if len(q.waitQueue[candidate]) > 0 {
+func (q *sqliteWriteScheduler) higherPriorityWaiting(class foundationcontract.WorkClass) bool {
+	priority := class.Priority()
+	for _, candidate := range foundationcontract.CanonicalWorkClasses() {
+		if candidate.Priority() < priority && len(q.waitQueue[candidate]) > 0 {
 			return true
 		}
 	}
 	return false
 }
 
-func (q *sqliteWriteScheduler) firstWaiter(priority sqliteWritePriority) uint64 {
-	if len(q.waitQueue[priority]) == 0 {
+func (q *sqliteWriteScheduler) firstWaiter(class foundationcontract.WorkClass) uint64 {
+	if len(q.waitQueue[class]) == 0 {
 		return 0
 	}
-	return q.waitQueue[priority][0]
+	return q.waitQueue[class][0]
 }
 
-func (q *sqliteWriteScheduler) removeWaiter(priority sqliteWritePriority, waiterID uint64) {
-	for index, candidate := range q.waitQueue[priority] {
+func (q *sqliteWriteScheduler) removeWaiter(class foundationcontract.WorkClass, waiterID uint64) {
+	for index, candidate := range q.waitQueue[class] {
 		if candidate == waiterID {
-			q.waitQueue[priority] = append(q.waitQueue[priority][:index], q.waitQueue[priority][index+1:]...)
+			q.waitQueue[class] = append(q.waitQueue[class][:index], q.waitQueue[class][index+1:]...)
 			return
 		}
 	}
@@ -104,10 +105,10 @@ func (q *sqliteWriteScheduler) signalLocked() {
 	q.notify = make(chan struct{})
 }
 
-func (q *sqliteWriteScheduler) pressure() (playback, interactive int) {
+func (q *sqliteWriteScheduler) waiting(class foundationcontract.WorkClass) int {
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	return len(q.waitQueue[sqliteWritePlayback]), len(q.waitQueue[sqliteWriteInteractive])
+	return len(q.waitQueue[class])
 }
 
 func (q *sqliteWriteScheduler) activeOrWaiting() bool {
@@ -116,8 +117,8 @@ func (q *sqliteWriteScheduler) activeOrWaiting() bool {
 	if q.active {
 		return true
 	}
-	for priority := sqliteWritePlayback; priority < sqliteWritePriorityCount; priority++ {
-		if len(q.waitQueue[priority]) > 0 {
+	for _, class := range foundationcontract.CanonicalWorkClasses() {
+		if len(q.waitQueue[class]) > 0 {
 			return true
 		}
 	}

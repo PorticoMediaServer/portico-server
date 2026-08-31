@@ -1,5 +1,5 @@
 import { createContext, useContext } from 'react';
-import type { HostedDeviceAuthorizationDecisionResponse, HostedDeviceAuthorizationPreviewResponse, HostedTVSetupGrantResponse, HostedTVSetupPreviewResponse, ProductMessageId, ViewerScope } from '@porticomediaserver/client-core';
+import type { HostedDeviceAuthorizationDecisionResponse, HostedDeviceAuthorizationPreviewResponse, HostedServerDeletionProofRequest, HostedTVSetupGrantResponse, HostedTVSetupPreviewResponse, ProductMessageId, ViewerScope } from '@porticomediaserver/client-core';
 import type { PorticoDataSource, Viewer } from '../data/models';
 import type { WebViewerRuntime } from '../data/viewerRuntime';
 import type { HostedServerSummary, RuntimeConfig, RuntimeState } from './runtimeMachine';
@@ -39,6 +39,8 @@ export type RuntimeContextValue = {
   recoverActiveRoute: () => Promise<void>;
   continueWithHostedAccount: () => Promise<void>;
   selectServer: (server: HostedServerSummary) => Promise<void>;
+  deleteHostedServer: (server: HostedServerSummary, credentials: HostedServerDeletionProofRequest) => Promise<void>;
+  leaveHostedServer: (server: HostedServerSummary) => Promise<void>;
   selectProfile: (profileId: string, pin?: string) => Promise<void>;
   beginProfileSelection: () => Promise<void>;
   reselectServer: () => Promise<void>;
@@ -47,6 +49,7 @@ export type RuntimeContextValue = {
   hostedRegister: (details: { email: string; username: string; password: string }) => Promise<void>;
   previewSSOOnboarding: (onboardingToken: string, signal?: AbortSignal) => Promise<SSOOnboardingPreview>;
   completeSSOOnboarding: (details: { onboardingToken: string; username: string; contactEmail?: string }) => Promise<void>;
+  cancelSSOOnboarding: () => void;
   hostedLogout: () => Promise<void>;
   refreshMemberships: () => Promise<void>;
   canSelectHostedServer?: boolean;

@@ -28,15 +28,12 @@ func (s *Server) reserveLiveTVTunerAllocation(ctx context.Context, sourceID, cha
 		return liveTVTunerLease{}, errLiveTVTunerCapacity
 	}
 	now := time.Now().UTC()
-	cutoff := now.Add(-liveTVAllocationStaleAfter).Format(time.RFC3339)
+	if err := s.pruneStaleLiveTVTunerAllocations(ctx); err != nil {
+		return liveTVTunerLease{}, err
+	}
 	lease := liveTVTunerLease{Token: randomID("lease"), Created: true}
 	changed := false
 	err := s.withUserTxTagged(ctx, []string{}, func(tx *sql.Tx) error {
-		pruned, err := pruneStaleLiveTVTunerAllocationsTx(tx, cutoff)
-		if err != nil {
-			return err
-		}
-		changed = pruned
 		var existingToken string
 		if err := tx.QueryRow(`SELECT lease_token FROM live_tv_tuner_allocations WHERE allocation_kind = ? AND consumer_id = ?`, kind, consumerID).Scan(&existingToken); err == nil {
 			lease.Token, lease.Created = existingToken, false
@@ -59,15 +56,15 @@ func (s *Server) reserveLiveTVTunerAllocation(ctx context.Context, sourceID, cha
 		// does not claim cross-session upstream sharing until a provider adapter
 		// supplies a real shared relay.
 		allocationKey := kind + ":" + consumerID
-		_, err = tx.Exec(`
+		_, insertErr := tx.Exec(`
 			INSERT INTO live_tv_tuner_allocations (
 				id, source_id, channel_id, allocation_kind, consumer_id, allocation_key, lease_token, acquired_at, heartbeat_at, expires_at
 			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '')`,
 			randomID("tuner"), sourceID, channelID, kind, consumerID, allocationKey, lease.Token, now.Format(time.RFC3339), now.Format(time.RFC3339))
-		if err == nil {
+		if insertErr == nil {
 			changed = true
 		}
-		return err
+		return insertErr
 	})
 	if err != nil {
 		return liveTVTunerLease{}, err
@@ -78,77 +75,61 @@ func (s *Server) reserveLiveTVTunerAllocation(ctx context.Context, sourceID, cha
 	return lease, nil
 }
 
-func pruneStaleLiveTVTunerAllocationsTx(tx *sql.Tx, liveCutoff string) (bool, error) {
-	// Fence stale Live sessions before releasing their tuner. A still-valid
-	// grant must never resurrect a stream after its allocation lease expired.
-	now := time.Now().UTC().Format(time.RFC3339)
-	changed := false
-	record := func(result sql.Result) {
-		count, _ := result.RowsAffected()
-		changed = changed || count > 0
-	}
-	result, err := tx.Exec(`
-		UPDATE playback_media_grants SET revoked_at = ?
-		WHERE revoked_at = '' AND playback_session_id IN (
-			SELECT consumer_id FROM live_tv_tuner_allocations
-			WHERE allocation_kind = 'live_session' AND heartbeat_at < ?
-		)`, now, liveCutoff)
-	if err != nil {
-		return false, err
-	}
-	record(result)
-	result, err = tx.Exec(`
-		UPDATE playback_session_continuation_credentials SET revoked_at = ?, previous_valid_until = ''
-		WHERE revoked_at = '' AND playback_session_id IN (
-			SELECT consumer_id FROM live_tv_tuner_allocations
-			WHERE allocation_kind = 'live_session' AND heartbeat_at < ?
-		)`, now, liveCutoff)
-	if err != nil {
-		return false, err
-	}
-	record(result)
-	result, err = tx.Exec(`
-		UPDATE playback_sessions SET state = 'stopped', ended_at = ?, last_seen_at = ?
-		WHERE id IN (
-			SELECT consumer_id FROM live_tv_tuner_allocations
-			WHERE allocation_kind = 'live_session' AND heartbeat_at < ?
-		) AND ended_at = ''`, now, now, liveCutoff)
-	if err != nil {
-		return false, err
-	}
-	record(result)
-	result, err = tx.Exec(`
-		DELETE FROM live_tv_tuner_allocations
-		WHERE allocation_kind = 'live_session' AND heartbeat_at < ?`, liveCutoff)
-	if err != nil {
-		return false, err
-	}
-	record(result)
-	result, err = tx.Exec(`
-		DELETE FROM live_tv_tuner_allocations
-		WHERE allocation_kind = 'dvr_recording' AND heartbeat_at < ?`, liveCutoff)
-	if err != nil {
-		return false, err
-	}
-	record(result)
-	return changed, nil
-}
-
 func (s *Server) pruneStaleLiveTVTunerAllocations(ctx context.Context) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	cutoff := time.Now().UTC().Add(-liveTVAllocationStaleAfter).Format(time.RFC3339)
-	changed := false
-	err := s.withUserTxTagged(ctx, []string{}, func(tx *sql.Tx) error {
-		var err error
-		changed, err = pruneStaleLiveTVTunerAllocationsTx(tx, cutoff)
+	cutoffTime := time.Now().UTC().Add(-liveTVAllocationStaleAfter)
+	cutoff := cutoffTime.Format(time.RFC3339)
+	rows, err := s.queryUserRead(ctx, `
+		SELECT consumer_id FROM live_tv_tuner_allocations
+		WHERE allocation_kind = 'live_session' AND heartbeat_at < ?`, cutoff)
+	if err != nil {
 		return err
-	})
-	if err == nil && changed {
+	}
+	sessionIDs := []string{}
+	for rows.Next() {
+		var sessionID string
+		if err := rows.Scan(&sessionID); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		sessionIDs = append(sessionIDs, sessionID)
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return err
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	changed := false
+	lifecycle := s.playbackLifecycle()
+	for _, sessionID := range sessionIDs {
+		result, terminateErr := lifecycle.Terminate(ctx, playbackTerminationRequest{
+			SessionID: sessionID, Cause: playbackTerminationStale, TunerStaleBefore: &cutoffTime,
+		})
+		if terminateErr != nil && !errors.Is(terminateErr, sql.ErrNoRows) && !errors.Is(terminateErr, errPlaybackTerminationNotEligible) {
+			return terminateErr
+		}
+		changed = changed || result.Changed || result.AuthorityChanged
+	}
+	cleanup, err := s.execUserWriteTagged(ctx, []string{}, `
+		DELETE FROM live_tv_tuner_allocations
+		WHERE heartbeat_at < ? AND (
+			allocation_kind = 'dvr_recording'
+			OR (allocation_kind = 'live_session' AND NOT EXISTS (
+				SELECT 1 FROM playback_sessions ps WHERE ps.id = live_tv_tuner_allocations.consumer_id
+			))
+		)`, cutoff)
+	if err != nil {
+		return err
+	}
+	changed = changed || rowsAffected(cleanup) > 0
+	if changed {
 		s.publishDataChanged("data.changed", []string{"live-tv", "dvr"}, "database", "", nil)
 	}
-	return err
+	return nil
 }
 
 func (s *Server) releaseLiveTVTunerAllocation(ctx context.Context, kind, consumerID string) {

@@ -17,7 +17,7 @@ const initial: RestoreWorkflowResponse = {
 
 describe('supervised restore status polling', () => {
 	it('shows truthful update availability without rendering a dead mutation control', () => {
-		render(<MaintenanceOperations tasks={[]} backups={[]} storage={{ totalBytes: 0, categories: [], generatedAt: new Date().toISOString() }} source={{} as SettingsDataSource} onChanged={vi.fn()} />);
+		render(<MaintenanceOperations tasks={[]} backups={[]} storage={{ totalBytes: 0, categories: [], generatedAt: new Date().toISOString() }} viewer={{ id: 'owner', displayName: 'Owner', email: 'owner@example.com', role: 'owner', serverName: 'Portico', authOrigin: 'local' }} source={{} as SettingsDataSource} onChanged={vi.fn()} />);
 		expect(screen.queryByRole('button', { name: /update/i })).not.toBeInTheDocument();
 		expect(screen.getByText('Updates unavailable')).toBeInTheDocument();
 		expect(screen.getByText(/Use the documented update procedure/)).toBeInTheDocument();

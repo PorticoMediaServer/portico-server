@@ -8,6 +8,8 @@ import {
   createPorticoClient,
   decideProfileSelection,
   defaultAccountServerInstallationPreferences,
+  HostedTerminalMutationCommittedError,
+  HostedTerminalMutationUncertainError,
   HostedRoutePublicationPendingError,
   isTerminalServerAuthorizationFailure,
   LocalNetworkRouteUnavailableError,
@@ -64,6 +66,7 @@ import { RuntimeContext, type RuntimeContextValue } from "./RuntimeContext";
 import {
   automaticHostedAvailabilityRetry,
   createHostedAvailabilityRetryCohort,
+  hostedAvailabilityRetryDelay,
 } from "./hostedAvailability";
 import {
   hostedCSRFToken,
@@ -518,6 +521,7 @@ function settleAgainstAbort<T>(
 function serverSummary(server: HostedServer): HostedServerSummary {
   return {
     id: server.id,
+    ownerUserId: server.ownerUserId,
     name: server.name,
     assignedHostname: server.assignedHostname,
     remoteAccessEnabled: server.remoteAccessEnabled,
@@ -611,39 +615,29 @@ export function browserSafeLocalCandidates(
   _server: HostedServer,
   document: HostedRouteDocument,
 ): HostedRouteEntry[] {
-  return document.routes.filter((route) => {
-    if (
-      ![
-        "lan",
-        "lan_ip_encoded",
-        "lan_discovered",
-        "direct_ip_encoded",
-        "public_direct_ip_encoded",
-      ].includes(route.type)
-    )
-      return false;
-    if (
-      [
-        "stale",
-        "failed",
-        "http_failed",
-        "tls_failed",
-        "identity_mismatch",
-        "repairing",
-        "repair_requested",
-      ].includes(route.quality)
-    )
-      return false;
-    try {
+	const candidates = document.routes.filter((route) => {
+		if (
+			![
+				"lan",
+				"lan_ip_encoded",
+				"lan_discovered",
+			].includes(route.type)
+		)
+			return false;
+		if (route.quality !== "reachable" && route.quality !== "probe_required") return false;
+		try {
       const candidate = new URL(route.url);
       const hostname = candidate.hostname.replace(/^\[|\]$/g, "");
       const ipLiteral =
         /^\d{1,3}(?:\.\d{1,3}){3}$/.test(hostname) || hostname.includes(":");
       return candidate.protocol === "https:" && !ipLiteral;
     } catch {
-      return false;
-    }
-  });
+			return false;
+		}
+	});
+	return candidates.sort((left, right) =>
+		(left.quality === "reachable" ? 0 : 1) - (right.quality === "reachable" ? 0 : 1),
+	);
 }
 
 export function extractHostedBootstrapIntent(value: string): {
@@ -2670,6 +2664,12 @@ export function RuntimeProvider({
       if (generation === hostedAccountGeneration.current) setBusy(false);
     }
     if (generation !== hostedAccountGeneration.current) return;
+    // A successful authoritative directory read resolves only the matching
+    // Hosted availability warning. Durability and security warnings have
+    // separate owners and must survive an unrelated control-plane refresh.
+    setConnectionWarning((current) =>
+      current === "problem.cloud-unavailable" ? undefined : current,
+    );
     setHostedServers(servers);
     let remembered: TrustedServerConnectionRecord[] = [];
     let activeServerWasUnclaimed = false;
@@ -3596,10 +3596,6 @@ export function RuntimeProvider({
             connectionVault,
             rememberedAccount.accountId,
           );
-          setRestoredPresentation({
-            accountId: rememberedAccount.accountId,
-            displayName: rememberedAccount.displayName,
-          });
         }
       } catch (reason) {
         rememberedRestoreBlocked = true;
@@ -3778,6 +3774,69 @@ export function RuntimeProvider({
   // directory. A displayed server can therefore never remain an enabled but
   // inert remembered-only button after Hosted Services recovers.
   membershipRefresh.current = refreshHostedMembershipDirectory;
+
+  useEffect(() => {
+    if (
+      config.mode !== "hosted" ||
+      connectionWarning !== "problem.cloud-unavailable" ||
+      !activeHostedAccount.current
+    )
+      return;
+    let cancelled = false;
+    let timer: number | undefined;
+    const clear = () => {
+      if (timer !== undefined) window.clearTimeout(timer);
+      timer = undefined;
+    };
+    const schedule = () => {
+      clear();
+      if (
+        cancelled ||
+        document.visibilityState === "hidden" ||
+        navigator.onLine === false
+      )
+        return;
+      timer = window.setTimeout(
+        run,
+        hostedAvailabilityRetryDelay(
+          undefined,
+          Date.now(),
+          hostedRetryCohortRef.current,
+        ),
+      );
+    };
+    const run = async () => {
+      if (cancelled) return;
+      if (
+        document.visibilityState === "hidden" ||
+        navigator.onLine === false
+      ) {
+        clear();
+        return;
+      }
+      try {
+        await refreshHostedMembershipDirectory();
+      } catch {
+        if (!cancelled) schedule();
+      }
+    };
+    const resume = () => {
+      if (document.visibilityState !== "hidden" && navigator.onLine !== false)
+        schedule();
+      else clear();
+    };
+    schedule();
+    window.addEventListener("online", resume);
+    window.addEventListener("offline", resume);
+    document.addEventListener("visibilitychange", resume);
+    return () => {
+      cancelled = true;
+      clear();
+      window.removeEventListener("online", resume);
+      window.removeEventListener("offline", resume);
+      document.removeEventListener("visibilitychange", resume);
+    };
+  }, [config.mode, connectionWarning, hostedRetryCohort]);
 
   const selectedHostedServerId: unknown =
     publishedServerIdentity &&
@@ -4156,6 +4215,12 @@ export function RuntimeProvider({
           : {}),
       };
     },
+    cancelSSOOnboarding: () => {
+      delete bootstrapIntent.current.ssoOnboardingToken;
+      clearRecoverableSSOOnboarding();
+      dispatch({ type: "HOSTED_SIGN_IN_REQUIRED" });
+      setRevision((current) => current + 1);
+    },
     completeSSOOnboarding: async (details) => {
       const existing = ssoOnboardingCompletionInFlight.current;
       if (existing) return existing;
@@ -4464,6 +4529,86 @@ export function RuntimeProvider({
     },
     refreshMemberships: refreshHostedMembershipDirectory,
     canSelectHostedServer: Boolean(activeHostedAccount.current),
+    deleteHostedServer: async (server, credentials) => {
+      const account = activeHostedAccount.current;
+      if (!account || server.ownerUserId !== account.accountId)
+        throw new Error("Only the server owner can delete this server registration.");
+      setBusy(true);
+      try {
+        const deletionProof = await withRuntimeDeadline(
+          hostedClient.createServerDeletionProof(server.id, credentials),
+          12_000,
+          "Portico could not verify this server deletion in time.",
+        );
+        try {
+          await withRuntimeDeadline(
+            hostedClient.deleteServer(server.id, {
+              confirmation: server.name,
+              proof: deletionProof.proof,
+            }),
+            12_000,
+            "Portico could not delete this server in time.",
+          );
+        } catch (reason) {
+          if (reason instanceof HostedTerminalMutationCommittedError) {
+            // The durable receipt is authoritative; refresh instead of replaying.
+          } else {
+            if (
+              reason instanceof ApiError &&
+              reason.code === "server_delete_confirmation_required"
+            )
+              await refreshHostedMembershipDirectory().catch(() => undefined);
+            if (reason instanceof HostedTerminalMutationUncertainError)
+              await refreshHostedMembershipDirectory().catch(() => undefined);
+            throw reason;
+          }
+        }
+        await refreshHostedMembershipDirectory();
+      } catch (reason) {
+        if (reason instanceof ApiError && reason.code === "server_not_found") {
+          // Another authorized actor or reconciled terminal request already
+          // removed it. Directory authority is the idempotent completion view.
+          await refreshHostedMembershipDirectory();
+          return;
+        }
+        throw reason;
+      } finally {
+        setBusy(false);
+      }
+    },
+    leaveHostedServer: async (server) => {
+      const account = activeHostedAccount.current;
+      if (!account || server.ownerUserId === account.accountId)
+        throw new Error("Only a non-owner member can leave this server.");
+      setBusy(true);
+      try {
+        try {
+          await withRuntimeDeadline(
+            hostedClient.leaveServer(server.id),
+            12_000,
+            "Portico could not leave this server in time.",
+          );
+        } catch (reason) {
+          if (reason instanceof HostedTerminalMutationCommittedError) {
+            // The durable receipt is authoritative; refresh instead of replaying.
+          } else if (
+            reason instanceof ApiError &&
+            (reason.code === "server_membership_not_found" ||
+              reason.code === "member_not_found")
+          ) {
+            // The relationship is already absent. Directory authority is the
+            // idempotent reconciliation surface for this current-account leave.
+          } else {
+            if (reason instanceof HostedTerminalMutationUncertainError)
+              await refreshHostedMembershipDirectory().catch(() => undefined);
+            throw reason;
+          }
+        }
+        await refreshHostedMembershipDirectory();
+      } finally {
+        setBusy(false);
+      }
+    },
     claimServer: async (claimCode) => {
       setBusy(true);
       try {

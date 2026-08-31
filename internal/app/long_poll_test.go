@@ -278,9 +278,6 @@ func TestResourceLongPollHandlersRejectInvalidCursorBeforeResourceLookup(t *test
 		{name: "playback command", handle: func(w http.ResponseWriter, r *http.Request) {
 			server.handlePlaybackCommandEventsPoll(w, r, user, "secret-session-that-does-not-exist")
 		}},
-		{name: "playback receiver", handle: func(w http.ResponseWriter, r *http.Request) {
-			server.handlePlaybackReceiverEventsPoll(w, r, user, "secret-receiver-that-does-not-exist")
-		}},
 		{name: "watch with friends", handle: func(w http.ResponseWriter, r *http.Request) {
 			server.handleWatchWithFriendsGroupEventsPoll(w, r, user, "secret-group-that-does-not-exist")
 		}},

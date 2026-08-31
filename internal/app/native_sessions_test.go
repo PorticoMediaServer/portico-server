@@ -2,7 +2,9 @@ package app
 
 import (
 	"bytes"
+	"crypto/ed25519"
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"io"
@@ -344,7 +346,32 @@ func createNativeCredentialsForTest(t *testing.T, serverURL, installationID stri
 	if status != http.StatusCreated {
 		t.Fatalf("create native credentials status=%d body=%s", status, body)
 	}
+	assertNativeCredentialServerIdentity(t, credentials)
 	return credentials
+}
+
+func assertNativeCredentialServerIdentity(t *testing.T, credentials NativeSessionCredentials) {
+	t.Helper()
+	publicKey, err := base64.RawStdEncoding.DecodeString(credentials.ServerPublicKey)
+	if err != nil || len(publicKey) != ed25519.PublicKeySize {
+		t.Fatalf("native credentials contain invalid server public key: key=%q err=%v", credentials.ServerPublicKey, err)
+	}
+	if got := publicKeyFingerprint(ed25519.PublicKey(publicKey)); got != credentials.ServerPublicKeyFingerprint {
+		t.Fatalf("native credential identity fingerprint=%q want=%q", credentials.ServerPublicKeyFingerprint, got)
+	}
+}
+
+func TestNativeSessionCreateAndRefreshPreserveServerIdentityKey(t *testing.T) {
+	serverURL := newAuthTestServer(t)
+	created := createNativeCredentialsForTest(t, serverURL, "identity-key-0001")
+	status, body, refreshed := refreshNativeCredentialsForTest(serverURL, created.RefreshToken)
+	if status != http.StatusOK {
+		t.Fatalf("refresh native credentials status=%d body=%s", status, body)
+	}
+	assertNativeCredentialServerIdentity(t, refreshed)
+	if refreshed.ServerPublicKey != created.ServerPublicKey || refreshed.ServerPublicKeyFingerprint != created.ServerPublicKeyFingerprint {
+		t.Fatalf("native refresh changed server identity: created=%#v refreshed=%#v", created, refreshed)
+	}
 }
 
 func refreshNativeCredentialsForTest(serverURL, refreshToken string) (int, string, NativeSessionCredentials) {

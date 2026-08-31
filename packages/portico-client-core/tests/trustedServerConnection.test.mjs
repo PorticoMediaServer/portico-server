@@ -18,6 +18,7 @@ import {
   createAttachmentMethods,
   createAttachmentRuntime,
   testServerIdentity,
+  testServerPublicKey,
   testServerPublicKeyFingerprint
 } from "./helpers/porticoAttachment.mjs";
 
@@ -59,7 +60,7 @@ function jsonResponse(body, init = {}) {
 
 function record(overrides = {}) {
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     accountId: "account-1",
     serverId: "server-1",
     profileId: "profile-1",
@@ -84,6 +85,7 @@ function record(overrides = {}) {
       authority: "hosted",
       accountId: "account-1",
       profileId: "profile-1",
+      serverPublicKey: testServerPublicKey,
       serverPublicKeyFingerprint: testServerPublicKeyFingerprint,
       routeType: "public_direct"
     },
@@ -188,7 +190,7 @@ test("fresh route recovery atomically rebases an existing credential without min
           serverPublicKeyFingerprint: stored.serverPublicKeyFingerprint,
           issuedAt: "2026-07-14T11:59:00.000Z",
           expiresAt: "2026-07-14T12:05:00.000Z",
-          routes: [{ type: "public_direct", url: freshRoute, quality: "healthy" }]
+          routes: [{ type: "public_direct", url: freshRoute, quality: "reachable" }]
         }),
         porticoSession: async () => {
           mintCalls += 1;

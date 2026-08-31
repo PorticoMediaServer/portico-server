@@ -30,6 +30,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"runtime"
 	"runtime/debug"
@@ -45,6 +46,7 @@ import (
 	"github.com/PorticoMediaServer/portico-server/internal/config"
 	"github.com/PorticoMediaServer/portico-server/internal/database"
 	"github.com/PorticoMediaServer/portico-server/internal/ffmpegsupervisor"
+	"github.com/PorticoMediaServer/portico-server/internal/foundationcontract"
 	"github.com/PorticoMediaServer/portico-server/internal/optimized"
 	"github.com/PorticoMediaServer/portico-server/internal/playbackplan"
 	_ "golang.org/x/image/webp"
@@ -133,8 +135,6 @@ type Server struct {
 	homeCacheMu                          sync.Mutex
 	homeCache                            map[string]homeCacheEntry
 	homeInFlight                         map[string]chan struct{}
-	homeProjectionCache                  map[string]homeProjectionCacheEntry
-	homeProjectionInFlight               map[string]chan struct{}
 	browseCacheMu                        sync.Mutex
 	browseCache                          map[string]browseCacheEntry
 	browseInFlight                       map[string]*browseInFlightCall
@@ -279,9 +279,6 @@ type Server struct {
 	sessionPrincipalCacheHits            atomic.Uint64
 	sessionPrincipalCacheMisses          atomic.Uint64
 	sessionPrincipalCacheEvictions       atomic.Uint64
-	settingsReadCacheMu                  sync.Mutex
-	settingsReadCache                    map[string]any
-	settingsReadCacheExpires             time.Time
 	jobRunnerMu                          sync.Mutex
 	jobLaneTokens                        map[string]chan struct{}
 	jobLifecycleMu                       sync.Mutex
@@ -301,6 +298,8 @@ type Server struct {
 	restoreQuiesceAfterInitialCancelHook func()
 	jobHeartbeatForTest                  func(context.Context, string)
 	jobWakeForTests                      func()
+	remoteAccessCertificateMetadataHook  func(Job)
+	offlineAuthorizationBeforeCommitHook func()
 	testAfterDatabaseClose               func()
 	transcodeMu                          sync.Mutex
 	transcodeClosing                     bool
@@ -358,8 +357,8 @@ type preparedPlaybackHandoff struct {
 	ProfileID        string
 	SessionID        string
 	ClientInstanceID string
-	MediaID          string
-	QueueMediaIDs    []string
+	Current          playbackQueueOccurrence
+	Queue            []playbackQueueOccurrence
 	SourceContext    PlaybackSourceContext
 	QueueRevision    int64
 	PlaybackRevision int64
@@ -506,19 +505,27 @@ func (s *Server) execUserWriteTagged(ctx context.Context, tags []string, query s
 }
 
 func (s *Server) execUserWriteTaggedForViewer(ctx context.Context, accountID, profileID string, tags []string, query string, args ...any) (sql.Result, error) {
-	return s.execPrioritizedWriteTaggedForViewer(ctx, sqliteWriteInteractive, "user", database.UserWriteRetry, accountID, profileID, tags, query, args...)
+	return s.execWorkClassWriteTaggedForViewer(ctx, foundationcontract.WorkClassInteractive, "user", database.UserWriteRetry, accountID, profileID, tags, query, args...)
 }
 
 func (s *Server) execPlaybackWrite(ctx context.Context, query string, args ...any) (sql.Result, error) {
-	return s.execPrioritizedWriteTaggedForViewer(ctx, sqliteWritePlayback, "playback", database.UserWriteRetry, "", "", []string{"playback"}, query, args...)
+	return s.execWorkClassWriteTaggedForViewer(ctx, foundationcontract.WorkClassEstablishedPlayback, "playback", database.UserWriteRetry, "", "", []string{"playback"}, query, args...)
 }
 
-func (s *Server) execPrioritizedWriteTaggedForViewer(ctx context.Context, priority sqliteWritePriority, lane string, retry database.RetryOptions, accountID, profileID string, tags []string, query string, args ...any) (sql.Result, error) {
+func (s *Server) execSecurityFenceWrite(ctx context.Context, query string, args ...any) (sql.Result, error) {
+	return s.execSecurityFenceWriteTagged(ctx, []string{"authorization"}, query, args...)
+}
+
+func (s *Server) execSecurityFenceWriteTagged(ctx context.Context, tags []string, query string, args ...any) (sql.Result, error) {
+	return s.execWorkClassWriteTaggedForViewer(ctx, foundationcontract.WorkClassSecurityFence, "security_fence", database.UserWriteRetry, "", "", tags, query, args...)
+}
+
+func (s *Server) execWorkClassWriteTaggedForViewer(ctx context.Context, class foundationcontract.WorkClass, lane string, retry database.RetryOptions, accountID, profileID string, tags []string, query string, args ...any) (sql.Result, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	start := time.Now()
-	release, err := s.dbWriteScheduler.acquire(ctx, priority)
+	release, err := s.dbWriteScheduler.acquire(ctx, class)
 	if err != nil {
 		s.recordSQLiteWriteMetrics(lane, database.RetryStats{}, time.Since(start), err)
 		return nil, err
@@ -551,19 +558,27 @@ func (s *Server) withUserTxTagged(ctx context.Context, tags []string, fn func(*s
 }
 
 func (s *Server) withUserTxTaggedForViewer(ctx context.Context, accountID, profileID string, tags []string, fn func(*sql.Tx) error) error {
-	return s.withPrioritizedTxTaggedForViewer(ctx, sqliteWriteInteractive, "user_tx", database.UserWriteRetry, accountID, profileID, tags, fn)
+	return s.withWorkClassTxTaggedForViewer(ctx, foundationcontract.WorkClassInteractive, "user_tx", database.UserWriteRetry, accountID, profileID, tags, fn)
 }
 
 func (s *Server) withPlaybackTxTagged(ctx context.Context, tags []string, fn func(*sql.Tx) error) error {
-	return s.withPrioritizedTxTaggedForViewer(ctx, sqliteWritePlayback, "playback_tx", database.UserWriteRetry, "", "", tags, fn)
+	return s.withWorkClassTxTaggedForViewer(ctx, foundationcontract.WorkClassEstablishedPlayback, "playback_tx", database.UserWriteRetry, "", "", tags, fn)
 }
 
-func (s *Server) withPrioritizedTxTaggedForViewer(ctx context.Context, priority sqliteWritePriority, lane string, retry database.RetryOptions, accountID, profileID string, tags []string, fn func(*sql.Tx) error) error {
+func (s *Server) withSecurityFenceTxTagged(ctx context.Context, tags []string, fn func(*sql.Tx) error) error {
+	return s.withSecurityFenceTxTaggedForViewer(ctx, "", "", tags, fn)
+}
+
+func (s *Server) withSecurityFenceTxTaggedForViewer(ctx context.Context, accountID, profileID string, tags []string, fn func(*sql.Tx) error) error {
+	return s.withWorkClassTxTaggedForViewer(ctx, foundationcontract.WorkClassSecurityFence, "security_fence_tx", database.UserWriteRetry, accountID, profileID, tags, fn)
+}
+
+func (s *Server) withWorkClassTxTaggedForViewer(ctx context.Context, class foundationcontract.WorkClass, lane string, retry database.RetryOptions, accountID, profileID string, tags []string, fn func(*sql.Tx) error) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	start := time.Now()
-	release, err := s.dbWriteScheduler.acquire(ctx, priority)
+	release, err := s.dbWriteScheduler.acquire(ctx, class)
 	if err != nil {
 		s.recordSQLiteWriteMetrics(lane, database.RetryStats{}, time.Since(start), err)
 		return err
@@ -592,7 +607,7 @@ func (s *Server) execBackgroundWrite(ctx context.Context, query string, args ...
 }
 
 func (s *Server) execBackgroundWriteTagged(ctx context.Context, tags []string, query string, args ...any) (sql.Result, error) {
-	return s.execPrioritizedWriteTaggedForViewer(ctx, sqliteWriteBackground, "background", database.BackgroundWriteRetry, "", "", tags, query, args...)
+	return s.execWorkClassWriteTaggedForViewer(ctx, foundationcontract.WorkClassBackgroundMedia, "background", database.BackgroundWriteRetry, "", "", tags, query, args...)
 }
 
 func (s *Server) withBackgroundTx(ctx context.Context, fn func(*sql.Tx) error) error {
@@ -600,7 +615,7 @@ func (s *Server) withBackgroundTx(ctx context.Context, fn func(*sql.Tx) error) e
 }
 
 func (s *Server) withBackgroundTxTagged(ctx context.Context, tags []string, fn func(*sql.Tx) error) error {
-	return s.withPrioritizedTxTaggedForViewer(ctx, sqliteWriteBackground, "background_tx", database.BackgroundWriteRetry, "", "", tags, fn)
+	return s.withWorkClassTxTaggedForViewer(ctx, foundationcontract.WorkClassBackgroundMedia, "background_tx", database.BackgroundWriteRetry, "", "", tags, fn)
 }
 
 func (s *Server) recordSQLiteReadMetrics(lane string, elapsed time.Duration, err error) {
@@ -731,52 +746,54 @@ func fileSizeQuiet(path string) int64 {
 type authedHandler func(http.ResponseWriter, *http.Request, User)
 
 const (
-	sessionCookieName        = "portico_session"
-	csrfHeaderName           = "X-Portico-CSRF"
-	dashboardLivePeriod      = 5 * time.Minute
-	dashboardLiveBuckets     = 300
-	serverActivityCacheTTL   = time.Second
-	serverActivityRefreshMs  = 1000
-	homeCacheTTL             = 15 * time.Second
-	homeRowRequestTimeout    = 250 * time.Millisecond
-	mediaDetailCacheTTL      = 5 * time.Second
-	categoryCacheTTL         = 60 * time.Second
-	jobLaneMaintenance       = "maintenance"
-	jobLaneWriteHeavy        = "write-heavy"
-	jobLaneMetadata          = "metadata"
-	jobLaneAnalysis          = "analysis"
-	jobLaneOptimized         = "optimized"
-	jobLaneBackground        = "background"
-	workloadLaneAuth         = "auth"
-	workloadLaneBrowsing     = "browsing"
-	workloadLaneExpensive    = "expensive"
-	workloadLanePlayback     = "playback"
-	workloadLaneMedia        = "media"
-	workloadLaneMediaBody    = "media-body"
-	workloadLaneBulkTransfer = "bulk-transfer"
-	workloadLaneRealtime     = "realtime"
-	workloadLaneDLNA         = "dlna"
-	workloadLaneAdmin        = "admin"
-	workloadLaneAdminHeavy   = "admin-expensive"
-	workloadLaneDefault      = "default"
-	workloadLaneAuthCap      = 64
+	sessionCookieName         = "portico_session"
+	csrfHeaderName            = "X-Portico-CSRF"
+	dashboardLivePeriod       = 5 * time.Minute
+	dashboardLiveBuckets      = 300
+	serverActivityCacheTTL    = time.Second
+	serverActivityRefreshMs   = 1000
+	homeCacheTTL              = 15 * time.Second
+	homeRowRequestTimeout     = 250 * time.Millisecond
+	mediaDetailCacheTTL       = 5 * time.Second
+	categoryCacheTTL          = 60 * time.Second
+	jobLaneMaintenance        = "maintenance"
+	jobLaneWriteHeavy         = "write-heavy"
+	jobLaneMetadata           = "metadata"
+	jobLaneAnalysis           = "analysis"
+	jobLaneOptimized          = "optimized"
+	jobLaneBackground         = "background"
+	workloadLaneSecurityFence = "security-fence"
+	workloadLaneAuth          = "auth"
+	workloadLaneBrowsing      = "browsing"
+	workloadLaneExpensive     = "expensive"
+	workloadLanePlayback      = "playback"
+	workloadLaneMedia         = "media"
+	workloadLaneMediaBody     = "media-body"
+	workloadLaneBulkTransfer  = "bulk-transfer"
+	workloadLaneRealtime      = "realtime"
+	workloadLaneDLNA          = "dlna"
+	workloadLaneAdmin         = "admin"
+	workloadLaneAdminHeavy    = "admin-expensive"
+	workloadLaneDefault       = "default"
+	workloadLaneAuthCap       = 64
 	// Keep catalogue reads below the 32-connection SQLite pool so interactive
 	// playback/authentication retains connection headroom during browse waves.
-	workloadLaneBrowsingCap     = 24
-	workloadLaneExpensiveCap    = 8
-	workloadLanePlaybackCap     = 32
-	workloadLaneMediaCap        = 100
-	workloadLaneMediaBodyCap    = 256
-	workloadLaneBulkTransferCap = 16
-	workloadLaneRealtimeCap     = 512
-	workloadLaneDLNACap         = 8
-	workloadLaneAdminCap        = 100
-	workloadLaneAdminHeavyCap   = 4
-	workloadLaneDefaultCap      = 100
-	auditEventRetentionDays     = 90
-	auditEventRetentionMax      = 10000
-	jobRetentionDays            = 30
-	jobRetentionMax             = 5000
+	workloadLaneBrowsingCap      = 24
+	workloadLaneExpensiveCap     = 8
+	workloadLanePlaybackCap      = 32
+	workloadLaneMediaCap         = 100
+	workloadLaneMediaBodyCap     = 256
+	workloadLaneBulkTransferCap  = 16
+	workloadLaneRealtimeCap      = 512
+	workloadLaneDLNACap          = 8
+	workloadLaneAdminCap         = 100
+	workloadLaneAdminHeavyCap    = 4
+	workloadLaneDefaultCap       = 100
+	auditEventRetentionDays      = 90
+	auditEventRetentionMax       = 10000
+	jobRetentionDays             = 30
+	jobRetentionMax              = 5000
+	workloadLaneSecurityFenceCap = 16
 )
 
 type homeCacheEntry struct {
@@ -860,18 +877,19 @@ type workloadLane struct {
 
 func newWorkloadLanes() map[string]*workloadLane {
 	return map[string]*workloadLane{
-		workloadLaneAuth:         newWorkloadLane(workloadLaneAuth, "Authentication and bootstrap", workloadLaneAuthCap),
-		workloadLaneBrowsing:     newWorkloadLane(workloadLaneBrowsing, "Interactive browsing", workloadLaneBrowsingCap),
-		workloadLaneExpensive:    newWorkloadLane(workloadLaneExpensive, "Expensive API", workloadLaneExpensiveCap),
-		workloadLanePlayback:     newWorkloadLane(workloadLanePlayback, "Playback control", workloadLanePlaybackCap),
-		workloadLaneMedia:        newWorkloadLane(workloadLaneMedia, "Artwork resolution and transforms", workloadLaneMediaCap),
-		workloadLaneMediaBody:    newWorkloadLane(workloadLaneMediaBody, "Media byte delivery", workloadLaneMediaBodyCap),
-		workloadLaneBulkTransfer: newWorkloadLane(workloadLaneBulkTransfer, "Bulk downloads", workloadLaneBulkTransferCap),
-		workloadLaneRealtime:     newWorkloadLane(workloadLaneRealtime, "Realtime event delivery", workloadLaneRealtimeCap),
-		workloadLaneDLNA:         newWorkloadLane(workloadLaneDLNA, "DLNA compatibility", workloadLaneDLNACap),
-		workloadLaneAdmin:        newWorkloadLane(workloadLaneAdmin, "Admin and diagnostics", workloadLaneAdminCap),
-		workloadLaneAdminHeavy:   newWorkloadLane(workloadLaneAdminHeavy, "Expensive admin diagnostics", workloadLaneAdminHeavyCap),
-		workloadLaneDefault:      newWorkloadLane(workloadLaneDefault, "General API", workloadLaneDefaultCap),
+		workloadLaneSecurityFence: newWorkloadLane(workloadLaneSecurityFence, "Security fencing", workloadLaneSecurityFenceCap),
+		workloadLaneAuth:          newWorkloadLane(workloadLaneAuth, "Authentication and bootstrap", workloadLaneAuthCap),
+		workloadLaneBrowsing:      newWorkloadLane(workloadLaneBrowsing, "Interactive browsing", workloadLaneBrowsingCap),
+		workloadLaneExpensive:     newWorkloadLane(workloadLaneExpensive, "Expensive API", workloadLaneExpensiveCap),
+		workloadLanePlayback:      newWorkloadLane(workloadLanePlayback, "Playback control", workloadLanePlaybackCap),
+		workloadLaneMedia:         newWorkloadLane(workloadLaneMedia, "Artwork resolution and transforms", workloadLaneMediaCap),
+		workloadLaneMediaBody:     newWorkloadLane(workloadLaneMediaBody, "Media byte delivery", workloadLaneMediaBodyCap),
+		workloadLaneBulkTransfer:  newWorkloadLane(workloadLaneBulkTransfer, "Bulk downloads", workloadLaneBulkTransferCap),
+		workloadLaneRealtime:      newWorkloadLane(workloadLaneRealtime, "Realtime event delivery", workloadLaneRealtimeCap),
+		workloadLaneDLNA:          newWorkloadLane(workloadLaneDLNA, "DLNA compatibility", workloadLaneDLNACap),
+		workloadLaneAdmin:         newWorkloadLane(workloadLaneAdmin, "Admin and diagnostics", workloadLaneAdminCap),
+		workloadLaneAdminHeavy:    newWorkloadLane(workloadLaneAdminHeavy, "Expensive admin diagnostics", workloadLaneAdminHeavyCap),
+		workloadLaneDefault:       newWorkloadLane(workloadLaneDefault, "General API", workloadLaneDefaultCap),
 	}
 }
 
@@ -921,8 +939,6 @@ func newServer(cfg config.Config, db *sql.DB, log *slog.Logger, startBackground 
 		playbackHardwareRuntime:     newPlaybackHardwareRuntime(nil),
 		homeCache:                   map[string]homeCacheEntry{},
 		homeInFlight:                map[string]chan struct{}{},
-		homeProjectionCache:         map[string]homeProjectionCacheEntry{},
-		homeProjectionInFlight:      map[string]chan struct{}{},
 		mediaDetailCache:            map[string]mediaDetailCacheEntry{},
 		mediaDetailInFlight:         map[string]chan struct{}{},
 		hostedDocumentPublicKeys:    copyHostedDocumentPublicKeys(cfg.HostedDocumentPublicKeys),
@@ -1006,6 +1022,7 @@ func (s *Server) ActivateRuntimeGeneration() {
 	}
 	s.runtimeActivationOnce.Do(func() {
 		s.setJobRuntimeActive(true)
+		s.queueStartupRemoteAccessCertificateMaintenance()
 		// Optimized publication markers must be reconciled before the job worker
 		// can admit another generation for the same media/preset identity.
 		optimizedPublicationsReady := true
@@ -1035,7 +1052,6 @@ func (s *Server) ActivateRuntimeGeneration() {
 		s.startBackground("live-tv-lifecycle-reaper", s.runLiveTVLifecycleReaper)
 		s.startBackground("library-channel-maintainer", s.runLibraryChannelMaintenance)
 		s.startBackground("remote-access-heartbeat", s.runRemoteAccessHeartbeat)
-		s.startBackground("remote-access-certificate-maintenance", s.runRemoteAccessCertificateMaintenance)
 		s.startBackground("remote-access-network-monitor", s.runRemoteAccessNetworkMonitor)
 		s.startBackground("remote-tls-listener-repair", s.runRemoteTLSListenerRepair)
 		s.startBackground("api-key-usage-writer", s.runAPIKeyUsageWriter)
@@ -1638,6 +1654,9 @@ func (s *Server) pruneOperationalTables(ctx context.Context) error {
 	if err := s.pruneDownloadStateContext(ctx, now); err != nil {
 		return err
 	}
+	if err := s.prunePlaybackReplacementPayloads(ctx, now); err != nil {
+		return err
+	}
 	return s.prunePrivacySensitiveOperationalData(ctx, now)
 }
 
@@ -2141,6 +2160,7 @@ func (s *Server) Handler() http.Handler {
 		s.registerLiveTVRoutes(registry)
 		s.registerAdminRoutes(registry)
 		s.registerDLNARoutes(mux)
+		mux.HandleFunc("/desktop/status", s.handleDesktopStatus)
 		mux.HandleFunc("/", s.handleStatic)
 		s.handler = s.requestBodyDeadline(s.requestTransport(s.requestIdentity(s.securityHeaders(s.requestTiming(s.restoreAdmission(s.workloadAdmission(mux)))))))
 	})
@@ -2277,7 +2297,7 @@ func (s *Server) requestTiming(next http.Handler) http.Handler {
 			status = http.StatusOK
 		}
 		duration := time.Since(start)
-		s.latencyMetrics.observeRouteService(workloadLaneIDForRequest(r), duration)
+		s.latencyMetrics.observeRouteService(s.requestWork(r).Lane, duration)
 		requestID := recorder.Header().Get(requestIDHeader)
 		sample := sha256.Sum256([]byte(requestID))
 		// Always retain failures and slow requests. Sample routine successful API
@@ -2299,7 +2319,8 @@ func (s *Server) requestTiming(next http.Handler) http.Handler {
 
 func (s *Server) workloadAdmission(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		laneID := workloadLaneIDForRequest(r)
+		descriptor := s.requestWork(r)
+		laneID := descriptor.Lane
 		if laneID == "" {
 			next.ServeHTTP(w, r)
 			return
@@ -2310,11 +2331,13 @@ func (s *Server) workloadAdmission(next http.Handler) http.Handler {
 			return
 		}
 		acquired := lane.tryAcquireUncounted()
-		if !acquired && workloadRequestMayQueue(r, laneID) {
+		if !acquired && requestWorkMayQueue(r, descriptor) {
 			queueStarted := time.Now()
 			lane.queued.Add(1)
 			queueWait := workloadInteractiveQueueWait
-			if laneID == workloadLanePlayback {
+			if descriptor.Class == foundationcontract.WorkClassSecurityFence ||
+				descriptor.Class == foundationcontract.WorkClassEstablishedPlayback ||
+				descriptor.Class == foundationcontract.WorkClassPlaybackStart {
 				queueWait = 9 * time.Second
 			}
 			queueCtx, cancel := context.WithTimeout(r.Context(), queueWait)
@@ -2334,7 +2357,7 @@ func (s *Server) workloadAdmission(next http.Handler) http.Handler {
 			return
 		}
 		defer lane.release()
-		if timeout := requestBudgetForLane(r, laneID); timeout > 0 {
+		if timeout := requestBudgetForWork(descriptor); timeout > 0 {
 			ctx, cancel := context.WithTimeout(r.Context(), timeout)
 			defer cancel()
 			r = r.WithContext(ctx)
@@ -2344,41 +2367,6 @@ func (s *Server) workloadAdmission(next http.Handler) http.Handler {
 }
 
 const workloadInteractiveQueueWait = 1500 * time.Millisecond
-
-func workloadRequestMayQueue(r *http.Request, laneID string) bool {
-	if r == nil {
-		return false
-	}
-	readRequest := r.Method == http.MethodGet || r.Method == http.MethodHead
-	// Search and library browse are read contracts expressed as POST so their
-	// bounded request documents do not leak through URLs. They may wait behind
-	// the owning read lane just like GET/HEAD; state-changing POSTs still reject
-	// immediately when their lane is saturated.
-	if r.Method == http.MethodPost && (r.URL.Path == "/api/search" || (strings.HasPrefix(r.URL.Path, "/api/libraries/") && strings.HasSuffix(r.URL.Path, "/browse"))) {
-		readRequest = true
-	}
-	if laneID == workloadLanePlayback {
-		// Playback mutations are durability-sensitive and run in a protected,
-		// bounded lane. Queue a short burst instead of flooding SQLite's single
-		// writer or rejecting heartbeats behind navigation work.
-		return true
-	}
-	if !readRequest {
-		return false
-	}
-	// Long-lived transports have their own explicit connection caps. Queuing
-	// them behind an occupied stream merely consumes another connection and
-	// delays the inevitable overload response.
-	if laneID == workloadLaneRealtime {
-		return false
-	}
-	switch laneID {
-	case workloadLaneAuth, workloadLaneBrowsing, workloadLaneExpensive, workloadLaneAdmin, workloadLaneAdminHeavy, workloadLaneDefault:
-		return true
-	default:
-		return false
-	}
-}
 
 func (lane *workloadLane) tryAcquire() bool {
 	if lane.tryAcquireUncounted() {
@@ -2417,7 +2405,7 @@ func (lane *workloadLane) release() {
 }
 
 func (s *Server) workloadLaneForRequest(r *http.Request) *workloadLane {
-	id := workloadLaneIDForRequest(r)
+	id := s.requestWork(r).Lane
 	if id == "" {
 		return nil
 	}
@@ -2435,184 +2423,6 @@ func (s *Server) workloadLane(id string) *workloadLane {
 		lane = s.workloadLanes[workloadLaneDefault]
 	}
 	return lane
-}
-
-func requestBudgetForLane(r *http.Request, laneID string) time.Duration {
-	if r == nil || r.URL == nil {
-		return 0
-	}
-	path := r.URL.Path
-	switch laneID {
-	case workloadLaneRealtime:
-		if strings.HasSuffix(path, "/poll") {
-			return (longPollMaximumWaitSeconds + 5) * time.Second
-		}
-		return 0
-	case workloadLaneMediaBody, workloadLaneBulkTransfer:
-		return 0
-	case workloadLaneAuth, workloadLaneBrowsing, workloadLaneDefault:
-		return 5 * time.Second
-	case workloadLaneExpensive, workloadLaneAdminHeavy:
-		return 10 * time.Second
-	case workloadLaneAdmin, workloadLaneDLNA:
-		return 5 * time.Second
-	case workloadLanePlayback:
-		return 10 * time.Second
-	case workloadLaneMedia:
-		return 5 * time.Second
-	default:
-		return 0
-	}
-}
-
-func workloadLaneIDForRequest(r *http.Request) string {
-	path := r.URL.Path
-	if strings.HasPrefix(path, "/dlna/") {
-		return workloadLaneDLNA
-	}
-	if !strings.HasPrefix(path, "/api/") {
-		return ""
-	}
-	if realtimeEventRequest(path) {
-		return workloadLaneRealtime
-	}
-	switch path {
-	case "/api/audit-events",
-		"/api/logs",
-		"/api/metadata/health",
-		"/api/playback/history/export.csv",
-		"/api/playback/history":
-		return workloadLaneAdminHeavy
-	case "/api/logs/stream":
-		return workloadLaneAdmin
-	}
-	switch {
-	case strings.HasPrefix(path, "/api/auth/"):
-		return workloadLaneAuth
-	case liveTVMediaBodyRequest(r):
-		return workloadLaneMediaBody
-	case strings.HasPrefix(path, "/api/playback-sessions/"),
-		strings.HasPrefix(path, "/api/playback/"),
-		strings.HasPrefix(path, "/api/watch-with-friends/"),
-		strings.HasPrefix(path, "/api/live-tv"):
-		return workloadLanePlayback
-	case strings.HasPrefix(path, "/api/artwork/"):
-		return workloadLaneMedia
-	case strings.HasPrefix(path, "/api/media/"):
-		return mediaWorkloadLaneID(r)
-	case path == "/api/search",
-		libraryDiscoverRequest(path):
-		return workloadLaneExpensive
-	case path == "/api/home",
-		path == "/api/product-contract",
-		path == "/api/libraries",
-		strings.HasPrefix(path, "/api/libraries/"):
-		return libraryWorkloadLaneID(r)
-	case path == "/api/suggestions",
-		strings.HasPrefix(path, "/api/instant-mix/"):
-		return workloadLaneExpensive
-	case strings.HasPrefix(path, "/api/account/"),
-		strings.HasPrefix(path, "/api/display-preferences/"):
-		return workloadLaneDefault
-	case path == "/api/system",
-		strings.HasPrefix(path, "/api/system/"),
-		strings.HasPrefix(path, "/api/transcode/"),
-		strings.HasPrefix(path, "/api/network/"),
-		strings.HasPrefix(path, "/api/remote-access/"),
-		strings.HasPrefix(path, "/api/dlna/"),
-		strings.HasPrefix(path, "/api/filesystem/"),
-		strings.HasPrefix(path, "/api/metadata/"),
-		path == "/api/settings",
-		strings.HasPrefix(path, "/api/devices"),
-		strings.HasPrefix(path, "/api/backups"),
-		strings.HasPrefix(path, "/api/tasks"),
-		strings.HasPrefix(path, "/api/dvr/"),
-		strings.HasPrefix(path, "/api/client-logs"),
-		strings.HasPrefix(path, "/api/users"),
-		strings.HasPrefix(path, "/api/activity"):
-		return workloadLaneAdmin
-	case strings.HasPrefix(path, "/api/playlists"):
-		return playlistWorkloadLaneID(r)
-	case path == "/api/dashboard":
-		return dashboardWorkloadLaneID(r)
-	default:
-		return workloadLaneDefault
-	}
-}
-
-func realtimeEventRequest(path string) bool {
-	path = strings.TrimSuffix(strings.TrimSpace(path), "/")
-	if path == "/api/events" || path == "/api/events/poll" ||
-		path == "/api/notifications/events" || path == "/api/notifications/events/poll" ||
-		path == "/api/logs/stream" {
-		return true
-	}
-	return strings.HasSuffix(path, "/events") || strings.HasSuffix(path, "/events/poll")
-}
-
-func dashboardWorkloadLaneID(r *http.Request) string {
-	mode := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("mode")))
-	sections := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("sections")))
-	if mode == "history" || strings.Contains(sections, "topusers") || strings.Contains(sections, "playhistory") || strings.Contains(sections, "topplayed") {
-		return workloadLaneAdminHeavy
-	}
-	return workloadLaneAdmin
-}
-
-func libraryDiscoverRequest(path string) bool {
-	if !strings.HasPrefix(path, "/api/libraries/") {
-		return false
-	}
-	parts := strings.Split(strings.Trim(strings.TrimPrefix(path, "/api/libraries/"), "/"), "/")
-	return len(parts) == 2 && parts[0] != "" && parts[1] == "discover"
-}
-
-func libraryWorkloadLaneID(r *http.Request) string {
-	path := r.URL.Path
-	if libraryDiscoverRequest(path) {
-		return workloadLaneExpensive
-	}
-	return workloadLaneBrowsing
-}
-
-func playlistWorkloadLaneID(r *http.Request) string {
-	path := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/playlists"), "/")
-	if r.Method == http.MethodGet {
-		if path == "" {
-			return workloadLaneBrowsing
-		}
-		return workloadLaneExpensive
-	}
-	return workloadLaneAdmin
-}
-
-func mediaWorkloadLaneID(r *http.Request) string {
-	path := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/media/"), "/")
-	parts := strings.Split(path, "/")
-	if len(parts) >= 2 && r.Method == http.MethodGet {
-		switch parts[1] {
-		case "stream", "hls", "subtitles", "optimized":
-			return workloadLaneMediaBody
-		case "recommendations":
-			return workloadLaneExpensive
-		case "download":
-			return workloadLaneBulkTransfer
-		case "trickplay", "attachments":
-			return workloadLaneMedia
-		}
-	}
-	if len(parts) == 1 && r.Method == http.MethodGet {
-		return workloadLaneBrowsing
-	}
-	return workloadLaneAdmin
-}
-
-func liveTVMediaBodyRequest(r *http.Request) bool {
-	if r == nil || r.URL == nil || r.Method != http.MethodGet {
-		return false
-	}
-	path := strings.TrimSuffix(r.URL.Path, "/")
-	return strings.HasPrefix(path, "/api/live-tv/hls/") || strings.HasPrefix(path, "/api/live-tv/streams/")
 }
 
 func requestLogPath(path string) string {
@@ -3043,19 +2853,19 @@ func (s *Server) userForSessionTokenWithError(r *http.Request, token string) (Us
 	if strings.HasPrefix(sessionID, "nativesess_") {
 		record, err := s.nativeRefreshByIDContext(ctx, strings.TrimPrefix(sessionID, "nativesess_"))
 		if err != nil || record.UserID != user.ID || record.ProfileID != user.ProfileID || record.DeviceID != deviceID {
-			_, _ = s.execUserWrite(ctx, `DELETE FROM sessions WHERE id = ?`, sessionID)
+			_, _ = s.execSecurityFenceWrite(ctx, `DELETE FROM sessions WHERE id = ?`, sessionID)
 			return User{}, time.Time{}, false, nil
 		}
 		expectedToken, _, err := s.nativeAccessTokenValue(record)
 		if err != nil || subtle.ConstantTimeCompare([]byte(expectedToken), []byte(token)) != 1 {
-			_, _ = s.execUserWrite(ctx, `DELETE FROM sessions WHERE id = ?`, sessionID)
+			_, _ = s.execSecurityFenceWrite(ctx, `DELETE FROM sessions WHERE id = ?`, sessionID)
 			return User{}, time.Time{}, false, nil
 		}
 	}
 
 	expires, err := time.Parse(time.RFC3339, expiresAt)
 	if err != nil || time.Now().UTC().After(expires) {
-		_, _ = s.execUserWrite(ctx, `DELETE FROM sessions WHERE token_hash = ?`, hash)
+		_, _ = s.execSecurityFenceWrite(ctx, `DELETE FROM sessions WHERE token_hash = ?`, hash)
 		return User{}, time.Time{}, false, nil
 	}
 	if normalizeAuthProvider(user.AuthProvider) == "portico" {
@@ -3071,7 +2881,7 @@ func (s *Server) userForSessionTokenWithError(r *http.Request, token string) (Us
 	principal, err := s.resolveRequestPrincipalContext(ctx, user.ID, user.ProfileID)
 	if err != nil {
 		if errors.Is(err, errProfileNotFound) || errors.Is(err, errProfileNotAllowed) {
-			_, _ = s.execUserWrite(ctx, `DELETE FROM sessions WHERE token_hash = ?`, hash)
+			_, _ = s.execSecurityFenceWrite(ctx, `DELETE FROM sessions WHERE token_hash = ?`, hash)
 			return User{}, time.Time{}, false, nil
 		}
 		return User{}, time.Time{}, false, err
@@ -3080,7 +2890,7 @@ func (s *Server) userForSessionTokenWithError(r *http.Request, token string) (Us
 	user.SignInMethods = fallbackSignInMethods(user)
 
 	if !userAccessScheduleAllows(user.AccessSchedule, time.Now().UTC()) {
-		_, _ = s.execUserWrite(ctx, `DELETE FROM sessions WHERE token_hash = ?`, hash)
+		_, _ = s.execSecurityFenceWrite(ctx, `DELETE FROM sessions WHERE token_hash = ?`, hash)
 		return User{}, time.Time{}, false, nil
 	}
 
@@ -3092,14 +2902,14 @@ func (s *Server) userForSessionTokenWithError(r *http.Request, token string) (Us
 		if err := ctx.Err(); err != nil {
 			return User{}, time.Time{}, false, err
 		}
-		_, _ = s.execUserWrite(ctx, `DELETE FROM sessions WHERE token_hash = ?`, hash)
+		_, _ = s.execSecurityFenceWrite(ctx, `DELETE FROM sessions WHERE token_hash = ?`, hash)
 		return User{}, time.Time{}, false, nil
 	}
 	if !strings.EqualFold(strings.TrimSpace(user.Role), "owner") && !s.userDevicePolicyAllowsContext(ctx, user.ID, deviceID) {
 		if err := ctx.Err(); err != nil {
 			return User{}, time.Time{}, false, err
 		}
-		_, _ = s.execUserWrite(ctx, `DELETE FROM sessions WHERE token_hash = ?`, hash)
+		_, _ = s.execSecurityFenceWrite(ctx, `DELETE FROM sessions WHERE token_hash = ?`, hash)
 		return User{}, time.Time{}, false, nil
 	}
 
@@ -3354,6 +3164,23 @@ func (s *Server) authorizationRevisionForUserContext(ctx context.Context, user U
 }
 
 func (s *Server) authorizationRevisionForUserContextStrict(ctx context.Context, user User) (string, error) {
+	return authorizationRevisionForUserRow(user, s.queryUserRow(ctx, authorizationRevisionQuery, authorizationRevisionIdentity(user)...))
+}
+
+const authorizationRevisionQuery = `
+	SELECT u.updated_at, u.permissions_json, COALESCE(u.disabled_at, ''), COALESCE(u.allow_account_profiles, 1),
+		p.updated_at, p.policy_updated_at, p.restrictions_json, COALESCE(p.disabled_at, ''), p.pin_revision,
+		COALESCE((SELECT revision FROM hosted_profile_snapshot_state WHERE account_id = u.id AND quarantined_at = ''), 0),
+		COALESCE((SELECT group_concat(library_id, ',') FROM (SELECT library_id FROM user_library_access WHERE user_id = u.id ORDER BY library_id)), ''),
+		COALESCE((SELECT group_concat(id, ',') FROM (SELECT id FROM libraries ORDER BY id)), '')
+	FROM users u JOIN profiles p ON p.account_id = u.id
+	WHERE u.id = ? AND p.id = ?`
+
+type authorizationRevisionRow interface {
+	Scan(dest ...any) error
+}
+
+func authorizationRevisionIdentity(user User) []any {
 	accountID := strings.TrimSpace(user.AccountID)
 	if accountID == "" {
 		accountID = user.ID
@@ -3362,17 +3189,17 @@ func (s *Server) authorizationRevisionForUserContextStrict(ctx context.Context, 
 	if profileID == "" {
 		profileID = accountID
 	}
+	return []any{accountID, profileID}
+}
+
+func authorizationRevisionForUserRow(user User, row authorizationRevisionRow) (string, error) {
+	identity := authorizationRevisionIdentity(user)
+	accountID, _ := identity[0].(string)
+	profileID, _ := identity[1].(string)
 	var userUpdated, permissions, accountDisabled, profileUpdated, profilePolicyUpdated, restrictions, profileDisabled string
 	var profilesAllowed, pinRevision, hostedRevision int64
 	var libraryGrantRevision, libraryCatalogueRevision string
-	err := s.queryUserRow(ctx, `
-		SELECT u.updated_at, u.permissions_json, COALESCE(u.disabled_at, ''), COALESCE(u.allow_account_profiles, 1),
-			p.updated_at, p.policy_updated_at, p.restrictions_json, COALESCE(p.disabled_at, ''), p.pin_revision,
-			COALESCE((SELECT revision FROM hosted_profile_snapshot_state WHERE account_id = u.id), 0),
-			COALESCE((SELECT group_concat(library_id, ',') FROM (SELECT library_id FROM user_library_access WHERE user_id = u.id ORDER BY library_id)), ''),
-			COALESCE((SELECT group_concat(id, ',') FROM (SELECT id FROM libraries ORDER BY id)), '')
-		FROM users u JOIN profiles p ON p.account_id = u.id
-		WHERE u.id = ? AND p.id = ?`, accountID, profileID).Scan(
+	err := row.Scan(
 		&userUpdated, &permissions, &accountDisabled, &profilesAllowed,
 		&profileUpdated, &profilePolicyUpdated, &restrictions, &profileDisabled, &pinRevision, &hostedRevision, &libraryGrantRevision, &libraryCatalogueRevision)
 	if err != nil {
@@ -3383,6 +3210,11 @@ func (s *Server) authorizationRevisionForUserContextStrict(ctx context.Context, 
 		strconv.FormatInt(pinRevision, 10), strconv.FormatInt(hostedRevision, 10), libraryGrantRevision, libraryCatalogueRevision}, "\x00")
 	digest := sha256.Sum256([]byte(material))
 	return "authz_" + hex.EncodeToString(digest[:16]), nil
+}
+
+func authorizationRevisionForUserTx(ctx context.Context, tx *sql.Tx, user User) (string, error) {
+	identity := authorizationRevisionIdentity(user)
+	return authorizationRevisionForUserRow(user, tx.QueryRowContext(ctx, authorizationRevisionQuery, identity...))
 }
 
 func accountModeForUser(user User) string {
@@ -4133,7 +3965,7 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request, user User)
 		tokenHash := hashToken(cookie.Value)
 		var vaultID string
 		_ = s.queryUserRow(r.Context(), `SELECT COALESCE(browser_vault_id, '') FROM sessions WHERE token_hash = ?`, tokenHash).Scan(&vaultID)
-		_, _ = s.execUserWrite(r.Context(), `DELETE FROM sessions WHERE token_hash = ?`, tokenHash)
+		_, _ = s.execSecurityFenceWrite(r.Context(), `DELETE FROM sessions WHERE token_hash = ?`, tokenHash)
 		if vaultID != "" {
 			_, _ = s.execUserWrite(r.Context(), `UPDATE browser_account_vaults SET active_user_id = NULL, last_seen_at = ? WHERE id = ? AND active_user_id = ? AND revoked_at = ''`, time.Now().UTC().Format(time.RFC3339), vaultID, user.ID)
 		}
@@ -4150,7 +3982,7 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request, user User)
 				WHERE sess.token_hash = ?`, tokenHash).Scan(&familyID); err == nil {
 				_ = s.revokeNativeCredentialFamily(r.Context(), familyID, time.Now().UTC())
 			} else {
-				_, _ = s.execUserWrite(r.Context(), `DELETE FROM sessions WHERE token_hash = ?`, tokenHash)
+				_, _ = s.execSecurityFenceWrite(r.Context(), `DELETE FROM sessions WHERE token_hash = ?`, tokenHash)
 			}
 		}
 	}
@@ -6447,11 +6279,7 @@ func (s *Server) invalidateHomeCache() {
 	if len(s.homeCache) > 0 {
 		s.homeCache = map[string]homeCacheEntry{}
 	}
-	if len(s.homeProjectionCache) > 0 {
-		s.homeProjectionCache = map[string]homeProjectionCacheEntry{}
-	}
 	s.homeCacheMu.Unlock()
-	s.invalidateSearchResponseCache()
 	s.invalidateMediaDetailCache()
 	s.invalidateLibraryItemsCache()
 	if _, err := s.execUserWriteTagged(context.Background(), []string{}, `DELETE FROM user_recommendation_cache`); err != nil {
@@ -6668,7 +6496,7 @@ func (s *Server) handlePlaybackHistoryExportCSV(w http.ResponseWriter, r *http.R
 	filters.CountMode = "none"
 	filters.CursorStartedAt = ""
 	filters.CursorID = ""
-	ctx, cancel := context.WithTimeout(r.Context(), requestBudgetForLane(r, workloadLaneAdminHeavy))
+	ctx, cancel := context.WithTimeout(r.Context(), requestBudgetForWork(s.requestWork(r)))
 	defer cancel()
 	items, _, _, _, nextCursor, err := s.loadPlaybackHistoryPageContext(ctx, filters)
 	if err != nil {
@@ -6845,6 +6673,7 @@ func (s *Server) queueMissingArtworkRefreshesContext(ctx context.Context, librar
 		job, err := s.createJobForWithMetadata("metadata_refresh", fmt.Sprintf("Artwork refresh queued for %s.", title), "media", issue.MediaID, map[string]string{
 			"healthCategory": "missing_artwork",
 			"healthAction":   "add_artwork",
+			"refreshIntent":  string(metadataRefreshFillMissing),
 		})
 		if err != nil {
 			return action, err
@@ -7544,7 +7373,7 @@ func (s *Server) handleMetadataRepair(w http.ResponseWriter, r *http.Request, us
 			clearedProviderIDs = result.ClearedProviderIDs
 			clearedCandidates = result.ClearedCandidates
 		}
-		job, err := s.createJobFor("metadata_refresh", fmt.Sprintf("Forced metadata rematch queued for %s.", item.Title), "media", item.ID)
+		job, err := s.createJobForWithMetadata("metadata_refresh", fmt.Sprintf("Forced metadata rematch queued for %s.", item.Title), "media", item.ID, map[string]string{"refreshIntent": string(metadataRefreshUnlocked), "operation": "identify"})
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "job_failed", "Unable to queue metadata rematch.")
 			return
@@ -8215,8 +8044,9 @@ const (
 )
 
 var (
-	errPlaybackQueueRevisionConflict = errors.New("playback queue revision conflict")
-	errPlaybackQueueInvalid          = errors.New("invalid playback queue mutation")
+	errPlaybackQueueRevisionConflict    = errors.New("playback queue revision conflict")
+	errPlaybackQueueIdempotencyConflict = errors.New("playback queue idempotency conflict")
+	errPlaybackQueueInvalid             = errors.New("invalid playback queue mutation")
 )
 
 type bulkMediaStateRequest struct {
@@ -8471,12 +8301,13 @@ func (s *Server) handlePlaybackSessionCreate(w http.ResponseWriter, r *http.Requ
 	if !decodeJSON(w, r, &req) {
 		return
 	}
+	if strings.TrimSpace(req.Intent.Quality.Mode) == "" {
+		writeError(w, http.StatusBadRequest, "invalid_playback_quality", "intent.quality is required and must be Automatic or an exact server-issued explicit offer.")
+		return
+	}
 	playback, startErr := s.startPlaybackForRequest(r, user, req)
 	if startErr != nil {
-		if startErr.retryAfter != "" {
-			w.Header().Set("Retry-After", startErr.retryAfter)
-		}
-		writeError(w, startErr.status, startErr.code, startErr.message)
+		writePlaybackStartError(w, startErr)
 		return
 	}
 	setPlaybackMediaGrantCookie(w, r, playback)
@@ -8488,6 +8319,36 @@ type playbackStartHTTPError struct {
 	code       string
 	message    string
 	retryAfter string
+	details    map[string]any
+}
+
+func (e *playbackStartHTTPError) Error() string {
+	if e == nil {
+		return ""
+	}
+	return e.code + ": " + e.message
+}
+
+func writePlaybackStartError(w http.ResponseWriter, startErr *playbackStartHTTPError) {
+	if startErr == nil {
+		return
+	}
+	if startErr.retryAfter != "" {
+		w.Header().Set("Retry-After", startErr.retryAfter)
+	}
+	if len(startErr.details) > 0 {
+		writeProductErrorWithDetails(w, startErr.status, startErr.code, startErr.message, startErr.details)
+		return
+	}
+	writeError(w, startErr.status, startErr.code, startErr.message)
+}
+
+func writePlaybackQualityOrFallbackError(w http.ResponseWriter, err error, status int, code, message string) {
+	if errors.Is(err, ErrExplicitQualityUnavailable) || errors.Is(err, errPlaybackQualitySelectionInvalid) {
+		writePlaybackStartError(w, playbackQualityStartError(err))
+		return
+	}
+	writeError(w, status, code, message)
 }
 
 func playbackSourceStartError(fallbackCode string, err error) *playbackStartHTTPError {
@@ -8529,6 +8390,34 @@ func (s *Server) startPlaybackForRequest(r *http.Request, user User, req Playbac
 	// and byte-range authorization, so they must preempt cancellable scan analysis
 	// just as transcode admission does.
 	s.mediaResourceGovernor().preemptBackgroundForPlayback()
+	replacementPlan := playbackReplacementPlan{}
+	releaseReplacement := false
+	if !req.deferReplacement {
+		var replacementErr *playbackStartHTTPError
+		targetKind := firstNonEmpty(req.replacementTargetKind, "media")
+		targetID := firstNonEmpty(req.replacementTargetID, req.MediaID)
+		if req.replacementSourceClientInstanceID != "" {
+			replacementPlan, replacementErr = s.preparePlaybackReplacementForSource(r.Context(), user, req.ClientInstanceID, req.replacementSourceClientInstanceID, targetKind, targetID, req, req.Replacement)
+		} else {
+			replacementPlan, replacementErr = s.preparePlaybackReplacement(r.Context(), user, req.ClientInstanceID, targetKind, targetID, req, req.Replacement)
+		}
+		if replacementErr != nil {
+			return PlaybackResponse{}, replacementErr
+		}
+		if replacementPlan.Committed != nil {
+			return *replacementPlan.Committed, nil
+		}
+		if replacementPlan.Active {
+			req.deferReplacement = true
+			req.reservedSessionID = replacementPlan.Claim.ReplacementSessionID
+			releaseReplacement = true
+			defer func() {
+				if releaseReplacement {
+					s.rollbackPlaybackReplacement(replacementPlan)
+				}
+			}()
+		}
+	}
 	requestedItem, err := s.getMediaPlaybackDetailForUser(r.Context(), user, req.MediaID)
 	if err != nil {
 		return PlaybackResponse{}, &playbackStartHTTPError{status: http.StatusNotFound, code: "media_not_found", message: "Media item was not found."}
@@ -8555,7 +8444,7 @@ func (s *Server) startPlaybackForRequest(r *http.Request, user User, req Playbac
 		return PlaybackResponse{}, &playbackStartHTTPError{status: http.StatusInternalServerError, code: "playback_policy_failed", message: "Unable to verify playback session policy."}
 	}
 	prerollQueue := []MediaItem{}
-	if !req.SkipPreroll && req.StartSeconds <= 0 {
+	if !req.SkipPreroll && req.StartSeconds <= 0 && !strings.EqualFold(strings.TrimSpace(req.Intent.Quality.Mode), playbackQualityModeExplicit) {
 		if trailer, ok := s.cinemaPrerollFor(user, item); ok {
 			_ = s.setProgress(viewerProfileID(user), item.ID, max(1, item.State.ProgressSeconds), false)
 			prerollQueue = append(prerollQueue, item)
@@ -8564,14 +8453,41 @@ func (s *Server) startPlaybackForRequest(r *http.Request, user User, req Playbac
 	}
 	if item.Type == "track" {
 		item.State.ProgressSeconds = 0
-	} else if req.StartSeconds > 0 {
+	} else if req.startSecondsSet || req.StartSeconds > 0 {
 		startSeconds := req.StartSeconds
 		if item.DurationSeconds > 0 {
 			startSeconds = min(startSeconds, max(0, item.DurationSeconds-1))
 		}
 		item.State.ProgressSeconds = startSeconds
 	}
+	sourceURL := item.SourceURL
+	if sourceURL == "" {
+		sourceURL = s.cfg.SampleMediaURL
+	}
+	item.SourceURL = sourceURL
+	if err := resolveLogicalDiscPlaybackSource(item); err != nil {
+		return PlaybackResponse{}, playbackSourceStartError("playback_source_unavailable", err)
+	}
+	if _, err := s.sourcePathForHLSTranscode(item); err != nil {
+		return PlaybackResponse{}, playbackSourceStartError("playback_source_unavailable", err)
+	}
+	if burnInSubtitleID := normalizeBurnInSubtitleID(req.BurnInSubtitleID); burnInSubtitleID != "" {
+		if err := s.validateSubtitleBurnInSelection(item, burnInSubtitleID); errors.Is(err, errSubtitleStreamNotFound) {
+			return PlaybackResponse{}, &playbackStartHTTPError{status: http.StatusBadRequest, code: "subtitle_stream_not_found", message: "The requested subtitle stream was not found."}
+		} else if err != nil {
+			return PlaybackResponse{}, &playbackStartHTTPError{status: http.StatusConflict, code: "subtitle_burn_in_unavailable", message: "The requested subtitle stream is not currently available for burn-in."}
+		}
+	}
 	policy, clientProfile := s.resolvePlaybackPolicyForRequest(r.Context(), r, user, item, req.Intent, req.ClientProfile)
+	qualityAuthority, err := s.issuePlaybackQualityOffersForItem(r.Context(), item, policy, s.userCanTranscode(user))
+	if err != nil {
+		return PlaybackResponse{}, &playbackStartHTTPError{status: http.StatusUnprocessableEntity, code: "playback_quality_unavailable", message: "Portico could not issue a complete quality offer set for this title."}
+	}
+	quality, policy, clientProfile, err := resolvePlaybackQualityForRequest(qualityAuthority, req.Intent.Quality, policy, clientProfile, item.Type)
+	if err != nil {
+		return PlaybackResponse{}, playbackQualityStartError(err)
+	}
+	req.Intent.Quality = normalizedPlaybackQualitySelection(req.Intent.Quality)
 	if strings.TrimSpace(req.AudioStreamID) == "" {
 		req.AudioStreamID = preferredStreamIDForLanguages(item.Streams, "audio", req.Intent.PreferredAudioLanguages, req.Intent.PreferredAudioLanguage)
 	}
@@ -8604,17 +8520,6 @@ func (s *Server) startPlaybackForRequest(r *http.Request, user User, req Playbac
 		}
 	}
 	selectedAudioStreamID := normalizeSelectedAudioStreamID(req.AudioStreamID)
-	sourceURL := item.SourceURL
-	if sourceURL == "" {
-		sourceURL = s.cfg.SampleMediaURL
-	}
-	item.SourceURL = sourceURL
-	if err := resolveLogicalDiscPlaybackSource(item); err != nil {
-		return PlaybackResponse{}, playbackSourceStartError("playback_source_unavailable", err)
-	}
-	if _, err := s.sourcePathForHLSTranscode(item); err != nil {
-		return PlaybackResponse{}, playbackSourceStartError("playback_source_unavailable", err)
-	}
 	if burnInSubtitleID != "" {
 		if err := s.validateSubtitleBurnInSelection(item, burnInSubtitleID); errors.Is(err, errSubtitleStreamNotFound) {
 			return PlaybackResponse{}, &playbackStartHTTPError{status: http.StatusBadRequest, code: "subtitle_stream_not_found", message: "The requested subtitle stream was not found."}
@@ -8654,6 +8559,9 @@ func (s *Server) startPlaybackForRequest(r *http.Request, user User, req Playbac
 		)
 		return PlaybackResponse{}, &playbackStartHTTPError{status: http.StatusUnprocessableEntity, code: "delivery_policy_unsatisfied", message: "This title cannot be delivered within the selected playback policy."}
 	}
+	if err := validateResolvedPlaybackQualityExecution(qualityAuthority, quality, decision); err != nil {
+		return PlaybackResponse{}, playbackQualityStartError(err)
+	}
 	if selectedAudioStreamID == "" {
 		selectedAudioStreamID = selectedAudioStreamIDFromPlan(item, decision)
 	}
@@ -8667,23 +8575,53 @@ func (s *Server) startPlaybackForRequest(r *http.Request, user User, req Playbac
 	if len(prerollQueue) > 0 {
 		queue = append(prerollQueue, queue...)
 	}
+	currentOccurrence := playbackQueueOccurrence{EntryID: strings.TrimSpace(req.currentEntryID), MediaID: item.ID}
+	if currentOccurrence.EntryID == "" {
+		currentOccurrence.EntryID = randomID("qentry")
+	}
+	queueOccurrences := newPlaybackQueueOccurrences(queue)
+	if req.queueOwned {
+		queueOccurrences = append([]playbackQueueOccurrence(nil), req.queueOccurrences...)
+		if err := validatePlaybackQueueOccurrences(queueOccurrences); err != nil {
+			return PlaybackResponse{}, &playbackStartHTTPError{status: http.StatusBadRequest, code: "queue_invalid", message: "The preserved playback queue is invalid."}
+		}
+	}
 	sourceContext := playbackSourceContextFor(s.playbackSourceContextVisibleToUser(user.ID, req.SourceContext, item, queue), requestedItem, item, queue)
-	sessionID := randomID("play")
-	if err := s.createPlaybackSession(r, user, item, sessionID, decision, clientProfile, req.Intent, burnInSubtitleID, selectedAudioStreamID, false, req.ClientInstanceID, sourceContext, repeatMode); err != nil {
+	sessionID := strings.TrimSpace(req.reservedSessionID)
+	if sessionID == "" {
+		sessionID = randomID("play")
+	}
+	initialState := "playing"
+	if req.deferReplacement {
+		initialState = "handoff_pending"
+	}
+	if err := s.createPlaybackSessionWithState(r, user, item, currentOccurrence.EntryID, sessionID, decision, clientProfile, req.Intent, burnInSubtitleID, selectedAudioStreamID, false, req.ClientInstanceID, sourceContext, repeatMode, initialState); err != nil {
+		if errors.Is(err, errPlaybackReplacementRequired) {
+			return PlaybackResponse{}, &playbackStartHTTPError{status: http.StatusConflict, code: "replacement_required", message: "This client already owns active playback. Supply its exact replacement authority envelope."}
+		}
 		if errors.Is(err, errPlaybackSessionLimit) {
 			return PlaybackResponse{}, &playbackStartHTTPError{status: http.StatusTooManyRequests, code: "playback_session_limit", message: "This account has reached its maximum active playback sessions.", retryAfter: "15"}
 		}
 		s.log.Warn("create playback session failed", "error", err, "media", item.ID)
 		return PlaybackResponse{}, &playbackStartHTTPError{status: http.StatusInternalServerError, code: "playback_session_failed", message: "Unable to start playback session."}
 	}
+	cleanupFailedStart := func() {
+		if _, cleanupErr := s.playbackLifecycle().Terminate(r.Context(), playbackTerminationRequest{
+			SessionID: sessionID, UserID: accountIDForUser(user), ProfileID: viewerProfileID(user),
+			Cause: playbackTerminationFailedStart, RemoveSession: true,
+		}); cleanupErr != nil && !errors.Is(cleanupErr, sql.ErrNoRows) {
+			s.log.Error("failed playback start cleanup failed", "error", cleanupErr, "session", sessionID, "media", item.ID)
+		}
+	}
 	if selectedSubtitleID != "" && subtitleMode == "text" {
 		if _, err := s.execUserWrite(r.Context(), `UPDATE playback_sessions SET selected_subtitle_stream_id = ?, selected_subtitle_mode = 'text' WHERE id = ? AND profile_id = ?`, selectedSubtitleID, sessionID, viewerProfileID(user)); err != nil {
+			cleanupFailedStart()
 			return PlaybackResponse{}, &playbackStartHTTPError{status: http.StatusInternalServerError, code: "playback_session_failed", message: "Unable to persist subtitle selection."}
 		}
 	}
 	mediaGrant, err := s.issueMediaGrantForPlayback(r.Context(), user, sessionID, item, decision, policy, true, true)
 	if err != nil {
-		_, _ = s.execUserWrite(r.Context(), `DELETE FROM playback_sessions WHERE id = ? AND user_id = ?`, sessionID, user.ID)
+		cleanupFailedStart()
 		s.log.Error("issue playback media grant failed", "error", err, "session", sessionID, "media", item.ID)
 		return PlaybackResponse{}, &playbackStartHTTPError{status: http.StatusInternalServerError, code: "media_grant_failed", message: "Unable to authorize playback media resources."}
 	}
@@ -8697,49 +8635,50 @@ func (s *Server) startPlaybackForRequest(r *http.Request, user User, req Playbac
 		subtitles[index].SourceURL = appendMediaGrant(subtitles[index].SourceURL, mediaGrant)
 	}
 
-	if err := s.replacePlaybackSessionQueue(r.Context(), sessionID, queue); err != nil {
-		_, _ = s.execUserWrite(r.Context(), `DELETE FROM playback_sessions WHERE id = ? AND user_id = ?`, sessionID, user.ID)
+	if err := s.replacePlaybackSessionQueue(r.Context(), sessionID, queueOccurrences); err != nil {
+		cleanupFailedStart()
 		s.log.Error("initialize playback queue failed", "error", err, "session", sessionID)
 		return PlaybackResponse{}, &playbackStartHTTPError{status: http.StatusInternalServerError, code: "playback_queue_failed", message: "Unable to initialize the playback queue."}
 	}
-	if err := s.commitPlaybackSessionReplacement(r.Context(), user, sessionID, req.ClientInstanceID); err != nil {
-		_, _ = s.execUserWrite(r.Context(), `DELETE FROM playback_sessions WHERE id = ? AND user_id = ?`, sessionID, user.ID)
-		s.log.Error("commit playback session replacement failed", "error", err, "session", sessionID)
-		return PlaybackResponse{}, &playbackStartHTTPError{status: http.StatusInternalServerError, code: "playback_replacement_failed", message: "Unable to replace the previous playback session."}
+	if err := s.replacePlaybackSessionHistory(r.Context(), sessionID, req.historyOccurrences); err != nil {
+		cleanupFailedStart()
+		s.log.Error("initialize playback history failed", "error", err, "session", sessionID)
+		return PlaybackResponse{}, &playbackStartHTTPError{status: http.StatusInternalServerError, code: "playback_history_failed", message: "Unable to preserve playback history."}
 	}
-	_ = s.setProgress(viewerProfileID(user), item.ID, max(1, item.State.ProgressSeconds), false)
-	s.recordLog("info", "Playback started", map[string]string{"user": user.Email, "media": item.Title})
 
-	qualities := playbackQualities(item, decision, policy, s.userCanTranscode(user))
-	activeQualityID := "original"
-	if decision.RequiresTranscode {
-		activeQualityID = strings.TrimSpace(decision.DeliveryProfile)
-		if activeQualityID == "" {
-			activeQualityID = "auto"
-		}
+	resources := playbackResourcesForResponse(playbackURL, *decision.executionPlan)
+	if len(resources) == 0 {
+		cleanupFailedStart()
+		s.log.Error("playback execution produced no authorized resources", "session", sessionID, "media", item.ID)
+		return PlaybackResponse{}, &playbackStartHTTPError{status: http.StatusInternalServerError, code: "playback_resource_failed", message: "Unable to authorize a playable resource."}
 	}
-	resources := playbackResourcesForResponse(item, playbackURL, decision.Protocol, decision, policy, qualities, audio, subtitles, activeQualityID, selectedAudioStreamID, selectedSubtitleID, mediaGrant, s.userCanTranscode(user), subtitleMode)
+	queueEntries, err := s.playbackQueueEntriesForOccurrences(r.Context(), viewerProfileID(user), queueOccurrences)
+	if err != nil {
+		cleanupFailedStart()
+		return PlaybackResponse{}, &playbackStartHTTPError{status: http.StatusInternalServerError, code: "playback_queue_failed", message: "Unable to load the playback queue."}
+	}
 	playback := PlaybackResponse{
 		SessionID:             sessionID,
+		CurrentQueueEntryID:   currentOccurrence.EntryID,
 		NextEventSequence:     1,
 		MediaGrant:            mediaGrant,
 		Media:                 item,
 		SourceURL:             playbackURL,
-		DirectPlay:            decision.Mode == "direct_play" || decision.Mode == "optimized_version",
-		StreamFormat:          decision.Protocol,
+		DirectPlay:            decision.executionPlan.Plan.Mode == playbackplan.DirectPlay,
+		StreamFormat:          decision.executionPlan.Plan.Protocol,
 		Resources:             resources,
 		Decision:              decision,
 		Policy:                policy,
-		Qualities:             qualities,
+		QualityOffers:         qualityAuthority.set,
+		QualitySelection:      req.Intent.Quality,
 		AudioStreams:          audio,
 		SelectedAudioStreamID: selectedAudioStreamID,
-		SelectedQualityID:     resources[0].QualityID,
 		SelectedSubtitleID:    selectedSubtitleID,
 		SelectedSubtitleMode:  resources[0].SubtitleMode,
 		SelectedVersionID:     selectedPlaybackVersionID(item),
 		SubtitleStreams:       subtitles,
 		Chapters:              s.chaptersForMedia(item.ID),
-		Queue:                 queue,
+		Queue:                 queueEntries,
 		RepeatMode:            repeatMode,
 		QueueRevision:         0,
 		SourceContext:         sourceContext,
@@ -8749,47 +8688,40 @@ func (s *Server) startPlaybackForRequest(r *http.Request, user User, req Playbac
 		PlaybackRevision:      0,
 	}
 	if err := s.ensurePlaybackContinuationCredential(r, user, &playback); err != nil {
+		cleanupFailedStart()
 		return PlaybackResponse{}, &playbackStartHTTPError{status: http.StatusInternalServerError, code: "playback_continuity_failed", message: "Unable to establish playback continuity."}
+	}
+	if replacementPlan.Active {
+		if req.prepareReplacementOnly {
+			if err := s.persistPlaybackReceiverPreparation(r.Context(), user, req.replacementTargetID, req.receiverAuthorizationID, replacementPlan, playback); err != nil {
+				cleanupFailedStart()
+				s.log.Error("persist prepared receiver handoff failed", "error", err, "session", sessionID)
+				return PlaybackResponse{}, playbackReplacementCommitHTTPError(err)
+			}
+		} else {
+			if err := s.commitPlaybackReplacement(r.Context(), user, replacementPlan, playback); err != nil {
+				cleanupFailedStart()
+				s.log.Error("commit playback authority transfer failed", "error", err, "session", sessionID)
+				return PlaybackResponse{}, playbackReplacementCommitHTTPError(err)
+			}
+		}
+		releaseReplacement = false
+	}
+	if !req.deferReplacement || replacementPlan.Active {
+		_ = s.setProgress(viewerProfileID(user), item.ID, max(1, item.State.ProgressSeconds), false)
+		s.recordLog("info", "Playback started", map[string]string{"user": user.Email, "media": item.Title})
 	}
 	return playback, nil
 }
 
 func selectedAudioStreamIDFromPlan(item MediaItem, decision PlaybackDecision) string {
-	if decision.execution == nil || len(decision.execution.Plan) == 0 {
+	if decision.executionPlan == nil {
 		return ""
 	}
-	var plan playbackplan.Plan
-	if json.Unmarshal(decision.execution.Plan, &plan) != nil {
-		return ""
+	if selected := normalizeSelectedAudioStreamID(decision.executionPlan.AudioStreamID); selected != "" {
+		return selected
 	}
-	audioIndex := -1
-	for _, action := range plan.Streams {
-		if action.Kind != "audio" {
-			continue
-		}
-		if audioIndex >= 0 && audioIndex != action.Index {
-			return ""
-		}
-		audioIndex = action.Index
-	}
-	if audioIndex < 0 {
-		return ""
-	}
-	selectedVersionID := strings.TrimSpace(selectedPlaybackVersionID(item))
-	selectedID := ""
-	for _, stream := range item.Streams {
-		if stream.Kind != "audio" || stream.Index != audioIndex {
-			continue
-		}
-		if selectedVersionID != "" && strings.TrimSpace(stream.FileID) != "" && stream.FileID != selectedVersionID {
-			continue
-		}
-		if selectedID != "" && selectedID != stream.ID {
-			return ""
-		}
-		selectedID = stream.ID
-	}
-	return normalizeSelectedAudioStreamID(selectedID)
+	return normalizeSelectedAudioStreamID(playbackStreamIDForPlan(item, decision.executionPlan.Plan, "audio"))
 }
 
 func (s *Server) handlePlaybackActive(w http.ResponseWriter, r *http.Request, user User) {
@@ -8825,9 +8757,9 @@ func (s *Server) handlePlaybackActive(w http.ResponseWriter, r *http.Request, us
 	}
 	var playback PlaybackResponse
 	if isLive {
-		playback, err = s.liveTVPlaybackResponseForSession(r, user, sessionID, mediaID, req.ClientProfile, req.Intent)
+		playback, err = s.liveTVPlaybackResponseForSession(r, user, sessionID, mediaID, req.ClientProfile, PlaybackIntent{})
 	} else {
-		playback, err = s.mediaPlaybackResponseForSession(r, user, sessionID, sessionID, mediaID, progress, req.ClientProfile, req.Intent)
+		playback, err = s.mediaPlaybackResponseForSession(r, user, sessionID, sessionID, mediaID, progress, req.ClientProfile, PlaybackIntent{})
 	}
 	if err != nil {
 		s.log.Warn("active playback restore failed", "error", err, "session", sessionID, "media", mediaID)
@@ -8844,37 +8776,6 @@ func (s *Server) handlePlaybackActive(w http.ResponseWriter, r *http.Request, us
 	playback.NextEventSequence = s.nextPlaybackProgressEventSequence(user, sessionID)
 	setPlaybackMediaGrantCookie(w, r, playback)
 	writeJSON(w, http.StatusOK, PlaybackRestoreResponse{Active: true, Playback: &playback})
-}
-
-func (s *Server) handlePlaybackNext(w http.ResponseWriter, r *http.Request, user User) {
-	if r.Method != http.MethodGet && r.Method != http.MethodPost {
-		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "Use GET or POST for this endpoint.")
-		return
-	}
-	queue, err := s.playbackQueueFromRequest(w, r, user)
-	if err != nil {
-		return
-	}
-	response := PlaybackNextResponse{Queue: queue, Reason: "queue"}
-	if len(queue) > 0 {
-		next := queue[0]
-		response.Item = &next
-	} else {
-		response.Reason = "none"
-	}
-	writeJSON(w, http.StatusOK, response)
-}
-
-func (s *Server) handlePlaybackQueue(w http.ResponseWriter, r *http.Request, user User) {
-	if r.Method != http.MethodGet && r.Method != http.MethodPost {
-		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "Use GET or POST for this endpoint.")
-		return
-	}
-	queue, err := s.playbackQueueFromRequest(w, r, user)
-	if err != nil {
-		return
-	}
-	writeJSON(w, http.StatusOK, PlaybackQueueResponse{Items: queue, Total: len(queue)})
 }
 
 func (s *Server) handlePlaybackSessionQueue(w http.ResponseWriter, r *http.Request, user User, sessionID string) {
@@ -8910,8 +8811,13 @@ func (s *Server) handlePlaybackSessionQueue(w http.ResponseWriter, r *http.Reque
 			current.Images.Thumb = liveTVLogoProxyURL(mediaID, channel.logoURL)
 		}
 		applyMediaActionsToItem(&current, user)
+		var currentEntryID string
+		if err := s.queryUserRow(r.Context(), `SELECT current_entry_id FROM playback_sessions WHERE id = ?`, sessionID).Scan(&currentEntryID); err != nil {
+			writeError(w, http.StatusInternalServerError, "queue_load_failed", "Unable to load playback queue state.")
+			return
+		}
 		writeJSON(w, http.StatusOK, PlaybackSessionQueueResponse{
-			SessionID: sessionID, Current: current, Items: []MediaItem{}, History: []MediaItem{},
+			SessionID: sessionID, Current: PlaybackQueueEntry{EntryID: currentEntryID, Media: current}, Items: []PlaybackQueueEntry{}, History: []PlaybackQueueHistoryEntry{},
 			Total: 0, CanMutate: false, RepeatMode: "off", Revision: 0,
 			SourceContext: PlaybackSourceContext{Type: "library", ID: source.ID, Title: source.Name},
 		})
@@ -8933,12 +8839,17 @@ func (s *Server) handlePlaybackSessionQueue(w http.ResponseWriter, r *http.Reque
 			writeError(w, http.StatusBadRequest, "queue_invalid", "expectedRevision must be zero or greater.")
 			return
 		}
+		req.IdempotencyKey, err = playbackQueueRequiredIdempotencyKey(req.IdempotencyKey)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "queue_idempotency_key_required", err.Error())
+			return
+		}
 		items, err := s.strictMediaItemsForPlaybackQueue(viewerProfileID(user), req.MediaIDs)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, "queue_invalid", err.Error())
 			return
 		}
-		if err := s.replacePlaybackSessionQueueState(r.Context(), user, sessionID, *req.ExpectedRevision, items, req.RepeatMode); err != nil {
+		if _, err := s.replacePlaybackSessionQueueState(r.Context(), user, sessionID, *req.ExpectedRevision, items, req.RepeatMode, req.IdempotencyKey, playbackQueueRequestFingerprint("replace", req)); err != nil {
 			s.writePlaybackSessionQueueMutationError(w, err)
 			return
 		}
@@ -8955,7 +8866,12 @@ func (s *Server) handlePlaybackSessionQueue(w http.ResponseWriter, r *http.Reque
 			writeError(w, http.StatusBadRequest, "queue_invalid", "expectedRevision must be zero or greater.")
 			return
 		}
-		if err := s.mutatePlaybackSessionQueueState(r.Context(), user, sessionID, *req.ExpectedRevision, req); err != nil {
+		req.IdempotencyKey, err = playbackQueueRequiredIdempotencyKey(req.IdempotencyKey)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "queue_idempotency_key_required", err.Error())
+			return
+		}
+		if _, err := s.mutatePlaybackSessionQueueState(r.Context(), user, sessionID, *req.ExpectedRevision, req, playbackQueueRequestFingerprint("mutate", req)); err != nil {
 			s.writePlaybackSessionQueueMutationError(w, err)
 			return
 		}
@@ -8975,8 +8891,28 @@ func (s *Server) handlePlaybackSessionQueue(w http.ResponseWriter, r *http.Reque
 	writeJSON(w, http.StatusOK, response)
 }
 
+func playbackQueueRequiredIdempotencyKey(raw string) (string, error) {
+	key := strings.TrimSpace(raw)
+	if key == "" || len(key) > 128 {
+		return "", errors.New("idempotencyKey is required and must be 128 characters or fewer")
+	}
+	return key, nil
+}
+
+func playbackQueueRequestFingerprint(operation string, request any) string {
+	encoded, _ := json.Marshal(struct {
+		Operation string `json:"operation"`
+		Request   any    `json:"request"`
+	}{Operation: operation, Request: request})
+	return hashToken(string(encoded))
+}
+
 func (s *Server) rememberPreparedPlaybackHandoff(ctx context.Context, prepared preparedPlaybackHandoff) error {
-	queueJSON, err := json.Marshal(prepared.QueueMediaIDs)
+	queue := prepared.Queue
+	if queue == nil {
+		queue = []playbackQueueOccurrence{}
+	}
+	queueJSON, err := json.Marshal(queue)
 	if err != nil {
 		return err
 	}
@@ -8986,21 +8922,34 @@ func (s *Server) rememberPreparedPlaybackHandoff(ctx context.Context, prepared p
 	}
 	now := time.Now().UTC()
 	return s.withPlaybackTxTagged(ctx, []string{"playback"}, func(tx *sql.Tx) error {
-		if _, err := tx.ExecContext(ctx, `DELETE FROM playback_prepared_handoffs WHERE expires_at <= ? OR (user_id = ? AND profile_id = ? AND source_session_id = ?)`, now.Format(time.RFC3339Nano), prepared.UserID, prepared.ProfileID, prepared.SessionID); err != nil {
+		var committingClaim int
+		if err := tx.QueryRowContext(ctx, `
+			SELECT COUNT(*) FROM playback_handoff_receipts
+			WHERE source_session_id = ? AND user_id = ? AND profile_id = ? AND state = 'committing'`,
+			prepared.SessionID, prepared.UserID, prepared.ProfileID).Scan(&committingClaim); err != nil {
+			return err
+		}
+		if committingClaim != 0 {
+			return errPlaybackHandoffInProgress
+		}
+		if _, err := tx.ExecContext(ctx, `
+			DELETE FROM playback_prepared_handoffs
+			WHERE state = 'prepared' AND (expires_at <= ? OR (user_id = ? AND profile_id = ? AND source_session_id = ?))`,
+			now.Format(time.RFC3339Nano), prepared.UserID, prepared.ProfileID, prepared.SessionID); err != nil {
 			return err
 		}
 		result, err := tx.ExecContext(ctx, `
 			INSERT INTO playback_prepared_handoffs (
-				id, user_id, profile_id, source_session_id, client_instance_id, media_id,
-				queue_media_ids_json, source_context_json, queue_revision, playback_revision,
+				id, user_id, profile_id, source_session_id, client_instance_id, media_id, current_entry_id,
+				queue_entries_json, source_context_json, queue_revision, playback_revision,
 				state, created_at, expires_at
 			)
-			SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'prepared', ?, ?
+			SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'prepared', ?, ?
 			WHERE EXISTS (
 				SELECT 1 FROM playback_sessions
 				WHERE id = ? AND user_id = ? AND profile_id = ? AND ended_at = '' AND lower(state) <> 'stopped'
 			)`,
-			prepared.ID, prepared.UserID, prepared.ProfileID, prepared.SessionID, prepared.ClientInstanceID, prepared.MediaID,
+			prepared.ID, prepared.UserID, prepared.ProfileID, prepared.SessionID, prepared.ClientInstanceID, prepared.Current.MediaID, prepared.Current.EntryID,
 			string(queueJSON), string(sourceJSON), prepared.QueueRevision, prepared.PlaybackRevision,
 			now.Format(time.RFC3339Nano), prepared.ExpiresAt.Format(time.RFC3339Nano), prepared.SessionID, prepared.UserID, prepared.ProfileID)
 		if err != nil {
@@ -9031,11 +8980,11 @@ func (s *Server) consumePreparedPlaybackHandoff(ctx context.Context, user User, 
 	err := s.withPlaybackTxTagged(ctx, []string{}, func(tx *sql.Tx) error {
 		if err := tx.QueryRowContext(ctx, `
 			SELECT id, user_id, profile_id, source_session_id, client_instance_id, media_id,
-				queue_media_ids_json, source_context_json, queue_revision, playback_revision,
+				current_entry_id, queue_entries_json, source_context_json, queue_revision, playback_revision,
 				state, request_id, request_fingerprint, committed_response, expires_at
 			FROM playback_prepared_handoffs WHERE id = ?`, preparedID).
-			Scan(&prepared.ID, &prepared.UserID, &prepared.ProfileID, &prepared.SessionID, &prepared.ClientInstanceID, &prepared.MediaID,
-				&queueJSON, &sourceJSON, &prepared.QueueRevision, &prepared.PlaybackRevision,
+			Scan(&prepared.ID, &prepared.UserID, &prepared.ProfileID, &prepared.SessionID, &prepared.ClientInstanceID, &prepared.Current.MediaID,
+				&prepared.Current.EntryID, &queueJSON, &sourceJSON, &prepared.QueueRevision, &prepared.PlaybackRevision,
 				&state, &storedRequestID, &storedFingerprint, &committedResponse, &expiresAt); err != nil {
 			return err
 		}
@@ -9089,7 +9038,7 @@ func (s *Server) consumePreparedPlaybackHandoff(ctx context.Context, user User, 
 			return preparedPlaybackHandoff{}, &playbackStartHTTPError{status: http.StatusInternalServerError, code: "prepared_handoff_failed", message: "Prepared playback handoff could not be loaded safely."}
 		}
 	}
-	_ = json.Unmarshal([]byte(queueJSON), &prepared.QueueMediaIDs)
+	_ = json.Unmarshal([]byte(queueJSON), &prepared.Queue)
 	_ = json.Unmarshal([]byte(sourceJSON), &prepared.SourceContext)
 	prepared.RequestID, prepared.Fingerprint = requestID, fingerprint
 	return prepared, nil
@@ -9099,18 +9048,92 @@ func (s *Server) rollbackPreparedPlaybackHandoff(ctx context.Context, preparedID
 	_, _ = s.execPlaybackWrite(ctx, `UPDATE playback_prepared_handoffs SET state = 'prepared', request_id = '', request_fingerprint = '' WHERE id = ? AND state = 'committing' AND request_id = ? AND request_fingerprint = ?`, preparedID, requestID, fingerprint)
 }
 
-func (s *Server) commitPreparedPlaybackHandoff(ctx context.Context, prepared preparedPlaybackHandoff, playback PlaybackResponse) error {
+func (s *Server) commitPreparedPlaybackHandoff(ctx context.Context, prepared preparedPlaybackHandoff, playback PlaybackResponse, terminal PlaybackTerminalEvent, claim playbackHandoffClaim) error {
+	if strings.TrimSpace(playback.SessionID) == "" || playback.SessionID != claim.ReplacementSessionID {
+		return errPreparedHandoffConflict
+	}
 	receipt := preparedPlaybackHandoffReceipt{RequestID: prepared.RequestID, Fingerprint: prepared.Fingerprint, Playback: playback}
 	encoded, err := s.encodeContractCursor("prepared-playback-handoff:"+prepared.ID, prepared.RequestID, receipt, time.Now().UTC())
 	if err != nil {
 		return err
 	}
-	result, err := s.execPlaybackWrite(ctx, `UPDATE playback_prepared_handoffs SET state = 'committed', committed_response = ? WHERE id = ? AND state = 'committing' AND request_id = ? AND request_fingerprint = ?`, encoded, prepared.ID, prepared.RequestID, prepared.Fingerprint)
+	handoffEncoded, err := s.encodeContractCursor("playback-handoff:"+prepared.SessionID, prepared.RequestID, playbackHandoffReceipt(receipt), time.Now().UTC())
 	if err != nil {
 		return err
 	}
-	if rowsAffected(result) != 1 {
-		return errPreparedHandoffConflict
+	lifecycle := s.playbackLifecycle()
+	preferences := s.playbackProgressPreferencesForUserContext(ctx, prepared.ProfileID)
+	var termination playbackTerminationResult
+	var result sql.Result
+	err = s.withSecurityFenceTxTagged(ctx, []string{"playback"}, func(tx *sql.Tx) error {
+		currentAuthorizationRevision, authorizationErr := authorizationRevisionForUserRow(User{ID: prepared.UserID, AccountID: prepared.UserID, ProfileID: prepared.ProfileID}, tx.QueryRowContext(ctx, authorizationRevisionQuery, prepared.UserID, prepared.ProfileID))
+		if authorizationErr != nil || currentAuthorizationRevision != claim.AuthorizationRevision {
+			return errPlaybackReplacementAuthorizationChanged
+		}
+		var revisionMatch int
+		if revisionErr := tx.QueryRowContext(ctx, `
+			SELECT 1 FROM playback_sessions
+			WHERE id = ? AND user_id = ? AND profile_id = ? AND ended_at = '' AND state <> 'stopped'
+				AND client_instance_id = ? AND queue_revision = ? AND renegotiation_revision = ?
+				AND (client_instance_id = '' OR 1 = (SELECT COUNT(*) FROM playback_sessions active
+					WHERE active.user_id = ? AND active.profile_id = ? AND active.client_instance_id = ?
+						AND active.ended_at = '' AND active.state NOT IN ('stopped', 'handoff_pending')))`,
+			prepared.SessionID, prepared.UserID, prepared.ProfileID,
+			claim.ClientInstanceID, claim.ExpectedQueueRevision, claim.ExpectedPlaybackRevision,
+			prepared.UserID, prepared.ProfileID, claim.ClientInstanceID).Scan(&revisionMatch); revisionErr != nil {
+			if errors.Is(revisionErr, sql.ErrNoRows) {
+				return errPlaybackReplacementRevisionConflict
+			}
+			return revisionErr
+		}
+		termination, err = lifecycle.terminateTx(ctx, tx, playbackTerminationRequest{
+			SessionID: prepared.SessionID, UserID: prepared.UserID, ProfileID: prepared.ProfileID,
+			Cause: playbackTerminationHandoff, ProgressPreferences: preferences,
+			RequireActive: true,
+			Event: &playbackTerminalEvent{
+				Disposition: terminal.Disposition, Generation: terminal.Generation, EventSequence: terminal.EventSequence,
+				RecordedAt: terminal.RecordedAt, PositionSeconds: terminal.PositionSeconds, DurationSeconds: terminal.DurationSeconds,
+			},
+		})
+		if err != nil {
+			return err
+		}
+		activated, activateErr := tx.ExecContext(ctx, `
+			UPDATE playback_sessions SET state = 'playing'
+			WHERE id = ? AND user_id = ? AND profile_id = ? AND ended_at = '' AND state = 'handoff_pending'`,
+			playback.SessionID, prepared.UserID, prepared.ProfileID)
+		if activateErr != nil {
+			return activateErr
+		}
+		if rowsAffected(activated) != 1 {
+			return errPreparedHandoffConflict
+		}
+		result, err = tx.ExecContext(ctx, `UPDATE playback_prepared_handoffs SET state = 'committed', committed_response = ? WHERE id = ? AND state = 'committing' AND request_id = ? AND request_fingerprint = ?`, encoded, prepared.ID, prepared.RequestID, prepared.Fingerprint)
+		if err != nil {
+			return err
+		}
+		if rowsAffected(result) != 1 {
+			return errPreparedHandoffConflict
+		}
+		result, err = tx.ExecContext(ctx, `
+			UPDATE playback_handoff_receipts SET state = 'committed', committed_response = ?, payload_expires_at = ?
+			WHERE source_session_id = ? AND request_id = ? AND request_fingerprint = ?
+				AND state = 'committing' AND claim_id = ?`,
+			handoffEncoded, time.Now().UTC().Add(playbackHandoffReceiptTTL).Format(time.RFC3339Nano),
+			prepared.SessionID, prepared.RequestID, prepared.Fingerprint, claim.ID)
+		if err != nil {
+			return err
+		}
+		if rowsAffected(result) != 1 {
+			return errPreparedHandoffConflict
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	if termination.SessionID != "" {
+		lifecycle.afterCommit(ctx, termination)
 	}
 	return nil
 }
@@ -9141,21 +9164,25 @@ func (s *Server) handlePlaybackPrepareNext(w http.ResponseWriter, r *http.Reques
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	queueIDs := playbackQueueMediaIDsForSource(req.QueueMediaIDs, req.SourceContext, "")
-	if len(queueIDs) == 0 {
-		for _, item := range s.loadPlaybackSessionQueue(viewerProfileID(user), sessionID) {
-			queueIDs = append(queueIDs, item.ID)
-		}
-	}
-	mediaID := strings.TrimSpace(req.MediaID)
-	if mediaID == "" && len(queueIDs) > 0 {
-		mediaID = queueIDs[0]
-	}
-	if mediaID == "" {
-		writeError(w, http.StatusNotFound, "next_not_found", "No next media item is available.")
+	entryID := strings.TrimSpace(req.EntryID)
+	if entryID == "" {
+		writeError(w, http.StatusBadRequest, "queue_entry_required", "entryId is required.")
 		return
 	}
-	playback, err := s.mediaPlaybackResponseForSession(r, user, randomID("prep"), sessionID, mediaID, 0, req.ClientProfile, req.Intent)
+	snapshot, err := s.playbackSessionQueueSnapshot(r.Context(), user, sessionID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "prepare_failed", "Playback queue state could not be loaded.")
+		return
+	}
+	selectedIndex := playbackQueueOccurrenceIndex(snapshot.Queue, entryID)
+	if selectedIndex < 0 {
+		writeError(w, http.StatusNotFound, "queue_entry_not_found", "The requested queue occurrence is no longer available.")
+		return
+	}
+	selected := snapshot.Queue[selectedIndex]
+	remaining := append([]playbackQueueOccurrence(nil), snapshot.Queue[:selectedIndex]...)
+	remaining = append(remaining, snapshot.Queue[selectedIndex+1:]...)
+	playback, err := s.mediaPlaybackResponseForSession(r, user, randomID("prep"), sessionID, selected.MediaID, 0, req.ClientProfile, req.Intent)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "prepare_failed", "Next media item could not be prepared.")
 		return
@@ -9165,14 +9192,20 @@ func (s *Server) handlePlaybackPrepareNext(w http.ResponseWriter, r *http.Reques
 	// continuation bearer; progress remains fenced to the source session until
 	// handoff commit creates the replacement session.
 	playback.SessionID = sessionID
+	playback.CurrentQueueEntryID = selected.EntryID
 	playback.NextEventSequence = s.nextPlaybackProgressEventSequence(user, sessionID)
 	playback.ContinuationCredential = nil
-	queueIDs = playbackQueueMediaIDsForSource(queueIDs, req.SourceContext, playback.Media.ID)
-	playback.SourceContext = playbackSourceContextFor(s.playbackSourceContextVisibleToUser(user.ID, req.SourceContext, playback.Media, nil), playback.Media, playback.Media, s.playbackQueue(viewerProfileID(user), playback.Media, playback.Media, queueIDs))
-	queue := []MediaItem{}
-	if len(queueIDs) > 0 {
-		queue = s.playbackQueue(viewerProfileID(user), playback.Media, playback.Media, queueIDs)
-		playback.SourceContext = playbackSourceContextFor(s.playbackSourceContextVisibleToUser(user.ID, req.SourceContext, playback.Media, queue), playback.Media, playback.Media, queue)
+	queue, err := s.playbackQueueEntriesForOccurrences(r.Context(), viewerProfileID(user), remaining)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "prepare_failed", "Prepared playback queue could not be loaded.")
+		return
+	}
+	playback.Queue = queue
+	playback.QueueRevision = snapshot.Revision
+	playback.RepeatMode = snapshot.RepeatMode
+	playback.SourceContext = snapshot.SourceContext
+	if normalizePlaybackSourceContext(req.SourceContext).Type != "" {
+		playback.SourceContext = s.playbackSourceContextVisibleToUser(user.ID, req.SourceContext, playback.Media, nil)
 	}
 	mode := "gapless"
 	if req.CrossfadeSeconds > 0 || strings.EqualFold(req.PreferredHandoff, "crossfade") {
@@ -9186,18 +9219,23 @@ func (s *Server) handlePlaybackPrepareNext(w http.ResponseWriter, r *http.Reques
 		ProfileID:        viewerProfileID(user),
 		SessionID:        sessionID,
 		ClientInstanceID: clientInstanceID,
-		MediaID:          playback.Media.ID,
-		QueueMediaIDs:    append([]string(nil), queueIDs...),
+		Current:          selected,
+		Queue:            append([]playbackQueueOccurrence(nil), remaining...),
 		SourceContext:    playback.SourceContext,
-		QueueRevision:    playback.QueueRevision,
+		QueueRevision:    snapshot.Revision,
 		PlaybackRevision: playback.PlaybackRevision,
 		ExpiresAt:        expiresAtTime,
 	}); err != nil {
+		s.log.Warn("remember prepared playback handoff failed", "error", err, "session", sessionID, "entry", selected.EntryID)
+		if errors.Is(err, errPlaybackHandoffInProgress) {
+			writeError(w, http.StatusConflict, "handoff_in_progress", "Playback authority transfer is already committing. Retry after it resolves.")
+			return
+		}
 		writeError(w, http.StatusInternalServerError, "prepare_failed", "Next media item could not be prepared safely.")
 		return
 	}
 	expiresAt := expiresAtTime.Format(time.RFC3339)
-	s.recordLog("info", "Prepared playback handoff", map[string]string{"user": user.Email, "session": sessionID, "current": currentMediaID, "next": playback.Media.ID})
+	s.recordLog("info", "Prepared playback handoff", map[string]string{"user": user.Email, "session": sessionID, "current": currentMediaID, "next": playback.Media.ID, "entry": selected.EntryID})
 	setPlaybackMediaGrantCookie(w, r, playback)
 	writeJSON(w, http.StatusOK, PlaybackPreparedResponse{
 		PreparedSessionID: preparedID,
@@ -9224,7 +9262,66 @@ func (s *Server) handlePlaybackHandoff(w http.ResponseWriter, r *http.Request, u
 	if !decodeJSON(w, r, &req) {
 		return
 	}
+	if !validPlaybackAuthorityRequestID(req.RequestID) {
+		writeError(w, http.StatusBadRequest, "handoff_request_id_invalid", "requestId must be 8 to 128 letters, numbers, periods, underscores, colons, or hyphens.")
+		return
+	}
+	if req.PreviousTerminal == nil {
+		writeError(w, http.StatusBadRequest, "previous_terminal_required", "previousTerminal is required for playback handoff.")
+		return
+	}
+	fingerprint := playbackHandoffFingerprint(req)
+	terminal := *req.PreviousTerminal
+	if validationErr := validatePlaybackTerminalEvent(terminal); validationErr != nil {
+		writeError(w, validationErr.status, validationErr.code, "previousTerminal."+validationErr.message)
+		return
+	}
+	req.PreviousTerminal = &terminal
+	if req.StartSeconds != nil && *req.StartSeconds < 0 {
+		writeError(w, http.StatusBadRequest, "invalid_start_seconds", "startSeconds must be non-negative.")
+		return
+	}
 	preparedID := strings.TrimSpace(req.PreparedSessionID)
+	committed, handoffClaim, receiptErr := s.consumeDirectPlaybackHandoff(
+		r.Context(), user, sessionID, req.RequestID, fingerprint,
+		req.ExpectedQueueRevision, req.ExpectedPlaybackRevision,
+	)
+	if receiptErr != nil {
+		var restoreRequired *playbackReplacementRestoreRequiredError
+		switch {
+		case errors.Is(receiptErr, errPreparedHandoffConflict):
+			writeError(w, http.StatusConflict, "handoff_request_conflict", "This playback source already accepted a different handoff request.")
+		case errors.Is(receiptErr, errPlaybackHandoffInProgress):
+			writeError(w, http.StatusConflict, "handoff_in_progress", "This handoff is already being committed. Retry the same request.")
+		case errors.Is(receiptErr, errPlaybackReplacementRevisionConflict):
+			writeError(w, http.StatusConflict, "handoff_source_revision_conflict", "Playback queue or source selection changed before replacement authority was reserved.")
+		case errors.Is(receiptErr, errPlaybackReplacementSourceInactive):
+			writeError(w, http.StatusNotFound, "playback_session_not_found", "Playback session was not found.")
+		case errors.Is(receiptErr, errPlaybackReplacementAuthorizationChanged):
+			writeError(w, http.StatusConflict, "playback_replacement_scope_changed", "Playback authorization changed. Reconcile active playback before creating a new replacement.")
+		case errors.As(receiptErr, &restoreRequired):
+			writeProductErrorWithDetails(w, http.StatusConflict, "playback_replacement_committed_restore_required", "Playback replacement committed, but its original credentials are no longer safe to replay. Restore the active session for fresh credentials.", map[string]any{
+				"replacementSessionId": restoreRequired.ReplacementSessionID,
+				"outcome":              "committed",
+			})
+		case errors.Is(receiptErr, sql.ErrNoRows):
+			writeError(w, http.StatusNotFound, "playback_session_not_found", "Playback session was not found.")
+		default:
+			writeError(w, http.StatusInternalServerError, "handoff_failed", "Unable to reserve playback authority transfer.")
+		}
+		return
+	}
+	if committed != nil {
+		setPlaybackMediaGrantCookie(w, r, *committed)
+		writeJSON(w, http.StatusOK, *committed)
+		return
+	}
+	releaseHandoffReservation := true
+	defer func() {
+		if releaseHandoffReservation {
+			s.rollbackDirectPlaybackHandoff(context.Background(), sessionID, req.RequestID, fingerprint, handoffClaim.ID)
+		}
+	}()
 	var prepared *preparedPlaybackHandoff
 	releasePreparedReservation := false
 	var currentMediaID, clientInstanceID, endedAt, sourceState string
@@ -9240,17 +9337,6 @@ func (s *Server) handlePlaybackHandoff(w http.ResponseWriter, r *http.Request, u
 			return
 		}
 		isLive = liveInt == 1
-		req.RequestID = strings.TrimSpace(req.RequestID)
-		if len(req.RequestID) > 128 {
-			writeError(w, http.StatusBadRequest, "handoff_request_id_invalid", "requestId must be 128 characters or fewer.")
-			return
-		}
-		if req.RequestID == "" {
-			writeError(w, http.StatusBadRequest, "handoff_request_id_invalid", "requestId is required for prepared playback handoff.")
-			return
-		}
-		fingerprintBytes, _ := json.Marshal(req)
-		fingerprint := hashToken(string(fingerprintBytes))
 		preparedValue, preparedErr := s.consumePreparedPlaybackHandoff(r.Context(), user, sessionID, clientInstanceID, preparedID, req.RequestID, fingerprint)
 		if preparedErr != nil {
 			writeError(w, preparedErr.status, preparedErr.code, preparedErr.message)
@@ -9260,6 +9346,10 @@ func (s *Server) handlePlaybackHandoff(w http.ResponseWriter, r *http.Request, u
 		if prepared.Committed != nil {
 			setPlaybackMediaGrantCookie(w, r, *prepared.Committed)
 			writeJSON(w, http.StatusOK, *prepared.Committed)
+			return
+		}
+		if prepared.QueueRevision != handoffClaim.ExpectedQueueRevision || prepared.PlaybackRevision != handoffClaim.ExpectedPlaybackRevision {
+			writeError(w, http.StatusConflict, "prepared_handoff_revision_conflict", "Playback queue or source selection changed after preparation. Prepare the item again.")
 			return
 		}
 		releasePreparedReservation = true
@@ -9272,13 +9362,9 @@ func (s *Server) handlePlaybackHandoff(w http.ResponseWriter, r *http.Request, u
 			writeError(w, http.StatusConflict, "prepared_handoff_source_stopped", "The source playback session stopped before the prepared handoff committed.")
 			return
 		}
-		if req.MediaID != "" && strings.TrimSpace(req.MediaID) != prepared.MediaID {
-			writeError(w, http.StatusBadRequest, "prepared_handoff_media_mismatch", "Prepared playback handoff media does not match the requested media item.")
+		if strings.TrimSpace(req.EntryID) != prepared.Current.EntryID {
+			writeError(w, http.StatusBadRequest, "prepared_handoff_entry_mismatch", "Prepared playback handoff occurrence does not match entryId.")
 			return
-		}
-		req.MediaID = prepared.MediaID
-		if len(req.QueueMediaIDs) == 0 {
-			req.QueueMediaIDs = append([]string(nil), prepared.QueueMediaIDs...)
 		}
 		if normalizePlaybackSourceContext(req.SourceContext).Type == "" {
 			req.SourceContext = prepared.SourceContext
@@ -9305,13 +9391,10 @@ func (s *Server) handlePlaybackHandoff(w http.ResponseWriter, r *http.Request, u
 		writeError(w, http.StatusBadRequest, "handoff_not_supported", "Live playback sessions do not support handoff.")
 		return
 	}
-	mediaID := strings.TrimSpace(req.MediaID)
-	if mediaID == "" {
-		writeError(w, http.StatusBadRequest, "media_required", "A prepared media item is required.")
+	entryID := strings.TrimSpace(req.EntryID)
+	if entryID == "" {
+		writeError(w, http.StatusBadRequest, "queue_entry_required", "entryId is required.")
 		return
-	}
-	if req.ProgressSeconds > 0 {
-		_ = s.persistPlaybackSessionProgress(user, sessionID, req.ProgressSeconds)
 	}
 	queueState, err := s.playbackSessionQueueSnapshot(r.Context(), user, sessionID)
 	if err != nil {
@@ -9322,106 +9405,132 @@ func (s *Server) handlePlaybackHandoff(w http.ResponseWriter, r *http.Request, u
 		writeError(w, http.StatusConflict, "handoff_queue_revision_conflict", "Playback queue changed after preparation. Prepare the next item again.")
 		return
 	}
+	selectedIndex := playbackQueueOccurrenceIndex(queueState.Queue, entryID)
+	selectedFromHistory := false
+	selectedCurrent := prepared == nil && queueState.Current.EntryID == entryID
+	var selected playbackQueueOccurrence
+	var remaining []playbackQueueOccurrence
+	history := append([]playbackQueueOccurrence(nil), queueState.History...)
+	if selectedCurrent {
+		// Replay is a handoff to the same occurrence. Preserve the current entry ID,
+		// forward queue, and history exactly; no new queue occurrence was created.
+		selected = queueState.Current
+		remaining = append([]playbackQueueOccurrence(nil), queueState.Queue...)
+	} else if selectedIndex >= 0 {
+		selected = queueState.Queue[selectedIndex]
+		remaining = append([]playbackQueueOccurrence(nil), queueState.Queue[:selectedIndex]...)
+		remaining = append(remaining, queueState.Queue[selectedIndex+1:]...)
+	} else if historyIndex := playbackQueueOccurrenceIndex(queueState.History, entryID); historyIndex >= 0 && prepared == nil {
+		// History is newest-first. Selecting an earlier occurrence (Previous or
+		// repeat-all wrap) makes every later occurrence, followed by the former
+		// current item, the forward queue without inventing replacement IDs.
+		selectedFromHistory = true
+		selected = queueState.History[historyIndex]
+		for index := historyIndex - 1; index >= 0; index-- {
+			remaining = append(remaining, queueState.History[index])
+		}
+		remaining = append(remaining, queueState.Current)
+		remaining = append(remaining, queueState.Queue...)
+		history = append([]playbackQueueOccurrence(nil), queueState.History[historyIndex+1:]...)
+		if len(remaining) > maxPlaybackQueueItems {
+			remaining = remaining[:maxPlaybackQueueItems]
+		}
+	} else {
+		writeError(w, http.StatusConflict, "handoff_queue_entry_changed", "The requested queue occurrence is no longer available.")
+		return
+	}
+	if prepared != nil {
+		if selected.EntryID != prepared.Current.EntryID || selected.MediaID != prepared.Current.MediaID {
+			writeError(w, http.StatusConflict, "handoff_queue_entry_changed", "The prepared queue occurrence changed. Prepare it again.")
+			return
+		}
+		remaining = append([]playbackQueueOccurrence(nil), prepared.Queue...)
+	}
+	if !selectedFromHistory && !selectedCurrent {
+		history = append([]playbackQueueOccurrence{queueState.Current}, history...)
+	}
 	playbackRevision := int64(0)
 	_ = s.queryUserRow(r.Context(), `SELECT renegotiation_revision FROM playback_sessions WHERE id = ? AND profile_id = ?`, sessionID, viewerProfileID(user)).Scan(&playbackRevision)
 	if req.ExpectedPlaybackRevision != nil && playbackRevision != *req.ExpectedPlaybackRevision {
 		writeError(w, http.StatusConflict, "handoff_playback_revision_conflict", "Playback source changed after preparation. Prepare the next item again.")
 		return
 	}
-	history := s.loadPlaybackSessionHistory(user.ID, sessionID)
 	sourceContext := req.SourceContext
 	if normalizePlaybackSourceContext(sourceContext).Type == "" {
 		sourceContext = s.playbackSessionSourceContext(sessionID)
 	}
 	startReq := PlaybackSessionCreateRequest{
-		MediaID:          mediaID,
-		ClientInstanceID: clientInstanceID,
-		ClientProfile:    req.ClientProfile,
-		Intent:           req.Intent,
-		SkipPreroll:      true,
-		QueueMediaIDs:    req.QueueMediaIDs,
-		RepeatMode:       queueState.RepeatMode,
-		SourceContext:    sourceContext,
+		MediaID:            selected.MediaID,
+		ClientInstanceID:   clientInstanceID,
+		ClientProfile:      req.ClientProfile,
+		Intent:             req.Intent,
+		SkipPreroll:        true,
+		QueueMediaIDs:      playbackQueueOccurrenceMediaIDs(remaining),
+		RepeatMode:         queueState.RepeatMode,
+		SourceContext:      sourceContext,
+		currentEntryID:     selected.EntryID,
+		queueOccurrences:   remaining,
+		historyOccurrences: history,
+		queueOwned:         true,
+		deferReplacement:   true,
+		reservedSessionID:  handoffClaim.ReplacementSessionID,
+	}
+	if req.StartSeconds != nil {
+		startReq.StartSeconds = *req.StartSeconds
+		startReq.startSecondsSet = true
+	} else if selectedCurrent && prepared == nil {
+		startReq.StartSeconds = max(0, int(math.Round(req.PreviousTerminal.PositionSeconds)))
+		startReq.startSecondsSet = true
 	}
 	playback, startErr := s.startPlaybackForRequest(r, user, startReq)
 	if startErr != nil {
-		writeError(w, startErr.status, startErr.code, startErr.message)
+		writePlaybackStartError(w, startErr)
 		return
 	}
-	// The replacement is now authoritative. Never roll the prepared record back
-	// to a state that could start a second replacement session.
-	releasePreparedReservation = false
-	// Older sessions may predate stable client-instance identity. They cannot
-	// participate in replacement-by-instance, so close the explicit handoff
-	// source only after the replacement session, grant, and queue exist.
-	if clientInstanceID == "" {
-		if err := s.endPlaybackSession(user, sessionID); err != nil && !errors.Is(err, sql.ErrNoRows) {
-			_ = s.endPlaybackSession(user, playback.SessionID)
-			writeError(w, http.StatusInternalServerError, "handoff_failed", "Unable to close the previous playback session.")
-			return
-		}
-	}
-	for _, item := range history {
-		_ = s.appendPlaybackSessionHistory(r.Context(), playback.SessionID, item.ID)
-	}
-	_ = s.appendPlaybackSessionHistory(r.Context(), playback.SessionID, currentMediaID)
+	// The replacement is fully assembled but remains unexposed in
+	// handoff_pending. The only authority transition is the transaction that
+	// accepts the source actor's ordered terminal event and commits this exact
+	// request's receipt.
+	var commitErr error
 	if prepared != nil {
-		if err := s.commitPreparedPlaybackHandoff(context.Background(), *prepared, playback); err != nil {
-			// Playback is already authoritative. Do not turn a successful handoff
-			// into a client-visible failure (and a duplicate retry) merely because
-			// its receipt hit a transient database error. Reconcile the receipt in
-			// the background; identical retries remain fenced as committing.
-			s.recordLog("warn", "Prepared playback handoff receipt is being reconciled", map[string]string{"prepared": prepared.ID, "session": playback.SessionID})
-			preparedCopy := *prepared
-			playbackCopy := playback
-			go func() {
-				for attempt := 0; attempt < 5; attempt++ {
-					if attempt > 0 {
-						time.Sleep(time.Duration(attempt) * 100 * time.Millisecond)
-					}
-					if s.commitPreparedPlaybackHandoff(context.Background(), preparedCopy, playbackCopy) == nil {
-						return
-					}
-				}
-			}()
-		}
+		commitErr = s.commitPreparedPlaybackHandoff(r.Context(), *prepared, playback, *req.PreviousTerminal, handoffClaim)
+	} else {
+		commitErr = s.commitDirectPlaybackHandoff(r.Context(), user, sessionID, *req.PreviousTerminal, req.RequestID, fingerprint, handoffClaim, playback)
 	}
+	if commitErr != nil {
+		_, cleanupErr := s.playbackLifecycle().Terminate(context.Background(), playbackTerminationRequest{
+			SessionID: playback.SessionID, UserID: accountIDForUser(user), ProfileID: viewerProfileID(user),
+			Cause: playbackTerminationFailedStart, RemoveSession: true,
+		})
+		if cleanupErr != nil && !errors.Is(cleanupErr, sql.ErrNoRows) {
+			s.log.Error("handoff replacement cleanup failed", "error", cleanupErr, "session", playback.SessionID)
+		}
+		switch {
+		case errors.Is(commitErr, errPlaybackGenerationStale):
+			writeError(w, http.StatusConflict, "playback_generation_stale", "Playback progress authority changed. Retry with the native actor's current generation.")
+		case errors.Is(commitErr, errPlaybackEventSequenceStale):
+			writeError(w, http.StatusConflict, "playback_event_sequence_stale", "The previous terminal event is not newer than the accepted playback state.")
+		case errors.Is(commitErr, errPlaybackReplacementRevisionConflict):
+			writeError(w, http.StatusConflict, "handoff_source_revision_conflict", "Playback queue or source selection changed before the authority transfer committed.")
+		case errors.Is(commitErr, errPlaybackReplacementSourceInactive):
+			writeError(w, http.StatusConflict, "handoff_source_stopped", "The source playback session stopped before the handoff committed.")
+		case errors.Is(commitErr, errPlaybackReplacementAuthorizationChanged):
+			writeError(w, http.StatusConflict, "playback_replacement_scope_changed", "Playback authorization changed before the authority transfer committed.")
+		case errors.Is(commitErr, errPlaybackTerminalDurationMismatch):
+			writeError(w, http.StatusConflict, "playback_terminal_duration_mismatch", "Completed playback duration does not match the server-authoritative media duration.")
+		case errors.Is(commitErr, sql.ErrNoRows):
+			writeError(w, http.StatusConflict, "handoff_source_stopped", "The source playback session stopped before the handoff committed.")
+		default:
+			writeError(w, http.StatusInternalServerError, "handoff_failed", "Unable to commit playback authority transfer.")
+		}
+		return
+	}
+	releaseHandoffReservation = false
+	releasePreparedReservation = false
+	_ = s.setProgress(viewerProfileID(user), playback.Media.ID, max(1, playback.Media.State.ProgressSeconds), false)
+	s.recordLog("info", "Playback started", map[string]string{"user": user.Email, "media": playback.Media.Title})
 	setPlaybackMediaGrantCookie(w, r, playback)
 	writeJSON(w, http.StatusOK, playback)
-}
-
-func (s *Server) playbackQueueFromRequest(w http.ResponseWriter, r *http.Request, user User) ([]MediaItem, error) {
-	if !user.Permissions["playMedia"] {
-		writeError(w, http.StatusForbidden, "forbidden", "You do not have permission to play media.")
-		return nil, errors.New("playback permission denied")
-	}
-	req := PlaybackNextRequest{
-		MediaID: strings.TrimSpace(r.URL.Query().Get("mediaId")),
-	}
-	if rawQueue := strings.TrimSpace(r.URL.Query().Get("queueMediaIds")); rawQueue != "" {
-		req.QueueMediaIDs = splitCSV(rawQueue)
-	}
-	if r.Method == http.MethodPost {
-		if !decodeJSON(w, r, &req) {
-			return nil, errors.New("invalid playback queue request")
-		}
-	}
-	req.MediaID = strings.TrimSpace(req.MediaID)
-	if req.MediaID == "" {
-		writeError(w, http.StatusBadRequest, "media_required", "A media item is required.")
-		return nil, errors.New("media item required")
-	}
-	requestedItem, err := s.getMediaPlaybackDetailForUser(r.Context(), user, req.MediaID)
-	if err != nil {
-		writeError(w, http.StatusNotFound, "media_not_found", "Media item was not found.")
-		return nil, err
-	}
-	item, err := s.resolvePlayablePlaybackItemForUser(r.Context(), user, requestedItem)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "media_not_playable", err.Error())
-		return nil, err
-	}
-	return s.playbackQueue(viewerProfileID(user), requestedItem, item, req.QueueMediaIDs), nil
 }
 
 func splitCSV(value string) []string {
@@ -9443,22 +9552,28 @@ func (s *Server) playbackSessionState(user User, sessionID string) (mediaID stri
 	err = s.queryUserRow(context.Background(), `
 		SELECT media_id, is_live, client_instance_id
 		FROM playback_sessions
-		WHERE id = ? AND ended_at = '' AND (profile_id = ? OR ? = 1)`,
+		WHERE id = ? AND ended_at = '' AND state <> 'handoff_pending' AND (profile_id = ? OR ? = 1)`,
 		sessionID, viewerProfileID(user), boolInt(canInteractivelyManageServer(user))).Scan(&mediaID, &liveInt, &clientInstanceID)
 	return mediaID, liveInt == 1, clientInstanceID, err
 }
 
 type playbackSessionQueueSnapshot struct {
-	MediaID       string
+	Current       playbackQueueOccurrence
 	RepeatMode    string
 	Revision      int64
-	QueueIDs      []string
-	HistoryIDs    []string
+	Queue         []playbackQueueOccurrence
+	History       []playbackQueueOccurrence
 	SourceContext PlaybackSourceContext
 }
 
+type playbackQueueOccurrence struct {
+	HistoryID string `json:"historyId,omitempty"`
+	EntryID   string `json:"entryId"`
+	MediaID   string `json:"mediaId"`
+}
+
 type playbackSessionQueueMutationPlan struct {
-	QueueIDs     []string
+	Queue        []playbackQueueOccurrence
 	RepeatMode   string
 	QueueChanged bool
 }
@@ -9495,17 +9610,12 @@ func strictPlaybackQueueMediaIDs(mediaIDs []string) ([]string, error) {
 	if len(mediaIDs) > maxPlaybackQueueItems {
 		return nil, fmt.Errorf("Playback queues are limited to %d items.", maxPlaybackQueueItems)
 	}
-	seen := make(map[string]bool, len(mediaIDs))
 	ids := make([]string, 0, len(mediaIDs))
 	for _, rawID := range mediaIDs {
 		mediaID := strings.TrimSpace(rawID)
 		if mediaID == "" {
 			return nil, errors.New("Queue media IDs cannot be empty.")
 		}
-		if seen[mediaID] {
-			return nil, errors.New("Queue media IDs must be unique.")
-		}
-		seen[mediaID] = true
 		ids = append(ids, mediaID)
 	}
 	return ids, nil
@@ -9524,12 +9634,10 @@ func (s *Server) strictMediaItemsForPlaybackQueue(userID string, mediaIDs []stri
 	if len(resolved) != len(mediaIDs) {
 		return nil, errors.New("Every queue item must be accessible and playable.")
 	}
-	seen := make(map[string]bool, len(resolved))
 	for _, item := range resolved {
-		if item.ID == "" || seen[item.ID] {
-			return nil, errors.New("Queue items must resolve to unique playable media.")
+		if item.ID == "" {
+			return nil, errors.New("Queue items must resolve to playable media.")
 		}
-		seen[item.ID] = true
 	}
 	return resolved, nil
 }
@@ -9552,42 +9660,48 @@ func playbackQueueMutationHasMedia(req PlaybackSessionQueueRequest) bool {
 
 func validatePlaybackSessionQueueMutation(req PlaybackSessionQueueRequest) (string, error) {
 	action := strings.ToLower(strings.TrimSpace(req.Action))
+	entryID := strings.TrimSpace(req.EntryID)
+	destinationEntryID := strings.TrimSpace(req.DestinationEntryID)
+	placement := strings.ToLower(strings.TrimSpace(req.Placement))
 	switch action {
 	case "append", "play_next":
 		if !playbackQueueMutationHasMedia(req) {
 			return "", invalidPlaybackQueueMutation("%s requires at least one media item.", action)
 		}
-		if req.Index != nil || req.FromIndex != nil || req.ToIndex != nil || strings.TrimSpace(req.RepeatMode) != "" {
+		if entryID != "" || destinationEntryID != "" || placement != "" || strings.TrimSpace(req.RepeatMode) != "" {
 			return "", invalidPlaybackQueueMutation("%s only accepts mediaId or mediaIds.", action)
 		}
 	case "remove":
-		hasMediaID := strings.TrimSpace(req.MediaID) != ""
-		if hasMediaID == (req.Index != nil) {
-			return "", invalidPlaybackQueueMutation("remove requires exactly one of mediaId or index.")
+		if entryID == "" {
+			return "", invalidPlaybackQueueMutation("remove requires entryId.")
 		}
-		if len(req.MediaIDs) > 0 || req.FromIndex != nil || req.ToIndex != nil || strings.TrimSpace(req.RepeatMode) != "" {
-			return "", invalidPlaybackQueueMutation("remove only accepts mediaId or index.")
+		if playbackQueueMutationHasMedia(req) || destinationEntryID != "" || placement != "" || strings.TrimSpace(req.RepeatMode) != "" {
+			return "", invalidPlaybackQueueMutation("remove only accepts entryId.")
 		}
 	case "reorder":
-		if req.FromIndex == nil || req.ToIndex == nil {
-			return "", invalidPlaybackQueueMutation("reorder requires fromIndex and toIndex.")
+		if entryID == "" || destinationEntryID == "" || entryID == destinationEntryID || (placement != "before" && placement != "after") {
+			return "", invalidPlaybackQueueMutation("reorder requires distinct entryId and destinationEntryId values plus placement before or after.")
 		}
-		if playbackQueueMutationHasMedia(req) || req.Index != nil || strings.TrimSpace(req.RepeatMode) != "" {
-			return "", invalidPlaybackQueueMutation("reorder only accepts fromIndex and toIndex.")
+		if playbackQueueMutationHasMedia(req) || strings.TrimSpace(req.RepeatMode) != "" {
+			return "", invalidPlaybackQueueMutation("reorder only accepts occurrence identities and placement.")
+		}
+	case "shuffle":
+		if playbackQueueMutationHasMedia(req) || entryID != "" || destinationEntryID != "" || placement != "" || strings.TrimSpace(req.RepeatMode) != "" {
+			return "", invalidPlaybackQueueMutation("shuffle does not accept additional fields.")
 		}
 	case "clear":
-		if playbackQueueMutationHasMedia(req) || req.Index != nil || req.FromIndex != nil || req.ToIndex != nil || strings.TrimSpace(req.RepeatMode) != "" {
+		if playbackQueueMutationHasMedia(req) || entryID != "" || destinationEntryID != "" || placement != "" || strings.TrimSpace(req.RepeatMode) != "" {
 			return "", invalidPlaybackQueueMutation("clear does not accept additional fields.")
 		}
 	case "set_repeat":
 		if _, ok := normalizePlaybackRepeatMode(req.RepeatMode); !ok {
 			return "", invalidPlaybackQueueMutation("set_repeat requires repeatMode to be off, one, or all.")
 		}
-		if playbackQueueMutationHasMedia(req) || req.Index != nil || req.FromIndex != nil || req.ToIndex != nil {
+		if playbackQueueMutationHasMedia(req) || entryID != "" || destinationEntryID != "" || placement != "" {
 			return "", invalidPlaybackQueueMutation("set_repeat only accepts repeatMode.")
 		}
 	default:
-		return "", invalidPlaybackQueueMutation("action must be append, play_next, remove, reorder, clear, or set_repeat.")
+		return "", invalidPlaybackQueueMutation("action must be append, play_next, remove, reorder, shuffle, clear, or set_repeat.")
 	}
 	return action, nil
 }
@@ -9602,95 +9716,120 @@ func mediaIDsForPlaybackQueueItems(items []MediaItem) []string {
 	return ids
 }
 
-func queueWithoutMediaIDs(queue []string, removed []string) []string {
-	remove := make(map[string]bool, len(removed))
-	for _, mediaID := range removed {
-		remove[mediaID] = true
-	}
-	out := make([]string, 0, len(queue))
-	for _, mediaID := range queue {
-		if !remove[mediaID] {
-			out = append(out, mediaID)
+func newPlaybackQueueOccurrences(items []MediaItem) []playbackQueueOccurrence {
+	out := make([]playbackQueueOccurrence, 0, len(items))
+	for _, item := range items {
+		if mediaID := strings.TrimSpace(item.ID); mediaID != "" {
+			out = append(out, playbackQueueOccurrence{EntryID: randomID("qentry"), MediaID: mediaID})
 		}
 	}
 	return out
 }
 
-func (s *Server) replacePlaybackSessionQueueState(ctx context.Context, user User, sessionID string, expectedRevision int64, items []MediaItem, repeatMode string) error {
+func playbackQueueOccurrenceMediaIDs(queue []playbackQueueOccurrence) []string {
+	ids := make([]string, 0, len(queue))
+	for _, occurrence := range queue {
+		ids = append(ids, occurrence.MediaID)
+	}
+	return ids
+}
+
+func (s *Server) replacePlaybackSessionQueueState(ctx context.Context, user User, sessionID string, expectedRevision int64, items []MediaItem, repeatMode, idempotencyKey, fingerprint string) (bool, error) {
 	repeatMode, ok := normalizePlaybackRepeatMode(repeatMode)
 	if !ok {
-		return invalidPlaybackQueueMutation("repeatMode must be off, one, or all.")
+		return false, invalidPlaybackQueueMutation("repeatMode must be off, one, or all.")
 	}
-	queueIDs := mediaIDsForPlaybackQueueItems(items)
-	return s.commitPlaybackSessionQueueMutation(ctx, user, sessionID, expectedRevision, func(_ []string, _ string) (playbackSessionQueueMutationPlan, error) {
-		return playbackSessionQueueMutationPlan{QueueIDs: queueIDs, RepeatMode: repeatMode, QueueChanged: true}, nil
+	queue := newPlaybackQueueOccurrences(items)
+	return s.commitPlaybackSessionQueueMutation(ctx, user, sessionID, expectedRevision, idempotencyKey, fingerprint, func(_ []playbackQueueOccurrence, _ string) (playbackSessionQueueMutationPlan, error) {
+		return playbackSessionQueueMutationPlan{Queue: queue, RepeatMode: repeatMode, QueueChanged: true}, nil
 	})
 }
 
-func (s *Server) mutatePlaybackSessionQueueState(ctx context.Context, user User, sessionID string, expectedRevision int64, req PlaybackSessionQueueRequest) error {
+func (s *Server) mutatePlaybackSessionQueueState(ctx context.Context, user User, sessionID string, expectedRevision int64, req PlaybackSessionQueueRequest, fingerprint string) (bool, error) {
 	action, err := validatePlaybackSessionQueueMutation(req)
 	if err != nil {
-		return err
+		return false, err
 	}
-	addedIDs := []string{}
+	added := []playbackQueueOccurrence{}
 	if action == "append" || action == "play_next" {
 		items, err := s.strictMediaItemsForPlaybackQueue(viewerProfileID(user), playbackQueueMutationMediaIDs(req))
 		if err != nil {
-			return invalidPlaybackQueueMutation("%s", err.Error())
+			return false, invalidPlaybackQueueMutation("%s", err.Error())
 		}
-		addedIDs = mediaIDsForPlaybackQueueItems(items)
+		added = newPlaybackQueueOccurrences(items)
 	}
-	return s.commitPlaybackSessionQueueMutation(ctx, user, sessionID, expectedRevision, func(current []string, repeatMode string) (playbackSessionQueueMutationPlan, error) {
-		plan := playbackSessionQueueMutationPlan{QueueIDs: append([]string(nil), current...), RepeatMode: repeatMode}
+	return s.commitPlaybackSessionQueueMutation(ctx, user, sessionID, expectedRevision, req.IdempotencyKey, fingerprint, func(current []playbackQueueOccurrence, repeatMode string) (playbackSessionQueueMutationPlan, error) {
+		plan := playbackSessionQueueMutationPlan{Queue: append([]playbackQueueOccurrence(nil), current...), RepeatMode: repeatMode}
 		switch action {
 		case "append":
-			plan.QueueIDs = append(queueWithoutMediaIDs(current, addedIDs), addedIDs...)
+			plan.Queue = append(plan.Queue, added...)
 			plan.QueueChanged = true
 		case "play_next":
-			plan.QueueIDs = append(append([]string(nil), addedIDs...), queueWithoutMediaIDs(current, addedIDs)...)
+			plan.Queue = append(append([]playbackQueueOccurrence(nil), added...), plan.Queue...)
 			plan.QueueChanged = true
 		case "remove":
-			if req.Index != nil {
-				if *req.Index < 0 || *req.Index >= len(current) {
-					return plan, invalidPlaybackQueueMutation("remove index is outside the current queue.")
-				}
-				plan.QueueIDs = append(append([]string(nil), current[:*req.Index]...), current[*req.Index+1:]...)
-			} else {
-				mediaID := strings.TrimSpace(req.MediaID)
-				plan.QueueIDs = queueWithoutMediaIDs(current, []string{mediaID})
-				if len(plan.QueueIDs) == len(current) {
-					return plan, invalidPlaybackQueueMutation("mediaId is not in the current queue.")
-				}
+			index := playbackQueueOccurrenceIndex(plan.Queue, req.EntryID)
+			if index < 0 {
+				return plan, invalidPlaybackQueueMutation("entryId is not in the current queue.")
 			}
+			plan.Queue = append(plan.Queue[:index], plan.Queue[index+1:]...)
 			plan.QueueChanged = true
 		case "reorder":
-			from, to := *req.FromIndex, *req.ToIndex
-			if from < 0 || from >= len(current) || to < 0 || to >= len(current) {
-				return plan, invalidPlaybackQueueMutation("reorder indexes are outside the current queue.")
+			from := playbackQueueOccurrenceIndex(plan.Queue, req.EntryID)
+			if from < 0 {
+				return plan, invalidPlaybackQueueMutation("entryId is not in the current queue.")
 			}
-			if from != to {
-				mediaID := plan.QueueIDs[from]
-				plan.QueueIDs = append(plan.QueueIDs[:from], plan.QueueIDs[from+1:]...)
-				if to >= len(plan.QueueIDs) {
-					plan.QueueIDs = append(plan.QueueIDs, mediaID)
-				} else {
-					plan.QueueIDs = append(plan.QueueIDs, "")
-					copy(plan.QueueIDs[to+1:], plan.QueueIDs[to:])
-					plan.QueueIDs[to] = mediaID
-				}
+			moved := plan.Queue[from]
+			plan.Queue = append(plan.Queue[:from], plan.Queue[from+1:]...)
+			destination := playbackQueueOccurrenceIndex(plan.Queue, req.DestinationEntryID)
+			if destination < 0 {
+				return plan, invalidPlaybackQueueMutation("destinationEntryId is not in the current queue.")
 			}
+			if strings.EqualFold(req.Placement, "after") {
+				destination++
+			}
+			plan.Queue = append(plan.Queue, playbackQueueOccurrence{})
+			copy(plan.Queue[destination+1:], plan.Queue[destination:])
+			plan.Queue[destination] = moved
+			plan.QueueChanged = true
+		case "shuffle":
+			plan.Queue = materializePlaybackQueueShuffle(plan.Queue, req.IdempotencyKey)
 			plan.QueueChanged = true
 		case "clear":
-			plan.QueueIDs = []string{}
+			plan.Queue = []playbackQueueOccurrence{}
 			plan.QueueChanged = true
 		case "set_repeat":
 			plan.RepeatMode, _ = normalizePlaybackRepeatMode(req.RepeatMode)
 		}
-		if len(plan.QueueIDs) > maxPlaybackQueueItems {
+		if len(plan.Queue) > maxPlaybackQueueItems {
 			return plan, invalidPlaybackQueueMutation("Playback queues are limited to %d items.", maxPlaybackQueueItems)
 		}
 		return plan, nil
 	})
+}
+
+func materializePlaybackQueueShuffle(queue []playbackQueueOccurrence, idempotencyKey string) []playbackQueueOccurrence {
+	materialized := append([]playbackQueueOccurrence(nil), queue...)
+	key := strings.TrimSpace(idempotencyKey)
+	sort.SliceStable(materialized, func(i, j int) bool {
+		left := sha256.Sum256([]byte(key + "\x00" + materialized[i].EntryID))
+		right := sha256.Sum256([]byte(key + "\x00" + materialized[j].EntryID))
+		if comparison := bytes.Compare(left[:], right[:]); comparison != 0 {
+			return comparison < 0
+		}
+		return materialized[i].EntryID < materialized[j].EntryID
+	})
+	return materialized
+}
+
+func playbackQueueOccurrenceIndex(queue []playbackQueueOccurrence, rawEntryID string) int {
+	entryID := strings.TrimSpace(rawEntryID)
+	for index, occurrence := range queue {
+		if occurrence.EntryID == entryID {
+			return index
+		}
+	}
+	return -1
 }
 
 func playbackSourceContextJSONForQueue(raw string, currentMediaID string, queueIDs []string) (string, error) {
@@ -9719,23 +9858,43 @@ func playbackSourceContextJSONForQueue(raw string, currentMediaID string, queueI
 	return string(encoded), nil
 }
 
-func replacePlaybackSessionQueueRowsTx(ctx context.Context, tx *sql.Tx, sessionID string, queueIDs []string) error {
+func replacePlaybackSessionQueueRowsTx(ctx context.Context, tx *sql.Tx, sessionID string, queue []playbackQueueOccurrence) error {
 	if _, err := tx.ExecContext(ctx, `DELETE FROM playback_session_queue WHERE session_id = ?`, sessionID); err != nil {
 		return err
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	for index, mediaID := range queueIDs {
+	for index, occurrence := range queue {
 		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO playback_session_queue (session_id, media_id, sort_order, added_at)
-			VALUES (?, ?, ?, ?)`, sessionID, mediaID, index, now); err != nil {
+			INSERT INTO playback_session_queue (session_id, entry_id, media_id, sort_order, added_at)
+			VALUES (?, ?, ?, ?, ?)`, sessionID, occurrence.EntryID, occurrence.MediaID, index, now); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (s *Server) commitPlaybackSessionQueueMutation(ctx context.Context, user User, sessionID string, expectedRevision int64, planFor func([]string, string) (playbackSessionQueueMutationPlan, error)) error {
-	return s.withUserTxTagged(ctx, []string{"playback"}, func(tx *sql.Tx) error {
+func (s *Server) commitPlaybackSessionQueueMutation(ctx context.Context, user User, sessionID string, expectedRevision int64, idempotencyKey, fingerprint string, planFor func([]playbackQueueOccurrence, string) (playbackSessionQueueMutationPlan, error)) (bool, error) {
+	replayed := false
+	err := s.withUserTxTagged(ctx, []string{"playback"}, func(tx *sql.Tx) error {
+		var storedFingerprint string
+		receiptErr := tx.QueryRowContext(ctx, `SELECT request_fingerprint FROM playback_session_queue_receipts WHERE session_id = ? AND idempotency_key = ?`, sessionID, idempotencyKey).Scan(&storedFingerprint)
+		if receiptErr == nil {
+			if storedFingerprint != fingerprint {
+				return errPlaybackQueueIdempotencyConflict
+			}
+			replayed = true
+			return nil
+		}
+		if !errors.Is(receiptErr, sql.ErrNoRows) {
+			return receiptErr
+		}
+		var committingReplacement int
+		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM playback_handoff_receipts WHERE source_session_id = ? AND state = 'committing'`, sessionID).Scan(&committingReplacement); err != nil {
+			return err
+		}
+		if committingReplacement != 0 {
+			return errPlaybackHandoffInProgress
+		}
 		var mediaID, repeatMode, sourceContextJSON string
 		var revision int64
 		var isLive int
@@ -9753,19 +9912,19 @@ func (s *Server) commitPlaybackSessionQueueMutation(ctx context.Context, user Us
 			return errPlaybackQueueRevisionConflict
 		}
 		rows, err := tx.QueryContext(ctx, `
-			SELECT media_id FROM playback_session_queue
-			WHERE session_id = ? ORDER BY sort_order ASC LIMIT ?`, sessionID, maxPlaybackQueueItems)
+			SELECT entry_id, media_id FROM playback_session_queue
+			WHERE session_id = ? ORDER BY sort_order ASC, entry_id ASC LIMIT ?`, sessionID, maxPlaybackQueueItems)
 		if err != nil {
 			return err
 		}
-		current := []string{}
+		current := []playbackQueueOccurrence{}
 		for rows.Next() {
-			var queueMediaID string
-			if err := rows.Scan(&queueMediaID); err != nil {
+			var occurrence playbackQueueOccurrence
+			if err := rows.Scan(&occurrence.EntryID, &occurrence.MediaID); err != nil {
 				_ = rows.Close()
 				return err
 			}
-			current = append(current, queueMediaID)
+			current = append(current, occurrence)
 		}
 		if err := rows.Close(); err != nil {
 			return err
@@ -9778,13 +9937,13 @@ func (s *Server) commitPlaybackSessionQueueMutation(ctx context.Context, user Us
 			return invalidPlaybackQueueMutation("repeatMode must be off, one, or all.")
 		}
 		if plan.QueueChanged {
-			if _, err := strictPlaybackQueueMediaIDs(plan.QueueIDs); err != nil {
-				return invalidPlaybackQueueMutation("%s", err.Error())
-			}
-			if err := replacePlaybackSessionQueueRowsTx(ctx, tx, sessionID, plan.QueueIDs); err != nil {
+			if err := validatePlaybackQueueOccurrences(plan.Queue); err != nil {
 				return err
 			}
-			sourceContextJSON, err = playbackSourceContextJSONForQueue(sourceContextJSON, mediaID, plan.QueueIDs)
+			if err := replacePlaybackSessionQueueRowsTx(ctx, tx, sessionID, plan.Queue); err != nil {
+				return err
+			}
+			sourceContextJSON, err = playbackSourceContextJSONForQueue(sourceContextJSON, mediaID, playbackQueueOccurrenceMediaIDs(plan.Queue))
 			if err != nil {
 				return err
 			}
@@ -9793,17 +9952,41 @@ func (s *Server) commitPlaybackSessionQueueMutation(ctx context.Context, user Us
 			UPDATE playback_sessions
 			SET repeat_mode = ?, queue_revision = queue_revision + 1,
 				source_context_json = CASE WHEN ? = 1 THEN ? ELSE source_context_json END
-			WHERE id = ? AND queue_revision = ?`,
-			plan.RepeatMode, boolInt(plan.QueueChanged), sourceContextJSON, sessionID, expectedRevision)
+			WHERE id = ? AND queue_revision = ?
+				AND NOT EXISTS (SELECT 1 FROM playback_handoff_receipts WHERE source_session_id = ? AND state = 'committing')`,
+			plan.RepeatMode, boolInt(plan.QueueChanged), sourceContextJSON, sessionID, expectedRevision, sessionID)
 		if err != nil {
 			return err
 		}
 		updated, _ := result.RowsAffected()
 		if updated != 1 {
+			if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM playback_handoff_receipts WHERE source_session_id = ? AND state = 'committing'`, sessionID).Scan(&committingReplacement); err == nil && committingReplacement != 0 {
+				return errPlaybackHandoffInProgress
+			}
 			return errPlaybackQueueRevisionConflict
 		}
-		return nil
+		now := time.Now().UTC().Format(time.RFC3339Nano)
+		if _, err := tx.ExecContext(ctx, `INSERT INTO playback_session_queue_receipts (session_id, idempotency_key, request_fingerprint, response_revision, created_at) VALUES (?, ?, ?, ?, ?)`, sessionID, idempotencyKey, fingerprint, expectedRevision+1, now); err != nil {
+			return err
+		}
+		_, err = tx.ExecContext(ctx, `DELETE FROM playback_session_queue_receipts WHERE session_id = ? AND rowid NOT IN (SELECT rowid FROM playback_session_queue_receipts WHERE session_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 128)`, sessionID, sessionID)
+		return err
 	})
+	return replayed, err
+}
+
+func validatePlaybackQueueOccurrences(queue []playbackQueueOccurrence) error {
+	if len(queue) > maxPlaybackQueueItems {
+		return invalidPlaybackQueueMutation("Playback queues are limited to %d items.", maxPlaybackQueueItems)
+	}
+	seen := make(map[string]bool, len(queue))
+	for _, occurrence := range queue {
+		if strings.TrimSpace(occurrence.EntryID) == "" || strings.TrimSpace(occurrence.MediaID) == "" || seen[occurrence.EntryID] {
+			return invalidPlaybackQueueMutation("Queue occurrence identities are invalid.")
+		}
+		seen[occurrence.EntryID] = true
+	}
+	return nil
 }
 
 func (s *Server) playbackSessionQueueSnapshot(ctx context.Context, user User, sessionID string) (playbackSessionQueueSnapshot, error) {
@@ -9822,34 +10005,45 @@ func (s *Server) playbackSessionQueueSnapshot(ctx context.Context, user User, se
 	var snapshot playbackSessionQueueSnapshot
 	var sourceContextJSON string
 	if err := tx.QueryRowContext(ctx, `
-		SELECT media_id, repeat_mode, queue_revision, source_context_json
+		SELECT current_entry_id, media_id, repeat_mode, queue_revision, source_context_json
 		FROM playback_sessions
 		WHERE id = ? AND ended_at = '' AND state <> 'stopped' AND (profile_id = ? OR ? = 1)`,
-		sessionID, viewerProfileID(user), boolInt(canInteractivelyManageServer(user))).Scan(&snapshot.MediaID, &snapshot.RepeatMode, &snapshot.Revision, &sourceContextJSON); err != nil {
+		sessionID, viewerProfileID(user), boolInt(canInteractivelyManageServer(user))).Scan(&snapshot.Current.EntryID, &snapshot.Current.MediaID, &snapshot.RepeatMode, &snapshot.Revision, &sourceContextJSON); err != nil {
 		return playbackSessionQueueSnapshot{}, err
 	}
-	readIDs := func(query string, args ...any) ([]string, error) {
+	readOccurrences := func(query string, args ...any) ([]playbackQueueOccurrence, error) {
 		rows, err := tx.QueryContext(ctx, query, args...)
 		if err != nil {
 			return nil, err
 		}
 		defer rows.Close()
-		ids := []string{}
+		occurrences := []playbackQueueOccurrence{}
 		for rows.Next() {
-			var mediaID string
-			if err := rows.Scan(&mediaID); err != nil {
+			var occurrence playbackQueueOccurrence
+			if err := rows.Scan(&occurrence.EntryID, &occurrence.MediaID); err != nil {
 				return nil, err
 			}
-			ids = append(ids, mediaID)
+			occurrences = append(occurrences, occurrence)
 		}
-		return ids, rows.Err()
+		return occurrences, rows.Err()
 	}
-	snapshot.QueueIDs, err = readIDs(`SELECT media_id FROM playback_session_queue WHERE session_id = ? ORDER BY sort_order ASC LIMIT ?`, sessionID, maxPlaybackQueueItems)
+	snapshot.Queue, err = readOccurrences(`SELECT entry_id, media_id FROM playback_session_queue WHERE session_id = ? ORDER BY sort_order ASC, entry_id ASC LIMIT ?`, sessionID, maxPlaybackQueueItems)
 	if err != nil {
 		return playbackSessionQueueSnapshot{}, err
 	}
-	snapshot.HistoryIDs, err = readIDs(`SELECT media_id FROM playback_session_history WHERE session_id = ? ORDER BY sort_order DESC LIMIT 50`, sessionID)
+	historyRows, err := tx.QueryContext(ctx, `SELECT history_id, entry_id, media_id FROM playback_session_history WHERE session_id = ? ORDER BY sort_order DESC, history_id ASC LIMIT ?`, sessionID, maxPlaybackQueueItems)
 	if err != nil {
+		return playbackSessionQueueSnapshot{}, err
+	}
+	for historyRows.Next() {
+		var occurrence playbackQueueOccurrence
+		if err := historyRows.Scan(&occurrence.HistoryID, &occurrence.EntryID, &occurrence.MediaID); err != nil {
+			_ = historyRows.Close()
+			return playbackSessionQueueSnapshot{}, err
+		}
+		snapshot.History = append(snapshot.History, occurrence)
+	}
+	if err := historyRows.Close(); err != nil {
 		return playbackSessionQueueSnapshot{}, err
 	}
 	if err := json.Unmarshal([]byte(sourceContextJSON), &snapshot.SourceContext); err == nil {
@@ -9871,23 +10065,25 @@ func (s *Server) playbackSessionQueueResponse(ctx context.Context, user User, se
 	if err != nil {
 		return PlaybackSessionQueueResponse{}, err
 	}
-	current, err := s.getMediaListItemContext(ctx, viewerProfileID(user), snapshot.MediaID)
+	currentEntries, err := s.playbackQueueEntriesForOccurrences(ctx, viewerProfileID(user), []playbackQueueOccurrence{snapshot.Current})
 	if err != nil {
 		return PlaybackSessionQueueResponse{}, err
 	}
-	items, err := s.mediaByOrderedIDsContext(ctx, viewerProfileID(user), snapshot.QueueIDs)
+	items, err := s.playbackQueueEntriesForOccurrences(ctx, viewerProfileID(user), snapshot.Queue)
 	if err != nil {
 		return PlaybackSessionQueueResponse{}, err
 	}
-	history, err := s.mediaByOrderedIDsContext(ctx, viewerProfileID(user), snapshot.HistoryIDs)
+	visibleHistory := snapshot.History
+	if len(visibleHistory) > 50 {
+		visibleHistory = visibleHistory[:50]
+	}
+	history, err := s.playbackQueueHistoryEntriesForOccurrences(ctx, viewerProfileID(user), visibleHistory)
 	if err != nil {
 		return PlaybackSessionQueueResponse{}, err
 	}
-	items = resolvePlayableQueueItems(items)
-	history = resolvePlayableQueueItems(history)
 	return PlaybackSessionQueueResponse{
 		SessionID:     sessionID,
-		Current:       current,
+		Current:       currentEntries[0],
 		Items:         items,
 		History:       history,
 		Total:         len(items),
@@ -9898,10 +10094,53 @@ func (s *Server) playbackSessionQueueResponse(ctx context.Context, user User, se
 	}, nil
 }
 
+func (s *Server) playbackQueueEntriesForOccurrences(ctx context.Context, profileID string, occurrences []playbackQueueOccurrence) ([]PlaybackQueueEntry, error) {
+	if len(occurrences) == 0 {
+		return []PlaybackQueueEntry{}, nil
+	}
+	items, err := s.mediaByOrderedIDsContext(ctx, profileID, playbackQueueOccurrenceMediaIDs(occurrences))
+	if err != nil {
+		return nil, err
+	}
+	byID := make(map[string]MediaItem, len(items))
+	for _, item := range items {
+		byID[item.ID] = item
+	}
+	entries := make([]PlaybackQueueEntry, 0, len(occurrences))
+	for _, occurrence := range occurrences {
+		media, ok := byID[occurrence.MediaID]
+		if !ok {
+			media = MediaItem{ID: occurrence.MediaID, Type: "unavailable", Title: "Unavailable", SortTitle: "Unavailable", Missing: true}
+		}
+		entries = append(entries, PlaybackQueueEntry{EntryID: occurrence.EntryID, Media: media})
+	}
+	return entries, nil
+}
+
+func (s *Server) playbackQueueHistoryEntriesForOccurrences(ctx context.Context, profileID string, occurrences []playbackQueueOccurrence) ([]PlaybackQueueHistoryEntry, error) {
+	entries, err := s.playbackQueueEntriesForOccurrences(ctx, profileID, occurrences)
+	if err != nil {
+		return nil, err
+	}
+	history := make([]PlaybackQueueHistoryEntry, 0, len(entries))
+	for index, entry := range entries {
+		history = append(history, PlaybackQueueHistoryEntry{
+			HistoryID: occurrences[index].HistoryID,
+			EntryID:   entry.EntryID,
+			Media:     entry.Media,
+		})
+	}
+	return history, nil
+}
+
 func (s *Server) writePlaybackSessionQueueMutationError(w http.ResponseWriter, err error) {
 	switch {
+	case errors.Is(err, errPlaybackQueueIdempotencyConflict):
+		writeError(w, http.StatusConflict, "queue_idempotency_conflict", "This idempotency key was already used for a different playback queue mutation.")
 	case errors.Is(err, errPlaybackQueueRevisionConflict):
 		writeError(w, http.StatusConflict, "queue_revision_conflict", "The playback queue changed on another client. Reload it before applying this change.")
+	case errors.Is(err, errPlaybackHandoffInProgress):
+		writeError(w, http.StatusConflict, "handoff_in_progress", "Playback replacement is committing. Retry the mutation after it resolves.")
 	case errors.Is(err, errPlaybackQueueInvalid):
 		detail := strings.TrimSpace(strings.TrimPrefix(err.Error(), errPlaybackQueueInvalid.Error()+":"))
 		if detail == "" {
@@ -9915,98 +10154,92 @@ func (s *Server) writePlaybackSessionQueueMutationError(w http.ResponseWriter, e
 	}
 }
 
-func (s *Server) replacePlaybackSessionQueue(ctx context.Context, sessionID string, items []MediaItem) error {
-	items = capPlaybackQueueItems(items)
+func (s *Server) replacePlaybackSessionQueue(ctx context.Context, sessionID string, queue []playbackQueueOccurrence) error {
+	if len(queue) > maxPlaybackQueueItems {
+		queue = queue[:maxPlaybackQueueItems]
+	}
+	if err := validatePlaybackQueueOccurrences(queue); err != nil {
+		return err
+	}
 	return s.withUserTxTagged(ctx, []string{"playback"}, func(tx *sql.Tx) error {
-		if _, err := tx.ExecContext(ctx, `DELETE FROM playback_session_queue WHERE session_id = ?`, sessionID); err != nil {
+		return replacePlaybackSessionQueueRowsTx(ctx, tx, sessionID, queue)
+	})
+}
+
+func (s *Server) loadPlaybackSessionQueue(sessionID string) []playbackQueueOccurrence {
+	rows, err := s.queryUserRead(context.Background(), `
+		SELECT entry_id, media_id
+		FROM playback_session_queue
+		WHERE session_id = ?
+		ORDER BY sort_order ASC, entry_id ASC
+		LIMIT ?`, sessionID, maxPlaybackQueueItems)
+	if err != nil {
+		return []playbackQueueOccurrence{}
+	}
+	defer rows.Close()
+	queue := []playbackQueueOccurrence{}
+	for rows.Next() {
+		var occurrence playbackQueueOccurrence
+		if err := rows.Scan(&occurrence.EntryID, &occurrence.MediaID); err == nil {
+			queue = append(queue, occurrence)
+		}
+	}
+	return queue
+}
+
+func (s *Server) replacePlaybackSessionHistory(ctx context.Context, sessionID string, newestFirst []playbackQueueOccurrence) error {
+	if len(newestFirst) > maxPlaybackQueueItems*2 {
+		newestFirst = newestFirst[:maxPlaybackQueueItems*2]
+	}
+	return s.withWorkClassTxTaggedForViewer(ctx, foundationcontract.WorkClassPlaybackStart, "playback_history_replace", database.UserWriteRetry, "", "", []string{"playback"}, func(tx *sql.Tx) error {
+		var historyPaused int
+		if err := tx.QueryRowContext(ctx, `SELECT COALESCE(history_paused, 0) FROM playback_sessions WHERE id = ?`, sessionID).Scan(&historyPaused); err != nil {
 			return err
+		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM playback_session_history WHERE session_id = ?`, sessionID); err != nil {
+			return err
+		}
+		if historyPaused != 0 {
+			return nil
 		}
 		now := time.Now().UTC().Format(time.RFC3339)
-		seen := map[string]bool{}
-		values := []string{}
-		args := []any{}
-		for _, item := range items {
-			if item.ID == "" || seen[item.ID] {
-				continue
+		sortOrder := 0
+		for index := len(newestFirst) - 1; index >= 0; index-- {
+			occurrence := newestFirst[index]
+			if strings.TrimSpace(occurrence.EntryID) == "" || strings.TrimSpace(occurrence.MediaID) == "" {
+				return errors.New("playback history occurrence is incomplete")
 			}
-			seen[item.ID] = true
-			values = append(values, "(?, ?, ?, ?)")
-			args = append(args, sessionID, item.ID, len(values)-1, now)
-		}
-		if len(values) > 0 {
-			_, err := tx.ExecContext(ctx, `
-				INSERT INTO playback_session_queue (session_id, media_id, sort_order, added_at)
-				VALUES `+strings.Join(values, ","), args...)
-			return err
+			if strings.TrimSpace(occurrence.HistoryID) == "" {
+				occurrence.HistoryID = randomID("history")
+			}
+			if _, err := tx.ExecContext(ctx, `INSERT INTO playback_session_history (session_id, history_id, entry_id, media_id, sort_order, played_at) VALUES (?, ?, ?, ?, ?, ?)`, sessionID, occurrence.HistoryID, occurrence.EntryID, occurrence.MediaID, sortOrder, now); err != nil {
+				return err
+			}
+			sortOrder++
 		}
 		return nil
 	})
 }
 
-func (s *Server) loadPlaybackSessionQueue(userID string, sessionID string) []MediaItem {
+func (s *Server) loadPlaybackSessionHistory(sessionID string) []playbackQueueOccurrence {
 	rows, err := s.queryUserRead(context.Background(), `
-		SELECT media_id
-		FROM playback_session_queue
-		WHERE session_id = ?
-		ORDER BY sort_order ASC
-		LIMIT ?`, sessionID, maxPlaybackQueueItems)
-	if err != nil {
-		return []MediaItem{}
-	}
-	defer rows.Close()
-	ids := []string{}
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err == nil {
-			ids = append(ids, id)
-		}
-	}
-	items, err := s.mediaByOrderedIDs(userID, ids)
-	if err != nil {
-		return []MediaItem{}
-	}
-	return resolvePlayableQueueItems(items)
-}
-
-func (s *Server) appendPlaybackSessionHistory(ctx context.Context, sessionID string, mediaID string) error {
-	if strings.TrimSpace(mediaID) == "" {
-		return nil
-	}
-	var historyPaused int
-	if err := s.queryUserRow(ctx, `SELECT COALESCE(history_paused, 0) FROM playback_sessions WHERE id = ?`, sessionID).Scan(&historyPaused); err != nil || historyPaused != 0 {
-		return nil
-	}
-	now := time.Now().UTC().Format(time.RFC3339)
-	_, err := s.execUserWrite(ctx, `
-		INSERT INTO playback_session_history (session_id, media_id, sort_order, played_at)
-		VALUES (?, ?, COALESCE((SELECT MAX(sort_order) + 1 FROM playback_session_history WHERE session_id = ?), 0), ?)`,
-		sessionID, mediaID, sessionID, now)
-	return err
-}
-
-func (s *Server) loadPlaybackSessionHistory(userID string, sessionID string) []MediaItem {
-	rows, err := s.queryUserRead(context.Background(), `
-		SELECT media_id
+		SELECT history_id, entry_id, media_id
 		FROM playback_session_history
 		WHERE session_id = ?
-		ORDER BY sort_order DESC
-		LIMIT 50`, sessionID)
+		ORDER BY sort_order DESC, history_id ASC
+		LIMIT ?`, sessionID, maxPlaybackQueueItems)
 	if err != nil {
-		return []MediaItem{}
+		return []playbackQueueOccurrence{}
 	}
 	defer rows.Close()
-	ids := []string{}
+	history := []playbackQueueOccurrence{}
 	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err == nil {
-			ids = append(ids, id)
+		var occurrence playbackQueueOccurrence
+		if err := rows.Scan(&occurrence.HistoryID, &occurrence.EntryID, &occurrence.MediaID); err == nil {
+			history = append(history, occurrence)
 		}
 	}
-	items, err := s.mediaByOrderedIDs(userID, ids)
-	if err != nil {
-		return []MediaItem{}
-	}
-	return resolvePlayableQueueItems(items)
+	return history
 }
 
 func (s *Server) activePlaybackSessionForRestore(profileID string, clientInstanceID string, now time.Time) (sessionID string, mediaID string, isLive bool, positionSeconds int, ok bool, err error) {
@@ -10016,7 +10249,7 @@ func (s *Server) activePlaybackSessionForRestore(profileID string, clientInstanc
 	err = s.queryUserRow(context.Background(), `
 		SELECT id, media_id, is_live, position_seconds
 		FROM playback_sessions
-		WHERE profile_id = ? AND client_instance_id = ? AND ended_at = '' AND state <> 'stopped'
+		WHERE profile_id = ? AND client_instance_id = ? AND ended_at = '' AND state NOT IN ('stopped', 'handoff_pending')
 			AND (last_seen_at >= ? OR (media_type IN ('track', 'audiobook') AND last_seen_at >= ?))
 		ORDER BY last_seen_at DESC
 		LIMIT 1`, profileID, normalizePlaybackClientInstanceID(clientInstanceID), cutoff, audioCutoff).Scan(&sessionID, &mediaID, &liveInt, &positionSeconds)
@@ -10038,22 +10271,15 @@ func (s *Server) mediaPlaybackResponseForSession(r *http.Request, user User, ses
 	if err != nil {
 		return PlaybackResponse{}, err
 	}
-	selectedQualityID, selectedAudioStreamID, selectedSubtitleID, selectedSubtitleMode, selectedVersionID := "", "", "", "off", ""
+	selectedAudioStreamID, selectedSubtitleID, selectedSubtitleMode, selectedVersionID := "", "", "off", ""
 	var storedClientProfileJSON, storedIntentJSON string
 	var revision, generation int64
 	if grantSessionID == sessionID {
-		_ = s.queryUserRow(r.Context(), `SELECT selected_quality_id, selected_audio_stream_id, selected_subtitle_stream_id, selected_subtitle_mode, selected_version_id, renegotiation_revision, progress_generation, client_profile_json, playback_intent_json FROM playback_sessions WHERE id = ? AND media_id = ?`, sessionID, mediaID).
-			Scan(&selectedQualityID, &selectedAudioStreamID, &selectedSubtitleID, &selectedSubtitleMode, &selectedVersionID, &revision, &generation, &storedClientProfileJSON, &storedIntentJSON)
-		if selectedQualityID != "" {
-			intent.QualityProfile = strings.ReplaceAll(selectedQualityID, "video-", "")
-			intent.QualityProfile = strings.ReplaceAll(intent.QualityProfile, "audio-", "")
-		}
+		_ = s.queryUserRow(r.Context(), `SELECT selected_audio_stream_id, selected_subtitle_stream_id, selected_subtitle_mode, selected_version_id, renegotiation_revision, progress_generation, client_profile_json, playback_intent_json FROM playback_sessions WHERE id = ? AND media_id = ?`, sessionID, mediaID).
+			Scan(&selectedAudioStreamID, &selectedSubtitleID, &selectedSubtitleMode, &selectedVersionID, &revision, &generation, &storedClientProfileJSON, &storedIntentJSON)
 		if selectedVersionID != "" {
-			for index := range item.MediaFiles {
-				item.MediaFiles[index].Selected = item.MediaFiles[index].ID == selectedVersionID
-				if item.MediaFiles[index].Selected && item.MediaFiles[index].Available {
-					item.SourceURL = item.MediaFiles[index].Path
-				}
+			if versionErr := s.applyRequestedPlaybackVersion(r.Context(), &item, selectedVersionID); versionErr != nil {
+				return PlaybackResponse{}, errors.New(versionErr.message)
 			}
 		}
 	} else {
@@ -10073,6 +10299,15 @@ func (s *Server) mediaPlaybackResponseForSession(r *http.Request, user User, ses
 		item.State.ProgressSeconds = max(1, positionSeconds)
 	}
 	policy, clientProfile := s.resolvePlaybackPolicyForRequest(r.Context(), r, user, item, intent, clientProfile)
+	qualityAuthority, err := s.issuePlaybackQualityOffersForItem(r.Context(), item, policy, s.userCanTranscode(user))
+	if err != nil {
+		return PlaybackResponse{}, err
+	}
+	quality, policy, clientProfile, err := resolvePlaybackQualityForRequest(qualityAuthority, intent.Quality, policy, clientProfile, item.Type)
+	if err != nil {
+		return PlaybackResponse{}, err
+	}
+	intent.Quality = normalizedPlaybackQualitySelection(intent.Quality)
 	var decision PlaybackDecision
 	var playbackURL string
 	if grantSessionID == sessionID {
@@ -10080,7 +10315,7 @@ func (s *Server) mediaPlaybackResponseForSession(r *http.Request, user User, ses
 		if bindingErr != nil {
 			return PlaybackResponse{}, bindingErr
 		}
-		decision, err = playbackDecisionFromBinding(binding, item)
+		decision, err = playbackDecisionFromExecutionPlan(binding, item)
 	} else {
 		// Prepared queue items receive their own immutable plan. The resulting
 		// grant stores this binding instead of borrowing the active item's plan.
@@ -10094,6 +10329,9 @@ func (s *Server) mediaPlaybackResponseForSession(r *http.Request, user User, ses
 	}
 	if err != nil || decision.Mode == "unavailable" {
 		return PlaybackResponse{}, errors.New("the title cannot be delivered within the selected playback policy")
+	}
+	if err := validateResolvedPlaybackQualityExecution(qualityAuthority, quality, decision); err != nil {
+		return PlaybackResponse{}, err
 	}
 	if decision.RequiresTranscode && !s.userCanTranscode(user) {
 		return PlaybackResponse{}, errors.New("the active profile cannot create the compatible stream required for this title")
@@ -10126,29 +10364,28 @@ func (s *Server) mediaPlaybackResponseForSession(r *http.Request, user User, ses
 	if err != nil {
 		return PlaybackResponse{}, err
 	}
-	queue, err := s.mediaByOrderedIDsContext(r.Context(), viewerProfileID(user), queueState.QueueIDs)
+	queue, err := s.playbackQueueEntriesForOccurrences(r.Context(), viewerProfileID(user), queueState.Queue)
 	if err != nil {
 		return PlaybackResponse{}, err
 	}
-	queue = resolvePlayableQueueItems(queue)
 
-	qualities := playbackQualities(item, decision, policy, s.userCanTranscode(user))
-	resources := playbackResourcesForResponse(item, playbackURL, decision.Protocol, decision, policy, qualities, audio, subtitles, selectedQualityID, selectedAudioStreamID, selectedSubtitleID, mediaGrant, s.userCanTranscode(user), selectedSubtitleMode)
+	resources := playbackResourcesForResponse(playbackURL, *decision.executionPlan)
 	playback := PlaybackResponse{
 		SessionID:             sessionID,
+		CurrentQueueEntryID:   queueState.Current.EntryID,
 		NextEventSequence:     s.nextPlaybackProgressEventSequence(user, sessionID),
 		MediaGrant:            mediaGrant,
 		Media:                 item,
 		SourceURL:             playbackURL,
-		DirectPlay:            decision.Mode == "direct_play" || decision.Mode == "optimized_version",
-		StreamFormat:          decision.Protocol,
+		DirectPlay:            decision.executionPlan.Plan.Mode == playbackplan.DirectPlay,
+		StreamFormat:          decision.executionPlan.Plan.Protocol,
 		Resources:             resources,
 		Decision:              decision,
 		Policy:                policy,
-		Qualities:             qualities,
+		QualityOffers:         qualityAuthority.set,
+		QualitySelection:      intent.Quality,
 		AudioStreams:          audio,
 		SelectedAudioStreamID: resources[0].AudioStreamID,
-		SelectedQualityID:     resources[0].QualityID,
 		SelectedSubtitleID:    resources[0].SubtitleStreamID,
 		SelectedSubtitleMode:  resources[0].SubtitleMode,
 		SelectedVersionID:     selectedVersionID,
@@ -10188,31 +10425,20 @@ func playbackResponseTracks(item MediaItem) (audio, subtitles []Stream) {
 }
 
 func isZeroPlaybackIntent(intent PlaybackIntent) bool {
-	encoded, _ := json.Marshal(intent)
-	return string(encoded) == "{}"
+	return reflect.DeepEqual(intent, PlaybackIntent{})
 }
 
-var errExplicitOriginalPictureUnavailable = errors.New("original-picture delivery is unavailable for the selected endpoint and route")
-
-func validateExplicitPlaybackQuality(qualityID string, decision PlaybackDecision) error {
-	qualityID = strings.TrimPrefix(strings.TrimPrefix(strings.ToLower(strings.TrimSpace(qualityID)), "video-"), "audio-")
-	if qualityID == "original" && decision.VideoTranscode {
-		return errExplicitOriginalPictureUnavailable
-	}
-	return nil
-}
-
-func (s *Server) buildPlaybackRenegotiationCandidate(ctx context.Context, r *http.Request, user User, mediaID, qualityID, audioID, subtitleID, subtitleMode, versionID string, clientProfile PlaybackClientProfile, intent PlaybackIntent) (MediaItem, PlaybackDecision, ResolvedPlaybackPolicy, error) {
+func (s *Server) buildPlaybackRenegotiationCandidate(ctx context.Context, r *http.Request, user User, mediaID string, selection PlaybackQualitySelection, audioID, subtitleID, subtitleMode, versionID string, clientProfile PlaybackClientProfile, intent PlaybackIntent) (MediaItem, PlaybackDecision, ResolvedPlaybackPolicy, playbackQualityOfferAuthority, error) {
 	item, err := s.getMediaPlaybackDetailForUser(ctx, user, mediaID)
 	if err != nil {
-		return MediaItem{}, PlaybackDecision{}, ResolvedPlaybackPolicy{}, err
+		return MediaItem{}, PlaybackDecision{}, ResolvedPlaybackPolicy{}, playbackQualityOfferAuthority{}, err
 	}
 	item, err = s.resolvePlayablePlaybackItemForUser(ctx, user, item)
 	if err != nil {
-		return MediaItem{}, PlaybackDecision{}, ResolvedPlaybackPolicy{}, err
+		return MediaItem{}, PlaybackDecision{}, ResolvedPlaybackPolicy{}, playbackQualityOfferAuthority{}, err
 	}
 	if startErr := s.applyRequestedPlaybackVersion(ctx, &item, versionID); startErr != nil {
-		return MediaItem{}, PlaybackDecision{}, ResolvedPlaybackPolicy{}, errors.New(startErr.message)
+		return MediaItem{}, PlaybackDecision{}, ResolvedPlaybackPolicy{}, playbackQualityOfferAuthority{}, errors.New(startErr.message)
 	}
 	scopePlaybackStreamsToSelectedVersion(&item)
 	audioID = s.resolveMediaStreamIDContext(ctx, item.ID, audioID)
@@ -10220,22 +10446,28 @@ func (s *Server) buildPlaybackRenegotiationCandidate(ctx context.Context, r *htt
 	if audioID != "" {
 		stream := streamByID(item.Streams, audioID)
 		if stream.ID == "" || stream.Kind != "audio" {
-			return MediaItem{}, PlaybackDecision{}, ResolvedPlaybackPolicy{}, errors.New("the requested audio stream was not found")
+			return MediaItem{}, PlaybackDecision{}, ResolvedPlaybackPolicy{}, playbackQualityOfferAuthority{}, errors.New("the requested audio stream was not found")
 		}
 	}
 	if subtitleMode == "text" || subtitleMode == "burn_in" {
 		stream := streamByID(item.Streams, subtitleID)
 		if stream.ID == "" || stream.Kind != "subtitle" {
-			return MediaItem{}, PlaybackDecision{}, ResolvedPlaybackPolicy{}, errors.New("the requested subtitle stream was not found")
+			return MediaItem{}, PlaybackDecision{}, ResolvedPlaybackPolicy{}, playbackQualityOfferAuthority{}, errors.New("the requested subtitle stream was not found")
 		}
 	}
 	if subtitleMode == "off" && subtitleID != "" {
-		return MediaItem{}, PlaybackDecision{}, ResolvedPlaybackPolicy{}, errors.New("subtitleStreamId must be empty when subtitles are off")
+		return MediaItem{}, PlaybackDecision{}, ResolvedPlaybackPolicy{}, playbackQualityOfferAuthority{}, errors.New("subtitleStreamId must be empty when subtitles are off")
 	}
-	if qualityID != "" {
-		intent.QualityProfile = strings.TrimPrefix(strings.TrimPrefix(qualityID, "video-"), "audio-")
-	}
+	intent.Quality = normalizedPlaybackQualitySelection(selection)
 	policy, profile := s.resolvePlaybackPolicyForRequest(ctx, r, user, item, intent, clientProfile)
+	qualityAuthority, err := s.issuePlaybackQualityOffersForItem(ctx, item, policy, s.userCanTranscode(user))
+	if err != nil {
+		return MediaItem{}, PlaybackDecision{}, ResolvedPlaybackPolicy{}, playbackQualityOfferAuthority{}, err
+	}
+	quality, policy, profile, err := resolvePlaybackQualityForRequest(qualityAuthority, intent.Quality, policy, profile, item.Type)
+	if err != nil {
+		return MediaItem{}, PlaybackDecision{}, ResolvedPlaybackPolicy{}, qualityAuthority, err
+	}
 	sourceURL := item.SourceURL
 	if sourceURL == "" {
 		sourceURL = s.cfg.SampleMediaURL
@@ -10243,119 +10475,29 @@ func (s *Server) buildPlaybackRenegotiationCandidate(ctx context.Context, r *htt
 	probe := item
 	probe.SourceURL = sourceURL
 	if _, err := s.sourcePathForHLSTranscode(probe); err != nil {
-		return MediaItem{}, PlaybackDecision{}, ResolvedPlaybackPolicy{}, err
+		return MediaItem{}, PlaybackDecision{}, ResolvedPlaybackPolicy{}, qualityAuthority, err
 	}
 	item.SourceURL = sourceURL
 	decision, err := s.planMediaPlayback(ctx, item, profile, policy, audioID, subtitleID, subtitleMode)
 	if err != nil {
-		return MediaItem{}, PlaybackDecision{}, ResolvedPlaybackPolicy{}, err
+		if intent.Quality.Mode == playbackQualityModeExplicit {
+			return MediaItem{}, PlaybackDecision{}, ResolvedPlaybackPolicy{}, qualityAuthority, &ExplicitQualityUnavailableError{Offers: qualityAuthority.set}
+		}
+		return MediaItem{}, PlaybackDecision{}, ResolvedPlaybackPolicy{}, qualityAuthority, err
 	}
 	if decision.Mode == "unavailable" {
-		return MediaItem{}, PlaybackDecision{}, ResolvedPlaybackPolicy{}, errors.New("the title cannot be delivered within the selected playback policy")
+		if intent.Quality.Mode == playbackQualityModeExplicit {
+			return MediaItem{}, PlaybackDecision{}, ResolvedPlaybackPolicy{}, qualityAuthority, &ExplicitQualityUnavailableError{Offers: qualityAuthority.set}
+		}
+		return MediaItem{}, PlaybackDecision{}, ResolvedPlaybackPolicy{}, qualityAuthority, errors.New("the title cannot be delivered within the selected playback policy")
 	}
-	// A named Original selection is an absolute picture-quality request. Audio
-	// conversion, subtitle conversion, and safe repackaging remain possible, but
-	// the server must fail instead of silently substituting a video encode.
-	if err := validateExplicitPlaybackQuality(qualityID, decision); err != nil {
-		return MediaItem{}, PlaybackDecision{}, ResolvedPlaybackPolicy{}, err
+	if err := validateResolvedPlaybackQualityExecution(qualityAuthority, quality, decision); err != nil {
+		return MediaItem{}, PlaybackDecision{}, ResolvedPlaybackPolicy{}, qualityAuthority, err
 	}
 	if decision.RequiresTranscode && !s.userCanTranscode(user) {
-		return MediaItem{}, PlaybackDecision{}, ResolvedPlaybackPolicy{}, errors.New("the active profile cannot create the compatible stream required for this title")
+		return MediaItem{}, PlaybackDecision{}, ResolvedPlaybackPolicy{}, qualityAuthority, errors.New("the active profile cannot create the compatible stream required for this title")
 	}
-	return item, decision, policy, nil
-}
-
-func (s *Server) mediaPlaybackContract(item MediaItem, decision PlaybackDecision, policy ResolvedPlaybackPolicy, clientProfile PlaybackClientProfile, burnInSubtitleID string, audioStreamID string) (string, PlaybackDecision) {
-	burnInSubtitleID = normalizeBurnInSubtitleID(burnInSubtitleID)
-	audioStreamID = normalizeSelectedAudioStreamID(audioStreamID)
-	if burnInSubtitleID == "" && audioStreamID == "" && mediaPlaybackCanUseDirectStream(decision) {
-		decision.Protocol = playbackProtocolFor(decision.Container)
-		decision.IsServerCached = false
-		decision.IsProxied = true
-		return mediaPlaybackStreamURL(item.ID), decision
-	}
-	remuxPermitted := s.transcodeSettings().DirectStreamRemux && policy.DirectStreamPolicy != "never" && directStreamExactSeekEvidence(item)
-	directStreamCandidate := decision.Mode == "direct_stream" && remuxPermitted
-	if !directStreamCandidate &&
-		remuxPermitted &&
-		!decision.VideoTranscode &&
-		directStreamRemuxAvailable(item, "original", s.transcodeSettings(), burnInSubtitleID) &&
-		directStreamRemuxAllowedForClient(firstStreamOfKind(item.Streams, "video"), clientProfile) {
-		directStreamCandidate = true
-	}
-	if directStreamCandidate {
-		decision.Mode = "direct_stream"
-		decision.RequiresRemux = true
-		decision.VideoTranscode = false
-		decision.ReasonCodes = appendUniqueString(decision.ReasonCodes, "compatible_remux")
-		decision.Protocol = "hls"
-		decision.Container = "hls"
-		decision.IsServerCached = true
-		decision.IsProxied = true
-		return mediaPlaybackHLSURLWithOptions(item.ID, "original", burnInSubtitleID, transcodeAudioModeForDecision(decision), audioStreamID, true), decision
-	}
-	if decision.Mode == "direct_stream" || (!decision.VideoTranscode && directStreamRemuxAvailable(item, "original", s.transcodeSettings(), burnInSubtitleID)) {
-		decision.Mode = "transcode_required"
-		decision.RequiresTranscode = true
-		decision.RequiresRemux = false
-		decision.VideoTranscode = true
-		if !remuxPermitted {
-			decision.Reason = appendDecisionReason(decision.Reason, "direct stream remux is disabled by the resolved delivery policy")
-			decision.ReasonCodes = appendUniqueString(decision.ReasonCodes, "direct_stream_policy_rejected")
-		} else {
-			decision.Reason = appendDecisionReason(decision.Reason, "the client cannot use the available direct stream remux")
-			decision.ReasonCodes = appendUniqueString(decision.ReasonCodes, "direct_stream_client_unsupported")
-		}
-	}
-	quality := transcodeQualityForResolvedPolicy(item.Type, policy)
-	decision.DeliveryProfile = policy.DeliveryProfile
-	playbackURL := mediaPlaybackHLSURLWithOptions(item.ID, quality, burnInSubtitleID, transcodeAudioModeForDecision(decision), audioStreamID, false)
-	decision.Protocol = "hls"
-	decision.Container = "hls"
-	decision.IsServerCached = true
-	return playbackURL, decision
-}
-
-func mediaPlaybackCanUseDirectStream(decision PlaybackDecision) bool {
-	if decision.Mode != "direct_play" || decision.RequiresTranscode || decision.RequiresRemux {
-		return false
-	}
-	return playbackProtocolFor(decision.Container) == "http"
-}
-
-func sourceQualityDescription(item MediaItem, _ PlaybackDecision) string {
-	bitrateBitsPerSecond := 0
-	videoHeight := 0
-	audioLayout := ""
-	for _, stream := range item.Streams {
-		if stream.Bitrate > 0 {
-			bitrate := stream.Bitrate
-			if bitrate < 10_000 {
-				bitrate *= 1_000
-			}
-			bitrateBitsPerSecond += bitrate
-		}
-		if stream.Kind == "video" && stream.Height > videoHeight {
-			videoHeight = stream.Height
-		}
-		if stream.Kind == "audio" && audioLayout == "" {
-			audioLayout = playbackAudioLayoutLabel(stream.ChannelLayout, stream.Channels)
-		}
-	}
-	parts := []string{}
-	if bitrateBitsPerSecond > 0 {
-		if videoHeight == 0 {
-			parts = append(parts, fmt.Sprintf("%d kbps", max(1, int(math.Round(float64(bitrateBitsPerSecond)/1000)))))
-		} else {
-			parts = append(parts, playbackMbpsLabel(bitrateBitsPerSecond/1000))
-		}
-	}
-	if videoHeight > 0 {
-		parts = append(parts, fmt.Sprintf("%dp", videoHeight))
-	} else if audioLayout != "" {
-		parts = append(parts, audioLayout)
-	}
-	return strings.Join(parts, " · ")
+	return item, decision, policy, qualityAuthority, nil
 }
 
 func playbackMbpsLabel(kbps int) string {
@@ -10373,59 +10515,6 @@ func playbackVideoQualityLabel(height, videoKbps int) string {
 	return resolution + " · " + playbackMbpsLabel(videoKbps)
 }
 
-func playbackVideoQualityDescription(height, videoKbps int) string {
-	resolution := fmt.Sprintf("%dp", height)
-	if height >= 2160 {
-		resolution = "4K"
-	}
-	return fmt.Sprintf("Limits video to %s at %s.", resolution, playbackMbpsLabel(videoKbps))
-}
-
-func playbackAudioLayoutLabel(layout string, channels int) string {
-	switch strings.ToLower(strings.TrimSpace(layout)) {
-	case "mono", "1.0":
-		return "Mono"
-	case "stereo", "2.0":
-		return "Stereo"
-	case "2.1", "3.0", "3.1", "4.0", "4.1", "5.0", "5.1", "6.1", "7.1":
-		return strings.TrimSpace(layout)
-	}
-	switch channels {
-	case 1:
-		return "Mono"
-	case 2:
-		return "Stereo"
-	case 6:
-		return "5.1"
-	case 8:
-		return "7.1"
-	default:
-		if channels > 0 {
-			return fmt.Sprintf("%d-channel", channels)
-		}
-		return ""
-	}
-}
-
-func playbackDecisionAudioLayout(item MediaItem, decision PlaybackDecision) string {
-	if decision.execution != nil && len(decision.execution.Plan) > 0 {
-		var plan playbackplan.Plan
-		if json.Unmarshal(decision.execution.Plan, &plan) == nil {
-			if label := playbackAudioLayoutLabel(plan.Audio.Layout, plan.Audio.Channels); label != "" {
-				return label
-			}
-		}
-	}
-	for _, stream := range item.Streams {
-		if stream.Kind == "audio" {
-			if label := playbackAudioLayoutLabel(stream.ChannelLayout, stream.Channels); label != "" {
-				return label
-			}
-		}
-	}
-	return "Stereo"
-}
-
 func playbackAudioQualityLabel(audioKbps int, layout string) string {
 	if layout == "" {
 		return fmt.Sprintf("%d kbps", audioKbps)
@@ -10433,93 +10522,15 @@ func playbackAudioQualityLabel(audioKbps int, layout string) string {
 	return fmt.Sprintf("%d kbps %s", audioKbps, layout)
 }
 
-func playbackAudioQualityDescription(audioKbps int, layout string) string {
-	if layout == "" {
-		return fmt.Sprintf("Limits audio to %d kbps.", audioKbps)
-	}
-	return fmt.Sprintf("Limits audio to %d kbps %s.", audioKbps, strings.ToLower(layout))
-}
-
-func playbackQualities(item MediaItem, decision PlaybackDecision, policy ResolvedPlaybackPolicy, allowTranscode bool) []Quality {
-	if isAudioMediaType(item.Type) {
-		options := []Quality{{
-			ID:                "original",
-			Label:             "Original Quality",
-			Description:       sourceQualityDescription(item, decision),
-			Available:         true,
-			RequiresTranscode: decision.RequiresTranscode,
-		}}
-		if !allowTranscode || policy.TranscodePolicy == "never" {
-			return options
-		}
-		layout := playbackDecisionAudioLayout(item, decision)
-		for _, id := range []string{"audio-high", "audio-standard", "audio-data-saver"} {
-			preset := transcodePresets[id]
-			if policy.MaxAudioBitrateKbps > 0 && preset.audioK > policy.MaxAudioBitrateKbps {
-				continue
-			}
-			options = append(options, Quality{ID: id, Label: playbackAudioQualityLabel(preset.audioK, layout), Description: playbackAudioQualityDescription(preset.audioK, layout), Available: true, RequiresTranscode: true})
-		}
-		return options
-	}
-	transcodeOptions := []Quality{}
-	if allowTranscode && policy.TranscodePolicy != "never" {
-		sourceHeight := sourceVideoHeight(item, 0)
-		for _, id := range []string{"video-high", "1080p-high", "1080p-medium", "1080p-standard", "1080p-low", "720p-medium", "720p-standard", "720p-low", "480p", "328p"} {
-			preset := transcodePresets[id]
-			if sourceHeight > 0 && preset.height > sourceHeight {
-				continue
-			}
-			if policy.MaxVideoBitrateMbps > 0 && preset.videoK > policy.MaxVideoBitrateMbps*1000 {
-				continue
-			}
-			if policy.MaxAudioBitrateKbps > 0 && preset.audioK > policy.MaxAudioBitrateKbps {
-				continue
-			}
-			if policy.MaxVideoHeight > 0 && preset.height > policy.MaxVideoHeight {
-				continue
-			}
-			transcodeOptions = append(transcodeOptions, Quality{ID: id, Label: playbackVideoQualityLabel(preset.height, preset.videoK), Description: playbackVideoQualityDescription(preset.height, preset.videoK), Available: true, RequiresTranscode: true})
-		}
-	}
-	original := Quality{ID: "original", Label: "Original Quality", Description: sourceQualityDescription(item, decision), Available: true}
-	if decision.Mode == "direct_stream" {
-		original.RequiresTranscode = decision.RequiresTranscode
-	} else if decision.RequiresTranscode {
-		original.RequiresTranscode = true
-	}
-	options := []Quality{original}
-	if allowTranscode && policy.TranscodePolicy != "never" {
-		options = append(options, Quality{ID: "auto", Label: "Automatic", Description: "Best quality for this connection.", Available: true, RequiresTranscode: decision.RequiresTranscode})
-	}
-	return append(options, transcodeOptions...)
-}
-
-func playbackResourcesForResponse(item MediaItem, sourceURL, streamFormat string, decision PlaybackDecision, policy ResolvedPlaybackPolicy, qualities []Quality, audio, subtitles []Stream, selectedQualityID, selectedAudioID, selectedSubtitleID string, grant MediaGrant, allowTranscode bool, selectedSubtitleMode ...string) []PlaybackResource {
-	selectedAudioID = normalizeSelectedAudioStreamID(selectedAudioID)
-	selectedSubtitleID = normalizeBurnInSubtitleID(selectedSubtitleID)
-	defaultQuality := strings.TrimSpace(selectedQualityID)
-	if defaultQuality == "" {
-		defaultQuality = "original"
-		if decision.RequiresTranscode {
-			defaultQuality = strings.TrimSpace(decision.DeliveryProfile)
-			if defaultQuality == "" {
-				defaultQuality = "auto"
-			}
-		}
-	}
-	mode := ""
-	if len(selectedSubtitleMode) > 0 {
-		mode = selectedSubtitleMode[0]
-	}
-	defaultSubtitleMode := strings.ToLower(strings.TrimSpace(mode))
-	if defaultSubtitleMode != "text" && defaultSubtitleMode != "burn_in" {
-		defaultSubtitleMode = "off"
-	}
+func playbackResourcesForResponse(sourceURL string, plan playbackExecutionPlan) []PlaybackResource {
 	// Publish only the resource executed by this response's sealed plan.
 	// Quality and track alternatives are renegotiation choices, not pre-authorized
 	// URLs that may bypass generation, admission, and grant rotation.
-	return []PlaybackResource{{ID: randomID("pres"), SourceURL: sourceURL, StreamFormat: streamFormat, QualityID: defaultQuality, AudioStreamID: selectedAudioID, SubtitleStreamID: selectedSubtitleID, SubtitleMode: defaultSubtitleMode, Default: true}}
+	return []PlaybackResource{{
+		ID: randomID("pres"), SourceURL: sourceURL, StreamFormat: plan.Plan.Protocol,
+		AudioStreamID:    plan.AudioStreamID,
+		SubtitleStreamID: plan.SubtitleStreamID, SubtitleMode: plan.subtitleMode(), Default: true,
+	}}
 }
 
 func (s *Server) userCanTranscode(user User) bool {
@@ -10759,7 +10770,6 @@ func flattenPlayableDescendants(item MediaItem) []MediaItem {
 
 func resolvePlayableQueueItems(items []MediaItem) []MediaItem {
 	out := []MediaItem{}
-	seen := map[string]bool{}
 	for _, item := range items {
 		candidate := item
 		if item.Type == "album" || item.Type == "artist" {
@@ -10769,12 +10779,11 @@ func resolvePlayableQueueItems(items []MediaItem) []MediaItem {
 			}
 			candidate = resolved
 		}
-		if candidate.Missing || seen[candidate.ID] {
+		if candidate.Missing {
 			continue
 		}
 		if candidate.Type == "track" || candidate.Type == "episode" || candidate.SourceURL != "" {
 			out = append(out, candidate)
-			seen[candidate.ID] = true
 		}
 	}
 	return out
@@ -10815,13 +10824,11 @@ func playbackQueueMediaIDsForSource(queueMediaIDs []string, sourceContext Playba
 
 func normalizeMediaIDs(mediaIDs []string) []string {
 	out := []string{}
-	seen := map[string]bool{}
 	for _, id := range mediaIDs {
 		id = strings.TrimSpace(id)
-		if id == "" || seen[id] {
+		if id == "" {
 			continue
 		}
-		seen[id] = true
 		out = append(out, id)
 		if len(out) >= maxPlaybackQueueItems {
 			break
@@ -10936,13 +10943,11 @@ func normalizePlaybackSourceContext(input PlaybackSourceContext) PlaybackSourceC
 	default:
 		context.Type = "queue"
 	}
-	seen := map[string]bool{}
 	for _, id := range input.MediaIDs {
 		id = strings.TrimSpace(id)
-		if id == "" || seen[id] {
+		if id == "" {
 			continue
 		}
-		seen[id] = true
 		context.MediaIDs = append(context.MediaIDs, id)
 		if len(context.MediaIDs) >= maxPlaybackQueueItems {
 			break
@@ -11179,14 +11184,6 @@ func (s *Server) handlePlaybackSessionRoute(w http.ResponseWriter, r *http.Reque
 		if req.PositionSeconds != nil && *req.PositionSeconds < 0 {
 			*req.PositionSeconds = 0
 		}
-		if req.Completed != nil && *req.Completed && req.ProgressSeconds == nil && req.PositionSeconds == nil {
-			writeError(w, http.StatusBadRequest, "completed_position_required", "A completed event must include progressSeconds or positionSeconds.")
-			return
-		}
-		if req.Completed != nil && *req.Completed {
-			writeError(w, http.StatusBadRequest, "terminal_request_required", "Complete playback with the atomic DELETE terminal request.")
-			return
-		}
 		ack, err := s.touchPlaybackSession(user, sessionID, req)
 		if err != nil {
 			if errors.Is(err, errPlaybackGenerationStale) {
@@ -11225,24 +11222,18 @@ func (s *Server) handlePlaybackSessionRoute(w http.ResponseWriter, r *http.Reque
 		if !decodeJSON(w, r, &req) {
 			return
 		}
-		req.Disposition = strings.ToLower(strings.TrimSpace(req.Disposition))
-		if req.Disposition != "stopped" && req.Disposition != "completed" {
-			writeError(w, http.StatusBadRequest, "invalid_playback_disposition", "disposition must be stopped or completed.")
+		var validationErr *playbackStartHTTPError
+		req, validationErr = normalizePlaybackSessionStopRequest(req)
+		if validationErr != nil {
+			writeError(w, validationErr.status, validationErr.code, validationErr.message)
 			return
 		}
-		if req.Generation <= 0 || req.EventSequence <= 0 {
-			writeError(w, http.StatusBadRequest, "invalid_playback_terminal_authority", "generation and eventSequence must be positive integers.")
-			return
-		}
-		if _, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(req.RecordedAt)); err != nil {
-			writeError(w, http.StatusBadRequest, "invalid_recorded_at", "recordedAt must be an RFC 3339 timestamp.")
-			return
-		}
-		if math.IsNaN(req.PositionSeconds) || math.IsInf(req.PositionSeconds, 0) || req.PositionSeconds < 0 || math.IsNaN(req.DurationSeconds) || math.IsInf(req.DurationSeconds, 0) || req.DurationSeconds < 0 || (req.Disposition == "completed" && req.DurationSeconds <= 0) {
-			writeError(w, http.StatusBadRequest, "invalid_playback_terminal_position", "positionSeconds and durationSeconds must be finite and non-negative; completed playback requires a positive durationSeconds.")
-			return
-		}
-		if err := s.endPlaybackSessionAtomically(user, sessionID, req); err != nil {
+		ack, err := s.terminatePlaybackWithReceipt(r.Context(), user, sessionID, req, "", "")
+		if err != nil {
+			if errors.Is(err, errPlaybackTerminalAuthorizationChanged) {
+				writeError(w, http.StatusConflict, "playback_terminal_scope_changed", "Playback authorization changed. Reconcile active playback before retrying the terminal request.")
+				return
+			}
 			if errors.Is(err, errPlaybackGenerationStale) {
 				writeError(w, http.StatusConflict, "playback_generation_stale", "Playback progress authority changed. Reload the active playback session.")
 				return
@@ -11251,14 +11242,31 @@ func (s *Server) handlePlaybackSessionRoute(w http.ResponseWriter, r *http.Reque
 				writeError(w, http.StatusConflict, "playback_event_sequence_stale", "Playback terminal event is not newer than the accepted playback state.")
 				return
 			}
+			if errors.Is(err, errPlaybackTerminalDurationMismatch) {
+				writeError(w, http.StatusConflict, "playback_terminal_duration_mismatch", "Completed playback duration does not match the server-authoritative media duration.")
+				return
+			}
 			if errors.Is(err, sql.ErrNoRows) {
+				ack, receiptErr := s.playbackTerminalReceiptForUser(r.Context(), user, sessionID, req)
+				if receiptErr == nil {
+					writeJSON(w, http.StatusOK, ack)
+					return
+				}
+				if errors.Is(receiptErr, errPlaybackTerminalReceiptConflict) {
+					writeError(w, http.StatusConflict, "playback_terminal_request_conflict", "The terminal request does not match the accepted terminal receipt.")
+					return
+				}
+				if errors.Is(receiptErr, errPlaybackTerminalAuthorizationChanged) {
+					writeError(w, http.StatusConflict, "playback_terminal_scope_changed", "Playback authorization changed. Reconcile active playback before retrying the terminal request.")
+					return
+				}
 				writeError(w, http.StatusNotFound, "playback_session_not_found", "Playback session was not found.")
 				return
 			}
 			writeError(w, http.StatusInternalServerError, "playback_session_failed", "Unable to end playback session.")
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+		writeJSON(w, http.StatusOK, ack)
 	default:
 		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "Use PATCH or DELETE for this endpoint.")
 	}
@@ -11290,6 +11298,10 @@ func (s *Server) handlePlaybackRenegotiation(w http.ResponseWriter, r *http.Requ
 	}
 	if mode != "" && mode != "off" && mode != "text" && mode != "burn_in" {
 		writeError(w, http.StatusBadRequest, "invalid_subtitle_mode", "subtitleMode must be off, text, or burn_in.")
+		return
+	}
+	if playbackRenegotiationHasNestedQuality(req) {
+		writeError(w, http.StatusBadRequest, "conflicting_quality_selection", "Submit a quality change only in the top-level quality field.")
 		return
 	}
 	ctx := r.Context()
@@ -11326,7 +11338,7 @@ func (s *Server) handlePlaybackRenegotiation(w http.ResponseWriter, r *http.Requ
 		_ = json.Unmarshal([]byte(storedIntentJSON), &storedIntent)
 		playback, err := s.mediaPlaybackResponseForSession(r, user, sessionID, sessionID, mediaID, 0, storedClientProfile, storedIntent)
 		if err != nil {
-			writeError(w, http.StatusBadRequest, "renegotiation_failed", err.Error())
+			writePlaybackQualityOrFallbackError(w, err, http.StatusBadRequest, "renegotiation_failed", err.Error())
 			return
 		}
 		if err := s.ensurePlaybackContinuationCredential(r, user, &playback); err != nil {
@@ -11337,15 +11349,18 @@ func (s *Server) handlePlaybackRenegotiation(w http.ResponseWriter, r *http.Requ
 		writeJSON(w, http.StatusOK, playback)
 		return
 	}
-	var currentQuality, currentAudio, currentSubtitle, currentMode, currentVersion, storedClientProfileJSON, storedIntentJSON string
-	if err := s.queryUserRow(ctx, `SELECT selected_quality_id, selected_audio_stream_id, selected_subtitle_stream_id, selected_subtitle_mode, selected_version_id, client_profile_json, playback_intent_json FROM playback_sessions WHERE id = ? AND profile_id = ?`, sessionID, viewerProfileID(user)).Scan(&currentQuality, &currentAudio, &currentSubtitle, &currentMode, &currentVersion, &storedClientProfileJSON, &storedIntentJSON); err != nil {
+	var currentAudio, currentSubtitle, currentMode, currentVersion, storedClientProfileJSON, storedIntentJSON string
+	if err := s.queryUserRow(ctx, `SELECT selected_audio_stream_id, selected_subtitle_stream_id, selected_subtitle_mode, selected_version_id, client_profile_json, playback_intent_json FROM playback_sessions WHERE id = ? AND profile_id = ?`, sessionID, viewerProfileID(user)).Scan(&currentAudio, &currentSubtitle, &currentMode, &currentVersion, &storedClientProfileJSON, &storedIntentJSON); err != nil {
 		writeError(w, http.StatusNotFound, "playback_session_not_found", "Playback session was not found.")
 		return
 	}
-	quality, audio, subtitle, version := currentQuality, currentAudio, currentSubtitle, currentVersion
-	if req.QualityID != nil {
-		quality = strings.TrimSpace(*req.QualityID)
+	var storedIntent PlaybackIntent
+	_ = json.Unmarshal([]byte(storedIntentJSON), &storedIntent)
+	selection := normalizedPlaybackQualitySelection(storedIntent.Quality)
+	if req.Quality != nil {
+		selection = normalizedPlaybackQualitySelection(*req.Quality)
 	}
+	audio, subtitle, version := currentAudio, currentSubtitle, currentVersion
 	if req.AudioStreamID != nil {
 		audio = strings.TrimSpace(*req.AudioStreamID)
 	}
@@ -11369,8 +11384,9 @@ func (s *Server) handlePlaybackRenegotiation(w http.ResponseWriter, r *http.Requ
 		_ = json.Unmarshal([]byte(storedClientProfileJSON), &req.ClientProfile)
 	}
 	if isZeroPlaybackIntent(req.Intent) {
-		_ = json.Unmarshal([]byte(storedIntentJSON), &req.Intent)
+		req.Intent = storedIntent
 	}
+	req.Intent.Quality = selection
 	if isZeroPlaybackClientProfile(req.ClientProfile) {
 		req.ClientProfile = PlaybackClientProfile{Device: "renegotiation", Platform: "server", SupportsHLS: true}
 	}
@@ -11378,16 +11394,16 @@ func (s *Server) handlePlaybackRenegotiation(w http.ResponseWriter, r *http.Requ
 		writeError(w, http.StatusConflict, "renegotiation_revision_conflict", "Playback selection changed on another client. Reload the playback response before renegotiating.")
 		return
 	}
-	_, decision, _, err := s.buildPlaybackRenegotiationCandidate(ctx, r, user, mediaID, quality, audio, subtitle, mode, version, req.ClientProfile, req.Intent)
+	item, decision, _, _, err := s.buildPlaybackRenegotiationCandidate(ctx, r, user, mediaID, selection, audio, subtitle, mode, version, req.ClientProfile, req.Intent)
 	if err != nil {
-		if errors.Is(err, errExplicitOriginalPictureUnavailable) {
-			writeError(w, http.StatusUnprocessableEntity, "explicit_quality_unavailable", "Original picture quality is unavailable for this endpoint and route. Choose Automatic or another quality.")
+		if errors.Is(err, ErrExplicitQualityUnavailable) || errors.Is(err, errPlaybackQualitySelectionInvalid) {
+			writePlaybackStartError(w, playbackQualityStartError(err))
 			return
 		}
 		writeError(w, http.StatusBadRequest, "renegotiation_failed", err.Error())
 		return
 	}
-	decision, err = playbackDecisionWithGeneration(decision, playbackGeneration+1)
+	decision, err = playbackDecisionWithGeneration(decision, item, playbackGeneration+1)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "renegotiation_failed", "Unable to seal the replacement playback plan.")
 		return
@@ -11400,20 +11416,21 @@ func (s *Server) handlePlaybackRenegotiation(w http.ResponseWriter, r *http.Requ
 	clientProfileJSON, _ := json.Marshal(req.ClientProfile)
 	intentJSON, _ := json.Marshal(req.Intent)
 	var updatedRows int64
-	err = s.withPlaybackTxTagged(ctx, []string{"playback"}, func(tx *sql.Tx) error {
+	err = s.withSecurityFenceTxTagged(ctx, []string{"playback"}, func(tx *sql.Tx) error {
 		result, updateErr := tx.ExecContext(ctx, `
 			UPDATE playback_sessions
-			SET selected_quality_id = ?, selected_audio_stream_id = ?, selected_subtitle_stream_id = ?,
+			SET selected_audio_stream_id = ?, selected_subtitle_stream_id = ?,
 			    selected_subtitle_mode = ?, selected_version_id = ?, renegotiation_revision = renegotiation_revision + 1,
 			    client_profile_json = ?, playback_intent_json = ?,
 			    plan_schema_version = ?, plan_digest = ?, plan_json = ?, source_revision = ?,
 			    media_facts_digest = ?, capability_evidence_id = ?, playback_generation = ?,
 			    last_renegotiation_request_id = ?, last_renegotiation_fingerprint = ?, last_seen_at = ?
-			WHERE id = ? AND profile_id = ? AND ended_at = '' AND state <> 'stopped' AND renegotiation_revision = ? AND playback_generation = ?`,
-			quality, audio, subtitle, mode, version, string(clientProfileJSON), string(intentJSON),
-			planBinding.SchemaVersion, planBinding.Digest, string(planJSON), planBinding.SourceRevision,
-			planBinding.MediaFactsDigest, planBinding.CapabilityEvidenceID, planBinding.Generation,
-			req.RequestID, fingerprint, time.Now().UTC().Format(time.RFC3339Nano), sessionID, viewerProfileID(user), req.ExpectedRevision, playbackGeneration)
+			WHERE id = ? AND profile_id = ? AND ended_at = '' AND state <> 'stopped' AND renegotiation_revision = ? AND playback_generation = ?
+				AND NOT EXISTS (SELECT 1 FROM playback_handoff_receipts WHERE source_session_id = ? AND state = 'committing')`,
+			audio, subtitle, mode, version, string(clientProfileJSON), string(intentJSON),
+			planBinding.SchemaVersion, planBinding.Digest, string(planJSON), planBinding.Plan.SourceRevision,
+			planBinding.MediaFactsDigest, planBinding.Plan.CapabilityEvidenceID, planBinding.generation(),
+			req.RequestID, fingerprint, time.Now().UTC().Format(time.RFC3339Nano), sessionID, viewerProfileID(user), req.ExpectedRevision, playbackGeneration, sessionID)
 		if updateErr != nil {
 			return updateErr
 		}
@@ -11429,6 +11446,11 @@ func (s *Server) handlePlaybackRenegotiation(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	if updatedRows == 0 {
+		var committingReplacement int
+		if claimErr := s.queryUserRow(ctx, `SELECT COUNT(*) FROM playback_handoff_receipts WHERE source_session_id = ? AND state = 'committing'`, sessionID).Scan(&committingReplacement); claimErr == nil && committingReplacement != 0 {
+			writeError(w, http.StatusConflict, "handoff_in_progress", "Playback replacement is committing. Retry renegotiation after it resolves.")
+			return
+		}
 		// A concurrent identical retry may observe the old revision before the
 		// winning request commits and then lose the CAS above. Recover it as the
 		// same idempotent operation, while a reused request ID with a different
@@ -11445,7 +11467,7 @@ func (s *Server) handlePlaybackRenegotiation(w http.ResponseWriter, r *http.Requ
 			_ = json.Unmarshal([]byte(committedIntentJSON), &committedIntent)
 			playback, replayErr := s.mediaPlaybackResponseForSession(r, user, sessionID, sessionID, mediaID, 0, committedClientProfile, committedIntent)
 			if replayErr != nil {
-				writeError(w, http.StatusBadRequest, "renegotiation_failed", replayErr.Error())
+				writePlaybackQualityOrFallbackError(w, replayErr, http.StatusBadRequest, "renegotiation_failed", replayErr.Error())
 				return
 			}
 			if credentialErr := s.ensurePlaybackContinuationCredential(r, user, &playback); credentialErr != nil {
@@ -11462,7 +11484,7 @@ func (s *Server) handlePlaybackRenegotiation(w http.ResponseWriter, r *http.Requ
 	s.forgetMediaGrantsForPlaybackSession(sessionID)
 	playback, err := s.mediaPlaybackResponseForSession(r, user, sessionID, sessionID, mediaID, 0, req.ClientProfile, req.Intent)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "renegotiation_failed", err.Error())
+		writePlaybackQualityOrFallbackError(w, err, http.StatusBadRequest, "renegotiation_failed", err.Error())
 		return
 	}
 	if err := s.ensurePlaybackContinuationCredential(r, user, &playback); err != nil {
@@ -11471,6 +11493,11 @@ func (s *Server) handlePlaybackRenegotiation(w http.ResponseWriter, r *http.Requ
 	}
 	setPlaybackMediaGrantCookie(w, r, playback)
 	writeJSON(w, http.StatusOK, playback)
+}
+
+func playbackRenegotiationHasNestedQuality(req PlaybackRenegotiationRequest) bool {
+	nested := req.Intent.Quality
+	return nested.Mode != "" || nested.SelectionID != "" || nested.OfferRevision != ""
 }
 
 func (s *Server) handlePlaybackCommand(w http.ResponseWriter, r *http.Request, user User, sessionID string) {
@@ -11493,6 +11520,10 @@ func (s *Server) handlePlaybackCommand(w http.ResponseWriter, r *http.Request, u
 		}
 		command, err := s.issuePlaybackCommand(user, sessionID, req)
 		if err != nil {
+			if errors.Is(err, errPlaybackHandoffInProgress) {
+				writeError(w, http.StatusConflict, "handoff_in_progress", "Playback replacement is committing. Retry the command after it resolves.")
+				return
+			}
 			if errors.Is(err, sql.ErrNoRows) {
 				writeError(w, http.StatusNotFound, "playback_session_not_found", "Playback session was not found.")
 				return
@@ -11657,7 +11688,7 @@ func (s *Server) handlePlaybackTargets(w http.ResponseWriter, r *http.Request, u
 func (s *Server) handlePlaybackReceivers(w http.ResponseWriter, r *http.Request, user User) {
 	switch r.Method {
 	case http.MethodGet:
-		receivers, err := s.listPlaybackReceivers(user)
+		receivers, err := s.listAuthorizedPlaybackReceivers(r.Context(), user)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "playback_receivers_failed", "Unable to load playback receivers.")
 			return
@@ -11668,8 +11699,12 @@ func (s *Server) handlePlaybackReceivers(w http.ResponseWriter, r *http.Request,
 		if !decodeJSON(w, r, &req) {
 			return
 		}
-		receiver, err := s.createPlaybackReceiver(user, req)
+		receiver, err := s.registerPlaybackReceiver(r.Context(), user, req)
 		if err != nil {
+			if errors.Is(err, errPlaybackReceiverInvalid) {
+				writeError(w, http.StatusBadRequest, "playback_receiver_invalid", "The playback receiver registration is invalid.")
+				return
+			}
 			writeError(w, http.StatusInternalServerError, "playback_receiver_failed", "Unable to register playback receiver.")
 			return
 		}
@@ -11688,41 +11723,205 @@ func (s *Server) handlePlaybackReceiverRoute(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	if len(parts) == 1 && r.Method == http.MethodPatch {
-		receiver, err := s.touchPlaybackReceiver(user, receiverID)
+		var req PlaybackReceiverHeartbeatRequest
+		if !decodeJSON(w, r, &req) {
+			return
+		}
+		response, err := s.heartbeatPlaybackReceiver(r.Context(), user, receiverID, req.ReceiverPublicKeyFingerprint)
 		if err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
+			if errors.Is(err, sql.ErrNoRows) || errors.Is(err, errPlaybackReceiverKeyMismatch) {
 				writeError(w, http.StatusNotFound, "playback_receiver_not_found", "Playback receiver was not found.")
+				return
+			}
+			if errors.Is(err, errPlaybackReceiverInvalid) {
+				writeError(w, http.StatusBadRequest, "playback_receiver_invalid", "The playback receiver heartbeat is invalid.")
 				return
 			}
 			writeError(w, http.StatusInternalServerError, "playback_receiver_failed", "Unable to update playback receiver.")
 			return
 		}
-		writeJSON(w, http.StatusOK, receiver)
+		writeJSON(w, http.StatusOK, response)
 		return
 	}
-	if len(parts) == 2 && parts[1] == "events" && r.Method == http.MethodGet {
-		s.streamPlaybackReceiverEvents(w, r, user, receiverID)
+	if len(parts) == 2 && parts[1] == "authorizations" {
+		switch r.Method {
+		case http.MethodGet:
+			records, err := s.receiverAuthorizationRecords(r.Context(), user, receiverID, r.URL.Query().Get("receiverPublicKeyFingerprint"))
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, "playback_receiver_authorizations_failed", "Unable to load playback receiver authorizations.")
+				return
+			}
+			writeJSON(w, http.StatusOK, ListResponse[ReceiverAuthorizationRecord]{Items: records, Total: len(records)})
+		case http.MethodPost:
+			var req ReceiverAuthorizationRequest
+			if !decodeJSON(w, r, &req) {
+				return
+			}
+			grant, err := s.issueReceiverControllerGrant(r.Context(), user, receiverID, req)
+			if err != nil {
+				switch {
+				case errors.Is(err, sql.ErrNoRows):
+					writeError(w, http.StatusNotFound, "playback_receiver_not_found", "Playback receiver was not found.")
+				case errors.Is(err, errReceiverAuthorizationConflict):
+					writeError(w, http.StatusConflict, "playback_receiver_authorization_conflict", "The receiver authorization request conflicts with an earlier request.")
+				case errors.Is(err, errPlaybackReceiverInvalid):
+					writeError(w, http.StatusBadRequest, "playback_receiver_authorization_invalid", "The receiver authorization request is invalid.")
+				default:
+					writeError(w, http.StatusInternalServerError, "playback_receiver_authorization_failed", "Unable to authorize the playback receiver.")
+				}
+				return
+			}
+			writeJSON(w, http.StatusCreated, grant)
+		default:
+			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "Use GET or POST for this endpoint.")
+		}
 		return
 	}
-	if len(parts) == 3 && parts[1] == "events" && parts[2] == "poll" {
-		s.handlePlaybackReceiverEventsPoll(w, r, user, receiverID)
-		return
-	}
-	if len(parts) == 2 && parts[1] == "command" && r.Method == http.MethodPost {
-		var req PlaybackCommandRequest
+	if len(parts) == 2 && parts[1] == "handoff" && r.Method == http.MethodPost {
+		var req PlaybackReceiverHandoffRequest
 		if !decodeJSON(w, r, &req) {
 			return
 		}
-		command, err := s.issuePlaybackReceiverCommand(user, receiverID, req)
-		if err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				writeError(w, http.StatusNotFound, "playback_receiver_not_found", "Playback receiver was not found.")
-				return
-			}
-			writeError(w, http.StatusBadRequest, "playback_receiver_command_failed", err.Error())
+		if req.Playback.Replacement == nil {
+			writeError(w, http.StatusBadRequest, "playback_receiver_replacement_required", "playback.replacement is required for receiver handoff.")
 			return
 		}
-		writeJSON(w, http.StatusOK, command)
+		receiver, sourceClientInstanceID, err := s.authorizePlaybackReceiverHandoff(
+			r.Context(), user, receiverID, req.AuthorizationID, req.ReceiverPublicKeyFingerprint,
+		)
+		if err != nil {
+			switch {
+			case errors.Is(err, sql.ErrNoRows), errors.Is(err, errPlaybackReceiverAuthorizationInvalid):
+				writeError(w, http.StatusForbidden, "playback_receiver_authorization_invalid", "The receiver authorization is missing, expired, revoked, or does not match this receiver.")
+			case errors.Is(err, errPlaybackReceiverInvalid):
+				writeError(w, http.StatusBadRequest, "playback_receiver_handoff_invalid", "The receiver handoff request is invalid.")
+			default:
+				writeError(w, http.StatusInternalServerError, "playback_receiver_handoff_failed", "Unable to validate receiver playback authority.")
+			}
+			return
+		}
+		if strings.TrimSpace(req.Playback.Intent.Quality.Mode) == "" {
+			writeError(w, http.StatusBadRequest, "invalid_playback_quality", "playback.intent.quality is required and must be Automatic or an exact server-issued explicit offer.")
+			return
+		}
+		req.Playback.ClientInstanceID = receiver.ClientInstanceID
+		req.Playback.replacementSourceClientInstanceID = sourceClientInstanceID
+		req.Playback.replacementTargetKind = "receiver"
+		req.Playback.replacementTargetID = receiver.ID
+		req.Playback.prepareReplacementOnly = true
+		req.Playback.receiverAuthorizationID = req.AuthorizationID
+		// A first-party receiver continues the exact Server-owned occurrence.
+		// Never trust controller-materialized media IDs or reconstructed queues.
+		snapshot, snapshotErr := s.playbackSessionQueueSnapshot(r.Context(), user, req.Playback.Replacement.SourceSessionID)
+		if snapshotErr != nil {
+			writeError(w, http.StatusConflict, "playback_receiver_source_changed", "The source playback snapshot is no longer available.")
+			return
+		}
+		req.Playback.MediaID = snapshot.Current.MediaID
+		req.Playback.QueueMediaIDs = playbackQueueOccurrenceMediaIDs(snapshot.Queue)
+		req.Playback.RepeatMode = snapshot.RepeatMode
+		req.Playback.SourceContext = snapshot.SourceContext
+		req.Playback.currentEntryID = snapshot.Current.EntryID
+		req.Playback.queueOccurrences = append([]playbackQueueOccurrence(nil), snapshot.Queue...)
+		req.Playback.historyOccurrences = append([]playbackQueueOccurrence(nil), snapshot.History...)
+		req.Playback.queueOwned = true
+		var sourcePlaybackRevision int64
+		if revisionErr := s.queryUserRow(r.Context(), `SELECT renegotiation_revision FROM playback_sessions
+			WHERE id = ? AND user_id = ? AND profile_id = ? AND ended_at = '' AND state NOT IN ('stopped', 'handoff_pending')`,
+			req.Playback.Replacement.SourceSessionID, accountIDForUser(user), viewerProfileID(user)).Scan(&sourcePlaybackRevision); revisionErr != nil {
+			writeError(w, http.StatusConflict, "playback_receiver_source_changed", "The source playback snapshot is no longer available.")
+			return
+		}
+		if (req.Playback.Replacement.ExpectedQueueRevision != nil && *req.Playback.Replacement.ExpectedQueueRevision != snapshot.Revision) ||
+			(req.Playback.Replacement.ExpectedPlaybackRevision != nil && *req.Playback.Replacement.ExpectedPlaybackRevision != sourcePlaybackRevision) {
+			writeError(w, http.StatusConflict, "handoff_source_revision_conflict", "Playback queue or source selection changed before receiver preparation.")
+			return
+		}
+		req.Playback.Replacement.ExpectedQueueRevision = &snapshot.Revision
+		req.Playback.Replacement.ExpectedPlaybackRevision = &sourcePlaybackRevision
+		fingerprint := playbackReplacementTargetFingerprint("receiver", receiver.ID, req.Playback)
+		if replay, replayErr := s.preparedPlaybackReceiverRetry(r.Context(), user, receiver, req.AuthorizationID,
+			req.Playback.Replacement.SourceSessionID, req.Playback.Replacement.RequestID, fingerprint); replayErr != nil {
+			if errors.Is(replayErr, errPlaybackHandoffInProgress) {
+				writeError(w, http.StatusConflict, "handoff_in_progress", "The receiver handoff is still preparing. Retry the same request.")
+			} else {
+				writeError(w, http.StatusConflict, "replacement_request_conflict", "This source already accepted a different receiver handoff request.")
+			}
+			return
+		} else if replay != nil {
+			setPlaybackMediaGrantCookie(w, r, *replay)
+			writeJSON(w, http.StatusOK, *replay)
+			return
+		}
+		playback, startErr := s.startPlaybackForRequest(r, user, req.Playback)
+		if startErr != nil {
+			writePlaybackStartError(w, startErr)
+			return
+		}
+		setPlaybackMediaGrantCookie(w, r, playback)
+		writeJSON(w, http.StatusOK, playback)
+		return
+	}
+	if len(parts) == 4 && parts[1] == "handoffs" && parts[3] == "commit" && r.Method == http.MethodPost {
+		var req PlaybackReceiverHandoffCommitRequest
+		if !decodeJSON(w, r, &req) {
+			return
+		}
+		receiver, sourceClientInstanceID, err := s.authorizePlaybackReceiverHandoff(
+			r.Context(), user, receiverID, req.AuthorizationID, req.ReceiverPublicKeyFingerprint,
+		)
+		if err != nil {
+			writeError(w, http.StatusForbidden, "playback_receiver_authorization_invalid", "The receiver authorization is missing, expired, revoked, or mismatched.")
+			return
+		}
+		playback, commitErr := s.commitPlaybackReceiverHandoff(r.Context(), user, receiver, sourceClientInstanceID, parts[2], req)
+		if commitErr != nil {
+			switch {
+			case errors.Is(commitErr, errPlaybackReceiverInvalid):
+				writeError(w, http.StatusBadRequest, "playback_receiver_commit_invalid", "The receiver handoff commit request is invalid.")
+			case errors.Is(commitErr, errPreparedHandoffExpired):
+				writeError(w, http.StatusGone, "playback_receiver_handoff_expired", "The prepared receiver handoff expired; the source remains authoritative.")
+			case errors.Is(commitErr, sql.ErrNoRows):
+				writeError(w, http.StatusNotFound, "playback_receiver_handoff_not_found", "The prepared receiver handoff was not found.")
+			default:
+				writeError(w, http.StatusConflict, "playback_receiver_commit_conflict", "The prepared receiver target or source no longer matches this handoff.")
+			}
+			return
+		}
+		setPlaybackMediaGrantCookie(w, r, playback)
+		writeJSON(w, http.StatusOK, playback)
+		return
+	}
+	if len(parts) == 3 && parts[1] == "handoffs" && r.Method == http.MethodGet {
+		receiver, sourceClientInstanceID, err := s.authorizePlaybackReceiverHandoff(
+			r.Context(), user, receiverID, r.URL.Query().Get("authorizationId"), r.URL.Query().Get("receiverPublicKeyFingerprint"),
+		)
+		if err != nil || receiver.ID == "" {
+			writeError(w, http.StatusForbidden, "playback_receiver_authorization_invalid", "The receiver authorization is missing, expired, revoked, or mismatched.")
+			return
+		}
+		status, statusErr := s.playbackReceiverHandoffStatus(r.Context(), user, sourceClientInstanceID, r.URL.Query().Get("sourceSessionId"), parts[2])
+		if statusErr != nil {
+			if errors.Is(statusErr, errPlaybackReceiverInvalid) {
+				writeError(w, http.StatusBadRequest, "playback_receiver_handoff_invalid", "The receiver handoff status request is invalid.")
+				return
+			}
+			writeError(w, http.StatusInternalServerError, "playback_receiver_handoff_failed", "Unable to reconcile receiver playback authority.")
+			return
+		}
+		writeJSON(w, http.StatusOK, status)
+		return
+	}
+	if len(parts) == 3 && parts[1] == "authorizations" && r.Method == http.MethodDelete {
+		if err := s.revokeReceiverAuthorization(r.Context(), user, receiverID, parts[2]); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				writeError(w, http.StatusNotFound, "playback_receiver_authorization_not_found", "Playback receiver authorization was not found.")
+				return
+			}
+			writeError(w, http.StatusInternalServerError, "playback_receiver_authorization_failed", "Unable to revoke the playback receiver authorization.")
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 	writeError(w, http.StatusNotFound, "not_found", "Playback receiver route was not found.")
@@ -13803,6 +14002,9 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request, user Use
 		changedFields := []string{}
 		currentRevision := ""
 		replayed := false
+		scanProfileRunningJobIDs := []string{}
+		scanProfileFollowups := []scanProfileFollowup{}
+		var scanProfileBefore, scanProfileAfter map[string]any
 		receiptKey := ""
 		var replayDocument *SettingsDocument
 		err := s.withUserTxTagged(r.Context(), []string{"settings"}, func(tx *sql.Tx) error {
@@ -13897,6 +14099,10 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request, user Use
 					txDetails = map[string]any{"fieldPath": settingsValidationFieldPath(key, err)}
 					return err
 				}
+				if key == "library" {
+					scanProfileBefore = decodeScanProfileSettings(currentSettings[key])
+					scanProfileAfter = decodeScanProfileSettings(normalized)
+				}
 				if !settingJSONEqual(currentSettings[key], normalized) {
 					if _, err := tx.Exec(`INSERT INTO settings (key, value_json, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at = excluded.updated_at`, key, string(normalized), now); err != nil {
 						return err
@@ -13904,6 +14110,12 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request, user Use
 				}
 				for field := range requestedFields {
 					changedFields = append(changedFields, key+"."+field)
+				}
+			}
+			if scanProfileBefore != nil && scanProfileAfter != nil {
+				scanProfileRunningJobIDs, scanProfileFollowups, err = s.fenceGlobalScanProfileChangeTx(tx, scanProfileBefore, scanProfileAfter)
+				if err != nil {
+					return err
 				}
 			}
 			if idempotencyKey != "" {
@@ -13932,6 +14144,8 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request, user Use
 			writeError(w, http.StatusInternalServerError, "settings_failed", "Unable to save settings.")
 			return
 		}
+		s.cancelRunningJobContexts(scanProfileRunningJobIDs)
+		s.enqueueScanProfileFollowups(scanProfileFollowups)
 		s.invalidateSessionCookieCache()
 		if !replayed {
 			s.recordLog("info", "Server settings saved", map[string]string{"actorId": strings.TrimSpace(user.ID)})
@@ -14619,10 +14833,11 @@ func (s *Server) runScheduledTask(taskID string) ([]Job, error) {
 				continue
 			}
 			metadata := map[string]string{
-				"libraryId":    library.ID,
-				"libraryName":  library.Name,
-				"refreshDays":  strconv.Itoa(refreshDays),
-				"subtaskScope": "library",
+				"libraryId":     library.ID,
+				"libraryName":   library.Name,
+				"refreshDays":   strconv.Itoa(refreshDays),
+				"subtaskScope":  "library",
+				"refreshIntent": string(metadataRefreshUnlocked),
 			}
 			job, err := s.createJobForWithMetadata("metadata_refresh_library", fmt.Sprintf("Manual metadata refresh queued for %s.", library.Name), "library", library.ID, metadata)
 			if err != nil {
@@ -16429,7 +16644,19 @@ func (s *Server) updateLibrary(id string, req UpdateLibraryRequest) (Library, er
 		return Library{}, err
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
+	scanProfileRunningJobIDs := []string{}
+	var scanProfileFollowup scanProfileFollowup
 	if err := s.withUserTxTagged(context.Background(), []string{"home", "libraries", "library-items"}, func(tx *sql.Tx) error {
+		base := cloneSettingMap(canonicalSettingRegistry["library"].Defaults)
+		var globalJSON string
+		if loadErr := tx.QueryRow(`SELECT value_json FROM settings WHERE key='library'`).Scan(&globalJSON); loadErr == nil {
+			for key, value := range decodeScanProfileSettings(globalJSON) {
+				base[key] = value
+			}
+		} else if loadErr != sql.ErrNoRows {
+			return loadErr
+		}
+		profileChange := compareScanProfiles(mergeScanProfileSettings(base, current.Settings), mergeScanProfileSettings(base, settings))
 		result, err := tx.Exec(`UPDATE libraries SET name = ?, type = ?, path = ?, settings_json = ? WHERE id = ?`, req.Name, req.Type, paths[0], settingsJSON, id)
 		if err != nil {
 			return err
@@ -16441,10 +16668,20 @@ func (s *Server) updateLibrary(id string, req UpdateLibraryRequest) (Library, er
 		if affected == 0 {
 			return sql.ErrNoRows
 		}
-		return replaceLibraryPaths(tx, id, paths, now)
+		if err := replaceLibraryPaths(tx, id, paths, now); err != nil {
+			return err
+		}
+		if profileChange.changed() {
+			scanProfileRunningJobIDs, err = s.fenceContentWorkForScanProfileTx(tx, id, profileChange)
+			scanProfileFollowup = followupForScanProfileChange(id, profileChange)
+			return err
+		}
+		return nil
 	}); err != nil {
 		return Library{}, err
 	}
+	s.cancelRunningJobContexts(scanProfileRunningJobIDs)
+	s.enqueueScanProfileFollowup(scanProfileFollowup)
 	s.invalidateHomeCache()
 	return s.getLibrary(id)
 }
@@ -16938,15 +17175,21 @@ func encodeLibrarySettings(settings map[string]any) (string, error) {
 		"readEmbeddedTags":                true,
 		"readEmbeddedIndexes":             true,
 		"generateRepresentativeThumbnail": true,
+		"extractSelectedEmbeddedAssets":   true,
+		"validateSeekBehavior":            true,
+		"fullFileChecksum":                true,
 		"generateTrickplay":               true,
 		"generateChapterThumbnails":       true,
+		"generateWaveforms":               true,
 		"analyzeLoudness":                 true,
 		"extractAllEmbeddedAttachments":   true,
+		"analyzeSTRMTarget":               true,
 		"trickplayStorageLocation":        true,
 		"trickplayIntervalSeconds":        true,
 		"trickplayTileWidth":              true,
 		"trickplayMaxTiles":               true,
 		"sonicFingerprinting":             true,
+		"detectSegments":                  true,
 		"fetchMissingLyricsAfterScan":     true,
 		"preferEmbeddedTitles":            true,
 		"trashRetentionDays":              true,
@@ -19105,7 +19348,7 @@ func (s *Server) loadServerActivityContext(ctx context.Context) (ServerActivityR
 	if err := s.queryUserRow(ctx, `
 		SELECT COUNT(*), COALESCE(SUM(COALESCE(bandwidth_mbps, 0)), 0)
 		FROM playback_sessions
-		WHERE ended_at = '' AND state <> 'stopped' AND last_seen_at >= ?`,
+		WHERE ended_at = '' AND state NOT IN ('stopped', 'handoff_pending') AND last_seen_at >= ?`,
 		cutoff).Scan(&activeStreams, &bandwidthMbps); err != nil {
 		return ServerActivityResponse{}, err
 	}
@@ -19298,7 +19541,7 @@ func (s *Server) loadDashboardPlaybackSessionsContext(ctx context.Context, user 
 	where := "WHERE ps.started_at >= ?"
 	args := []any{filters.Since.Format(time.RFC3339)}
 	if filters.Mode == "live" {
-		where = "WHERE ps.ended_at = '' AND ps.last_seen_at >= ?"
+		where = "WHERE ps.ended_at = '' AND ps.state <> 'handoff_pending' AND ps.last_seen_at >= ?"
 		args = []any{now.Add(-30 * time.Second).Format(time.RFC3339)}
 	}
 	if filters.UserID != "" && filters.UserID != "all" {
@@ -19730,12 +19973,13 @@ func compactStrings(values ...string) []string {
 }
 
 func (s *Server) expireStalePlaybackSessions(now time.Time) error {
-	cutoff := now.Add(-30 * time.Second).Format(time.RFC3339)
-	audioCutoff := now.Add(-12 * time.Hour).Format(time.RFC3339)
+	cutoffTime := now.Add(-30 * time.Second)
+	audioCutoffTime := now.Add(-12 * time.Hour)
+	cutoff := cutoffTime.Format(time.RFC3339)
+	audioCutoff := audioCutoffTime.Format(time.RFC3339)
 	endedAt := now.Format(time.RFC3339)
-	// Reconcile authority left by any terminal path that predates the current
-	// atomic stop contract. A stopped session can never retain bearer authority,
-	// even when its terminal response was lost or rejected.
+	// Reconcile authority left by releases that predate PlaybackLifecycle. The
+	// same canonical terminal transaction handles both residue and active leases.
 	terminalResidueRows, residueErr := s.queryUserRead(context.Background(), `
 		SELECT DISTINCT ps.id
 		FROM playback_sessions ps
@@ -19744,6 +19988,10 @@ func (s *Server) expireStalePlaybackSessions(now time.Time) error {
 				EXISTS (SELECT 1 FROM playback_media_grants g WHERE g.playback_session_id = ps.id AND g.revoked_at = '')
 				OR EXISTS (SELECT 1 FROM playback_session_continuation_credentials c WHERE c.playback_session_id = ps.id AND c.revoked_at = '')
 				OR EXISTS (SELECT 1 FROM live_tv_tuner_allocations a WHERE a.allocation_kind = 'live_session' AND a.consumer_id = ps.id)
+				OR EXISTS (SELECT 1 FROM playback_prepared_handoffs h WHERE h.source_session_id = ps.id AND h.state = 'prepared')
+				OR EXISTS (SELECT 1 FROM library_channel_playback_policies p WHERE p.playback_session_id = ps.id)
+				OR EXISTS (SELECT 1 FROM cast_bootstraps b WHERE b.playback_session_id = ps.id)
+				OR EXISTS (SELECT 1 FROM cast_receiver_sessions r WHERE r.playback_session_id = ps.id AND r.status = 'active')
 			)`)
 	if residueErr != nil {
 		return residueErr
@@ -19765,27 +20013,17 @@ func (s *Server) expireStalePlaybackSessions(now time.Time) error {
 		return closeErr
 	}
 	rows, err := s.queryUserRead(context.Background(), `
-		SELECT id, user_id, profile_id, media_id
+		SELECT id, user_id, profile_id
 		FROM playback_sessions
 		WHERE ended_at = '' AND last_seen_at < ?
 			AND (media_type NOT IN ('track', 'audiobook') OR last_seen_at < ?)`, cutoff, audioCutoff)
 	if err != nil {
 		return err
 	}
-	staleSessions := []struct {
-		SessionID string
-		UserID    string
-		ProfileID string
-		MediaID   string
-	}{}
+	staleSessions := []struct{ SessionID, UserID, ProfileID string }{}
 	for rows.Next() {
-		var stale struct {
-			SessionID string
-			UserID    string
-			ProfileID string
-			MediaID   string
-		}
-		if err := rows.Scan(&stale.SessionID, &stale.UserID, &stale.ProfileID, &stale.MediaID); err != nil {
+		var stale struct{ SessionID, UserID, ProfileID string }
+		if err := rows.Scan(&stale.SessionID, &stale.UserID, &stale.ProfileID); err != nil {
 			_ = rows.Close()
 			return err
 		}
@@ -19794,69 +20032,23 @@ func (s *Server) expireStalePlaybackSessions(now time.Time) error {
 	if err := rows.Close(); err != nil {
 		return err
 	}
-	var mediaIDs []string
-	for _, stale := range staleSessions {
-		mediaID := stale.MediaID
-		if finalizedMediaID, finalizeErr := s.finalizePlaybackSessionProgress(User{ID: stale.UserID, AccountID: stale.UserID, ProfileID: stale.ProfileID}, stale.SessionID); finalizeErr == nil && strings.TrimSpace(finalizedMediaID) != "" {
-			mediaID = finalizedMediaID
-		}
-		if strings.TrimSpace(mediaID) != "" {
-			mediaIDs = append(mediaIDs, mediaID)
+	lifecycle := s.playbackLifecycle()
+	for _, sessionID := range terminalResidueSessionIDs {
+		if _, terminateErr := lifecycle.Terminate(context.Background(), playbackTerminationRequest{
+			SessionID: sessionID, Cause: playbackTerminationStale, Now: now,
+		}); terminateErr != nil && !errors.Is(terminateErr, sql.ErrNoRows) {
+			return terminateErr
 		}
 	}
-	endedSessions := make([]string, 0, len(staleSessions))
-	err = s.withPlaybackTxTagged(context.Background(), []string{"playback"}, func(tx *sql.Tx) error {
-		for _, sessionID := range terminalResidueSessionIDs {
-			if _, updateErr := tx.Exec(`UPDATE playback_media_grants SET revoked_at = ? WHERE playback_session_id = ? AND revoked_at = ''`, endedAt, sessionID); updateErr != nil {
-				return updateErr
-			}
-			if _, updateErr := tx.Exec(`UPDATE playback_session_continuation_credentials SET revoked_at = ?, previous_valid_until = '' WHERE playback_session_id = ? AND revoked_at = ''`, endedAt, sessionID); updateErr != nil {
-				return updateErr
-			}
-			if _, updateErr := tx.Exec(`DELETE FROM live_tv_tuner_allocations WHERE allocation_kind = 'live_session' AND consumer_id = ?`, sessionID); updateErr != nil {
-				return updateErr
-			}
+	for _, stale := range staleSessions {
+		if _, terminateErr := lifecycle.Terminate(context.Background(), playbackTerminationRequest{
+			SessionID: stale.SessionID, UserID: stale.UserID, ProfileID: stale.ProfileID,
+			Cause: playbackTerminationStale, StaleBefore: &cutoffTime, AudioStaleBefore: &audioCutoffTime, Now: now,
+		}); terminateErr != nil && !errors.Is(terminateErr, sql.ErrNoRows) && !errors.Is(terminateErr, errPlaybackTerminationNotEligible) {
+			return terminateErr
 		}
-		for _, stale := range staleSessions {
-			result, updateErr := tx.Exec(`
-				UPDATE playback_sessions
-				SET ended_at = ?, state = 'stopped'
-				WHERE id = ? AND ended_at = '' AND last_seen_at < ?
-					AND (media_type NOT IN ('track', 'audiobook') OR last_seen_at < ?)`,
-				endedAt, stale.SessionID, cutoff, audioCutoff)
-			if updateErr != nil {
-				return updateErr
-			}
-			if rowsAffected(result) != 1 {
-				continue
-			}
-			if _, updateErr = tx.Exec(`UPDATE playback_media_grants SET revoked_at = ? WHERE playback_session_id = ? AND revoked_at = ''`, endedAt, stale.SessionID); updateErr != nil {
-				return updateErr
-			}
-			if _, updateErr = tx.Exec(`UPDATE playback_session_continuation_credentials SET revoked_at = ?, previous_valid_until = '' WHERE playback_session_id = ? AND revoked_at = ''`, endedAt, stale.SessionID); updateErr != nil {
-				return updateErr
-			}
-			if _, updateErr = tx.Exec(`DELETE FROM live_tv_tuner_allocations WHERE allocation_kind = 'live_session' AND consumer_id = ?`, stale.SessionID); updateErr != nil {
-				return updateErr
-			}
-			endedSessions = append(endedSessions, stale.SessionID)
-		}
-		return nil
-	})
-	if err == nil {
-		for _, sessionID := range terminalResidueSessionIDs {
-			s.forgetMediaGrantsForPlaybackSession(sessionID)
-		}
-		for _, sessionID := range endedSessions {
-			s.forgetMediaGrantsForPlaybackSession(sessionID)
-			_ = s.completeEndedPlaybackSessionHistoryContext(context.Background(), sessionID)
-		}
-		for _, mediaID := range mediaIDs {
-			if !s.hasActivePlaybackForMedia(mediaID) {
-				s.stopTranscodeSessionForMedia(mediaID)
-			}
-		}
-		if _, pruneErr := s.execUserWrite(context.Background(), `
+	}
+	if _, pruneErr := s.execUserWrite(context.Background(), `
 			DELETE FROM library_channel_playback_policies
 			WHERE expires_at <= ?
 				OR EXISTS (
@@ -19864,10 +20056,9 @@ func (s *Server) expireStalePlaybackSessions(now time.Time) error {
 					WHERE ps.id = library_channel_playback_policies.playback_session_id
 						AND (ps.ended_at <> '' OR ps.state = 'stopped')
 				)`, endedAt); pruneErr != nil {
-			return pruneErr
-		}
+		return pruneErr
 	}
-	return err
+	return nil
 }
 
 func (s *Server) loadDashboardBandwidthSamples(filters dashboardFilters, now time.Time) ([]DashboardSample, error) {
@@ -23298,6 +23489,9 @@ func (s *Server) updateMediaWithResponse(userID, id string, req UpdateMediaReque
 		source = "editor"
 	}
 	actorUserID := firstNonEmpty(strings.TrimSpace(req.metadataActor), strings.TrimSpace(userID))
+	if err := s.prepareMetadataUpdateForIntent(ctx, id, &req, req.metadataIntent); err != nil {
+		return MediaItem{}, err
+	}
 	stagedImages := []stagedMetadataImage(nil)
 	stagedPeople := []MediaPerson(nil)
 	if req.Artwork != nil {
@@ -23325,6 +23519,7 @@ func (s *Server) updateMediaWithResponse(userID, id string, req UpdateMediaReque
 		ActorUserID:      actorUserID,
 		OperationID:      req.metadataOperation,
 		MarkRefreshed:    req.metadataRefreshed,
+		RefreshIntent:    req.metadataIntent,
 		Update:           req,
 		Identities:       req.metadataIdentities,
 		ProviderRich:     req.metadataRich,
@@ -24312,7 +24507,7 @@ func (s *Server) enforcePlaybackSessionReplacementLimitContext(ctx context.Conte
 	if err := s.queryUserRow(ctx, `
 		SELECT COUNT(*)
 		FROM playback_sessions
-		WHERE user_id = ? AND ended_at = '' AND state <> 'stopped' AND last_seen_at >= ?
+		WHERE user_id = ? AND ended_at = '' AND state NOT IN ('stopped', 'handoff_pending') AND last_seen_at >= ?
 			AND (? = '' OR client_instance_id <> ?)`,
 		userID, cutoff, clientInstanceID, clientInstanceID).Scan(&active); err != nil {
 		return err
@@ -24333,7 +24528,7 @@ func (s *Server) activePlaybackSessionCountForUserContext(ctx context.Context, u
 	if err := s.queryUserRow(ctx, `
 		SELECT COUNT(*)
 		FROM playback_sessions
-		WHERE user_id = ? AND ended_at = '' AND state <> 'stopped' AND last_seen_at >= ?`,
+		WHERE user_id = ? AND ended_at = '' AND state NOT IN ('stopped', 'handoff_pending') AND last_seen_at >= ?`,
 		userID, cutoff).Scan(&active); err != nil {
 		return 0, err
 	}
@@ -25526,7 +25721,11 @@ func (s *Server) setProgress(profileID, mediaID string, progress int, watched bo
 	return err
 }
 
-func (s *Server) createPlaybackSession(r *http.Request, user User, item MediaItem, sessionID string, decision PlaybackDecision, profile PlaybackClientProfile, intent PlaybackIntent, burnInSubtitleID, audioStreamID string, isLive bool, clientInstanceID string, sourceContext PlaybackSourceContext, repeatMode string) error {
+func (s *Server) createPlaybackSession(r *http.Request, user User, item MediaItem, currentEntryID, sessionID string, decision PlaybackDecision, profile PlaybackClientProfile, intent PlaybackIntent, burnInSubtitleID, audioStreamID string, isLive bool, clientInstanceID string, sourceContext PlaybackSourceContext, repeatMode string) error {
+	return s.createPlaybackSessionWithState(r, user, item, currentEntryID, sessionID, decision, profile, intent, burnInSubtitleID, audioStreamID, isLive, clientInstanceID, sourceContext, repeatMode, "playing")
+}
+
+func (s *Server) createPlaybackSessionWithState(r *http.Request, user User, item MediaItem, currentEntryID, sessionID string, decision PlaybackDecision, profile PlaybackClientProfile, intent PlaybackIntent, burnInSubtitleID, audioStreamID string, isLive bool, clientInstanceID string, sourceContext PlaybackSourceContext, repeatMode, initialState string) error {
 	planBinding, planJSON, planErr := playbackPlanPersistence(decision)
 	if planErr != nil {
 		if !isLive {
@@ -25536,12 +25735,19 @@ func (s *Server) createPlaybackSession(r *http.Request, user User, item MediaIte
 		if planErr != nil {
 			return planErr
 		}
+	} else {
+		// PlaybackDecision is a wire/diagnostic projection only. Rebuild it from
+		// the sealed execution authority before any durable session fields use it.
+		decision, planErr = playbackDecisionFromExecutionPlan(planBinding, item)
+		if planErr != nil {
+			return planErr
+		}
 	}
 	decision.PlanSchemaVersion = planBinding.SchemaVersion
 	decision.PlanDigest = planBinding.Digest
-	decision.SourceRevision = planBinding.SourceRevision
-	decision.CapabilityEvidenceID = planBinding.CapabilityEvidenceID
-	decision.Generation = planBinding.Generation
+	decision.SourceRevision = planBinding.Plan.SourceRevision
+	decision.CapabilityEvidenceID = planBinding.Plan.CapabilityEvidenceID
+	decision.Generation = planBinding.generation()
 	now := time.Now().UTC().Format(time.RFC3339)
 	cutoff := time.Now().UTC().Add(-45 * time.Second).Format(time.RFC3339)
 	maxActiveStreams, _ := s.userPlaybackPolicy(user.ID)
@@ -25573,6 +25779,13 @@ func (s *Server) createPlaybackSession(r *http.Request, user User, item MediaIte
 	} else {
 		repeatMode = "off"
 	}
+	currentEntryID = strings.TrimSpace(currentEntryID)
+	if currentEntryID == "" {
+		currentEntryID = randomID("qentry")
+	}
+	if initialState != "handoff_pending" {
+		initialState = "playing"
+	}
 	session := PlaybackSession{
 		ID:               sessionID,
 		UserID:           user.ID,
@@ -25582,7 +25795,7 @@ func (s *Server) createPlaybackSession(r *http.Request, user User, item MediaIte
 		App:              "Portico Web",
 		Location:         clientLocationLabel(clientIP),
 		ClientIP:         clientIP,
-		State:            "playing",
+		State:            initialState,
 		Progress:         sessionProgressPercent(item.State.ProgressSeconds, item.DurationSeconds, isLive),
 		PositionSeconds:  max(0, item.State.ProgressSeconds),
 		BandwidthMbps:    estimatedBandwidthMbps(item, isLive),
@@ -25600,10 +25813,6 @@ func (s *Server) createPlaybackSession(r *http.Request, user User, item MediaIte
 		IsLive:           isLive,
 		Diagnostics:      diagnostics,
 	}
-	selectedQualityID := "original"
-	if decision.RequiresTranscode {
-		selectedQualityID = strings.TrimSpace(decision.DeliveryProfile)
-	}
 	selectedVersionID := selectedPlaybackVersionID(item)
 	selectedSubtitleMode := "off"
 	if normalizeBurnInSubtitleID(burnInSubtitleID) != "" {
@@ -25611,11 +25820,11 @@ func (s *Server) createPlaybackSession(r *http.Request, user User, item MediaIte
 	}
 	result, err := s.execUserWriteTaggedForViewer(r.Context(), accountIDForUser(user), viewerProfileID(user), []string{"playback"}, `
 		INSERT INTO playback_sessions (
-			id, user_id, profile_id, media_id, media_type, title, started_at, last_seen_at, client_ip, client_instance_id,
+			id, user_id, profile_id, current_entry_id, media_id, media_type, title, started_at, last_seen_at, client_ip, client_instance_id,
 			device, app, location, state, progress, position_seconds, bandwidth_mbps, decision, video_decision,
 			video_source, video_target, audio_decision, audio_source, audio_target,
 			subtitle_decision, diagnostics_json, source_context_json, client_profile_json, playback_intent_json, history_paused, repeat_mode, queue_revision, is_live,
-			selected_quality_id, selected_audio_stream_id, selected_subtitle_stream_id, selected_subtitle_mode, selected_version_id,
+			selected_audio_stream_id, selected_subtitle_stream_id, selected_subtitle_mode, selected_version_id,
 			plan_schema_version, plan_digest, plan_json, source_revision, media_facts_digest, capability_evidence_id, playback_generation
 		)
 		SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
@@ -25625,75 +25834,22 @@ func (s *Server) createPlaybackSession(r *http.Request, user User, item MediaIte
 			WHERE user_id = ? AND ended_at = '' AND state <> 'stopped' AND last_seen_at >= ?
 				AND (? = '' OR client_instance_id <> ?)
 		) < ?`,
-		session.ID, session.UserID, viewerProfileID(user), item.ID, item.Type, item.Title, session.StartedAt, session.LastSeenAt, session.ClientIP, session.ClientInstanceID,
+		session.ID, session.UserID, viewerProfileID(user), currentEntryID, item.ID, item.Type, item.Title, session.StartedAt, session.LastSeenAt, session.ClientIP, session.ClientInstanceID,
 		session.Device, session.App, session.Location, session.State, session.Progress, session.PositionSeconds, session.BandwidthMbps, session.Decision, session.VideoDecision,
 		session.VideoSource, session.VideoTarget, session.AudioDecision, session.AudioSource, session.AudioTarget,
 		session.SubtitleDecision, string(diagnosticsJSON), string(sourceContextJSON), string(clientProfileJSON), string(playbackIntentJSON), boolInt(historyPaused), repeatMode, 0, boolInt(session.IsLive),
-		selectedQualityID, normalizeSelectedAudioStreamID(audioStreamID), normalizeBurnInSubtitleID(burnInSubtitleID), selectedSubtitleMode, selectedVersionID,
-		planBinding.SchemaVersion, planBinding.Digest, string(planJSON), planBinding.SourceRevision, planBinding.MediaFactsDigest, planBinding.CapabilityEvidenceID, planBinding.Generation,
+		normalizeSelectedAudioStreamID(audioStreamID), normalizeBurnInSubtitleID(burnInSubtitleID), selectedSubtitleMode, selectedVersionID,
+		planBinding.SchemaVersion, planBinding.Digest, string(planJSON), planBinding.Plan.SourceRevision, planBinding.MediaFactsDigest, planBinding.Plan.CapabilityEvidenceID, planBinding.generation(),
 		maxActiveStreams, user.ID, cutoff, normalizedClientInstanceID, normalizedClientInstanceID, maxActiveStreams)
 	if err != nil {
+		if initialState == "playing" && normalizedClientInstanceID != "" && isPlaybackActiveAuthorityConstraint(err) {
+			return errPlaybackReplacementRequired
+		}
 		return err
 	}
 	count, _ := result.RowsAffected()
 	if count == 0 {
 		return errPlaybackSessionLimit
-	}
-	return nil
-}
-
-func (s *Server) commitPlaybackSessionReplacement(ctx context.Context, user User, sessionID string, clientInstanceID string) error {
-	clientInstanceID = normalizePlaybackClientInstanceID(clientInstanceID)
-	if clientInstanceID == "" {
-		return nil
-	}
-	previousSessionIDs := []string{}
-	profileID := viewerProfileID(user)
-	now := time.Now().UTC().Format(time.RFC3339Nano)
-	err := s.withPrioritizedTxTaggedForViewer(ctx, sqliteWritePlayback, "playback_replacement_tx", database.UserWriteRetry, accountIDForUser(user), profileID, []string{"playback"}, func(tx *sql.Tx) error {
-		rows, err := tx.Query(`
-		UPDATE playback_sessions
-		SET ended_at = ?, last_seen_at = ?, state = 'stopped'
-		WHERE profile_id = ? AND client_instance_id = ? AND id <> ? AND ended_at = '' AND state <> 'stopped'
-			AND rowid < (SELECT rowid FROM playback_sessions WHERE id = ? AND profile_id = ?)
-		RETURNING id`,
-			now, now, profileID, clientInstanceID, sessionID,
-			sessionID, profileID)
-		if err != nil {
-			return err
-		}
-		defer rows.Close()
-		for rows.Next() {
-			var previousSessionID string
-			if err := rows.Scan(&previousSessionID); err != nil {
-				return err
-			}
-			previousSessionIDs = append(previousSessionIDs, previousSessionID)
-		}
-		if err := rows.Err(); err != nil {
-			_ = rows.Close()
-			return err
-		}
-		if err := rows.Close(); err != nil {
-			return err
-		}
-		for _, previousSessionID := range previousSessionIDs {
-			if _, err := tx.Exec(`UPDATE playback_media_grants SET revoked_at = ? WHERE playback_session_id = ? AND revoked_at = ''`, now, previousSessionID); err != nil {
-				return err
-			}
-			if _, err := tx.Exec(`UPDATE playback_session_continuation_credentials SET revoked_at = ?, previous_valid_until = '' WHERE playback_session_id = ? AND revoked_at = ''`, now, previousSessionID); err != nil {
-				return err
-			}
-		}
-		return nil
-	})
-	if err != nil {
-		return err
-	}
-	for _, previousSessionID := range previousSessionIDs {
-		s.forgetMediaGrantsForPlaybackSession(previousSessionID)
-		s.releaseLiveTVTunerAllocation(ctx, "live_session", previousSessionID)
-		_ = s.completeEndedPlaybackSessionHistoryContext(ctx, previousSessionID)
 	}
 	return nil
 }
@@ -25745,7 +25901,7 @@ func (s *Server) touchPlaybackSession(user User, sessionID string, req PlaybackP
 	var highestSequence int64
 	var currentState, endedAt string
 	var currentGeneration int64
-	err := s.withPrioritizedTxTaggedForViewer(context.Background(), sqliteWritePlayback, "playback_progress_tx", database.UserWriteRetry, accountID, profileID,
+	err := s.withWorkClassTxTaggedForViewer(context.Background(), foundationcontract.WorkClassEstablishedPlayback, "playback_progress_tx", database.UserWriteRetry, accountID, profileID,
 		[]string{"playback", "playback-progress", "media-state", "library-items", "home"}, func(tx *sql.Tx) error {
 			var mediaID, mediaType string
 			var liveInt, historyPaused, durationSeconds int
@@ -25788,7 +25944,6 @@ func (s *Server) touchPlaybackSession(user User, sessionID string, req PlaybackP
 			position_seconds = CASE WHEN ? >= 0 THEN ? ELSE position_seconds END,
 			bandwidth_mbps = CASE WHEN ? > 0 THEN ? ELSE bandwidth_mbps END,
 				subtitle_decision = CASE WHEN ? <> '' THEN ? ELSE subtitle_decision END,
-				selected_quality_id = CASE WHEN ? = 1 THEN ? ELSE selected_quality_id END,
 				selected_audio_stream_id = CASE WHEN ? = 1 THEN ? ELSE selected_audio_stream_id END,
 				selected_subtitle_stream_id = CASE WHEN ? = 1 THEN ? ELSE selected_subtitle_stream_id END,
 				selected_subtitle_mode = CASE WHEN ? = 1 AND ? IN ('off', 'text', 'burn_in') THEN ? ELSE selected_subtitle_mode END,
@@ -25799,7 +25954,7 @@ func (s *Server) touchPlaybackSession(user User, sessionID string, req PlaybackP
 			WHERE id = ? AND ended_at = '' AND profile_id = ?
 				AND progress_generation = ? AND last_event_sequence < ?`,
 				now, state, progress, progress, positionSeconds, positionSeconds, req.BandwidthMbps, req.BandwidthMbps, strings.TrimSpace(req.SubtitleDecision), strings.TrimSpace(req.SubtitleDecision),
-				boolInt(req.SelectionChanged), strings.TrimSpace(req.QualityID), boolInt(req.SelectionChanged), strings.TrimSpace(req.AudioStreamID),
+				boolInt(req.SelectionChanged), strings.TrimSpace(req.AudioStreamID),
 				boolInt(req.SelectionChanged), strings.TrimSpace(req.SubtitleStreamID), boolInt(req.SelectionChanged), strings.TrimSpace(req.SubtitleMode), strings.TrimSpace(req.SubtitleMode), boolInt(req.SelectionChanged), strings.TrimSpace(req.VersionID),
 				req.EventSequence, recordedAt, now,
 				sessionID, profileID, req.Generation, req.EventSequence)
@@ -25816,8 +25971,7 @@ func (s *Server) touchPlaybackSession(user User, sessionID string, req PlaybackP
 			if !hasProgressSeconds || liveInt == 1 || historyPaused != 0 || strings.TrimSpace(mediaID) == "" {
 				return nil
 			}
-			completed := req.Completed != nil && *req.Completed
-			normalized := normalizePlaybackProgressState(progressSeconds, completed, durationSeconds, mediaType, preferences)
+			normalized := normalizePlaybackProgressState(progressSeconds, false, durationSeconds, mediaType, preferences)
 			lastPlayed := ""
 			if mediaType == "track" || normalized.Started || normalized.Watched {
 				lastPlayed = nowTime.Format(time.RFC3339)
@@ -25963,36 +26117,6 @@ func (s *Server) persistPlaybackSessionProgressEvent(user User, sessionID string
 	return err
 }
 
-func (s *Server) finalizePlaybackSessionProgress(user User, sessionID string) (string, error) {
-	var sessionProfileID string
-	var mediaID string
-	var mediaType string
-	var liveInt int
-	var positionSeconds int
-	var progress int
-	var durationSeconds int
-	var historyPaused int
-	err := s.queryUserRow(context.Background(), `
-		SELECT ps.profile_id, ps.media_id, ps.media_type, ps.is_live, ps.position_seconds, ps.progress, COALESCE(m.duration_seconds, 0), ps.history_paused
-		FROM playback_sessions ps
-		LEFT JOIN media_items m ON m.id = ps.media_id
-		WHERE ps.id = ? AND ps.ended_at = '' AND (ps.profile_id = ? OR ? = 1)`,
-		sessionID, viewerProfileID(user), boolInt(canInteractivelyManageServer(user))).Scan(&sessionProfileID, &mediaID, &mediaType, &liveInt, &positionSeconds, &progress, &durationSeconds, &historyPaused)
-	if err != nil {
-		return "", err
-	}
-	if liveInt == 1 || historyPaused != 0 || strings.TrimSpace(mediaID) == "" {
-		return mediaID, nil
-	}
-	if positionSeconds <= 0 && progress > 0 && durationSeconds > 0 {
-		positionSeconds = max(1, int(math.Round(float64(durationSeconds)*float64(progress)/100)))
-	}
-	if positionSeconds <= 0 {
-		return mediaID, nil
-	}
-	return mediaID, s.setProgress(sessionProfileID, mediaID, positionSeconds, false)
-}
-
 func (s *Server) issuePlaybackCommand(user User, sessionID string, req PlaybackCommandRequest) (PlaybackCommand, error) {
 	action := strings.ToLower(strings.TrimSpace(req.Action))
 	switch action {
@@ -26027,22 +26151,33 @@ func (s *Server) issuePlaybackCommand(user User, sessionID string, req PlaybackC
 	if err != nil {
 		return PlaybackCommand{}, err
 	}
-	result, err := s.execUserWriteTaggedForViewer(context.Background(), accountIDForUser(user), viewerProfileID(user), []string{"playback"}, `
-		UPDATE playback_sessions
-		SET command_json = ?, command_updated_at = ?, last_seen_at = ?
-		WHERE id = ? AND ended_at = '' AND profile_id = ?`,
-		string(data), now, now, sessionID, viewerProfileID(user))
+	err = s.withWorkClassTxTaggedForViewer(context.Background(), foundationcontract.WorkClassSecurityFence, "playback_command_tx", database.UserWriteRetry,
+		accountIDForUser(user), viewerProfileID(user), []string{"playback"}, func(tx *sql.Tx) error {
+			var committing int
+			if err := tx.QueryRow(`SELECT COUNT(*) FROM playback_handoff_receipts WHERE source_session_id = ? AND state = 'committing'`, sessionID).Scan(&committing); err != nil {
+				return err
+			}
+			if committing != 0 {
+				return errPlaybackHandoffInProgress
+			}
+			result, updateErr := tx.Exec(`
+			UPDATE playback_sessions
+			SET command_json = ?, command_updated_at = ?, last_seen_at = ?
+			WHERE id = ? AND ended_at = '' AND profile_id = ?
+				AND NOT EXISTS (SELECT 1 FROM playback_handoff_receipts WHERE source_session_id = ? AND state = 'committing')`,
+				string(data), now, now, sessionID, viewerProfileID(user), sessionID)
+			if updateErr != nil {
+				return updateErr
+			}
+			if rowsAffected(result) != 1 {
+				return sql.ErrNoRows
+			}
+			return nil
+		})
 	if err != nil {
 		return PlaybackCommand{}, err
 	}
-	count, _ := result.RowsAffected()
-	if count == 0 {
-		return PlaybackCommand{}, sql.ErrNoRows
-	}
 	s.notifyPlaybackCommand(sessionID)
-	if action == "stop" {
-		_ = s.endPlaybackSession(user, sessionID)
-	}
 	return command, nil
 }
 
@@ -26203,17 +26338,7 @@ func (s *Server) patchPlaybackSessionDiagnostics(sessionID string, patch Playbac
 }
 
 func normalizeReceiverSupportedCommands(commands []string) []string {
-	allowed := map[string]bool{"load": true}
-	normalized := []string{}
-	seen := map[string]bool{}
-	for _, command := range commands {
-		command = strings.ToLower(strings.TrimSpace(command))
-		if !allowed[command] || seen[command] {
-			continue
-		}
-		seen[command] = true
-		normalized = append(normalized, command)
-	}
+	normalized := normalizeNativeReceiverCommands(commands)
 	if len(normalized) == 0 {
 		return []string{"load"}
 	}
@@ -26254,7 +26379,7 @@ func limitPlaybackReceiverField(value string, limit int) string {
 
 func (s *Server) listPlaybackTargets(user User, clientInstanceID string) ([]PlaybackTarget, error) {
 	targets := []PlaybackTarget{}
-	receivers, err := s.listPlaybackReceivers(user)
+	receivers, err := s.listAuthorizedPlaybackReceivers(context.Background(), user)
 	if err != nil {
 		return nil, err
 	}
@@ -26264,7 +26389,6 @@ func (s *Server) listPlaybackTargets(user User, clientInstanceID string) ([]Play
 			Type:              "receiver",
 			Name:              receiver.Name,
 			Detail:            receiverTargetDetail(receiver),
-			Code:              receiver.Code,
 			SupportedCommands: receiver.SupportedCommands,
 			LastSeenAt:        receiver.LastSeenAt,
 		})
@@ -26294,368 +26418,6 @@ func (s *Server) listPlaybackTargets(user User, clientInstanceID string) ([]Play
 		targets = append(targets, target)
 	}
 	return targets, rows.Err()
-}
-
-func (s *Server) createPlaybackReceiver(user User, req PlaybackReceiverRequest) (PlaybackReceiver, error) {
-	name := strings.TrimSpace(req.Name)
-	if name == "" {
-		name = "Web Receiver"
-	}
-	if len(name) > 80 {
-		name = name[:80]
-	}
-	app := limitPlaybackReceiverField(req.App, 80)
-	platform := limitPlaybackReceiverField(req.Platform, 80)
-	supportedCommands := normalizeReceiverSupportedCommands(req.SupportedCommands)
-	supportedCommandsJSON, err := json.Marshal(supportedCommands)
-	if err != nil {
-		return PlaybackReceiver{}, err
-	}
-	now := time.Now().UTC().Format(time.RFC3339)
-	receiver := PlaybackReceiver{
-		ID:                randomID("rcv"),
-		Name:              name,
-		Code:              strings.ToUpper(randomID("cast")[5:11]),
-		App:               app,
-		Platform:          platform,
-		SupportedCommands: supportedCommands,
-		Command:           PlaybackCommand{},
-		CreatedAt:         now,
-		LastSeenAt:        now,
-	}
-	_, err = s.execUserWrite(context.Background(), `
-		INSERT INTO playback_receivers (id, user_id, profile_id, name, code, app, platform, supported_commands_json, command_json, created_at, last_seen_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, '{}', ?, ?)`,
-		receiver.ID, user.ID, viewerProfileID(user), receiver.Name, receiver.Code, receiver.App, receiver.Platform, string(supportedCommandsJSON), receiver.CreatedAt, receiver.LastSeenAt)
-	return receiver, err
-}
-
-func (s *Server) listPlaybackReceivers(user User) ([]PlaybackReceiver, error) {
-	cutoff := time.Now().UTC().Add(-90 * time.Second).Format(time.RFC3339)
-	rows, err := s.queryUserRead(context.Background(), `
-		SELECT id, name, code, app, platform, supported_commands_json, command_json, created_at, last_seen_at
-		FROM playback_receivers
-		WHERE last_seen_at >= ? AND profile_id = ?
-		ORDER BY last_seen_at DESC`, cutoff, viewerProfileID(user))
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	receivers := []PlaybackReceiver{}
-	for rows.Next() {
-		var receiver PlaybackReceiver
-		var raw, supportedCommandsJSON string
-		if err := rows.Scan(&receiver.ID, &receiver.Name, &receiver.Code, &receiver.App, &receiver.Platform, &supportedCommandsJSON, &raw, &receiver.CreatedAt, &receiver.LastSeenAt); err != nil {
-			return nil, err
-		}
-		receiver.SupportedCommands = decodeReceiverSupportedCommands(supportedCommandsJSON)
-		receiver.Command = decodePlaybackCommand(raw)
-		receivers = append(receivers, receiver)
-	}
-	return receivers, rows.Err()
-}
-
-func (s *Server) touchPlaybackReceiver(user User, receiverID string) (PlaybackReceiver, error) {
-	nowTime := time.Now().UTC()
-	now := nowTime.Format(time.RFC3339)
-	staleHeartbeatCutoff := nowTime.Add(-10 * time.Second).Format(time.RFC3339)
-	_, err := s.execUserWrite(context.Background(), `
-		UPDATE playback_receivers
-		SET last_seen_at = ?
-		WHERE id = ? AND profile_id = ? AND last_seen_at < ?`,
-		now, receiverID, viewerProfileID(user), staleHeartbeatCutoff)
-	if err != nil {
-		return PlaybackReceiver{}, err
-	}
-	var receiver PlaybackReceiver
-	var raw, supportedCommandsJSON string
-	err = s.queryUserRow(context.Background(), `
-		SELECT id, name, code, app, platform, supported_commands_json, command_json, created_at, last_seen_at
-		FROM playback_receivers
-		WHERE id = ? AND profile_id = ?`,
-		receiverID, viewerProfileID(user)).Scan(&receiver.ID, &receiver.Name, &receiver.Code, &receiver.App, &receiver.Platform, &supportedCommandsJSON, &raw, &receiver.CreatedAt, &receiver.LastSeenAt)
-	if err != nil {
-		return PlaybackReceiver{}, err
-	}
-	receiver.SupportedCommands = decodeReceiverSupportedCommands(supportedCommandsJSON)
-	receiver.Command = decodePlaybackCommand(raw)
-	return receiver, nil
-}
-
-func (s *Server) playbackReceiverCommandForUser(user User, receiverID string) (PlaybackCommand, error) {
-	var raw string
-	err := s.queryUserRow(context.Background(), `
-		SELECT command_json
-		FROM playback_receivers
-		WHERE id = ? AND profile_id = ?`,
-		receiverID, viewerProfileID(user)).Scan(&raw)
-	if err != nil {
-		return PlaybackCommand{}, err
-	}
-	return decodePlaybackCommand(raw), nil
-}
-
-func (s *Server) streamPlaybackReceiverEvents(w http.ResponseWriter, r *http.Request, user User, receiverID string) {
-	receiver, err := s.touchPlaybackReceiver(user, receiverID)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			writeError(w, http.StatusNotFound, "playback_receiver_not_found", "Playback receiver was not found.")
-			return
-		}
-		writeError(w, http.StatusInternalServerError, "playback_receiver_failed", "Unable to stream playback receiver updates.")
-		return
-	}
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		writeError(w, http.StatusInternalServerError, "streaming_unsupported", "Streaming is not supported by this server.")
-		return
-	}
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("X-Accel-Buffering", "no")
-	w.Header().Set("X-Portico-Stream-Resume", "none")
-	if streamResumeResetRequested(r, w, flusher) {
-		return
-	}
-	lastCommandID := ""
-	writeReceiverEvent := func(receiver PlaybackReceiver) bool {
-		data, err := json.Marshal(receiver)
-		if err != nil {
-			return false
-		}
-		prepareStreamWrite(w)
-		if _, err := fmt.Fprintf(w, "event: receiver\ndata: %s\n\n", data); err != nil {
-			return false
-		}
-		flusher.Flush()
-		if receiver.Command.ID != "" {
-			lastCommandID = receiver.Command.ID
-		}
-		return true
-	}
-	if !writeReceiverEvent(receiver) {
-		return
-	}
-	commandTicker := time.NewTicker(1 * time.Second)
-	defer commandTicker.Stop()
-	heartbeatTicker := time.NewTicker(10 * time.Second)
-	defer heartbeatTicker.Stop()
-	keepAlive := time.NewTicker(15 * time.Second)
-	defer keepAlive.Stop()
-	authorization := time.NewTicker(eventStreamAuthorizationCheck)
-	defer authorization.Stop()
-	shutdownDone := s.shutdownDone()
-	for {
-		select {
-		case <-r.Context().Done():
-			return
-		case <-shutdownDone:
-			return
-		case <-commandTicker.C:
-			command, err := s.playbackReceiverCommandForUser(user, receiverID)
-			if err != nil {
-				return
-			}
-			if command.ID != "" && command.ID != lastCommandID {
-				next, err := s.touchPlaybackReceiver(user, receiverID)
-				if err != nil {
-					return
-				}
-				if !writeReceiverEvent(next) {
-					return
-				}
-			}
-		case <-heartbeatTicker.C:
-			if _, err := s.touchPlaybackReceiver(user, receiverID); err != nil {
-				return
-			}
-		case <-keepAlive.C:
-			prepareStreamWrite(w)
-			if _, err := fmt.Fprint(w, ": keep-alive\n\n"); err != nil {
-				return
-			}
-			flusher.Flush()
-		case <-authorization.C:
-			if !s.longPollUserAuthorizationCurrent(r, user) {
-				return
-			}
-		}
-	}
-}
-
-func (s *Server) issuePlaybackReceiverCommand(user User, receiverID string, req PlaybackCommandRequest) (PlaybackCommand, error) {
-	if strings.ToLower(strings.TrimSpace(req.Action)) != "load" {
-		return PlaybackCommand{}, errors.New("Playback receivers only accept load commands.")
-	}
-	mediaID := strings.TrimSpace(req.MediaID)
-	if mediaID == "" {
-		return PlaybackCommand{}, errors.New("Load commands require a media item.")
-	}
-	if _, err := s.getMediaAccessSummaryContext(context.Background(), viewerProfileID(user), mediaID); err != nil {
-		return PlaybackCommand{}, errors.New("Load command media item is not accessible.")
-	}
-	now := time.Now().UTC().Format(time.RFC3339)
-	command := PlaybackCommand{
-		ID:              randomID("pcmd"),
-		Action:          "load",
-		MediaID:         mediaID,
-		PositionSeconds: max(0, req.PositionSeconds),
-		IssuedByUserID:  user.ID,
-		IssuedAt:        now,
-	}
-	data, err := json.Marshal(command)
-	if err != nil {
-		return PlaybackCommand{}, err
-	}
-	result, err := s.execUserWrite(context.Background(), `
-		UPDATE playback_receivers
-		SET command_json = ?, command_updated_at = ?
-		WHERE id = ? AND profile_id = ?`,
-		string(data), now, receiverID, viewerProfileID(user))
-	if err != nil {
-		return PlaybackCommand{}, err
-	}
-	count, _ := result.RowsAffected()
-	if count == 0 {
-		return PlaybackCommand{}, sql.ErrNoRows
-	}
-	s.publishLongPollPlaybackReceiver(receiverID)
-	return command, nil
-}
-
-func (s *Server) endPlaybackSession(user User, sessionID string) error {
-	now := time.Now().UTC().Format(time.RFC3339)
-	mediaID, err := s.finalizePlaybackSessionProgress(user, sessionID)
-	if err != nil {
-		return err
-	}
-	err = s.withPlaybackTxTagged(context.Background(), []string{"playback"}, func(tx *sql.Tx) error {
-		result, updateErr := tx.Exec(`
-			UPDATE playback_sessions
-			SET last_seen_at = ?, ended_at = ?, state = 'stopped'
-			WHERE id = ? AND ended_at = '' AND profile_id = ?`, now, now, sessionID, viewerProfileID(user))
-		if updateErr != nil {
-			return updateErr
-		}
-		if rowsAffected(result) != 1 {
-			return sql.ErrNoRows
-		}
-		// Unclaimed preloads are invalid once their source session ends. Preserve
-		// committing/committed rows until expiry so an in-flight handoff can
-		// finish and a lost response can still be retried idempotently.
-		_, deleteErr := tx.Exec(`DELETE FROM playback_prepared_handoffs WHERE source_session_id = ? AND user_id = ? AND profile_id = ? AND state = 'prepared'`, sessionID, accountIDForUser(user), viewerProfileID(user))
-		return deleteErr
-	})
-	if err != nil {
-		return err
-	}
-	s.revokeMediaGrantsForSession(context.Background(), sessionID)
-	s.revokePlaybackContinuation(sessionID)
-	s.releaseLiveTVTunerAllocation(context.Background(), "live_session", sessionID)
-	_ = s.completeEndedPlaybackSessionHistoryContext(context.Background(), sessionID)
-	if !s.hasActivePlaybackForMedia(mediaID) {
-		s.stopTranscodeSessionForMedia(mediaID)
-	}
-	s.notifyPlaybackCommand(sessionID)
-	return nil
-}
-
-func (s *Server) endPlaybackSessionAtomically(user User, sessionID string, req PlaybackSessionStopRequest) error {
-	nowTime := time.Now().UTC()
-	now := nowTime.Format(time.RFC3339Nano)
-	profileID := viewerProfileID(user)
-	accountID := accountIDForUser(user)
-	preferences := s.playbackProgressPreferencesForUserContext(context.Background(), profileID)
-	positionSeconds := max(0, int(math.Round(req.PositionSeconds)))
-	durationSeconds := max(0, int(math.Round(req.DurationSeconds)))
-	if req.Disposition == "completed" {
-		positionSeconds = durationSeconds
-	} else if durationSeconds > 0 {
-		positionSeconds = min(positionSeconds, durationSeconds)
-	}
-	var mediaID string
-	err := s.withPrioritizedTxTaggedForViewer(context.Background(), sqliteWritePlayback, "playback_terminal_tx", database.UserWriteRetry, accountID, profileID,
-		[]string{"playback", "playback-progress", "media-state", "library-items", "home"}, func(tx *sql.Tx) error {
-			var mediaType, endedAt, state string
-			var liveInt, historyPaused int
-			var currentGeneration, lastSequence int64
-			if err := tx.QueryRow(`
-				SELECT media_id, media_type, is_live, history_paused, ended_at, state,
-					progress_generation, last_event_sequence
-				FROM playback_sessions
-				WHERE id = ? AND profile_id = ?`, sessionID, profileID).
-				Scan(&mediaID, &mediaType, &liveInt, &historyPaused, &endedAt, &state, &currentGeneration, &lastSequence); err != nil {
-				return err
-			}
-			if strings.TrimSpace(endedAt) != "" || state == "stopped" {
-				return sql.ErrNoRows
-			}
-			if req.Generation != currentGeneration {
-				return errPlaybackGenerationStale
-			}
-			if req.EventSequence <= lastSequence {
-				return errPlaybackEventSequenceStale
-			}
-			progress := sessionProgressPercent(positionSeconds, durationSeconds, liveInt == 1)
-			result, err := tx.Exec(`
-				UPDATE playback_sessions
-				SET last_seen_at = ?, ended_at = ?, state = 'stopped', progress = ?,
-					position_seconds = ?, last_event_sequence = ?,
-					last_event_recorded_at = ?, last_event_received_at = ?
-				WHERE id = ? AND profile_id = ? AND ended_at = '' AND state <> 'stopped'
-					AND progress_generation = ? AND last_event_sequence < ?`,
-				now, now, progress, positionSeconds, req.EventSequence,
-				strings.TrimSpace(req.RecordedAt), now, sessionID, profileID,
-				req.Generation, req.EventSequence)
-			if err != nil {
-				return err
-			}
-			if rowsAffected(result) != 1 {
-				return errPlaybackEventSequenceStale
-			}
-			_, err = tx.Exec(`DELETE FROM playback_prepared_handoffs WHERE source_session_id = ? AND user_id = ? AND profile_id = ? AND state = 'prepared'`, sessionID, accountID, profileID)
-			if err != nil {
-				return err
-			}
-			if liveInt == 1 || historyPaused != 0 || strings.TrimSpace(mediaID) == "" {
-				return nil
-			}
-			completed := req.Disposition == "completed"
-			normalized := normalizePlaybackProgressState(positionSeconds, completed, durationSeconds, mediaType, preferences)
-			lastPlayed := ""
-			if mediaType == "track" || normalized.Started || normalized.Watched {
-				lastPlayed = nowTime.Format(time.RFC3339)
-			}
-			_, err = tx.Exec(`
-				INSERT INTO user_media_state (
-					profile_id, user_id, media_id, watched, progress_seconds, last_played_at,
-					updated_at, progress_session_id, progress_recorded_at
-				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-				ON CONFLICT(profile_id, media_id) DO UPDATE SET
-					watched = excluded.watched,
-					progress_seconds = excluded.progress_seconds,
-					last_played_at = CASE WHEN excluded.last_played_at <> '' THEN excluded.last_played_at ELSE user_media_state.last_played_at END,
-					updated_at = excluded.updated_at,
-					progress_session_id = excluded.progress_session_id,
-					progress_recorded_at = excluded.progress_recorded_at`,
-				profileID, accountID, mediaID, boolInt(normalized.Watched), normalized.ProgressSeconds,
-				lastPlayed, nowTime.Format(time.RFC3339), sessionID, strings.TrimSpace(req.RecordedAt))
-			return err
-		})
-	if err != nil {
-		return err
-	}
-	s.invalidateHomeCacheForProfile(profileID)
-	s.revokeMediaGrantsForSession(context.Background(), sessionID)
-	s.revokePlaybackContinuation(sessionID)
-	s.releaseLiveTVTunerAllocation(context.Background(), "live_session", sessionID)
-	_ = s.completeEndedPlaybackSessionHistoryContext(context.Background(), sessionID)
-	if !s.hasActivePlaybackForMedia(mediaID) {
-		s.stopTranscodeSessionForMedia(mediaID)
-	}
-	s.notifyPlaybackCommand(sessionID)
-	return nil
 }
 
 func (s *Server) hasActivePlaybackForMedia(mediaID string) bool {
@@ -26829,15 +26591,24 @@ func (s *Server) createJobFor(jobType, message, resourceType, resourceID string)
 }
 
 func (s *Server) createJobForWithMetadata(jobType, message, resourceType, resourceID string, metadata map[string]string) (Job, error) {
-	if !supportedJobType(jobType) {
-		return Job{}, fmt.Errorf("unsupported job type %q", jobType)
+	job, _, err := s.createJobForWithMetadataResult(jobType, message, resourceType, resourceID, metadata)
+	return job, err
+}
+
+// createJobForWithMetadataResult reports whether an exclusive active key
+// reused queued or running work. Operation-admission endpoints use this
+// atomic result instead of racing an active-job read against insertion.
+func (s *Server) createJobForWithMetadataResult(jobType, message, resourceType, resourceID string, metadata map[string]string) (job Job, reused bool, err error) {
+	descriptor, supported := durableJobDescriptorForType(jobType)
+	if !supported {
+		return Job{}, false, fmt.Errorf("unsupported job type %q", jobType)
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	jobMetadata := normalizeJobMetadata(metadata)
-	job := Job{
+	job = Job{
 		ID: randomID("job"), Type: jobType, Status: "queued", Progress: 0,
 		Message: message, ResourceType: resourceType, ResourceID: resourceID,
-		Metadata: jobMetadata, Priority: "normal", Phase: "queued",
+		Metadata: jobMetadata, Priority: descriptor.WorkClass, Phase: "queued",
 		ActiveKey: jobActiveKeyFor(jobType, resourceType, resourceID, jobMetadata),
 		CreatedAt: now, UpdatedAt: now,
 	}
@@ -26849,12 +26620,11 @@ func (s *Server) createJobForWithMetadata(jobType, message, resourceType, resour
 	}
 	inserted := false
 	var existing Job
-	var err error
 	func() {
 		durableJobEnqueueMu.Lock()
 		defer durableJobEnqueueMu.Unlock()
 		job, err = s.withJobAdmission(func() (Job, error) {
-			return job, s.withPrioritizedTxTaggedForViewer(context.Background(), sqliteWriteBackground, "job_enqueue", durableJobEnqueueRetry, "", "", nil, func(tx *sql.Tx) error {
+			return job, s.withWorkClassTxTaggedForViewer(context.Background(), job.Priority, "job_enqueue", durableJobEnqueueRetry, "", "", nil, func(tx *sql.Tx) error {
 				loadExisting := func(query string, args ...any) (string, error) {
 					var metadata string
 					err := tx.QueryRowContext(context.Background(), query, args...).Scan(
@@ -26910,6 +26680,25 @@ func (s *Server) createJobForWithMetadata(jobType, message, resourceType, resour
 						WHERE id = ? AND status IN ('queued', 'running')`, string(encoded), existing.Message, existing.UpdatedAt, existing.ID); updateErr != nil {
 						return updateErr
 					}
+				} else if job.Type == remoteAccessCertificateMaintenanceJobType && strings.EqualFold(job.Metadata["force"], "true") {
+					if existing.Metadata == nil {
+						existing.Metadata = map[string]string{}
+					}
+					existing.Metadata["force"] = "true"
+					existing.Metadata["latestTrigger"] = firstNonEmpty(job.Metadata["trigger"], "manual")
+					encoded, marshalErr := json.Marshal(existing.Metadata)
+					if marshalErr != nil {
+						return marshalErr
+					}
+					if existing.Status == "queued" {
+						existing.Message = job.Message
+					}
+					existing.UpdatedAt = job.UpdatedAt
+					if _, updateErr := tx.ExecContext(context.Background(), `
+						UPDATE jobs SET metadata_json = ?, message = ?, updated_at = ?
+						WHERE id = ? AND status IN ('queued', 'running')`, string(encoded), existing.Message, existing.UpdatedAt, existing.ID); updateErr != nil {
+						return updateErr
+					}
 				}
 				return nil
 			})
@@ -26927,7 +26716,7 @@ func (s *Server) createJobForWithMetadata(jobType, message, resourceType, resour
 			s.signalJobWake()
 		}
 	}
-	return job, err
+	return job, !inserted, err
 }
 
 func normalizeJobMetadata(metadata map[string]string) map[string]string {
@@ -26959,19 +26748,6 @@ func normalizeJobMetadata(metadata map[string]string) map[string]string {
 		return nil
 	}
 	return normalized
-}
-
-func maintenanceJobIsSingletonForResource(jobType string) bool {
-	switch jobType {
-	case "library_scan", "library_change_check", "library_read_model_repair", "metadata_refresh", "metadata_refresh_library", "lyrics_fetch_missing", "live_tv_refresh", "dvr_retention_cleanup", "tmdb_trending_refresh", "system_storage_cleanup", "library_trash_cleanup", "optimized_version_prune", "trickplay_prune":
-		return true
-	default:
-		return false
-	}
-}
-
-func isMaintenanceJobType(jobType string) bool {
-	return jobLaneForType(jobType) != jobLaneBackground
 }
 
 func decodeJobMetadata(raw string) map[string]string {
@@ -27054,6 +26830,10 @@ func (s *Server) runJobWithLane(job Job) {
 		s.runLibraryReadModelRepair(ctx, job)
 		return
 	}
+	if job.Type == remoteAccessCertificateMaintenanceJobType {
+		s.runRemoteAccessCertificateMaintenanceJob(ctx, job)
+		return
+	}
 	if job.Type == "database_backup" {
 		s.runDatabaseBackup(ctx, job)
 		return
@@ -27072,6 +26852,10 @@ func (s *Server) runJobWithLane(job Job) {
 	}
 	if job.Type == "media_analyze" {
 		s.runMediaAnalyze(ctx, job)
+		return
+	}
+	if job.Type == downloadArtifactVerificationJobType {
+		s.runDownloadArtifactVerification(ctx, job)
 		return
 	}
 	if job.Type == "optimize_version" {
@@ -27231,6 +27015,11 @@ func (s *Server) dueQueuedJobsFair(now string) ([]Job, error) {
 		jobs = append(jobs, laneJobs...)
 	}
 	sort.SliceStable(jobs, func(i, j int) bool {
+		leftPriority := jobs[i].Priority.Priority()
+		rightPriority := jobs[j].Priority.Priority()
+		if leftPriority != rightPriority {
+			return leftPriority < rightPriority
+		}
 		if jobs[i].CreatedAt == jobs[j].CreatedAt {
 			return jobs[i].ID < jobs[j].ID
 		}
@@ -27273,25 +27062,6 @@ func (s *Server) dueQueuedJobsForLane(now, lane string, limit int) ([]Job, error
 		jobs = append(jobs, job)
 	}
 	return jobs, rows.Err()
-}
-
-func jobTypesForLane(lane string) []string {
-	switch lane {
-	case jobLaneWriteHeavy:
-		return []string{"library_scan", "library_change_check", "live_tv_refresh"}
-	case jobLaneMetadata:
-		return []string{"metadata_refresh", "metadata_refresh_library", "lyrics_fetch_missing", "tmdb_trending_refresh"}
-	case jobLaneAnalysis:
-		return []string{"media_analyze"}
-	case jobLaneOptimized:
-		return []string{"optimize_version"}
-	case jobLaneMaintenance:
-		return []string{"library_read_model_repair", "database_backup", "library_trash_cleanup", "optimized_version_prune", "trickplay_prune", "dvr_retention_cleanup", "system_storage_cleanup"}
-	case jobLaneBackground:
-		return []string{"dashboard_rollup_refresh"}
-	default:
-		return nil
-	}
 }
 
 func (s *Server) shouldDeferQueuedJobForForeground(job Job) bool {
@@ -27343,25 +27113,6 @@ func (s *Server) jobLane(jobType string) chan struct{} {
 		s.jobLaneTokens[lane] = tokens
 	}
 	return tokens
-}
-
-func jobLaneForType(jobType string) string {
-	switch jobType {
-	case "library_scan", "library_change_check", "live_tv_refresh":
-		return jobLaneWriteHeavy
-	case "metadata_refresh", "metadata_refresh_library", "lyrics_fetch_missing", "tmdb_trending_refresh":
-		return jobLaneMetadata
-	case "media_analyze":
-		return jobLaneAnalysis
-	case "optimize_version":
-		return jobLaneOptimized
-	case "library_read_model_repair", "database_backup", "library_trash_cleanup", "optimized_version_prune", "trickplay_prune", "dvr_retention_cleanup", "system_storage_cleanup":
-		return jobLaneMaintenance
-	case "dashboard_rollup_refresh":
-		return jobLaneBackground
-	default:
-		return jobLaneBackground
-	}
 }
 
 func jobLaneDefinitions() []struct {
@@ -27499,6 +27250,9 @@ func (s *Server) deferMaintenanceJob(jobID string, cause error) bool {
 	nowTime := time.Now().UTC()
 	now := nowTime.Format(time.RFC3339)
 	backoff := maintenanceBackoff(attemptCount)
+	if retryAfter := hostedRetryAfter(cause); retryAfter > backoff {
+		backoff = retryAfter
+	}
 	nextRunAt := nowTime.Add(backoff).Format(time.RFC3339)
 	message := fmt.Sprintf("Job delayed by %s; retrying in %s.", kind, backoff.Round(time.Second))
 	result, err := s.execBackgroundWrite(context.Background(), `
@@ -27544,6 +27298,13 @@ func maintenanceFailureKind(err error) string {
 		return "timeout"
 	}
 	if errors.Is(err, context.Canceled) {
+		return ""
+	}
+	var hostedErr *hostedHTTPError
+	if errors.As(err, &hostedErr) {
+		if hostedErr.StatusCode == http.StatusRequestTimeout || hostedErr.StatusCode == http.StatusTooEarly || hostedErr.StatusCode == http.StatusTooManyRequests || hostedErr.StatusCode >= 500 {
+			return "hosted_transient"
+		}
 		return ""
 	}
 	if errors.Is(err, os.ErrNotExist) || errors.Is(err, os.ErrPermission) || errors.Is(err, os.ErrDeadlineExceeded) {
@@ -27600,6 +27361,8 @@ func maintenanceJobTimeout(jobID string, db *sql.DB) time.Duration {
 		return 2 * time.Minute
 	case "library_read_model_repair":
 		return 10 * time.Minute
+	case remoteAccessCertificateMaintenanceJobType:
+		return 15 * time.Minute
 	case "metadata_refresh", "lyrics_fetch_missing", "tmdb_trending_refresh", "live_tv_refresh":
 		return 8 * time.Minute
 	case "metadata_refresh_library":
@@ -27611,6 +27374,8 @@ func maintenanceJobTimeout(jobID string, db *sql.DB) time.Duration {
 		}
 		return 6 * time.Hour
 	case "optimize_version":
+		return 12 * time.Hour
+	case downloadArtifactVerificationJobType:
 		return 12 * time.Hour
 	case "library_trash_cleanup", "optimized_version_prune", "trickplay_prune", "dvr_retention_cleanup", "system_storage_cleanup":
 		return 10 * time.Minute
@@ -27903,15 +27668,6 @@ func (s *Server) cancelChildJobsForParent(parentJobID string) error {
 		}
 	}
 	return nil
-}
-
-func supportedJobType(jobType string) bool {
-	switch jobType {
-	case "library_scan", "library_change_check", "library_read_model_repair", "database_backup", "metadata_refresh", "metadata_refresh_library", "lyrics_fetch_missing", "media_analyze", "optimize_version", "live_tv_refresh", "tmdb_trending_refresh", "library_trash_cleanup", "optimized_version_prune", "trickplay_prune", "dvr_retention_cleanup", "system_storage_cleanup", "dashboard_rollup_refresh":
-		return true
-	default:
-		return false
-	}
 }
 
 func (s *Server) runDashboardRollupRefresh(ctx context.Context, job Job) {
@@ -30009,7 +29765,7 @@ func (s *Server) createUserContext(ctx context.Context, req UserRequest) (User, 
 		MaxActiveStreams:       maxActiveStreams,
 		RemoteBitrateLimitMbps: remoteBitrateLimitMbps,
 	}
-	if err := s.withUserTxTagged(ctx, []string{"users", "account", "profiles", "libraries", "home"}, func(tx *sql.Tx) error {
+	if err := s.withSecurityFenceTxTagged(ctx, []string{"users", "account", "profiles", "libraries", "home"}, func(tx *sql.Tx) error {
 		if _, err := tx.Exec(`INSERT INTO users (id, username, email, display_name, password_hash, role, auth_origin, permissions_json, preferences_json, max_content_rating, max_active_sessions, max_active_streams, remote_bitrate_limit_mbps, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			user.ID, user.Username, user.Email, user.DisplayName, passwordHash, user.Role, user.AuthOrigin, string(permissionsJSON), string(preferencesJSON), user.MaxContentRating, user.MaxActiveSessions, user.MaxActiveStreams, user.RemoteBitrateLimitMbps, now, now); err != nil {
 			return err
@@ -30193,7 +29949,7 @@ func (s *Server) deleteUserContext(ctx context.Context, userID string) (User, er
 	}
 	defer finishProfileErasureFences(fences)
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	if err := s.withUserTxTagged(ctx, []string{"users", "account", "profiles", "sessions", "native_refresh_tokens", "api_keys", "devices", "libraries", "home"}, func(tx *sql.Tx) error {
+	if err := s.withSecurityFenceTxTagged(ctx, []string{"users", "account", "profiles", "sessions", "native_refresh_tokens", "api_keys", "devices", "libraries", "home"}, func(tx *sql.Tx) error {
 		if err := s.revokeAccountAuthorityTx(ctx, tx, userID, now); err != nil {
 			return err
 		}
@@ -30510,22 +30266,7 @@ func validateUserGrantablePermissions(input map[string]bool) error {
 }
 
 func permissionCatalog() []string {
-	return []string{
-		"playMedia",
-		"downloadMedia",
-		"editMetadata",
-		"manageLyrics",
-		"manageSubtitles",
-		"watchWithFriends",
-		"viewLiveTV",
-		"playLiveTV",
-		"viewDVR",
-		"scheduleDVR",
-		"manageDVR",
-		"deleteDVRRecordings",
-		"deleteMedia",
-		"transcode",
-	}
+	return foundationcontract.GrantablePermissionIDs()
 }
 
 func hasPermission(user User, permission string) bool {
@@ -30709,11 +30450,17 @@ var writableSettingSchemas = map[string]map[string]settingFieldType{
 		"readEmbeddedTags":                settingFieldBool,
 		"readEmbeddedIndexes":             settingFieldBool,
 		"generateRepresentativeThumbnail": settingFieldBool,
+		"extractSelectedEmbeddedAssets":   settingFieldBool,
+		"validateSeekBehavior":            settingFieldBool,
+		"fullFileChecksum":                settingFieldBool,
 		"generateTrickplay":               settingFieldBool,
 		"generateChapterThumbnails":       settingFieldBool,
+		"generateWaveforms":               settingFieldBool,
 		"analyzeLoudness":                 settingFieldBool,
 		"sonicFingerprinting":             settingFieldBool,
+		"detectSegments":                  settingFieldBool,
 		"extractAllEmbeddedAttachments":   settingFieldBool,
+		"analyzeSTRMTarget":               settingFieldBool,
 		"trickplayOnScan":                 settingFieldBool,
 		"trickplayIntervalSeconds":        settingFieldNumber,
 		"trickplayTileWidth":              settingFieldNumber,
@@ -31223,15 +30970,19 @@ func validateCustomAnalysisDependencies(values map[string]any) error {
 	probeStreams := settingBool(values, "probeStreams", false)
 	for _, field := range []string{
 		"readEmbeddedTags", "readEmbeddedIndexes", "generateRepresentativeThumbnail",
-		"generateTrickplay", "generateChapterThumbnails", "analyzeLoudness",
-		"sonicFingerprinting", "extractAllEmbeddedAttachments",
+		"extractSelectedEmbeddedAssets", "validateSeekBehavior",
+		"generateTrickplay", "generateChapterThumbnails", "generateWaveforms", "analyzeLoudness",
+		"sonicFingerprinting", "detectSegments", "extractAllEmbeddedAttachments",
+		"analyzeSTRMTarget",
 	} {
 		if settingBool(values, field, false) && !probeStreams {
 			return fmt.Errorf("library.%s requires library.probeStreams in Custom", field)
 		}
 	}
-	if settingBool(values, "extractAllEmbeddedAttachments", false) && !settingBool(values, "readEmbeddedIndexes", false) {
-		return errors.New("library.extractAllEmbeddedAttachments requires library.readEmbeddedIndexes in Custom")
+	for _, field := range []string{"extractSelectedEmbeddedAssets", "generateChapterThumbnails", "detectSegments", "extractAllEmbeddedAttachments"} {
+		if settingBool(values, field, false) && !settingBool(values, "readEmbeddedIndexes", false) {
+			return fmt.Errorf("library.%s requires library.readEmbeddedIndexes in Custom", field)
+		}
 	}
 	return nil
 }

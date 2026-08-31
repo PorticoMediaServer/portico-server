@@ -9,10 +9,10 @@ import { porticoRouteTransport, validatePorticoUrl } from "../dist/urlPolicy.js"
 
 function connection(overrides = {}) {
   return {
-    schemaVersion: 2, accountId: "account", serverId: "server", profileId: "profile", serverName: "Home",
-    serverPublicKeyFingerprint: "sha256:key", mutationVersion: 1,
+    schemaVersion: 3, accountId: "account", serverId: "server", profileId: "profile", serverName: "Home",
+    serverPublicKey: "WlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlo", serverPublicKeyFingerprint: "sha256:key", mutationVersion: 1,
     currentRoute: {url: "https://home.example", type: "public_direct", verifiedAt: "2026-08-06T00:00:00Z"},
-    session: {serverId: "server", apiBaseUrl: "https://home.example", accessToken: "access-1", refreshToken: "refresh-1"},
+    session: {serverId: "server", apiBaseUrl: "https://home.example", accessToken: "access-1", refreshToken: "refresh-1", serverPublicKey: "WlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlo"},
     lastSuccessfulConnectionAt: "2026-08-06T00:00:00Z", ...overrides
   };
 }

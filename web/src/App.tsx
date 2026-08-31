@@ -1,5 +1,5 @@
 import { NavigationLibraryIcon } from '#portico-icons';
-import { lazy, Suspense, useEffect } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { Link, Route, Routes, useLocation } from 'react-router-dom';
 import { AppShell } from './app/AppShell';
 import { useAuthSession } from './data/DataProvider';
@@ -154,14 +154,15 @@ function AccountSessionTeardown() {
 
 function ProductApp({ viewer }: { viewer: Viewer }) {
   const location = useLocation();
+	const [blockingRouteFailure, setBlockingRouteFailure] = useState(false);
 	useEffect(() => {
 		return scheduleProductRoutePreload(() => { void preloadProductRoutes(); });
 	}, []);
 	return <WebDisplayPreferencesProvider><NotificationProvider><PlaybackSessionProvider>
 	<AccountSessionTeardown />
 	<SettingsNavigationBlocker />
-    <AppShell viewer={viewer} player={<PlayerDock />}>
-      <RouteErrorBoundary routeKey={`${location.pathname}${location.search}`}>
+    <AppShell viewer={viewer} player={<PlayerDock />} blockingRouteFailure={blockingRouteFailure}>
+      <RouteErrorBoundary routeKey={`${location.pathname}${location.search}`} onBlockingStateChange={setBlockingRouteFailure}>
         <AppRoutes viewer={viewer} />
       </RouteErrorBoundary>
     </AppShell>

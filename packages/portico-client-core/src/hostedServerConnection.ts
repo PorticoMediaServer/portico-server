@@ -105,10 +105,13 @@ async function validateSelectedHostedDiscovery(
   const route = discovery.route;
   const purpose = isLANRoute(route) ? "lan-server-route" : "trusted-server-route";
   const normalizedRoute = validatePorticoUrl(route.url, purpose);
-  if (!routeIsUsableCandidate(route)) throw new Error("The selected route is not currently usable.");
-  if (!isLANRoute(route) && !discovery.routeDocument.routes.some((candidate) =>
-    candidate.type === route.type && validateRouteURL(candidate, false) === normalizedRoute
-  )) {
+	if (!routeIsUsableCandidate(route)) throw new Error("The selected route is not currently usable.");
+	if (!isLANRoute(route) && !discovery.routeDocument.routes.some((candidate) =>
+		candidate.type === route.type &&
+		candidate.quality === route.quality &&
+		routeIsUsableCandidate(candidate) &&
+		validateRouteURL(candidate, false) === normalizedRoute
+	)) {
     throw new Error("The selected public route was not issued by the signed route document.");
   }
 }
@@ -151,6 +154,7 @@ export async function connectHostedServer(server: HostedServer, options: HostedS
     serverId: server.id,
     serverName: server.name,
 		apiBaseUrl: route.url.replace(/\/+$/, ""),
+		serverPublicKey: routeDocument.serverPublicKey,
 		serverPublicKeyFingerprint: routeDocument.serverPublicKeyFingerprint,
     routeType: route.type,
     routeAddress: route.address
@@ -210,6 +214,7 @@ export async function connectHostedServer(server: HostedServer, options: HostedS
       serverId: session.serverId,
       serverName: session.serverName,
       apiBaseUrl: session.apiBaseUrl,
+      serverPublicKey: session.serverPublicKey,
       serverPublicKeyFingerprint: session.serverPublicKeyFingerprint,
       routeType: session.routeType,
       routeAddress: session.routeAddress,
@@ -281,6 +286,7 @@ function assertPublishedServerSession(
   const expectedTransport = porticoRouteTransport(expectedURL, purpose);
   const actualTransport = porticoRouteTransport(actualURL, purpose);
   if (session.serverId !== expectedSession.serverId || actualURL !== expectedURL || expectedTransport !== actualTransport ||
+      session.serverPublicKey !== routeDocument.serverPublicKey ||
       session.serverPublicKeyFingerprint !== routeDocument.serverPublicKeyFingerprint ||
       session.routeType && session.routeType !== route.type ||
       session.bootstrapAccessToken?.trim()) {
@@ -865,8 +871,7 @@ async function localRoutesForConnection(server: HostedServer, document: HostedRo
   const candidates = await options.localRouteCandidates(server, document, options.signal);
   throwIfConnectionAborted(options.signal);
   return candidates
-    .filter((route) => isLANRoute(route) && route.url)
-    .map((route) => ({ ...route, quality: route.quality || "reported" }));
+    .filter((route) => isLANRoute(route) && route.url && routeIsUsableCandidate(route));
 }
 
 async function selectVerifiedRoute(
@@ -1021,21 +1026,16 @@ export function routesForConnection(document: HostedRouteDocument, preference: H
   if (authModes.includes("local") || !authModes.includes("portico")) {
     throw new Error("This server uses This Server sign-in and cannot be opened from a hosted Portico client.");
   }
-  const lanRoutes = [
-    ...document.routes.filter((route) => isLANRoute(route) && isIPEncodedDirectRoute(route) && routeIsUsableCandidate(route) && routeIsSecureHTTPS(route)),
-    ...document.routes.filter((route) => isLANRoute(route) && !isIPEncodedDirectRoute(route) && routeIsUsableCandidate(route) && routeIsSecureHTTPS(route))
-  ];
-  const publicRoutes = [
-    ...document.routes.filter((route) => isIPEncodedPublicRoute(route) && route.quality === "reachable" && routeIsSecureHTTPS(route)),
-    ...document.routes.filter((route) => isPublicDirectRoute(route) && route.quality === "reachable" && routeIsSecureHTTPS(route)),
-    ...document.routes.filter((route) => isIPEncodedPublicRoute(route) && routeIsUsableCandidate(route) && route.quality !== "reachable" && routeIsSecureHTTPS(route)),
-    ...document.routes.filter((route) => isPublicDirectRoute(route) && routeIsUsableCandidate(route) && route.quality !== "reachable" && routeIsSecureHTTPS(route))
-  ];
+	const lanRoutes = orderedPublishedRoutes(document.routes, isLANRoute);
+	const publicRoutes = orderedPublishedRoutes(document.routes, (route) => isIPEncodedPublicRoute(route) || isPublicDirectRoute(route));
   // Restricted modes retain the untried group as metadata so selection can
   // offer an explicit recovery without probing it.
-  const routes = preference === "public-first" || preference === "public-only"
-    ? [...publicRoutes, ...lanRoutes]
-    : [...lanRoutes, ...publicRoutes];
+	const routesByTypePreference = preference === "public-first" || preference === "public-only"
+		? [...publicRoutes, ...lanRoutes]
+		: [...lanRoutes, ...publicRoutes];
+	const routes = routesByTypePreference.sort((left, right) =>
+		(left.quality === "reachable" ? 0 : 1) - (right.quality === "reachable" ? 0 : 1),
+	);
   const seen = new Set<string>();
   const unique = routes.filter((route) => {
     const key = `${route.type}\n${route.url}`;
@@ -1043,20 +1043,22 @@ export function routesForConnection(document: HostedRouteDocument, preference: H
     seen.add(key);
     return true;
   });
-  if (unique.length === 0) {
-    const hardFailure = document.routes.find((route) => route.quality === "identity_mismatch")
-      ?? document.routes.find((route) => route.quality === "tls_failed")
-      ?? document.routes.find((route) => route.quality === "stale")
-      ?? document.routes.find((route) => route.quality === "http_failed" || route.quality === "failed");
-    if (hardFailure?.quality === "identity_mismatch") throw new Error("The selected route reported the wrong server identity. Do not continue until the server fingerprint matches.");
-    if (hardFailure?.quality === "tls_failed") throw new Error("The selected route failed TLS verification. Waiting for certificate or DNS repair.");
-		if (hardFailure?.quality === "stale") throw new Error("This server has not reported a fresh route recently. Waiting for Portico to receive a new heartbeat.");
-		if (hardFailure?.quality === "http_failed" || hardFailure?.quality === "failed") {
-			throw new Error("Remote Access health check failed. Waiting for route repair.");
-		}
-    throw new Error("No route is published for this server yet. Waiting for the local server to heartbeat.");
-  }
-  return unique;
+	if (unique.length === 0) throw new Error("No usable signed route is published for this server yet.");
+	return unique;
+}
+
+function orderedPublishedRoutes(
+	routes: HostedRouteEntry[],
+	matchesType: (route: HostedRouteEntry) => boolean,
+): HostedRouteEntry[] {
+	const ordered: HostedRouteEntry[] = [];
+	for (const quality of ["reachable", "probe_required"] as const) {
+		ordered.push(
+			...routes.filter((route) => matchesType(route) && isIPEncodedDirectRoute(route) && route.quality === quality && routeIsSecureHTTPS(route)),
+			...routes.filter((route) => matchesType(route) && !isIPEncodedDirectRoute(route) && route.quality === quality && routeIsSecureHTTPS(route)),
+		);
+	}
+	return ordered;
 }
 
 function assertRouteDocumentEnvelope(document: HostedRouteDocument, allowPendingGeneration = false): asserts document is HostedRouteDocument & {endpointGeneration: number} {
@@ -1108,7 +1110,7 @@ function isIPEncodedPublicRoute(route: HostedRouteEntry): boolean {
 }
 
 export function routeIsUsableCandidate(route: HostedRouteEntry): boolean {
-  return !["stale", "failed", "http_failed", "tls_failed", "identity_mismatch", "repairing", "repair_requested"].includes(route.quality);
+	return route.quality === "reachable" || route.quality === "probe_required";
 }
 
 function routeIsSecureHTTPS(route: HostedRouteEntry): boolean {

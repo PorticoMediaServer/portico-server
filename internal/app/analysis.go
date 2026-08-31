@@ -15,6 +15,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/PorticoMediaServer/portico-server/internal/foundationcontract"
 )
 
 type ffprobePayload struct {
@@ -135,8 +137,14 @@ type mediaAnalysisOptions struct {
 	GenerateTrickplay          bool
 	AnalyzeAudio               bool
 	SonicFingerprinting        bool
-	DetectChapterSegments      bool
+	FullFileChecksum           bool
+	GenerateWaveforms          bool
+	ValidateSeekBehavior       bool
+	FullSeekValidation         bool
+	DetectSegments             bool
 	ExtractEmbeddedCovers      bool
+	AnalyzeSTRMTarget          bool
+	ExpectedSourceRevision     string
 }
 
 func normalizeMediaAnalysisMode(value string) string {
@@ -198,8 +206,13 @@ func (s *Server) mediaAnalysisOptions(item MediaItem, mode string) mediaAnalysis
 		GenerateTrickplay:          allowFull && probeStreams && (complete || customEnabled("generateTrickplay")),
 		AnalyzeAudio:               allowFull && probeStreams && (complete || customEnabled("analyzeLoudness")),
 		SonicFingerprinting:        allowFull && probeStreams && (complete || customEnabled("sonicFingerprinting")),
-		DetectChapterSegments:      allowFull && readEmbeddedIndexes && complete,
-		ExtractEmbeddedCovers:      allowFull && readEmbeddedIndexes && complete,
+		FullFileChecksum:           allowFull && (complete || customEnabled("fullFileChecksum")),
+		GenerateWaveforms:          allowFull && probeStreams && (complete || customEnabled("generateWaveforms")),
+		ValidateSeekBehavior:       probeStreams && (tier == analysisTierBasic || complete || customEnabled("validateSeekBehavior")),
+		FullSeekValidation:         full && complete,
+		DetectSegments:             allowFull && readEmbeddedIndexes && (complete || customEnabled("detectSegments")),
+		ExtractEmbeddedCovers:      readEmbeddedIndexes && (complete || customEnabled("extractSelectedEmbeddedAssets")),
+		AnalyzeSTRMTarget:          allowFull && probeStreams && (complete || customEnabled("analyzeSTRMTarget")),
 	}
 	return options
 }
@@ -222,7 +235,8 @@ func (s *Server) mediaAnalysisQueueEnabled(item MediaItem) bool {
 	if s.analysisTierForItem(item) == analysisTierFileListOnly {
 		return false
 	}
-	return s.mediaAnalysisOptions(item, mediaAnalysisModeProbe).ProbeStreams
+	options := s.mediaAnalysisOptions(item, mediaAnalysisModeFull)
+	return options.ProbeStreams || options.FullFileChecksum
 }
 
 func (s *Server) runMediaAnalyze(ctx context.Context, job Job) {
@@ -251,20 +265,31 @@ func (s *Server) runMediaAnalyze(ctx context.Context, job Job) {
 		}
 	}
 	options := s.mediaAnalysisOptions(item, mediaAnalysisModeFromJob(job))
-	if options.Mode == mediaAnalysisModeFull && strings.EqualFold(strings.TrimSpace(job.Metadata["tierChained"]), "true") && !s.analysisTierWantsFull(item) {
+	if options.Mode == mediaAnalysisModeFull && !s.analysisTierWantsFull(item) {
 		_ = s.setJobMessage(job.ID, "complete", 100, "Complete analysis skipped because this source no longer uses the Complete tier.")
 		return
 	}
 	if options.Mode == mediaAnalysisModeProbe && strings.EqualFold(strings.TrimSpace(job.Metadata["representativeFrame"]), "true") {
 		options.GenerateThumbnails = s.analysisTierWantsRepresentativeThumbnail(item) && s.mediaNeedsRepresentativeFrameContext(ctx, item)
 	}
-	if !options.ProbeStreams {
+	if !options.ProbeStreams && options.Mode == mediaAnalysisModeProbe && s.analysisTierWantsFull(item) {
+		metadata := mediaAnalysisMetadata(mediaAnalysisModeFull)
+		metadata["sourceRevision"] = strings.TrimSpace(job.Metadata["sourceRevision"])
+		metadata["tierChained"] = "true"
+		if _, err := s.createJobForWithMetadata("media_analyze", "Full media analysis queued for "+item.Title+".", "media", item.ID, metadata); err != nil {
+			_ = s.setJobMessage(job.ID, "failed", 100, "Portico could not durably queue the authorized full-file analysis stage.")
+			return
+		}
+		_ = s.setJobMessage(job.ID, "complete", 100, "Bounded stream probing is disabled; the authorized full-file analysis stage was queued directly.")
+		return
+	}
+	if !options.ProbeStreams && !options.FullFileChecksum {
 		_ = s.setJobMessage(job.ID, "complete", 100, "Media analysis skipped for "+item.Title+" because this library has stream analysis disabled.")
 		return
 	}
 	ctx, unregisterBackground := s.mediaResourceGovernor().registerBackgroundContext(ctx)
 	defer unregisterBackground()
-	resources := mediaResourceRequest{cpu: 1, background: true}
+	resources := mediaResourceRequest{class: foundationcontract.WorkClassBackgroundMedia, cpu: 1}
 	if options.Mode == mediaAnalysisModeFull || options.GenerateThumbnails {
 		resources.disk = 1
 		if err := ensureMediaWriteCapacity(s.cfg.AppDataDir, mediaWriteMinimumFreeBytes); err != nil {
@@ -287,6 +312,21 @@ func (s *Server) runMediaAnalyze(ctx context.Context, job Job) {
 		return
 	}
 	defer release()
+	// Capacity waits can outlive a settings mutation. Re-resolve the profile at
+	// the final launch boundary so no newly admitted process starts under the
+	// superseded authorization. Already-running work is cancelled by the
+	// settings/source mutation fence.
+	if !s.mediaAnalysisQueueEnabled(item) || options.Mode == mediaAnalysisModeFull && !s.analysisTierWantsFull(item) {
+		_ = s.setJobMessage(job.ID, "complete", 100, "Media analysis skipped because its scan profile changed before content was opened.")
+		return
+	}
+	options = s.mediaAnalysisOptions(item, mediaAnalysisModeFromJob(job))
+	currentRevision, revisionErr := s.currentMediaAnalysisSourceRevision(ctx, item)
+	if revisionErr != nil || strings.TrimSpace(job.Metadata["sourceRevision"]) != "" && currentRevision != strings.TrimSpace(job.Metadata["sourceRevision"]) {
+		_ = s.setJobMessage(job.ID, "complete", 100, "Media analysis skipped because the source changed before content was opened.")
+		return
+	}
+	options.ExpectedSourceRevision = currentRevision
 	if err := s.analyzeMediaForItem(ctx, item, options); err != nil {
 		if (errors.Is(err, errRemoteStoragePreempted) || errors.Is(err, errRemoteStorageBusy)) && s.deferAnalysisForPlayback(job.ID) {
 			return
@@ -376,7 +416,7 @@ func (s *Server) analysisTierWantsFull(item MediaItem) bool {
 		return false
 	}
 	options := s.mediaAnalysisOptions(item, mediaAnalysisModeFull)
-	return options.ExtractEmbeddedAttachments || options.ChapterThumbnails || options.GenerateTrickplay || options.AnalyzeAudio || options.SonicFingerprinting || options.ExtractEmbeddedCovers
+	return options.ExtractEmbeddedAttachments || options.ChapterThumbnails || options.GenerateTrickplay || options.AnalyzeAudio || options.SonicFingerprinting || options.FullFileChecksum || options.GenerateWaveforms || options.DetectSegments || options.AnalyzeSTRMTarget
 }
 
 func (s *Server) analyzeMediaForItem(ctx context.Context, item MediaItem, options mediaAnalysisOptions) error {
@@ -384,12 +424,28 @@ func (s *Server) analyzeMediaForItem(ctx context.Context, item MediaItem, option
 }
 
 func (s *Server) analyzeMediaWithFFprobe(ctx context.Context, item MediaItem, options mediaAnalysisOptions) error {
+	if strings.TrimSpace(options.ExpectedSourceRevision) == "" {
+		revision, err := s.currentMediaAnalysisSourceRevision(ctx, item)
+		if err != nil {
+			return err
+		}
+		options.ExpectedSourceRevision = revision
+	}
 	if _, _, err := parseRemoteStorageLocator(strings.TrimSpace(item.SourceURL)); err == nil {
+		if !options.ProbeStreams {
+			return s.analyzeRemoteFullFileOperations(withRemoteStorageBackgroundRead(ctx), item, item.SourceURL, options)
+		}
 		return s.analyzeRemoteMediaFacts(withRemoteStorageBackgroundRead(ctx), item, item.SourceURL, options)
+	}
+	if source, ok := s.strmAnalysisSource(ctx, item); ok {
+		return s.analyzeSTRMTarget(ctx, item, source, options)
 	}
 	path, err := s.localSourcePathForTranscode(item)
 	if err != nil {
 		return err
+	}
+	if !options.ProbeStreams {
+		return s.runApprovedFullFileOperations(ctx, item, path, path, ffprobePayload{}, options)
 	}
 	if _, err := exec.LookPath(s.cfg.FFprobePath); err != nil && filepath.Base(s.cfg.FFprobePath) == s.cfg.FFprobePath {
 		return errors.New("ffprobe is not available on PATH")
@@ -413,39 +469,16 @@ func (s *Server) analyzeMediaWithFFprobe(ctx context.Context, item MediaItem, op
 		return err
 	}
 	exactSeekSafe, keyframeEvidenceAt := false, ""
-	if options.Mode == mediaAnalysisModeFull {
+	if options.ValidateSeekBehavior && options.FullSeekValidation {
 		exactSeekSafe, keyframeEvidenceAt = s.probeExactSeekEvidence(ctx, path, payload)
+	} else if options.ValidateSeekBehavior {
+		exactSeekSafe, keyframeEvidenceAt = s.probeBoundedExactSeekEvidence(ctx, path, payload)
 	}
 	return s.persistFFprobeAnalysis(ctx, item, path, payload, options, exactSeekSafe, keyframeEvidenceAt)
 }
 
 func (s *Server) probeExactSeekEvidence(ctx context.Context, path string, payload ffprobePayload) (bool, string) {
-	if !payloadHasVideoStream(payload) {
-		return false, ""
-	}
-	probeCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
-	defer cancel()
-	result, err := s.runAnalysisSourceCommand(probeCtx, path, "probe keyframes", s.cfg.FFprobePath, []string{
-		"-v", "error", "-protocol_whitelist", "file,pipe", "-select_streams", "v:0",
-		"-skip_frame", "nokey", "-show_frames", "-show_entries", "frame=best_effort_timestamp_time",
-		"-print_format", "json", path,
-	}, "", 64<<20, 1<<20)
-	if err != nil {
-		return false, ""
-	}
-	var keyframes ffprobeKeyframePayload
-	if json.Unmarshal(result.Stdout, &keyframes) != nil {
-		return false, ""
-	}
-	times := make([]float64, 0, len(keyframes.Frames))
-	for _, frame := range keyframes.Frames {
-		value, err := strconv.ParseFloat(strings.TrimSpace(frame.BestEffortTimestampTime), 64)
-		if err == nil && value >= 0 {
-			times = append(times, value)
-		}
-	}
-	duration, _ := strconv.ParseFloat(strings.TrimSpace(payload.Format.Duration), 64)
-	return keyframesCoverExactSeekGrid(times, duration, hlsSegmentSeconds, 0.12), time.Now().UTC().Format(time.RFC3339)
+	return s.probeExactSeekEvidenceMode(ctx, path, payload, false)
 }
 
 func keyframesCoverExactSeekGrid(times []float64, duration float64, segmentSeconds int, tolerance float64) bool {
@@ -497,7 +530,50 @@ func (s *Server) persistFFprobeAnalysisInputs(ctx context.Context, item MediaIte
 		}
 	}
 	err := s.withBackgroundTxTagged(ctx, []string{"media", "metadata", "library-items"}, func(tx *sql.Tx) error {
+		currentFence, err := loadAnalysisSourceFenceTx(tx, item.ID, recordPath)
+		if err != nil || strings.TrimSpace(options.ExpectedSourceRevision) == "" ||
+			currentFence.SourceRevision != options.ExpectedSourceRevision || currentFence.MediaFileID != analyzedFileID {
+			return errMediaAnalysisSourceStale
+		}
+		probeAuthorized, err := analysisCapabilityAuthorizedTx(tx, item.LibraryID, recordPath, "probeStreams")
+		if err != nil {
+			return err
+		}
+		if !probeAuthorized {
+			return errMediaAnalysisOperationDisabled
+		}
+		if options.AnalyzeSTRMTarget && isSTRMDescriptor(recordPath) {
+			if err := assertSTRMTargetPublicationFenceTx(tx, item, recordPath, options.ExpectedSourceRevision); err != nil {
+				return err
+			}
+		}
 		fileID := analyzedFileID
+		type persistedSeekEvidence struct {
+			safe bool
+			at   string
+		}
+		priorSeekEvidence := map[int]persistedSeekEvidence{}
+		if strings.TrimSpace(keyframeEvidenceAt) == "" {
+			rows, err := tx.Query(`SELECT stream_index,exact_seek_safe,keyframe_evidence_at
+				FROM media_streams WHERE media_id=? AND file_id=? AND kind='video' AND source_kind='ffprobe'`, item.ID, fileID)
+			if err != nil {
+				return err
+			}
+			for rows.Next() {
+				var index, safe int
+				var at string
+				if err := rows.Scan(&index, &safe, &at); err != nil {
+					rows.Close()
+					return err
+				}
+				if strings.TrimSpace(at) != "" {
+					priorSeekEvidence[index] = persistedSeekEvidence{safe: safe != 0, at: at}
+				}
+			}
+			if err := rows.Close(); err != nil {
+				return err
+			}
+		}
 		for index := range streams {
 			identity := strings.Join([]string{firstNonEmpty(fileID, item.ID), strconv.Itoa(streams[index].Index), streams[index].Kind}, "\x00")
 			var streamID string
@@ -530,8 +606,13 @@ func (s *Server) persistFFprobeAnalysisInputs(ctx context.Context, item MediaIte
 		}
 		for _, stream := range streams {
 			if stream.Kind == "video" {
-				stream.ExactSeekSafe = exactSeekSafe
-				stream.KeyframeEvidenceAt = keyframeEvidenceAt
+				if prior, ok := priorSeekEvidence[stream.Index]; ok {
+					stream.ExactSeekSafe = prior.safe
+					stream.KeyframeEvidenceAt = prior.at
+				} else {
+					stream.ExactSeekSafe = exactSeekSafe
+					stream.KeyframeEvidenceAt = keyframeEvidenceAt
+				}
 			}
 			stream.FileID = fileID
 			if _, err := tx.Exec(`INSERT INTO media_streams (
@@ -567,11 +648,10 @@ func (s *Server) persistFFprobeAnalysisInputs(ctx context.Context, item MediaIte
 				}
 			}
 		}
-		if options.DetectChapterSegments {
-			if err := replaceGeneratedSegmentsFromChapters(tx, item.ID, chapters, duration, now); err != nil {
-				return err
-			}
-		} else if _, err := tx.Exec(`DELETE FROM media_segments WHERE media_id = ? AND source = 'generated' AND provider = 'chapter-markers'`, item.ID); err != nil {
+		// Older pre-release builds briefly projected chapter labels as generated
+		// markers. Chapter titles are not content evidence, so this legacy owner
+		// is always removed; the signal detector publishes through its own owner.
+		if _, err := tx.Exec(`DELETE FROM media_segments WHERE media_id = ? AND source = 'generated' AND provider = 'chapter-markers'`, item.ID); err != nil {
 			return err
 		}
 		if err := persistPlaybackFacts(tx, item.ID, analysisFile, payload, now); err != nil {
@@ -645,22 +725,12 @@ func (s *Server) persistFFprobeAnalysisInputs(ctx context.Context, item MediaIte
 			s.log.Warn("sonic fingerprint match failed", "media", item.ID, "error", err)
 		}
 	}
-	return nil
-}
-
-func replaceGeneratedSegmentsFromChapters(tx *sql.Tx, mediaID string, chapters []Chapter, duration int, now string) error {
-	if _, err := tx.Exec(`DELETE FROM media_segments WHERE media_id = ? AND source = 'generated' AND provider = 'chapter-markers'`, mediaID); err != nil {
-		return err
-	}
-	for _, segment := range mediaSegmentsFromChapters(mediaID, chapters, duration) {
-		if _, err := tx.Exec(`
-			INSERT INTO media_segments (id, media_id, segment_type, start_seconds, end_seconds, source, provider, confidence, created_at)
-			VALUES (?, ?, ?, ?, ?, 'generated', 'chapter-markers', ?, ?)`,
-			segment.ID, mediaID, segment.Type, segment.StartSeconds, segment.EndSeconds, segment.Confidence, now); err != nil {
+	if options.DetectSegments {
+		if err := s.detectMediaSegments(ctx, item, recordPath, analysisPath, payload, chapters, analysisFile); err != nil {
 			return err
 		}
 	}
-	return nil
+	return s.runApprovedFullFileOperations(ctx, item, recordPath, analysisPath, payload, options)
 }
 
 func updateAnalyzedMediaFile(tx *sql.Tx, item MediaItem, analyzedPath string, duration int, streams []Stream, payload ffprobePayload) error {
@@ -1880,13 +1950,10 @@ func (s *Server) extractEmbeddedCoverImage(ctx context.Context, item MediaItem, 
 	if _, err := exec.LookPath(s.cfg.FFmpegPath); err != nil && filepath.Base(s.cfg.FFmpegPath) == s.cfg.FFmpegPath {
 		return errors.New("FFmpeg is not available on PATH")
 	}
-	outputDir := filepath.Join(s.cfg.AppDataDir, "artwork", safePathComponent(item.ID))
-	if err := os.MkdirAll(outputDir, 0o700); err != nil {
+	outputPath, tempPath, err := s.prepareEmbeddedCoverOutput(item.ID)
+	if err != nil {
 		return err
 	}
-	outputPath := filepath.Join(outputDir, "embedded_cover.jpg")
-	tempPath := outputPath + ".tmp.jpg"
-	_ = os.Remove(tempPath)
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 	args := []string{
@@ -1907,6 +1974,21 @@ func (s *Server) extractEmbeddedCoverImage(ctx context.Context, item MediaItem, 
 		_ = os.Remove(tempPath)
 		return fmt.Errorf("%w: %s", err, strings.TrimSpace(redactedAnalysisOutput(result.Stderr, sourcePath)))
 	}
+	return s.publishEmbeddedCoverOutput(item.ID, outputPath, tempPath)
+}
+
+func (s *Server) prepareEmbeddedCoverOutput(mediaID string) (string, string, error) {
+	outputDir := filepath.Join(s.cfg.AppDataDir, "artwork", safePathComponent(mediaID))
+	if err := os.MkdirAll(outputDir, 0o700); err != nil {
+		return "", "", err
+	}
+	outputPath := filepath.Join(outputDir, "embedded_cover.jpg")
+	tempPath := outputPath + ".tmp.jpg"
+	_ = os.Remove(tempPath)
+	return outputPath, tempPath, nil
+}
+
+func (s *Server) publishEmbeddedCoverOutput(mediaID, outputPath, tempPath string) error {
 	if err := os.Rename(tempPath, outputPath); err != nil {
 		_ = os.Remove(tempPath)
 		return err
@@ -1914,7 +1996,7 @@ func (s *Server) extractEmbeddedCoverImage(ctx context.Context, item MediaItem, 
 	if err := os.Chmod(outputPath, 0o600); err != nil {
 		return err
 	}
-	return s.upsertEmbeddedCoverImage(item.ID, outputPath)
+	return s.upsertEmbeddedCoverImage(mediaID, outputPath)
 }
 
 func embeddedCoverStreamIndex(payload ffprobePayload) (int, bool) {

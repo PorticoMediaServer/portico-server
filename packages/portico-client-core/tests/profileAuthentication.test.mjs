@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createPorticoClient } from "../dist/index.js";
+import { testServerIdentity } from "./helpers/porticoAttachment.mjs";
 
 function jsonResponse(body, status = 201) {
   return new Response(JSON.stringify(body), {
@@ -22,7 +23,8 @@ function nativeCredentials() {
     profileId: "profile-1",
     authorizationRevision: "1",
     user: { id: "account-1", profileId: "profile-1" },
-    device: { id: "device-1" }
+    device: { id: "device-1" },
+    ...testServerIdentity()
   };
 }
 

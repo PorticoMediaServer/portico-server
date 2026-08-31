@@ -116,14 +116,14 @@ CREATE TABLE cast_bootstraps (
     receiver_public_key TEXT NOT NULL,
     receiver_challenge TEXT NOT NULL,
     server_origin TEXT NOT NULL,
-    playback_session_id TEXT NOT NULL REFERENCES playback_sessions(id) ON DELETE CASCADE,
+    playback_session_id TEXT NOT NULL,
     client_instance_id TEXT NOT NULL,
     generation INTEGER NOT NULL DEFAULT 1,
     capabilities_json TEXT NOT NULL DEFAULT '[]',
     expires_at TEXT NOT NULL,
     redeemed_at TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL
-, automation_json TEXT NOT NULL DEFAULT '{}', source_playback_session_id TEXT NOT NULL DEFAULT '');
+, automation_json TEXT NOT NULL DEFAULT '{}', playback_envelope TEXT NOT NULL DEFAULT '', source_playback_session_id TEXT NOT NULL DEFAULT '', replacement_request_id TEXT NOT NULL DEFAULT '', replacement_fingerprint TEXT NOT NULL DEFAULT '', replacement_claim_id TEXT NOT NULL DEFAULT '', replacement_terminal_json TEXT NOT NULL DEFAULT '', authorization_revision TEXT NOT NULL DEFAULT '', bootstrap_response_json TEXT NOT NULL DEFAULT '', redeem_response_envelope TEXT NOT NULL DEFAULT '', transfer_state TEXT NOT NULL DEFAULT 'pending' CHECK (transfer_state IN ('pending','committed','expired','failed')), payload_expires_at TEXT NOT NULL DEFAULT '');
 CREATE TABLE cast_receiver_sessions (
     id TEXT PRIMARY KEY,
     token_hash TEXT NOT NULL UNIQUE,
@@ -136,12 +136,12 @@ CREATE TABLE cast_receiver_sessions (
     client_instance_id TEXT NOT NULL,
     generation INTEGER NOT NULL DEFAULT 1,
     capabilities_json TEXT NOT NULL DEFAULT '[]',
-    status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'stopped', 'expired', 'revoked')),
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'active', 'stopped', 'expired', 'revoked')),
     expires_at TEXT NOT NULL,
     last_seen_at TEXT NOT NULL,
     created_at TEXT NOT NULL,
     stopped_at TEXT NOT NULL DEFAULT ''
-, last_command_id TEXT NOT NULL DEFAULT '', last_command_json TEXT NOT NULL DEFAULT '', automation_json TEXT NOT NULL DEFAULT '{}', automatic_advances INTEGER NOT NULL DEFAULT 0, last_advance_id TEXT NOT NULL DEFAULT '', last_advance_json TEXT NOT NULL DEFAULT '', source_playback_session_id TEXT NOT NULL DEFAULT '');
+, last_command_id TEXT NOT NULL DEFAULT '', last_command_json TEXT NOT NULL DEFAULT '', automation_json TEXT NOT NULL DEFAULT '{}', automatic_advances INTEGER NOT NULL DEFAULT 0, last_advance_id TEXT NOT NULL DEFAULT '', last_advance_request_fingerprint TEXT NOT NULL DEFAULT '', last_advance_json TEXT NOT NULL DEFAULT '', last_advance_payload_expires_at TEXT NOT NULL DEFAULT '', source_playback_session_id TEXT NOT NULL DEFAULT '', replacement_request_id TEXT NOT NULL DEFAULT '', replacement_fingerprint TEXT NOT NULL DEFAULT '', replacement_claim_id TEXT NOT NULL DEFAULT '', replacement_terminal_json TEXT NOT NULL DEFAULT '', authorization_revision TEXT NOT NULL DEFAULT '', transfer_state TEXT NOT NULL DEFAULT 'pending' CHECK (transfer_state IN ('pending','committed','expired','failed')), pending_playback_session_id TEXT NOT NULL DEFAULT '', pending_generation INTEGER NOT NULL DEFAULT 0, pending_request_id TEXT NOT NULL DEFAULT '', pending_fingerprint TEXT NOT NULL DEFAULT '', pending_claim_id TEXT NOT NULL DEFAULT '', pending_terminal_json TEXT NOT NULL DEFAULT '', pending_authorization_revision TEXT NOT NULL DEFAULT '', pending_advance_id TEXT NOT NULL DEFAULT '', pending_advance_json TEXT NOT NULL DEFAULT '', pending_payload_expires_at TEXT NOT NULL DEFAULT '', pending_expires_at TEXT NOT NULL DEFAULT '');
 CREATE TABLE client_diagnostic_events (
     id TEXT PRIMARY KEY,
     account_id TEXT NOT NULL DEFAULT '',
@@ -198,6 +198,9 @@ CREATE TABLE download_preparations (
     quality_profile TEXT NOT NULL,
     state TEXT NOT NULL CHECK (state IN ('ready', 'queued', 'running', 'paused', 'failed', 'unavailable', 'cancelled')),
     job_id TEXT NOT NULL DEFAULT '',
+    media_version_id TEXT NOT NULL DEFAULT '',
+    version_fingerprint TEXT NOT NULL DEFAULT '',
+    artifact_sha256 TEXT NOT NULL DEFAULT '',
     size_bytes INTEGER NOT NULL DEFAULT 0,
     size_kind TEXT NOT NULL DEFAULT 'unknown' CHECK (size_kind IN ('unknown', 'estimated', 'exact')),
     artifact_expires_at TEXT NOT NULL DEFAULT '',
@@ -233,7 +236,14 @@ CREATE TABLE hosted_profile_snapshot_state (
     issued_at TEXT NOT NULL,
     expires_at TEXT NOT NULL,
     applied_at TEXT NOT NULL
-, checked_at TEXT NOT NULL DEFAULT '', max_age_seconds INTEGER NOT NULL DEFAULT 300, stale_if_error_seconds INTEGER NOT NULL DEFAULT 86400, refresh_retry_at TEXT NOT NULL DEFAULT '');
+, checked_at TEXT NOT NULL DEFAULT '', max_age_seconds INTEGER NOT NULL DEFAULT 300, stale_if_error_seconds INTEGER NOT NULL DEFAULT 86400, refresh_retry_at TEXT NOT NULL DEFAULT '', quarantined_at TEXT NOT NULL DEFAULT '');
+CREATE TABLE hosted_restore_authorization_receipts (
+    authorization_id TEXT PRIMARY KEY,
+    account_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    server_id TEXT NOT NULL,
+    restore_security_epoch INTEGER NOT NULL CHECK (restore_security_epoch >= 0),
+    consumed_at TEXT NOT NULL
+);
 CREATE TABLE identity_reconciliation_reviews (
     id TEXT PRIMARY KEY,
     domain TEXT NOT NULL,
@@ -264,7 +274,7 @@ CREATE TABLE jobs (
     deferred_until TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
-, parent_operation_id TEXT NOT NULL DEFAULT '', idempotency_key TEXT NOT NULL DEFAULT '', active_key TEXT NOT NULL DEFAULT '', priority TEXT NOT NULL DEFAULT 'normal', phase TEXT NOT NULL DEFAULT '', progress_current INTEGER NOT NULL DEFAULT 0, progress_total INTEGER NOT NULL DEFAULT 0, result_reference TEXT NOT NULL DEFAULT '', error_code TEXT NOT NULL DEFAULT '', retry_eligible INTEGER NOT NULL DEFAULT 0, cancellation_requested_at TEXT NOT NULL DEFAULT '', worker_acknowledged_at TEXT NOT NULL DEFAULT '', interrupted_at TEXT NOT NULL DEFAULT '', retention_until TEXT NOT NULL DEFAULT '');
+, parent_operation_id TEXT NOT NULL DEFAULT '', idempotency_key TEXT NOT NULL DEFAULT '', active_key TEXT NOT NULL DEFAULT '', priority TEXT NOT NULL DEFAULT 'maintenance' CHECK (priority IN ('security-fence', 'protected-capture', 'established-playback', 'playback-start', 'interactive', 'foreground-transfer', 'background-media', 'maintenance')), phase TEXT NOT NULL DEFAULT '', progress_current INTEGER NOT NULL DEFAULT 0, progress_total INTEGER NOT NULL DEFAULT 0, result_reference TEXT NOT NULL DEFAULT '', error_code TEXT NOT NULL DEFAULT '', retry_eligible INTEGER NOT NULL DEFAULT 0, cancellation_requested_at TEXT NOT NULL DEFAULT '', worker_acknowledged_at TEXT NOT NULL DEFAULT '', interrupted_at TEXT NOT NULL DEFAULT '', retention_until TEXT NOT NULL DEFAULT '');
 CREATE TABLE libraries (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
@@ -1175,6 +1185,16 @@ CREATE TABLE media_segments (
     created_at TEXT NOT NULL, automatic_safe INTEGER NOT NULL DEFAULT 0,
     UNIQUE(media_id, segment_type, start_seconds, end_seconds, source, provider)
 );
+CREATE TABLE media_segment_analysis_runs (
+    media_id TEXT NOT NULL REFERENCES media_items(id) ON DELETE CASCADE,
+    media_file_id TEXT NOT NULL DEFAULT '',
+    source_revision TEXT NOT NULL CHECK (length(trim(source_revision)) > 0),
+    detector_version TEXT NOT NULL CHECK (length(trim(detector_version)) > 0),
+    finding_count INTEGER NOT NULL DEFAULT 0 CHECK (finding_count >= 0),
+    evidence_json TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(evidence_json) AND json_type(evidence_json) = 'object' AND length(evidence_json) <= 65536),
+    analyzed_at TEXT NOT NULL,
+    PRIMARY KEY (media_id, media_file_id)
+);
 CREATE TABLE media_streams (
     id TEXT PRIMARY KEY,
     media_id TEXT NOT NULL REFERENCES media_items(id) ON DELETE CASCADE,
@@ -1213,6 +1233,19 @@ CREATE TABLE media_analysis_facts (
     PRIMARY KEY (media_id, media_file_id)
 );
 CREATE UNIQUE INDEX idx_media_analysis_facts_digest ON media_analysis_facts(media_id, facts_digest);
+CREATE TABLE media_waveform_artifacts (
+    media_id TEXT NOT NULL REFERENCES media_items(id) ON DELETE CASCADE,
+    media_file_id TEXT NOT NULL DEFAULT '',
+    artifact_version TEXT NOT NULL CHECK (length(trim(artifact_version)) > 0),
+    source_revision TEXT NOT NULL CHECK (length(trim(source_revision)) > 0),
+    artifact_sha256 TEXT NOT NULL CHECK (length(artifact_sha256) = 64),
+    path TEXT NOT NULL CHECK (length(trim(path)) > 0),
+    width INTEGER NOT NULL CHECK (width > 0 AND width <= 4096),
+    height INTEGER NOT NULL CHECK (height > 0 AND height <= 512),
+    size_bytes INTEGER NOT NULL CHECK (size_bytes > 0 AND size_bytes <= 2097152),
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (media_id, media_file_id)
+);
 CREATE TABLE media_trickplay_sets (
 				id TEXT PRIMARY KEY,
 				media_id TEXT NOT NULL REFERENCES media_items(id) ON DELETE CASCADE,
@@ -1284,6 +1317,7 @@ CREATE TABLE optimized_versions (
 			profile TEXT NOT NULL,
 			path TEXT NOT NULL,
 			size_bytes INTEGER NOT NULL DEFAULT 0,
+			artifact_sha256 TEXT NOT NULL DEFAULT '',
 			created_at TEXT NOT NULL,
 			updated_at TEXT NOT NULL,
 			container TEXT NOT NULL DEFAULT '',
@@ -1331,7 +1365,8 @@ CREATE TABLE playback_prepared_handoffs (
     source_session_id TEXT NOT NULL REFERENCES playback_sessions(id) ON DELETE CASCADE,
     client_instance_id TEXT NOT NULL DEFAULT '',
     media_id TEXT NOT NULL,
-    queue_media_ids_json TEXT NOT NULL DEFAULT '[]',
+    current_entry_id TEXT NOT NULL,
+    queue_entries_json TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(queue_entries_json) AND json_type(queue_entries_json) = 'array'),
     source_context_json TEXT NOT NULL DEFAULT '{}',
     queue_revision INTEGER NOT NULL DEFAULT 0,
     playback_revision INTEGER NOT NULL DEFAULT 0,
@@ -1341,6 +1376,24 @@ CREATE TABLE playback_prepared_handoffs (
     committed_response TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL,
     expires_at TEXT NOT NULL
+);
+CREATE TABLE playback_handoff_receipts (
+	 source_session_id TEXT PRIMARY KEY,
+	 user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+	 profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+	 authorization_revision TEXT NOT NULL,
+	 client_instance_id TEXT NOT NULL DEFAULT '',
+    request_id TEXT NOT NULL CHECK (length(trim(request_id)) BETWEEN 1 AND 128),
+	 request_fingerprint TEXT NOT NULL CHECK (length(trim(request_fingerprint)) > 0),
+	 expected_queue_revision INTEGER NOT NULL CHECK (expected_queue_revision >= 0),
+	 expected_playback_revision INTEGER NOT NULL CHECK (expected_playback_revision >= 0),
+    state TEXT NOT NULL DEFAULT 'committing' CHECK (state IN ('committing', 'committed')),
+	 claim_id TEXT NOT NULL DEFAULT '',
+    committed_response TEXT NOT NULL DEFAULT '',
+	 replacement_session_id TEXT NOT NULL DEFAULT '',
+	 created_at TEXT NOT NULL,
+	 claim_expires_at TEXT NOT NULL,
+	 payload_expires_at TEXT NOT NULL
 );
 CREATE TABLE playback_receivers (
     id TEXT PRIMARY KEY,
@@ -1373,24 +1426,48 @@ CREATE TABLE playback_session_continuation_credentials (
     last_rotation_fingerprint TEXT NOT NULL DEFAULT '',
     revoked_at TEXT NOT NULL DEFAULT ''
 , last_rotation_receipt TEXT NOT NULL DEFAULT '');
+CREATE TABLE playback_session_terminal_receipts (
+	 playback_session_id TEXT PRIMARY KEY,
+	 user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+	 profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+	 authorization_revision TEXT NOT NULL,
+    request_id TEXT NOT NULL CHECK (length(trim(request_id)) BETWEEN 1 AND 128),
+    request_fingerprint TEXT NOT NULL CHECK (length(trim(request_fingerprint)) > 0),
+    response_json TEXT NOT NULL CHECK (json_valid(response_json) AND json_type(response_json) = 'object' AND length(response_json) <= 65536),
+    credential_token_hash TEXT NOT NULL DEFAULT '',
+	 credential_origin TEXT NOT NULL DEFAULT '',
+	 created_at TEXT NOT NULL
+);
 CREATE TABLE playback_session_history (
 			session_id TEXT NOT NULL REFERENCES playback_sessions(id) ON DELETE CASCADE,
+			history_id TEXT NOT NULL,
+			entry_id TEXT NOT NULL,
 			media_id TEXT NOT NULL,
 			sort_order INTEGER NOT NULL DEFAULT 0,
 			played_at TEXT NOT NULL,
-			PRIMARY KEY (session_id, media_id, sort_order)
+			PRIMARY KEY (session_id, history_id)
 		);
 CREATE TABLE playback_session_queue (
 			session_id TEXT NOT NULL REFERENCES playback_sessions(id) ON DELETE CASCADE,
+			entry_id TEXT NOT NULL,
 			media_id TEXT NOT NULL,
 			sort_order INTEGER NOT NULL DEFAULT 0,
 			added_at TEXT NOT NULL,
-			PRIMARY KEY (session_id, media_id)
+			PRIMARY KEY (session_id, entry_id)
+		);
+CREATE TABLE playback_session_queue_receipts (
+			session_id TEXT NOT NULL REFERENCES playback_sessions(id) ON DELETE CASCADE,
+			idempotency_key TEXT NOT NULL,
+			request_fingerprint TEXT NOT NULL,
+			response_revision INTEGER NOT NULL CHECK (response_revision >= 0),
+			created_at TEXT NOT NULL,
+			PRIMARY KEY (session_id, idempotency_key)
 		);
 CREATE TABLE playback_sessions (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     media_id TEXT NOT NULL,
+	current_entry_id TEXT NOT NULL DEFAULT ('qentry_' || lower(hex(randomblob(16)))),
     media_type TEXT NOT NULL DEFAULT '',
     title TEXT NOT NULL DEFAULT '',
     started_at TEXT NOT NULL,
@@ -1422,7 +1499,7 @@ CREATE TABLE playback_sessions (
     repeat_mode TEXT NOT NULL DEFAULT 'off' CHECK (repeat_mode IN ('off', 'one', 'all')),
     queue_revision INTEGER NOT NULL DEFAULT 0 CHECK (queue_revision >= 0),
     is_live INTEGER NOT NULL DEFAULT 0
-, profile_id TEXT NOT NULL DEFAULT '', selected_quality_id TEXT NOT NULL DEFAULT '', selected_audio_stream_id TEXT NOT NULL DEFAULT '', selected_subtitle_stream_id TEXT NOT NULL DEFAULT '', selected_subtitle_mode TEXT NOT NULL DEFAULT 'off', selected_version_id TEXT NOT NULL DEFAULT '', progress_authority TEXT NOT NULL DEFAULT 'sender', progress_generation INTEGER NOT NULL DEFAULT 1, renegotiation_revision INTEGER NOT NULL DEFAULT 0, last_renegotiation_request_id TEXT NOT NULL DEFAULT '', last_renegotiation_fingerprint TEXT NOT NULL DEFAULT '', client_profile_json TEXT NOT NULL DEFAULT '{}', playback_intent_json TEXT NOT NULL DEFAULT '{}', command_json TEXT NOT NULL DEFAULT '{}', command_updated_at TEXT NOT NULL DEFAULT '', plan_schema_version INTEGER NOT NULL DEFAULT 0 CHECK (plan_schema_version >= 0), plan_digest TEXT NOT NULL DEFAULT '', plan_json TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(plan_json) AND json_type(plan_json) = 'object'), source_revision TEXT NOT NULL DEFAULT '', media_facts_digest TEXT NOT NULL DEFAULT '', capability_evidence_id TEXT NOT NULL DEFAULT '', playback_generation INTEGER NOT NULL DEFAULT 0 CHECK (playback_generation >= 0));
+, profile_id TEXT NOT NULL DEFAULT '', selected_audio_stream_id TEXT NOT NULL DEFAULT '', selected_subtitle_stream_id TEXT NOT NULL DEFAULT '', selected_subtitle_mode TEXT NOT NULL DEFAULT 'off', selected_version_id TEXT NOT NULL DEFAULT '', progress_authority TEXT NOT NULL DEFAULT 'sender', progress_generation INTEGER NOT NULL DEFAULT 1, renegotiation_revision INTEGER NOT NULL DEFAULT 0, last_renegotiation_request_id TEXT NOT NULL DEFAULT '', last_renegotiation_fingerprint TEXT NOT NULL DEFAULT '', client_profile_json TEXT NOT NULL DEFAULT '{}', playback_intent_json TEXT NOT NULL DEFAULT '{}', command_json TEXT NOT NULL DEFAULT '{}', command_updated_at TEXT NOT NULL DEFAULT '', plan_schema_version INTEGER NOT NULL DEFAULT 0 CHECK (plan_schema_version >= 0), plan_digest TEXT NOT NULL DEFAULT '', plan_json TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(plan_json) AND json_type(plan_json) = 'object'), source_revision TEXT NOT NULL DEFAULT '', media_facts_digest TEXT NOT NULL DEFAULT '', capability_evidence_id TEXT NOT NULL DEFAULT '', playback_generation INTEGER NOT NULL DEFAULT 0 CHECK (playback_generation >= 0));
 CREATE TABLE "playlist_items" (
     entry_id TEXT PRIMARY KEY NOT NULL DEFAULT ('pentry_' || lower(hex(randomblob(16)))),
     playlist_id TEXT NOT NULL REFERENCES playlists(id) ON DELETE CASCADE,
@@ -1636,6 +1713,14 @@ CREATE TABLE settings_quarantine (
     reason TEXT NOT NULL,
     quarantined_at TEXT NOT NULL
 );
+CREATE TABLE server_security_state (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    restore_security_epoch INTEGER NOT NULL CHECK (restore_security_epoch >= 0),
+    last_restore_operation_id TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL
+);
+INSERT INTO server_security_state (id, restore_security_epoch, last_restore_operation_id, updated_at)
+VALUES (1, 0, '', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
 CREATE TABLE tmdb_trending_cache (
 			media_type TEXT NOT NULL,
 			time_window TEXT NOT NULL,
@@ -1859,6 +1944,7 @@ CREATE TABLE watch_with_friends_groups (
     owner_profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     name TEXT NOT NULL DEFAULT '',
     media_id TEXT NOT NULL,
+	current_entry_id TEXT NOT NULL,
     media_title TEXT NOT NULL DEFAULT '',
     state TEXT NOT NULL DEFAULT 'paused',
     position_seconds INTEGER NOT NULL DEFAULT 0,
@@ -1881,13 +1967,14 @@ CREATE TABLE watch_with_friends_members (
 		);
 CREATE TABLE watch_with_friends_queue (
 			group_id TEXT NOT NULL REFERENCES watch_with_friends_groups(id) ON DELETE CASCADE,
+			entry_id TEXT NOT NULL,
 			media_id TEXT NOT NULL,
 			media_title TEXT NOT NULL DEFAULT '',
 			sort_order INTEGER NOT NULL DEFAULT 0,
 			added_by_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 			added_by_profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
 			added_at TEXT NOT NULL,
-			PRIMARY KEY (group_id, media_id)
+			PRIMARY KEY (group_id, entry_id)
 		);
 CREATE INDEX idx_api_keys_token ON api_keys(token_hash, revoked_at);
 CREATE INDEX idx_api_keys_user ON api_keys(user_id, revoked_at, created_at);
@@ -1912,6 +1999,8 @@ CREATE INDEX idx_browser_account_vaults_active
 CREATE INDEX idx_browser_account_vaults_device
     ON browser_account_vaults(device_id, revoked_at, expires_at);
 CREATE INDEX idx_cast_bootstraps_expiry ON cast_bootstraps(expires_at, redeemed_at);
+CREATE UNIQUE INDEX idx_cast_bootstraps_request ON cast_bootstraps(user_id, profile_id, client_instance_id, replacement_request_id) WHERE replacement_request_id <> '';
+CREATE UNIQUE INDEX idx_cast_bootstraps_one_pending_client ON cast_bootstraps(user_id, profile_id, client_instance_id) WHERE transfer_state = 'pending';
 CREATE INDEX idx_cast_receiver_sessions_expiry
     ON cast_receiver_sessions(expires_at, status);
 CREATE INDEX idx_cast_receiver_sessions_scope
@@ -2149,8 +2238,9 @@ CREATE INDEX idx_playback_prepared_handoff_scope
 CREATE INDEX idx_playback_receivers_profile_seen
     ON playback_receivers(profile_id, last_seen_at);
 CREATE INDEX idx_playback_receivers_user_seen ON playback_receivers(user_id, last_seen_at);
-CREATE INDEX idx_playback_session_history_order ON playback_session_history(session_id, sort_order);
-CREATE INDEX idx_playback_session_queue_order ON playback_session_queue(session_id, sort_order);
+CREATE INDEX idx_playback_session_history_order ON playback_session_history(session_id, sort_order, history_id);
+CREATE INDEX idx_playback_session_queue_order ON playback_session_queue(session_id, sort_order, entry_id);
+CREATE INDEX idx_playback_session_queue_receipts_created ON playback_session_queue_receipts(session_id, created_at DESC);
 CREATE INDEX idx_playback_sessions_live ON playback_sessions(ended_at, last_seen_at);
 CREATE INDEX idx_playback_sessions_media_active ON playback_sessions(media_id, ended_at, last_seen_at);
 CREATE INDEX idx_playback_sessions_media_started ON playback_sessions(media_id, started_at);
@@ -2158,6 +2248,9 @@ CREATE INDEX idx_playback_sessions_profile_active ON playback_sessions(profile_i
 CREATE INDEX idx_playback_sessions_started ON playback_sessions(started_at);
 CREATE INDEX idx_playback_sessions_user_active ON playback_sessions(user_id, ended_at, last_seen_at);
 CREATE INDEX idx_playback_sessions_user_client_active ON playback_sessions(user_id, client_instance_id, ended_at, last_seen_at);
+CREATE UNIQUE INDEX idx_playback_sessions_one_active_client_authority
+	ON playback_sessions(user_id, profile_id, client_instance_id)
+	WHERE client_instance_id <> '' AND ended_at = '' AND state NOT IN ('stopped', 'handoff_pending');
 CREATE INDEX idx_playback_sessions_user_started ON playback_sessions(user_id, started_at);
 CREATE INDEX idx_playlist_items_media ON playlist_items(playlist_id, media_id);
 CREATE INDEX idx_playlist_items_order ON playlist_items(playlist_id, sort_order, entry_id);
@@ -2281,7 +2374,7 @@ CREATE INDEX idx_watch_with_friends_groups_active ON watch_with_friends_groups(e
 CREATE INDEX idx_watch_with_friends_groups_owner_profile ON watch_with_friends_groups(owner_profile_id, ended_at, updated_at);
 CREATE INDEX idx_watch_with_friends_members_account ON watch_with_friends_members(user_id, last_seen_at);
 CREATE INDEX idx_watch_with_friends_members_profile ON watch_with_friends_members(profile_id, last_seen_at);
-CREATE INDEX idx_watch_with_friends_queue_order ON watch_with_friends_queue(group_id, sort_order);
+CREATE INDEX idx_watch_with_friends_queue_order ON watch_with_friends_queue(group_id, sort_order, entry_id);
 CREATE TRIGGER media_access_terms_after_insert
 AFTER INSERT ON media_items
 BEGIN

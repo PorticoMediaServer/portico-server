@@ -147,13 +147,10 @@ test("playback intent consumes the structured preference schema without a remote
   };
   assert.deepEqual(playbackIntentFromPreferences(preferences, "cellular", policy, portablePreferences), {
     transportClass: "cellular",
-    qualityProfile: "data_saver",
+    quality: {mode: "automatic"},
     directPlayPolicy: "allow",
     directStreamPolicy: "never",
     transcodePolicy: "prefer",
-    maxVideoBitrateMbps: 3,
-    maxAudioBitrateKbps: 96,
-    maxVideoHeight: 720,
     allowHdr: false,
     preferredAudioLanguage: "fr-CA",
     preferredSubtitleLanguage: "en-CA",

@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/PorticoMediaServer/portico-server/internal/foundationcontract"
 	"github.com/PorticoMediaServer/portico-server/internal/optimized"
 )
 
@@ -35,6 +36,9 @@ type downloadPreparationRecord struct {
 	ProfileID             string
 	AuthorizationRevision string
 	ServerID              string
+	MediaVersionID        string
+	VersionFingerprint    string
+	ArtifactSHA256        string
 	CancelledAt           string
 	RemovedAt             string
 	SizeKind              string
@@ -154,7 +158,7 @@ func (s *Server) handleDownloadPreparations(w http.ResponseWriter, r *http.Reque
 			writeError(w, http.StatusBadRequest, "invalid_download_grant_delivery", "Choose browser or native grant delivery.")
 			return
 		}
-		grant, err := s.issueDownloadPreparationGrantContext(r.Context(), user, preparationID)
+		grant, err := s.issueDownloadPreparationGrantContext(r.Context(), user, preparationID, request.Delivery)
 		if err != nil {
 			writeDownloadPreparationError(w, err)
 			return
@@ -247,33 +251,35 @@ func (s *Server) createDownloadPreparationContext(ctx context.Context, user User
 	if err != nil {
 		return downloadPreparationView{}, err
 	}
+	authorizationRevision, err := s.authorizationRevisionForUserContextStrict(ctx, user)
+	if err != nil {
+		return downloadPreparationView{}, err
+	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	record := downloadPreparationRecord{
 		DownloadPreparation: DownloadPreparation{ID: randomID("dlp"), MediaID: mediaID, MediaTitle: item.Title, QualityProfile: profile, State: "queued", CreatedAt: now, UpdatedAt: now},
-		ServerID:            identity.ServerID, AccountID: accountIDForUser(user), ProfileID: viewerProfileID(user), AuthorizationRevision: s.authorizationRevisionForUserContext(ctx, user),
+		ServerID:            identity.ServerID, AccountID: accountIDForUser(user), ProfileID: viewerProfileID(user), AuthorizationRevision: authorizationRevision,
 		SizeKind: "unknown",
 	}
-	artifactReady := false
+	artifactAvailable := false
 	if profile == "source" {
 		target, targetErr := s.mediaDownloadGrantTargetContext(ctx, item, profile)
 		if targetErr != nil {
 			return downloadPreparationView{}, targetErr
 		}
-		record.State, record.Progress = "ready", 100
-		artifactReady = true
+		artifactAvailable = true
 		if source, sourceErr := s.downloadSourceForRequestContext(ctx, item, target.Profile); sourceErr == nil {
 			record.SizeBytes, record.SizeKind = measuredPreparedDownloadSize(source)
 		}
 	} else if target, targetErr := s.mediaDownloadGrantTargetContext(ctx, item, profile); targetErr == nil {
-		record.State, record.Progress = "ready", 100
-		artifactReady = true
+		artifactAvailable = true
 		if source, sourceErr := s.downloadSourceForRequestContext(ctx, item, target.Profile); sourceErr == nil {
 			record.SizeBytes, record.SizeKind = measuredPreparedDownloadSize(source)
 		}
 	} else {
 		record.SizeBytes, record.SizeKind = estimatedPreparedDownloadSize(item, profile), "estimated"
 	}
-	if artifactReady {
+	if artifactAvailable {
 		record.ArtifactExpiresAt = s.preparedDownloadArtifactExpiryContext(ctx, record.MediaID, record.QualityProfile)
 	}
 	initialState := record.State
@@ -315,8 +321,9 @@ func (s *Server) createDownloadPreparationContext(ctx context.Context, user User
 		result, err := tx.ExecContext(ctx, `
 			INSERT INTO download_preparations (
 				id, server_id, account_id, profile_id, authorization_revision, media_id, quality_profile, state,
-				job_id, size_bytes, size_kind, artifact_expires_at, progress, error_code, created_at, updated_at, cancelled_at, removed_at
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?, ?, '', '')
+				job_id, media_version_id, version_fingerprint, artifact_sha256, size_bytes, size_kind, artifact_expires_at,
+				progress, error_code, created_at, updated_at, cancelled_at, removed_at
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '', '', '', ?, ?, ?, ?, '', ?, ?, '', '')
 			ON CONFLICT(server_id, account_id, profile_id, media_id, quality_profile)
 			WHERE removed_at = '' DO NOTHING`,
 			record.ID, record.ServerID, record.AccountID, record.ProfileID, record.AuthorizationRevision, record.MediaID, record.QualityProfile,
@@ -338,10 +345,13 @@ func (s *Server) createDownloadPreparationContext(ctx context.Context, user User
 				WHERE server_id = ? AND account_id = ? AND profile_id = ? AND media_id = ? AND quality_profile = ? AND removed_at = ''
 				LIMIT 1`, record.ServerID, record.AccountID, record.ProfileID, record.MediaID, record.QualityProfile).Scan(&existingID)
 		}
-		if artifactReady {
-			return nil
+		var job Job
+		var created bool
+		if artifactAvailable {
+			job, created, err = attachDownloadArtifactVerificationJobTx(ctx, tx, record)
+		} else {
+			job, created, err = attachOptimizedDownloadJobTx(ctx, tx, item, profile)
 		}
-		job, created, err := attachOptimizedDownloadJobTx(ctx, tx, item, profile)
 		if err != nil {
 			return err
 		}
@@ -369,7 +379,18 @@ func (s *Server) createDownloadPreparationContext(ctx context.Context, user User
 		return downloadPreparationView{}, err
 	}
 	if existingID != "" {
-		return s.downloadPreparationForUserContext(ctx, user, existingID)
+		existing, err := s.downloadPreparationForUserContext(ctx, user, existingID)
+		if err != nil {
+			return downloadPreparationView{}, err
+		}
+		// POST is an explicit intent to prepare the current artifact. A stale
+		// verified binding may therefore converge on the same durable interest
+		// through the lifecycle writer; GET remains a pure projection.
+		if existing.State == "failed" && (existing.ErrorCode == "prepared_artifact_changed" ||
+			existing.ErrorCode == "artifact_verification_missing" || existing.ErrorCode == "prepared_artifact_missing") {
+			return s.updateDownloadPreparationContext(ctx, user, existingID, "retry")
+		}
+		return existing, nil
 	}
 	if jobCreated {
 		s.signalJobWake()
@@ -416,7 +437,7 @@ func attachOptimizedDownloadJobTx(ctx context.Context, tx *sql.Tx, item MediaIte
 		Message:      fmt.Sprintf("Optimized %s download prepared for %s.", preset.Label, item.Title),
 		ResourceType: "media", ResourceID: item.ID,
 		Metadata: map[string]string{"profile": profile, "purpose": "download"}, ActiveKey: activeKey,
-		Priority: "normal", Phase: "queued", CreatedAt: now, UpdatedAt: now,
+		Priority: foundationcontract.WorkClassBackgroundMedia, Phase: "queued", CreatedAt: now, UpdatedAt: now,
 	}
 	rawMetadata, err := json.Marshal(job.Metadata)
 	if err != nil {
@@ -530,12 +551,14 @@ func (s *Server) downloadPreparationRecordContext(ctx context.Context, where str
 	var record downloadPreparationRecord
 	err := s.queryUserRow(ctx, `
 		SELECT dp.id, dp.server_id, dp.account_id, dp.profile_id, dp.authorization_revision, dp.media_id, COALESCE(m.title, ''),
-			dp.quality_profile, dp.state, dp.job_id, dp.size_bytes, dp.size_kind, dp.artifact_expires_at, dp.progress, dp.error_code,
+			dp.quality_profile, dp.state, dp.job_id, dp.media_version_id, dp.version_fingerprint, dp.artifact_sha256,
+			dp.size_bytes, dp.size_kind, dp.artifact_expires_at, dp.progress, dp.error_code,
 			dp.created_at, dp.updated_at, dp.cancelled_at, dp.removed_at
 		FROM download_preparations dp
 		JOIN media_items m ON m.id = dp.media_id `+where, args...).Scan(
 		&record.ID, &record.ServerID, &record.AccountID, &record.ProfileID, &record.AuthorizationRevision, &record.MediaID, &record.MediaTitle,
-		&record.QualityProfile, &record.State, &record.JobID, &record.SizeBytes, &record.SizeKind, &record.ArtifactExpiresAt, &record.Progress, &record.ErrorCode,
+		&record.QualityProfile, &record.State, &record.JobID, &record.MediaVersionID, &record.VersionFingerprint, &record.ArtifactSHA256,
+		&record.SizeBytes, &record.SizeKind, &record.ArtifactExpiresAt, &record.Progress, &record.ErrorCode,
 		&record.CreatedAt, &record.UpdatedAt, &record.CancelledAt, &record.RemovedAt)
 	return record, err
 }
@@ -548,7 +571,10 @@ func (s *Server) materializeDownloadPreparationContext(ctx context.Context, user
 	if record.ServerID != identity.ServerID || record.AccountID != accountIDForUser(user) || record.ProfileID != viewerProfileID(user) || record.RemovedAt != "" {
 		return downloadPreparationView{}, sql.ErrNoRows
 	}
-	currentRevision := s.authorizationRevisionForUserContext(ctx, user)
+	currentRevision, err := s.authorizationRevisionForUserContextStrict(ctx, user)
+	if err != nil {
+		return downloadPreparationView{}, err
+	}
 	if record.AuthorizationRevision == "" || record.AuthorizationRevision != currentRevision {
 		record.State, record.ErrorCode = "unavailable", "authorization_changed"
 	}
@@ -566,13 +592,17 @@ func (s *Server) materializeDownloadPreparationContext(ctx context.Context, user
 		}
 	}
 	if record.State == "ready" {
-		if item, err := s.getMediaDownloadSeedForUser(ctx, user, record.MediaID); err == nil {
-			if _, targetErr := s.mediaDownloadGrantTargetContext(ctx, item, record.QualityProfile); targetErr == nil {
-				record.State, record.Progress, record.ErrorCode = "ready", 100, ""
-				if source, sourceErr := s.downloadSourceForRequestContext(ctx, item, record.QualityProfile); sourceErr == nil {
-					record.SizeBytes, record.SizeKind = measuredPreparedDownloadSize(source)
+		if !validOfflineArtifact(record.ArtifactSHA256, record.SizeBytes) || record.MediaVersionID == "" || record.VersionFingerprint == "" {
+			record.State, record.ErrorCode = "failed", "artifact_verification_missing"
+		} else if item, err := s.getMediaDownloadSeedForUser(ctx, user, record.MediaID); err == nil {
+			if target, targetErr := s.mediaDownloadGrantTargetContext(ctx, item, record.QualityProfile); targetErr == nil {
+				fingerprint, fenceErr := s.preparedDownloadArtifactFenceContext(ctx, item, target)
+				if fenceErr != nil || target.VersionID != record.MediaVersionID || fingerprint != record.VersionFingerprint {
+					record.State, record.ErrorCode = "failed", "prepared_artifact_changed"
+				} else {
+					record.State, record.Progress, record.ErrorCode = "ready", 100, ""
+					record.ArtifactExpiresAt = s.preparedDownloadArtifactExpiryContext(ctx, record.MediaID, record.QualityProfile)
 				}
-				record.ArtifactExpiresAt = s.preparedDownloadArtifactExpiryContext(ctx, record.MediaID, record.QualityProfile)
 			} else if record.State == "ready" {
 				record.State, record.ErrorCode = "failed", "prepared_artifact_missing"
 			}
@@ -580,13 +610,6 @@ func (s *Server) materializeDownloadPreparationContext(ctx context.Context, user
 			record.State, record.ErrorCode = "unavailable", "media_unavailable"
 		}
 	}
-	now := time.Now().UTC().Format(time.RFC3339)
-	_, err = s.execUserWrite(ctx, `UPDATE download_preparations SET state = ?, progress = ?, size_bytes = ?, size_kind = ?, artifact_expires_at = ?, error_code = ?, updated_at = ? WHERE id = ? AND server_id = ? AND account_id = ? AND profile_id = ?`,
-		record.State, record.Progress, record.SizeBytes, record.SizeKind, record.ArtifactExpiresAt, record.ErrorCode, now, record.ID, record.ServerID, record.AccountID, record.ProfileID)
-	if err != nil {
-		return downloadPreparationView{}, err
-	}
-	record.UpdatedAt = now
 	return downloadPreparationPublic(record), nil
 }
 
@@ -633,7 +656,7 @@ func downloadPreparationFailureMessageID(value string) string {
 
 func safeDownloadPreparationFailureCode(value string) string {
 	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "", "authorization_changed", "preparation_job_missing", "preparation_failed", "prepared_artifact_missing", "media_unavailable", "storage_full", "source_missing", "cancelled":
+	case "", "authorization_changed", "preparation_job_missing", "preparation_failed", "artifact_verification_missing", "prepared_artifact_changed", "prepared_artifact_missing", "media_unavailable", "media_identity_changed", "storage_full", "source_missing", "cancelled":
 		return strings.ToLower(strings.TrimSpace(value))
 	default:
 		return "preparation_failed"
@@ -696,8 +719,9 @@ func (s *Server) updateDownloadPreparationContext(ctx context.Context, user User
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	var item MediaItem
-	artifactReady := false
+	artifactAvailable := false
 	artifactSize := int64(0)
+	artifactSizeKind := "unknown"
 	artifactExpiresAt := ""
 	if action == "retry" || action == "resume" {
 		item, err = s.getMediaDownloadSeedForUser(ctx, user, record.MediaID)
@@ -705,15 +729,18 @@ func (s *Server) updateDownloadPreparationContext(ctx context.Context, user User
 			return downloadPreparationView{}, err
 		}
 		_, err = s.mediaDownloadGrantTargetContext(ctx, item, record.QualityProfile)
-		artifactReady = err == nil
-		if artifactReady {
+		artifactAvailable = err == nil
+		if artifactAvailable {
 			if source, sourceErr := s.downloadSourceForRequestContext(ctx, item, record.QualityProfile); sourceErr == nil {
-				artifactSize, record.SizeKind = measuredPreparedDownloadSize(source)
+				artifactSize, artifactSizeKind = measuredPreparedDownloadSize(source)
 			}
 			artifactExpiresAt = s.preparedDownloadArtifactExpiryContext(ctx, record.MediaID, record.QualityProfile)
 		}
 	}
-	authorizationRevision := s.authorizationRevisionForUserContext(ctx, user)
+	authorizationRevision, err := s.authorizationRevisionForUserContextStrict(ctx, user)
+	if err != nil {
+		return downloadPreparationView{}, err
+	}
 	jobCreated := false
 	jobCancelled := false
 	err = s.withUserTxTagged(ctx, []string{"downloads", "jobs"}, func(tx *sql.Tx) error {
@@ -737,10 +764,7 @@ func (s *Server) updateDownloadPreparationContext(ctx context.Context, user User
 		case "cancel":
 			record.State, record.CancelledAt = "cancelled", now
 		case "retry", "resume":
-			if artifactReady {
-				record.State, record.Progress, record.ErrorCode = "ready", 100, ""
-				record.SizeBytes, record.ArtifactExpiresAt = artifactSize, artifactExpiresAt
-			} else {
+			{
 				var active int
 				if err := tx.QueryRowContext(ctx, `
 					SELECT COUNT(*) FROM download_preparations
@@ -751,20 +775,31 @@ func (s *Server) updateDownloadPreparationContext(ctx context.Context, user User
 				if active >= maxActiveDownloadPreparationsPerAccount {
 					return errDownloadPreparationLimit
 				}
-				job, created, err := attachOptimizedDownloadJobTx(ctx, tx, item, record.QualityProfile)
+				var job Job
+				var created bool
+				if artifactAvailable {
+					job, created, err = attachDownloadArtifactVerificationJobTx(ctx, tx, record)
+				} else {
+					job, created, err = attachOptimizedDownloadJobTx(ctx, tx, item, record.QualityProfile)
+				}
 				if err != nil {
 					return err
 				}
 				jobCreated = created
 				record.JobID, record.Progress, record.State, record.ErrorCode, record.CancelledAt = job.ID, job.Progress, normalizedDownloadPreparationJobState(job.Status), "", ""
-				record.SizeBytes, record.SizeKind, record.ArtifactExpiresAt = estimatedPreparedDownloadSize(item, record.QualityProfile), "estimated", ""
+				if artifactAvailable {
+					record.SizeBytes, record.SizeKind, record.ArtifactExpiresAt = artifactSize, artifactSizeKind, artifactExpiresAt
+				} else {
+					record.SizeBytes, record.SizeKind, record.ArtifactExpiresAt = estimatedPreparedDownloadSize(item, record.QualityProfile), "estimated", ""
+				}
+				record.MediaVersionID, record.VersionFingerprint, record.ArtifactSHA256 = "", "", ""
 			}
 			record.AuthorizationRevision = authorizationRevision
 		case "remove":
 			record.RemovedAt = now
 		}
-		result, err := tx.ExecContext(ctx, `UPDATE download_preparations SET state = ?, job_id = ?, progress = ?, size_bytes = ?, size_kind = ?, artifact_expires_at = ?, error_code = ?, authorization_revision = ?, cancelled_at = ?, removed_at = ?, updated_at = ? WHERE id = ? AND server_id = ? AND account_id = ? AND profile_id = ? AND removed_at = ''`,
-			record.State, record.JobID, record.Progress, record.SizeBytes, record.SizeKind, record.ArtifactExpiresAt, record.ErrorCode, record.AuthorizationRevision, record.CancelledAt, record.RemovedAt, now,
+		result, err := tx.ExecContext(ctx, `UPDATE download_preparations SET state = ?, job_id = ?, progress = ?, media_version_id = ?, version_fingerprint = ?, artifact_sha256 = ?, size_bytes = ?, size_kind = ?, artifact_expires_at = ?, error_code = ?, authorization_revision = ?, cancelled_at = ?, removed_at = ?, updated_at = ? WHERE id = ? AND server_id = ? AND account_id = ? AND profile_id = ? AND removed_at = ''`,
+			record.State, record.JobID, record.Progress, record.MediaVersionID, record.VersionFingerprint, record.ArtifactSHA256, record.SizeBytes, record.SizeKind, record.ArtifactExpiresAt, record.ErrorCode, record.AuthorizationRevision, record.CancelledAt, record.RemovedAt, now,
 			record.ID, record.ServerID, record.AccountID, record.ProfileID)
 		if err != nil {
 			return err
@@ -943,7 +978,10 @@ func (s *Server) createNextEpisodeDownloadPreparationContext(ctx context.Context
 	return s.createDownloadPreparationContext(ctx, user, DownloadPreparationCreateRequest{MediaID: nextID, QualityProfile: req.QualityProfile})
 }
 
-func (s *Server) issueDownloadPreparationGrantContext(ctx context.Context, user User, preparationID string) (MediaDownloadGrantResponse, error) {
+func (s *Server) issueDownloadPreparationGrantContext(ctx context.Context, user User, preparationID, delivery string) (MediaDownloadGrantResponse, error) {
+	if delivery == "native" {
+		return s.issueNativeDownloadPreparationGrantContext(ctx, user, preparationID)
+	}
 	preparation, err := s.downloadPreparationForUserContext(ctx, user, preparationID)
 	if err != nil {
 		return MediaDownloadGrantResponse{}, err

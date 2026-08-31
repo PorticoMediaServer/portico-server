@@ -132,8 +132,8 @@ func (s *Server) hostedProfileStateContext(ctx context.Context, accountID string
 	var state hostedProfileSnapshotState
 	var checkedAt, retryAt string
 	err := s.queryUserRow(ctx, `
-		SELECT revision, checked_at, max_age_seconds, stale_if_error_seconds, refresh_retry_at
-		FROM hosted_profile_snapshot_state WHERE account_id = ?`, accountID).
+			SELECT revision, checked_at, max_age_seconds, stale_if_error_seconds, refresh_retry_at
+			FROM hosted_profile_snapshot_state WHERE account_id = ? AND quarantined_at = ''`, accountID).
 		Scan(&state.Revision, &checkedAt, &state.MaxAgeSeconds, &state.StaleIfErrorSeconds, &retryAt)
 	if err != nil {
 		return hostedProfileSnapshotState{}, err
@@ -378,7 +378,7 @@ func (s *Server) refreshHostedProfileDirectoryContext(ctx context.Context, accou
 		}
 		_, err = s.execUserWrite(ctx, `
 			UPDATE hosted_profile_snapshot_state
-			SET checked_at = ?, max_age_seconds = ?, stale_if_error_seconds = ?, refresh_retry_at = ''
+			SET checked_at = ?, max_age_seconds = ?, stale_if_error_seconds = ?, refresh_retry_at = '', quarantined_at = ''
 			WHERE account_id = ? AND revision = ?`, snapshot.CheckedAt, snapshot.MaxAgeSeconds, snapshot.StaleIfErrorSeconds, accountID, snapshot.Revision)
 		return err
 	}
@@ -392,7 +392,7 @@ func (s *Server) refreshHostedProfileDirectoryContext(ctx context.Context, accou
 	}
 	_, err = s.execUserWrite(ctx, `
 		UPDATE hosted_profile_snapshot_state
-		SET checked_at = ?, max_age_seconds = ?, stale_if_error_seconds = ?, refresh_retry_at = ''
+		SET checked_at = ?, max_age_seconds = ?, stale_if_error_seconds = ?, refresh_retry_at = '', quarantined_at = ''
 		WHERE account_id = ? AND revision = ?`, snapshot.CheckedAt, snapshot.MaxAgeSeconds, snapshot.StaleIfErrorSeconds, accountID, snapshot.Revision)
 	return err
 }
@@ -417,7 +417,7 @@ func (s *Server) revokeHostedProfileAccountContext(ctx context.Context, accountI
 	}
 	defer finishProfileErasureFences(fences)
 	timestamp := now.UTC().Format(time.RFC3339Nano)
-	return s.withUserTxTagged(ctx, []string{"users", "profiles", "sessions", "native_refresh_tokens", "profile_selection_grants", "profile_account_authentications"}, func(tx *sql.Tx) error {
+	return s.withSecurityFenceTxTagged(ctx, []string{"users", "profiles", "sessions", "native_refresh_tokens", "profile_selection_grants", "profile_account_authentications"}, func(tx *sql.Tx) error {
 		if _, err := tx.Exec(`UPDATE users SET disabled_at = ?, updated_at = ? WHERE id = ? AND auth_origin = 'portico'`, timestamp, timestamp, accountID); err != nil {
 			return err
 		}

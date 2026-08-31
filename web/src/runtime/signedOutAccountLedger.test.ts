@@ -120,14 +120,15 @@ describe('signed-out account cleanup ledger', () => {
     };
     const guarded = protectHostedConnectionVault(raw);
     await expect(guarded.save({
-      schemaVersion: 2,
+      schemaVersion: 3,
       accountId: 'account-1',
       serverId: 'server-1',
       profileId: 'profile-1',
       serverName: 'Home',
+      serverPublicKey: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
       serverPublicKeyFingerprint: 'sha256:home',
       currentRoute: { url: 'https://home.direct.getportico.tv', type: 'public_direct', verifiedAt: '2026-07-16T00:00:00.000Z' },
-      session: { serverId: 'server-1', apiBaseUrl: 'https://home.direct.getportico.tv', accessToken: 'candidate', refreshToken: 'candidate-refresh' },
+      session: { serverId: 'server-1', apiBaseUrl: 'https://home.direct.getportico.tv', accessToken: 'candidate', refreshToken: 'candidate-refresh', serverPublicKey: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' },
       lastSuccessfulConnectionAt: '2026-07-16T00:00:00.000Z',
       mutationVersion: 1,
     })).rejects.toBeInstanceOf(TrustedServerPublicationBlockedError);

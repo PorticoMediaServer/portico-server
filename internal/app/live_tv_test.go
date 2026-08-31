@@ -1530,7 +1530,7 @@ func TestLiveTVStreamOpenAndCloseManagePlaybackSession(t *testing.T) {
 		t.Fatalf("insert channel: %v", err)
 	}
 
-	openReq := httptest.NewRequest(http.MethodPost, "/api/live-tv/streams/chan_open/open", strings.NewReader(`{}`))
+	openReq := httptest.NewRequest(http.MethodPost, "/api/live-tv/streams/chan_open/open", strings.NewReader(`{"intent":{"quality":{"mode":"automatic"}}}`))
 	openRecorder := httptest.NewRecorder()
 	server.handleLiveTVStreamOpen(openRecorder, openReq, user, "chan_open")
 	if openRecorder.Code != http.StatusOK {
@@ -1553,7 +1553,22 @@ func TestLiveTVStreamOpenAndCloseManagePlaybackSession(t *testing.T) {
 	if len(streams) != 1 || streams[0].ID != playback.SessionID || !streams[0].IsLive || streams[0].Media.ID != "chan_open" {
 		t.Fatalf("unexpected active live tv streams: %#v", streams)
 	}
-	renegotiateBody := `{"requestId":"live-quality-720","expectedRevision":0,"qualityId":"720p-high"}`
+	var selectedOffer PlaybackQualityOffer
+	for _, offer := range playback.QualityOffers.Offers {
+		if offer.Kind == playbackQualityKindFixed && offer.TargetDisplayHeight == 720 && offer.MaxVideoBitrateBps == 4_000_000 {
+			selectedOffer = offer
+			break
+		}
+	}
+	if selectedOffer.SelectionID == "" {
+		t.Fatalf("720p offer missing: %#v", playback.QualityOffers)
+	}
+	selected := PlaybackQualitySelection{Mode: playbackQualityModeExplicit, SelectionID: selectedOffer.SelectionID, OfferRevision: playback.QualityOffers.OfferRevision}
+	renegotiateBytes, err := json.Marshal(PlaybackRenegotiationRequest{RequestID: "live-quality-720", ExpectedRevision: 0, Quality: &selected})
+	if err != nil {
+		t.Fatalf("marshal quality selection: %v", err)
+	}
+	renegotiateBody := string(renegotiateBytes)
 	renegotiateReq := httptest.NewRequest(http.MethodPost, "/api/playback-sessions/"+playback.SessionID+"/renegotiate", strings.NewReader(renegotiateBody))
 	renegotiateRecorder := httptest.NewRecorder()
 	server.handlePlaybackSessionRoute(renegotiateRecorder, renegotiateReq, user)
@@ -1564,12 +1579,12 @@ func TestLiveTVStreamOpenAndCloseManagePlaybackSession(t *testing.T) {
 	if err := json.Unmarshal(renegotiateRecorder.Body.Bytes(), &changed); err != nil {
 		t.Fatalf("decode quality response: %v", err)
 	}
-	if changed.SelectedQualityID != "720p-high" || !strings.Contains(changed.SourceURL, "quality=720p-high") || changed.PlaybackRevision != 1 {
-		t.Fatalf("quality change was not preserved: selected=%q source=%q revision=%d", changed.SelectedQualityID, changed.SourceURL, changed.PlaybackRevision)
+	if changed.QualitySelection != selected || !strings.Contains(changed.SourceURL, "quality=720p-high") || changed.PlaybackRevision != 1 {
+		t.Fatalf("quality change was not preserved: selected=%#v source=%q revision=%d", changed.QualitySelection, changed.SourceURL, changed.PlaybackRevision)
 	}
-	var selectedQuality string
-	if err := server.db.QueryRow(`SELECT selected_quality_id FROM playback_sessions WHERE id = ?`, playback.SessionID).Scan(&selectedQuality); err != nil || selectedQuality != "720p-high" {
-		t.Fatalf("durable selected quality=%q err=%v", selectedQuality, err)
+	var persistedIntentJSON string
+	if err := server.db.QueryRow(`SELECT playback_intent_json FROM playback_sessions WHERE id = ?`, playback.SessionID).Scan(&persistedIntentJSON); err != nil || !strings.Contains(persistedIntentJSON, selected.SelectionID) || !strings.Contains(persistedIntentJSON, selected.OfferRevision) {
+		t.Fatalf("durable quality intent=%q err=%v", persistedIntentJSON, err)
 	}
 	replayReq := httptest.NewRequest(http.MethodPost, "/api/playback-sessions/"+playback.SessionID+"/renegotiate", strings.NewReader(renegotiateBody))
 	replayRecorder := httptest.NewRecorder()
@@ -1582,12 +1597,30 @@ func TestLiveTVStreamOpenAndCloseManagePlaybackSession(t *testing.T) {
 		t.Fatalf("idempotent quality replay revision=%d err=%v", durableRevision, err)
 	}
 
-	closeBody := `{"sessionId":"` + playback.SessionID + `"}`
-	closeReq := httptest.NewRequest(http.MethodPost, "/api/live-tv/streams/chan_open/close", strings.NewReader(closeBody))
+	closeRequest := LiveTVPlaybackCloseRequest{
+		SessionID: playback.SessionID, RequestID: "live-tv-close-request",
+		Terminal: PlaybackTerminalEvent{
+			Disposition: "stopped", Generation: int64(playback.Generation), EventSequence: 1,
+			RecordedAt: time.Now().UTC().Format(time.RFC3339Nano), PositionSeconds: 0, DurationSeconds: 0,
+		},
+	}
+	closeBytes, _ := json.Marshal(closeRequest)
+	closeReq := httptest.NewRequest(http.MethodPost, "/api/live-tv/streams/chan_open/close", strings.NewReader(string(closeBytes)))
 	closeRecorder := httptest.NewRecorder()
 	server.handleLiveTVStreamClose(closeRecorder, closeReq, user, "chan_open")
 	if closeRecorder.Code != http.StatusOK {
 		t.Fatalf("close status = %d body=%s", closeRecorder.Code, closeRecorder.Body.String())
+	}
+	var closeAck PlaybackSessionTerminalAcknowledgement
+	if err := json.Unmarshal(closeRecorder.Body.Bytes(), &closeAck); err != nil || !closeAck.Accepted || closeAck.Duplicate {
+		t.Fatalf("close acknowledgement=%#v err=%v", closeAck, err)
+	}
+	exactRetry := httptest.NewRecorder()
+	server.handleLiveTVStreamClose(exactRetry, httptest.NewRequest(http.MethodPost, "/api/live-tv/streams/chan_open/close", strings.NewReader(string(closeBytes))), user, "chan_open")
+	var retryAck PlaybackSessionTerminalAcknowledgement
+	_ = json.Unmarshal(exactRetry.Body.Bytes(), &retryAck)
+	if exactRetry.Code != http.StatusOK || !retryAck.Duplicate || retryAck.Terminal != closeAck.Terminal {
+		t.Fatalf("exact close retry status=%d ack=%#v body=%s", exactRetry.Code, retryAck, exactRetry.Body.String())
 	}
 	var state, endedAt string
 	if err := server.db.QueryRow(`SELECT state, ended_at FROM playback_sessions WHERE id = ?`, playback.SessionID).Scan(&state, &endedAt); err != nil {
@@ -1628,7 +1661,7 @@ func TestLiveTVDirectProviderStreamUsesServerHLSTranscode(t *testing.T) {
 		now, now, now); err != nil {
 		t.Fatalf("insert channel: %v", err)
 	}
-	body := `{"clientProfile":{"supportsHls":true,"supportedContainers":["hls"]}}`
+	body := `{"clientProfile":{"supportsHls":true,"supportedContainers":["hls"]},"intent":{"quality":{"mode":"automatic"}}}`
 	req := httptest.NewRequest(http.MethodPost, "/api/live-tv/streams/chan_direct_hls/open", strings.NewReader(body))
 	rec := httptest.NewRecorder()
 	server.handleLiveTVStreamOpen(rec, req, user, "chan_direct_hls")
@@ -1662,7 +1695,7 @@ func TestLiveTVHLSHonorsResolvedRequiredTranscodePolicy(t *testing.T) {
 		now, now, now); err != nil {
 		t.Fatalf("insert channel: %v", err)
 	}
-	body := `{"clientProfile":{"supportsHls":true,"supportedContainers":["hls"]},"intent":{"transcodePolicy":"require","qualityProfile":"data_saver"}}`
+	body := `{"clientProfile":{"supportsHls":true,"supportedContainers":["hls"]},"intent":{"transcodePolicy":"require","quality":{"mode":"automatic"}}}`
 	req := httptest.NewRequest(http.MethodPost, "/api/live-tv/streams/chan_required_transcode/open", strings.NewReader(body))
 	rec := httptest.NewRecorder()
 	server.handleLiveTVStreamOpen(rec, req, user, "chan_required_transcode")
@@ -1676,8 +1709,8 @@ func TestLiveTVHLSHonorsResolvedRequiredTranscodePolicy(t *testing.T) {
 	if playback.Decision.Mode != "transcode_required" || !playback.Decision.RequiresTranscode {
 		t.Fatalf("resolved required transcode was not preserved: %+v", playback.Decision)
 	}
-	if playback.SelectedQualityID != "720p-high" || !strings.Contains(playback.SourceURL, "quality=720p-high") {
-		t.Fatalf("resolved data-saver quality was not bound: selected=%q source=%q", playback.SelectedQualityID, playback.SourceURL)
+	if playback.QualitySelection.Mode != playbackQualityModeAutomatic || !strings.Contains(playback.SourceURL, "quality=") {
+		t.Fatalf("automatic quality was not bound: selected=%#v source=%q", playback.QualitySelection, playback.SourceURL)
 	}
 	resourceRequest := mediaGrantRequest(http.MethodGet, playback.SourceURL, playback.MediaGrant.Token)
 	required, err := server.liveTVRequestRequiresTranscode(resourceRequest, liveTVPlaybackChannel{ID: "chan_required_transcode", streamURL: "https://media.example.test/master.m3u8"})
@@ -1703,7 +1736,7 @@ func TestLiveTVTranscodeFailsClosedWithoutProfilePermission(t *testing.T) {
 		now, now, now); err != nil {
 		t.Fatalf("insert channel: %v", err)
 	}
-	req := httptest.NewRequest(http.MethodPost, "/api/live-tv/streams/chan_transcode_denied/open", strings.NewReader(`{"clientProfile":{"supportsHls":true,"supportedContainers":["hls"]}}`))
+	req := httptest.NewRequest(http.MethodPost, "/api/live-tv/streams/chan_transcode_denied/open", strings.NewReader(`{"clientProfile":{"supportsHls":true,"supportedContainers":["hls"]},"intent":{"quality":{"mode":"automatic"}}}`))
 	rec := httptest.NewRecorder()
 	server.handleLiveTVStreamOpen(rec, req, user, "chan_transcode_denied")
 	if rec.Code != http.StatusUnprocessableEntity || !strings.Contains(rec.Body.String(), "transcode_not_authorized") {

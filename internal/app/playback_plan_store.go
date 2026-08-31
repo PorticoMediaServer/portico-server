@@ -16,72 +16,136 @@ import (
 
 var errPlaybackPlanBinding = errors.New("playback grant is not bound to a current execution plan")
 
-// playbackExecutionBinding is the private, immutable execution projection of
-// a canonical playback plan. HTTP handlers consume this record and never
-// reconstruct behavior from mutable query parameters.
-type playbackExecutionBinding struct {
-	SchemaVersion        int             `json:"schemaVersion"`
-	Digest               string          `json:"digest"`
-	SourceRevision       string          `json:"sourceRevision"`
-	MediaFactsDigest     string          `json:"mediaFactsDigest"`
-	CapabilityEvidenceID string          `json:"capabilityEvidenceId"`
-	Generation           int             `json:"generation"`
-	Mode                 string          `json:"mode"`
-	Protocol             string          `json:"protocol"`
-	Container            string          `json:"container"`
-	Quality              string          `json:"quality"`
-	AudioMode            string          `json:"audioMode"`
-	AudioStreamID        string          `json:"audioStreamId,omitempty"`
-	SubtitleMode         string          `json:"subtitleMode"`
-	SubtitleStreamID     string          `json:"subtitleStreamId,omitempty"`
-	DirectStream         bool            `json:"directStream"`
-	X264Preset           string          `json:"x264Preset"`
-	Plan                 json.RawMessage `json:"plan"`
-	OptimizedArtifactID  string          `json:"optimizedArtifactId,omitempty"`
-	OptimizedPresetID    string          `json:"optimizedPresetId,omitempty"`
-	// HardwarePlan is private execution authority. It is persisted inside the
-	// sealed binding so a later request cannot re-resolve a different device.
+const playbackExecutionPlanSchemaVersion = 2
+
+// playbackExecutionPlan is the one private, immutable authority handed from
+// playback planning to persistence, grants, URLs, diagnostics, and execution.
+// playbackplan.Plan owns all semantic delivery facts. The remaining fields are
+// selections that the pure planner cannot know: stable application stream IDs,
+// an execution preset, and exact optimized/hardware artifacts.
+type playbackExecutionPlan struct {
+	SchemaVersion       int               `json:"schemaVersion"`
+	Digest              string            `json:"digest"`
+	MediaFactsDigest    string            `json:"mediaFactsDigest,omitempty"`
+	Quality             string            `json:"quality"`
+	AudioStreamID       string            `json:"audioStreamId,omitempty"`
+	SubtitleStreamID    string            `json:"subtitleStreamId,omitempty"`
+	X264Preset          string            `json:"x264Preset,omitempty"`
+	Plan                playbackplan.Plan `json:"plan"`
+	OptimizedArtifactID string            `json:"optimizedArtifactId,omitempty"`
+	OptimizedPresetID   string            `json:"optimizedPresetId,omitempty"`
+	// HardwarePlan contains the exact verified executable/device identity. The
+	// canonical Plan intentionally carries only the privacy-safe public route.
 	HardwarePlan *playbackhw.Plan `json:"hardwarePlan,omitempty"`
 }
 
-func (b playbackExecutionBinding) canonicalJSON() ([]byte, error) {
-	copy := b
+func (p playbackExecutionPlan) generation() int { return int(p.Plan.Timeline.Generation) }
+
+func (p playbackExecutionPlan) audioMode() string {
+	for _, stream := range p.Plan.Streams {
+		if stream.Kind == "audio" && stream.Action == playbackplan.Convert {
+			return "transcode"
+		}
+	}
+	return ""
+}
+
+func (p playbackExecutionPlan) subtitleMode() string {
+	switch p.Plan.Subtitle.Action {
+	case playbackplan.ExternalText:
+		return "text"
+	case playbackplan.BurnIn:
+		return "burn_in"
+	default:
+		return "off"
+	}
+}
+
+func (p playbackExecutionPlan) directStream() bool {
+	return p.Plan.Mode == playbackplan.Remux || p.Plan.Mode == playbackplan.DirectStream
+}
+
+func (p playbackExecutionPlan) requiresX264Preset() bool {
+	if p.HardwarePlan != nil {
+		return false
+	}
+	for _, stream := range p.Plan.Streams {
+		if stream.Kind == "video" && stream.Action == playbackplan.Convert && normalizeCodec(stream.OutputCodec) == "h264" {
+			return true
+		}
+	}
+	return false
+}
+
+func (p playbackExecutionPlan) canonicalJSON() ([]byte, error) {
+	copy := p
 	copy.Digest = ""
-	if copy.SchemaVersion <= 0 || strings.TrimSpace(copy.SourceRevision) == "" || copy.Generation < 0 || len(copy.Plan) == 0 || !json.Valid(copy.Plan) || safeX264Preset(copy.X264Preset) != copy.X264Preset {
+	if copy.SchemaVersion != playbackExecutionPlanSchemaVersion || copy.Plan.Validate() != nil || copy.Plan.Mode == playbackplan.Unsupported ||
+		copy.generation() < 0 ||
+		normalizeTranscodeQuality(copy.Quality) != copy.Quality || normalizeSelectedAudioStreamID(copy.AudioStreamID) != copy.AudioStreamID {
 		return nil, errPlaybackPlanBinding
 	}
-	if (copy.OptimizedArtifactID == "") != (copy.OptimizedPresetID == "") {
+	if (copy.requiresX264Preset() && (copy.X264Preset == "" || safeX264Preset(copy.X264Preset) != copy.X264Preset)) ||
+		(!copy.requiresX264Preset() && copy.X264Preset != "") {
+		return nil, errPlaybackPlanBinding
+	}
+	if (copy.OptimizedArtifactID == "") != (copy.OptimizedPresetID == "") ||
+		(copy.OptimizedArtifactID != "" && copy.Plan.Mode != playbackplan.DirectPlay) {
+		return nil, errPlaybackPlanBinding
+	}
+	switch copy.subtitleMode() {
+	case "off":
+		if strings.TrimSpace(copy.SubtitleStreamID) != "" {
+			return nil, errPlaybackPlanBinding
+		}
+	case "text":
+		if normalizeHLSTextSubtitleID(copy.SubtitleStreamID) == "" || normalizeHLSTextSubtitleID(copy.SubtitleStreamID) != copy.SubtitleStreamID {
+			return nil, errPlaybackPlanBinding
+		}
+	case "burn_in":
+		if normalizeBurnInSubtitleID(copy.SubtitleStreamID) == "" || normalizeBurnInSubtitleID(copy.SubtitleStreamID) != copy.SubtitleStreamID {
+			return nil, errPlaybackPlanBinding
+		}
+	}
+	if copy.Plan.Hardware.Verified != (copy.HardwarePlan != nil) ||
+		(copy.HardwarePlan != nil && (copy.HardwarePlan.Backend != copy.Plan.Hardware.Backend || copy.HardwarePlan.RequiresRuntimeProbe ||
+			strings.TrimSpace(copy.HardwarePlan.RuntimeIdentity.ExecutablePath) == "" || strings.TrimSpace(copy.HardwarePlan.RuntimeIdentity.BinaryFingerprint) == "" ||
+			strings.TrimSpace(copy.HardwarePlan.RuntimeIdentity.DeviceIdentity) == "" || strings.TrimSpace(copy.HardwarePlan.RuntimeIdentity.DriverIdentity) == "" ||
+			strings.TrimSpace(copy.HardwarePlan.RuntimeIdentity.DriverVersion) == "")) {
 		return nil, errPlaybackPlanBinding
 	}
 	return json.Marshal(copy)
 }
 
-func (b *playbackExecutionBinding) seal() error {
-	encoded, err := b.canonicalJSON()
+func (p *playbackExecutionPlan) seal() error {
+	encoded, err := p.canonicalJSON()
 	if err != nil {
 		return err
 	}
 	sum := sha256.Sum256(encoded)
-	b.Digest = "playback-plan-v1:sha256:" + hex.EncodeToString(sum[:])
+	p.Digest = "playback-execution-plan-v2:sha256:" + hex.EncodeToString(sum[:])
 	return nil
 }
 
-func playbackPlanPersistence(decision PlaybackDecision) (playbackExecutionBinding, []byte, error) {
-	if decision.execution == nil {
-		return playbackExecutionBinding{}, nil, errPlaybackPlanBinding
+func playbackPlanPersistence(decision PlaybackDecision) (playbackExecutionPlan, []byte, error) {
+	if decision.executionPlan == nil {
+		return playbackExecutionPlan{}, nil, errPlaybackPlanBinding
 	}
-	binding := *decision.execution
-	if err := binding.seal(); err != nil {
-		return playbackExecutionBinding{}, nil, err
+	plan := *decision.executionPlan
+	if err := plan.seal(); err != nil {
+		return playbackExecutionPlan{}, nil, err
 	}
-	encoded, err := json.Marshal(binding)
+	encoded, err := json.Marshal(plan)
 	if err != nil {
-		return playbackExecutionBinding{}, nil, err
+		return playbackExecutionPlan{}, nil, err
 	}
-	return binding, encoded, nil
+	return plan, encoded, nil
 }
 
-func livePlaybackPlanPersistence(item MediaItem, decision PlaybackDecision) (playbackExecutionBinding, []byte, error) {
+// livePlaybackPlanPersistence adapts the dynamic provider decision to the same
+// persisted schema. Live planning remains independently owned; this adapter is
+// deliberately not a call into the VOD builder (PORTICO-QA-F067).
+func livePlaybackPlanPersistence(item MediaItem, decision PlaybackDecision) (playbackExecutionPlan, []byte, error) {
 	mode := playbackplan.Remux
 	action := playbackplan.Copy
 	switch decision.Mode {
@@ -93,15 +157,13 @@ func livePlaybackPlanPersistence(item MediaItem, decision PlaybackDecision) (pla
 		mode = playbackplan.VideoTranscode
 		action = playbackplan.Convert
 	default:
-		return playbackExecutionBinding{}, nil, errPlaybackPlanBinding
+		return playbackExecutionPlan{}, nil, errPlaybackPlanBinding
 	}
-	sourceRevision := "live:" + strings.TrimSpace(item.ID)
-	capabilityEvidenceID := "live-server-hls-v1"
 	plan := playbackplan.Plan{
 		SchemaRevision:       playbackplan.SchemaRevision,
 		SourceFingerprint:    "live-channel:" + strings.TrimSpace(item.ID),
-		SourceRevision:       sourceRevision,
-		CapabilityEvidenceID: capabilityEvidenceID,
+		SourceRevision:       "live:" + strings.TrimSpace(item.ID),
+		CapabilityEvidenceID: "live-server-hls-v1",
 		Mode:                 mode,
 		Protocol:             firstNonEmpty(strings.TrimSpace(decision.Protocol), "hls"),
 		Container:            firstNonEmpty(strings.TrimSpace(decision.Container), "mpegts"),
@@ -111,92 +173,60 @@ func livePlaybackPlanPersistence(item MediaItem, decision PlaybackDecision) (pla
 	}
 	plan.Digest, _ = plan.ComputeDigest()
 	if err := plan.Validate(); err != nil {
-		return playbackExecutionBinding{}, nil, errPlaybackPlanBinding
+		return playbackExecutionPlan{}, nil, errPlaybackPlanBinding
 	}
-	planJSON, err := json.Marshal(plan)
-	if err != nil {
-		return playbackExecutionBinding{}, nil, err
+	execution := playbackExecutionPlan{
+		SchemaVersion: playbackExecutionPlanSchemaVersion,
+		Quality:       normalizeTranscodeQuality(decision.DeliveryProfile),
+		Plan:          plan,
 	}
-	binding := playbackExecutionBinding{
-		SchemaVersion: 1, SourceRevision: sourceRevision, CapabilityEvidenceID: capabilityEvidenceID,
-		Generation: 0, Mode: string(mode), Protocol: plan.Protocol, Container: plan.Container,
-		Quality: normalizeTranscodeQuality(decision.DeliveryProfile), AudioMode: "auto", SubtitleMode: "off",
-		DirectStream: mode != playbackplan.DirectPlay, X264Preset: safeX264Preset("veryfast"), Plan: planJSON,
+	if execution.requiresX264Preset() {
+		execution.X264Preset = safeX264Preset("veryfast")
 	}
-	if err := binding.seal(); err != nil {
-		return playbackExecutionBinding{}, nil, err
+	if err := execution.seal(); err != nil {
+		return playbackExecutionPlan{}, nil, err
 	}
-	encoded, err := json.Marshal(binding)
-	return binding, encoded, err
+	encoded, err := json.Marshal(execution)
+	return execution, encoded, err
 }
 
-func playbackDecisionWithGeneration(decision PlaybackDecision, generation int) (PlaybackDecision, error) {
-	if decision.execution == nil || generation < 1 {
+func playbackDecisionWithGeneration(decision PlaybackDecision, item MediaItem, generation int) (PlaybackDecision, error) {
+	if decision.executionPlan == nil || generation < 1 {
 		return PlaybackDecision{}, errPlaybackPlanBinding
 	}
-	binding := *decision.execution
-	var plan playbackplan.Plan
-	if json.Unmarshal(binding.Plan, &plan) != nil || plan.Validate() != nil {
-		return PlaybackDecision{}, errPlaybackPlanBinding
-	}
-	plan.Timeline.Generation = uint64(generation)
-	digest, err := plan.ComputeDigest()
+	execution := *decision.executionPlan
+	execution.Plan = execution.Plan.Clone()
+	execution.Plan.Timeline.Generation = uint64(generation)
+	digest, err := execution.Plan.ComputeDigest()
 	if err != nil {
 		return PlaybackDecision{}, errPlaybackPlanBinding
 	}
-	plan.Digest = digest
-	binding.Generation = generation
-	binding.Plan, err = json.Marshal(plan)
-	if err != nil {
+	execution.Plan.Digest = digest
+	if err := execution.seal(); err != nil {
 		return PlaybackDecision{}, errPlaybackPlanBinding
 	}
-	if err := binding.seal(); err != nil {
-		return PlaybackDecision{}, errPlaybackPlanBinding
-	}
-	decision.Generation = generation
-	decision.PlanDigest = binding.Digest
-	decision.execution = &binding
-	return decision, nil
+	return playbackDecisionFromExecutionPlan(execution, item)
 }
 
-func decodePlaybackExecutionBinding(raw string) (playbackExecutionBinding, error) {
-	var binding playbackExecutionBinding
-	if json.Unmarshal([]byte(raw), &binding) != nil {
-		return playbackExecutionBinding{}, errPlaybackPlanBinding
+func decodePlaybackExecutionPlan(raw string) (playbackExecutionPlan, error) {
+	var plan playbackExecutionPlan
+	if json.Unmarshal([]byte(raw), &plan) != nil {
+		return playbackExecutionPlan{}, errPlaybackPlanBinding
 	}
-	storedDigest := binding.Digest
-	if err := binding.seal(); err != nil || binding.Digest != storedDigest {
-		return playbackExecutionBinding{}, errPlaybackPlanBinding
+	storedDigest := plan.Digest
+	if err := plan.seal(); err != nil || plan.Digest != storedDigest {
+		return playbackExecutionPlan{}, errPlaybackPlanBinding
 	}
-	var plan playbackplan.Plan
-	if json.Unmarshal(binding.Plan, &plan) != nil || plan.Validate() != nil {
-		return playbackExecutionBinding{}, errPlaybackPlanBinding
-	}
-	if plan.SourceRevision != binding.SourceRevision || plan.CapabilityEvidenceID != binding.CapabilityEvidenceID ||
-		int(plan.Timeline.Generation) != binding.Generation || string(plan.Mode) != binding.Mode ||
-		plan.Protocol != binding.Protocol || plan.Container != binding.Container {
-		return playbackExecutionBinding{}, errPlaybackPlanBinding
-	}
-	if plan.Hardware.Verified != (binding.HardwarePlan != nil) ||
-		(binding.HardwarePlan != nil && (binding.HardwarePlan.Backend != plan.Hardware.Backend || binding.HardwarePlan.RequiresRuntimeProbe ||
-			strings.TrimSpace(binding.HardwarePlan.RuntimeIdentity.ExecutablePath) == "" || strings.TrimSpace(binding.HardwarePlan.RuntimeIdentity.BinaryFingerprint) == "" ||
-			strings.TrimSpace(binding.HardwarePlan.RuntimeIdentity.DeviceIdentity) == "" || strings.TrimSpace(binding.HardwarePlan.RuntimeIdentity.DriverIdentity) == "" ||
-			strings.TrimSpace(binding.HardwarePlan.RuntimeIdentity.DriverVersion) == "")) {
-		return playbackExecutionBinding{}, errPlaybackPlanBinding
-	}
-	return binding, nil
+	return plan, nil
 }
 
-func playbackDecisionFromBinding(binding playbackExecutionBinding, item MediaItem) (PlaybackDecision, error) {
-	validated, err := decodePlaybackExecutionBinding(mustJSONPlaybackBinding(binding))
+func playbackDecisionFromExecutionPlan(execution playbackExecutionPlan, item MediaItem) (PlaybackDecision, error) {
+	validated, err := decodePlaybackExecutionPlan(mustJSONPlaybackExecutionPlan(execution))
 	if err != nil {
 		return PlaybackDecision{}, err
 	}
-	binding = validated
-	var plan playbackplan.Plan
-	if json.Unmarshal(binding.Plan, &plan) != nil {
-		return PlaybackDecision{}, errPlaybackPlanBinding
-	}
+	execution = validated
+	plan := execution.Plan
 	reasons := make([]string, 0, len(plan.Reasons))
 	videoAction, audioAction := "", ""
 	for _, stream := range plan.Streams {
@@ -213,11 +243,11 @@ func playbackDecisionFromBinding(binding playbackExecutionBinding, item MediaIte
 	decision := PlaybackDecision{
 		Mode: string(plan.Mode), Reason: playbackPlanReason(plan), ReasonCodes: reasons,
 		SourceKind: playbackSourceKind(item.SourceURL), Protocol: plan.Protocol, Container: plan.Container,
-		AudioCodec: plan.Audio.Codec, DeliveryProfile: binding.Quality,
-		PlanSchemaVersion: binding.SchemaVersion, PlanDigest: binding.Digest,
-		SourceRevision: binding.SourceRevision, CapabilityEvidenceID: binding.CapabilityEvidenceID,
-		Generation: binding.Generation, VideoAction: videoAction, AudioAction: audioAction,
-		SubtitleAction: string(plan.Subtitle.Action), execution: &binding,
+		AudioCodec: plan.Audio.Codec, DeliveryProfile: execution.Quality,
+		PlanSchemaVersion: execution.SchemaVersion, PlanDigest: execution.Digest,
+		SourceRevision: plan.SourceRevision, CapabilityEvidenceID: plan.CapabilityEvidenceID,
+		Generation: execution.generation(), VideoAction: videoAction, AudioAction: audioAction,
+		SubtitleAction: string(plan.Subtitle.Action), executionPlan: &execution,
 	}
 	if plan.Hardware.Verified {
 		decision.HardwareBackend = string(plan.Hardware.Backend)
@@ -231,9 +261,11 @@ func playbackDecisionFromBinding(binding playbackExecutionBinding, item MediaIte
 	switch plan.Mode {
 	case playbackplan.DirectPlay:
 		decision.Mode = "direct_play"
-		if binding.OptimizedArtifactID != "" {
+		if execution.OptimizedArtifactID != "" {
 			decision.Mode = "optimized_version"
-			decision.DeliveryProfile = binding.OptimizedPresetID
+			decision.DeliveryProfile = execution.OptimizedPresetID
+			decision.SourceKind = "optimized"
+			decision.Reason = "A current optimized artifact is the highest-fidelity direct-play tuple supported by this client."
 		}
 	case playbackplan.Remux:
 		decision.Mode, decision.RequiresRemux = "direct_stream", true
@@ -249,12 +281,12 @@ func playbackDecisionFromBinding(binding playbackExecutionBinding, item MediaIte
 	return decision, nil
 }
 
-func mustJSONPlaybackBinding(binding playbackExecutionBinding) string {
-	raw, _ := json.Marshal(binding)
+func mustJSONPlaybackExecutionPlan(plan playbackExecutionPlan) string {
+	raw, _ := json.Marshal(plan)
 	return string(raw)
 }
 
-func (s *Server) playbackPlanForSession(ctx context.Context, sessionID, mediaID string) (playbackExecutionBinding, error) {
+func (s *Server) playbackPlanForSession(ctx context.Context, sessionID, mediaID string) (playbackExecutionPlan, error) {
 	var raw, digest, revision string
 	var generation int
 	if err := s.queryUserRow(ctx, `
@@ -262,17 +294,17 @@ func (s *Server) playbackPlanForSession(ctx context.Context, sessionID, mediaID 
 		FROM playback_sessions
 		WHERE id = ? AND media_id = ? AND ended_at = '' AND state <> 'stopped'`,
 		strings.TrimSpace(sessionID), strings.TrimSpace(mediaID)).Scan(&raw, &digest, &revision, &generation); err != nil {
-		return playbackExecutionBinding{}, errPlaybackPlanBinding
+		return playbackExecutionPlan{}, errPlaybackPlanBinding
 	}
-	binding, err := decodePlaybackExecutionBinding(raw)
-	if err != nil || binding.Digest != digest || binding.SourceRevision != revision || binding.Generation != generation {
-		return playbackExecutionBinding{}, errPlaybackPlanBinding
+	plan, err := decodePlaybackExecutionPlan(raw)
+	if err != nil || plan.Digest != digest || plan.Plan.SourceRevision != revision || plan.generation() != generation {
+		return playbackExecutionPlan{}, errPlaybackPlanBinding
 	}
-	return binding, nil
+	return plan, nil
 }
 
-func playbackBindingHLSParameters(binding playbackExecutionBinding, r *http.Request) (quality, burnSubtitleID, textSubtitleID, audioMode, audioStreamID string, directStream bool, err error) {
-	quality, burnSubtitleID, textSubtitleID, audioMode, audioStreamID, directStream, err = playbackBindingHLSValues(binding)
+func playbackPlanHLSParameters(plan playbackExecutionPlan, r *http.Request) (quality, burnSubtitleID, textSubtitleID, audioMode, audioStreamID string, directStream bool, err error) {
+	quality, burnSubtitleID, textSubtitleID, audioMode, audioStreamID, directStream, err = playbackPlanHLSValues(plan)
 	if err != nil {
 		return
 	}
@@ -301,46 +333,36 @@ func playbackBindingHLSParameters(binding playbackExecutionBinding, r *http.Requ
 		requested := raw[0] == "1" || strings.EqualFold(raw[0], "true")
 		if requested != directStream {
 			err = errPlaybackPlanBinding
-			return
 		}
 	}
 	return
 }
 
-func playbackBindingHLSValues(binding playbackExecutionBinding) (quality, burnSubtitleID, textSubtitleID, audioMode, audioStreamID string, directStream bool, err error) {
-	if binding.Protocol != "hls" || binding.Mode == string(playbackplan.DirectPlay) {
+func playbackPlanHLSValues(plan playbackExecutionPlan) (quality, burnSubtitleID, textSubtitleID, audioMode, audioStreamID string, directStream bool, err error) {
+	if plan.Plan.Protocol != "hls" || plan.Plan.Mode == playbackplan.DirectPlay {
 		err = errPlaybackPlanBinding
 		return
 	}
-	quality = normalizeTranscodeQuality(binding.Quality)
-	audioMode = normalizeTranscodeAudioMode(binding.AudioMode)
-	audioStreamID = normalizeSelectedAudioStreamID(binding.AudioStreamID)
-	directStream = binding.DirectStream
-	switch binding.SubtitleMode {
-	case "off", "":
+	quality = plan.Quality
+	audioMode = plan.audioMode()
+	audioStreamID = plan.AudioStreamID
+	directStream = plan.directStream()
+	switch plan.subtitleMode() {
+	case "off":
 	case "burn_in":
-		burnSubtitleID = normalizeBurnInSubtitleID(binding.SubtitleStreamID)
-		if burnSubtitleID == "" {
-			err = errPlaybackPlanBinding
-			return
-		}
+		burnSubtitleID = plan.SubtitleStreamID
 	case "text":
-		textSubtitleID = normalizeHLSTextSubtitleID(binding.SubtitleStreamID)
-		if textSubtitleID == "" {
-			err = errPlaybackPlanBinding
-			return
-		}
+		textSubtitleID = plan.SubtitleStreamID
 	default:
 		err = errPlaybackPlanBinding
-		return
 	}
 	return
 }
 
-func (s *Server) playbackPlanForMediaGrant(ctx context.Context, r *http.Request, mediaID string) (playbackExecutionBinding, error) {
+func (s *Server) playbackPlanForMediaGrant(ctx context.Context, r *http.Request, mediaID string) (playbackExecutionPlan, error) {
 	token := mediaGrantFromRequest(r)
 	if !strings.HasPrefix(token, "ptc_mg_") || strings.TrimSpace(mediaID) == "" {
-		return playbackExecutionBinding{}, errPlaybackPlanBinding
+		return playbackExecutionPlan{}, errPlaybackPlanBinding
 	}
 	var planJSON, grantDigest, grantRevision string
 	var grantGeneration int
@@ -354,11 +376,11 @@ func (s *Server) playbackPlanForMediaGrant(ctx context.Context, r *http.Request,
 		LIMIT 1`, hashToken(token), strings.TrimSpace(mediaID), time.Now().UTC().Format(time.RFC3339)).Scan(
 		&planJSON, &grantDigest, &grantRevision, &grantGeneration)
 	if err != nil || grantDigest == "" || grantRevision == "" {
-		return playbackExecutionBinding{}, errPlaybackPlanBinding
+		return playbackExecutionPlan{}, errPlaybackPlanBinding
 	}
-	binding, decodeErr := decodePlaybackExecutionBinding(planJSON)
-	if decodeErr != nil || binding.Digest != grantDigest || binding.SourceRevision != grantRevision || binding.Generation != grantGeneration {
-		return playbackExecutionBinding{}, errPlaybackPlanBinding
+	plan, decodeErr := decodePlaybackExecutionPlan(planJSON)
+	if decodeErr != nil || plan.Digest != grantDigest || plan.Plan.SourceRevision != grantRevision || plan.generation() != grantGeneration {
+		return playbackExecutionPlan{}, errPlaybackPlanBinding
 	}
-	return binding, nil
+	return plan, nil
 }

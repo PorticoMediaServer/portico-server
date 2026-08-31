@@ -13,7 +13,7 @@ type RemoteKind = RemoteStorageSourceRequest['kind'];
 
 const analysisModeOptions: Array<{ value: RemoteStorageAnalysisMode; label: string; description: string }> = [
   { value: 'basic', label: 'Basic', description: 'Recommended for rclone and WebDAV. Adds technical facts and representative thumbnails with bounded reads.' },
-  { value: 'file_list_only', label: 'File Clipboard Only', description: 'Reads no media content during scans. Technical stream data and thumbnails are deferred.' },
+  { value: 'file_list_only', label: 'File List Only', description: 'Reads no media content during scans. Technical stream data and thumbnails are deferred.' },
   { value: 'complete', label: 'Complete', description: 'Deep whole-file compute, including sonic analysis, loudness, and intro/credit detection; highest cloud traffic.' },
   { value: 'custom', label: 'Custom', description: 'Advanced. Uses exactly the enabled Low, Moderate, and High disk-I/O operations in this library’s Custom analysis settings.' },
 ];

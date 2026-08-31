@@ -91,8 +91,8 @@ export class HttpWatchWithFriendsSource implements WatchWithFriendsSource {
     return withSignal(this.client.reorderWatchWithFriendsQueue(id, request), signal);
   }
 
-  removeQueueItem(id: string, mediaId: string, expectedRevision: number, idempotencyKey: string, signal?: AbortSignal) {
-    return withSignal(this.client.removeWatchWithFriendsQueueItem(id, mediaId, expectedRevision, idempotencyKey), signal);
+  removeQueueItem(id: string, entryId: string, expectedRevision: number, idempotencyKey: string, signal?: AbortSignal) {
+    return withSignal(this.client.removeWatchWithFriendsQueueItem(id, entryId, expectedRevision, idempotencyKey), signal);
   }
 
   subscribe(id: string, subscription: WatchGroupSubscription) {

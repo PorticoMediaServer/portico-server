@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/PorticoMediaServer/portico-server/internal/database"
+	"github.com/PorticoMediaServer/portico-server/internal/foundationcontract"
 )
 
 const artifactCapacityHeadroom = int64(4 << 20)
@@ -67,7 +68,7 @@ type durableTrashMove struct {
 }
 
 func (s *Server) stageMediaFileToTrash(path string) (durableTrashMove, error) {
-	request := s.storageRequestForPath(context.Background(), path, "trash source admission")
+	request := s.storageRequestForPath(context.Background(), foundationcontract.WorkClassMaintenance, path, "trash source admission")
 	var info os.FileInfo
 	err := s.boundedStorageIO(context.Background(), request, func() error {
 		var statErr error
@@ -130,7 +131,7 @@ func (move durableTrashMove) rollback() error {
 	if move.server == nil {
 		return move.rollbackWithProgress(func() {})
 	}
-	request := move.server.storageRequestForPath(context.Background(), move.journal.Source, "trash rollback")
+	request := move.server.storageRequestForPath(context.Background(), foundationcontract.WorkClassMaintenance, move.journal.Source, "trash rollback")
 	request.RecoveryProbe = true
 	return move.server.boundedStorageProgressIO(context.Background(), request, move.rollbackWithProgress)
 }
@@ -296,6 +297,9 @@ func (s *Server) reconcileFilesystemPublications(ctx context.Context) {
 	}
 	if err := s.reconcileSubtitleArtifacts(ctx); err != nil {
 		s.log.Warn("subtitle artifact reconciliation failed", "error", err)
+	}
+	if err := s.reconcileWaveformArtifacts(ctx); err != nil {
+		s.log.Warn("waveform artifact reconciliation failed", "error", err)
 	}
 }
 

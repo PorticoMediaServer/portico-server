@@ -18,6 +18,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/PorticoMediaServer/portico-server/internal/foundationcontract"
 )
 
 type tmdbSearchResponse struct {
@@ -721,7 +723,7 @@ type coverArtArchiveImage struct {
 type MetadataProvider interface {
 	ID() string
 	Supports(item MediaItem) bool
-	Refresh(ctx context.Context, server *Server, item MediaItem) (MediaItem, error)
+	Refresh(ctx context.Context, server *Server, item MediaItem, intent metadataRefreshIntent) (MediaItem, error)
 }
 
 type MetadataSaver interface {
@@ -750,8 +752,8 @@ func (tmdbMetadataProvider) Supports(item MediaItem) bool {
 	return tmdbSearchType(item.Type) != ""
 }
 
-func (tmdbMetadataProvider) Refresh(ctx context.Context, server *Server, item MediaItem) (MediaItem, error) {
-	return server.refreshMediaMetadataFromTMDB(ctx, item)
+func (tmdbMetadataProvider) Refresh(ctx context.Context, server *Server, item MediaItem, intent metadataRefreshIntent) (MediaItem, error) {
+	return server.refreshMediaMetadataFromTMDBWithIntent(ctx, item, intent)
 }
 
 func (tvdbMetadataProvider) ID() string { return "tvdb" }
@@ -760,8 +762,8 @@ func (tvdbMetadataProvider) Supports(item MediaItem) bool {
 	return tvdbSearchType(item.Type) != ""
 }
 
-func (tvdbMetadataProvider) Refresh(ctx context.Context, server *Server, item MediaItem) (MediaItem, error) {
-	return server.refreshMediaMetadataFromTVDB(ctx, item)
+func (tvdbMetadataProvider) Refresh(ctx context.Context, server *Server, item MediaItem, intent metadataRefreshIntent) (MediaItem, error) {
+	return server.refreshMediaMetadataFromTVDBWithIntent(ctx, item, intent)
 }
 
 func (aniListMetadataProvider) ID() string { return "anilist" }
@@ -770,8 +772,8 @@ func (aniListMetadataProvider) Supports(item MediaItem) bool {
 	return item.Type == "anime"
 }
 
-func (aniListMetadataProvider) Refresh(ctx context.Context, server *Server, item MediaItem) (MediaItem, error) {
-	return server.refreshMediaMetadataFromAniList(ctx, item)
+func (aniListMetadataProvider) Refresh(ctx context.Context, server *Server, item MediaItem, intent metadataRefreshIntent) (MediaItem, error) {
+	return server.refreshMediaMetadataFromAniListWithIntent(ctx, item, intent)
 }
 
 func (musicBrainzMetadataProvider) ID() string { return "musicbrainz" }
@@ -780,8 +782,8 @@ func (musicBrainzMetadataProvider) Supports(item MediaItem) bool {
 	return item.Type == "track" || item.Type == "album" || item.Type == "artist"
 }
 
-func (musicBrainzMetadataProvider) Refresh(ctx context.Context, server *Server, item MediaItem) (MediaItem, error) {
-	return server.refreshMediaMetadataFromMusicBrainz(ctx, item)
+func (musicBrainzMetadataProvider) Refresh(ctx context.Context, server *Server, item MediaItem, intent metadataRefreshIntent) (MediaItem, error) {
+	return server.refreshMediaMetadataFromMusicBrainzWithIntent(ctx, item, intent)
 }
 
 func (s *Server) metadataProviderByID(id string) (MetadataProvider, bool) {
@@ -820,7 +822,7 @@ func (s *Server) runMetadataRefresh(ctx context.Context, job Job) {
 		_ = s.setJobMessage(job.ID, "failed", 100, "Metadata refresh failed because the media item was not found.")
 		return
 	}
-	next, refreshed, refreshErrs := s.refreshMediaMetadataCascadeOperation(ctx, job.ID+":"+item.ID, item)
+	next, refreshed, refreshErrs := s.refreshMediaMetadataCascadeOperation(ctx, job.ID+":"+item.ID, item, metadataRefreshIntentFromJob(job))
 	if len(refreshErrs) > 0 && refreshed == 0 {
 		err := refreshErrs[0]
 		if s.deferMaintenanceJob(job.ID, err) {
@@ -895,7 +897,7 @@ func (s *Server) runLibraryMetadataRefresh(ctx context.Context, job Job) {
 			}
 			continue
 		}
-		_, count, errs := s.refreshMediaMetadataCascadeOperation(ctx, job.ID+":"+item.ID, item)
+		_, count, errs := s.refreshMediaMetadataCascadeOperation(ctx, job.ID+":"+item.ID, item, metadataRefreshIntentFromJob(job))
 		if count > 0 {
 			refreshed += count
 		}
@@ -1011,7 +1013,7 @@ func (s *Server) queueLibraryMetadataRefreshContinuation(parent Job, library Lib
 		ID: randomID("job"), Type: "metadata_refresh_library", Status: "queued",
 		Message:      fmt.Sprintf("Metadata refresh continuation queued for %s.", library.Name),
 		ResourceType: "library", ResourceID: library.ID, Metadata: metadata,
-		ParentOperationID: parent.ID, Priority: "normal", Phase: "queued",
+		ParentOperationID: parent.ID, Priority: foundationcontract.WorkClassBackgroundMedia, Phase: "queued",
 		CreatedAt: now, UpdatedAt: now,
 	}
 	child.ActiveKey = jobActiveKeyFor(child.Type, child.ResourceType, child.ResourceID, metadata)
@@ -1022,7 +1024,7 @@ func (s *Server) queueLibraryMetadataRefreshContinuation(parent Job, library Lib
 	durableJobEnqueueMu.Lock()
 	defer durableJobEnqueueMu.Unlock()
 	child, err = s.withJobAdmission(func() (Job, error) {
-		err := s.withPrioritizedTxTaggedForViewer(context.Background(), sqliteWriteBackground, "job_continuation_enqueue", durableJobEnqueueRetry, "", "", []string{"jobs"}, func(tx *sql.Tx) error {
+		err := s.withWorkClassTxTaggedForViewer(context.Background(), foundationcontract.WorkClassBackgroundMedia, "job_continuation_enqueue", durableJobEnqueueRetry, "", "", []string{"jobs"}, func(tx *sql.Tx) error {
 			result, err := tx.ExecContext(context.Background(), `
 				UPDATE jobs SET active_key = '', updated_at = ?
 				WHERE id = ? AND status = 'running' AND active_key = ?`, now, parent.ID, child.ActiveKey)
@@ -1042,9 +1044,9 @@ func (s *Server) queueLibraryMetadataRefreshContinuation(parent Job, library Lib
 				progress_current, progress_total, result_reference, error_code, retry_eligible,
 				cancellation_requested_at, worker_acknowledged_at, interrupted_at, retention_until,
 				created_at, updated_at
-			) VALUES (?, ?, 'queued', 0, ?, ?, ?, ?, 0, '', '', '', '', ?, '', ?, 'normal', 'queued', 0, 0, '', '', 0, '', '', '', '', ?, ?)`,
+			) VALUES (?, ?, 'queued', 0, ?, ?, ?, ?, 0, '', '', '', '', ?, '', ?, ?, 'queued', 0, 0, '', '', 0, '', '', '', '', ?, ?)`,
 				child.ID, child.Type, child.Message, child.ResourceType, child.ResourceID,
-				string(metadataJSON), parent.ID, child.ActiveKey, now, now)
+				string(metadataJSON), parent.ID, child.ActiveKey, child.Priority, now, now)
 			return err
 		})
 		return child, err
@@ -1168,18 +1170,19 @@ func parsePositiveInt(value string, fallback int) int {
 }
 
 func (s *Server) refreshMediaMetadataCascade(ctx context.Context, item MediaItem) (MediaItem, int, []error) {
-	return s.refreshMediaMetadataCascadeOperation(ctx, randomID("mcascade")+":"+item.ID, item)
+	return s.refreshMediaMetadataCascadeOperation(ctx, randomID("mcascade")+":"+item.ID, item, metadataRefreshUnlocked)
 }
 
 // refreshMediaMetadataCascadeOperation traverses a cascade through durable,
 // keyset-paged cursors. Replaying operationID resumes unfinished discovery and
 // reclaims expired item leases without repeating terminal item work.
-func (s *Server) refreshMediaMetadataCascadeOperation(ctx context.Context, operationID string, root MediaItem) (MediaItem, int, []error) {
+func (s *Server) refreshMediaMetadataCascadeOperation(ctx context.Context, operationID string, root MediaItem, intent metadataRefreshIntent) (MediaItem, int, []error) {
+	intent = normalizeMetadataRefreshIntent(string(intent))
 	store := NewMetadataContinuationStore(s.db)
 	provider := s.metadataProviderForItem(root)
 	op, err := store.Start(ctx, MetadataContinuationStart{
 		ID: operationID, RootKind: root.Type, RootID: root.ID, Provider: provider,
-		PolicyRevision: "hierarchy-v1", ProviderRevision: provider + "-v1",
+		PolicyRevision: "hierarchy-v1:" + string(intent), ProviderRevision: provider + "-v1",
 		InitialPhase: "descendants", InitialCursor: "",
 	})
 	if err != nil {
@@ -1220,7 +1223,7 @@ func (s *Server) refreshMediaMetadataCascadeOperation(ctx context.Context, opera
 			current, loadErr := s.getMetadataRefreshSeedContext(ctx, queued.Key)
 			if loadErr == nil {
 				var updated MediaItem
-				updated, loadErr = s.refreshMediaMetadata(ctx, current)
+				updated, loadErr = s.refreshMediaMetadataWithIntent(ctx, current, intent)
 				if queued.Key == root.ID && loadErr == nil {
 					root = updated
 				}
@@ -1446,12 +1449,17 @@ func (s *Server) latestMatchCandidateForMedia(mediaID string) (MatchCandidate, b
 }
 
 func (s *Server) refreshMediaMetadata(ctx context.Context, item MediaItem) (MediaItem, error) {
+	return s.refreshMediaMetadataWithIntent(ctx, item, metadataRefreshUnlocked)
+}
+
+func (s *Server) refreshMediaMetadataWithIntent(ctx context.Context, item MediaItem, intent metadataRefreshIntent) (MediaItem, error) {
+	intent = normalizeMetadataRefreshIntent(string(intent))
 	providerID := s.metadataProviderForItem(item)
 	provider, ok := s.metadataProviderByID(providerID)
 	if !ok || !provider.Supports(item) {
 		return MediaItem{}, fmt.Errorf("metadata provider %q is not available for %s", providerID, item.Type)
 	}
-	if provider.ID() == "musicbrainz" {
+	if provider.ID() == "musicbrainz" && intent != metadataRefreshFillMissing {
 		if item.Type == "track" && s.sonicFingerprintingEnabled(item) {
 			if updated, err := s.refreshTrackMetadataFromAcoustID(ctx, item); err == nil {
 				return updated, nil
@@ -1460,8 +1468,28 @@ func (s *Server) refreshMediaMetadata(ctx context.Context, item MediaItem) (Medi
 			}
 		}
 	}
-	updated, err := provider.Refresh(ctx, s, item)
+	updated, err := provider.Refresh(ctx, s, item, intent)
 	if err == nil {
+		if metadataNeedsSupplement(updated) {
+			for _, fallbackID := range s.metadataFallbackProvidersForItem(updated) {
+				if fallbackID == providerID || !s.establishedFallbackIdentity(updated, fallbackID) {
+					continue
+				}
+				fallback, ok := s.metadataProviderByID(fallbackID)
+				if !ok || !fallback.Supports(updated) {
+					continue
+				}
+				supplemented, fallbackErr := fallback.Refresh(ctx, s, updated, metadataRefreshFillMissing)
+				if fallbackErr == nil {
+					updated = supplemented
+					continue
+				}
+				if errors.Is(fallbackErr, context.Canceled) || errors.Is(fallbackErr, context.DeadlineExceeded) {
+					return MediaItem{}, fallbackErr
+				}
+				s.log.Warn("supplemental metadata provider failed", "media", item.ID, "provider", fallbackID, "error", fallbackErr)
+			}
+		}
 		return updated, nil
 	}
 	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
@@ -1476,7 +1504,7 @@ func (s *Server) refreshMediaMetadata(ctx context.Context, item MediaItem) (Medi
 		if !ok || !fallback.Supports(item) {
 			continue
 		}
-		updated, fallbackErr := fallback.Refresh(ctx, s, item)
+		updated, fallbackErr := fallback.Refresh(ctx, s, item, intent)
 		if fallbackErr == nil {
 			return updated, nil
 		}
@@ -1834,7 +1862,7 @@ func (s *Server) applyManualMusicBrainzMatch(ctx context.Context, userID string,
 		if err != nil {
 			return MediaItem{}, err
 		}
-		_ = s.updateMusicParentsFromTrack(item, albumArtistName, albumArtistID, albumTitle, release, allowParentAlbumUpdate, "manual-match", .90)
+		_ = s.updateMusicParentsFromTrack(item, albumArtistName, albumArtistID, albumTitle, release, allowParentAlbumUpdate, "manual-match", .90, metadataRefreshUnlocked)
 		score := musicBrainzRecordingCandidateScore(recording, item)
 		score.add("manual_match", 100, "Selected by a user in the metadata editor")
 		_ = s.recordMatchCandidate(item.ID, "musicbrainz", recording.ID, "recording", "manual-match", score, true, musicBrainzRecordingQuery(item), recording)
@@ -1959,6 +1987,10 @@ func (s *Server) sonicFingerprintingEnabled(item MediaItem) bool {
 }
 
 func (s *Server) refreshMediaMetadataFromTMDB(ctx context.Context, item MediaItem) (MediaItem, error) {
+	return s.refreshMediaMetadataFromTMDBWithIntent(ctx, item, metadataRefreshUnlocked)
+}
+
+func (s *Server) refreshMediaMetadataFromTMDBWithIntent(ctx context.Context, item MediaItem, intent metadataRefreshIntent) (MediaItem, error) {
 	if !s.tmdbConfigured() {
 		return MediaItem{}, errTMDBCredentialsMissing
 	}
@@ -1993,9 +2025,15 @@ func (s *Server) refreshMediaMetadataFromTMDB(ctx context.Context, item MediaIte
 	update.metadataSource = source
 	update.metadataProvider = "tmdb"
 	update.metadataRefreshed = true
+	update.metadataIntent = intent
 	rich := mapTMDBProviderRich(result)
 	update.metadataRich = &rich
 	update.metadataIdentities = []metadataProviderIdentityProposal{{Provider: "tmdb", ExternalID: strconv.Itoa(result.ID), ExternalType: mediaType, Confidence: .85}}
+	if tvdbID := scalarProviderID(result.ExternalIDs["tvdb_id"]); tvdbID != "" {
+		update.metadataIdentities = append(update.metadataIdentities, metadataProviderIdentityProposal{
+			Provider: "tvdb", ExternalID: tvdbID, ExternalType: tvdbSearchType(item.Type), Confidence: .85, ProviderAsserted: true,
+		})
+	}
 	updated, err := s.saveMetadataUpdate("", item.ID, update)
 	if err != nil {
 		return MediaItem{}, err
@@ -2360,6 +2398,10 @@ func (s *Server) tmdbEpisodeGroupEpisodeDetails(ctx context.Context, groupID str
 }
 
 func (s *Server) refreshMediaMetadataFromAniList(ctx context.Context, item MediaItem) (MediaItem, error) {
+	return s.refreshMediaMetadataFromAniListWithIntent(ctx, item, metadataRefreshUnlocked)
+}
+
+func (s *Server) refreshMediaMetadataFromAniListWithIntent(ctx context.Context, item MediaItem, intent metadataRefreshIntent) (MediaItem, error) {
 	if item.Type != "anime" {
 		return MediaItem{}, errors.New("AniList refresh is only available for anime library roots")
 	}
@@ -2375,6 +2417,7 @@ func (s *Server) refreshMediaMetadataFromAniList(ctx context.Context, item Media
 	update.metadataSource = source
 	update.metadataProvider = "anilist"
 	update.metadataRefreshed = true
+	update.metadataIntent = intent
 	rich := mapAniListProviderRich(result)
 	update.metadataRich = &rich
 	update.metadataIdentities = []metadataProviderIdentityProposal{{Provider: "anilist", ExternalID: strconv.Itoa(result.ID), ExternalType: "anime", Confidence: .86}}
@@ -2422,19 +2465,27 @@ func (s *Server) resolveAniListMedia(ctx context.Context, item MediaItem) (aniLi
 }
 
 func (s *Server) refreshMediaMetadataFromMusicBrainz(ctx context.Context, item MediaItem) (MediaItem, error) {
+	return s.refreshMediaMetadataFromMusicBrainzWithIntent(ctx, item, metadataRefreshUnlocked)
+}
+
+func (s *Server) refreshMediaMetadataFromMusicBrainzWithIntent(ctx context.Context, item MediaItem, intent metadataRefreshIntent) (MediaItem, error) {
 	switch item.Type {
 	case "track":
-		return s.refreshTrackMetadataFromMusicBrainz(ctx, item)
+		return s.refreshTrackMetadataFromMusicBrainzWithIntent(ctx, item, intent)
 	case "album":
-		return s.refreshAlbumMetadataFromMusicBrainz(ctx, item)
+		return s.refreshAlbumMetadataFromMusicBrainzWithIntent(ctx, item, intent)
 	case "artist":
-		return s.refreshArtistMetadataFromMusicBrainz(ctx, item)
+		return s.refreshArtistMetadataFromMusicBrainzWithIntent(ctx, item, intent)
 	default:
 		return MediaItem{}, errors.New("MusicBrainz refresh is only available for artists, albums, and tracks")
 	}
 }
 
 func (s *Server) refreshTrackMetadataFromMusicBrainz(ctx context.Context, item MediaItem) (MediaItem, error) {
+	return s.refreshTrackMetadataFromMusicBrainzWithIntent(ctx, item, metadataRefreshUnlocked)
+}
+
+func (s *Server) refreshTrackMetadataFromMusicBrainzWithIntent(ctx context.Context, item MediaItem, intent metadataRefreshIntent) (MediaItem, error) {
 	recording, source, err := s.resolveMusicBrainzRecording(ctx, item)
 	if err != nil {
 		return MediaItem{}, err
@@ -2502,6 +2553,7 @@ func (s *Server) refreshTrackMetadataFromMusicBrainz(ctx context.Context, item M
 	update.metadataSource = source
 	update.metadataProvider = "musicbrainz"
 	update.metadataRefreshed = true
+	update.metadataIntent = intent
 	rich := mapMusicBrainzRecordingProviderRich(recording)
 	s.enrichMusicBrainzProposalWithCoverArt(ctx, &rich, release.ReleaseGroup.ID, release.ID)
 	update.metadataRich = &rich
@@ -2510,11 +2562,11 @@ func (s *Server) refreshTrackMetadataFromMusicBrainz(ctx context.Context, item M
 	if err != nil {
 		return MediaItem{}, err
 	}
-	_ = s.updateMusicParentsFromTrack(item, albumArtistName, albumArtistID, albumTitle, release, allowParentAlbumUpdate, source, .82)
+	_ = s.updateMusicParentsFromTrack(item, albumArtistName, albumArtistID, albumTitle, release, allowParentAlbumUpdate, source, .82, intent)
 	return updated, nil
 }
 
-func (s *Server) updateMusicParentsFromTrack(item MediaItem, artistName, artistID, albumTitle string, release musicBrainzRelease, allowAlbumUpdate bool, source string, confidence float64) error {
+func (s *Server) updateMusicParentsFromTrack(item MediaItem, artistName, artistID, albumTitle string, release musicBrainzRelease, allowAlbumUpdate bool, source string, confidence float64, intent metadataRefreshIntent) error {
 	if item.ParentID != "" && allowAlbumUpdate && (albumTitle != "" || artistName != "" || release.ReleaseGroup.ID != "") {
 		update := UpdateMediaRequest{}
 		if albumTitle != "" {
@@ -2551,6 +2603,7 @@ func (s *Server) updateMusicParentsFromTrack(item MediaItem, artistName, artistI
 		update.metadataOrigin = metadataSourceProvider
 		update.metadataSource = source
 		update.metadataProvider = "musicbrainz"
+		update.metadataIntent = intent
 		if release.ReleaseGroup.ID != "" {
 			update.metadataIdentities = append(update.metadataIdentities, metadataProviderIdentityProposal{Provider: "musicbrainz", ExternalID: release.ReleaseGroup.ID, ExternalType: "release-group", Confidence: confidence, ProviderAsserted: true})
 		}
@@ -2568,6 +2621,7 @@ func (s *Server) updateMusicParentsFromTrack(item MediaItem, artistName, artistI
 		update.metadataOrigin = metadataSourceProvider
 		update.metadataSource = source
 		update.metadataProvider = "musicbrainz"
+		update.metadataIntent = intent
 		if artistID != "" {
 			update.metadataIdentities = []metadataProviderIdentityProposal{{Provider: "musicbrainz", ExternalID: artistID, ExternalType: "artist", Confidence: confidence, ProviderAsserted: true}}
 		}
@@ -2615,6 +2669,10 @@ func (s *Server) musicBrainzAlbumIdentityEstablished(mediaID string) bool {
 }
 
 func (s *Server) refreshAlbumMetadataFromMusicBrainz(ctx context.Context, item MediaItem) (MediaItem, error) {
+	return s.refreshAlbumMetadataFromMusicBrainzWithIntent(ctx, item, metadataRefreshUnlocked)
+}
+
+func (s *Server) refreshAlbumMetadataFromMusicBrainzWithIntent(ctx context.Context, item MediaItem, intent metadataRefreshIntent) (MediaItem, error) {
 	group, source, err := s.resolveMusicBrainzReleaseGroup(ctx, item)
 	if err != nil {
 		return MediaItem{}, err
@@ -2658,6 +2716,7 @@ func (s *Server) refreshAlbumMetadataFromMusicBrainz(ctx context.Context, item M
 	update.metadataSource = source
 	update.metadataProvider = "musicbrainz"
 	update.metadataRefreshed = true
+	update.metadataIntent = intent
 	rich := mapMusicBrainzReleaseGroupProviderRich(group)
 	s.enrichMusicBrainzProposalWithCoverArt(ctx, &rich, group.ID, releaseID)
 	update.metadataRich = &rich
@@ -2676,6 +2735,10 @@ func (s *Server) refreshAlbumMetadataFromMusicBrainz(ctx context.Context, item M
 }
 
 func (s *Server) refreshArtistMetadataFromMusicBrainz(ctx context.Context, item MediaItem) (MediaItem, error) {
+	return s.refreshArtistMetadataFromMusicBrainzWithIntent(ctx, item, metadataRefreshUnlocked)
+}
+
+func (s *Server) refreshArtistMetadataFromMusicBrainzWithIntent(ctx context.Context, item MediaItem, intent metadataRefreshIntent) (MediaItem, error) {
 	artist, source, err := s.resolveMusicBrainzArtist(ctx, item)
 	if err != nil {
 		return MediaItem{}, err
@@ -2695,6 +2758,7 @@ func (s *Server) refreshArtistMetadataFromMusicBrainz(ctx context.Context, item 
 	update.metadataSource = source
 	update.metadataProvider = "musicbrainz"
 	update.metadataRefreshed = true
+	update.metadataIntent = intent
 	rich := mapMusicBrainzArtistProviderRich(artist)
 	update.metadataRich = &rich
 	update.metadataIdentities = []metadataProviderIdentityProposal{{Provider: "musicbrainz", ExternalID: artist.ID, ExternalType: "artist", Confidence: .84}}

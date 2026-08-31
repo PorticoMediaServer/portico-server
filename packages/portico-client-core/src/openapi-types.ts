@@ -1295,6 +1295,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/backups/restore-authorization-context": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read the current Server restore security epoch */
+        get: operations["getRestoreAuthorizationContext"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/backups/restore/upload": {
         parameters: {
             query?: never;
@@ -2935,7 +2952,7 @@ export interface paths {
         put?: never;
         /**
          * Close a Live TV stream session
-         * @description Ends an active Live TV playback session for this channel.
+         * @description Accepts the owning playback actor's exact ordered terminal event and closes the Live TV session exactly once.
          */
         post: operations["postLiveTvStreamsChannelIdClose"];
         delete?: never;
@@ -3890,6 +3907,26 @@ export interface paths {
         patch: operations["updateViewerNotificationReceipt"];
         trace?: never;
     };
+    "/offline-download-authorizations/revalidate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revalidate and replace an immutable native offline authorization receipt
+         * @description Returns a signed replacement only after the active profile, exact authorization revision, preparation, media version, and verified artifact binding are rechecked atomically. Complete foreign viewer scopes return out-of-scope without probing receipt or preparation state; malformed receipts return invalid.
+         */
+        post: operations["revalidateOfflineDownloadAuthorization"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/people/media": {
         parameters: {
             query?: never;
@@ -3958,7 +3995,7 @@ export interface paths {
         post?: never;
         /**
          * End a playback session
-         * @description Atomically records the final playback position and terminal disposition, then ends the session and revokes its playback authority.
+         * @description Atomically records the final playback position and terminal disposition, then ends the session and revokes its playback authority. The caller persists and reuses the exact request after an ambiguous response; an exact retry returns the committed receipt. Authentication and not-found failures are never treated as inferred success.
          */
         delete: operations["deletePlaybackSessionsSessionId"];
         options?: never;
@@ -4051,7 +4088,10 @@ export interface paths {
         put?: never;
         /** Rotate a native playback continuation credential */
         post: operations["rotatePlaybackContinuation"];
-        /** Atomically stop native playback and revoke its continuation authority */
+        /**
+         * Atomically stop native playback and revoke its continuation authority
+         * @description Commits the requestId-bound terminal event and revokes continuation authority in one operation. An exact retry returns the durable receipt even after the credential was revoked by the first commit; a different request, an invalid credential, or an unknown session fails closed.
+         */
         delete: operations["revokePlaybackContinuation"];
         options?: never;
         head?: never;
@@ -4071,8 +4111,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Commit a prepared playback handoff
-         * @description Closes the previous session, records history/progress policy, and starts the next item under the same client instance for music gapless/crossfade and platform queue parity.
+         * Commit a playback handoff
+         * @description Atomically accepts the source actor's ordered previousTerminal event, closes the source session, and starts the prepared or directly selected replacement under the same client instance. Until a response is accepted, the source actor retains terminal authority. Stale generation or sequence evidence fails closed without activating the replacement; an exact retry returns the committed result.
          */
         post: operations["postPlaybackSessionsSessionIdHandoff"];
         delete?: never;
@@ -4116,7 +4156,7 @@ export interface paths {
         put?: never;
         /**
          * Prepare the next playback item without stopping the current session
-         * @description Returns a short-lived prepared playback descriptor so clients can preload the next audio item for gapless or crossfade handoff.
+         * @description Returns a short-lived prepared playback descriptor so clients can preload the next audio item for gapless or crossfade handoff. Preparation never records or closes the source session.
          */
         post: operations["postPlaybackSessionsSessionIdPrepareNext"];
         delete?: never;
@@ -4150,7 +4190,7 @@ export interface paths {
         head?: never;
         /**
          * Mutate the server-owned playback session queue
-         * @description Applies one append, play_next, remove, reorder, clear, or set_repeat command when expectedRevision matches the authoritative state.
+         * @description Applies one append, play_next, remove, reorder, shuffle, clear, or set_repeat command when expectedRevision matches the authoritative state. Shuffle atomically materializes one occurrence order from the idempotency key without moving the current item.
          */
         patch: operations["patchPlaybackSessionsSessionIdQueue"];
         trace?: never;
@@ -4283,7 +4323,7 @@ export interface paths {
             header?: never;
             path: {
                 sessionId: string;
-                operation: "state" | "control" | "progress" | "renew" | "stop";
+                operation: "state" | "control" | "progress" | "renew" | "stop" | "advance" | "advance-cancel" | "segment-skip";
             };
             cookie?: never;
         };
@@ -4292,8 +4332,27 @@ export interface paths {
         put?: never;
         /** Control, report progress, renew, or stop Cast playback */
         post: operations["postPlaybackCastSessionOperation"];
-        /** Idempotently stop Cast playback */
-        delete: operations["deletePlaybackCastSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/playback/cast/transfer-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reconcile one exact Cast bootstrap or authority transfer
+         * @description Returns only durable no-credential outcome evidence for the exact account/profile/client request identity.
+         */
+        post: operations["postPlaybackCastTransferStatus"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -4339,46 +4398,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/playback/next": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Resolve the next playable media item
-         * @description Returns a server-backed up-next item using the supplied queue first, then contextual media relationships.
-         */
-        post: operations["postPlaybackNext"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/playback/queue": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Resolve a server-backed playback queue
-         * @description Returns playable queue items aligned to server permissions and media relationships.
-         */
-        post: operations["postPlaybackQueue"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/playback/receivers": {
         parameters: {
             query?: never;
@@ -4386,11 +4405,17 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List active first-party web playback receivers */
+        /**
+         * List active key-bound Portico playback receivers
+         * @description Returns only current receivers owned by the exact ViewerScope. Discovery remains a presence hint; a controller must obtain a Server-issued authorization before sending a LAN command.
+         */
         get: operations["getPlaybackReceivers"];
         put?: never;
-        /** Register a first-party web playback receiver */
-        post: operations["postPlaybackReceivers"];
+        /**
+         * Register or refresh a key-bound Portico playback receiver
+         * @description Binds the receiver ID, exact ViewerScope, selected Server identity, X25519 public key, and capabilities. Rotating the receiver key revokes every prior controller authorization.
+         */
+        post: operations["registerPlaybackReceiver"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4412,11 +4437,57 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Heartbeat a first-party web playback receiver */
-        patch: operations["patchPlaybackReceiversReceiverId"];
+        /**
+         * Heartbeat a key-bound Portico playback receiver
+         * @description Refreshes receiver presence only when the supplied key fingerprint matches and returns the complete current authorization set. Replacing that set is the receiver's revocation boundary.
+         */
+        patch: operations["heartbeatPlaybackReceiver"];
         trace?: never;
     };
-    "/playback/receivers/{receiverId}/command": {
+    "/playback/receivers/{receiverId}/authorizations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                receiverId: string;
+            };
+            cookie?: never;
+        };
+        /** List current authorizations for an exact receiver key */
+        get: operations["getPlaybackReceiverAuthorizations"];
+        put?: never;
+        /**
+         * Authorize one controller for a key-bound playback receiver
+         * @description Atomically issues a controller grant and stores the paired receiver authorization under one request identity. Exact retries return the same grant; conflicting retries fail closed.
+         */
+        post: operations["authorizePlaybackReceiver"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/playback/receivers/{receiverId}/authorizations/{authorizationId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                receiverId: string;
+                authorizationId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Revoke one playback receiver controller authorization */
+        delete: operations["revokePlaybackReceiverAuthorization"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/playback/receivers/{receiverId}/handoff": {
         parameters: {
             query?: never;
             header?: never;
@@ -4427,28 +4498,33 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Send a media load command to a first-party web playback receiver */
-        post: operations["postPlaybackReceiversReceiverIdCommand"];
+        /**
+         * Prepare controller playback on a registered Portico receiver
+         * @description The authenticated receiver redeems an encrypted controller instruction. The Server creates a handoff_pending successor from the authoritative source occurrence, forward queue, and history, but retains the source until the receiver separately reports exact first-playing evidence.
+         */
+        post: operations["handoffPlaybackToReceiver"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/playback/receivers/{receiverId}/events": {
+    "/playback/receivers/{receiverId}/handoffs/{requestId}": {
         parameters: {
-            query?: never;
+            query: {
+                authorizationId: string;
+                receiverPublicKeyFingerprint: string;
+                sourceSessionId: string;
+            };
             header?: never;
             path: {
                 receiverId: string;
+                requestId: string;
             };
             cookie?: never;
         };
-        /**
-         * Stream playback receiver command updates
-         * @description Emits authenticated server-sent receiver events when a receiver heartbeat or command changes. Clients should keep PATCH heartbeat polling as a fallback for environments without EventSource.
-         */
-        get: operations["getPlaybackReceiversReceiverIdEvents"];
+        /** Reconcile a receiver handoff from the authorized controller */
+        get: operations["getPlaybackReceiverHandoffStatus"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4457,22 +4533,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/playback/receivers/{receiverId}/events/poll": {
+    "/playback/receivers/{receiverId}/handoffs/{requestId}/commit": {
         parameters: {
             query?: never;
             header?: never;
             path: {
                 receiverId: string;
+                requestId: string;
             };
             cookie?: never;
         };
-        /**
-         * Long-poll playback receiver updates
-         * @description Returns state and command updates for the exact authorized receiver. A successful timeout returns 200 with an empty events array; receiver ownership is rechecked while waiting.
-         */
-        get: operations["pollPlaybackReceiverEvents"];
+        get?: never;
         put?: never;
-        post?: never;
+        /**
+         * Commit a prepared receiver handoff after player readiness
+         * @description Atomically accepts the exact terminal captured during preparation and activates the exact prepared receiver session only after first-playing evidence. Exact retries return the committed playback; mismatched receiver, source, request, authorization, or session identities fail closed.
+         */
+        post: operations["commitPlaybackReceiverHandoff"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5549,25 +5626,25 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Reorder the complete Watch With Friends queue */
+        /** Move one Watch With Friends queue occurrence relative to another */
         patch: operations["patchWatchWithFriendsGroupsGroupIdQueue"];
         trace?: never;
     };
-    "/watch-with-friends/groups/{groupId}/queue/{mediaId}": {
+    "/watch-with-friends/groups/{groupId}/queue/{entryId}": {
         parameters: {
             query?: never;
             header?: never;
             path: {
                 groupId: string;
-                mediaId: string;
+                entryId: string;
             };
             cookie?: never;
         };
         get?: never;
         put?: never;
         post?: never;
-        /** Remove a queued media item from a Watch With Friends group */
-        delete: operations["deleteWatchWithFriendsGroupsGroupIdQueueMediaId"];
+        /** Remove one exact queued occurrence from a Watch With Friends group */
+        delete: operations["deleteWatchWithFriendsGroupsGroupIdQueueEntryId"];
         options?: never;
         head?: never;
         patch?: never;
@@ -6105,6 +6182,36 @@ export interface components {
             watched?: boolean;
             watchlisted?: boolean;
         };
+        CastAdvanceCancelRequest: {
+            /** Format: int64 */
+            generation: number;
+            requestId: string;
+        };
+        CastAdvanceRequest: {
+            advanceId: string;
+            automatic?: boolean;
+            /** Format: int64 */
+            generation: number;
+            previousTerminal: components["schemas"]["PlaybackTerminalEvent"];
+            requestId: string;
+        };
+        CastAdvanceResponse: {
+            automaticAdvances: number;
+            automation: components["schemas"]["CastPlaybackAutomation"];
+            /** Format: int64 */
+            generation: number;
+            playback?: components["schemas"]["PlaybackResponse"];
+            previousTerminal: components["schemas"]["PlaybackTerminalEvent"];
+            replacementSessionId?: string;
+            /** @description Exact no-credential fingerprint of the receiver advance request. */
+            requestFingerprint: string;
+            requestId: string;
+            sourceSessionId: string;
+            /** @enum {string} */
+            status: "prepared" | "committed" | "failed" | "exhausted" | "passout_stopped";
+            /** @enum {string} */
+            version: "v1";
+        };
         CastBootstrapRequest: {
             audioStreamId?: string;
             burnInSubtitleId?: string;
@@ -6122,6 +6229,9 @@ export interface components {
             receiverPublicKey: string;
             /** @enum {string} */
             repeatMode?: "off" | "one" | "all";
+            replacement?: components["schemas"]["PlaybackReplacementRequest"];
+            /** @description Stable identity for this fresh or replacement bootstrap attempt. */
+            requestId: string;
             skipPreroll?: boolean;
             sourceContext?: components["schemas"]["PlaybackSourceContext"];
             /** @description Immutable identifier for the selected source route. */
@@ -6131,8 +6241,6 @@ export interface components {
              * @enum {string}
              */
             sourceKind: "media" | "live" | "dvr" | "library-channel";
-            /** @description Existing Apple playback session being atomically handed to the Cast receiver. */
-            sourcePlaybackSessionId?: string;
             startSeconds?: number;
             /** @description Optional explicit text subtitle stream id. The server validates it against the authoritative source before issuing receiver playback. */
             subtitleStreamId?: string;
@@ -6150,11 +6258,19 @@ export interface components {
             receiverId: string;
             /** Format: uri */
             receiverOrigin: string;
+            replacementSessionId: string;
+            requestId: string;
             /**
              * Format: uri
              * @description Verified HTTPS server origin selected by the server.
              */
             serverOrigin: string;
+            sourceSessionId?: string;
+            /**
+             * @description A credential-bearing bootstrap response exists only while the exact transfer is pending. Final outcomes are reconciled through the no-credential transfer-status response.
+             * @constant
+             */
+            transferStatus: "pending";
             /** @enum {string} */
             version: "v1";
         };
@@ -6166,12 +6282,28 @@ export interface components {
             operation: "play" | "pause" | "seek";
             positionSeconds?: number;
         };
-        CastOperationResponse: components["schemas"]["PlaybackCommand"] | components["schemas"]["PlaybackProgressAcknowledgement"] | components["schemas"]["CastRenewResponse"] | components["schemas"]["CastStopResponse"];
+        CastOperationResponse: components["schemas"]["PlaybackCommand"] | components["schemas"]["PlaybackProgressAcknowledgement"] | components["schemas"]["CastRenewResponse"] | components["schemas"]["CastStopResponse"] | components["schemas"]["CastAdvanceResponse"] | components["schemas"]["CastTransferStatusResponse"] | components["schemas"]["CastSegmentSkipResponse"];
+        CastPlaybackAutomation: {
+            autoplayNext: boolean;
+            /** @enum {string} */
+            creditsSkip: "off" | "ask" | "automatic";
+            /** @enum {string} */
+            introSkip: "off" | "ask" | "automatic";
+            passoutAfterEpisodes: number;
+            passoutProtection: boolean;
+            upNextCountdownSeconds: number;
+        };
         CastProgressRequest: components["schemas"]["PlaybackProgressEvent"] & {
             /** Format: int64 */
             generation: number;
+            /**
+             * @description Terminal completed/stopped evidence is forbidden here and must use the exact stop or atomic advance request.
+             * @enum {string}
+             */
+            state?: "playing" | "paused" | "buffering";
         };
         CastReceiverSessionResponse: {
+            automation: components["schemas"]["CastPlaybackAutomation"];
             capabilities: string[];
             /** Format: int64 */
             generation: number;
@@ -6191,6 +6323,7 @@ export interface components {
         };
         CastReceiverSessionState: {
             capabilities: string[];
+            currentQueueEntryId: string;
             /** Format: date-time */
             expiresAt: string;
             /** Format: int64 */
@@ -6201,12 +6334,14 @@ export interface components {
             playbackSessionId: string;
             playbackState: string;
             positionSeconds: number;
+            queue: components["schemas"]["PlaybackQueueEntry"][];
             receiverId: string;
             receiverSessionId: string;
+            repeatMode: components["schemas"]["PlaybackRepeatMode"];
             /** Format: uri */
             serverOrigin: string;
             /** @enum {string} */
-            status: "active" | "stopped" | "expired" | "revoked";
+            status: "pending" | "active" | "stopped" | "expired" | "revoked";
             version: string;
         };
         CastReconnectRequest: {
@@ -6242,15 +6377,50 @@ export interface components {
             receiverSession: components["schemas"]["CastReceiverSessionState"];
             version: string;
         };
+        CastSegmentSkipRequest: {
+            /** Format: int64 */
+            generation: number;
+            segmentId: string;
+        };
+        CastSegmentSkipResponse: {
+            /** Format: int64 */
+            generation: number;
+            positionSeconds?: number;
+            skipped: boolean;
+            /** @enum {string} */
+            version: "v1";
+        };
         CastStopRequest: {
             /** Format: int64 */
             generation: number;
+            requestId: string;
+            terminal: components["schemas"]["PlaybackTerminalEvent"];
         };
         CastStopResponse: {
             /** Format: int64 */
             generation: number;
             ok: boolean;
+            terminal: components["schemas"]["PlaybackSessionTerminalAcknowledgement"];
         };
+        CastTransferStatusRequest: {
+            clientInstanceId: string;
+            requestId: string;
+            sourceSessionId?: string;
+        };
+        CastTransferStatusResponse: {
+            /** @description Exact accepted source terminal evidence; present only for replacement outcomes. */
+            previousTerminal?: components["schemas"]["PlaybackTerminalEvent"];
+            replacementSessionId: string;
+            /** @description Exact server receipt fingerprint binding the target intent and replacement envelope. */
+            requestFingerprint: string;
+            requestId: string;
+            /** @description Present only when this outcome replaced an existing source actor. */
+            sourceSessionId?: string;
+            /** @enum {string} */
+            status: "pending" | "committed" | "expired" | "failed";
+            /** @enum {string} */
+            version: "v1";
+        } & (unknown | unknown);
         Chapter: {
             endSeconds?: number;
             id: string;
@@ -6355,6 +6525,9 @@ export interface components {
             envelopeRevision: number;
             forwardCompatibility: components["schemas"]["ForwardCompatibilityPolicy"];
             requiredSemantics: string[];
+            semanticDocuments: {
+                productContract: components["schemas"]["SemanticDocumentIdentity"];
+            };
             semanticRevisions: {
                 [key: string]: number;
             };
@@ -6479,7 +6652,8 @@ export interface components {
             burnInSubtitleId?: string;
             clientInstanceId?: string;
             clientProfile?: components["schemas"]["PlaybackClientProfile"];
-            intent?: components["schemas"]["PlaybackIntent"];
+            intent: components["schemas"]["PlaybackIntent"];
+            replacement?: components["schemas"]["PlaybackReplacementRequest"];
             /** @description Advisory resume position for a completed recording; ignored while a recording is live. */
             startSeconds?: number;
             subtitleStreamId?: string;
@@ -6944,7 +7118,7 @@ export interface components {
             nextAfterMediaId?: string;
             /** @description source/original or an optimized profile returned by download-options. */
             qualityProfile?: string;
-        } | unknown | unknown | unknown | unknown;
+        } & (unknown | unknown | unknown | unknown);
         DownloadPreparationGrantRequest: {
             /**
              * @description Browser delivery uses only an HttpOnly cookie. Native delivery returns the ephemeral transfer credential for the PorticoDownload authorization scheme.
@@ -7105,7 +7279,10 @@ export interface components {
         GetPlaybackHistoryResponse: components["schemas"]["CursorListResponse"] & {
             items?: components["schemas"]["PlaybackSession"][];
         };
-        GetPlaybackReceiversReceiverIdEventsResponse: string;
+        GetPlaybackReceiverAuthorizationsResponse: {
+            items: components["schemas"]["ReceiverAuthorizationRecord"][];
+            total: number;
+        };
         GetPlaybackReceiversResponse: {
             items: components["schemas"]["PlaybackReceiver"][];
             total: number;
@@ -7223,6 +7400,29 @@ export interface components {
             signatureKeyId: string;
             /** @constant */
             version: "v1";
+        };
+        HostedRestoreAuthorization: {
+            accountId: string;
+            /** @constant */
+            audience: "portico-media-server";
+            authorizationId: string;
+            /** Format: date-time */
+            expiresAt: string;
+            /** Format: date-time */
+            issuedAt: string;
+            /** @constant */
+            kind: "restore-authorization";
+            /** @constant */
+            purpose: "server-restore";
+            /** Format: int64 */
+            restoreSecurityEpoch: number;
+            serverId: string;
+            signature: string;
+            /** @constant */
+            signatureAlgorithm: "ed25519";
+            signatureKeyId: string;
+            /** @constant */
+            version: 1;
         };
         HostedServerWake: {
             accountId?: string;
@@ -7764,9 +7964,10 @@ export interface components {
              * @description Owner-only diagnostic override. Consumer tune always uses authoritative server time.
              */
             at?: string;
-            clientInstanceId?: string;
+            clientInstanceId: string;
             clientProfile?: components["schemas"]["PlaybackClientProfile"];
-            intent?: components["schemas"]["PlaybackIntent"];
+            intent: components["schemas"]["PlaybackIntent"];
+            replacement?: components["schemas"]["PlaybackReplacementRequest"];
         };
         LibraryChannelTuneResponse: {
             channelId: string;
@@ -8467,6 +8668,8 @@ export interface components {
             pageInfo: components["schemas"]["CursorPageInfo"];
         };
         MediaDownloadGrantResponse: {
+            /** @description Immutable signed authorization receipt returned only for native delivery after exact artifact verification and an atomic authorization-fence recheck. */
+            authorizationReceipt?: components["schemas"]["OfflineDownloadAuthorizationReceipt"];
             /** @description Clean same-server artifact URL. Browsers use the HttpOnly grant cookie; native transfer adapters send grantToken in Authorization and never persist either value. */
             downloadUrl: string;
             /** Format: date-time */
@@ -8973,6 +9176,10 @@ export interface components {
             refreshToken: string;
             serverFriendlyName?: string;
             serverId: string;
+            /** @description Canonical unpadded standard-base64 encoding of the Server's raw 32-byte Ed25519 identity public key. Clients persist it with the matching fingerprint for offline receipt verification. */
+            serverPublicKey: string;
+            /** @description Canonical sha256-prefixed unpadded base64url fingerprint of serverPublicKey. */
+            serverPublicKeyFingerprint: string;
             /** @enum {string} */
             tokenType: "Bearer";
             user: components["schemas"]["User"];
@@ -9080,6 +9287,58 @@ export interface components {
             enabled?: boolean;
             /** @enum {string} */
             minAlertLevel?: "info" | "warn" | "error";
+        };
+        OfflineDownloadAuthorizationArtifact: {
+            sha256: string;
+            /** Format: int64 */
+            sizeBytes: number;
+        };
+        OfflineDownloadAuthorizationIssuer: {
+            serverId: string;
+            signingKeyFingerprint: string;
+        };
+        OfflineDownloadAuthorizationPreparation: {
+            mediaId: string;
+            mediaVersionId: string;
+            preparationId: string;
+            qualityId: string;
+        };
+        OfflineDownloadAuthorizationReceipt: {
+            artifact: components["schemas"]["OfflineDownloadAuthorizationArtifact"];
+            issuer: components["schemas"]["OfflineDownloadAuthorizationIssuer"];
+            /** Format: date-time */
+            lastVerifiedAt: string;
+            preparation: components["schemas"]["OfflineDownloadAuthorizationPreparation"];
+            /** @constant */
+            purpose: "offline-download-authorization";
+            receiptId: string;
+            signature: string;
+            /** Format: date-time */
+            verifyBy: string;
+            /** @constant */
+            version: 1;
+            viewerScope: components["schemas"]["OfflineDownloadAuthorizationViewerScope"];
+        };
+        OfflineDownloadAuthorizationRevalidationRequest: {
+            receipt: components["schemas"]["OfflineDownloadAuthorizationReceipt"];
+        };
+        OfflineDownloadAuthorizationRevalidationResponse: {
+            /** @constant */
+            outcome: "valid-replacement";
+            receipt: components["schemas"]["OfflineDownloadAuthorizationReceipt"];
+        } | {
+            /** @enum {string} */
+            outcome: "revoked" | "invalid" | "out-of-scope";
+        };
+        OfflineDownloadAuthorizationViewerScope: {
+            accountId: string;
+            /** @enum {string} */
+            authority: "local" | "hosted";
+            authorizationRevision: string;
+            profileId: string;
+            /** @constant */
+            scopeKind: "server-bound";
+            serverId: string;
         };
         OptimizedVersion: {
             audioCodec?: string;
@@ -9471,7 +9730,6 @@ export interface components {
             deliveryMode: "server_hls";
             grantRequired: boolean;
             overlayTranscode?: boolean;
-            qualityProfile?: string;
             /** Format: int64 */
             resourceRevision?: number;
         };
@@ -9504,18 +9762,20 @@ export interface components {
         };
         PlaybackHandoffRequest: {
             clientProfile?: components["schemas"]["PlaybackClientProfile"];
+            entryId: string;
             /** Format: int64 */
             expectedPlaybackRevision?: number;
             /** Format: int64 */
             expectedQueueRevision?: number;
             intent?: components["schemas"]["PlaybackIntent"];
-            mediaId?: string;
             preparedSessionId?: string;
-            progressSeconds?: number;
-            queueMediaIds?: string[];
-            /** @description Optional idempotency key. When omitted for a prepared handoff */
-            requestId?: string;
+            /** @description The source session actor's complete ordered terminal event. Natural transition uses disposition completed; deliberate replacement uses stopped. The server applies this event and activates the replacement atomically; rejection leaves the source session and its authority unchanged. */
+            previousTerminal: components["schemas"]["PlaybackTerminalEvent"];
+            /** @description Stable idempotency identity for this handoff. Exact retries reuse this value and a byte-equivalent request body to return the committed result. */
+            requestId: string;
             sourceContext?: components["schemas"]["PlaybackSourceContext"];
+            /** @description Explicit start position for the replacement session, distinct from the old session's terminal position. For a direct same-entry handoff, omission defaults to previousTerminal.positionSeconds; explicit zero means Replay. For a different or prepared entry, omission retains canonical resume policy. */
+            startSeconds?: number;
         };
         PlaybackHardwareDiagnostic: {
             /** @enum {string} */
@@ -9531,9 +9791,6 @@ export interface components {
             directPlayPolicy?: "allow" | "prefer" | "never";
             /** @enum {string} */
             directStreamPolicy?: "allow" | "prefer" | "never";
-            maxAudioBitrateKbps?: number;
-            maxVideoBitrateMbps?: number;
-            maxVideoHeight?: number;
             /** @description Preferred BCP-47 audio language resolved by the server before resource selection. */
             preferredAudioLanguage?: string;
             /** @description Ordered BCP-47 audio language policy. The server selects the first authorized matching stream before applying fallback. */
@@ -9547,8 +9804,7 @@ export interface components {
              * @enum {string}
              */
             preferredSubtitleMode?: "off" | "text" | "burn_in";
-            /** @enum {string} */
-            qualityProfile?: "automatic" | "original" | "high" | "standard" | "data_saver";
+            quality: components["schemas"]["PlaybackQualitySelection"];
             /** @description Explicit subtitle enablement. When false */
             subtitlesEnabled?: boolean;
             /** @enum {string} */
@@ -9559,23 +9815,12 @@ export interface components {
              */
             transportClass?: "wifi" | "cellular" | "wired" | "unknown";
         };
-        PlaybackNextRequest: {
-            mediaId: string;
-            queueMediaIds?: string[];
-        };
-        PlaybackNextResponse: {
-            item?: components["schemas"]["MediaItem"];
-            queue: components["schemas"]["MediaItem"][];
-            reason: string;
-        };
         PlaybackPrepareNextRequest: {
             clientProfile?: components["schemas"]["PlaybackClientProfile"];
-            commitPreviousEnd?: boolean;
             crossfadeSeconds?: number;
+            entryId: string;
             intent?: components["schemas"]["PlaybackIntent"];
-            mediaId?: string;
             preferredHandoff?: string;
-            queueMediaIds?: string[];
             sourceContext?: components["schemas"]["PlaybackSourceContext"];
         };
         PlaybackPreparedResponse: {
@@ -9587,7 +9832,7 @@ export interface components {
             playbackRevision: number;
             preloadPolicy: string;
             preparedSessionId: string;
-            queue: components["schemas"]["MediaItem"][];
+            queue: components["schemas"]["PlaybackQueueEntry"][];
             /** Format: int64 */
             queueRevision: number;
         };
@@ -9613,8 +9858,6 @@ export interface components {
             audioStreamId?: string;
             bandwidthMbps?: number;
             clientFallbackReason?: string;
-            /** @description Explicitly completes the media and closes the playback session after this event is accepted. */
-            completed?: boolean;
             durationSeconds?: number;
             /**
              * Format: int64
@@ -9627,9 +9870,9 @@ export interface components {
              */
             generation?: number;
             isPlaying?: boolean;
+            /** @description Exact terminal timeline position. For completed playback this must equal durationSeconds; the server rejects rather than normalizes non-final evidence. */
             positionSeconds?: number;
             progressSeconds?: number;
-            qualityId?: string;
             /**
              * Format: date-time
              * @description Client observation time for the event. Ordering is governed by eventSequence.
@@ -9650,46 +9893,134 @@ export interface components {
             /** @default 5 */
             startedThresholdPercent: number;
         };
-        PlaybackQueueResponse: {
-            items: components["schemas"]["MediaItem"][];
-            total: number;
+        PlaybackQualityOffer: {
+            /** @enum {string} */
+            kind: "automatic" | "original" | "fixed";
+            label: string;
+            /** Format: int64 */
+            maxAudioBitrateBps?: number;
+            /** Format: int64 */
+            maxVideoBitrateBps?: number;
+            selectionId: string;
+            /** @enum {integer} */
+            targetDisplayHeight?: 144 | 240 | 360 | 480 | 720 | 1080 | 1440 | 2160 | 4320;
+        } & (unknown & unknown);
+        PlaybackQualityOfferSet: {
+            /** @constant */
+            contractId: "PC-PLAYBACK";
+            mediaId: string;
+            offerRevision: string;
+            offers: components["schemas"]["PlaybackQualityOffer"][];
+            /** @constant */
+            schemaVersion: "quality-offers.v1";
+            sourceRevision: string;
+            versionId: string;
+        };
+        PlaybackQualitySelection: {
+            /** @constant */
+            mode: "automatic";
+        } | {
+            /** @constant */
+            mode: "explicit";
+            qualityOfferRevision: string;
+            selectionId: string;
+        };
+        PlaybackQueueEntry: {
+            entryId: string;
+            media: components["schemas"]["MediaItem"];
+        };
+        PlaybackQueueHistoryEntry: {
+            /** @description Stable identity of the queue occurrence that was played. */
+            entryId: string;
+            /** @description Identity of this playback-history event. */
+            historyId: string;
+            media: components["schemas"]["MediaItem"];
         };
         PlaybackReceiver: {
             app?: string;
-            code: string;
-            command: components["schemas"]["PlaybackCommand"];
             /** Format: date-time */
             createdAt: string;
+            /** Format: date-time */
+            expiresAt: string;
             id: string;
             /** Format: date-time */
             lastSeenAt: string;
             name: string;
-            platform?: string;
-            supportedCommands: "load"[];
+            platform: string;
+            /** @description Base64url raw X25519 public key owned by the receiver. */
+            receiverPublicKey: string;
+            /** @description Base64url SHA-256 digest of the decoded receiver public key. */
+            receiverPublicKeyFingerprint: string;
+            serverId: string;
+            supportedCommands: ("load" | "play" | "pause" | "seek" | "stop")[];
         };
-        PlaybackReceiverLongPollEnvelope: {
-            cursor: string;
-            events: components["schemas"]["PlaybackReceiver"][];
-            hasMore: boolean;
-            resetRequired: boolean;
-            /** Format: date-time */
-            serverTime: string;
-            /** @constant */
-            version: "v1";
+        PlaybackReceiverHandoffCommitRequest: {
+            authorizationId: string;
+            /**
+             * @description Exact first-playing receiver evidence required before the Server commits source terminal authority.
+             * @enum {string}
+             */
+            readiness: "playing";
+            receiverPublicKeyFingerprint: string;
+            /** @description Exact handoff_pending session returned by the prepare request. */
+            receiverSessionId: string;
+            sourceSessionId: string;
+        };
+        PlaybackReceiverHandoffRequest: {
+            authorizationId: string;
+            playback: components["schemas"]["PlaybackSessionCreateRequest"];
+            receiverPublicKeyFingerprint: string;
+        };
+        PlaybackReceiverHandoffStatusResponse: {
+            /** @enum {string} */
+            outcome: "waiting" | "pending" | "accepted";
+            receiverSessionId?: string;
+            requestId: string;
+            sourceSessionId: string;
+        };
+        PlaybackReceiverHeartbeatRequest: {
+            receiverPublicKeyFingerprint: string;
+        };
+        PlaybackReceiverHeartbeatResponse: {
+            authorizations: components["schemas"]["ReceiverAuthorizationRecord"][];
+            receiver: components["schemas"]["PlaybackReceiver"];
         };
         PlaybackReceiverRequest: {
             app?: string;
-            name?: string;
-            platform?: string;
-            supportedCommands?: "load"[];
+            clientInstanceId: string;
+            name: string;
+            platform: string;
+            receiverId: string;
+            receiverPublicKey: string;
+            supportedCommands: ("load" | "play" | "pause" | "seek" | "stop")[];
+        };
+        /** @description Portable non-quality intent updates. Quality has exactly one owner at PlaybackRenegotiationRequest.quality. */
+        PlaybackRenegotiationIntent: {
+            allowHdr?: boolean;
+            burnInSubtitles?: boolean;
+            /** @enum {string} */
+            directPlayPolicy?: "allow" | "prefer" | "never";
+            /** @enum {string} */
+            directStreamPolicy?: "allow" | "prefer" | "never";
+            preferredAudioLanguage?: string;
+            preferredAudioLanguages?: string[];
+            preferredSubtitleLanguage?: string;
+            preferredSubtitleLanguages?: string[];
+            /** @enum {string} */
+            preferredSubtitleMode?: "off" | "text" | "burn_in";
+            subtitlesEnabled?: boolean;
+            /** @enum {string} */
+            transcodePolicy?: "allow" | "prefer" | "require" | "never";
+            /** @enum {string} */
+            transportClass?: "wifi" | "cellular" | "wired" | "unknown";
         };
         PlaybackRenegotiationRequest: {
             audioStreamId?: string;
             clientProfile?: components["schemas"]["PlaybackClientProfile"];
             /** Format: int64 */
             expectedRevision: number;
-            intent?: components["schemas"]["PlaybackIntent"];
-            qualityId?: string;
+            intent?: components["schemas"]["PlaybackRenegotiationIntent"];
+            quality?: components["schemas"]["PlaybackQualitySelection"];
             requestId: string;
             /** @enum {string} */
             subtitleMode?: "off" | "text" | "burn_in";
@@ -9701,12 +10032,21 @@ export interface components {
          * @enum {string}
          */
         PlaybackRepeatMode: "off" | "one" | "all";
+        /** @description Exact authority-transfer envelope for replacing an active session while starting or tuning another target. The containing target request and this envelope form one immutable idempotent request. The source stays authoritative unless the server atomically accepts previousTerminal and activates the reserved successor. */
+        PlaybackReplacementRequest: {
+            /** Format: int64 */
+            expectedPlaybackRevision?: number;
+            /** Format: int64 */
+            expectedQueueRevision?: number;
+            previousTerminal: components["schemas"]["PlaybackTerminalEvent"];
+            requestId: string;
+            sourceSessionId: string;
+        };
         PlaybackResource: {
             audioStreamId?: string;
             /** @description Playback producer generation. VOD segment bytes are never cached across a changed generation. */
             default?: boolean;
             id: string;
-            qualityId?: string;
             /** @description Server-issued resource URL. Clients must not infer or rewrite its path or delivery-selection query. */
             sourceUrl: string;
             streamFormat: string;
@@ -9737,6 +10077,7 @@ export interface components {
                 title?: string;
             }[];
             continuationCredential: components["schemas"]["PlaybackContinuationCredential"];
+            currentQueueEntryId: string;
             decision: components["schemas"]["PlaybackDecision"];
             directPlay: boolean;
             generation: number;
@@ -9751,14 +10092,9 @@ export interface components {
              */
             playbackRevision: number;
             policy: components["schemas"]["ResolvedPlaybackPolicy"];
-            qualities: {
-                available?: boolean;
-                description?: string;
-                id?: string;
-                label?: string;
-                requiresTranscode?: boolean;
-            }[];
-            queue: components["schemas"]["MediaItem"][];
+            qualityOffers: components["schemas"]["PlaybackQualityOfferSet"];
+            qualitySelection: components["schemas"]["PlaybackQualitySelection"];
+            queue: components["schemas"]["PlaybackQueueEntry"][];
             /**
              * Format: int64
              * @description Monotonic revision for the authoritative session queue and repeat mode.
@@ -9770,7 +10106,6 @@ export interface components {
             resumePositionSeconds?: number;
             /** @description Audio stream id selected by the server or explicitly requested by the client. */
             selectedAudioStreamId?: string;
-            selectedQualityId?: string;
             /** @enum {string} */
             selectedSubtitleMode?: "off" | "text" | "burn_in";
             selectedSubtitleStreamId?: string;
@@ -9821,7 +10156,6 @@ export interface components {
             media: components["schemas"]["MediaItem"];
             positionSeconds: number;
             progress: number;
-            qualityId?: string;
             selectionChanged?: boolean;
             /** Format: date-time */
             startedAt: string;
@@ -9846,11 +10180,12 @@ export interface components {
             burnInSubtitleId?: string;
             clientInstanceId?: string;
             clientProfile?: components["schemas"]["PlaybackClientProfile"];
-            intent?: components["schemas"]["PlaybackIntent"];
+            intent: components["schemas"]["PlaybackIntent"];
             mediaId: string;
             /** @description Ordered media ids from the originating context. */
             queueMediaIds?: string[];
             repeatMode?: components["schemas"]["PlaybackRepeatMode"];
+            replacement?: components["schemas"]["PlaybackReplacementRequest"];
             skipPreroll?: boolean;
             sourceContext?: components["schemas"]["PlaybackSourceContext"];
             /** @description Advisory resume position on the canonical media timeline. */
@@ -9866,7 +10201,8 @@ export interface components {
              * @description Revision returned by the most recent queue read.
              */
             expectedRevision: number;
-            /** @description Complete ordered replacement for the upcoming queue. */
+            idempotencyKey: string;
+            /** @description Complete ordered new-occurrence replacement for the upcoming queue. Repeated media ids create distinct entries. */
             mediaIds: string[];
             repeatMode: components["schemas"]["PlaybackRepeatMode"];
         };
@@ -9875,29 +10211,30 @@ export interface components {
              * @description One explicit mutation against the authoritative queue state.
              * @enum {string}
              */
-            action: "append" | "play_next" | "remove" | "reorder" | "clear" | "set_repeat";
+            action: "append" | "play_next" | "remove" | "reorder" | "shuffle" | "clear" | "set_repeat";
+            /** @description Existing occurrence used as the reorder anchor. */
+            destinationEntryId?: string;
+            /** @description Exact queue occurrence for remove or reorder. */
+            entryId?: string;
             /**
              * Format: int64
              * @description Revision returned by the most recent queue read.
              */
             expectedRevision: number;
-            /** @description Source queue index for reorder commands. */
-            fromIndex?: number;
-            /** @description Queue index for remove commands. */
-            index?: number;
-            /** @description Single media item for append, play_next, or remove. */
+            idempotencyKey: string;
+            /** @description Single media intent for append or play_next. Each use creates a new occurrence. */
             mediaId?: string;
-            /** @description Ordered media ids for replace, append, or play_next commands. */
+            /** @description Ordered media intents for append or play_next. Repeated ids create distinct occurrences. */
             mediaIds?: string[];
+            /** @enum {string} */
+            placement?: "before" | "after";
             repeatMode?: components["schemas"]["PlaybackRepeatMode"];
-            /** @description Destination queue index for reorder commands. */
-            toIndex?: number;
         };
         PlaybackSessionQueueResponse: {
             canMutate: boolean;
-            current: components["schemas"]["MediaItem"];
-            history: components["schemas"]["MediaItem"][];
-            items: components["schemas"]["MediaItem"][];
+            current: components["schemas"]["PlaybackQueueEntry"];
+            history: components["schemas"]["PlaybackQueueHistoryEntry"][];
+            items: components["schemas"]["PlaybackQueueEntry"][];
             repeatMode: components["schemas"]["PlaybackRepeatMode"];
             /** Format: int64 */
             revision: number;
@@ -9906,17 +10243,18 @@ export interface components {
             total: number;
         };
         PlaybackSessionStopRequest: {
-            /** @enum {string} */
-            disposition: "stopped" | "completed";
-            /** @description Required terminal timeline duration. May be zero only for stopped indefinite/live playback; completed playback requires a positive value. */
-            durationSeconds: number;
-            /** Format: int64 */
-            eventSequence: number;
-            /** Format: int64 */
-            generation: number;
-            positionSeconds: number;
-            /** Format: date-time */
-            recordedAt: string;
+            /** @description Stable idempotency identity allocated before the terminal request is sent. An exact retry reuses this value and the byte-equivalent terminal envelope. */
+            requestId: string;
+            terminal: components["schemas"]["PlaybackTerminalEvent"];
+        };
+        PlaybackSessionTerminalAcknowledgement: {
+            /** @description True when this exact terminal mutation is durably committed, including an exact retry of a prior commit. */
+            accepted: boolean;
+            /** @description True when the server returned the durable receipt for an exact previously committed request. */
+            duplicate: boolean;
+            requestId: string;
+            sessionId: string;
+            terminal: components["schemas"]["PlaybackTerminalEvent"];
         };
         PlaybackSourceContext: {
             id?: string;
@@ -9949,6 +10287,19 @@ export interface components {
             supportedCommands: ("play" | "pause" | "seek" | "stop" | "load")[];
             /** @enum {string} */
             type: "receiver" | "session";
+        };
+        PlaybackTerminalEvent: {
+            /** @enum {string} */
+            disposition: "stopped" | "completed";
+            /** @description Required terminal timeline duration. May be zero only for stopped indefinite/live playback; completed playback requires a positive value exactly equal to positionSeconds. */
+            durationSeconds: number;
+            /** Format: int64 */
+            eventSequence: number;
+            /** Format: int64 */
+            generation: number;
+            positionSeconds: number;
+            /** Format: date-time */
+            recordedAt: string;
         };
         PlaybackTimeline: {
             canPause: boolean;
@@ -10116,7 +10467,6 @@ export interface components {
             browseFields: components["schemas"]["BrowseFieldCapability"][];
             browseOperators: components["schemas"]["BrowseOperator"][];
             browseSorts: components["schemas"]["BrowseSortCapability"][];
-            compatibility: components["schemas"]["CompatibilityEnvelope"];
             entityKinds: string[];
             entitySemantics: components["schemas"]["EntitySemantic"][];
             eventTransports: components["schemas"]["EventTransport"][];
@@ -10127,6 +10477,7 @@ export interface components {
             presentationFields: string[];
             queryLimits: components["schemas"]["BrowseQueryLimits"];
             search: components["schemas"]["SearchContract"];
+            semanticIdentity: components["schemas"]["SemanticDocumentIdentity"];
             serverCapabilities: string[];
         };
         ProductLanguageCatalog: {
@@ -10425,6 +10776,36 @@ export interface components {
             /** @enum {string} */
             status: "pending" | "approved" | "denied" | "expired" | "consumed";
         };
+        ReceiverAuthorizationRecord: {
+            allowedCommands: ("load" | "play" | "pause" | "seek" | "stop")[];
+            authorizationId: string;
+            authorizationRevision: string;
+            controllerId: string;
+            controllerPublicKey: string;
+            /** Format: date-time */
+            expiresAt: string;
+            receiverId: string;
+            receiverPublicKeyFingerprint: string;
+            serverId: string;
+        };
+        ReceiverAuthorizationRequest: {
+            allowedCommands: ("load" | "play" | "pause" | "seek" | "stop")[];
+            clientInstanceId: string;
+            controllerId: string;
+            controllerPublicKey: string;
+            requestId: string;
+        };
+        ReceiverControllerGrant: {
+            allowedCommands: ("load" | "play" | "pause" | "seek" | "stop")[];
+            authorizationId: string;
+            authorizationRevision: string;
+            /** Format: date-time */
+            expiresAt: string;
+            receiverId: string;
+            receiverPublicKey: string;
+            receiverPublicKeyFingerprint: string;
+            serverId: string;
+        };
         RecommendationRow: {
             id: string;
             items: components["schemas"]["MediaItem"][];
@@ -10432,6 +10813,14 @@ export interface components {
             title: string;
             /** @description Presentation hint such as poster or landscape. */
             type: string;
+        };
+        RemoteAccessCertificateRenewResponse: {
+            existing: boolean;
+            job: components["schemas"]["Job"];
+            /** @constant */
+            ok: true;
+            /** @constant */
+            queued: true;
         };
         RemoteAccessClaim: {
             claimCode?: string;
@@ -10635,8 +11024,6 @@ export interface components {
         /** @description Canonical media-agnostic playback policy. Protocol-specific controls are additive nested extensions and never replace these required delivery fields. */
         ResolvedPlaybackPolicy: {
             allowHdr: boolean;
-            /** @description Server-owned, media-type-specific profile that selects the actual video or audio encoder preset. */
-            deliveryProfile: string;
             /** @enum {string} */
             directPlayPolicy: "allow" | "prefer" | "never";
             /** @enum {string} */
@@ -10648,8 +11035,6 @@ export interface components {
             maxVideoHeight?: number;
             /** @enum {string} */
             networkClass: "local" | "wifi" | "cellular" | "remote" | "unknown";
-            /** @enum {string} */
-            qualityProfile: "automatic" | "original" | "high" | "standard" | "data_saver";
             serverClamps: string[];
             /**
              * @description Server-resolved viewer locality from trusted request provenance, independent of the public or LAN route URL used.
@@ -10683,15 +11068,23 @@ export interface components {
             /** @enum {string} */
             status: "normal" | "degraded" | "overloaded";
         };
+        RestoreAuthorizationContext: {
+            /**
+             * Format: int64
+             * @description Current monotonic Server epoch that a Hosted restore authorization must bind exactly.
+             */
+            restoreSecurityEpoch: number;
+        };
         RestoreBackupRequest: {
             /** @description Exact destructive confirmation bound to the selected backup, for example restore:backup-name.db. */
             confirmation: string;
+            hostedAuthorization?: components["schemas"]["HostedRestoreAuthorization"];
             /**
              * Format: password
              * @description Current account password; profile PINs and session possession are not accepted.
              */
-            password: string;
-        };
+            password?: string;
+        } | unknown | unknown;
         RestoreBackupResponse: {
             errorCode?: string;
             errorMessage?: string;
@@ -11157,6 +11550,15 @@ export interface components {
             pinRevision: number;
             policy: components["schemas"]["ProfileRestrictions"];
             sortOrder: number;
+        };
+        SemanticDocumentIdentity: {
+            digest: string;
+            /** @enum {string} */
+            digestAlgorithm: "sha256";
+            /** @constant */
+            id: "portico.product-contract";
+            /** @enum {string} */
+            revision: "v2";
         };
         ServerActivityResponse: {
             activeStreams: number;
@@ -11948,6 +12350,7 @@ export interface components {
             command: components["schemas"]["PlaybackCommand"];
             /** Format: date-time */
             createdAt: string;
+            currentEntryId: string;
             id: string;
             mediaId: string;
             mediaTitle: string;
@@ -12014,16 +12417,22 @@ export interface components {
             /** Format: date-time */
             addedAt: string;
             addedByProfileId: string;
+            entryId: string;
             mediaId: string;
             mediaTitle: string;
             sortOrder: number;
+            /** @description True when this viewer cannot access the media. The stable entryId and ordering remain authoritative. */
+            unavailable: boolean;
         };
         WatchWithFriendsQueueOrderRequest: {
+            destinationEntryId: string;
+            entryId: string;
             /** Format: int64 */
             expectedRevision: number;
             /** @description Replays return the current materialized group snapshot when this exact request was already committed. */
             idempotencyKey: string;
-            mediaIds: string[];
+            /** @enum {string} */
+            placement: "before" | "after";
         };
         WatchWithFriendsQueueRequest: {
             /** Format: int64 */
@@ -12044,11 +12453,13 @@ export interface components {
         WatchWithFriendsStateRequest: {
             /** @enum {string} */
             action: "play" | "pause" | "seek" | "stop" | "load" | "next" | "previous";
+            /** @description Loads one exact existing queue occurrence. Mutually exclusive with mediaId. */
+            entryId?: string;
             /** Format: int64 */
             expectedRevision: number;
             /** @description Replays return the current materialized group snapshot when this exact request was already committed. */
             idempotencyKey: string;
-            /** @description Required for load actions. */
+            /** @description Creates and loads one genuinely new queue occurrence. Mutually exclusive with entryId. */
             mediaId?: string;
             playbackRate?: number;
             positionSeconds?: number;
@@ -19874,6 +20285,98 @@ export interface operations {
             };
         };
     };
+    getRestoreAuthorizationContext: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current exact epoch for a Hosted owner restore authorization. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RestoreAuthorizationContext"];
+                };
+            };
+            /** @description 400 Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 401 Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 403 Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 404 Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 405 Method Not Allowed */
+            405: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 409 Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 429 Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 500 Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     restoreUploadedDatabase: {
         parameters: {
             query?: never;
@@ -19892,11 +20395,13 @@ export interface operations {
                      * @description Authenticated client declaration of the database part size; the server compares it with the streamed byte count.
                      */
                     databaseBytes: number;
+                    /** @description Exact JSON serialization of the signed Hosted restore authorization document. */
+                    hostedAuthorization?: string;
                     /** @description Optional strict V2 backup manifest for a catalogued backup import. */
                     manifest?: string;
                     /** Format: password */
-                    password: string;
-                };
+                    password?: string;
+                } & (unknown | unknown);
             };
         };
         responses: {
@@ -29545,7 +30050,8 @@ export interface operations {
                     channelId: string;
                     clientInstanceId?: string;
                     clientProfile?: components["schemas"]["PlaybackClientProfile"];
-                    intent?: components["schemas"]["PlaybackIntent"];
+                    intent: components["schemas"]["PlaybackIntent"];
+                    replacement?: components["schemas"]["PlaybackReplacementRequest"];
                 };
             };
         };
@@ -30798,7 +31304,9 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
+                    requestId: string;
                     sessionId: string;
+                    terminal: components["schemas"]["PlaybackTerminalEvent"];
                 };
             };
         };
@@ -30809,7 +31317,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SuccessResponse"];
+                    "application/json": components["schemas"]["PlaybackSessionTerminalAcknowledgement"];
                 };
             };
             /** @description 400 Bad Request */
@@ -30895,13 +31403,14 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: {
+        requestBody: {
             content: {
                 "application/json": {
                     channelId?: string;
                     clientInstanceId?: string;
                     clientProfile?: components["schemas"]["PlaybackClientProfile"];
-                    intent?: components["schemas"]["PlaybackIntent"];
+                    intent: components["schemas"]["PlaybackIntent"];
+                    replacement?: components["schemas"]["PlaybackReplacementRequest"];
                 };
             };
         };
@@ -37009,6 +37518,109 @@ export interface operations {
             };
         };
     };
+    revalidateOfflineDownloadAuthorization: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OfflineDownloadAuthorizationRevalidationRequest"];
+            };
+        };
+        responses: {
+            /** @description Exact revalidation outcome; only valid-replacement includes a receipt */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OfflineDownloadAuthorizationRevalidationResponse"];
+                };
+            };
+            /** @description 400 Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 401 Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 403 Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 404 Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 405 Method Not Allowed */
+            405: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 409 Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 429 Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 500 Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Authorization state could not be checked atomically */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     getPeopleMedia: {
         parameters: {
             query: {
@@ -37312,13 +37924,13 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Playback session ended */
+            /** @description Durable terminal receipt for the ended playback session */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SuccessResponse"];
+                    "application/json": components["schemas"]["PlaybackSessionTerminalAcknowledgement"];
                 };
             };
             /** @description 400 Bad Request */
@@ -38087,13 +38699,13 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Continuation revoked */
+            /** @description Durable terminal receipt for the revoked continuation */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SuccessResponse"];
+                    "application/json": components["schemas"]["PlaybackSessionTerminalAcknowledgement"];
                 };
             };
             /** @description 400 Bad Request */
@@ -38956,8 +39568,8 @@ export interface operations {
         requestBody?: {
             content: {
                 "application/json": {
+                    clientInstanceId?: string;
                     clientProfile?: components["schemas"]["PlaybackClientProfile"];
-                    intent?: components["schemas"]["PlaybackIntent"];
                 };
             };
         };
@@ -39433,7 +40045,7 @@ export interface operations {
             header?: never;
             path: {
                 sessionId: string;
-                operation: "state" | "control" | "progress" | "renew" | "stop";
+                operation: "state" | "control" | "progress" | "renew" | "stop" | "advance" | "advance-cancel" | "segment-skip";
             };
             cookie?: never;
         };
@@ -39528,13 +40140,13 @@ export interface operations {
             header?: never;
             path: {
                 sessionId: string;
-                operation: "state" | "control" | "progress" | "renew" | "stop";
+                operation: "state" | "control" | "progress" | "renew" | "stop" | "advance" | "advance-cancel" | "segment-skip";
             };
             cookie?: never;
         };
         requestBody?: {
             content: {
-                "application/json": components["schemas"]["CastControlRequest"] | components["schemas"]["CastProgressRequest"] | components["schemas"]["CastRenewRequest"] | components["schemas"]["CastStopRequest"];
+                "application/json": components["schemas"]["CastControlRequest"] | components["schemas"]["CastProgressRequest"] | components["schemas"]["CastRenewRequest"] | components["schemas"]["CastStopRequest"] | components["schemas"]["CastAdvanceRequest"] | components["schemas"]["CastAdvanceCancelRequest"] | components["schemas"]["CastSegmentSkipRequest"];
             };
         };
         responses: {
@@ -39621,25 +40233,26 @@ export interface operations {
             };
         };
     };
-    deletePlaybackCastSession: {
+    postPlaybackCastTransferStatus: {
         parameters: {
             query?: never;
             header?: never;
-            path: {
-                sessionId: string;
-                operation: "state" | "control" | "progress" | "renew" | "stop";
-            };
+            path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CastTransferStatusRequest"];
+            };
+        };
         responses: {
-            /** @description Cast receiver session stopped */
+            /** @description Exact pending or final Cast transfer outcome */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["CastStopResponse"];
+                    "application/json": components["schemas"]["CastTransferStatusResponse"];
                 };
             };
             /** @description 400 Bad Request */
@@ -39920,198 +40533,6 @@ export interface operations {
             };
         };
     };
-    postPlaybackNext: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["PlaybackNextRequest"];
-            };
-        };
-        responses: {
-            /** @description Next playable item and queue context */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PlaybackNextResponse"];
-                };
-            };
-            /** @description 400 Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Error"];
-                };
-            };
-            /** @description 401 Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Error"];
-                };
-            };
-            /** @description 403 Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Error"];
-                };
-            };
-            /** @description 404 Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Error"];
-                };
-            };
-            /** @description 405 Method Not Allowed */
-            405: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Error"];
-                };
-            };
-            /** @description 409 Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Error"];
-                };
-            };
-            /** @description 429 Too Many Requests */
-            429: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Error"];
-                };
-            };
-            /** @description 500 Internal Server Error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Error"];
-                };
-            };
-        };
-    };
-    postPlaybackQueue: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["PlaybackNextRequest"];
-            };
-        };
-        responses: {
-            /** @description Server-backed queue */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PlaybackQueueResponse"];
-                };
-            };
-            /** @description 400 Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Error"];
-                };
-            };
-            /** @description 401 Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Error"];
-                };
-            };
-            /** @description 403 Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Error"];
-                };
-            };
-            /** @description 404 Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Error"];
-                };
-            };
-            /** @description 405 Method Not Allowed */
-            405: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Error"];
-                };
-            };
-            /** @description 409 Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Error"];
-                };
-            };
-            /** @description 429 Too Many Requests */
-            429: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Error"];
-                };
-            };
-            /** @description 500 Internal Server Error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Error"];
-                };
-            };
-        };
-    };
     getPlaybackReceivers: {
         parameters: {
             query?: never;
@@ -40204,7 +40625,7 @@ export interface operations {
             };
         };
     };
-    postPlaybackReceivers: {
+    registerPlaybackReceiver: {
         parameters: {
             query?: never;
             header?: never;
@@ -40300,101 +40721,7 @@ export interface operations {
             };
         };
     };
-    patchPlaybackReceiversReceiverId: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                receiverId: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Receiver heartbeat and latest command */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PlaybackReceiver"];
-                };
-            };
-            /** @description 400 Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Error"];
-                };
-            };
-            /** @description 401 Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Error"];
-                };
-            };
-            /** @description 403 Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Error"];
-                };
-            };
-            /** @description 404 Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Error"];
-                };
-            };
-            /** @description 405 Method Not Allowed */
-            405: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Error"];
-                };
-            };
-            /** @description 409 Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Error"];
-                };
-            };
-            /** @description 429 Too Many Requests */
-            429: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Error"];
-                };
-            };
-            /** @description 500 Internal Server Error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Error"];
-                };
-            };
-        };
-    };
-    postPlaybackReceiversReceiverIdCommand: {
+    heartbeatPlaybackReceiver: {
         parameters: {
             query?: never;
             header?: never;
@@ -40405,17 +40732,17 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["PlaybackCommandRequest"];
+                "application/json": components["schemas"]["PlaybackReceiverHeartbeatRequest"];
             };
         };
         responses: {
-            /** @description Receiver command accepted */
+            /** @description Receiver heartbeat and current key-bound authorizations */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PlaybackCommand"];
+                    "application/json": components["schemas"]["PlaybackReceiverHeartbeatResponse"];
                 };
             };
             /** @description 400 Bad Request */
@@ -40492,7 +40819,103 @@ export interface operations {
             };
         };
     };
-    getPlaybackReceiversReceiverIdEvents: {
+    getPlaybackReceiverAuthorizations: {
+        parameters: {
+            query: {
+                receiverPublicKeyFingerprint: string;
+            };
+            header?: never;
+            path: {
+                receiverId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current receiver authorization records */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GetPlaybackReceiverAuthorizationsResponse"];
+                };
+            };
+            /** @description 400 Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 401 Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 403 Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 404 Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 405 Method Not Allowed */
+            405: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 409 Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 429 Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 500 Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    authorizePlaybackReceiver: {
         parameters: {
             query?: never;
             header?: never;
@@ -40501,15 +40924,309 @@ export interface operations {
             };
             cookie?: never;
         };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReceiverAuthorizationRequest"];
+            };
+        };
+        responses: {
+            /** @description Key-bound controller grant */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReceiverControllerGrant"];
+                };
+            };
+            /** @description 400 Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 401 Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 403 Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 404 Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 405 Method Not Allowed */
+            405: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Request identity was already used with different authorization material */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 429 Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 500 Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    revokePlaybackReceiverAuthorization: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                receiverId: string;
+                authorizationId: string;
+            };
+            cookie?: never;
+        };
         requestBody?: never;
         responses: {
-            /** @description Server-sent playback receiver events */
+            /** @description Receiver authorization revoked */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 400 Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 401 Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 403 Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 404 Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 405 Method Not Allowed */
+            405: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 409 Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 429 Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 500 Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    handoffPlaybackToReceiver: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                receiverId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlaybackReceiverHandoffRequest"];
+            };
+        };
+        responses: {
+            /** @description Receiver playback prepared but not yet authoritative */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "text/event-stream": components["schemas"]["GetPlaybackReceiversReceiverIdEventsResponse"];
+                    "application/json": components["schemas"]["PlaybackResponse"];
+                };
+            };
+            /** @description 400 Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 401 Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Receiver authorization is expired */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 404 Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 405 Method Not Allowed */
+            405: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Source playback authority changed before the transfer committed */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 429 Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 500 Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getPlaybackReceiverHandoffStatus: {
+        parameters: {
+            query: {
+                authorizationId: string;
+                receiverPublicKeyFingerprint: string;
+                sourceSessionId: string;
+            };
+            header?: never;
+            path: {
+                receiverId: string;
+                requestId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Authoritative receiver handoff state */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaybackReceiverHandoffStatusResponse"];
                 };
             };
             /** @description 400 Bad Request */
@@ -40586,30 +41303,29 @@ export interface operations {
             };
         };
     };
-    pollPlaybackReceiverEvents: {
+    commitPlaybackReceiverHandoff: {
         parameters: {
-            query?: {
-                /** @description Opaque cursor previously returned for this playback receiver. */
-                cursor?: string;
-                /** @description Maximum time to wait for an event. Zero performs an immediate cursor check. */
-                waitSeconds?: number;
-            };
+            query?: never;
             header?: never;
             path: {
                 receiverId: string;
+                requestId: string;
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlaybackReceiverHandoffCommitRequest"];
+            };
+        };
         responses: {
-            /** @description Playback receiver events, or an empty successful timeout envelope */
+            /** @description Receiver-owned active playback; also returned for an exact committed retry */
             200: {
                 headers: {
-                    "Cache-Control"?: "no-store";
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PlaybackReceiverLongPollEnvelope"];
+                    "application/json": components["schemas"]["PlaybackResponse"];
                 };
             };
             /** @description 400 Bad Request */
@@ -40630,7 +41346,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Error"];
                 };
             };
-            /** @description 403 Forbidden */
+            /** @description Receiver authorization is expired */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -40639,7 +41355,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Error"];
                 };
             };
-            /** @description 404 Not Found */
+            /** @description Prepared handoff not found */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -40657,7 +41373,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Error"];
                 };
             };
-            /** @description 409 Conflict */
+            /** @description Source */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -40666,10 +41382,16 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Error"];
                 };
             };
-            /** @description Long-poll concurrency or request-rate limit reached */
+            /** @description Prepared handoff expired and was rolled back */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 429 Too Many Requests */
             429: {
                 headers: {
-                    "Retry-After"?: number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -41761,11 +42483,20 @@ export interface operations {
             /** @description Canonical product contract */
             200: {
                 headers: {
+                    "Cache-Control"?: "private, no-cache";
+                    ETag?: string;
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["ProductContract"];
                 };
+            };
+            /** @description The cached semantic Product Contract is current */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description 400 Bad Request */
             400: {
@@ -42049,13 +42780,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Certificate request completed or recorded */
-            200: {
+            /** @description Certificate maintenance job queued or reused */
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["RemoteAccessStatus"];
+                    "application/json": components["schemas"]["RemoteAccessCertificateRenewResponse"];
                 };
             };
             /** @description 400 Bad Request */
@@ -47504,7 +48235,7 @@ export interface operations {
             };
         };
     };
-    deleteWatchWithFriendsGroupsGroupIdQueueMediaId: {
+    deleteWatchWithFriendsGroupsGroupIdQueueEntryId: {
         parameters: {
             query: {
                 expectedRevision: number;
@@ -47514,7 +48245,7 @@ export interface operations {
             header?: never;
             path: {
                 groupId: string;
-                mediaId: string;
+                entryId: string;
             };
             cookie?: never;
         };

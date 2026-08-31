@@ -608,7 +608,7 @@ func TestDVRRecordingPlaybackStartsCanonicalSession(t *testing.T) {
 	}
 	seedExactPlaybackFactsForFixture(t, server, dvrRecordingMediaID(recording.ID))
 
-	payload, err := json.Marshal(DVRPlaybackSessionCreateRequest{ClientInstanceID: "dvr-web", StartSeconds: 12, ClientProfile: authenticatedPlaybackRuntimeProfile()})
+	payload, err := json.Marshal(DVRPlaybackSessionCreateRequest{ClientInstanceID: "dvr-web", StartSeconds: 12, ClientProfile: authenticatedPlaybackRuntimeProfile(), Intent: automaticPlaybackIntent()})
 	if err != nil {
 		t.Fatalf("marshal playback request: %v", err)
 	}

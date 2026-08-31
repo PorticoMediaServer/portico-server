@@ -127,6 +127,7 @@ func TestLiveTVDockerProviderHLSNestedPlaylistAndSegmentThroughHandler(t *testin
 		"channelId":        channelID,
 		"clientInstanceId": "provider-hls-integration",
 		"clientProfile":    map[string]any{"supportsHls": true, "supportedContainers": []string{"hls"}},
+		"intent":           map[string]any{"quality": map[string]any{"mode": "automatic"}},
 	}, &playback)
 	if status != http.StatusOK {
 		t.Fatalf("start Live TV status=%d body=%s", status, body)
@@ -137,8 +138,8 @@ func TestLiveTVDockerProviderHLSNestedPlaylistAndSegmentThroughHandler(t *testin
 	if playback.Policy.NetworkClass != playbackNetworkLocal || playback.Policy.LiveHLS == nil || playback.Policy.LiveHLS.CredentialQueryAllowed {
 		t.Fatalf("Live TV did not return the resolved generic policy and additive HLS security policy: %#v", playback.Policy)
 	}
-	if playback.SelectedQualityID != "source" || !strings.Contains(playback.SourceURL, "quality=source") {
-		t.Fatalf("Live TV source did not bind its resolved quality: selected=%q source=%q", playback.SelectedQualityID, playback.SourceURL)
+	if playback.QualitySelection.Mode != playbackQualityModeAutomatic || !strings.Contains(playback.SourceURL, "quality=source") {
+		t.Fatalf("Live TV source did not bind automatic quality: selected=%#v source=%q", playback.QualitySelection, playback.SourceURL)
 	}
 	wantLogo := "/api/live-tv/logos/" + channelID
 	if playback.Media.Images.Thumb != wantLogo {
@@ -150,11 +151,11 @@ func TestLiveTVDockerProviderHLSNestedPlaylistAndSegmentThroughHandler(t *testin
 	if status != http.StatusOK {
 		t.Fatalf("read Live TV queue status=%d body=%s", status, body)
 	}
-	if queue.Current.ID != channelID || queue.CanMutate || queue.Total != 0 || len(queue.Items) != 0 {
+	if queue.Current.EntryID != playback.CurrentQueueEntryID || queue.Current.Media.ID != channelID || queue.CanMutate || queue.Total != 0 || len(queue.Items) != 0 {
 		t.Fatalf("unexpected read-only Live TV queue: %#v", queue)
 	}
-	if queue.Current.Images.Thumb != wantLogo {
-		t.Fatalf("Live TV queue logo=%q want=%q", queue.Current.Images.Thumb, wantLogo)
+	if queue.Current.Media.Images.Thumb != wantLogo {
+		t.Fatalf("Live TV queue logo=%q want=%q", queue.Current.Media.Images.Thumb, wantLogo)
 	}
 
 	var restored PlaybackRestoreResponse
@@ -285,7 +286,7 @@ func TestLiveTVPlaybackProgressAcceptsOrderedHeartbeat(t *testing.T) {
 	client := &http.Client{Jar: jar}
 	loginUser(t, client, httpServer.URL)
 	var playback PlaybackResponse
-	status, body := doJSON(t, client, http.MethodPost, httpServer.URL+"/api/live-tv/play", map[string]any{"channelId": "chan_live_progress", "clientProfile": map[string]any{"supportsHls": true, "supportedContainers": []string{"hls"}}}, &playback)
+	status, body := doJSON(t, client, http.MethodPost, httpServer.URL+"/api/live-tv/play", map[string]any{"channelId": "chan_live_progress", "clientProfile": map[string]any{"supportsHls": true, "supportedContainers": []string{"hls"}}, "intent": map[string]any{"quality": map[string]any{"mode": "automatic"}}}, &playback)
 	if status != http.StatusOK {
 		t.Fatalf("start Live TV status=%d body=%s", status, body)
 	}

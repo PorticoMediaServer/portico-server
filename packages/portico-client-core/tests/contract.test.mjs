@@ -118,7 +118,23 @@ function contractOperations(document, contract) {
   const operations = new Map();
   for (const [route, pathItem] of Object.entries(document.paths ?? {})) {
     const normalized = normalizedPath(route, contract);
-    operations.set(normalized, new Set(Object.keys(pathItem).map((method) => method.toLowerCase())));
+    const methods = new Set(Object.keys(pathItem)
+      .filter(method => !["parameters", "summary", "description"].includes(method))
+      .map(method => method.toLowerCase()));
+    operations.set(normalized, methods);
+    for (const parameter of pathItem.parameters ?? []) {
+      if (parameter.in !== "path" || !Array.isArray(parameter.schema?.enum)) continue;
+      const expandedRoute = route.replace(
+        `{${parameter.name}}`,
+        "__PORTICO_ENUM_VALUE__",
+      );
+      for (const value of parameter.schema.enum) {
+        operations.set(
+          normalizedPath(expandedRoute.replace("__PORTICO_ENUM_VALUE__", value), contract),
+          methods,
+        );
+      }
+    }
   }
   return operations;
 }

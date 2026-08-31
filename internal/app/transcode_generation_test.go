@@ -42,7 +42,7 @@ func TestPlannedVODGenerationDirectoryStatesAreStrictlyRecognized(t *testing.T) 
 }
 
 func TestPlannedTranscodeSessionRejectsStaleGenerationNamespace(t *testing.T) {
-	binding := playbackExecutionBinding{Digest: "plan-digest", Generation: 2}
+	binding := testPlaybackExecutionPlan(t, func(plan *playbackExecutionPlan) { plan.Plan.Timeline.Generation = 2 })
 	identity := plannedTranscodeIdentity{
 		UserID: "user", ProfileID: "profile", PlaybackSessionID: "session",
 		AuthorizationRevision: "authorization", PlaybackGeneration: 2, GrantTokenHash: "grant",

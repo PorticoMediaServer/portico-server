@@ -20,7 +20,7 @@ import (
 )
 
 func TestMediaDownloadGrantIsHashedScopedAndRangeSafeUntilExpiry(t *testing.T) {
-	serverURL, db, _ := newDiscoveryTestServer(t, config.Config{})
+	serverURL, db, server := newDiscoveryTestServer(t, config.Config{})
 	client := authenticatedDownloadGrantClient(t, serverURL)
 	mediaRoot, sourcePath := seedDownloadGrantMedia(t, db)
 	_ = mediaRoot
@@ -42,7 +42,7 @@ func TestMediaDownloadGrantIsHashedScopedAndRangeSafeUntilExpiry(t *testing.T) {
 		t.Fatalf("account credential bypassed download capability HEAD: status=%d", credentialOnlyHead.StatusCode)
 	}
 
-	grant := createDownloadGrantForTest(t, client, serverURL, "grant_media", "source")
+	grant := createDownloadGrantForTest(t, server, client, serverURL, "grant_media", "source")
 	token := downloadGrantTokenForTest(t, grant)
 	var storedHash, serverID, principalUserID, mediaID, versionKind, versionID, fingerprint string
 	if err := db.QueryRow(`
@@ -142,24 +142,24 @@ func TestMediaDownloadGrantIsHashedScopedAndRangeSafeUntilExpiry(t *testing.T) {
 }
 
 func TestMediaDownloadGrantRevalidatesExpiryVersionAndPermission(t *testing.T) {
-	serverURL, db, _ := newDiscoveryTestServer(t, config.Config{})
+	serverURL, db, server := newDiscoveryTestServer(t, config.Config{})
 	client := authenticatedDownloadGrantClient(t, serverURL)
 	_, sourcePath := seedDownloadGrantMedia(t, db)
 
-	expired := createDownloadGrantForTest(t, client, serverURL, "grant_media", "source")
+	expired := createDownloadGrantForTest(t, server, client, serverURL, "grant_media", "source")
 	expiredToken := downloadGrantTokenForTest(t, expired)
 	if _, err := db.Exec(`UPDATE media_download_grants SET expires_at = ? WHERE token_hash = ?`, time.Now().UTC().Add(-time.Minute).Format(time.RFC3339), hashToken(expiredToken)); err != nil {
 		t.Fatalf("expire download grant: %v", err)
 	}
 	assertDownloadGrantDenied(t, client, serverURL+expired.DownloadURL)
 
-	changed := createDownloadGrantForTest(t, client, serverURL, "grant_media", "source")
+	changed := createDownloadGrantForTest(t, server, client, serverURL, "grant_media", "source")
 	if err := os.WriteFile(sourcePath, []byte("a changed source version"), 0o600); err != nil {
 		t.Fatalf("change source version: %v", err)
 	}
 	assertDownloadGrantDenied(t, client, serverURL+changed.DownloadURL)
 
-	permission := createDownloadGrantForTest(t, client, serverURL, "grant_media", "source")
+	permission := createDownloadGrantForTest(t, server, client, serverURL, "grant_media", "source")
 	userID := adminUserID(t, db)
 	if _, err := db.Exec(`UPDATE users SET permissions_json = json_set(permissions_json, '$.downloadMedia', false) WHERE id = ?`, userID); err != nil {
 		t.Fatalf("revoke download permission: %v", err)
@@ -173,11 +173,11 @@ func TestDownloadStateCleanupExpiresCapabilitiesAndOnlyOldTerminalPreparations(t
 	_, _ = seedDownloadGrantMedia(t, db)
 	now := time.Now().UTC()
 
-	expired := createDownloadGrantForTest(t, client, serverURL, "grant_media", "source")
+	expired := createDownloadGrantForTest(t, server, client, serverURL, "grant_media", "source")
 	if _, err := db.Exec(`UPDATE media_download_grants SET expires_at = ? WHERE token_hash = ?`, now.Add(-time.Minute).Format(time.RFC3339), hashToken(downloadGrantTokenForTest(t, expired))); err != nil {
 		t.Fatalf("expire cleanup grant: %v", err)
 	}
-	active := createDownloadGrantForTest(t, client, serverURL, "grant_media", "source")
+	active := createDownloadGrantForTest(t, server, client, serverURL, "grant_media", "source")
 
 	var preparation downloadPreparationView
 	status, body := doJSON(t, client, http.MethodPost, serverURL+"/api/download-preparations", DownloadPreparationCreateRequest{MediaID: "grant_media", QualityProfile: "source"}, &preparation)
@@ -225,9 +225,10 @@ func TestSourceDownloadPreparationIsDurableRangeSafeAndRemovable(t *testing.T) {
 
 	var preparation downloadPreparationView
 	status, body := doJSON(t, client, http.MethodPost, serverURL+"/api/download-preparations", DownloadPreparationCreateRequest{MediaID: "grant_media", QualityProfile: "source"}, &preparation)
-	if status != http.StatusCreated || preparation.State != "ready" || preparation.Progress != 100 || preparation.ID == "" || preparation.SizeKind != "exact" {
+	if status != http.StatusCreated || preparation.State != "queued" || preparation.ID == "" {
 		t.Fatalf("create source preparation status=%d body=%s preparation=%#v", status, body, preparation)
 	}
+	preparation = completeDownloadPreparationForTest(t, server, client, serverURL, preparation)
 	var listed ListResponse[downloadPreparationView]
 	status, body = doJSON(t, client, http.MethodGet, serverURL+"/api/download-preparations", nil, &listed)
 	if status != http.StatusOK || listed.Total != 1 || listed.Items[0].ID != preparation.ID {
@@ -528,13 +529,14 @@ func seedDownloadGrantEpisodes(t *testing.T, db *sql.DB, sourcePath string) {
 	}
 }
 
-func createDownloadGrantForTest(t *testing.T, client *http.Client, serverURL, mediaID, profile string) MediaDownloadGrantResponse {
+func createDownloadGrantForTest(t *testing.T, server *Server, client *http.Client, serverURL, mediaID, profile string) MediaDownloadGrantResponse {
 	t.Helper()
 	var preparation downloadPreparationView
 	status, body := doJSON(t, client, http.MethodPost, serverURL+"/api/download-preparations", DownloadPreparationCreateRequest{MediaID: mediaID, QualityProfile: profile}, &preparation)
 	if status != http.StatusCreated {
 		t.Fatalf("create download preparation status=%d body=%s", status, body)
 	}
+	preparation = completeDownloadPreparationForTest(t, server, client, serverURL, preparation)
 	var grant MediaDownloadGrantResponse
 	status, body = doJSON(t, client, http.MethodPost, serverURL+"/api/download-preparations/"+url.PathEscape(preparation.ID)+"/grant", downloadPreparationGrantRequest{Delivery: "browser"}, &grant)
 	if status != http.StatusCreated {
@@ -557,6 +559,35 @@ func createDownloadGrantForTest(t *testing.T, client *http.Client, serverURL, me
 		}
 	}
 	return grant
+}
+
+func completeDownloadPreparationForTest(t *testing.T, server *Server, client *http.Client, serverURL string, preparation downloadPreparationView) downloadPreparationView {
+	t.Helper()
+	if preparation.State == "ready" {
+		return preparation
+	}
+	record, err := server.downloadPreparationRecordContext(context.Background(), `WHERE dp.id = ? LIMIT 1`, preparation.ID)
+	if err != nil {
+		t.Fatalf("load queued download preparation: %v", err)
+	}
+	job, err := server.getJob(record.JobID)
+	if err != nil {
+		t.Fatalf("load download verification job: %v", err)
+	}
+	if !server.claimJobForRun(job.ID) {
+		t.Fatalf("claim download verification job %s", job.ID)
+	}
+	job, err = server.getJob(job.ID)
+	if err != nil {
+		t.Fatalf("reload claimed download verification job: %v", err)
+	}
+	server.runDownloadArtifactVerification(context.Background(), job)
+	var ready downloadPreparationView
+	status, body := doJSON(t, client, http.MethodGet, serverURL+"/api/download-preparations/"+url.PathEscape(preparation.ID), nil, &ready)
+	if status != http.StatusOK || ready.State != "ready" {
+		t.Fatalf("verified download preparation status=%d body=%s preparation=%#v", status, body, ready)
+	}
+	return ready
 }
 
 func downloadGrantTokenForTest(t *testing.T, grant MediaDownloadGrantResponse) string {

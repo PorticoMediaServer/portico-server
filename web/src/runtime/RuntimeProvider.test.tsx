@@ -4,7 +4,7 @@ import { useRef, useState } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { useRuntime } from './RuntimeContext';
 import { extractHostedBootstrapIntent, extractPorticoLoginResult, RuntimeProvider } from './RuntimeProvider';
-import { consumeNativeDeviceSSOAutoStart, nativeDeviceAuthorizationCompletionURL, RuntimeSurface } from './RuntimeSurface';
+import { canonicalProblem, consumeNativeDeviceSSOAutoStart, nativeDeviceAuthorizationCompletionURL, RuntimeSurface } from './RuntimeSurface';
 import { RuntimeProductFrame } from './RuntimeProductFrame';
 import { runtimeUsesProductFrame } from './runtimeFramePolicy';
 import type { HostedServerSummary, RuntimeConfig } from './runtimeMachine';
@@ -163,6 +163,7 @@ function preparedConnection(serverId: string, serverName: string, profileId = 'p
     apiBaseUrl: `https://${serverId}.direct.getportico.tv`,
     accessToken: `access-${serverId}-${profileId}`,
     refreshToken: `refresh-${serverId}-${profileId}`,
+    serverPublicKey: hostedServer(serverId, serverName).serverPublicKey,
     serverPublicKeyFingerprint: testServerFingerprint(serverId),
   };
   return {
@@ -170,11 +171,12 @@ function preparedConnection(serverId: string, serverName: string, profileId = 'p
     scope: ClientCore.viewerScopeFromAuthMe(identity),
     session,
     record: {
-      schemaVersion: 2,
+      schemaVersion: 3,
       accountId: 'user-1',
       serverId,
       profileId,
       serverName,
+      serverPublicKey: hostedServer(serverId, serverName).serverPublicKey,
       serverPublicKeyFingerprint: testServerFingerprint(serverId),
       currentRoute: { url: `https://${serverId}.direct.getportico.tv`, type: 'public_direct', verifiedAt: '2026-07-14T11:00:00.000Z' },
       session,
@@ -232,11 +234,12 @@ async function rememberedHostedBrowser(serverIds = ['server-1']): Promise<Hosted
     const serverName = serverId === 'server-1' ? 'Family Media' : 'Cinema';
     const serverPublicKeyFingerprint = testServerFingerprint(serverId);
     const record: ClientCore.TrustedServerConnectionRecord = {
-      schemaVersion: 2,
+      schemaVersion: 3,
       accountId: 'user-1',
       serverId,
       profileId: 'profile-1',
       serverName,
+      serverPublicKey: hostedServer(serverId, serverName).serverPublicKey,
       serverPublicKeyFingerprint,
       currentRoute: { url: `https://${serverId}.direct.getportico.tv`, type: 'public_direct', verifiedAt: `2026-07-14T11:0${index}:00.000Z` },
       session: {
@@ -249,6 +252,7 @@ async function rememberedHostedBrowser(serverIds = ['server-1']): Promise<Hosted
         accountId: 'user-1',
         profileId: 'profile-1',
         authorizationRevision: 'policy-1',
+        serverPublicKey: hostedServer(serverId, serverName).serverPublicKey,
         serverPublicKeyFingerprint,
       },
       lastSuccessfulConnectionAt: `2026-07-14T11:0${index}:00.000Z`,
@@ -598,8 +602,9 @@ describe('RuntimeProvider', () => {
 
     render(<RuntimeProvider config={hostedConfig}><RuntimeHarness /></RuntimeProvider>);
 
-    const verifiedEmail = await screen.findByDisplayValue('relay@privaterelay.appleid.com');
-    expect(verifiedEmail).toHaveAttribute('readonly');
+    expect(await screen.findByText('relay@privaterelay.appleid.com')).toBeInTheDocument();
+    expect(screen.getByText('Apple account')).toBeInTheDocument();
+    expect(screen.queryByDisplayValue('relay@privaterelay.appleid.com')).not.toBeInTheDocument();
     expect(screen.getByText(/Apple private relay address/)).toBeInTheDocument();
     expect(window.location.pathname).toBe('/');
     expect(window.location.search).toBe('');
@@ -610,6 +615,30 @@ describe('RuntimeProvider', () => {
     fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'available-name' } });
     fireEvent.click(screen.getByRole('button', { name: 'Create Portico Account' }));
     await waitFor(() => expect(requests.filter((request) => request.url.endsWith('/api/auth/sso/onboarding/complete')).at(-1)?.body).toEqual({ onboardingToken: 'onboarding-two', username: 'available-name' }));
+  });
+
+  it('clears an invalid SSO onboarding handoff before returning to sign in', async () => {
+    window.history.replaceState(null, '', '/auth/sso/onboarding?token=invalid-onboarding');
+    const fetchMock = vi.fn((input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith('/api/system')) return Promise.resolve(response(hostedSystem));
+      if (url.endsWith('/api/auth/me')) return Promise.resolve(response({ authenticated: false }));
+      if (url.endsWith('/api/auth/sso/onboarding/preview')) return Promise.resolve(response({ code: 'invalid_onboarding_token' }, false, 400));
+      return Promise.reject(new Error(`Unexpected request: ${url}`));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const view = render(<RuntimeProvider config={hostedConfig}><RuntimeHarness /></RuntimeProvider>);
+    expect(await screen.findByRole('heading', { name: 'Account setup could not be opened' })).toBeInTheDocument();
+    expect(window.sessionStorage.getItem('portico.hosted.sso-onboarding-handoff.v1')).not.toBeNull();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Back to sign in' }));
+    expect(await screen.findByRole('heading', { name: 'Sign in to Portico' })).toBeInTheDocument();
+    expect(window.sessionStorage.getItem('portico.hosted.sso-onboarding-handoff.v1')).toBeNull();
+
+    view.unmount();
+    render(<RuntimeProvider config={hostedConfig}><RuntimeHarness /></RuntimeProvider>);
+    expect(await screen.findByRole('heading', { name: 'Sign in to Portico' })).toBeInTheDocument();
   });
 
   it('coalesces rapid SSO onboarding submissions while completion is pending', async () => {
@@ -813,6 +842,80 @@ describe('RuntimeProvider', () => {
     expect(create).toBeEnabled();
   });
 
+  it('keeps staged authentication in browser history so Back returns to sign in', async () => {
+    const fetchMock = vi.fn((input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith('/api/system')) return Promise.resolve(response(hostedSystem));
+      if (url.endsWith('/api/auth/me')) return Promise.resolve(response({ authenticated: false }));
+      return Promise.reject(new Error(`Unexpected request: ${url}`));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<RuntimeProvider config={hostedConfig}><RuntimeHarness /></RuntimeProvider>);
+    await screen.findByRole('heading', { name: 'Sign in to Portico' });
+    fireEvent.click(screen.getByRole('button', { name: 'Create an account' }));
+    expect(screen.getByRole('heading', { name: 'Create a Portico Account' })).toBeInTheDocument();
+
+    act(() => window.history.back());
+    expect(await screen.findByRole('heading', { name: 'Sign in to Portico' })).toBeInTheDocument();
+  });
+
+  it('acknowledges password-recovery resend without leaving the success state', async () => {
+    let resetRequests = 0;
+    const fetchMock = vi.fn((input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith('/api/system')) return Promise.resolve(response(hostedSystem));
+      if (url.endsWith('/api/auth/me')) return Promise.resolve(response({ authenticated: false }));
+      if (url.endsWith('/api/auth/password-reset/start')) {
+        resetRequests += 1;
+        return Promise.resolve(response({ ok: true }));
+      }
+      return Promise.reject(new Error(`Unexpected request: ${url}`));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<RuntimeProvider config={hostedConfig}><RuntimeHarness /></RuntimeProvider>);
+    await screen.findByRole('heading', { name: 'Sign in to Portico' });
+    fireEvent.click(screen.getByRole('button', { name: 'Forgot password?' }));
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'viewer@example.test' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send recovery email' }));
+    expect(await screen.findByRole('status')).toHaveTextContent('Recovery email requested.');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Send again' }));
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Another recovery email was requested.'));
+    expect(resetRequests).toBe(2);
+  });
+
+  it('keeps the recovery success state when a resend fails', async () => {
+    let resetRequests = 0;
+    const fetchMock = vi.fn((input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith('/api/system')) return Promise.resolve(response(hostedSystem));
+      if (url.endsWith('/api/auth/me')) return Promise.resolve(response({ authenticated: false }));
+      if (url.endsWith('/api/auth/password-reset/start')) {
+        resetRequests += 1;
+        return Promise.resolve(resetRequests === 1
+          ? response({ ok: true })
+          : response({ code: 'hosted_unavailable', message: 'private upstream detail' }, false, 503));
+      }
+      return Promise.reject(new Error(`Unexpected request: ${url}`));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<RuntimeProvider config={hostedConfig}><RuntimeHarness /></RuntimeProvider>);
+    await screen.findByRole('heading', { name: 'Sign in to Portico' });
+    fireEvent.click(screen.getByRole('button', { name: 'Forgot password?' }));
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'viewer@example.test' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send recovery email' }));
+    expect(await screen.findByRole('status')).toHaveTextContent('Recovery email requested.');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Send again' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Portico Account services unavailable');
+    expect(screen.getByRole('heading', { name: 'Save your email' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Send again' })).toBeEnabled();
+    expect(screen.queryByText('private upstream detail')).not.toBeInTheDocument();
+  });
+
   it('opens a browser session after registration and completes the pending server claim', async () => {
     window.history.replaceState(null, '', '/claim?code=SETUP123&serverName=Family%20Room');
     const requests: Array<{ url: string; body?: Record<string, unknown> }> = [];
@@ -944,6 +1047,8 @@ describe('RuntimeProvider', () => {
       login: 'owner@example.test',
       installationId: expect.any(String),
     });
+    fireEvent.change(screen.getByLabelText('Username or email'), { target: { value: 'corrected@example.test' } });
+    expect(screen.queryByText(copy.body!)).not.toBeInTheDocument();
   });
 
   it('uses a final fresh /auth/me in DataProvider before mounting the bundled viewer', async () => {
@@ -1424,8 +1529,38 @@ describe('RuntimeProvider', () => {
     expect(screen.getByRole('button', { name: 'Accept invitation' })).toBeInTheDocument();
   });
 
+  it('does not publish a remembered account identity before Hosted validates the session', async () => {
+    const vault = createBrowserHostedConnectionVault(undefined);
+    await vault.rememberAccount({ accountId: 'stale-user', displayName: 'Owner', email: 'owner@example.test' });
+    const accountCheck = deferred<Response>();
+    const fetchMock = vi.fn((input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith('/api/system')) return Promise.resolve(response(hostedSystem));
+      if (url.endsWith('/api/auth/me')) return accountCheck.promise;
+      return Promise.reject(new Error(`Unexpected request: ${url}`));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<RuntimeProvider config={hostedConfig} hostedConnectionVault={vault}><ProductFrameRuntimeHarness /></RuntimeProvider>);
+
+    await waitFor(() => expect(fetchMock.mock.calls.some(([input]) => String(input).endsWith('/api/auth/me'))).toBe(true));
+    expect(screen.getByLabelText('Opening Portico')).toBeInTheDocument();
+    expect(screen.queryByText('Owner')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Account menu unavailable' })).toHaveTextContent('Portico Account');
+    expect(screen.getByText('Checking account…')).toBeInTheDocument();
+    expect(screen.queryByText('No server selected')).not.toBeInTheDocument();
+
+    accountCheck.resolve(response({ authenticated: false }));
+    expect(await screen.findByRole('heading', { name: 'Sign in to Portico' })).toBeInTheDocument();
+    expect(screen.queryByText('Owner')).not.toBeInTheDocument();
+  });
+
   it.each([
-    { code: 'invite_not_found', status: 404, raw: 'database invitation id invite-secret was absent', title: 'Item not found' },
+    { code: 'invite_not_found', status: 404, raw: 'database invitation id invite-secret was absent', title: 'Check the invitation code' },
+    { code: 'invite_expired', status: 409, raw: 'invitation invite-secret expired at private timestamp', title: 'Invitation expired' },
+    { code: 'invite_revoked', status: 409, raw: 'owner usr-secret revoked invitation invite-secret', title: 'Invitation cancelled' },
+    { code: 'invite_consumed', status: 409, raw: 'invitation invite-secret accepted by usr-secret', title: 'Invitation already used' },
+    { code: 'invite_wrong_recipient', status: 403, raw: 'expected private@example.test but received usr-secret', title: 'Use the invited Portico Account' },
     { code: 'invite_not_acceptable', status: 409, raw: 'recipient account usr-secret did not match', title: "Portico couldn't complete this request" },
   ])('keeps rejected invitation diagnostics out of no-server customer copy for $code', async ({ code, status, raw, title }) => {
     const fetchMock = vi.fn((input: string | URL | Request, init?: RequestInit) => {
@@ -1450,6 +1585,54 @@ describe('RuntimeProvider', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(title);
     expect(screen.queryByText(raw)).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Accept invitation' })).toBeEnabled();
+  });
+
+  it.each([
+    { code: 'invalid_credentials', status: 401, messageId: 'auth.invalid-credentials', title: "Password wasn't accepted" },
+    { code: 'reauthentication_required', status: 401, title: 'Verify this deletion again' },
+    { code: 'mfa_required', status: 401, title: 'Verification required' },
+    { code: 'mfa_invalid', status: 401, title: "Verification code wasn't accepted" },
+    { code: 'server_delete_confirmation_required', status: 400, title: 'Server name changed' },
+    { code: 'server_deletion_proof_invalid', status: 403, title: 'Verify this deletion again' },
+    { code: 'server_deletion_proof_forbidden', status: 403, title: 'Verify this deletion again' },
+    { code: 'server_deletion_proof_failed', status: 503, title: 'This is taking a little longer' },
+    { code: 'server_delete_failed', status: 503, title: 'This is taking a little longer' },
+    { code: 'membership_delete_forbidden', status: 403, title: "This isn't available to your profile" },
+    { code: 'server_membership_not_found', status: 404, title: 'Item not found' },
+    { code: 'terminal_mutation_outcome_unknown', status: 503, title: 'Still confirming this change' },
+  ])('normalizes server lifecycle problem $code without exposing Hosted diagnostics', ({ code, status, messageId, title }) => {
+    const raw = `private Hosted diagnostic for ${code}`;
+    const presentation = canonicalProblem(
+      { code, status, messageId, details: { diagnostic: raw } },
+      'problem.request-failed',
+      'server-lifecycle',
+    );
+    expect(presentation.title).toBe(title);
+    expect(JSON.stringify(presentation)).not.toContain(raw);
+  });
+
+  it('identifies an invalid claim code without presenting it as a network interruption', async () => {
+    const raw = 'claim hash and database row must remain private';
+    const fetchMock = vi.fn((input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/api/system')) return Promise.resolve(response(hostedSystem));
+      if (url.endsWith('/api/auth/me')) return Promise.resolve(response({ authenticated: true, user: { id: 'user-1', email: 'owner@example.test', displayName: 'Owner' } }));
+      if (url.includes('/api/account/servers?')) return Promise.resolve(response({ items: [], pageInfo: { hasMore: false } }));
+      if (url.endsWith('/api/account/server-claims/by-code/complete') && init?.method === 'POST') {
+        return Promise.resolve(response({ code: 'invalid_claim', message: raw }, false, 400));
+      }
+      return Promise.reject(new Error(`Unexpected request: ${url}`));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    render(<RuntimeProvider config={hostedConfig}><ProductFrameRuntimeHarness /></RuntimeProvider>);
+
+    expect(await screen.findByRole('heading', { name: 'No servers yet' })).toBeInTheDocument();
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'not-a-code' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Claim server' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Check the server claim code');
+    expect(screen.queryByText(raw)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Claim server' })).toBeEnabled();
   });
 
   it('lets an unattached Hosted account delete itself through visible account settings', async () => {
@@ -1650,14 +1833,15 @@ describe('RuntimeProvider', () => {
     const firstProcess = createBrowserHostedConnectionVaultWithDurableMetadata(durableMetadata());
     await firstProcess.rememberAccount({ accountId: 'user-1', displayName: 'Owner', email: 'owner@example.test' });
     await firstProcess.save({
-      schemaVersion: 2,
+      schemaVersion: 3,
       accountId: 'user-1',
       serverId: 'server-1',
       profileId: 'profile-1',
       serverName: 'Family Media',
+      serverPublicKey: hostedServer('server-1', 'Family Media').serverPublicKey,
       serverPublicKeyFingerprint: testServerFingerprint('server-1'),
       currentRoute: { url: 'https://server-1.direct.getportico.tv', type: 'public_direct', verifiedAt: '2026-07-14T11:00:00.000Z' },
-      session: { serverId: 'server-1', serverName: 'Family Media', apiBaseUrl: 'https://server-1.direct.getportico.tv', accessToken: 'access-server-1', refreshToken: 'refresh-server-1', serverPublicKeyFingerprint: testServerFingerprint('server-1') },
+      session: { serverId: 'server-1', serverName: 'Family Media', apiBaseUrl: 'https://server-1.direct.getportico.tv', accessToken: 'access-server-1', refreshToken: 'refresh-server-1', serverPublicKey: hostedServer('server-1', 'Family Media').serverPublicKey, serverPublicKeyFingerprint: testServerFingerprint('server-1') },
       lastSuccessfulConnectionAt: '2026-07-14T11:00:00.000Z',
       mutationVersion: 1,
     });
@@ -1705,10 +1889,163 @@ describe('RuntimeProvider', () => {
     vi.stubGlobal('fetch', fetchMock);
     render(<RuntimeProvider config={hostedConfig}><RuntimeHarness /></RuntimeProvider>);
     expect(await screen.findByRole('heading', { name: 'Choose a server' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Family Media/ })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Cinema/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Open Family Media:/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Open Cinema:/ })).toBeInTheDocument();
     expect(fetchMock.mock.calls.some(([input]) => String(input).includes('/routes'))).toBe(false);
     expect(fetchMock.mock.calls.some(([input]) => String(input).includes('/sessions'))).toBe(false);
+  });
+
+  it('lets an owner delete an unreachable registration from the chooser without connecting to it', async () => {
+    const stale = { ...hostedServer('server-1', 'Never online'), lastHeartbeatAt: undefined };
+    const shared = { ...hostedServer('server-2', 'Shared server'), ownerUserId: 'another-owner', preferredAuthMode: 'local' };
+    let directoryReads = 0;
+    const fetchMock = vi.fn((input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/api/system')) return Promise.resolve(response(hostedSystem));
+      if (url.endsWith('/api/auth/me')) return Promise.resolve(response({ authenticated: true, user: { id: 'user-1', email: 'owner@example.test', displayName: 'Owner' } }));
+      if (url.includes('/api/account/servers?')) {
+        directoryReads += 1;
+        return Promise.resolve(response({ items: directoryReads === 1 ? [stale, shared] : [shared], pageInfo: { hasMore: false } }));
+      }
+      if (url.endsWith('/api/account/servers/server-1/deletion-proofs') && init?.method === 'POST') return Promise.resolve(response({ proof: 'ptc_sdp_delete-proof', expiresAt: '2026-08-30T13:05:00Z' }, true, 201));
+      if (url.endsWith('/api/account/servers/server-1') && init?.method === 'DELETE') return Promise.resolve(response({ ok: true }));
+      return Promise.reject(new Error(`Unexpected request: ${url}`));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<RuntimeProvider config={hostedConfig}><RuntimeHarness /></RuntimeProvider>);
+    expect(await screen.findByRole('heading', { name: 'Choose a server' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Delete Never online' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Delete Shared server' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Leave Shared server' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete Never online' }));
+    expect(screen.getByRole('group', { name: 'Confirm deletion of Never online' })).toHaveTextContent('ends every member’s access');
+    expect(fetchMock.mock.calls.some(([request, init]) => String(request).endsWith('/server-1') && init?.method === 'DELETE')).toBe(false);
+
+    const confirmDelete = screen.getByRole('button', { name: 'Delete server' });
+    expect(confirmDelete).toBeDisabled();
+    fireEvent.change(screen.getByLabelText('Current password for deleting Never online'), { target: { value: 'current-password' } });
+    fireEvent.change(screen.getByLabelText('Authenticator or recovery code for deleting Never online'), { target: { value: '123456' } });
+    fireEvent.change(screen.getByLabelText('Type Never online to confirm'), { target: { value: 'Never online' } });
+    fireEvent.click(confirmDelete);
+    await waitFor(() => expect(directoryReads).toBe(2));
+    const proof = fetchMock.mock.calls.find(([request, init]) => String(request).endsWith('/server-1/deletion-proofs') && init?.method === 'POST');
+    expect(proof).toBeDefined();
+    expect(JSON.parse(String(proof?.[1]?.body))).toEqual({ password: 'current-password', mfaCode: '123456' });
+    const deletion = fetchMock.mock.calls.find(([request, init]) => String(request).endsWith('/server-1') && init?.method === 'DELETE');
+    expect(deletion).toBeDefined();
+    expect(JSON.parse(String(deletion?.[1]?.body))).toEqual({ confirmation: 'Never online', proof: 'ptc_sdp_delete-proof' });
+    expect(new Headers(deletion?.[1]?.headers).get('Idempotency-Key')).toMatch(/^[A-Za-z0-9._:-]{8,128}$/);
+    expect(await screen.findByRole('button', { name: /^Open Shared server:/ })).toBeDisabled();
+    expect(screen.queryByText('Never online')).not.toBeInTheDocument();
+  });
+
+  it('refreshes a stale server name and requires exact reconfirmation without replaying deletion', async () => {
+    const original = { ...hostedServer('server-1', 'Old server name'), lastHeartbeatAt: undefined };
+    const renamed = { ...original, name: 'Current server name' };
+    const shared = { ...hostedServer('server-2', 'Shared server'), ownerUserId: 'another-owner', preferredAuthMode: 'local' };
+    let directoryReads = 0;
+    const raw = 'private server row revision and proof diagnostic';
+    const fetchMock = vi.fn((input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/api/system')) return Promise.resolve(response(hostedSystem));
+      if (url.endsWith('/api/auth/me')) return Promise.resolve(response({ authenticated: true, user: { id: 'user-1', email: 'owner@example.test', displayName: 'Owner' } }));
+      if (url.includes('/api/account/servers?')) {
+        directoryReads += 1;
+        return Promise.resolve(response({ items: directoryReads === 1 ? [original, shared] : [renamed, shared], pageInfo: { hasMore: false } }));
+      }
+      if (url.endsWith('/api/account/servers/server-1/deletion-proofs') && init?.method === 'POST') return Promise.resolve(response({ proof: 'ptc_sdp_stale-name', expiresAt: '2026-08-30T13:05:00Z' }, true, 201));
+      if (url.endsWith('/api/account/servers/server-1') && init?.method === 'DELETE') return Promise.resolve(response({ code: 'server_delete_confirmation_required', message: raw }, false, 400));
+      return Promise.reject(new Error(`Unexpected request: ${url}`));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<RuntimeProvider config={hostedConfig}><RuntimeHarness /></RuntimeProvider>);
+    expect(await screen.findByRole('heading', { name: 'Choose a server' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Delete Old server name' }));
+    expect(screen.getByText('Leave blank only if you recently signed in with Google or Apple.')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Type Old server name to confirm'), { target: { value: 'Old server name' } });
+    expect(screen.getByRole('button', { name: 'Delete server' })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Delete server' }));
+
+    await waitFor(() => expect(directoryReads).toBe(2));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Server name changed');
+    expect(screen.queryByText(raw)).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Type Current server name to confirm')).toHaveValue('Old server name');
+    expect(fetchMock.mock.calls.filter(([request, init]) => String(request).endsWith('/server-1/deletion-proofs') && init?.method === 'POST')).toHaveLength(1);
+    expect(fetchMock.mock.calls.filter(([request, init]) => String(request).endsWith('/server-1') && init?.method === 'DELETE')).toHaveLength(1);
+    const proof = fetchMock.mock.calls.find(([request]) => String(request).endsWith('/server-1/deletion-proofs'));
+    expect(JSON.parse(String(proof?.[1]?.body))).toEqual({});
+  });
+
+  it('lets a non-owner leave only their shared-server relationship and refreshes the chooser', async () => {
+    const first = { ...hostedServer('server-1', 'Shared family'), ownerUserId: 'owner-1', preferredAuthMode: 'local' };
+    const second = { ...hostedServer('server-2', 'Shared cinema'), ownerUserId: 'owner-2', preferredAuthMode: 'local' };
+    let directoryReads = 0;
+    const fetchMock = vi.fn((input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/api/system')) return Promise.resolve(response(hostedSystem));
+      if (url.endsWith('/api/auth/me')) return Promise.resolve(response({ authenticated: true, user: { id: 'user-1', email: 'member@example.test', displayName: 'Member' } }));
+      if (url.includes('/api/account/servers?')) {
+        directoryReads += 1;
+        return Promise.resolve(response({ items: directoryReads === 1 ? [first, second] : [second], pageInfo: { hasMore: false } }));
+      }
+      if (url.endsWith('/api/account/servers/server-1/membership') && init?.method === 'DELETE') return Promise.resolve(response({ ok: true }));
+      return Promise.reject(new Error(`Unexpected request: ${url}`));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<RuntimeProvider config={hostedConfig}><RuntimeHarness /></RuntimeProvider>);
+    expect(await screen.findByRole('heading', { name: 'Choose a server' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Delete Shared family' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Leave Shared family' }));
+    const confirmation = screen.getByRole('group', { name: 'Confirm leaving Shared family' });
+    expect(confirmation).toHaveTextContent('only your Portico Account relationship');
+    expect(confirmation).toHaveTextContent('does not delete the server');
+    fireEvent.click(screen.getByRole('button', { name: 'Leave server' }));
+
+    await waitFor(() => expect(directoryReads).toBe(2));
+    const leave = fetchMock.mock.calls.find(([request, init]) => String(request).endsWith('/server-1/membership') && init?.method === 'DELETE');
+    expect(leave).toBeDefined();
+    expect(leave?.[1]?.body).toBeUndefined();
+    expect(new Headers(leave?.[1]?.headers).get('Idempotency-Key')).toMatch(/^[A-Za-z0-9._:-]{8,128}$/);
+    expect(screen.queryByText('Shared family')).not.toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Leave Shared cinema' })).toBeInTheDocument();
+  });
+
+  it('refreshes after an uncertain self-leave outcome without replaying the terminal mutation', async () => {
+    const first = { ...hostedServer('server-1', 'Shared family'), ownerUserId: 'owner-1', preferredAuthMode: 'local' };
+    const second = { ...hostedServer('server-2', 'Shared cinema'), ownerUserId: 'owner-2', preferredAuthMode: 'local' };
+    let directoryReads = 0;
+    const fetchMock = vi.fn((input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/api/system')) return Promise.resolve(response(hostedSystem));
+      if (url.endsWith('/api/auth/me')) return Promise.resolve(response({ authenticated: true, user: { id: 'user-1', email: 'member@example.test', displayName: 'Member' } }));
+      if (url.includes('/api/account/servers?')) {
+        directoryReads += 1;
+        return Promise.resolve(response({ items: [first, second], pageInfo: { hasMore: false } }));
+      }
+      if (url.endsWith('/api/account/servers/server-1/membership') && init?.method === 'DELETE') {
+        const outcome = response({ code: 'terminal_mutation_outcome_unknown' }, false, 503);
+        outcome.headers.set('X-Portico-Terminal-Outcome', 'outcome_unknown');
+        return Promise.resolve(outcome);
+      }
+      if (url.endsWith('/api/account/terminal-mutations')) return Promise.resolve(response({ code: 'terminal_receipt_not_found' }, false, 404));
+      return Promise.reject(new Error(`Unexpected request: ${url}`));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<RuntimeProvider config={hostedConfig}><RuntimeHarness /></RuntimeProvider>);
+    expect(await screen.findByRole('heading', { name: 'Choose a server' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Leave Shared family' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Leave server' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Still confirming this change');
+    expect(screen.getByRole('alert')).toHaveTextContent('Do not repeat the action');
+    expect(directoryReads).toBe(2);
+    expect(fetchMock.mock.calls.filter(([request, init]) => String(request).endsWith('/server-1/membership') && init?.method === 'DELETE')).toHaveLength(1);
+    expect(fetchMock.mock.calls.filter(([request]) => String(request).endsWith('/api/account/terminal-mutations'))).toHaveLength(1);
   });
 
   it('renders an explicit Hosted profile selector and PIN entry instead of a retry dead end', async () => {
@@ -2260,8 +2597,8 @@ describe('RuntimeProvider', () => {
     render(<RuntimeProvider config={hostedConfig} hostedConnectionVault={vault}><RuntimeHarness /></RuntimeProvider>);
 
     expect(await screen.findByRole('heading', { name: 'Choose a server' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Family Media/ })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Cinema/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Open Family Media:/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Open Cinema:/ })).toBeInTheDocument();
     expect(await vault.load('user-1', 'server-2')).toBeDefined();
     expect(String(fetchMock.mock.calls[3][0])).toContain('cursor=page-2');
   });
@@ -2332,8 +2669,8 @@ describe('RuntimeProvider', () => {
     render(<RuntimeProvider config={hostedConfig} hostedConnectionVault={vault}><RuntimeHarness /></RuntimeProvider>);
 
     expect(await screen.findByRole('heading', { name: 'Choose a server' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Family Media/ })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Cinema/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Open Family Media:/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Open Cinema:/ })).toBeInTheDocument();
     expect(screen.queryByText(/direct\.getportico\.tv/)).not.toBeInTheDocument();
   });
 
@@ -2358,8 +2695,8 @@ describe('RuntimeProvider', () => {
 
     recovered = true;
     fireEvent.click(screen.getByRole('button', { name: 'Refresh servers' }));
-    expect(await screen.findByRole('button', { name: /Public Demo/ })).toBeEnabled();
-    fireEvent.click(screen.getByRole('button', { name: /Public Demo/ }));
+    expect(await screen.findByRole('button', { name: /^Open Public Demo:/ })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: /^Open Public Demo:/ }));
 
     await vi.waitFor(() => expect(fetchMock.mock.calls.some(([request]) => String(request).endsWith('/api/account/profiles'))).toBe(true));
     await vi.waitFor(() => expect(fetchMock.mock.calls.some(([request]) => String(request).includes('/selection-assertions'))).toBe(true));
@@ -2387,7 +2724,7 @@ describe('RuntimeProvider', () => {
     vi.stubGlobal('fetch', fetchMock);
     render(<RuntimeProvider config={hostedConfig}><RuntimeHarness /></RuntimeProvider>);
     expect(await screen.findByRole('heading', { name: 'Choose a server' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /LAN only/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /^Open LAN only:/ })).toBeDisabled();
     expect(screen.getByText('This Server sign-in only')).toBeInTheDocument();
     expect(fetchMock.mock.calls.filter(([input]) => String(input).startsWith(hostedConfig.hostedApiBaseUrl))).toHaveLength(3);
   });
@@ -2432,6 +2769,49 @@ describe('RuntimeProvider', () => {
     await vi.waitFor(() => expect(fetchMock.mock.calls.some(([request]) => String(request).includes('/api/account/profiles'))).toBe(true));
     await vi.waitFor(() => expect(fetchMock.mock.calls.some(([request]) => String(request).includes('/selection-assertions'))).toBe(true));
     expect(connector).toHaveBeenCalledOnce();
+  });
+
+  it('clears a transient Hosted warning after visible background recovery without reconnecting the usable server', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
+    const server = hostedServer('server-1', 'Public Demo');
+    const profile = { id: 'profile-1', name: 'Owner', hasPIN: false, isPrimary: true, isAccountAdmin: true, pinRevision: 0, policy: unrestrictedPolicy, sortOrder: 0 };
+    let directoryReads = 0;
+    const fetchMock = vi.fn((input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/api/system')) return Promise.resolve(response(hostedSystem));
+      if (url === 'https://web.getportico.tv/api/auth/me') return Promise.resolve(response({ authenticated: true, user: { id: 'user-1', email: 'owner@example.test', displayName: 'Owner' } }));
+      if (url.includes('/api/account/servers')) {
+        directoryReads += 1;
+        return directoryReads === 2
+          ? Promise.resolve(response({ code: 'store_unavailable', retryable: true }, false, 503))
+          : Promise.resolve(response({ items: [server], pageInfo: { hasMore: false } }));
+      }
+      if (url.endsWith('/api/account/profiles')) return Promise.resolve(response({ accountId: 'user-1', profiles: [profile], revision: 1, total: 1 }));
+      if (url.includes('/selection-assertions')) return Promise.resolve(response({ version: 'v1', accountId: 'user-1', accountRevision: 1, assertionId: 'assertion', audience: 'portico-media-server', deviceId: 'browser', expiresAt: '2099-01-01T00:05:00.000Z', installationId: JSON.parse(String(init?.body ?? '{}')).installationId, issuedAt: '2026-08-30T10:00:00.000Z', pinRevision: 0, profileId: 'profile-1', profiles: [], serverId: server.id, signature: 'signature', signatureAlgorithm: 'ed25519', signatureKeyId: 'key-1' }));
+      return Promise.reject(new Error(`Unexpected request: ${url}`));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const vault = createBrowserHostedConnectionVaultWithDurableMetadata(
+      createHostedConnectionVault(sharedVaultStorage(), () => new Date(), { persistCredentials: false }),
+    );
+    const connector = vi.spyOn(ClientCore, 'connectResilientHostedServer').mockImplementation((selectedServer, options) =>
+      publishPreparedConnection(preparedConnection(selectedServer.id, selectedServer.name, options.selectionEnvelope.profileId), options));
+
+    render(<RuntimeProvider config={hostedConfig} hostedConnectionVault={vault}><DirectChoiceHarness /></RuntimeProvider>);
+    await vi.waitFor(() => expect(screen.getByLabelText('runtime-state')).toHaveTextContent('server-ready'));
+    expect(screen.getByLabelText('connection-warning')).toHaveTextContent('none');
+
+    fireEvent(window, new Event('focus'));
+    await vi.waitFor(() => expect(screen.getByLabelText('connection-warning')).toHaveTextContent('problem.cloud-unavailable'));
+    expect(screen.getByLabelText('runtime-state')).toHaveTextContent('server-ready');
+
+    await vi.advanceTimersByTimeAsync(10_000);
+    await vi.waitFor(() => expect(screen.getByLabelText('connection-warning')).toHaveTextContent('none'));
+    expect(directoryReads).toBe(3);
+    expect(connector).toHaveBeenCalledOnce();
+    expect(screen.getByLabelText('runtime-state')).toHaveTextContent('server-ready');
   });
 
   it('automatically finishes a sole freshly claimed server after route publication without duplicate attempts', async () => {

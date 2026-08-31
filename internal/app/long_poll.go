@@ -741,80 +741,6 @@ func (s *Server) handlePlaybackCommandEventsPoll(w http.ResponseWriter, r *http.
 	writeLongPollEnvelope(w, cursor, reset, false, events)
 }
 
-func (s *Server) handlePlaybackReceiverEventsPoll(w http.ResponseWriter, r *http.Request, user User, receiverID string) {
-	req, ok := parseLongPollRequest(w, r)
-	if !ok {
-		return
-	}
-	owner, scope, err := s.longPollPrincipalScope(r, user, "playback-receiver", receiverID, "")
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "long_poll_failed", "Unable to initialize playback receiver updates.")
-		return
-	}
-	claims, reset, err := s.longPoll.parseCursor(req.cursor, "playback-receiver", scope)
-	if err != nil {
-		writeLongPollCursorError(w)
-		return
-	}
-	release, ok := s.beginLongPoll(w, owner, s.longPoll.digest("logical", scope))
-	if !ok {
-		return
-	}
-	defer release()
-	key := "playback-receiver:" + receiverID
-	signal, unsubscribe := s.longPoll.broker.subscribe(key)
-	defer unsubscribe()
-	receiver, err := s.touchPlaybackReceiver(user, receiverID)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			writeError(w, http.StatusNotFound, "playback_receiver_not_found", "Playback receiver was not found.")
-		} else {
-			writeError(w, http.StatusInternalServerError, "playback_receiver_failed", "Unable to load playback receiver updates.")
-		}
-		return
-	}
-	marker := s.longPollMarker(receiver.Command.ID)
-	events := []PlaybackReceiver{}
-	if req.cursor == "" {
-		events = append(events, receiver)
-	} else if !reset && receiver.Command.ID != "" && marker != claims.Marker {
-		events = append(events, receiver)
-	}
-	if len(events) == 0 && !reset {
-		_, err = s.waitLongPoll(r.Context(), signal, req.wait,
-			func() bool { return s.longPollUserAuthorizationCurrent(r, user) },
-			func() (bool, error) {
-				command, readErr := s.playbackReceiverCommandForUser(user, receiverID)
-				return readErr == nil && command.ID != "" && s.longPollMarker(command.ID) != claims.Marker, readErr
-			})
-		if err != nil {
-			if writeLongPollShutdown(w, err) {
-				return
-			}
-			if errors.Is(err, sql.ErrNoRows) {
-				writeError(w, http.StatusNotFound, "playback_receiver_not_found", "Playback receiver was not found.")
-			} else if errors.Is(err, errLongPollAuthorizationLost) {
-				writeError(w, http.StatusUnauthorized, "authorization_changed", "Authorization changed while waiting for receiver updates.")
-			}
-			return
-		}
-		receiver, err = s.touchPlaybackReceiver(user, receiverID)
-		if err != nil {
-			return
-		}
-		marker = s.longPollMarker(receiver.Command.ID)
-		if marker != claims.Marker {
-			events = append(events, receiver)
-		}
-	}
-	if !s.longPollUserAuthorizationCurrent(r, user) {
-		writeError(w, http.StatusUnauthorized, "authorization_changed", "Authorization changed while waiting for receiver updates.")
-		return
-	}
-	cursor, _ := s.nextLongPollCursor("playback-receiver", scope, 0, marker)
-	writeLongPollEnvelope(w, cursor, reset, false, events)
-}
-
 func (s *Server) materializeWatchWithFriendsEvent(ctx context.Context, user User, groupID string) (WatchWithFriendsGroup, bool, error) {
 	group, err := s.watchWithFriendsGroupForUserContext(ctx, user, groupID, true)
 	if err == nil {
@@ -899,12 +825,6 @@ func (s *Server) handleWatchWithFriendsGroupEventsPoll(w http.ResponseWriter, r 
 	}
 	cursor, _ := s.nextLongPollCursor("watch-with-friends", scope, nonnegativeUint64(group.Revision), s.longPollMarker(group.State))
 	writeLongPollEnvelope(w, cursor, reset, false, events)
-}
-
-func (s *Server) publishLongPollPlaybackReceiver(receiverID string) {
-	if s.longPoll != nil {
-		s.longPoll.broker.publish("playback-receiver:" + strings.TrimSpace(receiverID))
-	}
 }
 
 func longPollCursorFingerprint(raw string) string {

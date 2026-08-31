@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-func TestHomeProjectionKeySharesOnlyEquivalentCatalogueAuthorization(t *testing.T) {
+func TestCatalogueAuthorizationScopeSharesOnlyEquivalentPolicies(t *testing.T) {
 	primary := User{
 		ID: "account-primary", AccountID: "account-primary", ProfileID: "profile-primary", Role: "user", LibraryIDs: []string{"library-b", "library-a"},
 		Permissions: map[string]bool{"stream": true}, Preferences: defaultUserPreferences(),
@@ -18,18 +18,18 @@ func TestHomeProjectionKeySharesOnlyEquivalentCatalogueAuthorization(t *testing.
 	secondary.AccountID = "account-secondary"
 	secondary.ProfileID = "profile-secondary"
 	secondary.LibraryIDs = []string{"library-a", "library-b"}
-	if homeProjectionCacheKey(primary) != homeProjectionCacheKey(secondary) {
-		t.Fatal("equivalent profile catalogue policies should share one projection")
+	if catalogueAuthorizationScope(primary) != catalogueAuthorizationScope(secondary) {
+		t.Fatal("equivalent profile catalogue policies should share one catalogue scope")
 	}
 	restricted := secondary
 	restricted.LibraryIDs = []string{"library-a"}
-	if homeProjectionCacheKey(primary) == homeProjectionCacheKey(restricted) {
-		t.Fatal("different library authorization must not share a projection")
+	if catalogueAuthorizationScope(primary) == catalogueAuthorizationScope(restricted) {
+		t.Fatal("different library authorization must not share a catalogue scope")
 	}
 	restricted = secondary
 	restricted.MaxContentRating = "PG"
-	if homeProjectionCacheKey(primary) == homeProjectionCacheKey(restricted) {
-		t.Fatal("different content policy must not share a projection")
+	if catalogueAuthorizationScope(primary) == catalogueAuthorizationScope(restricted) {
+		t.Fatal("different content policy must not share a catalogue scope")
 	}
 	if homeCacheKey(primary) == homeCacheKey(secondary) {
 		t.Fatal("profile-state Home responses must remain isolated")
@@ -73,15 +73,28 @@ func TestHomeManifestPreviewHydrationHasBoundedConcurrency(t *testing.T) {
 	}
 }
 
-func TestHomeProjectionCacheStripsProfileStateAndIsBounded(t *testing.T) {
-	server := &Server{homeProjectionCache: map[string]homeProjectionCacheEntry{}}
-	user := User{ID: "profile", Role: "user", Preferences: defaultUserPreferences()}
-	server.storeHomeProjection(user, []HomeRow{{ID: "recent-library", Items: []MediaItem{{ID: "private-progress-item"}}, NextCursor: "profile-cursor"}})
-	rows, ok := server.cachedHomeProjection(user)
-	if !ok || len(rows) != 1 {
-		t.Fatalf("projection cache miss: ok=%v rows=%+v", ok, rows)
+func TestHomeResponseOuterCacheRemains(t *testing.T) {
+	server := &Server{}
+	user := User{ID: "account", AccountID: "account", ProfileID: "profile", Role: "user", Preferences: defaultUserPreferences()}
+	key := homeCacheKey(user)
+	want := HomeResponse{Rows: []HomeRow{{ID: "continue", Items: []MediaItem{{ID: "cached-item"}}}}}
+	server.storeHomeResponse(key, user.ProfileID, want)
+	got, ok := server.cachedHomeResponse(key, user.ProfileID)
+	if !ok || len(got.Rows) != 1 || len(got.Rows[0].Items) != 1 || got.Rows[0].Items[0].ID != "cached-item" {
+		t.Fatalf("outer Home response cache miss: ok=%v response=%+v", ok, got)
 	}
-	if len(rows[0].Items) != 0 || rows[0].NextCursor != "" {
-		t.Fatalf("viewer state escaped into shared projection: %+v", rows[0])
+	wait, owner := server.beginHomeResponseBuild(key)
+	if !owner {
+		t.Fatal("first outer Home response build should own the singleflight")
+	}
+	followerWait, owner := server.beginHomeResponseBuild(key)
+	if owner || followerWait != wait {
+		t.Fatal("concurrent outer Home response build did not join the existing singleflight")
+	}
+	server.finishHomeResponseBuild(key)
+	select {
+	case <-followerWait:
+	default:
+		t.Fatal("outer Home response singleflight did not release its waiter")
 	}
 }

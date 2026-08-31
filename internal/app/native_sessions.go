@@ -354,7 +354,7 @@ func (s *Server) handleNativeSessionRevoke(w http.ResponseWriter, r *http.Reques
 	rawRefresh := strings.TrimSpace(req.RefreshToken)
 	if rawRefresh != "" {
 		var userID, deviceID string
-		_ = s.withUserTxTagged(r.Context(), []string{"sessions", "devices"}, func(tx *sql.Tx) error {
+		_ = s.withSecurityFenceTxTagged(r.Context(), []string{"sessions", "devices"}, func(tx *sql.Tx) error {
 			var familyID string
 			if err := tx.QueryRow(`SELECT family_id, user_id, device_id FROM native_refresh_tokens WHERE token_hash = ?`, hashToken(rawRefresh)).Scan(&familyID, &userID, &deviceID); err != nil {
 				return nil
@@ -910,6 +910,10 @@ func (s *Server) nativeCredentialsResponse(ctx context.Context, user User, devic
 	if err != nil {
 		return NativeSessionCredentials{}, err
 	}
+	serverIdentity, err := s.loadOrCreateServerIdentity()
+	if err != nil {
+		return NativeSessionCredentials{}, err
+	}
 	publicUser := user
 	publicUser.ProfileID = publicProfileID
 	return NativeSessionCredentials{
@@ -918,6 +922,8 @@ func (s *Server) nativeCredentialsResponse(ctx context.Context, user User, devic
 		Authority: viewerAuthorityForAuthProvider(record.AuthProvider),
 		AccountID: publicAccountID, ProfileID: publicProfileID, AuthorizationRevision: s.authorizationRevisionForUserContext(ctx, user),
 		ServerID: serverID, ServerFriendlyName: serverFriendlyNameFromSettings(settings),
+		ServerPublicKey:            base64.RawStdEncoding.EncodeToString(serverIdentity.PublicKey),
+		ServerPublicKeyFingerprint: serverIdentity.Fingerprint,
 	}, nil
 }
 
@@ -1215,7 +1221,7 @@ func revokeNativeCredentialFamilyTx(tx *sql.Tx, familyID string, now time.Time) 
 }
 
 func (s *Server) revokeNativeCredentialFamily(ctx context.Context, familyID string, now time.Time) error {
-	return s.withUserTxTagged(ctx, []string{"sessions", "devices"}, func(tx *sql.Tx) error {
+	return s.withSecurityFenceTxTagged(ctx, []string{"sessions", "devices"}, func(tx *sql.Tx) error {
 		return revokeNativeCredentialFamilyTx(tx, familyID, now)
 	})
 }

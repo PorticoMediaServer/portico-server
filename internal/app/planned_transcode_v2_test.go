@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -80,7 +79,7 @@ func TestPlannedTranscodeAdmissionZeroSemanticsAndRaceSafety(t *testing.T) {
 }
 
 func TestPlannedTranscodeIdentitySeparatesPlaybackAndAuthorizationNamespaces(t *testing.T) {
-	binding := playbackExecutionBinding{Digest: "plan-digest", Generation: 2}
+	binding := testPlaybackExecutionPlan(t, func(plan *playbackExecutionPlan) { plan.Plan.Timeline.Generation = 2 })
 	identity := plannedTranscodeIdentity{
 		UserID: "user", ProfileID: "profile", PlaybackSessionID: "session-a",
 		AuthorizationRevision: "authorization-a", PlaybackGeneration: 2, GrantTokenHash: "grant-a",
@@ -95,10 +94,12 @@ func TestPlannedTranscodeIdentitySeparatesPlaybackAndAuthorizationNamespaces(t *
 	otherGeneration.PlaybackGeneration = 3
 	otherQuality := binding
 	otherQuality.Quality = "720p-medium"
+	otherQuality = resealTestPlaybackExecutionPlan(t, otherQuality)
 	otherTrack := binding
 	otherTrack.AudioStreamID = "audio-2"
-	otherTrack.SubtitleMode = "text"
 	otherTrack.SubtitleStreamID = "subtitle-3"
+	otherTrack.Plan.Subtitle = playbackplan.SubtitleDecision{Index: intPointer(2), Action: playbackplan.ExternalText}
+	otherTrack = resealTestPlaybackExecutionPlan(t, otherTrack)
 	key := plannedTranscodeSessionKey("movie", binding, identity, 8)
 	if key == plannedTranscodeSessionKey("movie", binding, otherSession, 8) {
 		t.Fatal("playback sessions shared a planned transcode registry key")
@@ -185,20 +186,12 @@ func TestCompilePlannedVODHLSUsesSealedFactsAndPrivateDeterministicLayout(t *tes
 		Timeline: playbackplan.Timeline{Mode: "vod", DurationUS: 120_000_000, Generation: 2},
 		Reasons:  []playbackplan.ReasonCode{playbackplan.ReasonVideoConversion},
 	}
-	plan.Digest, err = plan.ComputeDigest()
-	if err != nil {
-		t.Fatal(err)
-	}
-	planJSON, _ := json.Marshal(plan)
-	binding := playbackExecutionBinding{
-		SchemaVersion: 1, SourceRevision: facts.Source.Revision, MediaFactsDigest: factsDigest,
-		CapabilityEvidenceID: "test-evidence", Generation: 2, Mode: string(plan.Mode),
-		Protocol: "hls", Container: "mpegts", Quality: "1080p", AudioMode: "direct",
-		Plan: planJSON, X264Preset: "slower",
-	}
-	if err := binding.seal(); err != nil {
-		t.Fatal(err)
-	}
+	binding := testPlaybackExecutionPlan(t, func(execution *playbackExecutionPlan) {
+		execution.Plan = plan
+		execution.MediaFactsDigest = factsDigest
+		execution.Quality = "1080p-high"
+		execution.X264Preset = "slower"
+	})
 	root := filepath.Join(t.TempDir(), "generations")
 	identity := plannedTranscodeIdentity{
 		UserID: "user-playback", ProfileID: "profile-playback", PlaybackSessionID: "session-playback",
@@ -258,9 +251,8 @@ func TestCompilePlannedVODHLSUsesSealedFactsAndPrivateDeterministicLayout(t *tes
 	if err != nil {
 		t.Fatal(err)
 	}
-	unknown.Binding.SourceRevision = unknownFacts.Source.Revision
 	unknown.Binding.MediaFactsDigest = unknownFactsDigest
-	unknown.Binding.Plan, _ = json.Marshal(unknownPlan)
+	unknown.Binding.Plan = unknownPlan
 	if err := unknown.Binding.seal(); err != nil {
 		t.Fatal(err)
 	}

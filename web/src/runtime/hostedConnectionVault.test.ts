@@ -36,11 +36,12 @@ function memoryStorage(): HostedConnectionVaultStorage {
 
 function connection(accountId: string, serverId: string, connectedAt: string): TrustedServerConnectionRecord {
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     accountId,
     serverId,
     profileId: 'profile-1',
     serverName: serverId === 'server-1' ? 'Family Media' : 'Cinema',
+    serverPublicKey: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
     serverPublicKeyFingerprint: `sha256:${serverId}`,
     currentRoute: { url: `https://${serverId}.direct.getportico.tv`, type: 'public_direct', verifiedAt: connectedAt },
     session: {
@@ -49,6 +50,7 @@ function connection(accountId: string, serverId: string, connectedAt: string): T
       apiBaseUrl: `https://${serverId}.direct.getportico.tv`,
       accessToken: `access-${serverId}`,
       refreshToken: `refresh-${serverId}`,
+      serverPublicKey: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
       serverPublicKeyFingerprint: `sha256:${serverId}`,
     },
     lastSuccessfulConnectionAt: connectedAt,

@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/PorticoMediaServer/portico-server/internal/foundationcontract"
 )
 
 const scanTriggerMetadataKey = "trigger"
@@ -84,7 +86,7 @@ func (s *Server) completeLibraryScanOrContinue(jobID, completedMode, message str
 	nowTime := time.Now().UTC()
 	now := nowTime.Format(time.RFC3339)
 	leaseOwner := s.jobLeaseOwner(jobID)
-	err := s.withPrioritizedTxTaggedForViewer(context.Background(), sqliteWriteBackground, "library_scan_complete", durableJobEnqueueRetry, "", "", nil, func(tx *sql.Tx) error {
+	err := s.withWorkClassTxTaggedForViewer(context.Background(), foundationcontract.WorkClassBackgroundMedia, "library_scan_complete", durableJobEnqueueRetry, "", "", nil, func(tx *sql.Tx) error {
 		var raw, status, leasedBy, cancellationRequestedAt string
 		if err := tx.QueryRowContext(context.Background(), `
 			SELECT COALESCE(metadata_json, '{}'), status, COALESCE(leased_by, ''), COALESCE(cancellation_requested_at, '')

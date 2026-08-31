@@ -18,7 +18,9 @@ export function decodeHighRiskResponse(
   if (/^\/api\/playback-sessions\/[^/]+\/continuation$/.test(pathname)) {
     if (verb === "GET") return continuationState(value);
     if (verb === "POST") return continuationCredential(value);
+    if (verb === "DELETE") return playbackTerminalAcknowledgement(value);
   }
+  if (verb === "DELETE" && /^\/api\/playback-sessions\/[^/]+$/.test(pathname)) return playbackTerminalAcknowledgement(value);
   if (/^\/api\/playback-sessions\/[^/]+\/command$/.test(pathname) && (verb === "GET" || verb === "POST")) return playbackCommand(value);
   if (isAuthLifecyclePath(pathname, verb)) return authLifecycle(value);
   if (/^\/api\/account\/servers\/[^/]+\/routes$/.test(pathname) && verb === "GET") return routeDocument(value);
@@ -32,6 +34,7 @@ export function decodeHighRiskResponse(
 function isPlaybackResponsePath(pathname: string): boolean {
   return pathname === "/api/playback-sessions" || pathname === "/api/playback/active" ||
     /^\/api\/playback-sessions\/[^/]+\/(?:handoff|renegotiate|prepare-next)$/.test(pathname) ||
+    /^\/api\/playback\/receivers\/[^/]+\/(?:handoff|handoffs\/[^/]+\/commit)$/.test(pathname) ||
     /^\/api\/dvr\/recordings\/[^/]+\/(?:play|playback)$/.test(pathname) ||
     pathname === "/api/live-tv/play" ||
     /^\/api\/live-tv\/streams\/[^/]+\/open$/.test(pathname) ||
@@ -39,6 +42,11 @@ function isPlaybackResponsePath(pathname: string): boolean {
 }
 
 function playbackRouteResponse(pathname: string, value: unknown): unknown {
+  if (/^\/api\/library-channels\/[^/]+\/tune$/.test(pathname)) {
+    const record = object(value, "library channel tune response");
+    playbackResponse(record.playback);
+    return value;
+  }
   if (pathname === "/api/playback/active") {
     const record = object(value, "playback restore response");
     if (typeof record.active !== "boolean") throw new TypeError("playback restore state is invalid");
@@ -163,8 +171,43 @@ function playbackResponse(value: unknown, credentialFreePrepared = false): unkno
   object(record.media, "playback media");
   mediaGrant(record.mediaGrant);
   if (!credentialFreePrepared) continuationCredential(record.continuationCredential);
-  for (const field of ["resources", "audioStreams", "subtitleStreams", "chapters", "qualities", "queue"] as const) {
+  for (const field of ["resources", "audioStreams", "subtitleStreams", "chapters", "queue"] as const) {
     if (!Array.isArray(record[field]) || record[field].length > 10_000) throw new TypeError(`playback ${field} is invalid`);
+  }
+  const qualityOffers = object(record.qualityOffers, "playback quality offers");
+  if (boundedString(qualityOffers.contractId, "playback quality offer contract", 64) !== "PC-PLAYBACK" || boundedString(qualityOffers.schemaVersion, "playback quality offer schema", 64) !== "quality-offers.v1") {
+    throw new TypeError("playback quality offer contract is invalid");
+  }
+  for (const field of ["mediaId", "versionId", "sourceRevision", "offerRevision"] as const) boundedString(qualityOffers[field], `playback quality offer ${field}`, 512);
+  if (!Array.isArray(qualityOffers.offers) || qualityOffers.offers.length < 2 || qualityOffers.offers.length > 100) throw new TypeError("playback quality offers are invalid");
+  const qualityOfferIDs = new Set<string>();
+  let automaticOffers = 0;
+  for (const value of qualityOffers.offers) {
+    const offer = object(value, "playback quality offer");
+    const selectionId = boundedString(offer.selectionId, "playback quality selection id", 512);
+    if (qualityOfferIDs.has(selectionId)) throw new TypeError("playback quality selection ids are invalid");
+    qualityOfferIDs.add(selectionId);
+    boundedString(offer.label, "playback quality offer label", 512);
+    const kind = boundedString(offer.kind, "playback quality offer kind", 32, ["automatic", "original", "fixed"]);
+    if (kind === "automatic") automaticOffers++;
+    const targets = [offer.maxVideoBitrateBps, offer.maxAudioBitrateBps, offer.targetDisplayHeight];
+    for (const target of targets) {
+      if (target !== undefined && (typeof target !== "number" || !Number.isInteger(target) || target <= 0)) {
+        throw new TypeError("playback quality offer target is invalid");
+      }
+    }
+    const concreteTarget = targets.some((target) => target !== undefined);
+    if ((kind === "fixed") !== concreteTarget) throw new TypeError("playback quality offer target is invalid");
+  }
+  if (automaticOffers !== 1) throw new TypeError("playback automatic quality offer is invalid");
+  const qualitySelection = object(record.qualitySelection, "playback quality selection");
+  const qualityMode = boundedString(qualitySelection.mode, "playback quality selection mode", 32, ["automatic", "explicit"]);
+  if (qualityMode === "automatic") {
+    if (qualitySelection.selectionId !== undefined || qualitySelection.qualityOfferRevision !== undefined) throw new TypeError("playback automatic quality selection is invalid");
+  } else {
+    const selectionId = boundedString(qualitySelection.selectionId, "playback selected quality id", 512);
+    const revision = boundedString(qualitySelection.qualityOfferRevision, "playback selected quality revision", 512);
+    if (!qualityOfferIDs.has(selectionId) || revision !== qualityOffers.offerRevision) throw new TypeError("playback explicit quality selection is stale");
   }
   const resources = record.resources as unknown[];
   if (resources.length !== 1) throw new TypeError("playback resources are invalid");
@@ -188,7 +231,6 @@ function playbackResponse(value: unknown, credentialFreePrepared = false): unkno
   if (defaults !== 1 || defaultSource !== sourceUrl) throw new TypeError("playback default resource is invalid");
   const active = object(resources[0], "playback resource");
   for (const [selectionField, resourceField] of [
-    ["selectedQualityId", "qualityId"],
     ["selectedAudioStreamId", "audioStreamId"],
     ["selectedSubtitleStreamId", "subtitleStreamId"],
     ["selectedSubtitleMode", "subtitleMode"],
@@ -288,6 +330,33 @@ function continuationState(value: unknown): unknown {
   for (const field of ["generation", "highestEventSequence", "playbackRevision", "queueRevision"] as const) nonNegativeInteger(record[field], `playback continuation ${field}`);
   finiteNumber(record.positionSeconds, "playback continuation position", 0);
   if (record.mediaGrantExpiresAt !== undefined) timestamp(record.mediaGrantExpiresAt, "playback media grant expiry");
+  return value;
+}
+
+function playbackTerminalAcknowledgement(value: unknown): unknown {
+  const record = object(value, "playback terminal acknowledgement");
+  rejectTopLevelCredentialFields(record);
+  const requestId = boundedString(record.requestId, "playback terminal request id", 128);
+  if (requestId.length < 8 || !/^[A-Za-z0-9._:-]+$/.test(requestId)) {
+    throw new TypeError("playback terminal request id is invalid");
+  }
+  boundedString(record.sessionId, "playback terminal session id", 512);
+  if (record.accepted !== true || typeof record.duplicate !== "boolean") {
+    throw new TypeError("playback terminal receipt state is invalid");
+  }
+  const terminal = object(record.terminal, "playback terminal event");
+  boundedString(terminal.disposition, "playback terminal disposition", 16, ["stopped", "completed"]);
+  nonNegativeInteger(terminal.generation, "playback terminal generation");
+  nonNegativeInteger(terminal.eventSequence, "playback terminal event sequence");
+  if (terminal.generation === 0 || terminal.eventSequence === 0) {
+    throw new TypeError("playback terminal ordering authority is invalid");
+  }
+  timestamp(terminal.recordedAt, "playback terminal observation time");
+  finiteNumber(terminal.positionSeconds, "playback terminal position", 0);
+  finiteNumber(terminal.durationSeconds, "playback terminal duration", 0);
+  if (terminal.disposition === "completed" && terminal.durationSeconds === 0) {
+    throw new TypeError("completed playback terminal duration is invalid");
+  }
   return value;
 }
 

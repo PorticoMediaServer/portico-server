@@ -89,7 +89,6 @@ func TestGeneratedContractPublishesAllConstrainedClientLongPollOperations(t *tes
 		"/events/poll":               {"pollApplicationEvents", "authenticated", "ApplicationEventLongPollEnvelope"},
 		"/notifications/events/poll": {"pollViewerNotificationInvalidations", "authenticated", "NotificationInvalidationLongPollEnvelope"},
 		"/playback-sessions/{sessionId}/command/events/poll": {"pollPlaybackSessionCommands", "play-media", "PlaybackCommandLongPollEnvelope"},
-		"/playback/receivers/{receiverId}/events/poll":       {"pollPlaybackReceiverEvents", "play-media", "PlaybackReceiverLongPollEnvelope"},
 		"/watch-with-friends/groups/{groupId}/events/poll":   {"pollWatchWithFriendsGroupEvents", "play-media", "WatchWithFriendsLongPollEnvelope"},
 	}
 	for path, expected := range want {

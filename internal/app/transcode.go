@@ -25,6 +25,7 @@ type transcodeSession struct {
 	updateCh               chan struct{}
 	key                    string
 	userID                 string
+	playbackSessionID      string
 	mediaID                string
 	quality                string
 	subtitleID             string
@@ -74,6 +75,8 @@ type transcodeSession struct {
 	generation             int
 	admissionActive        bool
 	resourceRelease        func()
+	terminalizationMu      sync.Mutex
+	terminalized           bool
 }
 
 type transcodeSessionSnapshot struct {
@@ -226,6 +229,8 @@ type subtitleBurnInSpec struct {
 var (
 	errSubtitleStreamNotFound    = errors.New("subtitle stream was not found")
 	errSubtitleBurnInUnavailable = errors.New("subtitle stream is not available for burn-in")
+	errHLSManifestTimeout        = errors.New("HLS manifest publication deadline expired")
+	errHLSSegmentTimeout         = errors.New("HLS segment publication deadline expired")
 )
 
 type transcodeSettings struct {
@@ -299,7 +304,7 @@ var transcodePresets = map[string]transcodePreset{
 	"audio-data-saver": {id: "audio-data-saver", height: 720, videoK: 4000, audioK: 128, crf: 24, label: "Data Saver"},
 }
 
-func (s *Server) plannedTranscodeIdentityForRequest(ctx context.Context, r *http.Request, user User, mediaID string, binding playbackExecutionBinding) (plannedTranscodeIdentity, error) {
+func (s *Server) plannedTranscodeIdentityForRequest(ctx context.Context, r *http.Request, user User, mediaID string, binding playbackExecutionPlan) (plannedTranscodeIdentity, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -319,7 +324,7 @@ func (s *Server) plannedTranscodeIdentityForRequest(ctx context.Context, r *http
 			AND ps.user_id = g.principal_user_id AND ps.profile_id = g.profile_id
 			AND ps.ended_at = '' AND ps.state <> 'stopped'
 		LIMIT 1`, hashToken(token), strings.TrimSpace(mediaID), accountIDForUser(user), viewerProfileID(user), time.Now().UTC().Format(time.RFC3339)).Scan(&playbackSessionID, &authorizationRevision, &grantGeneration, &sessionGeneration)
-	if err != nil || strings.TrimSpace(playbackSessionID) == "" || strings.TrimSpace(authorizationRevision) == "" || grantGeneration != binding.Generation || sessionGeneration != binding.Generation {
+	if err != nil || strings.TrimSpace(playbackSessionID) == "" || strings.TrimSpace(authorizationRevision) == "" || grantGeneration != binding.generation() || sessionGeneration != binding.generation() {
 		return plannedTranscodeIdentity{}, fmt.Errorf("%w: playback authorization generation changed", errPlannedTranscode)
 	}
 	identity := plannedTranscodeIdentity{
@@ -330,7 +335,7 @@ func (s *Server) plannedTranscodeIdentityForRequest(ctx context.Context, r *http
 		PlaybackGeneration:    grantGeneration,
 		GrantTokenHash:        hashToken(token),
 	}
-	if !identity.validForGeneration(binding.Generation) {
+	if !identity.validForGeneration(binding.generation()) {
 		return plannedTranscodeIdentity{}, fmt.Errorf("%w: incomplete playback identity", errPlannedTranscode)
 	}
 	return identity, nil
@@ -347,6 +352,103 @@ func (s *Server) plannedTranscodeSessionIsCurrent(session *transcodeSession, exp
 	s.transcodeMu.Lock()
 	defer s.transcodeMu.Unlock()
 	return s.transcodes[expectedKey] == session
+}
+
+const plannedPlaybackFailureDetail = "Portico could not prepare a compatible stream for this playback session."
+
+// writeStoredPlannedPlaybackFailure keeps a terminal producer outcome stable
+// after the lifecycle transaction has revoked the grant that originally bound
+// the request. The opaque grant remains sufficient to find only its own failed
+// session; it does not restore any revoked playback authority.
+func (s *Server) writeStoredPlannedPlaybackFailure(w http.ResponseWriter, r *http.Request, user User, mediaID string) bool {
+	if s == nil || r == nil {
+		return false
+	}
+	token := mediaGrantFromRequest(r)
+	if !strings.HasPrefix(token, "ptc_mg_") || strings.TrimSpace(mediaID) == "" {
+		return false
+	}
+	var state, endedAt string
+	err := s.queryUserRow(r.Context(), `
+		SELECT ps.state, ps.ended_at
+		FROM playback_media_grants g
+		JOIN playback_sessions ps ON ps.id = g.playback_session_id
+		WHERE g.token_hash = ? AND g.resource_kind = 'media' AND g.resource_id = ?
+			AND g.principal_user_id = ? AND g.profile_id = ?
+		LIMIT 1`, hashToken(token), strings.TrimSpace(mediaID), accountIDForUser(user), viewerProfileID(user)).Scan(&state, &endedAt)
+	if err != nil || !strings.EqualFold(strings.TrimSpace(state), "failed") || strings.TrimSpace(endedAt) == "" {
+		return false
+	}
+	writeError(w, http.StatusUnprocessableEntity, "playback_failed", plannedPlaybackFailureDetail)
+	return true
+}
+
+func (s *Server) writePlannedPlaybackLaunchFailure(w http.ResponseWriter, identity plannedTranscodeIdentity, failure error) {
+	if errors.Is(failure, context.Canceled) || errors.Is(failure, errLongPollShutdown) {
+		return
+	}
+	if plannedTranscodeFailureIsRetryableAdmission(failure) {
+		w.Header().Set("Retry-After", "2")
+		writeError(w, http.StatusServiceUnavailable, "transcode_unavailable", "Playback transcode capacity is temporarily unavailable. Retry shortly.")
+		return
+	}
+	s.writePlannedPlaybackProducerFailure(w, identity, nil, failure)
+}
+
+func (s *Server) writePlannedPlaybackProducerFailure(w http.ResponseWriter, identity plannedTranscodeIdentity, session *transcodeSession, failure error) {
+	if failure == nil {
+		failure = errPlannedTranscode
+	}
+	if err := s.terminalizePlannedPlaybackFailure(identity, session, failure); err != nil {
+		s.log.Error("planned VOD playback terminalization failed",
+			"playback_session_id", identity.PlaybackSessionID,
+			"failure_class", plannedTranscodeFailureClass(failure),
+			"terminalization_error", err.Error())
+	}
+	writeError(w, http.StatusUnprocessableEntity, "playback_failed", plannedPlaybackFailureDetail)
+}
+
+// terminalizePlannedPlaybackFailure is the sole producer-to-playback-lifecycle
+// handoff. The session-local mutex makes concurrent manifest, segment, and
+// supervisor observations converge on one lifecycle mutation. A failed
+// lifecycle transaction remains retryable by the next observer.
+func (s *Server) terminalizePlannedPlaybackFailure(identity plannedTranscodeIdentity, session *transcodeSession, failure error) error {
+	if s == nil || !identity.validForGeneration(identity.PlaybackGeneration) {
+		return errors.New("planned playback terminalization identity is incomplete")
+	}
+	if session != nil {
+		session.markFailure(failure, true)
+		session.terminalizationMu.Lock()
+		defer session.terminalizationMu.Unlock()
+		if session.terminalized {
+			return nil
+		}
+	}
+	_, err := s.playbackLifecycle().Terminate(context.Background(), playbackTerminationRequest{
+		SessionID: identity.PlaybackSessionID,
+		UserID:    identity.UserID,
+		ProfileID: identity.ProfileID,
+		Cause:     playbackTerminationProducerFailure,
+	})
+	if err == nil && session != nil {
+		session.terminalized = true
+	}
+	return err
+}
+
+func plannedTranscodeFailureIsRetryableAdmission(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, errMediaResourcesBusy) || errors.Is(err, errMediaStoragePressure) ||
+		errors.Is(err, errPlaybackStorageOffline) || errors.Is(err, errPlaybackStorageStalled) ||
+		errors.Is(err, errPlaybackStorageTransient) || errors.Is(err, errPlannedTranscodeBackgroundDeferred) ||
+		errors.Is(err, errPlannedTranscodeAlreadyAdmitting) || errors.Is(err, errPlannedTranscodeSessionLimit) ||
+		errors.Is(err, errPlannedTranscodeHardwareLimit) || errors.Is(err, errPlannedTranscodeSoftwareLimit) ||
+		errors.Is(err, errPlannedTranscodeBackgroundLimit) || errors.Is(err, errPlannedTranscodeRestoreAdmission) {
+		return true
+	}
+	return false
 }
 
 func (s *Server) handleMediaHLS(w http.ResponseWriter, r *http.Request, user User, mediaID string, parts []string) {
@@ -377,15 +479,21 @@ func (s *Server) handleMediaHLS(w http.ResponseWriter, r *http.Request, user Use
 func (s *Server) handleMediaHLSManifest(w http.ResponseWriter, r *http.Request, user User, mediaID string, allowTextSubtitles bool) {
 	binding, err := s.playbackPlanForMediaGrant(r.Context(), r, mediaID)
 	if err != nil {
+		if s.writeStoredPlannedPlaybackFailure(w, r, user, mediaID) {
+			return
+		}
 		writeError(w, http.StatusForbidden, "playback_plan_required", "This playback resource is not bound to a current server plan.")
 		return
 	}
 	identity, err := s.plannedTranscodeIdentityForRequest(r.Context(), r, user, mediaID, binding)
 	if err != nil {
+		if s.writeStoredPlannedPlaybackFailure(w, r, user, mediaID) {
+			return
+		}
 		writeError(w, http.StatusForbidden, "playback_plan_required", "This playback resource is not bound to a current playback session.")
 		return
 	}
-	quality, subtitleID, textSubtitleID, audioMode, audioStreamID, directStream, err := playbackBindingHLSParameters(binding, r)
+	quality, subtitleID, textSubtitleID, audioMode, audioStreamID, directStream, err := playbackPlanHLSParameters(binding, r)
 	if err != nil {
 		writeError(w, http.StatusForbidden, "playback_plan_mismatch", "Playback resource parameters do not match the authorized server plan.")
 		return
@@ -431,10 +539,18 @@ func (s *Server) handleMediaHLSManifest(w http.ResponseWriter, r *http.Request, 
 	session, err := s.ensurePlannedVODHLSSession(r.Context(), user.ID, item, binding, identity, 0, "", false)
 	if err != nil {
 		s.log.Warn("planned VOD manifest launch rejected", "request_id", strings.TrimSpace(r.Header.Get(requestIDHeader)), "media_id", item.ID, "failure_class", plannedTranscodeFailureClass(err))
-		writeError(w, http.StatusServiceUnavailable, "transcode_unavailable", err.Error())
+		s.writePlannedPlaybackLaunchFailure(w, identity, err)
 		return
 	}
 	if !s.plannedTranscodeSessionIsCurrent(session, plannedTranscodeSessionKey(item.ID, binding, identity, 0)) {
+		if s.writeStoredPlannedPlaybackFailure(w, r, user, mediaID) {
+			return
+		}
+		if state := session.snapshot(); state.err != nil || state.terminalErr != nil {
+			s.writePlannedPlaybackProducerFailure(w, identity, session, session.transcodeError())
+			return
+		}
+		w.Header().Set("Retry-After", "2")
 		writeError(w, http.StatusServiceUnavailable, "transcode_unavailable", "The playback generation changed before the manifest was published.")
 		return
 	}
@@ -443,7 +559,7 @@ func (s *Server) handleMediaHLSManifest(w http.ResponseWriter, r *http.Request, 
 		if errors.Is(err, context.Canceled) || errors.Is(err, errLongPollShutdown) {
 			return
 		}
-		writeError(w, http.StatusServiceUnavailable, "transcode_unavailable", "The playback manifest is not ready.")
+		s.writePlannedPlaybackProducerFailure(w, identity, session, err)
 		return
 	}
 	releaseReader, ok := session.acquireReader()
@@ -451,6 +567,14 @@ func (s *Server) handleMediaHLSManifest(w http.ResponseWriter, r *http.Request, 
 		if ok {
 			releaseReader()
 		}
+		if s.writeStoredPlannedPlaybackFailure(w, r, user, mediaID) {
+			return
+		}
+		if state := session.snapshot(); state.err != nil || state.terminalErr != nil {
+			s.writePlannedPlaybackProducerFailure(w, identity, session, session.transcodeError())
+			return
+		}
+		w.Header().Set("Retry-After", "2")
 		writeError(w, http.StatusServiceUnavailable, "transcode_unavailable", "The playback generation changed before the manifest was published.")
 		return
 	}
@@ -474,7 +598,7 @@ func (s *Server) handleMediaHLSSubtitlePlaylist(w http.ResponseWriter, r *http.R
 		writeError(w, http.StatusForbidden, "playback_plan_required", "This subtitle resource is not bound to a current server plan.")
 		return
 	}
-	_, _, subtitleID, _, _, _, err := playbackBindingHLSParameters(binding, r)
+	_, _, subtitleID, _, _, _, err := playbackPlanHLSParameters(binding, r)
 	if err != nil || subtitleID == "" {
 		writeError(w, http.StatusForbidden, "playback_plan_mismatch", "Subtitle resource parameters do not match the authorized server plan.")
 		return
@@ -528,7 +652,7 @@ func (s *Server) handleMediaHLSSubtitleSegment(w http.ResponseWriter, r *http.Re
 		writeError(w, http.StatusForbidden, "playback_plan_required", "This subtitle resource is not bound to a current server plan.")
 		return
 	}
-	_, _, subtitleID, _, _, _, err := playbackBindingHLSParameters(binding, r)
+	_, _, subtitleID, _, _, _, err := playbackPlanHLSParameters(binding, r)
 	if err != nil || subtitleID == "" {
 		writeError(w, http.StatusForbidden, "playback_plan_mismatch", "Subtitle resource parameters do not match the authorized server plan.")
 		return
@@ -571,15 +695,21 @@ func (s *Server) handleMediaHLSSubtitleSegment(w http.ResponseWriter, r *http.Re
 func (s *Server) handleMediaHLSSegment(w http.ResponseWriter, r *http.Request, user User, mediaID string) {
 	binding, err := s.playbackPlanForMediaGrant(r.Context(), r, mediaID)
 	if err != nil {
+		if s.writeStoredPlannedPlaybackFailure(w, r, user, mediaID) {
+			return
+		}
 		writeError(w, http.StatusForbidden, "playback_plan_required", "This playback segment is not bound to a current server plan.")
 		return
 	}
 	identity, err := s.plannedTranscodeIdentityForRequest(r.Context(), r, user, mediaID, binding)
 	if err != nil {
+		if s.writeStoredPlannedPlaybackFailure(w, r, user, mediaID) {
+			return
+		}
 		writeError(w, http.StatusForbidden, "playback_plan_required", "This playback segment is not bound to a current playback session.")
 		return
 	}
-	quality, subtitleID, _, _, audioStreamID, _, err := playbackBindingHLSParameters(binding, r)
+	quality, subtitleID, _, _, audioStreamID, _, err := playbackPlanHLSParameters(binding, r)
 	if err != nil {
 		writeError(w, http.StatusForbidden, "playback_plan_mismatch", "Playback segment parameters do not match the authorized server plan.")
 		return
@@ -608,80 +738,77 @@ func (s *Server) handleMediaHLSSegment(w http.ResponseWriter, r *http.Request, u
 	if item.DurationSeconds > 0 && name != "init.mp4" {
 		requestedStartSeconds = mediaHLSSegmentStartSeconds(0, name, item.DurationSeconds)
 	}
-	for recoveryPass := 0; recoveryPass < 2; recoveryPass++ {
-		startSeconds := requestedStartSeconds
-		if recoveryPass == 0 {
-			startSeconds = s.plannedVODSegmentStartSeconds(item.ID, binding, identity, name, requestedStartSeconds)
-		}
-		session, err := s.ensurePlannedVODHLSSession(r.Context(), user.ID, item, binding, identity, startSeconds, name, false)
-		if err != nil {
-			s.log.Warn("planned VOD segment launch rejected", "request_id", strings.TrimSpace(r.Header.Get(requestIDHeader)), "media_id", item.ID, "failure_class", plannedTranscodeFailureClass(err))
-			writeError(w, http.StatusServiceUnavailable, "transcode_unavailable", err.Error())
-			return
-		}
-		expectedKey := plannedTranscodeSessionKey(item.ID, binding, identity, startSeconds)
-		if !s.plannedTranscodeSessionIsCurrent(session, expectedKey) {
-			continue
-		}
-		path := filepath.Join(session.dir, name)
-		if !strings.HasPrefix(filepath.Clean(path), filepath.Clean(session.dir)+string(filepath.Separator)) {
-			writeError(w, http.StatusBadRequest, "bad_segment", "HLS segment name is invalid.")
-			return
-		}
-		if err := waitForHLSSegmentFileContext(r.Context(), s.shutdownDone(), session, path); err != nil {
-			if errors.Is(err, context.Canceled) || errors.Is(err, errLongPollShutdown) {
-				return
-			}
-			if session.snapshot().err != nil {
-				// The next pass re-enters the plan-owned launcher. A failed
-				// generation is retired before the supervisor starts its replacement.
-				if recoveryPass == 0 {
-					continue
-				}
-				writeError(w, http.StatusServiceUnavailable, "transcode_unavailable", session.transcodeError().Error())
-				return
-			}
-			s.recordLog("warn", "HLS segment was not ready before the playback client timed out", map[string]string{
-				"media":   item.ID,
-				"segment": name,
-				"quality": quality,
-				"start":   strconv.Itoa(startSeconds),
-				"method":  session.method,
-				"error":   err.Error(),
-			})
-			if session.isRunning() {
-				w.Header().Set("Retry-After", "2")
-				writeError(w, http.StatusServiceUnavailable, "segment_starting", "HLS segment is still being prepared. Retry shortly.")
-				return
-			}
-			writeError(w, http.StatusNotFound, "segment_not_found", "HLS segment is not available.")
-			return
-		}
-		releaseReader, ok := session.acquireReader()
-		if !ok || !s.plannedTranscodeSessionIsCurrent(session, expectedKey) {
-			if ok {
-				releaseReader()
-			}
-			continue
-		}
-		defer releaseReader()
-		s.noteTranscodeSegmentServed(session, name)
-		w.Header().Set("Content-Type", hlsSegmentContentType(name))
-		// A producer may be repositioned or recovered for the same deterministic
-		// grid slot. Never let an intermediary mix bytes across producer runs.
-		w.Header().Set("Cache-Control", "private, no-store")
-		http.ServeFile(w, r, path)
+	startSeconds := s.plannedVODSegmentStartSeconds(item.ID, binding, identity, name, requestedStartSeconds)
+	session, err := s.ensurePlannedVODHLSSession(r.Context(), user.ID, item, binding, identity, startSeconds, name, false)
+	if err != nil {
+		s.log.Warn("planned VOD segment launch rejected", "request_id", strings.TrimSpace(r.Header.Get(requestIDHeader)), "media_id", item.ID, "failure_class", plannedTranscodeFailureClass(err))
+		s.writePlannedPlaybackLaunchFailure(w, identity, err)
 		return
 	}
-	writeError(w, http.StatusServiceUnavailable, "transcode_unavailable", "The HLS transcode session could not recover in time.")
+	expectedKey := plannedTranscodeSessionKey(item.ID, binding, identity, startSeconds)
+	if !s.plannedTranscodeSessionIsCurrent(session, expectedKey) {
+		if s.writeStoredPlannedPlaybackFailure(w, r, user, mediaID) {
+			return
+		}
+		if state := session.snapshot(); state.err != nil || state.terminalErr != nil {
+			s.writePlannedPlaybackProducerFailure(w, identity, session, session.transcodeError())
+			return
+		}
+		w.Header().Set("Retry-After", "2")
+		writeError(w, http.StatusServiceUnavailable, "transcode_unavailable", "The playback generation changed before the segment was published.")
+		return
+	}
+	path := filepath.Join(session.dir, name)
+	if !strings.HasPrefix(filepath.Clean(path), filepath.Clean(session.dir)+string(filepath.Separator)) {
+		writeError(w, http.StatusBadRequest, "bad_segment", "HLS segment name is invalid.")
+		return
+	}
+	if err := waitForHLSSegmentFileContext(r.Context(), s.shutdownDone(), session, path); err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, errLongPollShutdown) {
+			return
+		}
+		s.recordLog("warn", "HLS segment producer reached its terminal publication outcome", map[string]string{
+			"media":         item.ID,
+			"segment":       name,
+			"quality":       quality,
+			"start":         strconv.Itoa(startSeconds),
+			"method":        session.method,
+			"failure_class": plannedTranscodeFailureClass(err),
+		})
+		s.writePlannedPlaybackProducerFailure(w, identity, session, err)
+		return
+	}
+	releaseReader, ok := session.acquireReader()
+	if !ok || !s.plannedTranscodeSessionIsCurrent(session, expectedKey) {
+		if ok {
+			releaseReader()
+		}
+		if s.writeStoredPlannedPlaybackFailure(w, r, user, mediaID) {
+			return
+		}
+		if state := session.snapshot(); state.err != nil || state.terminalErr != nil {
+			s.writePlannedPlaybackProducerFailure(w, identity, session, session.transcodeError())
+			return
+		}
+		w.Header().Set("Retry-After", "2")
+		writeError(w, http.StatusServiceUnavailable, "transcode_unavailable", "The playback generation changed before the segment was served.")
+		return
+	}
+	defer releaseReader()
+	s.noteTranscodeSegmentServed(session, name)
+	w.Header().Set("Content-Type", hlsSegmentContentType(name))
+	// A producer may be repositioned for the same deterministic grid slot.
+	// Never let an intermediary mix bytes across producer runs.
+	w.Header().Set("Cache-Control", "private, no-store")
+	http.ServeFile(w, r, path)
 }
 
 // plannedVODSegmentStartSeconds keeps sequential segment demand on the
 // already-published full-timeline producer. Starting one producer per segment
 // races admission limits and makes a healthy VOD manifest return 503s. A
-// seek-scoped generation remains available when no origin producer exists, or
-// on the handler's bounded recovery pass after an origin producer cannot serve.
-func (s *Server) plannedVODSegmentStartSeconds(mediaID string, binding playbackExecutionBinding, identity plannedTranscodeIdentity, segmentName string, requestedStartSeconds int) int {
+// seek-scoped generation remains available when no healthy origin producer can
+// serve a retained segment; a failed producer is terminal for its playback.
+func (s *Server) plannedVODSegmentStartSeconds(mediaID string, binding playbackExecutionPlan, identity plannedTranscodeIdentity, segmentName string, requestedStartSeconds int) int {
 	if s == nil {
 		return requestedStartSeconds
 	}
@@ -1354,7 +1481,7 @@ func (s *Server) startTranscodeLockedWithInputTransport(userID string, item Medi
 	if err := ensureMediaWriteCapacity(outputRoot, mediaWriteMinimumFreeBytes); err != nil {
 		return nil, err
 	}
-	resourceRequest := mediaResourceRequest{cpu: 1, disk: 2, background: background}
+	resourceRequest := mediaResourceRequest{class: mediaProcessingWorkClass(background), cpu: 1, disk: 2}
 	if item.Type == "live_channel" {
 		resourceRequest.network = 1
 	}
@@ -2040,6 +2167,27 @@ func (s *Server) stopTranscodeSessionForMedia(mediaID string) bool {
 	return len(sessions) > 0
 }
 
+// stopTranscodeSessionForPlaybackSession retires only the generation whose
+// authorization was terminalized. Media-wide cleanup remains as a legacy and
+// last-viewer fallback, but cannot be the owner for planned VOD isolation.
+func (s *Server) stopTranscodeSessionForPlaybackSession(playbackSessionID string) bool {
+	playbackSessionID = strings.TrimSpace(playbackSessionID)
+	if playbackSessionID == "" {
+		return false
+	}
+	s.transcodeMu.Lock()
+	var sessions []*transcodeSession
+	for key, session := range s.transcodes {
+		if session != nil && strings.TrimSpace(session.playbackSessionID) == playbackSessionID {
+			sessions = append(sessions, session)
+			delete(s.transcodes, key)
+		}
+	}
+	s.transcodeMu.Unlock()
+	s.stopTranscodeSessions(sessions)
+	return len(sessions) > 0
+}
+
 func (s *Server) stopTranscodeSessions(sessions []*transcodeSession) {
 	for _, session := range sessions {
 		session.stop(1500 * time.Millisecond)
@@ -2448,9 +2596,12 @@ func (s *Server) readTranscodeManifestContext(ctx context.Context, session *tran
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	startedWaiting := time.Now()
-	deadline := startedWaiting.Add(transcodeManifestReadTimeout(directStream))
-	hardDeadline := startedWaiting.Add(14 * time.Second)
+	producerStarted := session.startedAt
+	if producerStarted.IsZero() {
+		producerStarted = time.Now()
+	}
+	deadline := producerStarted.Add(transcodeManifestReadTimeout(directStream))
+	hardDeadline := producerStarted.Add(14 * time.Second)
 	var lastManifestErr error
 	for {
 		if err := ctx.Err(); err != nil {
@@ -2467,6 +2618,9 @@ func (s *Server) readTranscodeManifestContext(ctx context.Context, session *tran
 			lastManifestErr = err
 		}
 		state := session.snapshot()
+		if state.err != nil || state.terminalErr != nil {
+			return "", session.transcodeError()
+		}
 		// An encode producer that has published at least one segment is making
 		// concrete forward progress. Permit it the same bounded 14-second ceiling
 		// as remux startup instead of failing at six seconds while its canonical
@@ -2477,13 +2631,10 @@ func (s *Server) readTranscodeManifestContext(ctx context.Context, session *tran
 			return "", lastManifestErr
 		}
 		if time.Now().After(deadline) {
-			if state.err != nil || state.terminalErr != nil {
-				return "", session.transcodeError()
-			}
 			if lastManifestErr != nil {
-				return "", lastManifestErr
+				return "", fmt.Errorf("%w: %v", errHLSManifestTimeout, lastManifestErr)
 			}
-			return "", errors.New("HLS manifest did not become structurally ready")
+			return "", errHLSManifestTimeout
 		}
 		wait := time.Until(deadline)
 		if wait > time.Second {
@@ -2654,7 +2805,11 @@ func waitForHLSSegmentFileContext(ctx context.Context, shutdown <-chan struct{},
 	if session == nil {
 		return os.ErrNotExist
 	}
-	deadline := time.Now().Add(hlsSegmentWaitTimeout(session))
+	producerStarted := session.startedAt
+	if producerStarted.IsZero() {
+		producerStarted = time.Now()
+	}
+	deadline := producerStarted.Add(hlsSegmentWaitTimeout(session))
 	var lastErr error
 	for {
 		if err := ctx.Err(); err != nil {
@@ -2669,7 +2824,13 @@ func waitForHLSSegmentFileContext(ctx context.Context, shutdown <-chan struct{},
 		if state.err != nil || state.terminalErr != nil {
 			return session.transcodeError()
 		}
-		if !session.isRunning() && !session.completedSuccessfully() || time.Now().After(deadline) {
+		if time.Now().After(deadline) {
+			if lastErr != nil {
+				return fmt.Errorf("%w: %v", errHLSSegmentTimeout, lastErr)
+			}
+			return errHLSSegmentTimeout
+		}
+		if !session.isRunning() && !session.completedSuccessfully() {
 			if lastErr != nil {
 				return lastErr
 			}
@@ -2682,8 +2843,14 @@ func waitForHLSSegmentFileContext(ctx context.Context, shutdown <-chan struct{},
 		timer := time.NewTimer(wait)
 		select {
 		case <-ctx.Done():
+			if !timer.Stop() {
+				<-timer.C
+			}
 			return ctx.Err()
 		case <-shutdown:
+			if !timer.Stop() {
+				<-timer.C
+			}
 			return errLongPollShutdown
 		case <-session.updateSignal():
 			if !timer.Stop() {

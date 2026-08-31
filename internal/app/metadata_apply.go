@@ -45,6 +45,7 @@ type metadataApplyRequest struct {
 	ActorUserID      string
 	OperationID      string
 	MarkRefreshed    bool
+	RefreshIntent    metadataRefreshIntent
 	Update           UpdateMediaRequest
 	Identities       []metadataProviderIdentityProposal
 	ProviderRich     *metadataProviderRichProposal
@@ -247,6 +248,9 @@ func (s *Server) applyMetadata(ctx context.Context, req metadataApplyRequest) (m
 		update := cloneMetadataUpdate(req.Update)
 		if req.Origin != metadataSourceManual || req.MarkRefreshed {
 			filterMetadataUpdateByLocks(&update, locks, state.TypedMetadata)
+		}
+		if err := filterMetadataUpdateForIntent(tx, state, &update, req.RefreshIntent); err != nil {
+			return err
 		}
 		changed := metadataChangedFields(update)
 		if req.ArtworkMutation != nil {
@@ -1003,42 +1007,91 @@ func persistOneProviderRichEvidenceTx(tx *sql.Tx, mediaID, revisionID string, re
 		snapshotID, revision, mediaID, provider, externalType, externalID); err != nil {
 		return err
 	}
-	if _, err := tx.Exec(`
-		DELETE FROM media_metadata_field_values AS f
-		WHERE f.revision_id = ? AND f.provider = ?
-			AND NOT EXISTS (
-				SELECT 1 FROM media_metadata_locks l
-				WHERE l.media_id = f.media_id AND (
-					lower(l.field) = lower(f.field_key)
-					OR (lower(f.field_key) IN ('alternatetitle','alias','title') AND l.field = 'alternateTitles')
-					OR (lower(f.field_key) IN ('status','format','season','seasonyear','episodes','runtimeminutes','durationminutes','durationmilliseconds') AND l.field = 'typedMetadata')
-				)
-			)`, revisionID, provider); err != nil {
-		return err
-	}
-	if _, err := tx.Exec(`
-		DELETE FROM media_metadata_relationships AS rel
-		WHERE rel.revision_id = ? AND rel.provider = ?
-			AND NOT EXISTS (
-				SELECT 1 FROM media_metadata_locks l
-				WHERE l.media_id = rel.media_id AND (
-					l.field = 'relationship.' || rel.relationship_type
-					OR (rel.relationship_type = 'genre' AND l.field = 'genres')
-					OR (rel.relationship_type IN ('tag','keyword') AND l.field = 'tags')
-					OR (rel.relationship_type IN ('studio','company') AND l.field = 'studio')
-					OR (rel.relationship_type = 'network' AND l.field = 'network')
-					OR (rel.relationship_type = 'country' AND l.field = 'country')
-					OR (rel.relationship_type IN ('person','creator','character') AND l.field = 'people')
-				)
-			)`, revisionID, provider); err != nil {
-		return err
+	occupiedFields, occupiedRelationships, occupiedImages := map[string]bool{}, map[string]bool{}, map[string]bool{}
+	if req.RefreshIntent == metadataRefreshFillMissing {
+		rows, err := tx.Query(`SELECT DISTINCT lower(field_key) FROM media_metadata_field_values WHERE revision_id=? AND decision IN ('accepted','locked')`, revisionID)
+		if err != nil {
+			return err
+		}
+		for rows.Next() {
+			var field string
+			if err := rows.Scan(&field); err != nil {
+				rows.Close()
+				return err
+			}
+			occupiedFields[strings.ToLower(strings.TrimSpace(field))] = true
+		}
+		if err := rows.Close(); err != nil {
+			return err
+		}
+		rows, err = tx.Query(`SELECT DISTINCT lower(relationship_type) FROM media_metadata_relationships WHERE revision_id=? AND decision IN ('accepted','locked')`, revisionID)
+		if err != nil {
+			return err
+		}
+		for rows.Next() {
+			var kind string
+			if err := rows.Scan(&kind); err != nil {
+				rows.Close()
+				return err
+			}
+			occupiedRelationships[strings.ToLower(strings.TrimSpace(kind))] = true
+		}
+		if err := rows.Close(); err != nil {
+			return err
+		}
+		rows, err = tx.Query(`SELECT DISTINCT lower(image_type) FROM media_images WHERE media_id=? AND selection_state IN ('accepted','candidate')`, mediaID)
+		if err != nil {
+			return err
+		}
+		for rows.Next() {
+			var kind string
+			if err := rows.Scan(&kind); err != nil {
+				rows.Close()
+				return err
+			}
+			occupiedImages[strings.ToLower(strings.TrimSpace(kind))] = true
+		}
+		if err := rows.Close(); err != nil {
+			return err
+		}
+	} else {
+		if _, err := tx.Exec(`
+			DELETE FROM media_metadata_field_values AS f
+			WHERE f.revision_id = ? AND f.provider = ?
+				AND NOT EXISTS (
+					SELECT 1 FROM media_metadata_locks l
+					WHERE l.media_id = f.media_id AND (
+						lower(l.field) = lower(f.field_key)
+						OR (lower(f.field_key) IN ('alternatetitle','alias','title') AND l.field = 'alternateTitles')
+						OR (lower(f.field_key) IN ('status','format','season','seasonyear','episodes','runtimeminutes','durationminutes','durationmilliseconds') AND l.field = 'typedMetadata')
+					)
+				)`, revisionID, provider); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(`
+			DELETE FROM media_metadata_relationships AS rel
+			WHERE rel.revision_id = ? AND rel.provider = ?
+				AND NOT EXISTS (
+					SELECT 1 FROM media_metadata_locks l
+					WHERE l.media_id = rel.media_id AND (
+						l.field = 'relationship.' || rel.relationship_type
+						OR (rel.relationship_type = 'genre' AND l.field = 'genres')
+						OR (rel.relationship_type IN ('tag','keyword') AND l.field = 'tags')
+						OR (rel.relationship_type IN ('studio','company') AND l.field = 'studio')
+						OR (rel.relationship_type = 'network' AND l.field = 'network')
+						OR (rel.relationship_type = 'country' AND l.field = 'country')
+						OR (rel.relationship_type IN ('person','creator','character') AND l.field = 'people')
+					)
+				)`, revisionID, provider); err != nil {
+			return err
+		}
 	}
 
 	fieldOrdinals := map[string]int{}
 	for _, value := range proposal.Values {
 		field := strings.TrimSpace(value.Field)
 		textValue := strings.TrimSpace(value.Value)
-		if field == "" || textValue == "" || metadataRichFieldLocked(field, locks) {
+		if field == "" || textValue == "" || metadataRichFieldLocked(field, locks) || occupiedFields[strings.ToLower(field)] {
 			continue
 		}
 		ordinal := 1000 + fieldOrdinals[field]
@@ -1057,7 +1110,7 @@ func persistOneProviderRichEvidenceTx(tx *sql.Tx, mediaID, revisionID string, re
 
 	for _, relationship := range proposal.Relationships {
 		kind := canonicalMetadataRelationshipKind(relationship.Kind, relationship.Role)
-		if kind == "" || metadataRichRelationshipLocked(kind, locks) {
+		if kind == "" || metadataRichRelationshipLocked(kind, locks) || occupiedRelationships[strings.ToLower(kind)] {
 			continue
 		}
 		name := strings.TrimSpace(relationship.Name)
@@ -1092,7 +1145,7 @@ func persistOneProviderRichEvidenceTx(tx *sql.Tx, mediaID, revisionID string, re
 	for index, image := range proposal.Images {
 		kind := strings.TrimSpace(image.Kind)
 		providerImageID := strings.TrimSpace(image.Path)
-		if kind == "" || providerImageID == "" || locks["artwork"] || locks["artwork."+kind] {
+		if kind == "" || providerImageID == "" || locks["artwork"] || locks["artwork."+kind] || occupiedImages[strings.ToLower(kind)] {
 			continue
 		}
 		if !clearedKinds[kind] {

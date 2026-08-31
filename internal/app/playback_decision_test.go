@@ -11,240 +11,21 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
 )
 
-func TestDecideMediaPlaybackRequiresTranscodeForUnsupportedCodecs(t *testing.T) {
-	item := MediaItem{
-		ID: "movie_4k",
-		Streams: []Stream{
-			{ID: "v1", Kind: "video", Codec: "hevc", Width: 3840, Height: 2160, Bitrate: 18_000},
-			{ID: "a1", Kind: "audio", Codec: "truehd", Bitrate: 4_000},
-		},
+func playbackHandoffTerminalForTest(playback PlaybackResponse, disposition string, eventSequence int64) *PlaybackTerminalEvent {
+	duration := float64(playback.Timeline.DurationSeconds)
+	position := float64(playback.Media.State.ProgressSeconds)
+	if disposition == "completed" {
+		position = duration
 	}
-	decision := decideMediaPlayback(item, "https://media.example.com/movie.mp4", PlaybackClientProfile{
-		SupportedContainers:  []string{"mp4"},
-		SupportedVideoCodecs: []string{"h264"},
-		SupportedAudioCodecs: []string{"aac"},
-		MaxWidth:             1920,
-		MaxHeight:            1080,
-	})
-	if !decision.RequiresTranscode || decision.Mode != "transcode_required" {
-		t.Fatalf("expected transcode requirement, got %+v", decision)
-	}
-	if !decision.IsProxied {
-		t.Fatalf("expected media playback to remain server proxied")
-	}
-}
-
-func TestDecideMediaPlaybackSeparatesContainerRemuxFromCodecTranscode(t *testing.T) {
-	item := MediaItem{
-		ID: "movie_mkv",
-		Streams: []Stream{
-			{ID: "v1", Kind: "video", Codec: "h264", Width: 1920, Height: 1080, Bitrate: 8_000},
-			{ID: "a1", Kind: "audio", Codec: "eac3", Channels: 6, Bitrate: 640},
-		},
-	}
-	decision := decideMediaPlayback(item, "https://media.example.com/movie.mkv", PlaybackClientProfile{
-		SupportedContainers:  []string{"mp4", "hls"},
-		SupportedVideoCodecs: []string{"h264", "hevc"},
-		SupportedAudioCodecs: []string{"aac", "ac3", "eac3"},
-		MaxWidth:             3840,
-		MaxHeight:            2160,
-		MaxAudioChannels:     8,
-	})
-	if !decision.RequiresTranscode || decision.VideoTranscode || decision.AudioTranscode || !strings.Contains(decision.Reason, "container") {
-		t.Fatalf("expected only the container to require server handling, got %+v", decision)
-	}
-	next := newScannerTestServer(t).applyDirectStreamRemuxPolicy(decision, item, PlaybackClientProfile{SupportsHLS: true})
-	if next.Mode != "direct_stream" || next.RequiresTranscode || !next.RequiresRemux {
-		t.Fatalf("expected direct stream remux without codec transcode, got %+v", next)
-	}
-}
-
-func TestWebProfileAudioChannelLimitUsesAudioOnlyTranscode(t *testing.T) {
-	item := MediaItem{
-		ID: "movie_mkv",
-		Streams: []Stream{
-			{ID: "v1", Kind: "video", Codec: "h264", Width: 1920, Height: 1080, Bitrate: 8_000},
-			{ID: "a1", Kind: "audio", Codec: "aac", Channels: 6, Bitrate: 640},
-		},
-	}
-	decision := decideMediaPlayback(item, "https://media.example.com/movie.mkv", PlaybackClientProfile{
-		SupportedContainers:  []string{"mp4", "hls"},
-		SupportedVideoCodecs: []string{"h264"},
-		SupportedAudioCodecs: []string{"aac", "mp3"},
-		MaxWidth:             3840,
-		MaxHeight:            2160,
-		MaxAudioChannels:     2,
-	})
-	if !decision.RequiresTranscode || !decision.AudioTranscode || !strings.Contains(decision.Reason, "audio channels") {
-		t.Fatalf("expected audio channel transcode requirement, got %+v", decision)
-	}
-	next := newScannerTestServer(t).applyDirectStreamRemuxPolicy(decision, item, PlaybackClientProfile{SupportsHLS: true})
-	if next.Mode != "direct_stream" || !next.RequiresTranscode || !next.RequiresRemux || !next.AudioTranscode || next.VideoTranscode {
-		t.Fatalf("expected video copy with audio-only transcode when audio channels exceed profile, got %+v", next)
-	}
-	playbackURL := mediaPlaybackHLSURLWithOptions(item.ID, "original", "", transcodeAudioModeForDecision(next), "", next.Mode == "direct_stream")
-	if !strings.Contains(playbackURL, "audio=transcode") || !strings.Contains(playbackURL, "directStream=1") {
-		t.Fatalf("expected HLS URL to preserve direct-stream audio-only transcode mode, got %q", playbackURL)
-	}
-}
-
-func TestMSEBrowserDoesNotDirectStreamHEVCOverHLS(t *testing.T) {
-	server := newScannerTestServer(t)
-	decision := PlaybackDecision{
-		Mode:              "transcode_required",
-		Reason:            "container is not in the client profile",
-		RequiresTranscode: true,
-	}
-	item := MediaItem{Streams: []Stream{{Kind: "video", Codec: "hevc", Width: 1920, Height: 1080}, {Kind: "audio", Codec: "aac", Channels: 2}}}
-	profile := PlaybackClientProfile{
-		Device:               "Mozilla/5.0 Chrome/148.0.0.0 Safari/537.36",
-		Platform:             "MacIntel",
-		SupportsHLS:          true,
-		SupportsMSE:          true,
-		SupportedVideoCodecs: []string{"h264", "hevc"},
-		SupportedAudioCodecs: []string{"aac"},
-	}
-	next := server.applyDirectStreamRemuxPolicy(decision, item, profile)
-	if next.Mode == "direct_stream" || !next.VideoTranscode || !strings.Contains(next.Reason, "client HLS path") {
-		t.Fatalf("expected HEVC MSE/HLS path to force full video transcode, got %+v", next)
-	}
-}
-
-func TestHEVCMP4DirectPlaysWhenNativeClientReportsSupport(t *testing.T) {
-	item := MediaItem{
-		ID: "movie_hevc_mp4",
-		Streams: []Stream{
-			{ID: "v1", Kind: "video", Codec: "hevc", Width: 1920, Height: 1080, Bitrate: 2_000_000},
-			{ID: "a1", Kind: "audio", Codec: "aac", Channels: 6, Bitrate: 224_000},
-		},
-	}
-	decision := decideMediaPlayback(item, "https://media.example.com/movie.mp4", PlaybackClientProfile{
-		Device:               "Portico Native",
-		Platform:             "tvos",
-		SupportsHLS:          true,
-		SupportedContainers:  []string{"mp4", "m4v", "mov", "hls"},
-		SupportedVideoCodecs: []string{"h264", "hevc"},
-		SupportedAudioCodecs: []string{"aac", "mp3"},
-		MaxWidth:             3840,
-		MaxHeight:            2160,
-	})
-	if decision.Mode != "direct_play" || decision.RequiresTranscode {
-		t.Fatalf("expected supported HEVC MP4 native playback to direct play, got %+v", decision)
-	}
-}
-
-func TestAppleClientProfileRejectsUnsupportedVideoCharacteristics(t *testing.T) {
-	profile := PlaybackClientProfile{
-		Device:                       "Portico Apple",
-		Platform:                     "tvOS",
-		SupportsHLS:                  true,
-		SupportsHEVC:                 true,
-		SupportsHDR:                  true,
-		SupportedContainers:          []string{"mp4", "hls"},
-		SupportedVideoCodecs:         []string{"h264", "hevc"},
-		SupportedAudioCodecs:         []string{"aac"},
-		SupportedVideoProfiles:       []string{"h264:baseline", "h264:main", "h264:high", "hevc:main", "hevc:main 10"},
-		SupportedPixelFormats:        []string{"yuv420p", "yuvj420p", "yuv420p10le", "p010le"},
-		SupportedHDRFormats:          []string{"hdr10", "hlg"},
-		SupportedDolbyVisionProfiles: []string{"5", "8"},
-		MaxVideoBitDepth:             10,
-		MaxWidth:                     3840,
-		MaxHeight:                    2160,
-	}
-	cases := []struct {
-		name   string
-		video  Stream
-		reason string
-	}{
-		{
-			name:   "h264 high 10",
-			video:  Stream{ID: "v1", Kind: "video", Codec: "h264", Profile: "High 10", PixelFormat: "yuv420p10le", BitDepth: 10, Width: 1920, Height: 1080},
-			reason: "video profile",
-		},
-		{
-			name:   "422 pixel format",
-			video:  Stream{ID: "v1", Kind: "video", Codec: "hevc", Profile: "Main 10", PixelFormat: "yuv422p10le", BitDepth: 10, Width: 1920, Height: 1080},
-			reason: "pixel format",
-		},
-		{
-			name:   "12 bit",
-			video:  Stream{ID: "v1", Kind: "video", Codec: "hevc", Profile: "Main 10", PixelFormat: "yuv420p12le", BitDepth: 12, Width: 1920, Height: 1080},
-			reason: "bit depth",
-		},
-		{
-			name:   "dolby vision profile 7",
-			video:  Stream{ID: "v1", Kind: "video", Codec: "hevc", Profile: "Main 10", PixelFormat: "yuv420p10le", BitDepth: 10, DynamicRange: "dolby_vision_profile_7", DolbyVisionProfile: "7", Width: 1920, Height: 1080},
-			reason: "HDR format",
-		},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			decision := decideMediaPlayback(MediaItem{ID: "movie", Streams: []Stream{
-				tc.video,
-				{ID: "a1", Kind: "audio", Codec: "aac", Channels: 2},
-			}}, "https://media.example.com/movie.mp4", profile)
-			if decision.Mode != "transcode_required" || !decision.VideoTranscode || !strings.Contains(decision.Reason, tc.reason) {
-				t.Fatalf("expected %s to require video transcode, got %+v", tc.name, decision)
-			}
-		})
-	}
-}
-
-func TestAppleClientProfileAllowsHDR10Main10WithinLimits(t *testing.T) {
-	item := MediaItem{
-		ID: "movie_hdr10",
-		Streams: []Stream{
-			{ID: "v1", Kind: "video", Codec: "hevc", Profile: "Main 10", PixelFormat: "yuv420p10le", BitDepth: 10, DynamicRange: "hdr10", Width: 3840, Height: 2160},
-			{ID: "a1", Kind: "audio", Codec: "aac", Channels: 2},
-		},
-	}
-	decision := decideMediaPlayback(item, "https://media.example.com/movie.mp4", PlaybackClientProfile{
-		Device:                 "Portico Apple",
-		Platform:               "tvOS",
-		SupportsHEVC:           true,
-		SupportsHDR:            true,
-		SupportedContainers:    []string{"mp4", "hls"},
-		SupportedVideoCodecs:   []string{"h264", "hevc"},
-		SupportedAudioCodecs:   []string{"aac"},
-		SupportedVideoProfiles: []string{"hevc:main", "hevc:main 10"},
-		SupportedPixelFormats:  []string{"yuv420p", "yuv420p10le", "p010le"},
-		SupportedHDRFormats:    []string{"hdr10", "hlg"},
-		MaxVideoBitDepth:       10,
-		MaxWidth:               3840,
-		MaxHeight:              2160,
-	})
-	if decision.Mode != "direct_play" || decision.RequiresTranscode {
-		t.Fatalf("expected HDR10 Main10 within profile to direct play, got %+v", decision)
-	}
-}
-
-func TestAppleClientProfileRejectsHDRWhenClientOptsOut(t *testing.T) {
-	item := MediaItem{
-		ID: "movie_hdr10",
-		Streams: []Stream{
-			{ID: "v1", Kind: "video", Codec: "hevc", Profile: "Main 10", PixelFormat: "yuv420p10le", BitDepth: 10, DynamicRange: "hdr10", Width: 1920, Height: 1080},
-			{ID: "a1", Kind: "audio", Codec: "aac", Channels: 2},
-		},
-	}
-	decision := decideMediaPlayback(item, "https://media.example.com/movie.mp4", PlaybackClientProfile{
-		Device:                 "Portico Apple",
-		Platform:               "tvOS",
-		SupportsHEVC:           true,
-		SupportsHDR:            false,
-		SupportedContainers:    []string{"mp4", "hls"},
-		SupportedVideoCodecs:   []string{"h264", "hevc"},
-		SupportedAudioCodecs:   []string{"aac"},
-		SupportedVideoProfiles: []string{"hevc:main", "hevc:main 10"},
-		SupportedPixelFormats:  []string{"yuv420p", "yuv420p10le", "p010le"},
-		MaxVideoBitDepth:       10,
-	})
-	if decision.Mode != "transcode_required" || !decision.VideoTranscode || !strings.Contains(decision.Reason, "HDR format") {
-		t.Fatalf("expected HDR source to transcode when client opts out, got %+v", decision)
+	return &PlaybackTerminalEvent{
+		Disposition: disposition, Generation: int64(playback.Generation), EventSequence: eventSequence,
+		RecordedAt: time.Now().UTC().Format(time.RFC3339Nano), PositionSeconds: position, DurationSeconds: duration,
 	}
 }
 
@@ -270,42 +51,10 @@ func TestPlaybackDecisionReportsHDRToneMappingRuntimeLimitation(t *testing.T) {
 			{ID: "a1", Kind: "audio", Codec: "aac", Channels: 2},
 		},
 	}
-	decision := decideMediaPlayback(item, "https://media.example.com/movie.mp4", PlaybackClientProfile{
-		SupportedContainers:  []string{"mp4", "hls"},
-		SupportedVideoCodecs: []string{"h264"},
-		SupportedAudioCodecs: []string{"aac"},
-	})
+	decision := PlaybackDecision{Mode: "transcode_required", RequiresTranscode: true, VideoTranscode: true}
 	decision = server.applyTranscodeCapabilityNotes(decision, item)
 	if !decision.VideoTranscode || !strings.Contains(decision.Reason, "zscale/tonemap filters are unavailable") {
 		t.Fatalf("expected HDR tone-map limitation in playback reason, got %+v", decision)
-	}
-}
-
-func TestHEVCMP4WebBrowserRequiresVideoTranscode(t *testing.T) {
-	item := MediaItem{
-		ID: "movie_hevc_mp4",
-		Streams: []Stream{
-			{ID: "v1", Kind: "video", Codec: "hevc", Width: 1920, Height: 1080, Bitrate: 2_000_000},
-			{ID: "a1", Kind: "audio", Codec: "aac", Channels: 6, Bitrate: 224_000},
-		},
-	}
-	decision := decideMediaPlayback(item, "https://media.example.com/movie.mp4", PlaybackClientProfile{
-		Device:               "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36",
-		Platform:             "MacIntel",
-		SupportsHLS:          true,
-		SupportsMSE:          true,
-		SupportsHEVC:         true,
-		SupportedContainers:  []string{"mp4", "m4v", "mov", "hls"},
-		SupportedVideoCodecs: []string{"h264", "hevc"},
-		SupportedAudioCodecs: []string{"aac", "mp3"},
-		MaxWidth:             3840,
-		MaxHeight:            2160,
-	})
-	if decision.Mode != "transcode_required" || !decision.RequiresTranscode || !decision.VideoTranscode {
-		t.Fatalf("expected browser HEVC MP4 playback to require video transcode, got %+v", decision)
-	}
-	if !strings.Contains(decision.Reason, "browser HEVC") {
-		t.Fatalf("expected browser HEVC reason, got %q", decision.Reason)
 	}
 }
 
@@ -357,6 +106,7 @@ func TestPlaybackStartAcceptsCurrentAppleClientProfile(t *testing.T) {
 	}
 	body, err := json.Marshal(PlaybackSessionCreateRequest{
 		MediaID: "movie_playback_profile",
+		Intent:  automaticPlaybackIntent(),
 		ClientProfile: PlaybackClientProfile{
 			Device:               "Apple",
 			Platform:             "tvOS",
@@ -405,7 +155,7 @@ func TestPlaybackStartReportsMissingLocalMediaFile(t *testing.T) {
 		VALUES ('movie_missing_playback', 'lib_missing_playback', 'movie', 'Missing Movie', 'Missing Movie', ?, ?, 120)`, now, missingPath); err != nil {
 		t.Fatalf("insert media: %v", err)
 	}
-	body, err := json.Marshal(PlaybackSessionCreateRequest{MediaID: "movie_missing_playback", ClientProfile: PlaybackClientProfile{Device: "Apple", Platform: "tvOS", SupportsHLS: true}})
+	body, err := json.Marshal(PlaybackSessionCreateRequest{MediaID: "movie_missing_playback", ClientProfile: PlaybackClientProfile{Device: "Apple", Platform: "tvOS", SupportsHLS: true}, Intent: automaticPlaybackIntent()})
 	if err != nil {
 		t.Fatalf("marshal playback request: %v", err)
 	}
@@ -463,7 +213,7 @@ func TestPlaybackStartFromAlbumUsesBoundedDescendantQueue(t *testing.T) {
 	if playback.Media.ID != "track_start_queue_01" {
 		t.Fatalf("playback media = %q, expected first track", playback.Media.ID)
 	}
-	if got := mediaIDsForTest(playback.Queue); strings.Join(got, ",") != "track_start_queue_02,track_start_queue_03" {
+	if got := queueMediaIDsForTest(playback.Queue); strings.Join(got, ",") != "track_start_queue_02,track_start_queue_03" {
 		t.Fatalf("album start queue = %v, expected remaining tracks", got)
 	}
 }
@@ -496,7 +246,7 @@ func TestPlaybackStartUsesSourceContextOrderingWhenQueueOmitsCurrent(t *testing.
 		QueueMediaIDs: []string{"track_middle_01", "track_middle_02", "track_middle_04"},
 		SourceContext: PlaybackSourceContext{Type: "album", ID: "album_middle_track_queue", Title: "Ordered Album", MediaIDs: sourceIDs},
 	})
-	if got := mediaIDsForTest(playback.Queue); strings.Join(got, ",") != "track_middle_04" {
+	if got := queueMediaIDsForTest(playback.Queue); strings.Join(got, ",") != "track_middle_04" {
 		t.Fatalf("middle-track queue = %v, expected only tracks after current", got)
 	}
 	if got := strings.Join(playback.SourceContext.MediaIDs, ","); got != strings.Join(sourceIDs, ",") {
@@ -546,7 +296,7 @@ func TestMusicHandoffCarriesQueueHistoryToNewSession(t *testing.T) {
 
 	sourceContext := PlaybackSourceContext{Type: "instant_mix", ID: "track_handoff_a", Title: "Instant Mix: Track A", MediaIDs: []string{"track_handoff_a", "track_handoff_b", "track_handoff_c"}}
 	started := startPlaybackForTest(t, server, user, PlaybackSessionCreateRequest{MediaID: "track_handoff_a", QueueMediaIDs: []string{"track_handoff_b", "track_handoff_c"}, RepeatMode: "all", SourceContext: sourceContext})
-	if len(started.Queue) != 2 || started.Queue[0].ID != "track_handoff_b" {
+	if len(started.Queue) != 2 || started.Queue[0].Media.ID != "track_handoff_b" {
 		t.Fatalf("start queue = %#v", started.Queue)
 	}
 	if started.RepeatMode != "all" || started.QueueRevision != 0 {
@@ -556,7 +306,7 @@ func TestMusicHandoffCarriesQueueHistoryToNewSession(t *testing.T) {
 		t.Fatalf("start source context = %#v", started.SourceContext)
 	}
 
-	prepareBody, err := json.Marshal(PlaybackPrepareNextRequest{MediaID: "track_handoff_b", QueueMediaIDs: []string{"track_handoff_c"}, PreferredHandoff: "gapless", SourceContext: sourceContext})
+	prepareBody, err := json.Marshal(PlaybackPrepareNextRequest{EntryID: started.Queue[0].EntryID, PreferredHandoff: "gapless", SourceContext: sourceContext})
 	if err != nil {
 		t.Fatalf("marshal prepare request: %v", err)
 	}
@@ -582,6 +332,9 @@ func TestMusicHandoffCarriesQueueHistoryToNewSession(t *testing.T) {
 	if prepared.PreparedSessionID == "" || prepared.Playback.Media.ID != "track_handoff_b" || prepared.ExpiresAt == "" {
 		t.Fatalf("prepared response = %#v", prepared)
 	}
+	if prepared.Playback.CurrentQueueEntryID != started.Queue[0].EntryID || len(prepared.Queue) != 1 || prepared.Queue[0].EntryID != started.Queue[1].EntryID {
+		t.Fatalf("SD-031 prepared handoff changed occurrence identities: started=%#v prepared=%#v", started.Queue, prepared)
+	}
 
 	fractionalProgressBody := []byte(fmt.Sprintf(`{"preparedSessionId":%q,"requestId":"fractional-progress","progressSeconds":14.9}`, prepared.PreparedSessionID))
 	fractionalProgressReq := httptest.NewRequest(http.MethodPost, "/api/playback-sessions/"+started.SessionID+"/handoff", bytes.NewReader(fractionalProgressBody))
@@ -591,7 +344,7 @@ func TestMusicHandoffCarriesQueueHistoryToNewSession(t *testing.T) {
 		t.Fatalf("fractional progress handoff status=%d body=%s", fractionalProgressRec.Code, fractionalProgressRec.Body.String())
 	}
 
-	missingRequestIDBody, err := json.Marshal(PlaybackHandoffRequest{PreparedSessionID: prepared.PreparedSessionID, MediaID: "track_handoff_b", QueueMediaIDs: []string{"track_handoff_c"}, ProgressSeconds: 118})
+	missingRequestIDBody, err := json.Marshal(PlaybackHandoffRequest{PreparedSessionID: prepared.PreparedSessionID, EntryID: started.Queue[0].EntryID, PreviousTerminal: playbackHandoffTerminalForTest(started, "completed", 1)})
 	if err != nil {
 		t.Fatalf("marshal missing-request-id handoff: %v", err)
 	}
@@ -602,7 +355,7 @@ func TestMusicHandoffCarriesQueueHistoryToNewSession(t *testing.T) {
 		t.Fatalf("missing request ID handoff status=%d body=%s", missingRequestIDRec.Code, missingRequestIDRec.Body.String())
 	}
 
-	handoffBody, err := json.Marshal(PlaybackHandoffRequest{RequestID: "handoff-track-b", PreparedSessionID: prepared.PreparedSessionID, MediaID: "track_handoff_b", QueueMediaIDs: []string{"track_handoff_c"}, ProgressSeconds: 118, Intent: PlaybackIntent{QualityProfile: "standard", PreferredSubtitleMode: "off"}})
+	handoffBody, err := json.Marshal(PlaybackHandoffRequest{RequestID: "handoff-track-b", PreparedSessionID: prepared.PreparedSessionID, EntryID: started.Queue[0].EntryID, PreviousTerminal: playbackHandoffTerminalForTest(started, "completed", 1), Intent: PlaybackIntent{Quality: PlaybackQualitySelection{Mode: playbackQualityModeAutomatic}, PreferredSubtitleMode: "off"}})
 	if err != nil {
 		t.Fatalf("marshal handoff request: %v", err)
 	}
@@ -619,6 +372,9 @@ func TestMusicHandoffCarriesQueueHistoryToNewSession(t *testing.T) {
 	if handedOff.Media.ID != "track_handoff_b" {
 		t.Fatalf("handoff media = %q", handedOff.Media.ID)
 	}
+	if handedOff.CurrentQueueEntryID != started.Queue[0].EntryID || len(handedOff.Queue) != 1 || handedOff.Queue[0].EntryID != started.Queue[1].EntryID {
+		t.Fatalf("SD-031 committed handoff changed occurrence identities: %#v", handedOff)
+	}
 	retryReq := httptest.NewRequest(http.MethodPost, "/api/playback-sessions/"+started.SessionID+"/handoff", bytes.NewReader(handoffBody))
 	retryRec := httptest.NewRecorder()
 	server.handlePlaybackHandoff(retryRec, retryReq, user, started.SessionID)
@@ -632,7 +388,7 @@ func TestMusicHandoffCarriesQueueHistoryToNewSession(t *testing.T) {
 	if retried.SessionID != handedOff.SessionID || retried.MediaGrant.Token != handedOff.MediaGrant.Token || retried.ContinuationCredential == nil || handedOff.ContinuationCredential == nil || retried.ContinuationCredential.Token != handedOff.ContinuationCredential.Token {
 		t.Fatalf("idempotent handoff did not recover exact response: first=%#v retry=%#v", handedOff, retried)
 	}
-	if handedOff.Policy.QualityProfile != "standard" {
+	if handedOff.QualitySelection.Mode != playbackQualityModeAutomatic {
 		t.Fatalf("handoff dropped portable playback intent: policy=%#v", handedOff.Policy)
 	}
 	if handedOff.RepeatMode != "all" || handedOff.QueueRevision != 0 {
@@ -645,12 +401,12 @@ func TestMusicHandoffCarriesQueueHistoryToNewSession(t *testing.T) {
 	if persistedContext.Type != "instant_mix" || persistedContext.ID != "track_handoff_a" {
 		t.Fatalf("persisted source context = %#v", persistedContext)
 	}
-	history := server.loadPlaybackSessionHistory(user.ID, handedOff.SessionID)
-	if len(history) != 1 || history[0].ID != "track_handoff_a" {
+	history := server.loadPlaybackSessionHistory(handedOff.SessionID)
+	if len(history) != 1 || history[0].MediaID != "track_handoff_a" || history[0].EntryID != started.CurrentQueueEntryID {
 		t.Fatalf("handoff history = %#v, expected previous track on new session", history)
 	}
-	queue := server.loadPlaybackSessionQueue(user.ID, handedOff.SessionID)
-	if len(queue) != 1 || queue[0].ID != "track_handoff_c" {
+	queue := server.loadPlaybackSessionQueue(handedOff.SessionID)
+	if len(queue) != 1 || queue[0].MediaID != "track_handoff_c" || queue[0].EntryID != started.Queue[1].EntryID {
 		t.Fatalf("handoff queue = %#v, expected remaining next track", queue)
 	}
 	var oldEndedAt string
@@ -674,7 +430,7 @@ func TestMusicHandoffCarriesQueueHistoryToNewSession(t *testing.T) {
 		t.Fatalf("handoff authority cleanup source_grants=%d source_continuations=%d replacement_grants=%d", activeSourceGrants, activeSourceContinuations, activeReplacementGrants)
 	}
 
-	secondPrepareBody, _ := json.Marshal(PlaybackPrepareNextRequest{MediaID: "track_handoff_c", SourceContext: sourceContext})
+	secondPrepareBody, _ := json.Marshal(PlaybackPrepareNextRequest{EntryID: handedOff.Queue[0].EntryID, SourceContext: sourceContext})
 	secondPrepareReq := httptest.NewRequest(http.MethodPost, "/api/playback-sessions/"+handedOff.SessionID+"/prepare-next", bytes.NewReader(secondPrepareBody))
 	secondPrepareRec := httptest.NewRecorder()
 	server.handlePlaybackPrepareNext(secondPrepareRec, secondPrepareReq, user, handedOff.SessionID)
@@ -685,7 +441,7 @@ func TestMusicHandoffCarriesQueueHistoryToNewSession(t *testing.T) {
 	if err := json.Unmarshal(secondPrepareRec.Body.Bytes(), &secondPrepared); err != nil {
 		t.Fatalf("decode second prepare: %v", err)
 	}
-	secondHandoffBody, _ := json.Marshal(PlaybackHandoffRequest{RequestID: "handoff-track-c", PreparedSessionID: secondPrepared.PreparedSessionID, ProgressSeconds: 119})
+	secondHandoffBody, _ := json.Marshal(PlaybackHandoffRequest{RequestID: "handoff-track-c", PreparedSessionID: secondPrepared.PreparedSessionID, EntryID: handedOff.Queue[0].EntryID, PreviousTerminal: playbackHandoffTerminalForTest(handedOff, "completed", 1)})
 	secondHandoffReq := httptest.NewRequest(http.MethodPost, "/api/playback-sessions/"+handedOff.SessionID+"/handoff", bytes.NewReader(secondHandoffBody))
 	secondHandoffRec := httptest.NewRecorder()
 	server.handlePlaybackHandoff(secondHandoffRec, secondHandoffReq, user, handedOff.SessionID)
@@ -725,14 +481,14 @@ func TestPlaybackHandoffFailureLeavesPreviousSessionActive(t *testing.T) {
 		SkipPreroll:      true,
 	})
 
-	body, err := json.Marshal(PlaybackHandoffRequest{MediaID: "missing_replacement"})
+	body, err := json.Marshal(PlaybackHandoffRequest{RequestID: "handoff-missing-occurrence", EntryID: "missing_occurrence", PreviousTerminal: playbackHandoffTerminalForTest(started, "stopped", 1)})
 	if err != nil {
 		t.Fatalf("marshal handoff: %v", err)
 	}
 	req := httptest.NewRequest(http.MethodPost, "/api/playback-sessions/"+started.SessionID+"/handoff", bytes.NewReader(body))
 	rec := httptest.NewRecorder()
 	server.handlePlaybackHandoff(rec, req, user, started.SessionID)
-	if rec.Code != http.StatusNotFound || !strings.Contains(rec.Body.String(), "media_not_found") {
+	if rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), "handoff_queue_entry_changed") {
 		t.Fatalf("failed handoff status=%d body=%s", rec.Code, rec.Body.String())
 	}
 
@@ -768,6 +524,7 @@ func TestPlaybackSessionQueueMutationCommands(t *testing.T) {
 	assertQueueMutation := func(name string, req PlaybackSessionQueueRequest, want []string) PlaybackSessionQueueResponse {
 		t.Helper()
 		req.ExpectedRevision = &revision
+		req.IdempotencyKey = "test-" + strings.ReplaceAll(name, " ", "-")
 		body, err := json.Marshal(req)
 		if err != nil {
 			t.Fatalf("%s marshal: %v", name, err)
@@ -782,7 +539,7 @@ func TestPlaybackSessionQueueMutationCommands(t *testing.T) {
 		if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
 			t.Fatalf("%s decode: %v", name, err)
 		}
-		got := mediaIDsForTest(response.Items)
+		got := queueMediaIDsForTest(response.Items)
 		if strings.Join(got, ",") != strings.Join(want, ",") {
 			t.Fatalf("%s queue = %v, want %v", name, got, want)
 		}
@@ -797,11 +554,9 @@ func TestPlaybackSessionQueueMutationCommands(t *testing.T) {
 	}
 
 	assertQueueMutation("append", PlaybackSessionQueueRequest{Action: "append", MediaIDs: []string{"track_queue_c"}}, []string{"track_queue_b", "track_queue_c"})
-	assertQueueMutation("play next", PlaybackSessionQueueRequest{Action: "play_next", MediaID: "track_queue_d"}, []string{"track_queue_d", "track_queue_b", "track_queue_c"})
-	from, to := 0, 2
-	assertQueueMutation("reorder", PlaybackSessionQueueRequest{Action: "reorder", FromIndex: &from, ToIndex: &to}, []string{"track_queue_b", "track_queue_c", "track_queue_d"})
-	index := 1
-	assertQueueMutation("remove", PlaybackSessionQueueRequest{Action: "remove", Index: &index}, []string{"track_queue_b", "track_queue_d"})
+	playedNext := assertQueueMutation("play next", PlaybackSessionQueueRequest{Action: "play_next", MediaID: "track_queue_d"}, []string{"track_queue_d", "track_queue_b", "track_queue_c"})
+	reordered := assertQueueMutation("reorder", PlaybackSessionQueueRequest{Action: "reorder", EntryID: playedNext.Items[0].EntryID, DestinationEntryID: playedNext.Items[2].EntryID, Placement: "after"}, []string{"track_queue_b", "track_queue_c", "track_queue_d"})
+	assertQueueMutation("remove", PlaybackSessionQueueRequest{Action: "remove", EntryID: reordered.Items[1].EntryID}, []string{"track_queue_b", "track_queue_d"})
 	assertQueueMutation("clear", PlaybackSessionQueueRequest{Action: "clear"}, []string{})
 	repeated := assertQueueMutation("set repeat", PlaybackSessionQueueRequest{Action: "set_repeat", RepeatMode: "all"}, []string{})
 	if repeated.RepeatMode != "all" {
@@ -809,7 +564,7 @@ func TestPlaybackSessionQueueMutationCommands(t *testing.T) {
 	}
 
 	staleRevision := revision - 1
-	staleBody, _ := json.Marshal(PlaybackSessionQueueRequest{ExpectedRevision: &staleRevision, Action: "set_repeat", RepeatMode: "off"})
+	staleBody, _ := json.Marshal(PlaybackSessionQueueRequest{ExpectedRevision: &staleRevision, IdempotencyKey: "test-stale", Action: "set_repeat", RepeatMode: "off"})
 	staleReq := httptest.NewRequest(http.MethodPatch, "/api/playback-sessions/"+started.SessionID+"/queue", bytes.NewReader(staleBody))
 	staleRec := httptest.NewRecorder()
 	server.handlePlaybackSessionQueue(staleRec, staleReq, user, started.SessionID)
@@ -846,7 +601,7 @@ func TestPlaybackSessionQueueMutationCommands(t *testing.T) {
 		t.Fatalf("restored queue state = %#v", restored)
 	}
 
-	replaceBody, _ := json.Marshal(PlaybackSessionQueueReplaceRequest{ExpectedRevision: &revision, MediaIDs: []string{"track_queue_b", "track_queue_c"}, RepeatMode: "one"})
+	replaceBody, _ := json.Marshal(PlaybackSessionQueueReplaceRequest{ExpectedRevision: &revision, IdempotencyKey: "test-replace", MediaIDs: []string{"track_queue_b", "track_queue_c"}, RepeatMode: "one"})
 	replaceReq := httptest.NewRequest(http.MethodPut, "/api/playback-sessions/"+started.SessionID+"/queue", bytes.NewReader(replaceBody))
 	replaceRec := httptest.NewRecorder()
 	server.handlePlaybackSessionQueue(replaceRec, replaceReq, user, started.SessionID)
@@ -857,12 +612,12 @@ func TestPlaybackSessionQueueMutationCommands(t *testing.T) {
 	if err := json.Unmarshal(replaceRec.Body.Bytes(), &replaced); err != nil {
 		t.Fatalf("decode replacement: %v", err)
 	}
-	if replaced.Revision != revision+1 || replaced.RepeatMode != "one" || strings.Join(mediaIDsForTest(replaced.Items), ",") != "track_queue_b,track_queue_c" {
+	if replaced.Revision != revision+1 || replaced.RepeatMode != "one" || strings.Join(queueMediaIDsForTest(replaced.Items), ",") != "track_queue_b,track_queue_c" {
 		t.Fatalf("replacement state = %#v", replaced)
 	}
 
 	invalidRevision := replaced.Revision
-	invalidRepeatBody, _ := json.Marshal(PlaybackSessionQueueRequest{ExpectedRevision: &invalidRevision, Action: "set_repeat", RepeatMode: "none"})
+	invalidRepeatBody, _ := json.Marshal(PlaybackSessionQueueRequest{ExpectedRevision: &invalidRevision, IdempotencyKey: "test-invalid-repeat", Action: "set_repeat", RepeatMode: "none"})
 	invalidRepeatReq := httptest.NewRequest(http.MethodPatch, "/api/playback-sessions/"+started.SessionID+"/queue", bytes.NewReader(invalidRepeatBody))
 	invalidRepeatRec := httptest.NewRecorder()
 	server.handlePlaybackSessionQueue(invalidRepeatRec, invalidRepeatReq, user, started.SessionID)
@@ -891,6 +646,117 @@ func TestPlaybackSessionQueueMutationCommands(t *testing.T) {
 	preferred := startPlaybackForTest(t, server, preferenceUser, PlaybackSessionCreateRequest{MediaID: "track_queue_d"})
 	if preferred.RepeatMode != "all" || preferred.QueueRevision != 0 {
 		t.Fatalf("music repeat preference was not applied: repeat=%q revision=%d", preferred.RepeatMode, preferred.QueueRevision)
+	}
+}
+
+func TestPlaybackSessionQueueShuffleIsOneAtomicOccurrenceMutation(t *testing.T) {
+	server := newScannerTestServer(t)
+	user := dvrTestUser(t, server)
+	now := time.Now().UTC().Format(time.RFC3339)
+	if _, err := server.db.Exec(`INSERT INTO libraries (id, name, type, created_at) VALUES ('lib_queue_shuffle', 'Shuffle Music', 'music', ?)`, now); err != nil {
+		t.Fatalf("insert library: %v", err)
+	}
+	if _, err := server.db.Exec(`
+		INSERT INTO media_items (id, library_id, type, title, sort_title, added_at, source_url, duration_seconds)
+		VALUES
+			('track_shuffle_current', 'lib_queue_shuffle', 'track', 'Current', 'Current', ?, 'https://media.example.com/current.mp3', 120),
+			('track_shuffle_a', 'lib_queue_shuffle', 'track', 'A', 'A', ?, 'https://media.example.com/a.mp3', 120),
+			('track_shuffle_b', 'lib_queue_shuffle', 'track', 'B', 'B', ?, 'https://media.example.com/b.mp3', 120),
+			('track_shuffle_c', 'lib_queue_shuffle', 'track', 'C', 'C', ?, 'https://media.example.com/c.mp3', 120)`,
+		now, now, now, now); err != nil {
+		t.Fatalf("insert tracks: %v", err)
+	}
+	started := startPlaybackForTest(t, server, user, PlaybackSessionCreateRequest{
+		MediaID:          "track_shuffle_current",
+		ClientInstanceID: "shuffle-client",
+		QueueMediaIDs:    []string{"track_shuffle_a", "track_shuffle_b", "track_shuffle_a", "track_shuffle_c"},
+		SourceContext: PlaybackSourceContext{
+			Type: "queue", Title: "Shuffle Queue",
+			MediaIDs: []string{"track_shuffle_current", "track_shuffle_a", "track_shuffle_b", "track_shuffle_a", "track_shuffle_c"},
+		},
+	})
+	if len(started.Queue) != 4 || started.Queue[0].EntryID == started.Queue[2].EntryID || started.Queue[0].Media.ID != started.Queue[2].Media.ID {
+		t.Fatalf("duplicate media did not retain distinct occurrence identities: %#v", started.Queue)
+	}
+
+	const idempotencyKey = "shuffle-materialization-1"
+	before := make([]playbackQueueOccurrence, 0, len(started.Queue))
+	for _, entry := range started.Queue {
+		before = append(before, playbackQueueOccurrence{EntryID: entry.EntryID, MediaID: entry.Media.ID})
+	}
+	expected := materializePlaybackQueueShuffle(before, idempotencyKey)
+	expectedEntryIDs := make([]string, 0, len(expected))
+	expectedMediaIDs := make([]string, 0, len(expected))
+	for _, occurrence := range expected {
+		expectedEntryIDs = append(expectedEntryIDs, occurrence.EntryID)
+		expectedMediaIDs = append(expectedMediaIDs, occurrence.MediaID)
+	}
+
+	revision := started.QueueRevision
+	body, err := json.Marshal(PlaybackSessionQueueRequest{
+		ExpectedRevision: &revision,
+		IdempotencyKey:   idempotencyKey,
+		Action:           "shuffle",
+	})
+	if err != nil {
+		t.Fatalf("marshal shuffle: %v", err)
+	}
+	apply := func() PlaybackSessionQueueResponse {
+		t.Helper()
+		req := httptest.NewRequest(http.MethodPatch, "/api/playback-sessions/"+started.SessionID+"/queue", bytes.NewReader(body))
+		rec := httptest.NewRecorder()
+		server.handlePlaybackSessionQueue(rec, req, user, started.SessionID)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("shuffle status=%d body=%s", rec.Code, rec.Body.String())
+		}
+		var response PlaybackSessionQueueResponse
+		if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+			t.Fatalf("decode shuffle: %v", err)
+		}
+		return response
+	}
+
+	shuffled := apply()
+	if shuffled.Revision != revision+1 {
+		t.Fatalf("shuffle revision=%d, want one commit at %d", shuffled.Revision, revision+1)
+	}
+	if shuffled.Current.EntryID != started.CurrentQueueEntryID || shuffled.Current.Media.ID != started.Media.ID {
+		t.Fatalf("shuffle moved the current occurrence: current=%#v started=%#v", shuffled.Current, started)
+	}
+	gotEntryIDs := make([]string, 0, len(shuffled.Items))
+	for _, entry := range shuffled.Items {
+		gotEntryIDs = append(gotEntryIDs, entry.EntryID)
+	}
+	if strings.Join(gotEntryIDs, ",") != strings.Join(expectedEntryIDs, ",") || strings.Join(queueMediaIDsForTest(shuffled.Items), ",") != strings.Join(expectedMediaIDs, ",") {
+		t.Fatalf("materialized order entries=%v media=%v, want entries=%v media=%v", gotEntryIDs, queueMediaIDsForTest(shuffled.Items), expectedEntryIDs, expectedMediaIDs)
+	}
+	if len(shuffled.SourceContext.MediaIDs) != len(expectedMediaIDs)+1 || shuffled.SourceContext.MediaIDs[0] != started.Media.ID || strings.Join(shuffled.SourceContext.MediaIDs[1:], ",") != strings.Join(expectedMediaIDs, ",") {
+		t.Fatalf("source context did not retain the materialized order: %#v", shuffled.SourceContext.MediaIDs)
+	}
+
+	replayed := apply()
+	if replayed.Revision != shuffled.Revision || !reflect.DeepEqual(replayed.Items, shuffled.Items) {
+		t.Fatalf("shuffle retry did not replay one receipt: first=%#v replay=%#v", shuffled, replayed)
+	}
+	var receiptCount int
+	if err := server.db.QueryRow(`SELECT COUNT(*) FROM playback_session_queue_receipts WHERE session_id = ? AND idempotency_key = ?`, started.SessionID, idempotencyKey).Scan(&receiptCount); err != nil || receiptCount != 1 {
+		t.Fatalf("shuffle receipts=%d err=%v, want one", receiptCount, err)
+	}
+
+	conflictingBody, _ := json.Marshal(PlaybackSessionQueueRequest{ExpectedRevision: &revision, IdempotencyKey: idempotencyKey, Action: "clear"})
+	conflictingReq := httptest.NewRequest(http.MethodPatch, "/api/playback-sessions/"+started.SessionID+"/queue", bytes.NewReader(conflictingBody))
+	conflictingRec := httptest.NewRecorder()
+	server.handlePlaybackSessionQueue(conflictingRec, conflictingReq, user, started.SessionID)
+	if conflictingRec.Code != http.StatusConflict || !strings.Contains(conflictingRec.Body.String(), "queue_idempotency_conflict") {
+		t.Fatalf("conflicting retry status=%d body=%s", conflictingRec.Code, conflictingRec.Body.String())
+	}
+
+	staleBody, _ := json.Marshal(PlaybackSessionQueueRequest{ExpectedRevision: &revision, IdempotencyKey: "shuffle-stale-revision", Action: "shuffle"})
+	staleReq := httptest.NewRequest(http.MethodPatch, "/api/playback-sessions/"+started.SessionID+"/queue", bytes.NewReader(staleBody))
+	staleRec := httptest.NewRecorder()
+	server.handlePlaybackSessionQueue(staleRec, staleReq, user, started.SessionID)
+	if staleRec.Code != http.StatusConflict || !strings.Contains(staleRec.Body.String(), "queue_revision_conflict") {
+		t.Fatalf("stale shuffle status=%d body=%s", staleRec.Code, staleRec.Body.String())
 	}
 }
 
@@ -947,10 +813,10 @@ func TestPlaybackSessionQueueMutationFiltersUnavailableMedia(t *testing.T) {
 		t.Fatalf("load limited profile: %v", err)
 	}
 	user := User{ID: "usr_queue_limited", AccountID: "usr_queue_limited", ProfileID: profileID, ProfileIsPrimary: true, Username: "limited", Email: "limited@example.test", DisplayName: "Limited", Role: "user", Permissions: map[string]bool{"playMedia": true}}
-	started := startPlaybackForTest(t, server, user, PlaybackSessionCreateRequest{MediaID: "track_queue_allowed", Intent: PlaybackIntent{QualityProfile: "original"}})
+	started := startPlaybackForTest(t, server, user, PlaybackSessionCreateRequest{MediaID: "track_queue_allowed", Intent: PlaybackIntent{Quality: PlaybackQualitySelection{Mode: playbackQualityModeAutomatic}}})
 
 	revision := started.QueueRevision
-	body, err := json.Marshal(PlaybackSessionQueueRequest{ExpectedRevision: &revision, Action: "append", MediaID: "track_queue_blocked"})
+	body, err := json.Marshal(PlaybackSessionQueueRequest{ExpectedRevision: &revision, IdempotencyKey: "queue-filter-unavailable", Action: "append", MediaID: "track_queue_blocked"})
 	if err != nil {
 		t.Fatalf("marshal mutation: %v", err)
 	}
@@ -996,7 +862,7 @@ func TestPlaybackStartFiltersRestrictedSourceContextMediaIDs(t *testing.T) {
 		QueueMediaIDs: []string{"track_context_blocked"},
 		SourceContext: PlaybackSourceContext{Type: "queue", Title: "Mixed Queue", MediaIDs: []string{"track_context_allowed", "track_context_blocked"}},
 	})
-	if got := mediaIDsForTest(playback.Queue); len(got) != 0 {
+	if got := queueMediaIDsForTest(playback.Queue); len(got) != 0 {
 		t.Fatalf("restricted queue = %v, expected inaccessible track to be filtered", got)
 	}
 	if got := strings.Join(playback.SourceContext.MediaIDs, ","); got != "track_context_allowed" {
@@ -1007,6 +873,9 @@ func TestPlaybackStartFiltersRestrictedSourceContextMediaIDs(t *testing.T) {
 func startPlaybackForTest(t *testing.T, server *Server, user User, playbackReq PlaybackSessionCreateRequest) PlaybackResponse {
 	t.Helper()
 	seedExactPlaybackFactsForFixture(t, server, playbackReq.MediaID)
+	if strings.TrimSpace(playbackReq.Intent.Quality.Mode) == "" {
+		playbackReq.Intent.Quality = PlaybackQualitySelection{Mode: playbackQualityModeAutomatic}
+	}
 	if len(playbackReq.ClientProfile.CapabilityEvidence) == 0 {
 		playbackReq.ClientProfile = attachAuthenticatedPlaybackRuntime(playbackReq.ClientProfile)
 	}
@@ -1082,16 +951,36 @@ func TestPlaybackRestorePreservesSelectedQualityAudioSubtitleAndVersion(t *testi
 	if selectedPath != alternatePath {
 		t.Fatalf("started selected path = %q, expected %q", selectedPath, alternatePath)
 	}
-	if _, err := server.db.Exec(`UPDATE playback_sessions SET selected_quality_id = 'video-standard', selected_audio_stream_id = 'audio_alt', selected_subtitle_stream_id = 'sub_text', selected_subtitle_mode = 'text' WHERE id = ?`, started.SessionID); err != nil {
-		t.Fatalf("persist selected tuple: %v", err)
+	var quality PlaybackQualitySelection
+	for _, offer := range started.QualityOffers.Offers {
+		if offer.Kind == playbackQualityKindFixed {
+			quality = PlaybackQualitySelection{Mode: playbackQualityModeExplicit, SelectionID: offer.SelectionID, OfferRevision: started.QualityOffers.OfferRevision}
+			break
+		}
+	}
+	if quality.SelectionID == "" {
+		t.Fatalf("start response did not provide a fixed quality offer: %#v", started.QualityOffers)
+	}
+	audio, subtitle, subtitleMode := "audio_alt", "sub_text", "text"
+	renegotiateBody, err := json.Marshal(PlaybackRenegotiationRequest{
+		RequestID: "restore-selection", ExpectedRevision: 0, ClientProfile: profile,
+		Quality: &quality, AudioStreamID: &audio, SubtitleStreamID: &subtitle, SubtitleMode: &subtitleMode,
+	})
+	if err != nil {
+		t.Fatalf("encode selected tuple renegotiation: %v", err)
+	}
+	renegotiateResponse := httptest.NewRecorder()
+	server.handlePlaybackRenegotiation(renegotiateResponse, httptest.NewRequest(http.MethodPost, "/api/playback-sessions/"+started.SessionID+"/renegotiate", bytes.NewReader(renegotiateBody)), user, started.SessionID)
+	if renegotiateResponse.Code != http.StatusOK {
+		t.Fatalf("persist selected tuple status=%d body=%s", renegotiateResponse.Code, renegotiateResponse.Body.String())
 	}
 	request := httptest.NewRequest(http.MethodGet, "/api/playback-sessions/"+started.SessionID+"/restore", nil)
 	restored, err := server.mediaPlaybackResponseForSession(request, user, started.SessionID, started.SessionID, "movie_restore_selection", 37, profile, PlaybackIntent{})
 	if err != nil {
 		t.Fatalf("restore playback: %v", err)
 	}
-	if restored.SelectedQualityID != "video-standard" || restored.SelectedAudioStreamID != "audio_alt" || restored.SelectedSubtitleID != "sub_text" || restored.SelectedSubtitleMode != "text" || restored.SelectedVersionID != "version_alternate" {
-		t.Fatalf("restored selected tuple = quality %q audio %q subtitle %q mode %q version %q", restored.SelectedQualityID, restored.SelectedAudioStreamID, restored.SelectedSubtitleID, restored.SelectedSubtitleMode, restored.SelectedVersionID)
+	if restored.QualitySelection != quality || restored.SelectedAudioStreamID != "audio_alt" || restored.SelectedSubtitleID != "sub_text" || restored.SelectedSubtitleMode != "text" || restored.SelectedVersionID != "version_alternate" {
+		t.Fatalf("restored selected tuple = quality %#v audio %q subtitle %q mode %q version %q", restored.QualitySelection, restored.SelectedAudioStreamID, restored.SelectedSubtitleID, restored.SelectedSubtitleMode, restored.SelectedVersionID)
 	}
 }
 
@@ -1111,7 +1000,7 @@ func TestPlaybackStartRejectsUnavailableOrCrossMediaVersion(t *testing.T) {
 	}
 	for _, versionID := range []string{"missing-version", "version-from-another-item"} {
 		recorder := httptest.NewRecorder()
-		body, err := json.Marshal(PlaybackSessionCreateRequest{MediaID: "movie_meridian", VersionID: versionID, SkipPreroll: true})
+		body, err := json.Marshal(PlaybackSessionCreateRequest{MediaID: "movie_meridian", VersionID: versionID, SkipPreroll: true, Intent: automaticPlaybackIntent()})
 		if err != nil {
 			t.Fatalf("marshal request: %v", err)
 		}
@@ -1134,6 +1023,14 @@ func mediaIDsForTest(items []MediaItem) []string {
 	ids := make([]string, 0, len(items))
 	for _, item := range items {
 		ids = append(ids, item.ID)
+	}
+	return ids
+}
+
+func queueMediaIDsForTest(entries []PlaybackQueueEntry) []string {
+	ids := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		ids = append(ids, entry.Media.ID)
 	}
 	return ids
 }
@@ -1178,6 +1075,7 @@ func TestPlaybackStartServesDirectPlayAsByteRangeStream(t *testing.T) {
 	}
 	body, err := json.Marshal(PlaybackSessionCreateRequest{
 		MediaID: "movie_direct_play_hls",
+		Intent:  automaticPlaybackIntent(),
 		ClientProfile: PlaybackClientProfile{
 			Device:               "Apple",
 			Platform:             "tvOS",
@@ -1309,6 +1207,7 @@ func TestPlaybackStartValidatesAndPropagatesSelectedAudioStream(t *testing.T) {
 
 	body, err := json.Marshal(PlaybackSessionCreateRequest{
 		MediaID:       "movie_audio_select_hls",
+		Intent:        automaticPlaybackIntent(),
 		ClientProfile: profile,
 		AudioStreamID: "movie_audio_select_hls_missing",
 	})
@@ -1345,6 +1244,7 @@ func TestPlaybackStartServesBrowserDirectPlayAsByteRangeStream(t *testing.T) {
 	seedExactPlaybackFactsForFixture(t, server, "movie_browser_hls")
 	body, err := json.Marshal(PlaybackSessionCreateRequest{
 		MediaID: "movie_browser_hls",
+		Intent:  automaticPlaybackIntent(),
 		ClientProfile: attachAuthenticatedPlaybackRuntime(PlaybackClientProfile{
 			Device:                 "Browser",
 			Platform:               "macOS Chrome",
@@ -1412,6 +1312,7 @@ func TestPlaybackStartRejectsLegacyOptimizedVersionRow(t *testing.T) {
 	}
 	body, err := json.Marshal(PlaybackSessionCreateRequest{
 		MediaID: "movie_optimized_hls",
+		Intent:  automaticPlaybackIntent(),
 		ClientProfile: PlaybackClientProfile{
 			Device:               "Browser",
 			Platform:             "macOS",
@@ -1472,6 +1373,7 @@ func TestPlaybackStartDoesNotPromoteLegacyOptimizedVersionWhenEnabled(t *testing
 	}
 	body, err := json.Marshal(PlaybackSessionCreateRequest{
 		MediaID: "movie_optimized_prefer",
+		Intent:  automaticPlaybackIntent(),
 		ClientProfile: PlaybackClientProfile{
 			Device:                 "Browser",
 			Platform:               "macOS Chrome",
@@ -1522,6 +1424,7 @@ func TestPlaybackStartRemuxCandidateFailsClosedWithoutExactSeekEvidence(t *testi
 	}
 	body, err := json.Marshal(PlaybackSessionCreateRequest{
 		MediaID: "episode_rookie_815",
+		Intent:  automaticPlaybackIntent(),
 		ClientProfile: attachAuthenticatedPlaybackRuntime(PlaybackClientProfile{
 			Device:               "Apple",
 			Platform:             "tvOS",
@@ -1591,6 +1494,7 @@ func TestPlaybackStartHEVCRemuxCandidateFailsClosedWithoutExactSeekEvidence(t *t
 	}
 	body, err := json.Marshal(PlaybackSessionCreateRequest{
 		MediaID: "episode_fargo_203",
+		Intent:  automaticPlaybackIntent(),
 		ClientProfile: attachAuthenticatedPlaybackRuntime(PlaybackClientProfile{
 			Device:               "Apple",
 			Platform:             "tvOS",
@@ -1654,6 +1558,7 @@ func TestPlaybackStartVideoTranscodeDoesNotRequestDirectStreamRemux(t *testing.T
 	}
 	body, err := json.Marshal(PlaybackSessionCreateRequest{
 		MediaID: "movie_hevc_transcode",
+		Intent:  automaticPlaybackIntent(),
 		ClientProfile: PlaybackClientProfile{
 			Device:               "Safari",
 			Platform:             "web",

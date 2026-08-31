@@ -36,6 +36,10 @@
 .runtime-recovery-problem > p { width: 100%; margin: 0; }
 .runtime-intro { margin: 0 0 22px; color: var(--silver-dim); font-size: var(--type-supporting); line-height: 1.62; }
 .runtime-intro strong { color: var(--silver-soft); }
+.runtime-request-status { margin: -10px 0 20px; color: var(--silver-soft); font-size: var(--type-caption); }
+.runtime-verified-identity { margin: 0 0 20px; display: grid; gap: 3px; color: var(--silver-muted); font-size: var(--type-caption); }
+.runtime-verified-identity strong { color: var(--silver-soft); font-size: var(--type-supporting); font-weight: 500; overflow-wrap: anywhere; }
+.runtime-verified-identity small { color: var(--silver-muted); line-height: 1.5; }
 .portico-password-input { position: relative; width: 100%; display: block; }
 .portico-password-input > input { width: 100%; padding-right: 46px !important; }
 .portico-password-visibility { position: absolute; top: 50%; right: 5px; width: 38px; height: 38px; padding: 0; display: grid; place-items: center; transform: translateY(-50%); border: 0; border-radius: var(--radius-control); color: var(--silver-dim); background: transparent; cursor: pointer; }
@@ -126,16 +130,33 @@
 .runtime-device-servers small { color: var(--silver-dim); }
 
 .runtime-server-list { margin: 0 0 18px; display: grid; gap: 8px; }
-.runtime-server-list > button { width: 100%; min-height: 78px; padding: 12px 14px; display: grid; grid-template-columns: 42px minmax(0, 1fr) 20px; align-items: center; gap: 12px; border: 1px solid var(--line); border-radius: var(--radius-control); color: var(--silver-soft); background: #0b1219; text-align: left; cursor: pointer; }
-.runtime-server-list > button:hover:not(:disabled) { border-color: var(--line-strong); background: #111c25; }
-.runtime-server-list > button:disabled { opacity: .58; cursor: not-allowed; }
+.runtime-server-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+.runtime-server-choice { width: 100%; min-height: 78px; padding: 12px 14px; display: grid; grid-template-columns: 42px minmax(0, 1fr) 20px; align-items: center; gap: 12px; border: 1px solid var(--line); border-radius: var(--radius-control); color: var(--silver-soft); background: #0b1219; text-align: left; cursor: pointer; }
+.runtime-server-choice:hover:not(:disabled) { border-color: var(--line-strong); background: #111c25; }
+.runtime-server-choice:disabled { opacity: .58; cursor: not-allowed; }
 .runtime-server-icon { width: 42px; height: 42px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 8px; color: var(--screen-blue); background: #111c25; }
 .runtime-server-icon.unavailable { color: var(--silver-muted); }
 .runtime-server-icon svg { width: 19px; }
-.runtime-server-list > button > span:nth-child(2) { min-width: 0; display: grid; gap: 4px; }
+.runtime-server-choice > span:nth-child(2) { min-width: 0; display: grid; gap: 4px; }
 .runtime-server-list strong { overflow: hidden; font-size: var(--type-body); text-overflow: ellipsis; white-space: nowrap; }
 .runtime-server-list small { overflow: hidden; color: var(--silver-dim); font-size: var(--type-caption); text-overflow: ellipsis; white-space: nowrap; }
-.runtime-server-list > button > svg { width: 17px; color: var(--silver-muted); }
+.runtime-server-choice > svg { width: 17px; color: var(--silver-muted); }
+.runtime-server-delete { width: 70px; display: grid; place-items: center; align-content: center; gap: 4px; border: 1px solid var(--line); border-radius: var(--radius-control); color: var(--silver-dim); background: #0b1219; cursor: pointer; }
+.runtime-server-delete:hover:not(:disabled) { border-color: rgba(233, 105, 105, .5); color: #f0a4a4; }
+.runtime-server-delete:disabled { opacity: .58; cursor: not-allowed; }
+.runtime-server-delete svg { width: 17px; }
+.runtime-server-delete span { font-size: var(--type-caption); }
+.runtime-server-delete-confirm { grid-column: 1 / -1; padding: 12px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: end; gap: 10px; border: 1px solid rgba(233, 105, 105, .35); border-radius: var(--radius-control); background: rgba(233, 105, 105, .05); }
+.runtime-server-delete-confirm p { grid-column: 1 / -1; margin: 0; display: grid; gap: 3px; }
+.runtime-server-delete-confirm p strong { color: var(--silver-soft); }
+.runtime-server-delete-confirm p span { color: var(--silver-dim); font-size: var(--type-caption); line-height: 1.45; }
+.runtime-server-delete-confirm label { display: grid; align-self: stretch; align-content: end; gap: 4px; color: var(--silver-dim); font-size: var(--type-caption); }
+.runtime-server-delete-confirm label:last-of-type { grid-column: 1 / -1; }
+.runtime-server-delete-confirm label small { white-space: normal; line-height: 1.35; }
+.runtime-server-delete-confirm .portico-password-input { display: block; }
+.runtime-server-delete-confirm input { min-height: 38px; width: 100%; padding: 0 9px; border: 1px solid var(--line); border-radius: 7px; color: var(--silver-soft); background: #080e13; font: inherit; }
+.runtime-server-delete-confirm > button { min-height: 38px; padding: 0 11px; border: 1px solid var(--line); border-radius: 7px; color: var(--silver-soft); background: transparent; cursor: pointer; }
+.runtime-server-delete-confirm > button.danger { border-color: rgba(233, 105, 105, .5); color: #f0a4a4; }
 
 .runtime-security-stop { min-height: 74px; margin-bottom: 20px; padding: 12px; display: flex; align-items: center; gap: 11px; border: 1px solid rgba(98, 201, 167, .26); border-radius: var(--radius-control); background: rgba(98, 201, 167, .05); }
 .runtime-security-stop > svg { width: 21px; flex: 0 0 auto; color: var(--healthy); }
@@ -161,7 +182,10 @@
   .runtime-footer-actions .runtime-text-action { width: 100%; margin-left: 0; }
   .runtime-form-links { align-items: stretch; flex-direction: column; gap: 0; }
   .runtime-membership-form > .button { width: 100%; }
-  .runtime-server-list > button { grid-template-columns: 38px minmax(0, 1fr) 18px; padding: 11px; }
+  .runtime-server-choice { grid-template-columns: 38px minmax(0, 1fr) 18px; padding: 11px; }
+  .runtime-server-delete-confirm { grid-template-columns: 1fr 1fr; }
+  .runtime-server-delete-confirm p,
+  .runtime-server-delete-confirm label { grid-column: 1 / -1; }
   .runtime-server-icon { width: 38px; height: 38px; }
   .runtime-server-list small { white-space: normal; }
   .runtime-panel h1 { font-size: 26px; }

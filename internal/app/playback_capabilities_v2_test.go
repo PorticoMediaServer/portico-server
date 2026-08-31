@@ -147,7 +147,7 @@ func TestTrustedHostedWebAttachmentAuthorizesExactFLACRuntimeEvidence(t *testing
 		VALUES ('signal-one-audio', 'signal-one', 'audio', 'flac', 1, 'mono', 48000, 'FLAC Mono', 0)`); err != nil {
 		t.Fatalf("seed FLAC media stream: %v", err)
 	}
-	body, err := json.Marshal(PlaybackSessionCreateRequest{MediaID: "signal-one", SkipPreroll: true, ClientProfile: profile})
+	body, err := json.Marshal(PlaybackSessionCreateRequest{MediaID: "signal-one", SkipPreroll: true, ClientProfile: profile, Intent: automaticPlaybackIntent()})
 	if err != nil {
 		t.Fatalf("encode app-layer FLAC playback request: %v", err)
 	}

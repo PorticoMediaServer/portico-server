@@ -140,6 +140,7 @@ func TestPublishedContractRuntimeConformance(t *testing.T) {
 	status, body = doJSON(t, client, http.MethodPost, serverURL+"/api/playback-sessions", map[string]any{
 		"mediaId":     "movie_meridian",
 		"skipPreroll": true,
+		"intent":      automaticPlaybackIntent(),
 		"clientProfile": map[string]any{
 			"capabilitySchemaVersion": playbackCapabilitySchemaV2,
 			"clientFamily":            "safari",

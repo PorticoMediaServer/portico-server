@@ -24,21 +24,15 @@ func TestPlaybackExecutionProjectionIsAccurateAndPrivate(t *testing.T) {
 		Hardware: playbackplan.HardwareRoute{Verified: true, Backend: playbackhw.VideoToolbox, Stages: []playbackplan.Stage{{Kind: "video", Operation: "encode", Execution: "hardware"}}},
 		Reasons:  []playbackplan.ReasonCode{playbackplan.ReasonVideoConversion, playbackplan.ReasonAudioConversion},
 	}
-	plan.Digest, _ = plan.ComputeDigest()
-	planJSON, _ := json.Marshal(plan)
-	binding := playbackExecutionBinding{
-		SchemaVersion: 1, SourceRevision: plan.SourceRevision, MediaFactsDigest: "private-facts",
-		CapabilityEvidenceID: plan.CapabilityEvidenceID, Generation: 2, Mode: string(plan.Mode),
-		Protocol: plan.Protocol, Container: plan.Container, Plan: planJSON,
-		X264Preset: "veryfast",
-		HardwarePlan: &playbackhw.Plan{Backend: playbackhw.VideoToolbox, RuntimeIdentity: playbackhw.RuntimeIdentity{
+	binding := testPlaybackExecutionPlan(t, func(execution *playbackExecutionPlan) {
+		execution.Plan = plan
+		execution.MediaFactsDigest = "private-facts"
+		execution.Quality = "auto"
+		execution.HardwarePlan = &playbackhw.Plan{Backend: playbackhw.VideoToolbox, RuntimeIdentity: playbackhw.RuntimeIdentity{
 			ExecutablePath: "/private/bin/ffmpeg", BinaryFingerprint: "private-binary", DeviceIdentity: "private-device",
 			DriverIdentity: "private-driver", DriverVersion: "private-version",
-		}},
-	}
-	if err := binding.seal(); err != nil {
-		t.Fatal(err)
-	}
+		}}
+	})
 	projection, _, ok := playbackExecutionProjection(binding)
 	if !ok {
 		t.Fatal("expected valid projection")

@@ -26,12 +26,15 @@ func (s *Server) resolvePlaybackPolicyForRequest(ctx context.Context, r *http.Re
 	transportClass := normalizePlaybackTransportClass(intent.TransportClass)
 	networkClass := effectivePlaybackNetworkClass(transportClass, serverLocality)
 	policy := defaultResolvedPlaybackPolicy(item.Type, networkClass)
+	explicitQuality := strings.EqualFold(strings.TrimSpace(intent.Quality.Mode), playbackQualityModeExplicit)
 
 	applyPlaybackIntent(&policy, item.Type, intent)
 	policy.TransportClass = transportClass
 	policy.ServerLocality = serverLocality
-	policy.DeliveryProfile = resolvedDeliveryProfile(item.Type, policy)
-	profile = applyResolvedPlaybackPolicy(profile, item.Type, policy)
+	if !explicitQuality {
+		policy.DeliveryProfile = resolvedDeliveryProfile(item.Type, policy)
+		profile = applyResolvedPlaybackPolicy(profile, item.Type, policy)
+	}
 
 	beforeBitrate := profile.MaxBitrate
 	profile = s.applyPlaybackPolicyForRequest(ctx, r, user, profile)
@@ -43,8 +46,10 @@ func (s *Server) resolvePlaybackPolicyForRequest(ctx context.Context, r *http.Re
 		policy.MaxVideoBitrateMbps = minPositive(policy.MaxVideoBitrateMbps, limit)
 		policy.ServerClamps = appendUniqueString(policy.ServerClamps, "remote_access_bitrate_limit")
 	}
-	policy.DeliveryProfile = resolvedDeliveryProfile(item.Type, policy)
-	profile = applyResolvedPlaybackPolicy(profile, item.Type, policy)
+	if !explicitQuality {
+		policy.DeliveryProfile = resolvedDeliveryProfile(item.Type, policy)
+		profile = applyResolvedPlaybackPolicy(profile, item.Type, policy)
+	}
 	if authority, ok := s.authorizePlaybackCapabilityEvidence(ctx, user, profile); ok {
 		profile.capabilityAuthority = authority
 		profile.ClientFamily = authority.Family
@@ -208,9 +213,6 @@ func applyPlaybackIntent(policy *ResolvedPlaybackPolicy, mediaType string, inten
 	// client's transport hint before this function runs. A phone on Wi-Fi can still be remote,
 	// while a public-direct request can be a same-household hairpin and should
 	// retain local/original defaults.
-	if value := normalizePlaybackQualityProfile(intent.QualityProfile); value != "" {
-		applyQualityProfileNarrowing(policy, value)
-	}
 	if value := normalizeDirectDeliveryPolicy(intent.DirectPlayPolicy); value != "" {
 		policy.DirectPlayPolicy = value
 	}
@@ -219,15 +221,6 @@ func applyPlaybackIntent(policy *ResolvedPlaybackPolicy, mediaType string, inten
 	}
 	if value := normalizeTranscodePolicy(intent.TranscodePolicy); value != "" {
 		policy.TranscodePolicy = value
-	}
-	if intent.MaxVideoBitrateMbps > 0 {
-		policy.MaxVideoBitrateMbps = minPositive(policy.MaxVideoBitrateMbps, intent.MaxVideoBitrateMbps)
-	}
-	if intent.MaxAudioBitrateKbps > 0 {
-		policy.MaxAudioBitrateKbps = minPositive(policy.MaxAudioBitrateKbps, intent.MaxAudioBitrateKbps)
-	}
-	if intent.MaxVideoHeight > 0 {
-		policy.MaxVideoHeight = minPositive(policy.MaxVideoHeight, intent.MaxVideoHeight)
 	}
 	if intent.AllowHDR != nil {
 		policy.AllowHDR = policy.AllowHDR && *intent.AllowHDR
@@ -247,23 +240,23 @@ func applyQualityProfileNarrowing(policy *ResolvedPlaybackPolicy, requested stri
 func applyResolvedPlaybackPolicy(profile PlaybackClientProfile, mediaType string, policy ResolvedPlaybackPolicy) PlaybackClientProfile {
 	deliveryProfile := resolvedDeliveryProfile(mediaType, policy)
 	preset, hasPreset := transcodePresets[deliveryProfile]
-	videoLimitMbps := policy.MaxVideoBitrateMbps
-	audioLimitKbps := policy.MaxAudioBitrateKbps
+	videoLimitBps := resolvedMaxVideoBitrateBps(policy)
+	audioLimitBps := resolvedMaxAudioBitrateBps(policy)
 	heightLimit := policy.MaxVideoHeight
 	if hasPreset {
-		videoLimitMbps = minPositive(videoLimitMbps, preset.videoK/1000)
-		audioLimitKbps = minPositive(audioLimitKbps, preset.audioK)
+		videoLimitBps = minPositiveInt64(videoLimitBps, int64(preset.videoK)*1_000)
+		audioLimitBps = minPositiveInt64(audioLimitBps, int64(preset.audioK)*1_000)
 		if !isAudioMediaType(mediaType) {
 			heightLimit = minPositive(heightLimit, preset.height)
 		}
 	}
-	if videoLimitMbps > 0 {
-		profile.MaxBitrate = minPositive(profile.MaxBitrate, videoLimitMbps*1_000_000)
+	if videoLimitBps > 0 {
+		profile.MaxBitrate = int(minPositiveInt64(int64(profile.MaxBitrate), videoLimitBps))
 	}
-	if audioLimitKbps > 0 {
-		profile.MaxAudioBitrateKbps = minPositive(profile.MaxAudioBitrateKbps, audioLimitKbps)
+	if audioLimitBps > 0 {
+		profile.MaxAudioBitrateKbps = minPositive(profile.MaxAudioBitrateKbps, int(audioLimitBps/1_000))
 		if isAudioMediaType(mediaType) {
-			profile.MaxBitrate = minPositive(profile.MaxBitrate, audioLimitKbps*1_000)
+			profile.MaxBitrate = int(minPositiveInt64(int64(profile.MaxBitrate), audioLimitBps))
 		}
 	}
 	if heightLimit > 0 {
@@ -459,6 +452,9 @@ func normalizeTranscodePolicy(value string) string {
 }
 
 func resolvedDeliveryProfile(mediaType string, policy ResolvedPlaybackPolicy) string {
+	if profile, explicit := explicitPlaybackDeliveryProfile(policy, mediaType); explicit {
+		return profile
+	}
 	if isAudioMediaType(mediaType) {
 		if policy.QualityProfile == "original" && policy.MaxAudioBitrateKbps <= 0 {
 			return "audio-original"

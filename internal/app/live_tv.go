@@ -859,11 +859,10 @@ func (s *Server) deleteLiveTVSource(id string) (LiveTVSource, error) {
 	if err != nil {
 		return LiveTVSource{}, err
 	}
+	if err := s.pruneStaleLiveTVTunerAllocations(context.Background()); err != nil {
+		return LiveTVSource{}, err
+	}
 	if err := s.withUserTxTagged(context.Background(), []string{"live-tv", "dvr"}, func(tx *sql.Tx) error {
-		cutoff := time.Now().UTC().Add(-liveTVAllocationStaleAfter).Format(time.RFC3339)
-		if _, err := pruneStaleLiveTVTunerAllocationsTx(tx, cutoff); err != nil {
-			return err
-		}
 		var activeAllocations int
 		if err := tx.QueryRow(`SELECT COUNT(*) FROM live_tv_tuner_allocations WHERE source_id = ?`, id).Scan(&activeAllocations); err != nil {
 			return err
@@ -3792,7 +3791,11 @@ func (s *Server) handleLiveTVPlaybackStart(w http.ResponseWriter, r *http.Reques
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	s.startLiveTVPlayback(w, r, user, req.ChannelID, req.ClientProfile, req.Intent, req.ClientInstanceID)
+	if strings.TrimSpace(req.Intent.Quality.Mode) == "" {
+		writeError(w, http.StatusBadRequest, "invalid_playback_quality", "intent.quality is required and must be Automatic or an exact server-issued explicit offer.")
+		return
+	}
+	s.startLiveTVPlayback(w, r, user, req.ChannelID, req.ClientProfile, req.Intent, req.ClientInstanceID, req.Replacement)
 }
 
 func (s *Server) handleLiveTVStreamOpen(w http.ResponseWriter, r *http.Request, user User, channelID string) {
@@ -3806,12 +3809,16 @@ func (s *Server) handleLiveTVStreamOpen(w http.ResponseWriter, r *http.Request, 
 			return
 		}
 	}
-	s.startLiveTVPlayback(w, r, user, firstNonEmpty(req.ChannelID, channelID), req.ClientProfile, req.Intent, req.ClientInstanceID)
+	if strings.TrimSpace(req.Intent.Quality.Mode) == "" {
+		writeError(w, http.StatusBadRequest, "invalid_playback_quality", "intent.quality is required and must be Automatic or an exact server-issued explicit offer.")
+		return
+	}
+	s.startLiveTVPlayback(w, r, user, firstNonEmpty(req.ChannelID, channelID), req.ClientProfile, req.Intent, req.ClientInstanceID, req.Replacement)
 }
 
 func (s *Server) handleLiveTVStreamClose(w http.ResponseWriter, r *http.Request, user User, channelID string) {
-	if r.Method != http.MethodPost && r.Method != http.MethodDelete {
-		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "Use POST or DELETE for this endpoint.")
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "Use POST for this endpoint.")
 		return
 	}
 	var req LiveTVPlaybackCloseRequest
@@ -3822,24 +3829,35 @@ func (s *Server) handleLiveTVStreamClose(w http.ResponseWriter, r *http.Request,
 		writeError(w, http.StatusBadRequest, "live_tv_session_required", "A playback session ID is required.")
 		return
 	}
-	if err := s.closeLiveTVStream(user, channelID, req.SessionID); err != nil {
+	terminalReq, terminalErr := normalizePlaybackSessionStopRequest(PlaybackSessionStopRequest{RequestID: strings.TrimSpace(req.RequestID), Terminal: req.Terminal})
+	if terminalErr != nil {
+		writePlaybackStartError(w, terminalErr)
+		return
+	}
+	ack, err := s.closeLiveTVStream(r.Context(), user, channelID, req.SessionID, terminalReq)
+	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			writeError(w, http.StatusNotFound, "playback_session_not_found", "Live TV playback session was not found.")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, "playback_session_failed", "Unable to close Live TV stream.")
+		if errors.Is(err, errPlaybackTerminalReceiptConflict) {
+			writeError(w, http.StatusConflict, "playback_terminal_request_conflict", "The close request does not match the accepted terminal receipt.")
+			return
+		}
+		if errors.Is(err, errPlaybackTerminalAuthorizationChanged) {
+			writeError(w, http.StatusConflict, "playback_terminal_scope_changed", "Playback authorization changed. Reconcile the Live TV session before retrying close.")
+			return
+		}
+		writeError(w, http.StatusConflict, "playback_session_failed", "Unable to close Live TV stream with the supplied terminal evidence.")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, ack)
 }
 
-func (s *Server) startLiveTVPlayback(w http.ResponseWriter, r *http.Request, user User, channelID string, clientProfile PlaybackClientProfile, intent PlaybackIntent, clientInstanceID string) {
-	playback, startErr := s.startLiveTVPlaybackForRequest(r, user, channelID, clientProfile, intent, clientInstanceID)
+func (s *Server) startLiveTVPlayback(w http.ResponseWriter, r *http.Request, user User, channelID string, clientProfile PlaybackClientProfile, intent PlaybackIntent, clientInstanceID string, replacement *PlaybackReplacementRequest) {
+	playback, startErr := s.startLiveTVPlaybackForRequest(r, user, channelID, clientProfile, intent, clientInstanceID, replacement, "live-tv", channelID, nil)
 	if startErr != nil {
-		if startErr.retryAfter != "" {
-			w.Header().Set("Retry-After", startErr.retryAfter)
-		}
-		writeError(w, startErr.status, startErr.code, startErr.message)
+		writePlaybackStartError(w, startErr)
 		return
 	}
 	setPlaybackMediaGrantCookie(w, r, playback)
@@ -3850,13 +3868,33 @@ func (s *Server) startLiveTVPlayback(w http.ResponseWriter, r *http.Request, use
 // constructor. Cast, DVR and ordinary Live TV entry points all use this path
 // so target-specific clients cannot drift in policy, grant, tuner allocation,
 // timeline or continuation semantics.
-func (s *Server) startLiveTVPlaybackForRequest(r *http.Request, user User, channelID string, clientProfile PlaybackClientProfile, intent PlaybackIntent, clientInstanceID string) (PlaybackResponse, *playbackStartHTTPError) {
+func (s *Server) startLiveTVPlaybackForRequest(r *http.Request, user User, channelID string, clientProfile PlaybackClientProfile, intent PlaybackIntent, clientInstanceID string, replacement *PlaybackReplacementRequest, replacementTargetKind, replacementTargetID string, externalReplacement *playbackReplacementPlan) (PlaybackResponse, *playbackStartHTTPError) {
 	if !canPlayLiveTV(user) {
 		return PlaybackResponse{}, &playbackStartHTTPError{status: http.StatusForbidden, code: "forbidden", message: "You do not have permission to play Live TV."}
 	}
 	channelID = strings.TrimSpace(channelID)
 	if channelID == "" {
 		return PlaybackResponse{}, &playbackStartHTTPError{status: http.StatusBadRequest, code: "live_tv_channel_required", message: "A Live TV channel ID is required."}
+	}
+	targetRequest := LiveTVPlaybackSessionCreateRequest{ChannelID: channelID, ClientInstanceID: clientInstanceID, ClientProfile: clientProfile, Intent: intent, Replacement: replacement}
+	replacementPlan := playbackReplacementPlan{}
+	if externalReplacement == nil {
+		var replacementErr *playbackStartHTTPError
+		replacementPlan, replacementErr = s.preparePlaybackReplacement(r.Context(), user, clientInstanceID, replacementTargetKind, replacementTargetID, targetRequest, replacement)
+		if replacementErr != nil {
+			return PlaybackResponse{}, replacementErr
+		}
+		if replacementPlan.Committed != nil {
+			return *replacementPlan.Committed, nil
+		}
+	}
+	releaseReplacement := replacementPlan.Active
+	if releaseReplacement {
+		defer func() {
+			if releaseReplacement {
+				s.rollbackPlaybackReplacement(replacementPlan)
+			}
+		}()
 	}
 	channel, source, err := s.getLiveTVChannelForPlayback(channelID)
 	if err != nil {
@@ -3868,7 +3906,7 @@ func (s *Server) startLiveTVPlaybackForRequest(r *http.Request, user User, chann
 	if !source.Enabled && !canManageLiveTVSources(user) {
 		return PlaybackResponse{}, &playbackStartHTTPError{status: http.StatusForbidden, code: "forbidden", message: "This Live TV source is disabled."}
 	}
-	if err := s.enforceActivePlaybackSessionLimit(user.ID); err != nil {
+	if err := s.enforcePlaybackSessionReplacementLimitContext(r.Context(), user.ID, clientInstanceID); err != nil {
 		if errors.Is(err, errPlaybackSessionLimit) {
 			return PlaybackResponse{}, &playbackStartHTTPError{status: http.StatusTooManyRequests, code: "playback_session_limit", message: "This account has reached its maximum active playback sessions.", retryAfter: "15"}
 		}
@@ -3901,16 +3939,41 @@ func (s *Server) startLiveTVPlaybackForRequest(r *http.Request, user User, chann
 	}
 	applyMediaActionsToItem(&media, user)
 	policy, clientProfile := s.resolvePlaybackPolicyForRequest(r.Context(), r, user, media, intent, clientProfile)
+	qualityAuthority, err := issueContinuousPlaybackQualityOffers(
+		channel.ID, channel.ID+"\x00"+source.ID,
+		channel.streamURL+"\x00"+providerStreamFormat,
+		policy, []string{"1080p-high", "1080p-medium", "720p-high", "720p-medium", "480p", "328p"}, true,
+	)
+	if err != nil {
+		return PlaybackResponse{}, &playbackStartHTTPError{status: http.StatusUnprocessableEntity, code: "playback_quality_unavailable", message: "Portico could not issue a complete quality offer set for this channel."}
+	}
+	quality, policy, clientProfile, selectedQuality, err := resolveContinuousPlaybackQualityForRequest(qualityAuthority, intent.Quality, policy, clientProfile)
+	if err != nil {
+		return PlaybackResponse{}, playbackQualityStartError(err)
+	}
+	intent.Quality = normalizedPlaybackQualitySelection(intent.Quality)
 	decision := decideLiveTVHLSDelivery(channel.streamURL, source, clientProfile)
 	decision = applyResolvedDeliveryMode(decision, media, policy, false, s.userCanTranscode(user))
 	decision = s.applyTranscodeCapabilityNotes(decision, media)
 	if decision.Mode == "unavailable" {
 		return PlaybackResponse{}, &playbackStartHTTPError{status: http.StatusUnprocessableEntity, code: "delivery_policy_unsatisfied", message: "This Live TV channel cannot be delivered within the selected playback policy."}
 	}
+	if quality.Kind == playbackQualityKindOriginal && decision.VideoTranscode {
+		return PlaybackResponse{}, playbackQualityStartError(&ExplicitQualityUnavailableError{Offers: qualityAuthority.set})
+	}
 	if decision.RequiresTranscode && !s.userCanTranscode(user) {
 		return PlaybackResponse{}, &playbackStartHTTPError{status: http.StatusUnprocessableEntity, code: "transcode_not_authorized", message: "This profile cannot create the compatible Live TV stream required for this channel."}
 	}
 	sessionID := randomID("live")
+	initialState := "playing"
+	if externalReplacement != nil {
+		sessionID = externalReplacement.Claim.ReplacementSessionID
+		initialState = "handoff_pending"
+	} else if replacementPlan.Active {
+		sessionID = replacementPlan.Claim.ReplacementSessionID
+		initialState = "handoff_pending"
+	}
+	currentEntryID := randomID("qentry")
 	s.dvrAllocationMu.Lock()
 	allocationLease, allocationErr := s.reserveLiveTVTunerAllocation(r.Context(), source.ID, channel.ID, "live_session", sessionID)
 	if allocationErr != nil {
@@ -3921,7 +3984,7 @@ func (s *Server) startLiveTVPlaybackForRequest(r *http.Request, user User, chann
 		s.log.Warn("reserve live tv tuner failed", "error", allocationErr, "source", source.ID, "channel", channel.ID)
 		return PlaybackResponse{}, &playbackStartHTTPError{status: http.StatusServiceUnavailable, code: "live_tv_tuner_allocation_failed", message: "Portico could not reserve a tuner for this channel."}
 	}
-	createSessionErr := s.createPlaybackSession(r, user, media, sessionID, decision, clientProfile, intent, "", "", true, clientInstanceID, PlaybackSourceContext{Type: "library", ID: source.ID, Title: source.Name}, "off")
+	createSessionErr := s.createPlaybackSessionWithState(r, user, media, currentEntryID, sessionID, decision, clientProfile, intent, "", "", true, clientInstanceID, PlaybackSourceContext{Type: "library", ID: source.ID, Title: source.Name}, "off", initialState)
 	s.dvrAllocationMu.Unlock()
 	if createSessionErr != nil {
 		if allocationLease.Created {
@@ -3930,52 +3993,68 @@ func (s *Server) startLiveTVPlaybackForRequest(r *http.Request, user User, chann
 		if errors.Is(createSessionErr, errPlaybackSessionLimit) {
 			return PlaybackResponse{}, &playbackStartHTTPError{status: http.StatusTooManyRequests, code: "playback_session_limit", message: "This account has reached its maximum active playback sessions.", retryAfter: "15"}
 		}
+		if errors.Is(createSessionErr, errPlaybackReplacementRequired) {
+			return PlaybackResponse{}, &playbackStartHTTPError{status: http.StatusConflict, code: "replacement_required", message: "This client already owns active playback. Supply its exact replacement authority envelope."}
+		}
 		s.log.Warn("create live playback session failed", "error", createSessionErr, "channel", channel.ID)
 		return PlaybackResponse{}, &playbackStartHTTPError{status: http.StatusInternalServerError, code: "playback_session_failed", message: "Unable to start Live TV playback session."}
 	}
-	qualities := liveTVPlaybackQualitiesForPolicy(providerStreamFormat, policy)
-	selectedQuality := liveTVQualityForResolvedPolicy(policy)
-	policy.LiveDelivery = &PlaybackDeliveryPolicy{DeliveryMode: "server_hls", GrantRequired: true, AllowedOperationClasses: []string{"manifest", "segment"}, AuthorizationRecheckSeconds: 60, QualityProfile: selectedQuality}
-	mediaGrant, err := s.issueLiveMediaGrantForPlayback(r.Context(), user, sessionID, channel.ID, decision, selectedQuality, qualities, true)
-	if err != nil {
-		_, _ = s.execUserWrite(r.Context(), `DELETE FROM playback_sessions WHERE id = ? AND user_id = ?`, sessionID, user.ID)
-		if allocationLease.Created {
-			s.releaseLiveTVTunerAllocationLease(r.Context(), "live_session", sessionID, allocationLease.Token)
+	cleanupFailedStart := func() {
+		_, cleanupErr := s.playbackLifecycle().Terminate(context.Background(), playbackTerminationRequest{
+			SessionID: sessionID, UserID: accountIDForUser(user), ProfileID: viewerProfileID(user),
+			Cause: playbackTerminationFailedStart, RemoveSession: true,
+		})
+		if cleanupErr != nil && !errors.Is(cleanupErr, sql.ErrNoRows) {
+			s.log.Error("failed Live TV start cleanup failed", "error", cleanupErr, "session", sessionID, "channel", channel.ID)
 		}
+	}
+	policy.LiveDelivery = &PlaybackDeliveryPolicy{DeliveryMode: "server_hls", GrantRequired: true, AllowedOperationClasses: []string{"manifest", "segment"}, AuthorizationRecheckSeconds: 60, QualityProfile: selectedQuality}
+	mediaGrant, err := s.issueLiveMediaGrantForPlayback(r.Context(), user, sessionID, channel.ID, decision, selectedQuality, true)
+	if err != nil {
+		cleanupFailedStart()
 		s.log.Error("issue Live TV media grant failed", "error", err, "session", sessionID, "channel", channel.ID)
 		return PlaybackResponse{}, &playbackStartHTTPError{status: http.StatusInternalServerError, code: "media_grant_failed", message: "Unable to authorize Live TV media resources."}
 	}
 	sourceURL = liveTVHLSPlaybackURL(channel.ID, selectedQuality)
 	media.SourceURL = sourceURL
-	resources := liveTVPlaybackResources(channel.ID, selectedQuality, qualities)
-	s.recordLog("info", "Live TV playback started", map[string]string{"user": user.Email, "source": source.Name, "channel": channel.Name})
+	resources := liveTVPlaybackResources(channel.ID, selectedQuality)
 	playback := PlaybackResponse{
-		SessionID:         sessionID,
-		NextEventSequence: 1,
-		MediaGrant:        mediaGrant,
-		Media:             media,
-		SourceURL:         sourceURL,
-		DirectPlay:        !decision.RequiresTranscode,
-		IsLive:            true,
-		StreamFormat:      streamFormat,
-		Resources:         resources,
-		Decision:          decision,
-		Policy:            policy,
-		Qualities:         qualities,
-		SelectedQualityID: selectedQuality,
-		AudioStreams:      []Stream{{ID: "audio_default", Kind: "audio", Codec: "provider", DisplayTitle: "Provider default"}},
-		SubtitleStreams:   []Stream{{ID: "sub_none", Kind: "subtitle", DisplayTitle: "None"}},
-		Chapters:          []Chapter{},
-		Queue:             []MediaItem{},
-		RepeatMode:        "off",
-		QueueRevision:     0,
-		Timeline:          PlaybackTimeline{Type: "live", CanPause: false, CanSeek: false},
-		Generation:        0,
-		PlaybackRevision:  0,
+		SessionID:           sessionID,
+		CurrentQueueEntryID: currentEntryID,
+		NextEventSequence:   1,
+		MediaGrant:          mediaGrant,
+		Media:               media,
+		SourceURL:           sourceURL,
+		DirectPlay:          !decision.RequiresTranscode,
+		IsLive:              true,
+		StreamFormat:        streamFormat,
+		Resources:           resources,
+		Decision:            decision,
+		Policy:              policy,
+		QualityOffers:       qualityAuthority.set,
+		QualitySelection:    intent.Quality,
+		AudioStreams:        []Stream{{ID: "audio_default", Kind: "audio", Codec: "provider", DisplayTitle: "Provider default"}},
+		SubtitleStreams:     []Stream{{ID: "sub_none", Kind: "subtitle", DisplayTitle: "None"}},
+		Chapters:            []Chapter{},
+		Queue:               []PlaybackQueueEntry{},
+		RepeatMode:          "off",
+		QueueRevision:       0,
+		Timeline:            PlaybackTimeline{Type: "live", CanPause: false, CanSeek: false},
+		Generation:          0,
+		PlaybackRevision:    0,
 	}
 	if err := s.ensurePlaybackContinuationCredential(r, user, &playback); err != nil {
+		cleanupFailedStart()
 		return PlaybackResponse{}, &playbackStartHTTPError{status: http.StatusInternalServerError, code: "playback_continuity_failed", message: "Unable to establish playback continuity."}
 	}
+	if replacementPlan.Active {
+		if err := s.commitPlaybackReplacement(r.Context(), user, replacementPlan, playback); err != nil {
+			cleanupFailedStart()
+			return PlaybackResponse{}, playbackReplacementCommitHTTPError(err)
+		}
+		releaseReplacement = false
+	}
+	s.recordLog("info", "Live TV playback started", map[string]string{"user": user.Email, "source": source.Name, "channel": channel.Name})
 	return playback, nil
 }
 
@@ -4016,26 +4095,30 @@ func (s *Server) liveTVPlaybackResponseForSession(r *http.Request, user User, se
 	}
 	applyMediaActionsToItem(&media, user)
 	policy, clientProfile := s.resolvePlaybackPolicyForRequest(r.Context(), r, user, media, intent, clientProfile)
+	qualityAuthority, err := issueContinuousPlaybackQualityOffers(
+		channel.ID, channel.ID+"\x00"+source.ID,
+		channel.streamURL+"\x00"+providerStreamFormat,
+		policy, []string{"1080p-high", "1080p-medium", "720p-high", "720p-medium", "480p", "328p"}, true,
+	)
+	if err != nil {
+		return PlaybackResponse{}, err
+	}
+	quality, policy, clientProfile, selectedQuality, err := resolveContinuousPlaybackQualityForRequest(qualityAuthority, intent.Quality, policy, clientProfile)
+	if err != nil {
+		return PlaybackResponse{}, err
+	}
+	intent.Quality = normalizedPlaybackQualitySelection(intent.Quality)
 	decision := decideLiveTVHLSDelivery(channel.streamURL, source, clientProfile)
 	decision = applyResolvedDeliveryMode(decision, media, policy, false, s.userCanTranscode(user))
 	decision = s.applyTranscodeCapabilityNotes(decision, media)
 	if decision.Mode == "unavailable" {
 		return PlaybackResponse{}, errors.New("live TV delivery policy cannot be satisfied")
 	}
+	if quality.Kind == playbackQualityKindOriginal && decision.VideoTranscode {
+		return PlaybackResponse{}, &ExplicitQualityUnavailableError{Offers: qualityAuthority.set}
+	}
 	if decision.RequiresTranscode && !s.userCanTranscode(user) {
 		return PlaybackResponse{}, errors.New("live TV transcoding is not authorized for this profile")
-	}
-	qualities := liveTVPlaybackQualitiesForPolicy(providerStreamFormat, policy)
-	selectedQuality := liveTVQualityForResolvedPolicy(policy)
-	var persistedQuality string
-	if err := s.queryUserRow(r.Context(), `SELECT selected_quality_id FROM playback_sessions WHERE id = ? AND profile_id = ?`, sessionID, viewerProfileID(user)).Scan(&persistedQuality); err == nil {
-		persistedQuality = normalizeLiveTVQualityID(persistedQuality)
-		for _, quality := range qualities {
-			if quality.ID == persistedQuality && quality.Available {
-				selectedQuality = persistedQuality
-				break
-			}
-		}
 	}
 	policy.LiveDelivery = &PlaybackDeliveryPolicy{DeliveryMode: "server_hls", GrantRequired: true, AllowedOperationClasses: []string{"manifest", "segment"}, AuthorizationRecheckSeconds: 60, QualityProfile: selectedQuality}
 	s.dvrAllocationMu.Lock()
@@ -4044,7 +4127,7 @@ func (s *Server) liveTVPlaybackResponseForSession(r *http.Request, user User, se
 	if allocationErr != nil {
 		return PlaybackResponse{}, allocationErr
 	}
-	mediaGrant, err := s.issueLiveMediaGrantForPlayback(r.Context(), user, sessionID, channel.ID, decision, selectedQuality, qualities, true)
+	mediaGrant, err := s.issueLiveMediaGrantForPlayback(r.Context(), user, sessionID, channel.ID, decision, selectedQuality, true)
 	if err != nil {
 		if allocationLease.Created {
 			s.releaseLiveTVTunerAllocationLease(context.Background(), "live_session", sessionID, allocationLease.Token)
@@ -4053,30 +4136,35 @@ func (s *Server) liveTVPlaybackResponseForSession(r *http.Request, user User, se
 	}
 	sourceURL = liveTVHLSPlaybackURL(channel.ID, selectedQuality)
 	media.SourceURL = sourceURL
-	resources := liveTVPlaybackResources(channel.ID, selectedQuality, qualities)
+	resources := liveTVPlaybackResources(channel.ID, selectedQuality)
+	var currentEntryID string
+	if err := s.queryUserRow(r.Context(), `SELECT current_entry_id FROM playback_sessions WHERE id = ? AND profile_id = ?`, sessionID, viewerProfileID(user)).Scan(&currentEntryID); err != nil {
+		return PlaybackResponse{}, err
+	}
 	playback := PlaybackResponse{
-		SessionID:         sessionID,
-		NextEventSequence: s.nextPlaybackProgressEventSequence(user, sessionID),
-		MediaGrant:        mediaGrant,
-		Media:             media,
-		SourceURL:         sourceURL,
-		DirectPlay:        !decision.RequiresTranscode,
-		IsLive:            true,
-		StreamFormat:      streamFormat,
-		Resources:         resources,
-		Decision:          decision,
-		Policy:            policy,
-		Qualities:         qualities,
-		SelectedQualityID: selectedQuality,
-		AudioStreams:      []Stream{{ID: "audio_default", Kind: "audio", Codec: "provider", DisplayTitle: "Provider default"}},
-		SubtitleStreams:   []Stream{{ID: "sub_none", Kind: "subtitle", DisplayTitle: "None"}},
-		Chapters:          []Chapter{},
-		Queue:             []MediaItem{},
-		RepeatMode:        "off",
-		QueueRevision:     0,
-		Timeline:          PlaybackTimeline{Type: "live", CanPause: false, CanSeek: false},
-		Generation:        0,
-		PlaybackRevision:  0,
+		SessionID:           sessionID,
+		CurrentQueueEntryID: currentEntryID,
+		NextEventSequence:   s.nextPlaybackProgressEventSequence(user, sessionID),
+		MediaGrant:          mediaGrant,
+		Media:               media,
+		SourceURL:           sourceURL,
+		DirectPlay:          !decision.RequiresTranscode,
+		IsLive:              true,
+		StreamFormat:        streamFormat,
+		Resources:           resources,
+		Decision:            decision,
+		Policy:              policy,
+		QualityOffers:       qualityAuthority.set,
+		QualitySelection:    intent.Quality,
+		AudioStreams:        []Stream{{ID: "audio_default", Kind: "audio", Codec: "provider", DisplayTitle: "Provider default"}},
+		SubtitleStreams:     []Stream{{ID: "sub_none", Kind: "subtitle", DisplayTitle: "None"}},
+		Chapters:            []Chapter{},
+		Queue:               []PlaybackQueueEntry{},
+		RepeatMode:          "off",
+		QueueRevision:       0,
+		Timeline:            PlaybackTimeline{Type: "live", CanPause: false, CanSeek: false},
+		Generation:          0,
+		PlaybackRevision:    0,
 	}
 	_ = s.queryUserRow(r.Context(), `SELECT renegotiation_revision, playback_generation FROM playback_sessions WHERE id = ? AND profile_id = ?`, sessionID, viewerProfileID(user)).Scan(&playback.PlaybackRevision, &playback.Generation)
 	if err := s.ensurePlaybackContinuationCredential(r, user, &playback); err != nil {
@@ -4086,13 +4174,8 @@ func (s *Server) liveTVPlaybackResponseForSession(r *http.Request, user User, se
 }
 
 func (s *Server) handleLiveTVPlaybackRenegotiation(w http.ResponseWriter, r *http.Request, user User, sessionID, channelID string, req PlaybackRenegotiationRequest, revision int64, generation int, lastRequest, lastFingerprint, fingerprint string) {
-	if req.QualityID == nil || req.AudioStreamID != nil || req.SubtitleStreamID != nil || req.SubtitleMode != nil || req.VersionID != nil {
+	if req.Quality == nil || req.AudioStreamID != nil || req.SubtitleStreamID != nil || req.SubtitleMode != nil || req.VersionID != nil {
 		writeError(w, http.StatusBadRequest, "invalid_live_tv_renegotiation", "Live TV playback can change only the advertised quality.")
-		return
-	}
-	quality := normalizeLiveTVQualityID(*req.QualityID)
-	if quality == "auto" && strings.ToLower(strings.TrimSpace(*req.QualityID)) != "auto" {
-		writeError(w, http.StatusBadRequest, "invalid_live_tv_quality", "Choose an advertised Live TV quality.")
 		return
 	}
 	var storedProfileJSON, storedIntentJSON string
@@ -4108,9 +4191,15 @@ func (s *Server) handleLiveTVPlaybackRenegotiation(w http.ResponseWriter, r *htt
 		profile = req.ClientProfile
 	}
 	if !isZeroPlaybackIntent(req.Intent) {
+		req.Intent.Quality = PlaybackQualitySelection{}
 		intent = req.Intent
 	}
-	intent.QualityProfile = quality
+	intent.Quality = normalizedPlaybackQualitySelection(*req.Quality)
+	_, _, _, err := s.liveTVQualityAuthorityForRequest(r, user, channelID, profile, intent)
+	if err != nil {
+		writePlaybackStartError(w, playbackQualityStartError(err))
+		return
+	}
 	if lastRequest == req.RequestID {
 		if lastFingerprint != fingerprint {
 			writeError(w, http.StatusConflict, "renegotiation_request_conflict", "requestId was already used with a different playback selection.")
@@ -4118,7 +4207,7 @@ func (s *Server) handleLiveTVPlaybackRenegotiation(w http.ResponseWriter, r *htt
 		}
 		playback, err := s.liveTVPlaybackResponseForSession(r, user, sessionID, channelID, profile, intent)
 		if err != nil {
-			writeError(w, http.StatusBadRequest, "renegotiation_failed", "Unable to restore Live TV playback after the quality change.")
+			writePlaybackQualityOrFallbackError(w, err, http.StatusBadRequest, "renegotiation_failed", "Unable to restore Live TV playback after the quality change.")
 			return
 		}
 		setPlaybackMediaGrantCookie(w, r, playback)
@@ -4132,12 +4221,12 @@ func (s *Server) handleLiveTVPlaybackRenegotiation(w http.ResponseWriter, r *htt
 	profileJSON, _ := json.Marshal(profile)
 	intentJSON, _ := json.Marshal(intent)
 	result, err := s.execUserWriteTaggedForViewer(r.Context(), accountIDForUser(user), viewerProfileID(user), []string{"playback"}, `
-		UPDATE playback_sessions SET selected_quality_id = ?, renegotiation_revision = renegotiation_revision + 1,
+		UPDATE playback_sessions SET renegotiation_revision = renegotiation_revision + 1,
 			client_profile_json = ?, playback_intent_json = ?, playback_generation = playback_generation + 1,
 			last_renegotiation_request_id = ?, last_renegotiation_fingerprint = ?, last_seen_at = ?
 		WHERE id = ? AND profile_id = ? AND ended_at = '' AND state <> 'stopped' AND is_live = 1
 			AND renegotiation_revision = ? AND playback_generation = ?`,
-		quality, string(profileJSON), string(intentJSON), req.RequestID, fingerprint, time.Now().UTC().Format(time.RFC3339Nano),
+		string(profileJSON), string(intentJSON), req.RequestID, fingerprint, time.Now().UTC().Format(time.RFC3339Nano),
 		sessionID, viewerProfileID(user), revision, generation)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "renegotiation_failed", "Unable to change Live TV quality.")
@@ -4147,30 +4236,66 @@ func (s *Server) handleLiveTVPlaybackRenegotiation(w http.ResponseWriter, r *htt
 		writeError(w, http.StatusConflict, "renegotiation_revision_conflict", "Playback selection changed on another client. Reload the playback response before renegotiating.")
 		return
 	}
-	_, _ = s.execUserWrite(r.Context(), `UPDATE playback_media_grants SET revoked_at = ? WHERE playback_session_id = ? AND revoked_at = ''`, time.Now().UTC().Format(time.RFC3339Nano), sessionID)
+	_, _ = s.execSecurityFenceWriteTagged(r.Context(), []string{"playback"}, `UPDATE playback_media_grants SET revoked_at = ? WHERE playback_session_id = ? AND revoked_at = ''`, time.Now().UTC().Format(time.RFC3339Nano), sessionID)
 	s.forgetMediaGrantsForPlaybackSession(sessionID)
 	playback, err := s.liveTVPlaybackResponseForSession(r, user, sessionID, channelID, profile, intent)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "renegotiation_failed", "Unable to change Live TV quality.")
+		writePlaybackQualityOrFallbackError(w, err, http.StatusBadRequest, "renegotiation_failed", "Unable to change Live TV quality.")
 		return
 	}
 	setPlaybackMediaGrantCookie(w, r, playback)
 	writeJSON(w, http.StatusOK, playback)
 }
 
-func (s *Server) closeLiveTVStream(user User, channelID string, sessionID string) error {
-	var count int
-	if err := s.queryUserRow(context.Background(), `
-		SELECT COUNT(*)
-		FROM playback_sessions
-		WHERE id = ? AND media_id = ? AND is_live = 1 AND ended_at = '' AND (profile_id = ? OR ? = 1)`,
-		strings.TrimSpace(sessionID), strings.TrimSpace(channelID), viewerProfileID(user), boolInt(canManageLiveTVSources(user))).Scan(&count); err != nil {
-		return err
+func (s *Server) liveTVQualityAuthorityForRequest(r *http.Request, user User, channelID string, profile PlaybackClientProfile, intent PlaybackIntent) (playbackQualityOfferAuthority, PlaybackQualitySelection, string, error) {
+	channel, source, err := s.getLiveTVChannelForPlayback(channelID)
+	if err != nil {
+		return playbackQualityOfferAuthority{}, PlaybackQualitySelection{}, "", err
 	}
-	if count == 0 {
-		return sql.ErrNoRows
+	providerStreamFormat := "direct"
+	if isHLSURL(channel.streamURL) {
+		providerStreamFormat = "hls"
 	}
-	return s.endPlaybackSession(user, sessionID)
+	media := MediaItem{ID: channel.ID, LibraryID: source.ID, Type: "live_channel", Title: channel.Name, SourceURL: liveTVHLSPlaylistRoute(channel.ID, "")}
+	policy, profile := s.resolvePlaybackPolicyForRequest(r.Context(), r, user, media, intent, profile)
+	authority, err := issueContinuousPlaybackQualityOffers(
+		channel.ID, channel.ID+"\x00"+source.ID,
+		channel.streamURL+"\x00"+providerStreamFormat,
+		policy, []string{"1080p-high", "1080p-medium", "720p-high", "720p-medium", "480p", "328p"}, true,
+	)
+	if err != nil {
+		return playbackQualityOfferAuthority{}, PlaybackQualitySelection{}, "", err
+	}
+	quality, _, profile, selected, err := resolveContinuousPlaybackQualityForRequest(authority, intent.Quality, policy, profile)
+	if err != nil {
+		return authority, PlaybackQualitySelection{}, "", err
+	}
+	decision := decideLiveTVHLSDelivery(channel.streamURL, source, profile)
+	if quality.Kind == playbackQualityKindOriginal && decision.VideoTranscode {
+		return authority, PlaybackQualitySelection{}, "", &ExplicitQualityUnavailableError{Offers: authority.set}
+	}
+	return authority, normalizedPlaybackQualitySelection(intent.Quality), selected, nil
+}
+
+func (s *Server) closeLiveTVStream(ctx context.Context, user User, channelID string, sessionID string, req PlaybackSessionStopRequest) (PlaybackSessionTerminalAcknowledgement, error) {
+	sessionID = strings.TrimSpace(sessionID)
+	var mediaID string
+	var isLive int
+	if err := s.queryUserRow(ctx, `
+		SELECT media_id, is_live FROM playback_sessions
+		WHERE id = ? AND (profile_id = ? OR ? = 1)`,
+		sessionID, viewerProfileID(user), boolInt(canManageLiveTVSources(user))).Scan(&mediaID, &isLive); err != nil {
+		return PlaybackSessionTerminalAcknowledgement{}, err
+	}
+	if mediaID != strings.TrimSpace(channelID) || isLive != 1 {
+		return PlaybackSessionTerminalAcknowledgement{}, sql.ErrNoRows
+	}
+	if duplicate, receiptErr := s.playbackTerminalReceiptForUser(ctx, user, sessionID, req); receiptErr == nil {
+		return duplicate, nil
+	} else if !errors.Is(receiptErr, sql.ErrNoRows) {
+		return PlaybackSessionTerminalAcknowledgement{}, receiptErr
+	}
+	return s.terminatePlaybackWithReceipt(ctx, user, sessionID, req, "", "")
 }
 
 func (s *Server) liveTVStreamSessions(user User, now time.Time) ([]PlaybackSession, error) {
@@ -4255,20 +4380,6 @@ type liveTVQualityConstraint struct {
 	source       bool
 }
 
-func liveTVPlaybackQualities(streamFormat string) []Quality {
-	requiresTranscode := streamFormat != "hls"
-	return []Quality{
-		{ID: "auto", Label: "Automatic", Description: "Best quality for this connection.", Available: true, RequiresTranscode: requiresTranscode},
-		{ID: "source", Label: "Original Quality", Description: "Uses the provider's original quality.", Available: true, RequiresTranscode: requiresTranscode},
-		{ID: "1080p-high", Label: playbackVideoQualityLabel(1080, 8000), Description: playbackVideoQualityDescription(1080, 8000), Available: true, RequiresTranscode: requiresTranscode},
-		{ID: "1080p-medium", Label: playbackVideoQualityLabel(1080, 5000), Description: playbackVideoQualityDescription(1080, 5000), Available: true, RequiresTranscode: requiresTranscode},
-		{ID: "720p-high", Label: playbackVideoQualityLabel(720, 4000), Description: playbackVideoQualityDescription(720, 4000), Available: true, RequiresTranscode: requiresTranscode},
-		{ID: "720p-medium", Label: playbackVideoQualityLabel(720, 2500), Description: playbackVideoQualityDescription(720, 2500), Available: true, RequiresTranscode: requiresTranscode},
-		{ID: "480p", Label: playbackVideoQualityLabel(480, 1500), Description: playbackVideoQualityDescription(480, 1500), Available: true, RequiresTranscode: requiresTranscode},
-		{ID: "328p", Label: playbackVideoQualityLabel(328, 700), Description: playbackVideoQualityDescription(328, 700), Available: true, RequiresTranscode: requiresTranscode},
-	}
-}
-
 func liveTVQualityForResolvedPolicy(policy ResolvedPlaybackPolicy) string {
 	requested := normalizeLiveTVQualityID(policy.DeliveryProfile)
 	if requested != "auto" {
@@ -4312,34 +4423,16 @@ func liveTVQualityForResolvedPolicy(policy ResolvedPlaybackPolicy) string {
 	return "328p"
 }
 
-func liveTVPlaybackQualitiesForPolicy(streamFormat string, policy ResolvedPlaybackPolicy) []Quality {
-	qualities := liveTVPlaybackQualities(streamFormat)
-	selected := liveTVQualityConstraintFor(liveTVQualityForResolvedPolicy(policy))
-	for index := range qualities {
-		constraint := liveTVQualityConstraintFor(qualities[index].ID)
-		switch constraint.id {
-		case "auto", "source":
-			qualities[index].Available = selected.source
-		default:
-			qualities[index].Available = selected.source ||
-				((selected.maxBandwidth <= 0 || constraint.maxBandwidth <= selected.maxBandwidth) &&
-					(selected.maxHeight <= 0 || constraint.maxHeight <= selected.maxHeight))
-		}
-	}
-	return qualities
-}
-
 func liveTVHLSPlaybackURL(channelID, qualityID string) string {
 	return liveTVHLSPlaylistRoute(channelID, "") + "?quality=" + url.QueryEscape(normalizeLiveTVQualityID(qualityID))
 }
 
-func liveTVPlaybackResources(channelID, selectedQuality string, qualities []Quality) []PlaybackResource {
+func liveTVPlaybackResources(channelID, selectedQuality string) []PlaybackResource {
 	selectedQuality = normalizeLiveTVQualityID(selectedQuality)
 	return []PlaybackResource{{
 		ID:           randomID("pres"),
 		SourceURL:    liveTVHLSPlaybackURL(channelID, selectedQuality),
 		StreamFormat: "hls",
-		QualityID:    selectedQuality,
 		SubtitleMode: "off",
 		Default:      true,
 	}}

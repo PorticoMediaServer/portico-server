@@ -95,8 +95,8 @@ func TestWatchWithFriendsProfilesOnOneAccountRemainDistinctAndPrivate(t *testing
 	now := time.Now().UTC().Format(time.RFC3339)
 	if _, err := server.db.Exec(`
 		INSERT INTO watch_with_friends_groups (
-			id, owner_user_id, owner_profile_id, name, media_id, media_title, created_at, updated_at
-		) VALUES ('wwf_profile_isolation', ?, ?, 'Family Night', 'media_profile_isolation', 'Family Night', ?, ?)`,
+			id, owner_user_id, owner_profile_id, name, media_id, current_entry_id, media_title, created_at, updated_at
+		) VALUES ('wwf_profile_isolation', ?, ?, 'Family Night', 'media_profile_isolation', 'wfentry_profile_isolation', 'Family Night', ?, ?)`,
 		primary.ID, primary.ProfileID, now, now); err != nil {
 		t.Fatalf("insert group: %v", err)
 	}
@@ -109,8 +109,8 @@ func TestWatchWithFriendsProfilesOnOneAccountRemainDistinctAndPrivate(t *testing
 	}
 	if _, err := server.db.Exec(`
 		INSERT INTO watch_with_friends_queue (
-			group_id, media_id, media_title, sort_order, added_by_user_id, added_by_profile_id, added_at
-		) VALUES ('wwf_profile_isolation', 'media_profile_isolation', 'Family Night', 0, ?, ?, ?)`,
+			group_id, entry_id, media_id, media_title, sort_order, added_by_user_id, added_by_profile_id, added_at
+		) VALUES ('wwf_profile_isolation', 'wfentry_profile_isolation', 'media_profile_isolation', 'Family Night', 0, ?, ?, ?)`,
 		primary.ID, child.ProfileID, now); err != nil {
 		t.Fatalf("insert queue item: %v", err)
 	}

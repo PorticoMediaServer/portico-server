@@ -874,7 +874,7 @@ func (s *Server) notificationStreamAuthorizationRevisionContext(ctx context.Cont
 	err := s.queryUserRow(ctx, `
 		SELECT account.updated_at, account.permissions_json, COALESCE(account.disabled_at, ''), COALESCE(account.allow_account_profiles, 1),
 			profile.updated_at, profile.policy_updated_at, profile.restrictions_json, COALESCE(profile.disabled_at, ''), profile.pin_revision,
-			COALESCE((SELECT revision FROM hosted_profile_snapshot_state WHERE account_id = account.id), 0)
+			COALESCE((SELECT revision FROM hosted_profile_snapshot_state WHERE account_id = account.id AND quarantined_at = ''), 0)
 		FROM users account JOIN profiles profile ON profile.account_id = account.id
 		WHERE account.id = ? AND profile.id = ?`, recipient.AccountID, notificationStreamRecipientProfileID(recipient)).Scan(
 		&userUpdated, &permissions, &accountDisabled, &profilesAllowed,

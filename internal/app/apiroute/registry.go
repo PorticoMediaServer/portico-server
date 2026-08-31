@@ -12,6 +12,8 @@ import (
 	"sort"
 	"strings"
 	"sync"
+
+	"github.com/PorticoMediaServer/portico-server/internal/foundationcontract"
 )
 
 //go:embed contract.json
@@ -50,20 +52,47 @@ func RouteFromRequest(req *http.Request) (Route, bool) {
 	return route, ok
 }
 
+// Match returns the exact generated descriptor that would dispatch req without
+// invoking its handler. Outer resource-admission middleware uses this to
+// consume route-owned WorkClass metadata before Registry attaches the same
+// descriptor to the request context.
+func (r *Registry) Match(req *http.Request) (Route, bool) {
+	if r == nil || req == nil || req.URL == nil {
+		return Route{}, false
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	best := -1
+	bestScore := -1
+	for index, route := range r.routes {
+		if route.Method != req.Method || !matchPath(route.Path, req.URL.Path) {
+			continue
+		}
+		if score := pathSpecificity(route.Path); score > bestScore {
+			best, bestScore = index, score
+		}
+	}
+	if best < 0 {
+		return Route{}, false
+	}
+	return r.routes[best], true
+}
+
 type Route struct {
-	Method         string   `json:"method"`
-	Path           string   `json:"path"`
-	OperationID    string   `json:"operationId"`
-	Auth           Auth     `json:"auth"`
-	Permission     string   `json:"permission"`
-	Audience       string   `json:"audience"`
-	Surfaces       []string `json:"surfaces"`
-	RatePolicy     string   `json:"ratePolicy"`
-	AuditEvent     string   `json:"auditEvent"`
-	RequestSchema  string   `json:"requestSchema,omitempty"`
-	ResponseSchema string   `json:"responseSchema"`
-	SuccessStatus  int      `json:"successStatus"`
-	TypedAdapter   bool     `json:"typedAdapter"`
+	Method         string                       `json:"method"`
+	Path           string                       `json:"path"`
+	OperationID    string                       `json:"operationId"`
+	Auth           Auth                         `json:"auth"`
+	Permission     string                       `json:"permission"`
+	Audience       string                       `json:"audience"`
+	Surfaces       []string                     `json:"surfaces"`
+	RatePolicy     string                       `json:"ratePolicy"`
+	AuditEvent     string                       `json:"auditEvent"`
+	RequestSchema  string                       `json:"requestSchema,omitempty"`
+	ResponseSchema string                       `json:"responseSchema"`
+	SuccessStatus  int                          `json:"successStatus"`
+	TypedAdapter   bool                         `json:"typedAdapter"`
+	WorkClass      foundationcontract.WorkClass `json:"-"`
 }
 
 type contractDocument struct {
@@ -228,7 +257,7 @@ func RouteFromOperation(method, path string, raw json.RawMessage, auth Auth) Rou
 	if response == "" {
 		panic(fmt.Sprintf("apiroute: missing response schema for %s %s", method, path))
 	}
-	return Route{Method: method, Path: path, OperationID: op.OperationID, Auth: op.Auth, Permission: op.Permission, Audience: op.Audience, Surfaces: append([]string(nil), op.Surfaces...), RatePolicy: op.RatePolicy, AuditEvent: op.AuditEvent, RequestSchema: request, ResponseSchema: response, SuccessStatus: status, TypedAdapter: true}
+	return Route{Method: method, Path: path, OperationID: op.OperationID, Auth: op.Auth, Permission: op.Permission, Audience: op.Audience, Surfaces: append([]string(nil), op.Surfaces...), RatePolicy: op.RatePolicy, AuditEvent: op.AuditEvent, RequestSchema: request, ResponseSchema: response, SuccessStatus: status, TypedAdapter: true, WorkClass: workClassForOperation(op.OperationID, op.RatePolicy)}
 }
 
 func validateAudienceSurfaces(audience string, surfaces []string) error {

@@ -1112,6 +1112,7 @@ func (s *Server) jobLaneDiagnostics() []JobLaneDiagnostic {
 
 func (s *Server) workloadLaneDiagnostics() []WorkloadLaneDiagnostic {
 	lanes := []string{
+		workloadLaneSecurityFence,
 		workloadLaneAuth,
 		workloadLaneBrowsing,
 		workloadLaneExpensive,
@@ -2382,7 +2383,7 @@ func (s *Server) touchDeviceAt(deviceID, clientIP, timestamp string) {
 
 func (s *Server) revokeDevice(deviceID string) error {
 	now := time.Now().UTC().Format(time.RFC3339)
-	return s.withUserTx(context.Background(), func(tx *sql.Tx) error {
+	return s.withSecurityFenceTxTagged(context.Background(), []string{"devices", "sessions", "native_refresh_tokens"}, func(tx *sql.Tx) error {
 		result, err := tx.Exec(`UPDATE devices SET revoked_at = ?, trusted = 0 WHERE id = ?`, now, deviceID)
 		if err != nil {
 			return err
@@ -2588,6 +2589,15 @@ func (s *Server) handleBackups(w http.ResponseWriter, r *http.Request, user User
 		return
 	}
 	path := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/backups"), "/")
+	if path == "restore-authorization-context" && r.Method == http.MethodGet {
+		epoch, err := s.currentRestoreSecurityEpochContext(r.Context())
+		if err != nil {
+			writeDatabaseAccessError(w, err, http.StatusServiceUnavailable, "restore_reauthentication_unavailable", "Portico could not load the restore authorization context.")
+			return
+		}
+		writeJSON(w, http.StatusOK, RestoreAuthorizationContext{RestoreSecurityEpoch: epoch})
+		return
+	}
 	if (path == "restore" || path == "restore/upload") && r.Method == http.MethodPost {
 		response, ok := s.enqueueUploadedRestore(w, r, user)
 		if !ok {
@@ -4679,6 +4689,10 @@ func (s *Server) handleDVRRecordingPlayback(w http.ResponseWriter, r *http.Reque
 	if r.Body != nil && r.ContentLength != 0 && !decodeJSON(w, r, &req) {
 		return
 	}
+	if strings.TrimSpace(req.Intent.Quality.Mode) == "" {
+		writeError(w, http.StatusBadRequest, "invalid_playback_quality", "intent.quality is required and must be Automatic or an exact server-issued explicit offer.")
+		return
+	}
 	if req.StartSeconds < 0 {
 		writeError(w, http.StatusBadRequest, "invalid_start_position", "startSeconds must be zero or greater.")
 		return
@@ -4688,7 +4702,7 @@ func (s *Server) handleDVRRecordingPlayback(w http.ResponseWriter, r *http.Reque
 		if startErr.retryAfter != "" {
 			w.Header().Set("Retry-After", startErr.retryAfter)
 		}
-		writeError(w, startErr.status, startErr.code, startErr.message)
+		writePlaybackStartError(w, startErr)
 		return
 	}
 	setPlaybackMediaGrantCookie(w, r, playback)
@@ -4717,20 +4731,25 @@ func (s *Server) startDVRRecordingPlaybackForRequest(r *http.Request, user User,
 	}
 	validPlaybackUse = true
 	if strings.EqualFold(strings.TrimSpace(recording.Status), "running") {
-		return s.startLiveTVPlaybackForRequest(r, user, recording.ChannelID, req.ClientProfile, req.Intent, req.ClientInstanceID)
+		return s.startLiveTVPlaybackForRequest(r, user, recording.ChannelID, req.ClientProfile, req.Intent, req.ClientInstanceID, req.Replacement, "dvr", recording.ID, req.externalReplacement)
 	}
 
 	playback, startErr := s.startPlaybackForRequest(r, user, PlaybackSessionCreateRequest{
-		MediaID:          dvrRecordingMediaID(recording.ID),
-		VersionID:        req.VersionID,
-		ClientInstanceID: req.ClientInstanceID,
-		ClientProfile:    req.ClientProfile,
-		Intent:           req.Intent,
-		SkipPreroll:      true,
-		BurnInSubtitleID: req.BurnInSubtitleID,
-		SubtitleStreamID: req.SubtitleStreamID,
-		AudioStreamID:    req.AudioStreamID,
-		StartSeconds:     req.StartSeconds,
+		MediaID:               dvrRecordingMediaID(recording.ID),
+		VersionID:             req.VersionID,
+		ClientInstanceID:      req.ClientInstanceID,
+		ClientProfile:         req.ClientProfile,
+		Intent:                req.Intent,
+		SkipPreroll:           true,
+		BurnInSubtitleID:      req.BurnInSubtitleID,
+		SubtitleStreamID:      req.SubtitleStreamID,
+		AudioStreamID:         req.AudioStreamID,
+		StartSeconds:          req.StartSeconds,
+		Replacement:           req.Replacement,
+		deferReplacement:      req.externalReplacement != nil,
+		reservedSessionID:     replacementSessionID(req.externalReplacement),
+		replacementTargetKind: "dvr",
+		replacementTargetID:   recording.ID,
 		SourceContext: PlaybackSourceContext{
 			Type:  "library",
 			ID:    "lib_recorded_tv",
@@ -6329,6 +6348,9 @@ func (s *Server) createDVRRecordingBound(user User, req DVRRecordingRequest, all
 	priority := boundedDVRPriority(intValue(req.Priority, 50))
 	now := time.Now().UTC().Format(time.RFC3339)
 	id := randomID("rec")
+	if err := s.pruneStaleLiveTVTunerAllocations(context.Background()); err != nil {
+		return DVRRecording{}, err
+	}
 	err = s.withUserTxTagged(context.Background(), []string{"dvr", "live-tv"}, func(tx *sql.Tx) error {
 		ruleID := strings.TrimSpace(req.RuleID)
 		programID := strings.TrimSpace(req.ProgramID)
@@ -6423,6 +6445,9 @@ func (s *Server) updateDVRRecordingForUser(user User, recordingID string, req DV
 	priority := boundedDVRPriority(intValue(req.Priority, current.Priority))
 	now := time.Now().UTC().Format(time.RFC3339)
 	var result sql.Result
+	if err := s.pruneStaleLiveTVTunerAllocations(context.Background()); err != nil {
+		return DVRRecording{}, err
+	}
 	err = s.withUserTxTagged(context.Background(), []string{"dvr", "live-tv"}, func(tx *sql.Tx) error {
 		if bindingErr := validateDVRRuleRecordingBindingTx(tx, viewerProfileID(user), ruleID, sourceID, channelID, programID, false); bindingErr != nil {
 			return bindingErr
@@ -6527,6 +6552,9 @@ func (s *Server) findDVRRecordingConflict(sourceID string, start time.Time, end 
 }
 
 func (s *Server) findDVRRecordingConflictWithPriority(sourceID string, start time.Time, end time.Time, ignoreID string, requestedPriority int) (DVRRecording, error) {
+	if err := s.pruneStaleLiveTVTunerAllocations(context.Background()); err != nil {
+		return DVRRecording{}, err
+	}
 	var conflict DVRRecording
 	err := s.withUserTxTagged(context.Background(), []string{"dvr", "live-tv"}, func(tx *sql.Tx) error {
 		var findErr error
@@ -6537,10 +6565,6 @@ func (s *Server) findDVRRecordingConflictWithPriority(sourceID string, start tim
 }
 
 func findDVRRecordingConflictWithPriorityTx(tx *sql.Tx, sourceID string, start time.Time, end time.Time, ignoreID string, requestedPriority int) (DVRRecording, error) {
-	cutoff := time.Now().UTC().Add(-liveTVAllocationStaleAfter).Format(time.RFC3339)
-	if _, err := pruneStaleLiveTVTunerAllocationsTx(tx, cutoff); err != nil {
-		return DVRRecording{}, err
-	}
 	var capacity int
 	if err := tx.QueryRow(`SELECT MAX(1, COALESCE(tuner_count, 1)) FROM live_tv_sources WHERE id = ?`, sourceID).Scan(&capacity); err != nil {
 		return DVRRecording{}, err

@@ -310,19 +310,20 @@ export type RestoreBackupState =
   | "failed"
   | "recovery-required";
 
-/** Destructive confirmation and account step-up sent to the supervised restore endpoint. */
-export interface RestoreBackupRequest {
-  password: string;
-  confirmation: string;
-}
+/** Destructive confirmation and local-password or signed Hosted step-up. */
+export type RestoreBackupRequest = MainSchema<"RestoreBackupRequest">;
+export type RestoreAuthorizationContext = MainSchema<"RestoreAuthorizationContext">;
 
 /** Multipart input for a raw database import or a manifest-verified backup import. */
-export interface RestoreUploadedDatabaseInput {
+type RestoreUploadedDatabaseBase = {
   file: Blob;
-  password: string;
   confirmation: string;
   manifest?: Blob | string;
-}
+};
+export type RestoreUploadedDatabaseInput = RestoreUploadedDatabaseBase & (
+  | { password: string; hostedAuthorization?: never }
+  | { password?: never; hostedAuthorization: HostedServerRestoreAuthorization }
+);
 
 /** Capability-bearing restore response; statusToken is returned only when enqueueing. */
 export interface RestoreBackupResponse {
@@ -394,19 +395,24 @@ export type DashboardWatchedToday = MainSchema<"DashboardWatchedToday">;
 export type ServerActivityResponse = MainSchema<"ServerActivityResponse">;
 export type DashboardOverviewUsageResponse = MainSchema<"DashboardOverviewUsageResponse">;
 export type PlaybackSession = MainSchema<"PlaybackSession">;
-export type PlaybackNextResponse = MainSchema<"PlaybackNextResponse">;
-export type PlaybackQueueResponse = MainSchema<"PlaybackQueueResponse">;
+export type PlaybackQueueEntry = MainSchema<"PlaybackQueueEntry">;
+export type PlaybackQueueHistoryEntry = MainSchema<"PlaybackQueueHistoryEntry">;
 export type PlaybackRepeatMode = MainSchema<"PlaybackRepeatMode">;
 export type PlaybackSessionQueueReplaceRequest = MainSchema<"PlaybackSessionQueueReplaceRequest">;
 export type PlaybackSessionQueueRequest = MainSchema<"PlaybackSessionQueueRequest">;
 export type PlaybackProgressEvent = MainSchema<"PlaybackProgressEvent">;
 export type PlaybackProgressInput = Omit<PlaybackProgressEvent, "eventSequence" | "recordedAt"> & Partial<Pick<PlaybackProgressEvent, "eventSequence" | "recordedAt">>;
 export type PlaybackProgressAcknowledgement = MainSchema<"PlaybackProgressAcknowledgement">;
+export type PlaybackTerminalEvent = MainSchema<"PlaybackTerminalEvent">;
 export type PlaybackSessionStopRequest = MainSchema<"PlaybackSessionStopRequest">;
-export type PlaybackSessionStopInput = Pick<
-  PlaybackSessionStopRequest,
+export type PlaybackTerminalInput = Pick<
+  PlaybackTerminalEvent,
   "disposition" | "positionSeconds" | "durationSeconds"
 >;
+export type PlaybackSessionStopInput =
+  | PlaybackTerminalInput
+  | PlaybackSessionStopRequest;
+export type PlaybackSessionTerminalAcknowledgement = MainSchema<"PlaybackSessionTerminalAcknowledgement">;
 export type PlaybackContinuationCredential = MainSchema<"PlaybackContinuationCredential">;
 export type PlaybackContinuationState = MainSchema<"PlaybackContinuationState">;
 export type PlaybackContinuationRotateRequest = MainSchema<"PlaybackContinuationRotateRequest">;
@@ -414,11 +420,24 @@ export type PlaybackSessionQueueResponse = MainSchema<"PlaybackSessionQueueRespo
 export type PlaybackPrepareNextRequest = MainSchema<"PlaybackPrepareNextRequest">;
 export type PlaybackPreparedResponse = MainSchema<"PlaybackPreparedResponse">;
 export type PlaybackHandoffRequest = MainSchema<"PlaybackHandoffRequest">;
+export type PlaybackHandoffInput = Omit<PlaybackHandoffRequest, "previousTerminal"> & {
+  previousTerminal: PlaybackTerminalEvent | PlaybackTerminalInput;
+};
+export type PlaybackReplacementRequest = MainSchema<"PlaybackReplacementRequest">;
 export type PlaybackRenegotiationRequest = MainSchema<"PlaybackRenegotiationRequest">;
 export type PlaybackSourceContext = MainSchema<"PlaybackSourceContext">;
 export type PlaybackDiagnostics = MainSchema<"PlaybackDiagnostics">;
 export type PlaybackCommand = MainSchema<"PlaybackCommand">;
 export type PlaybackReceiver = MainSchema<"PlaybackReceiver">;
+export type PlaybackReceiverRequest = MainSchema<"PlaybackReceiverRequest">;
+export type PlaybackReceiverHeartbeatRequest = MainSchema<"PlaybackReceiverHeartbeatRequest">;
+export type PlaybackReceiverHeartbeatResponse = MainSchema<"PlaybackReceiverHeartbeatResponse">;
+export type PlaybackReceiverHandoffRequest = MainSchema<"PlaybackReceiverHandoffRequest">;
+export type PlaybackReceiverHandoffCommitRequest = MainSchema<"PlaybackReceiverHandoffCommitRequest">;
+export type PlaybackReceiverHandoffStatusResponse = MainSchema<"PlaybackReceiverHandoffStatusResponse">;
+export type ReceiverAuthorizationRequest = MainSchema<"ReceiverAuthorizationRequest">;
+export type ReceiverControllerGrant = MainSchema<"ReceiverControllerGrant">;
+export type ReceiverAuthorizationRecord = MainSchema<"ReceiverAuthorizationRecord">;
 export type WatchWithFriendsGroup = MainSchema<"WatchWithFriendsGroup">;
 export type WatchWithFriendsMember = MainSchema<"WatchWithFriendsMember">;
 export type WatchWithFriendsCreateRequest = MainSchema<"WatchWithFriendsCreateRequest">;
@@ -449,7 +468,11 @@ export type DashboardNotice = MainSchema<"DashboardNotice">;
 export type ConversionJob = MainSchema<"ConversionJob">;
 export type LibraryStat = MainSchema<"LibraryStat">;
 export type PlaybackClientProfile = MainSchema<"PlaybackClientProfile">;
+export type PlaybackQualitySelection = MainSchema<"PlaybackQualitySelection">;
+export type PlaybackQualityOffer = MainSchema<"PlaybackQualityOffer">;
+export type PlaybackQualityOfferSet = MainSchema<"PlaybackQualityOfferSet">;
 export type PlaybackIntent = MainSchema<"PlaybackIntent">;
+export type PlaybackRenegotiationIntent = MainSchema<"PlaybackRenegotiationIntent">;
 export type CastBootstrapRequest = MainSchema<"CastBootstrapRequest">;
 export type CastBootstrapResponse = MainSchema<"CastBootstrapResponse">;
 export type CastRedeemRequest = MainSchema<"CastRedeemRequest">;
@@ -462,29 +485,21 @@ export type CastRenewRequest = MainSchema<"CastRenewRequest">;
 export type CastRenewResponse = MainSchema<"CastRenewResponse">;
 export type CastStopRequest = MainSchema<"CastStopRequest">;
 export type CastStopResponse = MainSchema<"CastStopResponse">;
+export type CastAdvanceRequest = MainSchema<"CastAdvanceRequest">;
+export type CastAdvanceCancelRequest = MainSchema<"CastAdvanceCancelRequest">;
+export type CastAdvanceResponse = MainSchema<"CastAdvanceResponse">;
+export type CastTransferStatusRequest = MainSchema<"CastTransferStatusRequest">;
+export type CastTransferStatusResponse = MainSchema<"CastTransferStatusResponse">;
+export type CastSegmentSkipRequest = MainSchema<"CastSegmentSkipRequest">;
+export type CastSegmentSkipResponse = MainSchema<"CastSegmentSkipResponse">;
+export type CastOperationResponse = MainSchema<"CastOperationResponse">;
+export type LiveTvStreamCloseRequest = PlaybackSessionStopRequest & {
+  sessionId: string;
+};
 export type ResolvedPlaybackPolicy = MainSchema<"ResolvedPlaybackPolicy">;
 export type PlaybackDecision = MainSchema<"PlaybackDecision">;
-export type PlaybackResource = {
-  /** Opaque identifier issued by the server for this authorized rendition. */
-  id: string;
-  /** Server-issued URL or endpoint. Clients must not infer or rewrite its path/query contract. */
-  sourceUrl: string;
-  streamFormat: string;
-  qualityId?: string;
-  audioStreamId?: string;
-  subtitleStreamId?: string;
-  subtitleMode?: "off" | "text" | "burn_in";
-  default?: boolean;
-};
-export type PlaybackResponse = MainSchema<"PlaybackResponse"> & {
-  /**
-   * Authorized playback renditions. Every selectable quality/audio/subtitle
-   * combination is server-issued so portable clients never manufacture media
-   * endpoint paths or query semantics.
-   */
-  resources: PlaybackResource[];
-  selectedQualityId?: string;
-};
+export type PlaybackResource = MainSchema<"PlaybackResource">;
+export type PlaybackResponse = MainSchema<"PlaybackResponse">;
 export type MediaGrant = MainSchema<"MediaGrant">;
 export type PlaybackRestoreResponse = MainSchema<"PlaybackRestoreResponse">;
 export type ServerSettings = MainSchema<"ServerSettings">;
@@ -534,6 +549,11 @@ export type PorticoMFAStatus = HostedSchema<"MFAStatus">;
 export type PorticoAccountResponse = HostedSchema<"AccountResponse">;
 export type PorticoDevice = HostedSchema<"Device">;
 export type HostedServer = HostedSchema<"Server">;
+export type HostedServerDeletionProofRequest = HostedSchema<"ServerDeletionProofRequest">;
+export type HostedServerDeletionProofResponse = HostedSchema<"ServerDeletionProofResponse">;
+export type HostedServerDeleteRequest = HostedSchema<"ServerDeleteRequest">;
+export type HostedServerRestoreAuthorizationRequest = HostedSchema<"ServerRestoreAuthorizationRequest">;
+export type HostedServerRestoreAuthorization = HostedSchema<"ServerRestoreAuthorization">;
 export type PorticoMembership = HostedSchema<"Membership">;
 export type PorticoMemberProfile = HostedSchema<"MemberProfile">;
 export type HostedRouteDocument = HostedSchema<"RouteDocument">;
@@ -548,5 +568,4 @@ export type MatchCandidate = MainSchema<"MatchCandidate">;
 export type MediaMatchSearchResponse = MainSchema<"MediaMatchSearchResponse">;
 export type ManualMediaMatchRequest = MainSchema<"ManualMediaMatchRequest">;
 
-export type Quality = PlaybackResponse["qualities"][number];
 export type Chapter = MainSchema<"Chapter">;

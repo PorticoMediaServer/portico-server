@@ -5,11 +5,21 @@ import type {
   DownloadPreparationSingleCreateRequest,
   MediaDownloadGrantResponse
 } from "./types.js";
+import type {HostedConnectionRuntimeAdapters, ResolvedHostedConnectionRuntimeAdapters} from "./hostedConnectionRuntime.js";
+import {
+  parseOfflineDownloadAuthorizationReceipt,
+  revalidateOfflineDownloadAuthorization,
+  validateOfflineDownloadAuthorizationReceipt,
+  type OfflineDownloadAuthorizationReceipt,
+  type OfflineDownloadAuthorizationRevalidationAPI,
+  type PinnedServerIdentity
+} from "./offlineDownloadAuthorization.js";
+import type {ViewerScope} from "./viewerScope.js";
 import { validatePorticoUrl } from "./urlPolicy.js";
 export { validatePorticoUrl, trustedRouteOrigin, type PorticoUrlPurpose, type PorticoUrlPolicyOptions } from "./urlPolicy.js";
 
 export type NativeDownloadNetwork = "offline" | "wifi" | "cellular" | "unknown";
-export type NativeDownloadState = "preparing" | "queued" | "waiting-network" | "waiting-storage" | "waiting-grant" | "transferring" | "paused" | "failed" | "cancelled" | "complete" | "expired" | "removed";
+export type NativeDownloadState = "preparing" | "queued" | "waiting-network" | "waiting-storage" | "waiting-grant" | "transferring" | "paused" | "failed" | "cancelled" | "verifying" | "available-offline" | "authorization-unverified" | "deleting" | "removed";
 
 export type NativeDownloadScope = { serverId: string; accountId: string; profileId: string; installationId: string };
 
@@ -39,11 +49,11 @@ export type NativeDownloadQueueItem = {
   reservedBytes?: number;
   transferredBytes: number;
   transferGrantExpiresAt?: string;
+  authorizationReceipt?: OfflineDownloadAuthorizationReceipt;
+  authorizationViewerScope?: ViewerScope;
   offline?: NativeDownloadOfflineMetadata;
   /** Server-side prepared artifact lifetime; it does not expire a completed local copy. */
   preparationArtifactExpiresAt?: string;
-  /** Optional client or rights-policy expiry for the completed local copy. */
-  expiresAt?: string;
   failureMessageId?: "download.failed" | "download.storage-full";
   watched?: boolean;
 };
@@ -54,8 +64,8 @@ export type NativeDownloadQueueEvent =
   | { type: "cancel"; attemptId: string; generation: number }
   | { type: "retry"; attemptId: string; nextAttemptId: string; generation: number }
   | { type: "remove"; attemptId: string; generation: number }
-  | { type: "grant"; expiresAt: string; attemptId: string; generation: number }
-  | { type: "complete"; finalBytes: number; offline: NativeDownloadOfflineMetadata; attemptId: string; generation: number }
+  | { type: "grant"; expiresAt: string; receipt: OfflineDownloadAuthorizationReceipt; viewerScope: ViewerScope; attemptId: string; generation: number }
+  | { type: "complete"; finalBytes: number; attemptId: string; generation: number }
   | { type: "watched"; watched: boolean; attemptId: string; generation: number }
   | { type: "fail"; messageId?: "download.failed" | "download.storage-full"; attemptId: string; generation: number };
 
@@ -86,6 +96,8 @@ export type NativeDownloadGrantBinding = NativeDownloadScope & {
   preparationId: string;
   attemptId: string;
   generation: number;
+  viewerScope: ViewerScope;
+  pinnedServerIdentity: PinnedServerIdentity;
 };
 
 export type NativeDownloadSchedulerPolicy = {
@@ -127,6 +139,8 @@ export type NativeDownloadTransferPlan = {
   qualityProfile: string;
   expectedBytes?: number;
   sizeKind: "unknown" | "estimated" | "exact";
+  authorizationReceipt: OfflineDownloadAuthorizationReceipt;
+  authorizationViewerScope: ViewerScope;
   binding: Readonly<NativeDownloadGrantBinding>;
 };
 
@@ -136,6 +150,14 @@ export type NativeDownloadPreparationAPI = {
   downloadPreparation(id: string): Promise<DownloadPreparation>;
   createDownloadPreparationGrant(id: string, body: {delivery: "native"}): Promise<MediaDownloadGrantResponse>;
 };
+
+export type NativeDownloadPublicationEvidence = Readonly<{
+  viewerScope: ViewerScope;
+  pinnedServerIdentity: PinnedServerIdentity;
+  artifactSha256: string;
+  artifactSizeBytes: number;
+  offline: NativeDownloadOfflineMetadata;
+}>;
 
 export class NativeDownloadWorkflowError extends Error {
   readonly messageId: "download.failed" | "download.storage-full";
@@ -194,7 +216,8 @@ export async function authorizeNativeDownloadTransfer(
   api: NativeDownloadPreparationAPI,
   result: NativeDownloadPreparationResult,
   now = Date.now(),
-  binding: NativeDownloadGrantBinding
+  binding: NativeDownloadGrantBinding,
+  runtimeAdapters: HostedConnectionRuntimeAdapters | ResolvedHostedConnectionRuntimeAdapters = {}
 ): Promise<NativeDownloadTransferPlan> {
   const { preparation, variant } = result;
   if (preparation.state !== "ready" || preparation.qualityProfile !== variant.qualityProfile) {
@@ -202,6 +225,13 @@ export async function authorizeNativeDownloadTransfer(
   }
   const grant = await api.createDownloadPreparationGrant(preparation.id, {delivery: "native"});
   const expiry = Date.parse(grant.expiresAt);
+  const rawReceipt = (grant as MediaDownloadGrantResponse & {authorizationReceipt?: unknown}).authorizationReceipt;
+  let receipt: OfflineDownloadAuthorizationReceipt;
+  try {
+    receipt = parseOfflineDownloadAuthorizationReceipt(rawReceipt);
+  } catch {
+    throw new NativeDownloadWorkflowError("grant_invalid");
+  }
   if (!grant.downloadUrl || !grant.grantToken || !Number.isFinite(expiry) || expiry <= now || grant.profile !== variant.qualityProfile) {
     throw new NativeDownloadWorkflowError("grant_invalid");
   }
@@ -212,9 +242,28 @@ export async function authorizeNativeDownloadTransfer(
   } catch {
     throw new NativeDownloadWorkflowError("grant_invalid");
   }
-  if (binding.preparationId !== preparation.id || !validScope(binding) || binding.attemptId.trim() === "" || !Number.isSafeInteger(binding.generation) || binding.generation < 0) {
+  if (binding.preparationId !== preparation.id || !validScope(binding) || binding.attemptId.trim() === "" || !Number.isSafeInteger(binding.generation) || binding.generation < 0 ||
+      binding.viewerScope.serverId !== binding.serverId || binding.viewerScope.accountId !== binding.accountId ||
+      binding.viewerScope.profileId !== binding.profileId || binding.pinnedServerIdentity.serverId !== binding.serverId) {
     throw new NativeDownloadWorkflowError("grant_invalid");
   }
+  const validation = await validateOfflineDownloadAuthorizationReceipt(receipt, {
+    binding: {
+      storedViewerScope: binding.viewerScope,
+      originatingServerId: binding.serverId,
+      preparationId: preparation.id,
+      mediaId: preparation.mediaId,
+      mediaVersionId: receipt.preparation.mediaVersionId,
+      qualityId: preparation.qualityProfile,
+      artifactSha256: receipt.artifact.sha256,
+      artifactSizeBytes: receipt.artifact.sizeBytes
+    },
+    activeViewerScope: binding.viewerScope,
+    pinnedIdentity: binding.pinnedServerIdentity,
+    runtimeAdapters,
+    now
+  });
+  if (validation.state !== "valid") throw new NativeDownloadWorkflowError("grant_invalid");
   return {
     downloadUrl,
     authorization: `PorticoDownload ${grant.grantToken}`,
@@ -224,6 +273,8 @@ export async function authorizeNativeDownloadTransfer(
     qualityProfile: preparation.qualityProfile,
     expectedBytes: positiveBytes(preparation.sizeBytes) ?? variant.expectedBytes,
     sizeKind: preparation.sizeKind,
+    authorizationReceipt: receipt,
+    authorizationViewerScope: binding.viewerScope,
     binding: Object.freeze({...binding})
   };
 }
@@ -268,7 +319,7 @@ export function applyNativeDownloadPreparation(item: NativeDownloadQueueItem, pr
     reservedBytes: expectedBytes ?? item.reservedBytes,
     preparationArtifactExpiresAt: preparation.artifactExpiresAt,
     failureMessageId: preparation.failureMessageId,
-    state: preparation.state === "ready" && ["waiting-network", "waiting-storage", "waiting-grant", "transferring", "complete"].includes(item.state)
+    state: preparation.state === "ready" && ["waiting-network", "waiting-storage", "waiting-grant", "transferring", "verifying", "available-offline", "authorization-unverified", "deleting"].includes(item.state)
       ? item.state
       : nativeStateForPreparation(preparation)
   };
@@ -285,9 +336,12 @@ export function nativeDownloadSchedule(
   let reserved = policy.usedStorageBytes;
   return queue.map((item) => {
     if (!sameNativeDownloadScope(item.scope, activeScope)) return item;
-    const offlineExpiry = Date.parse(item.expiresAt ?? "");
-    if (!["removed", "cancelled", "expired"].includes(item.state) && Number.isFinite(offlineExpiry) && offlineExpiry <= now) return { ...item, state: "expired" };
-    if (["preparing", "complete", "paused", "cancelled", "expired", "removed", "failed"].includes(item.state)) return item;
+    if (item.state === "available-offline") {
+      if (!item.authorizationReceipt) return {...item, state: "deleting"};
+      const verifyBy = Date.parse(item.authorizationReceipt?.verifyBy ?? "");
+      return Number.isFinite(verifyBy) && now < verifyBy ? item : {...item, state: "authorization-unverified"};
+    }
+    if (["preparing", "verifying", "authorization-unverified", "deleting", "paused", "cancelled", "removed", "failed"].includes(item.state)) return item;
     if (network === "offline" || (policy.wifiOnly && network !== "wifi")) return { ...item, state: "waiting-network" };
     const boundedBytes = positiveBytes(item.expectedBytes) ?? positiveBytes(item.reservedBytes) ?? positiveBytes(policy.unknownSizeReservationBytes);
     if (boundedBytes === undefined) return { ...item, state: "waiting-storage" };
@@ -325,7 +379,7 @@ function positiveBytes(value: number | undefined): number | undefined {
 
 export function nativeDownloadsToDeleteAfterWatch(queue: readonly NativeDownloadQueueItem[], scope: NativeDownloadScope, deleteWatched: boolean): string[] {
   if (!deleteWatched) return [];
-  return queue.filter((item) => item.state === "complete" && item.watched && sameNativeDownloadScope(item.scope, scope)).map((item) => item.id);
+  return queue.filter((item) => item.state === "available-offline" && item.watched && sameNativeDownloadScope(item.scope, scope)).map((item) => item.id);
 }
 
 export function applyNativeDownloadProgress(item: NativeDownloadQueueItem, transferredBytes: number, totalBytes: number | undefined, fence: { attemptId: string; generation: number }): NativeDownloadQueueItem {
@@ -333,8 +387,91 @@ export function applyNativeDownloadProgress(item: NativeDownloadQueueItem, trans
   const authoritativeTotal = positiveBytes(totalBytes);
   const expectedBytes = authoritativeTotal ?? item.expectedBytes;
   const transferred = Math.max(item.transferredBytes, Math.max(0, transferredBytes));
-  const complete = expectedBytes !== undefined && transferred >= expectedBytes && (authoritativeTotal !== undefined || item.sizeKind === "exact");
-  return { ...item, sizeKind: authoritativeTotal !== undefined ? "exact" : item.sizeKind, expectedBytes, transferredBytes: expectedBytes ? Math.min(transferred, expectedBytes) : transferred, state: complete ? "complete" : "transferring", failureMessageId: undefined };
+  const bytesComplete = expectedBytes !== undefined && transferred >= expectedBytes && (authoritativeTotal !== undefined || item.sizeKind === "exact");
+  return { ...item, sizeKind: authoritativeTotal !== undefined ? "exact" : item.sizeKind, expectedBytes, transferredBytes: expectedBytes ? Math.min(transferred, expectedBytes) : transferred, state: bytesComplete ? "verifying" : "transferring", failureMessageId: undefined };
+}
+
+/**
+ * Publishes local bytes only after the signed receipt, current viewer scope,
+ * pinned Server key, and the locally measured artifact all agree.
+ */
+export async function publishNativeDownloadArtifact(
+  item: NativeDownloadQueueItem,
+  evidence: NativeDownloadPublicationEvidence,
+  fence: {attemptId: string; generation: number},
+  runtimeAdapters: HostedConnectionRuntimeAdapters | ResolvedHostedConnectionRuntimeAdapters = {},
+  now = Date.now()
+): Promise<NativeDownloadQueueItem> {
+  if (!matchesNativeDownloadAttempt(item, fence) || item.state !== "verifying") return item;
+  if (!item.authorizationReceipt || !item.authorizationViewerScope) return {...item, state: "deleting"};
+  if (!sameNativeDownloadViewerIdentity(item.scope, evidence.viewerScope)) return item;
+  const receipt = item.authorizationReceipt;
+  const validation = await validateOfflineDownloadAuthorizationReceipt(receipt, {
+    binding: {
+      storedViewerScope: item.authorizationViewerScope,
+      originatingServerId: item.scope.serverId,
+      preparationId: item.preparationId,
+      mediaId: item.mediaId,
+      mediaVersionId: receipt.preparation.mediaVersionId,
+      qualityId: item.variant?.qualityProfile ?? receipt.preparation.qualityId,
+      artifactSha256: evidence.artifactSha256,
+      artifactSizeBytes: evidence.artifactSizeBytes
+    },
+    activeViewerScope: evidence.viewerScope,
+    pinnedIdentity: evidence.pinnedServerIdentity,
+    runtimeAdapters,
+    now
+  });
+  if (validation.state === "out-of-scope") return item;
+  if (validation.state === "invalid") return {...item, state: "deleting"};
+  const nextState = validation.state === "valid" ? "available-offline" : "authorization-unverified";
+  return {
+    ...item,
+    state: nextState,
+    preparationProgress: 100,
+    sizeKind: "exact",
+    expectedBytes: evidence.artifactSizeBytes,
+    reservedBytes: evidence.artifactSizeBytes,
+    transferredBytes: evidence.artifactSizeBytes,
+    transferGrantExpiresAt: undefined,
+    authorizationReceipt: validation.receipt,
+    offline: evidence.offline,
+    failureMessageId: undefined
+  };
+}
+
+export async function revalidateNativeDownloadArtifact(
+  item: NativeDownloadQueueItem,
+  api: OfflineDownloadAuthorizationRevalidationAPI,
+  evidence: NativeDownloadPublicationEvidence,
+  runtimeAdapters: HostedConnectionRuntimeAdapters | ResolvedHostedConnectionRuntimeAdapters = {},
+  now = Date.now()
+): Promise<NativeDownloadQueueItem> {
+  if (item.state !== "authorization-unverified") return item;
+  if (!item.authorizationReceipt || !item.authorizationViewerScope) return {...item, state: "deleting"};
+  if (!sameNativeDownloadViewerIdentity(item.scope, evidence.viewerScope)) return item;
+  const validationContext = {
+    binding: {
+      storedViewerScope: item.authorizationViewerScope,
+      originatingServerId: item.scope.serverId,
+      preparationId: item.preparationId,
+      mediaId: item.mediaId,
+      mediaVersionId: item.authorizationReceipt.preparation.mediaVersionId,
+      qualityId: item.variant?.qualityProfile ?? item.authorizationReceipt.preparation.qualityId,
+      artifactSha256: evidence.artifactSha256,
+      artifactSizeBytes: evidence.artifactSizeBytes
+    },
+    activeViewerScope: evidence.viewerScope,
+    pinnedIdentity: evidence.pinnedServerIdentity,
+    runtimeAdapters,
+    now
+  } as const;
+  const decision = await revalidateOfflineDownloadAuthorization(api, item.authorizationReceipt, validationContext);
+  if (decision.action === "preserve") return item;
+  if (decision.action === "delete") return {...item, state: "deleting"};
+  // The shared revalidation owner has already required a new receipt ID and
+  // fully verified the replacement against the pinned identity and binding.
+  return {...item, state: "available-offline", authorizationReceipt: decision.receipt};
 }
 
 /** Pure queue transition for durable native stores. OS transfer adapters apply the resulting state and effects. */
@@ -352,24 +489,23 @@ export function reduceNativeDownloadQueueItem(item: NativeDownloadQueueItem, eve
     case "retry":
       if (item.state !== "failed" && item.state !== "cancelled") return item;
       if (!event.nextAttemptId.trim() || event.nextAttemptId === item.attemptId) return item;
-      return { ...item, attemptId: event.nextAttemptId, generation: item.generation + 1, state: "queued", transferredBytes: 0, transferGrantExpiresAt: undefined, failureMessageId: undefined };
+      return { ...item, attemptId: event.nextAttemptId, generation: item.generation + 1, state: "queued", transferredBytes: 0, transferGrantExpiresAt: undefined, authorizationReceipt: undefined, authorizationViewerScope: undefined, offline: undefined, failureMessageId: undefined };
     case "remove":
-      return { ...item, state: "removed", transferGrantExpiresAt: undefined, offline: item.offline ? { ...item.offline, localAssetId: undefined, artworkAssetIds: [] } : undefined };
+      return { ...item, state: "removed", transferGrantExpiresAt: undefined, authorizationReceipt: undefined, authorizationViewerScope: undefined, offline: item.offline ? { ...item.offline, localAssetId: undefined, artworkAssetIds: [] } : undefined };
     case "grant":
-      return isNativeDownloadTerminal(item.state) ? item : { ...item, transferGrantExpiresAt: event.expiresAt, state: item.state === "waiting-grant" ? "queued" : item.state };
+      return isNativeDownloadTerminal(item.state) ? item : { ...item, transferGrantExpiresAt: event.expiresAt, authorizationReceipt: event.receipt, authorizationViewerScope: event.viewerScope, state: item.state === "waiting-grant" ? "queued" : item.state };
     case "complete": {
-      if (["cancelled", "removed", "expired", "complete"].includes(item.state)) return item;
+      if (["cancelled", "removed", "available-offline", "authorization-unverified", "deleting"].includes(item.state)) return item;
       const finalBytes = Math.max(item.transferredBytes, Math.max(0, event.finalBytes));
       return {
         ...item,
-        state: "complete",
+        state: "verifying",
         preparationProgress: 100,
         sizeKind: "exact",
         expectedBytes: finalBytes,
         reservedBytes: finalBytes,
         transferredBytes: finalBytes,
         transferGrantExpiresAt: undefined,
-        offline: event.offline,
         failureMessageId: undefined
       };
     }
@@ -411,12 +547,14 @@ export const NATIVE_DOWNLOAD_TRANSITIONS: Readonly<Record<NativeDownloadState, r
   "waiting-network": ["queued", "waiting-network", "waiting-storage", "waiting-grant", "transferring", "paused", "failed", "cancelled", "removed"],
   "waiting-storage": ["queued", "waiting-network", "waiting-storage", "waiting-grant", "transferring", "paused", "failed", "cancelled", "removed"],
   "waiting-grant": ["queued", "waiting-network", "waiting-storage", "waiting-grant", "transferring", "paused", "failed", "cancelled", "removed"],
-  transferring: ["transferring", "paused", "failed", "cancelled", "complete", "removed"],
+  transferring: ["transferring", "paused", "failed", "cancelled", "verifying", "removed"],
   paused: ["queued", "paused", "cancelled", "removed"],
   failed: ["queued", "failed", "removed"],
   cancelled: ["queued", "cancelled", "removed"],
-  complete: ["complete", "expired", "removed"],
-  expired: ["expired", "removed"],
+  verifying: ["verifying", "available-offline", "authorization-unverified", "deleting", "failed", "removed"],
+  "available-offline": ["available-offline", "authorization-unverified", "deleting", "removed"],
+  "authorization-unverified": ["authorization-unverified", "available-offline", "deleting", "removed"],
+  deleting: ["deleting", "removed"],
   removed: ["removed"]
 });
 
@@ -432,7 +570,7 @@ function eventTargetState(item: NativeDownloadQueueItem, event: NativeDownloadQu
     case "retry": return "queued";
     case "remove": return "removed";
     case "grant": return item.state === "waiting-grant" ? "queued" : item.state;
-    case "complete": return "complete";
+    case "complete": return "verifying";
     case "watched": return item.state;
     case "fail": return "failed";
   }
@@ -442,6 +580,10 @@ function validScope(scope: NativeDownloadScope): boolean {
   return [scope.serverId, scope.accountId, scope.profileId, scope.installationId].every(value => typeof value === "string" && value.trim() !== "");
 }
 
+function sameNativeDownloadViewerIdentity(scope: NativeDownloadScope, viewerScope: ViewerScope): boolean {
+  return scope.serverId === viewerScope.serverId && scope.accountId === viewerScope.accountId && scope.profileId === viewerScope.profileId;
+}
+
 function isNativeDownloadTerminal(state: NativeDownloadState): boolean {
-  return state === "cancelled" || state === "removed" || state === "expired" || state === "complete";
+  return state === "cancelled" || state === "removed" || state === "verifying" || state === "available-offline" || state === "authorization-unverified" || state === "deleting";
 }

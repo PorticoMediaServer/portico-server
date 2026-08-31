@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>tv.getportico.server.service</string>
+  <key>ProgramArguments</key><array><string>__PORTICO_SERVER_EXECUTABLE__</string></array>
+  <key>EnvironmentVariables</key><dict>
+    <key>PORTICO_APP_DATA</key><string>__PORTICO_APP_DATA__</string>
+    <key>PORTICO_WEB_DIST</key><string>__PORTICO_WEB_DIST__</string>
+    <key>PORTICO_FFMPEG_PATH</key><string>__PORTICO_FFMPEG__</string>
+    <key>PORTICO_FFPROBE_PATH</key><string>__PORTICO_FFPROBE__</string>
+    <key>PORTICO_ENVIRONMENT</key><string>production</string>
+    <key>PORTICO_HOSTED_API_AUTHORITY</key><string>https://api.getportico.tv</string>
+	<key>PORTICO_INSTALL_BUILD</key><string>__PORTICO_INSTALL_BUILD__</string>
+  </dict>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ThrottleInterval</key><integer>5</integer>
+  <key>ProcessType</key><string>Background</string>
+  <key>StandardOutPath</key><string>__PORTICO_STDOUT__</string>
+  <key>StandardErrorPath</key><string>__PORTICO_STDERR__</string>
+</dict></plist>

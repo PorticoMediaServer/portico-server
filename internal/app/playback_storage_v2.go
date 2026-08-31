@@ -10,6 +10,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/PorticoMediaServer/portico-server/internal/foundationcontract"
 )
 
 // playbackStorageConsumer names the server subsystem using owner-managed
@@ -128,12 +130,20 @@ func playbackStoragePolicy(class storageSourceClass, consumer playbackStorageCon
 }
 
 func (s *Server) playbackStorageRequest(ctx context.Context, path string, consumer playbackStorageConsumer, operation string) storageIORequest {
+	workClass := foundationcontract.WorkClassEstablishedPlayback
+	switch consumer {
+	case playbackStorageTranscode:
+		workClass = foundationcontract.WorkClassPlaybackStart
+	case playbackStorageAnalysis, playbackStorageOptimization:
+		workClass = foundationcontract.WorkClassBackgroundMedia
+	}
 	var request storageIORequest
 	if s != nil && s.db != nil {
-		request = s.storageRequestForPath(ctx, path, operation)
+		request = s.storageRequestForPath(ctx, workClass, path, operation)
 	} else {
 		class, _ := classifyStorageSource(path, "")
 		request = storageIORequest{
+			WorkClass:      workClass,
 			SourceID:       storageSourceID("unassigned", path),
 			AdmissionKey:   storagePhysicalSourceKey(path, class),
 			Classification: class,

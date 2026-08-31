@@ -271,6 +271,10 @@ func (s *Server) searchTVDBCandidates(ctx context.Context, item, searchItem Medi
 }
 
 func (s *Server) refreshMediaMetadataFromTVDB(ctx context.Context, item MediaItem) (MediaItem, error) {
+	return s.refreshMediaMetadataFromTVDBWithIntent(ctx, item, metadataRefreshUnlocked)
+}
+
+func (s *Server) refreshMediaMetadataFromTVDBWithIntent(ctx context.Context, item MediaItem, intent metadataRefreshIntent) (MediaItem, error) {
 	if !s.tvdbConfigured() {
 		return MediaItem{}, errTVDBCredentialsMissing
 	}
@@ -318,6 +322,7 @@ func (s *Server) refreshMediaMetadataFromTVDB(ctx context.Context, item MediaIte
 	update := tvdbUpdateForResult(item, result)
 	update.ExpectedRevision = &item.MetadataRevision
 	update.metadataOrigin, update.metadataSource, update.metadataProvider, update.metadataRefreshed = metadataSourceProvider, source, "tvdb", true
+	update.metadataIntent = intent
 	update.metadataIdentities = tvdbIdentityProposals(result, providerType, .85)
 	return s.saveMetadataUpdate("", item.ID, update)
 }
@@ -487,7 +492,11 @@ func tvdbIdentityProposals(result tvdbExtendedRecord, providerType string, confi
 			provider = "tmdb"
 		}
 		if provider == "imdb" || provider == "tmdb" {
-			identities = append(identities, metadataProviderIdentityProposal{Provider: provider, ExternalID: strings.TrimSpace(remote.ID), ExternalType: providerType, Confidence: confidence * .9})
+			externalType := providerType
+			if provider == "tmdb" && providerType == "series" {
+				externalType = "tv"
+			}
+			identities = append(identities, metadataProviderIdentityProposal{Provider: provider, ExternalID: strings.TrimSpace(remote.ID), ExternalType: externalType, Confidence: confidence * .9, ProviderAsserted: true})
 		}
 	}
 	return identities

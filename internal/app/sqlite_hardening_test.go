@@ -8,6 +8,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/PorticoMediaServer/portico-server/internal/foundationcontract"
 )
 
 func TestSQLiteHardeningConcurrentHomeServerWorkload(t *testing.T) {
@@ -46,7 +48,7 @@ func TestSQLiteHardeningConcurrentHomeServerWorkload(t *testing.T) {
 	// Exclusive SQLite maintenance must yield while an interactive writer is
 	// active. Exercise that deferral deterministically, then retry the backup
 	// after the concurrent home-server workload has drained.
-	releaseInteractiveWrite, err := server.dbWriteScheduler.acquire(t.Context(), sqliteWriteInteractive)
+	releaseInteractiveWrite, err := server.dbWriteScheduler.acquire(t.Context(), foundationcontract.WorkClassInteractive)
 	if err != nil {
 		t.Fatalf("acquire interactive write pressure: %v", err)
 	}

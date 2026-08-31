@@ -59,8 +59,8 @@ func (s *Server) planMediaPlayback(ctx context.Context, item MediaItem, profile 
 		Facts: facts, Capabilities: capabilities, Policy: playbackplan.OwnerPolicy(settings.PlanningPolicy), Selection: selection,
 		DisableToneMapping: !settings.HDRToneMapping, ToneMapAlgorithm: safeToneMappingAlgorithm(settings.HDRToneMappingAlgorithm),
 		Constraints: playbackplan.Constraints{
-			MaxVideoBitrate: int64(max(0, policy.MaxVideoBitrateMbps)) * 1_000_000,
-			MaxAudioBitrate: int64(max(0, policy.MaxAudioBitrateKbps)) * 1_000,
+			MaxVideoBitrate: resolvedMaxVideoBitrateBps(policy),
+			MaxAudioBitrate: resolvedMaxAudioBitrateBps(policy),
 			MaxHeight:       max(0, policy.MaxVideoHeight),
 		},
 	}
@@ -114,25 +114,24 @@ func (s *Server) planMediaPlayback(ctx context.Context, item MediaItem, profile 
 	if playbackPlanRequiresSoftwareToneMapping(plan) && !settings.HDRToneMappingFilters {
 		return PlaybackDecision{}, errors.New("playback is unsupported because verified FFmpeg zscale and tonemap filters are unavailable")
 	}
-	decision, err := playbackDecisionFromPlan(plan, hardwarePlan, factsDigest, item, selectedAudioID, selectedSubtitleID, subtitleMode, policy, settings.X264Preset)
+	decision, err := playbackDecisionFromPlan(plan, hardwarePlan, factsDigest, item, selectedAudioID, selectedSubtitleID, policy, settings.X264Preset)
 	if err != nil {
 		return PlaybackDecision{}, err
 	}
 	if optimizedArtifact != nil {
-		if decision.execution == nil || plan.Mode != playbackplan.DirectPlay {
+		if decision.executionPlan == nil || plan.Mode != playbackplan.DirectPlay {
 			return PlaybackDecision{}, errPlaybackPlanBinding
 		}
-		decision.execution.OptimizedArtifactID = optimizedArtifact.ID
-		decision.execution.OptimizedPresetID = optimizedArtifact.PresetID
-		if err := decision.execution.seal(); err != nil {
+		execution := *decision.executionPlan
+		execution.OptimizedArtifactID = optimizedArtifact.ID
+		execution.OptimizedPresetID = optimizedArtifact.PresetID
+		if err := execution.seal(); err != nil {
 			return PlaybackDecision{}, err
 		}
-		decision.Mode = "optimized_version"
-		decision.DeliveryProfile = optimizedArtifact.PresetID
-		decision.SourceKind = "optimized"
-		decision.Reason = "A current optimized artifact is the highest-fidelity direct-play tuple supported by this client."
-		decision.PlanDigest = decision.execution.Digest
-		decision.IsProxied = true
+		decision, err = playbackDecisionFromExecutionPlan(execution, item)
+		if err != nil {
+			return PlaybackDecision{}, err
+		}
 	}
 	return decision, nil
 }
@@ -240,82 +239,77 @@ func playbackPlanRequiresSoftwareToneMapping(plan playbackplan.Plan) bool {
 	return false
 }
 
-func playbackDecisionFromPlan(plan playbackplan.Plan, hardwarePlan *playbackhw.Plan, factsDigest string, item MediaItem, selectedAudioID, selectedSubtitleID, subtitleMode string, policy ResolvedPlaybackPolicy, x264Preset string) (PlaybackDecision, error) {
-	encoded, err := json.Marshal(plan)
+func playbackDecisionFromPlan(plan playbackplan.Plan, hardwarePlan *playbackhw.Plan, factsDigest string, item MediaItem, selectedAudioID, selectedSubtitleID string, policy ResolvedPlaybackPolicy, x264Preset string) (PlaybackDecision, error) {
+	if plan.Mode == playbackplan.Unsupported {
+		reasons := make([]string, 0, len(plan.Reasons))
+		for _, reason := range plan.Reasons {
+			reasons = append(reasons, string(reason))
+		}
+		return PlaybackDecision{
+			Mode: "unavailable", Reason: playbackPlanReason(plan), ReasonCodes: reasons,
+			SourceKind: playbackSourceKind(item.SourceURL), plannerRejections: plan.Rejections,
+		}, nil
+	}
+	quality := normalizeTranscodeQuality(policy.DeliveryProfile)
+	if _, explicit := explicitPlaybackDeliveryProfile(policy, item.Type); explicit {
+		quality = transcodeQualityForResolvedPolicy(item.Type, policy)
+	}
+	if selectedAudioID == "" {
+		selectedAudioID = playbackStreamIDForPlan(item, plan, "audio")
+	}
+	if plan.Subtitle.Action != playbackplan.ExternalText && plan.Subtitle.Action != playbackplan.BurnIn {
+		selectedSubtitleID = ""
+	}
+	execution := playbackExecutionPlan{
+		SchemaVersion:    playbackExecutionPlanSchemaVersion,
+		MediaFactsDigest: factsDigest, Quality: quality,
+		AudioStreamID: normalizeSelectedAudioStreamID(selectedAudioID), SubtitleStreamID: strings.TrimSpace(selectedSubtitleID),
+		Plan: plan.Clone(), HardwarePlan: hardwarePlan,
+	}
+	if execution.requiresX264Preset() {
+		execution.X264Preset = safeX264Preset(x264Preset)
+	}
+	if err := execution.seal(); err != nil {
+		return PlaybackDecision{}, err
+	}
+	decision, err := playbackDecisionFromExecutionPlan(execution, item)
 	if err != nil {
 		return PlaybackDecision{}, err
 	}
-	quality := "original"
-	if plan.Mode == playbackplan.VideoTranscode {
-		quality = normalizeTranscodeQuality(policy.DeliveryProfile)
-	}
-	audioMode := ""
-	videoAction, audioAction := "", ""
-	for _, stream := range plan.Streams {
-		switch stream.Kind {
-		case "video":
-			videoAction = string(stream.Action)
-		case "audio":
-			audioAction = string(stream.Action)
-			if stream.Action == playbackplan.Convert {
-				audioMode = "transcode"
-			}
-		}
-	}
-	binding := &playbackExecutionBinding{
-		SchemaVersion: 1, SourceRevision: plan.SourceRevision, MediaFactsDigest: factsDigest,
-		CapabilityEvidenceID: plan.CapabilityEvidenceID, Generation: int(plan.Timeline.Generation),
-		Mode: string(plan.Mode), Protocol: plan.Protocol, Container: plan.Container, Quality: quality,
-		AudioMode: audioMode, AudioStreamID: normalizeSelectedAudioStreamID(selectedAudioID),
-		SubtitleMode: strings.ToLower(strings.TrimSpace(subtitleMode)), SubtitleStreamID: strings.TrimSpace(selectedSubtitleID),
-		DirectStream: plan.Mode == playbackplan.Remux || plan.Mode == playbackplan.DirectStream, Plan: encoded,
-		X264Preset:   safeX264Preset(x264Preset),
-		HardwarePlan: hardwarePlan,
-	}
-	if binding.SubtitleMode != "text" && binding.SubtitleMode != "burn_in" {
-		binding.SubtitleMode, binding.SubtitleStreamID = "off", ""
-	}
-	if err := binding.seal(); err != nil {
-		return PlaybackDecision{}, err
-	}
-	reasons := make([]string, 0, len(plan.Reasons))
-	for _, reason := range plan.Reasons {
-		reasons = append(reasons, string(reason))
-	}
-	decision := PlaybackDecision{
-		Mode: string(plan.Mode), Reason: playbackPlanReason(plan), ReasonCodes: reasons,
-		SourceKind: playbackSourceKind(item.SourceURL), Protocol: plan.Protocol, Container: plan.Container,
-		AudioCodec: plan.Audio.Codec, DeliveryProfile: quality, PlanSchemaVersion: binding.SchemaVersion,
-		PlanDigest: binding.Digest, SourceRevision: binding.SourceRevision,
-		CapabilityEvidenceID: binding.CapabilityEvidenceID, Generation: binding.Generation,
-		VideoAction: videoAction, AudioAction: audioAction, SubtitleAction: string(plan.Subtitle.Action), execution: binding,
-		plannerRejections: plan.Rejections,
-	}
-	if plan.Hardware.Verified {
-		decision.HardwareBackend = string(plan.Hardware.Backend)
-	}
-	for _, action := range plan.Streams {
-		if action.Kind == "video" {
-			decision.VideoCodec = action.OutputCodec
-			break
-		}
-	}
-	switch plan.Mode {
-	case playbackplan.DirectPlay:
-		decision.Mode = "direct_play"
-	case playbackplan.Remux:
-		decision.Mode, decision.RequiresRemux = "direct_stream", true
-	case playbackplan.DirectStream:
-		decision.Mode, decision.RequiresRemux, decision.RequiresTranscode, decision.AudioTranscode = "direct_stream", true, true, true
-	case playbackplan.VideoTranscode:
-		decision.Mode, decision.RequiresTranscode, decision.VideoTranscode = "transcode_required", true, true
-		decision.AudioTranscode = audioMode == "transcode"
-	case playbackplan.Unsupported:
-		decision.Mode = "unavailable"
-	}
-	decision.IsProxied = decision.Mode != "direct_play" || strings.EqualFold(decision.SourceKind, "remote")
 	decision.IsServerCached = false
+	decision.plannerRejections = plan.Rejections
 	return decision, nil
+}
+
+func playbackStreamIDForPlan(item MediaItem, plan playbackplan.Plan, kind string) string {
+	index := -1
+	for _, action := range plan.Streams {
+		if action.Kind != kind {
+			continue
+		}
+		if index >= 0 && index != action.Index {
+			return ""
+		}
+		index = action.Index
+	}
+	if index < 0 {
+		return ""
+	}
+	selectedVersionID := strings.TrimSpace(selectedPlaybackVersionID(item))
+	selectedID := ""
+	for _, stream := range item.Streams {
+		if stream.Kind != kind || stream.Index != index {
+			continue
+		}
+		if selectedVersionID != "" && strings.TrimSpace(stream.FileID) != "" && stream.FileID != selectedVersionID {
+			continue
+		}
+		if selectedID != "" && selectedID != stream.ID {
+			return ""
+		}
+		selectedID = stream.ID
+	}
+	return strings.TrimSpace(selectedID)
 }
 
 func playbackPlanReason(plan playbackplan.Plan) string {

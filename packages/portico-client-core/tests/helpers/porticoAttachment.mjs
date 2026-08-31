@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 
 const serverIdentity = Buffer.alloc(32, 0x5a);
 
-export const testServerPublicKey = serverIdentity.toString("base64");
+export const testServerPublicKey = serverIdentity.toString("base64").replace(/=+$/u, "");
 export const testServerPublicKeyURL = serverIdentity.toString("base64url");
 export const testServerPublicKeyFingerprint = `sha256:${createHash("sha256").update(serverIdentity).digest("base64url")}`;
 

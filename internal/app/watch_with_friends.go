@@ -279,7 +279,7 @@ func (s *Server) handleWatchWithFriendsGroups(w http.ResponseWriter, r *http.Req
 			return
 		}
 		if r.Method == http.MethodDelete && len(parts) == 3 {
-			mediaID, err := url.PathUnescape(parts[2])
+			entryID, err := url.PathUnescape(parts[2])
 			if err != nil {
 				writeError(w, http.StatusBadRequest, "watch_with_friends_queue_failed", "Queue media item is invalid.")
 				return
@@ -292,7 +292,7 @@ func (s *Server) handleWatchWithFriendsGroups(w http.ResponseWriter, r *http.Req
 			if !ok {
 				return
 			}
-			group, err := s.removeWatchWithFriendsQueueItemExpectedContext(r.Context(), user, groupID, mediaID, expectedRevision, idempotencyKey)
+			group, err := s.removeWatchWithFriendsQueueItemExpectedContext(r.Context(), user, groupID, entryID, expectedRevision, idempotencyKey)
 			if err != nil {
 				writeWatchWithFriendsMutationError(w, err, "watch_with_friends_queue_failed")
 				return
@@ -301,7 +301,7 @@ func (s *Server) handleWatchWithFriendsGroups(w http.ResponseWriter, r *http.Req
 			writeJSON(w, http.StatusOK, group)
 			return
 		}
-		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "Use POST /queue, PATCH /queue, or DELETE /queue/{mediaId}.")
+		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "Use POST /queue, PATCH /queue, or DELETE /queue/{entryId}.")
 	default:
 		writeError(w, http.StatusNotFound, "not_found", "Watch With Friends route was not found.")
 	}
@@ -498,6 +498,7 @@ func (s *Server) createWatchWithFriendsGroupContext(ctx context.Context, user Us
 		name = name[:80]
 	}
 	groupID := randomID("spg")
+	currentEntryID := randomID("wfentry")
 	command := PlaybackCommand{ID: randomID("pcmd"), Action: "pause", MediaID: item.ID, PositionSeconds: max(0, item.State.ProgressSeconds), IssuedByUserID: user.ID, IssuedByProfileID: viewerProfileID(user), IssuedAt: now}
 	commandJSON, _ := json.Marshal(command)
 	err = s.withUserTxTagged(ctx, []string{}, func(tx *sql.Tx) error {
@@ -505,9 +506,9 @@ func (s *Server) createWatchWithFriendsGroupContext(ctx context.Context, user Us
 			return errWatchWithFriendsPermissionRequired
 		}
 		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO watch_with_friends_groups (id, owner_user_id, owner_profile_id, name, media_id, media_title, state, position_seconds, position_updated_at, playback_rate, revision, playback_revision, command_json, created_at, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?, 'paused', ?, ?, 1, 1, 1, ?, ?, ?)`,
-			groupID, accountIDForUser(user), viewerProfileID(user), name, item.ID, item.Title, command.PositionSeconds, now, string(commandJSON), now, now); err != nil {
+			INSERT INTO watch_with_friends_groups (id, owner_user_id, owner_profile_id, name, media_id, current_entry_id, media_title, state, position_seconds, position_updated_at, playback_rate, revision, playback_revision, command_json, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, 'paused', ?, ?, 1, 1, 1, ?, ?, ?)`,
+			groupID, accountIDForUser(user), viewerProfileID(user), name, item.ID, currentEntryID, item.Title, command.PositionSeconds, now, string(commandJSON), now, now); err != nil {
 			return err
 		}
 		if _, err := tx.ExecContext(ctx, `
@@ -516,8 +517,8 @@ func (s *Server) createWatchWithFriendsGroupContext(ctx context.Context, user Us
 			return err
 		}
 		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO watch_with_friends_queue (group_id, media_id, media_title, sort_order, added_by_user_id, added_by_profile_id, added_at)
-			VALUES (?, ?, ?, 0, ?, ?, ?)`, groupID, item.ID, item.Title, accountIDForUser(user), viewerProfileID(user), now); err != nil {
+			INSERT INTO watch_with_friends_queue (group_id, entry_id, media_id, media_title, sort_order, added_by_user_id, added_by_profile_id, added_at)
+			VALUES (?, ?, ?, ?, 0, ?, ?, ?)`, groupID, currentEntryID, item.ID, item.Title, accountIDForUser(user), viewerProfileID(user), now); err != nil {
 			return err
 		}
 		return nil
@@ -538,7 +539,10 @@ func (s *Server) joinWatchWithFriendsGroupContext(ctx context.Context, user User
 		return WatchWithFriendsGroup{}, err
 	}
 	fullGroup, err := s.watchWithFriendsGroupContext(ctx, groupID)
-	if err != nil || !s.watchWithFriendsQueueVisibleToProfileContext(ctx, viewerProfileID(user), fullGroup.Queue) {
+	if err != nil {
+		return WatchWithFriendsGroup{}, sql.ErrNoRows
+	}
+	if _, accessErr := s.getMediaAccessSummaryContext(ctx, viewerProfileID(user), fullGroup.MediaID); accessErr != nil {
 		return WatchWithFriendsGroup{}, sql.ErrNoRows
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
@@ -646,16 +650,38 @@ func (s *Server) updateWatchWithFriendsStateContext(ctx context.Context, user Us
 		return WatchWithFriendsGroup{}, errors.New("Watch With Friends action is not supported.")
 	}
 	mediaID := group.MediaID
+	currentEntryID := group.CurrentEntryID
 	mediaTitle := group.MediaTitle
 	commandAction := action
+	createOccurrence := false
 	if action == "load" || action == "next" || action == "previous" {
-		mediaID = strings.TrimSpace(req.MediaID)
 		if action == "next" || action == "previous" {
+			if strings.TrimSpace(req.EntryID) != "" || strings.TrimSpace(req.MediaID) != "" {
+				return WatchWithFriendsGroup{}, errors.New("Adjacent playback is selected from the authoritative group queue.")
+			}
 			item, err := watchWithFriendsAdjacentQueueItem(group, action)
 			if err != nil {
 				return WatchWithFriendsGroup{}, err
 			}
 			mediaID = item.MediaID
+			currentEntryID = item.EntryID
+		} else {
+			entryID := strings.TrimSpace(req.EntryID)
+			mediaID = strings.TrimSpace(req.MediaID)
+			if (entryID == "") == (mediaID == "") {
+				return WatchWithFriendsGroup{}, errors.New("Load requires exactly one of entryId or mediaId.")
+			}
+			if entryID != "" {
+				index := watchWithFriendsQueueEntryIndex(group.Queue, entryID)
+				if index < 0 || group.Queue[index].Unavailable {
+					return WatchWithFriendsGroup{}, errors.New("Load queue occurrence is not accessible.")
+				}
+				mediaID = group.Queue[index].MediaID
+				currentEntryID = group.Queue[index].EntryID
+			} else {
+				currentEntryID = randomID("wfentry")
+				createOccurrence = true
+			}
 		}
 		if mediaID == "" {
 			return WatchWithFriendsGroup{}, errors.New("Load actions require a media item.")
@@ -703,26 +729,25 @@ func (s *Server) updateWatchWithFriendsStateContext(ctx context.Context, user Us
 		}
 		result, err := tx.ExecContext(ctx, `
 			UPDATE watch_with_friends_groups
-			SET media_id = ?, media_title = ?, state = ?, position_seconds = ?, position_updated_at = ?, playback_rate = ?,
+			SET media_id = ?, current_entry_id = ?, media_title = ?, state = ?, position_seconds = ?, position_updated_at = ?, playback_rate = ?,
 				command_json = ?, updated_at = ?, revision = revision + 1, playback_revision = playback_revision + 1,
 				reconnect_generation = reconnect_generation + CASE WHEN ? <> '' THEN 1 ELSE 0 END,
 				last_idempotency_key = ?, ended_at = CASE WHEN ? <> '' THEN ? ELSE ended_at END
 			WHERE id = ? AND ended_at = '' AND revision = ?`,
-			mediaID, mediaTitle, state, position, now, playbackRate, string(commandJSON), now, endedAt, idempotencyKey, endedAt, endedAt, groupID, group.Revision)
+			mediaID, currentEntryID, mediaTitle, state, position, now, playbackRate, string(commandJSON), now, endedAt, idempotencyKey, endedAt, endedAt, groupID, group.Revision)
 		if err != nil {
 			return err
 		}
 		if count, _ := result.RowsAffected(); count != 1 {
 			return errWatchWithFriendsRevisionConflict
 		}
-		if action == "load" {
+		if createOccurrence {
 			var nextOrder int
 			_ = tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(sort_order), -1) + 1 FROM watch_with_friends_queue WHERE group_id = ?`, groupID).Scan(&nextOrder)
 			if _, err := tx.ExecContext(ctx, `
-				INSERT INTO watch_with_friends_queue (group_id, media_id, media_title, sort_order, added_by_user_id, added_by_profile_id, added_at)
-				VALUES (?, ?, ?, ?, ?, ?, ?)
-				ON CONFLICT(group_id, media_id) DO UPDATE SET media_title = excluded.media_title`,
-				groupID, mediaID, mediaTitle, nextOrder, accountIDForUser(user), viewerProfileID(user), now); err != nil {
+				INSERT INTO watch_with_friends_queue (group_id, entry_id, media_id, media_title, sort_order, added_by_user_id, added_by_profile_id, added_at)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+				groupID, currentEntryID, mediaID, mediaTitle, nextOrder, accountIDForUser(user), viewerProfileID(user), now); err != nil {
 				return err
 			}
 		}
@@ -744,6 +769,7 @@ func watchWithFriendsStateRequestFingerprint(req WatchWithFriendsStateRequest) s
 	payload := struct {
 		Operation        string  `json:"operation"`
 		Action           string  `json:"action"`
+		EntryID          string  `json:"entryId"`
 		MediaID          string  `json:"mediaId"`
 		PositionSeconds  int     `json:"positionSeconds"`
 		PlaybackRate     float64 `json:"playbackRate"`
@@ -751,6 +777,7 @@ func watchWithFriendsStateRequestFingerprint(req WatchWithFriendsStateRequest) s
 	}{
 		Operation:        "state",
 		Action:           strings.ToLower(strings.TrimSpace(req.Action)),
+		EntryID:          strings.TrimSpace(req.EntryID),
 		MediaID:          strings.TrimSpace(req.MediaID),
 		PositionSeconds:  max(0, req.PositionSeconds),
 		PlaybackRate:     req.PlaybackRate,
@@ -961,6 +988,7 @@ func (s *Server) addWatchWithFriendsQueueItemExpectedContext(ctx context.Context
 	if !s.watchWithFriendsMediaVisibleToAllMembersContext(ctx, groupID, mediaID) {
 		return WatchWithFriendsGroup{}, errors.New("Everyone in this Watch With Friends group must be able to access a queued item.")
 	}
+	entryID := randomID("wfentry")
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	err = s.withUserTxTagged(ctx, []string{}, func(tx *sql.Tx) error {
 		if !watchWithFriendsPermissionAllowedTx(tx, user) {
@@ -970,11 +998,7 @@ func (s *Server) addWatchWithFriendsQueueItemExpectedContext(ctx context.Context
 		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM watch_with_friends_queue WHERE group_id = ?`, groupID).Scan(&queueCount); err != nil {
 			return err
 		}
-		var alreadyQueued int
-		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM watch_with_friends_queue WHERE group_id = ? AND media_id = ?`, groupID, mediaID).Scan(&alreadyQueued); err != nil {
-			return err
-		}
-		if queueCount >= maxPlaybackQueueItems && alreadyQueued == 0 {
+		if queueCount >= maxPlaybackQueueItems {
 			return fmt.Errorf("Watch With Friends queues are limited to %d media items.", maxPlaybackQueueItems)
 		}
 		var nextOrder int
@@ -982,10 +1006,9 @@ func (s *Server) addWatchWithFriendsQueueItemExpectedContext(ctx context.Context
 			return err
 		}
 		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO watch_with_friends_queue (group_id, media_id, media_title, sort_order, added_by_user_id, added_by_profile_id, added_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?)
-			ON CONFLICT(group_id, media_id) DO UPDATE SET media_title = excluded.media_title`,
-			groupID, item.ID, item.Title, nextOrder, accountIDForUser(user), viewerProfileID(user), now); err != nil {
+			INSERT INTO watch_with_friends_queue (group_id, entry_id, media_id, media_title, sort_order, added_by_user_id, added_by_profile_id, added_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+			groupID, entryID, item.ID, item.Title, nextOrder, accountIDForUser(user), viewerProfileID(user), now); err != nil {
 			return err
 		}
 		result, err := tx.ExecContext(ctx, `UPDATE watch_with_friends_groups SET last_idempotency_key = ?, updated_at = ?, revision = revision + 1 WHERE id = ? AND ended_at = '' AND revision = ?`, idempotencyKey, now, groupID, group.Revision)
@@ -1006,27 +1029,27 @@ func (s *Server) addWatchWithFriendsQueueItemExpectedContext(ctx context.Context
 	return s.watchWithFriendsGroupForUserContext(ctx, user, groupID, true)
 }
 
-func (s *Server) removeWatchWithFriendsQueueItem(user User, groupID string, mediaID string) (WatchWithFriendsGroup, error) {
-	return s.removeWatchWithFriendsQueueItemContext(context.Background(), user, groupID, mediaID)
+func (s *Server) removeWatchWithFriendsQueueItem(user User, groupID string, entryID string) (WatchWithFriendsGroup, error) {
+	return s.removeWatchWithFriendsQueueItemContext(context.Background(), user, groupID, entryID)
 }
 
-func (s *Server) removeWatchWithFriendsQueueItemContext(ctx context.Context, user User, groupID string, mediaID string) (WatchWithFriendsGroup, error) {
-	return s.removeWatchWithFriendsQueueItemExpectedContext(ctx, user, groupID, mediaID, nil, "")
+func (s *Server) removeWatchWithFriendsQueueItemContext(ctx context.Context, user User, groupID string, entryID string) (WatchWithFriendsGroup, error) {
+	return s.removeWatchWithFriendsQueueItemExpectedContext(ctx, user, groupID, entryID, nil, "")
 }
 
-func (s *Server) removeWatchWithFriendsQueueItemExpectedContext(ctx context.Context, user User, groupID string, mediaID string, expectedRevision *int64, rawIdempotencyKey string) (WatchWithFriendsGroup, error) {
+func (s *Server) removeWatchWithFriendsQueueItemExpectedContext(ctx context.Context, user User, groupID string, entryID string, expectedRevision *int64, rawIdempotencyKey string) (WatchWithFriendsGroup, error) {
 	idempotencyKey, err := watchWithFriendsRequiredIdempotencyKey(rawIdempotencyKey)
 	if err != nil || expectedRevision == nil || *expectedRevision < 0 {
 		return WatchWithFriendsGroup{}, errWatchWithFriendsInvalidRequest
 	}
-	mediaID = strings.TrimSpace(mediaID)
-	if mediaID == "" {
+	entryID = strings.TrimSpace(entryID)
+	if entryID == "" {
 		return WatchWithFriendsGroup{}, errWatchWithFriendsInvalidRequest
 	}
 	fingerprint := watchWithFriendsMutationRequestFingerprint("queue_remove", struct {
-		MediaID          string `json:"mediaId"`
+		EntryID          string `json:"entryId"`
 		ExpectedRevision int64  `json:"expectedRevision"`
-	}{mediaID, *expectedRevision})
+	}{entryID, *expectedRevision})
 	if receiptGroup, found, receiptErr := s.watchWithFriendsMutationReceiptContext(ctx, user, groupID, idempotencyKey, fingerprint); found || receiptErr != nil {
 		return receiptGroup, receiptErr
 	}
@@ -1037,7 +1060,7 @@ func (s *Server) removeWatchWithFriendsQueueItemExpectedContext(ctx context.Cont
 	if *expectedRevision != group.Revision {
 		return WatchWithFriendsGroup{}, errWatchWithFriendsRevisionConflict
 	}
-	if mediaID == group.MediaID {
+	if entryID == group.CurrentEntryID {
 		return WatchWithFriendsGroup{}, errors.New("The currently loaded item cannot be removed from the Watch With Friends queue.")
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
@@ -1045,7 +1068,7 @@ func (s *Server) removeWatchWithFriendsQueueItemExpectedContext(ctx context.Cont
 		if !watchWithFriendsPermissionAllowedTx(tx, user) {
 			return errWatchWithFriendsPermissionRequired
 		}
-		result, err := tx.ExecContext(ctx, `DELETE FROM watch_with_friends_queue WHERE group_id = ? AND media_id = ?`, groupID, mediaID)
+		result, err := tx.ExecContext(ctx, `DELETE FROM watch_with_friends_queue WHERE group_id = ? AND entry_id = ?`, groupID, entryID)
 		if err != nil {
 			return err
 		}
@@ -1079,27 +1102,22 @@ func (s *Server) reorderWatchWithFriendsQueueContext(ctx context.Context, user U
 }
 
 func (s *Server) reorderWatchWithFriendsQueueExpectedContext(ctx context.Context, user User, groupID string, req WatchWithFriendsQueueOrderRequest, expectedRevision *int64) (WatchWithFriendsGroup, error) {
-	if len(req.MediaIDs) > maxPlaybackQueueItems {
-		return WatchWithFriendsGroup{}, fmt.Errorf("Watch With Friends queue reorder requests are limited to %d media items.", maxPlaybackQueueItems)
-	}
 	idempotencyKey, err := watchWithFriendsRequiredIdempotencyKey(req.IdempotencyKey)
 	if err != nil || expectedRevision == nil || *expectedRevision < 0 {
 		return WatchWithFriendsGroup{}, errWatchWithFriendsInvalidRequest
 	}
-	seen := make(map[string]bool, len(req.MediaIDs))
-	ordered := make([]string, 0, len(req.MediaIDs))
-	for _, rawID := range req.MediaIDs {
-		mediaID := strings.TrimSpace(rawID)
-		if mediaID == "" || seen[mediaID] {
-			return WatchWithFriendsGroup{}, errors.New("Queue order contains an invalid media item.")
-		}
-		seen[mediaID] = true
-		ordered = append(ordered, mediaID)
+	entryID := strings.TrimSpace(req.EntryID)
+	destinationEntryID := strings.TrimSpace(req.DestinationEntryID)
+	placement := strings.ToLower(strings.TrimSpace(req.Placement))
+	if entryID == "" || destinationEntryID == "" || entryID == destinationEntryID || (placement != "before" && placement != "after") {
+		return WatchWithFriendsGroup{}, errors.New("Queue reorder requires distinct entryId and destinationEntryId values plus before or after placement.")
 	}
 	fingerprint := watchWithFriendsMutationRequestFingerprint("queue_reorder", struct {
-		MediaIDs         []string `json:"mediaIds"`
-		ExpectedRevision int64    `json:"expectedRevision"`
-	}{ordered, *expectedRevision})
+		EntryID            string `json:"entryId"`
+		DestinationEntryID string `json:"destinationEntryId"`
+		Placement          string `json:"placement"`
+		ExpectedRevision   int64  `json:"expectedRevision"`
+	}{entryID, destinationEntryID, placement, *expectedRevision})
 	if receiptGroup, found, receiptErr := s.watchWithFriendsMutationReceiptContext(ctx, user, groupID, idempotencyKey, fingerprint); found || receiptErr != nil {
 		return receiptGroup, receiptErr
 	}
@@ -1110,25 +1128,30 @@ func (s *Server) reorderWatchWithFriendsQueueExpectedContext(ctx context.Context
 	if *expectedRevision != group.Revision {
 		return WatchWithFriendsGroup{}, errWatchWithFriendsRevisionConflict
 	}
-	if len(ordered) != len(group.Queue) {
-		return WatchWithFriendsGroup{}, errors.New("Queue order must include every queued media item.")
+	from := watchWithFriendsQueueEntryIndex(group.Queue, entryID)
+	if from < 0 {
+		return WatchWithFriendsGroup{}, errors.New("entryId is not in the current queue.")
 	}
-	expected := make(map[string]bool, len(group.Queue))
-	for _, item := range group.Queue {
-		expected[item.MediaID] = true
+	ordered := append([]WatchWithFriendsQueueItem(nil), group.Queue...)
+	moved := ordered[from]
+	ordered = append(ordered[:from], ordered[from+1:]...)
+	destination := watchWithFriendsQueueEntryIndex(ordered, destinationEntryID)
+	if destination < 0 {
+		return WatchWithFriendsGroup{}, errors.New("destinationEntryId is not in the current queue.")
 	}
-	for _, mediaID := range ordered {
-		if !expected[mediaID] {
-			return WatchWithFriendsGroup{}, errors.New("Queue order contains an invalid media item.")
-		}
+	if placement == "after" {
+		destination++
 	}
+	ordered = append(ordered, WatchWithFriendsQueueItem{})
+	copy(ordered[destination+1:], ordered[destination:])
+	ordered[destination] = moved
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	err = s.withUserTxTagged(ctx, []string{}, func(tx *sql.Tx) error {
 		if !watchWithFriendsPermissionAllowedTx(tx, user) {
 			return errWatchWithFriendsPermissionRequired
 		}
-		for index, mediaID := range ordered {
-			if _, err := tx.ExecContext(ctx, `UPDATE watch_with_friends_queue SET sort_order = ? WHERE group_id = ? AND media_id = ?`, index, groupID, mediaID); err != nil {
+		for index, item := range ordered {
+			if _, err := tx.ExecContext(ctx, `UPDATE watch_with_friends_queue SET sort_order = ? WHERE group_id = ? AND entry_id = ?`, index, groupID, item.EntryID); err != nil {
 				return err
 			}
 		}
@@ -1313,9 +1336,12 @@ func (s *Server) decorateWatchWithFriendsGroupForUserContext(ctx context.Context
 	}
 	visibleQueue := make([]WatchWithFriendsQueueItem, 0, len(group.Queue))
 	for _, item := range group.Queue {
-		if _, err := s.getMediaAccessSummaryContext(ctx, viewerProfileID(user), item.MediaID); err == nil {
-			visibleQueue = append(visibleQueue, item)
+		if _, err := s.getMediaAccessSummaryContext(ctx, viewerProfileID(user), item.MediaID); err != nil {
+			item.MediaID = ""
+			item.MediaTitle = "Unavailable"
+			item.Unavailable = true
 		}
+		visibleQueue = append(visibleQueue, item)
 	}
 	group.Queue = visibleQueue
 	return group
@@ -1355,18 +1381,6 @@ func watchWithFriendsPermissionAllowedTx(tx *sql.Tx, user User) bool {
 	return err == nil && principal.Permissions["watchWithFriends"]
 }
 
-func (s *Server) watchWithFriendsQueueVisibleToProfileContext(ctx context.Context, profileID string, queue []WatchWithFriendsQueueItem) bool {
-	if !s.watchWithFriendsProfilePermissionAllowedContext(ctx, profileID) {
-		return false
-	}
-	for _, item := range queue {
-		if _, err := s.getMediaAccessSummaryContext(ctx, profileID, item.MediaID); err != nil {
-			return false
-		}
-	}
-	return true
-}
-
 func (s *Server) reconcileWatchWithFriendsGroupContext(ctx context.Context, group WatchWithFriendsGroup) (changed bool, ended bool, err error) {
 	cutoff := time.Now().UTC().Add(-watchWithFriendsMemberStaleAfter)
 	invalidMembers := make([]WatchWithFriendsMember, 0)
@@ -1375,7 +1389,8 @@ func (s *Server) reconcileWatchWithFriendsGroupContext(ctx context.Context, grou
 	for _, member := range group.Members {
 		lastSeen, parseErr := time.Parse(time.RFC3339Nano, member.LastSeenAt)
 		stale := parseErr != nil || lastSeen.Before(cutoff)
-		valid := !stale && s.watchWithFriendsQueueVisibleToProfileContext(ctx, member.ProfileID, group.Queue)
+		_, currentAccessErr := s.getMediaAccessSummaryContext(ctx, member.ProfileID, group.MediaID)
+		valid := !stale && s.watchWithFriendsProfilePermissionAllowedContext(ctx, member.ProfileID) && currentAccessErr == nil
 		if member.ProfileID == group.OwnerProfileID {
 			hostValid = valid
 			hostLastSeenAt = member.LastSeenAt
@@ -1448,13 +1463,13 @@ func (s *Server) watchWithFriendsGroupSnapshotContext(ctx context.Context, group
 		where = "g.id = ?"
 	}
 	err := s.queryUserRow(ctx, `
-		SELECT g.id, g.name, g.owner_user_id, g.owner_profile_id, p.display_name, g.media_id, g.media_title, g.state, g.position_seconds,
+		SELECT g.id, g.name, g.owner_user_id, g.owner_profile_id, p.display_name, g.media_id, g.current_entry_id, g.media_title, g.state, g.position_seconds,
 			g.position_updated_at, g.playback_rate, g.revision, g.playback_revision, g.reconnect_generation, g.last_idempotency_key,
 			g.shuffle_enabled, g.repeat_mode, g.command_json, g.created_at, g.updated_at
 		FROM watch_with_friends_groups g
 		JOIN profiles p ON p.id = g.owner_profile_id
 		WHERE `+where, strings.TrimSpace(groupID)).
-		Scan(&group.ID, &group.Name, &group.OwnerUserID, &group.OwnerProfileID, &group.OwnerName, &group.MediaID, &group.MediaTitle, &group.State, &group.PositionSeconds,
+		Scan(&group.ID, &group.Name, &group.OwnerUserID, &group.OwnerProfileID, &group.OwnerName, &group.MediaID, &group.CurrentEntryID, &group.MediaTitle, &group.State, &group.PositionSeconds,
 			&group.PositionUpdatedAt, &group.PlaybackRate, &group.Revision, &group.PlaybackRevision, &group.ReconnectGeneration, &group.LastIdempotencyKey,
 			&shuffleEnabled, &group.RepeatMode, &commandJSON, &group.CreatedAt, &group.UpdatedAt)
 	if err != nil {
@@ -1482,10 +1497,10 @@ func (s *Server) watchWithFriendsQueue(groupID string) ([]WatchWithFriendsQueueI
 
 func (s *Server) watchWithFriendsQueueContext(ctx context.Context, groupID string) ([]WatchWithFriendsQueueItem, error) {
 	rows, err := s.queryUserRead(ctx, `
-		SELECT media_id, media_title, sort_order, added_by_user_id, added_by_profile_id, added_at
+		SELECT entry_id, media_id, media_title, sort_order, added_by_user_id, added_by_profile_id, added_at
 		FROM watch_with_friends_queue
 		WHERE group_id = ?
-		ORDER BY sort_order ASC, added_at ASC
+		ORDER BY sort_order ASC, entry_id ASC
 		LIMIT ?`, groupID, maxPlaybackQueueItems)
 	if err != nil {
 		return nil, err
@@ -1494,7 +1509,7 @@ func (s *Server) watchWithFriendsQueueContext(ctx context.Context, groupID strin
 	queue := []WatchWithFriendsQueueItem{}
 	for rows.Next() {
 		var item WatchWithFriendsQueueItem
-		if err := rows.Scan(&item.MediaID, &item.MediaTitle, &item.SortOrder, &item.AddedByUserID, &item.AddedByProfileID, &item.AddedAt); err != nil {
+		if err := rows.Scan(&item.EntryID, &item.MediaID, &item.MediaTitle, &item.SortOrder, &item.AddedByUserID, &item.AddedByProfileID, &item.AddedAt); err != nil {
 			return nil, err
 		}
 		queue = append(queue, item)
@@ -1508,7 +1523,7 @@ func watchWithFriendsAdjacentQueueItem(group WatchWithFriendsGroup, direction st
 	}
 	currentIndex := -1
 	for index, item := range group.Queue {
-		if item.MediaID == group.MediaID {
+		if item.EntryID == group.CurrentEntryID {
 			currentIndex = index
 			break
 		}
@@ -1544,6 +1559,16 @@ func watchWithFriendsAdjacentQueueItem(group WatchWithFriendsGroup, direction st
 		return WatchWithFriendsQueueItem{}, errors.New("No adjacent Watch With Friends queue item is available.")
 	}
 	return group.Queue[nextIndex], nil
+}
+
+func watchWithFriendsQueueEntryIndex(queue []WatchWithFriendsQueueItem, rawEntryID string) int {
+	entryID := strings.TrimSpace(rawEntryID)
+	for index, item := range queue {
+		if item.EntryID == entryID {
+			return index
+		}
+	}
+	return -1
 }
 
 func boolToInt(value bool) int {

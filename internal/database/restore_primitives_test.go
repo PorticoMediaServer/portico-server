@@ -281,7 +281,8 @@ func TestRestoreExecutorLockDoesNotReexecuteTerminalOperation(t *testing.T) {
 	}
 	operation := RestoreOperation{
 		Version: RestoreOperationVersion, OperationID: "restore-terminal-lock-test", BackupName: "backup.db",
-		ActivePath: cfg.DatabasePath, StagedPath: CanonicalRestoreStagedPath(cfg, "restore-terminal-lock-test", false),
+		AuthorizationCommitted: true,
+		ActivePath:             cfg.DatabasePath, StagedPath: CanonicalRestoreStagedPath(cfg, "restore-terminal-lock-test", false),
 		SafetyCopyPath: CanonicalRestoreSafetyCopyPath(cfg, "restore-terminal-lock-test"), OldActivePath: CanonicalRestoreOldActivePath(cfg, "restore-terminal-lock-test"),
 		InstallPath: CanonicalRestoreInstallPath(cfg, "restore-terminal-lock-test"), Phase: RestorePhaseStaged, State: RestorePhaseStaged,
 		CreatedAt: time.Now().UTC().Format(time.RFC3339Nano), UpdatedAt: time.Now().UTC().Format(time.RFC3339Nano),
@@ -396,7 +397,8 @@ func TestPruneRestoreHistoryRemovesCollisionDiagnosticSiblings(t *testing.T) {
 	now := time.Now().UTC().Add(-48 * time.Hour).Format(time.RFC3339Nano)
 	operation := RestoreOperation{
 		Version: RestoreOperationVersion, OperationID: "restore-history-collision", BackupName: "old.db",
-		ActivePath: cfg.DatabasePath, StagedPath: CanonicalRestoreStagedPath(cfg, "restore-history-collision", false),
+		AuthorizationCommitted: true,
+		ActivePath:             cfg.DatabasePath, StagedPath: CanonicalRestoreStagedPath(cfg, "restore-history-collision", false),
 		SafetyCopyPath: CanonicalRestoreSafetyCopyPath(cfg, "restore-history-collision"),
 		OldActivePath:  CanonicalRestoreOldActivePath(cfg, "restore-history-collision"),
 		InstallPath:    CanonicalRestoreInstallPath(cfg, "restore-history-collision"),
@@ -436,7 +438,8 @@ func TestRecoveryRequiredMarkerRemainsNonTerminalAcrossRestartReconciliation(t *
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	operation := RestoreOperation{
 		Version: RestoreOperationVersion, OperationID: "restore-recovery-restart", BackupName: "backup.db",
-		ActivePath: cfg.DatabasePath, StagedPath: CanonicalRestoreStagedPath(cfg, "restore-recovery-restart", false),
+		AuthorizationCommitted: true,
+		ActivePath:             cfg.DatabasePath, StagedPath: CanonicalRestoreStagedPath(cfg, "restore-recovery-restart", false),
 		SafetyCopyPath: CanonicalRestoreSafetyCopyPath(cfg, "restore-recovery-restart"),
 		OldActivePath:  CanonicalRestoreOldActivePath(cfg, "restore-recovery-restart"),
 		InstallPath:    CanonicalRestoreInstallPath(cfg, "restore-recovery-restart"),
@@ -471,7 +474,8 @@ func TestTamperedRestoreMarkerPathsFailClosedBeforeInstallRollbackOrRetention(t 
 	now := time.Now().UTC().Add(-48 * time.Hour).Format(time.RFC3339Nano)
 	operation := RestoreOperation{
 		Version: RestoreOperationVersion, OperationID: operationID, BackupName: "backup.db",
-		ActivePath: cfg.DatabasePath, StagedPath: CanonicalRestoreStagedPath(cfg, operationID, false),
+		AuthorizationCommitted: true,
+		ActivePath:             cfg.DatabasePath, StagedPath: CanonicalRestoreStagedPath(cfg, operationID, false),
 		SafetyCopyPath: CanonicalRestoreSafetyCopyPath(cfg, operationID),
 		OldActivePath:  CanonicalRestoreOldActivePath(cfg, operationID),
 		InstallPath:    CanonicalRestoreInstallPath(cfg, operationID),
@@ -545,7 +549,8 @@ func TestInterruptedRestoreDurablePhaseFaultMatrix(t *testing.T) {
 			now := time.Now().UTC().Format(time.RFC3339Nano)
 			operation := RestoreOperation{
 				Version: RestoreOperationVersion, OperationID: operationID, BackupName: "backup.db",
-				ActivePath: cfg.DatabasePath, StagedPath: CanonicalRestoreStagedPath(cfg, operationID, false),
+				AuthorizationCommitted: true,
+				ActivePath:             cfg.DatabasePath, StagedPath: CanonicalRestoreStagedPath(cfg, operationID, false),
 				SafetyCopyPath: CanonicalRestoreSafetyCopyPath(cfg, operationID),
 				OldActivePath:  CanonicalRestoreOldActivePath(cfg, operationID), InstallPath: CanonicalRestoreInstallPath(cfg, operationID),
 				Phase: test.phase, State: test.phase, Progress: 50, ActiveMutationStarted: test.mutation,
@@ -769,7 +774,8 @@ func newRestoreStateMachineFixture(t *testing.T) (config.Config, RestoreOperatio
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	operation := RestoreOperation{
 		Version: RestoreOperationVersion, OperationID: operationID, BackupName: "fixture.db",
-		StagedPath: stagedPath, ActivePath: cfg.DatabasePath, SafetyCopyPath: safetyPath,
+		AuthorizationCommitted: true,
+		StagedPath:             stagedPath, ActivePath: cfg.DatabasePath, SafetyCopyPath: safetyPath,
 		OldActivePath: CanonicalRestoreOldActivePath(cfg, operationID), InstallPath: CanonicalRestoreInstallPath(cfg, operationID),
 		SafetyCopySizeBytes: safety.SizeBytes, SafetyCopyChecksumSHA256: safety.ChecksumSHA256, SafetyCopyIdentity: safety.Migration,
 		RestoreMaxDatabaseBytes: RestoreMaxDatabaseBytes, Phase: RestorePhaseSafetyCopy, State: RestorePhaseSafetyCopy,
@@ -1352,7 +1358,8 @@ func TestRepeatedRestoreCyclesArchiveTerminalSlotsAndRetainVerifiedHistory(t *te
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	second := RestoreOperation{
 		Version: RestoreOperationVersion, OperationID: secondID, BackupName: "second.db",
-		StagedPath: secondStagedPath, ActivePath: cfg.DatabasePath, SafetyCopyPath: secondSafetyPath,
+		AuthorizationCommitted: true,
+		StagedPath:             secondStagedPath, ActivePath: cfg.DatabasePath, SafetyCopyPath: secondSafetyPath,
 		OldActivePath: CanonicalRestoreOldActivePath(cfg, secondID), InstallPath: CanonicalRestoreInstallPath(cfg, secondID),
 		SafetyCopySizeBytes: secondSafety.SizeBytes, SafetyCopyChecksumSHA256: secondSafety.ChecksumSHA256, SafetyCopyIdentity: secondSafety.Migration,
 		RestoreMaxDatabaseBytes: RestoreMaxDatabaseBytes, Phase: RestorePhaseSafetyCopy, State: RestorePhaseSafetyCopy,

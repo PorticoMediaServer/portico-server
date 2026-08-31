@@ -14,6 +14,10 @@ contents:
     dst: /usr/lib/portico-media-server/portico-media-server
     file_info:
       mode: 0755
+  - src: ${PORTICO_PACKAGE_ROOT}/portico-desktop
+    dst: /usr/lib/portico-media-server/portico-desktop
+    file_info:
+      mode: 0755
   - src: ${PORTICO_PACKAGE_ROOT}/bin/ffmpeg
     dst: /usr/lib/portico-media-server/bin/ffmpeg
     file_info:
@@ -32,6 +36,10 @@ contents:
     dst: /usr/share/doc/portico-media-server/THIRD-PARTY-NOTICES.md
   - src: packaging/linux/portico-media-server.service
     dst: /usr/lib/systemd/system/portico-media-server.service
+  - src: packaging/linux/tv.getportico.server.desktop
+    dst: /etc/xdg/autostart/tv.getportico.server.desktop
+  - src: packaging/linux/portico-media-server.svg
+    dst: /usr/share/icons/hicolor/scalable/status/portico-media-server.svg
 scripts:
   postinstall: packaging/linux/postinstall.sh
   preremove: packaging/linux/preremove.sh

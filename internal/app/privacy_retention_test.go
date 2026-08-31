@@ -285,7 +285,10 @@ func TestEndingPlaybackSessionRetainsClientAddressByDefault(t *testing.T) {
 	if _, err := db.Exec(`INSERT INTO playback_sessions (id, user_id, profile_id, media_id, media_type, title, started_at, last_seen_at, client_ip) VALUES ('end-address-test', ?, ?, 'movie-test', 'movie', 'Test', ?, ?, '203.0.113.40')`, userID, profileID, now, now); err != nil {
 		t.Fatalf("insert playback: %v", err)
 	}
-	if err := server.endPlaybackSession(User{ID: userID, AccountID: userID, ProfileID: profileID, ProfileIsPrimary: true}, "end-address-test"); err != nil {
+	if _, err := server.playbackLifecycle().Terminate(context.Background(), playbackTerminationRequest{
+		SessionID: "end-address-test", UserID: userID, ProfileID: profileID,
+		Cause: playbackTerminationExplicit, RequireActive: true,
+	}); err != nil {
 		t.Fatalf("end playback: %v", err)
 	}
 	assertStringValue(t, db, `SELECT client_ip FROM playback_sessions WHERE id = 'end-address-test'`, "203.0.113.40")

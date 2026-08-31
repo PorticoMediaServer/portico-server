@@ -21,10 +21,14 @@ import {
   type BrowseFacetOption,
   type BrowseFacetSource,
   type MediaImage,
-  type PlaybackHandoffRequest,
   type PlaybackPrepareNextRequest,
   type PlaybackProgressEvent,
+  type PlaybackQueueEntry,
   type PlaybackResponse,
+  type PlaybackReplacementInput,
+  type PlaybackReplacementOutcome,
+  type PlaybackReplacementTarget,
+  type PlaybackReplacementTargetResponse,
   type PlaybackRepeatMode,
   type ProductContract,
   type PlaybackSessionQueueRequest,
@@ -1856,8 +1860,19 @@ export class FixturePorticoDataSource implements PorticoDataSource {
     return structuredClone(updated);
   }
 
-  private playbackFor(item: MediaItem, queueItems = this.allItems().filter((candidate) => candidate.id !== item.id).slice(0, 3), repeatMode: PlaybackRepeatMode = 'off'): PlaybackResponse {
+  private playbackFor(
+    item: MediaItem,
+    queueItems = this.allItems().filter((candidate) => candidate.id !== item.id).slice(0, 3),
+    repeatMode: PlaybackRepeatMode = 'off',
+    queueEntryIds: string[] = [],
+    currentEntryId = `fixture-queue-${secureRandomUUID()}`,
+  ): PlaybackResponse {
     const sessionId = `fixture-session-${item.id}`;
+    const queueEntries = queueItems.map((candidate, index) => ({
+      entryId: queueEntryIds[index] || `fixture-queue-${secureRandomUUID()}`,
+      media: playbackMedia(candidate),
+    } satisfies PlaybackQueueEntry));
+    const currentEntry = { entryId: currentEntryId, media: playbackMedia(item) } satisfies PlaybackQueueEntry;
     const playback = {
       sessionId, nextEventSequence: 1,
       mediaGrant: { token: 'fixture-media-grant', expiresAt: new Date(Date.now() + 600_000).toISOString() },
@@ -1867,17 +1882,25 @@ export class FixturePorticoDataSource implements PorticoDataSource {
         generation: 1,
         origin: 'http://localhost:32500',
       },
-      media: playbackMedia(item), sourceUrl: silentPreview, directPlay: true, streamFormat: 'direct',
+      media: currentEntry.media, currentQueueEntryId: currentEntry.entryId, sourceUrl: silentPreview, directPlay: true, streamFormat: 'direct',
       decision: { mode: 'direct_play', reason: 'Fixture preview', reasonCodes: ['exact_tuple'], deliveryProfile: 'video-original', requiresTranscode: false, isProxied: false, isServerCached: false },
-      policy: { networkClass: 'local', qualityProfile: 'original', directPlayPolicy: 'prefer', directStreamPolicy: 'allow', transcodePolicy: 'allow', allowHdr: true, deliveryProfile: 'video-original', serverClamps: [] },
-      qualities: [{ id: 'original', label: 'Original', description: 'Fixture preview' }],
-      resources: [{ id: `${sessionId}-default`, sourceUrl: silentPreview, streamFormat: 'direct', qualityId: 'original', subtitleMode: 'off', default: true }],
+      policy: { networkClass: 'local', directPlayPolicy: 'prefer', directStreamPolicy: 'allow', transcodePolicy: 'allow', allowHdr: true, serverClamps: [] },
+      qualityOffers: {
+        contractId: 'PC-PLAYBACK', schemaVersion: 'quality-offers.v1', mediaId: item.id,
+        versionId: `qver-${item.id}`, sourceRevision: `qsrc-${item.id}`, offerRevision: `qrev-${item.id}`,
+        offers: [
+          { selectionId: 'qsel-automatic', label: 'Automatic', kind: 'automatic' },
+          { selectionId: 'qsel-original', label: 'Original Quality', kind: 'original' },
+        ],
+      },
+      qualitySelection: { mode: 'automatic' },
+      resources: [{ id: `${sessionId}-default`, sourceUrl: silentPreview, streamFormat: 'direct', subtitleMode: 'off', default: true }],
       audioStreams: [], subtitleStreams: [], chapters: [],
-      queue: queueItems.map(playbackMedia), repeatMode, queueRevision: 1, playbackRevision: 1,
+      queue: queueEntries, repeatMode, queueRevision: 1, playbackRevision: 1,
       timeline: { type: 'vod', durationSeconds: 1, canPause: true, canSeek: true }, resumePositionSeconds: 0, generation: 1,
     } as PlaybackResponse;
     this.fixturePlayback = playback;
-    this.fixtureQueue = { sessionId, current: playback.media, items: queueItems.map(playbackMedia), history: [], total: queueItems.length, canMutate: true, repeatMode, revision: 1 } as PlaybackSessionQueueResponse;
+    this.fixtureQueue = { sessionId, current: currentEntry, items: queueEntries, history: [], total: queueItems.length, canMutate: true, repeatMode, revision: 1 };
     return playback;
   }
 
@@ -1895,6 +1918,25 @@ export class FixturePorticoDataSource implements PorticoDataSource {
     return [];
   }
   async restorePlayback(_signal: AbortSignal, _intent?: import('@porticomediaserver/client-core').PlaybackIntent) { return { active: Boolean(this.fixturePlayback), playback: this.fixturePlayback }; }
+  async recoverPendingPlaybackTerminals(_signal: AbortSignal): Promise<void> {}
+  async replacePlaybackTarget<Target extends PlaybackReplacementTarget>(target: Target, _input: PlaybackReplacementInput, signal: AbortSignal): Promise<PlaybackReplacementOutcome<PlaybackReplacementTargetResponse<Target>>> {
+    let value: unknown;
+    if (target.kind === 'media') value = await this.startPlayback(target.mediaId, target.playbackOptions ?? {}, signal);
+    else if (target.kind === 'live-tv' || target.kind === 'live-tv-stream') value = await this.startLiveTVPlayback(target.channelId, signal);
+    else if (target.kind === 'dvr') value = await this.startDVRPlayback(target.recordingId, signal);
+    else {
+      const playback = await this.startLibraryChannelPlayback(target.channelId, signal);
+      value = { sourceType: 'library-channel', channelId: target.channelId, programId: `fixture-program-${target.channelId}`, startsAt: new Date().toISOString(), endsAt: new Date(Date.now() + 3_600_000).toISOString(), qualityProfile: 'auto', playout: { kind: 'media', mediaId: playback.media.id }, playback };
+    }
+    return { outcome: 'accepted', value } as PlaybackReplacementOutcome<PlaybackReplacementTargetResponse<Target>>;
+  }
+  async restoreCommittedPlaybackReplacement(_outcome: Extract<PlaybackReplacementOutcome<unknown>, { outcome: 'committed-restore-required' }>, _intent: import('@porticomediaserver/client-core').PlaybackIntent | undefined, _signal: AbortSignal) {
+    if (!this.fixturePlayback) throw new Error('No fixture replacement playback is active.');
+    return structuredClone(this.fixturePlayback);
+  }
+  async retryPendingPlaybackTerminalMutation(_sessionId: string, _signal: AbortSignal): Promise<import('@porticomediaserver/client-core').PendingPlaybackTerminalRetryOutcome> {
+    throw new ApiError(404, 'playback_terminal_request_not_pending', 'Playback has no pending terminal mutation to retry.');
+  }
   async touchPlayback(_sessionId: string, event: PlaybackProgressEvent, _signal?: AbortSignal, _keepalive?: boolean) {
     return {
       accepted: true,
@@ -1902,7 +1944,7 @@ export class FixturePorticoDataSource implements PorticoDataSource {
       stale: false,
       generation: event.generation ?? this.fixturePlayback?.generation ?? 1,
       highestEventSequence: event.eventSequence ?? 1,
-      sessionState: event.completed ? 'stopped' as const : event.state ?? 'paused' as const,
+      sessionState: event.state ?? 'paused' as const,
     };
   }
   async renewPlaybackMediaGrant(_sessionId: string, _signal: AbortSignal) { return { token: 'fixture-media-grant', expiresAt: new Date(Date.now() + 600_000).toISOString() }; }
@@ -1914,7 +1956,7 @@ export class FixturePorticoDataSource implements PorticoDataSource {
     const next = {
       ...current,
       playbackRevision: current.playbackRevision + 1,
-      selectedQualityId: request.qualityId ?? current.selectedQualityId,
+      qualitySelection: request.quality ?? current.qualitySelection,
       selectedAudioStreamId: request.audioStreamId ?? current.selectedAudioStreamId,
       selectedSubtitleStreamId: request.subtitleStreamId ?? current.selectedSubtitleStreamId,
       selectedSubtitleMode: request.subtitleMode ?? current.selectedSubtitleMode,
@@ -1929,7 +1971,7 @@ export class FixturePorticoDataSource implements PorticoDataSource {
     if (!this.fixtureQueue) throw new Error('No fixture playback session is active.');
     if (request.expectedRevision !== this.fixtureQueue.revision) throw new ApiError(409, 'queue_revision_conflict', 'The playback queue changed. Reload it before trying again.');
     const byId = new Map(this.allItems().map((item) => [item.id, item]));
-    this.fixtureQueue.items = request.mediaIds.flatMap((id) => { const item = byId.get(id); return item ? [playbackMedia(item)] : []; }) as typeof this.fixtureQueue.items;
+    this.fixtureQueue.items = request.mediaIds.flatMap((id) => { const item = byId.get(id); return item ? [{ entryId: `fixture-queue-${secureRandomUUID()}`, media: playbackMedia(item) }] : []; });
     this.fixtureQueue.total = this.fixtureQueue.items.length;
     this.fixtureQueue.repeatMode = request.repeatMode;
     this.fixtureQueue.revision += 1;
@@ -1939,33 +1981,46 @@ export class FixturePorticoDataSource implements PorticoDataSource {
   async mutatePlaybackSessionQueue(sessionId: string, request: PlaybackSessionQueueRequest, signal: AbortSignal) {
     if (!this.fixtureQueue) throw new Error('No fixture playback session is active.');
     if (request.expectedRevision !== this.fixtureQueue.revision) throw new ApiError(409, 'queue_revision_conflict', 'The playback queue changed. Reload it before trying again.');
-    const ids = this.fixtureQueue.items.map((item) => item.id);
-    if (request.action === 'remove' && request.index != null) ids.splice(request.index, 1);
-    if (request.action === 'reorder' && request.fromIndex != null && request.toIndex != null) {
-      const [id] = ids.splice(request.fromIndex, 1);
-      if (id) ids.splice(request.toIndex, 0, id);
+    const entries = [...this.fixtureQueue.items];
+    if (request.action === 'remove' && request.entryId) {
+      const index = entries.findIndex((entry) => entry.entryId === request.entryId);
+      if (index >= 0) entries.splice(index, 1);
     }
-    if (request.action === 'clear') ids.splice(0, ids.length);
+    if (request.action === 'reorder' && request.entryId && request.destinationEntryId) {
+      const from = entries.findIndex((entry) => entry.entryId === request.entryId);
+      if (from >= 0) {
+        const [entry] = entries.splice(from, 1);
+        let destination = entries.findIndex((candidate) => candidate.entryId === request.destinationEntryId);
+        if (request.placement === 'after') destination += 1;
+        entries.splice(Math.max(0, destination), 0, entry);
+      }
+    }
+    if (request.action === 'shuffle') entries.reverse();
+    if (request.action === 'clear') entries.splice(0, entries.length);
     const requestedIds = request.mediaIds?.length ? request.mediaIds : request.mediaId ? [request.mediaId] : [];
-    if (request.action === 'append') ids.push(...requestedIds);
-    if (request.action === 'play_next') ids.unshift(...requestedIds);
-    return this.updatePlaybackSessionQueue(sessionId, {
-      expectedRevision: request.expectedRevision,
-      mediaIds: ids,
-      repeatMode: request.action === 'set_repeat' ? request.repeatMode ?? this.fixtureQueue.repeatMode : this.fixtureQueue.repeatMode,
-    }, signal);
+    const byId = new Map(this.allItems().map((item) => [item.id, item]));
+    const added = requestedIds.flatMap((id) => { const item = byId.get(id); return item ? [{ entryId: `fixture-queue-${secureRandomUUID()}`, media: playbackMedia(item) }] : []; });
+    if (request.action === 'append') entries.push(...added);
+    if (request.action === 'play_next') entries.unshift(...added);
+    this.fixtureQueue.items = entries;
+    this.fixtureQueue.total = entries.length;
+    if (request.action === 'set_repeat' && request.repeatMode) this.fixtureQueue.repeatMode = request.repeatMode;
+    this.fixtureQueue.revision += 1;
+    if (this.fixturePlayback) this.fixturePlayback = { ...this.fixturePlayback, queue: [...entries], repeatMode: this.fixtureQueue.repeatMode, queueRevision: this.fixtureQueue.revision };
+    return structuredClone(this.fixtureQueue);
   }
-  async prepareNextPlayback(_sessionId: string, _signal: AbortSignal, _request?: PlaybackPrepareNextRequest) {
-    const next = this.fixtureQueue?.items[0];
+  async prepareNextPlayback(_sessionId: string, _signal: AbortSignal, request: PlaybackPrepareNextRequest) {
+    const next = this.fixtureQueue?.items.find((entry) => entry.entryId === request.entryId);
     if (!next) throw new Error('Nothing else is queued.');
-    const item = this.allItems().find((candidate) => candidate.id === next.id);
+    const item = this.allItems().find((candidate) => candidate.id === next.media.id);
     if (!item) throw new Error('The next fixture item is unavailable.');
     const repeatMode = this.fixtureQueue?.repeatMode ?? 'off';
-    const remaining = (this.fixtureQueue?.items ?? []).filter((candidate) => candidate.id !== item.id).flatMap((candidate) => {
-      const queued = this.allItems().find((mediaItem) => mediaItem.id === candidate.id);
+    const remainingEntries = (this.fixtureQueue?.items ?? []).filter((candidate) => candidate.entryId !== next.entryId);
+    const remaining = remainingEntries.flatMap((candidate) => {
+      const queued = this.allItems().find((mediaItem) => mediaItem.id === candidate.media.id);
       return queued ? [queued] : [];
     });
-    const playback = this.playbackFor(item, remaining, repeatMode);
+    const playback = this.playbackFor(item, remaining, repeatMode, remainingEntries.map((entry) => entry.entryId), next.entryId);
     return {
       preparedSessionId: `fixture-prepared-${item.id}`,
       playback,
@@ -1977,11 +2032,15 @@ export class FixturePorticoDataSource implements PorticoDataSource {
       playbackRevision: playback.playbackRevision,
     };
   }
-  async handoffPlayback(_sessionId: string, request: PlaybackHandoffRequest, _signal: AbortSignal) {
-    const id = request.mediaId ?? request.preparedSessionId?.replace('fixture-prepared-', '') ?? this.fixtureQueue?.items[0]?.id;
+  async handoffPlayback(_sessionId: string, request: import('@porticomediaserver/client-core').PlaybackHandoffInput, _signal: AbortSignal) {
+    const selected = [this.fixtureQueue?.current, ...(this.fixtureQueue?.items ?? []), ...(this.fixtureQueue?.history ?? [])]
+      .find((entry) => entry?.entryId === request.entryId);
+    const id = selected?.media.id ?? request.preparedSessionId?.replace('fixture-prepared-', '');
     const item = this.allItems().find((candidate) => candidate.id === id);
     if (!item) throw new Error('The requested fixture item is unavailable.');
-    return this.playbackFor(item, undefined, this.fixtureQueue?.repeatMode ?? 'off');
+    const remaining = (this.fixtureQueue?.items ?? []).filter((entry) => entry.entryId !== request.entryId);
+    const byId = new Map(this.allItems().map((candidate) => [candidate.id, candidate]));
+    return this.playbackFor(item, remaining.flatMap((entry) => { const candidate = byId.get(entry.media.id); return candidate ? [candidate] : []; }), this.fixtureQueue?.repeatMode ?? 'off', remaining.map((entry) => entry.entryId), request.entryId);
   }
   playbackResourceUrl(path: string) { return path; }
 

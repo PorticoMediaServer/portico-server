@@ -30,8 +30,8 @@ export interface GroupWorkspaceActions {
   updatePlayback: (request: WatchWithFriendsPlaybackDraft) => Promise<boolean>;
   updateSettings: (request: WatchWithFriendsSettingsDraft) => Promise<boolean>;
   addQueueItem: (mediaId: string) => Promise<boolean>;
-  reorderQueue: (mediaIds: string[]) => Promise<boolean>;
-  removeQueueItem: (mediaId: string) => Promise<boolean>;
+  reorderQueue: (entryId: string, destinationEntryId: string, placement: 'before' | 'after') => Promise<boolean>;
+  removeQueueItem: (entryId: string) => Promise<boolean>;
 }
 
 function ConnectionState({ state }: { state: WatchConnectionState | 'idle' }) {
@@ -87,9 +87,9 @@ function QueueWorkspace({ group, canHost, busy, onAdd, onReorder, onRemove, onPl
   canHost: boolean;
   busy: boolean;
   onAdd: (mediaId: string) => Promise<boolean>;
-  onReorder: (mediaIds: string[]) => Promise<boolean>;
-  onRemove: (mediaId: string) => Promise<boolean>;
-  onPlayNow: (mediaId: string) => Promise<boolean>;
+  onReorder: (entryId: string, destinationEntryId: string, placement: 'before' | 'after') => Promise<boolean>;
+  onRemove: (entryId: string) => Promise<boolean>;
+  onPlayNow: (entryId: string) => Promise<boolean>;
 }) {
   const [mediaId, setMediaId] = useState('');
   const submit = (event: FormEvent) => {
@@ -102,9 +102,9 @@ function QueueWorkspace({ group, canHost, busy, onAdd, onReorder, onRemove, onPl
   const move = (index: number, direction: -1 | 1) => {
     const nextIndex = index + direction;
     if (nextIndex < 0 || nextIndex >= group.queue.length) return;
-    const ids = group.queue.map((item) => item.mediaId);
-    [ids[index], ids[nextIndex]] = [ids[nextIndex], ids[index]];
-    void onReorder(ids);
+    const item = group.queue[index];
+    const destination = group.queue[nextIndex];
+    if (item && destination) void onReorder(item.entryId, destination.entryId, direction < 0 ? 'before' : 'after');
   };
   return <section className="watch-queue watch-panel">
     <header><div><h3>Queue</h3><span>{group.queue.length} item{group.queue.length === 1 ? '' : 's'}</span></div></header>
@@ -123,15 +123,15 @@ function QueueWorkspace({ group, canHost, busy, onAdd, onReorder, onRemove, onPl
     {group.queue.length === 0
       ? <div className="watch-queue-empty"><PlaybackQueueIcon /><strong>The queue is empty</strong></div>
       : <ol>{group.queue.map((item, index) => {
-        const current = item.mediaId === group.mediaId;
-        return <li className={current ? 'current' : ''} key={item.mediaId}>
+        const current = item.entryId === group.currentEntryId;
+        return <li className={current ? 'current' : ''} key={item.entryId}>
           <span className="watch-queue-number">{index + 1}</span>
           <div><strong>{item.mediaTitle}</strong><span>{current ? 'Now playing' : 'Up next'}</span></div>
           {canHost && <div className="watch-queue-actions">
-            {!current && <button type="button" disabled={busy} onClick={() => void onPlayNow(item.mediaId)} aria-label={`Play ${item.mediaTitle} now`}><PlaybackPlayIcon /></button>}
+            {!current && <button type="button" disabled={busy || item.unavailable} onClick={() => void onPlayNow(item.entryId)} aria-label={`Play ${item.mediaTitle} now`}><PlaybackPlayIcon /></button>}
             <button type="button" disabled={busy || index === 0} onClick={() => move(index, -1)} aria-label={`Move ${item.mediaTitle} up`}><NavigationMoveUpIcon /></button>
             <button type="button" disabled={busy || index === group.queue.length - 1} onClick={() => move(index, 1)} aria-label={`Move ${item.mediaTitle} down`}><NavigationMoveDownIcon /></button>
-            <button type="button" disabled={busy || current} onClick={() => void onRemove(item.mediaId)} aria-label={`Remove ${item.mediaTitle} from queue`}><ActionDeleteIcon /></button>
+            <button type="button" disabled={busy || current} onClick={() => void onRemove(item.entryId)} aria-label={`Remove ${item.mediaTitle} from queue`}><ActionDeleteIcon /></button>
           </div>}
         </li>;
       })}</ol>}
@@ -187,7 +187,7 @@ export function GroupWorkspace({
     <GroupTransport group={group} canHost={canHost} busy={isBusy} onCommand={actions.updatePlayback} />
     <div className="watch-workspace-columns">
       <div><MemberRoster group={group} viewer={viewer} busy={isBusy} onUpdate={actions.updateMember} /><GroupSettings group={group} canHost={canHost} busy={isBusy} onUpdate={actions.updateSettings} /></div>
-      <QueueWorkspace group={group} canHost={canHost} busy={isBusy} onAdd={actions.addQueueItem} onReorder={actions.reorderQueue} onRemove={actions.removeQueueItem} onPlayNow={(mediaId) => actions.updatePlayback({ action: 'load', mediaId, positionSeconds: 0 })} />
+      <QueueWorkspace group={group} canHost={canHost} busy={isBusy} onAdd={actions.addQueueItem} onReorder={actions.reorderQueue} onRemove={actions.removeQueueItem} onPlayNow={(entryId) => actions.updatePlayback({ action: 'load', entryId, positionSeconds: 0 })} />
     </div>
     {confirmEnd && <ModalOverlay className="watch-end-dialog" labelledBy="watch-end-title" onDismiss={() => { if (!isBusy) setConfirmEnd(false); }}><h2 id="watch-end-title">End “{group.name}”?</h2><p>Playback synchronization and live group updates will stop for every member.</p><div><SecondaryButton disabled={isBusy} onClick={() => setConfirmEnd(false)}>Cancel</SecondaryButton><button className="watch-destructive" type="button" disabled={isBusy} onClick={() => void actions.end().then((succeeded) => { if (succeeded) setConfirmEnd(false); })}>{isBusy ? 'Ending…' : 'End group'}</button></div></ModalOverlay>}
   </div>;

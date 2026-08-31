@@ -7,7 +7,7 @@ const DATABASE_NAME = "portico-playback-progress-v1";
 const STORE_NAME = "records";
 
 export function createBrowserPlaybackProgressDurability(
-  factory: IDBFactory | undefined = globalThis.indexedDB,
+  factory: IDBFactory | null | undefined = globalThis.indexedDB,
 ): PlaybackProgressDurabilityAdapter {
   const memory = new Map<string, DurablePlaybackProgressRecord>();
   let database: Promise<IDBDatabase> | undefined;
@@ -37,9 +37,19 @@ export function createBrowserPlaybackProgressDurability(
     return new Promise<T>((resolve, reject) => {
       const tx = db.transaction(STORE_NAME, mode);
       const request = run(tx.objectStore(STORE_NAME));
-      request.onsuccess = () => resolve(request.result);
+      let result: T;
+      request.onsuccess = () => {
+        result = request.result;
+      };
       request.onerror = () =>
         reject(request.error ?? new Error("Playback progress storage failed."));
+      // An IndexedDB request can report success before its containing
+      // transaction commits. Terminal authority is not durable until the
+      // transaction completes, so never release Core to restore/recreate a
+      // client against an uncommitted write.
+      tx.oncomplete = () => resolve(result);
+      tx.onerror = () =>
+        reject(tx.error ?? new Error("Playback progress storage failed."));
       tx.onabort = () =>
         reject(tx.error ?? new Error("Playback progress storage was aborted."));
     });

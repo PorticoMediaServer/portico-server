@@ -60,11 +60,11 @@ func TestOptimizedV2ReadyArtifactRequiresExactSourceAndReprobedFacts(t *testing.
 		t.Fatal(err)
 	}
 	if _, err := db.Exec(`INSERT INTO optimized_versions
-		(id, media_id, profile, path, size_bytes, created_at, updated_at, state, preset_version,
+		(id, media_id, profile, path, size_bytes, artifact_sha256, created_at, updated_at, state, preset_version,
 		 planner_revision, source_revision, source_fingerprint, source_facts_digest, plan_digest,
 		 plan_json, output_facts_digest, output_facts_json, compatibility_tags_json,
 		 container, video_codec, audio_codec, width, height, bitrate, duration_seconds)
-		VALUES ('artifact-ready', 'media-ready', 'universal-720p', ?, ?, ?, ?, 'ready', 1,
+		VALUES ('artifact-ready', 'media-ready', 'universal-720p', ?, ?, 'c7c5c1d70c5dec4416ab6158afd0b223ef40c29b1dc1f97ed9428b94d4cadb1c', ?, ?, 'ready', 1,
 		 ?, ?, ?, ?, 'plan-digest', '{"presetId":"universal-720p"}', ?, ?, '["universal"]',
 		 'mp4', 'h264', 'aac', 1280, 720, 1000000, 120)`, path, len("artifact"), now, now,
 		optimized.PlannerRevision, source.Revision, source.Fingerprint, source.FactsDigest,
@@ -91,15 +91,16 @@ func TestOptimizedV2ReadyArtifactRequiresExactSourceAndReprobedFacts(t *testing.
 }
 
 func TestOptimizedPlaybackBindingSealsExactArtifactRoute(t *testing.T) {
-	binding := playbackExecutionBinding{SchemaVersion: 1, SourceRevision: "optimized-r1", Generation: 1,
-		Mode: string(playbackplan.DirectPlay), Protocol: "http", Container: "mp4", Quality: "universal-720p",
-		X264Preset:   "veryfast",
-		SubtitleMode: "off", Plan: json.RawMessage(`{"schemaRevision":"playback-plan-v2","sourceFingerprint":"fp","sourceRevision":"optimized-r1","capabilityEvidenceId":"cap","policy":"maximum-fidelity","mode":"direct_play","mediaKind":"video","protocol":"http","container":"mp4","selection":{},"streams":[{"index":0,"kind":"video","action":"copy","inputCodec":"h264","outputCodec":"h264"}],"audio":{"codec":"aac","channels":2,"passthrough":true,"objectsPreserved":false,"downmixed":false},"subtitle":{"action":"drop"},"timeline":{"mode":"vod","generation":1,"dynamic":false},"hardware":{"verified":false,"softwareFallbackVerified":false},"constraints":{},"reasons":[]}`),
-		OptimizedArtifactID: "artifact-exact", OptimizedPresetID: "universal-720p"}
-	if err := binding.seal(); err != nil {
+	var canonical playbackplan.Plan
+	if err := json.Unmarshal([]byte(`{"schemaRevision":"playback-plan-v2","sourceFingerprint":"fp","sourceRevision":"optimized-r1","capabilityEvidenceId":"cap","policy":"maximum-fidelity","mode":"direct_play","mediaKind":"video","protocol":"http","container":"mp4","selection":{},"streams":[{"index":0,"kind":"video","action":"copy","inputCodec":"h264","outputCodec":"h264"}],"audio":{"codec":"aac","channels":2,"passthrough":true,"objectsPreserved":false,"downmixed":false},"subtitle":{"action":"drop"},"timeline":{"mode":"vod","generation":1,"dynamic":false},"hardware":{"verified":false,"softwareFallbackVerified":false},"constraints":{},"reasons":[]}`), &canonical); err != nil {
 		t.Fatal(err)
 	}
-	if got := mediaPlaybackURLForDecision("media-1", PlaybackDecision{Mode: "optimized_version", execution: &binding}); got != "/api/media/media-1/optimized/universal-720p" {
+	binding := testPlaybackExecutionPlan(t, func(plan *playbackExecutionPlan) {
+		plan.Plan = canonical
+		plan.OptimizedArtifactID = "artifact-exact"
+		plan.OptimizedPresetID = "universal-720p"
+	})
+	if got := mediaPlaybackURLForDecision("media-1", PlaybackDecision{executionPlan: &binding}); got != "/api/media/media-1/optimized/universal-720p" {
 		t.Fatalf("optimized playback URL = %q", got)
 	}
 }
@@ -149,11 +150,11 @@ func TestCanonicalPlannerPrefersOnlyDirectPlayableCurrentOptimizedArtifact(t *te
 	}
 	probeJSON := []byte(`{"format":{"format_name":"mov,mp4,m4a,3gp,3g2,mj2","duration":"120","bit_rate":"2500000"},"streams":[{"index":0,"codec_type":"video","codec_name":"h264","profile":"Main","width":1280,"height":720,"pix_fmt":"yuv420p","sample_aspect_ratio":"1:1","avg_frame_rate":"24/1"},{"index":1,"codec_type":"audio","codec_name":"aac","profile":"LC","channels":2,"channel_layout":"stereo","sample_rate":"48000"}]}`)
 	if _, err := db.Exec(`INSERT INTO optimized_versions
-		(id, media_id, profile, path, size_bytes, created_at, updated_at, state, preset_version,
+		(id, media_id, profile, path, size_bytes, artifact_sha256, created_at, updated_at, state, preset_version,
 		 planner_revision, source_revision, source_fingerprint, source_facts_digest, plan_digest,
 		 plan_json, output_facts_digest, output_facts_json, compatibility_tags_json,
 		 container, video_codec, audio_codec, width, height, bitrate, duration_seconds)
-		VALUES ('artifact-plan-opt', ?, 'universal-720p', ?, ?, ?, ?, 'ready', 1, ?, ?, ?, ?,
+		VALUES ('artifact-plan-opt', ?, 'universal-720p', ?, ?, '23b1494108427eb7802b6055b04f0f4828eb66b86e4d1172c65447b09395a9ef', ?, ?, 'ready', 1, ?, ?, ?, ?,
 		 'plan-current', '{"presetId":"universal-720p"}', ?, ?, '["universal"]',
 		 'mp4', 'h264', 'aac', 1280, 720, 2500000, 120)`, item.ID, artifactPath, len("optimized-media"), now, now,
 		optimized.PlannerRevision, sourceIdentity.Revision, sourceIdentity.Fingerprint, sourceIdentity.FactsDigest,
@@ -170,8 +171,8 @@ func TestCanonicalPlannerPrefersOnlyDirectPlayableCurrentOptimizedArtifact(t *te
 	if err != nil {
 		t.Fatal(err)
 	}
-	if decision.Mode != "optimized_version" || decision.execution == nil || decision.execution.OptimizedArtifactID != "artifact-plan-opt" {
-		t.Fatalf("optimized decision = %+v, binding=%+v", decision, decision.execution)
+	if decision.Mode != "optimized_version" || decision.executionPlan == nil || decision.executionPlan.OptimizedArtifactID != "artifact-plan-opt" {
+		t.Fatalf("optimized decision = %+v, plan=%+v", decision, decision.executionPlan)
 	}
 }
 
@@ -309,7 +310,7 @@ func TestOptimizedV2RejectsUnknownPresetAndIncompleteOutputFacts(t *testing.T) {
 		t.Fatal("non-object output facts accepted")
 	}
 	factsJSON := json.RawMessage(`{"streams":[]}`)
-	if err := validateOptimizedV2OutputFacts(optimizedV2OutputFacts{SizeBytes: 1, Container: "mp4", VideoCodec: "h264",
+	if err := validateOptimizedV2OutputFacts(optimizedV2OutputFacts{SizeBytes: 1, ArtifactSHA256: "2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881", Container: "mp4", VideoCodec: "h264",
 		FactsDigest: optimizedV2Digest(factsJSON), FactsJSON: factsJSON}); err != nil {
 		t.Fatalf("valid output facts rejected: %v", err)
 	}

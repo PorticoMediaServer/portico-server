@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/PorticoMediaServer/portico-server/internal/database"
+	"github.com/PorticoMediaServer/portico-server/internal/foundationcontract"
 )
 
 var errJobAdmissionClosed = errors.New("job admission is closed")
@@ -32,7 +33,7 @@ const durableJobSelectColumns = `
 	COALESCE(metadata_json, '{}'), attempt_count, next_run_at, last_error,
 	failure_kind, created_at, updated_at, COALESCE(parent_operation_id, ''),
 	COALESCE(idempotency_key, ''), COALESCE(active_key, ''),
-	COALESCE(priority, 'normal'), COALESCE(phase, ''),
+	COALESCE(priority, ''), COALESCE(phase, ''),
 	COALESCE(progress_current, 0), COALESCE(progress_total, 0),
 	COALESCE(result_reference, ''), COALESCE(error_code, ''),
 	COALESCE(retry_eligible, 0), COALESCE(cancellation_requested_at, ''),
@@ -46,13 +47,14 @@ type durableJobScanner interface {
 func scanDurableJob(scanner durableJobScanner) (Job, error) {
 	var job Job
 	var metadataJSON string
+	var priority string
 	var retryEligible int
 	err := scanner.Scan(
 		&job.ID, &job.Type, &job.Status, &job.Progress, &job.Message,
 		&job.ResourceType, &job.ResourceID, &metadataJSON, &job.AttemptCount,
 		&job.NextRunAt, &job.LastError, &job.FailureKind, &job.CreatedAt,
 		&job.UpdatedAt, &job.ParentOperationID, &job.IdempotencyKey,
-		&job.ActiveKey, &job.Priority, &job.Phase, &job.ProgressCurrent,
+		&job.ActiveKey, &priority, &job.Phase, &job.ProgressCurrent,
 		&job.ProgressTotal, &job.ResultReference, &job.ErrorCode,
 		&retryEligible, &job.CancellationRequestedAt,
 		&job.WorkerAcknowledgedAt, &job.InterruptedAt, &job.RetentionUntil,
@@ -60,6 +62,11 @@ func scanDurableJob(scanner durableJobScanner) (Job, error) {
 	if err != nil {
 		return Job{}, err
 	}
+	workClass, ok := foundationcontract.ParseWorkClass(priority)
+	if !ok {
+		return Job{}, fmt.Errorf("job %s has invalid persisted work class %q", job.ID, priority)
+	}
+	job.Priority = workClass
 	job.Metadata = decodeJobMetadata(metadataJSON)
 	job.RetryEligible = retryEligible != 0
 	return job, nil
@@ -267,12 +274,19 @@ func jobActiveKeyFor(jobType, resourceType, resourceID string, metadata map[stri
 	}
 	parts := []string{jobType, resourceType, resourceID}
 	switch jobType {
+	case "library_scan":
+		if profileRevision := strings.TrimSpace(metadata["profileRevision"]); profileRevision != "" {
+			parts = append(parts, "profileRevision="+profileRevision)
+		}
 	case "media_analyze":
 		parts = append(parts,
 			"mode="+normalizeMediaAnalysisMode(metadata["analysisMode"]),
 			"representativeFrame="+strings.ToLower(strings.TrimSpace(metadata["representativeFrame"])),
 			"sourceRevision="+strings.TrimSpace(metadata["sourceRevision"]),
 		)
+		if profileRevision := strings.TrimSpace(metadata["profileRevision"]); profileRevision != "" {
+			parts = append(parts, "profileRevision="+profileRevision)
+		}
 	case "optimize_version":
 		parts = append(parts, "profile="+strings.TrimSpace(metadata["profile"]))
 	}
@@ -282,20 +296,6 @@ func jobActiveKeyFor(jobType, resourceType, resourceID string, metadata map[stri
 	}
 	sum := sha256.Sum256([]byte(key))
 	return "sha256:" + hex.EncodeToString(sum[:])
-}
-
-func jobTypeUsesActiveKey(jobType string) bool {
-	switch strings.TrimSpace(jobType) {
-	case "library_scan", "library_change_check", "library_read_model_repair",
-		"metadata_refresh", "metadata_refresh_library", "lyrics_fetch_missing",
-		"live_tv_refresh", "dvr_retention_cleanup", "tmdb_trending_refresh",
-		"system_storage_cleanup", "library_trash_cleanup", "optimized_version_prune",
-		"trickplay_prune", "database_backup", "media_analyze", "optimize_version",
-		"dashboard_rollup_refresh":
-		return true
-	default:
-		return false
-	}
 }
 
 func isActiveJobUniqueConflict(err error) bool {
@@ -320,7 +320,7 @@ func (s *Server) hydrateJobEnvelope(job *Job) {
 	)
 	err := s.queryUserRow(context.Background(), `
 		SELECT COALESCE(parent_operation_id, ''), COALESCE(idempotency_key, ''),
-			COALESCE(active_key, ''), COALESCE(priority, 'normal'), COALESCE(phase, ''),
+			COALESCE(active_key, ''), COALESCE(priority, ''), COALESCE(phase, ''),
 			COALESCE(progress_current, 0), COALESCE(progress_total, 0),
 			COALESCE(result_reference, ''), COALESCE(error_code, ''),
 			COALESCE(retry_eligible, 0), COALESCE(cancellation_requested_at, ''),
@@ -337,7 +337,9 @@ func (s *Server) hydrateJobEnvelope(job *Job) {
 	job.ParentOperationID = parentOperationID
 	job.IdempotencyKey = idempotencyKey
 	job.ActiveKey = activeKey
-	job.Priority = priority
+	if workClass, ok := foundationcontract.ParseWorkClass(priority); ok {
+		job.Priority = workClass
+	}
 	job.Phase = phase
 	job.ProgressCurrent = progressCurrent
 	job.ProgressTotal = progressTotal

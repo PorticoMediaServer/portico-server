@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ApiError, type HostedServicesClient, type PorticoClient } from '@porticomediaserver/client-core';
+import { ApiError, HostedTerminalMutationCommittedError, type HostedServicesClient, type PorticoClient } from '@porticomediaserver/client-core';
 import { HttpSettingsDataSource } from './HttpSettingsDataSource';
 
 describe('HttpSettingsDataSource remote unclaim', () => {
@@ -34,6 +34,80 @@ describe('HttpSettingsDataSource remote unclaim', () => {
 });
 
 describe('HttpSettingsDataSource operational partial state', () => {
+  it('exchanges the exact Server epoch for a signed Hosted restore authorization before enqueue', async () => {
+    const signal = new AbortController().signal;
+    const signed = {
+      kind: 'restore-authorization', version: 1, audience: 'portico-media-server', authorizationId: 'sra-web',
+      purpose: 'server-restore', serverId: 'server-current', accountId: 'account-owner', restoreSecurityEpoch: 9,
+      issuedAt: '2026-08-30T13:00:00Z', expiresAt: '2026-08-30T13:05:00Z',
+      signatureAlgorithm: 'ed25519', signatureKeyId: 'key-1', signature: 'signed',
+    } as const;
+    const restoreAuthorizationContext = vi.fn().mockResolvedValue({ restoreSecurityEpoch: 9 });
+    const restoreBackup = vi.fn().mockResolvedValue({ ok: true, operationId: 'restore-1' });
+    const createServerRestoreAuthorization = vi.fn().mockResolvedValue(signed);
+    const source = new HttpSettingsDataSource(
+      { restoreAuthorizationContext, restoreBackup } as unknown as PorticoClient,
+      { createServerRestoreAuthorization } as unknown as HostedServicesClient,
+      { authoritativeServerId: 'server-current' },
+    );
+
+    await source.restoreBackup('backup.db', { origin: 'portico', mfaCode: '123456' }, 'restore:backup.db', signal);
+
+    expect(restoreAuthorizationContext).toHaveBeenCalledWith({ signal });
+    expect(createServerRestoreAuthorization).toHaveBeenCalledWith(
+      'server-current',
+      { restoreSecurityEpoch: 9, password: undefined, mfaCode: '123456', recoveryCode: undefined },
+      { signal },
+    );
+    expect(restoreBackup).toHaveBeenCalledWith('backup.db', { confirmation: 'restore:backup.db', hostedAuthorization: signed }, { signal });
+  });
+
+  it('keeps local restore password authority on the Server without contacting Hosted', async () => {
+    const signal = new AbortController().signal;
+    const restoreBackup = vi.fn().mockResolvedValue({ ok: true, operationId: 'restore-local' });
+    const createServerRestoreAuthorization = vi.fn();
+    const source = new HttpSettingsDataSource(
+      { restoreBackup } as unknown as PorticoClient,
+      { createServerRestoreAuthorization } as unknown as HostedServicesClient,
+    );
+
+    await source.restoreBackup('backup.db', { origin: 'local', password: 'local-password' }, 'restore:backup.db', signal);
+
+    expect(createServerRestoreAuthorization).not.toHaveBeenCalled();
+    expect(restoreBackup).toHaveBeenCalledWith('backup.db', { confirmation: 'restore:backup.db', password: 'local-password' }, { signal });
+  });
+
+  it('revokes a pending Hosted invitation for the authoritative server', async () => {
+    const signal = new AbortController().signal;
+    const hostedRequest = vi.fn().mockResolvedValue({ ok: true });
+    const source = new HttpSettingsDataSource(
+      {} as PorticoClient,
+      { request: hostedRequest } as unknown as HostedServicesClient,
+      { authoritativeServerId: 'server-current' },
+    );
+
+    await source.revokePorticoMemberInvite('invite-pending', signal);
+
+    expect(hostedRequest).toHaveBeenCalledWith(
+      '/api/account/servers/server-current/invites/invite-pending',
+      { method: 'DELETE', signal },
+    );
+  });
+
+  it('treats a reconciled committed invitation revocation as success', async () => {
+    const hostedRequest = vi.fn().mockRejectedValue(new HostedTerminalMutationCommittedError(
+      'invite-revoke-key',
+      { operationId: 'revokeServerInvite' },
+    ));
+    const source = new HttpSettingsDataSource(
+      {} as PorticoClient,
+      { request: hostedRequest } as unknown as HostedServicesClient,
+      { authoritativeServerId: 'server-current' },
+    );
+
+    await expect(source.revokePorticoMemberInvite('invite-pending', new AbortController().signal)).resolves.toBeUndefined();
+  });
+
   it('keeps healthy panels when one operational read fails', async () => {
     const internalMessage = 'pq: relation account_secrets does not exist';
     const libraries = vi.fn().mockRejectedValue(new Error(internalMessage));

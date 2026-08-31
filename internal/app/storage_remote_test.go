@@ -743,6 +743,9 @@ func TestRemoteInventoryOnlyQueuesNoContentAnalysis(t *testing.T) {
 	if result.AnalysisQueued != 0 || contentReads != 0 {
 		t.Fatalf("Custom without enabled operations result=%+v contentReads=%d", result, contentReads)
 	}
+	if _, err := server.db.Exec(`UPDATE libraries SET settings_json='{"probeStreams":true}' WHERE id=?`, library.ID); err != nil {
+		t.Fatal(err)
+	}
 	library.Settings["probeStreams"] = true
 	result, err = server.scanRemoteStorageSources(context.Background(), library, libraryScanRun{ID: "remote-policy-run-3", LibraryID: library.ID, Mode: "reconcile", StartedAt: now}, "remote-policy-generation-3", now)
 	if err != nil {
@@ -751,12 +754,30 @@ func TestRemoteInventoryOnlyQueuesNoContentAnalysis(t *testing.T) {
 	if result.AnalysisQueued != 1 || contentReads != 0 {
 		t.Fatalf("Custom selected probe result=%+v contentReads=%d", result, contentReads)
 	}
+	var remoteMediaID string
+	if err := server.db.QueryRow(`SELECT media_id FROM media_files WHERE path=?`, remoteStorageLocator(source.ID, "Movies/Film.mp4")).Scan(&remoteMediaID); err != nil {
+		t.Fatal(err)
+	}
+	deferred, err := server.createJobForWithMetadata("media_analyze", "Deferred remote analysis.", "media", remoteMediaID, mediaAnalysisMetadata(mediaAnalysisModeProbe))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := server.db.Exec(`UPDATE jobs SET status='deferred',phase='deferred',deferred_until=? WHERE id=?`, time.Now().UTC().Add(time.Hour).Format(time.RFC3339Nano), deferred.ID); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := server.updateRemoteStorageSource(context.Background(), library.ID, source.ID, RemoteStorageSourcePatchRequest{AnalysisMode: "file_list_only"}); err != nil {
 		t.Fatal(err)
 	}
 	var queued int
 	if err := server.db.QueryRow(`SELECT COUNT(*) FROM scanner_backlog WHERE kind='analysis' AND status='queued'`).Scan(&queued); err != nil || queued != 0 {
 		t.Fatalf("queued analysis remained after inventory-only switch: count=%d err=%v", queued, err)
+	}
+	var deferredStatus, deferredUntil string
+	if err := server.db.QueryRow(`SELECT status,deferred_until FROM jobs WHERE id=?`, deferred.ID).Scan(&deferredStatus, &deferredUntil); err != nil {
+		t.Fatal(err)
+	}
+	if deferredStatus != "cancelled" || deferredUntil != "" {
+		t.Fatalf("deferred remote analysis remained eligible: status=%q deferredUntil=%q", deferredStatus, deferredUntil)
 	}
 }
 

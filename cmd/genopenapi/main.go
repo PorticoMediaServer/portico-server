@@ -294,6 +294,7 @@ func clientCoreMethodFor(method, path, operationID string, op map[string]any) st
 		"POST /playback/cast/bootstrap":                   "createCastBootstrap",
 		"POST /playback/cast/redeem":                      "redeemCastBootstrap",
 		"POST /playback/cast/reconnect":                   "reconnectCast",
+		"POST /playback/cast/transfer-status":             "castTransferStatus",
 		"POST /playback-sessions/{sessionId}/renegotiate": "renegotiatePlayback",
 		"GET /live-tv":                                    "liveTv", "GET /live-tv/sources": "adminLiveTvSources", "POST /live-tv/sources": "createLiveTvSource",
 		"POST /live-tv/sources/test-add": "testAddLiveTvSource", "POST /live-tv/sources/hdhomerun/discover": "discoverHDHomeRunSources",
@@ -501,6 +502,11 @@ func authFor(op, doc map[string]any) string {
 	}
 	for _, item := range items {
 		entry := object(item)
+		if _, ok := entry["castReceiverAuth"]; ok {
+			// Receiver bearer validation is performed by the Cast session handler;
+			// the outer account-session middleware must not become a second actor.
+			return "public"
+		}
 		if _, ok := entry["mediaGrantAuth"]; ok {
 			return "media-grant-or-session"
 		}

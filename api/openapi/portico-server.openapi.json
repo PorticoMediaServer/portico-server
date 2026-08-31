@@ -1802,6 +1802,125 @@
         ],
         "type": "object"
       },
+      "CastAdvanceCancelRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "generation": {
+            "format": "int64",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "requestId": {
+            "maxLength": 128,
+            "minLength": 8,
+            "pattern": "^[A-Za-z0-9._:-]+$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "generation",
+          "requestId"
+        ],
+        "type": "object"
+      },
+      "CastAdvanceRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "advanceId": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "automatic": {
+            "type": "boolean"
+          },
+          "generation": {
+            "format": "int64",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "previousTerminal": {
+            "$ref": "#/components/schemas/PlaybackTerminalEvent"
+          },
+          "requestId": {
+            "maxLength": 128,
+            "minLength": 8,
+            "pattern": "^[A-Za-z0-9._:-]+$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "generation",
+          "advanceId",
+          "requestId",
+          "previousTerminal"
+        ],
+        "type": "object"
+      },
+      "CastAdvanceResponse": {
+        "properties": {
+          "automaticAdvances": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "automation": {
+            "$ref": "#/components/schemas/CastPlaybackAutomation"
+          },
+          "generation": {
+            "format": "int64",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "playback": {
+            "$ref": "#/components/schemas/PlaybackResponse"
+          },
+          "previousTerminal": {
+            "$ref": "#/components/schemas/PlaybackTerminalEvent"
+          },
+          "replacementSessionId": {
+            "type": "string"
+          },
+          "requestFingerprint": {
+            "description": "Exact no-credential fingerprint of the receiver advance request.",
+            "type": "string"
+          },
+          "requestId": {
+            "type": "string"
+          },
+          "sourceSessionId": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "prepared",
+              "committed",
+              "failed",
+              "exhausted",
+              "passout_stopped"
+            ],
+            "type": "string"
+          },
+          "version": {
+            "enum": [
+              "v1"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "status",
+          "requestId",
+          "requestFingerprint",
+          "previousTerminal",
+          "sourceSessionId",
+          "generation",
+          "automaticAdvances",
+          "automation"
+        ],
+        "type": "object",
+        "x-portico-audience": "viewer"
+      },
       "CastBootstrapRequest": {
         "additionalProperties": false,
         "properties": {
@@ -1871,6 +1990,16 @@
             ],
             "type": "string"
           },
+          "replacement": {
+            "$ref": "#/components/schemas/PlaybackReplacementRequest"
+          },
+          "requestId": {
+            "description": "Stable identity for this fresh or replacement bootstrap attempt.",
+            "maxLength": 128,
+            "minLength": 8,
+            "pattern": "^[A-Za-z0-9._:-]+$",
+            "type": "string"
+          },
           "skipPreroll": {
             "type": "boolean"
           },
@@ -1892,10 +2021,6 @@
             ],
             "type": "string"
           },
-          "sourcePlaybackSessionId": {
-            "description": "Existing Apple playback session being atomically handed to the Cast receiver.",
-            "type": "string"
-          },
           "startSeconds": {
             "minimum": 0,
             "type": "integer"
@@ -1909,6 +2034,7 @@
           }
         },
         "required": [
+          "requestId",
           "sourceKind",
           "sourceId",
           "clientInstanceId",
@@ -1952,9 +2078,23 @@
             "format": "uri",
             "type": "string"
           },
+          "replacementSessionId": {
+            "type": "string"
+          },
+          "requestId": {
+            "type": "string"
+          },
           "serverOrigin": {
             "description": "Verified HTTPS server origin selected by the server.",
             "format": "uri",
+            "type": "string"
+          },
+          "sourceSessionId": {
+            "type": "string"
+          },
+          "transferStatus": {
+            "const": "pending",
+            "description": "A credential-bearing bootstrap response exists only while the exact transfer is pending. Final outcomes are reconciled through the no-credential transfer-status response.",
             "type": "string"
           },
           "version": {
@@ -1973,7 +2113,10 @@
           "serverOrigin",
           "generation",
           "expiresAt",
-          "capabilities"
+          "capabilities",
+          "requestId",
+          "replacementSessionId",
+          "transferStatus"
         ],
         "type": "object",
         "x-portico-audience": "viewer"
@@ -2022,9 +2165,61 @@
           },
           {
             "$ref": "#/components/schemas/CastStopResponse"
+          },
+          {
+            "$ref": "#/components/schemas/CastAdvanceResponse"
+          },
+          {
+            "$ref": "#/components/schemas/CastTransferStatusResponse"
+          },
+          {
+            "$ref": "#/components/schemas/CastSegmentSkipResponse"
           }
         ],
         "x-portico-audience": "viewer"
+      },
+      "CastPlaybackAutomation": {
+        "properties": {
+          "autoplayNext": {
+            "type": "boolean"
+          },
+          "creditsSkip": {
+            "enum": [
+              "off",
+              "ask",
+              "automatic"
+            ],
+            "type": "string"
+          },
+          "introSkip": {
+            "enum": [
+              "off",
+              "ask",
+              "automatic"
+            ],
+            "type": "string"
+          },
+          "passoutAfterEpisodes": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "passoutProtection": {
+            "type": "boolean"
+          },
+          "upNextCountdownSeconds": {
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "autoplayNext",
+          "upNextCountdownSeconds",
+          "passoutProtection",
+          "passoutAfterEpisodes",
+          "introSkip",
+          "creditsSkip"
+        ],
+        "type": "object"
       },
       "CastProgressRequest": {
         "allOf": [
@@ -2037,6 +2232,15 @@
                 "format": "int64",
                 "minimum": 1,
                 "type": "integer"
+              },
+              "state": {
+                "description": "Terminal completed/stopped evidence is forbidden here and must use the exact stop or atomic advance request.",
+                "enum": [
+                  "playing",
+                  "paused",
+                  "buffering"
+                ],
+                "type": "string"
               }
             },
             "required": [
@@ -2049,6 +2253,9 @@
       "CastReceiverSessionResponse": {
         "additionalProperties": false,
         "properties": {
+          "automation": {
+            "$ref": "#/components/schemas/CastPlaybackAutomation"
+          },
           "capabilities": {
             "items": {
               "type": "string"
@@ -2106,7 +2313,8 @@
           "capabilities",
           "grantSemantics",
           "mediaGrantExpiresAt",
-          "playback"
+          "playback",
+          "automation"
         ],
         "type": "object",
         "x-portico-audience": "viewer"
@@ -2119,6 +2327,10 @@
               "type": "string"
             },
             "type": "array"
+          },
+          "currentQueueEntryId": {
+            "minLength": 1,
+            "type": "string"
           },
           "expiresAt": {
             "format": "date-time",
@@ -2145,11 +2357,20 @@
             "minimum": 0,
             "type": "integer"
           },
+          "queue": {
+            "items": {
+              "$ref": "#/components/schemas/PlaybackQueueEntry"
+            },
+            "type": "array"
+          },
           "receiverId": {
             "type": "string"
           },
           "receiverSessionId": {
             "type": "string"
+          },
+          "repeatMode": {
+            "$ref": "#/components/schemas/PlaybackRepeatMode"
           },
           "serverOrigin": {
             "format": "uri",
@@ -2157,6 +2378,7 @@
           },
           "status": {
             "enum": [
+              "pending",
               "active",
               "stopped",
               "expired",
@@ -2179,9 +2401,12 @@
           "playbackState",
           "positionSeconds",
           "mediaId",
+          "currentQueueEntryId",
           "capabilities",
           "lastSeenAt",
-          "expiresAt"
+          "expiresAt",
+          "repeatMode",
+          "queue"
         ],
         "type": "object",
         "x-portico-audience": "viewer"
@@ -2287,21 +2512,81 @@
         "type": "object",
         "x-portico-audience": "viewer"
       },
-      "CastStopRequest": {
+      "CastSegmentSkipRequest": {
+        "additionalProperties": false,
         "properties": {
           "generation": {
             "format": "int64",
             "minimum": 1,
             "type": "integer"
+          },
+          "segmentId": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
           }
         },
         "required": [
-          "generation"
+          "generation",
+          "segmentId"
+        ],
+        "type": "object"
+      },
+      "CastSegmentSkipResponse": {
+        "properties": {
+          "generation": {
+            "format": "int64",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "positionSeconds": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "skipped": {
+            "type": "boolean"
+          },
+          "version": {
+            "enum": [
+              "v1"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "generation",
+          "skipped"
+        ],
+        "type": "object",
+        "x-portico-audience": "viewer"
+      },
+      "CastStopRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "generation": {
+            "format": "int64",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "requestId": {
+            "maxLength": 128,
+            "minLength": 8,
+            "pattern": "^[A-Za-z0-9._:-]+$",
+            "type": "string"
+          },
+          "terminal": {
+            "$ref": "#/components/schemas/PlaybackTerminalEvent"
+          }
+        },
+        "required": [
+          "generation",
+          "requestId",
+          "terminal"
         ],
         "type": "object"
       },
       "CastStopResponse": {
-        "additionalProperties": false,
         "properties": {
           "generation": {
             "format": "int64",
@@ -2309,11 +2594,103 @@
           },
           "ok": {
             "type": "boolean"
+          },
+          "terminal": {
+            "$ref": "#/components/schemas/PlaybackSessionTerminalAcknowledgement"
           }
         },
         "required": [
           "ok",
-          "generation"
+          "generation",
+          "terminal"
+        ],
+        "type": "object",
+        "x-portico-audience": "viewer"
+      },
+      "CastTransferStatusRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "clientInstanceId": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "requestId": {
+            "maxLength": 128,
+            "minLength": 8,
+            "pattern": "^[A-Za-z0-9._:-]+$",
+            "type": "string"
+          },
+          "sourceSessionId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "clientInstanceId",
+          "requestId"
+        ],
+        "type": "object"
+      },
+      "CastTransferStatusResponse": {
+        "additionalProperties": false,
+        "oneOf": [
+          {
+            "not": {
+              "required": [
+                "sourceSessionId"
+              ]
+            },
+            "title": "Fresh Cast bootstrap outcome"
+          },
+          {
+            "required": [
+              "sourceSessionId",
+              "previousTerminal"
+            ],
+            "title": "Replacement Cast transfer outcome"
+          }
+        ],
+        "properties": {
+          "previousTerminal": {
+            "$ref": "#/components/schemas/PlaybackTerminalEvent",
+            "description": "Exact accepted source terminal evidence; present only for replacement outcomes."
+          },
+          "replacementSessionId": {
+            "type": "string"
+          },
+          "requestFingerprint": {
+            "description": "Exact server receipt fingerprint binding the target intent and replacement envelope.",
+            "type": "string"
+          },
+          "requestId": {
+            "type": "string"
+          },
+          "sourceSessionId": {
+            "description": "Present only when this outcome replaced an existing source actor.",
+            "minLength": 1,
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "committed",
+              "expired",
+              "failed"
+            ],
+            "type": "string"
+          },
+          "version": {
+            "enum": [
+              "v1"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "requestId",
+          "replacementSessionId",
+          "status",
+          "requestFingerprint"
         ],
         "type": "object",
         "x-portico-audience": "viewer"
@@ -2735,6 +3112,18 @@
             "type": "array",
             "uniqueItems": true
           },
+          "semanticDocuments": {
+            "additionalProperties": false,
+            "properties": {
+              "productContract": {
+                "$ref": "#/components/schemas/SemanticDocumentIdentity"
+              }
+            },
+            "required": [
+              "productContract"
+            ],
+            "type": "object"
+          },
           "semanticRevisions": {
             "additionalProperties": {
               "minimum": 1,
@@ -2754,7 +3143,8 @@
           "semanticRevisions",
           "capabilities",
           "requiredSemantics",
-          "forwardCompatibility"
+          "forwardCompatibility",
+          "semanticDocuments"
         ],
         "type": "object"
       },
@@ -3238,6 +3628,9 @@
           "intent": {
             "$ref": "#/components/schemas/PlaybackIntent"
           },
+          "replacement": {
+            "$ref": "#/components/schemas/PlaybackReplacementRequest"
+          },
           "startSeconds": {
             "description": "Advisory resume position for a completed recording; ignored while a recording is live.",
             "minimum": 0,
@@ -3250,6 +3643,9 @@
             "type": "string"
           }
         },
+        "required": [
+          "intent"
+        ],
         "type": "object"
       },
       "DVRRecording": {
@@ -4958,7 +5354,7 @@
       },
       "DownloadPreparationCreateRequest": {
         "additionalProperties": false,
-        "anyOf": [
+        "oneOf": [
           {
             "required": [
               "mediaId"
@@ -5691,8 +6087,24 @@
         ],
         "x-portico-audience": "viewer"
       },
-      "GetPlaybackReceiversReceiverIdEventsResponse": {
-        "type": "string",
+      "GetPlaybackReceiverAuthorizationsResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ReceiverAuthorizationRecord"
+            },
+            "type": "array"
+          },
+          "total": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "type": "object",
         "x-portico-audience": "viewer"
       },
       "GetPlaybackReceiversResponse": {
@@ -6158,6 +6570,80 @@
           "accountRevision",
           "pinRevision",
           "profiles",
+          "issuedAt",
+          "expiresAt",
+          "signatureAlgorithm",
+          "signatureKeyId",
+          "signature"
+        ],
+        "type": "object"
+      },
+      "HostedRestoreAuthorization": {
+        "additionalProperties": false,
+        "properties": {
+          "accountId": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "audience": {
+            "const": "portico-media-server",
+            "type": "string"
+          },
+          "authorizationId": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "expiresAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "issuedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "kind": {
+            "const": "restore-authorization",
+            "type": "string"
+          },
+          "purpose": {
+            "const": "server-restore",
+            "type": "string"
+          },
+          "restoreSecurityEpoch": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "serverId": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "signature": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "signatureAlgorithm": {
+            "const": "ed25519",
+            "type": "string"
+          },
+          "signatureKeyId": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "version": {
+            "const": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "kind",
+          "version",
+          "audience",
+          "authorizationId",
+          "purpose",
+          "serverId",
+          "accountId",
+          "restoreSecurityEpoch",
           "issuedAt",
           "expiresAt",
           "signatureAlgorithm",
@@ -8241,8 +8727,15 @@
           },
           "intent": {
             "$ref": "#/components/schemas/PlaybackIntent"
+          },
+          "replacement": {
+            "$ref": "#/components/schemas/PlaybackReplacementRequest"
           }
         },
+        "required": [
+          "clientInstanceId",
+          "intent"
+        ],
         "type": "object"
       },
       "LibraryChannelTuneResponse": {
@@ -11035,6 +11528,10 @@
       "MediaDownloadGrantResponse": {
         "additionalProperties": false,
         "properties": {
+          "authorizationReceipt": {
+            "$ref": "#/components/schemas/OfflineDownloadAuthorizationReceipt",
+            "description": "Immutable signed authorization receipt returned only for native delivery after exact artifact verification and an atomic authorization-fence recheck."
+          },
           "downloadUrl": {
             "description": "Clean same-server artifact URL. Browsers use the HttpOnly grant cookie; native transfer adapters send grantToken in Authorization and never persist either value.",
             "type": "string"
@@ -12900,6 +13397,14 @@
           "serverId": {
             "type": "string"
           },
+          "serverPublicKey": {
+            "description": "Canonical unpadded standard-base64 encoding of the Server's raw 32-byte Ed25519 identity public key. Clients persist it with the matching fingerprint for offline receipt verification.",
+            "type": "string"
+          },
+          "serverPublicKeyFingerprint": {
+            "description": "Canonical sha256-prefixed unpadded base64url fingerprint of serverPublicKey.",
+            "type": "string"
+          },
           "tokenType": {
             "enum": [
               "Bearer"
@@ -12922,7 +13427,9 @@
           "accountId",
           "serverId",
           "profileId",
-          "authorizationRevision"
+          "authorizationRevision",
+          "serverPublicKey",
+          "serverPublicKeyFingerprint"
         ],
         "type": "object",
         "x-portico-audience": "viewer"
@@ -13331,6 +13838,228 @@
             "type": "string"
           }
         },
+        "type": "object"
+      },
+      "OfflineDownloadAuthorizationArtifact": {
+        "additionalProperties": false,
+        "properties": {
+          "sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "sizeBytes": {
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "sha256",
+          "sizeBytes"
+        ],
+        "type": "object"
+      },
+      "OfflineDownloadAuthorizationIssuer": {
+        "additionalProperties": false,
+        "properties": {
+          "serverId": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "signingKeyFingerprint": {
+            "pattern": "^sha256:[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "serverId",
+          "signingKeyFingerprint"
+        ],
+        "type": "object"
+      },
+      "OfflineDownloadAuthorizationPreparation": {
+        "additionalProperties": false,
+        "properties": {
+          "mediaId": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "mediaVersionId": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "preparationId": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "qualityId": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "preparationId",
+          "mediaId",
+          "mediaVersionId",
+          "qualityId"
+        ],
+        "type": "object"
+      },
+      "OfflineDownloadAuthorizationReceipt": {
+        "additionalProperties": false,
+        "properties": {
+          "artifact": {
+            "$ref": "#/components/schemas/OfflineDownloadAuthorizationArtifact"
+          },
+          "issuer": {
+            "$ref": "#/components/schemas/OfflineDownloadAuthorizationIssuer"
+          },
+          "lastVerifiedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "preparation": {
+            "$ref": "#/components/schemas/OfflineDownloadAuthorizationPreparation"
+          },
+          "purpose": {
+            "const": "offline-download-authorization",
+            "type": "string"
+          },
+          "receiptId": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "signature": {
+            "pattern": "^[A-Za-z0-9_-]{85}[AQgw]$",
+            "type": "string"
+          },
+          "verifyBy": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "version": {
+            "const": 1,
+            "type": "integer"
+          },
+          "viewerScope": {
+            "$ref": "#/components/schemas/OfflineDownloadAuthorizationViewerScope"
+          }
+        },
+        "required": [
+          "version",
+          "purpose",
+          "receiptId",
+          "viewerScope",
+          "issuer",
+          "preparation",
+          "artifact",
+          "lastVerifiedAt",
+          "verifyBy",
+          "signature"
+        ],
+        "type": "object"
+      },
+      "OfflineDownloadAuthorizationRevalidationRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "receipt": {
+            "$ref": "#/components/schemas/OfflineDownloadAuthorizationReceipt"
+          }
+        },
+        "required": [
+          "receipt"
+        ],
+        "type": "object"
+      },
+      "OfflineDownloadAuthorizationRevalidationResponse": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "outcome": {
+                "const": "valid-replacement",
+                "type": "string"
+              },
+              "receipt": {
+                "$ref": "#/components/schemas/OfflineDownloadAuthorizationReceipt"
+              }
+            },
+            "required": [
+              "outcome",
+              "receipt"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "outcome": {
+                "enum": [
+                  "revoked",
+                  "invalid",
+                  "out-of-scope"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "outcome"
+            ],
+            "type": "object"
+          }
+        ],
+        "x-portico-audience": "viewer"
+      },
+      "OfflineDownloadAuthorizationViewerScope": {
+        "additionalProperties": false,
+        "properties": {
+          "accountId": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "authority": {
+            "enum": [
+              "local",
+              "hosted"
+            ],
+            "type": "string"
+          },
+          "authorizationRevision": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "profileId": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "scopeKind": {
+            "const": "server-bound",
+            "type": "string"
+          },
+          "serverId": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "scopeKind",
+          "authority",
+          "accountId",
+          "profileId",
+          "serverId",
+          "authorizationRevision"
+        ],
         "type": "object"
       },
       "OptimizedVersion": {
@@ -14929,9 +15658,6 @@
           "overlayTranscode": {
             "type": "boolean"
           },
-          "qualityProfile": {
-            "type": "string"
-          },
           "resourceRevision": {
             "format": "int64",
             "minimum": 1,
@@ -15073,9 +15799,14 @@
         "type": "object"
       },
       "PlaybackHandoffRequest": {
+        "additionalProperties": false,
         "properties": {
           "clientProfile": {
             "$ref": "#/components/schemas/PlaybackClientProfile"
+          },
+          "entryId": {
+            "minLength": 1,
+            "type": "string"
           },
           "expectedPlaybackRevision": {
             "format": "int64",
@@ -15090,31 +15821,38 @@
           "intent": {
             "$ref": "#/components/schemas/PlaybackIntent"
           },
-          "mediaId": {
-            "type": "string"
-          },
           "preparedSessionId": {
             "type": "string"
           },
-          "progressSeconds": {
-            "type": "integer"
-          },
-          "queueMediaIds": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
+          "previousTerminal": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PlaybackTerminalEvent"
+              }
+            ],
+            "description": "The source session actor's complete ordered terminal event. Natural transition uses disposition completed; deliberate replacement uses stopped. The server applies this event and activates the replacement atomically; rejection leaves the source session and its authority unchanged."
           },
           "requestId": {
-            "description": "Optional idempotency key. When omitted for a prepared handoff",
+            "description": "Stable idempotency identity for this handoff. Exact retries reuse this value and a byte-equivalent request body to return the committed result.",
             "maxLength": 128,
-            "the server derives one from the single-use prepared capability; exact retries return the committed result.": null,
+            "minLength": 8,
+            "pattern": "^[A-Za-z0-9._:-]+$",
             "type": "string"
           },
           "sourceContext": {
             "$ref": "#/components/schemas/PlaybackSourceContext"
+          },
+          "startSeconds": {
+            "description": "Explicit start position for the replacement session, distinct from the old session's terminal position. For a direct same-entry handoff, omission defaults to previousTerminal.positionSeconds; explicit zero means Replay. For a different or prepared entry, omission retains canonical resume policy.",
+            "minimum": 0,
+            "type": "integer"
           }
         },
+        "required": [
+          "requestId",
+          "entryId",
+          "previousTerminal"
+        ],
         "type": "object"
       },
       "PlaybackHardwareDiagnostic": {
@@ -15169,18 +15907,6 @@
             ],
             "type": "string"
           },
-          "maxAudioBitrateKbps": {
-            "minimum": 0,
-            "type": "integer"
-          },
-          "maxVideoBitrateMbps": {
-            "minimum": 0,
-            "type": "integer"
-          },
-          "maxVideoHeight": {
-            "minimum": 0,
-            "type": "integer"
-          },
           "preferredAudioLanguage": {
             "description": "Preferred BCP-47 audio language resolved by the server before resource selection.",
             "maxLength": 32,
@@ -15220,15 +15946,8 @@
             ],
             "type": "string"
           },
-          "qualityProfile": {
-            "enum": [
-              "automatic",
-              "original",
-              "high",
-              "standard",
-              "data_saver"
-            ],
-            "type": "string"
+          "quality": {
+            "$ref": "#/components/schemas/PlaybackQualitySelection"
           },
           "subtitlesEnabled": {
             "description": "Explicit subtitle enablement. When false",
@@ -15255,78 +15974,37 @@
             "type": "string"
           }
         },
-        "type": "object"
-      },
-      "PlaybackNextRequest": {
-        "properties": {
-          "mediaId": {
-            "type": "string"
-          },
-          "queueMediaIds": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          }
-        },
         "required": [
-          "mediaId"
+          "quality"
         ],
         "type": "object"
-      },
-      "PlaybackNextResponse": {
-        "additionalProperties": false,
-        "properties": {
-          "item": {
-            "$ref": "#/components/schemas/MediaItem"
-          },
-          "queue": {
-            "items": {
-              "$ref": "#/components/schemas/MediaItem"
-            },
-            "type": "array"
-          },
-          "reason": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "queue",
-          "reason"
-        ],
-        "type": "object",
-        "x-portico-audience": "viewer"
       },
       "PlaybackPrepareNextRequest": {
+        "additionalProperties": false,
         "properties": {
           "clientProfile": {
             "$ref": "#/components/schemas/PlaybackClientProfile"
           },
-          "commitPreviousEnd": {
-            "type": "boolean"
-          },
           "crossfadeSeconds": {
             "type": "integer"
+          },
+          "entryId": {
+            "minLength": 1,
+            "type": "string"
           },
           "intent": {
             "$ref": "#/components/schemas/PlaybackIntent"
           },
-          "mediaId": {
-            "type": "string"
-          },
           "preferredHandoff": {
             "type": "string"
-          },
-          "queueMediaIds": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
           },
           "sourceContext": {
             "$ref": "#/components/schemas/PlaybackSourceContext"
           }
         },
+        "required": [
+          "entryId"
+        ],
         "type": "object"
       },
       "PlaybackPreparedResponse": {
@@ -15355,7 +16033,7 @@
           },
           "queue": {
             "items": {
-              "$ref": "#/components/schemas/MediaItem"
+              "$ref": "#/components/schemas/PlaybackQueueEntry"
             },
             "type": "array"
           },
@@ -15440,6 +16118,7 @@
         "x-portico-audience": "viewer"
       },
       "PlaybackProgressEvent": {
+        "additionalProperties": false,
         "properties": {
           "audioStreamId": {
             "type": "string"
@@ -15450,10 +16129,6 @@
           },
           "clientFallbackReason": {
             "type": "string"
-          },
-          "completed": {
-            "description": "Explicitly completes the media and closes the playback session after this event is accepted.",
-            "type": "boolean"
           },
           "durationSeconds": {
             "minimum": 0,
@@ -15475,15 +16150,13 @@
             "type": "boolean"
           },
           "positionSeconds": {
+            "description": "Exact terminal timeline position. For completed playback this must equal durationSeconds; the server rejects rather than normalizes non-final evidence.",
             "minimum": 0,
             "type": "number"
           },
           "progressSeconds": {
             "minimum": 0,
             "type": "integer"
-          },
-          "qualityId": {
-            "type": "string"
           },
           "recordedAt": {
             "description": "Client observation time for the event. Ordering is governed by eventSequence.",
@@ -15546,25 +16219,266 @@
         ],
         "type": "object"
       },
-      "PlaybackQueueResponse": {
+      "PlaybackQualityOffer": {
         "additionalProperties": false,
-        "properties": {
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/MediaItem"
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "kind": {
+                  "enum": [
+                    "automatic",
+                    "original"
+                  ]
+                }
+              },
+              "required": [
+                "kind"
+              ]
             },
-            "type": "array"
+            "then": {
+              "not": {
+                "anyOf": [
+                  {
+                    "required": [
+                      "maxVideoBitrateBps"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "maxAudioBitrateBps"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "targetDisplayHeight"
+                    ]
+                  }
+                ]
+              }
+            }
           },
-          "total": {
+          {
+            "if": {
+              "properties": {
+                "kind": {
+                  "const": "fixed"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            "then": {
+              "anyOf": [
+                {
+                  "required": [
+                    "maxVideoBitrateBps"
+                  ]
+                },
+                {
+                  "required": [
+                    "maxAudioBitrateBps"
+                  ]
+                },
+                {
+                  "required": [
+                    "targetDisplayHeight"
+                  ]
+                }
+              ]
+            }
+          }
+        ],
+        "properties": {
+          "kind": {
+            "enum": [
+              "automatic",
+              "original",
+              "fixed"
+            ],
+            "type": "string"
+          },
+          "label": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxAudioBitrateBps": {
+            "format": "int64",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "maxVideoBitrateBps": {
+            "format": "int64",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "selectionId": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "targetDisplayHeight": {
+            "enum": [
+              144,
+              240,
+              360,
+              480,
+              720,
+              1080,
+              1440,
+              2160,
+              4320
+            ],
             "type": "integer"
           }
         },
         "required": [
-          "items",
-          "total"
+          "selectionId",
+          "label",
+          "kind"
         ],
-        "type": "object",
-        "x-portico-audience": "viewer"
+        "type": "object"
+      },
+      "PlaybackQualityOfferSet": {
+        "additionalProperties": false,
+        "properties": {
+          "contractId": {
+            "const": "PC-PLAYBACK",
+            "type": "string"
+          },
+          "mediaId": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "offerRevision": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "offers": {
+            "contains": {
+              "properties": {
+                "kind": {
+                  "const": "automatic"
+                }
+              },
+              "required": [
+                "kind"
+              ],
+              "type": "object"
+            },
+            "items": {
+              "$ref": "#/components/schemas/PlaybackQualityOffer"
+            },
+            "maxContains": 1,
+            "minContains": 1,
+            "minItems": 2,
+            "type": "array",
+            "uniqueItems": true
+          },
+          "schemaVersion": {
+            "const": "quality-offers.v1",
+            "type": "string"
+          },
+          "sourceRevision": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "versionId": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "contractId",
+          "schemaVersion",
+          "mediaId",
+          "versionId",
+          "sourceRevision",
+          "offerRevision",
+          "offers"
+        ],
+        "type": "object"
+      },
+      "PlaybackQualitySelection": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "mode": {
+                "const": "automatic",
+                "type": "string"
+              }
+            },
+            "required": [
+              "mode"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "mode": {
+                "const": "explicit",
+                "type": "string"
+              },
+              "qualityOfferRevision": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "selectionId": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "mode",
+              "selectionId",
+              "qualityOfferRevision"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "PlaybackQueueEntry": {
+        "additionalProperties": false,
+        "properties": {
+          "entryId": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "media": {
+            "$ref": "#/components/schemas/MediaItem"
+          }
+        },
+        "required": [
+          "entryId",
+          "media"
+        ],
+        "type": "object"
+      },
+      "PlaybackQueueHistoryEntry": {
+        "additionalProperties": false,
+        "properties": {
+          "entryId": {
+            "description": "Stable identity of the queue occurrence that was played.",
+            "minLength": 1,
+            "type": "string"
+          },
+          "historyId": {
+            "description": "Identity of this playback-history event.",
+            "minLength": 1,
+            "type": "string"
+          },
+          "media": {
+            "$ref": "#/components/schemas/MediaItem"
+          }
+        },
+        "required": [
+          "historyId",
+          "entryId",
+          "media"
+        ],
+        "type": "object"
       },
       "PlaybackReceiver": {
         "additionalProperties": false,
@@ -15572,13 +16486,11 @@
           "app": {
             "type": "string"
           },
-          "code": {
+          "createdAt": {
+            "format": "date-time",
             "type": "string"
           },
-          "command": {
-            "$ref": "#/components/schemas/PlaybackCommand"
-          },
-          "createdAt": {
+          "expiresAt": {
             "format": "date-time",
             "type": "string"
           },
@@ -15595,10 +16507,29 @@
           "platform": {
             "type": "string"
           },
+          "receiverPublicKey": {
+            "description": "Base64url raw X25519 public key owned by the receiver.",
+            "maxLength": 43,
+            "minLength": 43,
+            "type": "string"
+          },
+          "receiverPublicKeyFingerprint": {
+            "description": "Base64url SHA-256 digest of the decoded receiver public key.",
+            "maxLength": 43,
+            "minLength": 43,
+            "type": "string"
+          },
+          "serverId": {
+            "type": "string"
+          },
           "supportedCommands": {
             "items": {
               "enum": [
-                "load"
+                "load",
+                "play",
+                "pause",
+                "seek",
+                "stop"
               ],
               "type": "string"
             },
@@ -15607,73 +16538,280 @@
         },
         "required": [
           "id",
+          "serverId",
           "name",
-          "code",
+          "platform",
+          "receiverPublicKey",
+          "receiverPublicKeyFingerprint",
           "supportedCommands",
-          "command",
+          "expiresAt",
           "createdAt",
           "lastSeenAt"
         ],
         "type": "object",
         "x-portico-audience": "viewer"
       },
-      "PlaybackReceiverLongPollEnvelope": {
+      "PlaybackReceiverHandoffCommitRequest": {
         "additionalProperties": false,
         "properties": {
-          "cursor": {
+          "authorizationId": {
+            "minLength": 1,
             "type": "string"
           },
-          "events": {
-            "items": {
-              "$ref": "#/components/schemas/PlaybackReceiver"
-            },
-            "type": "array"
-          },
-          "hasMore": {
-            "type": "boolean"
-          },
-          "resetRequired": {
-            "type": "boolean"
-          },
-          "serverTime": {
-            "format": "date-time",
+          "readiness": {
+            "description": "Exact first-playing receiver evidence required before the Server commits source terminal authority.",
+            "enum": [
+              "playing"
+            ],
             "type": "string"
           },
-          "version": {
-            "const": "v1",
+          "receiverPublicKeyFingerprint": {
+            "maxLength": 43,
+            "minLength": 43,
+            "type": "string"
+          },
+          "receiverSessionId": {
+            "description": "Exact handoff_pending session returned by the prepare request.",
+            "minLength": 1,
+            "type": "string"
+          },
+          "sourceSessionId": {
+            "minLength": 1,
             "type": "string"
           }
         },
         "required": [
-          "version",
-          "cursor",
-          "serverTime",
-          "resetRequired",
-          "hasMore",
-          "events"
+          "authorizationId",
+          "receiverPublicKeyFingerprint",
+          "sourceSessionId",
+          "receiverSessionId",
+          "readiness"
+        ],
+        "type": "object"
+      },
+      "PlaybackReceiverHandoffRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "authorizationId": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "playback": {
+            "$ref": "#/components/schemas/PlaybackSessionCreateRequest"
+          },
+          "receiverPublicKeyFingerprint": {
+            "maxLength": 43,
+            "minLength": 43,
+            "type": "string"
+          }
+        },
+        "required": [
+          "authorizationId",
+          "receiverPublicKeyFingerprint",
+          "playback"
+        ],
+        "type": "object"
+      },
+      "PlaybackReceiverHandoffStatusResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "outcome": {
+            "enum": [
+              "waiting",
+              "pending",
+              "accepted"
+            ],
+            "type": "string"
+          },
+          "receiverSessionId": {
+            "type": "string"
+          },
+          "requestId": {
+            "type": "string"
+          },
+          "sourceSessionId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "outcome",
+          "requestId",
+          "sourceSessionId"
+        ],
+        "type": "object",
+        "x-portico-audience": "viewer"
+      },
+      "PlaybackReceiverHeartbeatRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "receiverPublicKeyFingerprint": {
+            "maxLength": 43,
+            "minLength": 43,
+            "type": "string"
+          }
+        },
+        "required": [
+          "receiverPublicKeyFingerprint"
+        ],
+        "type": "object"
+      },
+      "PlaybackReceiverHeartbeatResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "authorizations": {
+            "items": {
+              "$ref": "#/components/schemas/ReceiverAuthorizationRecord"
+            },
+            "type": "array"
+          },
+          "receiver": {
+            "$ref": "#/components/schemas/PlaybackReceiver"
+          }
+        },
+        "required": [
+          "receiver",
+          "authorizations"
         ],
         "type": "object",
         "x-portico-audience": "viewer"
       },
       "PlaybackReceiverRequest": {
+        "additionalProperties": false,
         "properties": {
           "app": {
+            "maxLength": 80,
+            "type": "string"
+          },
+          "clientInstanceId": {
+            "minLength": 1,
             "type": "string"
           },
           "name": {
+            "maxLength": 80,
+            "minLength": 1,
             "type": "string"
           },
           "platform": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          },
+          "receiverId": {
+            "maxLength": 160,
+            "minLength": 1,
+            "type": "string"
+          },
+          "receiverPublicKey": {
+            "maxLength": 43,
+            "minLength": 43,
             "type": "string"
           },
           "supportedCommands": {
             "items": {
               "enum": [
-                "load"
+                "load",
+                "play",
+                "pause",
+                "seek",
+                "stop"
               ],
               "type": "string"
             },
-            "type": "array"
+            "minItems": 1,
+            "type": "array",
+            "uniqueItems": true
+          }
+        },
+        "required": [
+          "receiverId",
+          "name",
+          "platform",
+          "receiverPublicKey",
+          "supportedCommands",
+          "clientInstanceId"
+        ],
+        "type": "object"
+      },
+      "PlaybackRenegotiationIntent": {
+        "additionalProperties": false,
+        "description": "Portable non-quality intent updates. Quality has exactly one owner at PlaybackRenegotiationRequest.quality.",
+        "properties": {
+          "allowHdr": {
+            "type": "boolean"
+          },
+          "burnInSubtitles": {
+            "type": "boolean"
+          },
+          "directPlayPolicy": {
+            "enum": [
+              "allow",
+              "prefer",
+              "never"
+            ],
+            "type": "string"
+          },
+          "directStreamPolicy": {
+            "enum": [
+              "allow",
+              "prefer",
+              "never"
+            ],
+            "type": "string"
+          },
+          "preferredAudioLanguage": {
+            "maxLength": 32,
+            "type": "string"
+          },
+          "preferredAudioLanguages": {
+            "items": {
+              "maxLength": 32,
+              "type": "string"
+            },
+            "maxItems": 16,
+            "type": "array",
+            "uniqueItems": true
+          },
+          "preferredSubtitleLanguage": {
+            "maxLength": 32,
+            "type": "string"
+          },
+          "preferredSubtitleLanguages": {
+            "items": {
+              "maxLength": 32,
+              "type": "string"
+            },
+            "maxItems": 16,
+            "type": "array",
+            "uniqueItems": true
+          },
+          "preferredSubtitleMode": {
+            "enum": [
+              "off",
+              "text",
+              "burn_in"
+            ],
+            "type": "string"
+          },
+          "subtitlesEnabled": {
+            "type": "boolean"
+          },
+          "transcodePolicy": {
+            "enum": [
+              "allow",
+              "prefer",
+              "require",
+              "never"
+            ],
+            "type": "string"
+          },
+          "transportClass": {
+            "enum": [
+              "wifi",
+              "cellular",
+              "wired",
+              "unknown"
+            ],
+            "type": "string"
           }
         },
         "type": "object"
@@ -15693,10 +16831,10 @@
             "type": "integer"
           },
           "intent": {
-            "$ref": "#/components/schemas/PlaybackIntent"
+            "$ref": "#/components/schemas/PlaybackRenegotiationIntent"
           },
-          "qualityId": {
-            "type": "string"
+          "quality": {
+            "$ref": "#/components/schemas/PlaybackQualitySelection"
           },
           "requestId": {
             "maxLength": 128,
@@ -15735,6 +16873,41 @@
         "type": "string",
         "x-portico-audience": "viewer"
       },
+      "PlaybackReplacementRequest": {
+        "additionalProperties": false,
+        "description": "Exact authority-transfer envelope for replacing an active session while starting or tuning another target. The containing target request and this envelope form one immutable idempotent request. The source stays authoritative unless the server atomically accepts previousTerminal and activates the reserved successor.",
+        "properties": {
+          "expectedPlaybackRevision": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "expectedQueueRevision": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "previousTerminal": {
+            "$ref": "#/components/schemas/PlaybackTerminalEvent"
+          },
+          "requestId": {
+            "maxLength": 128,
+            "minLength": 8,
+            "pattern": "^[A-Za-z0-9._:-]+$",
+            "type": "string"
+          },
+          "sourceSessionId": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "sourceSessionId",
+          "requestId",
+          "previousTerminal"
+        ],
+        "type": "object"
+      },
       "PlaybackResource": {
         "additionalProperties": false,
         "properties": {
@@ -15747,9 +16920,6 @@
             "type": "boolean"
           },
           "id": {
-            "type": "string"
-          },
-          "qualityId": {
             "type": "string"
           },
           "sourceUrl": {
@@ -15870,6 +17040,10 @@
           "continuationCredential": {
             "$ref": "#/components/schemas/PlaybackContinuationCredential"
           },
+          "currentQueueEntryId": {
+            "minLength": 1,
+            "type": "string"
+          },
           "decision": {
             "$ref": "#/components/schemas/PlaybackDecision"
           },
@@ -15902,33 +17076,15 @@
           "policy": {
             "$ref": "#/components/schemas/ResolvedPlaybackPolicy"
           },
-          "qualities": {
-            "items": {
-              "additionalProperties": false,
-              "properties": {
-                "available": {
-                  "type": "boolean"
-                },
-                "description": {
-                  "type": "string"
-                },
-                "id": {
-                  "type": "string"
-                },
-                "label": {
-                  "type": "string"
-                },
-                "requiresTranscode": {
-                  "type": "boolean"
-                }
-              },
-              "type": "object"
-            },
-            "type": "array"
+          "qualityOffers": {
+            "$ref": "#/components/schemas/PlaybackQualityOfferSet"
+          },
+          "qualitySelection": {
+            "$ref": "#/components/schemas/PlaybackQualitySelection"
           },
           "queue": {
             "items": {
-              "$ref": "#/components/schemas/MediaItem"
+              "$ref": "#/components/schemas/PlaybackQueueEntry"
             },
             "type": "array"
           },
@@ -15955,9 +17111,6 @@
           },
           "selectedAudioStreamId": {
             "description": "Audio stream id selected by the server or explicitly requested by the client.",
-            "type": "string"
-          },
-          "selectedQualityId": {
             "type": "string"
           },
           "selectedSubtitleMode": {
@@ -15998,6 +17151,7 @@
         },
         "required": [
           "sessionId",
+          "currentQueueEntryId",
           "nextEventSequence",
           "mediaGrant",
           "continuationCredential",
@@ -16007,7 +17161,8 @@
           "resources",
           "decision",
           "policy",
-          "qualities",
+          "qualityOffers",
+          "qualitySelection",
           "audioStreams",
           "subtitleStreams",
           "chapters",
@@ -16148,9 +17303,6 @@
             "minimum": 0,
             "type": "integer"
           },
-          "qualityId": {
-            "type": "string"
-          },
           "selectionChanged": {
             "type": "boolean"
           },
@@ -16258,6 +17410,9 @@
           "repeatMode": {
             "$ref": "#/components/schemas/PlaybackRepeatMode"
           },
+          "replacement": {
+            "$ref": "#/components/schemas/PlaybackReplacementRequest"
+          },
           "skipPreroll": {
             "type": "boolean"
           },
@@ -16279,7 +17434,8 @@
           }
         },
         "required": [
-          "mediaId"
+          "mediaId",
+          "intent"
         ],
         "type": "object"
       },
@@ -16292,14 +17448,18 @@
             "minimum": 0,
             "type": "integer"
           },
+          "idempotencyKey": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
           "mediaIds": {
-            "description": "Complete ordered replacement for the upcoming queue.",
+            "description": "Complete ordered new-occurrence replacement for the upcoming queue. Repeated media ids create distinct entries.",
             "items": {
               "type": "string"
             },
             "maxItems": 500,
-            "type": "array",
-            "uniqueItems": true
+            "type": "array"
           },
           "repeatMode": {
             "$ref": "#/components/schemas/PlaybackRepeatMode"
@@ -16307,6 +17467,7 @@
         },
         "required": [
           "expectedRevision",
+          "idempotencyKey",
           "mediaIds",
           "repeatMode"
         ],
@@ -16322,9 +17483,18 @@
               "play_next",
               "remove",
               "reorder",
+              "shuffle",
               "clear",
               "set_repeat"
             ],
+            "type": "string"
+          },
+          "destinationEntryId": {
+            "description": "Existing occurrence used as the reorder anchor.",
+            "type": "string"
+          },
+          "entryId": {
+            "description": "Exact queue occurrence for remove or reorder.",
             "type": "string"
           },
           "expectedRevision": {
@@ -16333,35 +17503,36 @@
             "minimum": 0,
             "type": "integer"
           },
-          "fromIndex": {
-            "description": "Source queue index for reorder commands.",
-            "type": "integer"
-          },
-          "index": {
-            "description": "Queue index for remove commands.",
-            "type": "integer"
+          "idempotencyKey": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
           },
           "mediaId": {
-            "description": "Single media item for append, play_next, or remove.",
+            "description": "Single media intent for append or play_next. Each use creates a new occurrence.",
             "type": "string"
           },
           "mediaIds": {
-            "description": "Ordered media ids for replace, append, or play_next commands.",
+            "description": "Ordered media intents for append or play_next. Repeated ids create distinct occurrences.",
             "items": {
               "type": "string"
             },
             "type": "array"
           },
+          "placement": {
+            "enum": [
+              "before",
+              "after"
+            ],
+            "type": "string"
+          },
           "repeatMode": {
             "$ref": "#/components/schemas/PlaybackRepeatMode"
-          },
-          "toIndex": {
-            "description": "Destination queue index for reorder commands.",
-            "type": "integer"
           }
         },
         "required": [
           "expectedRevision",
+          "idempotencyKey",
           "action"
         ],
         "type": "object"
@@ -16373,17 +17544,17 @@
             "type": "boolean"
           },
           "current": {
-            "$ref": "#/components/schemas/MediaItem"
+            "$ref": "#/components/schemas/PlaybackQueueEntry"
           },
           "history": {
             "items": {
-              "$ref": "#/components/schemas/MediaItem"
+              "$ref": "#/components/schemas/PlaybackQueueHistoryEntry"
             },
             "type": "array"
           },
           "items": {
             "items": {
-              "$ref": "#/components/schemas/MediaItem"
+              "$ref": "#/components/schemas/PlaybackQueueEntry"
             },
             "type": "array"
           },
@@ -16421,46 +17592,57 @@
       "PlaybackSessionStopRequest": {
         "additionalProperties": false,
         "properties": {
-          "disposition": {
-            "enum": [
-              "stopped",
-              "completed"
-            ],
+          "requestId": {
+            "description": "Stable idempotency identity allocated before the terminal request is sent. An exact retry reuses this value and the byte-equivalent terminal envelope.",
+            "maxLength": 128,
+            "minLength": 8,
+            "pattern": "^[A-Za-z0-9._:-]+$",
             "type": "string"
           },
-          "durationSeconds": {
-            "description": "Required terminal timeline duration. May be zero only for stopped indefinite/live playback; completed playback requires a positive value.",
-            "minimum": 0,
-            "type": "number"
-          },
-          "eventSequence": {
-            "format": "int64",
-            "minimum": 1,
-            "type": "integer"
-          },
-          "generation": {
-            "format": "int64",
-            "minimum": 1,
-            "type": "integer"
-          },
-          "positionSeconds": {
-            "minimum": 0,
-            "type": "number"
-          },
-          "recordedAt": {
-            "format": "date-time",
-            "type": "string"
+          "terminal": {
+            "$ref": "#/components/schemas/PlaybackTerminalEvent"
           }
         },
         "required": [
-          "disposition",
-          "generation",
-          "eventSequence",
-          "recordedAt",
-          "positionSeconds",
-          "durationSeconds"
+          "requestId",
+          "terminal"
         ],
         "type": "object"
+      },
+      "PlaybackSessionTerminalAcknowledgement": {
+        "additionalProperties": false,
+        "properties": {
+          "accepted": {
+            "description": "True when this exact terminal mutation is durably committed, including an exact retry of a prior commit.",
+            "type": "boolean"
+          },
+          "duplicate": {
+            "description": "True when the server returned the durable receipt for an exact previously committed request.",
+            "type": "boolean"
+          },
+          "requestId": {
+            "maxLength": 128,
+            "minLength": 8,
+            "pattern": "^[A-Za-z0-9._:-]+$",
+            "type": "string"
+          },
+          "sessionId": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "terminal": {
+            "$ref": "#/components/schemas/PlaybackTerminalEvent"
+          }
+        },
+        "required": [
+          "requestId",
+          "accepted",
+          "duplicate",
+          "sessionId",
+          "terminal"
+        ],
+        "type": "object",
+        "x-portico-audience": "viewer"
       },
       "PlaybackSourceContext": {
         "additionalProperties": false,
@@ -16605,6 +17787,50 @@
           "detail",
           "supportedCommands",
           "lastSeenAt"
+        ],
+        "type": "object"
+      },
+      "PlaybackTerminalEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "disposition": {
+            "enum": [
+              "stopped",
+              "completed"
+            ],
+            "type": "string"
+          },
+          "durationSeconds": {
+            "description": "Required terminal timeline duration. May be zero only for stopped indefinite/live playback; completed playback requires a positive value exactly equal to positionSeconds.",
+            "minimum": 0,
+            "type": "number"
+          },
+          "eventSequence": {
+            "format": "int64",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "generation": {
+            "format": "int64",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "positionSeconds": {
+            "minimum": 0,
+            "type": "number"
+          },
+          "recordedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "disposition",
+          "generation",
+          "eventSequence",
+          "recordedAt",
+          "positionSeconds",
+          "durationSeconds"
         ],
         "type": "object"
       },
@@ -17219,9 +18445,6 @@
             },
             "type": "array"
           },
-          "compatibility": {
-            "$ref": "#/components/schemas/CompatibilityEnvelope"
-          },
           "entityKinds": {
             "items": {
               "type": "string"
@@ -17272,6 +18495,9 @@
           "search": {
             "$ref": "#/components/schemas/SearchContract"
           },
+          "semanticIdentity": {
+            "$ref": "#/components/schemas/SemanticDocumentIdentity"
+          },
           "serverCapabilities": {
             "items": {
               "type": "string"
@@ -17280,6 +18506,7 @@
           }
         },
         "required": [
+          "semanticIdentity",
           "apiVersion",
           "actionRevision",
           "language",
@@ -17297,8 +18524,7 @@
           "eventTransports",
           "applicationEvents",
           "longPoll",
-          "serverCapabilities",
-          "compatibility"
+          "serverCapabilities"
         ],
         "type": "object",
         "x-portico-audience": "viewer"
@@ -18529,6 +19755,168 @@
         "type": "object",
         "x-portico-audience": "viewer"
       },
+      "ReceiverAuthorizationRecord": {
+        "additionalProperties": false,
+        "properties": {
+          "allowedCommands": {
+            "items": {
+              "enum": [
+                "load",
+                "play",
+                "pause",
+                "seek",
+                "stop"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "authorizationId": {
+            "type": "string"
+          },
+          "authorizationRevision": {
+            "type": "string"
+          },
+          "controllerId": {
+            "type": "string"
+          },
+          "controllerPublicKey": {
+            "maxLength": 43,
+            "minLength": 43,
+            "type": "string"
+          },
+          "expiresAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "receiverId": {
+            "type": "string"
+          },
+          "receiverPublicKeyFingerprint": {
+            "maxLength": 43,
+            "minLength": 43,
+            "type": "string"
+          },
+          "serverId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "authorizationId",
+          "receiverId",
+          "serverId",
+          "controllerId",
+          "controllerPublicKey",
+          "receiverPublicKeyFingerprint",
+          "allowedCommands",
+          "authorizationRevision",
+          "expiresAt"
+        ],
+        "type": "object"
+      },
+      "ReceiverAuthorizationRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "allowedCommands": {
+            "items": {
+              "enum": [
+                "load",
+                "play",
+                "pause",
+                "seek",
+                "stop"
+              ],
+              "type": "string"
+            },
+            "minItems": 1,
+            "type": "array",
+            "uniqueItems": true
+          },
+          "clientInstanceId": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "controllerId": {
+            "maxLength": 160,
+            "minLength": 1,
+            "type": "string"
+          },
+          "controllerPublicKey": {
+            "maxLength": 43,
+            "minLength": 43,
+            "type": "string"
+          },
+          "requestId": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "requestId",
+          "controllerId",
+          "controllerPublicKey",
+          "allowedCommands",
+          "clientInstanceId"
+        ],
+        "type": "object"
+      },
+      "ReceiverControllerGrant": {
+        "additionalProperties": false,
+        "properties": {
+          "allowedCommands": {
+            "items": {
+              "enum": [
+                "load",
+                "play",
+                "pause",
+                "seek",
+                "stop"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "authorizationId": {
+            "type": "string"
+          },
+          "authorizationRevision": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "receiverId": {
+            "type": "string"
+          },
+          "receiverPublicKey": {
+            "maxLength": 43,
+            "minLength": 43,
+            "type": "string"
+          },
+          "receiverPublicKeyFingerprint": {
+            "maxLength": 43,
+            "minLength": 43,
+            "type": "string"
+          },
+          "serverId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "authorizationId",
+          "receiverId",
+          "serverId",
+          "receiverPublicKey",
+          "receiverPublicKeyFingerprint",
+          "allowedCommands",
+          "authorizationRevision",
+          "expiresAt"
+        ],
+        "type": "object",
+        "x-portico-audience": "viewer"
+      },
       "RecommendationRow": {
         "additionalProperties": false,
         "properties": {
@@ -18560,6 +19948,33 @@
         ],
         "type": "object",
         "x-portico-audience": "viewer"
+      },
+      "RemoteAccessCertificateRenewResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "existing": {
+            "type": "boolean"
+          },
+          "job": {
+            "$ref": "#/components/schemas/Job"
+          },
+          "ok": {
+            "const": true,
+            "type": "boolean"
+          },
+          "queued": {
+            "const": true,
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok",
+          "queued",
+          "existing",
+          "job"
+        ],
+        "type": "object",
+        "x-portico-audience": "management"
       },
       "RemoteAccessClaim": {
         "properties": {
@@ -19268,10 +20683,6 @@
           "allowHdr": {
             "type": "boolean"
           },
-          "deliveryProfile": {
-            "description": "Server-owned, media-type-specific profile that selects the actual video or audio encoder preset.",
-            "type": "string"
-          },
           "directPlayPolicy": {
             "enum": [
               "allow",
@@ -19316,16 +20727,6 @@
             ],
             "type": "string"
           },
-          "qualityProfile": {
-            "enum": [
-              "automatic",
-              "original",
-              "high",
-              "standard",
-              "data_saver"
-            ],
-            "type": "string"
-          },
           "serverClamps": {
             "items": {
               "type": "string"
@@ -19363,12 +20764,10 @@
         },
         "required": [
           "networkClass",
-          "qualityProfile",
           "directPlayPolicy",
           "directStreamPolicy",
           "transcodePolicy",
           "allowHdr",
-          "deliveryProfile",
           "serverClamps"
         ],
         "type": "object",
@@ -19462,13 +20861,44 @@
         ],
         "type": "object"
       },
+      "RestoreAuthorizationContext": {
+        "additionalProperties": false,
+        "properties": {
+          "restoreSecurityEpoch": {
+            "description": "Current monotonic Server epoch that a Hosted restore authorization must bind exactly.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "restoreSecurityEpoch"
+        ],
+        "type": "object",
+        "x-portico-audience": "management"
+      },
       "RestoreBackupRequest": {
         "additionalProperties": false,
+        "anyOf": [
+          {
+            "required": [
+              "password"
+            ]
+          },
+          {
+            "required": [
+              "hostedAuthorization"
+            ]
+          }
+        ],
         "properties": {
           "confirmation": {
             "description": "Exact destructive confirmation bound to the selected backup, for example restore:backup-name.db.",
             "minLength": 1,
             "type": "string"
+          },
+          "hostedAuthorization": {
+            "$ref": "#/components/schemas/HostedRestoreAuthorization"
           },
           "password": {
             "description": "Current account password; profile PINs and session possession are not accepted.",
@@ -19478,7 +20908,6 @@
           }
         },
         "required": [
-          "password",
           "confirmation"
         ],
         "type": "object"
@@ -21239,6 +22668,38 @@
         ],
         "type": "object",
         "x-portico-audience": "viewer"
+      },
+      "SemanticDocumentIdentity": {
+        "additionalProperties": false,
+        "properties": {
+          "digest": {
+            "pattern": "^[a-f0-9]{64}$",
+            "type": "string"
+          },
+          "digestAlgorithm": {
+            "enum": [
+              "sha256"
+            ],
+            "type": "string"
+          },
+          "id": {
+            "const": "portico.product-contract",
+            "type": "string"
+          },
+          "revision": {
+            "enum": [
+              "v2"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "revision",
+          "digestAlgorithm",
+          "digest"
+        ],
+        "type": "object"
       },
       "ServerActivityResponse": {
         "additionalProperties": false,
@@ -24147,6 +25608,10 @@
             "format": "date-time",
             "type": "string"
           },
+          "currentEntryId": {
+            "minLength": 1,
+            "type": "string"
+          },
           "id": {
             "type": "string"
           },
@@ -24260,6 +25725,7 @@
           "ownerProfileId",
           "ownerName",
           "mediaId",
+          "currentEntryId",
           "mediaTitle",
           "state",
           "positionSeconds",
@@ -24381,12 +25847,17 @@
         "type": "object"
       },
       "WatchWithFriendsQueueItem": {
+        "additionalProperties": false,
         "properties": {
           "addedAt": {
             "format": "date-time",
             "type": "string"
           },
           "addedByProfileId": {
+            "type": "string"
+          },
+          "entryId": {
+            "minLength": 1,
             "type": "string"
           },
           "mediaId": {
@@ -24397,11 +25868,17 @@
           },
           "sortOrder": {
             "type": "integer"
+          },
+          "unavailable": {
+            "description": "True when this viewer cannot access the media. The stable entryId and ordering remain authoritative.",
+            "type": "boolean"
           }
         },
         "required": [
+          "entryId",
           "mediaId",
           "mediaTitle",
+          "unavailable",
           "sortOrder",
           "addedByProfileId",
           "addedAt"
@@ -24409,7 +25886,16 @@
         "type": "object"
       },
       "WatchWithFriendsQueueOrderRequest": {
+        "additionalProperties": false,
         "properties": {
+          "destinationEntryId": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "entryId": {
+            "minLength": 1,
+            "type": "string"
+          },
           "expectedRevision": {
             "format": "int64",
             "minimum": 0,
@@ -24421,15 +25907,18 @@
             "minLength": 1,
             "type": "string"
           },
-          "mediaIds": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
+          "placement": {
+            "enum": [
+              "before",
+              "after"
+            ],
+            "type": "string"
           }
         },
         "required": [
-          "mediaIds",
+          "entryId",
+          "destinationEntryId",
+          "placement",
           "expectedRevision",
           "idempotencyKey"
         ],
@@ -24504,6 +25993,10 @@
             ],
             "type": "string"
           },
+          "entryId": {
+            "description": "Loads one exact existing queue occurrence. Mutually exclusive with mediaId.",
+            "type": "string"
+          },
           "expectedRevision": {
             "format": "int64",
             "minimum": 0,
@@ -24516,7 +26009,7 @@
             "type": "string"
           },
           "mediaId": {
-            "description": "Required for load actions.",
+            "description": "Creates and loads one genuinely new queue occurrence. Mutually exclusive with entryId.",
             "type": "string"
           },
           "playbackRate": {
@@ -24587,6 +26080,11 @@
       "bearerAuth": {
         "description": "Short-lived local native access credential returned by `/auth/sessions`, a Hosted-issued server-scoped credential, or a scoped API key created under `/auth/api-keys`. Account credentials are never accepted in URLs.",
         "scheme": "bearer",
+        "type": "http"
+      },
+      "castReceiverAuth": {
+        "description": "Receiver-scoped credential returned only by Cast bootstrap redemption. Account/session credentials are never accepted on receiver mutation routes.",
+        "scheme": "PorticoReceiver",
         "type": "http"
       },
       "cookieAuth": {
@@ -34530,6 +36028,113 @@
         ]
       }
     },
+    "/backups/restore-authorization-context": {
+      "get": {
+        "operationId": "getRestoreAuthorizationContext",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RestoreAuthorizationContext"
+                }
+              }
+            },
+            "description": "Current exact epoch for a Hosted owner restore authorization."
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "400 Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "401 Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "403 Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "404 Not Found"
+          },
+          "405": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "405 Method Not Allowed"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "409 Conflict"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "429 Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "500 Internal Server Error"
+          }
+        },
+        "summary": "Read the current Server restore security epoch",
+        "x-portico-audience": "management",
+        "x-portico-audit-event": "none",
+        "x-portico-auth": "session",
+        "x-portico-permission": "manageServer",
+        "x-portico-rate-policy": "interactive-read",
+        "x-portico-runtime-registered": true,
+        "x-portico-surfaces": [
+          "web-admin"
+        ]
+      }
+    },
     "/backups/restore/upload": {
       "post": {
         "operationId": "restoreUploadedDatabase",
@@ -34538,6 +36143,18 @@
             "multipart/form-data": {
               "schema": {
                 "additionalProperties": false,
+                "oneOf": [
+                  {
+                    "required": [
+                      "password"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "hostedAuthorization"
+                    ]
+                  }
+                ],
                 "properties": {
                   "confirmation": {
                     "type": "string"
@@ -34552,6 +36169,10 @@
                     "minimum": 1,
                     "type": "integer"
                   },
+                  "hostedAuthorization": {
+                    "description": "Exact JSON serialization of the signed Hosted restore authorization document.",
+                    "type": "string"
+                  },
                   "manifest": {
                     "description": "Optional strict V2 backup manifest for a catalogued backup import.",
                     "type": "string"
@@ -34562,7 +36183,6 @@
                   }
                 },
                 "required": [
-                  "password",
                   "confirmation",
                   "databaseBytes",
                   "database"
@@ -47105,10 +48725,14 @@
                   },
                   "intent": {
                     "$ref": "#/components/schemas/PlaybackIntent"
+                  },
+                  "replacement": {
+                    "$ref": "#/components/schemas/PlaybackReplacementRequest"
                   }
                 },
                 "required": [
-                  "channelId"
+                  "channelId",
+                  "intent"
                 ],
                 "type": "object"
               }
@@ -48775,7 +50399,7 @@
     },
     "/live-tv/streams/{channelId}/close": {
       "post": {
-        "description": "Ends an active Live TV playback session for this channel.",
+        "description": "Accepts the owning playback actor's exact ordered terminal event and closes the Live TV session exactly once.",
         "operationId": "postLiveTvStreamsChannelIdClose",
         "parameters": [
           {
@@ -48791,13 +50415,25 @@
           "content": {
             "application/json": {
               "schema": {
+                "additionalProperties": false,
                 "properties": {
+                  "requestId": {
+                    "maxLength": 128,
+                    "minLength": 8,
+                    "pattern": "^[A-Za-z0-9._:-]+$",
+                    "type": "string"
+                  },
                   "sessionId": {
                     "type": "string"
+                  },
+                  "terminal": {
+                    "$ref": "#/components/schemas/PlaybackTerminalEvent"
                   }
                 },
                 "required": [
-                  "sessionId"
+                  "sessionId",
+                  "requestId",
+                  "terminal"
                 ],
                 "type": "object"
               }
@@ -48810,7 +50446,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SuccessResponse"
+                  "$ref": "#/components/schemas/PlaybackSessionTerminalAcknowledgement"
                 }
               }
             },
@@ -48942,13 +50578,19 @@
                   },
                   "intent": {
                     "$ref": "#/components/schemas/PlaybackIntent"
+                  },
+                  "replacement": {
+                    "$ref": "#/components/schemas/PlaybackReplacementRequest"
                   }
                 },
+                "required": [
+                  "intent"
+                ],
                 "type": "object"
               }
             }
           },
-          "required": false
+          "required": true
         },
         "responses": {
           "200": {
@@ -57030,6 +58672,128 @@
         ]
       }
     },
+    "/offline-download-authorizations/revalidate": {
+      "post": {
+        "description": "Returns a signed replacement only after the active profile, exact authorization revision, preparation, media version, and verified artifact binding are rechecked atomically. Complete foreign viewer scopes return out-of-scope without probing receipt or preparation state; malformed receipts return invalid.",
+        "operationId": "revalidateOfflineDownloadAuthorization",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OfflineDownloadAuthorizationRevalidationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OfflineDownloadAuthorizationRevalidationResponse"
+                }
+              }
+            },
+            "description": "Exact revalidation outcome; only valid-replacement includes a receipt"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "400 Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "401 Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "403 Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "404 Not Found"
+          },
+          "405": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "405 Method Not Allowed"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "409 Conflict"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "429 Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "500 Internal Server Error"
+          },
+          "503": {
+            "description": "Authorization state could not be checked atomically"
+          }
+        },
+        "summary": "Revalidate and replace an immutable native offline authorization receipt",
+        "x-portico-audience": "viewer",
+        "x-portico-audit-event": "api.revalidateOfflineDownloadAuthorization",
+        "x-portico-auth": "session",
+        "x-portico-permission": "download-media",
+        "x-portico-rate-policy": "auth-sensitive",
+        "x-portico-runtime-registered": true,
+        "x-portico-surfaces": [
+          "mobile",
+          "television"
+        ]
+      }
+    },
     "/people/media": {
       "get": {
         "operationId": "getPeopleMedia",
@@ -57419,7 +59183,7 @@
     },
     "/playback-sessions/{sessionId}": {
       "delete": {
-        "description": "Atomically records the final playback position and terminal disposition, then ends the session and revokes its playback authority.",
+        "description": "Atomically records the final playback position and terminal disposition, then ends the session and revokes its playback authority. The caller persists and reuses the exact request after an ambiguous response; an exact retry returns the committed receipt. Authentication and not-found failures are never treated as inferred success.",
         "operationId": "deletePlaybackSessionsSessionId",
         "requestBody": {
           "content": {
@@ -57436,11 +59200,11 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SuccessResponse"
+                  "$ref": "#/components/schemas/PlaybackSessionTerminalAcknowledgement"
                 }
               }
             },
-            "description": "Playback session ended"
+            "description": "Durable terminal receipt for the ended playback session"
           },
           "400": {
             "content": {
@@ -58180,6 +59944,7 @@
     },
     "/playback-sessions/{sessionId}/continuation": {
       "delete": {
+        "description": "Commits the requestId-bound terminal event and revokes continuation authority in one operation. An exact retry returns the durable receipt even after the credential was revoked by the first commit; a different request, an invalid credential, or an unknown session fails closed.",
         "operationId": "revokePlaybackContinuation",
         "requestBody": {
           "content": {
@@ -58196,11 +59961,11 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SuccessResponse"
+                  "$ref": "#/components/schemas/PlaybackSessionTerminalAcknowledgement"
                 }
               }
             },
-            "description": "Continuation revoked"
+            "description": "Durable terminal receipt for the revoked continuation"
           },
           "400": {
             "content": {
@@ -58666,7 +60431,7 @@
         }
       ],
       "post": {
-        "description": "Closes the previous session, records history/progress policy, and starts the next item under the same client instance for music gapless/crossfade and platform queue parity.",
+        "description": "Atomically accepts the source actor's ordered previousTerminal event, closes the source session, and starts the prepared or directly selected replacement under the same client instance. Until a response is accepted, the source actor retains terminal authority. Stale generation or sequence evidence fails closed without activating the replacement; an exact retry returns the committed result.",
         "operationId": "postPlaybackSessionsSessionIdHandoff",
         "requestBody": {
           "content": {
@@ -58770,7 +60535,7 @@
             "description": "500 Internal Server Error"
           }
         },
-        "summary": "Commit a prepared playback handoff",
+        "summary": "Commit a playback handoff",
         "x-portico-audience": "viewer",
         "x-portico-audit-event": "api.postPlaybackSessionsSessionIdHandoff",
         "x-portico-auth": "session",
@@ -58916,7 +60681,7 @@
         }
       ],
       "post": {
-        "description": "Returns a short-lived prepared playback descriptor so clients can preload the next audio item for gapless or crossfade handoff.",
+        "description": "Returns a short-lived prepared playback descriptor so clients can preload the next audio item for gapless or crossfade handoff. Preparation never records or closes the source session.",
         "operationId": "postPlaybackSessionsSessionIdPrepareNext",
         "requestBody": {
           "content": {
@@ -59154,7 +60919,7 @@
         }
       ],
       "patch": {
-        "description": "Applies one append, play_next, remove, reorder, clear, or set_repeat command when expectedRevision matches the authoritative state.",
+        "description": "Applies one append, play_next, remove, reorder, shuffle, clear, or set_repeat command when expectedRevision matches the authoritative state. Shuffle atomically materializes one occurrence order from the idempotency key without moving the current item.",
         "operationId": "patchPlaybackSessionsSessionIdQueue",
         "requestBody": {
           "content": {
@@ -59530,11 +61295,11 @@
             "application/json": {
               "schema": {
                 "properties": {
+                  "clientInstanceId": {
+                    "type": "string"
+                  },
                   "clientProfile": {
                     "$ref": "#/components/schemas/PlaybackClientProfile"
-                  },
-                  "intent": {
-                    "$ref": "#/components/schemas/PlaybackIntent"
                   }
                 },
                 "type": "object"
@@ -60134,113 +61899,6 @@
       }
     },
     "/playback/cast/sessions/{sessionId}/{operation}": {
-      "delete": {
-        "operationId": "deletePlaybackCastSession",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CastStopResponse"
-                }
-              }
-            },
-            "description": "Cast receiver session stopped"
-          },
-          "400": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "400 Bad Request"
-          },
-          "401": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "401 Unauthorized"
-          },
-          "403": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "403 Forbidden"
-          },
-          "404": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "404 Not Found"
-          },
-          "405": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "405 Method Not Allowed"
-          },
-          "409": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "409 Conflict"
-          },
-          "429": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "429 Too Many Requests"
-          },
-          "500": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "500 Internal Server Error"
-          }
-        },
-        "security": [],
-        "summary": "Idempotently stop Cast playback",
-        "x-portico-audience": "viewer",
-        "x-portico-audit-event": "api.deletePlaybackCastSession",
-        "x-portico-auth": "public",
-        "x-portico-permission": "public",
-        "x-portico-rate-policy": "playback-control",
-        "x-portico-runtime-path": "/api/playback/cast/sessions/{sessionId}/stop",
-        "x-portico-runtime-registered": true,
-        "x-portico-surfaces": [
-          "television"
-        ]
-      },
       "get": {
         "operationId": "getPlaybackCastSessionState",
         "responses": {
@@ -60335,7 +61993,11 @@
             "description": "500 Internal Server Error"
           }
         },
-        "security": [],
+        "security": [
+          {
+            "castReceiverAuth": []
+          }
+        ],
         "summary": "Read Cast receiver session state",
         "x-portico-audience": "viewer",
         "x-portico-audit-event": "api.getPlaybackCastSessionState",
@@ -60367,7 +62029,10 @@
               "control",
               "progress",
               "renew",
-              "stop"
+              "stop",
+              "advance",
+              "advance-cancel",
+              "segment-skip"
             ],
             "type": "string"
           }
@@ -60391,6 +62056,15 @@
                   },
                   {
                     "$ref": "#/components/schemas/CastStopRequest"
+                  },
+                  {
+                    "$ref": "#/components/schemas/CastAdvanceRequest"
+                  },
+                  {
+                    "$ref": "#/components/schemas/CastAdvanceCancelRequest"
+                  },
+                  {
+                    "$ref": "#/components/schemas/CastSegmentSkipRequest"
                   }
                 ]
               }
@@ -60490,7 +62164,11 @@
             "description": "500 Internal Server Error"
           }
         },
-        "security": [],
+        "security": [
+          {
+            "castReceiverAuth": []
+          }
+        ],
         "summary": "Control, report progress, renew, or stop Cast playback",
         "x-portico-audience": "viewer",
         "x-portico-audit-event": "api.postPlaybackCastSessionOperation",
@@ -60500,6 +62178,127 @@
         "x-portico-runtime-path": "/api/playback/cast/sessions/{sessionId}/{operation}",
         "x-portico-runtime-registered": true,
         "x-portico-surfaces": [
+          "television"
+        ]
+      }
+    },
+    "/playback/cast/transfer-status": {
+      "post": {
+        "description": "Returns only durable no-credential outcome evidence for the exact account/profile/client request identity.",
+        "operationId": "postPlaybackCastTransferStatus",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CastTransferStatusRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CastTransferStatusResponse"
+                }
+              }
+            },
+            "description": "Exact pending or final Cast transfer outcome"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "400 Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "401 Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "403 Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "404 Not Found"
+          },
+          "405": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "405 Method Not Allowed"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "409 Conflict"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "429 Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "500 Internal Server Error"
+          }
+        },
+        "summary": "Reconcile one exact Cast bootstrap or authority transfer",
+        "x-portico-audience": "viewer",
+        "x-portico-audit-event": "api.postPlaybackCastTransferStatus",
+        "x-portico-auth": "session",
+        "x-portico-client-core-method": "castTransferStatus",
+        "x-portico-permission": "play-media",
+        "x-portico-rate-policy": "playback-control",
+        "x-portico-runtime-registered": true,
+        "x-portico-surfaces": [
+          "web",
+          "mobile",
           "television"
         ]
       }
@@ -60858,248 +62657,9 @@
         ]
       }
     },
-    "/playback/next": {
-      "post": {
-        "description": "Returns a server-backed up-next item using the supplied queue first, then contextual media relationships.",
-        "operationId": "postPlaybackNext",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PlaybackNextRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PlaybackNextResponse"
-                }
-              }
-            },
-            "description": "Next playable item and queue context"
-          },
-          "400": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "400 Bad Request"
-          },
-          "401": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "401 Unauthorized"
-          },
-          "403": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "403 Forbidden"
-          },
-          "404": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "404 Not Found"
-          },
-          "405": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "405 Method Not Allowed"
-          },
-          "409": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "409 Conflict"
-          },
-          "429": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "429 Too Many Requests"
-          },
-          "500": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "500 Internal Server Error"
-          }
-        },
-        "summary": "Resolve the next playable media item",
-        "x-portico-audience": "viewer",
-        "x-portico-audit-event": "api.postPlaybackNext",
-        "x-portico-auth": "session",
-        "x-portico-permission": "play-media",
-        "x-portico-rate-policy": "playback-control",
-        "x-portico-runtime-registered": true,
-        "x-portico-surfaces": [
-          "web",
-          "mobile",
-          "television"
-        ]
-      }
-    },
-    "/playback/queue": {
-      "post": {
-        "description": "Returns playable queue items aligned to server permissions and media relationships.",
-        "operationId": "postPlaybackQueue",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PlaybackNextRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PlaybackQueueResponse"
-                }
-              }
-            },
-            "description": "Server-backed queue"
-          },
-          "400": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "400 Bad Request"
-          },
-          "401": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "401 Unauthorized"
-          },
-          "403": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "403 Forbidden"
-          },
-          "404": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "404 Not Found"
-          },
-          "405": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "405 Method Not Allowed"
-          },
-          "409": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "409 Conflict"
-          },
-          "429": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "429 Too Many Requests"
-          },
-          "500": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "500 Internal Server Error"
-          }
-        },
-        "summary": "Resolve a server-backed playback queue",
-        "x-portico-audience": "viewer",
-        "x-portico-audit-event": "api.postPlaybackQueue",
-        "x-portico-auth": "session",
-        "x-portico-permission": "play-media",
-        "x-portico-rate-policy": "playback-control",
-        "x-portico-runtime-registered": true,
-        "x-portico-surfaces": [
-          "web",
-          "mobile",
-          "television"
-        ]
-      }
-    },
     "/playback/receivers": {
       "get": {
+        "description": "Returns only current receivers owned by the exact ViewerScope. Discovery remains a presence hint; a controller must obtain a Server-issued authorization before sending a LAN command.",
         "operationId": "getPlaybackReceivers",
         "responses": {
           "200": {
@@ -61193,21 +62753,21 @@
             "description": "500 Internal Server Error"
           }
         },
-        "summary": "List active first-party web playback receivers",
+        "summary": "List active key-bound Portico playback receivers",
         "x-portico-audience": "viewer",
         "x-portico-audit-event": "none",
         "x-portico-auth": "session",
         "x-portico-permission": "play-media",
-        "x-portico-rate-policy": "playback-control",
+        "x-portico-rate-policy": "interactive-read",
         "x-portico-runtime-registered": true,
         "x-portico-surfaces": [
-          "web",
           "mobile",
           "television"
         ]
       },
       "post": {
-        "operationId": "postPlaybackReceivers",
+        "description": "Binds the receiver ID, exact ViewerScope, selected Server identity, X25519 public key, and capabilities. Rotating the receiver key revokes every prior controller authorization.",
+        "operationId": "registerPlaybackReceiver",
         "requestBody": {
           "content": {
             "application/json": {
@@ -61310,16 +62870,14 @@
             "description": "500 Internal Server Error"
           }
         },
-        "summary": "Register a first-party web playback receiver",
+        "summary": "Register or refresh a key-bound Portico playback receiver",
         "x-portico-audience": "viewer",
-        "x-portico-audit-event": "api.postPlaybackReceivers",
+        "x-portico-audit-event": "playback.receiver.registered",
         "x-portico-auth": "session",
         "x-portico-permission": "play-media",
         "x-portico-rate-policy": "playback-control",
         "x-portico-runtime-registered": true,
         "x-portico-surfaces": [
-          "web",
-          "mobile",
           "television"
         ]
       }
@@ -61336,17 +62894,28 @@
         }
       ],
       "patch": {
-        "operationId": "patchPlaybackReceiversReceiverId",
+        "description": "Refreshes receiver presence only when the supplied key fingerprint matches and returns the complete current authorization set. Replacing that set is the receiver's revocation boundary.",
+        "operationId": "heartbeatPlaybackReceiver",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlaybackReceiverHeartbeatRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PlaybackReceiver"
+                  "$ref": "#/components/schemas/PlaybackReceiverHeartbeatResponse"
                 }
               }
             },
-            "description": "Receiver heartbeat and latest command"
+            "description": "Receiver heartbeat and current key-bound authorizations"
           },
           "400": {
             "content": {
@@ -61429,21 +62998,136 @@
             "description": "500 Internal Server Error"
           }
         },
-        "summary": "Heartbeat a first-party web playback receiver",
+        "summary": "Heartbeat a key-bound Portico playback receiver",
         "x-portico-audience": "viewer",
-        "x-portico-audit-event": "api.patchPlaybackReceiversReceiverId",
+        "x-portico-audit-event": "none",
         "x-portico-auth": "session",
         "x-portico-permission": "play-media",
         "x-portico-rate-policy": "playback-control",
         "x-portico-runtime-registered": true,
         "x-portico-surfaces": [
-          "web",
-          "mobile",
           "television"
         ]
       }
     },
-    "/playback/receivers/{receiverId}/command": {
+    "/playback/receivers/{receiverId}/authorizations": {
+      "get": {
+        "operationId": "getPlaybackReceiverAuthorizations",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "receiverPublicKeyFingerprint",
+            "required": true,
+            "schema": {
+              "maxLength": 43,
+              "minLength": 43,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetPlaybackReceiverAuthorizationsResponse"
+                }
+              }
+            },
+            "description": "Current receiver authorization records"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "400 Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "401 Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "403 Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "404 Not Found"
+          },
+          "405": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "405 Method Not Allowed"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "409 Conflict"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "429 Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "500 Internal Server Error"
+          }
+        },
+        "summary": "List current authorizations for an exact receiver key",
+        "x-portico-audience": "viewer",
+        "x-portico-audit-event": "none",
+        "x-portico-auth": "session",
+        "x-portico-permission": "play-media",
+        "x-portico-rate-policy": "interactive-read",
+        "x-portico-runtime-registered": true,
+        "x-portico-surfaces": [
+          "television"
+        ]
+      },
       "parameters": [
         {
           "in": "path",
@@ -61455,12 +63139,261 @@
         }
       ],
       "post": {
-        "operationId": "postPlaybackReceiversReceiverIdCommand",
+        "description": "Atomically issues a controller grant and stores the paired receiver authorization under one request identity. Exact retries return the same grant; conflicting retries fail closed.",
+        "operationId": "authorizePlaybackReceiver",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/PlaybackCommandRequest"
+                "$ref": "#/components/schemas/ReceiverAuthorizationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReceiverControllerGrant"
+                }
+              }
+            },
+            "description": "Key-bound controller grant"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "400 Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "401 Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "403 Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "404 Not Found"
+          },
+          "405": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "405 Method Not Allowed"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Request identity was already used with different authorization material"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "429 Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "500 Internal Server Error"
+          }
+        },
+        "summary": "Authorize one controller for a key-bound playback receiver",
+        "x-portico-audience": "viewer",
+        "x-portico-audit-event": "playback.receiver.authorized",
+        "x-portico-auth": "session",
+        "x-portico-permission": "play-media",
+        "x-portico-rate-policy": "playback-control",
+        "x-portico-runtime-registered": true,
+        "x-portico-surfaces": [
+          "mobile",
+          "television"
+        ]
+      }
+    },
+    "/playback/receivers/{receiverId}/authorizations/{authorizationId}": {
+      "delete": {
+        "operationId": "revokePlaybackReceiverAuthorization",
+        "responses": {
+          "204": {
+            "description": "Receiver authorization revoked"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "400 Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "401 Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "403 Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "404 Not Found"
+          },
+          "405": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "405 Method Not Allowed"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "409 Conflict"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "429 Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "500 Internal Server Error"
+          }
+        },
+        "summary": "Revoke one playback receiver controller authorization",
+        "x-portico-audience": "viewer",
+        "x-portico-audit-event": "playback.receiver.authorization-revoked",
+        "x-portico-auth": "session",
+        "x-portico-permission": "play-media",
+        "x-portico-rate-policy": "playback-control",
+        "x-portico-runtime-registered": true,
+        "x-portico-surfaces": [
+          "mobile",
+          "television"
+        ]
+      },
+      "parameters": [
+        {
+          "in": "path",
+          "name": "receiverId",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "in": "path",
+          "name": "authorizationId",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "/playback/receivers/{receiverId}/handoff": {
+      "parameters": [
+        {
+          "in": "path",
+          "name": "receiverId",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "post": {
+        "description": "The authenticated receiver redeems an encrypted controller instruction. The Server creates a handoff_pending successor from the authoritative source occurrence, forward queue, and history, but retains the source until the receiver separately reports exact first-playing evidence.",
+        "operationId": "handoffPlaybackToReceiver",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlaybackReceiverHandoffRequest"
               }
             }
           },
@@ -61471,11 +63404,11 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PlaybackCommand"
+                  "$ref": "#/components/schemas/PlaybackResponse"
                 }
               }
             },
-            "description": "Receiver command accepted"
+            "description": "Receiver playback prepared but not yet authoritative"
           },
           "400": {
             "content": {
@@ -61505,7 +63438,9 @@
                 }
               }
             },
-            "description": "403 Forbidden"
+            "description": "Receiver authorization is expired",
+            "or mismatched": null,
+            "revoked": null
           },
           "404": {
             "content": {
@@ -61535,7 +63470,7 @@
                 }
               }
             },
-            "description": "409 Conflict"
+            "description": "Source playback authority changed before the transfer committed"
           },
           "429": {
             "content": {
@@ -61558,183 +63493,31 @@
             "description": "500 Internal Server Error"
           }
         },
-        "summary": "Send a media load command to a first-party web playback receiver",
+        "summary": "Prepare controller playback on a registered Portico receiver",
         "x-portico-audience": "viewer",
-        "x-portico-audit-event": "api.postPlaybackReceiversReceiverIdCommand",
+        "x-portico-audit-event": "playback.receiver.handoff",
         "x-portico-auth": "session",
         "x-portico-permission": "play-media",
         "x-portico-rate-policy": "playback-control",
         "x-portico-runtime-registered": true,
         "x-portico-surfaces": [
-          "web",
-          "mobile",
           "television"
         ]
       }
     },
-    "/playback/receivers/{receiverId}/events": {
+    "/playback/receivers/{receiverId}/handoffs/{requestId}": {
       "get": {
-        "description": "Emits authenticated server-sent receiver events when a receiver heartbeat or command changes. Clients should keep PATCH heartbeat polling as a fallback for environments without EventSource.",
-        "operationId": "getPlaybackReceiversReceiverIdEvents",
-        "responses": {
-          "200": {
-            "content": {
-              "text/event-stream": {
-                "schema": {
-                  "$ref": "#/components/schemas/GetPlaybackReceiversReceiverIdEventsResponse"
-                }
-              }
-            },
-            "description": "Server-sent playback receiver events"
-          },
-          "400": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "400 Bad Request"
-          },
-          "401": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "401 Unauthorized"
-          },
-          "403": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "403 Forbidden"
-          },
-          "404": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "404 Not Found"
-          },
-          "405": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "405 Method Not Allowed"
-          },
-          "409": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "409 Conflict"
-          },
-          "429": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "429 Too Many Requests"
-          },
-          "500": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "500 Internal Server Error"
-          }
-        },
-        "summary": "Stream playback receiver command updates",
-        "x-portico-audience": "viewer",
-        "x-portico-audit-event": "none",
-        "x-portico-auth": "session",
-        "x-portico-permission": "play-media",
-        "x-portico-rate-policy": "playback-control",
-        "x-portico-runtime-registered": true,
-        "x-portico-surfaces": [
-          "web",
-          "mobile",
-          "television"
-        ]
-      },
-      "parameters": [
-        {
-          "in": "path",
-          "name": "receiverId",
-          "required": true,
-          "schema": {
-            "type": "string"
-          }
-        }
-      ]
-    },
-    "/playback/receivers/{receiverId}/events/poll": {
-      "get": {
-        "description": "Returns state and command updates for the exact authorized receiver. A successful timeout returns 200 with an empty events array; receiver ownership is rechecked while waiting.",
-        "operationId": "pollPlaybackReceiverEvents",
-        "parameters": [
-          {
-            "description": "Opaque cursor previously returned for this playback receiver.",
-            "in": "query",
-            "name": "cursor",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Maximum time to wait for an event. Zero performs an immediate cursor check.",
-            "in": "query",
-            "name": "waitSeconds",
-            "schema": {
-              "default": 20,
-              "maximum": 25,
-              "minimum": 0,
-              "type": "integer"
-            }
-          }
-        ],
+        "operationId": "getPlaybackReceiverHandoffStatus",
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PlaybackReceiverLongPollEnvelope"
+                  "$ref": "#/components/schemas/PlaybackReceiverHandoffStatusResponse"
                 }
               }
             },
-            "description": "Playback receiver events, or an empty successful timeout envelope",
-            "headers": {
-              "Cache-Control": {
-                "schema": {
-                  "const": "no-store",
-                  "type": "string"
-                }
-              }
-            }
+            "description": "Authoritative receiver handoff state"
           },
           "400": {
             "content": {
@@ -61804,15 +63587,7 @@
                 }
               }
             },
-            "description": "Long-poll concurrency or request-rate limit reached",
-            "headers": {
-              "Retry-After": {
-                "schema": {
-                  "minimum": 1,
-                  "type": "integer"
-                }
-              }
-            }
+            "description": "429 Too Many Requests"
           },
           "500": {
             "content": {
@@ -61825,15 +63600,14 @@
             "description": "500 Internal Server Error"
           }
         },
-        "summary": "Long-poll playback receiver updates",
+        "summary": "Reconcile a receiver handoff from the authorized controller",
         "x-portico-audience": "viewer",
         "x-portico-audit-event": "none",
         "x-portico-auth": "session",
         "x-portico-permission": "play-media",
-        "x-portico-rate-policy": "long-poll",
+        "x-portico-rate-policy": "playback-control",
         "x-portico-runtime-registered": true,
         "x-portico-surfaces": [
-          "web",
           "mobile",
           "television"
         ]
@@ -61846,8 +63620,185 @@
           "schema": {
             "type": "string"
           }
+        },
+        {
+          "in": "path",
+          "name": "requestId",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "authorizationId",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "receiverPublicKeyFingerprint",
+          "required": true,
+          "schema": {
+            "maxLength": 43,
+            "minLength": 43,
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "sourceSessionId",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
         }
       ]
+    },
+    "/playback/receivers/{receiverId}/handoffs/{requestId}/commit": {
+      "parameters": [
+        {
+          "in": "path",
+          "name": "receiverId",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "in": "path",
+          "name": "requestId",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "post": {
+        "description": "Atomically accepts the exact terminal captured during preparation and activates the exact prepared receiver session only after first-playing evidence. Exact retries return the committed playback; mismatched receiver, source, request, authorization, or session identities fail closed.",
+        "operationId": "commitPlaybackReceiverHandoff",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlaybackReceiverHandoffCommitRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaybackResponse"
+                }
+              }
+            },
+            "description": "Receiver-owned active playback; also returned for an exact committed retry"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "400 Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "401 Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Receiver authorization is expired",
+            "or mismatched": null,
+            "revoked": null
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Prepared handoff not found"
+          },
+          "405": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "405 Method Not Allowed"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Source",
+            "or prepared receiver session mismatch": null,
+            "request": null
+          },
+          "410": {
+            "description": "Prepared handoff expired and was rolled back"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "429 Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "500 Internal Server Error"
+          }
+        },
+        "summary": "Commit a prepared receiver handoff after player readiness",
+        "x-portico-audience": "viewer",
+        "x-portico-audit-event": "playback.receiver.handoff-committed",
+        "x-portico-auth": "session",
+        "x-portico-permission": "play-media",
+        "x-portico-rate-policy": "playback-control",
+        "x-portico-runtime-registered": true,
+        "x-portico-surfaces": [
+          "television"
+        ]
+      }
     },
     "/playback/targets": {
       "get": {
@@ -63247,7 +65198,25 @@
                 }
               }
             },
-            "description": "Canonical product contract"
+            "description": "Canonical product contract",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "const": "private, no-cache",
+                  "type": "string"
+                }
+              },
+              "ETag": {
+                "schema": {
+                  "maxLength": 66,
+                  "minLength": 66,
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "The cached semantic Product Contract is current"
           },
           "400": {
             "content": {
@@ -63607,15 +65576,15 @@
       "post": {
         "operationId": "postRemoteAccessCertificatesRenew",
         "responses": {
-          "200": {
+          "202": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/RemoteAccessStatus"
+                  "$ref": "#/components/schemas/RemoteAccessCertificateRenewResponse"
                 }
               }
             },
-            "description": "Certificate request completed or recorded"
+            "description": "Certificate maintenance job queued or reused"
           },
           "400": {
             "content": {
@@ -70185,7 +72154,7 @@
             "description": "500 Internal Server Error"
           }
         },
-        "summary": "Reorder the complete Watch With Friends queue",
+        "summary": "Move one Watch With Friends queue occurrence relative to another",
         "x-portico-audience": "viewer",
         "x-portico-audit-event": "api.patchWatchWithFriendsGroupsGroupIdQueue",
         "x-portico-auth": "session",
@@ -70316,9 +72285,9 @@
         ]
       }
     },
-    "/watch-with-friends/groups/{groupId}/queue/{mediaId}": {
+    "/watch-with-friends/groups/{groupId}/queue/{entryId}": {
       "delete": {
-        "operationId": "deleteWatchWithFriendsGroupsGroupIdQueueMediaId",
+        "operationId": "deleteWatchWithFriendsGroupsGroupIdQueueEntryId",
         "parameters": [
           {
             "in": "query",
@@ -70434,9 +72403,9 @@
             "description": "500 Internal Server Error"
           }
         },
-        "summary": "Remove a queued media item from a Watch With Friends group",
+        "summary": "Remove one exact queued occurrence from a Watch With Friends group",
         "x-portico-audience": "viewer",
-        "x-portico-audit-event": "api.deleteWatchWithFriendsGroupsGroupIdQueueMediaId",
+        "x-portico-audit-event": "api.deleteWatchWithFriendsGroupsGroupIdQueueEntryId",
         "x-portico-auth": "session",
         "x-portico-permission": "play-media",
         "x-portico-rate-policy": "state-mutation",
@@ -70458,7 +72427,7 @@
         },
         {
           "in": "path",
-          "name": "mediaId",
+          "name": "entryId",
           "required": true,
           "schema": {
             "type": "string"
@@ -70923,6 +72892,7 @@
       "adminLibraryChannels": "listAdminLibraryChannels",
       "adminLiveTvSource": "getLiveTvSourcesSourceId",
       "adminLiveTvSources": "getLiveTvSources",
+      "castTransferStatus": "postPlaybackCastTransferStatus",
       "closeLiveTvStream": "postLiveTvStreamsChannelIdClose",
       "createAdminLibraryChannel": "createLibraryChannel",
       "createCastBootstrap": "postPlaybackCastBootstrap",
@@ -71017,6 +72987,8 @@
         "CastRenewResponse",
         "CastStopResponse",
         "CastOperationResponse",
+        "CastTransferStatusResponse",
+        "CastAdvanceResponse",
         "AudioNormalization",
         "BinaryPayload",
         "Chapter",
@@ -71080,6 +73052,7 @@
         "PlaybackContinuationCredential",
         "PlaybackContinuationState",
         "PlaybackProgressAcknowledgement",
+        "PlaybackSessionTerminalAcknowledgement",
         "PlaybackRepeatMode",
         "PlaybackResource",
         "PlaybackResponse",
@@ -71416,6 +73389,11 @@
       "clientCoreMethod": "redeemCastBootstrap",
       "operationId": "postPlaybackCastRedeem"
     },
+    "POST /playback/cast/transfer-status": {
+      "audience": "viewer",
+      "clientCoreMethod": "castTransferStatus",
+      "operationId": "postPlaybackCastTransferStatus"
+    },
     "PUT /admin/library-channels/{channelId}": {
       "audience": "management",
       "clientCoreMethod": "replaceAdminLibraryChannel",
@@ -71476,11 +73454,12 @@
     "postLiveTvSourcesHdhomerunDiscover": "PostLiveTvSourcesHdhomerunDiscoverResponse",
     "postLiveTvSourcesSourceIdRefresh": "LiveTVSource",
     "postLiveTvSourcesTestAdd": "LiveTVSource",
-    "postLiveTvStreamsChannelIdClose": "SuccessResponse",
+    "postLiveTvStreamsChannelIdClose": "PlaybackSessionTerminalAcknowledgement",
     "postLiveTvStreamsChannelIdOpen": "PlaybackResponse",
     "postPlaybackCastBootstrap": "CastBootstrapResponse",
     "postPlaybackCastReconnect": "CastReceiverSessionState",
     "postPlaybackCastRedeem": "CastReceiverSessionResponse",
+    "postPlaybackCastTransferStatus": "CastTransferStatusResponse",
     "regenerateLibraryChannel": "LibraryChannelGeneration",
     "renegotiatePlaybackSession": "PlaybackResponse",
     "reorderLibraryChannels": "AdminLibraryChannelListResponse",

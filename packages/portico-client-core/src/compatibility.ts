@@ -16,34 +16,41 @@ export class HostedCompatibilityError extends PorticoCompatibilityError {
 export interface CompatibilityCapability { readonly id: string; readonly revision: number; readonly state: "available" | "requires_configuration" | "degraded" | "unavailable"; readonly requiredSemantics: readonly string[]; }
 export interface CompatibilityDiagnostic { code: "api_contract_digest_mismatch"; clientDigest: string; serverDigest: string; policy: "allow_semantic_overlap"; }
 export interface ProductContractCompatibility {
-  apiVersion: string; clientProtocol: number; serverCapabilities: readonly string[]; capabilities: readonly CompatibilityCapability[];
-  build: CompatibilityEnvelope["build"]; semanticRevisions: Readonly<Record<string, number>>; diagnostics: readonly CompatibilityDiagnostic[];
+  apiVersion: string; semanticIdentity: Readonly<SemanticDocumentIdentity>; serverCapabilities: readonly string[];
 }
-export type ServerAPICompatibility = ProductContractCompatibility;
-export type PorticoCompatibility = ProductContractCompatibility;
-export type HostedServicesCompatibility = ProductContractCompatibility;
+export interface SemanticDocumentIdentity { readonly id: string; readonly revision: string; readonly digestAlgorithm: "sha256"; readonly digest: string; }
+export interface ServerAPICompatibility {
+  apiVersion: string; clientProtocol: number; serverCapabilities: readonly string[]; capabilities: readonly CompatibilityCapability[];
+  build: CompatibilityEnvelope["build"]; semanticRevisions: Readonly<Record<string, number>>; semanticDocuments: Readonly<Record<string, SemanticDocumentIdentity>>; diagnostics: readonly CompatibilityDiagnostic[];
+}
+export type PorticoCompatibility = ServerAPICompatibility;
+export type HostedServicesCompatibility = ServerAPICompatibility;
 
 export function assertHostedServicesCompatibility(system: Pick<HostedSystemInfo, "name" | "status" | "apiVersion" | "compatibility">): HostedServicesCompatibility {
   if (!system || system.name !== "Portico" || system.status !== "ok") throw new HostedCompatibilityError("invalid_compatibility_envelope", "The Hosted endpoint did not identify a healthy Portico service.");
-  try { return evaluateEnvelope(system.apiVersion, system.compatibility); }
+  try { return evaluateEnvelope(system.apiVersion, system.compatibility, false); }
   catch (error) { if (error instanceof PorticoCompatibilityError) throw new HostedCompatibilityError(error.code, error.message); throw error; }
 }
-export function assertServerAPICompatibility(status: Pick<SystemStatusResponse, "apiVersion" | "compatibility">): ServerAPICompatibility { return evaluateEnvelope(status?.apiVersion, status?.compatibility); }
-export function assertProductContractCompatibility(contract: Pick<ProductContract, "apiVersion" | "serverCapabilities" | "compatibility">): ProductContractCompatibility {
-  const result = evaluateEnvelope(contract?.apiVersion, contract?.compatibility);
-  const productCapabilities = requireStringSet(contract?.serverCapabilities, "serverCapabilities", true);
-  const advertised = result.capabilities.filter(({ state }) => state === "available").map(({ id }) => id);
-  if (!sameStrings(productCapabilities, advertised)) throw new PorticoCompatibilityError("system_product_contract_mismatch", "The Product Contract capability list does not exactly match its available compatibility capabilities.");
-  return result;
+export function assertServerAPICompatibility(status: Pick<SystemStatusResponse, "apiVersion" | "compatibility">): ServerAPICompatibility { return evaluateEnvelope(status?.apiVersion, status?.compatibility, true); }
+export function assertProductContractCompatibility(contract: Pick<ProductContract, "apiVersion" | "serverCapabilities" | "semanticIdentity">): ProductContractCompatibility {
+  if (contract?.apiVersion !== PORTICO_API_VERSION) invalid("The Product Contract API revision is missing or unsupported.");
+  const semanticIdentity = requireSemanticIdentity(contract.semanticIdentity, "semanticIdentity");
+  const expectedRevision = `v${foundationContract.compatibility.semanticRevisions.product}`;
+  if (semanticIdentity.id !== "portico.product-contract" || semanticIdentity.revision !== expectedRevision) invalid("The Product Contract semantic identity is unsupported.");
+  const serverCapabilities = requireStringSet(contract.serverCapabilities, "serverCapabilities", true);
+  return Object.freeze({ apiVersion: PORTICO_API_VERSION, semanticIdentity, serverCapabilities: Object.freeze(serverCapabilities) });
 }
-export function evaluatePorticoCompatibility(status: Pick<SystemStatusResponse, "apiVersion" | "compatibility">, contract: Pick<ProductContract, "apiVersion" | "serverCapabilities" | "compatibility">): PorticoCompatibility {
+export function evaluatePorticoCompatibility(status: Pick<SystemStatusResponse, "apiVersion" | "compatibility">, contract: Pick<ProductContract, "apiVersion" | "serverCapabilities" | "semanticIdentity">): PorticoCompatibility {
   const system = assertServerAPICompatibility(status); const product = assertProductContractCompatibility(contract);
-  if (canonical(status.compatibility) !== canonical(contract.compatibility)) throw new PorticoCompatibilityError("system_product_contract_mismatch", "System and Product Contract compatibility identities differ.");
-  return { ...product, diagnostics: Object.freeze([...system.diagnostics]) };
+  const expected = system.semanticDocuments.productContract;
+  if (!expected || canonical(expected) !== canonical(product.semanticIdentity)) throw new PorticoCompatibilityError("system_product_contract_mismatch", "System does not support this Product Contract semantic identity.");
+  const catalog = system.capabilities.map(({ id }) => id);
+  if (!sameStrings(product.serverCapabilities, catalog)) throw new PorticoCompatibilityError("system_product_contract_mismatch", "The Product Contract capability catalog does not match System capability identities.");
+  return system;
 }
-export function supportsServerCapability(compatibility: Pick<ProductContractCompatibility, "serverCapabilities">, capability: string): boolean { return compatibility.serverCapabilities.includes(capability.trim()); }
+export function supportsServerCapability(compatibility: Pick<ServerAPICompatibility, "serverCapabilities">, capability: string): boolean { return compatibility.serverCapabilities.includes(capability.trim()); }
 
-function evaluateEnvelope(apiVersion: unknown, rawEnvelope: unknown): ProductContractCompatibility {
+function evaluateEnvelope(apiVersion: unknown, rawEnvelope: unknown, requireProductContract: boolean): ServerAPICompatibility {
   if (apiVersion !== PORTICO_API_VERSION || !isRecord(rawEnvelope)) invalid("Portico returned an unsupported compatibility envelope.");
   const envelope = rawEnvelope as Record<string, unknown>;
   if (envelope.envelopeRevision !== foundationContract.compatibility.envelopeRevision) invalid("The compatibility envelope revision is missing or unsupported.");
@@ -71,8 +78,31 @@ function evaluateEnvelope(apiVersion: unknown, rawEnvelope: unknown): ProductCon
 	if (!sameStrings(requiredSemantics, foundationSemantics.map(([name]) => name))) throw new PorticoCompatibilityError("required_semantic_incompatible", "The server does not require the complete Foundation semantic set.");
   const capabilities = requireCapabilities(envelope.capabilities, semanticRevisions);
   const serverCapabilities = Object.freeze(capabilities.filter(({ state }) => state === "available").map(({ id }) => id));
+  const semanticDocuments = requireSemanticDocuments(envelope.semanticDocuments);
+  if (requireProductContract && !semanticDocuments.productContract) invalid("semanticDocuments.productContract is required for the Server API.");
   const diagnostics: CompatibilityDiagnostic[] = digest === foundationContract.compatibility.apiContract.digest ? [] : [{ code: "api_contract_digest_mismatch", clientDigest: foundationContract.compatibility.apiContract.digest, serverDigest: digest, policy: "allow_semantic_overlap" }];
-  return Object.freeze({ apiVersion: PORTICO_API_VERSION, clientProtocol: PORTICO_CLIENT_PROTOCOL, serverCapabilities, capabilities, build, semanticRevisions: Object.freeze(semanticRevisions), diagnostics: Object.freeze(diagnostics) });
+  return Object.freeze({ apiVersion: PORTICO_API_VERSION, clientProtocol: PORTICO_CLIENT_PROTOCOL, serverCapabilities, capabilities, build, semanticRevisions: Object.freeze(semanticRevisions), semanticDocuments, diagnostics: Object.freeze(diagnostics) });
+}
+
+function requireSemanticDocuments(value: unknown): Readonly<Record<string, SemanticDocumentIdentity>> {
+  if (value === undefined) return Object.freeze({});
+  const documents = requireRecord(value, "semanticDocuments");
+  const result: Record<string, SemanticDocumentIdentity> = {};
+  for (const [name, identity] of Object.entries(documents)) {
+    if (!/^[a-z][A-Za-z0-9]{0,63}$/.test(name)) invalid("semanticDocuments contains an invalid identifier.");
+    result[name] = requireSemanticIdentity(identity, `semanticDocuments.${name}`);
+  }
+  return Object.freeze(result);
+}
+
+function requireSemanticIdentity(value: unknown, field: string): Readonly<SemanticDocumentIdentity> {
+  const identity = requireRecord(value, field);
+  const id = stringValue(identity.id, `${field}.id`);
+  const revision = stringValue(identity.revision, `${field}.revision`);
+  const digestAlgorithm = stringValue(identity.digestAlgorithm, `${field}.digestAlgorithm`);
+  const digest = stringValue(identity.digest, `${field}.digest`);
+  if (digestAlgorithm !== "sha256" || !/^[a-f0-9]{64}$/.test(digest)) invalid(`${field} is malformed or unsupported.`);
+  return Object.freeze({ id, revision, digestAlgorithm: "sha256", digest });
 }
 
 function requireCapabilities(value: unknown, semantics: Record<string, number>): readonly CompatibilityCapability[] {

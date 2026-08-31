@@ -6,6 +6,8 @@ import (
 	"net/url"
 	"os"
 	"strings"
+
+	"github.com/PorticoMediaServer/portico-server/internal/foundationcontract"
 )
 
 const strmDescriptorLimit int64 = 64 << 10
@@ -15,7 +17,11 @@ const strmDescriptorLimit int64 = 64 << 10
 // and is therefore absent from library APIs, logs, diagnostics and backups of
 // catalog metadata. The descriptor itself remains owner-managed storage.
 func (s *Server) readSTRMLocator(ctx context.Context, descriptor string) (string, error) {
-	request := s.storageRequestForPath(ctx, descriptor, "read STRM descriptor")
+	return s.readSTRMLocatorForWork(ctx, descriptor, foundationcontract.WorkClassPlaybackStart)
+}
+
+func (s *Server) readSTRMLocatorForWork(ctx context.Context, descriptor string, workClass foundationcontract.WorkClass) (string, error) {
+	request := s.storageRequestForPath(ctx, workClass, descriptor, "read STRM descriptor")
 	raw, err := s.storageReadFile(ctx, request, descriptor, strmDescriptorLimit)
 	if err != nil {
 		return "", err

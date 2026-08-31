@@ -101,6 +101,40 @@ Seed the event counter from `nextEventSequence`, write playback observations to
 `PATCH /api/playback-sessions/{sessionId}`, renew an expired media grant through
 the session route, and reload queue state after a revision conflict. Never fall
 back to the retired `POST /api/media/{id}/progress` route; it is unavailable.
+Ordinary progress has no completion flag. Stop and continuation revoke use one
+request-ID-bound `PlaybackSessionStopRequest`; every finite direct or prepared
+handoff uses that same actor's ordered `previousTerminal`. If Client Core owns
+the sequence, pass the three-field terminal shorthand once and keep the
+configured progress durability adapter: Core persists the generated full wire
+request before dispatch and exposes `pendingPlaybackTerminalMutation()` for an
+exact restart retry. Pass a pending handoff's stored `request` back to
+`handoffPlayback`; pass a pending stop's stored `request` back to
+`stopPlayback`. Native sequence owners pass a complete stop request or handoff
+terminal event, which Core validates and forwards unchanged. Do not issue a
+second stop around an accepted handoff. Drain
+`pendingPlaybackTerminalMutations()` before active-playback restore so recovery
+does not depend on the old source session appearing in the restore response.
+Use `replacePlaybackTarget()` from an above-screen playback orchestrator for
+every active media, Live TV, DVR, or Library Channel transition. The method
+owns the full immutable target body and returns one explicit replacement
+outcome; the current Player screen must not stop or destroy its native actor
+before that outcome permits it. Live TV close is also an exact durable terminal
+operation and must receive either Core-owned terminal shorthand or the native
+actor's complete request.
+
+Cast bootstrap is preparation, not authority transfer. Use
+`createCastBootstrap()` for fresh playback and `replacePlaybackWithCast()` for
+an active source. Persist the pending bootstrap through Client Core, deliver its envelope to the receiver, and poll
+`castTransferStatus()` with the same request identity. Only `accepted` status
+proves the receiver's first-playing commit. Pending and ambiguous outcomes keep
+the source actor fenced and alive; failed or expired outcomes explicitly retain
+the source. Receiver APIs use only `CastReceiverCredential`; stop and advance
+must carry that receiver actor's complete ordered terminal evidence.
+
+The durability adapter must preserve v2 terminal and v1 Cast transfer records
+exactly. Core binds each record to the restored server authority, account,
+profile, and authorization revision and ignores foreign partitions; it never
+ages out an unresolved terminal result locally.
 
 Render native failures from `ApiError.detail` and use `code` for recovery
 branching. `requestId` is always promoted independently of structured

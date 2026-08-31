@@ -64,6 +64,12 @@ function invitationProjection(invite: PorticoInvite): { label: string; problem: 
   return { label: invite.deliveryMode === 'email' ? 'Sent' : 'Link created', problem: false };
 }
 
+function invitationCanBeRevoked(invite: PorticoInvite): boolean {
+  if (invite.status !== 'pending' || invite.acceptedAt || invite.revokedAt) return false;
+  const expiresAt = Date.parse(invite.expiresAt);
+  return !Number.isFinite(expiresAt) || expiresAt > Date.now();
+}
+
 function invitationRecipientLabel(invite: PorticoInvite): string {
   if (invite.invitedUsername) return `@${invite.invitedUsername}`;
   return invite.invitedEmail || 'Portico account';
@@ -153,6 +159,7 @@ function PorticoInviteEditor({ operations, source, onDismiss, onSaved }: { opera
 function UsersPanel({ operations, source, onChanged }: { operations: SettingsOperationalSnapshot; source: SettingsDataSource; onChanged: () => void }) {
   const [editor, setEditor] = useState<User | 'new' | 'invite' | null>(null);
   const [confirmDelete, setConfirmDelete] = useState('');
+  const [confirmRevokeInvite, setConfirmRevokeInvite] = useState('');
   const [error, setError] = useState('');
   const mutation = useAbortableMutation();
   const porticoMode = operations.users.some((user) => user.role === 'owner' && user.authOrigin === 'portico');
@@ -166,9 +173,26 @@ function UsersPanel({ operations, source, onChanged }: { operations: SettingsOpe
     try { await mutation.run((signal) => source.resendPorticoMemberInvite(invite.id, signal)); onChanged(); }
     catch (reason) { setError(reviewedProductErrorText(reason, 'settings.action-failed', { actionName: `retry the invitation to ${invitationRecipientLabel(invite)}` })); }
   };
+  const revokeInvite = async (invite: PorticoInvite) => {
+    setError('');
+    try {
+      await mutation.run((signal) => source.revokePorticoMemberInvite(invite.id, signal));
+      setConfirmRevokeInvite('');
+      onChanged();
+    }
+    catch (reason) { setError(reviewedProductErrorText(reason, 'settings.action-failed', { actionName: `cancel the invitation to ${invitationRecipientLabel(invite)}` })); }
+  };
   return <SettingsGroup title="Members" description="Server-local profiles, linked Portico identities, and library access." actions={<PrimaryButton onClick={() => setEditor(porticoMode ? 'invite' : 'new')}><ActionAddIcon /> {porticoMode ? 'Invite account' : 'New account'}</PrimaryButton>}>
     {error && <InlineNotice tone="error">{error}</InlineNotice>}
-    <div className="portico-member-list">{operations.users.map((user) => <article key={user.id}><span className="portico-member-avatar">{user.profileImageUrl ? <img src={user.profileImageUrl} alt="" /> : accountUsername(user).slice(0, 1).toLocaleUpperCase()}</span><span><strong>{accountUsername(user)}</strong><small>{user.email} · {user.role} · {user.authOrigin === 'portico' ? 'Portico account' : 'This Server'} · {user.libraryIds.length} {user.libraryIds.length === 1 ? 'library' : 'libraries'}</small></span><div>{user.authOrigin === 'portico' && <span className="portico-settings-capability configured"><StatusSecureIcon /> Linked</span>}{user.role !== 'owner' && <IconButton label={`Edit ${accountUsername(user)}`} onClick={() => setEditor(user)}><ActionEditIcon /></IconButton>}{user.role !== 'owner' && (confirmDelete === user.id ? <div className="portico-inline-confirm"><span>Remove {accountUsername(user)} from this server? Their server access and profile data will be permanently deleted; media files are retained.</span><button type="button" onClick={() => setConfirmDelete('')}>Cancel</button><button type="button" className="danger" disabled={mutation.busy} onClick={() => void remove(user)}>Remove</button></div> : <IconButton label={`Remove ${accountUsername(user)}`} onClick={() => setConfirmDelete(user.id)}><ActionDeleteIcon /></IconButton>)}</div></article>)}{(operations.porticoInvites ?? []).filter((invite) => invite.status !== 'accepted' && !invite.acceptedAt).map((invite) => { const projection = invitationProjection(invite); const recipient = invitationRecipientLabel(invite); return <article key={invite.id}><span className="portico-member-avatar">{recipient.replace(/^@/, '').slice(0, 1).toLocaleUpperCase()}</span><span><strong>{recipient}</strong><small>Portico Account invitation · expires {new Date(invite.expiresAt).toLocaleDateString()}</small></span><div><span className={`portico-settings-capability ${projection.problem ? 'unavailable' : 'configured'}`}>{projection.problem ? <StatusWarningIcon /> : <ActionConfirmIcon />}{projection.label}</span>{projection.problem && <SecondaryButton disabled={mutation.busy} onClick={() => void resend(invite)}>Retry email</SecondaryButton>}</div></article>; })}</div>
+    <div className="portico-member-list">
+      {operations.users.map((user) => <article key={user.id}><span className="portico-member-avatar">{user.profileImageUrl ? <img src={user.profileImageUrl} alt="" /> : accountUsername(user).slice(0, 1).toLocaleUpperCase()}</span><span><strong>{accountUsername(user)}</strong><small>{user.email} · {user.role} · {user.authOrigin === 'portico' ? 'Portico account' : 'This Server'} · {user.libraryIds.length} {user.libraryIds.length === 1 ? 'library' : 'libraries'}</small></span><div>{user.authOrigin === 'portico' && <span className="portico-settings-capability configured"><StatusSecureIcon /> Linked</span>}{user.role !== 'owner' && <IconButton label={`Edit ${accountUsername(user)}`} onClick={() => setEditor(user)}><ActionEditIcon /></IconButton>}{user.role !== 'owner' && (confirmDelete === user.id ? <div className="portico-inline-confirm"><span>Remove {accountUsername(user)} from this server? Their server access and profile data will be permanently deleted; media files are retained.</span><button type="button" onClick={() => setConfirmDelete('')}>Cancel</button><button type="button" className="danger" disabled={mutation.busy} onClick={() => void remove(user)}>Remove</button></div> : <IconButton label={`Remove ${accountUsername(user)}`} onClick={() => setConfirmDelete(user.id)}><ActionDeleteIcon /></IconButton>)}</div></article>)}
+      {(operations.porticoInvites ?? []).filter((invite) => invite.status !== 'accepted' && !invite.acceptedAt).map((invite) => {
+        const projection = invitationProjection(invite);
+        const recipient = invitationRecipientLabel(invite);
+        const revocable = invitationCanBeRevoked(invite);
+        return <article key={invite.id}><span className="portico-member-avatar">{recipient.replace(/^@/, '').slice(0, 1).toLocaleUpperCase()}</span><span><strong>{recipient}</strong><small>Portico Account invitation · expires {new Date(invite.expiresAt).toLocaleDateString()}</small></span><div><span className={`portico-settings-capability ${projection.problem ? 'unavailable' : 'configured'}`}>{projection.problem ? <StatusWarningIcon /> : <ActionConfirmIcon />}{projection.label}</span>{projection.problem && <SecondaryButton disabled={mutation.busy} onClick={() => void resend(invite)}>Retry email</SecondaryButton>}{confirmRevokeInvite === invite.id ? <div className="portico-inline-confirm"><span>Cancel the invitation to {recipient}? Its code will stop granting access immediately.</span><button type="button" onClick={() => setConfirmRevokeInvite('')}>Keep invitation</button><button type="button" className="danger" disabled={mutation.busy} onClick={() => void revokeInvite(invite)}>Cancel invitation</button></div> : revocable && <SecondaryButton disabled={mutation.busy} onClick={() => setConfirmRevokeInvite(invite.id)}>Cancel invitation</SecondaryButton>}</div></article>;
+      })}
+    </div>
     {editor === 'invite' && <PorticoInviteEditor operations={operations} source={source} onDismiss={() => setEditor(null)} onSaved={() => { setEditor(null); onChanged(); }} />}
     {editor && editor !== 'invite' && <UserEditor user={editor === 'new' ? undefined : editor} operations={operations} source={source} onDismiss={() => setEditor(null)} onSaved={() => { setEditor(null); onChanged(); }} />}
   </SettingsGroup>;

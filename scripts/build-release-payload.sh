@@ -35,14 +35,50 @@ for required in "$FFMPEG_ROOT/$ffmpeg_name" "$FFMPEG_ROOT/$ffprobe_name"; do
   [[ -f "$required" ]] || { echo "missing qualified media tool: $required" >&2; exit 1; }
 done
 
-COMMIT="$(git -C "$ROOT" rev-parse HEAD)"
-BUILT_AT="$(git -C "$ROOT" show -s --format=%cI "$COMMIT")"
+COMMIT="${PORTICO_BUILD_SOURCE_REVISION:-}"
+if [[ -z "$COMMIT" ]]; then
+  if [[ -n "$(git -C "$ROOT" status --porcelain=v1 --untracked-files=normal --ignore-submodules=none)" ]]; then
+    echo "dirty Server source requires reviewed PORTICO_BUILD_SOURCE_REVISION" >&2
+    exit 1
+  fi
+  COMMIT="$(git -C "$ROOT" rev-parse HEAD)"
+else
+  [[ "$COMMIT" =~ ^[a-f0-9]{64}$ ]] || {
+    echo "reviewed dirty-source revision must be a 64-character SHA-256 digest" >&2
+    exit 1
+  }
+  actual_source_revision="$("$ROOT/scripts/source-tree-revision.py" "$ROOT")"
+  [[ "$COMMIT" == "$actual_source_revision" ]] || {
+    echo "reviewed Server source revision does not match the build context" >&2
+    exit 1
+  }
+fi
+[[ "$COMMIT" =~ ^([a-f0-9]{40}|[a-f0-9]{64})$ ]] || {
+  echo "invalid Server source revision" >&2
+  exit 1
+}
+BUILT_AT="${PORTICO_BUILD_TIMESTAMP:-$(git -C "$ROOT" show -s --format=%cI HEAD)}"
+[[ "$BUILT_AT" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$ ]] || {
+  echo "invalid Server build timestamp" >&2
+  exit 1
+}
 rm -rf "$OUTPUT_ROOT"
 mkdir -p "$OUTPUT_ROOT/bin" "$OUTPUT_ROOT/web" "$OUTPUT_ROOT/licenses"
 
 GOOS="$TARGET_OS" GOARCH="$TARGET_ARCH" CGO_ENABLED=0 go build -C "$ROOT" -trimpath \
   -ldflags="-s -w -X main.version=$VERSION -X main.buildNumber=$BUILD_NUMBER -X main.channel=stable -X main.commit=$COMMIT -X main.builtAt=$BUILT_AT -X main.releaseSafetyClass=protected" \
   -o "$OUTPUT_ROOT/$executable" ./cmd/porticod
+
+if [[ "$TARGET_OS" == "windows" || "$TARGET_OS" == "linux" ]]; then
+  companion="portico-desktop"
+  companion_ldflags="-s -w -X main.version=$VERSION -X main.buildNumber=$BUILD_NUMBER"
+  if [[ "$TARGET_OS" == "windows" ]]; then
+    companion="portico-desktop.exe"
+    companion_ldflags="$companion_ldflags -H=windowsgui"
+  fi
+  GOOS="$TARGET_OS" GOARCH="$TARGET_ARCH" CGO_ENABLED=0 go build -C "$ROOT" -trimpath \
+    -ldflags="$companion_ldflags" -o "$OUTPUT_ROOT/$companion" ./cmd/portico-desktop
+fi
 
 cp "$FFMPEG_ROOT/$ffmpeg_name" "$OUTPUT_ROOT/bin/$ffmpeg_name"
 cp "$FFMPEG_ROOT/$ffprobe_name" "$OUTPUT_ROOT/bin/$ffprobe_name"

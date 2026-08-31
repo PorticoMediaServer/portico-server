@@ -31,9 +31,12 @@ import (
 
 func stoppedPlaybackRequest(playback PlaybackResponse) PlaybackSessionStopRequest {
 	return PlaybackSessionStopRequest{
-		Disposition: "stopped", Generation: int64(playback.Generation), EventSequence: 1_000_000,
-		RecordedAt: time.Now().UTC().Format(time.RFC3339Nano), PositionSeconds: 0,
-		DurationSeconds: float64(playback.Timeline.DurationSeconds),
+		RequestID: "stop-" + playback.SessionID,
+		Terminal: PlaybackTerminalEvent{
+			Disposition: "stopped", Generation: int64(playback.Generation), EventSequence: 1_000_000,
+			RecordedAt: time.Now().UTC().Format(time.RFC3339Nano), PositionSeconds: 0,
+			DurationSeconds: float64(playback.Timeline.DurationSeconds),
+		},
 	}
 }
 
@@ -1229,8 +1232,28 @@ func TestPlaybackCommandLifecycle(t *testing.T) {
 	if status != http.StatusOK {
 		t.Fatalf("live dashboard status = %d, body: %s", status, body)
 	}
-	if len(live.NowPlaying) != 0 {
-		t.Fatalf("stopped session remained on live dashboard: %#v", live.NowPlaying)
+	remoteStopStillActive := false
+	for _, session := range live.NowPlaying {
+		if session.ID == playback.SessionID {
+			remoteStopStillActive = true
+			break
+		}
+	}
+	if !remoteStopStillActive {
+		t.Fatalf("remote stop bypassed the owning actor before terminal evidence: %#v", live.NowPlaying)
+	}
+	terminal := PlaybackSessionStopRequest{
+		RequestID: "playback-command-stop-terminal",
+		Terminal:  *playbackHandoffTerminalForTest(playback, "stopped", 1),
+	}
+	var acknowledgement PlaybackSessionTerminalAcknowledgement
+	status, body = doJSON(t, client, http.MethodDelete, serverURL+"/api/playback-sessions/"+playback.SessionID, terminal, &acknowledgement)
+	if status != http.StatusOK || !acknowledgement.Accepted {
+		t.Fatalf("actor terminal status=%d ack=%#v body=%s", status, acknowledgement, body)
+	}
+	var endedAt string
+	if err := db.QueryRow(`SELECT ended_at FROM playback_sessions WHERE id = ?`, playback.SessionID).Scan(&endedAt); err != nil || endedAt == "" {
+		t.Fatalf("actor terminal did not close playback: endedAt=%q err=%v", endedAt, err)
 	}
 }
 
@@ -1321,8 +1344,8 @@ func TestPlaybackActiveRestoreReturnsCurrentSession(t *testing.T) {
 	}
 }
 
-func TestPlaybackStartStopsPreviousSessionForSameClientInstance(t *testing.T) {
-	serverURL, db, server := newAuthTestServerWithInstance(t)
+func TestPlaybackStartRequiresAtomicReplacementForSameClientInstance(t *testing.T) {
+	serverURL, _, server := newAuthTestServerWithInstance(t)
 	seedExactPlaybackFactsForFixture(t, server, "movie_meridian")
 	seedExactPlaybackFactsForFixture(t, server, "movie_neon")
 	jar, _ := cookiejar.New(nil)
@@ -1341,8 +1364,8 @@ func TestPlaybackStartStopsPreviousSessionForSameClientInstance(t *testing.T) {
 	secondPayload := authenticatedPlaybackRuntimeRequest("movie_neon")
 	secondPayload["clientInstanceId"] = "web-a"
 	status, body = doJSON(t, client, http.MethodPost, serverURL+"/api/playback-sessions", secondPayload, &second)
-	if status != http.StatusOK {
-		t.Fatalf("second playback status = %d, body: %s", status, body)
+	if status != http.StatusConflict || !strings.Contains(body, "replacement_required") {
+		t.Fatalf("second playback without authority envelope status = %d, body: %s", status, body)
 	}
 
 	var restored PlaybackRestoreResponse
@@ -1350,43 +1373,15 @@ func TestPlaybackStartStopsPreviousSessionForSameClientInstance(t *testing.T) {
 	if status != http.StatusOK {
 		t.Fatalf("restore playback status = %d, body: %s", status, body)
 	}
-	if !restored.Active || restored.Playback == nil || restored.Playback.SessionID != second.SessionID {
-		t.Fatalf("expected second playback session to be restored, first=%s second=%s restored=%#v", first.SessionID, second.SessionID, restored)
+	if !restored.Active || restored.Playback == nil || restored.Playback.SessionID != first.SessionID {
+		t.Fatalf("rejected replacement changed the source authority, first=%s restored=%#v", first.SessionID, restored)
 	}
 
 	var targets ListResponse[PlaybackTarget]
 	status, body = doJSON(t, client, http.MethodGet, serverURL+"/api/playback/targets?clientInstanceId=web-a", nil, &targets)
-	if status != http.StatusOK || len(targets.Items) != 1 || targets.Items[0].ID != second.SessionID {
-		t.Fatalf("expected only second playback target status=%d body=%s targets=%#v", status, body, targets)
+	if status != http.StatusOK || len(targets.Items) != 1 || targets.Items[0].ID != first.SessionID {
+		t.Fatalf("expected only source playback target status=%d body=%s targets=%#v", status, body, targets)
 	}
-
-	// Recreate the interleaving where the earlier inserted start reaches
-	// replacement only after a newer session exists. Timestamps are deliberately
-	// misleading: insertion order is the authoritative concurrency fence, so the
-	// older request must never stop the newer row.
-	if _, err := db.Exec(`
-		UPDATE playback_sessions
-		SET started_at = CASE id WHEN ? THEN ? ELSE ? END, ended_at = '', state = 'playing'
-		WHERE id IN (?, ?)`,
-		first.SessionID, "2026-08-23T10:00:00Z", "2026-08-23T10:00:01Z", first.SessionID, second.SessionID); err != nil {
-		t.Fatalf("prepare concurrent replacement fixture: %v", err)
-	}
-	var userID string
-	if err := db.QueryRow(`SELECT user_id FROM playback_sessions WHERE id = ?`, first.SessionID).Scan(&userID); err != nil {
-		t.Fatalf("load playback owner: %v", err)
-	}
-	user, err := server.getUser(userID)
-	if err != nil {
-		t.Fatalf("load playback owner: %v", err)
-	}
-	if err := server.commitPlaybackSessionReplacement(context.Background(), user, first.SessionID, "web-a"); err != nil {
-		t.Fatalf("commit delayed older replacement: %v", err)
-	}
-	assertCount(t, db, `SELECT COUNT(*) FROM playback_sessions WHERE id = '`+second.SessionID+`' AND ended_at = '' AND state <> 'stopped'`, 1)
-	if err := server.commitPlaybackSessionReplacement(context.Background(), user, second.SessionID, "web-a"); err != nil {
-		t.Fatalf("commit newer replacement: %v", err)
-	}
-	assertCount(t, db, `SELECT COUNT(*) FROM playback_sessions WHERE id = '`+first.SessionID+`' AND state = 'stopped'`, 1)
 }
 
 const playbackProgressTestDurationSeconds = 7200
@@ -1816,7 +1811,7 @@ func TestPlaybackStopPersistsItsAtomicPositionWhenMediaStateIsMissing(t *testing
 	}
 
 	stopRequest := stoppedPlaybackRequest(playback)
-	stopRequest.PositionSeconds = 600
+	stopRequest.Terminal.PositionSeconds = 600
 	status, body = doJSON(t, client, http.MethodDelete, serverURL+"/api/playback-sessions/"+playback.SessionID, stopRequest, nil)
 	if status != http.StatusOK {
 		t.Fatalf("stop playback status = %d, body: %s", status, body)
@@ -1953,6 +1948,7 @@ func TestTrackProgressCreatesContinueListeningWithoutResumeOffset(t *testing.T) 
 	var playback PlaybackResponse
 	status, body = doJSON(t, client, http.MethodPost, serverURL+"/api/playback-sessions", map[string]any{
 		"mediaId":          "track_mara_01",
+		"intent":           automaticPlaybackIntent(),
 		"clientInstanceId": "music-a",
 		"startSeconds":     80,
 		"skipPreroll":      true,
@@ -2072,6 +2068,7 @@ func TestUserRemoteBitrateLimitCapsPlaybackDecision(t *testing.T) {
 	var playback PlaybackResponse
 	status, body := doJSONWithForwardedFor(t, client, http.MethodPost, serverURL+"/api/playback-sessions", map[string]any{
 		"mediaId": "movie_meridian",
+		"intent":  automaticPlaybackIntent(),
 		"clientProfile": attachAuthenticatedPlaybackRuntime(PlaybackClientProfile{
 			SupportedContainers:  []string{"mp4"},
 			SupportedVideoCodecs: []string{"h264"},
@@ -2120,6 +2117,7 @@ func TestDeviceRemoteBitrateLimitCapsPlaybackDecision(t *testing.T) {
 	var playback PlaybackResponse
 	status, body = doJSONWithForwardedFor(t, client, http.MethodPost, serverURL+"/api/playback-sessions", map[string]any{
 		"mediaId": "movie_meridian",
+		"intent":  automaticPlaybackIntent(),
 		"clientProfile": attachAuthenticatedPlaybackRuntime(PlaybackClientProfile{
 			SupportedContainers:  []string{"mp4"},
 			SupportedVideoCodecs: []string{"h264"},
@@ -2180,6 +2178,7 @@ func startPlaybackWithHostForTest(t *testing.T, server *Server, user User, host 
 	seedExactPlaybackFactsForFixture(t, server, mediaID)
 	payload, err := json.Marshal(map[string]any{
 		"mediaId": mediaID,
+		"intent":  automaticPlaybackIntent(),
 		"clientProfile": attachAuthenticatedPlaybackRuntime(PlaybackClientProfile{
 			SupportedContainers:  []string{"mp4"},
 			SupportedVideoCodecs: []string{"h264"},
@@ -2493,120 +2492,6 @@ func TestAudiobookResumeIncludesCurrentChapter(t *testing.T) {
 	}
 }
 
-func TestPlaybackReceiverLifecycle(t *testing.T) {
-	serverURL := newAuthTestServer(t)
-	jar, _ := cookiejar.New(nil)
-	client := &http.Client{Jar: jar}
-	loginUser(t, client, serverURL)
-
-	var receiver PlaybackReceiver
-	status, body := doJSON(t, client, http.MethodPost, serverURL+"/api/playback/receivers", PlaybackReceiverRequest{
-		Name:              "Living Room Web",
-		App:               "Portico Web",
-		Platform:          "Browser",
-		SupportedCommands: []string{"load", "pause", "load"},
-	}, &receiver)
-	if status != http.StatusCreated {
-		t.Fatalf("create receiver status = %d, body: %s", status, body)
-	}
-	if receiver.ID == "" || receiver.Code == "" || receiver.Name != "Living Room Web" {
-		t.Fatalf("unexpected receiver: %#v", receiver)
-	}
-	if receiver.App != "Portico Web" || receiver.Platform != "Browser" || len(receiver.SupportedCommands) != 1 || receiver.SupportedCommands[0] != "load" {
-		t.Fatalf("unexpected receiver capabilities: %#v", receiver)
-	}
-
-	var receivers ListResponse[PlaybackReceiver]
-	status, body = doJSON(t, client, http.MethodGet, serverURL+"/api/playback/receivers", nil, &receivers)
-	if status != http.StatusOK || len(receivers.Items) != 1 {
-		t.Fatalf("list receivers status=%d body=%s receivers=%#v", status, body, receivers)
-	}
-
-	var viewer User
-	status, body = doJSON(t, client, http.MethodPost, serverURL+"/api/users", UserRequest{
-		Username:    "receiver-viewer",
-		Email:       "receiver-viewer@example.test",
-		DisplayName: "Receiver Viewer",
-		Password:    "Password1234",
-		Role:        "user",
-		Permissions: permissionsForRole("user"),
-		LibraryIDs:  []string{"lib_movies"},
-	}, &viewer)
-	if status != http.StatusCreated {
-		t.Fatalf("create receiver viewer status=%d body=%s", status, body)
-	}
-	viewerJar, _ := cookiejar.New(nil)
-	viewerClient := &http.Client{Jar: viewerJar}
-	status, body = doJSON(t, viewerClient, http.MethodPost, serverURL+"/api/auth/login", map[string]string{"login": "receiver-viewer", "password": "Password1234"}, nil)
-	if status != http.StatusOK {
-		t.Fatalf("receiver viewer login status=%d body=%s", status, body)
-	}
-	var viewerReceivers ListResponse[PlaybackReceiver]
-	status, body = doJSON(t, viewerClient, http.MethodGet, serverURL+"/api/playback/receivers", nil, &viewerReceivers)
-	if status != http.StatusOK || len(viewerReceivers.Items) != 0 {
-		t.Fatalf("viewer receivers status=%d body=%s receivers=%#v", status, body, viewerReceivers)
-	}
-	status, body = doJSON(t, viewerClient, http.MethodPost, serverURL+"/api/playback/receivers/"+receiver.ID+"/command", PlaybackCommandRequest{Action: "load", MediaID: "movie_meridian"}, nil)
-	if status != http.StatusNotFound {
-		t.Fatalf("viewer receiver command status=%d body=%s", status, body)
-	}
-	status, body = doJSON(t, viewerClient, http.MethodPatch, serverURL+"/api/playback/receivers/"+receiver.ID, nil, nil)
-	if status != http.StatusNotFound {
-		t.Fatalf("viewer receiver heartbeat status=%d body=%s", status, body)
-	}
-
-	var targets ListResponse[PlaybackTarget]
-	status, body = doJSON(t, client, http.MethodGet, serverURL+"/api/playback/targets", nil, &targets)
-	if status != http.StatusOK || len(targets.Items) != 1 || targets.Items[0].Type != "receiver" {
-		t.Fatalf("targets status=%d body=%s targets=%#v", status, body, targets)
-	}
-	if len(targets.Items[0].SupportedCommands) != 1 || targets.Items[0].SupportedCommands[0] != "load" || !strings.Contains(targets.Items[0].Detail, "Portico Web") {
-		t.Fatalf("receiver target did not expose normalized capabilities: %#v", targets.Items[0])
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	eventsReq, err := http.NewRequestWithContext(ctx, http.MethodGet, serverURL+"/api/playback/receivers/"+receiver.ID+"/events", nil)
-	if err != nil {
-		t.Fatalf("receiver events request: %v", err)
-	}
-	eventsResp, err := client.Do(eventsReq)
-	if err != nil {
-		t.Fatalf("receiver events response: %v", err)
-	}
-	defer eventsResp.Body.Close()
-	if eventsResp.StatusCode != http.StatusOK || !strings.Contains(eventsResp.Header.Get("Content-Type"), "text/event-stream") {
-		t.Fatalf("receiver events status=%d content-type=%s", eventsResp.StatusCode, eventsResp.Header.Get("Content-Type"))
-	}
-	reader := bufio.NewReader(eventsResp.Body)
-	initialEvent := readSSEDataLine(t, reader)
-	if !strings.Contains(initialEvent, receiver.ID) || !strings.Contains(initialEvent, "Portico Web") {
-		t.Fatalf("receiver initial event data = %s", initialEvent)
-	}
-
-	var command PlaybackCommand
-	status, body = doJSON(t, client, http.MethodPost, serverURL+"/api/playback/receivers/"+receiver.ID+"/command", PlaybackCommandRequest{Action: "load", MediaID: "movie_meridian", PositionSeconds: 33}, &command)
-	if status != http.StatusOK {
-		t.Fatalf("receiver command status = %d, body: %s", status, body)
-	}
-	if command.Action != "load" || command.MediaID != "movie_meridian" || command.PositionSeconds != 33 {
-		t.Fatalf("unexpected receiver command: %#v", command)
-	}
-	commandEvent := readSSEDataLine(t, reader)
-	if !strings.Contains(commandEvent, command.ID) || !strings.Contains(commandEvent, "movie_meridian") {
-		t.Fatalf("receiver command event data = %s", commandEvent)
-	}
-
-	var heartbeat PlaybackReceiver
-	status, body = doJSON(t, client, http.MethodPatch, serverURL+"/api/playback/receivers/"+receiver.ID, nil, &heartbeat)
-	if status != http.StatusOK {
-		t.Fatalf("receiver heartbeat status = %d, body: %s", status, body)
-	}
-	if heartbeat.Command.ID != command.ID || heartbeat.Command.MediaID != "movie_meridian" {
-		t.Fatalf("heartbeat did not return command: %#v", heartbeat)
-	}
-}
-
 func TestWatchWithFriendsGroupLifecycleRequiresPermissionAndMembership(t *testing.T) {
 	serverURL := newAuthTestServer(t)
 	ownerJar, _ := cookiejar.New(nil)
@@ -2724,7 +2609,7 @@ func TestWatchWithFriendsGroupLifecycleRequiresPermissionAndMembership(t *testin
 	if status != http.StatusOK || len(group.Queue) != 3 || group.Queue[2].MediaID != "movie_neon" {
 		t.Fatalf("owner add second queue status=%d body=%s queue=%#v", status, body, group.Queue)
 	}
-	status, body = doJSON(t, ownerClient, http.MethodPatch, serverURL+"/api/watch-with-friends/groups/"+group.ID+"/queue", WatchWithFriendsQueueOrderRequest{MediaIDs: []string{"movie_meridian", "movie_neon", "movie_saffron"}, ExpectedRevision: watchWithFriendsRevisionPtr(group.Revision), IdempotencyKey: "flow-reorder"}, &group)
+	status, body = doJSON(t, ownerClient, http.MethodPatch, serverURL+"/api/watch-with-friends/groups/"+group.ID+"/queue", WatchWithFriendsQueueOrderRequest{EntryID: group.Queue[2].EntryID, DestinationEntryID: group.Queue[1].EntryID, Placement: "before", ExpectedRevision: watchWithFriendsRevisionPtr(group.Revision), IdempotencyKey: "flow-reorder"}, &group)
 	if status != http.StatusOK || len(group.Queue) != 3 || group.Queue[1].MediaID != "movie_neon" || group.Queue[2].MediaID != "movie_saffron" {
 		t.Fatalf("owner reorder queue status=%d body=%s queue=%#v", status, body, group.Queue)
 	}
@@ -2754,7 +2639,17 @@ func TestWatchWithFriendsGroupLifecycleRequiresPermissionAndMembership(t *testin
 	if status != http.StatusOK || group.MediaID != "movie_meridian" || group.Command.Action != "load" || group.Command.MediaID != "movie_meridian" {
 		t.Fatalf("owner repeat next watch_with_friends status=%d body=%s group=%#v", status, body, group)
 	}
-	status, body = doJSON(t, ownerClient, http.MethodDelete, serverURL+"/api/watch-with-friends/groups/"+group.ID+"/queue/movie_saffron?expectedRevision="+strconv.FormatInt(group.Revision, 10)+"&idempotencyKey=flow-remove-saffron", nil, &group)
+	saffronIndex := -1
+	for index, item := range group.Queue {
+		if item.MediaID == "movie_saffron" {
+			saffronIndex = index
+			break
+		}
+	}
+	if saffronIndex < 0 {
+		t.Fatalf("Saffron occurrence missing from queue: %#v", group.Queue)
+	}
+	status, body = doJSON(t, ownerClient, http.MethodDelete, serverURL+"/api/watch-with-friends/groups/"+group.ID+"/queue/"+url.PathEscape(group.Queue[saffronIndex].EntryID)+"?expectedRevision="+strconv.FormatInt(group.Revision, 10)+"&idempotencyKey=flow-remove-saffron", nil, &group)
 	if status != http.StatusOK || len(group.Queue) != 2 || group.Queue[0].MediaID != "movie_meridian" {
 		t.Fatalf("owner remove queue status=%d body=%s queue=%#v", status, body, group.Queue)
 	}
@@ -2855,8 +2750,8 @@ func TestWatchWithFriendsHostMutationsRequireOwnership(t *testing.T) {
 		{name: "playback state", method: http.MethodPatch, path: "/state", payload: WatchWithFriendsStateRequest{Action: "play", PositionSeconds: 32, ExpectedRevision: watchWithFriendsRevisionPtr(group.Revision), IdempotencyKey: "forbidden-state"}},
 		{name: "playback settings", method: http.MethodPatch, path: "/settings", payload: WatchWithFriendsSettingsRequest{ShuffleEnabled: &shuffleEnabled, RepeatMode: "all", ExpectedRevision: watchWithFriendsRevisionPtr(group.Revision), IdempotencyKey: "forbidden-settings"}},
 		{name: "queue add", method: http.MethodPost, path: "/queue", payload: WatchWithFriendsQueueRequest{MediaID: "movie_saffron", ExpectedRevision: watchWithFriendsRevisionPtr(group.Revision), IdempotencyKey: "forbidden-add"}},
-		{name: "queue reorder", method: http.MethodPatch, path: "/queue", payload: WatchWithFriendsQueueOrderRequest{MediaIDs: []string{"movie_meridian", "movie_neon", "movie_saffron"}, ExpectedRevision: watchWithFriendsRevisionPtr(group.Revision), IdempotencyKey: "forbidden-reorder"}},
-		{name: "queue remove", method: http.MethodDelete, path: "/queue/movie_saffron?expectedRevision=" + strconv.FormatInt(group.Revision, 10) + "&idempotencyKey=forbidden-remove"},
+		{name: "queue reorder", method: http.MethodPatch, path: "/queue", payload: WatchWithFriendsQueueOrderRequest{EntryID: group.Queue[1].EntryID, DestinationEntryID: group.Queue[2].EntryID, Placement: "after", ExpectedRevision: watchWithFriendsRevisionPtr(group.Revision), IdempotencyKey: "forbidden-reorder"}},
+		{name: "queue remove", method: http.MethodDelete, path: "/queue/" + url.PathEscape(group.Queue[1].EntryID) + "?expectedRevision=" + strconv.FormatInt(group.Revision, 10) + "&idempotencyKey=forbidden-remove"},
 	}
 	for _, mutation := range mutations {
 		t.Run("member cannot mutate "+mutation.name, func(t *testing.T) {
@@ -2882,7 +2777,7 @@ func TestWatchWithFriendsHostMutationsRequireOwnership(t *testing.T) {
 		t.Fatalf("forbidden mutations changed group status=%d body=%s group=%#v", status, body, group)
 	}
 
-	status, body = doJSON(t, managerClient, http.MethodDelete, serverURL+"/api/watch-with-friends/groups/"+group.ID+"/queue/movie_saffron?expectedRevision="+strconv.FormatInt(group.Revision, 10)+"&idempotencyKey=manager-remove", nil, nil)
+	status, body = doJSON(t, managerClient, http.MethodDelete, serverURL+"/api/watch-with-friends/groups/"+group.ID+"/queue/"+url.PathEscape(group.Queue[1].EntryID)+"?expectedRevision="+strconv.FormatInt(group.Revision, 10)+"&idempotencyKey=manager-remove", nil, nil)
 	if status != http.StatusNotFound {
 		t.Fatalf("server manager viewer route must not expose or control a private group status=%d body=%s", status, body)
 	}
@@ -2976,14 +2871,11 @@ func TestWatchWithFriendsPrivacyPreferencesGateDiscoveryAndMemberVisibility(t *t
 	}
 }
 
-func TestWatchWithFriendsQueueReorderRejectsOversizedRequests(t *testing.T) {
-	ids := make([]string, maxPlaybackQueueItems+1)
-	for index := range ids {
-		ids[index] = fmt.Sprintf("wwf_queue_%03d", index)
-	}
-	_, err := (&Server{}).reorderWatchWithFriendsQueue(User{}, "missing", WatchWithFriendsQueueOrderRequest{MediaIDs: ids})
-	if err == nil || !strings.Contains(err.Error(), "limited") {
-		t.Fatalf("oversized Watch With Friends queue reorder should fail before loading group, got %v", err)
+func TestWatchWithFriendsQueueReorderRejectsAmbiguousMove(t *testing.T) {
+	revision := int64(0)
+	_, err := (&Server{}).reorderWatchWithFriendsQueue(User{}, "missing", WatchWithFriendsQueueOrderRequest{EntryID: "same", DestinationEntryID: "same", Placement: "before", ExpectedRevision: &revision, IdempotencyKey: "invalid-move"})
+	if err == nil || !strings.Contains(err.Error(), "distinct") {
+		t.Fatalf("ambiguous Watch With Friends queue move should fail before loading group, got %v", err)
 	}
 }
 
@@ -3273,8 +3165,8 @@ func TestSystemDiagnosticsReportsRuntimeReadiness(t *testing.T) {
 	if !foundWriteHeavy || !foundMetadata || !foundAnalysis {
 		t.Fatalf("diagnostics missing split job lanes: %#v", diagnostics.JobLanes)
 	}
-	if len(diagnostics.WorkloadLanes) != 12 {
-		t.Fatalf("diagnostics workload lanes = %d, expected 12: %#v", len(diagnostics.WorkloadLanes), diagnostics.WorkloadLanes)
+	if len(diagnostics.WorkloadLanes) != 13 {
+		t.Fatalf("diagnostics workload lanes = %d, expected 13: %#v", len(diagnostics.WorkloadLanes), diagnostics.WorkloadLanes)
 	}
 	foundBrowsing := false
 	foundExpensive := false
@@ -3949,6 +3841,8 @@ func TestWorkloadAdmissionRejectsOverloadedExpensiveLane(t *testing.T) {
 }
 
 func TestPlaybackMediaRoutesUsePlaybackWorkloadLane(t *testing.T) {
+	server := &Server{}
+	server.Handler()
 	tests := []struct {
 		name   string
 		method string
@@ -3962,7 +3856,7 @@ func TestPlaybackMediaRoutesUsePlaybackWorkloadLane(t *testing.T) {
 		{name: "trickplay", path: "/api/media/movie_1/trickplay", want: workloadLaneMedia},
 		{name: "recommendations", path: "/api/media/movie_1/recommendations", want: workloadLaneExpensive},
 		{name: "detail", path: "/api/media/movie_1", want: workloadLaneBrowsing},
-		{name: "search", path: "/api/search?q=Meridian", want: workloadLaneExpensive},
+		{name: "search", method: http.MethodPost, path: "/api/search", want: workloadLaneExpensive},
 		{name: "suggestions", path: "/api/suggestions?limit=6", want: workloadLaneExpensive},
 		{name: "instant mix", path: "/api/instant-mix/track_1", want: workloadLaneExpensive},
 		{name: "library discover", path: "/api/libraries/lib_movies/discover?limit=48", want: workloadLaneExpensive},
@@ -3990,7 +3884,7 @@ func TestPlaybackMediaRoutesUsePlaybackWorkloadLane(t *testing.T) {
 				method = http.MethodGet
 			}
 			req := httptest.NewRequest(method, tt.path, nil)
-			if got := workloadLaneIDForRequest(req); got != tt.want {
+			if got := server.requestWork(req).Lane; got != tt.want {
 				t.Fatalf("workload lane for %s = %q, expected %q", tt.path, got, tt.want)
 			}
 		})
@@ -4599,7 +4493,7 @@ func TestMediaDownloadServesLocalSourceForPermittedUser(t *testing.T) {
 	seedExactPlaybackFactsForFixture(t, server, "download_media")
 	var playback PlaybackResponse
 	status, playbackBody := doJSON(t, client, http.MethodPost, serverURL+"/api/playback-sessions", PlaybackSessionCreateRequest{
-		MediaID: "download_media",
+		MediaID: "download_media", Intent: automaticPlaybackIntent(),
 		ClientProfile: attachAuthenticatedPlaybackRuntime(PlaybackClientProfile{
 			SupportedContainers:  []string{"mp4"},
 			SupportedVideoCodecs: []string{"h264"},
@@ -4619,7 +4513,7 @@ func TestMediaDownloadServesLocalSourceForPermittedUser(t *testing.T) {
 	if accountOnlyResponse.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("account credential bypassed download grant: status=%d", accountOnlyResponse.StatusCode)
 	}
-	sourceGrant := createDownloadGrantForTest(t, client, serverURL, "download_media", "source")
+	sourceGrant := createDownloadGrantForTest(t, server, client, serverURL, "download_media", "source")
 	response, err := client.Get(serverURL + sourceGrant.DownloadURL)
 	if err != nil {
 		t.Fatalf("download request: %v", err)
@@ -4701,7 +4595,7 @@ func TestMediaDownloadServesLocalSourceForPermittedUser(t *testing.T) {
 	server.downloadMu.Lock()
 	server.downloadActive = map[string]int{userID: maxConcurrentDownloadsPerUser}
 	server.downloadMu.Unlock()
-	limitedGrant := createDownloadGrantForTest(t, client, serverURL, "download_media", "source")
+	limitedGrant := createDownloadGrantForTest(t, server, client, serverURL, "download_media", "source")
 	limitedResp, err := client.Get(serverURL + limitedGrant.DownloadURL)
 	if err != nil {
 		t.Fatalf("limited download request: %v", err)
@@ -4717,7 +4611,7 @@ func TestMediaDownloadServesLocalSourceForPermittedUser(t *testing.T) {
 	if rejected := server.admissionDiagnostics().DownloadRejected; rejected != 1 {
 		t.Fatalf("download rejected diagnostics = %d, expected 1", rejected)
 	}
-	headGrant := createDownloadGrantForTest(t, client, serverURL, "download_media", "source")
+	headGrant := createDownloadGrantForTest(t, server, client, serverURL, "download_media", "source")
 	headReq, err := http.NewRequest(http.MethodHead, serverURL+headGrant.DownloadURL, nil)
 	if err != nil {
 		t.Fatalf("create download HEAD request: %v", err)
@@ -5002,7 +4896,7 @@ func TestMediaTrickplaySetsListDoesNotExposePaths(t *testing.T) {
 		t.Fatalf("trickplay response exposed internal path: %s", body)
 	}
 	var playback PlaybackResponse
-	status, body = doJSON(t, client, http.MethodPost, serverURL+"/api/playback-sessions", PlaybackSessionCreateRequest{MediaID: "movie_meridian", SkipPreroll: true, ClientProfile: authenticatedPlaybackRuntimeProfile()}, &playback)
+	status, body = doJSON(t, client, http.MethodPost, serverURL+"/api/playback-sessions", PlaybackSessionCreateRequest{MediaID: "movie_meridian", SkipPreroll: true, ClientProfile: authenticatedPlaybackRuntimeProfile(), Intent: automaticPlaybackIntent()}, &playback)
 	if status != http.StatusOK || playback.MediaGrant.Token == "" {
 		t.Fatalf("create trickplay playback grant status=%d body=%s", status, body)
 	}
@@ -5048,7 +4942,7 @@ func TestMediaTrickplaySetsListDoesNotExposePaths(t *testing.T) {
 func playbackMediaGrantForTest(t *testing.T, client *http.Client, serverURL, mediaID string) string {
 	t.Helper()
 	var playback PlaybackResponse
-	status, body := doJSON(t, client, http.MethodPost, serverURL+"/api/playback-sessions", PlaybackSessionCreateRequest{MediaID: mediaID, SkipPreroll: true, ClientProfile: authenticatedPlaybackRuntimeProfile()}, &playback)
+	status, body := doJSON(t, client, http.MethodPost, serverURL+"/api/playback-sessions", PlaybackSessionCreateRequest{MediaID: mediaID, SkipPreroll: true, ClientProfile: authenticatedPlaybackRuntimeProfile(), Intent: automaticPlaybackIntent()}, &playback)
 	if status != http.StatusOK || playback.MediaGrant.Token == "" {
 		t.Fatalf("create playback media grant status=%d body=%s", status, body)
 	}

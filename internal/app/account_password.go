@@ -98,7 +98,7 @@ func (s *Server) handleAccountPassword(w http.ResponseWriter, r *http.Request, u
 		writeProductError(w, http.StatusUnauthorized, "interactive_session_required", "Password changes require a current interactive session.")
 		return
 	}
-	err = s.withUserTxTagged(r.Context(), []string{"users", "sessions", "native_refresh_tokens", "api_keys", "devices", "profile-trusts"}, func(tx *sql.Tx) error {
+	err = s.withSecurityFenceTxTagged(r.Context(), []string{"users", "sessions", "native_refresh_tokens", "api_keys", "devices", "profile-trusts"}, func(tx *sql.Tx) error {
 		if err := validatePasswordSessionTx(tx, accountIDForUser(user), viewerProfileID(user), sessionID, currentHash, now); err != nil {
 			return err
 		}

@@ -14,6 +14,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/PorticoMediaServer/portico-server/internal/foundationcontract"
 )
 
 const (
@@ -174,17 +176,18 @@ func (s *Server) dispatchScannerMetadataBacklogTx(tx *sql.Tx) (int, error) {
 		return 0, fmt.Errorf("scanner metadata backlog contains no dispatchable media identifiers")
 	}
 	metadata := normalizeJobMetadata(map[string]string{
-		"libraryId":    libraryID,
-		"libraryName":  libraryName,
-		"limit":        strconv.Itoa(len(mediaIDs)),
-		"mediaIds":     strings.Join(mediaIDs, ","),
-		"subtaskScope": "scan_discoveries",
+		"libraryId":     libraryID,
+		"libraryName":   libraryName,
+		"limit":         strconv.Itoa(len(mediaIDs)),
+		"mediaIds":      strings.Join(mediaIDs, ","),
+		"subtaskScope":  "scan_discoveries",
+		"refreshIntent": string(metadataRefreshFillMissing),
 	})
 	job := Job{
 		ID: randomID("job"), Type: "metadata_refresh_library", Status: "queued",
 		Message:      fmt.Sprintf("Metadata refresh queued for new items in %s.", libraryName),
 		ResourceType: "library", ResourceID: libraryID, Metadata: metadata,
-		Priority: "normal", Phase: "queued", CreatedAt: now, UpdatedAt: now,
+		Priority: foundationcontract.WorkClassBackgroundMedia, Phase: "queued", CreatedAt: now, UpdatedAt: now,
 	}
 	job.ActiveKey = jobActiveKeyFor(job.Type, job.ResourceType, job.ResourceID, metadata)
 	inserted, conflict, err := insertScannerBacklogJobTx(tx, job)
@@ -237,7 +240,7 @@ func (s *Server) dispatchScannerAnalysisBacklogTx(tx *sql.Tx) (int, error) {
 			ID: randomID("job"), Type: "media_analyze", Status: "queued",
 			Message:      "Media stream analysis queued for " + candidate.Title + ".",
 			ResourceType: "media", ResourceID: candidate.MediaID, Metadata: metadata,
-			Priority: "normal", Phase: "queued", CreatedAt: now, UpdatedAt: now,
+			Priority: foundationcontract.WorkClassBackgroundMedia, Phase: "queued", CreatedAt: now, UpdatedAt: now,
 		}
 		job.ActiveKey = jobActiveKeyFor(job.Type, job.ResourceType, job.ResourceID, metadata)
 		inserted, conflict, err := insertScannerBacklogJobTx(tx, job)
@@ -297,9 +300,9 @@ func insertScannerBacklogJobTx(tx *sql.Tx, job Job) (inserted bool, activeConfli
 		INSERT INTO jobs (
 			id, type, status, progress, message, resource_type, resource_id, metadata_json,
 			active_key, priority, phase, progress_current, progress_total, created_at, updated_at
-		) VALUES (?, ?, 'queued', 0, ?, ?, ?, ?, ?, 'normal', 'queued', 0, 0, ?, ?)`,
+		) VALUES (?, ?, 'queued', 0, ?, ?, ?, ?, ?, ?, 'queued', 0, 0, ?, ?)`,
 		job.ID, job.Type, job.Message, job.ResourceType, job.ResourceID, string(metadataJSON),
-		job.ActiveKey, job.CreatedAt, job.UpdatedAt)
+		job.ActiveKey, job.Priority, job.CreatedAt, job.UpdatedAt)
 	if err == nil {
 		return true, false, nil
 	}

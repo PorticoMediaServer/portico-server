@@ -2,10 +2,13 @@ package app
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash"
 	"io"
 	"math"
 	"net/http"
@@ -20,6 +23,7 @@ import (
 
 	"github.com/PorticoMediaServer/portico-server/internal/ffmpeggraph"
 	"github.com/PorticoMediaServer/portico-server/internal/ffmpegsupervisor"
+	"github.com/PorticoMediaServer/portico-server/internal/foundationcontract"
 	"github.com/PorticoMediaServer/portico-server/internal/mediafacts"
 	"github.com/PorticoMediaServer/portico-server/internal/optimized"
 	"github.com/PorticoMediaServer/portico-server/internal/playbackhw"
@@ -142,40 +146,45 @@ func (s *Server) optimizedArtifactUsable(ctx context.Context, path string, expec
 
 func (s *Server) runOptimizeVersion(ctx context.Context, job Job) {
 	if job.ResourceType != "media" || strings.TrimSpace(job.ResourceID) == "" {
-		_ = s.setJobMessage(job.ID, "failed", 100, "Optimized version failed because no media item was selected.")
+		_ = s.failOptimizeVersionAndDownloadPreparations(job, "Optimized version failed because no media item was selected.")
 		return
 	}
 	_ = s.setJobMessage(job.ID, "running", 8, "Preparing optimized version.")
 	item, err := s.getMediaBackgroundSourceSeedContext(ctx, job.ResourceID)
 	if err != nil {
-		_ = s.setJobMessage(job.ID, "failed", 100, "Optimized version failed because the media item was not found.")
+		_ = s.failOptimizeVersionAndDownloadPreparations(job, "Optimized version failed because the media item was not found.")
 		return
 	}
 	item.Streams, err = s.listStreamsContext(ctx, item.ID)
 	if err != nil {
-		_ = s.setJobMessage(job.ID, "failed", 100, "Optimized version failed because analyzed streams could not be loaded.")
+		_ = s.failOptimizeVersionAndDownloadPreparations(job, "Optimized version failed because analyzed streams could not be loaded.")
 		return
 	}
 	item.MediaFiles = s.primaryMediaFileForPlaybackContext(ctx, item.ID, item.SourceURL)
 	profile := optimizedProfileFromJob(job, s.optimizedVersionSettings().DefaultProfile)
-	release, err := s.mediaResourceGovernor().acquireContext(ctx, mediaResourceRequest{cpu: 1, disk: 2, background: true})
+	release, err := s.mediaResourceGovernor().acquireContext(ctx, mediaResourceRequest{class: foundationcontract.WorkClassBackgroundMedia, cpu: 1, disk: 2})
 	if err != nil {
 		if s.deferMaintenanceJob(job.ID, err) {
 			return
 		}
-		_ = s.setJobMessage(job.ID, "failed", 100, "Optimized version could not acquire processing capacity.")
+		_ = s.failOptimizeVersionAndDownloadPreparations(job, "Optimized version could not acquire processing capacity.")
 		return
 	}
 	defer release()
 	version, err := s.createOptimizedVersion(ctx, job.ID, item, profile)
 	if err != nil {
 		message := "Optimized version failed for " + item.Title + ": " + err.Error()
-		_ = s.setJobMessage(job.ID, "failed", 100, message)
+		_ = s.failOptimizeVersionAndDownloadPreparations(job, message)
 		s.recordLog("warn", message, map[string]string{"job": job.ID, "media": item.ID})
 		return
 	}
 	message := fmt.Sprintf("Optimized version completed for %s (%s).", item.Title, version.Profile)
-	_ = s.setJobMessage(job.ID, "complete", 100, message)
+	if err := s.completeOptimizeVersionAndQueueDownloadVerifications(job, message); err != nil {
+		failure := "Optimized version was stored, but its durable download handoff failed: " + err.Error()
+		_ = s.failOptimizeVersionAndDownloadPreparations(job, failure)
+		s.recordLog("warn", failure, map[string]string{"job": job.ID, "media": item.ID})
+		return
+	}
 	s.recordLog("info", message, map[string]string{"job": job.ID, "media": item.ID})
 }
 
@@ -348,9 +357,11 @@ func (s *Server) createOptimizedVersion(ctx context.Context, jobID string, item 
 	}
 	leaseOutcome := error(nil)
 	defer func() { sourceLease.Release(leaseOutcome) }()
+	var artifactDigest *optimizedArtifactDigestWriter
 	result, err := publication.Publish(ctx, optimizedLocalFilesystem{root: s.optimizedVersionStorageDir(), server: s}, predictedBytes,
 		func(runCtx context.Context, output io.Writer) error {
-			return s.runOptimizedFFmpeg(runCtx, item.ID, publication.identity.GenerationID, executablePath, sourcePath, args, output, sourceLease.Progress, hardwarePlan)
+			artifactDigest = newOptimizedArtifactDigestWriter(output)
+			return s.runOptimizedFFmpeg(runCtx, item.ID, publication.identity.GenerationID, executablePath, sourcePath, args, artifactDigest, sourceLease.Progress, hardwarePlan)
 		}, func(validateCtx context.Context, path string) (optimizedV2OutputFacts, error) {
 			probe, probeErr := s.validateOptimizedOutput(validateCtx, path, item.DurationSeconds)
 			if probeErr != nil {
@@ -362,6 +373,11 @@ func (s *Server) createOptimizedVersion(ctx context.Context, jobID string, item 
 			}
 			if factsErr = validateOptimizedOutputAgainstPlan(outputFacts, publication.plan); factsErr != nil {
 				return optimizedV2OutputFacts{}, factsErr
+			}
+			artifactSHA256, outputSize := artifactDigest.Digest()
+			outputFacts.ArtifactSHA256 = artifactSHA256
+			if outputSize != outputFacts.SizeBytes || !validOfflineArtifact(outputFacts.ArtifactSHA256, outputSize) {
+				return optimizedV2OutputFacts{}, errors.New("optimized producer digest does not match the validated artifact")
 			}
 			return outputFacts, nil
 		})
@@ -624,6 +640,38 @@ func optimizedRouteAllowed(preset optimized.Preset, route optimized.EncoderRoute
 type optimizedProgressWriter struct {
 	writer   io.Writer
 	progress func()
+}
+
+// optimizedArtifactDigestWriter makes the optimized producer the sole owner of
+// the byte digest. The digest covers exactly the bytes accepted by the durable
+// publication file and is committed with the producer's validated facts.
+type optimizedArtifactDigestWriter struct {
+	writer io.Writer
+	hash   hash.Hash
+	size   int64
+}
+
+func newOptimizedArtifactDigestWriter(writer io.Writer) *optimizedArtifactDigestWriter {
+	return &optimizedArtifactDigestWriter{writer: writer, hash: sha256.New()}
+}
+
+func (w *optimizedArtifactDigestWriter) Write(value []byte) (int, error) {
+	if w == nil || w.writer == nil || w.hash == nil {
+		return 0, errors.New("optimized artifact digest writer is unavailable")
+	}
+	n, err := w.writer.Write(value)
+	if n > 0 {
+		_, _ = w.hash.Write(value[:n])
+		w.size += int64(n)
+	}
+	return n, err
+}
+
+func (w *optimizedArtifactDigestWriter) Digest() (string, int64) {
+	if w == nil || w.hash == nil {
+		return "", 0
+	}
+	return hex.EncodeToString(w.hash.Sum(nil)), w.size
 }
 
 func (w optimizedProgressWriter) Write(value []byte) (int, error) {
@@ -1043,14 +1091,21 @@ func optimizedStreamURL(mediaID, profile string) string {
 }
 
 func mediaPlaybackURLForDecision(mediaID string, decision PlaybackDecision) string {
-	if decision.Mode == "optimized_version" && decision.execution != nil &&
-		strings.TrimSpace(decision.execution.OptimizedArtifactID) != "" && strings.TrimSpace(decision.execution.OptimizedPresetID) != "" {
-		return optimizedStreamURL(mediaID, decision.execution.OptimizedPresetID)
+	if decision.executionPlan == nil {
+		return ""
 	}
-	if decision.Mode == "direct_play" {
+	plan := *decision.executionPlan
+	if plan.OptimizedArtifactID != "" && plan.OptimizedPresetID != "" {
+		return optimizedStreamURL(mediaID, plan.OptimizedPresetID)
+	}
+	if plan.Plan.Mode == playbackplan.DirectPlay {
 		return mediaPlaybackStreamURL(mediaID)
 	}
-	return mediaPlaybackHLSURL(mediaID, "")
+	quality, burnSubtitleID, _, audioMode, audioStreamID, directStream, err := playbackPlanHLSValues(plan)
+	if err != nil {
+		return ""
+	}
+	return mediaPlaybackHLSURLWithOptions(mediaID, quality, burnSubtitleID, audioMode, audioStreamID, directStream)
 }
 
 func (s *Server) pruneOptimizedVersions() (int, error) {

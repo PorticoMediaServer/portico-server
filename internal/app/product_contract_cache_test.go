@@ -4,12 +4,11 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/cookiejar"
-	"reflect"
 	"strings"
 	"testing"
 )
 
-func TestProductContractBuildIdentityCannotBeReusedAcrossDeployments(t *testing.T) {
+func TestProductContractIsBuildIndependentAndRevalidatedBySemanticETag(t *testing.T) {
 	serverURL := newAuthTestServer(t)
 	jar, _ := cookiejar.New(nil)
 	client := &http.Client{Jar: jar}
@@ -24,8 +23,12 @@ func TestProductContractBuildIdentityCannotBeReusedAcrossDeployments(t *testing.
 		t.Fatalf("product contract status = %d", response.StatusCode)
 	}
 	cacheControl := response.Header.Get("Cache-Control")
-	if cacheControl != "private, no-store" || !strings.Contains(cacheControl, "no-store") {
-		t.Fatalf("build-specific product contract must not be reusable, Cache-Control = %q", cacheControl)
+	if cacheControl != "private, no-cache" || !strings.Contains(cacheControl, "no-cache") {
+		t.Fatalf("semantic Product Contract must be revalidated, Cache-Control = %q", cacheControl)
+	}
+	etag := response.Header.Get("ETag")
+	if etag == "" {
+		t.Fatal("semantic Product Contract omitted its content ETag")
 	}
 	var contract CanonicalProductContract
 	if err := json.NewDecoder(response.Body).Decode(&contract); err != nil {
@@ -39,7 +42,23 @@ func TestProductContractBuildIdentityCannotBeReusedAcrossDeployments(t *testing.
 	if status != http.StatusOK {
 		t.Fatalf("system status = %d, body: %s", status, body)
 	}
-	if !reflect.DeepEqual(contract.Compatibility.Build, system.Compatibility.Build) {
-		t.Fatalf("fresh contract build %#v does not match System build %#v", contract.Compatibility.Build, system.Compatibility.Build)
+	if contract.SemanticIdentity == nil || system.Compatibility.SemanticDocuments["productContract"] != *contract.SemanticIdentity {
+		t.Fatalf("System does not advertise the exact Product Contract semantic identity")
+	}
+	if etag != `"`+contract.SemanticIdentity.Digest+`"` {
+		t.Fatalf("Product Contract ETag %q does not match semantic digest %q", etag, contract.SemanticIdentity.Digest)
+	}
+	revalidation, err := http.NewRequest(http.MethodGet, serverURL+"/api/product-contract", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	revalidation.Header.Set("If-None-Match", etag)
+	revalidated, err := client.Do(revalidation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer revalidated.Body.Close()
+	if revalidated.StatusCode != http.StatusNotModified || revalidated.Header.Get("ETag") != etag {
+		t.Fatalf("semantic Product Contract revalidation status=%d ETag=%q", revalidated.StatusCode, revalidated.Header.Get("ETag"))
 	}
 }

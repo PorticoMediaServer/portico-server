@@ -105,7 +105,12 @@ export function RuntimeProductFrame({ children, connected = false }: { children:
   const accountLabel = displayName || 'Portico Account';
   const initial = displayName?.trim().slice(0, 1).toLocaleUpperCase();
   const connectedPresentation = connected && connectedContentActive;
-  const accountControlsAvailable = !connectedPresentation && runtime.config.mode === 'hosted';
+  const accountControlsAvailable = !connectedPresentation
+    && runtime.config.mode === 'hosted'
+    && Boolean(runtime.restoredPresentation);
+  const accountContext = runtime.state.id === 'hosted-account-session'
+    ? 'Checking account…'
+    : serverName || 'No server selected';
   const activePresentation = connectedPresentation ? presentation : defaultPresentation;
   const pageInactive = activePresentation.pageInert || undefined;
   const dismissProfileMenu = useCallback(() => setProfileMenuOpen(false), []);
@@ -153,7 +158,7 @@ export function RuntimeProductFrame({ children, connected = false }: { children:
               onClick={() => accountControlsAvailable && setProfileMenuOpen((open) => !open)}
             >
               <span className="avatar">{initial || <AccountUserIcon aria-hidden="true" />}</span>
-              <span><strong>{accountLabel}</strong><small>{serverName || 'No server selected'}</small></span>
+              <span><strong>{accountLabel}</strong><small>{accountContext}</small></span>
               {accountControlsAvailable && <NavigationExpandIcon aria-hidden="true" />}
             </button>
             {profileMenuOpen && accountControlsAvailable && <AnchoredOverlay

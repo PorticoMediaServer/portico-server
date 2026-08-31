@@ -120,25 +120,13 @@ func (s *Server) requestPrincipalCacheMetricsSnapshot() RequestPrincipalCacheMet
 
 func (s *Server) invalidateAuthorizationCachesForMutation(query string, tags []string) {
 	sensitive := false
-	settingsChanged := false
 	for _, tag := range tags {
 		switch strings.ToLower(strings.TrimSpace(tag)) {
-		case "settings":
-			settingsChanged = true
 		case "users", "account", "profiles", "devices", "sessions", "libraries", "hosted_profile_snapshot_state", "profile_account_authentications", "native_refresh_tokens":
 			sensitive = true
 		}
 	}
 	lowerQuery := strings.ToLower(query)
-	if strings.Contains(lowerQuery, " settings ") || strings.Contains(lowerQuery, "into settings") {
-		settingsChanged = true
-	}
-	if settingsChanged {
-		s.settingsReadCacheMu.Lock()
-		s.settingsReadCache = nil
-		s.settingsReadCacheExpires = time.Time{}
-		s.settingsReadCacheMu.Unlock()
-	}
 	for _, marker := range []string{"update users ", "delete from users", "update profiles ", "delete from profiles", "user_library_access", "hosted_profile_snapshot_state", "delete from sessions", "revoked_at", "trusted ="} {
 		if strings.Contains(lowerQuery, marker) {
 			sensitive = true

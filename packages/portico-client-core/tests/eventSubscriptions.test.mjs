@@ -472,11 +472,6 @@ test("client resource subscriptions expose all constrained-client event surfaces
       calls.push(url);
       if (url.includes("/notifications/")) return jsonResponse(envelope("notifications", [{ version: "v1", kind: "notifications.invalidated", occurredAt: "2026-07-17T18:42:31Z" }]));
       if (url.includes("/command/events/")) return jsonResponse(envelope("command", [{ id: "command-1", action: "pause", issuedAt: "2026-07-17T18:42:31Z" }]));
-      if (url.includes("/receivers/")) return jsonResponse(envelope("receiver", [{
-        id: "receiver-1", name: "Living Room", code: "ABC12345", app: "roku", platform: "roku",
-        supportedCommands: ["load"], command: { id: "", action: "" },
-        createdAt: "2026-07-17T18:42:31Z", lastSeenAt: "2026-07-17T18:42:31Z"
-      }]));
       return jsonResponse(envelope("group", [{
         id: "group-1", name: "Movie Night", mediaId: "movie-1", mediaTitle: "Movie", ownerName: "Host", ownerProfileId: "profile-1",
         members: [], queue: [], permissions: { canControl: true, canManageQueue: true, isHost: true }, command: {}, state: "paused",
@@ -498,12 +493,10 @@ test("client resource subscriptions expose all constrained-client event surfaces
   };
   await subscribe(options => client.subscribeViewerNotificationInvalidations({ audience: "profile" }, options));
   await subscribe(options => client.subscribePlaybackCommandEvents("session one", options));
-  await subscribe(options => client.subscribePlaybackReceiverEvents("receiver one", options));
   await subscribe(options => client.subscribeWatchWithFriendsGroupEvents("group one", options));
   assert.deepEqual(calls, [
     "https://server.example/api/notifications/events/poll?audience=profile&waitSeconds=20",
     "https://server.example/api/playback-sessions/session%20one/command/events/poll?waitSeconds=20",
-    "https://server.example/api/playback/receivers/receiver%20one/events/poll?waitSeconds=20",
     "https://server.example/api/watch-with-friends/groups/group%20one/events/poll?waitSeconds=20"
   ]);
 });

@@ -91,7 +91,7 @@ type restoreCoordinator struct {
 	shuttingDown bool
 }
 
-var errRestoreDatabaseOpenTimedOut = errors.New("restore database open exceeded its phase deadline; recovery remains required")
+var errRestoreDatabaseHandleCloseUnproven = errors.New("restore database handle close could not be proven")
 
 func newRestoreCoordinator(cfg config.Config, logger *slog.Logger, deps restoreCoordinatorDependencies) *restoreCoordinator {
 	c := &restoreCoordinator{
@@ -262,52 +262,30 @@ func (c *restoreCoordinator) openDatabaseWithTimeout(parent context.Context) (*s
 	if parent == nil {
 		parent = context.Background()
 	}
-	// Derive the actual phase deadline before starting the open attempt. The
-	// context-aware database path then receives this exact deadline and can
-	// cancel SQLite connection/migration work cooperatively.
+	// Derive the actual phase deadline before starting the open attempt. Keep the
+	// call synchronous: the lifecycle and restore-executor locks must remain held
+	// until every physical SQLite open/migration attempt has returned. A platform
+	// call which cannot be interrupted therefore leaves the status-only
+	// maintenance handler published instead of becoming an orphan that can race
+	// startup reconciliation in another process.
 	ctx, cancel := context.WithTimeout(parent, c.timeout.Open)
 	defer cancel()
-	result := make(chan struct {
-		db  *sql.DB
-		err error
-	}, 1)
-	go func() {
-		db, err := c.deps.OpenDatabase(ctx, c.cfg)
-		if err != nil {
-			if db != nil {
-				_ = c.deps.CloseDatabase(db)
-			}
-			result <- struct {
-				db  *sql.DB
-				err error
-			}{err: err}
-			return
-		}
-		if ctx.Err() != nil {
-			if db != nil {
-				_ = c.deps.CloseDatabase(db)
-			}
-			result <- struct {
-				db  *sql.DB
-				err error
-			}{err: ctx.Err()}
-			return
-		}
-		result <- struct {
-			db  *sql.DB
-			err error
-		}{db: db, err: err}
-	}()
-	select {
-	case outcome := <-result:
-		return outcome.db, outcome.err
-	case <-ctx.Done():
-		// If a platform call ignores cancellation, the already-running open
-		// goroutine owns its eventual late handle and closes it before sending
-		// the buffered outcome. The coordinator remains fail-closed and performs
-		// no install/rollback mutation while that call is outstanding.
-		return nil, fmt.Errorf("%w: %v", errRestoreDatabaseOpenTimedOut, ctx.Err())
+	db, err := c.deps.OpenDatabase(ctx, c.cfg)
+	if err == nil {
+		err = ctx.Err()
 	}
+	if err != nil {
+		if db != nil {
+			if c.deps.CloseDatabase == nil {
+				return nil, fmt.Errorf("%w: close dependency is unavailable", errRestoreDatabaseHandleCloseUnproven)
+			}
+			if closeErr := c.deps.CloseDatabase(db); closeErr != nil {
+				return nil, fmt.Errorf("%w: %v", errRestoreDatabaseHandleCloseUnproven, closeErr)
+			}
+		}
+		return nil, err
+	}
+	return db, nil
 }
 
 func restoreCommitSucceeded(err error) bool {
@@ -353,6 +331,13 @@ func (c *restoreCoordinator) replace(_ context.Context, operationID string) erro
 	defer c.lifecycleMu.Unlock()
 	if c.shuttingDown {
 		return errors.New("restore runtime replacement rejected during host shutdown")
+	}
+	operation, err := c.deps.ReadOperation(c.cfg.AppDataDir)
+	if err != nil {
+		return err
+	}
+	if operation.OperationID != operationID || !operation.AuthorizationCommitted {
+		return errors.New("restore runtime replacement rejected without committed authorization")
 	}
 
 	oldGeneration, oldDB := c.currentGeneration()
@@ -420,7 +405,7 @@ func (c *restoreCoordinator) replace(_ context.Context, operationID string) erro
 		_ = c.markRecovery(operationID, "restore_recovery_required", err)
 		return fmt.Errorf("close old database generation: %w", err)
 	}
-	operation, err := c.deps.ReadOperation(c.cfg.AppDataDir)
+	operation, err = c.deps.ReadOperation(c.cfg.AppDataDir)
 	if err != nil {
 		_ = c.markRecovery(operationID, "restore_recovery_required", err)
 		return err
@@ -436,7 +421,7 @@ func (c *restoreCoordinator) replace(_ context.Context, operationID string) erro
 	}
 	newDB, err := c.openDatabaseWithTimeout(context.Background())
 	if err != nil {
-		if errors.Is(err, errRestoreDatabaseOpenTimedOut) {
+		if errors.Is(err, errRestoreDatabaseHandleCloseUnproven) {
 			_ = c.markRecovery(operationID, "restore_recovery_required", err)
 			return err
 		}

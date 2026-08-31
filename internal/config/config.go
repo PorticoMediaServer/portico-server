@@ -84,7 +84,7 @@ func Load() Config {
 	environment := strings.TrimSpace(getenv("PORTICO_ENVIRONMENT", foundationcontract.DefaultEnvironment))
 	hostedAuthority := strings.TrimSpace(os.Getenv("PORTICO_HOSTED_API_AUTHORITY"))
 	if hostedAuthority == "" {
-		hostedAuthority = strings.TrimSpace(foundationcontract.HostedAPIAuthorityByEnvironment[environment])
+		hostedAuthority = strings.TrimSpace(foundationcontract.HostedAPIAuthorityByEnvironment()[environment])
 	}
 	configPath := getenv("PORTICO_CONFIG_FILE", filepath.Join(appData, "portico.config.json"))
 	runtimePaths, _ := LoadRuntimePaths(configPath)

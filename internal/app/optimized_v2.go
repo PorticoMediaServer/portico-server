@@ -31,6 +31,7 @@ type optimizedV2SourceIdentity struct {
 
 type optimizedV2OutputFacts struct {
 	SizeBytes         int64
+	ArtifactSHA256    string
 	Container         string
 	VideoCodec        string
 	AudioCodec        string
@@ -547,6 +548,7 @@ func (p *optimizedV2Publication) Publish(ctx context.Context, fs optimizedartifa
 func validateOptimizedV2OutputFacts(f optimizedV2OutputFacts) error {
 	if f.SizeBytes <= 0 || strings.TrimSpace(f.Container) == "" ||
 		(strings.TrimSpace(f.VideoCodec) == "" && strings.TrimSpace(f.AudioCodec) == "") ||
+		!validOfflineArtifact(f.ArtifactSHA256, f.SizeBytes) ||
 		strings.TrimSpace(f.FactsDigest) == "" || len(f.FactsJSON) == 0 || !json.Valid(f.FactsJSON) {
 		return errors.New("optimized output facts are incomplete")
 	}
@@ -592,10 +594,10 @@ func (p *optimizedV2Publication) markValidating(ctx context.Context) error {
 
 func (p *optimizedV2Publication) persistValidatedFacts(ctx context.Context) error {
 	_, err := p.server.execBackgroundWriteTagged(ctx, []string{"optimized_versions"}, `
-		UPDATE optimized_versions SET size_bytes = ?, container = ?, video_codec = ?, audio_codec = ?,
+		UPDATE optimized_versions SET size_bytes = ?, artifact_sha256 = ?, container = ?, video_codec = ?, audio_codec = ?,
 			width = ?, height = ?, bitrate = ?, duration_seconds = ?, output_facts_digest = ?,
 			output_facts_json = ?, updated_at = ?
-		WHERE id = ? AND state = 'validating'`, p.output.SizeBytes, p.output.Container,
+		WHERE id = ? AND state = 'validating'`, p.output.SizeBytes, p.output.ArtifactSHA256, p.output.Container,
 		p.output.VideoCodec, p.output.AudioCodec, p.output.Width, p.output.Height, p.output.Bitrate,
 		p.output.DurationSeconds, p.output.FactsDigest, string(p.output.FactsJSON),
 		p.now().UTC().Format(time.RFC3339Nano), p.identity.GenerationID)
@@ -619,18 +621,18 @@ func (s *Server) reconcileOptimizedV2Marker(ctx context.Context, fs optimizedart
 		return optimizedartifact.ReconcileNoop, errors.New("invalid optimized reconciliation request")
 	}
 	var mediaID, presetID, plannerRevision, sourceRevision, sourceFingerprint, sourceFactsDigest string
-	var planDigest, planJSON, compatibilityJSON, outputFactsDigest, outputFactsJSON string
+	var planDigest, planJSON, compatibilityJSON, artifactSHA256, outputFactsDigest, outputFactsJSON string
 	var presetVersion int
 	var outputSize int64
 	var outputDuration int
 	err := s.queryBackgroundRow(ctx, `
 		SELECT media_id, profile, preset_version, planner_revision, source_revision, source_fingerprint,
 			source_facts_digest, plan_digest, plan_json, compatibility_tags_json,
-			size_bytes, duration_seconds, output_facts_digest, output_facts_json
+			size_bytes, artifact_sha256, duration_seconds, output_facts_digest, output_facts_json
 		FROM optimized_versions WHERE id = ? AND state IN ('staging', 'validating', 'failed', 'ready')`,
 		marker.Metadata.GenerationID).Scan(&mediaID, &presetID, &presetVersion, &plannerRevision, &sourceRevision,
 		&sourceFingerprint, &sourceFactsDigest, &planDigest, &planJSON, &compatibilityJSON,
-		&outputSize, &outputDuration, &outputFactsDigest, &outputFactsJSON)
+		&outputSize, &artifactSHA256, &outputDuration, &outputFactsDigest, &outputFactsJSON)
 	if errors.Is(err, sql.ErrNoRows) {
 		// A marker without database authority cannot authorize deletion of either
 		// pathname it contains. Remove only the independently derived marker file.
@@ -674,7 +676,7 @@ func (s *Server) reconcileOptimizedV2Marker(ctx context.Context, fs optimizedart
 		if exists {
 			probe, probeErr := s.validateOptimizedOutput(ctx, derived.FinalPath, outputDuration)
 			facts, factsErr := optimizedOutputFactsFromProbe(derived.FinalPath, probe)
-			if probeErr != nil || factsErr != nil || validateOptimizedOutputAgainstPlan(facts, plan) != nil ||
+			if probeErr != nil || factsErr != nil || !validOfflineArtifact(artifactSHA256, outputSize) || validateOptimizedOutputAgainstPlan(facts, plan) != nil ||
 				facts.SizeBytes != outputSize || facts.FactsDigest != outputFactsDigest || string(facts.FactsJSON) != outputFactsJSON {
 				_ = fs.Remove(derived.FinalPath)
 				_ = fs.SyncDirectory(derived.Directory)
@@ -773,6 +775,7 @@ func (s optimizedV2Store) Current(ctx context.Context, mediaID, presetVersion st
 
 type optimizedV2ReadyArtifact struct {
 	ID, MediaID, PresetID, Path, SourceFingerprint, SourceFactsDigest, PlanDigest string
+	ArtifactSHA256                                                                string
 	PresetVersion                                                                 int
 	SizeBytes                                                                     int64
 	CompatibilityTags                                                             []string
@@ -796,17 +799,17 @@ func (s *Server) optimizedV2ReadyForSource(ctx context.Context, mediaID, presetI
 	var size int64
 	err := s.queryUserRow(ctx, `
 		SELECT id, media_id, profile, path, source_fingerprint, source_facts_digest, plan_digest,
-			preset_version, size_bytes, compatibility_tags_json, output_facts_digest, output_facts_json,
+			preset_version, size_bytes, artifact_sha256, compatibility_tags_json, output_facts_digest, output_facts_json,
 			container, video_codec, audio_codec, width, height, bitrate, duration_seconds
 		FROM optimized_versions
 		WHERE media_id = ? AND profile = ? AND state = 'ready' AND preset_version = ?
 		  AND planner_revision = ? AND source_revision = ? AND source_fingerprint = ?
 		  AND source_facts_digest = ? AND plan_digest <> '' AND plan_json <> '{}'
-		  AND output_facts_digest <> ''
+		  AND artifact_sha256 <> '' AND output_facts_digest <> ''
 		ORDER BY updated_at DESC LIMIT 1`, mediaID, preset.ID, preset.Version, optimized.PlannerRevision,
 		source.Revision, source.Fingerprint, source.FactsDigest).
 		Scan(&record.ID, &record.MediaID, &record.PresetID, &record.Path, &record.SourceFingerprint,
-			&record.SourceFactsDigest, &record.PlanDigest, &record.PresetVersion, &size, &tagsJSON,
+			&record.SourceFactsDigest, &record.PlanDigest, &record.PresetVersion, &size, &record.ArtifactSHA256, &tagsJSON,
 			&record.OutputFactsDigest, &outputFactsJSON, &record.Container, &record.VideoCodec,
 			&record.AudioCodec, &record.Width, &record.Height, &record.Bitrate, &record.DurationSeconds)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -815,7 +818,7 @@ func (s *Server) optimizedV2ReadyForSource(ctx context.Context, mediaID, presetI
 	if err != nil {
 		return nil, err
 	}
-	if pathUsable == nil || !pathUsable(record.Path, size) {
+	if pathUsable == nil || !pathUsable(record.Path, size) || !validOfflineArtifact(record.ArtifactSHA256, size) {
 		return nil, nil
 	}
 	record.SizeBytes = size

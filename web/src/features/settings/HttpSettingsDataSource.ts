@@ -1,6 +1,7 @@
 import {
   ApiError,
   createHostedServicesClient,
+  HostedTerminalMutationCommittedError,
   type AccountSession,
   type APIKey,
   type APIKeyCreateResponse,
@@ -65,6 +66,7 @@ import type {
   SettingsOperationalScope,
   SettingsStatusSnapshot,
   RestoreWorkflowResponse,
+  RestoreStepUp,
 } from "./settingsTypes";
 import {
   hostedCSRFToken,
@@ -803,6 +805,21 @@ export class HttpSettingsDataSource implements SettingsDataSource {
     );
   }
 
+  async revokePorticoMemberInvite(
+    inviteId: string,
+    signal: AbortSignal,
+  ): Promise<void> {
+    const serverId = await this.remoteAccessServerID(signal);
+    try {
+      await this.hosted.request(
+        `/api/account/servers/${encodeURIComponent(serverId)}/invites/${encodeURIComponent(inviteId)}`,
+        { method: "DELETE", signal },
+      );
+    } catch (reason) {
+      if (!(reason instanceof HostedTerminalMutationCommittedError)) throw reason;
+    }
+  }
+
   async updateUser(
     user: User,
     input: UserPatchRequest,
@@ -948,35 +965,51 @@ export class HttpSettingsDataSource implements SettingsDataSource {
 
   restoreBackup(
     name: string,
-    password: string,
+    stepUp: RestoreStepUp,
     confirmation: string,
     signal: AbortSignal,
   ): Promise<RestoreWorkflowResponse> {
-    return this.client.request<RestoreWorkflowResponse>(
-      `/api/backups/${encodeURIComponent(name)}/restore`,
-      {
-        method: "POST",
-        body: { password, confirmation },
-        signal,
-      },
+    return this.restoreAuthorization(stepUp, signal).then((hostedAuthorization) =>
+      this.client.restoreBackup(
+        name,
+        hostedAuthorization
+          ? { confirmation, hostedAuthorization }
+          : { confirmation, password: stepUp.password ?? "" },
+        { signal },
+      ),
     );
   }
 
   restoreUploadedDatabase(
     file: File,
-    password: string,
+    stepUp: RestoreStepUp,
     confirmation: string,
     signal: AbortSignal,
   ): Promise<RestoreWorkflowResponse> {
-    const form = new FormData();
-    form.set("password", password);
-    form.set("confirmation", confirmation);
-    form.set("databaseBytes", String(file.size));
-    form.set("database", file, file.name);
-    return this.client.formRequest<RestoreWorkflowResponse>(
-      "/api/backups/restore/upload",
-      form,
-      "POST",
+    return this.restoreAuthorization(stepUp, signal).then((hostedAuthorization) =>
+      this.client.restoreUploadedDatabase(
+        hostedAuthorization
+          ? { file, confirmation, hostedAuthorization }
+          : { file, confirmation, password: stepUp.password ?? "" },
+        { signal },
+      ),
+    );
+  }
+
+  private async restoreAuthorization(stepUp: RestoreStepUp, signal: AbortSignal) {
+    if (stepUp.origin !== "portico") return undefined;
+    const [context, serverId] = await Promise.all([
+      this.client.restoreAuthorizationContext({ signal }),
+      this.remoteAccessServerID(signal),
+    ]);
+    return this.hosted.createServerRestoreAuthorization(
+      serverId,
+      {
+        restoreSecurityEpoch: context.restoreSecurityEpoch,
+        password: stepUp.password || undefined,
+        mfaCode: stepUp.mfaCode || undefined,
+        recoveryCode: stepUp.recoveryCode || undefined,
+      },
       { signal },
     );
   }

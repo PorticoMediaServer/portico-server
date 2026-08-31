@@ -201,6 +201,31 @@ func TestResolveMediaIdentityCreatesCoherentMergeRevisionAndRebuildsProjections(
 		('med_merge_evidence_subject','stale subject'),('med_merge_evidence_target','stale target')`); err != nil {
 		t.Fatalf("seed search projections: %v", err)
 	}
+	accountID := "usr_merge_fixture"
+	if _, err := server.db.Exec(`INSERT INTO users (id,email,display_name,role,permissions_json,created_at,updated_at) VALUES (?, 'merge-fixture@example.test', 'Merge Fixture', 'owner', '{}', ?, ?)`, accountID, now, now); err != nil {
+		t.Fatalf("seed fixture account: %v", err)
+	}
+	var profileID string
+	if err := server.db.QueryRow(`SELECT id FROM profiles WHERE account_id = ? AND is_primary = 1`, accountID).Scan(&profileID); err != nil {
+		t.Fatalf("load fixture primary profile: %v", err)
+	}
+	if _, err := server.db.Exec(`INSERT INTO playback_sessions (id,user_id,profile_id,current_entry_id,media_id,started_at,last_seen_at) VALUES ('play_merge_prepared',?,?,'entry-current','med_merge_evidence_target',?,?)`, accountID, profileID, now, now); err != nil {
+		t.Fatalf("seed prepared source session: %v", err)
+	}
+	if _, err := server.db.Exec(`INSERT INTO playback_prepared_handoffs
+		(id,user_id,profile_id,source_session_id,media_id,current_entry_id,queue_entries_json,created_at,expires_at)
+		VALUES ('prep_merge_entries',?,?,'play_merge_prepared','med_merge_evidence_target','entry-current',?, ?, ?)`, accountID, profileID,
+		`[{"entryId":"entry-subject-1","mediaId":"med_merge_evidence_subject"},{"entryId":"entry-target","mediaId":"med_merge_evidence_target"},{"entryId":"entry-subject-2","mediaId":"med_merge_evidence_subject"}]`, now, time.Now().UTC().Add(time.Hour).Format(time.RFC3339Nano)); err != nil {
+		t.Fatalf("seed prepared occurrence queue: %v", err)
+	}
+	if _, err := server.db.Exec(`INSERT INTO download_preparations
+		(id,server_id,account_id,profile_id,authorization_revision,media_id,quality_profile,state,created_at,updated_at)
+		VALUES
+		('download_merge_subject','server-merge',?,?, 'revision', 'med_merge_evidence_subject','source','ready',?,?),
+		('download_merge_target','server-merge',?,?, 'revision', 'med_merge_evidence_target','source','ready',?,?)`,
+		accountID, profileID, now, now, accountID, profileID, now, now); err != nil {
+		t.Fatalf("seed colliding download preparations: %v", err)
+	}
 	insertIdentityReview(t, server, "idrev_merge_evidence", "media", library.ID, "med_merge_evidence_subject", []string{"med_merge_evidence_target"}, now)
 	if _, err := server.resolveIdentityReconciliationReview(t.Context(), "idrev_merge_evidence", "usr_admin", IdentityReconciliationResolveRequest{Resolution: identityResolutionMerge, SelectedCandidateID: "med_merge_evidence_target"}); err != nil {
 		t.Fatalf("resolve identity merge: %v", err)
@@ -214,6 +239,19 @@ func TestResolveMediaIdentityCreatesCoherentMergeRevisionAndRebuildsProjections(
 	}
 	if revisions != 3 || distinctRevisions != 3 || mergeRevisions != 1 || canonicalRevision != 3 {
 		t.Fatalf("revision ledger rows=%d distinct=%d merges=%d canonical=%d", revisions, distinctRevisions, mergeRevisions, canonicalRevision)
+	}
+	var activeDownloads, invalidatedDownloads int
+	if err := server.db.QueryRow(`SELECT COUNT(*) FROM download_preparations
+		WHERE media_id='med_merge_evidence_target' AND quality_profile='source' AND removed_at=''`).Scan(&activeDownloads); err != nil {
+		t.Fatalf("count active merged download preparations: %v", err)
+	}
+	if err := server.db.QueryRow(`SELECT COUNT(*) FROM download_preparations
+		WHERE id='download_merge_subject' AND media_id='med_merge_evidence_target' AND state='unavailable'
+			AND error_code='media_identity_changed' AND removed_at<>'' AND job_id='' AND artifact_sha256='' AND size_bytes=0`).Scan(&invalidatedDownloads); err != nil {
+		t.Fatalf("count invalidated merged download preparations: %v", err)
+	}
+	if activeDownloads != 1 || invalidatedDownloads != 1 {
+		t.Fatalf("merged download authority active=%d invalidated=%d", activeDownloads, invalidatedDownloads)
 	}
 	var acceptedID string
 	if err := server.db.QueryRow(`SELECT external_id FROM media_provider_ids WHERE media_id='med_merge_evidence_target' AND status='accepted'`).Scan(&acceptedID); err != nil || acceptedID != "target-id" {
@@ -231,6 +269,22 @@ func TestResolveMediaIdentityCreatesCoherentMergeRevisionAndRebuildsProjections(
 	}
 	if searchRows != 1 || staleSearchRows != 0 || facetRows != 1 {
 		t.Fatalf("projection search=%d stale=%d facets=%d", searchRows, staleSearchRows, facetRows)
+	}
+	var preparedQueueJSON string
+	if err := server.db.QueryRow(`SELECT queue_entries_json FROM playback_prepared_handoffs WHERE id='prep_merge_entries'`).Scan(&preparedQueueJSON); err != nil {
+		t.Fatalf("load merged prepared queue: %v", err)
+	}
+	var preparedQueue []playbackQueueOccurrence
+	if err := json.Unmarshal([]byte(preparedQueueJSON), &preparedQueue); err != nil {
+		t.Fatalf("decode merged prepared queue: %v", err)
+	}
+	if len(preparedQueue) != 3 || preparedQueue[0].EntryID != "entry-subject-1" || preparedQueue[1].EntryID != "entry-target" || preparedQueue[2].EntryID != "entry-subject-2" {
+		t.Fatalf("prepared occurrence identities changed: %+v", preparedQueue)
+	}
+	for _, occurrence := range preparedQueue {
+		if occurrence.MediaID != "med_merge_evidence_target" {
+			t.Fatalf("prepared occurrence retained merged media id: %+v", occurrence)
+		}
 	}
 }
 

@@ -1,4 +1,4 @@
-import { StatusWarningIcon, NavigationBackIcon, NavigationForwardIcon, AccountProfileIcon, DeviceNetworkIcon, StatusLoadingIcon, StatusLockedIcon, AccountSignInIcon, ActionRefreshIcon, DeviceServerIcon, DeviceOfflineIcon, StatusSecureIcon, DeviceWifiIcon } from '#portico-icons';
+import { StatusWarningIcon, NavigationBackIcon, NavigationForwardIcon, AccountProfileIcon, DeviceNetworkIcon, StatusLoadingIcon, StatusLockedIcon, AccountSignInIcon, AccountSignOutIcon, ActionRefreshIcon, ActionDeleteIcon, DeviceServerIcon, DeviceOfflineIcon, StatusSecureIcon, DeviceWifiIcon } from '#portico-icons';
 import {
   productMessage,
   resolveProductProblem,
@@ -34,9 +34,14 @@ function ProductStatusIcon({ icon }: { icon?: SemanticIconId }) {
   }
 }
 
-function canonicalProblem(reason: unknown, fallback: ProductMessageId = 'problem.request-failed'): ProductMessagePresentation {
+export function canonicalProblem(reason: unknown, fallback: ProductMessageId = 'problem.request-failed', context?: 'server-lifecycle'): ProductMessagePresentation {
   if (!reason || typeof reason !== 'object') return productMessage(fallback);
   const candidate = reason as { code?: unknown; messageId?: unknown; status?: unknown; details?: unknown };
+  if (context === 'server-lifecycle') {
+    if (candidate.code === 'invalid_credentials') return productMessage('account.delete-password-invalid');
+    if (candidate.code === 'reauthentication_required') return productMessage('server.delete-authorization-required');
+    if (candidate.code === 'terminal_mutation_outcome_unknown') return productMessage('server.lifecycle-outcome-pending');
+  }
   const resolved = resolveProductProblem({
     ...(typeof candidate.code === 'string' ? { code: candidate.code } : {}),
     ...(typeof candidate.messageId === 'string' ? { messageId: candidate.messageId } : {}),
@@ -61,6 +66,24 @@ function AccountLegalLinks() {
 
 const NATIVE_DEVICE_AUTHORIZATION_COMPLETION_URL = 'portico://device-authorization-complete';
 const NATIVE_DEVICE_SSO_GUARD_PREFIX = 'portico.hosted.native-device-sso-start.v1:';
+
+const CONTEXT_BOUND_PRODUCT_ROUTES = [
+  /^\/media\/[^/]+\/?$/,
+  /^\/person\/[^/]+\/?$/,
+  /^\/library\/[^/]+\/?$/,
+  /^\/watch\/[^/]+\/?$/,
+  /^\/saved\/[^/]+\/[^/]+\/?$/,
+];
+
+/**
+ * Object identifiers belong to the viewer/server context that rendered them.
+ * An external identity-provider round trip can establish a different context,
+ * so only restore destinations whose meaning is stable across that boundary.
+ */
+export function postAuthenticationReturnURL(location: Pick<Location, 'origin' | 'pathname' | 'search'>): URL {
+  const contextBound = CONTEXT_BOUND_PRODUCT_ROUTES.some((pattern) => pattern.test(location.pathname));
+  return new URL(contextBound ? '/' : `${location.pathname}${location.search}`, location.origin);
+}
 
 export function consumeNativeDeviceSSOAutoStart(provider: 'google' | 'apple', code: string): boolean {
   if (typeof window === 'undefined' || !normalizeDeviceCode(code)) return false;
@@ -111,7 +134,10 @@ function RuntimeProgress({ title, body, kind, serverName, embedded = false }: { 
 
 function HostedSignIn() {
   const runtime = useRuntime();
-  const [mode, setMode] = useState<'sign-in' | 'register' | 'request-reset' | 'complete-reset'>(runtime.hasPasswordResetIntent ? 'complete-reset' : 'sign-in');
+  type HostedSignInMode = 'sign-in' | 'register' | 'request-reset' | 'complete-reset';
+  type HostedSignInHistoryState = { porticoAuthMode?: HostedSignInMode };
+  const initialMode: HostedSignInMode = runtime.hasPasswordResetIntent ? 'complete-reset' : 'sign-in';
+  const [mode, setMode] = useState<HostedSignInMode>(initialMode);
   const [email, setEmail] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -119,30 +145,66 @@ function HostedSignIn() {
   const [recoveryCode, setRecoveryCode] = useState('');
   const [useRecoveryCode, setUseRecoveryCode] = useState(false);
   const [error, setError] = useState<ProductMessagePresentation>();
-  const [resetSent, setResetSent] = useState(false);
+  const [resetRequest, setResetRequest] = useState<'idle' | 'sending-initial' | 'sent' | 'sending-resend' | 'resent'>('idle');
   const canonicalNotice = runtime.state.id === 'hosted-sign-in' && runtime.state.messageId
     ? productMessage(runtime.state.messageId)
     : undefined;
-  const changeMode = (next: typeof mode) => {
-    setMode(next); setError(undefined); setResetSent(false); setUsername(''); setPassword(''); setMfaCode(''); setRecoveryCode(''); setUseRecoveryCode(false);
+  const applyMode = (next: HostedSignInMode) => {
+    setMode(next); setError(undefined); setResetRequest('idle'); setUsername(''); setPassword(''); setMfaCode(''); setRecoveryCode(''); setUseRecoveryCode(false);
+  };
+  const changeMode = (next: HostedSignInMode, historyAction: 'push' | 'replace' = 'push') => {
+    applyMode(next);
+    if (runtime.hasPasswordResetIntent || typeof window === 'undefined') return;
+    const state = { ...(window.history.state && typeof window.history.state === 'object' ? window.history.state : {}), porticoAuthMode: next } satisfies HostedSignInHistoryState;
+    if (historyAction === 'replace') window.history.replaceState(state, '', window.location.href);
+    else window.history.pushState(state, '', window.location.href);
+  };
+  const returnToSignIn = () => {
+    if (!runtime.hasPasswordResetIntent && typeof window !== 'undefined' && (window.history.state as HostedSignInHistoryState | null)?.porticoAuthMode === mode) {
+      window.history.back();
+      return;
+    }
+    changeMode('sign-in', 'replace');
+  };
+  useEffect(() => {
+    if (runtime.hasPasswordResetIntent || typeof window === 'undefined') return;
+    const current = window.history.state && typeof window.history.state === 'object' ? window.history.state as HostedSignInHistoryState : {};
+    if (!current.porticoAuthMode) window.history.replaceState({ ...current, porticoAuthMode: 'sign-in' } satisfies HostedSignInHistoryState, '', window.location.href);
+    const onPopState = (event: PopStateEvent) => {
+      const next = event.state && typeof event.state === 'object' ? (event.state as HostedSignInHistoryState).porticoAuthMode : undefined;
+      applyMode(next === 'register' || next === 'request-reset' ? next : 'sign-in');
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, [runtime.hasPasswordResetIntent]);
+  const requestPasswordReset = async (resent: boolean) => {
+    if (resetRequest === 'sending-initial' || resetRequest === 'sending-resend') return;
+    setError(undefined);
+    setResetRequest(resent ? 'sending-resend' : 'sending-initial');
+    try {
+      await runtime.requestPasswordReset(email);
+      setResetRequest(resent ? 'resent' : 'sent');
+    } catch (reason) {
+      setResetRequest(resent ? 'sent' : 'idle');
+      setError(canonicalProblem(reason));
+    }
   };
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     setError(undefined);
     try {
       if (mode === 'request-reset') {
-        await runtime.requestPasswordReset(email);
-        setResetSent(true);
+        await requestPasswordReset(false);
       } else if (mode === 'complete-reset') {
         if (!validPorticoPassword(password)) throw new TypeError('Choose a password that meets every requirement.');
         await runtime.completePasswordReset(password);
         setPassword('');
-        changeMode('sign-in');
+        changeMode('sign-in', 'replace');
       } else if (mode === 'register') {
         if (!validPorticoUsername(username)) throw new TypeError('Choose a valid username.');
         if (!validPorticoPassword(password)) throw new TypeError('Choose a password that meets every requirement.');
         await runtime.hostedRegister({ email: email.trim(), username: username.trim(), password });
-        changeMode('sign-in');
+        changeMode('sign-in', 'replace');
       } else {
         await runtime.hostedLogin({ login: email.trim(), password, mfaCode: useRecoveryCode ? undefined : mfaCode.trim() || undefined, recoveryCode: useRecoveryCode ? recoveryCode.trim() || undefined : undefined });
       }
@@ -164,7 +226,7 @@ function HostedSignIn() {
   const identityProviderURL = (provider: 'google' | 'apple') => {
     const target = new URL(`/auth/sso/${provider}/start`, 'https://web.getportico.tv');
     if (typeof window !== 'undefined') {
-      const returnTo = new URL(`${window.location.origin}${window.location.pathname}${window.location.search}`);
+      const returnTo = postAuthenticationReturnURL(window.location);
       if (runtime.hasLocalLoginIntent) returnTo.searchParams.set('localLoginResume', '1');
       target.searchParams.set('returnTo', returnTo.toString());
     }
@@ -177,7 +239,17 @@ function HostedSignIn() {
     if (!consumeNativeDeviceSSOAutoStart(provider, code)) return;
     window.location.assign(identityProviderURL(provider));
   }, [mode, runtime.deviceAuthorizationCode, runtime.deviceAuthorizationProvider, runtime.mfaRequired, runtime.nativeDeviceAuthorizationReturn]);
-  if (resetSent) return <RuntimePanel title="Save your email"><p className="runtime-intro">If an account matches <strong>{email}</strong>, recovery instructions are on the way. The link expires and can be used only once.</p><div className="runtime-actions"><PrimaryButton onClick={() => changeMode('sign-in')}><NavigationBackIcon /> Back to sign in</PrimaryButton><SecondaryButton disabled={runtime.busy} onClick={() => setResetSent(false)}>Send again</SecondaryButton></div></RuntimePanel>;
+  if (resetRequest !== 'idle') {
+    const sending = resetRequest === 'sending-initial' || resetRequest === 'sending-resend';
+    const status = resetRequest === 'sending-initial'
+      ? 'Requesting recovery email…'
+      : resetRequest === 'sending-resend'
+        ? 'Sending another recovery email…'
+        : resetRequest === 'resent'
+          ? 'Another recovery email was requested.'
+          : 'Recovery email requested.';
+    return <RuntimePanel title="Save your email"><p className="runtime-intro">If an account matches <strong>{email}</strong>, recovery instructions are on the way. The link expires and can be used only once.</p><p className="runtime-request-status" role="status" aria-live="polite">{status}</p>{error && <ProductProblem presentation={error} />}<div className="runtime-actions"><PrimaryButton onClick={returnToSignIn}><NavigationBackIcon /> Back to sign in</PrimaryButton><SecondaryButton disabled={runtime.busy || sending} onClick={() => void requestPasswordReset(true)}>{sending ? 'Sending…' : 'Send again'}</SecondaryButton></div></RuntimePanel>;
+  }
   return <RuntimePanel title={title}>
     <p className="runtime-intro">{intro}</p>
     {showIdentityProviders && <>
@@ -194,14 +266,14 @@ function HostedSignIn() {
       <div className="runtime-identity-divider"><span>{mode === 'register' ? 'or create an account with email' : 'or sign in with email'}</span></div>
     </>}
     <form onSubmit={submit}>
-      {mode === 'register' && <label><span>Username</span><input autoFocus autoCapitalize="none" autoComplete="username" placeholder="Choose a username" minLength={3} maxLength={32} pattern="[A-Za-z0-9][A-Za-z0-9._-]{1,30}[A-Za-z0-9]" value={username} onChange={(event) => setUsername(event.target.value)} required /><small>3–32 letters, numbers, periods, underscores, or hyphens.</small></label>}
-      {mode !== 'complete-reset' && <label><span>{mode === 'sign-in' ? 'Username or email' : 'Email'}</span><input autoFocus={mode !== 'register'} type={mode === 'sign-in' ? 'text' : 'email'} autoCapitalize="none" autoComplete="username" placeholder={mode === 'sign-in' ? 'Username or email' : 'you@example.com'} value={email} onChange={(event) => setEmail(event.target.value)} required /></label>}
-      {(mode === 'sign-in' || mode === 'register' || mode === 'complete-reset') && <label><span>{mode === 'complete-reset' ? 'New password' : 'Password'}</span><PasswordInput aria-label={mode === 'complete-reset' ? 'New password' : 'Password'} autoComplete={mode === 'sign-in' ? 'current-password' : 'new-password'} placeholder={mode === 'sign-in' ? 'Password' : 'Create a secure password'} minLength={mode === 'sign-in' ? undefined : 8} maxLength={72} value={password} onChange={(event) => setPassword(event.target.value)} required aria-describedby={mode !== 'sign-in' ? 'runtime-password-requirements' : undefined} />{mode !== 'sign-in' && <PasswordRequirements id="runtime-password-requirements" value={password} />}</label>}
-      {mode === 'sign-in' && runtime.mfaRequired && <div className="runtime-mfa"><label><span>{useRecoveryCode ? 'Recovery code' : 'Verification code'}</span><input autoFocus inputMode={useRecoveryCode ? 'text' : 'numeric'} autoComplete="one-time-code" value={useRecoveryCode ? recoveryCode : mfaCode} onChange={(event) => useRecoveryCode ? setRecoveryCode(event.target.value) : setMfaCode(event.target.value.replace(/\s/g, ''))} required /></label><button type="button" className="runtime-text-action" onClick={() => { setUseRecoveryCode((value) => !value); setMfaCode(''); setRecoveryCode(''); }}>{useRecoveryCode ? 'Use an authenticator code' : 'Use a recovery code'}</button></div>}
+      {mode === 'register' && <label><span>Username</span><input autoFocus autoCapitalize="none" autoComplete="username" placeholder="Choose a username" minLength={3} maxLength={32} pattern="[A-Za-z0-9][A-Za-z0-9._-]{1,30}[A-Za-z0-9]" value={username} onChange={(event) => { setUsername(event.target.value); setError(undefined); }} required /><small>3–32 letters, numbers, periods, underscores, or hyphens.</small></label>}
+      {mode !== 'complete-reset' && <label><span>{mode === 'sign-in' ? 'Username or email' : 'Email'}</span><input autoFocus={mode !== 'register'} type={mode === 'sign-in' ? 'text' : 'email'} autoCapitalize="none" autoComplete="username" placeholder={mode === 'sign-in' ? 'Username or email' : 'you@example.com'} value={email} onChange={(event) => { setEmail(event.target.value); setError(undefined); }} required /></label>}
+      {(mode === 'sign-in' || mode === 'register' || mode === 'complete-reset') && <label><span>{mode === 'complete-reset' ? 'New password' : 'Password'}</span><PasswordInput aria-label={mode === 'complete-reset' ? 'New password' : 'Password'} autoComplete={mode === 'sign-in' ? 'current-password' : 'new-password'} placeholder={mode === 'sign-in' ? 'Password' : 'Create a secure password'} minLength={mode === 'sign-in' ? undefined : 8} maxLength={72} value={password} onChange={(event) => { setPassword(event.target.value); setError(undefined); }} required aria-describedby={mode !== 'sign-in' ? 'runtime-password-requirements' : undefined} />{mode !== 'sign-in' && <PasswordRequirements id="runtime-password-requirements" value={password} />}</label>}
+      {mode === 'sign-in' && runtime.mfaRequired && <div className="runtime-mfa"><label><span>{useRecoveryCode ? 'Recovery code' : 'Verification code'}</span><input autoFocus inputMode={useRecoveryCode ? 'text' : 'numeric'} autoComplete="one-time-code" value={useRecoveryCode ? recoveryCode : mfaCode} onChange={(event) => { if (useRecoveryCode) setRecoveryCode(event.target.value); else setMfaCode(event.target.value.replace(/\s/g, '')); setError(undefined); }} required /></label><button type="button" className="runtime-text-action" onClick={() => { setUseRecoveryCode((value) => !value); setMfaCode(''); setRecoveryCode(''); setError(undefined); }}>{useRecoveryCode ? 'Use an authenticator code' : 'Use a recovery code'}</button></div>}
       {canonicalNotice && <p className="runtime-message warning" role="alert"><ProductStatusIcon icon={canonicalNotice.icon} /><span><strong>{canonicalNotice.title}</strong>{canonicalNotice.body}</span></p>}
       {error && <ProductProblem presentation={error} />}
       <PrimaryButton type="submit" disabled={submitDisabled}>{runtime.busy ? <><StatusLoadingIcon className="runtime-spinner" /> Please wait…</> : mode === 'register' ? 'Create account' : mode === 'request-reset' ? 'Send recovery email' : mode === 'complete-reset' ? 'Update password' : runtime.mfaRequired ? 'Verify and sign in' : 'Sign in'}</PrimaryButton>
-      {mode === 'sign-in' ? <div className="runtime-form-links"><button type="button" className="runtime-text-action" onClick={() => changeMode('request-reset')}>Forgot password?</button><button type="button" className="runtime-text-action" onClick={() => changeMode('register')}>Create an account</button></div> : mode !== 'complete-reset' && <button type="button" className="runtime-text-action runtime-back-link" onClick={() => changeMode('sign-in')}><NavigationBackIcon /> Back to sign in</button>}
+      {mode === 'sign-in' ? <div className="runtime-form-links"><button type="button" className="runtime-text-action" onClick={() => changeMode('request-reset')}>Forgot password?</button><button type="button" className="runtime-text-action" onClick={() => changeMode('register')}>Create an account</button></div> : mode !== 'complete-reset' && <button type="button" className="runtime-text-action runtime-back-link" onClick={returnToSignIn}><NavigationBackIcon /> Back to sign in</button>}
     </form>
     {(mode === 'sign-in' || mode === 'register') && <AccountLegalLinks />}
   </RuntimePanel>;
@@ -299,13 +371,13 @@ function SSOOnboarding() {
   };
 
   if (loading) return <RuntimeProgress title="Finishing account setup" body="Checking your verified sign-in details…" kind="account" />;
-  if (!preview) return <RuntimePanel title="Account setup could not be opened"><p className="runtime-intro">This setup link is invalid, expired, or could not be verified. Start again with Google or Apple.</p>{error && <ProductProblem presentation={error} />}<a className="button primary" href="/">Back to sign in</a></RuntimePanel>;
+  if (!preview) return <RuntimePanel title="Account setup could not be opened"><p className="runtime-intro">This setup link is invalid, expired, or could not be verified. Start again with Google or Apple.</p><PrimaryButton onClick={runtime.cancelSSOOnboarding}><NavigationBackIcon /> Back to sign in</PrimaryButton></RuntimePanel>;
 
   const providerName = preview.provider === 'apple' ? 'Apple' : 'Google';
   return <RuntimePanel title="Choose your Portico username">
     <p className="runtime-intro">Your username is required and must be unique. You can use it to sign in and identify your Portico Account.</p>
     <form onSubmit={submit}>
-      {preview.providerEmail && <label htmlFor="sso-onboarding-email"><span>{providerName}-verified email</span><input id="sso-onboarding-email" type="email" value={preview.providerEmail} readOnly aria-readonly="true" /><small>{preview.privateEmail ? 'Apple private relay address. Apple forwards messages according to your Sign in with Apple settings.' : `Verified by ${providerName}.`}</small></label>}
+      {preview.providerEmail && <p className="runtime-verified-identity"><span>{providerName} account</span><strong>{preview.providerEmail}</strong>{preview.privateEmail && <small>Apple private relay address. Apple forwards messages according to your Sign in with Apple settings.</small>}</p>}
       {!preview.providerEmail && !preview.verifiedContactEmailRequired && <label htmlFor="sso-onboarding-contact-email"><span>Contact email (optional)</span><input id="sso-onboarding-contact-email" type="email" autoCapitalize="none" autoComplete="email" value={contactEmail} onChange={(event) => setContactEmail(event.target.value)} placeholder="you@example.com" /><small>This address is optional and will not be marked verified.</small></label>}
       {preview.verifiedContactEmailRequired && <div className="runtime-message warning" role="alert"><StatusWarningIcon /><span><strong>A verified contact email is still required</strong>Portico cannot finish this account safely yet. Entering an address here would not verify that you own it. Start the provider flow again after verified-email onboarding is available.</span></div>}
       <label htmlFor="sso-onboarding-username"><span>Username</span><input id="sso-onboarding-username" aria-label="Username" autoFocus autoCapitalize="none" autoComplete="username" minLength={3} maxLength={32} pattern="[A-Za-z0-9][A-Za-z0-9._-]{1,30}[A-Za-z0-9]" value={username} onChange={(event) => { setUsername(event.target.value); setUsernameError(''); }} aria-invalid={Boolean(usernameError)} aria-describedby={usernameError ? 'sso-onboarding-username-error' : 'sso-onboarding-username-help'} required /><small id={usernameError ? undefined : 'sso-onboarding-username-help'}>3–32 letters, numbers, periods, underscores, or hyphens.</small></label>
@@ -516,7 +588,18 @@ function ServerSelection() {
   const runtime = useRuntime();
   const [refreshError, setRefreshError] = useState<ProductMessagePresentation>();
   const [selectionError, setSelectionError] = useState<ProductMessagePresentation>();
+  const [deleteError, setDeleteError] = useState<ProductMessagePresentation>();
+  const [pendingAction, setPendingAction] = useState<{ serverId: string; kind: 'delete' | 'leave' }>();
+  const [deleteConfirmation, setDeleteConfirmation] = useState('');
+  const [password, setPassword] = useState('');
+  const [secondFactor, setSecondFactor] = useState('');
   if (runtime.state.id !== 'server-selection') return null;
+  const resetPendingAction = () => {
+    setPendingAction(undefined);
+    setDeleteConfirmation('');
+    setPassword('');
+    setSecondFactor('');
+  };
   const refresh = async () => {
     setRefreshError(undefined);
     try {
@@ -533,14 +616,50 @@ function ServerSelection() {
       setSelectionError(canonicalProblem(reason));
     }
   };
+  const deleteServer = async (server: HostedServerSummary) => {
+    setDeleteError(undefined);
+    try {
+      const verification = secondFactor.trim();
+      await runtime.deleteHostedServer(server, {
+        ...(password ? { password } : {}),
+        ...(verification
+          ? /^\d{6}$/.test(verification)
+            ? { mfaCode: verification }
+            : { recoveryCode: verification }
+          : {}),
+      });
+      resetPendingAction();
+    } catch (reason) {
+      setDeleteError(canonicalProblem(reason, 'problem.request-failed', 'server-lifecycle'));
+    }
+  };
+  const leaveServer = async (server: HostedServerSummary) => {
+    setDeleteError(undefined);
+    try {
+      await runtime.leaveHostedServer(server);
+      resetPendingAction();
+    } catch (reason) {
+      setDeleteError(canonicalProblem(reason, 'problem.request-failed', 'server-lifecycle'));
+    }
+  };
   return <RuntimePanel title="Choose a server" icon={<DeviceServerIcon />} wide={runtime.state.servers.length > 3}>
     <p className="runtime-intro">Only servers that allow Portico Account access can open from web.getportico.tv. Every connection is verified before server credentials are issued.</p>
     <div className="runtime-server-list">{runtime.state.servers.map((server) => {
       const eligible = server.remoteAccessEnabled && server.preferredAuthMode === 'portico';
+      const owned = Boolean(runtime.restoredPresentation?.accountId && server.ownerUserId === runtime.restoredPresentation.accountId);
       const status = !server.remoteAccessEnabled ? 'Remote Access is off' : server.preferredAuthMode !== 'portico' ? 'This Server sign-in only' : relativeHeartbeat(server);
-      return <button key={server.id} onClick={() => void select(server)} disabled={runtime.busy || !eligible || runtime.canSelectHostedServer === false}><span className={`runtime-server-icon ${eligible ? '' : 'unavailable'}`}><DeviceServerIcon /></span><span><strong>{server.name}</strong><small>{status}</small></span>{eligible ? <NavigationForwardIcon /> : <StatusLockedIcon />}</button>;
+      return <article key={server.id} className="runtime-server-row">
+        <button type="button" className="runtime-server-choice" aria-label={`Open ${server.name}: ${status}`} onClick={() => void select(server)} disabled={runtime.busy || !eligible || runtime.canSelectHostedServer === false}><span className={`runtime-server-icon ${eligible ? '' : 'unavailable'}`}><DeviceServerIcon /></span><span><strong>{server.name}</strong><small>{status}</small></span>{eligible ? <NavigationForwardIcon /> : <StatusLockedIcon />}</button>
+        {pendingAction?.serverId === server.id
+          ? pendingAction.kind === 'delete'
+            ? <div className="runtime-server-delete-confirm" role="group" aria-label={`Confirm deletion of ${server.name}`}><p><strong>Delete {server.name}?</strong><span>This permanently removes its Portico registration, cancels pending invitations, and ends every member’s access. Media stored on the server is not deleted. This registration cannot be restored.</span></p><label><span>Current password</span><PasswordInput autoFocus aria-label={`Current password for deleting ${server.name}`} autoComplete="current-password" value={password} disabled={runtime.busy} onChange={(event) => setPassword(event.target.value)} /><small>Leave blank only if you recently signed in with Google or Apple.</small></label><label><span>Authenticator or recovery code</span><input aria-label={`Authenticator or recovery code for deleting ${server.name}`} autoComplete="one-time-code" value={secondFactor} disabled={runtime.busy} onChange={(event) => setSecondFactor(event.target.value.slice(0, 64))} /><small>Required only when two-factor authentication is enabled.</small></label><label><span>Type {server.name} to confirm</span><input value={deleteConfirmation} onChange={(event) => setDeleteConfirmation(event.target.value)} autoComplete="off" /></label><button type="button" disabled={runtime.busy} onClick={resetPendingAction}>Keep server</button><button type="button" className="danger" disabled={runtime.busy || deleteConfirmation !== server.name} onClick={() => void deleteServer(server)}>{runtime.busy ? 'Deleting…' : 'Delete server'}</button></div>
+            : <div className="runtime-server-delete-confirm runtime-server-leave-confirm" role="group" aria-label={`Confirm leaving ${server.name}`}><p><strong>Leave {server.name}?</strong><span>This removes only your Portico Account relationship with this server. It does not delete the server, its media, or anyone else’s access.</span></p><button type="button" disabled={runtime.busy} onClick={resetPendingAction}>Keep server</button><button type="button" className="danger" disabled={runtime.busy} onClick={() => void leaveServer(server)}>{runtime.busy ? 'Leaving…' : 'Leave server'}</button></div>
+          : owned
+            ? <button type="button" className="runtime-server-delete" aria-label={`Delete ${server.name}`} disabled={runtime.busy} onClick={() => { setDeleteError(undefined); resetPendingAction(); setPendingAction({ serverId: server.id, kind: 'delete' }); }}><ActionDeleteIcon /><span>Delete</span></button>
+            : <button type="button" className="runtime-server-delete" aria-label={`Leave ${server.name}`} disabled={runtime.busy} onClick={() => { setDeleteError(undefined); resetPendingAction(); setPendingAction({ serverId: server.id, kind: 'leave' }); }}><AccountSignOutIcon /><span>Leave</span></button>}
+      </article>;
     })}</div>
-    {(refreshError || selectionError) && <ProductProblem presentation={(refreshError || selectionError)!} />}
+    {(refreshError || selectionError || deleteError) && <ProductProblem presentation={(refreshError || selectionError || deleteError)!} />}
     <div className="runtime-footer-actions"><SecondaryButton disabled={runtime.busy} onClick={() => void refresh()}><ActionRefreshIcon /> Refresh servers</SecondaryButton><button type="button" className="runtime-text-action" onClick={() => void runtime.hostedLogout()}>Sign out</button></div>
   </RuntimePanel>;
 }

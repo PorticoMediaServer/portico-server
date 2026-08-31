@@ -36,7 +36,7 @@ export interface WatchWithFriendsSource {
   updateSettings(id: string, request: WatchWithFriendsSettingsRequest, signal?: AbortSignal): Promise<WatchWithFriendsGroup>;
   addQueueItem(id: string, request: WatchWithFriendsQueueRequest, signal?: AbortSignal): Promise<WatchWithFriendsGroup>;
   reorderQueue(id: string, request: WatchWithFriendsQueueOrderRequest, signal?: AbortSignal): Promise<WatchWithFriendsGroup>;
-  removeQueueItem(id: string, mediaId: string, expectedRevision: number, idempotencyKey: string, signal?: AbortSignal): Promise<WatchWithFriendsGroup>;
+  removeQueueItem(id: string, entryId: string, expectedRevision: number, idempotencyKey: string, signal?: AbortSignal): Promise<WatchWithFriendsGroup>;
   subscribe(id: string, subscription: WatchGroupSubscription): () => void;
 }
 

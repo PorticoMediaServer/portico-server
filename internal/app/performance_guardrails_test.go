@@ -2165,86 +2165,6 @@ func TestPlaybackSessionActiveHelperUsesExistenceCheck(t *testing.T) {
 	}
 }
 
-func TestPlaybackReceiverTouchCoalescesFreshHeartbeats(t *testing.T) {
-	_, db, server := newDiscoveryTestServer(t, config.Config{})
-	adminID := adminUserID(t, db)
-	user := User{
-		ID:               adminID,
-		AccountID:        adminID,
-		ProfileID:        adminID,
-		ProfileIsPrimary: true,
-		Permissions:      map[string]bool{"manageServer": true},
-	}
-	receiver, err := server.createPlaybackReceiver(user, PlaybackReceiverRequest{Name: "Living Room", App: "Portico Web", Platform: "Browser"})
-	if err != nil {
-		t.Fatalf("create receiver: %v", err)
-	}
-	freshLastSeen := time.Now().UTC().Format(time.RFC3339)
-	if _, err := db.Exec(`UPDATE playback_receivers SET last_seen_at = ? WHERE id = ?`, freshLastSeen, receiver.ID); err != nil {
-		t.Fatalf("set fresh receiver heartbeat: %v", err)
-	}
-	touched, err := server.touchPlaybackReceiver(user, receiver.ID)
-	if err != nil {
-		t.Fatalf("touch fresh receiver: %v", err)
-	}
-	if touched.LastSeenAt != freshLastSeen {
-		t.Fatalf("fresh receiver heartbeat should not churn last_seen_at: before=%s after=%s", freshLastSeen, touched.LastSeenAt)
-	}
-
-	staleLastSeen := time.Now().UTC().Add(-30 * time.Second).Format(time.RFC3339)
-	if _, err := db.Exec(`UPDATE playback_receivers SET last_seen_at = ? WHERE id = ?`, staleLastSeen, receiver.ID); err != nil {
-		t.Fatalf("set stale receiver heartbeat: %v", err)
-	}
-	touched, err = server.touchPlaybackReceiver(user, receiver.ID)
-	if err != nil {
-		t.Fatalf("touch stale receiver: %v", err)
-	}
-	if touched.LastSeenAt == staleLastSeen {
-		t.Fatalf("stale receiver heartbeat should refresh last_seen_at")
-	}
-}
-
-func TestPlaybackReceiverEventsPollCommandsWithoutFullHydration(t *testing.T) {
-	_, filename, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatalf("locate test source")
-	}
-	sourcePath := filepath.Join(filepath.Dir(filename), "server.go")
-	source, err := os.ReadFile(sourcePath)
-	if err != nil {
-		t.Fatalf("read server source: %v", err)
-	}
-	body := string(source)
-	start := strings.Index(body, "func (s *Server) streamPlaybackReceiverEvents")
-	if start < 0 {
-		t.Fatalf("streamPlaybackReceiverEvents not found")
-	}
-	end := strings.Index(body[start:], "\nfunc ")
-	if end < 0 {
-		t.Fatalf("streamPlaybackReceiverEvents end not found")
-	}
-	functionBody := body[start : start+end]
-	if !strings.Contains(functionBody, "playbackReceiverCommandForUser") {
-		t.Fatalf("receiver event loop should poll command_json directly instead of hydrating the full receiver every tick")
-	}
-	if !strings.Contains(functionBody, "heartbeatTicker := time.NewTicker(10 * time.Second)") {
-		t.Fatalf("receiver event liveness should use a coalesced heartbeat cadence")
-	}
-
-	commandStart := strings.Index(body, "func (s *Server) playbackReceiverCommandForUser")
-	if commandStart < 0 {
-		t.Fatalf("playbackReceiverCommandForUser not found")
-	}
-	commandEnd := strings.Index(body[commandStart:], "\nfunc ")
-	if commandEnd < 0 {
-		t.Fatalf("playbackReceiverCommandForUser end not found")
-	}
-	commandBody := body[commandStart : commandStart+commandEnd]
-	if !strings.Contains(commandBody, "SELECT command_json") || strings.Contains(commandBody, "SELECT id, name") {
-		t.Fatalf("receiver command polling should only fetch command_json")
-	}
-}
-
 func TestHomeNavigationRowsUseListItemHydration(t *testing.T) {
 	_, filename, _, ok := runtime.Caller(0)
 	if !ok {
@@ -4080,6 +4000,7 @@ func TestMixedUserBrowsingLoadSmoke(t *testing.T) {
 			startSample := timedJSONRequest(client, http.MethodPost, serverURL+"/api/playback-sessions", PlaybackSessionCreateRequest{
 				MediaID:     "perf_movie_0001",
 				SkipPreroll: true,
+				Intent:      automaticPlaybackIntent(),
 				ClientProfile: attachAuthenticatedPlaybackRuntime(PlaybackClientProfile{
 					Device:               fmt.Sprintf("load-smoke-%02d", worker),
 					Platform:             "web",

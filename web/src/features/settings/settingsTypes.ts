@@ -217,6 +217,13 @@ export type DVRStatusSnapshot = DVROperationalStatus;
 
 export type AccountOrigin = 'local' | 'portico';
 
+export type RestoreStepUp = {
+  origin: AccountOrigin;
+  password?: string;
+  mfaCode?: string;
+  recoveryCode?: string;
+};
+
 export type AccountSignedInDevice = {
   id: string;
   authority: AccountOrigin;
@@ -326,6 +333,7 @@ export interface SettingsDataSource {
   createUser(input: UserCreateRequest, signal: AbortSignal): Promise<User>;
   createPorticoMemberInvite(input: PorticoMemberInviteInput, signal: AbortSignal): Promise<PorticoMemberInviteResult>;
   resendPorticoMemberInvite(inviteId: string, signal: AbortSignal): Promise<PorticoInvite>;
+  revokePorticoMemberInvite(inviteId: string, signal: AbortSignal): Promise<void>;
   updateUser(user: User, input: UserPatchRequest, signal: AbortSignal): Promise<User>;
   deleteUser(user: User, signal: AbortSignal): Promise<void>;
   updateDevice(id: string, input: DeviceUpdateRequest, signal: AbortSignal): Promise<Device>;
@@ -336,8 +344,8 @@ export interface SettingsDataSource {
   updateScheduledTask(id: string, input: ScheduledTaskUpdateRequest, signal: AbortSignal): Promise<ScheduledTask>;
   runScheduledTask(id: string, signal: AbortSignal): Promise<ScheduledTaskRunResponse>;
   createBackup(signal: AbortSignal): Promise<BackupInfo>;
-  restoreBackup(name: string, password: string, confirmation: string, signal: AbortSignal): Promise<RestoreWorkflowResponse>;
-  restoreUploadedDatabase(file: File, password: string, confirmation: string, signal: AbortSignal): Promise<RestoreWorkflowResponse>;
+  restoreBackup(name: string, stepUp: RestoreStepUp, confirmation: string, signal: AbortSignal): Promise<RestoreWorkflowResponse>;
+  restoreUploadedDatabase(file: File, stepUp: RestoreStepUp, confirmation: string, signal: AbortSignal): Promise<RestoreWorkflowResponse>;
   restoreStatus(operationId: string, statusToken: string, signal: AbortSignal): Promise<RestoreWorkflowResponse>;
 
   logs(input: { limit?: number; cursor?: string }, signal: AbortSignal): Promise<ListResponse<LogEvent>>;

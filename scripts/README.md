@@ -7,6 +7,12 @@ small, reviewable building blocks used by that workflow.
 - `build-web-release.sh` builds the shared client core and browser interface.
 - `build-release-payload.sh` cross-compiles the server and combines it with an
   already-qualified FFmpeg/FFprobe bundle.
+- `source-tree-revision.py` computes the deterministic SHA-256 identity used
+  for an explicitly reviewed dirty-source payload. A clean release stamps the
+  Git commit. A deliberate dirty build must set `PORTICO_BUILD_SOURCE_REVISION`
+  to this helper's current output; the payload build recalculates it and fails
+  if the source has drifted. `PORTICO_BUILD_TIMESTAMP` may provide the reviewed
+  RFC 3339 timestamp for that build.
 - `package-linux.sh` creates tar.gz, DEB, and RPM artifacts.
 - `package-windows.sh` creates a portable ZIP and unsigned NSIS installer.
 - `package-macos.sh` creates an unsigned Apple Silicon application DMG.

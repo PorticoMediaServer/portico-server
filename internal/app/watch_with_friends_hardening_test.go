@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/cookiejar"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -209,8 +210,8 @@ func TestWatchWithFriendsHostMutationsRequireIdempotencyAndReplayCurrentSnapshot
 		{name: "state", method: http.MethodPatch, path: "/state", request: map[string]any{"action": "play", "expectedRevision": group.Revision}},
 		{name: "settings", method: http.MethodPatch, path: "/settings", request: map[string]any{"repeatMode": "all", "expectedRevision": group.Revision}},
 		{name: "queue add", method: http.MethodPost, path: "/queue", request: map[string]any{"mediaId": "movie_saffron", "expectedRevision": group.Revision}},
-		{name: "queue reorder", method: http.MethodPatch, path: "/queue", request: map[string]any{"mediaIds": []string{"movie_meridian"}, "expectedRevision": group.Revision}},
-		{name: "queue remove", method: http.MethodDelete, path: fmt.Sprintf("/queue/movie_saffron?expectedRevision=%d", group.Revision)},
+		{name: "queue reorder", method: http.MethodPatch, path: "/queue", request: map[string]any{"entryId": group.Queue[0].EntryID, "destinationEntryId": group.Queue[0].EntryID, "placement": "before", "expectedRevision": group.Revision}},
+		{name: "queue remove", method: http.MethodDelete, path: fmt.Sprintf("/queue/%s?expectedRevision=%d", url.PathEscape(group.Queue[0].EntryID), group.Revision)},
 		{name: "end", method: http.MethodDelete, path: fmt.Sprintf("?expectedRevision=%d", group.Revision)},
 	}
 	for _, testCase := range missingKeyCases {
@@ -279,7 +280,7 @@ func TestWatchWithFriendsHostMutationsRequireIdempotencyAndReplayCurrentSnapshot
 
 	reorderExpected := group.Revision
 	reorderRequest := map[string]any{
-		"mediaIds": []string{"movie_saffron", "movie_meridian"}, "expectedRevision": reorderExpected, "idempotencyKey": "queue-reorder-current-snapshot",
+		"entryId": group.Queue[1].EntryID, "destinationEntryId": group.Queue[0].EntryID, "placement": "before", "expectedRevision": reorderExpected, "idempotencyKey": "queue-reorder-current-snapshot",
 	}
 	status, body = doJSON(t, client, http.MethodPatch, serverURL+"/api/watch-with-friends/groups/"+group.ID+"/queue", reorderRequest, &group)
 	if status != http.StatusOK || group.Queue[0].MediaID != "movie_saffron" {
@@ -298,7 +299,7 @@ func TestWatchWithFriendsHostMutationsRequireIdempotencyAndReplayCurrentSnapshot
 	}
 
 	removeExpected := group.Revision
-	removeURL := fmt.Sprintf("%s/api/watch-with-friends/groups/%s/queue/movie_saffron?expectedRevision=%d&idempotencyKey=queue-remove-current-snapshot", serverURL, group.ID, removeExpected)
+	removeURL := fmt.Sprintf("%s/api/watch-with-friends/groups/%s/queue/%s?expectedRevision=%d&idempotencyKey=queue-remove-current-snapshot", serverURL, group.ID, url.PathEscape(group.Queue[0].EntryID), removeExpected)
 	status, body = doJSON(t, client, http.MethodDelete, removeURL, nil, &group)
 	if status != http.StatusOK || len(group.Queue) != 1 {
 		t.Fatalf("queue remove status=%d body=%s queue=%#v", status, body, group.Queue)
@@ -366,10 +367,12 @@ func TestWatchWithFriendsRevokedAndStaleMembersCannotDeadlockGroup(t *testing.T)
 	if status != http.StatusOK {
 		t.Fatalf("queue inaccessible item status=%d body=%s", status, body)
 	}
-	status, _ = doJSON(t, guestClient, http.MethodPost, serverURL+"/api/watch-with-friends/groups/"+inaccessibleQueueGroup.ID+"/join", nil, nil)
-	if status != http.StatusNotFound {
-		t.Fatalf("join with inaccessible retained queue status=%d want=%d", status, http.StatusNotFound)
+	var guestPlaceholderView WatchWithFriendsGroup
+	status, body = doJSON(t, guestClient, http.MethodPost, serverURL+"/api/watch-with-friends/groups/"+inaccessibleQueueGroup.ID+"/join", nil, &guestPlaceholderView)
+	if status != http.StatusOK || len(guestPlaceholderView.Queue) != 2 || !guestPlaceholderView.Queue[1].Unavailable || guestPlaceholderView.Queue[1].EntryID != inaccessibleQueueGroup.Queue[1].EntryID {
+		t.Fatalf("join with inaccessible retained queue status=%d body=%s group=%#v", status, body, guestPlaceholderView)
 	}
+	inaccessibleQueueGroup.Revision = guestPlaceholderView.Revision
 	status, body = doJSON(t, hostClient, http.MethodDelete, fmt.Sprintf("%s/api/watch-with-friends/groups/%s?expectedRevision=%d&idempotencyKey=inaccessible-end", serverURL, inaccessibleQueueGroup.ID, inaccessibleQueueGroup.Revision), nil, &inaccessibleQueueGroup)
 	if status != http.StatusOK || inaccessibleQueueGroup.State != "stopped" {
 		t.Fatalf("end inaccessible group status=%d body=%s group=%#v", status, body, inaccessibleQueueGroup)
@@ -446,7 +449,7 @@ func TestWatchWithFriendsRevokedAndStaleMembersCannotDeadlockGroup(t *testing.T)
 	if status != http.StatusOK || group.Revision != expected+1 {
 		t.Fatalf("host mutation after eviction status=%d body=%s group=%#v", status, body, group)
 	}
-	status, _ = doJSON(t, hostClient, http.MethodDelete, fmt.Sprintf("%s/api/watch-with-friends/groups/%s/queue/movie_saffron?expectedRevision=%d&idempotencyKey=stale-remove", serverURL, group.ID, expected), nil, nil)
+	status, _ = doJSON(t, hostClient, http.MethodDelete, fmt.Sprintf("%s/api/watch-with-friends/groups/%s/queue/%s?expectedRevision=%d&idempotencyKey=stale-remove", serverURL, group.ID, url.PathEscape(group.Queue[1].EntryID), expected), nil, nil)
 	if status != http.StatusConflict {
 		t.Fatalf("stale queue remove status=%d want=%d", status, http.StatusConflict)
 	}

@@ -69,7 +69,7 @@ func TestReleaseBaselineIncludesBrowseSearchDetailAndIsStableOnReopen(t *testing
 	}
 	defer db.Close()
 	var baselineRows int
-	if err := db.QueryRow(`SELECT COUNT(*) FROM schema_migrations`).Scan(&baselineRows); err != nil || baselineRows != 1 {
+	if err := db.QueryRow(`SELECT COUNT(*) FROM schema_migrations`).Scan(&baselineRows); err != nil || baselineRows != len(expectedMigrationFiles) {
 		t.Fatalf("release migration ledger rows=%d err=%v", baselineRows, err)
 	}
 }

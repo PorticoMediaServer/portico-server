@@ -223,6 +223,37 @@ func TestHostedProfileFreshnessAppliesPolicyRestrictionWithoutEndingSession(t *t
 	}
 }
 
+func TestHostedProfileRefreshReplacesQuarantinedRestoredProjectionEvenAtLowerRevision(t *testing.T) {
+	fixture := newHostedFreshnessFixture(t)
+	maliciousFuture := time.Now().UTC().Add(24 * time.Hour).Format(time.RFC3339Nano)
+	if _, err := fixture.db.Exec(`
+		UPDATE hosted_profile_snapshot_state
+		SET revision = 99, payload_digest = 'restored-untrusted', quarantined_at = ?, checked_at = ''
+		WHERE account_id = ?`, time.Now().UTC().Format(time.RFC3339Nano), fixture.account.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.db.Exec(`UPDATE profiles SET pin_revision = 99, policy_updated_at = ? WHERE id = ?`, maliciousFuture, fixture.account.ID); err != nil {
+		t.Fatal(err)
+	}
+	fixture.mode = "changed"
+	fixture.revision = 1
+	fixture.profiles = []HostedProfileSnapshot{fixture.primary, fixture.child}
+	if err := fixture.server.refreshHostedProfileDirectoryContext(context.Background(), fixture.account.ID, hostedProfileSnapshotState{}, sql.ErrNoRows, time.Now().UTC()); err != nil {
+		t.Fatalf("current signed Hosted projection could not replace quarantine: %v", err)
+	}
+	var revision, pinRevision int64
+	var quarantinedAt, externalPrimary string
+	if err := fixture.db.QueryRow(`SELECT revision, quarantined_at FROM hosted_profile_snapshot_state WHERE account_id = ?`, fixture.account.ID).Scan(&revision, &quarantinedAt); err != nil {
+		t.Fatal(err)
+	}
+	if err := fixture.db.QueryRow(`SELECT external_profile_id, pin_revision FROM profiles WHERE id = ?`, fixture.account.ID).Scan(&externalPrimary, &pinRevision); err != nil {
+		t.Fatal(err)
+	}
+	if revision != 1 || quarantinedAt != "" || externalPrimary != fixture.primary.ExternalProfileID || pinRevision != fixture.primary.PINRevision {
+		t.Fatalf("reconciled projection revision=%d quarantine=%q primary=%q pinRevision=%d", revision, quarantinedAt, externalPrimary, pinRevision)
+	}
+}
+
 func TestHostedProfileFreshnessKeepsPrimaryWhenMembershipDisallowsSubprofiles(t *testing.T) {
 	fixture := newHostedFreshnessFixture(t)
 	primaryToken := fixture.insertBrowserSession(t, fixture.account.ID)

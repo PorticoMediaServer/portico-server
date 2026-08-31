@@ -1,4 +1,4 @@
-import type { MediaItem, MediaSegment, MediaTrickplaySet, PlaybackResource, PlaybackResponse } from "./types.js";
+import type { MediaItem, MediaSegment, MediaTrickplaySet, PlaybackQualitySelection, PlaybackResponse } from "./types.js";
 
 export type SubtitleSize = "standard" | "large" | "xlarge";
 export type SubtitleStyle = "default" | "shadow" | "contrast";
@@ -16,7 +16,7 @@ export class PlaybackResourceUnavailableError extends Error {
 
 export function normalizePlaybackResponse(playback: PlaybackResponse): PlaybackResponse {
   for (const [name, value] of Object.entries({
-    qualities: playback.qualities,
+    qualityOffers: playback.qualityOffers?.offers,
     audioStreams: playback.audioStreams,
     subtitleStreams: playback.subtitleStreams,
     chapters: playback.chapters,
@@ -106,10 +106,8 @@ export function playerContentMode(item: MediaItem, isLive = false): PlayerConten
 
 export function playbackSourceFor(
   playback: PlaybackResponse,
-  resourceUrl: (path: string) => string,
-  options: { streamFormat?: string; quality?: string; burnInSubtitleId?: string; textSubtitleId?: string; audioStreamId?: string; baseHref?: string } = {}
+  resourceUrl: (path: string) => string
 ): string {
-  void options.baseHref;
   const resources = asArray(playback.resources);
   if (resources.length === 0) {
     throw new PlaybackResourceUnavailableError();
@@ -128,24 +126,24 @@ export function playbackSourceFor(
   return resourceUrl(selected.sourceUrl);
 }
 
-export function defaultPlaybackQuality(playback: PlaybackResponse): string {
-  const available = playback.qualities.filter((quality) => quality.available !== false);
-  // A new session starts at source quality unless a caller supplied an
-  // explicit saved preference. selectedQualityId/default resources describe
-  // the server's initial transport decision, not a viewer preference.
-  return available.find((quality) => quality.id === "original")?.id ??
-    available[0]?.id ??
-    "original";
+export function playbackQualitySelectionKey(selection: PlaybackQualitySelection): string {
+  return selection.mode === "explicit" ? selection.selectionId : "automatic";
 }
 
-export function playbackSelectionRequiresHLS(playback: PlaybackResponse, quality: string, audioStreamId: string): boolean {
-  if (playback.isLive || playback.media.entityKind === "live-channel") return false;
-  if (playback.streamFormat === "hls") return true;
-  const selectedQuality = playback.qualities.find((candidate) => candidate.id === quality);
-  if (quality && quality !== "auto" && quality !== "original") return true;
-  if (selectedQuality?.requiresTranscode) return true;
-  const baselineAudioStreamId = playback.selectedAudioStreamId ?? playback.audioStreams[0]?.id;
-  return Boolean(audioStreamId && baselineAudioStreamId && audioStreamId !== baselineAudioStreamId);
+export function playbackQualitySelectionFor(playback: PlaybackResponse, key: string): PlaybackQualitySelection {
+  const offer = playback.qualityOffers.offers.find((candidate) => candidate.selectionId === key || (key === "automatic" && candidate.kind === "automatic"));
+  if (!offer) throw new PlaybackResourceUnavailableError();
+  if (offer.kind === "automatic") return { mode: "automatic" };
+  return { mode: "explicit", selectionId: offer.selectionId, qualityOfferRevision: playback.qualityOffers.offerRevision };
+}
+
+export function playbackQualitySelectionLabel(playback: PlaybackResponse): string {
+  const key = playbackQualitySelectionKey(playback.qualitySelection);
+  return playback.qualityOffers.offers.find((offer) => offer.selectionId === key || (key === "automatic" && offer.kind === "automatic"))?.label ?? "";
+}
+
+export function playbackSelectionRequiresHLS(playback: PlaybackResponse): boolean {
+  return playback.streamFormat === "hls";
 }
 
 export function burnInSubtitleIDFor(streams: PlaybackResponse["subtitleStreams"], selectedID: string): string {
@@ -157,10 +155,6 @@ export function burnInSubtitleIDFor(streams: PlaybackResponse["subtitleStreams"]
 export function selectedSubtitleLabel(streams: PlaybackResponse["subtitleStreams"], id: string): string {
   const stream = streams.find((candidate) => candidate.id === id);
   return stream?.displayTitle || stream?.language || stream?.codec || "Subtitles enabled";
-}
-
-export function selectedQualityLabel(qualities: PlaybackResponse["qualities"], id: string): string {
-  return qualities.find((quality) => quality.id === id)?.label || id || "Original";
 }
 
 export function playbackDecisionLabel(mode: string): string {

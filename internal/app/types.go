@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 
+	"github.com/PorticoMediaServer/portico-server/internal/foundationcontract"
 	"github.com/PorticoMediaServer/portico-server/internal/playbackplan"
 )
 
@@ -314,19 +315,21 @@ type NativeSessionRefreshRequest struct {
 }
 
 type NativeSessionCredentials struct {
-	TokenType             string `json:"tokenType"`
-	AccessToken           string `json:"accessToken"`
-	AccessExpiresAt       string `json:"accessExpiresAt"`
-	RefreshToken          string `json:"refreshToken"`
-	RefreshExpiresAt      string `json:"refreshExpiresAt"`
-	User                  User   `json:"user"`
-	Device                Device `json:"device"`
-	Authority             string `json:"authority"`
-	AccountID             string `json:"accountId"`
-	ProfileID             string `json:"profileId"`
-	AuthorizationRevision string `json:"authorizationRevision"`
-	ServerID              string `json:"serverId,omitempty"`
-	ServerFriendlyName    string `json:"serverFriendlyName,omitempty"`
+	TokenType                  string `json:"tokenType"`
+	AccessToken                string `json:"accessToken"`
+	AccessExpiresAt            string `json:"accessExpiresAt"`
+	RefreshToken               string `json:"refreshToken"`
+	RefreshExpiresAt           string `json:"refreshExpiresAt"`
+	User                       User   `json:"user"`
+	Device                     Device `json:"device"`
+	Authority                  string `json:"authority"`
+	AccountID                  string `json:"accountId"`
+	ProfileID                  string `json:"profileId"`
+	AuthorizationRevision      string `json:"authorizationRevision"`
+	ServerID                   string `json:"serverId,omitempty"`
+	ServerFriendlyName         string `json:"serverFriendlyName,omitempty"`
+	ServerPublicKey            string `json:"serverPublicKey"`
+	ServerPublicKeyFingerprint string `json:"serverPublicKeyFingerprint"`
 }
 
 type AuthCapabilitiesResponse struct {
@@ -1233,6 +1236,7 @@ type UpdateMediaRequest struct {
 	metadataOperation  string
 	metadataActor      string
 	metadataRefreshed  bool
+	metadataIntent     metadataRefreshIntent
 	metadataIdentities []metadataProviderIdentityProposal
 	metadataRich       *metadataProviderRichProposal
 }
@@ -2075,6 +2079,10 @@ type RestoreBackupResponse struct {
 	StatusToken      string `json:"statusToken,omitempty"`
 }
 
+type RestoreAuthorizationContext struct {
+	RestoreSecurityEpoch int64 `json:"restoreSecurityEpoch"`
+}
+
 type Playlist struct {
 	ID          string          `json:"id"`
 	UserID      string          `json:"userId"`
@@ -2199,14 +2207,16 @@ type DVRRecording struct {
 }
 
 type DVRPlaybackSessionCreateRequest struct {
-	ClientInstanceID string                `json:"clientInstanceId,omitempty"`
-	ClientProfile    PlaybackClientProfile `json:"clientProfile,omitempty"`
-	Intent           PlaybackIntent        `json:"intent,omitempty"`
-	VersionID        string                `json:"versionId,omitempty"`
-	AudioStreamID    string                `json:"audioStreamId,omitempty"`
-	SubtitleStreamID string                `json:"subtitleStreamId,omitempty"`
-	BurnInSubtitleID string                `json:"burnInSubtitleId,omitempty"`
-	StartSeconds     int                   `json:"startSeconds,omitempty"`
+	ClientInstanceID    string                      `json:"clientInstanceId,omitempty"`
+	ClientProfile       PlaybackClientProfile       `json:"clientProfile,omitempty"`
+	Intent              PlaybackIntent              `json:"intent,omitempty"`
+	VersionID           string                      `json:"versionId,omitempty"`
+	AudioStreamID       string                      `json:"audioStreamId,omitempty"`
+	SubtitleStreamID    string                      `json:"subtitleStreamId,omitempty"`
+	BurnInSubtitleID    string                      `json:"burnInSubtitleId,omitempty"`
+	StartSeconds        int                         `json:"startSeconds,omitempty"`
+	Replacement         *PlaybackReplacementRequest `json:"replacement,omitempty"`
+	externalReplacement *playbackReplacementPlan
 }
 
 type DVRRecordingGroup struct {
@@ -2335,34 +2345,34 @@ type DVRConsumerStatus struct {
 }
 
 type Job struct {
-	ID                      string            `json:"id"`
-	Type                    string            `json:"type"`
-	Status                  string            `json:"status"`
-	Progress                int               `json:"progress"`
-	Message                 string            `json:"message"`
-	ResourceType            string            `json:"resourceType,omitempty"`
-	ResourceID              string            `json:"resourceId,omitempty"`
-	Metadata                map[string]string `json:"metadata,omitempty"`
-	ParentOperationID       string            `json:"parentOperationId,omitempty"`
-	IdempotencyKey          string            `json:"idempotencyKey,omitempty"`
-	Priority                string            `json:"priority,omitempty"`
-	Phase                   string            `json:"phase,omitempty"`
-	ProgressCurrent         int               `json:"progressCurrent,omitempty"`
-	ProgressTotal           int               `json:"progressTotal,omitempty"`
-	ResultReference         string            `json:"resultReference,omitempty"`
-	AttemptCount            int               `json:"attemptCount,omitempty"`
-	NextRunAt               string            `json:"nextRunAt,omitempty"`
-	LastError               string            `json:"lastError,omitempty"`
-	ErrorCode               string            `json:"errorCode,omitempty"`
-	FailureKind             string            `json:"failureKind,omitempty"`
-	RetryEligible           bool              `json:"retryEligible,omitempty"`
-	CancellationRequestedAt string            `json:"cancellationRequestedAt,omitempty"`
-	WorkerAcknowledgedAt    string            `json:"workerAcknowledgedAt,omitempty"`
-	InterruptedAt           string            `json:"interruptedAt,omitempty"`
-	RetentionUntil          string            `json:"retentionUntil,omitempty"`
-	ActiveKey               string            `json:"-"`
-	CreatedAt               string            `json:"createdAt"`
-	UpdatedAt               string            `json:"updatedAt"`
+	ID                      string                       `json:"id"`
+	Type                    string                       `json:"type"`
+	Status                  string                       `json:"status"`
+	Progress                int                          `json:"progress"`
+	Message                 string                       `json:"message"`
+	ResourceType            string                       `json:"resourceType,omitempty"`
+	ResourceID              string                       `json:"resourceId,omitempty"`
+	Metadata                map[string]string            `json:"metadata,omitempty"`
+	ParentOperationID       string                       `json:"parentOperationId,omitempty"`
+	IdempotencyKey          string                       `json:"idempotencyKey,omitempty"`
+	Priority                foundationcontract.WorkClass `json:"priority,omitempty"`
+	Phase                   string                       `json:"phase,omitempty"`
+	ProgressCurrent         int                          `json:"progressCurrent,omitempty"`
+	ProgressTotal           int                          `json:"progressTotal,omitempty"`
+	ResultReference         string                       `json:"resultReference,omitempty"`
+	AttemptCount            int                          `json:"attemptCount,omitempty"`
+	NextRunAt               string                       `json:"nextRunAt,omitempty"`
+	LastError               string                       `json:"lastError,omitempty"`
+	ErrorCode               string                       `json:"errorCode,omitempty"`
+	FailureKind             string                       `json:"failureKind,omitempty"`
+	RetryEligible           bool                         `json:"retryEligible,omitempty"`
+	CancellationRequestedAt string                       `json:"cancellationRequestedAt,omitempty"`
+	WorkerAcknowledgedAt    string                       `json:"workerAcknowledgedAt,omitempty"`
+	InterruptedAt           string                       `json:"interruptedAt,omitempty"`
+	RetentionUntil          string                       `json:"retentionUntil,omitempty"`
+	ActiveKey               string                       `json:"-"`
+	CreatedAt               string                       `json:"createdAt"`
+	UpdatedAt               string                       `json:"updatedAt"`
 }
 
 type JobCancelResponse struct {
@@ -2736,25 +2746,37 @@ type LibraryStat struct {
 }
 
 type PlaybackSessionCreateRequest struct {
-	MediaID          string                `json:"mediaId"`
-	VersionID        string                `json:"versionId,omitempty"`
-	ClientInstanceID string                `json:"clientInstanceId,omitempty"`
-	ClientProfile    PlaybackClientProfile `json:"clientProfile,omitempty"`
-	Intent           PlaybackIntent        `json:"intent,omitempty"`
-	SkipPreroll      bool                  `json:"skipPreroll,omitempty"`
-	BurnInSubtitleID string                `json:"burnInSubtitleId,omitempty"`
-	SubtitleStreamID string                `json:"subtitleStreamId,omitempty"`
-	AudioStreamID    string                `json:"audioStreamId,omitempty"`
-	StartSeconds     int                   `json:"startSeconds,omitempty"`
-	QueueMediaIDs    []string              `json:"queueMediaIds,omitempty"`
-	RepeatMode       string                `json:"repeatMode,omitempty"`
-	SourceContext    PlaybackSourceContext `json:"sourceContext,omitempty"`
+	MediaID                           string                      `json:"mediaId"`
+	VersionID                         string                      `json:"versionId,omitempty"`
+	ClientInstanceID                  string                      `json:"clientInstanceId,omitempty"`
+	ClientProfile                     PlaybackClientProfile       `json:"clientProfile,omitempty"`
+	Intent                            PlaybackIntent              `json:"intent,omitempty"`
+	SkipPreroll                       bool                        `json:"skipPreroll,omitempty"`
+	BurnInSubtitleID                  string                      `json:"burnInSubtitleId,omitempty"`
+	SubtitleStreamID                  string                      `json:"subtitleStreamId,omitempty"`
+	AudioStreamID                     string                      `json:"audioStreamId,omitempty"`
+	StartSeconds                      int                         `json:"startSeconds,omitempty"`
+	QueueMediaIDs                     []string                    `json:"queueMediaIds,omitempty"`
+	RepeatMode                        string                      `json:"repeatMode,omitempty"`
+	SourceContext                     PlaybackSourceContext       `json:"sourceContext,omitempty"`
+	Replacement                       *PlaybackReplacementRequest `json:"replacement,omitempty"`
+	currentEntryID                    string
+	queueOccurrences                  []playbackQueueOccurrence
+	historyOccurrences                []playbackQueueOccurrence
+	queueOwned                        bool
+	deferReplacement                  bool
+	reservedSessionID                 string
+	startSecondsSet                   bool
+	replacementTargetKind             string
+	replacementTargetID               string
+	replacementSourceClientInstanceID string
+	prepareReplacementOnly            bool
+	receiverAuthorizationID           string
 }
 
 type PlaybackRestoreRequest struct {
 	ClientInstanceID string                `json:"clientInstanceId,omitempty"`
 	ClientProfile    PlaybackClientProfile `json:"clientProfile,omitempty"`
-	Intent           PlaybackIntent        `json:"intent,omitempty"`
 }
 
 type PlaybackRestoreResponse struct {
@@ -2762,84 +2784,79 @@ type PlaybackRestoreResponse struct {
 	Playback *PlaybackResponse `json:"playback,omitempty"`
 }
 
-type PlaybackNextRequest struct {
-	MediaID       string   `json:"mediaId"`
-	QueueMediaIDs []string `json:"queueMediaIds,omitempty"`
+type PlaybackQueueEntry struct {
+	EntryID string    `json:"entryId"`
+	Media   MediaItem `json:"media"`
 }
 
-type PlaybackNextResponse struct {
-	Item   *MediaItem  `json:"item,omitempty"`
-	Queue  []MediaItem `json:"queue"`
-	Reason string      `json:"reason"`
-}
-
-type PlaybackQueueResponse struct {
-	Items []MediaItem `json:"items"`
-	Total int         `json:"total"`
+type PlaybackQueueHistoryEntry struct {
+	HistoryID string    `json:"historyId"`
+	EntryID   string    `json:"entryId"`
+	Media     MediaItem `json:"media"`
 }
 
 type PlaybackSessionQueueReplaceRequest struct {
 	ExpectedRevision *int64   `json:"expectedRevision"`
+	IdempotencyKey   string   `json:"idempotencyKey"`
 	MediaIDs         []string `json:"mediaIds"`
 	RepeatMode       string   `json:"repeatMode"`
 }
 
 type PlaybackSessionQueueRequest struct {
-	ExpectedRevision *int64   `json:"expectedRevision"`
-	Action           string   `json:"action"`
-	MediaID          string   `json:"mediaId,omitempty"`
-	MediaIDs         []string `json:"mediaIds,omitempty"`
-	Index            *int     `json:"index,omitempty"`
-	FromIndex        *int     `json:"fromIndex,omitempty"`
-	ToIndex          *int     `json:"toIndex,omitempty"`
-	RepeatMode       string   `json:"repeatMode,omitempty"`
+	ExpectedRevision   *int64   `json:"expectedRevision"`
+	IdempotencyKey     string   `json:"idempotencyKey"`
+	Action             string   `json:"action"`
+	MediaID            string   `json:"mediaId,omitempty"`
+	MediaIDs           []string `json:"mediaIds,omitempty"`
+	EntryID            string   `json:"entryId,omitempty"`
+	DestinationEntryID string   `json:"destinationEntryId,omitempty"`
+	Placement          string   `json:"placement,omitempty"`
+	RepeatMode         string   `json:"repeatMode,omitempty"`
 }
 
 type PlaybackSessionQueueResponse struct {
-	SessionID     string                `json:"sessionId"`
-	Current       MediaItem             `json:"current"`
-	Items         []MediaItem           `json:"items"`
-	History       []MediaItem           `json:"history"`
-	Total         int                   `json:"total"`
-	CanMutate     bool                  `json:"canMutate"`
-	RepeatMode    string                `json:"repeatMode"`
-	Revision      int64                 `json:"revision"`
-	SourceContext PlaybackSourceContext `json:"sourceContext,omitempty"`
+	SessionID     string                      `json:"sessionId"`
+	Current       PlaybackQueueEntry          `json:"current"`
+	Items         []PlaybackQueueEntry        `json:"items"`
+	History       []PlaybackQueueHistoryEntry `json:"history"`
+	Total         int                         `json:"total"`
+	CanMutate     bool                        `json:"canMutate"`
+	RepeatMode    string                      `json:"repeatMode"`
+	Revision      int64                       `json:"revision"`
+	SourceContext PlaybackSourceContext       `json:"sourceContext,omitempty"`
 }
 
 type PlaybackPrepareNextRequest struct {
-	MediaID           string                `json:"mediaId,omitempty"`
-	QueueMediaIDs     []string              `json:"queueMediaIds,omitempty"`
-	ClientProfile     PlaybackClientProfile `json:"clientProfile,omitempty"`
-	Intent            PlaybackIntent        `json:"intent,omitempty"`
-	CrossfadeSeconds  int                   `json:"crossfadeSeconds,omitempty"`
-	PreferredHandoff  string                `json:"preferredHandoff,omitempty"`
-	CommitPreviousEnd bool                  `json:"commitPreviousEnd,omitempty"`
-	SourceContext     PlaybackSourceContext `json:"sourceContext,omitempty"`
+	EntryID          string                `json:"entryId"`
+	ClientProfile    PlaybackClientProfile `json:"clientProfile,omitempty"`
+	Intent           PlaybackIntent        `json:"intent,omitempty"`
+	CrossfadeSeconds int                   `json:"crossfadeSeconds,omitempty"`
+	PreferredHandoff string                `json:"preferredHandoff,omitempty"`
+	SourceContext    PlaybackSourceContext `json:"sourceContext,omitempty"`
 }
 
 type PlaybackPreparedResponse struct {
-	PreparedSessionID string           `json:"preparedSessionId"`
-	Playback          PlaybackResponse `json:"playback"`
-	ExpiresAt         string           `json:"expiresAt"`
-	PreloadPolicy     string           `json:"preloadPolicy"`
-	HandoffMode       string           `json:"handoffMode"`
-	Queue             []MediaItem      `json:"queue"`
-	QueueRevision     int64            `json:"queueRevision"`
-	PlaybackRevision  int64            `json:"playbackRevision"`
+	PreparedSessionID string               `json:"preparedSessionId"`
+	Playback          PlaybackResponse     `json:"playback"`
+	ExpiresAt         string               `json:"expiresAt"`
+	PreloadPolicy     string               `json:"preloadPolicy"`
+	HandoffMode       string               `json:"handoffMode"`
+	Queue             []PlaybackQueueEntry `json:"queue"`
+	QueueRevision     int64                `json:"queueRevision"`
+	PlaybackRevision  int64                `json:"playbackRevision"`
 }
 
 type PlaybackHandoffRequest struct {
-	PreparedSessionID        string                `json:"preparedSessionId,omitempty"`
-	RequestID                string                `json:"requestId,omitempty"`
-	MediaID                  string                `json:"mediaId,omitempty"`
-	ClientProfile            PlaybackClientProfile `json:"clientProfile,omitempty"`
-	Intent                   PlaybackIntent        `json:"intent,omitempty"`
-	QueueMediaIDs            []string              `json:"queueMediaIds,omitempty"`
-	ProgressSeconds          int                   `json:"progressSeconds,omitempty"`
-	SourceContext            PlaybackSourceContext `json:"sourceContext,omitempty"`
-	ExpectedQueueRevision    *int64                `json:"expectedQueueRevision,omitempty"`
-	ExpectedPlaybackRevision *int64                `json:"expectedPlaybackRevision,omitempty"`
+	PreparedSessionID        string                 `json:"preparedSessionId,omitempty"`
+	RequestID                string                 `json:"requestId,omitempty"`
+	EntryID                  string                 `json:"entryId"`
+	ClientProfile            PlaybackClientProfile  `json:"clientProfile,omitempty"`
+	Intent                   PlaybackIntent         `json:"intent,omitempty"`
+	PreviousTerminal         *PlaybackTerminalEvent `json:"previousTerminal,omitempty"`
+	StartSeconds             *int                   `json:"startSeconds,omitempty"`
+	SourceContext            PlaybackSourceContext  `json:"sourceContext,omitempty"`
+	ExpectedQueueRevision    *int64                 `json:"expectedQueueRevision,omitempty"`
+	ExpectedPlaybackRevision *int64                 `json:"expectedPlaybackRevision,omitempty"`
 }
 
 type PlaybackSourceContext struct {
@@ -2850,14 +2867,17 @@ type PlaybackSourceContext struct {
 }
 
 type LiveTVPlaybackSessionCreateRequest struct {
-	ChannelID        string                `json:"channelId"`
-	ClientInstanceID string                `json:"clientInstanceId,omitempty"`
-	ClientProfile    PlaybackClientProfile `json:"clientProfile,omitempty"`
-	Intent           PlaybackIntent        `json:"intent,omitempty"`
+	ChannelID        string                      `json:"channelId"`
+	ClientInstanceID string                      `json:"clientInstanceId,omitempty"`
+	ClientProfile    PlaybackClientProfile       `json:"clientProfile,omitempty"`
+	Intent           PlaybackIntent              `json:"intent,omitempty"`
+	Replacement      *PlaybackReplacementRequest `json:"replacement,omitempty"`
 }
 
 type LiveTVPlaybackCloseRequest struct {
-	SessionID string `json:"sessionId"`
+	SessionID string                `json:"sessionId"`
+	RequestID string                `json:"requestId"`
+	Terminal  PlaybackTerminalEvent `json:"terminal"`
 }
 
 type PlaybackProgressEvent struct {
@@ -2870,14 +2890,12 @@ type PlaybackProgressEvent struct {
 	DurationSeconds      int      `json:"durationSeconds,omitempty"`
 	BandwidthMbps        float64  `json:"bandwidthMbps,omitempty"`
 	SubtitleDecision     string   `json:"subtitleDecision,omitempty"`
-	QualityID            string   `json:"qualityId,omitempty"`
 	AudioStreamID        string   `json:"audioStreamId,omitempty"`
 	SubtitleStreamID     string   `json:"subtitleStreamId,omitempty"`
 	SubtitleMode         string   `json:"subtitleMode,omitempty"`
 	VersionID            string   `json:"versionId,omitempty"`
 	SelectionChanged     bool     `json:"selectionChanged,omitempty"`
 	ClientFallbackReason string   `json:"clientFallbackReason,omitempty"`
-	Completed            *bool    `json:"completed,omitempty"`
 	IsPlaying            *bool    `json:"isPlaying,omitempty"`
 	Authority            string   `json:"-"`
 }
@@ -2895,7 +2913,7 @@ type PlaybackProgressAcknowledgement struct {
 	Generation           int64  `json:"generation"`
 }
 
-type PlaybackSessionStopRequest struct {
+type PlaybackTerminalEvent struct {
 	Disposition     string  `json:"disposition"`
 	Generation      int64   `json:"generation"`
 	EventSequence   int64   `json:"eventSequence"`
@@ -2904,16 +2922,42 @@ type PlaybackSessionStopRequest struct {
 	DurationSeconds float64 `json:"durationSeconds"`
 }
 
+// PlaybackReplacementRequest is the common, exact authority-transfer envelope
+// accepted by every session-producing playback start/tune route. The target
+// request that contains it is fingerprinted with this envelope, so an exact
+// retry cannot change either the terminal evidence or the requested successor.
+type PlaybackReplacementRequest struct {
+	SourceSessionID          string                `json:"sourceSessionId"`
+	RequestID                string                `json:"requestId"`
+	PreviousTerminal         PlaybackTerminalEvent `json:"previousTerminal"`
+	ExpectedQueueRevision    *int64                `json:"expectedQueueRevision,omitempty"`
+	ExpectedPlaybackRevision *int64                `json:"expectedPlaybackRevision,omitempty"`
+}
+
+type PlaybackSessionStopRequest struct {
+	RequestID          string                `json:"requestId"`
+	Terminal           PlaybackTerminalEvent `json:"terminal"`
+	requestFingerprint string
+}
+
+type PlaybackSessionTerminalAcknowledgement struct {
+	RequestID string                `json:"requestId"`
+	Accepted  bool                  `json:"accepted"`
+	Duplicate bool                  `json:"duplicate"`
+	SessionID string                `json:"sessionId"`
+	Terminal  PlaybackTerminalEvent `json:"terminal"`
+}
+
 type PlaybackRenegotiationRequest struct {
-	RequestID        string                `json:"requestId"`
-	ExpectedRevision int64                 `json:"expectedRevision"`
-	ClientProfile    PlaybackClientProfile `json:"clientProfile,omitempty"`
-	Intent           PlaybackIntent        `json:"intent,omitempty"`
-	VersionID        *string               `json:"versionId,omitempty"`
-	QualityID        *string               `json:"qualityId,omitempty"`
-	AudioStreamID    *string               `json:"audioStreamId,omitempty"`
-	SubtitleStreamID *string               `json:"subtitleStreamId,omitempty"`
-	SubtitleMode     *string               `json:"subtitleMode,omitempty"`
+	RequestID        string                    `json:"requestId"`
+	ExpectedRevision int64                     `json:"expectedRevision"`
+	ClientProfile    PlaybackClientProfile     `json:"clientProfile,omitempty"`
+	Intent           PlaybackIntent            `json:"intent,omitempty"`
+	VersionID        *string                   `json:"versionId,omitempty"`
+	Quality          *PlaybackQualitySelection `json:"quality,omitempty"`
+	AudioStreamID    *string                   `json:"audioStreamId,omitempty"`
+	SubtitleStreamID *string                   `json:"subtitleStreamId,omitempty"`
+	SubtitleMode     *string                   `json:"subtitleMode,omitempty"`
 }
 
 type PlaybackClientProfile struct {
@@ -3006,29 +3050,26 @@ type PlaybackCapabilitySubtitle struct {
 // it against the media type, route, decoder facts, membership and server
 // clamps before choosing a delivery mode.
 type PlaybackIntent struct {
-	TransportClass             string   `json:"transportClass,omitempty"`
-	QualityProfile             string   `json:"qualityProfile,omitempty"`
-	DirectPlayPolicy           string   `json:"directPlayPolicy,omitempty"`
-	DirectStreamPolicy         string   `json:"directStreamPolicy,omitempty"`
-	TranscodePolicy            string   `json:"transcodePolicy,omitempty"`
-	MaxVideoBitrateMbps        int      `json:"maxVideoBitrateMbps,omitempty"`
-	MaxAudioBitrateKbps        int      `json:"maxAudioBitrateKbps,omitempty"`
-	MaxVideoHeight             int      `json:"maxVideoHeight,omitempty"`
-	AllowHDR                   *bool    `json:"allowHdr,omitempty"`
-	PreferredAudioLanguages    []string `json:"preferredAudioLanguages,omitempty"`
-	PreferredSubtitleLanguages []string `json:"preferredSubtitleLanguages,omitempty"`
-	PreferredAudioLanguage     string   `json:"preferredAudioLanguage,omitempty"`
-	PreferredSubtitleLanguage  string   `json:"preferredSubtitleLanguage,omitempty"`
-	PreferredSubtitleMode      string   `json:"preferredSubtitleMode,omitempty"`
-	SubtitlesEnabled           *bool    `json:"subtitlesEnabled,omitempty"`
-	BurnInSubtitles            bool     `json:"burnInSubtitles,omitempty"`
+	TransportClass             string                   `json:"transportClass,omitempty"`
+	Quality                    PlaybackQualitySelection `json:"quality"`
+	DirectPlayPolicy           string                   `json:"directPlayPolicy,omitempty"`
+	DirectStreamPolicy         string                   `json:"directStreamPolicy,omitempty"`
+	TranscodePolicy            string                   `json:"transcodePolicy,omitempty"`
+	AllowHDR                   *bool                    `json:"allowHdr,omitempty"`
+	PreferredAudioLanguages    []string                 `json:"preferredAudioLanguages,omitempty"`
+	PreferredSubtitleLanguages []string                 `json:"preferredSubtitleLanguages,omitempty"`
+	PreferredAudioLanguage     string                   `json:"preferredAudioLanguage,omitempty"`
+	PreferredSubtitleLanguage  string                   `json:"preferredSubtitleLanguage,omitempty"`
+	PreferredSubtitleMode      string                   `json:"preferredSubtitleMode,omitempty"`
+	SubtitlesEnabled           *bool                    `json:"subtitlesEnabled,omitempty"`
+	BurnInSubtitles            bool                     `json:"burnInSubtitles,omitempty"`
 }
 
 type ResolvedPlaybackPolicy struct {
 	NetworkClass        string   `json:"networkClass"`
 	TransportClass      string   `json:"transportClass,omitempty"`
 	ServerLocality      string   `json:"serverLocality,omitempty"`
-	QualityProfile      string   `json:"qualityProfile"`
+	QualityProfile      string   `json:"-"`
 	DirectPlayPolicy    string   `json:"directPlayPolicy"`
 	DirectStreamPolicy  string   `json:"directStreamPolicy"`
 	TranscodePolicy     string   `json:"transcodePolicy"`
@@ -3036,8 +3077,14 @@ type ResolvedPlaybackPolicy struct {
 	MaxAudioBitrateKbps int      `json:"maxAudioBitrateKbps,omitempty"`
 	MaxVideoHeight      int      `json:"maxVideoHeight,omitempty"`
 	AllowHDR            bool     `json:"allowHdr"`
-	DeliveryProfile     string   `json:"deliveryProfile"`
+	DeliveryProfile     string   `json:"-"`
 	ServerClamps        []string `json:"serverClamps"`
+	// Exact quality-offer ceilings remain private because clients select the
+	// opaque offer identity, not planner inputs. The public offer carries these
+	// Bps values; the sealed ExecutionPlan remains the execution authority.
+	maxVideoBitrateBps int64
+	maxAudioBitrateBps int64
+	explicitQuality    playbackResolvedQuality
 	// LiveHLS is additive and never replaces the canonical delivery fields.
 	LiveHLS      *LiveHLSPlaybackPolicy  `json:"liveHls,omitempty"`
 	LiveDelivery *PlaybackDeliveryPolicy `json:"liveDelivery,omitempty"`
@@ -3058,7 +3105,7 @@ type PlaybackDeliveryPolicy struct {
 	GrantRequired               bool     `json:"grantRequired"`
 	AllowedOperationClasses     []string `json:"allowedOperationClasses"`
 	AuthorizationRecheckSeconds int      `json:"authorizationRecheckSeconds"`
-	QualityProfile              string   `json:"qualityProfile,omitempty"`
+	QualityProfile              string   `json:"-"`
 	OverlayTranscode            bool     `json:"overlayTranscode,omitempty"`
 	ResourceRevision            int64    `json:"resourceRevision,omitempty"`
 }
@@ -3090,14 +3137,13 @@ type PlaybackDecision struct {
 	SubtitleAction       string   `json:"subtitleAction,omitempty"`
 	HardwareBackend      string   `json:"hardwareBackend,omitempty"`
 	plannerRejections    playbackplan.RejectionDiagnostics
-	execution            *playbackExecutionBinding
+	executionPlan        *playbackExecutionPlan
 }
 
 type PlaybackResource struct {
 	ID               string `json:"id"`
 	SourceURL        string `json:"sourceUrl"`
 	StreamFormat     string `json:"streamFormat"`
-	QualityID        string `json:"qualityId,omitempty"`
 	AudioStreamID    string `json:"audioStreamId,omitempty"`
 	SubtitleStreamID string `json:"subtitleStreamId,omitempty"`
 	SubtitleMode     string `json:"subtitleMode,omitempty"`
@@ -3106,6 +3152,7 @@ type PlaybackResource struct {
 
 type PlaybackResponse struct {
 	SessionID              string                          `json:"sessionId"`
+	CurrentQueueEntryID    string                          `json:"currentQueueEntryId"`
 	NextEventSequence      int64                           `json:"nextEventSequence"`
 	MediaGrant             MediaGrant                      `json:"mediaGrant"`
 	ContinuationCredential *PlaybackContinuationCredential `json:"continuationCredential"`
@@ -3117,16 +3164,16 @@ type PlaybackResponse struct {
 	Resources              []PlaybackResource              `json:"resources"`
 	Decision               PlaybackDecision                `json:"decision"`
 	Policy                 ResolvedPlaybackPolicy          `json:"policy"`
-	Qualities              []Quality                       `json:"qualities"`
+	QualityOffers          PlaybackQualityOfferSet         `json:"qualityOffers"`
+	QualitySelection       PlaybackQualitySelection        `json:"qualitySelection"`
 	AudioStreams           []Stream                        `json:"audioStreams"`
 	SelectedAudioStreamID  string                          `json:"selectedAudioStreamId,omitempty"`
-	SelectedQualityID      string                          `json:"selectedQualityId,omitempty"`
 	SelectedSubtitleID     string                          `json:"selectedSubtitleStreamId,omitempty"`
 	SelectedSubtitleMode   string                          `json:"selectedSubtitleMode,omitempty"`
 	SelectedVersionID      string                          `json:"selectedVersionId,omitempty"`
 	SubtitleStreams        []Stream                        `json:"subtitleStreams"`
 	Chapters               []Chapter                       `json:"chapters"`
-	Queue                  []MediaItem                     `json:"queue"`
+	Queue                  []PlaybackQueueEntry            `json:"queue"`
 	RepeatMode             string                          `json:"repeatMode"`
 	QueueRevision          int64                           `json:"queueRevision"`
 	SourceContext          PlaybackSourceContext           `json:"sourceContext,omitempty"`
@@ -3192,22 +3239,95 @@ type PlaybackCommandRequest struct {
 }
 
 type PlaybackReceiver struct {
-	ID                string          `json:"id"`
-	Name              string          `json:"name"`
-	Code              string          `json:"code"`
-	App               string          `json:"app,omitempty"`
-	Platform          string          `json:"platform,omitempty"`
-	SupportedCommands []string        `json:"supportedCommands"`
-	Command           PlaybackCommand `json:"command"`
-	CreatedAt         string          `json:"createdAt"`
-	LastSeenAt        string          `json:"lastSeenAt"`
+	ID                           string   `json:"id"`
+	ServerID                     string   `json:"serverId"`
+	Name                         string   `json:"name"`
+	App                          string   `json:"app,omitempty"`
+	Platform                     string   `json:"platform,omitempty"`
+	ReceiverPublicKey            string   `json:"receiverPublicKey"`
+	ReceiverPublicKeyFingerprint string   `json:"receiverPublicKeyFingerprint"`
+	SupportedCommands            []string `json:"supportedCommands"`
+	ExpiresAt                    string   `json:"expiresAt"`
+	CreatedAt                    string   `json:"createdAt"`
+	LastSeenAt                   string   `json:"lastSeenAt"`
+	ClientInstanceID             string   `json:"-"`
 }
 
 type PlaybackReceiverRequest struct {
+	ReceiverID        string   `json:"receiverId"`
 	Name              string   `json:"name"`
 	App               string   `json:"app,omitempty"`
 	Platform          string   `json:"platform,omitempty"`
+	ReceiverPublicKey string   `json:"receiverPublicKey"`
 	SupportedCommands []string `json:"supportedCommands,omitempty"`
+	ClientInstanceID  string   `json:"clientInstanceId,omitempty"`
+}
+
+type PlaybackReceiverHeartbeatRequest struct {
+	ReceiverPublicKeyFingerprint string `json:"receiverPublicKeyFingerprint"`
+}
+
+type ReceiverAuthorizationRequest struct {
+	RequestID           string   `json:"requestId"`
+	ControllerID        string   `json:"controllerId"`
+	ControllerPublicKey string   `json:"controllerPublicKey"`
+	AllowedCommands     []string `json:"allowedCommands"`
+	ClientInstanceID    string   `json:"clientInstanceId,omitempty"`
+}
+
+// PlaybackReceiverHandoffRequest is redeemed by the authenticated receiver.
+// The Server derives the target client from receiver registration and the
+// source client from controller authorization; neither is caller-selected.
+type PlaybackReceiverHandoffRequest struct {
+	AuthorizationID              string                       `json:"authorizationId"`
+	ReceiverPublicKeyFingerprint string                       `json:"receiverPublicKeyFingerprint"`
+	Playback                     PlaybackSessionCreateRequest `json:"playback"`
+}
+
+// PlaybackReceiverHandoffCommitRequest is sent only after the receiver player
+// has reported first-playing for the Server-prepared descriptor. The original terminal and queue
+// snapshot are intentionally not caller-selectable at commit time.
+type PlaybackReceiverHandoffCommitRequest struct {
+	AuthorizationID              string `json:"authorizationId"`
+	ReceiverPublicKeyFingerprint string `json:"receiverPublicKeyFingerprint"`
+	SourceSessionID              string `json:"sourceSessionId"`
+	ReceiverSessionID            string `json:"receiverSessionId"`
+	Readiness                    string `json:"readiness"`
+}
+
+type PlaybackReceiverHandoffStatusResponse struct {
+	Outcome           string `json:"outcome"`
+	RequestID         string `json:"requestId"`
+	SourceSessionID   string `json:"sourceSessionId"`
+	ReceiverSessionID string `json:"receiverSessionId,omitempty"`
+}
+
+type ReceiverControllerGrant struct {
+	AuthorizationID              string   `json:"authorizationId"`
+	ReceiverID                   string   `json:"receiverId"`
+	ServerID                     string   `json:"serverId"`
+	ReceiverPublicKey            string   `json:"receiverPublicKey"`
+	ReceiverPublicKeyFingerprint string   `json:"receiverPublicKeyFingerprint"`
+	AllowedCommands              []string `json:"allowedCommands"`
+	AuthorizationRevision        string   `json:"authorizationRevision"`
+	ExpiresAt                    string   `json:"expiresAt"`
+}
+
+type ReceiverAuthorizationRecord struct {
+	AuthorizationID              string   `json:"authorizationId"`
+	ReceiverID                   string   `json:"receiverId"`
+	ServerID                     string   `json:"serverId"`
+	ControllerID                 string   `json:"controllerId"`
+	ControllerPublicKey          string   `json:"controllerPublicKey"`
+	AllowedCommands              []string `json:"allowedCommands"`
+	AuthorizationRevision        string   `json:"authorizationRevision"`
+	ReceiverPublicKeyFingerprint string   `json:"receiverPublicKeyFingerprint"`
+	ExpiresAt                    string   `json:"expiresAt"`
+}
+
+type PlaybackReceiverHeartbeatResponse struct {
+	Receiver       PlaybackReceiver              `json:"receiver"`
+	Authorizations []ReceiverAuthorizationRecord `json:"authorizations"`
 }
 
 type WatchWithFriendsGroup struct {
@@ -3217,6 +3337,7 @@ type WatchWithFriendsGroup struct {
 	OwnerProfileID      string                      `json:"ownerProfileId"`
 	OwnerName           string                      `json:"ownerName"`
 	MediaID             string                      `json:"mediaId"`
+	CurrentEntryID      string                      `json:"currentEntryId"`
 	MediaTitle          string                      `json:"mediaTitle"`
 	State               string                      `json:"state"`
 	PositionSeconds     int                         `json:"positionSeconds"`
@@ -3260,6 +3381,7 @@ type WatchWithFriendsCreateRequest struct {
 
 type WatchWithFriendsStateRequest struct {
 	Action           string  `json:"action"`
+	EntryID          string  `json:"entryId,omitempty"`
 	MediaID          string  `json:"mediaId,omitempty"`
 	PositionSeconds  int     `json:"positionSeconds"`
 	PlaybackRate     float64 `json:"playbackRate,omitempty"`
@@ -3280,8 +3402,10 @@ type WatchWithFriendsSettingsRequest struct {
 }
 
 type WatchWithFriendsQueueItem struct {
+	EntryID          string `json:"entryId"`
 	MediaID          string `json:"mediaId"`
 	MediaTitle       string `json:"mediaTitle"`
+	Unavailable      bool   `json:"unavailable"`
 	SortOrder        int    `json:"sortOrder"`
 	AddedByUserID    string `json:"-"`
 	AddedByProfileID string `json:"addedByProfileId"`
@@ -3295,9 +3419,11 @@ type WatchWithFriendsQueueRequest struct {
 }
 
 type WatchWithFriendsQueueOrderRequest struct {
-	MediaIDs         []string `json:"mediaIds"`
-	ExpectedRevision *int64   `json:"expectedRevision,omitempty"`
-	IdempotencyKey   string   `json:"idempotencyKey"`
+	EntryID            string `json:"entryId"`
+	DestinationEntryID string `json:"destinationEntryId"`
+	Placement          string `json:"placement"`
+	ExpectedRevision   *int64 `json:"expectedRevision,omitempty"`
+	IdempotencyKey     string `json:"idempotencyKey"`
 }
 
 type PlaybackTarget struct {
@@ -3308,14 +3434,6 @@ type PlaybackTarget struct {
 	Code              string   `json:"code,omitempty"`
 	SupportedCommands []string `json:"supportedCommands"`
 	LastSeenAt        string   `json:"lastSeenAt"`
-}
-
-type Quality struct {
-	ID                string `json:"id"`
-	Label             string `json:"label"`
-	Description       string `json:"description"`
-	Available         bool   `json:"available"`
-	RequiresTranscode bool   `json:"requiresTranscode,omitempty"`
 }
 
 type Chapter struct {

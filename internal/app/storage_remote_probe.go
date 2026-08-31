@@ -68,7 +68,7 @@ func acquireRemotePlaybackProbeLock(key string) func() {
 // credentials and URLs out of child-process arguments while still allowing
 // ffprobe to seek to tail indexes in MP4/MKV objects.
 func (s *Server) probeRemotePlaybackFacts(ctx context.Context, item MediaItem, locator string) error {
-	return s.analyzeRemoteMediaFacts(ctx, item, locator, mediaAnalysisOptions{Mode: mediaAnalysisModeProbe, ProbeStreams: true, DetectChapterSegments: true})
+	return s.analyzeRemoteMediaFacts(ctx, item, locator, mediaAnalysisOptions{Mode: mediaAnalysisModeProbe, ProbeStreams: true})
 }
 
 func (s *Server) analyzeRemoteMediaFacts(ctx context.Context, item MediaItem, locator string, options mediaAnalysisOptions) error {
@@ -86,6 +86,13 @@ func (s *Server) analyzeRemoteMediaFacts(ctx context.Context, item MediaItem, lo
 	sourceID, objectPath, err := parseRemoteStorageLocator(locator)
 	if err != nil {
 		return err
+	}
+	if strings.TrimSpace(options.ExpectedSourceRevision) == "" {
+		fence, fenceErr := s.loadAnalysisSourceFence(ctx, item.ID, locator)
+		if fenceErr != nil {
+			return fenceErr
+		}
+		options.ExpectedSourceRevision = fence.SourceRevision
 	}
 	var size int64
 	var sourceRevision string
@@ -156,17 +163,32 @@ func (s *Server) analyzeRemoteMediaFacts(ctx context.Context, item MediaItem, lo
 		if providerAfter.Revision != providerBefore.Revision || providerAfter.Size != providerBefore.Size {
 			return errors.New("remote storage object changed during Complete analysis staging")
 		}
-		exactSeekSafe, keyframeEvidenceAt := s.probeExactSeekEvidence(ctx, localPath, payload)
+		exactSeekSafe, keyframeEvidenceAt := false, ""
+		if options.ValidateSeekBehavior && options.FullSeekValidation {
+			exactSeekSafe, keyframeEvidenceAt = s.probeExactSeekEvidence(ctx, localPath, payload)
+		} else if options.ValidateSeekBehavior {
+			exactSeekSafe, keyframeEvidenceAt = s.probeBoundedExactSeekEvidence(ctx, localPath, payload)
+		}
 		return s.persistFFprobeAnalysisInputs(ctx, item, locator, localPath, payload, options, exactSeekSafe, keyframeEvidenceAt)
 	}
 	// First-play probing populates only authoritative stream/container facts.
 	// Expensive full-file keyframe, loudness, image, and trickplay work remains
 	// explicitly deferred for remote sources.
+	exactSeekSafe, keyframeEvidenceAt := false, ""
+	if options.ValidateSeekBehavior {
+		exactSeekSafe, keyframeEvidenceAt = probeRemoteBoundedExactSeekEvidence(proxyCtx, ffprobePath, probeURL, demuxer, payload)
+	}
 	if err := s.persistFFprobeAnalysis(ctx, item, locator, payload, mediaAnalysisOptions{
 		Mode: options.Mode, ProbeStreams: true, ReadEmbeddedTags: options.ReadEmbeddedTags,
-		ReadEmbeddedIndexes: options.ReadEmbeddedIndexes, DetectChapterSegments: options.DetectChapterSegments,
-	}, false, ""); err != nil {
+		ReadEmbeddedIndexes: options.ReadEmbeddedIndexes, ValidateSeekBehavior: options.ValidateSeekBehavior,
+		ExpectedSourceRevision: options.ExpectedSourceRevision,
+	}, exactSeekSafe, keyframeEvidenceAt); err != nil {
 		return err
+	}
+	if options.ExtractEmbeddedCovers {
+		if err := s.extractRemoteEmbeddedCoverImage(ctx, item, probeURL, demuxer, payload); err != nil {
+			return err
+		}
 	}
 	if options.GenerateThumbnails && payloadHasVideoStream(payload) && s.mediaNeedsRepresentativeFrameContext(ctx, item) {
 		if err := s.generateRemoteMediaThumbnail(ctx, item, probeURL, demuxer); err != nil {
@@ -174,6 +196,83 @@ func (s *Server) analyzeRemoteMediaFacts(ctx context.Context, item MediaItem, lo
 		}
 	}
 	return nil
+}
+
+// analyzeRemoteFullFileOperations reuses the Complete-analysis staging owner
+// for capabilities (currently exact checksum) that do not require ffprobe.
+// The provider revision is checked on both sides of the one private staging
+// pass, and the staged copy is always removed by the existing cleanup path.
+func (s *Server) analyzeRemoteFullFileOperations(ctx context.Context, item MediaItem, locator string, options mediaAnalysisOptions) error {
+	sourceID, objectPath, err := parseRemoteStorageLocator(locator)
+	if err != nil {
+		return err
+	}
+	var size int64
+	var sourceRevision string
+	if err := s.queryBackgroundRow(ctx, `SELECT object.size_bytes,object.revision
+		FROM storage_remote_objects object JOIN storage_sources source ON source.id=object.source_id
+		WHERE object.source_id=? AND object.object_path=? AND object.missing_since='' AND source.library_id=?`,
+		sourceID, objectPath, item.LibraryID).Scan(&size, &sourceRevision); err != nil {
+		return err
+	}
+	backend, err := s.remoteBackendForSource(ctx, sourceID)
+	if err != nil {
+		return err
+	}
+	providerBefore, err := statRemoteStorageObject(ctx, backend, objectPath)
+	if err != nil {
+		return err
+	}
+	if providerBefore.Revision != sourceRevision || providerBefore.Size != size {
+		return errors.New("remote storage object changed before Complete analysis staging")
+	}
+	localPath, cleanup, err := s.materializeRemoteObjectForCompleteAnalysis(ctx, backend, objectPath, providerBefore.Size)
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+	providerAfter, err := statRemoteStorageObject(ctx, backend, objectPath)
+	if err != nil {
+		return err
+	}
+	if providerAfter.Revision != providerBefore.Revision || providerAfter.Size != providerBefore.Size {
+		return errors.New("remote storage object changed during Complete analysis staging")
+	}
+	return s.runApprovedFullFileOperations(ctx, item, locator, localPath, ffprobePayload{}, options)
+}
+
+func (s *Server) extractRemoteEmbeddedCoverImage(ctx context.Context, item MediaItem, inputURL, demuxer string, payload ffprobePayload) error {
+	if item.Type != "track" && item.Type != "audiobook" {
+		return nil
+	}
+	streamIndex, ok := embeddedCoverStreamIndex(payload)
+	if !ok {
+		return nil
+	}
+	ffmpegPath := strings.TrimSpace(s.cfg.FFmpegPath)
+	if filepath.Base(ffmpegPath) == ffmpegPath {
+		resolved, err := exec.LookPath(ffmpegPath)
+		if err != nil {
+			return errors.New("ffmpeg is not available on PATH")
+		}
+		ffmpegPath = resolved
+	}
+	outputPath, tempPath, err := s.prepareEmbeddedCoverOutput(item.ID)
+	if err != nil {
+		return err
+	}
+	extractCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	result, err := runBoundedAnalysisCommand(extractCtx, ffmpegPath, []string{
+		"-hide_banner", "-nostdin", "-y", "-threads", "1", "-filter_threads", "1",
+		"-protocol_whitelist", "http,tcp", "-rw_timeout", "15000000", "-f", demuxer, "-i", inputURL,
+		"-map", fmt.Sprintf("0:%d", streamIndex), "-frames:v", "1", "-update", "1", tempPath,
+	}, "", 1<<20, 4<<20)
+	if err != nil {
+		_ = os.Remove(tempPath)
+		return fmt.Errorf("extract remote embedded cover: %w: %s", err, strings.TrimSpace(redactedAnalysisOutput(result.Stderr, inputURL)))
+	}
+	return s.publishEmbeddedCoverOutput(item.ID, outputPath, tempPath)
 }
 
 func statRemoteStorageObject(ctx context.Context, backend remoteStorageBackend, objectPath string) (storageObject, error) {

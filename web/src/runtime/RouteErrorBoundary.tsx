@@ -7,6 +7,7 @@ import { recordRouteRenderFailure } from './routeDiagnostics';
 type RouteErrorBoundaryProps = {
   children: ReactNode;
   routeKey: string;
+  onBlockingStateChange?: (blocking: boolean) => void;
 };
 
 type RouteErrorBoundaryState = {
@@ -26,17 +27,24 @@ export class RouteErrorBoundary extends Component<RouteErrorBoundaryProps, Route
 
   componentDidCatch(error: Error, info: ErrorInfo) {
     logRouteRenderFailure(error, info, this.props.routeKey);
+    this.props.onBlockingStateChange?.(true);
   }
 
   componentDidUpdate(previous: RouteErrorBoundaryProps) {
-    if (previous.routeKey !== this.props.routeKey && this.state.error) this.setState({ error: undefined });
+    if (previous.routeKey !== this.props.routeKey && this.state.error) {
+      this.setState({ error: undefined });
+      this.props.onBlockingStateChange?.(false);
+    }
   }
 
   render() {
     if (!this.state.error) return this.props.children;
     return <section className="route-failure">
       <ProductProblemMessage className="route-failure-problem" reason={this.state.error} fallbackId="problem.request-failed" actionHandlers={{
-        'action.retry': () => this.setState({ error: undefined }),
+        'action.retry': () => {
+          this.setState({ error: undefined });
+          this.props.onBlockingStateChange?.(false);
+        },
       }} />
       <div>
         <a className="button secondary" href="/"><NavigationHomeIcon /> {productMessage('action.go-home').text}</a>

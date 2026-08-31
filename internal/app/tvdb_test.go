@@ -81,7 +81,7 @@ func TestTVDBRefreshUsesNFOProviderIdentityAndCachesToken(t *testing.T) {
 	if err := server.db.QueryRow(`SELECT external_id, status FROM media_provider_ids WHERE media_id = 'movie_meridian' AND provider = 'imdb' AND external_type = 'movie'`).Scan(&crosswalkID, &crosswalkStatus); err != nil {
 		t.Fatalf("load IMDb crosswalk evidence: %v", err)
 	}
-	if crosswalkID != "tt0042" || crosswalkStatus != string(metadataIdentityCandidate) {
+	if crosswalkID != "tt0042" || crosswalkStatus != string(metadataIdentityAccepted) {
 		t.Fatalf("IMDb crosswalk evidence = %q status %q", crosswalkID, crosswalkStatus)
 	}
 	var localPoster string
@@ -236,6 +236,53 @@ func TestMetadataRefreshFallsBackFromTMDBProviderFailure(t *testing.T) {
 	}
 	if updated.Summary != "Resolved after primary provider failure." {
 		t.Fatalf("updated=%+v", updated)
+	}
+}
+
+func TestMetadataRefreshSupplementsMissingFieldsByAcceptedCrosswalkWithoutOverwriteSearch(t *testing.T) {
+	var tvdbSearches atomic.Int32
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/search/movie":
+			_, _ = w.Write([]byte(`{"page":1,"results":[{"id":7,"title":"The Meridian Job","release_date":"2025-01-01","overview":"Primary summary"}],"total_pages":1,"total_results":1}`))
+		case "/movie/7":
+			_, _ = w.Write([]byte(`{"id":7,"title":"Primary title","release_date":"2025-01-01","overview":"Primary summary","external_ids":{"tvdb_id":42}}`))
+		case "/login":
+			_, _ = w.Write([]byte(`{"status":"success","data":{"token":"supplement-token"}}`))
+		case "/movies/42/extended":
+			_, _ = w.Write([]byte(`{"status":"success","data":{"id":42,"name":"Fallback must not replace title","overview":"Fallback must not replace summary","firstAired":"2024-01-01","genres":[{"id":1,"name":"Mystery"}]}}`))
+		case "/search":
+			tvdbSearches.Add(1)
+			_, _ = w.Write([]byte(`{"status":"success","data":[]}`))
+		default:
+			t.Fatalf("unexpected metadata path: %s", r.URL.Path)
+		}
+	}))
+	defer provider.Close()
+	_, _, server := newDiscoveryTestServer(t, config.Config{TMDBAPIKey: "tmdb-key", TMDBBaseURL: provider.URL, TVDBAPIKey: "tvdb-key", TVDBBaseURL: provider.URL})
+	if _, err := server.db.Exec(`UPDATE media_items SET genres_json='[]' WHERE id='movie_meridian'`); err != nil {
+		t.Fatal(err)
+	}
+	item, err := server.getMediaDetail("", "movie_meridian")
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated, err := server.refreshMediaMetadata(context.Background(), item)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.Title != "Primary title" || updated.Summary != "Primary summary" {
+		t.Fatalf("fallback replaced primary fields: title=%q summary=%q", updated.Title, updated.Summary)
+	}
+	if len(updated.Genres) != 1 || updated.Genres[0] != "Mystery" {
+		t.Fatalf("fallback did not fill missing genres: %#v", updated.Genres)
+	}
+	if tvdbSearches.Load() != 0 {
+		t.Fatalf("supplement performed %d unlocked name searches", tvdbSearches.Load())
+	}
+	if id, ok := server.mediaProviderID(updated.ID, "tvdb", "movie"); !ok || id != "42" {
+		t.Fatalf("crosswalk identity=%q ok=%v", id, ok)
 	}
 }
 

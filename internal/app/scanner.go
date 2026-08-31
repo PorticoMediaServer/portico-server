@@ -20,6 +20,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/PorticoMediaServer/portico-server/internal/foundationcontract"
 )
 
 type libraryScanResult struct {
@@ -250,10 +252,32 @@ func (s *Server) scanLibrary(ctx context.Context, library Library, jobID string)
 		s.log.Warn("scan job update failed", "job", jobID, "error", err)
 	}
 	mode := "reconcile"
+	jobMetadata := map[string]string{}
 	if jobID != "" {
 		if job, jobErr := s.getJob(jobID); jobErr == nil {
 			mode = normalizeScanMode(job.Metadata["mode"])
+			jobMetadata = job.Metadata
 		}
+	}
+	if strings.EqualFold(jobMetadata[scanTriggerMetadataKey], "profile-change") {
+		_ = s.setJobProgress(jobID, "running", 18, "Reconciling newly selected scan-profile stages from committed inventory.")
+		indexed, analysisQueued, err := s.reconcileScanProfileStages(ctx, library, jobMetadata)
+		if err != nil {
+			if s.retryJobLater(jobID, err) {
+				return
+			}
+			message := fmt.Sprintf("Scan-profile reconciliation failed for %s: %s", library.Name, err.Error())
+			_ = s.setJobMessage(jobID, "failed", 100, message)
+			return
+		}
+		message := fmt.Sprintf("Scan-profile reconciliation completed for %s. Re-enriched %d indexed files and queued %d current-revision analysis stages.", library.Name, indexed, analysisQueued)
+		if _, _, err := s.completeLibraryScanOrContinue(jobID, mode, message); err != nil {
+			_ = s.setJobMessage(jobID, "failed", 100, "Scan-profile reconciliation could not commit completion.")
+			return
+		}
+		s.invalidateHomeCache()
+		s.publishLibraryScanCompleted(library.ID)
+		return
 	}
 	for {
 		result, err := s.performLibraryScanWithMode(ctx, library, jobID, mode)
@@ -568,6 +592,43 @@ type libraryScanContentPolicy struct {
 	ReadEmbeddedTags         bool
 	FetchDescriptiveMetadata bool
 	ProbeStreams             bool
+}
+
+type resolvedLibraryScanProfile struct {
+	Capabilities map[string]bool
+	Content      libraryScanContentPolicy
+	Tier         string
+}
+
+// resolveLibraryScanProfile reads the current effective profile from its two
+// persisted owners (server defaults plus library overrides). Scanner workers
+// call it at content-read boundaries; a Library value captured when a job was
+// dispatched is inventory context, not continuing authorization.
+func (s *Server) resolveLibraryScanProfile(libraryID string) (resolvedLibraryScanProfile, error) {
+	library, err := s.getLibrary(strings.TrimSpace(libraryID))
+	if err != nil {
+		return resolvedLibraryScanProfile{}, err
+	}
+	settings := s.libraryAnalysisSettingsFor(library)
+	tier := normalizeAnalysisTier(settingString(settings, "analysisTier", analysisTierBasic))
+	return resolvedLibraryScanProfile{
+		Capabilities: effectiveScanProfile(settings),
+		Content:      scanContentPolicy(tier, settings),
+		Tier:         tier,
+	}, nil
+}
+
+func scanProfileRemovedReadPermission(before, after map[string]bool) bool {
+	for field := range before {
+		if scannerReadCapability[field] && !after[field] {
+			return true
+		}
+	}
+	return false
+}
+
+func scanContentPolicyOpensObjects(policy libraryScanContentPolicy) bool {
+	return policy.ReadLocalMetadata || policy.ReadExternalSidecars || policy.DiscoverLocalArtwork || policy.ReadEmbeddedTags || policy.ProbeStreams
 }
 
 func scanContentPolicy(tier string, settings map[string]any) libraryScanContentPolicy {
@@ -957,10 +1018,8 @@ func (s *Server) performLibraryScanWithMode(ctx context.Context, library Library
 		return result, err
 	}
 	defer release()
-	librarySettings := s.libraryRuntimeSettingsFor(library)
-	// Settings are immutable for the duration of one scan. Loading them once
-	// avoids a full settings-table query and JSON decode for every discovered
-	// file (and a second copy for every music track).
+	// Metadata-agent settings are independent of scan-profile authorization.
+	// The latter is deliberately re-resolved at each content-read boundary.
 	metadataSettings := s.metadataAgentSettings()
 	localRootEvidence := s.inspectLibraryRootsWithContext(ctx, library)
 	remoteRootEvidence, err := s.remoteLibraryRootEvidence(ctx, library.ID)
@@ -1009,8 +1068,6 @@ func (s *Server) performLibraryScanWithMode(ctx context.Context, library Library
 		return result, err
 	}
 	checkpointMode := mode != "force_full" && mode != "remove_missing" && len(checkpoints) > 0 && !s.libraryHasUnassignedMediaDirectories(ctx, library.ID)
-	contentPolicy := scanContentPolicy(librarySettings.AnalysisTier, s.libraryAnalysisSettingsFor(library))
-
 	now := time.Now().UTC().Format(time.RFC3339)
 	scanGeneration := continuation.ScanGeneration
 	if len(remoteRootEvidence) > 0 {
@@ -1048,47 +1105,81 @@ func (s *Server) performLibraryScanWithMode(ctx context.Context, library Library
 			return err
 		}
 		metadataQueued, analysisQueued, indexed := 0, 0, 0
-		if librarySettings.AnalysisTier != analysisTierFileListOnly {
-			for index := range batch {
-				root, ok := storageRootForPath(roots, batch[index].SourcePath)
-				if !ok {
-					return errors.New("discovered media escaped admitted storage roots")
-				}
-				if err := s.boundedStorageIO(ctx, storageRequestForRoot(root, "scanner basic enrichment"), func() error {
-					info, _ := os.Stat(batch[index].SourcePath)
-					batch[index].ContentFingerprint = scannerContentFingerprint(batch[index].SourcePath, info)
-					batch[index].LocalNFOEnabled = contentPolicy.ReadLocalMetadata && metadataSettings.LocalNFO
-					batch[index].ReadExternalSidecars = contentPolicy.ReadExternalSidecars
-					batch[index].DiscoverLocalArtwork = contentPolicy.DiscoverLocalArtwork
-					if batch[index].LocalNFOEnabled {
-						batch[index].LocalMetadata = scannerMetadataForLocalMode(mergeScannerMetadata(batch[index].LocalMetadata, localMetadataForMediaFile(batch[index].SourcePath, batch[index].ScanRoot)), localMetadataModeForLibrary(library))
-					}
-					if library.Type == "audiobook" && batch[index].LocalNFOEnabled {
-						batch[index].LocalMetadata = scannerMetadataForLocalMode(mergeScannerMetadata(batch[index].LocalMetadata, audiobookLocalMetadataForFile(batch[index].SourcePath, batch[index].ScanRoot)), localMetadataModeForLibrary(library))
-					}
-					if library.Type == "music" {
-						customMetadataSettings := metadataSettings
-						customMetadataSettings.EmbeddedTags = metadataSettings.EmbeddedTags && contentPolicy.ReadEmbeddedTags
-						batch[index] = s.enrichScannedMusicFileWithSettings(ctx, batch[index], library, customMetadataSettings)
-					}
-					batch[index].FilesystemPrepared = false
-					return nil
-				}); err != nil {
+		authorizedReads := map[string]bool{}
+		for index := range batch {
+			if !s.waitForForegroundPressureToEase(ctx) {
+				return ctx.Err()
+			}
+			root, ok := storageRootForPath(roots, batch[index].SourcePath)
+			if !ok {
+				return errors.New("discovered media escaped admitted storage roots")
+			}
+			profile, err := s.resolveLibraryScanProfile(library.ID)
+			if err != nil {
+				return err
+			}
+			if !scanContentPolicyOpensObjects(profile.Content) {
+				batch[index].FilesystemPrepared = true
+				continue
+			}
+			if err := s.boundedStorageIO(ctx, storageRequestForRoot(root, "scanner basic enrichment"), func() error {
+				if err := ctx.Err(); err != nil {
 					return err
 				}
-			}
-			_, indexed, metadataQueued, analysisQueued, err = s.writeScannedMediaBatch(ctx, library, batch, now, scanGeneration, contentPolicy.FetchDescriptiveMetadata, contentPolicy.ProbeStreams)
-			if err != nil {
+				// Admission can wait behind another source user. Resolve again inside
+				// the admitted callback, immediately before the first object open.
+				live, err := s.resolveLibraryScanProfile(library.ID)
+				if err != nil {
+					return err
+				}
+				policy := live.Content
+				if !scanContentPolicyOpensObjects(policy) {
+					batch[index].FilesystemPrepared = true
+					return nil
+				}
+				for field := range live.Capabilities {
+					if scannerReadCapability[field] {
+						authorizedReads[field] = true
+					}
+				}
+				info, _ := os.Stat(batch[index].SourcePath)
+				if policy.ProbeStreams {
+					batch[index].ContentFingerprint = scannerContentFingerprint(batch[index].SourcePath, info)
+				}
+				batch[index].LocalNFOEnabled = policy.ReadLocalMetadata && metadataSettings.LocalNFO
+				batch[index].ReadExternalSidecars = policy.ReadExternalSidecars
+				batch[index].DiscoverLocalArtwork = policy.DiscoverLocalArtwork
+				if batch[index].LocalNFOEnabled {
+					batch[index].LocalMetadata = scannerMetadataForLocalMode(mergeScannerMetadata(batch[index].LocalMetadata, localMetadataForMediaFile(batch[index].SourcePath, batch[index].ScanRoot)), localMetadataModeForLibrary(library))
+				}
+				if library.Type == "audiobook" && batch[index].LocalNFOEnabled {
+					batch[index].LocalMetadata = scannerMetadataForLocalMode(mergeScannerMetadata(batch[index].LocalMetadata, audiobookLocalMetadataForFile(batch[index].SourcePath, batch[index].ScanRoot)), localMetadataModeForLibrary(library))
+				}
+				if library.Type == "music" {
+					customMetadataSettings := metadataSettings
+					customMetadataSettings.EmbeddedTags = metadataSettings.EmbeddedTags && policy.ReadEmbeddedTags
+					batch[index] = s.enrichScannedMusicFileWithSettings(ctx, batch[index], library, customMetadataSettings)
+				}
+				batch[index].FilesystemPrepared = false
+				return nil
+			}); err != nil {
 				return err
 			}
-		} else {
-			for index := range batch {
-				batch[index].FilesystemPrepared = true
-			}
-			_, indexed, _, _, err = s.writeScannedMediaBatch(ctx, library, batch, now, scanGeneration, false, false)
-			if err != nil {
-				return err
-			}
+		}
+		publishProfile, err := s.resolveLibraryScanProfile(library.ID)
+		if err != nil {
+			return err
+		}
+		if scanProfileRemovedReadPermission(authorizedReads, publishProfile.Capabilities) {
+			// One already-entered bounded filesystem call may finish after a
+			// downgrade, but facts derived under the removed permission never
+			// cross this publication boundary.
+			return context.Canceled
+		}
+		_, indexed, metadataQueued, analysisQueued, err = s.writeScannedMediaBatch(ctx, library, batch, now, scanGeneration,
+			publishProfile.Content.FetchDescriptiveMetadata, capabilitiesIntersect(publishProfile.Capabilities, analysisCapability))
+		if err != nil {
+			return err
 		}
 		result.FilesIndexed += indexed
 		result.MetadataRefreshQueued += metadataQueued
@@ -1827,11 +1918,15 @@ func (s *Server) writeScannedMediaBatch(ctx context.Context, library Library, ba
 	indexed := 0
 	metadataQueued := 0
 	analysisQueued := 0
+	analysisCapabilities := effectiveScanProfile(s.libraryAnalysisSettingsFor(library))
 	for index := range batch {
+		if err := ctx.Err(); err != nil {
+			return batchSeen, indexed, metadataQueued, analysisQueued, err
+		}
 		if batch[index].FilesystemPrepared {
 			continue
 		}
-		request := s.storageRequestForPath(ctx, batch[index].SourcePath, "scanner sidecar preflight")
+		request := s.storageRequestForPath(ctx, foundationcontract.WorkClassBackgroundMedia, batch[index].SourcePath, "scanner sidecar preflight")
 		if err := s.boundedStorageIO(ctx, request, func() error {
 			prepared, err := s.prepareScannedMediaFilesystem(batch[index])
 			if err == nil {
@@ -1904,6 +1999,9 @@ func (s *Server) writeScannedMediaBatch(ctx context.Context, library Library, ba
 	})
 	if err != nil {
 		return batchSeen, indexed, metadataQueued, analysisQueued, scannerCatalogApplyError{err: err}
+	}
+	if err := ctx.Err(); err != nil {
+		return batchSeen, indexed, metadataQueued, analysisQueued, err
 	}
 	if err := s.publishScannedSidecarSubtitles(subtitleReplacements); err != nil {
 		return batchSeen, indexed, metadataQueued, analysisQueued, scannerCatalogApplyError{err: err}
@@ -1987,7 +2085,7 @@ func (s *Server) writeScannedMediaBatch(ctx context.Context, library Library, ba
 					}
 				}
 			}
-			if enqueueAnalysis && scannerAnalysisEligible(file) {
+			if enqueueAnalysis && scannerAnalysisEligibleForProfile(file, analysisCapabilities) {
 				revision := scannerAnalysisSourceRevision(file)
 				queued, err := enqueueScannerBacklogTx(tx, library.ID, file.ID, scannerBacklogAnalysis, revision, now)
 				if err != nil {
@@ -2068,6 +2166,13 @@ func scannerAnalysisEligible(file scannerMediaFile) bool {
 	default:
 		return true
 	}
+}
+
+func scannerAnalysisEligibleForProfile(file scannerMediaFile, capabilities map[string]bool) bool {
+	if strings.EqualFold(strings.TrimSpace(file.SourceType), "strm") || isSTRMDescriptor(file.SourcePath) {
+		return strings.TrimSpace(file.ID) != "" && strings.TrimSpace(file.SourcePath) != "" && capabilities["analyzeSTRMTarget"]
+	}
+	return scannerAnalysisEligible(file)
 }
 
 func (s *Server) reconcileScannedMedia(ctx context.Context, libraryID string, now string, scanGeneration string) (int, error) {

@@ -81,6 +81,7 @@ x-portico-audience-contract:
     createCastBootstrap: postPlaybackCastBootstrap
     redeemCastBootstrap: postPlaybackCastRedeem
     reconnectCast: postPlaybackCastReconnect
+    castTransferStatus: postPlaybackCastTransferStatus
     renegotiatePlayback: renegotiatePlaybackSession
     getPlaybackContinuationState: getPlaybackContinuationState
     touchPlaybackContinuation: patchPlaybackContinuationProgress
@@ -99,6 +100,8 @@ x-portico-audience-contract:
       - CastRenewResponse
       - CastStopResponse
       - CastOperationResponse
+      - CastTransferStatusResponse
+      - CastAdvanceResponse
       - AudioNormalization
       - BinaryPayload
       - Chapter
@@ -162,6 +165,7 @@ x-portico-audience-contract:
       - PlaybackContinuationCredential
       - PlaybackContinuationState
       - PlaybackProgressAcknowledgement
+      - PlaybackSessionTerminalAcknowledgement
       - PlaybackRepeatMode
       - PlaybackResource
       - PlaybackResponse
@@ -207,6 +211,10 @@ components:
       in: cookie
       name: portico_download_grant
       description: "Opaque, hashed-at-rest, 15-minute download grant. Browsers use an HttpOnly cookie and native adapters use Authorization: PorticoDownload <grant>; credentials are never accepted in URLs."
+    castReceiverAuth:
+      type: http
+      scheme: PorticoReceiver
+      description: Receiver-scoped credential returned only by Cast bootstrap redemption. Account/session credentials are never accepted on receiver mutation routes.
   schemas:
     Error:
       type: object
@@ -2033,7 +2041,7 @@ components:
           description: High-entropy idempotency secret persisted by the client before refresh. Reusing the exact old token and key recovers the committed successor after a crash; a different key is treated as token reuse.
     NativeSessionCredentials:
       type: object
-      required: [tokenType, accessToken, accessExpiresAt, refreshToken, refreshExpiresAt, user, device, authority, accountId, serverId, profileId, authorizationRevision]
+      required: [tokenType, accessToken, accessExpiresAt, refreshToken, refreshExpiresAt, user, device, authority, accountId, serverId, profileId, authorizationRevision, serverPublicKey, serverPublicKeyFingerprint]
       properties:
         tokenType:
           type: string
@@ -2067,6 +2075,12 @@ components:
           type: string
         serverFriendlyName:
           type: string
+        serverPublicKey:
+          type: string
+          description: Canonical unpadded standard-base64 encoding of the Server's raw 32-byte Ed25519 identity public key. Clients persist it with the matching fingerprint for offline receipt verification.
+        serverPublicKeyFingerprint:
+          type: string
+          description: Canonical sha256-prefixed unpadded base64url fingerprint of serverPublicKey.
     AuthCapabilities:
       type: object
       required: [setupRequired, localCredentialsEnabled, porticoAccountAuthEnabled, publicUserPickerEnabled, visibleUsers, generatedAt]
@@ -2897,8 +2911,9 @@ components:
     ProductContract:
       type: object
       additionalProperties: false
-      required: [apiVersion, actionRevision, language, libraryKinds, entityKinds, entitySemantics, artworkRoles, browseFields, browseSorts, browseOperators, presentationFields, queryLimits, search, mediaActions, eventTransports, applicationEvents, longPoll, serverCapabilities, compatibility]
+      required: [semanticIdentity, apiVersion, actionRevision, language, libraryKinds, entityKinds, entitySemantics, artworkRoles, browseFields, browseSorts, browseOperators, presentationFields, queryLimits, search, mediaActions, eventTransports, applicationEvents, longPoll, serverCapabilities]
       properties:
+        semanticIdentity: { $ref: "#/components/schemas/SemanticDocumentIdentity" }
         apiVersion:
           type: string
           enum: [v1]
@@ -2943,7 +2958,6 @@ components:
         serverCapabilities:
           type: array
           items: { type: string }
-        compatibility: { $ref: "#/components/schemas/CompatibilityEnvelope" }
     EventTransport:
       type: string
       enum: [sse, long-poll]
@@ -3828,7 +3842,7 @@ components:
     CompatibilityEnvelope:
       type: object
       additionalProperties: false
-      required: [envelopeRevision, supportedClientProtocol, apiContract, build, semanticRevisions, capabilities, requiredSemantics, forwardCompatibility]
+      required: [envelopeRevision, supportedClientProtocol, apiContract, build, semanticRevisions, capabilities, requiredSemantics, forwardCompatibility, semanticDocuments]
       properties:
         envelopeRevision: { type: integer, minimum: 1 }
         supportedClientProtocol: { $ref: "#/components/schemas/ProtocolRange" }
@@ -3838,6 +3852,21 @@ components:
         capabilities: { type: array, uniqueItems: true, items: { $ref: "#/components/schemas/CompatibilityCapability" } }
         requiredSemantics: { type: array, uniqueItems: true, items: { type: string } }
         forwardCompatibility: { $ref: "#/components/schemas/ForwardCompatibilityPolicy" }
+        semanticDocuments:
+          type: object
+          additionalProperties: false
+          required: [productContract]
+          properties:
+            productContract: { $ref: "#/components/schemas/SemanticDocumentIdentity" }
+    SemanticDocumentIdentity:
+      type: object
+      additionalProperties: false
+      required: [id, revision, digestAlgorithm, digest]
+      properties:
+        id: { type: string, const: portico.product-contract }
+        revision: { type: string, enum: [v2] }
+        digestAlgorithm: { type: string, enum: [sha256] }
+        digest: { type: string, pattern: '^[a-f0-9]{64}$' }
     ProtocolRange:
       type: object
       additionalProperties: false
@@ -4127,6 +4156,21 @@ components:
           $ref: "#/components/schemas/Permissions"
         maxContentRating: { type: string }
     LibraryTrashCleanupResponse:
+      type: object
+      additionalProperties: false
+      required: [ok, queued, existing, job]
+      properties:
+        ok:
+          type: boolean
+          const: true
+        queued:
+          type: boolean
+          const: true
+        existing:
+          type: boolean
+        job:
+          $ref: "#/components/schemas/Job"
+    RemoteAccessCertificateRenewResponse:
       type: object
       additionalProperties: false
       required: [ok, queued, existing, job]
@@ -4445,6 +4489,87 @@ components:
           format: date-time
         profile:
           type: string
+        authorizationReceipt:
+          $ref: "#/components/schemas/OfflineDownloadAuthorizationReceipt"
+          description: Immutable signed authorization receipt returned only for native delivery after exact artifact verification and an atomic authorization-fence recheck.
+    OfflineDownloadAuthorizationViewerScope:
+      type: object
+      additionalProperties: false
+      required: [scopeKind, authority, accountId, profileId, serverId, authorizationRevision]
+      properties:
+        scopeKind: { type: string, const: server-bound }
+        authority: { type: string, enum: [local, hosted] }
+        accountId: { type: string, minLength: 1, maxLength: 128 }
+        profileId: { type: string, minLength: 1, maxLength: 128 }
+        serverId: { type: string, minLength: 1, maxLength: 128 }
+        authorizationRevision: { type: string, minLength: 1, maxLength: 128 }
+    OfflineDownloadAuthorizationIssuer:
+      type: object
+      additionalProperties: false
+      required: [serverId, signingKeyFingerprint]
+      properties:
+        serverId: { type: string, minLength: 1, maxLength: 128 }
+        signingKeyFingerprint:
+          type: string
+          pattern: "^sha256:[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$"
+    OfflineDownloadAuthorizationPreparation:
+      type: object
+      additionalProperties: false
+      required: [preparationId, mediaId, mediaVersionId, qualityId]
+      properties:
+        preparationId: { type: string, minLength: 1, maxLength: 128 }
+        mediaId: { type: string, minLength: 1, maxLength: 128 }
+        mediaVersionId: { type: string, minLength: 1, maxLength: 128 }
+        qualityId: { type: string, minLength: 1, maxLength: 128 }
+    OfflineDownloadAuthorizationArtifact:
+      type: object
+      additionalProperties: false
+      required: [sha256, sizeBytes]
+      properties:
+        sha256:
+          type: string
+          pattern: "^[0-9a-f]{64}$"
+        sizeBytes:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 9007199254740991
+    OfflineDownloadAuthorizationReceipt:
+      type: object
+      additionalProperties: false
+      required: [version, purpose, receiptId, viewerScope, issuer, preparation, artifact, lastVerifiedAt, verifyBy, signature]
+      properties:
+        version: { type: integer, const: 1 }
+        purpose: { type: string, const: offline-download-authorization }
+        receiptId: { type: string, minLength: 1, maxLength: 128 }
+        viewerScope: { $ref: "#/components/schemas/OfflineDownloadAuthorizationViewerScope" }
+        issuer: { $ref: "#/components/schemas/OfflineDownloadAuthorizationIssuer" }
+        preparation: { $ref: "#/components/schemas/OfflineDownloadAuthorizationPreparation" }
+        artifact: { $ref: "#/components/schemas/OfflineDownloadAuthorizationArtifact" }
+        lastVerifiedAt: { type: string, format: date-time }
+        verifyBy: { type: string, format: date-time }
+        signature:
+          type: string
+          pattern: "^[A-Za-z0-9_-]{85}[AQgw]$"
+    OfflineDownloadAuthorizationRevalidationRequest:
+      type: object
+      additionalProperties: false
+      required: [receipt]
+      properties:
+        receipt: { $ref: "#/components/schemas/OfflineDownloadAuthorizationReceipt" }
+    OfflineDownloadAuthorizationRevalidationResponse:
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required: [outcome, receipt]
+          properties:
+            outcome: { type: string, const: valid-replacement }
+            receipt: { $ref: "#/components/schemas/OfflineDownloadAuthorizationReceipt" }
+        - type: object
+          additionalProperties: false
+          required: [outcome]
+          properties:
+            outcome: { type: string, enum: [revoked, invalid, out-of-scope] }
     OptimizedVersion:
       x-portico-audience: viewer
       type: object
@@ -4594,7 +4719,7 @@ components:
     DownloadPreparationCreateRequest:
       type: object
       additionalProperties: false
-      anyOf:
+      oneOf:
         - required: [mediaId]
         - required: [mediaIds]
         - required: [containerId]
@@ -5829,20 +5954,6 @@ components:
         events:
           type: array
           items: { $ref: "#/components/schemas/PlaybackCommand" }
-    PlaybackReceiverLongPollEnvelope:
-      x-portico-audience: viewer
-      type: object
-      additionalProperties: false
-      required: [version, cursor, serverTime, resetRequired, hasMore, events]
-      properties:
-        version: { type: string, const: v1 }
-        cursor: { type: string }
-        serverTime: { type: string, format: date-time }
-        resetRequired: { type: boolean }
-        hasMore: { type: boolean }
-        events:
-          type: array
-          items: { $ref: "#/components/schemas/PlaybackReceiver" }
     WatchWithFriendsLongPollEnvelope:
       x-portico-audience: viewer
       type: object
@@ -6047,18 +6158,83 @@ components:
           type: boolean
         requiresServerProxy:
           type: boolean
+    PlaybackQualitySelection:
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required: [mode]
+          properties:
+            mode: { type: string, const: automatic }
+        - type: object
+          additionalProperties: false
+          required: [mode, selectionId, qualityOfferRevision]
+          properties:
+            mode: { type: string, const: explicit }
+            selectionId: { type: string, minLength: 1 }
+            qualityOfferRevision: { type: string, minLength: 1 }
+    PlaybackQualityOffer:
+      type: object
+      additionalProperties: false
+      required: [selectionId, label, kind]
+      properties:
+        selectionId: { type: string, minLength: 1 }
+        label: { type: string, minLength: 1 }
+        kind: { type: string, enum: [automatic, original, fixed] }
+        maxVideoBitrateBps: { type: integer, format: int64, minimum: 1 }
+        maxAudioBitrateBps: { type: integer, format: int64, minimum: 1 }
+        targetDisplayHeight: { type: integer, enum: [144, 240, 360, 480, 720, 1080, 1440, 2160, 4320] }
+      allOf:
+        - if:
+            required: [kind]
+            properties: { kind: { enum: [automatic, original] } }
+          then:
+            not:
+              anyOf:
+                - required: [maxVideoBitrateBps]
+                - required: [maxAudioBitrateBps]
+                - required: [targetDisplayHeight]
+        - if:
+            required: [kind]
+            properties: { kind: { const: fixed } }
+          then:
+            anyOf:
+              - required: [maxVideoBitrateBps]
+              - required: [maxAudioBitrateBps]
+              - required: [targetDisplayHeight]
+    PlaybackQualityOfferSet:
+      type: object
+      additionalProperties: false
+      required: [contractId, schemaVersion, mediaId, versionId, sourceRevision, offerRevision, offers]
+      properties:
+        contractId: { type: string, const: PC-PLAYBACK }
+        schemaVersion: { type: string, const: quality-offers.v1 }
+        mediaId: { type: string, minLength: 1 }
+        versionId: { type: string, minLength: 1 }
+        sourceRevision: { type: string, minLength: 1 }
+        offerRevision: { type: string, minLength: 1 }
+        offers:
+          type: array
+          minItems: 2
+          uniqueItems: true
+          contains:
+            type: object
+            required: [kind]
+            properties: { kind: { const: automatic } }
+          minContains: 1
+          maxContains: 1
+          items: { $ref: "#/components/schemas/PlaybackQualityOffer" }
     PlaybackIntent:
       type: object
       additionalProperties: false
       description: Portable viewing intent resolved by the server against media facts, capabilities, membership limits, and server clamps.
+      required: [quality]
       properties:
         transportClass:
           type: string
           description: Non-authoritative client transport context, independent of route address and server locality.
           enum: [wifi, cellular, wired, unknown]
-        qualityProfile:
-          type: string
-          enum: [automatic, original, high, standard, data_saver]
+        quality:
+          $ref: "#/components/schemas/PlaybackQualitySelection"
         directPlayPolicy:
           type: string
           enum: [allow, prefer, never]
@@ -6068,9 +6244,6 @@ components:
         transcodePolicy:
           type: string
           enum: [allow, prefer, require, never]
-        maxVideoBitrateMbps: { type: integer, minimum: 0 }
-        maxAudioBitrateKbps: { type: integer, minimum: 0 }
-        maxVideoHeight: { type: integer, minimum: 0 }
         allowHdr: { type: boolean }
         preferredAudioLanguage: { type: string, maxLength: 32, description: Preferred BCP-47 audio language resolved by the server before resource selection. }
         preferredAudioLanguages:
@@ -6089,12 +6262,29 @@ components:
         preferredSubtitleMode: { type: string, enum: [off, text, burn_in], description: Portable subtitle presentation intent; the server returns concrete subtitle resources or a validated burn-in resource. }
         subtitlesEnabled: { type: boolean, description: Explicit subtitle enablement. When false, the authoritative mode is off. }
         burnInSubtitles: { type: boolean, description: Request server-selected burn-in when text subtitles cannot be attached as a Cast/native track. }
+    PlaybackRenegotiationIntent:
+      type: object
+      additionalProperties: false
+      description: Portable non-quality intent updates. Quality has exactly one owner at PlaybackRenegotiationRequest.quality.
+      properties:
+        transportClass: { type: string, enum: [wifi, cellular, wired, unknown] }
+        directPlayPolicy: { type: string, enum: [allow, prefer, never] }
+        directStreamPolicy: { type: string, enum: [allow, prefer, never] }
+        transcodePolicy: { type: string, enum: [allow, prefer, require, never] }
+        allowHdr: { type: boolean }
+        preferredAudioLanguage: { type: string, maxLength: 32 }
+        preferredAudioLanguages: { type: array, maxItems: 16, uniqueItems: true, items: { type: string, maxLength: 32 } }
+        preferredSubtitleLanguage: { type: string, maxLength: 32 }
+        preferredSubtitleLanguages: { type: array, maxItems: 16, uniqueItems: true, items: { type: string, maxLength: 32 } }
+        preferredSubtitleMode: { type: string, enum: [off, text, burn_in] }
+        subtitlesEnabled: { type: boolean }
+        burnInSubtitles: { type: boolean }
     ResolvedPlaybackPolicy:
       x-portico-audience: viewer
       type: object
       additionalProperties: false
       description: Canonical media-agnostic playback policy. Protocol-specific controls are additive nested extensions and never replace these required delivery fields.
-      required: [networkClass, qualityProfile, directPlayPolicy, directStreamPolicy, transcodePolicy, allowHdr, deliveryProfile, serverClamps]
+      required: [networkClass, directPlayPolicy, directStreamPolicy, transcodePolicy, allowHdr, serverClamps]
       properties:
         networkClass:
           type: string
@@ -6107,9 +6297,6 @@ components:
           type: string
           description: Server-resolved viewer locality from trusted request provenance, independent of the public or LAN route URL used.
           enum: [local, remote, unknown]
-        qualityProfile:
-          type: string
-          enum: [automatic, original, high, standard, data_saver]
         directPlayPolicy: { type: string, enum: [allow, prefer, never] }
         directStreamPolicy: { type: string, enum: [allow, prefer, never] }
         transcodePolicy: { type: string, enum: [allow, prefer, require, never] }
@@ -6117,9 +6304,6 @@ components:
         maxAudioBitrateKbps: { type: integer, minimum: 0 }
         maxVideoHeight: { type: integer, minimum: 0 }
         allowHdr: { type: boolean }
-        deliveryProfile:
-          type: string
-          description: Server-owned, media-type-specific profile that selects the actual video or audio encoder preset.
         serverClamps:
           type: array
           items: { type: string }
@@ -6227,8 +6411,6 @@ components:
         authorizationRecheckSeconds:
           type: integer
           minimum: 1
-        qualityProfile:
-          type: string
         overlayTranscode:
           type: boolean
         resourceRevision:
@@ -6243,7 +6425,7 @@ components:
     PlaybackSessionCreateRequest:
       type: object
       additionalProperties: false
-      required: [mediaId]
+      required: [mediaId, intent]
       properties:
         mediaId:
           type: string
@@ -6280,6 +6462,8 @@ components:
           $ref: "#/components/schemas/PlaybackRepeatMode"
         sourceContext:
           $ref: "#/components/schemas/PlaybackSourceContext"
+        replacement:
+          $ref: "#/components/schemas/PlaybackReplacementRequest"
     PlaybackRenegotiationRequest:
       x-portico-audience: viewer
       type: object
@@ -6289,15 +6473,18 @@ components:
         requestId: { type: string, minLength: 1, maxLength: 128 }
         expectedRevision: { type: integer, format: int64, minimum: 0 }
         clientProfile: { $ref: "#/components/schemas/PlaybackClientProfile" }
-        intent: { $ref: "#/components/schemas/PlaybackIntent" }
+        intent:
+          $ref: "#/components/schemas/PlaybackRenegotiationIntent"
         versionId: { type: string }
-        qualityId: { type: string }
+        quality:
+          $ref: "#/components/schemas/PlaybackQualitySelection"
         audioStreamId: { type: string }
         subtitleStreamId: { type: string }
         subtitleMode: { type: string, enum: [off, text, burn_in] }
     DVRPlaybackSessionCreateRequest:
       type: object
       additionalProperties: false
+      required: [intent]
       properties:
         clientInstanceId:
           type: string
@@ -6313,14 +6500,19 @@ components:
           type: integer
           minimum: 0
           description: Advisory resume position for a completed recording; ignored while a recording is live.
+        replacement:
+          $ref: "#/components/schemas/PlaybackReplacementRequest"
     PlaybackResponse:
       x-portico-audience: viewer
       type: object
       additionalProperties: false
-      required: [sessionId, nextEventSequence, mediaGrant, continuationCredential, media, sourceUrl, directPlay, resources, decision, policy, qualities, audioStreams, subtitleStreams, chapters, queue, repeatMode, queueRevision, playbackRevision, timeline, generation]
+      required: [sessionId, currentQueueEntryId, nextEventSequence, mediaGrant, continuationCredential, media, sourceUrl, directPlay, resources, decision, policy, qualityOffers, qualitySelection, audioStreams, subtitleStreams, chapters, queue, repeatMode, queueRevision, playbackRevision, timeline, generation]
       properties:
         sessionId:
           type: string
+        currentQueueEntryId:
+          type: string
+          minLength: 1
         nextEventSequence:
           type: integer
           format: int64
@@ -6348,22 +6540,10 @@ components:
           $ref: "#/components/schemas/PlaybackDecision"
         policy:
           $ref: "#/components/schemas/ResolvedPlaybackPolicy"
-        qualities:
-          type: array
-          items:
-            type: object
-            additionalProperties: false
-            properties:
-              id:
-                type: string
-              label:
-                type: string
-              description:
-                type: string
-              available:
-                type: boolean
-              requiresTranscode:
-                type: boolean
+        qualityOffers:
+          $ref: "#/components/schemas/PlaybackQualityOfferSet"
+        qualitySelection:
+          $ref: "#/components/schemas/PlaybackQualitySelection"
         audioStreams:
           type: array
           items:
@@ -6371,8 +6551,6 @@ components:
         selectedAudioStreamId:
           type: string
           description: Audio stream id selected by the server or explicitly requested by the client.
-        selectedQualityId:
-          type: string
         selectedSubtitleStreamId:
           type: string
         selectedSubtitleMode:
@@ -6404,7 +6582,7 @@ components:
         queue:
           type: array
           items:
-            $ref: "#/components/schemas/MediaItem"
+            $ref: "#/components/schemas/PlaybackQueueEntry"
         repeatMode:
           $ref: "#/components/schemas/PlaybackRepeatMode"
         queueRevision:
@@ -6439,8 +6617,6 @@ components:
           type: string
           description: Server-issued resource URL. Clients must not infer or rewrite its path or delivery-selection query.
         streamFormat:
-          type: string
-        qualityId:
           type: string
         audioStreamId:
           type: string
@@ -6551,42 +6727,25 @@ components:
           type: boolean
         playback:
           $ref: "#/components/schemas/PlaybackResponse"
-    PlaybackNextRequest:
+    PlaybackQueueEntry:
       type: object
-      required: [mediaId]
+      additionalProperties: false
+      required: [entryId, media]
       properties:
-        mediaId:
-          type: string
-        queueMediaIds:
-          type: array
-          items:
-            type: string
-    PlaybackNextResponse:
+        entryId: { type: string, minLength: 1 }
+        media: { $ref: "#/components/schemas/MediaItem" }
+    PlaybackQueueHistoryEntry:
       type: object
-      required: [queue, reason]
+      additionalProperties: false
+      required: [historyId, entryId, media]
       properties:
-        item:
-          $ref: "#/components/schemas/MediaItem"
-        queue:
-          type: array
-          items:
-            $ref: "#/components/schemas/MediaItem"
-        reason:
-          type: string
-    PlaybackQueueResponse:
-      type: object
-      required: [items, total]
-      properties:
-        items:
-          type: array
-          items:
-            $ref: "#/components/schemas/MediaItem"
-        total:
-          type: integer
+        historyId: { type: string, minLength: 1, description: Identity of this playback-history event. }
+        entryId: { type: string, minLength: 1, description: Stable identity of the queue occurrence that was played. }
+        media: { $ref: "#/components/schemas/MediaItem" }
     PlaybackSessionQueueReplaceRequest:
       type: object
       additionalProperties: false
-      required: [expectedRevision, mediaIds, repeatMode]
+      required: [expectedRevision, idempotencyKey, mediaIds, repeatMode]
       properties:
         expectedRevision:
           type: integer
@@ -6596,16 +6755,19 @@ components:
         mediaIds:
           type: array
           maxItems: 500
-          uniqueItems: true
-          description: Complete ordered replacement for the upcoming queue.
+          description: Complete ordered new-occurrence replacement for the upcoming queue. Repeated media ids create distinct entries.
           items:
             type: string
+        idempotencyKey:
+          type: string
+          minLength: 1
+          maxLength: 128
         repeatMode:
           $ref: "#/components/schemas/PlaybackRepeatMode"
     PlaybackSessionQueueRequest:
       type: object
       additionalProperties: false
-      required: [expectedRevision, action]
+      required: [expectedRevision, idempotencyKey, action]
       properties:
         expectedRevision:
           type: integer
@@ -6614,25 +6776,29 @@ components:
           description: Revision returned by the most recent queue read.
         action:
           type: string
-          enum: [append, play_next, remove, reorder, clear, set_repeat]
+          enum: [append, play_next, remove, reorder, shuffle, clear, set_repeat]
           description: One explicit mutation against the authoritative queue state.
         mediaId:
           type: string
-          description: Single media item for append, play_next, or remove.
+          description: Single media intent for append or play_next. Each use creates a new occurrence.
         mediaIds:
           type: array
-          description: Ordered media ids for replace, append, or play_next commands.
+          description: Ordered media intents for append or play_next. Repeated ids create distinct occurrences.
           items:
             type: string
-        index:
-          type: integer
-          description: Queue index for remove commands.
-        fromIndex:
-          type: integer
-          description: Source queue index for reorder commands.
-        toIndex:
-          type: integer
-          description: Destination queue index for reorder commands.
+        entryId:
+          type: string
+          description: Exact queue occurrence for remove or reorder.
+        destinationEntryId:
+          type: string
+          description: Existing occurrence used as the reorder anchor.
+        placement:
+          type: string
+          enum: [before, after]
+        idempotencyKey:
+          type: string
+          minLength: 1
+          maxLength: 128
         repeatMode:
           $ref: "#/components/schemas/PlaybackRepeatMode"
     PlaybackSessionQueueResponse:
@@ -6642,15 +6808,15 @@ components:
         sessionId:
           type: string
         current:
-          $ref: "#/components/schemas/MediaItem"
+          $ref: "#/components/schemas/PlaybackQueueEntry"
         items:
           type: array
           items:
-            $ref: "#/components/schemas/MediaItem"
+            $ref: "#/components/schemas/PlaybackQueueEntry"
         history:
           type: array
           items:
-            $ref: "#/components/schemas/MediaItem"
+            $ref: "#/components/schemas/PlaybackQueueHistoryEntry"
         total:
           type: integer
         canMutate:
@@ -6665,13 +6831,12 @@ components:
           $ref: "#/components/schemas/PlaybackSourceContext"
     PlaybackPrepareNextRequest:
       type: object
+      additionalProperties: false
+      required: [entryId]
       properties:
-        mediaId:
+        entryId:
           type: string
-        queueMediaIds:
-          type: array
-          items:
-            type: string
+          minLength: 1
         clientProfile:
           $ref: "#/components/schemas/PlaybackClientProfile"
         intent:
@@ -6680,8 +6845,6 @@ components:
           type: integer
         preferredHandoff:
           type: string
-        commitPreviousEnd:
-          type: boolean
         sourceContext:
           $ref: "#/components/schemas/PlaybackSourceContext"
     PlaybackPreparedResponse:
@@ -6702,31 +6865,60 @@ components:
         queue:
           type: array
           items:
-            $ref: "#/components/schemas/MediaItem"
+            $ref: "#/components/schemas/PlaybackQueueEntry"
         queueRevision: { type: integer, format: int64, minimum: 0 }
         playbackRevision: { type: integer, format: int64, minimum: 0 }
     PlaybackHandoffRequest:
       type: object
+      additionalProperties: false
+      required: [requestId, entryId, previousTerminal]
       properties:
         preparedSessionId:
           type: string
-        requestId: { type: string, maxLength: 128, description: Optional idempotency key. When omitted for a prepared handoff, the server derives one from the single-use prepared capability; exact retries return the committed result. }
+        requestId: { type: string, minLength: 8, maxLength: 128, pattern: '^[A-Za-z0-9._:-]+$', description: Stable idempotency identity for this handoff. Exact retries reuse this value and a byte-equivalent request body to return the committed result. }
         expectedQueueRevision: { type: integer, format: int64, minimum: 0 }
         expectedPlaybackRevision: { type: integer, format: int64, minimum: 0 }
-        mediaId:
+        entryId:
           type: string
+          minLength: 1
         clientProfile:
           $ref: "#/components/schemas/PlaybackClientProfile"
         intent:
           $ref: "#/components/schemas/PlaybackIntent"
-        queueMediaIds:
-          type: array
-          items:
-            type: string
-        progressSeconds:
+        previousTerminal:
+          allOf:
+            - $ref: "#/components/schemas/PlaybackTerminalEvent"
+          description: The source session actor's complete ordered terminal event. Natural transition uses disposition completed; deliberate replacement uses stopped. The server applies this event and activates the replacement atomically; rejection leaves the source session and its authority unchanged.
+        startSeconds:
           type: integer
+          minimum: 0
+          description: Explicit start position for the replacement session, distinct from the old session's terminal position. For a direct same-entry handoff, omission defaults to previousTerminal.positionSeconds; explicit zero means Replay. For a different or prepared entry, omission retains canonical resume policy.
         sourceContext:
           $ref: "#/components/schemas/PlaybackSourceContext"
+    PlaybackReplacementRequest:
+      type: object
+      additionalProperties: false
+      required: [sourceSessionId, requestId, previousTerminal]
+      description: Exact authority-transfer envelope for replacing an active session while starting or tuning another target. The containing target request and this envelope form one immutable idempotent request. The source stays authoritative unless the server atomically accepts previousTerminal and activates the reserved successor.
+      properties:
+        sourceSessionId:
+          type: string
+          minLength: 1
+        requestId:
+          type: string
+          minLength: 8
+          maxLength: 128
+          pattern: '^[A-Za-z0-9._:-]+$'
+        previousTerminal:
+          $ref: "#/components/schemas/PlaybackTerminalEvent"
+        expectedQueueRevision:
+          type: integer
+          format: int64
+          minimum: 0
+        expectedPlaybackRevision:
+          type: integer
+          format: int64
+          minimum: 0
     DashboardResponse:
       type: object
       required: [nowPlaying, metrics, bandwidth, system, watchedToday, topUsers, playHistory, topPlayed, transcodes, alerts, conversions, libraries, jobs, mode, period, generatedAt]
@@ -7082,8 +7274,6 @@ components:
           type: string
         selectionChanged:
           type: boolean
-        qualityId:
-          type: string
         audioStreamId:
           type: string
         subtitleStreamId:
@@ -7252,25 +7442,37 @@ components:
           description: Optional viewer-facing message for stop commands.
     PlaybackReceiver:
       type: object
-      required: [id, name, code, supportedCommands, command, createdAt, lastSeenAt]
+      additionalProperties: false
+      required: [id, serverId, name, platform, receiverPublicKey, receiverPublicKeyFingerprint, supportedCommands, expiresAt, createdAt, lastSeenAt]
       properties:
         id:
           type: string
-        name:
+        serverId:
           type: string
-        code:
+        name:
           type: string
         app:
           type: string
         platform:
           type: string
+        receiverPublicKey:
+          type: string
+          minLength: 43
+          maxLength: 43
+          description: Base64url raw X25519 public key owned by the receiver.
+        receiverPublicKeyFingerprint:
+          type: string
+          minLength: 43
+          maxLength: 43
+          description: Base64url SHA-256 digest of the decoded receiver public key.
         supportedCommands:
           type: array
           items:
             type: string
-            enum: [load]
-        command:
-          $ref: "#/components/schemas/PlaybackCommand"
+            enum: [load, play, pause, seek, stop]
+        expiresAt:
+          type: string
+          format: date-time
         createdAt:
           type: string
           format: date-time
@@ -7279,18 +7481,129 @@ components:
           format: date-time
     PlaybackReceiverRequest:
       type: object
+      additionalProperties: false
+      required: [receiverId, name, platform, receiverPublicKey, supportedCommands, clientInstanceId]
       properties:
+        receiverId:
+          type: string
+          minLength: 1
+          maxLength: 160
         name:
           type: string
+          minLength: 1
+          maxLength: 80
         app:
           type: string
+          maxLength: 80
         platform:
           type: string
+          minLength: 1
+          maxLength: 80
+        receiverPublicKey:
+          type: string
+          minLength: 43
+          maxLength: 43
         supportedCommands:
           type: array
+          minItems: 1
+          uniqueItems: true
           items:
             type: string
-            enum: [load]
+            enum: [load, play, pause, seek, stop]
+        clientInstanceId:
+          type: string
+          minLength: 1
+    PlaybackReceiverHeartbeatRequest:
+      type: object
+      additionalProperties: false
+      required: [receiverPublicKeyFingerprint]
+      properties:
+        receiverPublicKeyFingerprint:
+          type: string
+          minLength: 43
+          maxLength: 43
+    ReceiverAuthorizationRequest:
+      type: object
+      additionalProperties: false
+      required: [requestId, controllerId, controllerPublicKey, allowedCommands, clientInstanceId]
+      properties:
+        requestId: { type: string, minLength: 1, maxLength: 128 }
+        controllerId: { type: string, minLength: 1, maxLength: 160 }
+        controllerPublicKey: { type: string, minLength: 43, maxLength: 43 }
+        allowedCommands:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items: { type: string, enum: [load, play, pause, seek, stop] }
+        clientInstanceId: { type: string, minLength: 1 }
+    PlaybackReceiverHandoffRequest:
+      type: object
+      additionalProperties: false
+      required: [authorizationId, receiverPublicKeyFingerprint, playback]
+      properties:
+        authorizationId: { type: string, minLength: 1 }
+        receiverPublicKeyFingerprint: { type: string, minLength: 43, maxLength: 43 }
+        playback:
+          $ref: "#/components/schemas/PlaybackSessionCreateRequest"
+    PlaybackReceiverHandoffCommitRequest:
+      type: object
+      additionalProperties: false
+      required: [authorizationId, receiverPublicKeyFingerprint, sourceSessionId, receiverSessionId, readiness]
+      properties:
+        authorizationId: { type: string, minLength: 1 }
+        receiverPublicKeyFingerprint: { type: string, minLength: 43, maxLength: 43 }
+        sourceSessionId: { type: string, minLength: 1 }
+        receiverSessionId: { type: string, minLength: 1, description: Exact handoff_pending session returned by the prepare request. }
+        readiness: { type: string, enum: [playing], description: Exact first-playing receiver evidence required before the Server commits source terminal authority. }
+    PlaybackReceiverHandoffStatusResponse:
+      type: object
+      additionalProperties: false
+      required: [outcome, requestId, sourceSessionId]
+      properties:
+        outcome: { type: string, enum: [waiting, pending, accepted] }
+        requestId: { type: string }
+        sourceSessionId: { type: string }
+        receiverSessionId: { type: string }
+    ReceiverControllerGrant:
+      type: object
+      additionalProperties: false
+      required: [authorizationId, receiverId, serverId, receiverPublicKey, receiverPublicKeyFingerprint, allowedCommands, authorizationRevision, expiresAt]
+      properties:
+        authorizationId: { type: string }
+        receiverId: { type: string }
+        serverId: { type: string }
+        receiverPublicKey: { type: string, minLength: 43, maxLength: 43 }
+        receiverPublicKeyFingerprint: { type: string, minLength: 43, maxLength: 43 }
+        allowedCommands:
+          type: array
+          items: { type: string, enum: [load, play, pause, seek, stop] }
+        authorizationRevision: { type: string }
+        expiresAt: { type: string, format: date-time }
+    ReceiverAuthorizationRecord:
+      type: object
+      additionalProperties: false
+      required: [authorizationId, receiverId, serverId, controllerId, controllerPublicKey, receiverPublicKeyFingerprint, allowedCommands, authorizationRevision, expiresAt]
+      properties:
+        authorizationId: { type: string }
+        receiverId: { type: string }
+        serverId: { type: string }
+        controllerId: { type: string }
+        controllerPublicKey: { type: string, minLength: 43, maxLength: 43 }
+        receiverPublicKeyFingerprint: { type: string, minLength: 43, maxLength: 43 }
+        allowedCommands:
+          type: array
+          items: { type: string, enum: [load, play, pause, seek, stop] }
+        authorizationRevision: { type: string }
+        expiresAt: { type: string, format: date-time }
+    PlaybackReceiverHeartbeatResponse:
+      type: object
+      additionalProperties: false
+      required: [receiver, authorizations]
+      properties:
+        receiver: { $ref: "#/components/schemas/PlaybackReceiver" }
+        authorizations:
+          type: array
+          items: { $ref: "#/components/schemas/ReceiverAuthorizationRecord" }
     WatchWithFriendsMember:
       type: object
       required: [profileId, displayName, joinedAt, lastSeenAt]
@@ -7313,12 +7626,19 @@ components:
           format: date-time
     WatchWithFriendsQueueItem:
       type: object
-      required: [mediaId, mediaTitle, sortOrder, addedByProfileId, addedAt]
+      additionalProperties: false
+      required: [entryId, mediaId, mediaTitle, unavailable, sortOrder, addedByProfileId, addedAt]
       properties:
+        entryId:
+          type: string
+          minLength: 1
         mediaId:
           type: string
         mediaTitle:
           type: string
+        unavailable:
+          type: boolean
+          description: True when this viewer cannot access the media. The stable entryId and ordering remain authoritative.
         sortOrder:
           type: integer
         addedByProfileId:
@@ -7328,7 +7648,7 @@ components:
           format: date-time
     WatchWithFriendsGroup:
       type: object
-      required: [id, name, ownerProfileId, ownerName, mediaId, mediaTitle, state, positionSeconds, positionUpdatedAt, serverTime, playbackRate, revision, playbackRevision, reconnectGeneration, permissions, shuffleEnabled, repeatMode, command, members, queue, createdAt, updatedAt]
+      required: [id, name, ownerProfileId, ownerName, mediaId, currentEntryId, mediaTitle, state, positionSeconds, positionUpdatedAt, serverTime, playbackRate, revision, playbackRevision, reconnectGeneration, permissions, shuffleEnabled, repeatMode, command, members, queue, createdAt, updatedAt]
       properties:
         id:
           type: string
@@ -7340,6 +7660,9 @@ components:
           type: string
         mediaId:
           type: string
+        currentEntryId:
+          type: string
+          minLength: 1
         mediaTitle:
           type: string
         state:
@@ -7416,7 +7739,10 @@ components:
           enum: [play, pause, seek, stop, load, next, previous]
         mediaId:
           type: string
-          description: Required for load actions.
+          description: Creates and loads one genuinely new queue occurrence. Mutually exclusive with entryId.
+        entryId:
+          type: string
+          description: Loads one exact existing queue occurrence. Mutually exclusive with mediaId.
         positionSeconds:
           type: integer
           minimum: 0
@@ -7478,12 +7804,12 @@ components:
           description: Replays return the current materialized group snapshot when this exact request was already committed.
     WatchWithFriendsQueueOrderRequest:
       type: object
-      required: [mediaIds, expectedRevision, idempotencyKey]
+      additionalProperties: false
+      required: [entryId, destinationEntryId, placement, expectedRevision, idempotencyKey]
       properties:
-        mediaIds:
-          type: array
-          items:
-            type: string
+        entryId: { type: string, minLength: 1 }
+        destinationEntryId: { type: string, minLength: 1 }
+        placement: { type: string, enum: [before, after] }
         expectedRevision:
           type: integer
           format: int64
@@ -7518,6 +7844,7 @@ components:
           format: date-time
     PlaybackProgressEvent:
       type: object
+      additionalProperties: false
       required: [eventSequence, recordedAt]
       properties:
         eventSequence:
@@ -7543,6 +7870,7 @@ components:
         positionSeconds:
           type: number
           minimum: 0
+          description: Exact terminal timeline position. For completed playback this must equal durationSeconds; the server rejects rather than normalizes non-final evidence.
         durationSeconds:
           type: integer
           minimum: 0
@@ -7550,8 +7878,6 @@ components:
           type: number
           minimum: 0
         subtitleDecision:
-          type: string
-        qualityId:
           type: string
         audioStreamId:
           type: string
@@ -7566,12 +7892,9 @@ components:
           type: boolean
         clientFallbackReason:
           type: string
-        completed:
-          type: boolean
-          description: Explicitly completes the media and closes the playback session after this event is accepted.
         isPlaying:
           type: boolean
-    PlaybackSessionStopRequest:
+    PlaybackTerminalEvent:
       type: object
       additionalProperties: false
       required: [disposition, generation, eventSequence, recordedAt, positionSeconds, durationSeconds]
@@ -7596,7 +7919,42 @@ components:
         durationSeconds:
           type: number
           minimum: 0
-          description: Required terminal timeline duration. May be zero only for stopped indefinite/live playback; completed playback requires a positive value.
+          description: Required terminal timeline duration. May be zero only for stopped indefinite/live playback; completed playback requires a positive value exactly equal to positionSeconds.
+    PlaybackSessionStopRequest:
+      type: object
+      additionalProperties: false
+      required: [requestId, terminal]
+      properties:
+        requestId:
+          type: string
+          minLength: 8
+          maxLength: 128
+          pattern: '^[A-Za-z0-9._:-]+$'
+          description: Stable idempotency identity allocated before the terminal request is sent. An exact retry reuses this value and the byte-equivalent terminal envelope.
+        terminal:
+          $ref: "#/components/schemas/PlaybackTerminalEvent"
+    PlaybackSessionTerminalAcknowledgement:
+      x-portico-audience: viewer
+      type: object
+      additionalProperties: false
+      required: [requestId, accepted, duplicate, sessionId, terminal]
+      properties:
+        requestId:
+          type: string
+          minLength: 8
+          maxLength: 128
+          pattern: '^[A-Za-z0-9._:-]+$'
+        accepted:
+          type: boolean
+          description: True when this exact terminal mutation is durably committed, including an exact retry of a prior commit.
+        duplicate:
+          type: boolean
+          description: True when the server returned the durable receipt for an exact previously committed request.
+        sessionId:
+          type: string
+          minLength: 1
+        terminal:
+          $ref: "#/components/schemas/PlaybackTerminalEvent"
     PlaybackProgressAcknowledgement:
       type: object
       required: [accepted, duplicate, stale, highestEventSequence, sessionState, generation]
@@ -7632,8 +7990,9 @@ components:
     CastBootstrapRequest:
       type: object
       additionalProperties: false
-      required: [sourceKind, sourceId, clientInstanceId, clientProfile, receiverId, receiverOrigin, receiverPublicKey, receiverChallenge]
+      required: [requestId, sourceKind, sourceId, clientInstanceId, clientProfile, receiverId, receiverOrigin, receiverPublicKey, receiverChallenge]
       properties:
+        requestId: { type: string, minLength: 8, maxLength: 128, pattern: '^[A-Za-z0-9._:-]+$', description: Stable identity for this fresh or replacement bootstrap attempt. }
         sourceKind: { type: string, enum: [media, live, dvr, library-channel], description: Authoritative source route selected for this handoff. }
         sourceId: { type: string, minLength: 1, description: Immutable identifier for the selected source route. }
         versionId: { type: string }
@@ -7648,7 +8007,7 @@ components:
         queueMediaIds: { type: array, items: { type: string } }
         repeatMode: { type: string, enum: [off, one, all] }
         sourceContext: { $ref: "#/components/schemas/PlaybackSourceContext" }
-        sourcePlaybackSessionId: { type: string, description: Existing Apple playback session being atomically handed to the Cast receiver. }
+        replacement: { $ref: "#/components/schemas/PlaybackReplacementRequest" }
         receiverId: { type: string, minLength: 1, maxLength: 160 }
         receiverOrigin: { type: string, format: uri }
         receiverPublicKey: { type: string, minLength: 16, maxLength: 256, description: Base64url raw P-256 public key generated ephemerally by the receiver. }
@@ -7657,7 +8016,7 @@ components:
     CastBootstrapResponse:
       x-portico-audience: viewer
       type: object
-      required: [version, bootstrapEnvelope, bootstrapId, receiverId, receiverOrigin, serverOrigin, generation, expiresAt, capabilities]
+      required: [version, bootstrapEnvelope, bootstrapId, receiverId, receiverOrigin, serverOrigin, generation, expiresAt, capabilities, requestId, replacementSessionId, transferStatus]
       properties:
         version: { type: string, enum: [v1] }
         bootstrapEnvelope: { type: string, description: Base64url JSON envelope encrypted to the receiver's ephemeral P-256 key; it is safe to carry in Cast customData. }
@@ -7668,6 +8027,36 @@ components:
         generation: { type: integer, format: int64, minimum: 1 }
         expiresAt: { type: string, format: date-time }
         capabilities: { type: array, items: { type: string } }
+        requestId: { type: string }
+        sourceSessionId: { type: string }
+        replacementSessionId: { type: string }
+        transferStatus: { type: string, const: pending, description: A credential-bearing bootstrap response exists only while the exact transfer is pending. Final outcomes are reconciled through the no-credential transfer-status response. }
+    CastTransferStatusRequest:
+      type: object
+      additionalProperties: false
+      required: [clientInstanceId, requestId]
+      properties:
+        clientInstanceId: { type: string, minLength: 1 }
+        sourceSessionId: { type: string }
+        requestId: { type: string, minLength: 8, maxLength: 128, pattern: '^[A-Za-z0-9._:-]+$' }
+    CastTransferStatusResponse:
+      x-portico-audience: viewer
+      type: object
+      required: [version, requestId, replacementSessionId, status, requestFingerprint]
+      oneOf:
+        - title: Fresh Cast bootstrap outcome
+          not:
+            required: [sourceSessionId]
+        - title: Replacement Cast transfer outcome
+          required: [sourceSessionId, previousTerminal]
+      properties:
+        version: { type: string, enum: [v1] }
+        sourceSessionId: { type: string, minLength: 1, description: Present only when this outcome replaced an existing source actor. }
+        requestId: { type: string }
+        replacementSessionId: { type: string }
+        status: { type: string, enum: [pending, committed, expired, failed] }
+        requestFingerprint: { type: string, description: Exact server receipt fingerprint binding the target intent and replacement envelope. }
+        previousTerminal: { $ref: "#/components/schemas/PlaybackTerminalEvent", description: Exact accepted source terminal evidence; present only for replacement outcomes. }
     CastRedeemRequest:
       type: object
       additionalProperties: false
@@ -7680,7 +8069,7 @@ components:
     CastReceiverSessionResponse:
       x-portico-audience: viewer
       type: object
-      required: [version, receiverSessionToken, receiverSessionId, playbackSessionId, receiverId, serverOrigin, generation, capabilities, grantSemantics, mediaGrantExpiresAt, playback]
+      required: [version, receiverSessionToken, receiverSessionId, playbackSessionId, receiverId, serverOrigin, generation, capabilities, grantSemantics, mediaGrantExpiresAt, playback, automation]
       properties:
         version: { type: string }
         receiverSessionToken: { type: string, description: Receiver-scoped API credential; separate from the media grant. }
@@ -7693,10 +8082,11 @@ components:
         grantSemantics: { type: string, enum: [initial, extension, rotation] }
         mediaGrantExpiresAt: { type: string, format: date-time }
         playback: { $ref: "#/components/schemas/PlaybackResponse" }
+        automation: { $ref: "#/components/schemas/CastPlaybackAutomation" }
     CastReceiverSessionState:
       x-portico-audience: viewer
       type: object
-      required: [version, receiverSessionId, playbackSessionId, receiverId, serverOrigin, generation, status, playbackState, positionSeconds, mediaId, capabilities, lastSeenAt, expiresAt]
+      required: [version, receiverSessionId, playbackSessionId, receiverId, serverOrigin, generation, status, playbackState, positionSeconds, mediaId, currentQueueEntryId, capabilities, lastSeenAt, expiresAt, repeatMode, queue]
       properties:
         version: { type: string }
         receiverSessionId: { type: string }
@@ -7704,13 +8094,16 @@ components:
         receiverId: { type: string }
         serverOrigin: { type: string, format: uri }
         generation: { type: integer, format: int64 }
-        status: { type: string, enum: [active, stopped, expired, revoked] }
+        status: { type: string, enum: [pending, active, stopped, expired, revoked] }
         playbackState: { type: string }
         positionSeconds: { type: integer, minimum: 0 }
         mediaId: { type: string }
+        currentQueueEntryId: { type: string, minLength: 1 }
         capabilities: { type: array, items: { type: string } }
         lastSeenAt: { type: string, format: date-time }
         expiresAt: { type: string, format: date-time }
+        repeatMode: { $ref: "#/components/schemas/PlaybackRepeatMode" }
+        queue: { type: array, items: { $ref: "#/components/schemas/PlaybackQueueEntry" } }
     CastReconnectRequest:
       type: object
       additionalProperties: false
@@ -7734,6 +8127,7 @@ components:
           required: [generation]
           properties:
             generation: { type: integer, format: int64, minimum: 1 }
+            state: { type: string, enum: [playing, paused, buffering], description: Terminal completed/stopped evidence is forbidden here and must use the exact stop or atomic advance request. }
     CastRenewRequest:
       type: object
       additionalProperties: false
@@ -7754,16 +8148,79 @@ components:
         receiverSession: { $ref: "#/components/schemas/CastReceiverSessionState" }
     CastStopRequest:
       type: object
-      required: [generation]
+      additionalProperties: false
+      required: [generation, requestId, terminal]
       properties:
         generation: { type: integer, format: int64, minimum: 1 }
+        requestId: { type: string, minLength: 8, maxLength: 128, pattern: '^[A-Za-z0-9._:-]+$' }
+        terminal: { $ref: "#/components/schemas/PlaybackTerminalEvent" }
+    CastAdvanceRequest:
+      type: object
+      additionalProperties: false
+      required: [generation, advanceId, requestId, previousTerminal]
+      properties:
+        generation: { type: integer, format: int64, minimum: 1 }
+        advanceId: { type: string, minLength: 1, maxLength: 128 }
+        requestId: { type: string, minLength: 8, maxLength: 128, pattern: '^[A-Za-z0-9._:-]+$' }
+        previousTerminal: { $ref: "#/components/schemas/PlaybackTerminalEvent" }
+        automatic: { type: boolean }
+    CastAdvanceCancelRequest:
+      type: object
+      additionalProperties: false
+      required: [generation, requestId]
+      properties:
+        generation: { type: integer, format: int64, minimum: 1 }
+        requestId: { type: string, minLength: 8, maxLength: 128, pattern: '^[A-Za-z0-9._:-]+$' }
+    CastSegmentSkipRequest:
+      type: object
+      additionalProperties: false
+      required: [generation, segmentId]
+      properties:
+        generation: { type: integer, format: int64, minimum: 1 }
+        segmentId: { type: string, minLength: 1, maxLength: 128 }
+    CastPlaybackAutomation:
+      type: object
+      required: [autoplayNext, upNextCountdownSeconds, passoutProtection, passoutAfterEpisodes, introSkip, creditsSkip]
+      properties:
+        autoplayNext: { type: boolean }
+        upNextCountdownSeconds: { type: integer, minimum: 0 }
+        passoutProtection: { type: boolean }
+        passoutAfterEpisodes: { type: integer, minimum: 1 }
+        introSkip: { type: string, enum: [off, ask, automatic] }
+        creditsSkip: { type: string, enum: [off, ask, automatic] }
+    CastAdvanceResponse:
+      x-portico-audience: viewer
+      type: object
+      required: [version, status, requestId, requestFingerprint, previousTerminal, sourceSessionId, generation, automaticAdvances, automation]
+      properties:
+        version: { type: string, enum: [v1] }
+        status: { type: string, enum: [prepared, committed, failed, exhausted, passout_stopped] }
+        requestId: { type: string }
+        requestFingerprint: { type: string, description: Exact no-credential fingerprint of the receiver advance request. }
+        previousTerminal: { $ref: "#/components/schemas/PlaybackTerminalEvent" }
+        sourceSessionId: { type: string }
+        replacementSessionId: { type: string }
+        generation: { type: integer, format: int64, minimum: 1 }
+        automaticAdvances: { type: integer, minimum: 0 }
+        automation: { $ref: "#/components/schemas/CastPlaybackAutomation" }
+        playback: { $ref: "#/components/schemas/PlaybackResponse" }
     CastStopResponse:
       x-portico-audience: viewer
       type: object
-      required: [ok, generation]
+      required: [ok, generation, terminal]
       properties:
         ok: { type: boolean }
         generation: { type: integer, format: int64 }
+        terminal: { $ref: "#/components/schemas/PlaybackSessionTerminalAcknowledgement" }
+    CastSegmentSkipResponse:
+      x-portico-audience: viewer
+      type: object
+      required: [version, generation, skipped]
+      properties:
+        version: { type: string, enum: [v1] }
+        generation: { type: integer, format: int64, minimum: 1 }
+        skipped: { type: boolean }
+        positionSeconds: { type: integer, minimum: 0 }
     CastOperationResponse:
       x-portico-audience: viewer
       oneOf:
@@ -7771,6 +8228,9 @@ components:
         - { $ref: "#/components/schemas/PlaybackProgressAcknowledgement" }
         - { $ref: "#/components/schemas/CastRenewResponse" }
         - { $ref: "#/components/schemas/CastStopResponse" }
+        - { $ref: "#/components/schemas/CastAdvanceResponse" }
+        - { $ref: "#/components/schemas/CastTransferStatusResponse" }
+        - { $ref: "#/components/schemas/CastSegmentSkipResponse" }
     ServerSettings:
       type: object
       additionalProperties: false
@@ -9364,18 +9824,78 @@ components:
           description: Short-lived opaque capability for the exact restore-status route.
     RestoreBackupRequest:
       type: object
-      required: [password, confirmation]
+      required: [confirmation]
       additionalProperties: false
+      anyOf:
+        - required: [password]
+        - required: [hostedAuthorization]
       properties:
         password:
           type: string
           format: password
           minLength: 1
           description: Current account password; profile PINs and session possession are not accepted.
+        hostedAuthorization:
+          $ref: "#/components/schemas/HostedRestoreAuthorization"
         confirmation:
           type: string
           minLength: 1
           description: Exact destructive confirmation bound to the selected backup, for example restore:backup-name.db.
+    RestoreAuthorizationContext:
+      type: object
+      required: [restoreSecurityEpoch]
+      additionalProperties: false
+      properties:
+        restoreSecurityEpoch:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Current monotonic Server epoch that a Hosted restore authorization must bind exactly.
+    HostedRestoreAuthorization:
+      type: object
+      required: [kind, version, audience, authorizationId, purpose, serverId, accountId, restoreSecurityEpoch, issuedAt, expiresAt, signatureAlgorithm, signatureKeyId, signature]
+      additionalProperties: false
+      properties:
+        kind:
+          type: string
+          const: restore-authorization
+        version:
+          type: integer
+          const: 1
+        audience:
+          type: string
+          const: portico-media-server
+        authorizationId:
+          type: string
+          minLength: 1
+        purpose:
+          type: string
+          const: server-restore
+        serverId:
+          type: string
+          minLength: 1
+        accountId:
+          type: string
+          minLength: 1
+        restoreSecurityEpoch:
+          type: integer
+          format: int64
+          minimum: 0
+        issuedAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+        signatureAlgorithm:
+          type: string
+          const: ed25519
+        signatureKeyId:
+          type: string
+          minLength: 1
+        signature:
+          type: string
+          minLength: 1
     SavedResourceShare:
       type: object
       required: [userId, displayName, email, canEdit]
@@ -10727,11 +11247,13 @@ components:
         pageInfo: { $ref: "#/components/schemas/CursorPageInfo" }
     LibraryChannelTuneRequest:
       type: object
+      required: [clientInstanceId, intent]
       properties:
         at: { type: string, format: date-time, description: Owner-only diagnostic override. Consumer tune always uses authoritative server time. }
         clientInstanceId: { type: string }
         clientProfile: { $ref: "#/components/schemas/PlaybackClientProfile" }
         intent: { $ref: "#/components/schemas/PlaybackIntent" }
+        replacement: { $ref: "#/components/schemas/PlaybackReplacementRequest" }
     LibraryChannelPlayoutSource:
       x-portico-audience: viewer
       type: object
@@ -11568,12 +12090,12 @@ paths:
       summary: Request or renew the Remote Access certificate
       x-portico-role: owner
       responses:
-        "200":
-          description: Certificate request completed or recorded
+        "202":
+          description: Certificate maintenance job queued or reused
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/RemoteAccessStatus"
+                $ref: "#/components/schemas/RemoteAccessCertificateRenewResponse"
   /remote-access/members/{id}:
     patch:
       summary: Update a Hosted Portico member's local profile mapping
@@ -12780,9 +13302,14 @@ paths:
       responses:
         "200":
           description: Canonical product contract
+          headers:
+            Cache-Control: { schema: { type: string, const: "private, no-cache" } }
+            ETag: { schema: { type: string, minLength: 66, maxLength: 66 } }
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ProductContract" }
+        "304":
+          description: The cached semantic Product Contract is current
   /product-language/{locale}:
     get:
       operationId: getProductLanguage
@@ -14080,6 +14607,29 @@ paths:
               schema: { $ref: "#/components/schemas/MediaDownloadGrantResponse" }
         "404": { description: Preparation is absent or belongs to another profile }
         "409": { description: Preparation is not ready }
+  /offline-download-authorizations/revalidate:
+    post:
+      operationId: revalidateOfflineDownloadAuthorization
+      summary: Revalidate and replace an immutable native offline authorization receipt
+      description: Returns a signed replacement only after the active profile, exact authorization revision, preparation, media version, and verified artifact binding are rechecked atomically. Complete foreign viewer scopes return out-of-scope without probing receipt or preparation state; malformed receipts return invalid.
+      x-portico-auth: session
+      x-portico-permission: download-media
+      x-portico-audience: viewer
+      x-portico-surfaces: [mobile, television]
+      x-portico-rate-policy: auth-sensitive
+      x-portico-audit-event: api.revalidateOfflineDownloadAuthorization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/OfflineDownloadAuthorizationRevalidationRequest" }
+      responses:
+        "200":
+          description: Exact revalidation outcome; only valid-replacement includes a receipt
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OfflineDownloadAuthorizationRevalidationResponse" }
+        "503": { description: Authorization state could not be checked atomically }
   /media/{id}/download:
     get:
       summary: Download the original source or an existing optimized version for a permitted media item
@@ -14870,6 +15420,29 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/CastReceiverSessionState" }
+  /playback/cast/transfer-status:
+    post:
+      operationId: postPlaybackCastTransferStatus
+      x-portico-client-core-method: castTransferStatus
+      x-portico-audience: viewer
+      x-portico-surfaces: [web, mobile, television]
+      x-portico-auth: session
+      x-portico-permission: play-media
+      x-portico-rate-policy: playback-control
+      x-portico-audit-event: api.postPlaybackCastTransferStatus
+      summary: Reconcile one exact Cast bootstrap or authority transfer
+      description: Returns only durable no-credential outcome evidence for the exact account/profile/client request identity.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CastTransferStatusRequest" }
+      responses:
+        "200":
+          description: Exact pending or final Cast transfer outcome
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CastTransferStatusResponse" }
   /playback/cast/sessions/{sessionId}/{operation}:
     parameters:
       - name: sessionId
@@ -14881,10 +15454,11 @@ paths:
         required: true
         schema:
           type: string
-          enum: [state, control, progress, renew, stop]
+          enum: [state, control, progress, renew, stop, advance, advance-cancel, segment-skip]
     get:
       operationId: getPlaybackCastSessionState
-      security: []
+      security:
+        - castReceiverAuth: []
       x-portico-runtime-path: /api/playback/cast/sessions/{sessionId}/state
       x-portico-audience: viewer
       x-portico-surfaces: [television]
@@ -14901,7 +15475,8 @@ paths:
               schema: { $ref: "#/components/schemas/CastReceiverSessionState" }
     post:
       operationId: postPlaybackCastSessionOperation
-      security: []
+      security:
+        - castReceiverAuth: []
       x-portico-runtime-path: /api/playback/cast/sessions/{sessionId}/{operation}
       x-portico-audience: viewer
       x-portico-surfaces: [television]
@@ -14920,29 +15495,15 @@ paths:
                 - { $ref: "#/components/schemas/CastProgressRequest" }
                 - { $ref: "#/components/schemas/CastRenewRequest" }
                 - { $ref: "#/components/schemas/CastStopRequest" }
+                - { $ref: "#/components/schemas/CastAdvanceRequest" }
+                - { $ref: "#/components/schemas/CastAdvanceCancelRequest" }
+                - { $ref: "#/components/schemas/CastSegmentSkipRequest" }
       responses:
         "200":
           description: Cast operation result
           content:
             application/json:
               schema: { $ref: "#/components/schemas/CastOperationResponse" }
-    delete:
-      operationId: deletePlaybackCastSession
-      security: []
-      x-portico-runtime-path: /api/playback/cast/sessions/{sessionId}/stop
-      x-portico-audience: viewer
-      x-portico-surfaces: [television]
-      x-portico-auth: public
-      x-portico-permission: play-media
-      x-portico-rate-policy: playback-control
-      x-portico-audit-event: api.deletePlaybackCastSession
-      summary: Idempotently stop Cast playback
-      responses:
-        "200":
-          description: Cast receiver session stopped
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/CastStopResponse" }
   /playback/bitrate-test:
     get:
       summary: Download a bounded binary payload for client bitrate testing
@@ -15123,10 +15684,10 @@ paths:
             schema:
               type: object
               properties:
+                clientInstanceId:
+                  type: string
                 clientProfile:
                   $ref: "#/components/schemas/PlaybackClientProfile"
-                intent:
-                  $ref: "#/components/schemas/PlaybackIntent"
       responses:
         "200":
           description: Active playback restore state
@@ -15134,40 +15695,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PlaybackRestoreResponse"
-  /playback/next:
-    post:
-      summary: Resolve the next playable media item
-      description: Returns a server-backed up-next item using the supplied queue first, then contextual media relationships.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/PlaybackNextRequest"
-      responses:
-        "200":
-          description: Next playable item and queue context
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/PlaybackNextResponse"
-  /playback/queue:
-    post:
-      summary: Resolve a server-backed playback queue
-      description: Returns playable queue items aligned to server permissions and media relationships.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/PlaybackNextRequest"
-      responses:
-        "200":
-          description: Server-backed queue
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/PlaybackQueueResponse"
   /playback-sessions/{sessionId}:
     parameters:
       - name: sessionId
@@ -15193,7 +15720,7 @@ paths:
                 $ref: "#/components/schemas/PlaybackProgressAcknowledgement"
     delete:
       summary: End a playback session
-      description: Atomically records the final playback position and terminal disposition, then ends the session and revokes its playback authority.
+      description: Atomically records the final playback position and terminal disposition, then ends the session and revokes its playback authority. The caller persists and reuses the exact request after an ambiguous response; an exact retry returns the committed receipt. Authentication and not-found failures are never treated as inferred success.
       requestBody:
         required: true
         content:
@@ -15202,11 +15729,11 @@ paths:
               $ref: "#/components/schemas/PlaybackSessionStopRequest"
       responses:
         "200":
-          description: Playback session ended
+          description: Durable terminal receipt for the ended playback session
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SuccessResponse"
+                $ref: "#/components/schemas/PlaybackSessionTerminalAcknowledgement"
   /playback-sessions/{sessionId}/continuation:
     security: []
     parameters:
@@ -15272,6 +15799,7 @@ paths:
       security: []
       x-portico-auth: public
       summary: Atomically stop native playback and revoke its continuation authority
+      description: Commits the requestId-bound terminal event and revokes continuation authority in one operation. An exact retry returns the durable receipt even after the credential was revoked by the first commit; a different request, an invalid credential, or an unknown session fails closed.
       x-portico-audience: viewer
       x-portico-surfaces: [mobile, television]
       x-portico-client-core-method: revokePlaybackContinuation
@@ -15282,10 +15810,10 @@ paths:
             schema: { $ref: "#/components/schemas/PlaybackSessionStopRequest" }
       responses:
         "200":
-          description: Continuation revoked
+          description: Durable terminal receipt for the revoked continuation
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/SuccessResponse" }
+              schema: { $ref: "#/components/schemas/PlaybackSessionTerminalAcknowledgement" }
   /playback-sessions/{sessionId}/media-grant:
     parameters:
       - name: sessionId
@@ -15448,7 +15976,7 @@ paths:
           description: expectedRevision no longer matches the authoritative playback queue state
     patch:
       summary: Mutate the server-owned playback session queue
-      description: Applies one append, play_next, remove, reorder, clear, or set_repeat command when expectedRevision matches the authoritative state.
+      description: Applies one append, play_next, remove, reorder, shuffle, clear, or set_repeat command when expectedRevision matches the authoritative state. Shuffle atomically materializes one occurrence order from the idempotency key without moving the current item.
       requestBody:
         required: true
         content:
@@ -15473,7 +16001,7 @@ paths:
           type: string
     post:
       summary: Prepare the next playback item without stopping the current session
-      description: Returns a short-lived prepared playback descriptor so clients can preload the next audio item for gapless or crossfade handoff.
+      description: Returns a short-lived prepared playback descriptor so clients can preload the next audio item for gapless or crossfade handoff. Preparation never records or closes the source session.
       requestBody:
         required: true
         content:
@@ -15495,8 +16023,8 @@ paths:
         schema:
           type: string
     post:
-      summary: Commit a prepared playback handoff
-      description: Closes the previous session, records history/progress policy, and starts the next item under the same client instance for music gapless/crossfade and platform queue parity.
+      summary: Commit a playback handoff
+      description: Atomically accepts the source actor's ordered previousTerminal event, closes the source session, and starts the prepared or directly selected replacement under the same client instance. Until a response is accepted, the source actor retains terminal authority. Stale generation or sequence evidence fails closed without activating the replacement; an exact retry returns the committed result.
       requestBody:
         required: true
         content:
@@ -15512,7 +16040,14 @@ paths:
                 $ref: "#/components/schemas/PlaybackResponse"
   /playback/receivers:
     get:
-      summary: List active first-party web playback receivers
+      operationId: getPlaybackReceivers
+      summary: List active key-bound Portico playback receivers
+      description: Returns only current receivers owned by the exact ViewerScope. Discovery remains a presence hint; a controller must obtain a Server-issued authorization before sending a LAN command.
+      x-portico-permission: play-media
+      x-portico-audience: viewer
+      x-portico-surfaces: [mobile, television]
+      x-portico-rate-policy: interactive-read
+      x-portico-audit-event: none
       responses:
         "200":
           description: Active receivers
@@ -15529,7 +16064,14 @@ paths:
                   total:
                     type: integer
     post:
-      summary: Register a first-party web playback receiver
+      operationId: registerPlaybackReceiver
+      summary: Register or refresh a key-bound Portico playback receiver
+      description: Binds the receiver ID, exact ViewerScope, selected Server identity, X25519 public key, and capabilities. Rotating the receiver key revokes every prior controller authorization.
+      x-portico-permission: play-media
+      x-portico-audience: viewer
+      x-portico-surfaces: [television]
+      x-portico-rate-policy: playback-control
+      x-portico-audit-event: playback.receiver.registered
       requestBody:
         required: true
         content:
@@ -15569,84 +16111,200 @@ paths:
         schema:
           type: string
     patch:
-      summary: Heartbeat a first-party web playback receiver
-      responses:
-        "200":
-          description: Receiver heartbeat and latest command
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/PlaybackReceiver"
-  /playback/receivers/{receiverId}/events:
-    parameters:
-      - name: receiverId
-        in: path
-        required: true
-        schema:
-          type: string
-    get:
-      summary: Stream playback receiver command updates
-      description: Emits authenticated server-sent receiver events when a receiver heartbeat or command changes. Clients should keep PATCH heartbeat polling as a fallback for environments without EventSource.
-      responses:
-        "200":
-          description: Server-sent playback receiver events
-          content:
-            text/event-stream:
-              schema:
-                type: string
-  /playback/receivers/{receiverId}/events/poll:
-    parameters:
-      - name: receiverId
-        in: path
-        required: true
-        schema:
-          type: string
-    get:
-      operationId: pollPlaybackReceiverEvents
-      summary: Long-poll playback receiver updates
-      description: Returns state and command updates for the exact authorized receiver. A successful timeout returns 200 with an empty events array; receiver ownership is rechecked while waiting.
+      operationId: heartbeatPlaybackReceiver
+      summary: Heartbeat a key-bound Portico playback receiver
+      description: Refreshes receiver presence only when the supplied key fingerprint matches and returns the complete current authorization set. Replacing that set is the receiver's revocation boundary.
       x-portico-permission: play-media
       x-portico-audience: viewer
-      x-portico-surfaces: [web, mobile, television]
-      x-portico-rate-policy: long-poll
+      x-portico-surfaces: [television]
+      x-portico-rate-policy: playback-control
       x-portico-audit-event: none
-      parameters:
-        - { name: cursor, in: query, description: Opaque cursor previously returned for this playback receiver., schema: { type: string } }
-        - { name: waitSeconds, in: query, description: Maximum time to wait for an event. Zero performs an immediate cursor check., schema: { type: integer, minimum: 0, maximum: 25, default: 20 } }
-      responses:
-        "200":
-          description: Playback receiver events, or an empty successful timeout envelope
-          headers:
-            Cache-Control: { schema: { type: string, const: no-store } }
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/PlaybackReceiverLongPollEnvelope" }
-        "429":
-          description: Long-poll concurrency or request-rate limit reached
-          headers:
-            Retry-After: { schema: { type: integer, minimum: 1 } }
-  /playback/receivers/{receiverId}/command:
-    parameters:
-      - name: receiverId
-        in: path
-        required: true
-        schema:
-          type: string
-    post:
-      summary: Send a media load command to a first-party web playback receiver
       requestBody:
         required: true
         content:
           application/json:
-            schema:
-              $ref: "#/components/schemas/PlaybackCommandRequest"
+            schema: { $ref: "#/components/schemas/PlaybackReceiverHeartbeatRequest" }
       responses:
         "200":
-          description: Receiver command accepted
+          description: Receiver heartbeat and current key-bound authorizations
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/PlaybackCommand"
+                $ref: "#/components/schemas/PlaybackReceiverHeartbeatResponse"
+  /playback/receivers/{receiverId}/authorizations:
+    parameters:
+      - name: receiverId
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: getPlaybackReceiverAuthorizations
+      summary: List current authorizations for an exact receiver key
+      x-portico-permission: play-media
+      x-portico-audience: viewer
+      x-portico-surfaces: [television]
+      x-portico-rate-policy: interactive-read
+      x-portico-audit-event: none
+      parameters:
+        - name: receiverPublicKeyFingerprint
+          in: query
+          required: true
+          schema: { type: string, minLength: 43, maxLength: 43 }
+      responses:
+        "200":
+          description: Current receiver authorization records
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, total]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/ReceiverAuthorizationRecord" }
+                  total: { type: integer }
+    post:
+      operationId: authorizePlaybackReceiver
+      summary: Authorize one controller for a key-bound playback receiver
+      description: Atomically issues a controller grant and stores the paired receiver authorization under one request identity. Exact retries return the same grant; conflicting retries fail closed.
+      x-portico-permission: play-media
+      x-portico-audience: viewer
+      x-portico-surfaces: [mobile, television]
+      x-portico-rate-policy: playback-control
+      x-portico-audit-event: playback.receiver.authorized
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ReceiverAuthorizationRequest" }
+      responses:
+        "201":
+          description: Key-bound controller grant
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ReceiverControllerGrant" }
+        "409": { description: Request identity was already used with different authorization material }
+  /playback/receivers/{receiverId}/authorizations/{authorizationId}:
+    parameters:
+      - name: receiverId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: authorizationId
+        in: path
+        required: true
+        schema:
+          type: string
+    delete:
+      operationId: revokePlaybackReceiverAuthorization
+      summary: Revoke one playback receiver controller authorization
+      x-portico-permission: play-media
+      x-portico-audience: viewer
+      x-portico-surfaces: [mobile, television]
+      x-portico-rate-policy: playback-control
+      x-portico-audit-event: playback.receiver.authorization-revoked
+      responses:
+        "204": { description: Receiver authorization revoked }
+  /playback/receivers/{receiverId}/handoff:
+    parameters:
+      - name: receiverId
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      operationId: handoffPlaybackToReceiver
+      summary: Prepare controller playback on a registered Portico receiver
+      description: The authenticated receiver redeems an encrypted controller instruction. The Server creates a handoff_pending successor from the authoritative source occurrence, forward queue, and history, but retains the source until the receiver separately reports exact first-playing evidence.
+      x-portico-permission: play-media
+      x-portico-audience: viewer
+      x-portico-surfaces: [television]
+      x-portico-rate-policy: playback-control
+      x-portico-audit-event: playback.receiver.handoff
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PlaybackReceiverHandoffRequest" }
+      responses:
+        "200":
+          description: Receiver playback prepared but not yet authoritative
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlaybackResponse" }
+        "403": { description: Receiver authorization is expired, revoked, or mismatched }
+        "409": { description: Source playback authority changed before the transfer committed }
+  /playback/receivers/{receiverId}/handoffs/{requestId}/commit:
+    parameters:
+      - name: receiverId
+        in: path
+        required: true
+        schema: { type: string }
+      - name: requestId
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      operationId: commitPlaybackReceiverHandoff
+      summary: Commit a prepared receiver handoff after player readiness
+      description: Atomically accepts the exact terminal captured during preparation and activates the exact prepared receiver session only after first-playing evidence. Exact retries return the committed playback; mismatched receiver, source, request, authorization, or session identities fail closed.
+      x-portico-permission: play-media
+      x-portico-audience: viewer
+      x-portico-surfaces: [television]
+      x-portico-rate-policy: playback-control
+      x-portico-audit-event: playback.receiver.handoff-committed
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PlaybackReceiverHandoffCommitRequest" }
+      responses:
+        "200":
+          description: Receiver-owned active playback; also returned for an exact committed retry
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlaybackResponse" }
+        "403": { description: Receiver authorization is expired, revoked, or mismatched }
+        "404": { description: Prepared handoff not found }
+        "409": { description: Source, request, or prepared receiver session mismatch }
+        "410": { description: Prepared handoff expired and was rolled back }
+  /playback/receivers/{receiverId}/handoffs/{requestId}:
+    parameters:
+      - name: receiverId
+        in: path
+        required: true
+        schema: { type: string }
+      - name: requestId
+        in: path
+        required: true
+        schema: { type: string }
+      - name: authorizationId
+        in: query
+        required: true
+        schema: { type: string }
+      - name: receiverPublicKeyFingerprint
+        in: query
+        required: true
+        schema: { type: string, minLength: 43, maxLength: 43 }
+      - name: sourceSessionId
+        in: query
+        required: true
+        schema: { type: string }
+    get:
+      operationId: getPlaybackReceiverHandoffStatus
+      summary: Reconcile a receiver handoff from the authorized controller
+      x-portico-permission: play-media
+      x-portico-audience: viewer
+      x-portico-surfaces: [mobile, television]
+      x-portico-rate-policy: playback-control
+      x-portico-audit-event: none
+      responses:
+        "200":
+          description: Authoritative receiver handoff state
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlaybackReceiverHandoffStatusResponse" }
   /watch-with-friends/groups:
     get:
       summary: List active Watch With Friends groups visible to the current user
@@ -15892,7 +16550,7 @@ paths:
                 $ref: "#/components/schemas/WatchWithFriendsGroup"
         "409": { description: Expected group revision is stale }
     patch:
-      summary: Reorder the complete Watch With Friends queue
+      summary: Move one Watch With Friends queue occurrence relative to another
       requestBody:
         required: true
         content:
@@ -15907,20 +16565,20 @@ paths:
               schema:
                 $ref: "#/components/schemas/WatchWithFriendsGroup"
         "409": { description: Expected group revision is stale }
-  /watch-with-friends/groups/{groupId}/queue/{mediaId}:
+  /watch-with-friends/groups/{groupId}/queue/{entryId}:
     parameters:
       - name: groupId
         in: path
         required: true
         schema:
           type: string
-      - name: mediaId
+      - name: entryId
         in: path
         required: true
         schema:
           type: string
     delete:
-      summary: Remove a queued media item from a Watch With Friends group
+      summary: Remove one exact queued occurrence from a Watch With Friends group
       parameters:
         - name: expectedRevision
           in: query
@@ -16696,7 +17354,7 @@ paths:
           application/json:
             schema:
               type: object
-              required: [channelId]
+              required: [channelId, intent]
               properties:
                 channelId:
                   type: string
@@ -16706,6 +17364,8 @@ paths:
                   $ref: "#/components/schemas/PlaybackClientProfile"
                 intent:
                   $ref: "#/components/schemas/PlaybackIntent"
+                replacement:
+                  $ref: "#/components/schemas/PlaybackReplacementRequest"
       responses:
         "200":
           description: Live playback source decision
@@ -16769,11 +17429,12 @@ paths:
           schema:
             type: string
       requestBody:
-        required: false
+        required: true
         content:
           application/json:
             schema:
               type: object
+              required: [intent]
               properties:
                 channelId:
                   type: string
@@ -16783,6 +17444,8 @@ paths:
                   $ref: "#/components/schemas/PlaybackClientProfile"
                 intent:
                   $ref: "#/components/schemas/PlaybackIntent"
+                replacement:
+                  $ref: "#/components/schemas/PlaybackReplacementRequest"
       responses:
         "200":
           description: Live playback source decision
@@ -16796,7 +17459,7 @@ paths:
       x-portico-audience: viewer
       x-portico-client-core-method: closeLiveTvStream
       summary: Close a Live TV stream session
-      description: Ends an active Live TV playback session for this channel.
+      description: Accepts the owning playback actor's exact ordered terminal event and closes the Live TV session exactly once.
       parameters:
         - name: channelId
           in: path
@@ -16809,17 +17472,25 @@ paths:
           application/json:
             schema:
               type: object
-              required: [sessionId]
+              additionalProperties: false
+              required: [sessionId, requestId, terminal]
               properties:
                 sessionId:
                   type: string
+                requestId:
+                  type: string
+                  minLength: 8
+                  maxLength: 128
+                  pattern: '^[A-Za-z0-9._:-]+$'
+                terminal:
+                  $ref: "#/components/schemas/PlaybackTerminalEvent"
       responses:
         "200":
           description: Live stream session closed
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SuccessResponse"
+                $ref: "#/components/schemas/PlaybackSessionTerminalAcknowledgement"
   /live-tv/logos/{channelId}:
     get:
       operationId: getLiveTvLogosChannelId
@@ -17418,6 +18089,20 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/RestoreBackupResponse"
+  /backups/restore-authorization-context:
+    get:
+      summary: Read the current Server restore security epoch
+      operationId: getRestoreAuthorizationContext
+      x-portico-permission: manageServer
+      x-portico-audience: management
+      x-portico-surfaces: [web-admin]
+      responses:
+        "200":
+          description: Current exact epoch for a Hosted owner restore authorization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RestoreAuthorizationContext"
   /backups/restore/upload:
     post:
       summary: Verify and enqueue a manually uploaded database import
@@ -17431,12 +18116,18 @@ paths:
           multipart/form-data:
             schema:
               type: object
-              required: [password, confirmation, databaseBytes, database]
+              required: [confirmation, databaseBytes, database]
               additionalProperties: false
+              oneOf:
+                - required: [password]
+                - required: [hostedAuthorization]
               properties:
                 password:
                   type: string
                   format: password
+                hostedAuthorization:
+                  type: string
+                  description: Exact JSON serialization of the signed Hosted restore authorization document.
                 confirmation:
                   type: string
                 databaseBytes:

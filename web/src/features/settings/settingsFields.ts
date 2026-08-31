@@ -54,7 +54,7 @@ export const serverSettingFieldGroups: Record<string, SettingsFieldGroup[]> = {
         yesNo('scanAutomatically', 'Automatic scans', 'Schedule library scans without requiring a manual request.'),
         yesNo('scanOnFilesystemChanges', 'Save folders for changes', 'Use bounded adaptive checks to detect changes without relying on fragile recursive filesystem watchers.'),
         {
-          ...choice('analysisTier', 'Analysis tier', 'Inventory always completes first, and background analysis yields to playback. Basic adds technical facts and representative thumbnails. Complete enables deep whole-file compute such as sonic analysis, loudness, and intro/credit detection. Custom uses the controls below.', [option('file_list_only', 'File Clipboard Only'), option('basic', 'Basic (recommended)'), option('complete', 'Complete'), option('custom', 'Custom')]),
+          ...choice('analysisTier', 'Analysis tier', 'Inventory always completes first, and background analysis yields to playback. Basic adds technical facts and representative thumbnails. Complete enables deep whole-file compute such as sonic analysis, loudness, and intro/credit detection. Custom uses the controls below.', [option('file_list_only', 'File List Only'), option('basic', 'Basic (recommended)'), option('complete', 'Complete'), option('custom', 'Custom')]),
           defaultValue: 'basic',
           warningByValue: {
             complete: 'Complete can perform sustained/full-file reads and may require significantly more storage for generated files.',
@@ -80,15 +80,21 @@ export const serverSettingFieldGroups: Record<string, SettingsFieldGroup[]> = {
         yesNo('readEmbeddedTags', 'Read embedded tags', 'Reads bounded embedded descriptive tags when supported. Requires stream probing. Network I/O: moderate for remote ranges. Generated storage: none.'),
         yesNo('readEmbeddedIndexes', 'Read embedded indexes', 'Reads chapter, cover, and attachment indexes. Requires stream probing. Network I/O: moderate for remote ranges. Generated storage: low.'),
         yesNo('generateRepresentativeThumbnail', 'Generate one representative thumbnail', 'Creates one representative image. Requires stream probing. Network I/O: moderate for remote ranges. Generated storage: low.'),
+        yesNo('extractSelectedEmbeddedAssets', 'Extract a selected embedded cover', 'Extracts the supported embedded cover selected by the container index. Requires stream probing and embedded indexes. Remote reads remain range-bounded and do not stage the whole object. Generated storage: low.'),
+        yesNo('validateSeekBehavior', 'Validate seek behavior', 'Checks a fixed sample of playback seek boundaries through bounded targeted reads. Requires stream probing. A sampled failure is recorded as unsafe; incomplete positive samples remain unknown rather than claiming whole-file safety. Generated storage: none.'),
       ],
     },
     {
-      id: 'library-analysis-high-io', capabilityId: 'library-settings', title: 'High disk I/O', description: 'Sustained or full-file work. Remote sources may stage whole objects. Network I/O and generated storage can be high; every option requires stream probing.', settingsKey: 'library', visibleWhen: { settingsKey: 'library', field: 'analysisTier', equals: 'custom' }, fields: [
+      id: 'library-analysis-high-io', capabilityId: 'library-settings', title: 'High disk I/O', description: 'Sustained or full-file work. Remote sources may stage whole objects. Network I/O and generated storage can be high; generated-media operations require stream probing, while the checksum is an independent integrity pass.', settingsKey: 'library', visibleWhen: { settingsKey: 'library', field: 'analysisTier', equals: 'custom' }, fields: [
+        yesNo('fullFileChecksum', 'Calculate a full-file checksum', 'Reads the complete source and records an exact revision-bound SHA-256 integrity fact without replacing Portico’s bounded scan fingerprint. Network I/O: high for remote media. Generated storage: none.'),
         yesNo('generateChapterThumbnails', 'Generate chapter thumbnails', 'Creates chapter stills from sustained reads. Network I/O: high for remote media. Generated storage: moderate to high.'),
         yesNo('generateTrickplay', 'Generate trickplay previews', 'Creates timeline preview tiles from sustained reads. Network I/O: high for remote media. Generated storage: high.'),
+        yesNo('generateWaveforms', 'Generate an audio waveform', 'Decodes the complete primary audio stream into one bounded, revisioned waveform image. Requires stream probing. Network I/O: high for remote media. Generated storage: moderate.'),
         yesNo('analyzeLoudness', 'Analyze loudness', 'Performs a sustained audio pass for normalization facts. Network I/O: high for remote media. Generated storage: low.'),
         yesNo('sonicFingerprinting', 'Sonic fingerprinting', 'Performs a full audio-content pass for similarity and matching. Network I/O: high for remote media. Generated storage: moderate.'),
+        yesNo('detectSegments', 'Detect playback segments', 'Analyzes audiovisual boundaries across the source for conservative intro, recap, commercial, and credits/outro candidates. Requires stream probing and embedded indexes. Generated markers are advisory and never automatically skipped.'),
         yesNo('extractAllEmbeddedAttachments', 'Extract all embedded attachments', 'Extracts supported embedded fonts and attachments. Requires stream probing and embedded indexes. Network I/O: high for remote media. Generated storage: moderate to high.'),
+		yesNo('analyzeSTRMTarget', 'Analyze STRM targets', 'Reads an authorized local STRM descriptor and probes its HTTP(S) target through a bounded, SSRF-safe loopback proxy. Requires stream probing. The locator and query tokens are never stored, logged, or passed to media tools.'),
       ],
     },
     {

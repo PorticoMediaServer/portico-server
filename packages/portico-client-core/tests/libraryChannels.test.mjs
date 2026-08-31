@@ -16,21 +16,29 @@ test("Library Channel consumer requests remain separate from tuner Live TV", asy
     transport: { fetch: async (input, init) => {
       calls.push({ input: String(input), init });
       if (String(input).endsWith("/tune")) return response({
-        sessionId: "library-channel-session",
-        sourceUrl: "/api/library-channels/channel%2Fone/hls/master.m3u8",
-        directPlay: false,
-        generation: 1,
-        nextEventSequence: 1,
-        playbackRevision: 0,
-        queueRevision: 0,
-        decision: {},
-        media: {},
-        mediaGrant: {token: "grant", expiresAt: "2099-08-07T00:00:00Z"},
-        continuationCredential: {token: "continuation", origin: "https://server.example", expiresAt: "2099-08-07T00:00:00Z", generation: 1},
-        selectedQualityId: "automatic",
-        selectedSubtitleMode: "off",
-        resources: [{id: "active", sourceUrl: "/api/library-channels/channel%2Fone/hls/master.m3u8", streamFormat: "hls", qualityId: "automatic", subtitleMode: "off", default: true}],
-        audioStreams: [], subtitleStreams: [], chapters: [], qualities: [], queue: []
+        sourceType: "library-channel", channelId: "channel/one", programId: "program-1",
+        startsAt: "2026-07-16T12:00:00Z", endsAt: "2026-07-16T13:00:00Z",
+        playout: {kind: "media", mediaId: "media-1", durationSeconds: 3600}, qualityProfile: "automatic",
+        playback: {
+          sessionId: "library-channel-session",
+          sourceUrl: "/api/library-channels/channel%2Fone/hls/master.m3u8",
+          directPlay: false,
+          generation: 1,
+          nextEventSequence: 1,
+          playbackRevision: 0,
+          queueRevision: 0,
+          repeatMode: "off",
+          timeline: {type: "live", canPause: false, canSeek: false},
+          decision: {mode: "direct_stream", requiresTranscode: false, isProxied: true},
+          media: {id: "channel/one", title: "Channel One", type: "live-channel", state: {}},
+          mediaGrant: {token: "grant", expiresAt: "2099-08-07T00:00:00Z"},
+          continuationCredential: {token: "continuation", origin: "https://server.example", expiresAt: "2099-08-07T00:00:00Z", generation: 1},
+          qualityOffers: {contractId: "PC-PLAYBACK", schemaVersion: "quality-offers.v1", mediaId: "channel/one", versionId: "channel-version-1", sourceRevision: "channel-source-1", offerRevision: "channel-offers-1", offers: [{selectionId: "quality-auto", label: "Automatic", kind: "automatic"}, {selectionId: "quality-original", label: "Original Quality", kind: "original"}]},
+          qualitySelection: {mode: "automatic"},
+          selectedSubtitleMode: "off",
+          resources: [{id: "active", sourceUrl: "/api/library-channels/channel%2Fone/hls/master.m3u8", streamFormat: "hls", subtitleMode: "off", default: true}],
+          audioStreams: [], subtitleStreams: [], chapters: [], queue: []
+        }
       });
       return response({ sourceType: "library-channel", items: [], total: 0 });
     } }
@@ -50,6 +58,7 @@ test("Library Channel consumer requests remain separate from tuner Live TV", asy
   assert.equal(tuneBody.at, "2026-07-16T12:00:00Z");
   assert.equal(typeof tuneBody.clientInstanceId, "string");
   assert.equal(tuneBody.clientProfile.device, "Portico TypeScript Client");
+  assert.deepEqual(tuneBody.intent, {quality: {mode: "automatic"}});
 });
 
 test("Library Channel administration uses explicit admin routes and safe form upload", async () => {

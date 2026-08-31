@@ -93,7 +93,7 @@ func rememberBrowserAccount(value *bool) bool {
 
 func (s *Server) discardBrowserSession(w http.ResponseWriter, ctx context.Context, sessionToken string) {
 	if strings.TrimSpace(sessionToken) != "" {
-		_, _ = s.execUserWrite(ctx, `DELETE FROM sessions WHERE token_hash = ?`, hashToken(sessionToken))
+		_, _ = s.execSecurityFenceWrite(ctx, `DELETE FROM sessions WHERE token_hash = ?`, hashToken(sessionToken))
 	}
 	s.clearSessionCookies(ctx, w)
 }
@@ -276,7 +276,7 @@ func (s *Server) handleBrowserAccountSignOutAll(w http.ResponseWriter, r *http.R
 	vault, _, err := s.browserVaultForRequest(r.Context(), r)
 	if err == nil {
 		now := time.Now().UTC().Format(time.RFC3339)
-		err = s.withUserTx(r.Context(), func(tx *sql.Tx) error {
+		err = s.withSecurityFenceTxTagged(r.Context(), []string{"sessions", "browser_accounts"}, func(tx *sql.Tx) error {
 			if _, err := tx.ExecContext(r.Context(), `UPDATE browser_account_entries SET revoked_at = CASE WHEN revoked_at = '' THEN ? ELSE revoked_at END WHERE vault_id = ?`, now, vault.ID); err != nil {
 				return err
 			}
@@ -556,7 +556,7 @@ func (s *Server) switchBrowserAccount(ctx context.Context, r *http.Request, acco
 	profileAuthenticationRequired := false
 	requireTrusted := s.requireTrustedDevicesContext(ctx)
 	porticoMode := s.porticoAccountMode()
-	err = s.withUserTx(ctx, func(tx *sql.Tx) error {
+	err = s.withSecurityFenceTxTagged(ctx, []string{"sessions", "browser_accounts"}, func(tx *sql.Tx) error {
 		var profileIdentityID, deviceID, entryExpiresAt, vaultExpiresAt, disabledAt, role, preferencesJSON string
 		var porticoMembershipID string
 		var trusted, maxActiveSessions int
@@ -756,7 +756,7 @@ func (s *Server) removeBrowserAccount(ctx context.Context, r *http.Request, acco
 	newVaultToken := randomToken()
 	result := BrowserAccountMutationResponse{OK: true}
 	var vaultExpires time.Time
-	err = s.withUserTx(ctx, func(tx *sql.Tx) error {
+	err = s.withSecurityFenceTxTagged(ctx, []string{"sessions", "browser_accounts"}, func(tx *sql.Tx) error {
 		var activeUserID string
 		if err := tx.QueryRowContext(ctx, `SELECT COALESCE(active_user_id, '') FROM browser_account_vaults WHERE id = ? AND token_hash = ? AND revoked_at = '' AND expires_at > ?`, vault.ID, hashToken(rawVaultToken), now.Format(time.RFC3339)).Scan(&activeUserID); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {

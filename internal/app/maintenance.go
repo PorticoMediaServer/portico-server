@@ -172,6 +172,7 @@ func (s *Server) runScheduledTaskScheduler(ctx context.Context) {
 
 func (s *Server) queueScheduledTasks(now time.Time) {
 	s.queueScheduledLiveTVSourceRefreshes(now)
+	s.queueScheduledRemoteAccessCertificateMaintenance()
 
 	settings := s.scheduledTaskSettings()
 	if !settings.Enabled {
@@ -483,10 +484,11 @@ func (s *Server) queueScheduledMetadataRefresh(now time.Time, runKey string, ref
 			continue
 		}
 		metadata := map[string]string{
-			"libraryId":    library.ID,
-			"libraryName":  library.Name,
-			"refreshDays":  strconv.Itoa(libraryRefreshDays),
-			"subtaskScope": "library",
+			"libraryId":     library.ID,
+			"libraryName":   library.Name,
+			"refreshDays":   strconv.Itoa(libraryRefreshDays),
+			"subtaskScope":  "library",
+			"refreshIntent": string(metadataRefreshUnlocked),
 		}
 		if _, err := s.createJobForWithMetadata("metadata_refresh_library", fmt.Sprintf("Scheduled metadata refresh queued for %s.", library.Name), "library", library.ID, metadata); err != nil {
 			s.releaseScheduledJob("metadata_refresh_library", "library", library.ID, runKey)

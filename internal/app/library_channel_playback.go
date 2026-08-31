@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/PorticoMediaServer/portico-server/internal/foundationcontract"
 	"github.com/PorticoMediaServer/portico-server/internal/librarychannels"
 )
 
@@ -31,11 +32,31 @@ func libraryChannelHLSPlaylistRoute(channelID string) string {
 	return "/api/library-channels/" + urlPathEscape(channelID) + "/hls/playlist.m3u8"
 }
 
-func (s *Server) startLibraryChannelPlayback(r *http.Request, user User, channel librarychannels.Channel, entry librarychannels.ScheduleEntry, clientProfile PlaybackClientProfile, intent PlaybackIntent, clientInstanceID string) (PlaybackResponse, error) {
+func (s *Server) startLibraryChannelPlayback(r *http.Request, user User, channel librarychannels.Channel, entry librarychannels.ScheduleEntry, clientProfile PlaybackClientProfile, intent PlaybackIntent, clientInstanceID string, replacement *PlaybackReplacementRequest, externalReplacement *playbackReplacementPlan) (PlaybackResponse, error) {
 	if !canPlayLiveTV(user) || !hasPermission(user, "playMedia") {
 		return PlaybackResponse{}, librarychannels.ErrProgramRestricted
 	}
-	if err := s.enforceActivePlaybackSessionLimit(user.ID); err != nil {
+	targetRequest := libraryChannelTuneRequest{ClientInstanceID: clientInstanceID, ClientProfile: clientProfile, Intent: intent, Replacement: replacement}
+	replacementPlan := playbackReplacementPlan{}
+	if externalReplacement == nil {
+		var replacementErr *playbackStartHTTPError
+		replacementPlan, replacementErr = s.preparePlaybackReplacement(r.Context(), user, clientInstanceID, "library-channel", channel.ID, targetRequest, replacement)
+		if replacementErr != nil {
+			return PlaybackResponse{}, replacementErr
+		}
+		if replacementPlan.Committed != nil {
+			return *replacementPlan.Committed, nil
+		}
+	}
+	releaseReplacement := replacementPlan.Active
+	if releaseReplacement {
+		defer func() {
+			if releaseReplacement {
+				s.rollbackPlaybackReplacement(replacementPlan)
+			}
+		}()
+	}
+	if err := s.enforcePlaybackSessionReplacementLimitContext(r.Context(), user.ID, clientInstanceID); err != nil {
 		return PlaybackResponse{}, err
 	}
 	if _, err := s.getMediaPlaybackDetailForUser(r.Context(), user, entry.MediaID); err != nil {
@@ -62,20 +83,52 @@ func (s *Server) startLibraryChannelPlayback(r *http.Request, user User, channel
 		RequiresTranscode: true, VideoTranscode: true, AudioTranscode: true, IsProxied: true,
 	}
 	resolvedPolicy, clientProfile := s.resolvePlaybackPolicyForRequest(r.Context(), r, user, media, intent, clientProfile)
-	quality = resolvedLibraryChannelQuality(quality, resolvedPolicy)
-	sessionID := randomID("lchplay")
-	context := PlaybackSourceContext{Type: "library-channel", ID: channel.ID, Title: channel.Name, MediaIDs: []string{entry.MediaID}}
-	if err := s.createPlaybackSession(r, user, media, sessionID, decision, clientProfile, intent, "", "", true, clientInstanceID, context, "off"); err != nil {
+	qualityAuthority, err := issueContinuousPlaybackQualityOffers(
+		channel.ID, channel.ID+"\x00"+entry.MediaID,
+		entry.MediaID+"\x00"+entry.StartsAt.UTC().Format(time.RFC3339Nano),
+		resolvedPolicy, []string{"1080p-high", "1080p-medium", "720p-high", "720p-medium", "480p", "328p"}, false,
+	)
+	if err != nil {
 		return PlaybackResponse{}, err
+	}
+	resolvedQuality, resolvedPolicy, clientProfile, err := resolvePlaybackQualityForRequest(qualityAuthority, intent.Quality, resolvedPolicy, clientProfile, media.Type)
+	if err != nil {
+		return PlaybackResponse{}, err
+	}
+	intent.Quality = normalizedPlaybackQualitySelection(intent.Quality)
+	if resolvedQuality.Kind == playbackQualityKindFixed {
+		quality = resolvedQuality.PresetID
+	} else {
+		quality = resolvedLibraryChannelQuality(quality, resolvedPolicy)
+	}
+	sessionID := randomID("lchplay")
+	initialState := "playing"
+	if externalReplacement != nil {
+		sessionID = externalReplacement.Claim.ReplacementSessionID
+		initialState = "handoff_pending"
+	} else if replacementPlan.Active {
+		sessionID = replacementPlan.Claim.ReplacementSessionID
+		initialState = "handoff_pending"
+	}
+	currentEntryID := randomID("qentry")
+	sourceContext := PlaybackSourceContext{Type: "library-channel", ID: channel.ID, Title: channel.Name, MediaIDs: []string{entry.MediaID}}
+	if err := s.createPlaybackSessionWithState(r, user, media, currentEntryID, sessionID, decision, clientProfile, intent, "", "", true, clientInstanceID, sourceContext, "off", initialState); err != nil {
+		return PlaybackResponse{}, err
+	}
+	cleanupFailedStart := func() {
+		_, _ = s.playbackLifecycle().Terminate(context.Background(), playbackTerminationRequest{
+			SessionID: sessionID, UserID: accountIDForUser(user), ProfileID: viewerProfileID(user),
+			Cause: playbackTerminationFailedStart, RemoveSession: true,
+		})
 	}
 	resolvedPolicy = resolvedLibraryChannelPlaybackPolicy(resolvedPolicy, clientProfile, quality, channel.Logo.BugEnabled, channel.ConfigRevision)
 	if err := s.bindLibraryChannelDeliveryPolicy(r.Context(), sessionID, channel.ID, user, resolvedPolicy); err != nil {
-		_, _ = s.execUserWrite(r.Context(), `DELETE FROM playback_sessions WHERE id = ? AND user_id = ?`, sessionID, user.ID)
+		cleanupFailedStart()
 		return PlaybackResponse{}, err
 	}
 	grant, err := s.issueMediaGrant(r.Context(), user, sessionID, "live_channel", channel.ID)
 	if err != nil {
-		_, _ = s.execUserWrite(r.Context(), `DELETE FROM playback_sessions WHERE id = ? AND user_id = ?`, sessionID, user.ID)
+		cleanupFailedStart()
 		return PlaybackResponse{}, err
 	}
 	sourceURL = libraryChannelHLSPlaylistRoute(channel.ID)
@@ -86,21 +139,30 @@ func (s *Server) startLibraryChannelPlayback(r *http.Request, user User, channel
 	// concrete resource exists; the requested preference remains available to a
 	// future compositor that can truthfully satisfy it.
 	selectedSubtitleMode := "off"
-	resources := []PlaybackResource{{ID: randomID("pres"), SourceURL: sourceURL, StreamFormat: "hls", QualityID: quality, AudioStreamID: selectedAudioID, SubtitleMode: selectedSubtitleMode, Default: true}}
+	resources := []PlaybackResource{{ID: randomID("pres"), SourceURL: sourceURL, StreamFormat: "hls", AudioStreamID: selectedAudioID, SubtitleMode: selectedSubtitleMode, Default: true}}
 	playback := PlaybackResponse{
-		SessionID: sessionID, NextEventSequence: 1, MediaGrant: grant, Media: media, SourceURL: sourceURL,
+		SessionID: sessionID, CurrentQueueEntryID: currentEntryID, NextEventSequence: 1, MediaGrant: grant, Media: media, SourceURL: sourceURL,
 		DirectPlay: false, IsLive: true, StreamFormat: "hls", Decision: decision,
 		Policy:                resolvedPolicy,
-		Qualities:             libraryChannelPlaybackQualities(quality),
+		QualityOffers:         qualityAuthority.set,
+		QualitySelection:      intent.Quality,
 		Resources:             resources,
 		AudioStreams:          []Stream{{ID: selectedAudioID, Kind: "audio", Codec: "aac", DisplayTitle: "Program audio"}},
 		SubtitleStreams:       []Stream{{ID: "sub_none", Kind: "subtitle", DisplayTitle: "None"}},
-		SelectedAudioStreamID: selectedAudioID, SelectedQualityID: quality, SelectedSubtitleMode: selectedSubtitleMode,
-		Chapters: []Chapter{}, Queue: []MediaItem{}, RepeatMode: "off", QueueRevision: 0, PlaybackRevision: 0,
-		SourceContext: context, Timeline: PlaybackTimeline{Type: "live", SegmentSeconds: hlsSegmentSeconds, CanPause: false, CanSeek: false}, Generation: 0,
+		SelectedAudioStreamID: selectedAudioID, SelectedSubtitleMode: selectedSubtitleMode,
+		Chapters: []Chapter{}, Queue: []PlaybackQueueEntry{}, RepeatMode: "off", QueueRevision: 0, PlaybackRevision: 0,
+		SourceContext: sourceContext, Timeline: PlaybackTimeline{Type: "live", SegmentSeconds: hlsSegmentSeconds, CanPause: false, CanSeek: false}, Generation: 0,
 	}
 	if err := s.ensurePlaybackContinuationCredential(r, user, &playback); err != nil {
+		cleanupFailedStart()
 		return PlaybackResponse{}, err
+	}
+	if replacementPlan.Active {
+		if err := s.commitPlaybackReplacement(r.Context(), user, replacementPlan, playback); err != nil {
+			cleanupFailedStart()
+			return PlaybackResponse{}, playbackReplacementCommitHTTPError(err)
+		}
+		releaseReplacement = false
 	}
 	return playback, nil
 }
@@ -198,25 +260,6 @@ func (s *Server) libraryChannelDeliveryPolicyForRequest(r *http.Request, user Us
 		LiveHLS:        &LiveHLSPlaybackPolicy{AuthorizationTransport: "header_or_secure_http_only_cookie", PlaylistScope: "playback_session", SegmentScope: "playback_session", CredentialQueryAllowed: false},
 		LiveDelivery:   &delivery,
 	}, nil
-}
-
-func libraryChannelPlaybackQualities(selected string) []Quality {
-	qualities := make([]Quality, 0, len(transcodePresets)+1)
-	qualities = append(qualities, Quality{ID: "original", Label: "Original Quality", Description: "Uses the source's original picture quality.", Available: true, RequiresTranscode: true})
-	for _, id := range []string{"auto", "1080p-high", "1080p-medium", "720p-high", "720p-medium", "480p", "328p"} {
-		preset := transcodePresets[id]
-		label := playbackVideoQualityLabel(preset.height, preset.videoK)
-		description := playbackVideoQualityDescription(preset.height, preset.videoK)
-		if id == "auto" {
-			label = "Automatic"
-			description = "Best quality for this connection."
-		}
-		if id == selected {
-			description = strings.TrimSuffix(description, ".") + " · Channel default."
-		}
-		qualities = append(qualities, Quality{ID: id, Label: label, Description: description, Available: true, RequiresTranscode: true})
-	}
-	return qualities
 }
 
 func (s *Server) handleLibraryChannelHLS(w http.ResponseWriter, r *http.Request, user User, channelID, route string) {
@@ -651,7 +694,7 @@ func (s *Server) acquireLibraryChannelOverlayTranscode(user User, channel librar
 		s.transcodeMu.Unlock()
 		return nil, errLibraryChannelPlaybackCapacity
 	}
-	releaseResources, ok := s.mediaResourceGovernor().tryAcquire(mediaResourceRequest{cpu: 1, disk: 1})
+	releaseResources, ok := s.mediaResourceGovernor().tryAcquire(mediaResourceRequest{class: foundationcontract.WorkClassPlaybackStart, cpu: 1, disk: 1})
 	if !ok {
 		s.transcodeRejected.Add(1)
 		releaseAdmission()

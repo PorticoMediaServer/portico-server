@@ -478,7 +478,7 @@ export const liveDvrLibraryOperationContract = [
     "method": "POST",
     "operationId": "postLiveTvStreamsChannelIdClose",
     "path": "/live-tv/streams/{channelId}/close",
-    "responseSchema": "SuccessResponse"
+    "responseSchema": "PlaybackSessionTerminalAcknowledgement"
   },
   {
     "audience": "viewer",
@@ -519,6 +519,14 @@ export const liveDvrLibraryOperationContract = [
     "operationId": "postPlaybackCastRedeem",
     "path": "/playback/cast/redeem",
     "responseSchema": "CastReceiverSessionResponse"
+  },
+  {
+    "audience": "viewer",
+    "clientCoreMethod": "castTransferStatus",
+    "method": "POST",
+    "operationId": "postPlaybackCastTransferStatus",
+    "path": "/playback/cast/transfer-status",
+    "responseSchema": "CastTransferStatusResponse"
   }
 ] as const;
 

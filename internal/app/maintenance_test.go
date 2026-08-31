@@ -37,12 +37,13 @@ func TestRestoreMaintenanceHandlerServesWebShellAssetsAndStatusCapability(t *tes
 		t.Fatalf("prepare restore paths: %v", err)
 	}
 	operation := database.RestoreOperation{
-		Version:         database.RestoreOperationVersion,
-		OperationID:     "restore-maintenance-test",
-		StatusTokenHash: hashToken("status-secret"),
-		Phase:           database.RestorePhaseInstalling,
-		State:           database.RestorePhaseInstalling,
-		Progress:        60,
+		AuthorizationCommitted: true,
+		Version:                database.RestoreOperationVersion,
+		OperationID:            "restore-maintenance-test",
+		StatusTokenHash:        hashToken("status-secret"),
+		Phase:                  database.RestorePhaseInstalling,
+		State:                  database.RestorePhaseInstalling,
+		Progress:               60,
 	}
 	if err := database.WriteRestoreOperation(root, operation); err != nil {
 		t.Fatalf("write restore marker: %v", err)
@@ -166,7 +167,7 @@ func TestUploadedRestorePublishesMarkerOnlyAfterOwnerLock(t *testing.T) {
 	}
 	resultCh := make(chan result, 1)
 	go func() {
-		operation, _, release, err := server.reserveUploadedRestore(User{ID: "owner", AccountID: "owner"}, "session")
+		operation, _, release, err := server.reserveUploadedRestoreAuthorized(context.Background(), User{}, restoreAuthorizationSnapshot{SessionID: "session"})
 		resultCh <- result{operation: operation, release: release, err: err}
 	}()
 	<-entered
@@ -567,9 +568,8 @@ func TestSupervisedRestoreResponseIsPathFreeAndMarkerIsPrivate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read manifest: %v", err)
 	}
-	response, ok := server.createRestoreOperation(&httptest.ResponseRecorder{}, httptest.NewRequest(http.MethodPost, "/api/backups/restore", nil), User{
-		ID: "restore-test", AccountID: "restore-test", Role: "owner", AuthOrigin: "local", AuthProvider: "local", Permissions: map[string]bool{"manageServer": true},
-	}, "session-test", filepath.Base(backupPath), backupPath, manifest)
+	response, ok := server.createRestoreOperationAuthorized(&httptest.ResponseRecorder{}, httptest.NewRequest(http.MethodPost, "/api/backups/restore", nil), User{},
+		restoreAuthorizationSnapshot{SessionID: "session-test"}, filepath.Base(backupPath), backupPath, manifest)
 	if !ok {
 		t.Fatalf("stage backup failed")
 	}

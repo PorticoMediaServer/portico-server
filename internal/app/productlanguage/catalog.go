@@ -72,6 +72,7 @@ var problemCodeMessages = map[string]string{
 	"primary_profile_pin_required":               "auth.primary-profile-pin-required",
 	"primary_profile_pin_in_use":                 "auth.primary-profile-pin-in-use",
 	"primary_profile_required":                   "auth.primary-profile-required",
+	"playback_failed":                            "playback.failed",
 	"preference_conflict":                        "preferences.conflict",
 	"preference_revision_conflict":               "preferences.conflict",
 	"preferences_failed":                         "preferences.request-failed",

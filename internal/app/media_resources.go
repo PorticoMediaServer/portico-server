@@ -8,6 +8,8 @@ import (
 	"runtime"
 	"sync"
 	"time"
+
+	"github.com/PorticoMediaServer/portico-server/internal/foundationcontract"
 )
 
 const mediaWriteMinimumFreeBytes = int64(512 << 20)
@@ -16,10 +18,17 @@ var errMediaResourcesBusy = errors.New("media processing resources are busy")
 var errMediaStoragePressure = errors.New("media storage does not have enough free space")
 
 type mediaResourceRequest struct {
-	cpu        int
-	disk       int
-	network    int
-	background bool
+	class   foundationcontract.WorkClass
+	cpu     int
+	disk    int
+	network int
+}
+
+func mediaProcessingWorkClass(background bool) foundationcontract.WorkClass {
+	if background {
+		return foundationcontract.WorkClassBackgroundMedia
+	}
+	return foundationcontract.WorkClassPlaybackStart
 }
 
 type mediaResourceGovernor struct {
@@ -90,6 +99,9 @@ func (s *Server) mediaResourceGovernor() *mediaResourceGovernor {
 func (governor *mediaResourceGovernor) tryAcquire(request mediaResourceRequest) (func(), bool) {
 	governor.mu.Lock()
 	defer governor.mu.Unlock()
+	if !request.class.Valid() {
+		return nil, false
+	}
 	request.cpu = max(0, request.cpu)
 	request.disk = max(0, request.disk)
 	request.network = max(0, request.network)
@@ -97,16 +109,17 @@ func (governor *mediaResourceGovernor) tryAcquire(request mediaResourceRequest) 
 	if backgroundCPUCapacity > 1 {
 		backgroundCPUCapacity--
 	}
+	background := request.class.Priority() >= foundationcontract.WorkClassBackgroundMedia.Priority()
 	if governor.cpuUsed+request.cpu > governor.cpuCapacity ||
 		governor.diskUsed+request.disk > governor.diskCapacity ||
 		governor.networkUsed+request.network > governor.networkCapacity ||
-		(request.background && governor.backgroundCPUUsed+request.cpu > backgroundCPUCapacity) {
+		(background && governor.backgroundCPUUsed+request.cpu > backgroundCPUCapacity) {
 		return nil, false
 	}
 	governor.cpuUsed += request.cpu
 	governor.diskUsed += request.disk
 	governor.networkUsed += request.network
-	if request.background {
+	if background {
 		governor.backgroundCPUUsed += request.cpu
 	}
 	var once sync.Once
@@ -116,7 +129,7 @@ func (governor *mediaResourceGovernor) tryAcquire(request mediaResourceRequest) 
 			governor.cpuUsed = max(0, governor.cpuUsed-request.cpu)
 			governor.diskUsed = max(0, governor.diskUsed-request.disk)
 			governor.networkUsed = max(0, governor.networkUsed-request.network)
-			if request.background {
+			if background {
 				governor.backgroundCPUUsed = max(0, governor.backgroundCPUUsed-request.cpu)
 			}
 			governor.mu.Unlock()

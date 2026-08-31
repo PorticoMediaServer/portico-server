@@ -753,8 +753,6 @@ export function playbackIntentFromPreferences(
     directStreamPolicy: delivery.directStream,
     transcodePolicy: delivery.transcode
   };
-  const qualityProfile: PlaybackIntent["qualityProfile"] = quality.mode === "data-saver" ? "data_saver"
-    : quality.mode;
   const preferredAudioLanguage = (portablePreferences?.playback.preferredAudioLanguages ?? [])
     .map((language) => language.trim())
     .find((language) => language.length > 0 && language.toLowerCase() !== "original");
@@ -765,11 +763,8 @@ export function playbackIntentFromPreferences(
     : undefined;
   return {
     transportClass: network === "wifi" || network === "cellular" ? network : "unknown",
-    qualityProfile,
+    quality: {mode: "automatic"},
     ...deliveryPolicies,
-    maxVideoBitrateMbps: quality.maxVideoBitrateMbps,
-    maxAudioBitrateKbps: quality.maxAudioBitrateKbps,
-    maxVideoHeight: quality.maxVideoHeight,
     allowHdr: quality.allowHDR,
     preferredAudioLanguage,
     preferredSubtitleLanguage,

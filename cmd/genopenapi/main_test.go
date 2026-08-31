@@ -150,6 +150,56 @@ func TestAudienceAndSurfaceDefaultsRespectManagementBoundary(t *testing.T) {
 	}
 }
 
+func TestAllLocalOpenAPIReferencesResolve(t *testing.T) {
+	root, err := findRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := os.ReadFile(filepath.Join(root, "api", "openapi", "openapi.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var raw any
+	if err := yaml.Unmarshal(body, &raw); err != nil {
+		t.Fatal(err)
+	}
+	doc := object(normalizeYAML(raw))
+
+	var walk func(any, string)
+	walk = func(value any, path string) {
+		switch typed := value.(type) {
+		case map[string]any:
+			if ref := asString(typed["$ref"]); strings.HasPrefix(ref, "#/") && !localOpenAPIReferenceResolves(doc, ref) {
+				t.Errorf("%s contains unresolved local reference %q", path, ref)
+			}
+			for key, child := range typed {
+				walk(child, path+"/"+key)
+			}
+		case []any:
+			for _, child := range typed {
+				walk(child, path+"[]")
+			}
+		}
+	}
+	walk(doc, "#")
+}
+
+func localOpenAPIReferenceResolves(doc map[string]any, ref string) bool {
+	var current any = doc
+	for _, escaped := range strings.Split(strings.TrimPrefix(ref, "#/"), "/") {
+		key := strings.ReplaceAll(strings.ReplaceAll(escaped, "~1", "/"), "~0", "~")
+		object, ok := current.(map[string]any)
+		if !ok {
+			return false
+		}
+		current, ok = object[key]
+		if !ok {
+			return false
+		}
+	}
+	return true
+}
+
 func TestConstrainedClientLongPollOperationsAreTypedAndPolicyBound(t *testing.T) {
 	root, err := findRoot()
 	if err != nil {
@@ -173,7 +223,6 @@ func TestConstrainedClientLongPollOperationsAreTypedAndPolicyBound(t *testing.T)
 		{"/events/poll", "pollApplicationEvents", "authenticated", "ApplicationEventLongPollEnvelope", "AppEvent"},
 		{"/notifications/events/poll", "pollViewerNotificationInvalidations", "authenticated", "NotificationInvalidationLongPollEnvelope", "NotificationInvalidation"},
 		{"/playback-sessions/{sessionId}/command/events/poll", "pollPlaybackSessionCommands", "play-media", "PlaybackCommandLongPollEnvelope", "PlaybackCommand"},
-		{"/playback/receivers/{receiverId}/events/poll", "pollPlaybackReceiverEvents", "play-media", "PlaybackReceiverLongPollEnvelope", "PlaybackReceiver"},
 		{"/watch-with-friends/groups/{groupId}/events/poll", "pollWatchWithFriendsGroupEvents", "play-media", "WatchWithFriendsLongPollEnvelope", "WatchWithFriendsGroup"},
 	}
 	components := object(object(doc["components"])["schemas"])

@@ -179,5 +179,12 @@ func authenticatedPlaybackRuntimeRequest(mediaID string) map[string]any {
 		"mediaId":       mediaID,
 		"skipPreroll":   true,
 		"clientProfile": authenticatedPlaybackRuntimeProfile(),
+		"intent": map[string]any{
+			"quality": map[string]any{"mode": "automatic"},
+		},
 	}
+}
+
+func automaticPlaybackIntent() PlaybackIntent {
+	return PlaybackIntent{Quality: PlaybackQualitySelection{Mode: "automatic"}}
 }

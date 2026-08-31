@@ -10,6 +10,7 @@ import type {
   WatchWithFriendsSource,
   WatchWithFriendsViewer,
 } from './watchWithFriendsSource';
+import { secureRandomUUID } from '../../runtime/secureRandomUUID';
 
 export interface FixtureWatchWithFriendsOptions {
   viewer: WatchWithFriendsViewer;
@@ -72,11 +73,13 @@ export class FixtureWatchWithFriendsSource implements WatchWithFriendsSource {
       lastSeenAt: timestamp,
     };
     const queueItem: WatchWithFriendsQueueItem = {
+      entryId: `fixture-watch-entry-${secureRandomUUID()}`,
       mediaId,
       mediaTitle,
       sortOrder: 0,
       addedByProfileId: this.options.viewer.profileId,
       addedAt: timestamp,
+      unavailable: false,
     };
     const group: WatchWithFriendsGroup = {
       id,
@@ -85,6 +88,7 @@ export class FixtureWatchWithFriendsSource implements WatchWithFriendsSource {
       ownerName: this.options.viewer.displayName,
       mediaId,
       mediaTitle,
+      currentEntryId: queueItem.entryId,
       state: 'paused',
       positionSeconds: 0,
       positionUpdatedAt: timestamp,
@@ -164,7 +168,7 @@ export class FixtureWatchWithFriendsSource implements WatchWithFriendsSource {
     let action: PlaybackCommand['action'] = request.action;
     let position = Math.max(0, request.positionSeconds ?? group.positionSeconds);
     if (request.action === 'next' || request.action === 'previous') {
-      const currentIndex = group.queue.findIndex((item) => item.mediaId === group.mediaId);
+      const currentIndex = group.queue.findIndex((item) => item.entryId === group.currentEntryId);
       const offset = request.action === 'next' ? 1 : -1;
       let targetIndex = currentIndex + offset;
       if (group.repeatMode === 'all') targetIndex = (targetIndex + group.queue.length) % group.queue.length;
@@ -172,13 +176,25 @@ export class FixtureWatchWithFriendsSource implements WatchWithFriendsSource {
       if (!target) throw new Error(`No ${request.action} queue item is available.`);
       mediaId = target.mediaId;
       mediaTitle = target.mediaTitle;
+      group.currentEntryId = target.entryId;
       action = 'load';
       position = 0;
     } else if (request.action === 'load') {
+      const requestedEntryId = request.entryId?.trim() ?? '';
       mediaId = request.mediaId?.trim() ?? '';
-      const target = group.queue.find((item) => item.mediaId === mediaId);
-      if (!target) throw new Error('The selected media item is not in this queue.');
+      let target = requestedEntryId ? group.queue.find((item) => item.entryId === requestedEntryId) : undefined;
+      if (!target && mediaId) {
+        target = {
+          entryId: `fixture-watch-entry-${secureRandomUUID()}`, mediaId,
+          mediaTitle: this.mediaTitles[mediaId] ?? mediaId, sortOrder: group.queue.length,
+          addedByProfileId: this.options.viewer.profileId, addedAt: this.timestamp(), unavailable: false,
+        };
+        group.queue.push(target);
+      }
+      if (!target) throw new Error('The selected queue occurrence is not available.');
+      mediaId = target.mediaId;
       mediaTitle = target.mediaTitle;
+      group.currentEntryId = target.entryId;
       position = 0;
     }
     group.mediaId = mediaId;
@@ -208,40 +224,39 @@ export class FixtureWatchWithFriendsSource implements WatchWithFriendsSource {
     const group = this.requireGroup(id);
     const mediaId = request.mediaId.trim();
     if (!mediaId) throw new Error('Enter a media ID to add it to the queue.');
-    if (!group.queue.some((item) => item.mediaId === mediaId)) {
-      group.queue.push({
+    group.queue.push({
+        entryId: `fixture-watch-entry-${secureRandomUUID()}`,
         mediaId,
         mediaTitle: this.mediaTitles[mediaId] ?? mediaId,
         sortOrder: group.queue.length,
         addedByProfileId: this.options.viewer.profileId,
         addedAt: this.timestamp(),
+        unavailable: false,
       });
-      this.touch(group);
-    }
+    this.touch(group);
     return this.publish(group);
   }
 
   async reorderQueue(id: string, request: Parameters<WatchWithFriendsSource['reorderQueue']>[1], signal?: AbortSignal) {
     cancelled(signal);
     const group = this.requireGroup(id);
-    if (request.mediaIds.length !== group.queue.length || new Set(request.mediaIds).size !== group.queue.length) {
-      throw new Error('Queue order must contain every queued item once.');
-    }
-    const byId = new Map(group.queue.map((item) => [item.mediaId, item]));
-    group.queue = request.mediaIds.map((mediaId, sortOrder) => {
-      const item = byId.get(mediaId);
-      if (!item) throw new Error('Queue order contains an unknown media item.');
-      return { ...item, sortOrder };
-    });
+    const from = group.queue.findIndex((item) => item.entryId === request.entryId);
+    if (from < 0) throw new Error('Queue occurrence was not found.');
+    const [entry] = group.queue.splice(from, 1);
+    let destination = group.queue.findIndex((item) => item.entryId === request.destinationEntryId);
+    if (destination < 0) throw new Error('Queue destination was not found.');
+    if (request.placement === 'after') destination += 1;
+    group.queue.splice(destination, 0, entry);
+    group.queue = group.queue.map((item, sortOrder) => ({ ...item, sortOrder }));
     this.touch(group);
     return this.publish(group);
   }
 
-  async removeQueueItem(id: string, mediaId: string, _expectedRevision: number, _idempotencyKey: string, signal?: AbortSignal) {
+  async removeQueueItem(id: string, entryId: string, _expectedRevision: number, _idempotencyKey: string, signal?: AbortSignal) {
     cancelled(signal);
     const group = this.requireGroup(id);
-    if (group.mediaId === mediaId) throw new Error('The currently playing item cannot be removed.');
-    const next = group.queue.filter((item) => item.mediaId !== mediaId);
+    if (group.currentEntryId === entryId) throw new Error('The currently playing item cannot be removed.');
+    const next = group.queue.filter((item) => item.entryId !== entryId);
     if (next.length === group.queue.length) throw new Error('Queue item was not found.');
     group.queue = next.map((item, sortOrder) => ({ ...item, sortOrder }));
     this.touch(group);

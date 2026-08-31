@@ -175,13 +175,22 @@ func (s *Server) updateRemoteStorageSource(ctx context.Context, libraryID, sourc
 	if err != nil {
 		return RemoteStorageSourceResponse{}, err
 	}
-	var analysisJobs []string
-	if mode == "file_list_only" {
-		analysisJobs, err = s.activeRemoteAnalysisJobIDs(ctx, sourceID)
-		if err != nil {
-			return RemoteStorageSourceResponse{}, err
-		}
+	var previousMode string
+	if err := s.queryBackgroundRow(ctx, `SELECT analysis_mode FROM storage_sources WHERE id=? AND library_id=? AND backend_kind IN ('rclone','webdav')`, sourceID, libraryID).Scan(&previousMode); err != nil {
+		return RemoteStorageSourceResponse{}, err
 	}
+	library, err := s.getLibraryContext(ctx, libraryID)
+	if err != nil {
+		return RemoteStorageSourceResponse{}, err
+	}
+	baseProfile := s.libraryAnalysisSettingsFor(library)
+	beforeProfile := cloneSettingMap(baseProfile)
+	beforeProfile["analysisTier"] = previousMode
+	afterProfile := cloneSettingMap(baseProfile)
+	afterProfile["analysisTier"] = mode
+	profileChange := compareScanProfiles(beforeProfile, afterProfile)
+	var runningAnalysisJobs []string
+	profileFollowup := followupForScanProfileChange(libraryID, profileChange)
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	err = s.withBackgroundTxTagged(ctx, []string{"storage_sources", "scanner_backlog", "jobs"}, func(tx *sql.Tx) error {
 		result, updateErr := tx.Exec(`UPDATE storage_sources SET analysis_mode=?,updated_at=? WHERE id=? AND library_id=? AND backend_kind IN ('rclone','webdav')`, mode, now, sourceID, libraryID)
@@ -191,20 +200,21 @@ func (s *Server) updateRemoteStorageSource(ctx context.Context, libraryID, sourc
 		if count, _ := result.RowsAffected(); count != 1 {
 			return sql.ErrNoRows
 		}
-		if mode != "file_list_only" {
-			return nil
+		if profileChange.changed() {
+			runningAnalysisJobs, updateErr = s.fenceRemoteAnalysisJobsTx(tx, sourceID, profileChange)
+			if updateErr != nil {
+				return updateErr
+			}
 		}
-		locatorPrefix := "portico-storage://" + sourceID + "/"
-		if _, updateErr = tx.Exec(`UPDATE scanner_backlog SET status='complete',last_error='Disabled by remote inventory-only policy.',updated_at=? WHERE kind='analysis' AND status='queued' AND EXISTS(SELECT 1 FROM media_files file WHERE file.media_id=scanner_backlog.media_id AND substr(file.path,1,length(?))=?)`, now, locatorPrefix, locatorPrefix); updateErr != nil {
-			return updateErr
-		}
-		_, updateErr = tx.Exec(`UPDATE jobs SET status='cancelled',phase='cancelled',progress=100,progress_current=100,retry_eligible=0,error_code='cancelled',message='Remote analysis cancelled by inventory-only policy.',updated_at=? WHERE type='media_analyze' AND resource_type='media' AND status='queued' AND EXISTS(SELECT 1 FROM media_files file WHERE file.media_id=jobs.resource_id AND substr(file.path,1,length(?))=?)`, now, locatorPrefix, locatorPrefix)
-		return updateErr
+		return nil
 	})
 	if err != nil {
 		return RemoteStorageSourceResponse{}, err
 	}
-	s.cancelRemoteAnalysisJobs(analysisJobs)
+	s.cancelRunningJobContexts(runningAnalysisJobs)
+	if capabilitiesIntersect(profileChange.Added, analysisCapability) {
+		s.enqueueScanProfileFollowup(profileFollowup)
+	}
 	return s.remoteStorageSource(ctx, libraryID, sourceID)
 }
 

@@ -38,11 +38,13 @@ export interface VerifiedServerRouteHint {
  * server-native credential family minted after the Hosted bootstrap exchange.
  */
 export interface TrustedServerConnectionRecord {
-  schemaVersion: 2;
+  schemaVersion: 3;
   accountId: string;
   serverId: string;
   profileId: string;
   serverName: string;
+  /** Canonical unpadded standard-base64 raw Ed25519 Server identity key. */
+  serverPublicKey: string;
   serverPublicKeyFingerprint: string;
   currentRoute: VerifiedServerRouteHint;
   previousRoute?: VerifiedServerRouteHint;
@@ -336,6 +338,7 @@ interface CandidateConnection {
   identity: AuthMeResponse;
   session: LocalServerSession;
   route: VerifiedServerRouteHint;
+  publicKey: string;
   fingerprint: string;
   source: "hosted" | "cached";
 }
@@ -406,10 +409,14 @@ export async function refreshTrustedServerRoute(
   if (discovery.routeDocument.serverPublicKeyFingerprint !== record.serverPublicKeyFingerprint) {
     throw new TypeError("The refreshed route returned a different pinned server identity.");
   }
+  if (discovery.routeDocument.serverPublicKey !== record.serverPublicKey) {
+    throw new TypeError("The refreshed route returned a different pinned server identity key.");
+  }
   const session: LocalServerSession = {
     ...record.session,
     serverId: record.serverId,
     serverName: record.serverName,
+    serverPublicKey: record.serverPublicKey,
     serverPublicKeyFingerprint: record.serverPublicKeyFingerprint,
     apiBaseUrl: discovery.route.url.replace(/\/+$/, ""),
     routeType: discovery.route.type,
@@ -435,6 +442,7 @@ export async function refreshTrustedServerRoute(
       address: discovery.route.address,
       verifiedAt: (options.now?.() ?? new Date()).toISOString()
     },
+    publicKey: record.serverPublicKey,
     fingerprint: record.serverPublicKeyFingerprint,
     source: "cached"
   };
@@ -709,12 +717,13 @@ async function liveCandidate(
   });
   throwIfConnectionAborted(options.signal);
   const session = temporaryStore.get();
-  if (!session?.apiBaseUrl || !session.serverPublicKeyFingerprint) {
+  if (!session?.apiBaseUrl || !session.serverPublicKey || !session.serverPublicKeyFingerprint) {
     throw new Error("The server connection did not create a durable local session.");
   }
   return {
     identity,
     session,
+    publicKey: session.serverPublicKey,
     fingerprint: session.serverPublicKeyFingerprint,
     route: routeHintFromSession(session, options.now?.() ?? new Date()),
     source: "hosted"
@@ -734,6 +743,7 @@ async function cachedCandidate(
     ...record.session,
     serverId: record.serverId,
     serverName: record.serverName,
+    serverPublicKey: record.serverPublicKey,
     serverPublicKeyFingerprint: record.serverPublicKeyFingerprint,
     apiBaseUrl: route.url.replace(/\/+$/, ""),
     routeType: route.type,
@@ -751,7 +761,7 @@ async function cachedCandidate(
   await localClient.checkCompatibility({signal: options.signal});
   throwIfConnectionAborted(options.signal);
   const current = temporaryStore.get() ?? session;
-  return { identity, session: current, route, fingerprint: record.serverPublicKeyFingerprint, source: "cached" };
+  return { identity, session: current, route, publicKey: record.serverPublicKey, fingerprint: record.serverPublicKeyFingerprint, source: "cached" };
 }
 
 async function selectCachedVerifiedRoute(
@@ -1247,7 +1257,8 @@ async function restoreTrustedServerRecord(input: CandidateTransactionRollback): 
 
 function samePublishedTrustedRecord(left: TrustedServerConnectionRecord, right: TrustedServerConnectionRecord): boolean {
   return left.accountId === right.accountId && left.serverId === right.serverId &&
-    left.profileId === right.profileId && left.serverPublicKeyFingerprint === right.serverPublicKeyFingerprint &&
+    left.profileId === right.profileId && left.serverPublicKey === right.serverPublicKey &&
+    left.serverPublicKeyFingerprint === right.serverPublicKeyFingerprint &&
     left.currentRoute.url === right.currentRoute.url &&
     left.session.accessToken === right.session.accessToken &&
     left.session.refreshToken === right.session.refreshToken;
@@ -1283,13 +1294,15 @@ function updateRecord(
   now: Date
 ): TrustedServerConnectionRecord {
   const sameRoute = existing?.currentRoute.url === candidate.route.url;
-  const identityChanged = Boolean(existing && existing.serverPublicKeyFingerprint !== candidate.fingerprint);
+  const identityChanged = Boolean(existing &&
+    (existing.serverPublicKey !== candidate.publicKey || existing.serverPublicKeyFingerprint !== candidate.fingerprint));
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     accountId,
     serverId: candidate.session.serverId ?? existing?.serverId ?? server?.id ?? "",
     profileId: scope.profileId,
     serverName: candidate.session.serverName ?? existing?.serverName ?? server?.name ?? "Portico Server",
+    serverPublicKey: candidate.publicKey,
     serverPublicKeyFingerprint: candidate.fingerprint,
     currentRoute: { ...candidate.route, verifiedAt: now.toISOString() },
     previousRoute: identityChanged ? undefined : sameRoute ? existing?.previousRoute : existing?.currentRoute,
@@ -1336,10 +1349,11 @@ function routeHintFromSession(session: LocalServerSession, now: Date): VerifiedS
 }
 
 function assertTrustedRecord(record: TrustedServerConnectionRecord, accountId: string, serverId: string): void {
-  if (record.schemaVersion !== 2 || record.accountId !== accountId || record.serverId !== serverId) {
+  if (record.schemaVersion !== 3 || record.accountId !== accountId || record.serverId !== serverId) {
     throw new Error("The remembered server connection does not belong to this account and server.");
   }
   if (!record.accountId.trim() || !record.serverId.trim() || !record.profileId.trim() ||
+      !record.serverPublicKey.trim() ||
       !isValidPorticoServerPublicKeyFingerprint(record.serverPublicKeyFingerprint) ||
       !record.currentRoute?.url || !record.session) {
     throw new Error("The remembered server connection is incomplete.");
@@ -1348,6 +1362,7 @@ function assertTrustedRecord(record: TrustedServerConnectionRecord, accountId: s
   if (record.previousRoute) assertTrustedRouteHint(record.previousRoute, record.serverPublicKeyFingerprint);
   if (record.session.authority !== "hosted" || record.session.accountId !== record.accountId ||
       record.session.serverId !== record.serverId || record.session.profileId !== record.profileId ||
+      record.session.serverPublicKey !== record.serverPublicKey ||
       record.session.serverPublicKeyFingerprint !== record.serverPublicKeyFingerprint ||
       !record.session.accessToken?.trim() || !record.session.refreshToken?.trim() || record.session.bootstrapAccessToken?.trim()) {
     throw new Error("The remembered server credential is not bound to its trusted server record.");

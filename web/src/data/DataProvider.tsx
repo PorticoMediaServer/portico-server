@@ -1327,6 +1327,12 @@ type SourceQueryOptions<T> = {
 	initialData?: T;
 };
 
+function isAuthoritativeNotFound(reason: unknown): reason is Error {
+	if (!(reason instanceof Error)) return false;
+	const problem = reason as Error & { status?: unknown };
+	return problem.status === 404;
+}
+
 function useSourceQuery<T>(key: string, load: (source: PorticoDataSource, signal: AbortSignal) => Promise<T>, liveTags: readonly string[] = [], refreshRevision = 0, options: SourceQueryOptions<T> = {}): QueryState<T> {
   const source = usePorticoDataSource();
 	const runtime = useViewerRuntime();
@@ -1339,8 +1345,10 @@ function useSourceQuery<T>(key: string, load: (source: PorticoDataSource, signal
 	const queryKey = useMemo(() => scope
 		? viewerQueryKey(scope, resource, { identity: key })
 		: ['portico', 'unscoped', resource, key] as const, [key, resource, scope]);
+	const queryIdentity = `${runtime.activeScopeKey()}\u0000${key}`;
 	const previousRefreshRevision = useRef(refreshRevision);
 	const previousInitialData = useRef(options.initialData);
+	const authoritativeNotFound = useRef<{ identity: string; error: Error } | undefined>(undefined);
 	const query = useQuery({
 		enabled: Boolean(scope) && queryRuntimeReady && options.enabled !== false,
 		initialData: options.initialData,
@@ -1348,6 +1356,12 @@ function useSourceQuery<T>(key: string, load: (source: PorticoDataSource, signal
 		queryFn: ({ signal }) => load(source, signal),
 		queryKey,
 	});
+	const explicitRefresh = previousRefreshRevision.current !== refreshRevision;
+	if (authoritativeNotFound.current?.identity !== queryIdentity || explicitRefresh) {
+		authoritativeNotFound.current = undefined;
+	}
+	if (query.data !== undefined) authoritativeNotFound.current = undefined;
+	else if (!explicitRefresh && isAuthoritativeNotFound(query.error)) authoritativeNotFound.current = { identity: queryIdentity, error: query.error };
 	useEffect(() => {
 		recordRouteDataState(key, query.error ? 'error' : query.data !== undefined ? 'success' : 'loading', query.error);
 	}, [key, query.data, query.error]);
@@ -1365,6 +1379,7 @@ function useSourceQuery<T>(key: string, load: (source: PorticoDataSource, signal
 	}, [queryClient, queryKey, refreshRevision]);
 
 	return useMemo<QueryState<T>>(() => {
+		if (authoritativeNotFound.current) return { status: 'error', error: authoritativeNotFound.current.error };
 		const error = query.error instanceof Error ? query.error : query.error ? new Error('Portico request failed.') : undefined;
 		const lastSuccessAt = query.dataUpdatedAt > 0 ? query.dataUpdatedAt : undefined;
 		if (query.data !== undefined) return {

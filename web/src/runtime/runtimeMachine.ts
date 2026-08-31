@@ -18,6 +18,7 @@ export type RuntimeBootstrapConfig = {
 
 export type HostedServerSummary = {
   id: string;
+  ownerUserId?: string;
   name: string;
   assignedHostname: string;
   remoteAccessEnabled: boolean;

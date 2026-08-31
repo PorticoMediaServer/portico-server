@@ -1,17 +1,17 @@
 {
-  "fixtureRevision": "v1",
+  "fixtureRevision": "v2",
   "system": {
     "apiVersion": "v1",
     "compatibility": {
-      "envelopeRevision": 1,
+      "envelopeRevision": 2,
       "supportedClientProtocol": {
         "maximum": 1,
         "minimum": 1
       },
       "apiContract": {
-        "digest": "33e17683ba7d56442d93f58766834ae624ccac6f525e89bc68548729e7137bcd",
+        "digest": "36f41124c30a4e846e8e562d0bc090e55beb21d573b65f51463d1056392f66c4",
         "digestAlgorithm": "sha256",
-        "identity": "apps/portico-cloud/api/openapi/portico-hosted.openapi.json+apps/portico-server/api/openapi/openapi.yaml+apps/portico-server/api/openapi/portico-server.openapi.json"
+        "identity": "portico-internal/hosted-services/api/openapi/portico-hosted.openapi.json+portico-server/api/openapi/openapi.yaml+portico-server/api/openapi/portico-server.openapi.json"
       },
       "build": {
         "buildNumber": "0",
@@ -25,7 +25,7 @@
         "paginationCursor": 1,
         "playback": 1,
         "problemRecoveryAction": 1,
-        "product": 1,
+        "product": 2,
         "viewerProfileAuthority": 1
       },
       "capabilities": [
@@ -155,179 +155,41 @@
         "authorizationOnPartialUpgrade": "never_broaden",
         "unknownOptionalCapabilities": "ignore_and_preserve",
         "unknownRequiredSemantics": "reject_actionably"
+      },
+      "semanticDocuments": {
+        "productContract": {
+          "id": "portico.product-contract",
+          "revision": "v2",
+          "digestAlgorithm": "sha256",
+          "digest": "b4e5d9085d5bff25a281c7ee5bb1a8a547dda9e52e66b38bdada2745a74cbba9"
+        }
       }
     }
   },
   "productContract": {
     "apiVersion": "v1",
+    "semanticIdentity": {
+      "id": "portico.product-contract",
+      "revision": "v2",
+      "digestAlgorithm": "sha256",
+      "digest": "b4e5d9085d5bff25a281c7ee5bb1a8a547dda9e52e66b38bdada2745a74cbba9"
+    },
     "serverCapabilities": [
       "downloads",
       "home.lazy-rows",
       "library.canonical-browse",
       "library.capability-resolution",
+      "live-tv",
       "media.actions",
       "notifications",
+      "playback.google-cast-custom-receiver",
+      "remote-access.direct",
       "saved.favorites-resource",
       "saved.first-class-resources",
       "search.grouped-cursors",
       "settings.typed-revisioned",
       "watch-with-friends"
-    ],
-    "compatibility": {
-      "envelopeRevision": 1,
-      "supportedClientProtocol": {
-        "maximum": 1,
-        "minimum": 1
-      },
-      "apiContract": {
-        "digest": "33e17683ba7d56442d93f58766834ae624ccac6f525e89bc68548729e7137bcd",
-        "digestAlgorithm": "sha256",
-        "identity": "apps/portico-cloud/api/openapi/portico-hosted.openapi.json+apps/portico-server/api/openapi/openapi.yaml+apps/portico-server/api/openapi/portico-server.openapi.json"
-      },
-      "build": {
-        "buildNumber": "0",
-        "channel": "development",
-        "commit": "UNSTAMPED_DEVELOPMENT",
-        "timestamp": null,
-        "version": "0.0.0-development"
-      },
-      "semanticRevisions": {
-        "externalAction": 1,
-        "paginationCursor": 1,
-        "playback": 1,
-        "problemRecoveryAction": 1,
-        "product": 1,
-        "viewerProfileAuthority": 1
-      },
-      "capabilities": [
-        {
-          "id": "downloads",
-          "revision": 1,
-          "state": "available",
-          "requiredSemantics": [
-            "product"
-          ]
-        },
-        {
-          "id": "home.lazy-rows",
-          "revision": 1,
-          "state": "available",
-          "requiredSemantics": [
-            "product"
-          ]
-        },
-        {
-          "id": "library.canonical-browse",
-          "revision": 1,
-          "state": "available",
-          "requiredSemantics": [
-            "product"
-          ]
-        },
-        {
-          "id": "library.capability-resolution",
-          "revision": 1,
-          "state": "available",
-          "requiredSemantics": [
-            "product"
-          ]
-        },
-        {
-          "id": "live-tv",
-          "revision": 1,
-          "state": "requires_configuration",
-          "requiredSemantics": [
-            "playback"
-          ]
-        },
-        {
-          "id": "media.actions",
-          "revision": 1,
-          "state": "available",
-          "requiredSemantics": [
-            "product"
-          ]
-        },
-        {
-          "id": "notifications",
-          "revision": 1,
-          "state": "available",
-          "requiredSemantics": [
-            "product"
-          ]
-        },
-        {
-          "id": "playback.google-cast-custom-receiver",
-          "revision": 1,
-          "state": "requires_configuration",
-          "requiredSemantics": [
-            "playback"
-          ]
-        },
-        {
-          "id": "remote-access.direct",
-          "revision": 1,
-          "state": "requires_configuration",
-          "requiredSemantics": [
-            "viewerProfileAuthority"
-          ]
-        },
-        {
-          "id": "saved.favorites-resource",
-          "revision": 1,
-          "state": "available",
-          "requiredSemantics": [
-            "product"
-          ]
-        },
-        {
-          "id": "saved.first-class-resources",
-          "revision": 1,
-          "state": "available",
-          "requiredSemantics": [
-            "product"
-          ]
-        },
-        {
-          "id": "search.grouped-cursors",
-          "revision": 1,
-          "state": "available",
-          "requiredSemantics": [
-            "paginationCursor"
-          ]
-        },
-        {
-          "id": "settings.typed-revisioned",
-          "revision": 1,
-          "state": "available",
-          "requiredSemantics": [
-            "product"
-          ]
-        },
-        {
-          "id": "watch-with-friends",
-          "revision": 1,
-          "state": "available",
-          "requiredSemantics": [
-            "playback"
-          ]
-        }
-      ],
-      "requiredSemantics": [
-        "product",
-        "viewerProfileAuthority",
-        "playback",
-        "problemRecoveryAction",
-        "externalAction",
-        "paginationCursor"
-      ],
-      "forwardCompatibility": {
-        "apiContractDigestMismatch": "allow_semantic_overlap",
-        "authorizationOnPartialUpgrade": "never_broaden",
-        "unknownOptionalCapabilities": "ignore_and_preserve",
-        "unknownRequiredSemantics": "reject_actionably"
-      }
-    }
+    ]
   },
   "negotiation": {
     "clientProtocol": 1,

@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/PorticoMediaServer/portico-server/internal/playbackplan"
 )
 
 const (
@@ -262,6 +264,11 @@ func setPlaybackMediaGrantCookie(w http.ResponseWriter, r *http.Request, playbac
 }
 
 func (s *Server) userForMediaGrant(r *http.Request) (User, error) {
+	terminateAuthorization := func(sessionID string) {
+		_, _ = s.playbackLifecycle().Terminate(r.Context(), playbackTerminationRequest{
+			SessionID: sessionID, Cause: playbackTerminationAuthorization,
+		})
+	}
 	scope, ok := mediaGrantScopeForRequest(r)
 	if !ok {
 		return User{}, errMediaGrantDenied
@@ -312,7 +319,7 @@ func (s *Server) userForMediaGrant(r *http.Request) (User, error) {
 		}
 		if terminalDenied {
 			s.mediaGrantCacheCounters.terminalDenials.Add(1)
-			s.revokeLiveTVGrantAllocation(r.Context(), cached.playbackSessionID)
+			terminateAuthorization(cached.playbackSessionID)
 			return User{}, errMediaGrantDenied
 		}
 		cached.verifiedAt = now
@@ -370,7 +377,7 @@ func (s *Server) userForMediaGrant(r *http.Request) (User, error) {
 	}
 	principal, principalErr := s.resolveRequestPrincipalContext(r.Context(), userID, profileID)
 	if principalErr != nil {
-		s.revokeLiveTVGrantAllocation(r.Context(), playbackSessionID)
+		terminateAuthorization(playbackSessionID)
 		return User{}, errMediaGrantDenied
 	}
 	user := User{ID: userID, AccountID: userID, ProfileID: profileID}
@@ -378,17 +385,17 @@ func (s *Server) userForMediaGrant(r *http.Request) (User, error) {
 	user = s.hydratePlaybackVisibilityUserContext(r.Context(), user)
 	currentAuthorizationRevision, revisionErr := s.authorizationRevisionForUserContextStrict(r.Context(), user)
 	if revisionErr != nil || authorizationRevision == "" || authorizationRevision != currentAuthorizationRevision {
-		s.revokeLiveTVGrantAllocation(r.Context(), playbackSessionID)
+		terminateAuthorization(playbackSessionID)
 		return User{}, errMediaGrantDenied
 	}
 	if !hasPermission(user, "playMedia") || (scope.ResourceKind == "live_channel" && !canPlayLiveTV(user)) {
-		s.revokeLiveTVGrantAllocation(r.Context(), playbackSessionID)
+		terminateAuthorization(playbackSessionID)
 		return User{}, errMediaGrantDenied
 	}
 	if scope.ResourceKind == "live_channel" && tunerAllocationCount == 1 {
 		channel, source, channelErr := s.getLiveTVChannelForPlayback(scope.ResourceID)
 		if channelErr != nil || !source.Enabled || !s.userLiveTVChannelAllowedForUser(user, channel.ID) {
-			s.revokeLiveTVGrantAllocation(r.Context(), playbackSessionID)
+			terminateAuthorization(playbackSessionID)
 			return User{}, errMediaGrantDenied
 		}
 	}
@@ -438,27 +445,6 @@ func mediaGrantRequestAllowed(operationClasses []string, deliveryMode, transcode
 	return r.URL.Query().Get("directStream") == "" || deliveryMode == "direct_stream"
 }
 
-func (s *Server) revokeLiveTVGrantAllocation(ctx context.Context, playbackSessionID string) {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	now := time.Now().UTC().Format(time.RFC3339)
-	_ = s.withPlaybackTxTagged(ctx, []string{"live-tv", "playback"}, func(tx *sql.Tx) error {
-		if _, err := tx.Exec(`UPDATE playback_media_grants SET revoked_at = ? WHERE playback_session_id = ? AND revoked_at = ''`, now, playbackSessionID); err != nil {
-			return err
-		}
-		if _, err := tx.Exec(`UPDATE playback_sessions SET state = 'stopped', ended_at = ?, last_seen_at = ? WHERE id = ? AND ended_at = ''`, now, now, playbackSessionID); err != nil {
-			return err
-		}
-		if _, err := tx.Exec(`UPDATE playback_session_continuation_credentials SET revoked_at = ?, previous_valid_until = '' WHERE playback_session_id = ? AND revoked_at = ''`, now, playbackSessionID); err != nil {
-			return err
-		}
-		_, err := tx.Exec(`DELETE FROM live_tv_tuner_allocations WHERE allocation_kind = 'live_session' AND consumer_id = ?`, playbackSessionID)
-		return err
-	})
-	s.forgetMediaGrantsForPlaybackSession(playbackSessionID)
-}
-
 func (s *Server) issueMediaGrant(ctx context.Context, user User, playbackSessionID, resourceKind, resourceID string) (MediaGrant, error) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -483,15 +469,25 @@ func (s *Server) issueMediaGrant(ctx context.Context, user User, playbackSession
 	return s.issueMediaGrantWithOptions(ctx, user, playbackSessionID, resourceKind, resourceID, true, true)
 }
 
-func mediaGrantDeliveryForPlayback(_ MediaItem, decision PlaybackDecision, _ ResolvedPlaybackPolicy, _ bool) mediaGrantDelivery {
-	delivery := mediaGrantDelivery{DeliveryMode: decision.Mode}
-	plannedQuality := normalizeTranscodeQuality(decision.DeliveryProfile)
-	if decision.Mode == "direct_play" || decision.Mode == "optimized_version" {
+func mediaGrantDeliveryForPlayback(plan playbackExecutionPlan) mediaGrantDelivery {
+	mode := "transcode_required"
+	switch plan.Plan.Mode {
+	case playbackplan.DirectPlay:
+		mode = "direct_play"
+		if plan.OptimizedArtifactID != "" {
+			mode = "optimized_version"
+		}
+	case playbackplan.Remux, playbackplan.DirectStream:
+		mode = "direct_stream"
+	}
+	delivery := mediaGrantDelivery{DeliveryMode: mode}
+	plannedQuality := plan.Quality
+	if mode == "direct_play" || mode == "optimized_version" {
 		plannedQuality = "original"
 	}
 	delivery.TranscodeQuality = plannedQuality
 	delivery.AllowedQualities = []string{plannedQuality}
-	switch decision.Mode {
+	switch mode {
 	case "direct_play", "optimized_version":
 		delivery.OperationClasses = []string{"byte_range", "subtitle", "trickplay"}
 	case "direct_stream", "transcode_required":
@@ -507,10 +503,10 @@ func (s *Server) issueMediaGrantForPlayback(ctx context.Context, user User, play
 	if err != nil {
 		return MediaGrant{}, errMediaGrantDenied
 	}
-	return s.issueMediaGrantBoundToPlan(ctx, user, playbackSessionID, "media", item.ID, requireSessionResource, revokeExisting, mediaGrantDeliveryForPlayback(item, decision, policy, s.userCanTranscode(user)), &binding)
+	return s.issueMediaGrantBoundToPlan(ctx, user, playbackSessionID, "media", item.ID, requireSessionResource, revokeExisting, mediaGrantDeliveryForPlayback(binding), &binding)
 }
 
-func (s *Server) issueLiveMediaGrantForPlayback(ctx context.Context, user User, playbackSessionID, channelID string, decision PlaybackDecision, selectedQuality string, qualities []Quality, revokeExisting bool) (MediaGrant, error) {
+func (s *Server) issueLiveMediaGrantForPlayback(ctx context.Context, user User, playbackSessionID, channelID string, decision PlaybackDecision, selectedQuality string, revokeExisting bool) (MediaGrant, error) {
 	selectedQuality = normalizeLiveTVQualityID(selectedQuality)
 	return s.issueMediaGrantBound(ctx, user, playbackSessionID, "live_channel", channelID, true, revokeExisting, mediaGrantDelivery{
 		OperationClasses: []string{"manifest", "segment"},
@@ -563,7 +559,7 @@ func (s *Server) issueMediaGrantBound(ctx context.Context, user User, playbackSe
 	return s.issueMediaGrantBoundToPlan(ctx, user, playbackSessionID, resourceKind, resourceID, requireSessionResource, revokeExisting, delivery, nil)
 }
 
-func (s *Server) issueMediaGrantBoundToPlan(ctx context.Context, user User, playbackSessionID, resourceKind, resourceID string, requireSessionResource, revokeExisting bool, delivery mediaGrantDelivery, explicitPlan *playbackExecutionBinding) (MediaGrant, error) {
+func (s *Server) issueMediaGrantBoundToPlan(ctx context.Context, user User, playbackSessionID, resourceKind, resourceID string, requireSessionResource, revokeExisting bool, delivery mediaGrantDelivery, explicitPlan *playbackExecutionPlan) (MediaGrant, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -600,8 +596,8 @@ func (s *Server) issueMediaGrantBoundToPlan(ctx context.Context, user User, play
 		if err != nil {
 			return MediaGrant{}, errMediaGrantDenied
 		}
-		planDigest, planJSON, sourceRevision, playbackGeneration = candidate.Digest, string(encoded), candidate.SourceRevision, candidate.Generation
-	} else if _, err := decodePlaybackExecutionBinding(planJSON); err != nil {
+		planDigest, planJSON, sourceRevision, playbackGeneration = candidate.Digest, string(encoded), candidate.Plan.SourceRevision, candidate.generation()
+	} else if _, err := decodePlaybackExecutionPlan(planJSON); err != nil {
 		return MediaGrant{}, errMediaGrantDenied
 	}
 	principal, principalErr := s.resolveRequestPrincipalContext(ctx, accountIDForUser(user), viewerProfileID(user))
@@ -633,7 +629,11 @@ func (s *Server) issueMediaGrantBoundToPlan(ctx context.Context, user User, play
 	if revisionErr != nil {
 		return MediaGrant{}, errMediaGrantDenied
 	}
-	err := s.withPlaybackTxTagged(ctx, []string{"playback"}, func(tx *sql.Tx) error {
+	withGrantTx := s.withPlaybackTxTagged
+	if revokeExisting {
+		withGrantTx = s.withSecurityFenceTxTagged
+	}
+	err := withGrantTx(ctx, []string{"playback"}, func(tx *sql.Tx) error {
 		if _, err := tx.ExecContext(ctx, `
 			DELETE FROM playback_media_grants
 			WHERE expires_at < ? OR (revoked_at <> '' AND revoked_at < ?)`,
@@ -700,6 +700,6 @@ func (s *Server) revokeMediaGrantsForSession(ctx context.Context, playbackSessio
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	_, _ = s.execPlaybackWrite(ctx, `UPDATE playback_media_grants SET revoked_at = ? WHERE playback_session_id = ? AND revoked_at = ''`, time.Now().UTC().Format(time.RFC3339), playbackSessionID)
+	_, _ = s.execSecurityFenceWriteTagged(ctx, []string{"playback"}, `UPDATE playback_media_grants SET revoked_at = ? WHERE playback_session_id = ? AND revoked_at = ''`, time.Now().UTC().Format(time.RFC3339), playbackSessionID)
 	s.forgetMediaGrantsForPlaybackSession(playbackSessionID)
 }

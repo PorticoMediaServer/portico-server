@@ -14,6 +14,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/PorticoMediaServer/portico-server/internal/foundationcontract"
 )
 
 const (
@@ -836,7 +838,7 @@ func (s *Server) runDVRRecording(parentCtx context.Context, id, leaseToken strin
 	}
 	defer inputTransport.Close()
 	defaults := s.dvrTimerDefaults()
-	resourceRequest := mediaResourceRequest{disk: 2, network: 1}
+	resourceRequest := mediaResourceRequest{class: foundationcontract.WorkClassProtectedCapture, disk: 2, network: 1}
 	if defaults.ConvertRecordings {
 		resourceRequest.cpu = 1
 	}

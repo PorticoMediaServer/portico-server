@@ -56,6 +56,8 @@ func (s *Server) scanRemoteStorageSources(ctx context.Context, library Library, 
 	analysisSettings := s.libraryAnalysisSettingsFor(library)
 	for _, source := range sources {
 		contentPolicy := scanContentPolicy(source.analysisMode, analysisSettings)
+		sourceSettings := mergeScanProfileSettings(analysisSettings, map[string]any{"analysisTier": source.analysisMode})
+		enqueueAnalysis := capabilitiesIntersect(effectiveScanProfile(sourceSettings), analysisCapability)
 		root := scanRoot{sourceID: source.id, configured: "portico-storage://" + source.id, display: "Remote storage", real: "portico-storage://" + source.id, classification: storageSourceNetwork}
 		_ = s.updateScanRootEvidence(ctx, run, root, "running", "", "", 0, 0)
 		backend, err := s.remoteBackendForSource(ctx, source.id)
@@ -93,7 +95,7 @@ func (s *Server) scanRemoteStorageSources(ctx context.Context, library Library, 
 			// Inventory-only is a strict zero-content-read scan. Basic, Complete,
 			// and explicitly enabled Custom work are queued only after the catalog
 			// page commits; the remote background lane yields to playback.
-			_, indexed, metadata, analysis, err := s.writeScannedMediaBatch(ctx, library, batch, now, generation, contentPolicy.FetchDescriptiveMetadata, contentPolicy.ProbeStreams)
+			_, indexed, metadata, analysis, err := s.writeScannedMediaBatch(ctx, library, batch, now, generation, contentPolicy.FetchDescriptiveMetadata, enqueueAnalysis)
 			result.FilesIndexed += indexed
 			result.MetadataRefreshQueued += metadata
 			result.AnalysisQueued += analysis

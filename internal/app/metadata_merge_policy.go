@@ -18,8 +18,8 @@ var mediaMergePolicies = map[string]string{
 	"audiobook_browse_entity_members": "union", "download_preparations": "retarget",
 	"dvr_recording_media": "union", "library_channel_schedule_entries": "retarget",
 	"media_access_labels": "union", "media_access_tags": "union", "media_attachments": "union",
-	"media_analysis_facts": "union",
-	"media_availability":   "union", "media_category_facets": "union", "media_chapters": "retarget",
+	"media_analysis_facts": "union", "media_segment_analysis_runs": "union",
+	"media_availability": "union", "media_category_facets": "union", "media_chapters": "retarget",
 	"media_download_grants": "retarget", "media_files": "retarget", "media_identity_evidence": "union",
 	"media_images": "retarget", "media_lyrics": "union", "media_match_candidates": "retarget",
 	"media_metadata_locks": "union", "media_people": "union", "media_provider_ids": "provider_identity",
@@ -28,7 +28,8 @@ var mediaMergePolicies = map[string]string{
 	"media_metadata_refresh_outcomes": "retarget", "media_rating_evidence": "union",
 	"media_scanner_hints": "union", "media_scanner_identity_aliases": "retarget",
 	"media_segments": "union", "media_streams": "retarget", "media_trickplay_sets": "union",
-	"metadata_health_issues": "retarget", "optimized_versions": "retarget", "playlist_items": "retarget",
+	"media_waveform_artifacts": "union",
+	"metadata_health_issues":   "retarget", "optimized_versions": "retarget", "playlist_items": "retarget",
 	"scanner_backlog": "union", "user_media_state": "viewer_state", "user_recommendation_cache": "union",
 }
 
@@ -223,6 +224,26 @@ func applyMediaMergePoliciesTx(tx *sql.Tx, subjectID, targetID string) error {
 		if mode == "viewer_state" || mode == "provider_identity" || table == "media_category_facets" {
 			continue
 		}
+		if table == "download_preparations" {
+			now := time.Now().UTC().Format(time.RFC3339Nano)
+			if _, err := tx.Exec(`UPDATE download_preparations
+				SET media_id=?, state='unavailable', progress=100, media_version_id='', version_fingerprint='',
+					artifact_sha256='', size_bytes=0, size_kind='unknown', artifact_expires_at='', job_id='',
+					error_code='media_identity_changed', updated_at=?,
+					removed_at=CASE WHEN EXISTS (
+						SELECT 1 FROM download_preparations AS existing
+						WHERE existing.server_id=download_preparations.server_id
+							AND existing.account_id=download_preparations.account_id
+							AND existing.profile_id=download_preparations.profile_id
+							AND existing.media_id=?
+							AND existing.quality_profile=download_preparations.quality_profile
+							AND existing.removed_at='' AND existing.id<>download_preparations.id
+					) THEN ? ELSE removed_at END
+				WHERE media_id=?`, targetID, now, targetID, now, subjectID); err != nil {
+				return fmt.Errorf("invalidate merged download preparations: %w", err)
+			}
+			continue
+		}
 		query := `UPDATE "` + table + `" SET media_id=? WHERE media_id=?`
 		if mode == "union" {
 			query = `UPDATE OR IGNORE "` + table + `" SET media_id=? WHERE media_id=?`
@@ -262,7 +283,18 @@ func applyMediaMergePoliciesTx(tx *sql.Tx, subjectID, targetID string) error {
 	if _, err := tx.Exec(`UPDATE library_category_counts SET representative_media_id=? WHERE representative_media_id=?`, targetID, subjectID); err != nil {
 		return err
 	}
-	if _, err := tx.Exec(`UPDATE playback_prepared_handoffs SET queue_media_ids_json=(SELECT json_group_array(CASE value WHEN ? THEN ? ELSE value END) FROM json_each(queue_media_ids_json)) WHERE EXISTS (SELECT 1 FROM json_each(queue_media_ids_json) WHERE value=?)`, subjectID, targetID, subjectID); err != nil {
+	if _, err := tx.Exec(`UPDATE playback_prepared_handoffs
+		SET queue_entries_json = (
+			SELECT json_group_array(json(CASE
+				WHEN json_extract(value, '$.mediaId') = ? THEN json_set(value, '$.mediaId', ?)
+				ELSE value
+			END))
+			FROM json_each(queue_entries_json)
+		)
+		WHERE EXISTS (
+			SELECT 1 FROM json_each(queue_entries_json)
+			WHERE json_extract(value, '$.mediaId') = ?
+		)`, subjectID, targetID, subjectID); err != nil {
 		return err
 	}
 

@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"sort"
 	"strings"
-
-	"github.com/PorticoMediaServer/portico-server/internal/playbackplan"
 )
 
 func (s *Server) playbackRuntimeDiagnostics(ctx context.Context) PlaybackRuntimeDiagnostics {
@@ -17,7 +15,7 @@ func (s *Server) playbackRuntimeDiagnostics(ctx context.Context) PlaybackRuntime
 	}
 	rows, err := s.queryUserRead(ctx, `
 		SELECT plan_json FROM playback_sessions
-		WHERE ended_at = '' AND state <> 'stopped'`)
+		WHERE ended_at = '' AND state NOT IN ('stopped', 'handoff_pending')`)
 	if err == nil {
 		defer rows.Close()
 		grouped := map[string]*PlaybackExecutionDiagnostic{}
@@ -28,7 +26,7 @@ func (s *Server) playbackRuntimeDiagnostics(ctx context.Context) PlaybackRuntime
 				result.InvalidPlanBindings++
 				continue
 			}
-			binding, err := decodePlaybackExecutionBinding(raw)
+			binding, err := decodePlaybackExecutionPlan(raw)
 			if err != nil {
 				result.InvalidPlanBindings++
 				continue
@@ -71,11 +69,11 @@ func (s *Server) playbackRuntimeDiagnostics(ctx context.Context) PlaybackRuntime
 	return result
 }
 
-func playbackExecutionProjection(binding playbackExecutionBinding) (PlaybackExecutionDiagnostic, string, bool) {
-	var plan playbackplan.Plan
-	if json.Unmarshal(binding.Plan, &plan) != nil || plan.Validate() != nil {
+func playbackExecutionProjection(binding playbackExecutionPlan) (PlaybackExecutionDiagnostic, string, bool) {
+	if binding.Plan.Validate() != nil {
 		return PlaybackExecutionDiagnostic{}, "", false
 	}
+	plan := binding.Plan
 	projection := PlaybackExecutionDiagnostic{
 		Mode: string(plan.Mode), Protocol: plan.Protocol, Container: plan.Container,
 		Streams: []PlaybackStreamDiagnostic{}, PlannerReasons: []string{},

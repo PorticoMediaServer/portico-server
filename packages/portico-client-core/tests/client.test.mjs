@@ -11,10 +11,9 @@ import {
   discoverHostedServerRoute,
   createHostedConnectionRuntime,
   createHostedServicesClient,
-  createMemorySessionStore,
+  createMemorySessionStore as createCoreMemorySessionStore,
   createPorticoClient,
   dataTagsForMutation,
-  defaultPlaybackQuality,
   groupLibraryCategories,
   hostedDirectRouteAllowed,
   HostedRouteDiscoveryTimeoutError,
@@ -24,6 +23,8 @@ import {
   HostedTerminalMutationUncertainError,
   LocalNetworkRouteUnavailableError,
   NearbyRouteAvailableError,
+  playbackQualitySelectionFor,
+  playbackQualitySelectionKey,
   preferredRoute,
   routesForConnection,
   routeIsUsableCandidate,
@@ -47,10 +48,17 @@ import {
   testServerPublicKeyFingerprint
 } from "./helpers/porticoAttachment.mjs";
 
+const createMemorySessionStore = initial => createCoreMemorySessionStore(
+  initial ? {...testServerIdentity(), ...initial} : initial
+);
+
 const hostedSystemFixture = Object.freeze(JSON.parse(readFileSync(new URL("../fixtures/hosted-api-v1-conformance.json", import.meta.url), "utf8")).system);
 const goSerializedRouteFixture = Object.freeze(JSON.parse(readFileSync(new URL("../fixtures/signing/document-signing-fixture.json", import.meta.url), "utf8")).routeDocument);
 
 function jsonResponse(body, init = {}) {
+  if (body?.tokenType === "Bearer" && body.user && body.device && body.accessToken && body.refreshToken) {
+    body = {...testServerIdentity(), ...body};
+  }
   return new Response(JSON.stringify(body), {
     status: 200,
     headers: { "Content-Type": "application/json" },
@@ -73,13 +81,25 @@ function acceptedPlayback(sessionId, nextEventSequence = 1) {
     continuationCredential: { token: "continuation", origin: "https://server.example", generation: 1, expiresAt: "2026-08-06T01:00:00Z" },
     mediaGrant: { token: "grant", expiresAt: "2026-08-06T01:00:00Z" },
     decision: { mode: "direct_play", reason: "", requiresTranscode: false, isProxied: true, isServerCached: false },
-    qualities: [], audioStreams: [], subtitleStreams: [], chapters: [], queue: [],
+    qualityOffers: {contractId: "PC-PLAYBACK", schemaVersion: "quality-offers.v1", mediaId: "m1", versionId: "qver-m1", sourceRevision: "qsrc-m1", offerRevision: "qrev-m1", offers: [{selectionId: "qsel-auto", label: "Automatic", kind: "automatic"}, {selectionId: "qsel-original", label: "Original Quality", kind: "original"}]},
+    qualitySelection: {mode: "automatic"}, audioStreams: [], subtitleStreams: [], chapters: [], queue: [],
     resources: [{ id: "movie-active", sourceUrl: "/api/media/m1/stream", streamFormat: "http", default: true }],
+  };
+}
+
+function playbackTerminalReceipt(sessionId, request, duplicate = false) {
+  return {
+    requestId: request.requestId,
+    accepted: true,
+    duplicate,
+    sessionId,
+    terminal: request.terminal,
   };
 }
 
 function compatibleLocalClient(serverId, audience, overrides = {}) {
   const issued = {
+    ...testServerIdentity(),
     tokenType: "Bearer",
     accessToken: "server-access",
     accessExpiresAt: "2026-05-23T01:00:00Z",
@@ -202,6 +222,9 @@ test("supervised restore client methods send step-up, confirmation, bounded uplo
     transport: {
       fetch: async (input, init) => {
         calls.push({ input: String(input), init });
+        if (String(input).endsWith("/api/backups/restore-authorization-context")) {
+          return jsonResponse({ restoreSecurityEpoch: 7 });
+        }
         return jsonResponse({
           ok: true,
           name: "portico-backup.db",
@@ -234,6 +257,21 @@ test("supervised restore client methods send step-up, confirmation, bounded uplo
 
   await client.restoreStatus("restore-1", "opaque-status-token");
   assert.equal(calls[2].init.headers["X-Portico-Restore-Status"], "opaque-status-token");
+
+  const context = await client.restoreAuthorizationContext();
+  assert.equal(context.restoreSecurityEpoch, 7);
+  assert.equal(calls[3].input, "https://server.example/api/backups/restore-authorization-context");
+
+  const hostedAuthorization = {
+    kind: "restore-authorization", version: 1, audience: "portico-media-server", authorizationId: "sra_test",
+    purpose: "server-restore", serverId: "server-1", accountId: "account-1", restoreSecurityEpoch: 7,
+    issuedAt: "2026-08-30T13:00:00Z", expiresAt: "2026-08-30T13:05:00Z",
+    signatureAlgorithm: "ed25519", signatureKeyId: "key-1", signature: "signed"
+  };
+  await client.restoreUploadedDatabase({ file, hostedAuthorization, confirmation: "restore:uploaded-database" });
+  const hostedFormEntries = [...calls[4].init.body.entries()];
+  assert.deepEqual(hostedFormEntries.map(([key]) => key), ["hostedAuthorization", "confirmation", "databaseBytes", "database"]);
+  assert.deepEqual(JSON.parse(hostedFormEntries[0][1]), hostedAuthorization);
 });
 
 test("Watch With Friends host mutations preserve required idempotency keys", async () => {
@@ -257,17 +295,17 @@ test("Watch With Friends host mutations preserve required idempotency keys", asy
   await client.updateWatchWithFriendsState("group 1", { action: "play", expectedRevision: 4, idempotencyKey: "state key" });
   await client.updateWatchWithFriendsSettings("group 1", { repeatMode: "all", expectedRevision: 5, idempotencyKey: "settings key" });
   await client.addWatchWithFriendsQueueItem("group 1", { mediaId: "movie 2", expectedRevision: 6, idempotencyKey: "add key" });
-  await client.reorderWatchWithFriendsQueue("group 1", { mediaIds: ["movie 2"], expectedRevision: 7, idempotencyKey: "order key" });
-  await client.removeWatchWithFriendsQueueItem("group 1", "movie 2", 8, "remove key");
+  await client.reorderWatchWithFriendsQueue("group 1", { entryId: "entry 2", destinationEntryId: "entry 1", placement: "before", expectedRevision: 7, idempotencyKey: "order key" });
+  await client.removeWatchWithFriendsQueueItem("group 1", "entry 2", 8, "remove key");
   await client.endWatchWithFriendsGroup("group 1", 9, "end key");
 
   assert.deepEqual(calls.slice(0, 4).map((call) => JSON.parse(call.init.body)), [
     { action: "play", expectedRevision: 4, idempotencyKey: "state key" },
     { repeatMode: "all", expectedRevision: 5, idempotencyKey: "settings key" },
     { mediaId: "movie 2", expectedRevision: 6, idempotencyKey: "add key" },
-    { mediaIds: ["movie 2"], expectedRevision: 7, idempotencyKey: "order key" }
+    { entryId: "entry 2", destinationEntryId: "entry 1", placement: "before", expectedRevision: 7, idempotencyKey: "order key" }
   ]);
-  assert.equal(calls[4].input, "https://server.example/api/watch-with-friends/groups/group%201/queue/movie%202?expectedRevision=8&idempotencyKey=remove%20key");
+  assert.equal(calls[4].input, "https://server.example/api/watch-with-friends/groups/group%201/queue/entry%202?expectedRevision=8&idempotencyKey=remove%20key");
   assert.equal(calls[5].input, "https://server.example/api/watch-with-friends/groups/group%201?expectedRevision=9&idempotencyKey=end%20key");
   assert.deepEqual(calls.map((call) => call.init.method), ["PATCH", "PATCH", "POST", "PATCH", "DELETE", "DELETE"]);
 });
@@ -1829,7 +1867,8 @@ test("atomic playback stop sends its required terminal body with CSRF", async ()
     transport: {
       fetch: async (input, init) => {
         calls.push({ input: String(input), init });
-        return jsonResponse({ ok: true });
+        const request = JSON.parse(init.body);
+        return jsonResponse(playbackTerminalReceipt("session-1", request));
       }
     }
   });
@@ -1841,11 +1880,12 @@ test("atomic playback stop sends its required terminal body with CSRF", async ()
   assert.equal(calls[0].init.headers["Content-Type"], "application/json");
   assert.equal(calls[0].init.headers["X-Portico-CSRF"], "1");
   const stopped = JSON.parse(calls[0].init.body);
-  assert.deepEqual({ ...stopped, recordedAt: "<timestamp>" }, {
+  assert.match(stopped.requestId, /^[A-Za-z0-9._:-]{8,128}$/);
+  assert.deepEqual({ ...stopped.terminal, recordedAt: "<timestamp>" }, {
     disposition: "stopped", generation: 1, eventSequence: 1,
     recordedAt: "<timestamp>", positionSeconds: 12, durationSeconds: 60,
   });
-  assert.match(stopped.recordedAt, /^\d{4}-\d{2}-\d{2}T/);
+  assert.match(stopped.terminal.recordedAt, /^\d{4}-\d{2}-\d{2}T/);
 });
 
 test("continuation revoke requires and sends the canonical atomic terminal body", async () => {
@@ -1854,13 +1894,17 @@ test("continuation revoke requires and sends the canonical atomic terminal body"
     apiBaseUrl: "https://server.example",
     transport: { fetch: async (input, init) => {
       calls.push({ input: String(input), init });
-      return jsonResponse({ ok: true });
+      const request = JSON.parse(init.body);
+      return jsonResponse(playbackTerminalReceipt("session-1", request));
     } }
   });
   const credential = { token: "continuation", origin: "https://server.example", generation: 1, expiresAt: "2026-08-28T20:00:00Z" };
   const body = {
-    disposition: "stopped", generation: 1, eventSequence: 7,
-    recordedAt: "2026-08-28T18:00:00.000Z", positionSeconds: 18, durationSeconds: 60,
+    requestId: "terminal-native-1",
+    terminal: {
+      disposition: "stopped", generation: 1, eventSequence: 7,
+      recordedAt: "2026-08-28T18:00:00.000Z", positionSeconds: 18, durationSeconds: 60,
+    },
   };
 
   await client.revokePlaybackContinuation("session-1", credential, body);
@@ -1870,8 +1914,1184 @@ test("continuation revoke requires and sends the canonical atomic terminal body"
   assert.deepEqual(JSON.parse(calls[0].init.body), body);
 });
 
+test("base stop forwards a native-owned complete request without reallocating authority", async () => {
+  const calls = [];
+  let generatedRequestIds = 0;
+  const body = {
+    requestId: "terminal-native-base-1",
+    terminal: {
+      disposition: "completed", generation: 4, eventSequence: 29,
+      recordedAt: "2026-08-30T18:20:00.000Z", positionSeconds: 180, durationSeconds: 180,
+    },
+  };
+  const client = createPorticoClient({
+    apiBaseUrl: "https://server.example",
+    requestId: () => {
+      generatedRequestIds += 1;
+      return `transport-request-${generatedRequestIds}`;
+    },
+    transport: { fetch: async (_input, init) => {
+      calls.push(String(init.body));
+      return jsonResponse(playbackTerminalReceipt("session-native-base", body));
+    } },
+  });
+
+  const receipt = await client.stopPlayback("session-native-base", body);
+
+  assert.deepEqual(JSON.parse(calls[0]), body);
+  assert.equal(receipt.requestId, body.requestId);
+  assert.equal(generatedRequestIds, 1);
+});
+
+test("Core-owned terminal retry reuses one request ID and byte-identical event after a lost response", async () => {
+  const calls = [];
+  let requestIds = 0;
+  const records = new Map();
+  const durability = {
+    load: async () => [...records.values()].map(value => structuredClone(value)),
+    save: async record => { records.set(record.key, structuredClone(record)); },
+    remove: async key => { records.delete(key); },
+  };
+  const first = createPorticoClient({
+    apiBaseUrl: "https://server.example",
+    playbackProgressDurabilityAdapter: durability,
+    requestId: () => {
+      requestIds += 1;
+      return `terminal-request-${requestIds}`;
+    },
+    now: () => Date.parse("2026-08-30T18:20:00.000Z"),
+    transport: { fetch: async (_input, init) => {
+      const serialized = String(init.body);
+      calls.push(serialized);
+      throw new TypeError("response was lost");
+    } },
+  });
+  first.acceptPlaybackSession(acceptedPlayback("session-retry-stop", 7));
+
+  const input = { disposition: "completed", positionSeconds: 60, durationSeconds: 60 };
+  await assert.rejects(first.stopPlayback("session-retry-stop", input), /response was lost/);
+  const restarted = createPorticoClient({
+    apiBaseUrl: "https://server.example",
+    playbackProgressDurabilityAdapter: durability,
+    requestId: () => {
+      requestIds += 1;
+      return `terminal-request-${requestIds}`;
+    },
+    transport: { fetch: async (_input, init) => {
+      const serialized = String(init.body);
+      calls.push(serialized);
+      const request = JSON.parse(serialized);
+      return jsonResponse(playbackTerminalReceipt("session-retry-stop", request, true));
+    } },
+  });
+  const pending = await restarted.pendingPlaybackTerminalMutation("session-retry-stop");
+  assert.equal(pending.operation, "stop");
+  assert.equal(pending.request.requestId, "terminal-request-1");
+  assert.equal(Object.isFrozen(pending.request), true);
+  assert.equal(Object.isFrozen(pending.request.terminal), true);
+  const pendingOutbox = await restarted.pendingPlaybackTerminalMutations();
+  assert.equal(Object.isFrozen(pendingOutbox), true);
+  assert.deepEqual(
+    pendingOutbox.map(record => [record.sessionId, record.operation]),
+    [["session-retry-stop", "stop"]],
+  );
+  const receipt = await restarted.stopPlayback(
+    "session-retry-stop",
+    pending.request,
+  );
+
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0], calls[1]);
+  assert.equal(receipt.duplicate, true);
+  assert.equal(receipt.requestId, "terminal-request-1");
+});
+
+test("a 401 or 404 is never accepted as a lost terminal response receipt", async () => {
+  const records = new Map();
+  const durability = {
+    load: async () => [...records.values()].map(value => structuredClone(value)),
+    save: async record => { records.set(record.key, structuredClone(record)); },
+    remove: async key => { records.delete(key); },
+  };
+  const first = createPorticoClient({
+    apiBaseUrl: "https://server.example",
+    playbackProgressDurabilityAdapter: durability,
+    transport: { fetch: async () => { throw new TypeError("response was lost"); } },
+  });
+  first.acceptPlaybackSession(acceptedPlayback("session-unreconciled-stop", 3));
+  await assert.rejects(first.stopPlayback("session-unreconciled-stop", {
+    disposition: "stopped", positionSeconds: 20, durationSeconds: 60,
+  }), /response was lost/);
+
+  const restarted = createPorticoClient({
+    apiBaseUrl: "https://server.example",
+    playbackProgressDurabilityAdapter: durability,
+    transport: { fetch: async () => jsonResponse({
+      code: "playback_session_not_found",
+      detail: "The playback session was not found.",
+    }, { status: 404 }) },
+  });
+  const pending = await restarted.pendingPlaybackTerminalMutation(
+    "session-unreconciled-stop",
+  );
+  await assert.rejects(
+    restarted.stopPlayback("session-unreconciled-stop", pending.request),
+    error => error instanceof ApiError && error.status === 404,
+  );
+
+  assert.equal(
+    (await restarted.pendingPlaybackTerminalMutation("session-unreconciled-stop"))
+      .request.requestId,
+    pending.request.requestId,
+  );
+  await assert.rejects(
+    restarted.touchPlayback("session-unreconciled-stop", { positionSeconds: 21 }),
+    error => error instanceof ApiError && error.code === "playback_stopping",
+  );
+});
+
+test("handoff allocates a Core-owned terminal once and retries the same request body", async () => {
+  const calls = [];
+  let attempts = 0;
+  const client = createPorticoClient({
+    apiBaseUrl: "https://server.example",
+    now: () => Date.parse("2026-08-30T18:20:00.000Z"),
+    transport: { fetch: async (_input, init) => {
+      const serialized = String(init.body);
+      calls.push(serialized);
+      attempts += 1;
+      if (attempts === 1) throw new TypeError("handoff response was lost");
+      return jsonResponse(acceptedPlayback("session-next"));
+    } },
+  });
+  client.acceptPlaybackSession(acceptedPlayback("session-handoff", 11));
+  const request = {
+    requestId: "handoff-request-1",
+    entryId: "queue-entry-2",
+    startSeconds: 0,
+    previousTerminal: {
+      disposition: "stopped",
+      positionSeconds: 42,
+      durationSeconds: 60,
+    },
+  };
+
+  await assert.rejects(client.handoffPlayback("session-handoff", request), /handoff response was lost/);
+  await assert.rejects(
+    client.touchPlayback("session-handoff", { positionSeconds: 43 }),
+    error => error instanceof ApiError && error.code === "playback_stopping",
+  );
+  await assert.rejects(
+    client.renegotiatePlayback("session-handoff", {}),
+    error => error instanceof ApiError && error.code === "playback_stopping",
+  );
+  await assert.rejects(
+    client.mutatePlaybackSessionQueue("session-handoff", {
+      operation: "shuffle",
+      expectedQueueRevision: 1,
+      requestId: "queue-blocked-1",
+    }),
+    error => error instanceof ApiError && error.code === "playback_stopping",
+  );
+  assert.equal(calls.length, 1);
+  await client.handoffPlayback("session-handoff", request);
+
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0], calls[1]);
+  const body = JSON.parse(calls[0]);
+  assert.equal(body.startSeconds, 0);
+  assert.deepEqual(body.previousTerminal, {
+    disposition: "stopped",
+    generation: 1,
+    eventSequence: 11,
+    recordedAt: "2026-08-30T18:20:00.000Z",
+    positionSeconds: 42,
+    durationSeconds: 60,
+  });
+});
+
+for (const inProgressCode of [
+  "handoff_in_progress",
+  "prepared_handoff_in_progress",
+]) test(`${inProgressCode} preserves the exact durable request and source fence`, async () => {
+  const calls = [];
+  const records = new Map();
+  const durability = {
+    load: async () => [...records.values()].map(value => structuredClone(value)),
+    save: async record => { records.set(record.key, structuredClone(record)); },
+    remove: async key => { records.delete(key); },
+  };
+  let attempts = 0;
+  const client = createPorticoClient({
+    apiBaseUrl: "https://server.example",
+    playbackProgressDurabilityAdapter: durability,
+    transport: { fetch: async (_input, init) => {
+      calls.push(String(init.body));
+      attempts += 1;
+      if (attempts === 1) {
+        return jsonResponse({
+          code: inProgressCode,
+          detail: "The same handoff is still resolving.",
+        }, { status: 409 });
+      }
+      return jsonResponse(acceptedPlayback("session-handoff-reconciled"));
+    } },
+  });
+  client.acceptPlaybackSession(acceptedPlayback("session-handoff-in-progress", 5));
+  const request = {
+    requestId: "handoff-in-progress-1",
+    entryId: "queue-entry-2",
+    previousTerminal: {
+      disposition: "stopped",
+      positionSeconds: 20,
+      durationSeconds: 60,
+    },
+  };
+
+  await assert.rejects(
+    client.handoffPlayback("session-handoff-in-progress", request),
+    error => error instanceof ApiError && error.code === inProgressCode,
+  );
+  assert.equal(
+    (await client.pendingPlaybackTerminalMutation("session-handoff-in-progress"))
+      .request.requestId,
+    request.requestId,
+  );
+  await assert.rejects(
+    client.mutatePlaybackSessionQueue("session-handoff-in-progress", {
+      operation: "shuffle", expectedQueueRevision: 1, requestId: "blocked-queue-1",
+    }),
+    error => error instanceof ApiError && error.code === "playback_stopping",
+  );
+  await client.handoffPlayback("session-handoff-in-progress", request);
+
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0], calls[1]);
+  assert.equal(records.size, 0);
+});
+
+test("a restarted Core exposes and exact-replays the durable pending handoff", async () => {
+  const records = new Map();
+  const durability = {
+    load: async () => [...records.values()].map(value => structuredClone(value)),
+    save: async record => { records.set(record.key, structuredClone(record)); },
+    remove: async key => { records.delete(key); },
+  };
+  const firstBodies = [];
+  const first = createPorticoClient({
+    apiBaseUrl: "https://server.example",
+    playbackProgressDurabilityAdapter: durability,
+    now: () => Date.parse("2026-08-30T18:20:00.000Z"),
+    transport: { fetch: async (_input, init) => {
+      firstBodies.push(String(init.body));
+      throw new TypeError("handoff response was lost");
+    } },
+  });
+  first.acceptPlaybackSession(acceptedPlayback("session-restart-handoff", 11));
+  await assert.rejects(first.handoffPlayback("session-restart-handoff", {
+    requestId: "handoff-restart-1",
+    entryId: "queue-entry-2",
+    previousTerminal: {
+      disposition: "completed",
+      positionSeconds: 60,
+      durationSeconds: 60,
+    },
+  }), /handoff response was lost/);
+
+  const replayBodies = [];
+  const restarted = createPorticoClient({
+    apiBaseUrl: "https://server.example",
+    playbackProgressDurabilityAdapter: durability,
+    transport: { fetch: async (_input, init) => {
+      replayBodies.push(String(init.body));
+      return jsonResponse(acceptedPlayback("session-restart-next"));
+    } },
+  });
+  const pending = await restarted.pendingPlaybackTerminalMutation("session-restart-handoff");
+  assert.equal(pending.operation, "handoff");
+  assert.equal(Object.isFrozen(pending.request), true);
+  assert.equal(Object.isFrozen(pending.request.previousTerminal), true);
+  const pendingOutbox = await restarted.pendingPlaybackTerminalMutations();
+  assert.equal(pendingOutbox[0].sessionId, "session-restart-handoff");
+  assert.equal(pendingOutbox[0].request.requestId, "handoff-restart-1");
+  await restarted.handoffPlayback("session-restart-handoff", pending.request);
+
+  assert.equal(replayBodies[0], firstBodies[0]);
+  assert.equal(records.size, 0);
+});
+
+for (const [isolation, foreignSession] of [
+  ["server", {
+    serverId: "server-b", authority: "hosted",
+    accountId: "account-a", profileId: "profile-a",
+    authorizationRevision: "authorization-1",
+  }],
+  ["viewer", {
+    serverId: "server-a", authority: "hosted",
+    accountId: "account-a", profileId: "profile-b",
+    authorizationRevision: "authorization-1",
+  }],
+  ["authorization revision", {
+    serverId: "server-a", authority: "hosted",
+    accountId: "account-a", profileId: "profile-a",
+    authorizationRevision: "authorization-2",
+  }],
+]) test(`durable terminal recovery never crosses ${isolation} authority`, async () => {
+  const records = new Map();
+  const durability = {
+    load: async () => [...records.values()].map(value => structuredClone(value)),
+    save: async record => { records.set(record.key, structuredClone(record)); },
+    remove: async key => { records.delete(key); },
+  };
+  const sourceSession = {
+    serverId: "server-a", authority: "hosted",
+    accountId: "account-a", profileId: "profile-a",
+    authorizationRevision: "authorization-1",
+  };
+  const first = createPorticoClient({
+    apiBaseUrl: "https://server.example",
+    sessionStore: createMemorySessionStore(sourceSession),
+    playbackProgressDurabilityAdapter: durability,
+    transport: { fetch: async () => { throw new TypeError("response was lost"); } },
+  });
+  first.acceptPlaybackSession(acceptedPlayback("session-scoped-terminal", 4));
+  await assert.rejects(first.stopPlayback("session-scoped-terminal", {
+    disposition: "stopped", positionSeconds: 20, durationSeconds: 60,
+  }), /response was lost/);
+
+  const [stored] = [...records.values()];
+  assert.equal(stored.version, "v2");
+  assert.deepEqual(stored.scope, [
+    "server-a", "hosted", "account-a", "profile-a", "authorization-1",
+  ]);
+  const foreign = createPorticoClient({
+    apiBaseUrl: "https://server.example",
+    sessionStore: createMemorySessionStore(foreignSession),
+    playbackProgressDurabilityAdapter: durability,
+  });
+  assert.equal(
+    await foreign.pendingPlaybackTerminalMutation("session-scoped-terminal"),
+    undefined,
+  );
+  assert.deepEqual(await foreign.pendingPlaybackTerminalMutations(), []);
+  assert.equal(records.size, 1);
+
+  const restartedSource = createPorticoClient({
+    apiBaseUrl: "https://server.example",
+    sessionStore: createMemorySessionStore(sourceSession),
+    playbackProgressDurabilityAdapter: durability,
+  });
+  assert.equal(
+    (await restartedSource.pendingPlaybackTerminalMutation(
+      "session-scoped-terminal",
+    )).operation,
+    "stop",
+  );
+});
+
+test("durable terminal recovery follows an exact authority switch in the same Core instance", async () => {
+  const records = new Map();
+  const durability = {
+    load: async () => [...records.values()].map(value => structuredClone(value)),
+    save: async record => { records.set(record.key, structuredClone(record)); },
+    remove: async key => { records.delete(key); },
+  };
+  const sourceSession = {
+    serverId: "server-a", authority: "hosted",
+    accountId: "account-a", profileId: "profile-a",
+    authorizationRevision: "authorization-1",
+  };
+  const first = createPorticoClient({
+    apiBaseUrl: "https://server.example",
+    sessionStore: createMemorySessionStore(sourceSession),
+    playbackProgressDurabilityAdapter: durability,
+    transport: { fetch: async () => { throw new TypeError("response was lost"); } },
+  });
+  first.acceptPlaybackSession(acceptedPlayback("session-scope-switch", 4));
+  await assert.rejects(first.stopPlayback("session-scope-switch", {
+    disposition: "stopped", positionSeconds: 20, durationSeconds: 60,
+  }), /response was lost/);
+
+  const sessionStore = createMemorySessionStore({
+    ...sourceSession,
+    profileId: "profile-b",
+  });
+  const resumed = createPorticoClient({
+    apiBaseUrl: "https://server.example",
+    sessionStore,
+    playbackProgressDurabilityAdapter: durability,
+  });
+  assert.equal(
+    await resumed.pendingPlaybackTerminalMutation("session-scope-switch"),
+    undefined,
+  );
+
+  sessionStore.set({...testServerIdentity(), ...sourceSession});
+  assert.equal(
+    (await resumed.pendingPlaybackTerminalMutation("session-scope-switch"))
+      .request.requestId,
+    [...records.values()][0].request.requestId,
+  );
+});
+
+test("unscoped prerelease terminal records are purged instead of replayed under guessed authority", async () => {
+  const records = new Map([["terminal:stop:legacy-session", {
+    version: "v1",
+    kind: "terminal",
+    key: "terminal:stop:legacy-session",
+    sessionId: "legacy-session",
+    operation: "stop",
+    request: {
+      requestId: "legacy-request-1",
+      terminal: {
+        disposition: "stopped", generation: 1, eventSequence: 2,
+        recordedAt: "2026-08-30T18:20:00.000Z",
+        positionSeconds: 20, durationSeconds: 60,
+      },
+    },
+    updatedAt: "2026-08-30T18:20:00.000Z",
+  }]]);
+  const durability = {
+    load: async () => [...records.values()].map(value => structuredClone(value)),
+    save: async record => { records.set(record.key, structuredClone(record)); },
+    remove: async key => { records.delete(key); },
+  };
+  const client = createPorticoClient({
+    apiBaseUrl: "https://server.example",
+    playbackProgressDurabilityAdapter: durability,
+  });
+
+  assert.deepEqual(await client.pendingPlaybackTerminalMutations(), []);
+  assert.equal(records.size, 0);
+});
+
+test("four-part prerelease terminal scopes are purged instead of crossing authorization revisions", async () => {
+  const request = {
+    requestId: "legacy-scoped-request-1",
+    terminal: {
+      disposition: "stopped", generation: 1, eventSequence: 2,
+      recordedAt: "2026-08-30T18:20:00.000Z",
+      positionSeconds: 20, durationSeconds: 60,
+    },
+  };
+  const scope = ["server-a", "hosted", "account-a", "profile-a"];
+  const key = JSON.stringify([
+    ...scope, "terminal", "stop", "legacy-scoped-session", request.requestId,
+  ]);
+  const records = new Map([[key, {
+    version: "v2", kind: "terminal", key, scope,
+    sessionId: "legacy-scoped-session", operation: "stop", request,
+    updatedAt: "2026-08-30T18:20:00.000Z",
+  }]]);
+  const client = createPorticoClient({
+    apiBaseUrl: "https://server.example",
+    sessionStore: createMemorySessionStore({
+      serverId: "server-a", authority: "hosted", accountId: "account-a",
+      profileId: "profile-a", authorizationRevision: "authorization-2",
+    }),
+    playbackProgressDurabilityAdapter: {
+      load: async () => [...records.values()].map(value => structuredClone(value)),
+      save: async record => { records.set(record.key, structuredClone(record)); },
+      remove: async recordKey => { records.delete(recordKey); },
+    },
+  });
+
+  assert.deepEqual(await client.pendingPlaybackTerminalMutations(), []);
+  assert.equal(records.size, 0);
+});
+
+test("prerelease progress identities without authorization revision are purged", async () => {
+  const key = JSON.stringify([
+    "server-a", "hosted", "account-a", "profile-a", "legacy-progress", 1,
+  ]);
+  const records = new Map([[key, {
+    version: "v1", kind: "progress", key,
+    events: [{
+      state: "playing", positionSeconds: 12, eventSequence: 1,
+      recordedAt: "2026-08-30T18:20:00.000Z",
+    }],
+    updatedAt: "2026-08-30T18:20:00.000Z",
+  }]]);
+  const client = createPorticoClient({
+    apiBaseUrl: "https://server.example",
+    sessionStore: createMemorySessionStore({
+      serverId: "server-a", authority: "hosted", accountId: "account-a",
+      profileId: "profile-a", authorizationRevision: "authorization-2",
+    }),
+    playbackProgressDurabilityAdapter: {
+      load: async () => [...records.values()].map(value => structuredClone(value)),
+      save: async record => { records.set(record.key, structuredClone(record)); },
+      remove: async recordKey => { records.delete(recordKey); },
+    },
+  });
+
+  assert.deepEqual(await client.pendingPlaybackTerminalMutations(), []);
+  assert.equal(records.size, 0);
+});
+
+test("handoff forwards a native-owned terminal event without resequencing", async () => {
+  const calls = [];
+  const client = createPorticoClient({
+    apiBaseUrl: "https://server.example",
+    transport: { fetch: async (_input, init) => {
+      calls.push(JSON.parse(init.body));
+      return jsonResponse(acceptedPlayback("session-native-next"));
+    } },
+  });
+  const previousTerminal = {
+    disposition: "completed",
+    generation: 4,
+    eventSequence: 29,
+    recordedAt: "2026-08-30T18:20:00.000Z",
+    positionSeconds: 180,
+    durationSeconds: 180,
+  };
+
+  await client.handoffPlayback("session-native-source", {
+    requestId: "handoff-native-1",
+    preparedSessionId: "prepared-1",
+    entryId: "queue-entry-2",
+    previousTerminal,
+  });
+
+  assert.deepEqual(calls[0].previousTerminal, previousTerminal);
+});
+
+test("Core-owned target replacement allocates one durable terminal and seeds the accepted actor", async () => {
+  const calls = [];
+  const records = new Map();
+  const client = createPorticoClient({
+    apiBaseUrl: "https://server.example",
+    now: () => Date.parse("2026-08-30T18:20:00.000Z"),
+    requestId: () => "replacement-request-1",
+    playbackProgressDurabilityAdapter: {
+      load: async () => [...records.values()].map(value => structuredClone(value)),
+      save: async record => { records.set(record.key, structuredClone(record)); },
+      remove: async key => { records.delete(key); },
+    },
+    transport: { fetch: async (input, init) => {
+      const body = JSON.parse(init.body);
+      calls.push({ input: String(input), method: init.method, body });
+      if (init.method === "PATCH") {
+        return jsonResponse({
+          accepted: true, duplicate: false, stale: false,
+          highestEventSequence: body.eventSequence, sessionState: "playing",
+        });
+      }
+      return jsonResponse(acceptedPlayback("session-target", 17));
+    } },
+  });
+  client.acceptPlaybackSession(acceptedPlayback("session-source", 8));
+
+  const outcome = await client.replacePlaybackTarget({
+    kind: "media",
+    mediaId: "media-target",
+    playbackOptions: { startSeconds: 12 },
+  }, {
+    sourceSessionId: "session-source",
+    expectedQueueRevision: 4,
+    expectedPlaybackRevision: 6,
+    previousTerminal: {
+      disposition: "stopped", positionSeconds: 31, durationSeconds: 60,
+    },
+  });
+
+  assert.equal(outcome.outcome, "accepted");
+  assert.equal(outcome.value.sessionId, "session-target");
+  assert.equal(calls[0].input, "https://server.example/api/playback-sessions");
+  assert.equal(calls[0].method, "POST");
+  assert.equal(calls[0].body.mediaId, "media-target");
+  assert.equal(calls[0].body.startSeconds, 12);
+  assert.deepEqual(calls[0].body.replacement, {
+    sourceSessionId: "session-source",
+    requestId: "replacement-request-1",
+    previousTerminal: {
+      disposition: "stopped", generation: 1, eventSequence: 8,
+      recordedAt: "2026-08-30T18:20:00.000Z",
+      positionSeconds: 31, durationSeconds: 60,
+    },
+    expectedQueueRevision: 4,
+    expectedPlaybackRevision: 6,
+  });
+  assert.equal(records.size, 0);
+
+  await client.touchPlayback("session-target", { positionSeconds: 2 });
+  assert.equal(calls[1].method, "PATCH");
+  assert.equal(calls[1].body.eventSequence, 17);
+});
+
+test("target replacement fences source progress before terminal persistence", async () => {
+  const calls = [];
+  const records = new Map();
+  let releaseTerminalSave;
+  let markTerminalSaveStarted;
+  const terminalSaveGate = new Promise(resolve => { releaseTerminalSave = resolve; });
+  const terminalSaveStarted = new Promise(resolve => { markTerminalSaveStarted = resolve; });
+  const client = createPorticoClient({
+    apiBaseUrl: "https://server.example",
+    requestId: () => "replacement-fenced-1",
+    playbackProgressDurabilityAdapter: {
+      load: async () => [...records.values()].map(value => structuredClone(value)),
+      save: async record => {
+        if (record.kind === "terminal") {
+          markTerminalSaveStarted();
+          await terminalSaveGate;
+        }
+        records.set(record.key, structuredClone(record));
+      },
+      remove: async key => { records.delete(key); },
+    },
+    transport: { fetch: async (_input, init) => {
+      calls.push(init.method);
+      return jsonResponse(acceptedPlayback("session-fenced-target"));
+    } },
+  });
+  client.acceptPlaybackSession(acceptedPlayback("session-fenced-source", 4));
+  const replacement = client.replacePlaybackTarget({
+    kind: "media", mediaId: "media-fenced-target",
+  }, {
+    sourceSessionId: "session-fenced-source",
+    previousTerminal: {
+      disposition: "stopped", positionSeconds: 20, durationSeconds: 60,
+    },
+  });
+  await terminalSaveStarted;
+
+  await assert.rejects(
+    client.touchPlayback("session-fenced-source", { positionSeconds: 21 }),
+    error => error instanceof ApiError && error.code === "playback_stopping",
+  );
+  assert.deepEqual(calls, []);
+  releaseTerminalSave();
+  assert.equal((await replacement).outcome, "accepted");
+  assert.deepEqual(calls, ["POST"]);
+  assert.equal(records.size, 0);
+});
+
+test("a lost target replacement response is exact-replayed from the durable Core outbox", async () => {
+  const records = new Map();
+  const durability = {
+    load: async () => [...records.values()].map(value => structuredClone(value)),
+    save: async record => { records.set(record.key, structuredClone(record)); },
+    remove: async key => { records.delete(key); },
+  };
+  const bodies = [];
+  const session = {
+    serverId: "server-a", authority: "hosted", accountId: "account-a",
+    profileId: "profile-a", authorizationRevision: "authorization-1",
+  };
+  const first = createPorticoClient({
+    apiBaseUrl: "https://server.example",
+    sessionStore: createMemorySessionStore(session),
+    requestId: () => "replacement-retry-1",
+    playbackProgressDurabilityAdapter: durability,
+    transport: { fetch: async (_input, init) => {
+      bodies.push(String(init.body));
+      throw new TypeError("replacement response was lost");
+    } },
+  });
+  first.acceptPlaybackSession(acceptedPlayback("session-replacement-retry", 3));
+  await assert.rejects(first.replacePlaybackTarget({
+    kind: "live-tv-stream", channelId: "channel-1",
+  }, {
+    sourceSessionId: "session-replacement-retry",
+    previousTerminal: {
+      disposition: "stopped", positionSeconds: 18, durationSeconds: 60,
+    },
+  }), /replacement response was lost/);
+  const [stored] = [...records.values()];
+  assert.equal(stored.operation, "replacement");
+  assert.equal(stored.scope[4], "authorization-1");
+  assert.equal(stored.target.kind, "live-tv-stream");
+
+  const restarted = createPorticoClient({
+    apiBaseUrl: "https://server.example",
+    sessionStore: createMemorySessionStore(session),
+    playbackProgressDurabilityAdapter: durability,
+    transport: { fetch: async (input, init) => {
+      assert.equal(String(input), "https://server.example/api/live-tv/streams/channel-1/open");
+      bodies.push(String(init.body));
+      return jsonResponse(acceptedPlayback("session-replacement-retried"));
+    } },
+  });
+  const pending = await restarted.pendingPlaybackTerminalMutation(
+    "session-replacement-retry",
+  );
+  assert.equal(pending.operation, "replacement");
+  assert.equal(Object.isFrozen(pending.request), true);
+  assert.equal(Object.isFrozen(pending.target.body), true);
+  const outcome = await restarted.retryPendingPlaybackTerminalMutation(
+    "session-replacement-retry",
+  );
+
+  assert.equal(outcome.outcome, "accepted");
+  assert.equal(outcome.value.sessionId, "session-replacement-retried");
+  assert.equal(bodies.length, 2);
+  assert.equal(bodies[0], bodies[1]);
+  assert.equal(records.size, 0);
+});
+
+for (const [status, code] of [
+  [401, "viewer_authorization_required"],
+  [404, "playback_session_not_found"],
+  [409, "handoff_in_progress"],
+]) test(`target replacement ${status} ${code} preserves its exact request and source fence`, async () => {
+  const records = new Map();
+  const calls = [];
+  let attempts = 0;
+  const client = createPorticoClient({
+    apiBaseUrl: "https://server.example",
+    requestId: () => "replacement-unresolved-1",
+    playbackProgressDurabilityAdapter: {
+      load: async () => [...records.values()].map(value => structuredClone(value)),
+      save: async record => { records.set(record.key, structuredClone(record)); },
+      remove: async key => { records.delete(key); },
+    },
+    transport: { fetch: async (_input, init) => {
+      calls.push(String(init.body));
+      attempts += 1;
+      if (attempts === 1) {
+        return jsonResponse({ code, detail: "The outcome remains unresolved." }, { status });
+      }
+      return jsonResponse(acceptedPlayback("session-unresolved-reconciled"));
+    } },
+  });
+  client.acceptPlaybackSession(acceptedPlayback("session-unresolved-source", 5));
+  await assert.rejects(client.replacePlaybackTarget({
+    kind: "media", mediaId: "media-unresolved-target",
+  }, {
+    sourceSessionId: "session-unresolved-source",
+    previousTerminal: {
+      disposition: "stopped", positionSeconds: 20, durationSeconds: 60,
+    },
+  }), error => error instanceof ApiError && error.code === code);
+
+  assert.equal(records.size, 1);
+  assert.equal(
+    (await client.pendingPlaybackTerminalMutation("session-unresolved-source"))
+      .operation,
+    "replacement",
+  );
+  await assert.rejects(
+    client.touchPlayback("session-unresolved-source", { positionSeconds: 21 }),
+    error => error instanceof ApiError && error.code === "playback_stopping",
+  );
+  const outcome = await client.retryPendingPlaybackTerminalMutation(
+    "session-unresolved-source",
+  );
+
+  assert.equal(outcome.outcome, "accepted");
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0], calls[1]);
+  assert.equal(records.size, 0);
+});
+
+test("a definitive deliberate replacement rejection retains source authority", async () => {
+  const calls = [];
+  const client = createPorticoClient({
+    apiBaseUrl: "https://server.example",
+    requestId: () => "replacement-retained-1",
+    transport: { fetch: async (_input, init) => {
+      const body = JSON.parse(init.body);
+      calls.push({ method: init.method, body });
+      if (init.method === "POST") {
+        return jsonResponse({
+          code: "handoff_source_revision_conflict",
+          detail: "The source revision changed.",
+        }, { status: 409 });
+      }
+      return jsonResponse({
+        accepted: true, duplicate: false, stale: false,
+        highestEventSequence: body.eventSequence, sessionState: "playing",
+      });
+    } },
+  });
+  client.acceptPlaybackSession(acceptedPlayback("session-retained", 4));
+  const outcome = await client.replacePlaybackTarget({
+    kind: "dvr", recordingId: "recording-1",
+  }, {
+    sourceSessionId: "session-retained",
+    previousTerminal: {
+      disposition: "stopped", positionSeconds: 20, durationSeconds: 60,
+    },
+  });
+
+  assert.deepEqual(outcome, {
+    outcome: "source-retained",
+    sourceSessionId: "session-retained",
+    rejection: {
+      status: 409,
+      code: "handoff_source_revision_conflict",
+      detail: "The source revision changed.",
+    },
+  });
+  await client.touchPlayback("session-retained", { positionSeconds: 21 });
+  assert.deepEqual(calls.map(call => call.method), ["POST", "PATCH"]);
+});
+
+for (const disposition of ["stopped", "completed"]) test(
+  `replacement_source_inactive is canonical for a ${disposition} terminal`,
+  async () => {
+    const records = new Map();
+    const calls = [];
+    const client = createPorticoClient({
+      apiBaseUrl: "https://server.example",
+      requestId: () => `replacement-inactive-${disposition}`,
+      playbackProgressDurabilityAdapter: {
+        load: async () => [...records.values()].map(value => structuredClone(value)),
+        save: async record => { records.set(record.key, structuredClone(record)); },
+        remove: async key => { records.delete(key); },
+      },
+      transport: { fetch: async (_input, init) => {
+        calls.push(init.method);
+        return jsonResponse({
+          code: "replacement_source_inactive",
+          detail: "The source playback is already inactive.",
+        }, { status: 409 });
+      } },
+    });
+    client.acceptPlaybackSession(acceptedPlayback(`session-inactive-${disposition}`, 4));
+    const outcome = await client.replacePlaybackTarget({
+      kind: "media", mediaId: "media-inactive-target",
+    }, {
+      sourceSessionId: `session-inactive-${disposition}`,
+      previousTerminal: {
+        disposition, positionSeconds: 60, durationSeconds: 60,
+      },
+    });
+
+    assert.deepEqual(outcome, {
+      outcome: "source-inactive",
+      sourceSessionId: `session-inactive-${disposition}`,
+      rejection: {
+        status: 409,
+        code: "replacement_source_inactive",
+        detail: "The source playback is already inactive.",
+      },
+    });
+    assert.deepEqual(calls, ["POST"], "completed does not issue fallback DELETE");
+    assert.equal(records.size, 0);
+    assert.equal(
+      await client.pendingPlaybackTerminalMutation(`session-inactive-${disposition}`),
+      undefined,
+    );
+  },
+);
+
+test("a definitive natural replacement rejection closes with the exact terminal under a new stop request", async () => {
+  const calls = [];
+  let requestIds = 0;
+  const client = createPorticoClient({
+    apiBaseUrl: "https://server.example",
+    now: () => Date.parse("2026-08-30T18:20:00.000Z"),
+    requestId: () => `replacement-natural-${++requestIds}`,
+    transport: { fetch: async (_input, init) => {
+      const body = JSON.parse(init.body);
+      calls.push({ method: init.method, body });
+      if (init.method === "POST") {
+        return jsonResponse({
+          code: "handoff_source_revision_conflict",
+          detail: "The queue changed.",
+        }, { status: 409 });
+      }
+      return jsonResponse(playbackTerminalReceipt("session-natural-source", body));
+    } },
+  });
+  client.acceptPlaybackSession(acceptedPlayback("session-natural-source", 9));
+  const outcome = await client.replacePlaybackTarget({
+    kind: "live-tv", channelId: "channel-1",
+  }, {
+    sourceSessionId: "session-natural-source",
+    previousTerminal: {
+      disposition: "completed", positionSeconds: 60, durationSeconds: 60,
+    },
+  });
+
+  assert.equal(outcome.outcome, "source-closed");
+  assert.deepEqual(calls.map(call => call.method), ["POST", "DELETE"]);
+  assert.equal(calls[0].body.replacement.requestId, "replacement-natural-1");
+  assert.notEqual(
+    calls[1].body.requestId,
+    calls[0].body.replacement.requestId,
+  );
+  assert.deepEqual(
+    calls[1].body.terminal,
+    calls[0].body.replacement.previousTerminal,
+  );
+});
+
+test("committed replacement restore-required remains durable until exact restore", async () => {
+  const records = new Map();
+  const client = createPorticoClient({
+    apiBaseUrl: "https://server.example",
+    requestId: () => "replacement-restore-1",
+    playbackProgressDurabilityAdapter: {
+      load: async () => [...records.values()].map(value => structuredClone(value)),
+      save: async record => { records.set(record.key, structuredClone(record)); },
+      remove: async key => { records.delete(key); },
+    },
+    transport: { fetch: async input => {
+      if (new URL(input).pathname === "/api/playback/active") {
+        return jsonResponse({
+          active: true,
+          playback: acceptedPlayback("session-safe-replacement", 8),
+        });
+      }
+      return jsonResponse({
+        code: "playback_replacement_committed_restore_required",
+        detail: "The replacement committed; restore active playback.",
+        replacementSessionId: "session-safe-replacement",
+      }, { status: 409 });
+    } },
+  });
+  client.acceptPlaybackSession(acceptedPlayback("session-restore-source", 2));
+  const outcome = await client.replacePlaybackTarget({
+    kind: "library-channel", channelId: "library-channel-1",
+  }, {
+    sourceSessionId: "session-restore-source",
+    previousTerminal: {
+      disposition: "stopped", positionSeconds: 12, durationSeconds: 60,
+    },
+  });
+
+  assert.deepEqual(outcome, {
+    outcome: "committed-restore-required",
+    sourceSessionId: "session-restore-source",
+    replacementSessionId: "session-safe-replacement",
+  });
+  assert.equal(records.size, 1);
+  assert.deepEqual(
+    (await client.pendingPlaybackTerminalMutation("session-restore-source"))
+      .committedOutcome,
+    outcome,
+  );
+  const restored = await client.restoreCommittedPlaybackReplacement(outcome);
+  assert.equal(restored.sessionId, "session-safe-replacement");
+  assert.equal(records.size, 0);
+  assert.equal(
+    await client.pendingPlaybackTerminalMutation("session-restore-source"),
+    undefined,
+  );
+  await assert.rejects(
+    client.restoreCommittedPlaybackReplacement({
+      ...outcome,
+      replacementSessionId: "different-session",
+    }),
+    error => error instanceof ApiError &&
+      error.code === "playback_replacement_restore_mismatch",
+  );
+});
+
+test("a lost committed restore response survives restart without resending the target", async () => {
+  const records = new Map();
+  const durability = {
+    load: async () => [...records.values()].map(value => structuredClone(value)),
+    save: async record => { records.set(record.key, structuredClone(record)); },
+    remove: async key => { records.delete(key); },
+  };
+  const session = {
+    serverId: "server-a", authority: "hosted", accountId: "account-a",
+    profileId: "profile-a", authorizationRevision: "authorization-1",
+  };
+  const first = createPorticoClient({
+    apiBaseUrl: "https://server.example",
+    sessionStore: createMemorySessionStore(session),
+    requestId: () => "replacement-committed-restart-1",
+    playbackProgressDurabilityAdapter: durability,
+    transport: { fetch: async input => {
+      if (new URL(input).pathname === "/api/playback/active") {
+        throw new TypeError("restore response was lost");
+      }
+      return jsonResponse({
+        code: "playback_replacement_committed_restore_required",
+        detail: "The replacement committed; restore active playback.",
+        replacementSessionId: "session-committed-target",
+      }, { status: 409 });
+    } },
+  });
+  first.acceptPlaybackSession(acceptedPlayback("session-committed-source", 2));
+  const outcome = await first.replacePlaybackTarget({
+    kind: "media", mediaId: "media-committed-target",
+  }, {
+    sourceSessionId: "session-committed-source",
+    previousTerminal: {
+      disposition: "stopped", positionSeconds: 12, durationSeconds: 60,
+    },
+  });
+  await assert.rejects(
+    first.restoreCommittedPlaybackReplacement(outcome),
+    /restore response was lost/,
+  );
+  assert.equal(records.size, 1);
+
+  let activeRestores = 0;
+  let targetRequests = 0;
+  const restarted = createPorticoClient({
+    apiBaseUrl: "https://server.example",
+    sessionStore: createMemorySessionStore(session),
+    playbackProgressDurabilityAdapter: durability,
+    transport: { fetch: async input => {
+      const path = new URL(input).pathname;
+      if (path !== "/api/playback/active") {
+        targetRequests += 1;
+        throw new Error(`unexpected target resend: ${path}`);
+      }
+      activeRestores += 1;
+      return jsonResponse({
+        active: true,
+        playback: acceptedPlayback(
+          activeRestores === 1
+            ? "different-active-session"
+            : "session-committed-target",
+          8,
+        ),
+      });
+    } },
+  });
+  const pending = await restarted.pendingPlaybackTerminalMutation(
+    "session-committed-source",
+  );
+  assert.deepEqual(pending.committedOutcome, outcome);
+  assert.deepEqual(
+    await restarted.retryPendingPlaybackTerminalMutation(
+      "session-committed-source",
+    ),
+    outcome,
+  );
+  assert.equal(targetRequests, 0);
+  await assert.rejects(
+    restarted.restoreCommittedPlaybackReplacement(outcome),
+    error => error instanceof ApiError &&
+      error.code === "playback_replacement_restore_mismatch",
+  );
+  assert.equal(records.size, 1, "mismatched restore retains exact durable identity");
+  const restored = await restarted.restoreCommittedPlaybackReplacement(outcome);
+  assert.equal(restored.sessionId, "session-committed-target");
+  assert.equal(records.size, 0, "exact restore removes the committed durable identity");
+  assert.equal(targetRequests, 0);
+});
+
+test("a native-owned target replacement is forwarded without competing allocation", async () => {
+  const calls = [];
+  let generated = 0;
+  const previousTerminal = {
+    disposition: "completed",
+    generation: 4,
+    eventSequence: 29,
+    recordedAt: "2026-08-30T18:20:00.000Z",
+    positionSeconds: 180,
+    durationSeconds: 180,
+  };
+  const client = createPorticoClient({
+    apiBaseUrl: "https://server.example",
+    requestId: () => { generated += 1; return "must-not-generate"; },
+    transport: { fetch: async (_input, init) => {
+      calls.push(JSON.parse(init.body));
+      return jsonResponse(acceptedPlayback("session-native-replacement"));
+    } },
+  });
+  const outcome = await client.replacePlaybackTarget({
+    kind: "media", mediaId: "media-native-target",
+  }, {
+    sourceSessionId: "session-native-source",
+    requestId: "native-replacement-request-1",
+    previousTerminal,
+  });
+
+  assert.equal(outcome.outcome, "accepted");
+  // The transport still receives an independent diagnostic request ID; the
+  // playback replacement identity itself remains exactly native-owned.
+  assert.equal(generated, 1);
+  assert.equal(
+    calls[0].replacement.requestId,
+    "native-replacement-request-1",
+  );
+  assert.deepEqual(calls[0].replacement.previousTerminal, previousTerminal);
+});
+
+test("terminal operations reject invalid evidence before transport", async () => {
+  let calls = 0;
+  const client = createPorticoClient({
+    apiBaseUrl: "https://server.example",
+    transport: { fetch: async () => {
+      calls += 1;
+      return jsonResponse(acceptedPlayback("unused"));
+    } },
+  });
+
+  await assert.rejects(client.handoffPlayback("session-1", {
+    requestId: "short",
+    entryId: "queue-entry-2",
+    previousTerminal: {
+      disposition: "completed",
+      generation: 1,
+      eventSequence: 2,
+      recordedAt: "2026-08-30T18:20:00.000Z",
+      positionSeconds: 60,
+      durationSeconds: 60,
+    },
+  }), /request ID/);
+  await assert.rejects(client.handoffPlayback("session-1", {
+    requestId: "terminal-partial-1",
+    entryId: "queue-entry-2",
+    previousTerminal: {
+      disposition: "completed",
+      generation: 1,
+      positionSeconds: 60,
+      durationSeconds: 60,
+    },
+  }), /ordering authority must be complete/);
+  await assert.rejects(client.handoffPlayback("session-1", {
+    requestId: "terminal-fractional-start-1",
+    entryId: "queue-entry-2",
+    startSeconds: 0.5,
+    previousTerminal: {
+      disposition: "completed",
+      generation: 1,
+      eventSequence: 2,
+      recordedAt: "2026-08-30T18:20:00.000Z",
+      positionSeconds: 60,
+      durationSeconds: 60,
+    },
+  }), /non-negative integer/);
+  await assert.rejects(client.handoffPlayback("session-1", {
+    requestId: "terminal-non-final-completed-1",
+    entryId: "queue-entry-2",
+    previousTerminal: {
+      disposition: "completed",
+      generation: 1,
+      eventSequence: 2,
+      recordedAt: "2026-08-30T18:20:00.000Z",
+      positionSeconds: 59.5,
+      durationSeconds: 60,
+    },
+  }), /position must equal its duration/);
+  assert.throws(() => client.revokePlaybackContinuation(
+      "session-1",
+      { token: "continuation", origin: "https://server.example", generation: 1, expiresAt: "2026-08-30T19:20:00.000Z" },
+      {
+        requestId: "terminal-invalid-1",
+        terminal: {
+          disposition: "completed",
+          generation: 1,
+          eventSequence: 2,
+          recordedAt: "not-a-time",
+          positionSeconds: 60,
+          durationSeconds: 60,
+        },
+      },
+    ), /observation time/);
+  assert.equal(calls, 0);
+});
+
 test("stop dispatches its authoritative DELETE when progress delivery stalls", async () => {
   const calls = [];
+  const records = new Map();
+  const durability = {
+    load: async () => [...records.values()].map(value => structuredClone(value)),
+    save: async record => { records.set(record.key, structuredClone(record)); },
+    remove: async key => { records.delete(key); },
+  };
   let releaseProgress;
   let markProgressStarted;
   const stalledProgress = new Promise(resolve => { releaseProgress = resolve; });
@@ -1879,6 +3099,7 @@ test("stop dispatches its authoritative DELETE when progress delivery stalls", a
   const client = createPorticoClient({
     apiBaseUrl: "https://server.example",
     csrfToken: "1",
+    playbackProgressDurabilityAdapter: durability,
     transport: {
       fetch: async (input, init) => {
         calls.push({ input: String(input), init });
@@ -1886,7 +3107,8 @@ test("stop dispatches its authoritative DELETE when progress delivery stalls", a
           markProgressStarted();
           return stalledProgress;
         }
-        return jsonResponse({ ok: true });
+        const request = JSON.parse(init.body);
+        return jsonResponse(playbackTerminalReceipt("session-stalled", request));
       }
     }
   });
@@ -1900,13 +3122,222 @@ test("stop dispatches its authoritative DELETE when progress delivery stalls", a
   assert.equal(calls[1].input, "https://server.example/api/playback-sessions/session-stalled");
   assert.equal(calls.filter(call => call.init.method === "DELETE").length, 1);
   const completed = JSON.parse(calls[1].init.body);
-  assert.deepEqual({ ...completed, recordedAt: "<timestamp>" }, {
+  assert.deepEqual({ ...completed.terminal, recordedAt: "<timestamp>" }, {
     disposition: "completed", generation: 1, eventSequence: 2,
     recordedAt: "<timestamp>", positionSeconds: 60, durationSeconds: 60,
   });
-  assert.match(completed.recordedAt, /^\d{4}-\d{2}-\d{2}T/);
+  assert.match(completed.terminal.recordedAt, /^\d{4}-\d{2}-\d{2}T/);
+  assert.equal(records.size, 0);
   releaseProgress(jsonResponse({ accepted: true, duplicate: false, stale: false, highestEventSequence: 1 }));
   await assert.rejects(progress, error => error instanceof ApiError && error.code === "playback_progress_stopped");
+  assert.equal(records.size, 0);
+});
+
+test("accepted terminal waits for and removes a late durable progress save", async () => {
+  const calls = [];
+  const records = new Map();
+  let releaseProgressSave;
+  let markProgressSaveStarted;
+  let markTerminalAccepted;
+  const progressSaveGate = new Promise(resolve => { releaseProgressSave = resolve; });
+  const progressSaveStarted = new Promise(resolve => { markProgressSaveStarted = resolve; });
+  const terminalAccepted = new Promise(resolve => { markTerminalAccepted = resolve; });
+  const durability = {
+    load: async () => [...records.values()].map(value => structuredClone(value)),
+    save: async record => {
+      if (record.kind !== "terminal") {
+        markProgressSaveStarted();
+        await progressSaveGate;
+      }
+      records.set(record.key, structuredClone(record));
+    },
+    remove: async key => { records.delete(key); },
+  };
+  const client = createPorticoClient({
+    apiBaseUrl: "https://server.example",
+    playbackProgressDurabilityAdapter: durability,
+    transport: { fetch: async (_input, init) => {
+      const body = JSON.parse(init.body);
+      calls.push({ method: init.method, body });
+      if (init.method === "PATCH") {
+        throw new Error("superseded progress must not reach the wire");
+      }
+      markTerminalAccepted();
+      return jsonResponse(
+        playbackTerminalReceipt("session-late-progress-save", body),
+      );
+    } },
+  });
+  client.acceptPlaybackSession(acceptedPlayback("session-late-progress-save", 1));
+
+  const progressResult = client
+    .touchPlayback("session-late-progress-save", { positionSeconds: 12 })
+    .catch(error => error);
+  await progressSaveStarted;
+  const stop = client.stopPlayback("session-late-progress-save", {
+    disposition: "completed", positionSeconds: 60, durationSeconds: 60,
+  });
+  await terminalAccepted;
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].method, "DELETE");
+  assert.equal(calls[0].body.terminal.eventSequence, 2);
+
+  // Let the accepted response enter cleanup while the earlier progress save is
+  // still unresolved, then release the write and verify it cannot resurrect.
+  await new Promise(resolve => setImmediate(resolve));
+  releaseProgressSave();
+  const receipt = await stop;
+  const progressError = await progressResult;
+
+  assert.equal(receipt.accepted, true);
+  assert.equal(progressError.code, "playback_progress_stopped");
+  assert.equal(records.size, 0);
+});
+
+test("progress persistence stays ordered while terminal cleanup supersedes a queued successor", async () => {
+  const records = new Map();
+  let progressSaveCount = 0;
+  let activeProgressSaves = 0;
+  let maximumActiveProgressSaves = 0;
+  let releaseSecondProgressSave;
+  let markSecondProgressSaveStarted;
+  let releaseFirstProgressResponse;
+  let markFirstProgressSent;
+  let markTerminalAccepted;
+  const secondProgressSaveGate = new Promise(resolve => {
+    releaseSecondProgressSave = resolve;
+  });
+  const secondProgressSaveStarted = new Promise(resolve => {
+    markSecondProgressSaveStarted = resolve;
+  });
+  const firstProgressResponse = new Promise(resolve => {
+    releaseFirstProgressResponse = resolve;
+  });
+  const firstProgressSent = new Promise(resolve => {
+    markFirstProgressSent = resolve;
+  });
+  const terminalAccepted = new Promise(resolve => {
+    markTerminalAccepted = resolve;
+  });
+  const durability = {
+    load: async () => [...records.values()].map(value => structuredClone(value)),
+    save: async record => {
+      if (record.kind !== "terminal") {
+        progressSaveCount += 1;
+        activeProgressSaves += 1;
+        maximumActiveProgressSaves = Math.max(
+          maximumActiveProgressSaves,
+          activeProgressSaves,
+        );
+        if (progressSaveCount === 2) {
+          markSecondProgressSaveStarted();
+          await secondProgressSaveGate;
+        }
+        records.set(record.key, structuredClone(record));
+        activeProgressSaves -= 1;
+        return;
+      }
+      records.set(record.key, structuredClone(record));
+    },
+    remove: async key => { records.delete(key); },
+  };
+  let patchCount = 0;
+  const client = createPorticoClient({
+    apiBaseUrl: "https://server.example",
+    playbackProgressDurabilityAdapter: durability,
+    transport: { fetch: async (_input, init) => {
+      const body = JSON.parse(init.body);
+      if (init.method === "PATCH") {
+        patchCount += 1;
+        if (patchCount !== 1) {
+          throw new Error("superseded progress must not reach the wire");
+        }
+        markFirstProgressSent();
+        return firstProgressResponse;
+      }
+      markTerminalAccepted();
+      return jsonResponse(
+        playbackTerminalReceipt("session-ordered-persistence", body),
+      );
+    } },
+  });
+  client.acceptPlaybackSession(acceptedPlayback("session-ordered-persistence", 1));
+
+  const first = client.touchPlayback(
+    "session-ordered-persistence",
+    { positionSeconds: 10 },
+  );
+  await firstProgressSent;
+  const second = client.touchPlayback(
+    "session-ordered-persistence",
+    { positionSeconds: 20 },
+  ).catch(error => error);
+  releaseFirstProgressResponse(jsonResponse({
+    accepted: true, duplicate: false, stale: false, highestEventSequence: 1,
+  }));
+  await first;
+  await secondProgressSaveStarted;
+  const third = client.touchPlayback(
+    "session-ordered-persistence",
+    { positionSeconds: 30 },
+  ).catch(error => error);
+  const stop = client.stopPlayback("session-ordered-persistence", {
+    disposition: "completed", positionSeconds: 60, durationSeconds: 60,
+  });
+  await terminalAccepted;
+  await new Promise(resolve => setImmediate(resolve));
+
+  assert.equal(progressSaveCount, 2);
+  assert.equal(maximumActiveProgressSaves, 1);
+  assert.equal(patchCount, 1);
+  releaseSecondProgressSave();
+
+  assert.equal((await stop).accepted, true);
+  assert.equal((await second).code, "playback_progress_stopped");
+  assert.equal((await third).code, "playback_progress_stopped");
+  assert.equal(records.size, 0);
+  assert.equal(maximumActiveProgressSaves, 1);
+});
+
+test("a rejected durable progress event cannot veto terminal authority", async () => {
+  const calls = [];
+  const records = new Map();
+  const durability = {
+    load: async () => [...records.values()].map(value => structuredClone(value)),
+    save: async record => { records.set(record.key, structuredClone(record)); },
+    remove: async key => { records.delete(key); },
+  };
+  const client = createPorticoClient({
+    apiBaseUrl: "https://server.example",
+    playbackProgressDurabilityAdapter: durability,
+    transport: { fetch: async (_input, init) => {
+      const body = JSON.parse(init.body);
+      calls.push({ method: init.method, body });
+      if (init.method === "PATCH") {
+        return jsonResponse({
+          code: "playback_progress_rejected",
+          detail: "The progress event was rejected.",
+        }, { status: 409 });
+      }
+      return jsonResponse(
+        playbackTerminalReceipt("session-rejected-progress", body),
+      );
+    } },
+  });
+  client.acceptPlaybackSession(acceptedPlayback("session-rejected-progress", 1));
+
+  await assert.rejects(
+    client.touchPlayback("session-rejected-progress", { positionSeconds: 12 }),
+    error => error instanceof ApiError && error.status === 409,
+  );
+  const receipt = await client.stopPlayback("session-rejected-progress", {
+    disposition: "completed", positionSeconds: 60, durationSeconds: 60,
+  });
+
+  assert.equal(receipt.accepted, true);
+  assert.deepEqual(calls.map(call => call.method), ["PATCH", "PATCH", "DELETE"]);
+  assert.equal(calls[2].body.terminal.eventSequence, 2);
+  assert.equal(records.size, 0);
 });
 
 test("playback progress events carry a monotonic session sequence and observation time", async () => {
@@ -2044,16 +3475,17 @@ test("legacy completed progress is discarded and completion uses only atomic sto
     sessionStore,
     playbackProgressDurabilityAdapter: durability,
     transport: { fetch: async (input, init) => {
-      calls.push({url: String(input), method: init.method, body: init.body ? JSON.parse(init.body) : undefined});
+      const body = init.body ? JSON.parse(init.body) : undefined;
+      calls.push({url: String(input), method: init.method, body});
       return jsonResponse(init.method === "PATCH"
         ? {accepted: true, duplicate: false, stale: false, highestEventSequence: 1}
-        : {ok: true});
+        : playbackTerminalReceipt("session-1", body));
     } }
   });
   restarted.acceptPlaybackSession(acceptedPlayback("session-1", 1));
-  await restarted.stopPlayback("session-1", { disposition: "completed", positionSeconds: 12, durationSeconds: 60 });
+  await restarted.stopPlayback("session-1", { disposition: "completed", positionSeconds: 60, durationSeconds: 60 });
   assert.deepEqual(calls.map(call => call.method), ["DELETE"]);
-  assert.equal(calls[0].body.disposition, "completed");
+  assert.equal(calls[0].body.terminal.disposition, "completed");
   assert.equal(records.size, 0);
 });
 
@@ -2283,18 +3715,17 @@ test("resource URLs never add account tokens to query strings", () => {
   assert.equal(client.resourceUrl("https://cdn.example/image.jpg"), "https://cdn.example/image.jpg");
 });
 
-test("hosted connector avoids routes currently under repair", () => {
-  const repairingRoute = { type: "public_direct", url: "https://repairing.example", quality: "repairing" };
-  const failedRoute = { type: "public_direct", url: "https://failed.example", quality: "tls_failed" };
-  const staleRoute = { type: "public_direct", url: "https://stale.example", quality: "stale" };
-  const checkingRoute = { type: "public_direct", url: "https://checking.example", quality: "checking" };
+test("hosted connector accepts only the two published route qualities", () => {
+	const reachableRoute = { type: "public_direct", url: "https://reachable.example", quality: "reachable" };
+	const probeRoute = { type: "public_direct", url: "https://probe.example", quality: "probe_required" };
 
-  assert.equal(routeIsUsableCandidate(repairingRoute), false);
-  assert.equal(routeIsUsableCandidate(failedRoute), false);
-  assert.equal(routeIsUsableCandidate(staleRoute), false);
-  assert.equal(routeIsUsableCandidate(checkingRoute), true);
-  assert.equal(preferredRoute({ kind: "route-document", documentVersion: 1, endpointGeneration: 1, routes: [repairingRoute, failedRoute, staleRoute, checkingRoute] }).url, "https://checking.example");
-  assert.equal(preferredRoute({ kind: "route-document", documentVersion: 1, endpointGeneration: 1, routes: [repairingRoute, failedRoute, staleRoute] }), undefined);
+	assert.equal(routeIsUsableCandidate(reachableRoute), true);
+	assert.equal(routeIsUsableCandidate(probeRoute), true);
+	for (const quality of ["reported", "checking", "fallback", "stale", "failed", "http_failed", "tls_failed", "identity_mismatch", "repairing", "repair_requested", "unknown", ""]) {
+		assert.equal(routeIsUsableCandidate({ type: "public_direct", url: `https://${quality || "empty"}.example`, quality }), false, quality);
+	}
+	assert.equal(preferredRoute({ kind: "route-document", documentVersion: 1, endpointGeneration: 1, routes: [probeRoute, reachableRoute] }).url, "https://reachable.example");
+	assert.equal(preferredRoute({ kind: "route-document", documentVersion: 1, endpointGeneration: 1, routes: [{ type: "public_direct", url: "https://legacy.example", quality: "identity_mismatch" }] }), undefined);
 });
 
 test("Hosted document key sets retain staged rotation keys and fail closed", () => {
@@ -2330,7 +3761,7 @@ test("Hosted route verification runs entirely through injected binary and Ed2551
     routes: [{
       type: "public_direct_ip_encoded",
       url: "https://203-0-113-10.ptc-native.direct.getportico.tv:32500",
-      quality: "checking",
+		quality: "probe_required",
       lastCheckedAt: "2026-05-23T00:00:30Z",
       lastCheckError: "Reachability is still being verified."
     }]
@@ -2558,41 +3989,43 @@ test("Hosted runtime reports an actionable missing Ed25519 capability", async ()
   }
 });
 
-test("hosted connector prefers healthy LAN routes before public direct routes", () => {
-  const reachablePublic = { type: "public_direct", url: "https://public.example", quality: "reachable" };
-  const encodedLan = { type: "lan_ip_encoded", url: "https://10-0-0-5.ptc.direct.example", quality: "reported" };
-  const rawLan = { type: "lan", url: "https://10.0.0.5:32500", quality: "reported" };
-  const checkingPublic = { type: "public_direct", url: "https://checking.example", quality: "checking" };
-  const verifiedFallback = { type: "public_direct_ip_encoded", url: "https://old-public.ptc.direct.example", quality: "fallback" };
-  const staleLan = { type: "lan_ip_encoded", url: "https://10-0-0-4.ptc.direct.example", quality: "stale" };
-  const insecureLan = { type: "lan_ip_encoded", url: "http://10-0-0-6.ptc.direct.example", quality: "reported" };
+test("hosted connector ranks published quality before the configured LAN/public type precedence", () => {
+	const reachablePublic = { type: "public_direct", url: "https://public.example", quality: "reachable" };
+	const reachableLan = { type: "lan", url: "https://10.0.0.5:32500", quality: "reachable" };
+	const encodedLan = { type: "lan_ip_encoded", url: "https://10-0-0-5.ptc.direct.example", quality: "probe_required" };
+	const probePublic = { type: "public_direct", url: "https://probe.example", quality: "probe_required" };
+	const encodedProbePublic = { type: "public_direct_ip_encoded", url: "https://old-public.ptc.direct.example", quality: "probe_required" };
+	const checkingPublic = { type: "public_direct", url: "https://checking.example", quality: "checking" };
+	const verifiedFallback = { type: "public_direct_ip_encoded", url: "https://old-public.ptc.direct.example", quality: "fallback" };
+	const staleLan = { type: "lan_ip_encoded", url: "https://10-0-0-4.ptc.direct.example", quality: "stale" };
+	const insecureLan = { type: "lan_ip_encoded", url: "http://10-0-0-6.ptc.direct.example", quality: "probe_required" };
 
   assert.deepEqual(routesForConnection({
     kind: "route-document",
     documentVersion: 1,
     endpointGeneration: 1,
     authModes: ["portico"],
-    routes: [checkingPublic, rawLan, reachablePublic, encodedLan, staleLan, insecureLan, verifiedFallback]
-  }).map((route) => route.url), [
-    "https://10-0-0-5.ptc.direct.example",
-    "https://10.0.0.5:32500",
-    "https://public.example",
-    "https://old-public.ptc.direct.example",
-    "https://checking.example"
-  ]);
+		routes: [checkingPublic, reachableLan, probePublic, reachablePublic, encodedLan, staleLan, insecureLan, verifiedFallback, encodedProbePublic]
+	}).map((route) => route.url), [
+		"https://10.0.0.5:32500",
+		"https://public.example",
+		"https://10-0-0-5.ptc.direct.example",
+		"https://old-public.ptc.direct.example",
+		"https://probe.example"
+	]);
   assert.deepEqual(routesForConnection({
     kind: "route-document",
     documentVersion: 1,
     endpointGeneration: 1,
     authModes: ["portico"],
-    routes: [checkingPublic, rawLan, reachablePublic, encodedLan, staleLan, insecureLan, verifiedFallback]
-  }, "public-first").map((route) => route.url), [
-    "https://public.example",
-    "https://old-public.ptc.direct.example",
-    "https://checking.example",
-    "https://10-0-0-5.ptc.direct.example",
-    "https://10.0.0.5:32500"
-  ]);
+		routes: [checkingPublic, reachableLan, probePublic, reachablePublic, encodedLan, staleLan, insecureLan, verifiedFallback, encodedProbePublic]
+	}, "public-first").map((route) => route.url), [
+		"https://public.example",
+		"https://10.0.0.5:32500",
+		"https://old-public.ptc.direct.example",
+		"https://probe.example",
+		"https://10-0-0-5.ptc.direct.example",
+	]);
 });
 
 test("hosted connector retries transient route verification before failing", async () => {
@@ -2619,7 +4052,7 @@ test("hosted connector retries transient route verification before failing", asy
           address: "198.51.100.90",
           port: 443,
           scheme: "https",
-          quality: "checking"
+			quality: "probe_required"
         }]
       });
     },
@@ -3102,10 +4535,11 @@ test("route discovery keeps media-server authorization and identity failures ter
     certificate: {status: "valid"}, membership: {role: "owner"},
     routes: [{type: "public_direct", url: "https://probe-terminal.direct.getportico.tv", quality: "reachable"}],
   });
-  for (const response of [
-    () => new Response("forbidden", {status: 403}),
-    () => jsonResponse({serverId: "wrong-server", serverPublicKeyFingerprint: testServerPublicKeyFingerprint, remoteAccessEnabled: true}),
-  ]) {
+	for (const response of [
+		() => new Response("forbidden", {status: 403}),
+		() => jsonResponse({serverId: "wrong-server", serverPublicKeyFingerprint: testServerPublicKeyFingerprint, remoteAccessEnabled: true}),
+		() => jsonResponse({serverId: server.id, serverPublicKeyFingerprint: "sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", remoteAccessEnabled: true}),
+	]) {
     let routes = 0;
     await assert.rejects(discoverHostedServerRoute(server, {
       hostedClient: {routes: async () => { routes += 1; return document; }},
@@ -3184,7 +4618,7 @@ test("hosted connector never retries route-document integrity failures", async (
       address: "198.51.100.91",
       port: 443,
       scheme: "https",
-      quality: "checking"
+		quality: "probe_required"
     }]
   });
   invalidDocument.signature = "invalid-signature";
@@ -3223,8 +4657,8 @@ test("hosted connector uses LAN without probing a public route when LAN is healt
       certificate: { status: "valid" },
       membership: { role: "owner" },
       routes: [
-        { type: "public_direct", url: "https://public.direct.getportico.tv", host: "public.direct.getportico.tv", port: 443, scheme: "https", quality: "reachable" },
-        { type: "lan_ip_encoded", url: "https://10-0-0-5.ptc.direct.getportico.tv:32500", host: "10-0-0-5.ptc.direct.getportico.tv", address: "10.0.0.5", port: 32500, scheme: "https", quality: "reported" }
+		{ type: "public_direct", url: "https://public.direct.getportico.tv", host: "public.direct.getportico.tv", port: 443, scheme: "https", quality: "reachable" },
+		{ type: "lan_ip_encoded", url: "https://10-0-0-5.ptc.direct.getportico.tv:32500", host: "10-0-0-5.ptc.direct.getportico.tv", address: "10.0.0.5", port: 32500, scheme: "https", quality: "probe_required" }
       ]
     }),
     porticoSession: async () => ({ tokenType: "Bearer", accessToken: "portico-token", accessExpiresAt: "2026-05-23T01:00:00Z", refreshToken: "refresh-token", refreshExpiresAt: "2026-06-23T00:00:00Z" }),
@@ -3277,7 +4711,7 @@ test("browser public-first routing never probes LAN while a verified public rout
       certificate: { status: "valid" },
       membership: { role: "owner" },
       routes: [
-        { type: "lan", url: "https://192.168.1.10:32500", quality: "reported" },
+		{ type: "lan", url: "https://192.168.1.10:32500", quality: "probe_required" },
         { type: "public_direct", url: "https://browser-public.direct.getportico.tv", quality: "reachable" }
       ]
     }),
@@ -3457,7 +4891,7 @@ test("browser public-first routing falls back to LAN only after public verificat
       certificate: { status: "valid" },
       membership: { role: "owner" },
       routes: [
-        { type: "lan", url: "https://192.168.1.10:32500", quality: "reported" },
+		{ type: "lan", url: "https://192.168.1.10:32500", quality: "probe_required" },
         { type: "public_direct", url: "https://browser-fallback.direct.getportico.tv", quality: "reachable" }
       ]
     }),
@@ -3503,7 +4937,7 @@ test("browser public-only routing offers nearby recovery without probing LAN", a
       certificate: { status: "valid" },
       membership: { role: "owner" },
       routes: [
-        { type: "lan", url: "https://192.168.1.10:32500", quality: "reported" },
+		{ type: "lan", url: "https://192.168.1.10:32500", quality: "probe_required" },
         { type: "public_direct", url: "https://browser-nearby.direct.getportico.tv", quality: "reachable" }
       ]
     }),
@@ -3546,7 +4980,7 @@ test("browser lan-only recovery reports Local Network denial without probing pub
       certificate: { status: "valid" },
       membership: { role: "owner" },
       routes: [
-        { type: "lan", url: "https://192.168.1.10:32500", quality: "reported" },
+		{ type: "lan", url: "https://192.168.1.10:32500", quality: "probe_required" },
         { type: "public_direct", url: "https://browser-lan-denied.direct.getportico.tv", quality: "reachable" }
       ]
     }),
@@ -3592,8 +5026,8 @@ test("hosted connector probes LAN candidates in a bounded parallel batch before 
       certificate: { status: "valid" },
       membership: { role: "owner" },
       routes: [
-        { type: "lan", url: "https://192.168.1.10:32500", quality: "reported" },
-        { type: "lan", url: "https://192.168.1.11:32500", quality: "reported" },
+		{ type: "lan", url: "https://192.168.1.10:32500", quality: "probe_required" },
+		{ type: "lan", url: "https://192.168.1.11:32500", quality: "probe_required" },
         { type: "public_direct", url: "https://parallel.direct.getportico.tv", quality: "reachable" }
       ]
     }),
@@ -3642,7 +5076,7 @@ test("a wrong-identity LAN candidate cannot suppress a valid public route", asyn
       certificate: { status: "valid" },
       membership: { role: "owner" },
       routes: [
-        { type: "lan", url: "https://192.168.1.50:32500", quality: "reported" },
+		{ type: "lan", url: "https://192.168.1.50:32500", quality: "probe_required" },
         { type: "public_direct", url: publicRoute, quality: "reachable" }
       ]
     }),
@@ -3681,7 +5115,6 @@ test("documented resource URL helpers do not leak account credentials", () => {
   assert.equal(client.artworkUrl("m1", "poster.jpg", { width: 300 }), "https://server.example/api/artwork/m1/poster.jpg?width=300");
   assert.equal(client.liveTvStreamUrl("chan 1"), "https://server.example/api/live-tv/streams/chan%201");
   assert.equal(client.liveTvLogoUrl("chan1"), "https://server.example/api/live-tv/logos/chan1");
-  assert.equal(client.playbackReceiverEventsUrl("receiver1"), "https://server.example/api/playback/receivers/receiver1/events");
   assert.equal(client.watchWithFriendsGroupEventsUrl("group1"), "https://server.example/api/watch-with-friends/groups/group1/events");
   assert.equal(client.logsStreamUrl(), "https://server.example/api/logs/stream");
 });
@@ -3696,6 +5129,10 @@ test("current public metadata and live TV methods use documented API paths", asy
     transport: {
       fetch: async (input, init) => {
         calls.push({ input: String(input), init });
+        if (String(input).endsWith("/api/live-tv/streams/chan1/close")) {
+          const request = JSON.parse(init.body);
+          return jsonResponse(playbackTerminalReceipt(request.sessionId, request));
+        }
         return jsonResponse({
           ok: true,
           items: [],
@@ -3714,7 +5151,8 @@ test("current public metadata and live TV methods use documented API paths", asy
           mediaGrant: { token: "grant", expiresAt: "2026-08-06T01:00:00Z" },
           isLive: true,
           decision: { mode: "direct_play", reason: "", requiresTranscode: false, isProxied: true, isServerCached: false },
-          qualities: [],
+          qualityOffers: {contractId: "PC-PLAYBACK", schemaVersion: "quality-offers.v1", mediaId: "m1", versionId: "qver-m1", sourceRevision: "qsrc-m1", offerRevision: "qrev-m1", offers: [{selectionId: "qsel-auto", label: "Automatic", kind: "automatic"}, {selectionId: "qsel-original", label: "Original Quality", kind: "original"}]},
+          qualitySelection: {mode: "automatic"},
           audioStreams: [],
           subtitleStreams: [],
           chapters: [],
@@ -3728,8 +5166,10 @@ test("current public metadata and live TV methods use documented API paths", asy
   await client.system();
   await client.branding();
   await client.remoteAccessHealth();
-  await client.openLiveTvStream("chan1", { intent: { transportClass: "wifi", qualityProfile: "high" } });
-  await client.closeLiveTvStream("chan1", "live1");
+  await client.openLiveTvStream("chan1", { intent: { transportClass: "wifi", quality: {mode: "automatic"} } });
+  await client.closeLiveTvStream("chan1", "live1", {
+    disposition: "stopped", positionSeconds: 30, durationSeconds: 60,
+  });
   await client.playDvrRecording("rec 1", { startSeconds: 42 });
 
   assert.deepEqual(calls.map((call) => call.input), [
@@ -3742,10 +5182,13 @@ test("current public metadata and live TV methods use documented API paths", asy
   ]);
   assert.equal(JSON.parse(calls[3].init.body).clientProfile.maxAudioChannels, 6);
   assert.equal(JSON.parse(calls[3].init.body).clientInstanceId, "test-client");
-  assert.deepEqual(JSON.parse(calls[3].init.body).intent, { transportClass: "wifi", qualityProfile: "high" });
+  assert.deepEqual(JSON.parse(calls[3].init.body).intent, { transportClass: "wifi", quality: {mode: "automatic"} });
   assert.equal(JSON.parse(calls[4].init.body).sessionId, "live1");
+  assert.equal(JSON.parse(calls[4].init.body).terminal.disposition, "stopped");
+  assert.equal(typeof JSON.parse(calls[4].init.body).requestId, "string");
   assert.deepEqual(JSON.parse(calls[5].init.body), {
     startSeconds: 42,
+    intent: { quality: { mode: "automatic" } },
     clientInstanceId: "test-client",
     clientProfile: { platform: "tv-test", supportsHls: true, maxAudioChannels: 6 }
   });
@@ -3774,7 +5217,8 @@ test("playback methods inject provided playback profile and accept canonical arr
           continuationCredential: { token: "continuation", origin: "https://server.example", generation: 1, expiresAt: "2026-08-06T01:00:00Z" },
           mediaGrant: { token: "grant", expiresAt: "2026-08-06T01:00:00Z" },
           decision: { mode: "direct_play", reason: "", requiresTranscode: false, isProxied: true, isServerCached: false },
-          qualities: [],
+          qualityOffers: {contractId: "PC-PLAYBACK", schemaVersion: "quality-offers.v1", mediaId: "m1", versionId: "qver-m1", sourceRevision: "qsrc-m1", offerRevision: "qrev-m1", offers: [{selectionId: "qsel-auto", label: "Automatic", kind: "automatic"}, {selectionId: "qsel-original", label: "Original Quality", kind: "original"}]},
+          qualitySelection: {mode: "automatic"},
           audioStreams: [],
           subtitleStreams: [],
           chapters: [],
@@ -3791,17 +5235,121 @@ test("playback methods inject provided playback profile and accept canonical arr
   assert.equal(JSON.parse(calls[0].init.body).audioStreamId, "audio_commentary");
   assert.equal(JSON.parse(calls[0].init.body).repeatMode, "all");
   assert.equal(JSON.parse(calls[0].init.body).versionId, "version-director");
-  assert.deepEqual(playback.qualities, []);
-  assert.equal(defaultPlaybackQuality({ ...playback, qualities: [{ id: "original", label: "Original", description: "" }] }), "original");
-  assert.equal(defaultPlaybackQuality({
-    ...playback,
-    selectedQualityId: "720p-high",
-    qualities: [
-      { id: "auto", label: "Auto", description: "", available: false },
-      { id: "720p-high", label: "720p High", description: "", available: true }
-    ],
-    resources: [{ sourceUrl: "/api/live-tv/hls/channel/playlist.m3u8?quality=720p-high", streamFormat: "hls", qualityId: "720p-high", default: true }]
-  }), "720p-high");
+  assert.equal(playbackQualitySelectionKey(playback.qualitySelection), "automatic");
+  assert.deepEqual(playbackQualitySelectionFor(playback, "qsel-original"), {mode: "explicit", selectionId: "qsel-original", qualityOfferRevision: "qrev-m1"});
+});
+
+test("playback receiver methods bind Core installation identity and preserve exact handoff reconciliation", async () => {
+  const calls = [];
+  const receiver = {
+    id: "receiver-1",
+    serverId: "server-1",
+    name: "Living Room",
+    app: "Portico",
+    platform: "Fire TV",
+    receiverPublicKey: "receiver-public-key",
+    receiverPublicKeyFingerprint: "receiver-fingerprint",
+    supportedCommands: ["load", "play", "pause", "seek", "stop"],
+    expiresAt: "2026-08-31T22:00:00Z",
+    createdAt: "2026-08-31T21:00:00Z",
+    lastSeenAt: "2026-08-31T21:00:00Z",
+  };
+  const client = createPorticoClient({
+    apiBaseUrl: "https://server.example",
+    playbackClientInstanceId: () => "stable-installation",
+    transport: {
+      fetch: async (input, init = {}) => {
+        const url = String(input);
+        calls.push({input: url, init});
+        if (url.endsWith("/commit"))
+          return jsonResponse(acceptedPlayback("receiver-session-1"));
+        if (url.includes("/handoffs/"))
+          return jsonResponse({
+            outcome: "accepted",
+            requestId: "handoff-request-1",
+            sourceSessionId: "source-session-1",
+            receiverSessionId: "receiver-session-1",
+          });
+        if (url.endsWith("/handoff"))
+          return jsonResponse(acceptedPlayback("receiver-session-1"));
+        if (url.endsWith("/authorizations"))
+          return jsonResponse({
+            authorizationId: "authorization-1",
+            receiverId: receiver.id,
+            serverId: receiver.serverId,
+            receiverPublicKey: receiver.receiverPublicKey,
+            receiverPublicKeyFingerprint: receiver.receiverPublicKeyFingerprint,
+            allowedCommands: receiver.supportedCommands,
+            authorizationRevision: "revision-1",
+            expiresAt: receiver.expiresAt,
+          });
+        return jsonResponse(receiver);
+      },
+    },
+  });
+
+  await client.registerPlaybackReceiver({
+    requestId: "register-1",
+    receiverId: receiver.id,
+    name: receiver.name,
+    app: receiver.app,
+    platform: receiver.platform,
+    receiverPublicKey: receiver.receiverPublicKey,
+    receiverPublicKeyFingerprint: receiver.receiverPublicKeyFingerprint,
+    supportedCommands: receiver.supportedCommands,
+  });
+  await client.authorizePlaybackReceiver(receiver.id, {
+    requestId: "authorize-1",
+    controllerId: "controller-1",
+    controllerPublicKey: "controller-public-key",
+    allowedCommands: receiver.supportedCommands,
+  });
+  const handoff = {
+    authorizationId: "authorization-1",
+    receiverPublicKeyFingerprint: receiver.receiverPublicKeyFingerprint,
+    playback: {
+      mediaId: "m1",
+      clientProfile: {platform: "fire-tv"},
+      replacement: {
+        sourceSessionId: "source-session-1",
+        requestId: "handoff-request-1",
+        expectedQueueRevision: 3,
+        expectedPlaybackRevision: 4,
+        previousTerminal: {
+          disposition: "stopped",
+          positionSeconds: 12,
+          durationSeconds: 60,
+          eventSequence: 5,
+          generation: 1,
+          recordedAt: "2026-08-31T21:00:00Z",
+        },
+      },
+    },
+  };
+  await client.handoffPlaybackToReceiver(receiver.id, handoff);
+  await client.commitPlaybackReceiverHandoff(receiver.id, handoff.playback.replacement.requestId, {
+    authorizationId: handoff.authorizationId,
+    receiverPublicKeyFingerprint: handoff.receiverPublicKeyFingerprint,
+    sourceSessionId: handoff.playback.replacement.sourceSessionId,
+    receiverSessionId: "receiver-session-1",
+    readiness: "playing",
+  });
+  await client.playbackReceiverHandoffStatus(receiver.id, {
+    authorizationId: handoff.authorizationId,
+    receiverPublicKeyFingerprint: handoff.receiverPublicKeyFingerprint,
+    requestId: handoff.playback.replacement.requestId,
+    sourceSessionId: handoff.playback.replacement.sourceSessionId,
+  });
+
+  assert.equal(JSON.parse(calls[0].init.body).clientInstanceId, "stable-installation");
+  assert.equal(JSON.parse(calls[1].init.body).clientInstanceId, "stable-installation");
+  assert.deepEqual(JSON.parse(calls[2].init.body), handoff);
+  assert.match(calls[3].input, /\/handoffs\/handoff-request-1\/commit$/);
+  assert.equal(JSON.parse(calls[3].init.body).receiverSessionId, "receiver-session-1");
+  assert.match(calls[4].input, /\/handoffs\/handoff-request-1\?/);
+  assert.match(calls[4].input, /authorizationId=authorization-1/);
+  assert.match(calls[4].input, /receiverPublicKeyFingerprint=receiver-fingerprint/);
+  assert.match(calls[4].input, /sourceSessionId=source-session-1/);
 });
 
 test("Cast bootstrap binds the configured installation rather than a UI-supplied session id", async () => {
@@ -3812,35 +5360,368 @@ test("Cast bootstrap binds the configured installation rather than a UI-supplied
     transport: {
       fetch: async (input, init) => {
         calls.push({ input: String(input), init });
-        return jsonResponse({ version: "v1", bootstrapEnvelope: "sealed", bootstrapId: "cast-1" });
+        const request = JSON.parse(init.body);
+        return jsonResponse({
+          version: "v1", bootstrapEnvelope: "sealed", bootstrapId: "cast-1",
+          receiverId: request.receiverId, receiverOrigin: request.receiverOrigin,
+          serverOrigin: "https://server.example", generation: 1,
+          expiresAt: "2026-08-30T19:00:00Z", capabilities: request.capabilities,
+          requestId: request.requestId, replacementSessionId: "cast-playback-1",
+          transferStatus: "pending",
+        });
       }
     }
   });
 
   await client.createCastBootstrap({
-    mediaId: "m1",
     clientInstanceId: "playback-session-id",
-    sourcePlaybackSessionId: "playback-session-id",
     clientProfile: { platform: "google-cast" },
     sourceKind: "media",
     sourceId: "m1",
     receiverId: "receiver-1",
     receiverOrigin: "https://cast.getportico.tv",
-    receiverPublicKey: "public-key",
-    receiverChallenge: "challenge",
-    capabilities: {}
+    receiverPublicKey: "public-key-123456",
+    receiverChallenge: "challenge-1234567",
+    capabilities: ["load", "control"]
   });
 
   const request = JSON.parse(calls[0].init.body);
   assert.equal(request.clientInstanceId, "stable-installation");
-  assert.equal(request.sourcePlaybackSessionId, "playback-session-id");
+  assert.equal(typeof request.requestId, "string");
+  assert.equal("sourcePlaybackSessionId" in request, false);
+});
+
+test("generated Client Core types consume the canonical replacement, Cast, and Live TV terminal schema", () => {
+  const schema = JSON.parse(readFileSync(
+    new URL("../../../api/openapi/portico-server.openapi.json", import.meta.url),
+    "utf8",
+  ));
+  const components = schema.components.schemas;
+  assert.deepEqual(components.PlaybackReplacementRequest.required, [
+    "sourceSessionId", "requestId", "previousTerminal",
+  ]);
+  assert.equal(components.CastBootstrapRequest.properties.replacement.$ref,
+    "#/components/schemas/PlaybackReplacementRequest");
+  assert.ok(components.CastBootstrapRequest.required.includes("requestId"));
+  assert.equal(components.CastBootstrapResponse.properties.transferStatus.const, "pending");
+  assert.deepEqual(components.CastStopRequest.required, [
+    "generation", "requestId", "terminal",
+  ]);
+  assert.deepEqual(components.CastAdvanceRequest.required, [
+    "generation", "advanceId", "requestId", "previousTerminal",
+  ]);
+  assert.deepEqual(
+    schema.paths["/live-tv/streams/{channelId}/close"].post.requestBody
+      .content["application/json"].schema.required,
+    ["sessionId", "requestId", "terminal"],
+  );
+  for (const [path, method] of [
+    ["/playback-sessions", "post"],
+    ["/live-tv/play", "post"],
+    ["/live-tv/streams/{channelId}/open", "post"],
+    ["/dvr/recordings/{id}/playback", "post"],
+    ["/library-channels/{channelId}/tune", "post"],
+  ]) {
+    const requestSchema = schema.paths[path][method].requestBody
+      .content["application/json"].schema;
+    const resolved = requestSchema.$ref
+      ? components[requestSchema.$ref.split("/").at(-1)]
+      : requestSchema;
+    assert.equal(resolved.properties.replacement.$ref,
+      "#/components/schemas/PlaybackReplacementRequest", path);
+  }
+});
+
+test("a lost fresh Cast bootstrap is durably reconciled and exact-replayed", async () => {
+  const records = new Map();
+  const durability = {
+    load: async () => [...records.values()].map(value => structuredClone(value)),
+    save: async record => { records.set(record.key, structuredClone(record)); },
+    remove: async key => { records.delete(key); },
+  };
+  const requestBodies = [];
+  const bootstrapInput = {
+    sourceKind: "media", sourceId: "m1",
+    clientProfile: { platform: "google-cast" },
+    receiverId: "receiver-1", receiverOrigin: "https://cast.getportico.tv",
+    receiverPublicKey: "public-key-123456", receiverChallenge: "challenge-1234567",
+    capabilities: ["load", "progress"],
+  };
+  const first = createPorticoClient({
+    apiBaseUrl: "https://server.example",
+    playbackClientInstanceId: () => "stable-installation",
+    requestId: () => "cast-fresh-request-1",
+    playbackProgressDurabilityAdapter: durability,
+    transport: { fetch: async (_input, init) => {
+      requestBodies.push(String(init.body));
+      throw new TypeError("bootstrap response was lost");
+    } },
+  });
+  await assert.rejects(first.createCastBootstrap(bootstrapInput), /response was lost/);
+  assert.equal(records.size, 1);
+  assert.deepEqual(await first.pendingCastTransfers(), [{requestId: "cast-fresh-request-1"}]);
+
+  const restarted = createPorticoClient({
+    apiBaseUrl: "https://server.example",
+    playbackClientInstanceId: () => "stable-installation",
+    playbackProgressDurabilityAdapter: durability,
+    transport: { fetch: async (input, init) => {
+      const path = new URL(input).pathname;
+      if (path.endsWith("/transfer-status")) {
+        return jsonResponse({
+          version: "v1", requestId: "cast-fresh-request-1",
+          replacementSessionId: "cast-playback-1", status: "pending",
+          requestFingerprint: "fingerprint-1",
+        });
+      }
+      requestBodies.push(String(init.body));
+      const request = JSON.parse(init.body);
+      return jsonResponse({
+        version: "v1", bootstrapEnvelope: "sealed", bootstrapId: "cast-1",
+        receiverId: request.receiverId, receiverOrigin: request.receiverOrigin,
+        serverOrigin: "https://server.example", generation: 1,
+        expiresAt: "2026-08-30T21:00:00Z", capabilities: request.capabilities,
+        requestId: request.requestId, replacementSessionId: "cast-playback-1",
+        transferStatus: "pending",
+      });
+    } },
+  });
+  const outcome = await restarted.retryPendingCastTransfer("cast-fresh-request-1");
+  assert.equal(outcome.outcome, "pending");
+  assert.equal(outcome.value.bootstrapEnvelope, "sealed");
+  assert.equal(requestBodies.length, 2);
+  assert.equal(requestBodies[0], requestBodies[1]);
+  assert.equal(records.size, 1);
+});
+
+test("Cast replacement retains source authority until exact committed status", async () => {
+  const records = new Map();
+  const durability = {
+    load: async () => [...records.values()].map(value => structuredClone(value)),
+    save: async record => { records.set(record.key, structuredClone(record)); },
+    remove: async key => { records.delete(key); },
+  };
+  const previousTerminal = {
+    disposition: "stopped", generation: 3, eventSequence: 9,
+    recordedAt: "2026-08-30T20:00:00.000Z",
+    positionSeconds: 42, durationSeconds: 60,
+  };
+  const first = createPorticoClient({
+    apiBaseUrl: "https://server.example",
+    playbackClientInstanceId: () => "stable-installation",
+    playbackProgressDurabilityAdapter: durability,
+    transport: { fetch: async () => { throw new TypeError("response was lost"); } },
+  });
+  await assert.rejects(first.replacePlaybackWithCast({
+    sourceKind: "media", sourceId: "m1",
+    clientProfile: { platform: "google-cast" },
+    receiverId: "receiver-1", receiverOrigin: "https://cast.getportico.tv",
+    receiverPublicKey: "public-key-123456", receiverChallenge: "challenge-1234567",
+    capabilities: ["load", "progress"],
+  }, {
+    sourceSessionId: "source-playback-1",
+    requestId: "cast-replace-request-1",
+    previousTerminal,
+  }), /response was lost/);
+  assert.deepEqual(await first.pendingCastTransfers(), [{
+    requestId: "cast-replace-request-1", sourceSessionId: "source-playback-1",
+  }]);
+  await assert.rejects(first.touchPlayback("source-playback-1", {
+    state: "playing", positionSeconds: 43,
+  }), error => error instanceof ApiError && error.code === "playback_stopping");
+
+  const restarted = createPorticoClient({
+    apiBaseUrl: "https://server.example",
+    playbackClientInstanceId: () => "stable-installation",
+    playbackProgressDurabilityAdapter: durability,
+    transport: { fetch: async (input, init) => {
+      assert.equal(new URL(input).pathname, "/api/playback/cast/transfer-status");
+      assert.deepEqual(JSON.parse(init.body), {
+        clientInstanceId: "stable-installation",
+        requestId: "cast-replace-request-1",
+        sourceSessionId: "source-playback-1",
+      });
+      return jsonResponse({
+        version: "v1", requestId: "cast-replace-request-1",
+        sourceSessionId: "source-playback-1",
+        replacementSessionId: "cast-playback-1", status: "committed",
+        requestFingerprint: "fingerprint-1", previousTerminal,
+      });
+    } },
+  });
+  const outcome = await restarted.castTransferStatus("cast-replace-request-1");
+  assert.equal(outcome.outcome, "accepted");
+  assert.equal(outcome.value.replacementSessionId, "cast-playback-1");
+  assert.equal(records.size, 0);
+  assert.deepEqual(await restarted.pendingCastTransfers(), []);
+});
+
+for (const reconcile of [false, true]) test(
+  `Cast replacement maps replacement_source_inactive during ${reconcile ? "reconciliation" : "bootstrap"}`,
+  async () => {
+    const records = new Map();
+    const durability = {
+      load: async () => [...records.values()].map(value => structuredClone(value)),
+      save: async record => { records.set(record.key, structuredClone(record)); },
+      remove: async key => { records.delete(key); },
+    };
+    const input = {
+      sourceKind: "media", sourceId: "m1",
+      clientProfile: { platform: "google-cast" },
+      receiverId: "receiver-1", receiverOrigin: "https://cast.getportico.tv",
+      receiverPublicKey: "public-key-123456", receiverChallenge: "challenge-1234567",
+      capabilities: ["load", "progress"],
+    };
+    const replacement = {
+      sourceSessionId: `cast-inactive-source-${reconcile}`,
+      requestId: `cast-inactive-request-${reconcile}`,
+      previousTerminal: {
+        disposition: "stopped", generation: 3, eventSequence: 9,
+        recordedAt: "2026-08-30T20:00:00.000Z",
+        positionSeconds: 42, durationSeconds: 60,
+      },
+    };
+    const inactiveResponse = () => jsonResponse({
+      code: "replacement_source_inactive",
+      detail: "The Cast replacement source is already inactive.",
+    }, { status: 409 });
+    const first = createPorticoClient({
+      apiBaseUrl: "https://server.example",
+      playbackClientInstanceId: () => "stable-installation",
+      playbackProgressDurabilityAdapter: durability,
+      transport: { fetch: async () => {
+        if (reconcile) throw new TypeError("bootstrap response was lost");
+        return inactiveResponse();
+      } },
+    });
+    if (reconcile) {
+      await assert.rejects(
+        first.replacePlaybackWithCast(input, replacement),
+        /bootstrap response was lost/,
+      );
+    }
+    const client = reconcile
+      ? createPorticoClient({
+          apiBaseUrl: "https://server.example",
+          playbackClientInstanceId: () => "stable-installation",
+          playbackProgressDurabilityAdapter: durability,
+          transport: { fetch: async () => inactiveResponse() },
+        })
+      : first;
+    const outcome = reconcile
+      ? await client.castTransferStatus(replacement.requestId)
+      : await client.replacePlaybackWithCast(input, replacement);
+
+    assert.deepEqual(outcome, {
+      outcome: "source-inactive",
+      sourceSessionId: replacement.sourceSessionId,
+      rejection: {
+        status: 409,
+        code: "replacement_source_inactive",
+        detail: "The Cast replacement source is already inactive.",
+      },
+    });
+    assert.equal(records.size, 0);
+    assert.deepEqual(await client.pendingCastTransfers(), []);
+  },
+);
+
+test("Cast receiver routes use only receiver authority and exact terminal shapes", async () => {
+  const calls = [];
+  const client = createPorticoClient({
+    apiBaseUrl: "https://viewer.example",
+    transport: { fetch: async (input, init) => {
+      calls.push({input: String(input), init});
+      const path = new URL(input).pathname;
+      if (path.endsWith("/stop")) {
+        const body = JSON.parse(init.body);
+        return jsonResponse({
+          ok: true, generation: body.generation,
+          terminal: playbackTerminalReceipt("playback-1", {
+            requestId: body.requestId, terminal: body.terminal,
+          }),
+        });
+      }
+      return jsonResponse({
+        version: "v1", status: "prepared", requestId: "advance-request-1",
+        requestFingerprint: "advance-fingerprint-1", previousTerminal: {
+          disposition: "completed", generation: 1, eventSequence: 5,
+          recordedAt: "2026-08-30T20:00:00.000Z",
+          positionSeconds: 60, durationSeconds: 60,
+        }, sourceSessionId: "playback-1", replacementSessionId: "playback-2",
+        generation: 2, automaticAdvances: 1,
+        automation: {autoplayNext: true, creditsSkip: "off", introSkip: "off", passoutAfterEpisodes: 3, passoutProtection: true, upNextCountdownSeconds: 10},
+      });
+    } },
+  });
+  const credential = {token: "receiver-secret", origin: "https://cast-server.example"};
+  const terminal = {
+    disposition: "completed", generation: 1, eventSequence: 5,
+    recordedAt: "2026-08-30T20:00:00.000Z",
+    positionSeconds: 60, durationSeconds: 60,
+  };
+  await client.stopCastReceiver("receiver-session-1", credential, {
+    generation: 1, requestId: "stop-request-1", terminal,
+  });
+  await client.advanceCastReceiver("receiver-session-1", credential, {
+    generation: 1, advanceId: "advance-1", requestId: "advance-request-1",
+    previousTerminal: terminal,
+  });
+
+  assert.deepEqual(calls.map(call => new URL(call.input).pathname), [
+    "/api/playback/cast/sessions/receiver-session-1/stop",
+    "/api/playback/cast/sessions/receiver-session-1/advance",
+  ]);
+  for (const call of calls) {
+    assert.equal(call.init.headers.Authorization, "PorticoReceiver receiver-secret");
+    assert.equal(call.init.headers["X-Portico-CSRF"], undefined);
+    assert.equal(call.init.credentials, "omit");
+  }
+  assert.deepEqual(JSON.parse(calls[1].init.body).previousTerminal, terminal);
+});
+
+test("Live TV close exact-replays one durable terminal after restart", async () => {
+  const records = new Map();
+  const durability = {
+    load: async () => [...records.values()].map(value => structuredClone(value)),
+    save: async record => { records.set(record.key, structuredClone(record)); },
+    remove: async key => { records.delete(key); },
+  };
+  const bodies = [];
+  const first = createPorticoClient({
+    apiBaseUrl: "https://server.example",
+    playbackProgressDurabilityAdapter: durability,
+    requestId: () => "live-close-request-1",
+    transport: { fetch: async (_input, init) => {
+      bodies.push(String(init.body));
+      throw new TypeError("close response was lost");
+    } },
+  });
+  first.acceptPlaybackSession(acceptedPlayback("live-session-1", 7));
+  await assert.rejects(first.closeLiveTvStream("channel-1", "live-session-1", {
+    disposition: "stopped", positionSeconds: 30, durationSeconds: 60,
+  }), /response was lost/);
+
+  const restarted = createPorticoClient({
+    apiBaseUrl: "https://server.example",
+    playbackProgressDurabilityAdapter: durability,
+    transport: { fetch: async (_input, init) => {
+      bodies.push(String(init.body));
+      const request = JSON.parse(init.body);
+      return jsonResponse(playbackTerminalReceipt(request.sessionId, request));
+    } },
+  });
+  const outcome = await restarted.retryPendingPlaybackTerminalMutation("live-session-1");
+  assert.equal(outcome.outcome, "accepted");
+  assert.equal(bodies[0], bodies[1]);
+  assert.equal(records.size, 0);
 });
 
 test("playback queue methods preserve the authoritative revision and repeat contract", async () => {
   const calls = [];
   const queueState = {
     sessionId: "play 1",
-    current: { id: "m1", title: "Current", type: "movie", state: {} },
+    current: { entryId: "entry-m1", media: { id: "m1", title: "Current", type: "movie", state: {} } },
     items: [],
     history: [],
     total: 0,
@@ -3861,11 +5742,13 @@ test("playback queue methods preserve the authoritative revision and repeat cont
   await client.playbackSessionQueue("play 1");
   await client.updatePlaybackSessionQueue("play 1", {
     expectedRevision: 8,
+    idempotencyKey: "replace-key",
     mediaIds: ["m2", "m3"],
     repeatMode: "all"
   });
   await client.mutatePlaybackSessionQueue("play 1", {
     expectedRevision: 9,
+    idempotencyKey: "repeat-key",
     action: "set_repeat",
     repeatMode: "off"
   });
@@ -3879,12 +5762,14 @@ test("playback queue methods preserve the authoritative revision and repeat cont
   assert.equal(calls[1].init.method, "PUT");
   assert.deepEqual(JSON.parse(calls[1].init.body), {
     expectedRevision: 8,
+    idempotencyKey: "replace-key",
     mediaIds: ["m2", "m3"],
     repeatMode: "all"
   });
   assert.equal(calls[2].init.method, "PATCH");
   assert.deepEqual(JSON.parse(calls[2].init.body), {
     expectedRevision: 9,
+    idempotencyKey: "repeat-key",
     action: "set_repeat",
     repeatMode: "off"
   });
@@ -3898,7 +5783,8 @@ test("playbackSourceFor consumes the exact server-issued HLS resource", () => {
     streamFormat: "hls",
     directPlay: false,
     decision: { mode: "direct_stream", reason: "", requiresTranscode: true, isProxied: true, isServerCached: true },
-    qualities: [],
+    qualityOffers: acceptedPlayback("s1").qualityOffers,
+    qualitySelection: {mode: "automatic"},
     audioStreams: [],
     subtitleStreams: [],
     chapters: [],
@@ -3907,12 +5793,11 @@ test("playbackSourceFor consumes the exact server-issued HLS resource", () => {
       id: "original-main-off",
       sourceUrl: "/opaque/playback/rendition-1?signature=server-owned",
       streamFormat: "hls",
-      qualityId: "original",
       audioStreamId: "",
       subtitleMode: "off",
       default: true
     }]
-}, (path) => `https://server.example${path}`, { streamFormat: "hls", quality: "original" });
+}, (path) => `https://server.example${path}`);
   assert.equal(source, "https://server.example/opaque/playback/rendition-1?signature=server-owned");
 });
 
@@ -3924,7 +5809,8 @@ test("playbackSourceFor does not rewrite server-owned query semantics", () => {
     streamFormat: "hls",
     directPlay: false,
     decision: { mode: "transcode_required", reason: "", requiresTranscode: true, isProxied: true, isServerCached: true },
-    qualities: [],
+    qualityOffers: acceptedPlayback("s1").qualityOffers,
+    qualitySelection: {mode: "automatic"},
     audioStreams: [],
     subtitleStreams: [],
     chapters: [],
@@ -3933,11 +5819,10 @@ test("playbackSourceFor does not rewrite server-owned query semantics", () => {
       id: "original",
       sourceUrl: "/opaque/rendition?start=server-value&startSeconds=server-value",
       streamFormat: "hls",
-      qualityId: "original",
       subtitleMode: "off",
       default: true
     }]
-  }, (path) => `https://server.example${path}`, { streamFormat: "hls", quality: "original" });
+  }, (path) => `https://server.example${path}`);
   assert.equal(source, "https://server.example/opaque/rendition?start=server-value&startSeconds=server-value");
 });
 
@@ -3949,15 +5834,16 @@ test("playbackSourceFor selects a server-issued HLS audio resource", () => {
     streamFormat: "hls",
     directPlay: false,
     decision: { mode: "direct_stream", reason: "", requiresTranscode: true, isProxied: true, isServerCached: true },
-    qualities: [],
+    qualityOffers: acceptedPlayback("s1").qualityOffers,
+    qualitySelection: {mode: "automatic"},
     audioStreams: [],
     subtitleStreams: [],
     chapters: [],
     queue: [],
     resources: [
-      { id: "commentary", sourceUrl: "/opaque/audio-commentary?rendition=commentary", streamFormat: "hls", qualityId: "original", audioStreamId: "audio_commentary", subtitleMode: "off", default: true }
+      { id: "commentary", sourceUrl: "/opaque/audio-commentary?rendition=commentary", streamFormat: "hls", audioStreamId: "audio_commentary", subtitleMode: "off", default: true }
     ]
-  }, (path) => `https://server.example${path}`, { streamFormat: "hls", quality: "original", audioStreamId: "audio_commentary" });
+  }, (path) => `https://server.example${path}`);
   assert.equal(source, "https://server.example/opaque/audio-commentary?rendition=commentary");
 });
 
@@ -3969,15 +5855,16 @@ test("playbackSourceFor selects the exact server-issued subtitle resource", () =
     streamFormat: "hls",
     directPlay: false,
     decision: { mode: "direct_stream", reason: "", requiresTranscode: false, isProxied: true, isServerCached: true },
-    qualities: [],
+    qualityOffers: acceptedPlayback("s1").qualityOffers,
+    qualitySelection: {mode: "automatic"},
     audioStreams: [],
     subtitleStreams: [],
     chapters: [],
     queue: [],
     resources: [
-      { id: "text", sourceUrl: "/opaque/subtitle-text", streamFormat: "hls", qualityId: "original", subtitleStreamId: "sidecar", subtitleMode: "text", default: true }
+      { id: "text", sourceUrl: "/opaque/subtitle-text", streamFormat: "hls", subtitleStreamId: "sidecar", subtitleMode: "text", default: true }
     ]
-  }, (path) => `https://server.example${path}`, { streamFormat: "hls", quality: "original", burnInSubtitleId: "burn", textSubtitleId: "sidecar" });
+  }, (path) => `https://server.example${path}`);
   assert.equal(source, "https://server.example/opaque/subtitle-text");
 });
 
@@ -3990,13 +5877,10 @@ test("playbackSourceFor fails closed instead of manufacturing a missing variant"
     streamFormat: "direct",
     directPlay: true,
     decision: { mode: "direct_play", reason: "", requiresTranscode: false, isProxied: true, isServerCached: false },
-    qualities: [], audioStreams: [], subtitleStreams: [], chapters: [], queue: [], resources: []
-  }, () => { resolved = true; return "https://server.example/should-not-resolve"; }, {
-    streamFormat: "hls",
-    quality: "high",
-    audioStreamId: "commentary",
-    burnInSubtitleId: "forced"
-  }), (error) => error.code === "playback_resource_unavailable" && error.messageId === "playback.unavailable");
+    qualityOffers: acceptedPlayback("s1").qualityOffers,
+    qualitySelection: {mode: "automatic"},
+    audioStreams: [], subtitleStreams: [], chapters: [], queue: [], resources: []
+  }, () => { resolved = true; return "https://server.example/should-not-resolve"; }), (error) => error.code === "playback_resource_unavailable" && error.messageId === "playback.unavailable");
   assert.equal(resolved, false);
 });
 
@@ -4208,6 +6092,105 @@ test("hosted services client confirms account deletion with the current password
   assert.equal(calls[1].init.signal.aborted, false);
   assert.equal(calls[1].init.headers["X-Portico-CSRF"], "hosted-csrf");
   assert.match(calls[1].init.headers["Idempotency-Key"], /\S{8,}/);
+});
+
+test("hosted services client uses the current proof-bound server lifecycle endpoints", async () => {
+  const calls = [];
+  let requestSequence = 0;
+  const hosted = createHostedServicesClient({
+    hostedApiBaseUrl: "https://api.example",
+    csrfToken: "hosted-csrf",
+    requestId: () => `server-lifecycle-${++requestSequence}`,
+    transport: {
+      fetch: async (input, init) => {
+        const url = String(input);
+        calls.push({ input: url, init });
+        if (url.endsWith("/api/system")) return jsonResponse(hostedSystemFixture);
+        if (url.endsWith("/deletion-proofs"))
+          return jsonResponse({ proof: "ptc_sdp_proof-1", expiresAt: "2026-08-30T13:05:00Z" }, { status: 201 });
+        if (url.endsWith("/restore-authorizations"))
+          return jsonResponse({
+            kind: "restore-authorization", version: 1, audience: "portico-media-server", authorizationId: "sra_issued",
+            purpose: "server-restore", serverId: "server/owned", accountId: "account-1", restoreSecurityEpoch: 7,
+            issuedAt: "2026-08-30T13:00:00Z", expiresAt: "2026-08-30T13:05:00Z",
+            signatureAlgorithm: "ed25519", signatureKeyId: "key-1", signature: "signed"
+          }, { status: 201 });
+        return jsonResponse({ ok: true });
+      },
+    },
+  });
+  const signal = new AbortController().signal;
+
+  const issued = await hosted.createServerDeletionProof(
+    "server/owned",
+    { password: "current-password", mfaCode: "123456" },
+    { signal },
+  );
+  await hosted.deleteServer(
+    "server/owned",
+    { confirmation: "Family Media", proof: issued.proof },
+    { signal },
+  );
+  const restoreAuthorization = await hosted.createServerRestoreAuthorization(
+    "server/owned",
+    { restoreSecurityEpoch: 7, recoveryCode: "restore-recovery" },
+    { signal },
+  );
+  await hosted.leaveServer("server/shared", { signal });
+
+  assert.equal(calls[1].input, "https://api.example/api/account/servers/server%2Fowned/deletion-proofs");
+  assert.equal(calls[1].init.method, "POST");
+  assert.equal(calls[1].init.body, JSON.stringify({ password: "current-password", mfaCode: "123456" }));
+  assert.equal(calls[2].input, "https://api.example/api/account/servers/server%2Fowned");
+  assert.equal(calls[2].init.method, "DELETE");
+  assert.equal(calls[2].init.body, JSON.stringify({ confirmation: "Family Media", proof: "ptc_sdp_proof-1" }));
+  assert.equal(calls[3].input, "https://api.example/api/account/servers/server%2Fowned/restore-authorizations");
+  assert.equal(calls[3].init.method, "POST");
+  assert.equal(calls[3].init.body, JSON.stringify({ restoreSecurityEpoch: 7, recoveryCode: "restore-recovery" }));
+  assert.equal(restoreAuthorization.authorizationId, "sra_issued");
+  assert.equal(calls[4].input, "https://api.example/api/account/servers/server%2Fshared/membership");
+  assert.equal(calls[4].init.method, "DELETE");
+  assert.equal(calls[4].init.body, undefined);
+  assert.match(calls[2].init.headers["Idempotency-Key"], /^[A-Za-z0-9._:-]{8,128}$/);
+  assert.match(calls[4].init.headers["Idempotency-Key"], /^[A-Za-z0-9._:-]{8,128}$/);
+});
+
+test("hosted self-leave reconciles a committed response loss without replaying membership deletion", async () => {
+  const calls = [];
+  const saved = [];
+  const removed = [];
+  const hosted = createHostedServicesClient({
+    hostedApiBaseUrl: "https://api.example",
+    requestId: () => "membership-leave-key",
+    terminalMutationDurabilityAdapter: {
+      save: async record => saved.push(record),
+      remove: async key => removed.push(key),
+    },
+    transport: {
+      fetch: async (input, init) => {
+        const url = String(input);
+        calls.push({ url, init });
+        if (url.endsWith("/api/system")) return jsonResponse(hostedSystemFixture);
+        if (url.endsWith("/membership"))
+          return jsonResponse({ code: "terminal_mutation_outcome_unknown" }, {
+            status: 503,
+            headers: { "X-Portico-Terminal-Outcome": "outcome_unknown" },
+          });
+        if (url.endsWith("/api/account/terminal-mutations"))
+          return jsonResponse({ outcome: "committed", receipt: { receiptId: "tmr_leave" } });
+        throw new Error(`Unexpected request ${url}`);
+      },
+    },
+  });
+
+  await assert.rejects(
+    hosted.leaveServer("server-shared"),
+    error => error instanceof HostedTerminalMutationCommittedError && error.committed === true,
+  );
+  assert.equal(saved[0].path, "/api/account/servers/server-shared/membership");
+  assert.deepEqual(removed, ["membership-leave-key"]);
+  assert.equal(calls.filter(call => call.url.endsWith("/membership")).length, 1);
+  assert.equal(calls.find(call => call.url.endsWith("/api/account/terminal-mutations")).init.headers["Idempotency-Key"], "membership-leave-key");
 });
 
 test("hosted services client reconciles a lost terminal response by the original idempotency key", async () => {
@@ -5068,12 +7051,12 @@ test("normalizePlaybackResponse rejects an obsolete incomplete playback shape", 
     sourceUrl: "/api/media/m1/stream",
     directPlay: true,
     decision: { mode: "direct_play", reason: "", requiresTranscode: false, isProxied: true, isServerCached: false },
-    qualities: undefined,
+    qualityOffers: {offers: undefined},
     audioStreams: undefined,
     subtitleStreams: undefined,
     chapters: undefined,
     queue: undefined
-  }), /qualities must be an array/);
+  }), /qualityOffers must be an array/);
 });
 
 test("download and Watch With Friends lifecycle requests forward cancellation signals", async () => {

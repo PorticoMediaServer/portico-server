@@ -31,6 +31,7 @@ function group(command: WatchWithFriendsGroup['command'], state: WatchWithFriend
     ownerName: viewer.displayName,
     mediaId: 'fargo',
     mediaTitle: 'Fargo',
+    currentEntryId: 'entry-fargo',
     state,
     positionSeconds: 42,
     positionUpdatedAt: timestamp,

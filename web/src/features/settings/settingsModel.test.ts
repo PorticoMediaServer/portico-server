@@ -140,4 +140,40 @@ describe('settings information architecture', () => {
     expect(profiles).toContain(fixture.defaultProfile);
     expect(fixture.templates.map((template) => template.profile)).toEqual(profiles);
   });
+
+  it('exposes selected embedded-cover extraction as bounded Custom work', () => {
+    const moderate = serverSettingFieldGroups.media.find((group) => group.id === 'library-analysis-moderate-io');
+    const selected = moderate?.fields.find((field) => field.field === 'extractSelectedEmbeddedAssets');
+    expect(selected?.label).toBe('Extract a selected embedded cover');
+    expect(selected?.description).toContain('range-bounded');
+    expect(selected?.description).toContain('do not stage the whole object');
+  });
+
+  it('exposes truthful high-I/O checksum and bounded waveform operations', () => {
+    const high = serverSettingFieldGroups.media.find((group) => group.id === 'library-analysis-high-io');
+    const checksum = high?.fields.find((field) => field.field === 'fullFileChecksum');
+    const waveform = high?.fields.find((field) => field.field === 'generateWaveforms');
+    expect(checksum?.description).toContain('exact revision-bound SHA-256');
+    expect(checksum?.description).toContain('without replacing');
+    expect(waveform?.description).toContain('one bounded, revisioned waveform image');
+    expect(waveform?.description).toContain('Requires stream probing');
+  });
+
+  it('separates bounded seek validation from advisory content-wide segment detection', () => {
+    const moderate = serverSettingFieldGroups.media.find((group) => group.id === 'library-analysis-moderate-io');
+    const high = serverSettingFieldGroups.media.find((group) => group.id === 'library-analysis-high-io');
+    const seek = moderate?.fields.find((field) => field.field === 'validateSeekBehavior');
+    const segments = high?.fields.find((field) => field.field === 'detectSegments');
+    expect(seek?.description).toContain('fixed sample');
+    expect(seek?.description).toContain('remain unknown');
+    expect(segments?.description).toContain('audiovisual boundaries');
+    expect(segments?.description).toContain('never automatically skipped');
+  });
+
+  it('exposes STRM target analysis as an explicit private-proxy operation', () => {
+	const high = serverSettingFieldGroups.media.find((group) => group.id === 'library-analysis-high-io');
+	const strm = high?.fields.find((field) => field.field === 'analyzeSTRMTarget');
+	expect(strm?.description).toContain('SSRF-safe loopback proxy');
+	expect(strm?.description).toContain('never stored, logged, or passed to media tools');
+  });
 });

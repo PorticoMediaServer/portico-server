@@ -1,4 +1,4 @@
-import { activeTrickplaySet, ApiError, burnInSubtitleIDFor, defaultPlaybackQuality, effectivePlaybackVolume, playbackDecisionLabel, playbackSegmentAutomationDecision, playbackSelectionRequiresHLS, playbackResourceUrl, playbackSourceFor, playerContentMode, productMessage, createPlaybackAutomationState, reducePlaybackAutomation, reduceUpNextCountdown, segmentLabel, supportsTrickplayPreview, watchWithFriendsTargetPosition, type MediaItem, type MediaTrickplaySet, type PlaybackCommand, type PlaybackHandoffRequest, type PlaybackPreparedResponse, type PlaybackPrepareNextRequest, type PlaybackProgressInput, type PlaybackRenegotiationRequest, type PlaybackRepeatMode, type PlaybackResponse, type PlaybackSessionQueueRequest, type PlaybackSessionQueueResponse, type UpNextCountdownState, } from '@porticomediaserver/client-core';
+import { activeTrickplaySet, ApiError, burnInSubtitleIDFor, effectivePlaybackVolume, playbackDecisionLabel, playbackQualitySelectionFor, playbackQualitySelectionKey, playbackSegmentAutomationDecision, playbackSelectionRequiresHLS, playbackResourceUrl, playbackSourceFor, playerContentMode, productMessage, createPlaybackAutomationState, reducePlaybackAutomation, reduceUpNextCountdown, segmentLabel, supportsTrickplayPreview, watchWithFriendsTargetPosition, type LibraryChannelTuneResponse, type MediaItem, type MediaTrickplaySet, type PendingPlaybackTerminalRetryOutcome, type PlaybackCommand, type PlaybackHandoffInput, type PlaybackPreparedResponse, type PlaybackPrepareNextRequest, type PlaybackProgressInput, type PlaybackQueueEntry, type PlaybackRenegotiationRequest, type PlaybackRepeatMode, type PlaybackReplacementOutcome, type PlaybackReplacementTarget, type PlaybackResponse, type PlaybackSessionQueueRequest, type PlaybackSessionQueueResponse, type PlaybackTerminalInput, type UpNextCountdownState, } from '@porticomediaserver/client-core';
 import type HlsInstance from 'hls.js';
 import { ActionConfirmIcon, NavigationExpandIcon, ActionCustomizeIcon } from '#portico-icons';
 import {
@@ -45,6 +45,19 @@ import { mediaPresentation } from '../catalog/mediaPresentation';
 type PlaybackStatus = 'idle' | 'preparing' | 'ready' | 'buffering' | 'recovering' | 'completed' | 'failed';
 type PlaybackFailureKind = 'route' | 'source' | 'transcode' | 'decode' | 'unknown';
 type PlaybackSessionOrigin = 'start' | 'restore' | 'handoff';
+type PlaybackPrepareInput = Omit<PlaybackPrepareNextRequest, 'entryId'> & Partial<Pick<PlaybackPrepareNextRequest, 'entryId'>>;
+export type PlaybackHandoffTarget = Omit<PlaybackHandoffInput, 'requestId' | 'previousTerminal'> & {
+  requestId?: string;
+  previousTerminal?: PlaybackTerminalInput;
+};
+
+export type PlaybackHandoffIntent = {
+  sourceSessionId: string;
+  key: string;
+  request: PlaybackHandoffInput;
+  state: 'ready' | 'sending' | 'ambiguous';
+  promise?: Promise<PlaybackResponse | undefined>;
+};
 
 type PlaybackFailure = {
   kind: PlaybackFailureKind;
@@ -62,20 +75,40 @@ const PLAYBACK_SPEEDS = [0.75, 1, 1.25, 1.5, 2] as const;
 
 type StoredPlayerVolume = { volume: number; muted: boolean };
 
-export function stablePreparedHandoffRequestID(
-  cache: Map<string, string>,
-  sourceSessionID: string,
-  preparedSessionID: string,
-  suppliedRequestID?: string,
-): string {
-  const key = `${sourceSessionID}:${preparedSessionID}`;
-  const requestID = suppliedRequestID?.trim() || cache.get(key) || `web-${secureRandomUUID()}`;
-  cache.set(key, requestID);
-  return requestID;
+function handoffIntentKey(sourceSessionId: string, target: PlaybackHandoffTarget, terminal: PlaybackTerminalInput) {
+  return JSON.stringify({ sourceSessionId, ...target, requestId: undefined, previousTerminal: terminal });
 }
 
-export function normalizedPlaybackHandoffProgress(value: number | undefined): number | undefined {
-  return typeof value === 'number' && Number.isFinite(value) ? Math.max(0, Math.floor(value)) : undefined;
+export function immutablePlaybackHandoffIntent(
+  existing: PlaybackHandoffIntent | undefined,
+  sourceSessionId: string,
+  target: PlaybackHandoffTarget,
+  terminal: PlaybackTerminalInput,
+): PlaybackHandoffIntent {
+  const normalizedTerminal = Object.freeze({
+    disposition: terminal.disposition,
+    positionSeconds: Math.max(0, terminal.positionSeconds),
+    durationSeconds: Math.max(0, terminal.durationSeconds),
+  });
+  const key = handoffIntentKey(sourceSessionId, target, normalizedTerminal);
+  if (existing?.sourceSessionId === sourceSessionId && existing.key === key) return existing;
+  const request = Object.freeze({
+    ...target,
+    requestId: target.requestId?.trim() || `web-${secureRandomUUID()}`,
+    previousTerminal: normalizedTerminal,
+  }) satisfies PlaybackHandoffInput;
+  return { sourceSessionId, key, request, state: 'ready' };
+}
+
+export function isAmbiguousPlaybackMutationFailure(reason: unknown) {
+  if (reason instanceof DOMException && reason.name === 'AbortError') return true;
+  const metadata = reason as { ambiguous?: boolean; retryable?: boolean } | undefined;
+  if (metadata?.ambiguous === true || metadata?.retryable === true) return true;
+  if (!(reason instanceof ApiError)) return true;
+  return reason.status === 401 || reason.status === 404 || reason.status === 408
+    || reason.status === 425 || reason.status === 429 || reason.status >= 500
+    || reason.code === 'handoff_in_progress'
+    || reason.code === 'prepared_handoff_in_progress';
 }
 
 export function loadStoredPlayerVolume(storage?: Pick<Storage, 'getItem'>): StoredPlayerVolume {
@@ -102,7 +135,7 @@ type PostPlayState =
   | { phase: 'countdown'; next: MediaItem; preparedSessionId: string; expiresAt: string }
   | { phase: 'passout'; next: MediaItem; preparedSessionId?: string; expiresAt?: string }
   | { phase: 'cancelled'; next: MediaItem; preparedSessionId?: string; expiresAt?: string }
-  | { phase: 'failed'; next: MediaItem; message: string; preparationRequest: PlaybackPrepareNextRequest }
+  | { phase: 'failed'; next: MediaItem; message: string; preparationRequest: PlaybackPrepareInput }
   | { phase: 'exhausted' };
 
 type PlaybackContextValue = {
@@ -132,18 +165,18 @@ type PlaybackContextValue = {
   recoverRoute: () => Promise<void>;
   adapterRecoveryGeneration: number;
   completedSessionId?: string;
-  next: (automatic?: boolean, preparationRequest?: PlaybackPrepareNextRequest) => Promise<boolean>;
-  prepareNext: (candidate: MediaItem, request?: PlaybackPrepareNextRequest, force?: boolean) => Promise<PlaybackPreparedResponse>;
-  handoff: (request: PlaybackHandoffRequest) => Promise<PlaybackResponse | undefined>;
+  next: (automatic?: boolean, preparationRequest?: PlaybackPrepareInput) => Promise<boolean>;
+  prepareNext: (candidate: MediaItem, request?: PlaybackPrepareInput, force?: boolean) => Promise<PlaybackPreparedResponse>;
+  handoff: (request: PlaybackHandoffTarget) => Promise<PlaybackResponse | undefined>;
   previous: () => Promise<void>;
   appendQueue: (mediaIds: string[]) => Promise<void>;
   playNext: (mediaIds: string[]) => Promise<void>;
-  removeQueueItem: (index: number) => Promise<void>;
-  moveQueueItem: (fromIndex: number, toIndex: number) => Promise<void>;
+  removeQueueItem: (entryId: string) => Promise<void>;
+  moveQueueItem: (entryId: string, destinationEntryId: string, placement: 'before' | 'after') => Promise<void>;
   shuffleQueue: () => Promise<void>;
   setRepeatMode: (mode: PlaybackRepeatMode) => Promise<void>;
   reloadQueue: () => Promise<void>;
-  beginPostPlay: (candidate?: MediaItem, force?: boolean, preparationRequest?: PlaybackPrepareNextRequest) => Promise<void>;
+  beginPostPlay: (candidate?: MediaItem, force?: boolean, preparationRequest?: PlaybackPrepareInput) => Promise<void>;
   cancelPostPlay: () => void;
   replay: () => Promise<void>;
   markReady: () => void;
@@ -162,7 +195,7 @@ function isQueueRevisionConflict(reason: unknown) {
   return reason instanceof ApiError && reason.status === 409 && reason.code === 'queue_revision_conflict';
 }
 
-type QueueMutationInput = Omit<PlaybackSessionQueueRequest, 'expectedRevision'>;
+type QueueMutationInput = Omit<PlaybackSessionQueueRequest, 'expectedRevision' | 'idempotencyKey'>;
 
 function playbackFailure(reason: unknown, fallback: PlaybackFailureKind = 'unknown'): PlaybackFailure | undefined {
   if (reason instanceof DOMException && reason.name === 'AbortError') return undefined;
@@ -174,16 +207,6 @@ function playbackFailure(reason: unknown, fallback: PlaybackFailureKind = 'unkno
   const kind: PlaybackFailureKind = networkFailure ? 'route' : sourceFailure ? 'source' : transcodeFailure ? 'transcode' : fallback;
   const copy = productMessage(kind === 'route' ? 'playback.route-failed' : kind === 'source' ? 'playback.source-failed' : kind === 'transcode' ? 'playback.transcode-failed' : kind === 'decode' ? 'playback.decode-failed' : 'playback.start-failed');
   return { kind, title: copy.title ?? '', message: copy.body ?? '' };
-}
-
-function shuffled<T>(items: T[]) {
-  const output = [...items];
-  for (let index = output.length - 1; index > 0; index -= 1) {
-    const random = globalThis.crypto.getRandomValues(new Uint32Array(1))[0] / 2 ** 32;
-    const target = Math.floor(random * (index + 1));
-    [output[index], output[target]] = [output[target], output[index]];
-  }
-  return output;
 }
 
 export function PlaybackSessionProvider({ children }: { children: ReactNode }) {
@@ -209,6 +232,7 @@ export function PlaybackSessionProvider({ children }: { children: ReactNode }) {
   const playbackRef = useRef<PlaybackResponse | undefined>(undefined);
   const queueRef = useRef<PlaybackSessionQueueResponse | undefined>(undefined);
   const queueMutationRef = useRef(false);
+  const queueIntentKeysRef = useRef(new Map<string, string>());
   const queueNeedsRefreshRef = useRef(false);
   const queueControllerRef = useRef<AbortController | undefined>(undefined);
   const queueRetryTimerRef = useRef<number | undefined>(undefined);
@@ -218,8 +242,18 @@ export function PlaybackSessionProvider({ children }: { children: ReactNode }) {
   const renegotiationControllerRef = useRef<AbortController | undefined>(undefined);
   const grantRenewalRef = useRef<{ sessionId: string; promise: Promise<void> } | undefined>(undefined);
   const completedSessionRef = useRef('');
-  const terminalOwnerRef = useRef<{ sessionId: string; promise: Promise<void> } | undefined>(undefined);
-  const preparedHandoffRequestIDsRef = useRef(new Map<string, string>());
+  const terminalOwnerRef = useRef<{ sessionId: string; request: PlaybackTerminalInput; state: 'sending' | 'accepted' | 'ambiguous' | 'rejected'; promise: Promise<void> } | undefined>(undefined);
+  const naturalTerminalRef = useRef<{ sessionId: string; request: PlaybackTerminalInput } | undefined>(undefined);
+  const handoffIntentRef = useRef<PlaybackHandoffIntent | undefined>(undefined);
+  const handoffRetryRef = useRef<(() => Promise<PlaybackResponse | undefined>) | undefined>(undefined);
+  const replacementMutationRef = useRef<{
+    sourceSessionId: string;
+    targetKey: string;
+    promiseTargetKey?: string;
+    promise?: Promise<PlaybackResponse | undefined>;
+    ambiguous: boolean;
+    restoreOutcome?: Extract<PlaybackReplacementOutcome<unknown>, { outcome: 'committed-restore-required' }>;
+  } | undefined>(undefined);
   const startingMediaRef = useRef('');
   const retryRef = useRef<({ kind: 'media'; mediaId: string; options: PlaybackStartOptions } | { kind: 'live'; channelId: string } | { kind: 'library-channel'; channelId: string } | { kind: 'dvr'; recordingId: string }) | undefined>(undefined);
   const restoreAttemptedRef = useRef(false);
@@ -256,7 +290,7 @@ export function PlaybackSessionProvider({ children }: { children: ReactNode }) {
         ...retryTarget,
         options: {
           ...retryTarget.options,
-          queueMediaIds: value.items.map((item) => item.id),
+          queueMediaIds: value.items.map((item) => item.media.id),
           repeatMode: value.repeatMode,
           sourceContext: value.sourceContext ?? current.sourceContext,
         },
@@ -297,6 +331,9 @@ export function PlaybackSessionProvider({ children }: { children: ReactNode }) {
     queueControllerRef.current?.abort();
     if (queueRetryTimerRef.current !== undefined) window.clearTimeout(queueRetryTimerRef.current);
     playbackPreparationOwner.preserveSession(value.sessionId);
+    if (playbackRef.current?.sessionId !== value.sessionId) {
+      queueIntentKeysRef.current.clear();
+    }
     const retryTarget = retryRef.current;
     const retryTargetId = retryTarget?.kind === 'media' ? retryTarget.mediaId : retryTarget?.kind === 'live' || retryTarget?.kind === 'library-channel' ? retryTarget.channelId : retryTarget?.recordingId;
     if (retryTarget?.kind === 'media' && retryTarget.mediaId === value.media.id) {
@@ -305,7 +342,7 @@ export function PlaybackSessionProvider({ children }: { children: ReactNode }) {
         options: {
           ...retryTarget.options,
           startSeconds: value.resumePositionSeconds,
-          queueMediaIds: value.queue.map((item) => item.id),
+          queueMediaIds: value.queue.map((item) => item.media.id),
           repeatMode: value.repeatMode,
           sourceContext: value.sourceContext,
         },
@@ -318,12 +355,15 @@ export function PlaybackSessionProvider({ children }: { children: ReactNode }) {
         : {
           kind: 'media',
           mediaId: value.media.id,
-          options: { startSeconds: value.resumePositionSeconds, queueMediaIds: value.queue.map((item) => item.id), repeatMode: value.repeatMode, sourceContext: value.sourceContext },
+          options: { startSeconds: value.resumePositionSeconds, queueMediaIds: value.queue.map((item) => item.media.id), repeatMode: value.repeatMode, sourceContext: value.sourceContext },
         };
     }
     setPlayback(value);
     completedSessionRef.current = '';
     terminalOwnerRef.current = undefined;
+    naturalTerminalRef.current = undefined;
+    handoffIntentRef.current = undefined;
+    handoffRetryRef.current = undefined;
     setCompletedSessionId(undefined);
     setSessionOrigin(origin);
     setStatus('ready');
@@ -345,9 +385,181 @@ export function PlaybackSessionProvider({ children }: { children: ReactNode }) {
     void refreshQueue(value);
   }, [markQueueNeedsRefresh, preferences.passoutAfterEpisodes, preferences.passoutProtection, refreshQueue, replaceQueue, setPlayback]);
 
+  const replacementPlayback = useCallback((value: PlaybackResponse | LibraryChannelTuneResponse | unknown): PlaybackResponse | undefined => {
+    if (value && typeof value === 'object' && 'playback' in value) return (value as LibraryChannelTuneResponse).playback;
+    if (value && typeof value === 'object' && 'media' in value) return value as PlaybackResponse;
+    return undefined;
+  }, []);
+
+  const settlePlaybackReplacement = useCallback(async (
+    outcome: PlaybackReplacementOutcome<unknown> | PendingPlaybackTerminalRetryOutcome,
+    current: PlaybackResponse,
+    signal: AbortSignal,
+    targetKey: string,
+  ): Promise<PlaybackResponse | undefined> => {
+    if (outcome.outcome === 'accepted') {
+      const value = replacementPlayback(outcome.value);
+      if (!value) throw new ApiError(409, 'playback_replacement_response_invalid', 'The committed playback replacement did not return a playback session.');
+      replacementMutationRef.current = undefined;
+      acceptPlayback(value, 'start');
+      return value;
+    }
+    if (outcome.outcome === 'committed-restore-required') {
+      replacementMutationRef.current = { sourceSessionId: current.sessionId, targetKey, ambiguous: false, restoreOutcome: outcome };
+      if (playbackRef.current?.sessionId === current.sessionId) {
+        setPlayback(undefined);
+        replaceQueue(undefined);
+      }
+      completedSessionRef.current = current.sessionId;
+      setCompletedSessionId(current.sessionId);
+      const value = await source.restoreCommittedPlaybackReplacement(outcome, deliveryIntent(), signal);
+      replacementMutationRef.current = undefined;
+      acceptPlayback(value, 'restore');
+      return value;
+    }
+    replacementMutationRef.current = undefined;
+    const copy = productMessage('playback.start-failed');
+    const nextFailure: PlaybackFailure = {
+      kind: 'source',
+      title: copy.title ?? '',
+      message: outcome.rejection.detail || copy.body || '',
+    };
+    startingMediaRef.current = '';
+    setFailure(nextFailure);
+    setError(nextFailure.message);
+    setStatus('failed');
+    if (outcome.outcome === 'source-closed' || outcome.outcome === 'source-inactive') {
+      if (playbackRef.current?.sessionId === current.sessionId) {
+        setPlayback(undefined);
+        replaceQueue(undefined);
+      }
+      completedSessionRef.current = current.sessionId;
+      setCompletedSessionId(current.sessionId);
+    }
+    return outcome.outcome === 'source-retained' ? current : undefined;
+  }, [acceptPlayback, deliveryIntent, replaceQueue, replacementPlayback, setPlayback, source]);
+
+  const runPlaybackStart = useCallback(async (
+    target: PlaybackReplacementTarget,
+    retryTarget: NonNullable<typeof retryRef.current>,
+    rawStart: (signal: AbortSignal) => Promise<PlaybackResponse>,
+  ): Promise<PlaybackResponse | undefined> => {
+    const targetKey = JSON.stringify(target);
+    let inFlight = replacementMutationRef.current;
+    while (inFlight?.promise) {
+      const settled = await inFlight.promise;
+      if ((inFlight.promiseTargetKey ?? inFlight.targetKey) === targetKey) return settled;
+      const nextInFlight = replacementMutationRef.current;
+      if (!nextInFlight?.promise || nextInFlight.promise === inFlight.promise) break;
+      inFlight = nextInFlight;
+    }
+
+    const operation = operationRef.current + 1;
+    operationRef.current = operation;
+    controllerRef.current?.abort();
+    renegotiationControllerRef.current?.abort();
+    playbackPreparationOwner.cancel();
+    const controller = new AbortController();
+    controllerRef.current = controller;
+    const targetId = target.kind === 'media' ? target.mediaId : target.kind === 'dvr' ? target.recordingId : target.channelId;
+    startingMediaRef.current = targetId;
+    retryRef.current = retryTarget;
+    setStatus('preparing');
+    setInterruption(undefined);
+    setError(undefined);
+    setFailure(undefined);
+    setPostPlay({ phase: 'inactive' });
+    preparedNextRef.current = undefined;
+
+    const execute = async () => {
+      try {
+        const pendingRestore = replacementMutationRef.current;
+        if (pendingRestore?.restoreOutcome) {
+          const restored = await source.restoreCommittedPlaybackReplacement(pendingRestore.restoreOutcome, deliveryIntent(), controller.signal);
+          replacementMutationRef.current = undefined;
+          acceptPlayback(restored, 'restore');
+          if (pendingRestore.targetKey === targetKey) return restored;
+        }
+        const uncertain = replacementMutationRef.current;
+        if (uncertain?.ambiguous) {
+          const replay = await source.retryPendingPlaybackTerminalMutation(uncertain.sourceSessionId, controller.signal);
+          const current = playbackRef.current;
+          if (!current || current.sessionId !== uncertain.sourceSessionId) return undefined;
+          const reconciled = await settlePlaybackReplacement(replay, current, controller.signal, uncertain.targetKey);
+          if (uncertain.targetKey === targetKey || replay.outcome === 'source-closed') return reconciled;
+        }
+        setStatus('preparing');
+        setError(undefined);
+        setFailure(undefined);
+        const current = playbackRef.current;
+        if (!current || completedSessionRef.current === current.sessionId) {
+          const value = await rawStart(controller.signal);
+          if (operationRef.current === operation && !controller.signal.aborted) {
+            replacementMutationRef.current = undefined;
+            acceptPlayback(value, 'start');
+          }
+          return value;
+        }
+        const media = mediaRef.current;
+        try {
+          await source.touchPlayback(current.sessionId, {
+            state: media?.paused ? 'paused' : 'playing',
+            progressSeconds: media?.currentTime ?? 0,
+            durationSeconds: Number.isFinite(media?.duration) ? media?.duration : undefined,
+          }, controller.signal);
+        } catch { /* Core's replacement terminal remains authoritative. */ }
+        const positionSeconds = Number.isFinite(media?.currentTime) ? Math.max(0, media?.currentTime ?? 0) : Math.max(0, current.resumePositionSeconds ?? 0);
+        const timelineDuration = 'durationSeconds' in current.timeline ? current.timeline.durationSeconds : undefined;
+        const durationSeconds = Number.isFinite(media?.duration)
+          ? Math.max(0, media?.duration ?? 0)
+          : Number.isFinite(timelineDuration) ? Math.max(0, timelineDuration ?? 0) : 0;
+        const promise = source.replacePlaybackTarget(target, {
+          sourceSessionId: current.sessionId,
+          previousTerminal: { disposition: 'stopped', positionSeconds, durationSeconds },
+          expectedQueueRevision: queueRef.current?.sessionId === current.sessionId ? queueRef.current.revision : current.queueRevision,
+          expectedPlaybackRevision: current.playbackRevision,
+        }, controller.signal).then((outcome) => settlePlaybackReplacement(outcome, current, controller.signal, targetKey));
+        replacementMutationRef.current = { sourceSessionId: current.sessionId, targetKey, promiseTargetKey: targetKey, promise, ambiguous: false };
+        return await promise;
+      } catch (reason) {
+        const current = playbackRef.current;
+        const exactRestorePending = replacementMutationRef.current?.restoreOutcome;
+        if (!exactRestorePending && current && isAmbiguousPlaybackMutationFailure(reason)) {
+          replacementMutationRef.current = { sourceSessionId: current.sessionId, targetKey: replacementMutationRef.current?.targetKey ?? targetKey, ambiguous: true };
+        } else if (!exactRestorePending) {
+          replacementMutationRef.current = undefined;
+        }
+        if (operationRef.current !== operation && controller.signal.aborted) return current;
+        startingMediaRef.current = '';
+        const nextFailure = playbackFailure(reason);
+        if (nextFailure) {
+          setFailure(nextFailure);
+          setError(nextFailure.message);
+          setStatus('failed');
+        }
+        return current;
+      }
+    };
+    const transition = execute();
+    const owned = replacementMutationRef.current;
+    replacementMutationRef.current = {
+      sourceSessionId: owned?.sourceSessionId ?? playbackRef.current?.sessionId ?? '',
+      targetKey: owned?.targetKey ?? targetKey,
+      promiseTargetKey: targetKey,
+      promise: transition,
+      ambiguous: owned?.ambiguous ?? false,
+      restoreOutcome: owned?.restoreOutcome,
+    };
+    return transition;
+  }, [acceptPlayback, deliveryIntent, settlePlaybackReplacement, source]);
+
   const start = useCallback(async (mediaId: string, options: PlaybackStartOptions = {}) => {
     if (!mediaId || startingMediaRef.current === mediaId) return;
-    if (playbackRef.current?.media.id === mediaId) {
+    const pendingHandoff = handoffIntentRef.current;
+    if (pendingHandoff?.state === 'sending') await pendingHandoff.promise;
+    if (pendingHandoff?.state === 'ambiguous' && handoffRetryRef.current) await handoffRetryRef.current();
+    if (pendingHandoff?.state === 'sending' || pendingHandoff?.state === 'ambiguous') return;
+    if (playbackRef.current?.media.id === mediaId && completedSessionRef.current !== playbackRef.current.sessionId) {
       if (options.startSeconds !== undefined) {
         const media = mediaRef.current;
         if (media) {
@@ -358,155 +570,28 @@ export function PlaybackSessionProvider({ children }: { children: ReactNode }) {
       }
       return;
     }
-    const operation = operationRef.current + 1;
-    operationRef.current = operation;
-    controllerRef.current?.abort();
-    renegotiationControllerRef.current?.abort();
-    playbackPreparationOwner.cancel();
-    const controller = new AbortController();
-    controllerRef.current = controller;
-    startingMediaRef.current = mediaId;
-    retryRef.current = { kind: 'media', mediaId, options };
-    setStatus('preparing');
-    setInterruption(undefined);
-    setError(undefined);
-    setFailure(undefined);
-    setPostPlay({ phase: 'inactive' });
-    preparedNextRef.current = undefined;
-    try {
-      const current = playbackRef.current;
-      if (current) {
-        const media = mediaRef.current;
-        try {
-          await source.touchPlayback(current.sessionId, {
-            state: media?.paused ? 'paused' : 'playing',
-            progressSeconds: media?.currentTime ?? 0,
-            durationSeconds: Number.isFinite(media?.duration) ? media?.duration : undefined,
-          }, controller.signal);
-        } catch { /* the replacement session remains actionable if the final progress event misses */ }
-      }
-      markMeaningfulInteraction();
-      // The server commits replacement only after the candidate has a sealed
-      // plan and grant. Keep the current player/session intact until that
-      // succeeds so a failed prepare never destroys usable playback.
-      const value = await source.startPlayback(mediaId, { ...options, intent: options.intent ?? deliveryIntent() }, controller.signal);
-      if (operationRef.current === operation && !controller.signal.aborted) acceptPlayback(value, 'start');
-    } catch (reason) {
-      if (operationRef.current !== operation || controller.signal.aborted) return;
-      startingMediaRef.current = '';
-      const nextFailure = playbackFailure(reason);
-      if (nextFailure) {
-        setFailure(nextFailure);
-        setError(nextFailure.message);
-        setStatus('failed');
-      }
-    }
-  }, [acceptPlayback, deliveryIntent, markMeaningfulInteraction, replaceQueue, setPlayback, source]);
+    markMeaningfulInteraction();
+    await runPlaybackStart(
+      { kind: 'media', mediaId, playbackOptions: { ...options, intent: options.intent ?? deliveryIntent() } },
+      { kind: 'media', mediaId, options },
+      (signal) => source.startPlayback(mediaId, { ...options, intent: options.intent ?? deliveryIntent() }, signal),
+    );
+  }, [deliveryIntent, markMeaningfulInteraction, runPlaybackStart, source]);
 
   const startLive = useCallback(async (channelId: string) => {
     if (!channelId || (playbackRef.current?.isLive && playbackRef.current.media.id === channelId) || startingMediaRef.current === channelId) return playbackRef.current;
-    const operation = operationRef.current + 1;
-    operationRef.current = operation;
-    controllerRef.current?.abort();
-    renegotiationControllerRef.current?.abort();
-    playbackPreparationOwner.cancel();
-    const controller = new AbortController();
-    controllerRef.current = controller;
-    startingMediaRef.current = channelId;
-    retryRef.current = { kind: 'live', channelId };
-    setStatus('preparing');
-    setInterruption(undefined);
-    setError(undefined);
-    setFailure(undefined);
-    setPostPlay({ phase: 'inactive' });
-    preparedNextRef.current = undefined;
-    try {
-      const value = await source.startLiveTVPlayback(channelId, controller.signal);
-      if (operationRef.current === operation && !controller.signal.aborted) {
-        acceptPlayback(value, 'start');
-        return value;
-      }
-    } catch (reason) {
-      if (operationRef.current !== operation || controller.signal.aborted) return;
-      startingMediaRef.current = '';
-      const nextFailure = playbackFailure(reason);
-      if (nextFailure) {
-        setFailure(nextFailure);
-        setError(nextFailure.message);
-        setStatus('failed');
-      }
-    }
-  }, [acceptPlayback, replaceQueue, setPlayback, source]);
+    return runPlaybackStart({ kind: 'live-tv', channelId, playbackOptions: { intent: deliveryIntent() } }, { kind: 'live', channelId }, (signal) => source.startLiveTVPlayback(channelId, signal));
+  }, [deliveryIntent, runPlaybackStart, source]);
 
   const startDVR = useCallback(async (recordingId: string) => {
     if (!recordingId || startingMediaRef.current === recordingId) return playbackRef.current;
-    const operation = operationRef.current + 1;
-    operationRef.current = operation;
-    controllerRef.current?.abort();
-    renegotiationControllerRef.current?.abort();
-    playbackPreparationOwner.cancel();
-    const controller = new AbortController();
-    controllerRef.current = controller;
-    startingMediaRef.current = recordingId;
-    retryRef.current = { kind: 'dvr', recordingId };
-    setStatus('preparing');
-    setInterruption(undefined);
-    setError(undefined);
-    setFailure(undefined);
-    setPostPlay({ phase: 'inactive' });
-    preparedNextRef.current = undefined;
-    try {
-      const value = await source.startDVRPlayback(recordingId, controller.signal);
-      if (operationRef.current === operation && !controller.signal.aborted) {
-        acceptPlayback(value, 'start');
-        return value;
-      }
-    } catch (reason) {
-      if (operationRef.current !== operation || controller.signal.aborted) return;
-      startingMediaRef.current = '';
-      const nextFailure = playbackFailure(reason);
-      if (nextFailure) {
-        setFailure(nextFailure);
-        setError(nextFailure.message);
-        setStatus('failed');
-      }
-    }
-  }, [acceptPlayback, replaceQueue, setPlayback, source]);
+    return runPlaybackStart({ kind: 'dvr', recordingId, playbackOptions: { intent: deliveryIntent() } }, { kind: 'dvr', recordingId }, (signal) => source.startDVRPlayback(recordingId, signal));
+  }, [deliveryIntent, runPlaybackStart, source]);
 
   const startLibraryChannel = useCallback(async (channelId: string) => {
     if (!channelId || (playbackRef.current?.isLive && playbackRef.current.sourceContext?.type === 'library-channel' && playbackRef.current.sourceContext.id === channelId) || startingMediaRef.current === channelId) return playbackRef.current;
-    const operation = operationRef.current + 1;
-    operationRef.current = operation;
-    controllerRef.current?.abort();
-    renegotiationControllerRef.current?.abort();
-    playbackPreparationOwner.cancel();
-    const controller = new AbortController();
-    controllerRef.current = controller;
-    startingMediaRef.current = channelId;
-    retryRef.current = { kind: 'library-channel', channelId };
-    setStatus('preparing');
-    setInterruption(undefined);
-    setError(undefined);
-    setFailure(undefined);
-    setPostPlay({ phase: 'inactive' });
-    preparedNextRef.current = undefined;
-    try {
-      const value = await source.startLibraryChannelPlayback(channelId, controller.signal);
-      if (operationRef.current === operation && !controller.signal.aborted) {
-        acceptPlayback(value, 'start');
-        return value;
-      }
-    } catch (reason) {
-      if (operationRef.current !== operation || controller.signal.aborted) return;
-      startingMediaRef.current = '';
-      const nextFailure = playbackFailure(reason);
-      if (nextFailure) {
-        setFailure(nextFailure);
-        setError(nextFailure.message);
-        setStatus('failed');
-      }
-    }
-  }, [acceptPlayback, replaceQueue, setPlayback, source]);
+    return runPlaybackStart({ kind: 'library-channel', channelId, playbackOptions: { intent: deliveryIntent() } }, { kind: 'library-channel', channelId }, (signal) => source.startLibraryChannelPlayback(channelId, signal));
+  }, [deliveryIntent, runPlaybackStart, source]);
 
   const renewGrant = useCallback(async () => {
     const current = playbackRef.current;
@@ -555,6 +640,10 @@ export function PlaybackSessionProvider({ children }: { children: ReactNode }) {
   }, [setPlayback, source]);
 
   const retry = useCallback(async () => {
+    if (handoffRetryRef.current) {
+      await handoffRetryRef.current();
+      return;
+    }
     const current = retryRef.current;
     if (!current) return;
     const targetId = current.kind === 'media' ? current.mediaId : current.kind === 'live' || current.kind === 'library-channel' ? current.channelId : current.recordingId;
@@ -590,14 +679,19 @@ export function PlaybackSessionProvider({ children }: { children: ReactNode }) {
     }
   }, [source]);
 
-  const prepareNextOnce = useCallback((current: PlaybackResponse, candidateId = '', request: PlaybackPrepareNextRequest = {}, force = false) => {
-    const canonicalRequest = { ...request, intent: request.intent ?? deliveryIntent() };
+  const prepareNextOnce = useCallback((current: PlaybackResponse, candidateId = '', request: PlaybackPrepareInput = {}, force = false) => {
+    const candidates = queueRef.current?.items ?? current.queue;
+    const selected = request.entryId
+      ? candidates.find((entry) => entry.entryId === request.entryId)
+      : candidates.find((entry) => entry.media.id === candidateId) ?? candidates[0];
+    if (!selected) return Promise.reject(new Error('Nothing else is queued.'));
+    const canonicalRequest: PlaybackPrepareNextRequest = { ...request, entryId: selected.entryId, intent: request.intent ?? deliveryIntent() };
     // The Server grants exactly one prepared continuation for a current
     // session/candidate pair.  UI projections can rebuild an equivalent
     // request while progress and runtime state are being rendered, so request
     // object identity (or serialization) must not create another owner.  A
     // reviewed Retry is the only path allowed to replace this result.
-    const key = JSON.stringify({ sessionId: current.sessionId, candidateId });
+    const key = JSON.stringify({ sessionId: current.sessionId, entryId: selected.entryId });
     return playbackPreparationOwner.prepare(
       key,
       (signal) => source.prepareNextPlayback(current.sessionId, signal, canonicalRequest),
@@ -605,33 +699,79 @@ export function PlaybackSessionProvider({ children }: { children: ReactNode }) {
     );
   }, [deliveryIntent, source]);
 
-  const prepareNext = useCallback((candidate: MediaItem, request: PlaybackPrepareNextRequest = {}, force = false) => {
+  const prepareNext = useCallback((candidate: MediaItem, request: PlaybackPrepareInput = {}, force = false) => {
     const current = playbackRef.current;
     if (!current || current.isLive) return Promise.reject(new Error('No finite playback session is available to prepare.'));
     return prepareNextOnce(current, candidate.id, request, force);
   }, [prepareNextOnce]);
 
+  const terminalSnapshot = useCallback((
+    disposition: PlaybackTerminalInput['disposition'],
+    positionSeconds?: number,
+    durationSeconds?: number,
+  ): PlaybackTerminalInput => {
+    const current = playbackRef.current;
+    const media = mediaRef.current;
+    const observedPosition = Number.isFinite(positionSeconds)
+      ? positionSeconds!
+      : Number.isFinite(media?.currentTime)
+        ? media!.currentTime
+        : 0;
+    const observedDuration = Number.isFinite(durationSeconds) && durationSeconds! > 0
+      ? durationSeconds!
+      : Number.isFinite(media?.duration) && media!.duration > 0
+        ? media!.duration
+        : current?.timeline.durationSeconds ?? observedPosition;
+    const duration = disposition === 'completed'
+      ? Math.max(1, observedDuration)
+      : Math.max(0, observedDuration);
+    return {
+      disposition,
+      positionSeconds: disposition === 'completed' ? duration : Math.max(0, observedPosition),
+      durationSeconds: duration,
+    };
+  }, []);
+
+  const rememberNaturalTerminal = useCallback((durationSeconds?: number) => {
+    const current = playbackRef.current;
+    if (!current) return undefined;
+    const existing = naturalTerminalRef.current;
+    if (existing?.sessionId === current.sessionId) return existing.request;
+    const request = Object.freeze(terminalSnapshot('completed', durationSeconds, durationSeconds));
+    naturalTerminalRef.current = { sessionId: current.sessionId, request };
+    completedSessionRef.current = current.sessionId;
+    return request;
+  }, [terminalSnapshot]);
+
   const terminalize = useCallback((disposition: 'stopped' | 'completed', positionSeconds: number, durationSeconds: number) => {
     const current = playbackRef.current;
     if (!current) return Promise.resolve();
-    if (terminalOwnerRef.current?.sessionId === current.sessionId) return terminalOwnerRef.current.promise;
+    const request = disposition === 'completed'
+      ? rememberNaturalTerminal(durationSeconds) ?? terminalSnapshot(disposition, positionSeconds, durationSeconds)
+      : terminalSnapshot(disposition, positionSeconds, durationSeconds);
+    const existing = terminalOwnerRef.current;
+    if (existing?.sessionId === current.sessionId && existing.state !== 'ambiguous') return existing.promise;
     completedSessionRef.current = current.sessionId;
     if (disposition === 'completed') {
       setCompletedSessionId(current.sessionId);
       setStatus('completed');
     }
     const controller = new AbortController();
-    const promise = source.stopPlayback(current.sessionId, {
-      disposition,
-      positionSeconds,
-      durationSeconds,
-    }, controller.signal, true).catch(() => {
-      // The terminal owner remains fenced after an uncertain result so UI
-      // cleanup cannot re-enter with stale progress or a second mutation.
+    const owner = existing?.sessionId === current.sessionId
+      ? existing
+      : { sessionId: current.sessionId, request, state: 'sending' as const, promise: Promise.resolve() };
+    owner.state = 'sending';
+    const promise = source.stopPlayback(current.sessionId, owner.request, controller.signal, true).then(() => {
+      owner.state = 'accepted';
+    }).catch((reason) => {
+      owner.state = isAmbiguousPlaybackMutationFailure(reason) ? 'ambiguous' : 'rejected';
+      // Core retains the stable request receipt for an exact retry. The Web
+      // fence remains in place regardless so no late progress can overtake it.
     });
-    terminalOwnerRef.current = { sessionId: current.sessionId, promise };
+    owner.promise = promise;
+    terminalOwnerRef.current = owner;
     return promise;
-  }, [source]);
+  }, [rememberNaturalTerminal, source, terminalSnapshot]);
 
   const close = useCallback(async () => {
     operationRef.current += 1;
@@ -640,14 +780,23 @@ export function PlaybackSessionProvider({ children }: { children: ReactNode }) {
     playbackPreparationOwner.cancel();
     queueControllerRef.current?.abort();
     if (queueRetryTimerRef.current !== undefined) window.clearTimeout(queueRetryTimerRef.current);
+    const pendingHandoff = handoffIntentRef.current;
+    if (pendingHandoff?.state === 'sending') await pendingHandoff.promise;
+    if (pendingHandoff?.state === 'ambiguous' && handoffRetryRef.current) {
+      await handoffRetryRef.current();
+    }
+    if (pendingHandoff?.state === 'sending' || pendingHandoff?.state === 'ambiguous') return;
     const current = playbackRef.current;
     const media = mediaRef.current;
-    const positionSeconds = Math.max(0, Number.isFinite(media?.currentTime) ? media!.currentTime : 0);
+    const sourceChangedDuringClose = current?.sessionId !== pendingHandoff?.sourceSessionId && Boolean(pendingHandoff);
+    const positionSeconds = sourceChangedDuringClose
+      ? 0
+      : Math.max(0, Number.isFinite(media?.currentTime) ? media!.currentTime : 0);
     const durationSeconds = current?.timeline.type === 'live'
       ? 0
       : Math.max(
           1,
-          Number.isFinite(media?.duration) && media!.duration > 0
+          !sourceChangedDuringClose && Number.isFinite(media?.duration) && media!.duration > 0
             ? media!.duration
             : current?.timeline.durationSeconds ?? positionSeconds,
         );
@@ -736,49 +885,98 @@ export function PlaybackSessionProvider({ children }: { children: ReactNode }) {
     await renewGrant();
   }, [renewGrant, runtime]);
 
-  const handoff = useCallback(async (request: PlaybackHandoffRequest): Promise<PlaybackResponse | undefined> => {
+  const handoff = useCallback(async (request: PlaybackHandoffTarget): Promise<PlaybackResponse | undefined> => {
     const current = playbackRef.current;
     if (!current) return;
-    const operation = operationRef.current + 1;
-    operationRef.current = operation;
-    const controller = new AbortController();
-    controllerRef.current?.abort();
-    renegotiationControllerRef.current?.abort();
-    controllerRef.current = controller;
-    setStatus('preparing');
-    setFailure(undefined);
-    setError(undefined);
-    try {
-      const preparedRequestID = request.preparedSessionId
-        ? stablePreparedHandoffRequestID(preparedHandoffRequestIDsRef.current, current.sessionId, request.preparedSessionId, request.requestId)
-        : request.requestId;
-      console.info('[portico-playback-handoff]', JSON.stringify({ phase: 'request', sourceSessionId: current.sessionId, preparedSessionId: request.preparedSessionId ?? '', requestId: preparedRequestID ?? '' }));
-      const value = await source.handoffPlayback(current.sessionId, {
-        ...request,
-        ...(normalizedPlaybackHandoffProgress(request.progressSeconds) !== undefined
-          ? { progressSeconds: normalizedPlaybackHandoffProgress(request.progressSeconds) }
-          : { progressSeconds: undefined }),
-        ...(preparedRequestID ? { requestId: preparedRequestID } : {}),
-        intent: request.intent ?? deliveryIntent(),
-      }, controller.signal);
-      if (operationRef.current === operation && !controller.signal.aborted) {
-        console.info('[portico-playback-handoff]', JSON.stringify({ phase: 'accepted', sourceSessionId: current.sessionId, preparedSessionId: request.preparedSessionId ?? '', requestId: preparedRequestID ?? '', nextSessionId: value.sessionId }));
-        acceptPlayback(value, 'handoff');
-        return value;
-      }
-    } catch (reason) {
-      if (controller.signal.aborted) return;
-      console.warn('[portico-playback-handoff]', JSON.stringify({ phase: 'rejected', sourceSessionId: current.sessionId, preparedSessionId: request.preparedSessionId ?? '', failure: reason instanceof Error ? reason.name : 'unknown', status: reason instanceof ApiError ? reason.status : 0, code: reason instanceof ApiError ? reason.code : '' }));
-      const nextFailure = playbackFailure(reason);
+    const previousTerminal = request.previousTerminal
+      ?? (naturalTerminalRef.current?.sessionId === current.sessionId
+        ? naturalTerminalRef.current.request
+        : terminalSnapshot('stopped'));
+    const canonicalRequest: PlaybackHandoffTarget = {
+      ...request,
+      intent: request.intent ?? deliveryIntent(),
+      previousTerminal,
+    };
+    const existing = handoffIntentRef.current;
+    const candidateIntent = immutablePlaybackHandoffIntent(existing, current.sessionId, canonicalRequest, previousTerminal);
+    if (existing?.sourceSessionId === current.sessionId && existing.key !== candidateIntent.key
+      && (existing.state === 'sending' || existing.state === 'ambiguous')) {
+      const nextFailure = playbackFailure(new ApiError(409, 'playback_handoff_in_progress', 'A playback handoff is still being reconciled.'));
       if (nextFailure) {
         setFailure(nextFailure);
         setError(nextFailure.message);
         setStatus('failed');
       }
+      return;
     }
-  }, [acceptPlayback, deliveryIntent, source]);
+    if (candidateIntent.state === 'sending' && candidateIntent.promise) return candidateIntent.promise;
+    handoffIntentRef.current = candidateIntent;
+    completedSessionRef.current = current.sessionId;
+    const sourceWasPlaying = Boolean(mediaRef.current && !mediaRef.current.paused && !mediaRef.current.ended);
+    const controller = new AbortController();
+    controllerRef.current?.abort();
+    renegotiationControllerRef.current?.abort();
+    setStatus('preparing');
+    setFailure(undefined);
+    setError(undefined);
+    const run = async () => {
+      const send = () => source.handoffPlayback(current.sessionId, candidateIntent.request, controller.signal);
+      try {
+        console.info('[portico-playback-handoff]', JSON.stringify({ phase: 'request', sourceSessionId: current.sessionId, preparedSessionId: candidateIntent.request.preparedSessionId ?? '', requestId: candidateIntent.request.requestId }));
+        let value: PlaybackResponse;
+        try {
+          value = await send();
+        } catch (reason) {
+          if (controller.signal.aborted || !isAmbiguousPlaybackMutationFailure(reason)) throw reason;
+          console.info('[portico-playback-handoff]', JSON.stringify({ phase: 'exact-retry', sourceSessionId: current.sessionId, preparedSessionId: candidateIntent.request.preparedSessionId ?? '', requestId: candidateIntent.request.requestId }));
+          value = await send();
+        }
+        candidateIntent.state = 'ready';
+        handoffRetryRef.current = undefined;
+        if (playbackRef.current?.sessionId === current.sessionId) {
+          console.info('[portico-playback-handoff]', JSON.stringify({ phase: 'accepted', sourceSessionId: current.sessionId, preparedSessionId: candidateIntent.request.preparedSessionId ?? '', requestId: candidateIntent.request.requestId, nextSessionId: value.sessionId }));
+          acceptPlayback(value, 'handoff');
+          return value;
+        }
+      } catch (reason) {
+        const ambiguous = isAmbiguousPlaybackMutationFailure(reason);
+        candidateIntent.state = ambiguous ? 'ambiguous' : 'ready';
+        if (!ambiguous && handoffIntentRef.current === candidateIntent) handoffIntentRef.current = undefined;
+        handoffRetryRef.current = ambiguous
+          ? () => handoff(candidateIntent.request)
+          : undefined;
+        if (controller.signal.aborted) return;
+        console.warn('[portico-playback-handoff]', JSON.stringify({ phase: ambiguous ? 'ambiguous' : 'rejected', sourceSessionId: current.sessionId, preparedSessionId: candidateIntent.request.preparedSessionId ?? '', requestId: candidateIntent.request.requestId, failure: reason instanceof Error ? reason.name : 'unknown', status: reason instanceof ApiError ? reason.status : 0, code: reason instanceof ApiError ? reason.code : '' }));
+        if (!ambiguous) {
+          const terminal = candidateIntent.request.previousTerminal;
+          if (terminal.disposition === 'completed') {
+            await terminalize(terminal.disposition, terminal.positionSeconds, terminal.durationSeconds);
+          } else {
+            // A deliberate replacement rejection leaves the source actor and
+            // ordered progress authority untouched. Remove only the temporary
+            // Web fence; never turn the rejected handoff into a standalone
+            // stop or a generic start.
+            completedSessionRef.current = '';
+            setCompletedSessionId(undefined);
+            if (sourceWasPlaying && mediaRef.current?.paused) {
+              void mediaRef.current.play().catch(() => undefined);
+            }
+          }
+        }
+        const nextFailure = playbackFailure(reason);
+        if (nextFailure) {
+          setFailure(nextFailure);
+          setError(nextFailure.message);
+          setStatus('failed');
+        }
+      }
+    };
+    candidateIntent.state = 'sending';
+    candidateIntent.promise = run();
+    return candidateIntent.promise;
+  }, [acceptPlayback, deliveryIntent, source, terminalSnapshot, terminalize]);
 
-  const next = useCallback(async (automatic = false, preparationRequest: PlaybackPrepareNextRequest = {}) => {
+  const next = useCallback(async (automatic = false, preparationRequest: PlaybackPrepareInput = {}) => {
     const current = playbackRef.current;
     if (!current || current.isLive) return false;
     const candidate = nextCandidate(current, queue);
@@ -797,8 +995,33 @@ export function PlaybackSessionProvider({ children }: { children: ReactNode }) {
     }
     if (!automatic) markMeaningfulInteraction();
     setPostPlay({ phase: 'inactive' });
+    const naturalTerminal = naturalTerminalRef.current?.sessionId === current.sessionId
+      ? naturalTerminalRef.current.request
+      : automatic
+        ? rememberNaturalTerminal()
+        : undefined;
+    if (terminalOwnerRef.current?.sessionId === current.sessionId) {
+      if (!candidate) return false;
+      const owner = terminalOwnerRef.current;
+      await owner.promise;
+      if (owner.state === 'ambiguous') {
+        await terminalize(owner.request.disposition, owner.request.positionSeconds, owner.request.durationSeconds);
+      }
+      if (owner.state === 'ambiguous' || owner.state === 'sending') return false;
+      const items = queueRef.current?.items ?? current.queue;
+      const selectedIndex = items.findIndex((entry) => preparationRequest.entryId
+        ? entry.entryId === preparationRequest.entryId
+        : entry.media.id === candidate.id);
+      await start(candidate.id, {
+        startSeconds: 0,
+        queueMediaIds: items.slice(Math.max(0, selectedIndex + 1)).map((entry) => entry.media.id),
+        repeatMode: queueRef.current?.repeatMode ?? current.repeatMode,
+        sourceContext: queueRef.current?.sourceContext ?? current.sourceContext,
+      });
+      return true;
+    }
     if (cachedIsUsable && cached) {
-      return Boolean(await handoff({ preparedSessionId: cached.preparedSessionId }));
+      return Boolean(await handoff({ preparedSessionId: cached.preparedSessionId, entryId: cached.playback.currentQueueEntryId, previousTerminal: naturalTerminal ?? terminalSnapshot('stopped') }));
     }
     setStatus('preparing');
     setFailure(undefined);
@@ -806,23 +1029,26 @@ export function PlaybackSessionProvider({ children }: { children: ReactNode }) {
     try {
       const prepared = await prepareNextOnce(current, candidate?.id, preparationRequest);
       if (playbackRef.current?.sessionId !== current.sessionId) return false;
-      return Boolean(await handoff({ preparedSessionId: prepared.preparedSessionId }));
+      return Boolean(await handoff({ preparedSessionId: prepared.preparedSessionId, entryId: prepared.playback.currentQueueEntryId, previousTerminal: naturalTerminal ?? terminalSnapshot('stopped') }));
     } catch (reason) {
       const nextFailure = playbackFailure(reason);
       if (!nextFailure) return false;
       if (candidate) setPostPlay({ phase: 'failed', next: candidate, message: nextFailure.message, preparationRequest });
       else setPostPlay({ phase: 'exhausted' });
+      if (naturalTerminal) void terminalize(naturalTerminal.disposition, naturalTerminal.positionSeconds, naturalTerminal.durationSeconds);
       setStatus('ready');
       return false;
     }
-  }, [handoff, markMeaningfulInteraction, preferences.passoutAfterEpisodes, preferences.passoutProtection, prepareNextOnce, queue?.items]);
+  }, [handoff, markMeaningfulInteraction, preferences.passoutAfterEpisodes, preferences.passoutProtection, prepareNextOnce, queue?.items, rememberNaturalTerminal, start, terminalSnapshot, terminalize]);
 
-  const beginPostPlay = useCallback(async (candidate?: MediaItem, force = false, preparationRequest: PlaybackPrepareNextRequest = {}) => {
+  const beginPostPlay = useCallback(async (candidate?: MediaItem, force = false, preparationRequest: PlaybackPrepareInput = {}) => {
     const current = playbackRef.current;
     if (!current || current.isLive) return;
+    const naturalTerminal = rememberNaturalTerminal();
     if (!candidate) {
       preparedNextRef.current = undefined;
       setPostPlay({ phase: 'exhausted' });
+      if (naturalTerminal) void terminalize(naturalTerminal.disposition, naturalTerminal.positionSeconds, naturalTerminal.durationSeconds);
       return;
     }
     setPostPlay({ phase: 'preparing', next: candidate });
@@ -846,11 +1072,14 @@ export function PlaybackSessionProvider({ children }: { children: ReactNode }) {
         message: nextFailure?.message ?? productMessage('playback.up-next-failed').body ?? '',
         preparationRequest,
       });
+      if (naturalTerminal) void terminalize(naturalTerminal.disposition, naturalTerminal.positionSeconds, naturalTerminal.durationSeconds);
     }
-  }, [prepareNextOnce]);
+  }, [prepareNextOnce, rememberNaturalTerminal, terminalize]);
 
   const cancelPostPlay = useCallback(() => {
     playbackPreparationOwner.cancel();
+    const naturalTerminal = naturalTerminalRef.current;
+    if (naturalTerminal) void terminalize(naturalTerminal.request.disposition, naturalTerminal.request.positionSeconds, naturalTerminal.request.durationSeconds);
     setPostPlay((current) => {
       if (current.phase === 'countdown' || current.phase === 'passout') return {
         phase: 'cancelled',
@@ -861,65 +1090,59 @@ export function PlaybackSessionProvider({ children }: { children: ReactNode }) {
       if (current.phase === 'preparing' || current.phase === 'failed') return { phase: 'cancelled', next: current.next };
       return current;
     });
-  }, []);
+  }, [terminalize]);
 
   const replay = useCallback(async () => {
     const current = playbackRef.current;
     if (!current || current.isLive) return;
-    const operation = operationRef.current + 1;
-    operationRef.current = operation;
     controllerRef.current?.abort();
     renegotiationControllerRef.current?.abort();
     playbackPreparationOwner.cancel();
-    const controller = new AbortController();
-    controllerRef.current = controller;
     preparedNextRef.current = undefined;
     setPostPlay({ phase: 'inactive' });
-    setStatus('preparing');
     setFailure(undefined);
     setError(undefined);
-    const queueMediaIds = (queue?.items ?? current.queue).map((item) => item.id);
-    const request: PlaybackHandoffRequest = {
-      mediaId: current.media.id,
-      progressSeconds: 0,
-      queueMediaIds,
-      sourceContext: queue?.sourceContext ?? current.sourceContext,
-    };
+    const closed = terminalOwnerRef.current?.sessionId === current.sessionId;
     try {
       markMeaningfulInteraction();
-      const value = await source.handoffPlayback(current.sessionId, { ...request, intent: deliveryIntent() }, controller.signal);
-      if (operationRef.current === operation && !controller.signal.aborted) acceptPlayback(value, 'handoff');
+      if (closed) {
+        const owner = terminalOwnerRef.current;
+        await owner?.promise;
+        if (owner?.state === 'ambiguous') {
+          await terminalize(owner.request.disposition, owner.request.positionSeconds, owner.request.durationSeconds);
+        }
+        if (owner?.state === 'ambiguous' || owner?.state === 'sending') return;
+        await start(current.media.id, {
+          startSeconds: 0,
+          queueMediaIds: (queueRef.current?.items ?? current.queue).map((entry) => entry.media.id),
+          repeatMode: queueRef.current?.repeatMode ?? current.repeatMode,
+          sourceContext: queueRef.current?.sourceContext ?? current.sourceContext,
+        });
+        return;
+      }
+      await handoff({
+        entryId: current.currentQueueEntryId,
+        startSeconds: 0,
+        sourceContext: queue?.sourceContext ?? current.sourceContext,
+        previousTerminal: naturalTerminalRef.current?.sessionId === current.sessionId
+          ? naturalTerminalRef.current.request
+          : terminalSnapshot('stopped'),
+      });
       return;
     } catch (handoffReason) {
-      if (controller.signal.aborted || operationRef.current !== operation) return;
-      try {
-        const positionSeconds = 0;
-        await source.stopPlayback(current.sessionId, {
-          disposition: 'stopped',
-          positionSeconds,
-          durationSeconds: Math.max(1, current.timeline.durationSeconds ?? positionSeconds),
-        }, controller.signal);
-      } catch { /* an ended session may already be closed */ }
-      setPlayback(undefined);
-      replaceQueue(undefined);
-      try {
-        const value = await source.startPlayback(current.media.id, { startSeconds: 0, queueMediaIds, repeatMode: queue?.repeatMode ?? current.repeatMode, sourceContext: queue?.sourceContext ?? current.sourceContext, intent: deliveryIntent() }, controller.signal);
-        if (operationRef.current === operation && !controller.signal.aborted) acceptPlayback(value, 'handoff');
-      } catch (reason) {
-        const nextFailure = playbackFailure(reason ?? handoffReason);
-        if (nextFailure) {
-          setFailure(nextFailure);
-          setError(nextFailure.message);
-          setStatus('failed');
-        }
+      const nextFailure = playbackFailure(handoffReason);
+      if (nextFailure) {
+        setFailure(nextFailure);
+        setError(nextFailure.message);
+        setStatus('failed');
       }
     }
-  }, [acceptPlayback, deliveryIntent, markMeaningfulInteraction, queue, replaceQueue, setPlayback, source]);
+  }, [handoff, markMeaningfulInteraction, queue, start, terminalSnapshot]);
 
   const previous = useCallback(async () => {
-    const previousItem = queue?.history.at(-1);
-    if (previousItem) await handoff({ mediaId: previousItem.id, progressSeconds: 0 });
-  }, [handoff, queue]);
+    const previousItem = queue?.history[0];
+    if (previousItem) await handoff({ entryId: previousItem.entryId, startSeconds: 0, previousTerminal: terminalSnapshot('stopped') });
+  }, [handoff, queue, terminalSnapshot]);
 
   const applyExternalCommand = useCallback(async (command: PlaybackCommand) => {
     if (!command.action) return;
@@ -1037,46 +1260,42 @@ export function PlaybackSessionProvider({ children }: { children: ReactNode }) {
   }, [markQueueNeedsRefresh, replaceQueue, source]);
 
   const mutateQueue = useCallback(async (request: QueueMutationInput) => {
+    const fingerprint = JSON.stringify(request);
+    const idempotencyKey = queueIntentKeysRef.current.get(fingerprint) ?? secureRandomUUID();
+    queueIntentKeysRef.current.set(fingerprint, idempotencyKey);
     await runQueueMutation((state, signal) => source.mutatePlaybackSessionQueue(
       state.sessionId,
-      { ...request, expectedRevision: state.revision },
+      { ...request, expectedRevision: state.revision, idempotencyKey },
       signal,
     ));
+    queueIntentKeysRef.current.delete(fingerprint);
   }, [runQueueMutation, source]);
 
   const appendQueue = useCallback(async (mediaIds: string[]) => {
-    const normalized = [...new Set(mediaIds.map((id) => id.trim()).filter(Boolean))];
+    const normalized = mediaIds.map((id) => id.trim()).filter(Boolean);
     if (!normalized.length) return;
     await mutateQueue({ action: 'append', mediaIds: normalized });
   }, [mutateQueue]);
 
   const playNext = useCallback(async (mediaIds: string[]) => {
-    const normalized = [...new Set(mediaIds.map((id) => id.trim()).filter(Boolean))];
+    const normalized = mediaIds.map((id) => id.trim()).filter(Boolean);
     if (!normalized.length) return;
     await mutateQueue({ action: 'play_next', mediaIds: normalized });
   }, [mutateQueue]);
 
-  const removeQueueItem = useCallback(async (index: number) => {
-    await mutateQueue({ action: 'remove', index });
+  const removeQueueItem = useCallback(async (entryId: string) => {
+    await mutateQueue({ action: 'remove', entryId });
   }, [mutateQueue]);
 
-  const moveQueueItem = useCallback(async (fromIndex: number, toIndex: number) => {
-    if (fromIndex === toIndex) return;
-    await mutateQueue({ action: 'reorder', fromIndex, toIndex });
+  const moveQueueItem = useCallback(async (entryId: string, destinationEntryId: string, placement: 'before' | 'after') => {
+    if (entryId === destinationEntryId) return;
+    await mutateQueue({ action: 'reorder', entryId, destinationEntryId, placement });
   }, [mutateQueue]);
 
   const shuffleQueue = useCallback(async () => {
     if ((queueRef.current?.items.length ?? 0) < 2) return;
-    await runQueueMutation((state, signal) => source.updatePlaybackSessionQueue(
-      state.sessionId,
-      {
-        expectedRevision: state.revision,
-        mediaIds: shuffled(state.items).map((item) => item.id),
-        repeatMode: state.repeatMode,
-      },
-      signal,
-    ));
-  }, [runQueueMutation, source]);
+    await mutateQueue({ action: 'shuffle' });
+  }, [mutateQueue]);
 
   const setRepeatMode = useCallback(async (mode: PlaybackRepeatMode) => {
     if (queueRef.current?.repeatMode === mode) return;
@@ -1118,7 +1337,9 @@ export function PlaybackSessionProvider({ children }: { children: ReactNode }) {
     const operation = operationRef.current + 1;
     operationRef.current = operation;
     const controller = new AbortController();
-    source.restorePlayback(controller.signal, deliveryIntent()).then((response) => {
+    source.recoverPendingPlaybackTerminals(controller.signal).then(() =>
+      source.restorePlayback(controller.signal, deliveryIntent()),
+    ).then((response) => {
       if (controller.signal.aborted || operationRef.current !== operation) return;
       if (response.active && response.playback) acceptPlayback(response.playback, 'restore');
     }).catch(() => undefined);
@@ -1515,10 +1736,9 @@ function QueuePanel({ onDismiss }: { onDismiss: () => void }) {
   const [dragSourceIndex, setDragSourceIndex] = useState<number>();
   const [dragTargetIndex, setDragTargetIndex] = useState<number>();
   const pointerDragRef = useRef<{ sourceIndex: number; targetIndex: number } | undefined>(undefined);
-  const current = queue?.current ?? playback?.media;
+  const current = queue?.current ?? (playback ? { entryId: playback.currentQueueEntryId, media: playback.media } satisfies PlaybackQueueEntry : undefined);
   const entries = (queue?.items ?? playback?.queue ?? [])
-    .map((item, sourceIndex) => ({ item, sourceIndex }))
-    .filter(({ item }) => item.id !== current?.id);
+    .map((entry, sourceIndex) => ({ entry, sourceIndex }));
   const canMutate = queue?.canMutate === true && !queueBusy && !queueNeedsRefresh;
   const nextRepeat: PlaybackRepeatMode = repeatMode === 'off' ? 'all' : repeatMode === 'all' ? 'one' : 'off';
   const repeatLabel = productMessage(repeatMode === 'all' ? 'action.repeat-all' : repeatMode === 'one' ? 'action.repeat-one' : 'action.repeat-off').text;
@@ -1565,7 +1785,9 @@ function QueuePanel({ onDismiss }: { onDismiss: () => void }) {
 		pointerDragRef.current = undefined;
 		finishDrag();
 		if (commit && canMutate && drag.sourceIndex !== drag.targetIndex) {
-			void moveQueueItem(drag.sourceIndex, drag.targetIndex).catch(() => undefined);
+			const source = entries[drag.sourceIndex]?.entry;
+			const destination = entries[drag.targetIndex]?.entry;
+			if (source && destination) void moveQueueItem(source.entryId, destination.entryId, drag.sourceIndex < drag.targetIndex ? 'after' : 'before').catch(() => undefined);
 		}
 	};
   const drop = (event: ReactDragEvent<HTMLLIElement>, targetIndex: number) => {
@@ -1573,16 +1795,18 @@ function QueuePanel({ onDismiss }: { onDismiss: () => void }) {
     const sourceIndex = dragSourceIndex ?? Number(event.dataTransfer.getData('text/plain'));
     finishDrag();
     if (!canMutate || !Number.isInteger(sourceIndex) || sourceIndex === targetIndex) return;
-    void moveQueueItem(sourceIndex, targetIndex).catch(() => undefined);
+    const source = entries[sourceIndex]?.entry;
+    const destination = entries[targetIndex]?.entry;
+    if (source && destination) void moveQueueItem(source.entryId, destination.entryId, sourceIndex < targetIndex ? 'after' : 'before').catch(() => undefined);
   };
   return <div className="player-queue-panel" aria-busy={queueBusy}>
     <div className="player-menu-heading"><span><strong>{productMessage('playback.queue-title').text}</strong><small>{productMessage(queueCount === 1 ? 'playback.queue-count-one' : 'playback.queue-count-many', { count: queueCount }).text}</small></span><button type="button" className="player-panel-close" aria-label={productMessage('action.close-queue').text} onClick={onDismiss}><ProductLanguageIcon id="action.close" /></button></div>
     <div className="queue-actions"><button type="button" className={repeatMode !== 'off' ? 'selected' : ''} aria-pressed={repeatMode !== 'off'} onClick={() => void setRepeatMode(nextRepeat).catch(() => undefined)} disabled={!canMutate}><ProductLanguageIcon id={repeatMode === 'one' ? 'action.repeat-one' : 'action.repeat'} /> {repeatLabel}</button><button type="button" onClick={() => void shuffleQueue().catch(() => undefined)} disabled={!canMutate || entries.length < 2}><ProductLanguageIcon id="action.shuffle" /> {productMessage('action.shuffle').text}</button></div>
     <ol className="queue-list">
-      {current && <li className="queue-current" aria-current="true"><QueueArtwork item={current} /><span><strong>{current.title}</strong><small>{[productMessage('playback.queue-now-playing').text, current.parentTitle || current.tagline].filter(Boolean).join(' · ')}</small></span></li>}
-      {entries.map(({ item, sourceIndex }, index) => <li key={`${item.id}-${sourceIndex}`} data-queue-source-index={sourceIndex} draggable={canMutate} className={`${dragSourceIndex === sourceIndex ? 'dragging' : ''} ${dragTargetIndex === sourceIndex && dragSourceIndex !== sourceIndex ? 'drag-target' : ''}`.trim()} onDragStart={(event) => beginDrag(event, sourceIndex)} onDragOver={(event) => acceptDrag(event, sourceIndex)} onDrop={(event) => drop(event, sourceIndex)} onDragEnd={finishDrag}>
-      <span className="queue-drag-handle" aria-hidden="true" title="Drag to reorder" onPointerDown={(event) => beginPointerDrag(event, sourceIndex)} onPointerMove={movePointerDrag} onPointerUp={(event) => endPointerDrag(event, true)} onPointerCancel={(event) => endPointerDrag(event, false)}><ActionCustomizeIcon /></span><QueueArtwork item={item} /><span><strong>{item.title}</strong><small>{item.parentTitle || item.tagline || mediaPresentation({ entityKind: item.entityKind }).label}</small></span>
-      <div><button type="button" aria-label={productMessage('action.move-queue-earlier', { title: item.title }).text} title={productMessage('action.move-queue-earlier', { title: item.title }).text} disabled={!canMutate || index === 0} onClick={() => void moveQueueItem(sourceIndex, entries[index - 1]?.sourceIndex ?? sourceIndex).catch(() => undefined)}><ProductLanguageIcon id="action.move-up" /></button><button type="button" aria-label={productMessage('action.move-queue-later', { title: item.title }).text} title={productMessage('action.move-queue-later', { title: item.title }).text} disabled={!canMutate || index === entries.length - 1} onClick={() => void moveQueueItem(sourceIndex, entries[index + 1]?.sourceIndex ?? sourceIndex).catch(() => undefined)}><ProductLanguageIcon id="action.move-down" /></button><button type="button" aria-label={productMessage('action.remove-from-queue', { title: item.title }).text} title={productMessage('action.remove-from-queue', { title: item.title }).text} disabled={!canMutate} onClick={() => void removeQueueItem(sourceIndex).catch(() => undefined)}><ProductLanguageIcon id="action.remove-queue" /></button></div>
+      {current && <li className="queue-current" aria-current="true"><QueueArtwork item={current.media} /><span><strong>{current.media.title}</strong><small>{[productMessage('playback.queue-now-playing').text, current.media.parentTitle || current.media.tagline].filter(Boolean).join(' · ')}</small></span></li>}
+      {entries.map(({ entry, sourceIndex }, index) => <li key={entry.entryId} data-queue-source-index={sourceIndex} draggable={canMutate} className={`${dragSourceIndex === sourceIndex ? 'dragging' : ''} ${dragTargetIndex === sourceIndex && dragSourceIndex !== sourceIndex ? 'drag-target' : ''}`.trim()} onDragStart={(event) => beginDrag(event, sourceIndex)} onDragOver={(event) => acceptDrag(event, sourceIndex)} onDrop={(event) => drop(event, sourceIndex)} onDragEnd={finishDrag}>
+      <span className="queue-drag-handle" aria-hidden="true" title="Drag to reorder" onPointerDown={(event) => beginPointerDrag(event, sourceIndex)} onPointerMove={movePointerDrag} onPointerUp={(event) => endPointerDrag(event, true)} onPointerCancel={(event) => endPointerDrag(event, false)}><ActionCustomizeIcon /></span><QueueArtwork item={entry.media} /><span><strong>{entry.media.title}</strong><small>{entry.media.parentTitle || entry.media.tagline || mediaPresentation({ entityKind: entry.media.entityKind }).label}</small></span>
+      <div><button type="button" aria-label={productMessage('action.move-queue-earlier', { title: entry.media.title }).text} title={productMessage('action.move-queue-earlier', { title: entry.media.title }).text} disabled={!canMutate || index === 0} onClick={() => { const destination = entries[index - 1]?.entry; if (destination) void moveQueueItem(entry.entryId, destination.entryId, 'before').catch(() => undefined); }}><ProductLanguageIcon id="action.move-up" /></button><button type="button" aria-label={productMessage('action.move-queue-later', { title: entry.media.title }).text} title={productMessage('action.move-queue-later', { title: entry.media.title }).text} disabled={!canMutate || index === entries.length - 1} onClick={() => { const destination = entries[index + 1]?.entry; if (destination) void moveQueueItem(entry.entryId, destination.entryId, 'after').catch(() => undefined); }}><ProductLanguageIcon id="action.move-down" /></button><button type="button" aria-label={productMessage('action.remove-from-queue', { title: entry.media.title }).text} title={productMessage('action.remove-from-queue', { title: entry.media.title }).text} disabled={!canMutate} onClick={() => void removeQueueItem(entry.entryId).catch(() => undefined)}><ProductLanguageIcon id="action.remove-queue" /></button></div>
     </li>)}</ol>
     {!entries.length && <p className="player-empty-copy">{productMessage('playback.queue-empty').body}</p>}
     {queueError && <div className="player-menu-error" role="alert"><span>{queueError}</span>{queueNeedsRefresh && <button type="button" onClick={() => void reloadQueue()} disabled={queueBusy}><ProductLanguageIcon id="action.retry" /> {productMessage('action.reload-queue').text}</button>}</div>}
@@ -1802,7 +2026,7 @@ function PlayerControls({
   const preferences = displayPreferences?.preferences ?? defaultWebDisplayPreferences;
   const musicPreferences = useMemo(() => normalizeMusicPlaybackPreferences(auth.viewer?.user?.preferences?.musicPlayback), [auth.viewer?.user?.preferences?.musicPlayback]);
   const { selectedId: subtitleId, setSelectedId: setSubtitleId, options: subtitleOptions } = usePlayerSubtitles();
-  const { status, playback, queue, repeatMode, sessionOrigin, mediaRef, touch, complete, next, prepareNext, handoff, previous, start, renegotiate, beginPostPlay, fail, shuffleQueue, setRepeatMode, markMeaningfulInteraction } = player;
+  const { status, playback, queue, repeatMode, sessionOrigin, mediaRef, touch, complete, next, prepareNext, handoff, previous, renegotiate, beginPostPlay, fail, shuffleQueue, setRepeatMode, markMeaningfulInteraction } = player;
   const [playing, setPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -1812,7 +2036,7 @@ function PlayerControls({
   const volumeRef = useRef(volume);
   volumeRef.current = volume;
   const [playbackRate, setPlaybackRate] = useState(() => Number(preferences.defaultPlaybackSpeed));
-  const [quality, setQuality] = useState(playback?.selectedQualityId || (playback ? defaultPlaybackQuality(playback) : 'original'));
+  const [quality, setQuality] = useState(playback ? playbackQualitySelectionKey(playback.qualitySelection) : 'automatic');
   const [audioStreamId, setAudioStreamId] = useState(playback?.selectedAudioStreamId ?? '');
   const [trickplaySets, setTrickplaySets] = useState<MediaTrickplaySet[]>([]);
   const [trickplayPreview, setTrickplayPreview] = useState<{ seconds: number; url?: string; leftPercent: number }>();
@@ -1834,7 +2058,7 @@ function PlayerControls({
   ), [currentTime, dismissedSegmentIds, isLive, playback?.media.segments, preferences.creditsSkip, preferences.introSkip]);
   const activeSegment = segmentDecision.type === 'prompt' ? segmentDecision.segment : undefined;
   const upcomingItems = useMemo(
-    () => (queue?.items ?? playback?.queue ?? []).filter((item) => item.id !== playback?.media.id),
+    () => (queue?.items ?? playback?.queue ?? []).map((entry) => entry.media),
     [playback?.media.id, playback?.queue, queue?.items],
   );
   const lyricDocument = useMemo(() => selectLyricDocument(playback?.media.lyrics ?? []), [playback?.media.lyrics]);
@@ -1843,7 +2067,7 @@ function PlayerControls({
 
   useEffect(() => {
     terminalSessionRef.current = '';
-    setQuality(playback?.selectedQualityId || (playback ? defaultPlaybackQuality(playback) : 'original'));
+    setQuality(playback ? playbackQualitySelectionKey(playback.qualitySelection) : 'automatic');
     setAudioStreamId(playback?.selectedAudioStreamId ?? '');
     setPlaybackRate(Number(preferences.defaultPlaybackSpeed));
     setTrickplayPreview(undefined);
@@ -1899,7 +2123,6 @@ function PlayerControls({
         fail('source');
         return;
       }
-      if (sleepTimer.expireAtTrackEnd()) return;
       if (isMusic && musicTransitioning) return;
       if (repeatMode === 'one') {
         element.currentTime = 0;
@@ -1911,25 +2134,30 @@ function PlayerControls({
       const terminalDuration = Number.isFinite(element.duration) && element.duration > 0
         ? element.duration
         : playback?.timeline.durationSeconds ?? 0;
+      if (sleepTimer.expireAtTrackEnd()) {
+        if (terminalDuration > 0) void complete(terminalDuration);
+        return;
+      }
       if (upcomingItems.length > 0) {
         const candidate = upcomingItems[0];
         if (isMusic) {
           if (sessionAutoplay) {
-            void next(false, musicTransitionRequest(playback, queue, musicPreferences, preferences)).then((committed) => {
-              if (!committed && terminalDuration > 0) void complete(terminalDuration);
-            });
+            void next(true, musicTransitionRequest(playback, queue, musicPreferences, preferences));
             return;
           }
         } else {
           void beginPostPlay(candidate);
         }
       } else if (repeatMode === 'all' && (queue?.history.length ?? 0) > 0) {
-        const first = queue?.history[0];
-        if (first) void start(first.id, { queueMediaIds: [...(queue?.history.slice(1) ?? []), queue?.current].filter(Boolean).map((item) => item.id), repeatMode: 'all', sourceContext: queue?.sourceContext });
+        const first = queue?.history.at(-1);
+        if (first) void handoff({
+          entryId: first.entryId,
+          startSeconds: 0,
+          previousTerminal: { disposition: 'completed', positionSeconds: Math.max(1, terminalDuration), durationSeconds: Math.max(1, terminalDuration) },
+        });
       } else {
         void beginPostPlay();
       }
-      if (terminalDuration > 0) void complete(terminalDuration);
     };
     sync();
     for (const event of ['play', 'pause', 'timeupdate', 'durationchange', 'volumechange', 'loadedmetadata']) element.addEventListener(event, sync);
@@ -1940,7 +2168,7 @@ function PlayerControls({
       element.removeEventListener('volumechange', persistVolume);
       element.removeEventListener('ended', onEnded);
     };
-  }, [beginPostPlay, complete, fail, isLive, isMusic, mediaRef, musicPreferences, musicTransitioning, next, playback, preferences, queue, repeatMode, sessionAutoplay, sleepTimer.expireAtTrackEnd, start, touch, upcomingItems]);
+  }, [beginPostPlay, complete, fail, handoff, isLive, isMusic, mediaRef, musicPreferences, musicTransitioning, next, playback, preferences, queue, repeatMode, sessionAutoplay, sleepTimer.expireAtTrackEnd, touch, upcomingItems]);
 
   useEffect(() => {
     const element = mediaRef.current;
@@ -2004,8 +2232,7 @@ function PlayerControls({
         return;
       }
       setCurrentTime(sourceDuration);
-      void complete(sourceDuration);
-      void beginPostPlay();
+      element.dispatchEvent(new Event('ended'));
       return;
     }
     const state = element.paused ? 'paused' : 'playing';
@@ -2039,8 +2266,9 @@ function PlayerControls({
     onClose();
   };
   const selectQuality = async (value: string) => {
-    const updated = await renegotiate({ qualityId: value });
-    if (updated) setQuality(updated.selectedQualityId || value);
+    if (!playback) return;
+    const updated = await renegotiate({ quality: playbackQualitySelectionFor(playback, value) });
+    if (updated) setQuality(playbackQualitySelectionKey(updated.qualitySelection));
   };
   const selectAudio = async (value: string) => {
     const updated = await renegotiate({ audioStreamId: value });
@@ -2127,7 +2355,7 @@ function PlayerControls({
         <span>{timeLabel(displayedDuration)}</span>
       </div>}
     {activeSegment && <div className="player-skip-prompt"><button type="button" onClick={() => seekTo(activeSegment.endSeconds)}>{productMessage('action.skip-segment', { segment: segmentLabel(activeSegment.type) }).text}</button><button type="button" aria-label={productMessage('action.dismiss-skip-prompt', { segment: segmentLabel(activeSegment.type).toLocaleLowerCase() }).text} onClick={() => setDismissedSegments((current) => ({ sessionId: playback?.sessionId ?? '', ids: current.sessionId === (playback?.sessionId ?? '') ? [...current.ids, activeSegment.id] : [activeSegment.id] }))}><ProductLanguageIcon id="action.close" /></button></div>}
-    {diagnosticsOpen && <ModalOverlay labelledBy="player-diagnostics-title" className="player-diagnostics-overlay" onDismiss={() => setDiagnosticsOpen(false)}><header><span><ProductLanguageIcon id="action.technical-stats" /><strong id="player-diagnostics-title">{productMessage('playback.diagnostics-title').text}</strong></span><button type="button" aria-label={productMessage('action.close-playback-diagnostics').text} onClick={() => setDiagnosticsOpen(false)}><ProductLanguageIcon id="action.close" /></button></header><dl><div><dt>{productMessage('playback.diagnostics-playback').text}</dt><dd>{playbackDecisionLabel(playback.decision.mode)}</dd></div><div><dt>{productMessage('playback.diagnostics-format').text}</dt><dd>{playbackSelectionRequiresHLS(playback, quality, audioStreamId) ? 'HLS' : playback.streamFormat || productMessage('playback.diagnostics-direct').text}</dd></div><div><dt>{productMessage('playback.diagnostics-quality').text}</dt><dd>{playback.qualities.find((item) => item.id === quality)?.label ?? ''}</dd></div><div><dt>{productMessage('playback.diagnostics-audio').text}</dt><dd>{playback.audioStreams.find((item) => item.id === audioStreamId)?.displayTitle ?? (audioStreamId || productMessage('playback.diagnostics-default').text)}</dd></div><div><dt>{productMessage('playback.diagnostics-rate').text}</dt><dd>{playbackRate}×</dd></div><div><dt>{productMessage('playback.diagnostics-position').text}</dt><dd>{timeLabel(currentTime)} / {timeLabel(duration)}</dd></div>{playback.decision.reason && <div><dt>{productMessage('playback.diagnostics-decision').text}</dt><dd>{playback.decision.reason}</dd></div>}</dl></ModalOverlay>}
+    {diagnosticsOpen && <ModalOverlay labelledBy="player-diagnostics-title" className="player-diagnostics-overlay" onDismiss={() => setDiagnosticsOpen(false)}><header><span><ProductLanguageIcon id="action.technical-stats" /><strong id="player-diagnostics-title">{productMessage('playback.diagnostics-title').text}</strong></span><button type="button" aria-label={productMessage('action.close-playback-diagnostics').text} onClick={() => setDiagnosticsOpen(false)}><ProductLanguageIcon id="action.close" /></button></header><dl><div><dt>{productMessage('playback.diagnostics-playback').text}</dt><dd>{playbackDecisionLabel(playback.decision.mode)}</dd></div><div><dt>{productMessage('playback.diagnostics-format').text}</dt><dd>{playbackSelectionRequiresHLS(playback) ? 'HLS' : playback.streamFormat || productMessage('playback.diagnostics-direct').text}</dd></div><div><dt>{productMessage('playback.diagnostics-quality').text}</dt><dd>{playback.qualityOffers.offers.find((offer) => (offer.kind === 'automatic' ? 'automatic' : offer.selectionId) === quality)?.label ?? ''}</dd></div><div><dt>{productMessage('playback.diagnostics-audio').text}</dt><dd>{playback.audioStreams.find((item) => item.id === audioStreamId)?.displayTitle ?? (audioStreamId || productMessage('playback.diagnostics-default').text)}</dd></div><div><dt>{productMessage('playback.diagnostics-rate').text}</dt><dd>{playbackRate}×</dd></div><div><dt>{productMessage('playback.diagnostics-position').text}</dt><dd>{timeLabel(currentTime)} / {timeLabel(duration)}</dd></div>{playback.decision.reason && <div><dt>{productMessage('playback.diagnostics-decision').text}</dt><dd>{playback.decision.reason}</dd></div>}</dl></ModalOverlay>}
     <PlayerMenuGroup><div ref={commandRowRef} className="player-command-row">
       <div className="player-transport" aria-label={productMessage('playback.transport-controls').text}>
         <button type="button" onClick={() => void previous()} disabled={isLive || !queue?.history.length} aria-label={productMessage('action.previous-item').text}><ProductLanguageIcon id="action.previous" /></button>
@@ -2155,7 +2383,7 @@ function PlayerControls({
         </PlayerMenu>
         {playback.chapters.some((chapter) => typeof chapter.startSeconds === 'number') && <PlayerMenu label={productMessage('playback.menu-chapters').text ?? ''} icon={<ProductLanguageIcon id="action.chapters" />}><div className="chapter-panel"><div className="player-menu-heading"><span><strong>{productMessage('playback.menu-chapters').text}</strong><small>{productMessage(playback.chapters.length === 1 ? 'playback.chapter-count-one' : 'playback.chapter-count-many', { count: playback.chapters.length }).text}</small></span></div><ol>{playback.chapters.flatMap((chapter, index) => typeof chapter.startSeconds === 'number' ? [<li key={chapter.id ?? `${chapter.startSeconds}-${index}`}><button type="button" className={currentTime >= chapter.startSeconds && currentTime < (playback.chapters[index + 1]?.startSeconds ?? Number.POSITIVE_INFINITY) ? 'selected' : ''} onClick={() => seekTo(chapter.startSeconds!)}><ChapterThumbnail src={chapter.thumbUrl ? playbackResourceUrl(playback, chapter.thumbUrl, (value) => source.playbackResourceUrl(value), window.location.href) : undefined} /><span>{chapter.title || productMessage('playback.chapter-number', { number: index + 1 }).text}</span><small>{timeLabel(chapter.startSeconds)}</small></button></li>] : [])}</ol></div></PlayerMenu>}
         <PlayerMenu label={productMessage('playback.menu-settings').text ?? ''} icon={<ProductLanguageIcon id="action.settings" />} panelClassName="settings-menu-panel">{(dismiss) => <PlayerSettingGroup><div className="settings-panel">
-          {playback.qualities.some((item) => item.available !== false && Boolean(item.id && item.label)) && <PlayerSettingDropdown label={productMessage('playback.setting-quality').text ?? 'Quality'} value={quality} onChange={(value) => void selectQuality(value)} options={playback.qualities.filter((item) => item.available !== false && Boolean(item.id && item.label)).map((item) => ({ id: item.id!, label: item.label!, detail: item.description }))} />}
+          {playback.qualityOffers.offers.length > 0 && <PlayerSettingDropdown label={productMessage('playback.setting-quality').text ?? 'Quality'} value={quality} onChange={(value) => void selectQuality(value)} options={playback.qualityOffers.offers.map((offer) => ({ id: offer.kind === 'automatic' ? 'automatic' : offer.selectionId, label: offer.label }))} />}
           {playback.audioStreams.length > 0 && <PlayerSettingDropdown label={productMessage('playback.setting-audio').text ?? 'Audio'} value={audioStreamId} onChange={(value) => void selectAudio(value)} options={playback.audioStreams.filter((stream) => Boolean(stream.id)).map((stream) => ({ id: stream.id ?? '', label: stream.displayTitle || stream.language || stream.codec || 'Audio', detail: [stream.language?.toLocaleUpperCase(), stream.codec?.toLocaleUpperCase(), stream.channels ? `${stream.channels} channels` : ''].filter(Boolean).join(' · ') }))} />}
           {!isLive && <PlayerSettingDropdown label={productMessage('playback.setting-speed').text ?? 'Playback speed'} value={String(playbackRate)} onChange={(value) => setPlaybackRate(Number(value))} options={PLAYBACK_SPEEDS.map((rate) => ({ id: String(rate), label: rate === 1 ? productMessage('playback.speed-normal').text ?? 'Normal' : `${rate}×` }))} />}
           {!isLive && <button type="button" role="switch" aria-checked={sessionAutoplay} className={`player-toggle-setting ${sessionAutoplay ? 'selected' : ''}`} onClick={() => onSessionAutoplayChange(!sessionAutoplay)}><span><strong>{productMessage('playback.setting-autoplay').text}</strong><small>Continue with the next item automatically.</small></span><i aria-hidden="true" /></button>}
@@ -2203,13 +2431,13 @@ function SourceSelectionBridge({ quality, audioStreamId, subtitleId }: { quality
   const serverSubtitleId = subtitleId.startsWith(NATIVE_SUBTITLE_PREFIX) || selectedSubtitleStream?.sourceUrl
     ? NO_SUBTITLE_ID
     : subtitleId;
-  const selectedQualityId = playback?.selectedQualityId || (playback ? defaultPlaybackQuality(playback) : 'original');
+  const selectedQualityKey = playback ? playbackQualitySelectionKey(playback.qualitySelection) : 'automatic';
   const selectedAudioStreamId = playback?.selectedAudioStreamId ?? '';
   const selectedServerSubtitleId = playback?.selectedSubtitleMode && playback.selectedSubtitleMode !== 'off'
     ? playback.selectedSubtitleStreamId || NO_SUBTITLE_ID
     : NO_SUBTITLE_ID;
   const selectionAuthorized = Boolean(playback)
-    && quality === selectedQualityId
+    && quality === selectedQualityKey
     && audioStreamId === selectedAudioStreamId
     && serverSubtitleId === selectedServerSubtitleId;
   useEffect(() => {
@@ -2241,16 +2469,7 @@ function SourceSelectionBridge({ quality, audioStreamId, subtitleId }: { quality
     const resolve = (path: string) => playbackResourceUrl(playback, path, (value) => source.playbackResourceUrl(value), window.location.href);
     let sourceUrl = '';
     try {
-      const burnInSubtitleId = burnInSubtitleIDFor(playback.subtitleStreams, serverSubtitleId);
-      const forceHLS = burnInSubtitleId !== '' || playbackSelectionRequiresHLS(playback, quality, audioStreamId);
-      sourceUrl = playbackSourceFor(playback, resolve, {
-        streamFormat: forceHLS ? 'hls' : undefined,
-        quality,
-        audioStreamId,
-        burnInSubtitleId,
-        textSubtitleId: serverSubtitleId === NO_SUBTITLE_ID ? '' : serverSubtitleId,
-        baseHref: window.location.href,
-      });
+      sourceUrl = playbackSourceFor(playback, resolve);
     } catch {
       fail('source');
       return;
@@ -2588,7 +2807,7 @@ function SourceSelectionBridge({ quality, audioStreamId, subtitleId }: { quality
       if (sourceGenerationRef.current !== sourceGeneration) return;
       const nativeHlsSupport = media.canPlayType('application/vnd.apple.mpegurl') || media.canPlayType('application/x-mpegURL');
       const usesHls = playback.streamFormat === 'hls'
-        || playbackSelectionRequiresHLS(playback, quality, audioStreamId)
+        || playbackSelectionRequiresHLS(playback)
         || burnInSubtitleIDFor(playback.subtitleStreams, serverSubtitleId) !== '';
       const managedHls = usesHls && !shouldUseNativeHLS(nativeHlsSupport, globalThis.navigator?.userAgent ?? '');
       if (managedHls) {

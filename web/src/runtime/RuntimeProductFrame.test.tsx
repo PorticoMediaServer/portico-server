@@ -138,7 +138,7 @@ describe('RuntimeProductFrame', () => {
     const view = render(<MemoryRouter><RuntimeProductFrame><div aria-label="Account recovery" /></RuntimeProductFrame></MemoryRouter>);
 
     expect(view.container.querySelector('.server-card')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Open account menu for Portico Account' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Account menu unavailable' })).toBeDisabled();
     expect(screen.getByText('No server selected')).toBeInTheDocument();
   });
 });

@@ -9,6 +9,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -20,16 +21,17 @@ import (
 )
 
 type coordinatorFakeGeneration struct {
-	name         string
-	events       *[]string
-	eventMu      *sync.Mutex
-	detachDB     *sql.DB
-	detachErr    error
-	shutdownErr  error
-	healthErr    error
-	completeErr  error
-	stopRunners  func() error
-	beginStopped bool
+	name              string
+	events            *[]string
+	eventMu           *sync.Mutex
+	maintenanceStatus int
+	detachDB          *sql.DB
+	detachErr         error
+	shutdownErr       error
+	healthErr         error
+	completeErr       error
+	stopRunners       func() error
+	beginStopped      bool
 }
 
 func (g *coordinatorFakeGeneration) record(event string) {
@@ -65,7 +67,11 @@ func (g *coordinatorFakeGeneration) Handler() http.Handler {
 
 func (g *coordinatorFakeGeneration) RestoreMaintenanceHandler() http.Handler {
 	g.record("maintenance-handler")
-	return http.HandlerFunc(func(http.ResponseWriter, *http.Request) {})
+	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if g.maintenanceStatus != 0 {
+			w.WriteHeader(g.maintenanceStatus)
+		}
+	})
 }
 
 func (g *coordinatorFakeGeneration) BeginShutdown() {
@@ -154,13 +160,14 @@ func newCoordinatorTest(t *testing.T) (*restoreCoordinator, *coordinatorTestStat
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	operation := database.RestoreOperation{
 		Version: database.RestoreOperationVersion, OperationID: "restore-coordinator-test", BackupName: "backup.db",
-		SourcePath:     filepath.Join(cfg.AppDataDir, "backups", "backup.db"),
-		StagedPath:     database.CanonicalRestoreStagedPath(cfg, "restore-coordinator-test", false),
-		ActivePath:     cfg.DatabasePath,
-		SafetyCopyPath: database.CanonicalRestoreSafetyCopyPath(cfg, "restore-coordinator-test"),
-		OldActivePath:  database.CanonicalRestoreOldActivePath(cfg, "restore-coordinator-test"),
-		InstallPath:    database.CanonicalRestoreInstallPath(cfg, "restore-coordinator-test"),
-		Phase:          database.RestorePhaseValidating, State: database.RestorePhaseValidating, Progress: 10,
+		AuthorizationCommitted: true,
+		SourcePath:             filepath.Join(cfg.AppDataDir, "backups", "backup.db"),
+		StagedPath:             database.CanonicalRestoreStagedPath(cfg, "restore-coordinator-test", false),
+		ActivePath:             cfg.DatabasePath,
+		SafetyCopyPath:         database.CanonicalRestoreSafetyCopyPath(cfg, "restore-coordinator-test"),
+		OldActivePath:          database.CanonicalRestoreOldActivePath(cfg, "restore-coordinator-test"),
+		InstallPath:            database.CanonicalRestoreInstallPath(cfg, "restore-coordinator-test"),
+		Phase:                  database.RestorePhaseValidating, State: database.RestorePhaseValidating, Progress: 10,
 		CreatedAt: now, UpdatedAt: now,
 	}
 	if err := database.WriteRestoreOperation(cfg.AppDataDir, operation); err != nil {
@@ -244,6 +251,20 @@ func newCoordinatorTest(t *testing.T) (*restoreCoordinator, *coordinatorTestStat
 	return coordinator, state, cfg, old, operation
 }
 
+func TestRestoreCoordinatorRejectsUncommittedAuthorizationBeforeShutdown(t *testing.T) {
+	coordinator, state, cfg, _, operation := newCoordinatorTest(t)
+	operation.AuthorizationCommitted = false
+	if err := database.WriteRestoreOperation(cfg.AppDataDir, operation); err != nil {
+		t.Fatal(err)
+	}
+	if err := coordinator.replace(context.Background(), operation.OperationID); err == nil {
+		t.Fatal("coordinator accepted an operation whose authorization commit was not confirmed")
+	}
+	if events := state.snapshotEvents(); len(events) != 0 {
+		t.Fatalf("uncommitted authorization changed the active runtime: %v", events)
+	}
+}
+
 func eventIndex(events []string, prefix string) int {
 	for index, event := range events {
 		if event == prefix {
@@ -304,7 +325,7 @@ func TestRestoreCoordinatorOpenTimeoutCooperativeAndNoncooperative(t *testing.T)
 			return nil, ctx.Err()
 		}
 		opened, err := coordinator.openDatabaseWithTimeout(context.Background())
-		if opened != nil || (!errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, errRestoreDatabaseOpenTimedOut)) {
+		if opened != nil || !errors.Is(err, context.DeadlineExceeded) {
 			t.Fatalf("cooperative timeout db=%v err=%v", opened, err)
 		}
 		select {
@@ -318,32 +339,156 @@ func TestRestoreCoordinatorOpenTimeoutCooperativeAndNoncooperative(t *testing.T)
 		coordinator, state, _, _, _ := newCoordinatorTest(t)
 		coordinator.timeout.Open = 15 * time.Millisecond
 		started := make(chan struct{})
+		deadlineObserved := make(chan struct{})
 		release := make(chan struct{})
-		coordinator.deps.OpenDatabase = func(context.Context, config.Config) (*sql.DB, error) {
+		released := false
+		defer func() {
+			if !released {
+				close(release)
+			}
+		}()
+		coordinator.deps.OpenDatabase = func(ctx context.Context, _ config.Config) (*sql.DB, error) {
 			close(started)
+			<-ctx.Done()
+			close(deadlineObserved)
 			<-release
 			return &sql.DB{}, nil
 		}
-		opened, err := coordinator.openDatabaseWithTimeout(context.Background())
-		if opened != nil || !errors.Is(err, errRestoreDatabaseOpenTimedOut) {
-			t.Fatalf("noncooperative timeout db=%v err=%v", opened, err)
+		type openResult struct {
+			db  *sql.DB
+			err error
+		}
+		result := make(chan openResult, 1)
+		go func() {
+			db, err := coordinator.openDatabaseWithTimeout(context.Background())
+			result <- openResult{db: db, err: err}
+		}()
+		<-started
+		<-deadlineObserved
+		select {
+		case outcome := <-result:
+			t.Fatalf("noncooperative open returned before its physical attempt: db=%v err=%v", outcome.db, outcome.err)
+		default:
 		}
 		close(release)
-		deadline := time.After(time.Second)
-		for {
-			state.mu.Lock()
-			closed := len(state.closedDB)
-			state.mu.Unlock()
-			if closed == 1 {
-				break
+		released = true
+		select {
+		case outcome := <-result:
+			if outcome.db != nil || !errors.Is(outcome.err, context.DeadlineExceeded) {
+				t.Fatalf("noncooperative timeout db=%v err=%v", outcome.db, outcome.err)
 			}
-			select {
-			case <-deadline:
-				t.Fatal("late noncooperative open was not closed")
-			case <-time.After(time.Millisecond):
-			}
+		case <-time.After(time.Second):
+			t.Fatal("noncooperative open did not return after its physical attempt")
+		}
+		state.mu.Lock()
+		closed := len(state.closedDB)
+		state.mu.Unlock()
+		if closed != 1 {
+			t.Fatalf("expired noncooperative open closed handles=%d, want 1", closed)
 		}
 	})
+}
+
+func TestRestoreCoordinatorNoncooperativeOpenKeepsMaintenanceUntilRollbackRebuild(t *testing.T) {
+	coordinator, state, _, old, operation := newCoordinatorTest(t)
+	coordinator.timeout.Open = 15 * time.Millisecond
+	old.maintenanceStatus = http.StatusServiceUnavailable
+
+	var handlerMu sync.Mutex
+	var currentHandler http.Handler
+	setHandler := func(handler http.Handler) {
+		handlerMu.Lock()
+		currentHandler = handler
+		handlerMu.Unlock()
+		state.record("handler")
+	}
+	coordinator.deps.SetHandler = setHandler
+	originalActivate := coordinator.deps.Activate
+	coordinator.deps.Activate = func(generation restoreGeneration, db *sql.DB, expose bool) {
+		originalActivate(generation, db, expose)
+		if expose {
+			setHandler(generation.Handler())
+		}
+	}
+
+	openStarted := make(chan struct{})
+	openDeadlineObserved := make(chan struct{})
+	releaseOpen := make(chan struct{})
+	openReleased := false
+	defer func() {
+		if !openReleased {
+			close(releaseOpen)
+		}
+	}()
+	openCalls := 0
+	coordinator.deps.OpenDatabase = func(ctx context.Context, _ config.Config) (*sql.DB, error) {
+		state.mu.Lock()
+		openCalls++
+		call := openCalls
+		state.mu.Unlock()
+		state.record("open")
+		if call == 1 {
+			close(openStarted)
+			<-ctx.Done()
+			close(openDeadlineObserved)
+			<-releaseOpen
+		}
+		return &sql.DB{}, nil
+	}
+
+	replaceDone := make(chan error, 1)
+	go func() { replaceDone <- coordinator.replace(context.Background(), operation.OperationID) }()
+	<-openStarted
+	<-openDeadlineObserved
+	select {
+	case err := <-replaceDone:
+		t.Fatalf("replacement returned while the physical database open remained active: %v", err)
+	default:
+	}
+
+	handlerMu.Lock()
+	maintenance := currentHandler
+	handlerMu.Unlock()
+	if maintenance == nil {
+		t.Fatal("replacement did not publish the maintenance handler before opening the restored database")
+	}
+	recorder := httptest.NewRecorder()
+	maintenance.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/backups/restore/"+operation.OperationID, nil))
+	if recorder.Code != http.StatusServiceUnavailable {
+		t.Fatalf("handler during blocked open status=%d, want %d", recorder.Code, http.StatusServiceUnavailable)
+	}
+	state.mu.Lock()
+	rolledBackWhileOpen, activatedWhileOpen := state.rolledBack, state.activated
+	state.mu.Unlock()
+	if rolledBackWhileOpen != 0 || activatedWhileOpen != 0 {
+		t.Fatalf("blocked open published transition: rolledBack=%d activated=%d", rolledBackWhileOpen, activatedWhileOpen)
+	}
+
+	close(releaseOpen)
+	openReleased = true
+	select {
+	case err := <-replaceDone:
+		if err != nil {
+			t.Fatalf("replacement after synchronous timeout rollback: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("replacement did not complete after the physical database open returned")
+	}
+	state.mu.Lock()
+	rolledBack, activated, calls := state.rolledBack, state.activated, openCalls
+	state.mu.Unlock()
+	if rolledBack != 1 || activated != 1 || calls != 2 {
+		t.Fatalf("replacement recovery rolledBack=%d activated=%d openCalls=%d, want 1/1/2", rolledBack, activated, calls)
+	}
+
+	handlerMu.Lock()
+	active := currentHandler
+	handlerMu.Unlock()
+	recorder = httptest.NewRecorder()
+	active.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/home", nil))
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("rebuilt generation handler status=%d, want %d", recorder.Code, http.StatusOK)
+	}
 }
 
 func TestRestoreCoordinatorClosesDatabaseReturnedWithOpenError(t *testing.T) {
@@ -358,6 +503,42 @@ func TestRestoreCoordinatorClosesDatabaseReturnedWithOpenError(t *testing.T) {
 	}
 	if len(state.closedDB) != 1 || state.closedDB[0] != opened {
 		t.Fatalf("open-error handle close=%v, want %p", state.closedDB, opened)
+	}
+}
+
+func TestRestoreCoordinatorExpiredOpenCloseFailureDoesNotRollback(t *testing.T) {
+	coordinator, state, cfg, _, operation := newCoordinatorTest(t)
+	coordinator.timeout.Open = 15 * time.Millisecond
+	lateDB := &sql.DB{}
+	coordinator.deps.OpenDatabase = func(ctx context.Context, _ config.Config) (*sql.DB, error) {
+		<-ctx.Done()
+		return lateDB, nil
+	}
+	originalClose := coordinator.deps.CloseDatabase
+	coordinator.deps.CloseDatabase = func(db *sql.DB) error {
+		if db == lateDB {
+			state.record("late-close-failed")
+			return errors.New("late handle close refused")
+		}
+		return originalClose(db)
+	}
+
+	err := coordinator.replace(context.Background(), operation.OperationID)
+	if !errors.Is(err, errRestoreDatabaseHandleCloseUnproven) {
+		t.Fatalf("expired open close error=%v, want unproven-handle classification", err)
+	}
+	state.mu.Lock()
+	installed, rolledBack, activated := state.installed, state.rolledBack, state.activated
+	state.mu.Unlock()
+	if installed != 1 || rolledBack != 0 || activated != 0 {
+		t.Fatalf("unproven late close crossed filesystem/runtime boundary: installed=%d rolledBack=%d activated=%d", installed, rolledBack, activated)
+	}
+	latest, readErr := database.ReadRestoreOperation(cfg.AppDataDir)
+	if readErr != nil {
+		t.Fatalf("read recovery marker: %v", readErr)
+	}
+	if latest.State != database.RestoreStateRecoveryNeeded {
+		t.Fatalf("unproven late close state=%q, want recovery-required", latest.State)
 	}
 }
 

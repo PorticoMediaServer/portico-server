@@ -34,23 +34,24 @@ import (
 )
 
 const (
-	remoteAccessSettingsKey        = "remoteAccess"
-	remoteAccessClaimKey           = "remoteAccessClaim"
-	remoteAccessClaimTokenKey      = "remoteAccessClaimToken"
-	remoteAccessClaimReceiptKey    = "remoteAccessClaimReceipt"
-	remoteAccessClaimOperationKey  = "remoteAccessClaimOperation"
-	remoteAccessClaimActivationKey = "remoteAccessClaimActivation"
-	remoteAccessCredentialKey      = "remoteAccessCredential"
-	remoteAccessPolicyStateKey     = "remoteAccessPolicyState"
-	defaultHostedBaseURL           = "https://api.getportico.tv"
-	defaultRemotePublicPort        = 32500
+	remoteAccessSettingsKey                   = "remoteAccess"
+	remoteAccessClaimKey                      = "remoteAccessClaim"
+	remoteAccessClaimTokenKey                 = "remoteAccessClaimToken"
+	remoteAccessClaimReceiptKey               = "remoteAccessClaimReceipt"
+	remoteAccessClaimOperationKey             = "remoteAccessClaimOperation"
+	remoteAccessClaimActivationKey            = "remoteAccessClaimActivation"
+	remoteAccessCredentialKey                 = "remoteAccessCredential"
+	remoteAccessPolicyStateKey                = "remoteAccessPolicyState"
+	remoteAccessCertificateMaintenanceJobType = "remote_access_certificate_maintenance"
+	defaultHostedBaseURL                      = "https://api.getportico.tv"
+	defaultRemotePublicPort                   = 32500
 )
 
 var (
-	errPorticoIdentityLinkRequired        = errors.New("portico_identity_link_required")
-	errPorticoIdentityConflict            = errors.New("portico_identity_conflict")
-	remoteAccessCertificateProvisioningMu sync.Mutex
-	remoteAccessClaimPollStates           sync.Map
+	errPorticoIdentityLinkRequired                   = errors.New("portico_identity_link_required")
+	errPorticoIdentityConflict                       = errors.New("portico_identity_conflict")
+	errRemoteAccessCertificateMaintenanceUnavailable = errors.New("remote access certificate maintenance is unavailable")
+	remoteAccessClaimPollStates                      sync.Map
 )
 
 type remoteAccessClaimActivation struct {
@@ -123,6 +124,13 @@ type RemoteAccessStatus struct {
 	Claim                      *RemoteAccessClaim   `json:"claim,omitempty"`
 	PorticoConnected           bool                 `json:"porticoConnected"`
 	GeneratedAt                string               `json:"generatedAt"`
+}
+
+type RemoteAccessCertificateRenewResponse struct {
+	OK       bool `json:"ok"`
+	Queued   bool `json:"queued"`
+	Existing bool `json:"existing"`
+	Job      Job  `json:"job"`
 }
 
 type RemoteConnectivity struct {
@@ -744,18 +752,36 @@ func (s *Server) handleRemoteAccessUnclaim(w http.ResponseWriter, r *http.Reques
 	settings.AssignedHostname = ""
 	settings.CertificateStatus = "not_requested"
 	settings.LastHeartbeatAt = ""
-	_ = s.deleteSetting(remoteAccessClaimKey)
-	_ = s.deleteSetting(remoteAccessClaimTokenKey)
-	_ = s.deleteSetting(remoteAccessClaimOperationKey)
-	_ = s.deleteSetting(remoteAccessClaimReceiptKey)
-	_ = s.deleteSetting(remoteAccessCredentialKey)
-	if err := s.saveRemoteAccessSettings(settings); err != nil {
+	if err := s.forgetRemoteAccessClaimContext(r.Context(), settings); err != nil {
 		writeError(w, http.StatusInternalServerError, "remote_access_failed", "Unable to save remote access settings.")
 		return
 	}
 	s.recordAudit(r, user, "remote_access.unclaimed", "remote_access", previousServerID, "critical", nil)
 	status, _ := s.remoteAccessStatus()
 	writeJSON(w, http.StatusOK, status)
+}
+
+func (s *Server) forgetRemoteAccessClaimContext(ctx context.Context, settings RemoteAccessSettings) error {
+	encoded, err := json.Marshal(settings)
+	if err != nil {
+		return err
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	return s.withSecurityFenceTxTagged(ctx, []string{"remote-access", "settings"}, func(tx *sql.Tx) error {
+		for _, key := range []string{
+			remoteAccessClaimKey,
+			remoteAccessClaimTokenKey,
+			remoteAccessClaimOperationKey,
+			remoteAccessClaimReceiptKey,
+			remoteAccessCredentialKey,
+		} {
+			if _, err := tx.ExecContext(ctx, `DELETE FROM settings WHERE key = ?`, key); err != nil {
+				return err
+			}
+		}
+		_, err := tx.ExecContext(ctx, `INSERT INTO settings (key, value_json, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at = excluded.updated_at`, remoteAccessSettingsKey, string(encoded), now)
+		return err
+	})
 }
 
 func (s *Server) handleRemoteAccessTestDirect(w http.ResponseWriter, r *http.Request, user User) {
@@ -816,13 +842,13 @@ func (s *Server) handleRemoteAccessCertificateRenew(w http.ResponseWriter, r *ht
 		writeError(w, http.StatusConflict, "server_not_claimed", "Remote access must be claimed before requesting certificates.")
 		return
 	}
-	if _, err := s.ensureRemoteAccessCertificateFreshWithOptions(r.Context(), settings, remoteAccessCertificateOptions{Force: true}); err != nil {
-		writeError(w, http.StatusBadGateway, "certificate_renew_failed", "Unable to renew certificate through Portico.")
+	job, existing, err := s.enqueueRemoteAccessCertificateMaintenance("manual", true)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "certificate_renew_failed", "Unable to queue certificate renewal through Portico.")
 		return
 	}
-	s.recordAudit(r, user, "remote_access.certificate_renewed", "remote_access", settings.ServerID, "warn", nil)
-	status, _ := s.remoteAccessStatus()
-	writeJSON(w, http.StatusOK, status)
+	s.recordAudit(r, user, "remote_access.certificate_renewal_queued", "remote_access", settings.ServerID, "warn", map[string]string{"job": job.ID})
+	writeJSON(w, http.StatusAccepted, RemoteAccessCertificateRenewResponse{OK: true, Queued: true, Existing: existing, Job: job})
 }
 
 func (s *Server) handleRemoteAccessLocalRoutes(w http.ResponseWriter, r *http.Request, user User) {
@@ -1019,18 +1045,6 @@ func (s *Server) remoteAccessStatus() (RemoteAccessStatus, error) {
 	settings, err := s.remoteAccessSettings()
 	if err != nil {
 		return RemoteAccessStatus{}, err
-	}
-	if settings.CustomCertificateEnabled {
-		previousStatus := settings.CertificateStatus
-		previousExpiry := settings.CertificateExpiresAt
-		previousError := settings.CertificateRenewalError
-		if err := s.refreshCustomCertificateStatus(&settings); err != nil {
-			settings.CertificateStatus = "custom_error"
-			settings.CertificateRenewalError = err.Error()
-		}
-		if settings.CertificateStatus != previousStatus || settings.CertificateExpiresAt != previousExpiry || settings.CertificateRenewalError != previousError {
-			_ = s.saveRemoteAccessSettings(settings)
-		}
 	}
 	identity, err := s.loadOrCreateServerIdentity()
 	if err != nil {
@@ -1345,7 +1359,7 @@ func (s *Server) finishRemoteAccessClaimActivation(ctx context.Context, claim Re
 		}
 	}
 	_ = s.linkClaimingOwnerProfile(claim)
-	s.startRemoteAccessPostClaimProvisioning(settings)
+	s.queueRemoteAccessPostClaimCertificateMaintenance(settings)
 }
 
 func (s *Server) acknowledgeHostedClaimResult(ctx context.Context, claim RemoteAccessClaim, settings RemoteAccessSettings) error {
@@ -1500,27 +1514,13 @@ func (s *Server) retireRemoteAccessClaim() error {
 	return nil
 }
 
-func (s *Server) startRemoteAccessPostClaimProvisioning(settings RemoteAccessSettings) {
-	if s.backgroundCtx == nil || !settings.Enabled || settings.ServerID == "" {
+func (s *Server) queueRemoteAccessPostClaimCertificateMaintenance(settings RemoteAccessSettings) {
+	if !settings.Enabled || settings.ServerID == "" {
 		return
 	}
-	s.startOwnedAsync("remote-access-post-claim", func(ctx context.Context) {
-		if err := s.sendRemoteAccessHeartbeatWithOptions(ctx, settings, remoteAccessHeartbeatOptions{}); err != nil {
-			s.recordLog("warn", "Remote access heartbeat after claim failed", map[string]string{"error": err.Error()})
-		} else if refreshed, err := s.remoteAccessSettings(); err == nil {
-			settings = refreshed
-		}
-		updated, err := s.ensureRemoteAccessCertificateFresh(ctx, settings)
-		if err != nil {
-			s.recordLog("warn", "Remote access certificate provisioning after claim failed", map[string]string{"error": err.Error()})
-			return
-		}
-		settings = updated
-		s.configureRemoteTLS(settings)
-		if err := s.sendRemoteAccessHeartbeatWithOptions(ctx, settings, remoteAccessHeartbeatOptions{SyncPolicy: true}); err != nil {
-			s.recordLog("warn", "Remote access certificate publication after claim failed", map[string]string{"error": err.Error()})
-		}
-	})
+	if _, _, err := s.enqueueRemoteAccessCertificateMaintenance("post_claim", false); err != nil {
+		s.recordLog("warn", "Remote access certificate provisioning queue after claim failed", map[string]string{"error": err.Error()})
+	}
 }
 
 func (s *Server) finishPorticoSetupActivation(ctx context.Context, status RemoteAccessStatus) error {
@@ -1650,10 +1650,6 @@ func (s *Server) sendRemoteAccessHeartbeat(ctx context.Context, settings RemoteA
 type remoteAccessHeartbeatOptions struct {
 	SyncPolicy     bool
 	SuppressRepair bool
-}
-
-type remoteAccessCertificateOptions struct {
-	Force bool
 }
 
 type remoteAccessRepairSignal struct {
@@ -2212,7 +2208,7 @@ func (s *Server) applyRemotePolicySnapshotAtomically(members []RemoteAccessMembe
 			}
 		}
 		now := time.Now().UTC()
-		err = s.withBackgroundTxTagged(context.Background(), []string{"remote-access", "portico-members", "users", "profiles", "account", "settings"}, func(tx *sql.Tx) error {
+		err = s.withSecurityFenceTxTagged(context.Background(), []string{"remote-access", "portico-members", "users", "profiles", "account", "settings"}, func(tx *sql.Tx) error {
 			if err := s.replaceRemoteAccessMembersFencedTx(tx, members, fenced, now.Format(time.RFC3339)); err != nil {
 				return err
 			}
@@ -2257,7 +2253,7 @@ func (s *Server) remoteDeletedAccountIDsContext(ctx context.Context, tombstones 
 }
 
 func (s *Server) applyRemoteDeletedAccountTombstonesFenced(tombstones []RemoteDeletedAccountTombstone, fenced map[string]bool) error {
-	return s.withBackgroundTxTagged(context.Background(), []string{"remote-access", "portico-members", "users", "profiles", "account"}, func(tx *sql.Tx) error {
+	return s.withSecurityFenceTxTagged(context.Background(), []string{"remote-access", "portico-members", "users", "profiles", "account"}, func(tx *sql.Tx) error {
 		return s.applyRemoteDeletedAccountTombstonesFencedTx(tx, tombstones, fenced)
 	})
 }
@@ -2630,11 +2626,7 @@ func (s *Server) writeRemoteAccessCertificateFiles(keyPEM, chainPEM []byte) erro
 	return s.publishRemoteCertificatePair(keyPEM, chainPEM)
 }
 
-func (s *Server) ensureRemoteAccessCertificateFresh(ctx context.Context, settings RemoteAccessSettings) (RemoteAccessSettings, error) {
-	return s.ensureRemoteAccessCertificateFreshWithOptions(ctx, settings, remoteAccessCertificateOptions{})
-}
-
-func (s *Server) ensureRemoteAccessCertificateFreshWithOptions(ctx context.Context, settings RemoteAccessSettings, options remoteAccessCertificateOptions) (RemoteAccessSettings, error) {
+func (s *Server) performRemoteAccessCertificateMaintenance(ctx context.Context, settings RemoteAccessSettings, force bool) (RemoteAccessSettings, error) {
 	if settings.ServerID == "" || settings.AssignedHostname == "" || s.secretSetting(remoteAccessCredentialKey) == "" {
 		return settings, nil
 	}
@@ -2646,11 +2638,9 @@ func (s *Server) ensureRemoteAccessCertificateFreshWithOptions(ctx context.Conte
 		_ = s.saveRemoteAccessSettings(settings)
 		return settings, nil
 	}
-	remoteAccessCertificateProvisioningMu.Lock()
-	defer remoteAccessCertificateProvisioningMu.Unlock()
-	// Status polling, listener repair, startup repair, and the heartbeat manager
-	// can all notice the same missing certificate. Re-read state after entering
-	// the singleflight boundary so queued workers observe the completed install.
+	// The durable job active key and atomic queued-to-running claim are the only
+	// concurrency authority. Re-read at execution so restart recovery and
+	// deduplicated triggers never publish a stale claim generation.
 	if current, loadErr := s.remoteAccessSettings(); loadErr == nil {
 		settings = current
 	}
@@ -2660,7 +2650,7 @@ func (s *Server) ensureRemoteAccessCertificateFreshWithOptions(ctx context.Conte
 		_ = s.saveRemoteAccessSettings(settings)
 		return settings, err
 	}
-	if !due && !options.Force {
+	if !due && !force {
 		// A crash after atomically installing the certificate but before removing
 		// the staging record is safe to finish here: renewalDue already proved the
 		// installed chain is current and covers the assigned namespace.
@@ -2673,6 +2663,165 @@ func (s *Server) ensureRemoteAccessCertificateFreshWithOptions(ctx context.Conte
 		return settings, err
 	}
 	return s.remoteAccessSettings()
+}
+
+func remoteAccessCertificateStateRevision(settings RemoteAccessSettings) string {
+	material := strings.Join([]string{
+		settings.CertificateStatus,
+		settings.CertificateExpiresAt,
+		settings.LastCertificateRenewalAt,
+		strconv.FormatBool(settings.CustomCertificateEnabled),
+	}, "\n")
+	digest := sha256.Sum256([]byte(material))
+	return hex.EncodeToString(digest[:])
+}
+
+func (s *Server) enqueueRemoteAccessCertificateMaintenance(trigger string, force bool) (Job, bool, error) {
+	settings, err := s.remoteAccessSettings()
+	if err != nil {
+		return Job{}, false, err
+	}
+	trigger = strings.ToLower(strings.TrimSpace(trigger))
+	if trigger == "" {
+		trigger = "scheduled"
+	}
+	credentialAvailable := strings.TrimSpace(s.secretSetting(remoteAccessCredentialKey)) != ""
+	identityAvailable := settings.ServerID != "" && settings.AssignedHostname != "" && credentialAvailable
+	automatic := trigger != "manual"
+	if !identityAvailable || (automatic && (!settings.Enabled || settings.ClaimStatus != "claimed")) {
+		return Job{}, false, errRemoteAccessCertificateMaintenanceUnavailable
+	}
+	metadata := map[string]string{
+		"trigger":             trigger,
+		"certificateBaseline": remoteAccessCertificateStateRevision(settings),
+	}
+	if force {
+		metadata["force"] = "true"
+	}
+	message := "Remote access certificate maintenance queued."
+	if force {
+		message = "Remote access certificate renewal queued."
+	}
+	return s.createJobForWithMetadataResult(
+		remoteAccessCertificateMaintenanceJobType,
+		message,
+		"remote_access",
+		"certificate",
+		metadata,
+	)
+}
+
+func (s *Server) queueScheduledRemoteAccessCertificateMaintenance() {
+	const intervalHours = 6
+	if s.jobAlreadyQueuedWithin(remoteAccessCertificateMaintenanceJobType, "remote_access", "certificate", intervalHours) {
+		return
+	}
+	if _, _, err := s.enqueueRemoteAccessCertificateMaintenance("scheduled", false); err != nil && !errors.Is(err, errRemoteAccessCertificateMaintenanceUnavailable) {
+		s.log.Warn("scheduled remote access certificate queue failed", "error", err)
+	}
+}
+
+func (s *Server) queueStartupRemoteAccessCertificateMaintenance() {
+	if _, _, err := s.enqueueRemoteAccessCertificateMaintenance("startup", false); err != nil && !errors.Is(err, errRemoteAccessCertificateMaintenanceUnavailable) {
+		s.log.Warn("remote access certificate startup queue failed", "error", err)
+	}
+}
+
+func (s *Server) runRemoteAccessCertificateMaintenanceJob(ctx context.Context, job Job) {
+	baseline := ""
+	for {
+		if current, err := s.getJob(job.ID); err == nil {
+			job = current
+		}
+		settings, err := s.remoteAccessSettings()
+		if err != nil {
+			s.failRemoteAccessCertificateMaintenanceJob(ctx, job.ID, err)
+			return
+		}
+		trigger := firstNonEmpty(job.Metadata["latestTrigger"], job.Metadata["trigger"])
+		manual := trigger == "manual"
+		credentialAvailable := strings.TrimSpace(s.secretSetting(remoteAccessCredentialKey)) != ""
+		identityAvailable := settings.ServerID != "" && settings.AssignedHostname != "" && credentialAvailable
+		if !identityAvailable || (!manual && (!settings.Enabled || settings.ClaimStatus != "claimed")) {
+			_ = s.setJobMessage(job.ID, "complete", 100, "Certificate maintenance is no longer required for the current remote access state.")
+			return
+		}
+		_ = s.setJobMessage(job.ID, "running", max(1, job.Progress), "Checking the remote access certificate.")
+		if baseline == "" {
+			baseline = strings.TrimSpace(job.Metadata["certificateBaseline"])
+			if baseline == "" {
+				baseline = remoteAccessCertificateStateRevision(settings)
+			}
+		}
+		forced := strings.EqualFold(job.Metadata["force"], "true")
+		if hook := s.remoteAccessCertificateMetadataHook; hook != nil {
+			hook(job)
+		}
+		updated, err := s.performRemoteAccessCertificateMaintenance(ctx, settings, forced)
+		if err != nil {
+			s.failRemoteAccessCertificateMaintenanceJob(ctx, job.ID, err)
+			return
+		}
+		s.configureRemoteTLS(updated)
+		changed := remoteAccessCertificateStateRevision(updated) != baseline
+		if changed {
+			_ = s.setJobMessage(job.ID, "running", max(1, job.Progress), "Publishing committed certificate state to Hosted Services.")
+			if err := s.sendRemoteAccessHeartbeatWithOptions(ctx, updated, remoteAccessHeartbeatOptions{SyncPolicy: false}); err != nil {
+				s.failRemoteAccessCertificateMaintenanceJob(ctx, job.ID, err)
+				return
+			}
+		}
+		message := "Remote access certificate is current."
+		if changed {
+			message = "Remote access certificate maintenance completed and published."
+		}
+		pendingForce, err := s.completeRemoteAccessCertificateMaintenanceJob(job.ID, message, forced || changed)
+		if err != nil {
+			s.failRemoteAccessCertificateMaintenanceJob(ctx, job.ID, err)
+			return
+		}
+		if !pendingForce {
+			return
+		}
+	}
+}
+
+// Completion shares the enqueue mutex with active-key admission. A manual
+// force promotion either becomes visible before this check and is consumed by
+// this worker, or observes the terminal row and creates the next singleton
+// job. It can never be acknowledged into the gap between a stale metadata read
+// and completion.
+func (s *Server) completeRemoteAccessCertificateMaintenanceJob(jobID, message string, forceSatisfied bool) (bool, error) {
+	durableJobEnqueueMu.Lock()
+	defer durableJobEnqueueMu.Unlock()
+	job, err := s.getJob(jobID)
+	if err != nil {
+		return false, err
+	}
+	if forceSatisfied && strings.EqualFold(job.Metadata["force"], "true") {
+		job.Metadata["force"] = "false"
+		encoded, err := json.Marshal(job.Metadata)
+		if err != nil {
+			return false, err
+		}
+		if _, err := s.execBackgroundWrite(context.Background(), `UPDATE jobs SET metadata_json = ?, updated_at = ? WHERE id = ? AND status = 'running' AND leased_by = ?`, string(encoded), time.Now().UTC().Format(time.RFC3339Nano), jobID, s.jobLeaseOwner(jobID)); err != nil {
+			return false, err
+		}
+	}
+	if !forceSatisfied && strings.EqualFold(job.Metadata["force"], "true") {
+		return true, nil
+	}
+	return false, s.setJobMessage(jobID, "complete", 100, message)
+}
+
+func (s *Server) failRemoteAccessCertificateMaintenanceJob(ctx context.Context, jobID string, cause error) {
+	if cause == nil || (ctx != nil && ctx.Err() != nil) {
+		return
+	}
+	if s.deferMaintenanceJob(jobID, cause) {
+		return
+	}
+	_ = s.setJobFailure(jobID, "remote_access_certificate_failed", "Remote access certificate maintenance failed: "+cause.Error())
 }
 
 func (s *Server) remoteAccessCertificateRenewalDue(settings RemoteAccessSettings, now time.Time) (bool, error) {
@@ -3039,38 +3188,6 @@ func (s *Server) runRemoteAccessHeartbeat(ctx context.Context) {
 	}
 }
 
-// runRemoteAccessCertificateMaintenance owns proactive certificate renewal.
-// Heartbeat lease publication must never wait behind certificate I/O or its
-// process-wide singleflight: either operation can be slow independently, and
-// a blocked renewal must not make an otherwise healthy server appear offline.
-func (s *Server) runRemoteAccessCertificateMaintenance(ctx context.Context) {
-	timer := time.NewTimer(0)
-	defer timer.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-timer.C:
-		}
-		settings, err := s.remoteAccessSettings()
-		if err == nil && settings.Enabled && settings.ClaimStatus == "claimed" && settings.ServerID != "" {
-			previousStatus, previousExpiry := settings.CertificateStatus, settings.CertificateExpiresAt
-			if updated, renewErr := s.ensureRemoteAccessCertificateFresh(ctx, settings); renewErr != nil {
-				s.recordLog("warn", "Remote access certificate renewal failed", map[string]string{"error": renewErr.Error()})
-			} else {
-				settings = updated
-				s.configureRemoteTLS(settings)
-				if settings.CertificateStatus != previousStatus || settings.CertificateExpiresAt != previousExpiry {
-					if publishErr := s.sendRemoteAccessHeartbeatWithOptions(ctx, settings, remoteAccessHeartbeatOptions{SyncPolicy: false}); publishErr != nil {
-						s.recordLog("warn", "Remote access certificate publication heartbeat failed", map[string]string{"error": publishErr.Error()})
-					}
-				}
-			}
-		}
-		timer.Reset(6 * time.Hour)
-	}
-}
-
 func (s *Server) remoteAccessStartupCohortWindow() time.Duration {
 	if configured := time.Duration(s.remoteAccessStartupCohortWindowNanos.Load()); configured > 0 {
 		return configured
@@ -3282,14 +3399,8 @@ func (s *Server) handleRemoteAccessRepairSignal(ctx context.Context, settings Re
 		}
 	}
 	if remoteAccessRepairSignalNeedsCertificateRenewal(signal.Status, signal.Reason) {
-		updated, certErr := s.ensureRemoteAccessCertificateFreshWithOptions(ctx, settings, remoteAccessCertificateOptions{Force: true})
-		if certErr != nil {
-			s.recordLog("warn", "Remote access repair signal certificate renewal failed", map[string]string{"error": certErr.Error()})
-			if refreshed, loadErr := s.remoteAccessSettings(); loadErr == nil {
-				settings = refreshed
-			}
-		} else {
-			settings = updated
+		if _, _, queueErr := s.enqueueRemoteAccessCertificateMaintenance("hosted_repair", true); queueErr != nil {
+			s.recordLog("warn", "Remote access repair signal certificate renewal queue failed", map[string]string{"error": queueErr.Error()})
 		}
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
@@ -3987,7 +4098,7 @@ func (s *Server) remoteAccountsRevokedByMemberSnapshotContext(ctx context.Contex
 
 func (s *Server) replaceRemoteAccessMembersFenced(members []RemoteAccessMember, fenced map[string]bool) error {
 	now := time.Now().UTC().Format(time.RFC3339)
-	return s.withBackgroundTxTagged(context.Background(), []string{"remote-access", "portico-members", "users", "profiles", "account"}, func(tx *sql.Tx) error {
+	return s.withSecurityFenceTxTagged(context.Background(), []string{"remote-access", "portico-members", "users", "profiles", "account"}, func(tx *sql.Tx) error {
 		return s.replaceRemoteAccessMembersFencedTx(tx, members, fenced, now)
 	})
 }
@@ -4739,7 +4850,7 @@ func (s *Server) resetServerIdentity(ctx context.Context) error {
 		_ = os.Remove(stagePath)
 		return err
 	}
-	if err := s.withUserTx(ctx, func(tx *sql.Tx) error {
+	if err := s.withSecurityFenceTxTagged(ctx, []string{"identity", "remote-access", "settings"}, func(tx *sql.Tx) error {
 		if _, err := tx.Exec(`INSERT INTO settings (key, value_json, updated_at) VALUES ('identity', ?, ?) ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at = excluded.updated_at`, string(identityValue), now); err != nil {
 			return err
 		}

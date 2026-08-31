@@ -28,10 +28,11 @@ const (
 var errDownloadGrantDenied = errors.New("download grant is invalid, expired, revoked, or out of scope")
 
 type MediaDownloadGrantResponse struct {
-	DownloadURL string `json:"downloadUrl"`
-	GrantToken  string `json:"grantToken,omitempty"`
-	ExpiresAt   string `json:"expiresAt"`
-	Profile     string `json:"profile"`
+	DownloadURL          string                               `json:"downloadUrl"`
+	GrantToken           string                               `json:"grantToken,omitempty"`
+	ExpiresAt            string                               `json:"expiresAt"`
+	Profile              string                               `json:"profile"`
+	AuthorizationReceipt *OfflineDownloadAuthorizationReceipt `json:"authorizationReceipt,omitempty"`
 }
 
 type mediaDownloadGrantTarget struct {
@@ -89,7 +90,10 @@ func (s *Server) issueMediaDownloadGrantForPreparation(ctx context.Context, user
 	expires := now.Add(downloadGrantTTL)
 	token := "ptc_dg_" + randomToken()
 	grantID := randomID("dgr")
-	authorizationRevision := s.authorizationRevisionForUserContext(ctx, user)
+	authorizationRevision, err := s.authorizationRevisionForUserContextStrict(ctx, user)
+	if err != nil {
+		return MediaDownloadGrantResponse{}, mediaDownloadGrantTarget{}, MediaItem{}, err
+	}
 	err = s.withUserTxTagged(ctx, nil, func(tx *sql.Tx) error {
 		if _, err := tx.ExecContext(ctx, `
 			DELETE FROM media_download_grants

@@ -309,7 +309,7 @@ func TestMediaHLSSegmentStartSecondsTracksRequestedSegment(t *testing.T) {
 
 func TestPlannedVODSegmentsReusePublishedFullTimelineProducer(t *testing.T) {
 	server := &Server{transcodes: map[string]*transcodeSession{}}
-	binding := playbackExecutionBinding{Digest: "plan", Quality: "original", Generation: 1}
+	binding := testPlaybackExecutionPlan(t, nil)
 	identity := plannedTranscodeIdentity{UserID: "user", ProfileID: "profile", PlaybackSessionID: "session", AuthorizationRevision: "revision", PlaybackGeneration: 1, GrantTokenHash: "grant"}
 	key := plannedTranscodeSessionKey("movie", binding, identity, 0)
 	running := &transcodeSession{key: key, done: make(chan struct{}), updateCh: make(chan struct{}), admissionActive: true}
@@ -456,7 +456,7 @@ func authorizeTextSubtitleRequestForTest(t *testing.T, server *Server, user User
 	t.Helper()
 	decision := playbackDecisionWithTestPlan(t, PlaybackDecision{Mode: "transcode_required", RequiresTranscode: true}, item.ID, "text", subtitleID)
 	sessionID := randomID("play_test_subtitle")
-	if err := server.createPlaybackSession(httptest.NewRequest(http.MethodPost, "/api/playback-sessions", nil), user, item, sessionID, decision, PlaybackClientProfile{SupportsHLS: true}, PlaybackIntent{}, "", "", false, "", PlaybackSourceContext{}, "off"); err != nil {
+	if err := server.createPlaybackSession(httptest.NewRequest(http.MethodPost, "/api/playback-sessions", nil), user, item, "qentry_"+sessionID, sessionID, decision, PlaybackClientProfile{SupportsHLS: true}, PlaybackIntent{}, "", "", false, "", PlaybackSourceContext{}, "off"); err != nil {
 		t.Fatalf("create planned subtitle session: %v", err)
 	}
 	grant, err := server.issueMediaGrantForPlayback(context.Background(), user, sessionID, item, decision, ResolvedPlaybackPolicy{}, true, true)
@@ -1054,17 +1054,10 @@ func TestMediaHLSRouteServesNormalizedDirectStreamManifest(t *testing.T) {
 		Timeline: playbackplan.Timeline{Mode: "vod", DurationUS: facts.DurationUS, Generation: 1},
 		Subtitle: playbackplan.SubtitleDecision{Action: playbackplan.Drop},
 	}
-	plan.Digest, _ = plan.ComputeDigest()
-	planJSON, _ := json.Marshal(plan)
-	binding := playbackExecutionBinding{
-		SchemaVersion: 1, SourceRevision: facts.Source.Revision, MediaFactsDigest: factsDigest,
-		CapabilityEvidenceID: plan.CapabilityEvidenceID, Generation: 1, Mode: string(plan.Mode),
-		Protocol: "hls", Container: "mpegts", Quality: "original", AudioMode: "auto",
-		SubtitleMode: "off", DirectStream: true, X264Preset: "veryfast", Plan: planJSON,
-	}
-	if err := binding.seal(); err != nil {
-		t.Fatalf("seal playback facts fixture: %v", err)
-	}
+	binding := testPlaybackExecutionPlan(t, func(execution *playbackExecutionPlan) {
+		execution.Plan = plan
+		execution.MediaFactsDigest = factsDigest
+	})
 	bindingJSON, _ := json.Marshal(binding)
 	const playbackSessionID = "play_route_shifted_pts"
 	if _, err := server.db.Exec(`
@@ -1073,7 +1066,7 @@ func TestMediaHLSRouteServesNormalizedDirectStreamManifest(t *testing.T) {
 			plan_schema_version, plan_digest, plan_json, source_revision, capability_evidence_id, playback_generation
 		) VALUES (?, ?, ?, 'movie_route_shifted_pts', 'movie', 'Shifted PTS', ?, ?, 'playing', ?, ?, ?, ?, ?, ?)`,
 		playbackSessionID, accountIDForUser(user), viewerProfileID(user), now, now,
-		binding.SchemaVersion, binding.Digest, string(bindingJSON), binding.SourceRevision, binding.CapabilityEvidenceID, binding.Generation); err != nil {
+		binding.SchemaVersion, binding.Digest, string(bindingJSON), binding.Plan.SourceRevision, binding.Plan.CapabilityEvidenceID, binding.generation()); err != nil {
 		t.Fatalf("insert planned playback session: %v", err)
 	}
 	grant, err := server.issueMediaGrant(context.Background(), user, playbackSessionID, "media", "movie_route_shifted_pts")
@@ -1909,50 +1902,6 @@ func TestHardwareEncodingArgsAvoidX264OnlyOptions(t *testing.T) {
 	}
 }
 
-func TestDirectStreamRemuxPolicyMarksCompatibleVideoForDirectStream(t *testing.T) {
-	server := newScannerTestServer(t)
-	decision := PlaybackDecision{
-		Mode:              "transcode_required",
-		Reason:            "container is not in the client profile",
-		RequiresTranscode: true,
-	}
-	item := MediaItem{Streams: []Stream{{Kind: "video", Codec: "h264", Width: 1920, Height: 1080}, {Kind: "audio", Codec: "eac3"}}}
-	next := server.applyDirectStreamRemuxPolicy(decision, item, PlaybackClientProfile{SupportsHLS: true})
-	if next.RequiresTranscode || !next.RequiresRemux || next.Mode != "direct_stream" || !strings.Contains(next.Reason, "compatible video") {
-		t.Fatalf("expected direct stream decision, got %+v", next)
-	}
-}
-
-func TestDirectStreamRemuxPolicyAllowsAudioOnlyTranscode(t *testing.T) {
-	server := newScannerTestServer(t)
-	decision := PlaybackDecision{
-		Mode:              "transcode_required",
-		Reason:            "audio channels exceed the client profile",
-		RequiresTranscode: true,
-		AudioTranscode:    true,
-	}
-	item := MediaItem{Streams: []Stream{{Kind: "video", Codec: "h264", Width: 1920, Height: 1080}, {Kind: "audio", Codec: "aac", Channels: 6}}}
-	next := server.applyDirectStreamRemuxPolicy(decision, item, PlaybackClientProfile{SupportsHLS: true})
-	if !next.RequiresTranscode || !next.RequiresRemux || next.Mode != "direct_stream" || !next.AudioTranscode || next.VideoTranscode {
-		t.Fatalf("expected direct stream with audio-only transcode, got %+v", next)
-	}
-}
-
-func TestDirectStreamRemuxPolicyKeepsFullTranscodeForVideoConversion(t *testing.T) {
-	server := newScannerTestServer(t)
-	decision := PlaybackDecision{
-		Mode:              "transcode_required",
-		Reason:            "video codec requires conversion",
-		RequiresTranscode: true,
-		VideoTranscode:    true,
-	}
-	item := MediaItem{Streams: []Stream{{Kind: "video", Codec: "hevc", Width: 1920, Height: 1080}}}
-	next := server.applyDirectStreamRemuxPolicy(decision, item, PlaybackClientProfile{SupportsHLS: true})
-	if !next.RequiresTranscode || next.Mode != "transcode_required" {
-		t.Fatalf("expected full transcode decision, got %+v", next)
-	}
-}
-
 func TestHLSAudioEncodingCopiesAppleCompatibleAudio(t *testing.T) {
 	preset := transcodePresets["1080p-medium"]
 	item := MediaItem{Streams: []Stream{{Kind: "audio", Codec: "eac3", Channels: 6, Bitrate: 640_000}}}
@@ -1987,7 +1936,10 @@ func TestEndPlaybackSessionStopsForcedTranscodeForDirectPlaySession(t *testing.T
 	session := &transcodeSession{mediaID: "movie_transcode", quality: "720p-high"}
 	server.transcodes["movie_transcode:720p-high:"] = session
 
-	if err := server.endPlaybackSession(user, "play_direct_forced"); err != nil {
+	if _, err := server.playbackLifecycle().Terminate(context.Background(), playbackTerminationRequest{
+		SessionID: "play_direct_forced", UserID: accountIDForUser(user), ProfileID: viewerProfileID(user),
+		Cause: playbackTerminationExplicit, RequireActive: true,
+	}); err != nil {
 		t.Fatalf("end playback: %v", err)
 	}
 	if !session.stopped {
@@ -2022,7 +1974,10 @@ func TestEndPlaybackSessionRemovesTranscodeTempFiles(t *testing.T) {
 	session := &transcodeSession{mediaID: "movie_cleanup", quality: "720p-medium", root: root, dir: sessionDir}
 	server.transcodes["movie_cleanup:720p-medium:"] = session
 
-	if err := server.endPlaybackSession(user, "play_cleanup"); err != nil {
+	if _, err := server.playbackLifecycle().Terminate(context.Background(), playbackTerminationRequest{
+		SessionID: "play_cleanup", UserID: accountIDForUser(user), ProfileID: viewerProfileID(user),
+		Cause: playbackTerminationExplicit, RequireActive: true,
+	}); err != nil {
 		t.Fatalf("end playback: %v", err)
 	}
 	if _, err := os.Stat(sessionDir); !os.IsNotExist(err) {
@@ -2247,8 +2202,9 @@ func TestPlaybackDiagnosticsPersistProfileAndRedactedTranscodeContext(t *testing
 	profile := PlaybackClientProfile{Device: "Chrome", Platform: "macOS", SupportsHLS: true, SupportsMSE: true, MaxBitrate: 8000}
 	decision := PlaybackDecision{Mode: "transcode_required", Reason: "codec mismatch", Protocol: "hls", Container: "hls", VideoCodec: "hevc", AudioCodec: "aac", RequiresTranscode: true}
 	decision = playbackDecisionWithTestPlan(t, decision, item.ID, "burn_in", "sub_1")
+	expectedDecisionReason := decision.Reason
 	req := httptest.NewRequest("GET", "/api/playback-sessions", nil)
-	if err := server.createPlaybackSession(req, user, item, "play_diag", decision, profile, PlaybackIntent{}, "sub_1", "", false, "test-client", PlaybackSourceContext{}, "off"); err != nil {
+	if err := server.createPlaybackSession(req, user, item, "qentry_diag", "play_diag", decision, profile, PlaybackIntent{}, "sub_1", "", false, "test-client", PlaybackSourceContext{}, "off"); err != nil {
 		t.Fatalf("create playback session: %v", err)
 	}
 	rawContext := redactedFFmpegContext([]string{"-hide_banner", "-i", "/Users/justin/Movies/Movie.mkv", "-vf", "scale=w=1280:h=720,subtitles=filename='/Users/justin/Subs/Movie.srt':stream_index=0", "-hls_segment_filename", "/tmp/portico/segment_%05d.ts", "/tmp/portico/index.m3u8"})
@@ -2262,7 +2218,7 @@ func TestPlaybackDiagnosticsPersistProfileAndRedactedTranscodeContext(t *testing
 		t.Fatalf("expected one session, got %d", len(sessions))
 	}
 	diagnostics := sessions[0].Diagnostics
-	if diagnostics.ClientProfile != "Chrome · macOS · HLS+MSE" || diagnostics.MaxBitrateMbps != 8 || diagnostics.DecisionReason != "codec mismatch" {
+	if diagnostics.ClientProfile != "Chrome · macOS · HLS+MSE" || diagnostics.MaxBitrateMbps != 8 || diagnostics.DecisionReason != expectedDecisionReason {
 		t.Fatalf("unexpected diagnostics: %#v", diagnostics)
 	}
 	if !diagnostics.SubtitleBurnIn || diagnostics.TranscodeQuality != "720p-medium" || diagnostics.TranscodeMethod != "software" {

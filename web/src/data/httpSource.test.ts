@@ -84,6 +84,19 @@ describe('HttpPorticoDataSource', () => {
         markProgressStarted();
         return stalledProgress;
       }
+      if (method === 'DELETE') {
+        const request = JSON.parse(String(init?.body)) as {
+          requestId: string;
+          terminal: Record<string, unknown>;
+        };
+        return jsonResponse({
+          requestId: request.requestId,
+          accepted: true,
+          duplicate: false,
+          sessionId: 'session-stalled',
+          terminal: request.terminal,
+        });
+      }
       return jsonResponse({ ok: true });
     }));
     const source = new HttpPorticoDataSource();
@@ -96,7 +109,9 @@ describe('HttpPorticoDataSource', () => {
       continuationCredential: { token: 'continuation', origin: window.location.origin, generation: 1, expiresAt: '2026-08-28T20:00:00Z' },
       mediaGrant: { token: 'grant', expiresAt: '2026-08-28T20:00:00Z' },
       decision: { mode: 'direct_play', reason: '', requiresTranscode: false, isProxied: true, isServerCached: false },
-      qualities: [], audioStreams: [], subtitleStreams: [], chapters: [], queue: [],
+      qualityOffers: { contractId: 'PC-PLAYBACK', schemaVersion: 'quality-offers.v1', mediaId: 'm1', versionId: 'qver-m1', sourceRevision: 'qsrc-m1', offerRevision: 'qrev-m1', offers: [{ selectionId: 'qsel-auto', label: 'Automatic', kind: 'automatic' }, { selectionId: 'qsel-original', label: 'Original Quality', kind: 'original' }] },
+      qualitySelection: { mode: 'automatic' },
+      audioStreams: [], subtitleStreams: [], chapters: [], queue: [],
       resources: [{ id: 'movie-active', sourceUrl: '/api/media/m1/stream', streamFormat: 'http', default: true }],
     } as unknown as Parameters<PorticoClient['acceptPlaybackSession']>[0]);
 
@@ -106,14 +121,43 @@ describe('HttpPorticoDataSource', () => {
 
     expect(calls.map(({ method }) => method)).toEqual(['PATCH', 'DELETE']);
     expect(calls[1]?.url).toContain('/api/playback-sessions/session-stalled');
-    expect(JSON.parse(calls[1]?.body ?? '{}')).toMatchObject({
-      disposition: 'completed', generation: 1, eventSequence: 2,
-      positionSeconds: 60, durationSeconds: 60,
+    const stopRequest = JSON.parse(calls[1]?.body ?? '{}');
+    expect(stopRequest).toMatchObject({
+      requestId: expect.any(String),
+      terminal: {
+        disposition: 'completed', generation: 1, eventSequence: 2,
+        positionSeconds: 60, durationSeconds: 60,
+      },
     });
-    expect(JSON.parse(calls[1]?.body ?? '{}').recordedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(stopRequest.terminal.recordedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     expect(calls[1]?.keepalive).toBe(true);
     releaseProgress(jsonResponse({ accepted: true, duplicate: false, stale: false, highestEventSequence: 1 }));
     await expect(progress).rejects.toMatchObject({ code: 'playback_progress_stopped' });
+  });
+
+  it('does not infer terminal success from a 404 response', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({
+        sessionId: 'session-404',
+        media: { id: 'm1', title: 'Movie', type: 'movie', state: {} },
+        sourceUrl: '/api/media/m1/stream', directPlay: true,
+        generation: 1, nextEventSequence: 1, playbackRevision: 1, queueRevision: 1, repeatMode: 'off',
+        timeline: { type: 'vod', durationSeconds: 60, canPause: true, canSeek: true },
+        continuationCredential: { token: 'continuation', origin: window.location.origin, generation: 1, expiresAt: '2099-08-28T20:00:00Z' },
+        mediaGrant: { token: 'grant', expiresAt: '2099-08-28T20:00:00Z' },
+        decision: { mode: 'direct_play', reason: '', requiresTranscode: false, isProxied: true, isServerCached: false },
+        qualityOffers: { contractId: 'PC-PLAYBACK', schemaVersion: 'quality-offers.v1', mediaId: 'm1', versionId: 'qver-m1', sourceRevision: 'qsrc-m1', offerRevision: 'qrev-m1', offers: [{ selectionId: 'qsel-auto', label: 'Automatic', kind: 'automatic' }, { selectionId: 'qsel-original', label: 'Original Quality', kind: 'original' }] },
+        qualitySelection: { mode: 'automatic' },
+        audioStreams: [], subtitleStreams: [], chapters: [], queue: [], resources: [{ id: 'movie-active', sourceUrl: '/api/media/m1/stream', streamFormat: 'http', default: true }],
+      }))
+      .mockResolvedValueOnce(jsonResponse({ code: 'session_not_found', detail: 'Not found.' }, false, 404));
+    vi.stubGlobal('fetch', fetchMock);
+    const source = new HttpPorticoDataSource();
+    await source.startPlayback('m1', {}, new AbortController().signal);
+
+    await expect(source.stopPlayback('session-404', {
+      disposition: 'completed', positionSeconds: 60, durationSeconds: 60,
+    })).rejects.toMatchObject({ status: 404 });
   });
 
   it('configures the bundled client with measured browser playback capabilities', async () => {

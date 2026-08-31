@@ -48,6 +48,96 @@ test("problem codes resolve to stable shared wording and semantic icons", () => 
   assert.equal(semanticIcon(presentation.icon).glyph, "ServerOff");
 });
 
+test("claim and invitation recovery use exact shared privacy-safe guidance", () => {
+  const cases = {
+    invalid_claim: {
+      id: "onboarding.claim-code-unavailable",
+      title: "Check the server claim code",
+      body: "This claim code is invalid, expired, or no longer available. Check the code on the server or create a new one, then try again."
+    },
+    claim_conflict: {
+      id: "onboarding.claim-code-unavailable",
+      title: "Check the server claim code",
+      body: "This claim code is invalid, expired, or no longer available. Check the code on the server or create a new one, then try again."
+    },
+    invite_not_found: {
+      id: "sharing.invitation-not-found",
+      title: "Check the invitation code",
+      body: "This invitation is invalid or no longer available. Check the code or ask the server owner for a new invitation."
+    },
+    invite_expired: {
+      id: "sharing.invitation-expired",
+      title: "Invitation expired",
+      body: "This invitation has expired. Ask the server owner for a new invitation."
+    },
+    invite_revoked: {
+      id: "sharing.invitation-revoked",
+      title: "Invitation cancelled",
+      body: "This invitation was cancelled and can no longer grant access. Ask the server owner for a new invitation."
+    },
+    invite_consumed: {
+      id: "sharing.invitation-consumed",
+      title: "Invitation already used",
+      body: "This invitation has already been used and can't be used again. Ask the server owner to check your access or send a new invitation."
+    },
+    invite_wrong_recipient: {
+      id: "sharing.invitation-wrong-recipient",
+      title: "Use the invited Portico Account",
+      body: "This invitation can't be accepted by the Portico Account currently signed in. Sign in with the account that received it, or ask the server owner for a new invitation."
+    }
+  };
+  const privateDetails = {
+    recipient: "private-recipient@example.test",
+    inviter: "private-inviter@example.test",
+    invitationId: "invite-secret",
+    serverName: "Private Server",
+    acceptedBy: "private-account-id",
+    diagnostic: "database row 42"
+  };
+
+  for (const [code, expected] of Object.entries(cases)) {
+    assert.deepEqual(
+      resolveProductProblem({ code, status: 409, details: privateDetails }),
+      { ...productMessage(expected.id), id: expected.id, title: expected.title, body: expected.body }
+    );
+    const customerCopy = JSON.stringify(resolveProductProblem({ code, status: 409, details: privateDetails }));
+    assert.doesNotMatch(customerCopy, /private-|invite-secret|database row|example\.test/i);
+  }
+
+  assert.equal(productMessageIdForProblemCode("invite_not_acceptable"), undefined);
+  assert.deepEqual(
+    resolveProductProblem({
+      code: "invite_not_acceptable",
+      status: 409,
+      details: privateDetails
+    }),
+    productMessage("problem.request-failed")
+  );
+});
+
+test("server deletion and self-leave failures use reviewed recovery without Hosted diagnostics", () => {
+  const cases = {
+    server_delete_confirmation_required: "server.delete-confirmation-required",
+    server_deletion_proof_required: "server.delete-authorization-required",
+    server_deletion_proof_invalid: "server.delete-authorization-required",
+    server_deletion_proof_forbidden: "server.delete-authorization-required",
+    server_deletion_proof_failed: "problem.hosted-busy",
+    server_delete_failed: "problem.hosted-busy",
+    server_membership_not_found: "problem.not-found",
+    membership_delete_forbidden: "problem.forbidden",
+    member_revoke_failed: "problem.hosted-busy"
+  };
+  for (const [code, id] of Object.entries(cases)) {
+    const raw = `private Hosted diagnostic for ${code}`;
+    const presentation = resolveProductProblem({ code, status: code.endsWith("failed") ? 503 : 409, details: { diagnostic: raw } });
+    assert.equal(presentation.id, id);
+    assert.doesNotMatch(JSON.stringify(presentation), /private Hosted diagnostic/);
+  }
+  assert.equal(productMessage("server.delete-confirmation-required").title, "Server name changed");
+  assert.equal(productMessage("server.delete-authorization-required").title, "Verify this deletion again");
+  assert.equal(productMessage("server.lifecycle-outcome-pending").actions.length, 0);
+});
+
 test("discovery failures resolve to shared navigation, search, detail, and feedback states", () => {
   assert.equal(resolveProductProblem({ code: "navigation_unavailable", status: 503 }).id, "navigation.unavailable");
   assert.equal(resolveProductProblem({ code: "search_history_unavailable", status: 503 }).id, "search.offline");

@@ -748,6 +748,10 @@ func TestSettingsRejectCrossFieldAndUnboundedValues(t *testing.T) {
 		{name: "invalid preview mode", group: "library", patch: map[string]any{"generateVideoPreview": "whenever"}},
 		{name: "custom embedded tags without probe", group: "library", patch: map[string]any{"analysisTier": analysisTierCustom, "probeStreams": false, "readEmbeddedTags": true}},
 		{name: "custom attachments without indexes", group: "library", patch: map[string]any{"analysisTier": analysisTierCustom, "probeStreams": true, "readEmbeddedIndexes": false, "extractAllEmbeddedAttachments": true}},
+		{name: "custom selected embedded asset without indexes", group: "library", patch: map[string]any{"analysisTier": analysisTierCustom, "probeStreams": true, "readEmbeddedIndexes": false, "extractSelectedEmbeddedAssets": true}},
+		{name: "custom seek validation without probe", group: "library", patch: map[string]any{"analysisTier": analysisTierCustom, "probeStreams": false, "validateSeekBehavior": true}},
+		{name: "custom chapter thumbnails without indexes", group: "library", patch: map[string]any{"analysisTier": analysisTierCustom, "probeStreams": true, "readEmbeddedIndexes": false, "generateChapterThumbnails": true}},
+		{name: "custom segment detection without indexes", group: "library", patch: map[string]any{"analysisTier": analysisTierCustom, "probeStreams": true, "readEmbeddedIndexes": false, "detectSegments": true}},
 		{name: "invalid metadata language", group: "metadataAgents", patch: map[string]any{"metadataLanguage": "not a tag"}},
 		{name: "unsafe DVR template", group: "dvr", patch: map[string]any{"recordingPathTemplate": "../{title}"}},
 	}

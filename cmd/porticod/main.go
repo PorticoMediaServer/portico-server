@@ -12,7 +12,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"os/exec"
 	"os/signal"
 	"regexp"
 	"runtime"
@@ -40,16 +39,7 @@ var (
 )
 
 type runOptions struct {
-	tray    bool
 	service bool
-}
-
-type trayOptions struct {
-	address     string
-	serverURL   string
-	settingsURL string
-	onRestart   func()
-	onExit      func()
 }
 
 func main() {
@@ -184,8 +174,6 @@ func parseArgs(cfg config.Config, logger *slog.Logger) (runOptions, bool) {
 	}
 	for _, arg := range args {
 		switch arg {
-		case "--tray":
-			options.tray = true
 		case "--service":
 			options.service = true
 		default:
@@ -197,14 +185,6 @@ func parseArgs(cfg config.Config, logger *slog.Logger) (runOptions, bool) {
 }
 
 func run(ctx context.Context, cfg config.Config, logger *slog.Logger, options runOptions) error {
-	if trayEnabledByEnv() {
-		options.tray = true
-	}
-	if options.tray && !trayAvailable() {
-		logger.Warn("tray support requested but this binary was built without the tray tag; continuing without tray", "buildTag", "tray")
-		options.tray = false
-	}
-
 	started := time.Now()
 	executable, _ := os.Executable()
 	logger.Info(
@@ -228,7 +208,6 @@ func run(ctx context.Context, cfg config.Config, logger *slog.Logger, options ru
 		"webDist", "packaged-web-assets",
 		"logFile", map[bool]string{true: "configured-log", false: "stdout"}[strings.TrimSpace(cfg.LogFilePath) != ""],
 		"service", options.service,
-		"tray", options.tray,
 	)
 	// Restore filesystem reconciliation must run before any SQLite open. The
 	// database package only provides the primitive; the process host owns this
@@ -314,9 +293,6 @@ func run(ctx context.Context, cfg config.Config, logger *slog.Logger, options ru
 			logger.Info("plaintext service stopped", "addr", cfg.Addr)
 		}
 		serverErr <- serveErr
-		if options.tray {
-			stopTray()
-		}
 	}()
 	go func() {
 		var serveErr error
@@ -540,37 +516,6 @@ func run(ctx context.Context, cfg config.Config, logger *slog.Logger, options ru
 		})
 	}
 
-	if options.tray {
-		go func() {
-			<-ctx.Done()
-			shutdown()
-			stopTray()
-		}()
-		settingsURL := serverURL + "/settings/server/status?tab=identity"
-		err := runTray(trayOptions{
-			address:     strings.TrimPrefix(serverURL, "http://"),
-			serverURL:   serverURL,
-			settingsURL: settingsURL,
-			onRestart: func() {
-				shutdown()
-				if err := relaunchProcess(); err != nil {
-					logger.Error("restart relaunch failed", "error", err)
-				}
-			},
-			onExit: shutdown,
-		})
-		if err != nil && !errors.Is(err, errTrayUnavailable) {
-			logger.Error("tray stopped", "error", err)
-		}
-		select {
-		case err := <-serverErr:
-			return err
-		default:
-			shutdown()
-			return <-serverErr
-		}
-	}
-
 	select {
 	case err := <-serverErr:
 		return err
@@ -654,9 +599,6 @@ func serveExistingMaintenance(ctx context.Context, logger *slog.Logger, protocol
 			logger.Error("maintenance responder shutdown failed", "error", redaction.Error(err))
 		}
 		cancel()
-		if options.tray {
-			stopTray()
-		}
 		return nil
 	}
 }
@@ -903,19 +845,6 @@ func firstNonEmpty(values ...string) string {
 	return ""
 }
 
-func trayEnabledByEnv() bool {
-	value := strings.TrimSpace(os.Getenv("PORTICO_TRAY"))
-	if value == "" {
-		return false
-	}
-	switch strings.ToLower(value) {
-	case "1", "true", "yes", "on":
-		return true
-	default:
-		return false
-	}
-}
-
 func localHTTPURL(addr string) string {
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil {
@@ -929,22 +858,4 @@ func localHTTPURL(addr string) string {
 		return "http://" + net.JoinHostPort(host, port)
 	}
 	return "http://" + host + ":" + port
-}
-
-func relaunchProcess() error {
-	executable, err := os.Executable()
-	if err != nil {
-		return err
-	}
-	args := append([]string{}, os.Args[1:]...)
-	command := exec.Command(executable, args...)
-	command.Env = os.Environ()
-	command.Dir, _ = os.Getwd()
-	if runtime.GOOS == "windows" {
-		return command.Start()
-	}
-	if err := command.Start(); err != nil {
-		return err
-	}
-	return nil
 }
