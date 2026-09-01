@@ -115,6 +115,8 @@ type serverCapabilityRoute struct {
 	Path   string
 }
 
+var capabilityPathParameterPattern = regexp.MustCompile(`\{[^/{}]+\}`)
+
 func capabilityRoute(method, path string) serverCapabilityRoute {
 	return serverCapabilityRoute{Method: method, Path: path}
 }
@@ -199,7 +201,7 @@ func capabilityRequiredRoutes(definition serverCapabilityDefinition) []serverCap
 }
 
 func capabilityRouteKey(method, path string) string {
-	return strings.ToUpper(strings.TrimSpace(method)) + " " + regexp.MustCompile(`\{[^/{}]+\}`).ReplaceAllString(strings.TrimSpace(path), "{}")
+	return strings.ToUpper(strings.TrimSpace(method)) + " " + capabilityPathParameterPattern.ReplaceAllString(strings.TrimSpace(path), "{}")
 }
 
 func remoteAccessCapabilityState(s *Server) string {

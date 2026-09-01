@@ -414,7 +414,12 @@ func (s *Server) applyMetadata(ctx context.Context, req metadataApplyRequest) (m
 		return nil
 	}
 
-	tags := []string{"media", "metadata", "library-items", "search", "libraries"}
+	// A provider continuation may apply hundreds of item revisions. Publishing
+	// broad catalog membership tags for every item makes every active browse and
+	// Discover query refetch even though no item was added or removed. Detail
+	// consumers still receive the metadata tag; manual edits retain the broad
+	// immediate invalidation expected by the editing client.
+	tags := metadataApplyInvalidationTags(req.Origin)
 	var err error
 	if req.Origin == metadataSourceManual {
 		err = s.withUserTxTaggedForViewer(ctx, req.ActorUserID, "", tags, apply)
@@ -424,9 +429,23 @@ func (s *Server) applyMetadata(ctx context.Context, req metadataApplyRequest) (m
 	if err != nil {
 		return metadataApplyResult{}, err
 	}
-	s.invalidateHomeCache()
-	s.invalidateCategoryCache()
+	if req.Origin == metadataSourceManual {
+		s.invalidateHomeCache()
+		s.invalidateCategoryCache()
+	} else {
+		// Foreground projections already have short bounded TTLs. Let those TTLs
+		// absorb a background cascade rather than forcing every metadata item to
+		// delete the recommendation read model and cold-start all browse caches.
+		s.invalidateMediaDetailCache()
+	}
 	return result, nil
+}
+
+func metadataApplyInvalidationTags(origin metadataSourceKind) []string {
+	if origin == metadataSourceManual {
+		return []string{"media", "metadata", "library-items", "search", "libraries"}
+	}
+	return []string{"metadata"}
 }
 
 func callMetadataApplyStage(hook func(string) error, stage string) error {

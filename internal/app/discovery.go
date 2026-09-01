@@ -21,6 +21,7 @@ const (
 	tmdbRequestTimeout         = 8 * time.Second
 	userRecommendationCacheTTL = 15 * time.Minute
 	recommendationInputLimit   = 2000
+	libraryDiscoverRowLimit    = 6
 )
 
 type tmdbTrendingPayload struct {
@@ -116,7 +117,7 @@ func (s *Server) handleSuggestions(w http.ResponseWriter, r *http.Request, user 
 		}
 		response := SuggestionsResponse{
 			Items:       suggestions,
-			Rows:        s.discoveryRowsForLibraryContext(ctx, user, library),
+			Rows:        boundedLibraryDiscoveryRows(s.discoveryRowsForLibraryContext(ctx, user, library, limit)),
 			Total:       len(suggestions),
 			GeneratedAt: time.Now().UTC().Format(time.RFC3339),
 		}
@@ -172,13 +173,21 @@ func (s *Server) libraryDiscoverContext(ctx context.Context, user User, library 
 	} else if len(row.Items) > 0 {
 		rows = append(rows, row)
 	}
-	rows = append(rows, s.discoveryRowsForLibraryContext(ctx, user, library)...)
+	rows = append(rows, s.discoveryRowsForLibraryContext(ctx, user, library, limit)...)
+	rows = boundedLibraryDiscoveryRows(rows)
 	return SuggestionsResponse{
 		Items:       suggestions,
 		Rows:        rows,
 		Total:       len(suggestions),
 		GeneratedAt: time.Now().UTC().Format(time.RFC3339),
 	}, ctx.Err()
+}
+
+func boundedLibraryDiscoveryRows(rows []HomeRow) []HomeRow {
+	if len(rows) <= libraryDiscoverRowLimit {
+		return rows
+	}
+	return rows[:libraryDiscoverRowLimit]
 }
 
 func (s *Server) libraryContinueRowContext(ctx context.Context, user User, library Library, limit int) (HomeRow, error) {
@@ -421,27 +430,28 @@ func (s *Server) discoveryRowsContext(ctx context.Context, user User) []HomeRow 
 }
 
 func (s *Server) discoveryRowsForLibrary(user User, library Library) []HomeRow {
-	return s.discoveryRowsForLibraryContext(context.Background(), user, library)
+	return s.discoveryRowsForLibraryContext(context.Background(), user, library, homeRowItemLimit)
 }
 
-func (s *Server) discoveryRowsForLibraryContext(ctx context.Context, user User, library Library) []HomeRow {
+func (s *Server) discoveryRowsForLibraryContext(ctx context.Context, user User, library Library, limit int) []HomeRow {
+	limit = clampInt(limit, 1, homeRowItemLimit)
 	var rows []HomeRow
 	if err := ctx.Err(); err != nil {
 		return rows
 	}
-	if watching := s.serverWatchingRowForLibraryContext(ctx, user, library); len(watching.Items) > 0 {
+	if watching := s.serverWatchingRowForLibraryLimitContext(ctx, user, library, limit); len(watching.Items) > 0 {
 		rows = append(rows, watching)
 	}
 	if err := ctx.Err(); err != nil {
 		return rows
 	}
-	if trending := s.trendingRowForLibraryContext(ctx, user, library); len(trending.Items) > 0 {
+	if trending := s.trendingRowForLibraryLimitContext(ctx, user, library, limit); len(trending.Items) > 0 {
 		rows = append(rows, trending)
 	}
 	if err := ctx.Err(); err != nil {
 		return rows
 	}
-	rows = append(rows, s.recommendationRowsForLibraryContext(ctx, user, library)...)
+	rows = append(rows, s.recommendationRowsForLibraryLimitContext(ctx, user, library, limit)...)
 	return resolveLibraryHomeRowArtworkShapes(rows, library)
 }
 
@@ -465,6 +475,11 @@ func (s *Server) trendingRowForLibrary(user User, library Library) HomeRow {
 }
 
 func (s *Server) trendingRowForLibraryContext(ctx context.Context, user User, library Library) HomeRow {
+	return s.trendingRowForLibraryLimitContext(ctx, user, library, homeRowItemLimit)
+}
+
+func (s *Server) trendingRowForLibraryLimitContext(ctx context.Context, user User, library Library, limit int) HomeRow {
+	limit = clampInt(limit, 1, homeRowItemLimit)
 	items := s.cachedTrendingMatchesForLibraryContext(ctx, viewerProfileID(user), library)
 	if len(items) == 0 && s.tmdbConfigured() && (library.Type == "movie" || library.Type == "show" || library.Type == "anime") {
 		mediaType := "movie"
@@ -474,9 +489,9 @@ func (s *Server) trendingRowForLibraryContext(ctx context.Context, user User, li
 		s.queueTMDBTrendingRefresh(mediaType, "day")
 	}
 	if len(items) == 0 {
-		items = s.localTrendingItemsForLibraryContext(ctx, viewerProfileID(user), library, 0)
+		items = s.localTrendingItemsForLibraryContext(ctx, viewerProfileID(user), library, limit)
 	}
-	items = s.normalizeLibraryDiscoveryItems(viewerProfileID(user), library, items, 0)
+	items = s.normalizeLibraryDiscoveryItems(viewerProfileID(user), library, items, limit)
 	return HomeRow{ID: "tmdb_trending", Title: "Trending Now", Type: "poster", LibraryID: library.ID, Items: items}
 }
 
@@ -552,9 +567,14 @@ func (s *Server) serverWatchingRowForLibrary(user User, library Library) HomeRow
 }
 
 func (s *Server) serverWatchingRowForLibraryContext(ctx context.Context, user User, library Library) HomeRow {
+	return s.serverWatchingRowForLibraryLimitContext(ctx, user, library, homeRowItemLimit)
+}
+
+func (s *Server) serverWatchingRowForLibraryLimitContext(ctx context.Context, user User, library Library, limit int) HomeRow {
+	limit = clampInt(limit, 1, homeRowItemLimit)
 	profileID := viewerProfileID(user)
-	items := s.recentServerWatchingItemsForLibraryContext(ctx, profileID, library, 0)
-	items = s.normalizeLibraryDiscoveryItems(profileID, library, items, 0)
+	items := s.recentServerWatchingItemsForLibraryContext(ctx, profileID, library, limit)
+	items = s.normalizeLibraryDiscoveryItems(profileID, library, items, limit)
 	return HomeRow{ID: "server_watching_week", Title: libraryListeningLabel(library.Type, "People On This Server Are Watching", "People On This Server Are Listening"), Type: "poster", LibraryID: library.ID, Items: items}
 }
 
@@ -1104,7 +1124,12 @@ func (s *Server) recommendationRowsForLibrary(user User, library Library) []Home
 }
 
 func (s *Server) recommendationRowsForLibraryContext(ctx context.Context, user User, library Library) []HomeRow {
-	scored, err := s.localRecommendationScoresForLibraryContext(ctx, viewerProfileID(user), library, homeRowItemLimit)
+	return s.recommendationRowsForLibraryLimitContext(ctx, user, library, homeRowItemLimit)
+}
+
+func (s *Server) recommendationRowsForLibraryLimitContext(ctx context.Context, user User, library Library, limit int) []HomeRow {
+	limit = clampInt(limit, 1, homeRowItemLimit)
+	scored, err := s.localRecommendationScoresForLibraryContext(ctx, viewerProfileID(user), library, limit)
 	if err != nil || len(scored) == 0 {
 		return nil
 	}
@@ -1116,7 +1141,7 @@ func (s *Server) recommendationRowsForLibraryContext(ctx context.Context, user U
 	if err != nil || len(items) == 0 {
 		return nil
 	}
-	items = s.normalizeLibraryDiscoveryItems(viewerProfileID(user), library, items, 0)
+	items = s.normalizeLibraryDiscoveryItems(viewerProfileID(user), library, items, limit)
 	if len(items) == 0 {
 		return nil
 	}

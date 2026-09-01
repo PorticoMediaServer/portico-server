@@ -2,6 +2,7 @@ package app
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
@@ -49,6 +50,7 @@ import (
 	"github.com/PorticoMediaServer/portico-server/internal/foundationcontract"
 	"github.com/PorticoMediaServer/portico-server/internal/optimized"
 	"github.com/PorticoMediaServer/portico-server/internal/playbackplan"
+	"github.com/PorticoMediaServer/portico-server/internal/redaction"
 	_ "golang.org/x/image/webp"
 )
 
@@ -70,6 +72,7 @@ var providerArtworkHTTPClient = &http.Client{
 }
 
 var errMediaTreeNotFullyVisible = errors.New("media tree contains items outside the profile's access")
+var errArtworkTransformBusy = errors.New("artwork transform capacity is busy")
 
 type sessionCreateOptions struct {
 	TrustDevice               bool
@@ -181,6 +184,10 @@ type Server struct {
 	categoryCacheMu                      sync.Mutex
 	categoryCache                        map[string]categoryCacheEntry
 	categoryInFlight                     map[string]chan struct{}
+	localContentRootsMu                  sync.Mutex
+	localContentRoots                    []string
+	localContentRootsLoaded              bool
+	localContentRootsGeneration          uint64
 	artworkWorkMu                        sync.Mutex
 	artworkIngestInFlight                map[string]*artworkIngestCall
 	artworkTransformInFlight             map[string]*artworkTransformCall
@@ -189,6 +196,7 @@ type Server struct {
 	metadataArtworkCommitLocks           map[string]*metadataArtworkCommitLock
 	readModelRepairMu                    sync.Mutex
 	readModelRepairs                     map[string]chan struct{}
+	readModelRepairBatchHook             func(int)
 	workloadMu                           sync.Mutex
 	workloadLanes                        map[string]*workloadLane
 	latencyMetrics                       latencyMetricsRegistry
@@ -409,6 +417,72 @@ type trackedSQLRow struct {
 	err       error
 }
 
+// sqlRows is the subset of database/sql.Rows used by Portico's scanners. The
+// wrapper below deliberately observes a read only after iteration finishes (or
+// the rows are closed): QueryContext returning a handle does not mean SQLite
+// has executed or decoded the result set yet. This is a request-facing read
+// span, so it includes the caller's row scanning/decoding between Next calls;
+// it must not be interpreted as engine-only SQLite CPU time.
+type sqlRows interface {
+	Next() bool
+	Scan(dest ...any) error
+	Err() error
+	Close() error
+}
+
+type trackedSQLRows struct {
+	*sql.Rows
+	server    *Server
+	lane      string
+	startedAt time.Time
+	once      sync.Once
+}
+
+func (r *trackedSQLRows) observe(err error) {
+	if r == nil {
+		return
+	}
+	r.once.Do(func() {
+		if r.server != nil {
+			r.server.recordSQLiteReadMetrics(r.lane, time.Since(r.startedAt), err)
+		}
+	})
+}
+
+func (r *trackedSQLRows) Next() bool {
+	if r == nil || r.Rows == nil {
+		return false
+	}
+	next := r.Rows.Next()
+	if !next {
+		r.observe(r.Rows.Err())
+	}
+	return next
+}
+
+func (r *trackedSQLRows) Err() error {
+	if r == nil || r.Rows == nil {
+		return nil
+	}
+	err := r.Rows.Err()
+	if err != nil {
+		r.observe(err)
+	}
+	return err
+}
+
+func (r *trackedSQLRows) Close() error {
+	if r == nil || r.Rows == nil {
+		return nil
+	}
+	err := r.Rows.Close()
+	if err == nil {
+		err = r.Rows.Err()
+	}
+	r.observe(err)
+	return err
+}
+
 func (r trackedSQLRow) Scan(dest ...any) error {
 	err := r.err
 	if err == nil {
@@ -420,7 +494,7 @@ func (r trackedSQLRow) Scan(dest ...any) error {
 	return err
 }
 
-func (s *Server) queryUserRead(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
+func (s *Server) queryUserRead(ctx context.Context, query string, args ...any) (*trackedSQLRows, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -432,8 +506,11 @@ func (s *Server) queryUserRead(ctx context.Context, query string, args ...any) (
 		return nil, err
 	}
 	rows, err := db.QueryContext(ctx, query, args...)
-	s.recordSQLiteReadMetrics("user", time.Since(start), err)
-	return rows, err
+	if err != nil {
+		s.recordSQLiteReadMetrics("user", time.Since(start), err)
+		return nil, err
+	}
+	return &trackedSQLRows{Rows: rows, server: s, lane: "user", startedAt: start}, nil
 }
 
 func (s *Server) queryUserRow(ctx context.Context, query string, args ...any) trackedSQLRow {
@@ -457,7 +534,7 @@ func (s *Server) queryUserRow(ctx context.Context, query string, args ...any) tr
 	}
 }
 
-func (s *Server) queryBackgroundRead(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
+func (s *Server) queryBackgroundRead(ctx context.Context, query string, args ...any) (*trackedSQLRows, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -469,8 +546,11 @@ func (s *Server) queryBackgroundRead(ctx context.Context, query string, args ...
 		return nil, err
 	}
 	rows, err := db.QueryContext(ctx, query, args...)
-	s.recordSQLiteReadMetrics("background", time.Since(start), err)
-	return rows, err
+	if err != nil {
+		s.recordSQLiteReadMetrics("background", time.Since(start), err)
+		return nil, err
+	}
+	return &trackedSQLRows{Rows: rows, server: s, lane: "background", startedAt: start}, nil
 }
 
 func (s *Server) queryBackgroundRow(ctx context.Context, query string, args ...any) trackedSQLRow {
@@ -955,7 +1035,7 @@ func newServer(cfg config.Config, db *sql.DB, log *slog.Logger, startBackground 
 		categoryInFlight:            map[string]chan struct{}{},
 		artworkIngestInFlight:       map[string]*artworkIngestCall{},
 		artworkTransformInFlight:    map[string]*artworkTransformCall{},
-		artworkWorkSlots:            make(chan struct{}, 4),
+		artworkWorkSlots:            make(chan struct{}, artworkTransformConcurrency()),
 		readModelRepairs:            map[string]chan struct{}{},
 		workloadLanes:               newWorkloadLanes(),
 		dlnaBrowseActive:            map[string]int{},
@@ -1209,9 +1289,62 @@ func (s *Server) runScheduledOperationalRetention(ctx context.Context) {
 	}
 }
 
+const (
+	backgroundForegroundYieldMaximum = 2 * time.Second
+	backgroundForegroundPollInterval = 100 * time.Millisecond
+)
+
+// foregroundWorkActive is intentionally a memory-only signal. The former
+// per-item pressure check rebuilt full resource diagnostics (including several
+// SQLite queries), causing the scanner itself to add database pressure. The
+// dispatcher still performs the comprehensive diagnostic check before it
+// starts jobs; inner background loops only need to know whether foreground
+// request lanes currently have work.
+func (s *Server) foregroundWorkActive() bool {
+	s.workloadMu.Lock()
+	defer s.workloadMu.Unlock()
+	for _, id := range []string{
+		workloadLaneSecurityFence,
+		workloadLaneAuth,
+		workloadLaneBrowsing,
+		workloadLaneExpensive,
+		workloadLanePlayback,
+		workloadLaneMedia,
+		workloadLaneMediaBody,
+		workloadLaneBulkTransfer,
+		workloadLaneDLNA,
+		workloadLaneAdmin,
+		workloadLaneAdminHeavy,
+		workloadLaneDefault,
+	} {
+		if lane := s.workloadLanes[id]; lane != nil && len(lane.tokens) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *Server) waitForForegroundPressureToEase(ctx context.Context) bool {
-	for s.shouldDeferBackgroundJobsForPressure() {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	// SQLite health is a safety fence, not ordinary contention. Do not publish
+	// more background state until the watchdog has observed recovery.
+	for !sqliteHealthAllowsBackground(s.sqliteHealthSnapshot()) {
 		if !sleepContext(ctx, 2*time.Second) {
+			return false
+		}
+	}
+	if !s.foregroundWorkActive() {
+		return true
+	}
+	// Give short navigation and playback-control requests an uncontested
+	// window. Persistent direct play cannot starve a scan forever: after the
+	// window, one already-bounded background unit may advance before yielding
+	// again at its next checkpoint.
+	deadline := time.Now().Add(backgroundForegroundYieldMaximum)
+	for s.foregroundWorkActive() && time.Now().Before(deadline) {
+		if !sleepContext(ctx, backgroundForegroundPollInterval) {
 			return false
 		}
 	}
@@ -1903,7 +2036,7 @@ func (s *Server) runLibraryReadModelRepair(ctx context.Context, job Job) {
 	}
 	_ = s.setJobMessage(job.ID, "running", 10, "Repairing library category and source read models.")
 	started := time.Now()
-	if err := s.rebuildLibraryCategoryFacets(libraryID); err != nil {
+	if err := s.rebuildLibraryCategoryFacetsContext(ctx, libraryID); err != nil {
 		if s.deferMaintenanceJob(job.ID, err) {
 			return
 		}
@@ -1914,7 +2047,7 @@ func (s *Server) runLibraryReadModelRepair(ctx context.Context, job Job) {
 	}
 	s.invalidateCategoryCache()
 	_ = s.setJobMessage(job.ID, "running", 70, "Repairing library source read model.")
-	if err := s.rebuildLibrarySourceGroups(libraryID); err != nil {
+	if err := s.rebuildLibrarySourceGroupsContext(ctx, libraryID); err != nil {
 		if s.deferMaintenanceJob(job.ID, err) {
 			return
 		}
@@ -2067,6 +2200,7 @@ func redactLogValue(value string) string {
 	if value == "" {
 		return value
 	}
+	value = redaction.RedactPorticoCredentials(value)
 	value = sensitiveLogValuePattern.ReplaceAllString(value, "$1=[redacted]")
 	return quickConnectCodeLogPattern.ReplaceAllString(value, "[redacted-code]")
 }
@@ -2162,7 +2296,7 @@ func (s *Server) Handler() http.Handler {
 		s.registerDLNARoutes(mux)
 		mux.HandleFunc("/desktop/status", s.handleDesktopStatus)
 		mux.HandleFunc("/", s.handleStatic)
-		s.handler = s.requestBodyDeadline(s.requestTransport(s.requestIdentity(s.securityHeaders(s.requestTiming(s.restoreAdmission(s.workloadAdmission(mux)))))))
+		s.handler = s.requestBodyDeadline(s.requestTransport(s.requestIdentity(s.securityHeaders(s.requestTiming(s.responseCompression(s.restoreAdmission(s.workloadAdmission(mux))))))))
 	})
 	return s.handler
 }
@@ -2240,6 +2374,35 @@ const requestIDHeader = "X-Request-ID"
 
 var requestIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`)
 
+type requestTimingContextKey struct{}
+
+type requestTimingState struct {
+	queueNanos atomic.Int64
+	reads      requestReadMemo
+}
+
+type requestReadMemo struct {
+	mu                  sync.Mutex
+	playbackProgress    map[string]PlaybackProgressPreferences
+	libraryRestrictions map[string]sqlRestrictionMemo
+}
+
+type sqlRestrictionMemo struct {
+	clause string
+	args   []any
+}
+
+func requestReadMemoFromContext(ctx context.Context) *requestReadMemo {
+	if ctx == nil {
+		return nil
+	}
+	timing, _ := ctx.Value(requestTimingContextKey{}).(*requestTimingState)
+	if timing == nil {
+		return nil
+	}
+	return &timing.reads
+}
+
 func (s *Server) requestIdentity(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requestID := strings.TrimSpace(r.Header.Get(requestIDHeader))
@@ -2254,19 +2417,29 @@ func (s *Server) requestIdentity(next http.Handler) http.Handler {
 
 type statusRecordingWriter struct {
 	http.ResponseWriter
-	status int
-	bytes  int
+	status       int
+	bytes        int
+	beforeCommit func()
+}
+
+func (w *statusRecordingWriter) prepareCommit() {
+	if w.status == 0 && w.beforeCommit != nil {
+		w.beforeCommit()
+	}
 }
 
 func (w *statusRecordingWriter) WriteHeader(status int) {
-	if w.status == 0 {
-		w.status = status
+	if w.status != 0 {
+		return
 	}
+	w.prepareCommit()
+	w.status = status
 	w.ResponseWriter.WriteHeader(status)
 }
 
 func (w *statusRecordingWriter) Write(body []byte) (int, error) {
 	if w.status == 0 {
+		w.prepareCommit()
 		w.status = http.StatusOK
 	}
 	n, err := w.ResponseWriter.Write(body)
@@ -2277,6 +2450,7 @@ func (w *statusRecordingWriter) Write(body []byte) (int, error) {
 func (w *statusRecordingWriter) Flush() {
 	if flusher, ok := w.ResponseWriter.(http.Flusher); ok {
 		if w.status == 0 {
+			w.prepareCommit()
 			w.status = http.StatusOK
 		}
 		flusher.Flush()
@@ -2287,17 +2461,257 @@ func (w *statusRecordingWriter) Unwrap() http.ResponseWriter {
 	return w.ResponseWriter
 }
 
+const responseCompressionThreshold = 1024
+
+// bufferedCompressionWriter delays the first commit until it has enough body
+// data to make a compression decision. The buffer is capped by
+// responseCompressionThreshold: larger responses immediately switch to a
+// streaming gzip writer, so a large API response is never duplicated in RAM.
+type bufferedCompressionWriter struct {
+	http.ResponseWriter
+	request       *http.Request
+	status        int
+	buffer        bytes.Buffer
+	committed     bool
+	compressed    bool
+	streaming     bool
+	negotiable    bool
+	compressionOK bool
+	gzipWriter    *gzip.Writer
+}
+
+func (w *bufferedCompressionWriter) WriteHeader(status int) {
+	if w.status != 0 || w.committed {
+		return
+	}
+	w.status = status
+}
+
+func (w *bufferedCompressionWriter) Write(body []byte) (int, error) {
+	if w.status == 0 {
+		w.status = http.StatusOK
+	}
+	if w.committed {
+		if w.compressed {
+			return w.gzipWriter.Write(body)
+		}
+		return w.ResponseWriter.Write(body)
+	}
+	if _, err := w.buffer.Write(body); err != nil {
+		return 0, err
+	}
+	if w.buffer.Len() < responseCompressionThreshold {
+		return len(body), nil
+	}
+	if err := w.commit(); err != nil {
+		return 0, err
+	}
+	return len(body), nil
+}
+
+func (w *bufferedCompressionWriter) Flush() {
+	// A handler that explicitly flushes is streaming. Preserve its immediate
+	// delivery semantics and do not make a streaming response a compression
+	// oracle or hold it behind a compression buffer.
+	w.streaming = true
+	if w.status == 0 {
+		w.status = http.StatusOK
+	}
+	if err := w.commit(); err != nil {
+		return
+	}
+	if w.compressed && w.gzipWriter != nil {
+		_ = w.gzipWriter.Flush()
+	}
+	if flusher, ok := w.ResponseWriter.(http.Flusher); ok {
+		flusher.Flush()
+	}
+}
+
+func (w *bufferedCompressionWriter) Unwrap() http.ResponseWriter {
+	return w.ResponseWriter
+}
+
+func (w *bufferedCompressionWriter) finish() {
+	if w.status == 0 {
+		w.status = http.StatusOK
+	}
+	if err := w.commit(); err != nil {
+		return
+	}
+	if w.gzipWriter != nil {
+		_ = w.gzipWriter.Close()
+	}
+}
+
+func (w *bufferedCompressionWriter) commit() error {
+	if w.committed {
+		return nil
+	}
+	w.committed = true
+	status := w.status
+	if status == 0 {
+		status = http.StatusOK
+	}
+	w.compressed = w.compressionEligible(status)
+	if w.negotiable && status >= http.StatusOK && status < http.StatusBadRequest && responseContentTypeCompressible(w.Header().Get("Content-Type")) {
+		w.Header().Add("Vary", "Accept-Encoding")
+	}
+	if w.compressed {
+		w.Header().Del("Content-Length")
+		w.Header().Set("Content-Encoding", "gzip")
+		writer, err := gzip.NewWriterLevel(w.ResponseWriter, gzip.BestSpeed)
+		if err != nil {
+			return err
+		}
+		w.gzipWriter = writer
+	}
+	w.ResponseWriter.WriteHeader(status)
+	if w.buffer.Len() == 0 {
+		return nil
+	}
+	var err error
+	if w.compressed {
+		_, err = w.gzipWriter.Write(w.buffer.Bytes())
+	} else {
+		_, err = w.ResponseWriter.Write(w.buffer.Bytes())
+	}
+	w.buffer.Reset()
+	return err
+}
+
+func (w *bufferedCompressionWriter) compressionEligible(status int) bool {
+	if !w.compressionOK || w.streaming || w.buffer.Len() < responseCompressionThreshold {
+		return false
+	}
+	if w.request == nil || w.request.Method == http.MethodHead || w.request.Header.Get("Range") != "" {
+		return false
+	}
+	if status < http.StatusOK || status >= http.StatusBadRequest || status == http.StatusNoContent || status == http.StatusPartialContent || status == http.StatusNotModified {
+		return false
+	}
+	if w.Header().Get("Content-Encoding") != "" || w.Header().Get("Upgrade") != "" {
+		return false
+	}
+	return responseContentTypeCompressible(w.Header().Get("Content-Type"))
+}
+
+func responseContentTypeCompressible(contentType string) bool {
+	contentType = strings.ToLower(strings.TrimSpace(strings.SplitN(contentType, ";", 2)[0]))
+	if contentType == "text/event-stream" {
+		return false
+	}
+	return contentType == "application/json" || strings.HasSuffix(contentType, "+json") || strings.HasPrefix(contentType, "text/")
+}
+
+func requestAcceptsGzip(request *http.Request) bool {
+	if request == nil {
+		return false
+	}
+	for _, value := range strings.Split(request.Header.Get("Accept-Encoding"), ",") {
+		parts := strings.Split(value, ";")
+		if !strings.EqualFold(strings.TrimSpace(parts[0]), "gzip") {
+			continue
+		}
+		accepted := true
+		for _, parameter := range parts[1:] {
+			name, raw, ok := strings.Cut(strings.TrimSpace(parameter), "=")
+			if ok && strings.EqualFold(strings.TrimSpace(name), "q") {
+				quality, err := strconv.ParseFloat(strings.TrimSpace(raw), 64)
+				if err != nil || quality <= 0 || quality > 1 {
+					accepted = false
+				}
+			}
+		}
+		return accepted
+	}
+	return false
+}
+
+func responseCompressionSensitivePath(path string) bool {
+	for _, prefix := range []string{
+		"/api/auth/",
+		"/api/backups/restore/",
+		"/api/download-preparations",
+		"/api/dvr/",
+		"/api/filesystem/",
+		"/api/offline-download-authorizations/",
+		"/api/library-channels/",
+		"/api/live-tv/",
+		"/api/media/",
+		"/api/account/profile-admin-proofs",
+		"/api/account/profile-trusts",
+		"/api/playback/",
+		"/api/playback-sessions",
+		"/api/remote-access/",
+		"/api/watch-with-friends/",
+	} {
+		if strings.HasPrefix(path, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+// responseCompression reduces large, bounded JSON and text projections for
+// browsers and native clients that connect directly to Portico. Secret-bearing
+// bootstrap/auth routes and all error responses stay uncompressed so reflected
+// input cannot be used as a compression oracle.
+func (s *Server) responseCompression(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path := ""
+		if r.URL != nil {
+			path = r.URL.Path
+		}
+		negotiable := !responseCompressionSensitivePath(path)
+		writer := &bufferedCompressionWriter{
+			ResponseWriter: w,
+			request:        r,
+			negotiable:     negotiable,
+			compressionOK:  negotiable && requestAcceptsGzip(r),
+		}
+		next.ServeHTTP(writer, r)
+		writer.finish()
+	})
+}
+
 func (s *Server) requestTiming(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
+		timing := &requestTimingState{}
+		r = r.WithContext(context.WithValue(r.Context(), requestTimingContextKey{}, timing))
 		recorder := &statusRecordingWriter{ResponseWriter: w}
+		recorder.beforeCommit = func() {
+			elapsed := time.Since(start)
+			queue := time.Duration(timing.queueNanos.Load())
+			handler := elapsed - queue
+			if handler < 0 {
+				handler = 0
+			}
+			recorder.Header().Add("Server-Timing", fmt.Sprintf(
+				"portico;dur=%.3f, queue;dur=%.3f, handler;dur=%.3f",
+				float64(elapsed)/float64(time.Millisecond),
+				float64(queue)/float64(time.Millisecond),
+				float64(handler)/float64(time.Millisecond),
+			))
+		}
 		next.ServeHTTP(recorder, r)
+		if recorder.status == 0 {
+			recorder.prepareCommit()
+			recorder.status = http.StatusOK
+		}
 		status := recorder.status
 		if status == 0 {
 			status = http.StatusOK
 		}
 		duration := time.Since(start)
-		s.latencyMetrics.observeRouteService(s.requestWork(r).Lane, duration)
+		descriptor := s.requestWork(r)
+		queue := time.Duration(timing.queueNanos.Load())
+		handlerDuration := duration - queue
+		if handlerDuration < 0 {
+			handlerDuration = 0
+		}
+		s.latencyMetrics.observeRouteService(descriptor.Lane, handlerDuration)
 		requestID := recorder.Header().Get(requestIDHeader)
 		sample := sha256.Sum256([]byte(requestID))
 		// Always retain failures and slow requests. Sample routine successful API
@@ -2308,8 +2722,12 @@ func (s *Server) requestTiming(next http.Handler) http.Handler {
 				"request_id", requestID,
 				"method", r.Method,
 				"path", requestLogPath(r.URL.Path),
+				"operation", descriptor.Route.OperationID,
+				"lane", descriptor.Lane,
 				"status", status,
 				"duration_ms", duration.Milliseconds(),
+				"queue_ms", queue.Milliseconds(),
+				"handler_ms", handlerDuration.Milliseconds(),
 				"bytes", recorder.bytes,
 				"auth", s.requestAuthMode(r),
 			)
@@ -2349,6 +2767,9 @@ func (s *Server) workloadAdmission(next http.Handler) http.Handler {
 			}
 			lane.waitNanos.Add(uint64(queueWaitNanos))
 			s.latencyMetrics.observeRouteQueue(laneID, time.Duration(queueWaitNanos))
+			if timing, ok := r.Context().Value(requestTimingContextKey{}).(*requestTimingState); ok && timing != nil {
+				timing.queueNanos.Store(queueWaitNanos)
+			}
 		}
 		if !acquired {
 			lane.rejected.Add(1)
@@ -2479,7 +2900,7 @@ func (s *Server) securityHeaders(next http.Handler) http.Handler {
 				w.Header().Set("Access-Control-Allow-Credentials", "true")
 				w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, Accept-Encoding, Range, "+csrfHeaderName+", "+requestIDHeader+", "+profileAdministrationHeader+", "+restoreStatusHeader)
 				w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
-				w.Header().Set("Access-Control-Expose-Headers", requestIDHeader+", "+csrfHeaderName+", Content-Length, Content-Range, Accept-Ranges, Content-Type")
+				w.Header().Set("Access-Control-Expose-Headers", requestIDHeader+", "+csrfHeaderName+", Server-Timing, Content-Length, Content-Range, Accept-Ranges, Content-Type")
 				w.Header().Set("Access-Control-Allow-Private-Network", "true")
 				if r.Method == http.MethodOptions {
 					w.WriteHeader(http.StatusNoContent)
@@ -2538,7 +2959,7 @@ func (s *Server) applyCastCORS(w http.ResponseWriter, r *http.Request, origin st
 	w.Header().Set("Access-Control-Allow-Headers", allowedHeaders)
 	w.Header().Set("Access-Control-Allow-Methods", allowedMethods)
 	w.Header().Set("Access-Control-Max-Age", "600")
-	w.Header().Set("Access-Control-Expose-Headers", "Content-Length, Content-Range, Accept-Ranges, Content-Type")
+	w.Header().Set("Access-Control-Expose-Headers", "Server-Timing, Content-Length, Content-Range, Accept-Ranges, Content-Type")
 	return true
 }
 
@@ -2686,6 +3107,10 @@ func (s *Server) withAuth(next authedHandler) http.HandlerFunc {
 			writeError(w, http.StatusForbidden, "api_key_scope_denied", "This API key is not scoped for that request.")
 			return
 		}
+		if !s.enforceAPIKeyRequestLimit(w, user) {
+			return
+		}
+		s.observeAuthorizedAPIKeyUse(user)
 		leasedContext, releaseProfileLease, err := s.profileRuntime.acquire(r.Context(), accountIDForUser(user), viewerProfileID(user))
 		if err != nil {
 			writeProductError(w, http.StatusConflict, "profile_erasure_in_progress", "This profile is being permanently erased and cannot start new work.")
@@ -2706,6 +3131,17 @@ func (s *Server) currentUser(w http.ResponseWriter, r *http.Request) (User, bool
 }
 
 func (s *Server) currentUserWithError(w http.ResponseWriter, r *http.Request) (User, bool, error) {
+	// Authorization is an explicit caller-selected authority. Never let an
+	// ambient browser cookie replace, broaden, or revive that credential: a
+	// malformed, expired, revoked, or narrowly scoped bearer must fail as itself.
+	if strings.TrimSpace(r.Header.Get("Authorization")) != "" {
+		user, ok, err := s.currentLocalBearerUserWithError(r)
+		if err != nil || !ok {
+			return User{}, false, err
+		}
+		s.publishBearerSessionCookie(w, r)
+		return user, true, nil
+	}
 	cookies := s.requestSessionCookies(r)
 	if len(cookies) == 0 {
 		if user, ok, err := s.currentLocalBearerUserWithError(r); ok || err != nil {
@@ -2792,12 +3228,16 @@ func (s *Server) currentLocalBearerUserWithError(r *http.Request) (User, bool, e
 		user, _, ok, err := s.userForSessionTokenWithError(r, token)
 		return user, ok, err
 	}
-	if s.porticoAccountMode() {
-		return User{}, false, nil
-	}
+	// API keys are scoped credentials issued and revoked by this Server. They do
+	// not become Hosted credentials when Portico Account mode is enabled, and
+	// their compact local authorization fence remains authoritative in either
+	// account mode. Keep this branch ahead of the Hosted-only bearer boundary.
 	if strings.HasPrefix(token, "ptc_api_") {
 		user, ok := s.userForAPIKey(r, token)
 		return user, ok, nil
+	}
+	if s.porticoAccountMode() {
+		return User{}, false, nil
 	}
 	user, _, ok, err := s.userForSessionTokenWithError(r, token)
 	return user, ok, err
@@ -4660,11 +5100,12 @@ func removeProfileImagePath(appDataDir, path string) {
 }
 
 func (s *Server) handleSystem(w http.ResponseWriter, r *http.Request) {
+	compatibility := s.compatibilityEnvelope()
 	writeJSON(w, http.StatusOK, map[string]any{
 		"name":          "Portico",
-		"version":       s.compatibilityEnvelope().Build.Version,
+		"version":       compatibility.Build.Version,
 		"apiVersion":    systemAPIVersion,
-		"compatibility": s.compatibilityEnvelope(),
+		"compatibility": compatibility,
 		"time":          time.Now().UTC().Format(time.RFC3339),
 	})
 }
@@ -13634,13 +14075,10 @@ func (s *Server) searchMediaContext(ctx context.Context, userID string, q string
 			return nil, ctx.Err()
 		}
 	}
-	restrictionSQL, restrictionArgs := s.mediaVisibilityRestrictionSQL(userID)
-	queryArgs := append([]any{match}, restrictionArgs...)
-	queryArgs = append(queryArgs, limit)
+	queryArgs := []any{match, limit}
 	items, err := s.queryMediaListItemsContext(ctx, userID, `
 		JOIN media_search ON media_search.media_id = m.id
 		WHERE media_search MATCH ?
-		`+restrictionSQL+`
 		ORDER BY bm25(media_search), m.sort_title ASC
 		LIMIT ?`, queryArgs)
 	if err != nil {
@@ -15006,8 +15444,13 @@ func (s *Server) getMediaArtworkSeedContext(ctx context.Context, userID, id stri
 }
 
 func (s *Server) serveResolvedArtwork(w http.ResponseWriter, r *http.Request, item MediaItem, kind string) bool {
-	if image, ok := s.preferredMediaImage(item.ID, kind); ok {
-		if image.Path != "" {
+	// Keep the ordered image projection for the whole resolution attempt. This
+	// request used to read media_images once for the preferred row and again for
+	// the provider fallback; serveArtworkFile remains the path authorization
+	// boundary.
+	images := s.mediaImagesForContext(r.Context(), item.ID)
+	for _, image := range images {
+		if image.Type == kind && image.Preferred && strings.TrimSpace(image.Path) != "" {
 			s.serveArtworkFile(w, r, image.Path)
 			return true
 		}
@@ -15020,9 +15463,11 @@ func (s *Server) serveResolvedArtwork(w http.ResponseWriter, r *http.Request, it
 				return true
 			}
 		case "provider":
-			if localPath, ok := s.mediaImagePath(item.ID, kind); ok {
-				s.serveArtworkFile(w, r, localPath)
-				return true
+			for _, image := range images {
+				if image.Type == kind && strings.TrimSpace(image.Path) != "" {
+					s.serveArtworkFile(w, r, image.Path)
+					return true
+				}
 			}
 		}
 	}
@@ -15155,20 +15600,26 @@ func (s *Server) serveArtworkFile(w http.ResponseWriter, r *http.Request, path s
 	}
 	if cachePath, ok := s.resizedImageCachePath("artwork", path, width, height); ok {
 		if _, err := os.Stat(cachePath); err == nil {
+			w.Header().Set("X-Portico-Artwork-Variant", "resized")
 			http.ServeFile(w, r, cachePath)
 			return
 		}
 		if r.Method != http.MethodHead {
 			if err := s.ensureResizedImageCache(r.Context(), path, cachePath, width, height); err == nil {
+				w.Header().Set("X-Portico-Artwork-Variant", "resized")
 				http.ServeFile(w, r, cachePath)
 				return
-			} else {
+			} else if !errors.Is(err, errArtworkTransformBusy) {
 				s.log.Warn("cache resized artwork failed", "path", path, "cachePath", cachePath, "error", err)
 			}
 		}
 	}
 	// If a bounded transform cannot be produced, serve the validated original
 	// instead of decoding/encoding again on the interactive request goroutine.
+	// Keep this requested-size URL's fallback cache short so a later request can
+	// pick up the exact resized variant once background capacity is available.
+	w.Header().Set("Cache-Control", "private, max-age=60")
+	w.Header().Set("X-Portico-Artwork-Variant", "original-fallback")
 	http.ServeFile(w, r, path)
 }
 
@@ -15189,24 +15640,18 @@ func (s *Server) validatedLocalContentPath(ctx context.Context, path string) (st
 	if err != nil || !info.Mode().IsRegular() {
 		return "", false
 	}
-	roots := []string{s.cfg.AppDataDir}
-	rows, err := s.queryUserRead(ctx, `
-		SELECT path FROM library_paths WHERE trim(path) <> ''
-		UNION
-		SELECT path FROM libraries WHERE trim(COALESCE(path, '')) <> ''`)
-	if err == nil {
-		for rows.Next() {
-			var root string
-			if rows.Scan(&root) == nil {
-				roots = append(roots, root)
-			}
-		}
+	// Provider, generated, uploaded, and resized artwork live below app data.
+	// Admit that common case without querying and walking every library root.
+	// Both sides are still resolved for each request, so a later symlink swap
+	// cannot widen access.
+	if resolvedAppData, err := filepath.EvalSymlinks(s.cfg.AppDataDir); err == nil && pathInsideRoot(resolvedPath, resolvedAppData) {
+		return resolvedPath, true
+	}
+	roots, ok := s.cachedLocalContentRoots(ctx)
+	if !ok {
+		return "", false
 	}
 	for _, root := range roots {
-		root = strings.TrimSpace(root)
-		if root == "" {
-			continue
-		}
 		resolvedRoot, err := filepath.EvalSymlinks(root)
 		if err != nil {
 			continue
@@ -15216,6 +15661,51 @@ func (s *Server) validatedLocalContentPath(ctx context.Context, path string) (st
 		}
 	}
 	return "", false
+}
+
+func (s *Server) cachedLocalContentRoots(ctx context.Context) ([]string, bool) {
+	s.localContentRootsMu.Lock()
+	if s.localContentRootsLoaded {
+		roots := append([]string(nil), s.localContentRoots...)
+		s.localContentRootsMu.Unlock()
+		return roots, true
+	}
+	generation := s.localContentRootsGeneration
+	s.localContentRootsMu.Unlock()
+
+	rows, err := s.queryUserRead(ctx, `
+		SELECT path FROM library_paths WHERE trim(path) <> ''
+		UNION
+		SELECT path FROM libraries WHERE trim(COALESCE(path, '')) <> ''`)
+	if err != nil {
+		return nil, false
+	}
+	defer rows.Close()
+	var roots []string
+	for rows.Next() {
+		var root string
+		if rows.Scan(&root) == nil && strings.TrimSpace(root) != "" {
+			roots = append(roots, strings.TrimSpace(root))
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, false
+	}
+	s.localContentRootsMu.Lock()
+	if generation == s.localContentRootsGeneration {
+		s.localContentRoots = append([]string(nil), roots...)
+		s.localContentRootsLoaded = true
+	}
+	s.localContentRootsMu.Unlock()
+	return roots, true
+}
+
+func (s *Server) invalidateLocalContentRoots() {
+	s.localContentRootsMu.Lock()
+	s.localContentRootsGeneration++
+	s.localContentRoots = nil
+	s.localContentRootsLoaded = false
+	s.localContentRootsMu.Unlock()
 }
 
 func (s *Server) ensureResizedImageCache(ctx context.Context, sourcePath, cachePath string, width, height int) error {
@@ -15229,8 +15719,8 @@ func (s *Server) ensureResizedImageCache(ctx context.Context, sourcePath, cacheP
 		select {
 		case <-existing.done:
 			return existing.err
-		case <-ctx.Done():
-			return ctx.Err()
+		default:
+			return errArtworkTransformBusy
 		}
 	}
 	call := &artworkTransformCall{done: make(chan struct{})}
@@ -15248,6 +15738,9 @@ func (s *Server) ensureResizedImageCache(ctx context.Context, sourcePath, cacheP
 	case <-ctx.Done():
 		call.err = ctx.Err()
 		return call.err
+	default:
+		call.err = errArtworkTransformBusy
+		return call.err
 	}
 	call.err = s.writeResizedImageCache(sourcePath, cachePath, width, height)
 	return call.err
@@ -15261,8 +15754,15 @@ func (s *Server) ensureArtworkWorkerStateLocked() {
 		s.artworkTransformInFlight = map[string]*artworkTransformCall{}
 	}
 	if s.artworkWorkSlots == nil {
-		s.artworkWorkSlots = make(chan struct{}, 4)
+		s.artworkWorkSlots = make(chan struct{}, artworkTransformConcurrency())
 	}
+}
+
+func artworkTransformConcurrency() int {
+	if concurrency := runtime.GOMAXPROCS(0); concurrency < 2 {
+		return 1
+	}
+	return 2
 }
 
 func (s *Server) resizedImageCachePath(namespace string, sourcePath string, width int, height int) (string, bool) {
@@ -18309,12 +18809,22 @@ func (s *Server) queryLibrarySourceGroupReadModel(libraryID string, limit int, o
 }
 
 func (s *Server) rebuildLibrarySourceGroups(libraryID string) error {
-	groups, err := s.computeLibrarySourceGroups(libraryID)
+	return s.rebuildLibrarySourceGroupsContext(context.Background(), libraryID)
+}
+
+func (s *Server) rebuildLibrarySourceGroupsContext(ctx context.Context, libraryID string) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	groups, err := s.computeLibrarySourceGroupsContext(ctx, libraryID)
 	if err != nil {
 		return err
 	}
+	if !s.waitForForegroundPressureToEase(ctx) {
+		return ctx.Err()
+	}
 	now := time.Now().UTC().Format(time.RFC3339)
-	return s.withBackgroundTxTagged(context.Background(), []string{"libraries", "library-items"}, func(tx *sql.Tx) error {
+	return s.withBackgroundTxTagged(ctx, []string{"libraries", "library-items"}, func(tx *sql.Tx) error {
 		if _, err := tx.Exec(`DELETE FROM library_source_groups WHERE library_id = ?`, libraryID); err != nil {
 			return err
 		}
@@ -18331,7 +18841,14 @@ func (s *Server) rebuildLibrarySourceGroups(libraryID string) error {
 }
 
 func (s *Server) computeLibrarySourceGroups(libraryID string) ([]LibrarySourceGroup, error) {
-	rows, err := s.queryUserRead(context.Background(), `
+	return s.computeLibrarySourceGroupsContext(context.Background(), libraryID)
+}
+
+func (s *Server) computeLibrarySourceGroupsContext(ctx context.Context, libraryID string) ([]LibrarySourceGroup, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	rows, err := s.queryBackgroundRead(ctx, `
 		SELECT m.id, COALESCE(m.source_url, ''), COALESCE(f.path, ''), COALESCE(f.source_type, ''), COALESCE(f.size_bytes, 0), COALESCE(f.available, 1)
 		FROM media_items m
 		LEFT JOIN media_files f ON f.media_id = m.id
@@ -18343,6 +18860,9 @@ func (s *Server) computeLibrarySourceGroups(libraryID string) ([]LibrarySourceGr
 	defer rows.Close()
 	groups := map[string]*librarySourceGroupAccumulator{}
 	for rows.Next() {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		var mediaID string
 		var sourceURL string
 		var filePath string
@@ -19391,15 +19911,16 @@ func (s *Server) loadDashboardContext(ctx context.Context, user User, filters da
 	includeCore := filters.wantsDashboardSection("core")
 	includeBandwidth := includeCore || filters.wantsDashboardSection("bandwidth")
 	includeSessions := includeCore || filters.wantsDashboardSection("sessions")
-	libraries := []Library{}
+	libraries := []LibraryStat{}
+	totalItems := 0
 	jobs := []Job{}
 	if includeCore {
 		var err error
-		libraries, err = s.listLibraries()
+		libraries, totalItems, err = s.dashboardLibraryStatsContext(ctx)
 		if err != nil {
 			return DashboardResponse{}, err
 		}
-		jobs, err = s.listJobs()
+		jobs, err = s.listJobsContext(ctx)
 		if err != nil {
 			return DashboardResponse{}, err
 		}
@@ -19451,18 +19972,6 @@ func (s *Server) loadDashboardContext(ctx context.Context, user User, filters da
 		}
 	}
 
-	totalItems := 0
-	libraryStats := make([]LibraryStat, 0, len(libraries))
-	for _, library := range libraries {
-		totalItems += library.Count
-		libraryStats = append(libraryStats, LibraryStat{
-			ID:    library.ID,
-			Name:  library.Name,
-			Type:  library.Type,
-			Count: library.Count,
-		})
-	}
-
 	response := DashboardResponse{
 		NowPlaying:  sessions,
 		Bandwidth:   samples,
@@ -19471,7 +19980,7 @@ func (s *Server) loadDashboardContext(ctx context.Context, user User, filters da
 		TopPlayed:   topPlayed,
 		Transcodes:  transcodeSessionsFromPlayback(sessions),
 		Conversions: conversionJobsFromJobs(jobs),
-		Libraries:   libraryStats,
+		Libraries:   libraries,
 		Jobs:        jobs,
 		Mode:        filters.Mode,
 		Period:      filters.Period,
@@ -19489,6 +19998,42 @@ func (s *Server) loadDashboardContext(ctx context.Context, user User, filters da
 		response.Alerts = s.dashboardAlerts()
 	}
 	return response, nil
+}
+
+// dashboardLibraryStatsContext projects only the four fields the dashboard
+// contract exposes. The general library read model also resolves storage
+// paths, settings, and scan summaries; loading those here made a lightweight
+// status request pay for unrelated administration data.
+func (s *Server) dashboardLibraryStatsContext(ctx context.Context) ([]LibraryStat, int, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	rows, err := s.queryUserRead(ctx, `
+		SELECT l.id, l.name, l.type, COALESCE(lc.root_item_count, 0)
+		FROM libraries l
+		LEFT JOIN library_item_counts lc ON lc.library_id = l.id
+		ORDER BY l.sort_order ASC, l.id ASC`)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+	stats := []LibraryStat{}
+	totalItems := 0
+	for rows.Next() {
+		if err := ctx.Err(); err != nil {
+			return nil, 0, err
+		}
+		var stat LibraryStat
+		if err := rows.Scan(&stat.ID, &stat.Name, &stat.Type, &stat.Count); err != nil {
+			return nil, 0, err
+		}
+		totalItems += stat.Count
+		stats = append(stats, stat)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, err
+	}
+	return stats, totalItems, nil
 }
 
 func (s *Server) dashboardOverviewUsageContext(ctx context.Context, r *http.Request) (DashboardOverviewUsageResponse, error) {
@@ -23630,7 +24175,7 @@ func (s *Server) queryMediaContext(ctx context.Context, userID, clause string, a
 		ctx = context.Background()
 	}
 	accountID, profileID := s.accountAndProfileIDsContext(ctx, userID)
-	clause, args = s.applyMediaVisibilityRestrictionToClause(profileID, clause, args)
+	clause, args = s.applyMediaVisibilityRestrictionToClauseContext(ctx, profileID, clause, args)
 	clause, args = s.applyLibraryCurationRestrictionToClause(ctx, accountID, clause, args)
 	query := `
 		SELECT
@@ -23731,7 +24276,7 @@ func (s *Server) queryMediaListItemsContext(ctx context.Context, userID, clause 
 		ctx = context.Background()
 	}
 	accountID, profileID := s.accountAndProfileIDsContext(ctx, userID)
-	clause, args = s.applyMediaVisibilityRestrictionToClause(profileID, clause, args)
+	clause, args = s.applyMediaVisibilityRestrictionToClauseContext(ctx, profileID, clause, args)
 	clause, args = s.applyLibraryCurationRestrictionToClause(ctx, accountID, clause, args)
 	query := `
 		SELECT
@@ -23791,7 +24336,11 @@ func (s *Server) queryMediaListItemsContext(ctx context.Context, userID, clause 
 }
 
 func (s *Server) applyMediaVisibilityRestrictionToClause(userID string, clause string, args []any) (string, []any) {
-	restrictionSQL, restrictionArgs := s.mediaVisibilityRestrictionSQL(userID)
+	return s.applyMediaVisibilityRestrictionToClauseContext(context.Background(), userID, clause, args)
+}
+
+func (s *Server) applyMediaVisibilityRestrictionToClauseContext(ctx context.Context, userID string, clause string, args []any) (string, []any) {
+	restrictionSQL, restrictionArgs := s.mediaVisibilityRestrictionSQLContext(ctx, userID)
 	if restrictionSQL == "" || strings.Contains(clause, "user_library_access ula") {
 		return clause, args
 	}
@@ -23997,16 +24546,16 @@ func (s *Server) applyUserLibraryRestrictionsContext(ctx context.Context, userID
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	var role string
-	if err := s.queryUserRow(ctx, `SELECT role FROM users WHERE id = ?`, userID).Scan(&role); err != nil {
-		return nil
-	}
-	if role == "owner" {
-		return items
-	}
-	allowed, err := s.userLibraryAccessSetContext(ctx, userID)
+	principal, err := s.requestPrincipalForIdentityContext(ctx, userID)
 	if err != nil {
 		return nil
+	}
+	if principal.MembershipEnvelope.Role == "owner" {
+		return items
+	}
+	allowed := make(map[string]bool, len(principal.MembershipEnvelope.LibraryIDs))
+	for _, libraryID := range principal.MembershipEnvelope.LibraryIDs {
+		allowed[libraryID] = true
 	}
 	filtered := items[:0]
 	for _, item := range items {
@@ -24025,12 +24574,11 @@ func (s *Server) applyUserContentRestrictionsContext(ctx context.Context, userID
 	if strings.TrimSpace(userID) == "" || len(items) == 0 {
 		return items
 	}
-	accountID, profileID := s.accountAndProfileIDsContext(ctx, userID)
-	principal, err := s.resolveRequestPrincipalContext(ctx, accountID, profileID)
+	principal, err := s.requestPrincipalForIdentityContext(ctx, userID)
 	if err != nil {
 		return nil
 	}
-	tagPolicy := s.userTagPolicyContext(ctx, accountID)
+	tagPolicy := principal.MembershipEnvelope.TagPolicy
 	filtered := items[:0]
 	for _, item := range items {
 		if contentRatingAllowed(item.ContentRating, principal.MaxContentRating) && mediaItemAllowedByTagPolicy(item, tagPolicy) && profileMediaPolicyAllows(principal, item) {
@@ -24111,8 +24659,25 @@ func (s *Server) libraryCurationRestrictionSQL(ctx context.Context, userID strin
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	memo := requestReadMemoFromContext(ctx)
+	if memo != nil {
+		memo.mu.Lock()
+		if cached, ok := memo.libraryRestrictions[userID]; ok {
+			memo.mu.Unlock()
+			return cached.clause, append([]any(nil), cached.args...)
+		}
+		memo.mu.Unlock()
+	}
 	libraries, err := s.listLibrariesContext(ctx)
 	if err != nil {
+		if memo != nil {
+			memo.mu.Lock()
+			if memo.libraryRestrictions == nil {
+				memo.libraryRestrictions = map[string]sqlRestrictionMemo{}
+			}
+			memo.libraryRestrictions[userID] = sqlRestrictionMemo{clause: " AND 1 = 0"}
+			memo.mu.Unlock()
+		}
 		return " AND 1 = 0", nil
 	}
 	clauses := []string{}
@@ -24164,28 +24729,48 @@ func (s *Server) libraryCurationRestrictionSQL(ctx context.Context, userID strin
 		args = append(args, policyArgs...)
 	}
 	if len(clauses) == 0 {
+		if memo != nil {
+			memo.mu.Lock()
+			if memo.libraryRestrictions == nil {
+				memo.libraryRestrictions = map[string]sqlRestrictionMemo{}
+			}
+			memo.libraryRestrictions[userID] = sqlRestrictionMemo{}
+			memo.mu.Unlock()
+		}
 		return "", nil
 	}
-	return " AND " + strings.Join(clauses, " AND "), args
+	clause := " AND " + strings.Join(clauses, " AND ")
+	if memo != nil {
+		memo.mu.Lock()
+		if memo.libraryRestrictions == nil {
+			memo.libraryRestrictions = map[string]sqlRestrictionMemo{}
+		}
+		memo.libraryRestrictions[userID] = sqlRestrictionMemo{clause: clause, args: append([]any(nil), args...)}
+		memo.mu.Unlock()
+	}
+	return clause, args
 }
 
 func (s *Server) mediaVisibilityRestrictionSQL(userID string) (string, []any) {
+	return s.mediaVisibilityRestrictionSQLContext(context.Background(), userID)
+}
+
+func (s *Server) mediaVisibilityRestrictionSQLContext(ctx context.Context, userID string) (string, []any) {
 	userID = strings.TrimSpace(userID)
 	if userID == "" {
 		return "", nil
 	}
-	accountID, profileID := s.accountAndProfileIDsContext(context.Background(), userID)
-	principal, err := s.resolveRequestPrincipalContext(context.Background(), accountID, profileID)
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	principal, err := s.requestPrincipalForIdentityContext(ctx, userID)
 	if err != nil {
 		return " AND 1 = 0", nil
 	}
-	var role string
-	if err := s.queryUserRow(context.Background(), `SELECT role FROM users WHERE id = ?`, accountID).Scan(&role); err != nil {
-		return " AND 1 = 0", nil
-	}
+	accountID, profileID := principal.AccountID, principal.ProfileID
 	clauses := []string{}
 	args := []any{}
-	if role != "owner" {
+	if principal.MembershipEnvelope.Role != "owner" {
 		clauses = append(clauses, `EXISTS (SELECT 1 FROM user_library_access ula WHERE ula.user_id = ? AND ula.library_id = m.library_id)`)
 		args = append(args, accountID)
 	}
@@ -24216,7 +24801,7 @@ func (s *Server) mediaVisibilityRestrictionSQL(userID string) (string, []any) {
 			args = append(args, label)
 		}
 	}
-	tagPolicy := s.userTagPolicy(accountID)
+	tagPolicy := principal.MembershipEnvelope.TagPolicy
 	appendTermPolicy := func(facetType string, values []string, allowed bool) {
 		normalizedValues := normalizedPolicyValues(values)
 		if len(normalizedValues) == 0 {
@@ -25535,15 +26120,42 @@ func (s *Server) playbackProgressPreferencesForUserContext(ctx context.Context, 
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	memo := requestReadMemoFromContext(ctx)
+	if memo != nil {
+		memo.mu.Lock()
+		if preferences, ok := memo.playbackProgress[identityID]; ok {
+			memo.mu.Unlock()
+			return preferences
+		}
+		memo.mu.Unlock()
+	}
 	_, profileID := s.accountAndProfileIDsContext(ctx, identityID)
 	values, err := s.profileServerPreferenceValuesForProfileContext(ctx, profileID)
 	if err != nil {
-		return defaultPlaybackProgressPreferences()
+		preferences := defaultPlaybackProgressPreferences()
+		if memo != nil {
+			memo.mu.Lock()
+			if memo.playbackProgress == nil {
+				memo.playbackProgress = map[string]PlaybackProgressPreferences{}
+			}
+			memo.playbackProgress[identityID] = preferences
+			memo.mu.Unlock()
+		}
+		return preferences
 	}
-	return PlaybackProgressPreferences{
+	preferences := PlaybackProgressPreferences{
 		StartedThresholdPercent: values.Playback.StartedThresholdPercent,
 		PlayedThresholdPercent:  values.Playback.PlayedThresholdPercent,
 	}
+	if memo != nil {
+		memo.mu.Lock()
+		if memo.playbackProgress == nil {
+			memo.playbackProgress = map[string]PlaybackProgressPreferences{}
+		}
+		memo.playbackProgress[identityID] = preferences
+		memo.mu.Unlock()
+	}
+	return preferences
 }
 
 func (s *Server) userPrivacyPreferencesForUserContext(ctx context.Context, userID string) UserPrivacyPreferences {
@@ -25820,21 +26432,21 @@ func (s *Server) createPlaybackSessionWithState(r *http.Request, user User, item
 	}
 	result, err := s.execUserWriteTaggedForViewer(r.Context(), accountIDForUser(user), viewerProfileID(user), []string{"playback"}, `
 		INSERT INTO playback_sessions (
-			id, user_id, profile_id, current_entry_id, media_id, media_type, title, started_at, last_seen_at, client_ip, client_instance_id,
+			id, user_id, profile_id, api_key_id, current_entry_id, media_id, media_type, title, started_at, last_seen_at, client_ip, client_instance_id,
 			device, app, location, state, progress, position_seconds, bandwidth_mbps, decision, video_decision,
 			video_source, video_target, audio_decision, audio_source, audio_target,
 			subtitle_decision, diagnostics_json, source_context_json, client_profile_json, playback_intent_json, history_paused, repeat_mode, queue_revision, is_live,
 			selected_audio_stream_id, selected_subtitle_stream_id, selected_subtitle_mode, selected_version_id,
 			plan_schema_version, plan_digest, plan_json, source_revision, media_facts_digest, capability_evidence_id, playback_generation
 		)
-		SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+		SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 		WHERE ? <= 0 OR (
 			SELECT COUNT(*)
 			FROM playback_sessions
 			WHERE user_id = ? AND ended_at = '' AND state <> 'stopped' AND last_seen_at >= ?
 				AND (? = '' OR client_instance_id <> ?)
 		) < ?`,
-		session.ID, session.UserID, viewerProfileID(user), currentEntryID, item.ID, item.Type, item.Title, session.StartedAt, session.LastSeenAt, session.ClientIP, session.ClientInstanceID,
+		session.ID, session.UserID, viewerProfileID(user), strings.TrimSpace(user.APIKeyID), currentEntryID, item.ID, item.Type, item.Title, session.StartedAt, session.LastSeenAt, session.ClientIP, session.ClientInstanceID,
 		session.Device, session.App, session.Location, session.State, session.Progress, session.PositionSeconds, session.BandwidthMbps, session.Decision, session.VideoDecision,
 		session.VideoSource, session.VideoTarget, session.AudioDecision, session.AudioSource, session.AudioTarget,
 		session.SubtitleDecision, string(diagnosticsJSON), string(sourceContextJSON), string(clientProfileJSON), string(playbackIntentJSON), boolInt(historyPaused), repeatMode, 0, boolInt(session.IsLive),
@@ -28233,6 +28845,9 @@ func (s *Server) publishDataChangedForViewer(eventType string, tags []string, re
 	if len(tags) == 0 {
 		return
 	}
+	if hasString(tags, "libraries") {
+		s.invalidateLocalContentRoots()
+	}
 	if hasString(tags, "home") {
 		if strings.TrimSpace(profileID) != "" {
 			s.invalidateHomeCacheForProfile(profileID)
@@ -28526,7 +29141,7 @@ type settingsRevisionEntry struct {
 	UpdatedAt string `json:"updatedAt"`
 }
 
-func loadSettingsSnapshotFromQuery(rows *sql.Rows, err error) (map[string]any, string, string, error) {
+func loadSettingsSnapshotFromQuery(rows sqlRows, err error) (map[string]any, string, string, error) {
 	if err != nil {
 		return nil, "", "", err
 	}

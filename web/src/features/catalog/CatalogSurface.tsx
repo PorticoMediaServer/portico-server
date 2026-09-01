@@ -1,13 +1,13 @@
 import { StatusWarningIcon, ActionConfirmIcon, NavigationPreviousIcon, NavigationDisclosureIcon, StatusSuccessIcon, ActionMoreIcon, MediaMovieIcon, MediaMusicIcon, ActionRefreshIcon, ActionCloseIcon } from '#portico-icons';
 import { productMessage, resolveMediaDetailViewModel, resolveMediaViewModel, type ProductContract } from '@porticomediaserver/client-core';
-import { type ReactNode, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useNavigate } from 'react-router-dom';
 import { IconButton } from '../../components/controls/Buttons';
+import { StableImage } from '../../components/media/StableImage';
 import { AnchoredOverlay } from '../../components/overlay/OverlayPortal';
 import { productLanguageProblem } from '../../components/states/ProductLanguageState';
 import { useMediaMutations, useMediaOperations, useProductContract } from '../../data/DataProvider';
-import { artworkFailureCacheVersion, artworkFailureExpiresAt, rememberArtworkFailure, subscribeArtworkFailureCache } from '../../data/artworkFailureCache';
 import type { MediaItem, PlaybackStartOptions } from '../../data/models';
 import { optionalMotionBehavior } from '../../runtime/motion';
 import {
@@ -147,18 +147,15 @@ function displayArtworkVariant(source: string, width: number, height: number) {
 }
 
 export function MediaArtwork({ item, shape, className = '' }: { item: MediaItem; shape?: ArtworkShape; className?: string }) {
-  useSyncExternalStore(subscribeArtworkFailureCache, artworkFailureCacheVersion, artworkFailureCacheVersion);
   const viewModel = useWebMediaViewModel(item);
   const resolvedShape = artworkShapeFor(item, shape, viewModel?.artwork.shape.aspectRatio, viewModel?.semantics.known);
   const source = viewModel?.artwork.url || item.poster;
-  const failed = artworkFailureExpiresAt(source) > 0;
-  if (!source || failed) {
-    const Icon = resolvedShape === 'square' ? MediaMusicIcon : MediaMovieIcon;
-    return <span className={`catalog-artwork-fallback ${resolvedShape} ${className}`} data-artwork-role={viewModel?.artwork.role} role="img" aria-label={productMessage('media.artwork-unavailable', { title: item.title }).text}><Icon /></span>;
-  }
+  const Icon = resolvedShape === 'square' ? MediaMusicIcon : MediaMovieIcon;
+  const fallback = <span className={`catalog-artwork-fallback ${resolvedShape} ${className}`} data-artwork-role={viewModel?.artwork.role} role="img" aria-label={productMessage('media.artwork-unavailable', { title: item.title }).text}><Icon /></span>;
+  if (!source) return fallback;
   const width = 320;
   const height = resolvedShape === 'square' ? 320 : resolvedShape === 'landscape' ? 180 : 480;
-  return <img
+  return <StableImage
     className={className}
     src={displayArtworkVariant(source, width, height)}
     srcSet={`${displayArtworkVariant(source, Math.round(width / 2), Math.round(height / 2))} 160w, ${displayArtworkVariant(source, width, height)} 320w, ${displayArtworkVariant(source, Math.round(width * 1.5), Math.round(height * 1.5))} 480w`}
@@ -170,9 +167,8 @@ export function MediaArtwork({ item, shape, className = '' }: { item: MediaItem;
     loading="lazy"
     decoding="async"
     style={{ objectFit: viewModel?.artwork.shape.fit }}
-    onError={() => {
-      rememberArtworkFailure(source);
-    }}
+    fallback={fallback}
+    retryKey={item.metadataEtag ?? item.metadataRevision}
   />;
 }
 
@@ -347,7 +343,7 @@ export function MediaActionMenu({
     <div className={`more-actions ${card ? 'card-more-actions' : ''}`} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()}>
       <IconButton ref={triggerRef} label={productMessage('action.more-for', { title: target.title }).text ?? ''} className={open ? 'selected' : ''} onClick={(event) => { event.preventDefault(); event.stopPropagation(); setOpen((value) => !value); }}><ActionMoreIcon /></IconButton>
       {open && <AnchoredOverlay anchorRef={triggerRef} placement={card ? 'right-start' : 'bottom-end'} className={`context-menu ${card ? 'card-context-menu' : ''}`} role="menu" onDismiss={closeMenu}>
-        <div className="context-title">{target.poster ? <img src={target.poster} alt="" /> : <span className="context-artwork-fallback"><MediaMovieIcon /></span>}<span><strong>{target.title}</strong><small>{target.subtitle}</small></span></div>
+        <div className="context-title"><StableImage src={target.poster} alt="" fallback={<span className="context-artwork-fallback"><MediaMovieIcon /></span>} /><span><strong>{target.title}</strong><small>{target.subtitle}</small></span></div>
         <div className="context-section">
           {action('play') && <button type="button" onClick={() => playTarget()}><MediaActionIcon action={action('play')!} /> {action('play')!.label}</button>}
           {action('play.from-beginning') && canRestart && <button type="button" onClick={() => playTarget(0)}><MediaActionIcon action={action('play.from-beginning')!} /> {action('play.from-beginning')!.label}</button>}

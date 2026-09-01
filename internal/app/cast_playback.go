@@ -1480,7 +1480,7 @@ func (s *Server) redeemCastBootstrap(ctx context.Context, bootstrapID, secret, r
 		return User{}, castBootstrapRecord{}, errCastBootstrapInvalid
 	}
 	user, err := s.castUserForScope(ctx, record.UserID, record.ProfileID)
-	if err != nil || !user.Permissions["playMedia"] {
+	if err != nil || !s.applyPlaybackSessionAPIKeyContext(ctx, &user, record.PlaybackSessionID) || !user.Permissions["playMedia"] {
 		return User{}, castBootstrapRecord{}, errCastBootstrapInvalid
 	}
 	currentRevision, revisionErr := s.authorizationRevisionForUserContextStrict(ctx, user)
@@ -1504,7 +1504,7 @@ func (s *Server) authenticateCastSession(r *http.Request, sessionID string) (cas
 		return castSessionAuth{}, errCastReceiverSessionInvalid
 	}
 	user, err := s.castUserForScope(r.Context(), record.UserID, record.ProfileID)
-	if err != nil || !user.Permissions["playMedia"] {
+	if err != nil || !s.applyPlaybackSessionAPIKeyContext(r.Context(), &user, record.PlaybackSessionID) || !user.Permissions["playMedia"] {
 		return castSessionAuth{}, errCastReceiverSessionInvalid
 	}
 	currentRevision, revisionErr := s.authorizationRevisionForUserContextStrict(r.Context(), user)

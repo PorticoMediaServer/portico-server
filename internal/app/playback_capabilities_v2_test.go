@@ -358,3 +358,42 @@ func TestChromiumUnauthenticatedProbeFallsBackToReviewedManagedHLSBand(t *testin
 		t.Fatalf("Chromium did not resolve to the reviewed managed-HLS baseline: %#v", resolution)
 	}
 }
+
+func TestChromiumStaticFallbackDirectPlaysExactMonoAACBaseline(t *testing.T) {
+	server := newScannerTestServer(t)
+	profile := PlaybackClientProfile{
+		CapabilitySchemaVersion: playbackCapabilitySchemaV2,
+		ClientFamily:            "chromium", ClientVersion: "load-harness-1", Platform: "web", Device: "Portico acceptance load harness",
+		CapabilityEvidence: []PlaybackCapabilityEvidence{{
+			ID: "untrusted-acceptance-probe", Source: "unauthenticated_probe", Confidence: "high", Producer: "portico-load-harness", ReviewedAt: time.Now().UTC().Format(time.RFC3339),
+			Tuples: []PlaybackCapabilityTuple{{
+				MediaKind: "audiovisual", Protocol: "http", Container: "mp4",
+				Video:    PlaybackCapabilityVideo{Codec: "h264", Profile: "baseline", PixelFormat: "yuv420p", Chroma: "4:2:0", DynamicRange: "sdr", BitDepth: 8, MaxWidth: 1920, MaxHeight: 1080, MaxFrameRate: 60},
+				Audio:    PlaybackCapabilityAudio{Codec: "aac", Profile: "lc", Layout: "mono", Route: "decode", MaxChannels: 1},
+				Subtitle: PlaybackCapabilitySubtitle{Mode: "none"},
+			}},
+		}},
+	}
+	resolution, err := resolvePlaybackCapabilities(profile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolution.Source != playbackcap.SourceStaticFallback {
+		t.Fatalf("untrusted probe became playback authority: %#v", resolution)
+	}
+	item := MediaItem{
+		ID: "acceptance-mono-mp4", Type: "movie", SourceURL: "/media/acceptance-mono.mp4", DurationSeconds: 2,
+		Streams: []Stream{
+			{ID: "acceptance-video", Index: 0, Kind: "video", Codec: "h264", Profile: "Constrained Baseline", Width: 320, Height: 180, FrameRate: 12, PixelFormat: "yuv420p", BitDepth: 8, Default: true},
+			{ID: "acceptance-audio", Index: 1, Kind: "audio", Codec: "aac", Profile: "LC", Channels: 1, ChannelLayout: "mono", SampleRate: 48000, Default: true},
+		},
+	}
+	policy := defaultResolvedPlaybackPolicy(item.Type, playbackNetworkRemote)
+	decision, err := server.planMediaPlayback(context.Background(), item, profile, policy, "acceptance-audio", "", "off")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decision.Mode != "direct_play" || decision.Protocol != "http" || decision.executionPlan == nil || decision.executionPlan.Plan.Audio.Channels != 1 {
+		t.Fatalf("exact conservative mono baseline did not direct play: %#v", decision)
+	}
+}

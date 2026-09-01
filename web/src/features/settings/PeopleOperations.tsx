@@ -1,14 +1,17 @@
 import type { APIKey, Device, Permissions, PorticoInvite, User, UserCreateRequest, UserPatchRequest } from '@porticomediaserver/client-core';
 import { StatusWarningIcon, ActionConfirmIcon, ViewListIcon, AccountSecurityIcon, DeviceClientIcon, ActionEditIcon, ActionAddIcon, StatusSecureIcon, ActionDeleteIcon, ActionCloseIcon } from '#portico-icons';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { IconButton, PrimaryButton, SecondaryButton } from '../../components/controls/Buttons';
+import { StableImage } from '../../components/media/StableImage';
 import { ModalOverlay } from '../../components/overlay/OverlayPortal';
 import { reviewedProductErrorText } from '../../components/ProductLanguage';
 import { InlineNotice, SettingsGroup, TextControl, ToggleControl } from './SettingsControls';
 import { useAbortableMutation } from './settingsHooks';
+import { setSettingsNavigationDirty } from './settingsNavigationGuard';
 import type { SettingsDataSource, SettingsOperationalSnapshot } from './settingsTypes';
 
 const permissionPresentations: Record<string, { label: string; description: string }> = {
+  read: { label: 'Read library data', description: 'Browse libraries, media details, and safe server projections.' },
   playMedia: { label: 'Play media', description: 'Play available library media.' },
   downloadMedia: { label: 'Download media', description: 'Download available media files.' },
   editMetadata: { label: 'Edit metadata', description: 'Change titles, artwork, and media details.' },
@@ -19,11 +22,20 @@ const permissionPresentations: Record<string, { label: string; description: stri
   playLiveTV: { label: 'Play Live TV', description: 'Watch available live channels.' },
   viewDVR: { label: 'View DVR', description: 'Browse recording rules and recorded programs.' },
   scheduleDVR: { label: 'Schedule DVR recordings', description: 'Create and update recording schedules.' },
-  manageDVR: { label: 'Manage DVR', description: 'Manage DVR sources, rules, and recordings.' },
+  manageDVR: { label: 'Manage DVR', description: 'Manage DVR rules and recordings. Live TV source administration remains interactive-owner only.' },
   deleteDVRRecordings: { label: 'Delete DVR recordings', description: 'Permanently remove recorded programs.' },
   deleteMedia: { label: 'Delete media', description: 'Permanently remove media from this server.' },
   transcode: { label: 'Transcode media', description: 'Create compatible playback versions.' },
 };
+
+// API keys are intentionally narrower than the account permission catalog.
+// Keep this list aligned with the server's validated API-key scope vocabulary;
+// never derive credential authority from capabilities intended for human users.
+export const apiKeyScopeCatalog = [
+  'read', 'playMedia', 'downloadMedia', 'editMetadata', 'manageLyrics',
+  'manageSubtitles', 'watchWithFriends', 'viewLiveTV', 'playLiveTV', 'viewDVR',
+  'scheduleDVR', 'manageDVR', 'deleteDVRRecordings', 'deleteMedia', 'transcode',
+] as const;
 
 export function canonicalPermissionID(value: string): string | undefined {
   const trimmed = value.trim();
@@ -185,7 +197,7 @@ function UsersPanel({ operations, source, onChanged }: { operations: SettingsOpe
   return <SettingsGroup title="Members" description="Server-local profiles, linked Portico identities, and library access." actions={<PrimaryButton onClick={() => setEditor(porticoMode ? 'invite' : 'new')}><ActionAddIcon /> {porticoMode ? 'Invite account' : 'New account'}</PrimaryButton>}>
     {error && <InlineNotice tone="error">{error}</InlineNotice>}
     <div className="portico-member-list">
-      {operations.users.map((user) => <article key={user.id}><span className="portico-member-avatar">{user.profileImageUrl ? <img src={user.profileImageUrl} alt="" /> : accountUsername(user).slice(0, 1).toLocaleUpperCase()}</span><span><strong>{accountUsername(user)}</strong><small>{user.email} · {user.role} · {user.authOrigin === 'portico' ? 'Portico account' : 'This Server'} · {user.libraryIds.length} {user.libraryIds.length === 1 ? 'library' : 'libraries'}</small></span><div>{user.authOrigin === 'portico' && <span className="portico-settings-capability configured"><StatusSecureIcon /> Linked</span>}{user.role !== 'owner' && <IconButton label={`Edit ${accountUsername(user)}`} onClick={() => setEditor(user)}><ActionEditIcon /></IconButton>}{user.role !== 'owner' && (confirmDelete === user.id ? <div className="portico-inline-confirm"><span>Remove {accountUsername(user)} from this server? Their server access and profile data will be permanently deleted; media files are retained.</span><button type="button" onClick={() => setConfirmDelete('')}>Cancel</button><button type="button" className="danger" disabled={mutation.busy} onClick={() => void remove(user)}>Remove</button></div> : <IconButton label={`Remove ${accountUsername(user)}`} onClick={() => setConfirmDelete(user.id)}><ActionDeleteIcon /></IconButton>)}</div></article>)}
+      {operations.users.map((user) => <article key={user.id}><span className="portico-member-avatar"><StableImage src={user.profileImageUrl} alt="" fallback={accountUsername(user).slice(0, 1).toLocaleUpperCase()} /></span><span><strong>{accountUsername(user)}</strong><small>{user.email} · {user.role} · {user.authOrigin === 'portico' ? 'Portico account' : 'This Server'} · {user.libraryIds.length} {user.libraryIds.length === 1 ? 'library' : 'libraries'}</small></span><div>{user.authOrigin === 'portico' && <span className="portico-settings-capability configured"><StatusSecureIcon /> Linked</span>}{user.role !== 'owner' && <IconButton label={`Edit ${accountUsername(user)}`} onClick={() => setEditor(user)}><ActionEditIcon /></IconButton>}{user.role !== 'owner' && (confirmDelete === user.id ? <div className="portico-inline-confirm"><span>Remove {accountUsername(user)} from this server? Their server access and profile data will be permanently deleted; media files are retained.</span><button type="button" onClick={() => setConfirmDelete('')}>Cancel</button><button type="button" className="danger" disabled={mutation.busy} onClick={() => void remove(user)}>Remove</button></div> : <IconButton label={`Remove ${accountUsername(user)}`} onClick={() => setConfirmDelete(user.id)}><ActionDeleteIcon /></IconButton>)}</div></article>)}
       {(operations.porticoInvites ?? []).filter((invite) => invite.status !== 'accepted' && !invite.acceptedAt).map((invite) => {
         const projection = invitationProjection(invite);
         const recipient = invitationRecipientLabel(invite);
@@ -218,9 +230,9 @@ function DevicesPanel({ devices, source, onChanged }: { devices: Device[]; sourc
   </SettingsGroup>;
 }
 
-function APIKeyEditor({ scopes, source, onDismiss, onSaved }: { scopes: string[]; source: SettingsDataSource; onDismiss: () => void; onSaved: (token: string) => void }) {
-  const [name, setName] = useState('');
-  const [selected, setSelected] = useState<string[]>([]);
+function APIKeyEditor({ scopes, source, initialKey, onDismiss, onSaved }: { scopes: string[]; source: SettingsDataSource; initialKey?: APIKey; onDismiss: () => void; onSaved: (token: string) => void }) {
+  const [name, setName] = useState(initialKey?.name ?? '');
+  const [selected, setSelected] = useState<string[]>(initialKey?.scopes.filter((scope) => scope !== 'read') ?? []);
   const [error, setError] = useState('');
   const mutation = useAbortableMutation();
   const submit = async () => {
@@ -239,29 +251,59 @@ function APIKeysPanel({ keys, scopes, source, onChanged }: { keys: APIKey[]; sco
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState('');
   const [confirmRevoke, setConfirmRevoke] = useState('');
+  const [confirmReplace, setConfirmReplace] = useState('');
+  const [replacement, setReplacement] = useState<APIKey>();
   const mutation = useAbortableMutation();
+  useEffect(() => {
+    setSettingsNavigationDirty(Boolean(token), 'api-key-token');
+    return () => setSettingsNavigationDirty(false, 'api-key-token');
+  }, [token]);
+  useEffect(() => {
+    if (!token) return;
+    const warn = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [token]);
   const revoke = async (key: APIKey) => {
     setError('');
     try { await mutation.run((signal) => source.revokeAPIKey(key.id, signal)); setConfirmRevoke(''); onChanged(); }
     catch (reason) { setError(reviewedProductErrorText(reason, 'settings.action-failed', { actionName: `revoke ${key.name}` })); }
   };
-  const copy = async () => { try { await navigator.clipboard.writeText(token); setCopied(true); } catch { setError('Clipboard access was denied. Copy the token manually.'); } };
-  return <SettingsGroup title="API keys" description="Long-lived credentials for integrations. New tokens are shown once." actions={<PrimaryButton onClick={() => setEditor(true)}><ActionAddIcon /> New key</PrimaryButton>}>
+  const replace = async (key: APIKey) => {
+    setError('');
+    try {
+      await mutation.run((signal) => source.revokeAPIKey(key.id, signal));
+      setConfirmReplace('');
+      setReplacement(key);
+      setEditor(true);
+      onChanged();
+    }
+    catch (reason) { setError(reviewedProductErrorText(reason, 'settings.action-failed', { actionName: `replace ${key.name}` })); }
+  };
+  const acknowledgeToken = () => { setToken(''); setCopied(false); onChanged(); };
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(token); setCopied(true); acknowledgeToken(); }
+    catch { setError('Clipboard access was denied. Copy the token manually.'); }
+  };
+  return <SettingsGroup title="API keys" description="Long-lived credentials for integrations. New tokens are shown once." actions={<PrimaryButton disabled={Boolean(token)} onClick={() => setEditor(true)}><ActionAddIcon /> New key</PrimaryButton>}>
     {error && <InlineNotice tone="error">{error}</InlineNotice>}
-    {token && <InlineNotice tone="warn" action={<SecondaryButton onClick={() => void copy()}>{copied ? <ActionConfirmIcon /> : <ViewListIcon />}{copied ? 'Copied' : 'Copy token'}</SecondaryButton>}><span className="portico-api-token"><strong>Store this token now.</strong><code>{token}</code></span></InlineNotice>}
-    {keys.length === 0 ? <div className="portico-settings-state"><AccountSecurityIcon /><strong>No API keys</strong><p>Create a scoped key when an integration needs server access.</p></div> : <div className="portico-api-key-list">{keys.map((key) => <article key={key.id}><AccountSecurityIcon /><span><strong>{key.name}</strong><small>•••• {key.lastFour} · created {new Date(key.createdAt).toLocaleDateString()}{key.lastUsedAt ? ` · used ${new Date(key.lastUsedAt).toLocaleDateString()}` : ' · never used'}</small></span>{confirmRevoke === key.id ? <div className="portico-inline-confirm"><span>Revoke {key.name}? Integrations using this key will stop working immediately.</span><button type="button" onClick={() => setConfirmRevoke('')}>Cancel</button><button type="button" className="danger" disabled={mutation.busy} onClick={() => void revoke(key)}>Revoke key</button></div> : <IconButton label={`Revoke ${key.name}`} onClick={() => setConfirmRevoke(key.id)}><ActionDeleteIcon /></IconButton>}</article>)}</div>}
-    {editor && <APIKeyEditor scopes={scopes} source={source} onDismiss={() => setEditor(false)} onSaved={(value) => { setToken(value); setEditor(false); onChanged(); }} />}
+    {token && <InlineNotice tone="warn" action={<><SecondaryButton onClick={() => void copy()}>{copied ? <ActionConfirmIcon /> : <ViewListIcon />}{copied ? 'Copied' : 'Copy token'}</SecondaryButton><SecondaryButton onClick={acknowledgeToken}>I saved it</SecondaryButton></>}><span className="portico-api-token"><strong>Store this token now.</strong><code>{token}</code></span></InlineNotice>}
+    {keys.length === 0 ? <div className="portico-settings-state"><AccountSecurityIcon /><strong>No API keys</strong><p>Create a scoped key when an integration needs server access.</p></div> : <div className="portico-api-key-list">{keys.map((key) => <article key={key.id}><AccountSecurityIcon /><span><strong>{key.name}</strong><small>•••• {key.lastFour} · created {new Date(key.createdAt).toLocaleDateString()}{key.lastUsedAt ? ` · used ${new Date(key.lastUsedAt).toLocaleDateString()}` : ' · never used'}</small></span>{confirmReplace === key.id ? <div className="portico-inline-confirm"><span>Lost the token for {key.name}? Revoke it and create a replacement with the same scopes.</span><button type="button" onClick={() => setConfirmReplace('')}>Cancel</button><button type="button" className="danger" disabled={mutation.busy} onClick={() => void replace(key)}>Revoke and replace</button></div> : confirmRevoke === key.id ? <div className="portico-inline-confirm"><span>Revoke {key.name}? Integrations using this key will stop working immediately.</span><button type="button" onClick={() => setConfirmRevoke('')}>Cancel</button><button type="button" className="danger" disabled={mutation.busy} onClick={() => void revoke(key)}>Revoke key</button></div> : <div><SecondaryButton disabled={mutation.busy} onClick={() => { setConfirmRevoke(''); setConfirmReplace(key.id); }}>Replace</SecondaryButton><IconButton label={`Revoke ${key.name}`} onClick={() => { setConfirmReplace(''); setConfirmRevoke(key.id); }}><ActionDeleteIcon /></IconButton></div>}</article>)}</div>}
+    {editor && <APIKeyEditor scopes={scopes} source={source} initialKey={replacement} onDismiss={() => { setEditor(false); setReplacement(undefined); }} onSaved={(value) => { setToken(value); setCopied(false); setEditor(false); setReplacement(undefined); }} />}
   </SettingsGroup>;
 }
 
 export function PeopleOperations({ operations, source, onChanged }: { operations: SettingsOperationalSnapshot; source: SettingsDataSource; onChanged: () => void }) {
   const failures = operations.failures ?? {};
-  const scopes = useMemo(() => operations.capabilities?.permissionCatalog ?? [], [operations.capabilities?.permissionCatalog]);
+  const scopes = apiKeyScopeCatalog.slice();
   const unavailable = (title: string) => <SettingsGroup title={title} description="This panel could not be refreshed independently."><div className="portico-settings-state error"><StatusWarningIcon /><strong>{title} are unavailable</strong><p>Retry the failed panel before making changes. No empty result is being inferred.</p></div></SettingsGroup>;
   const usersUnavailable = Boolean(failures.users || failures.libraries || failures.capabilities);
   return <div className="portico-settings-form">
     {usersUnavailable ? unavailable('People') : <UsersPanel operations={operations} source={source} onChanged={onChanged} />}
     {failures.devices ? unavailable('Devices') : <DevicesPanel devices={operations.devices} source={source} onChanged={onChanged} />}
-    {failures.apiKeys || failures.capabilities ? unavailable('API keys') : <APIKeysPanel keys={operations.apiKeys} scopes={scopes} source={source} onChanged={onChanged} />}
+    {failures.apiKeys ? unavailable('API keys') : <APIKeysPanel keys={operations.apiKeys} scopes={scopes} source={source} onChanged={onChanged} />}
   </div>;
 }

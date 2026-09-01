@@ -105,6 +105,32 @@ func TestH264ConstrainedBaselineMatchesReviewedBrowserMainFallback(t *testing.T)
 	}
 }
 
+func TestH264ConstrainedBaselineMonoAACDirectPlay(t *testing.T) {
+	facts := baseFacts()
+	facts.Container = "mp4"
+	facts.Video[0].Profile = "Constrained Baseline"
+	facts.Video[0].CodecTag = "avc1"
+	facts.Video[0].ChromaSubsampling = "4:2:0"
+	facts.Video[0].FrameRate = mediafacts.Rational{Num: 12, Den: 1}
+	facts.Audio[0] = mediafacts.Audio{Index: 1, Codec: "aac", Profile: "LC", Layout: "mono", Channels: 1, SampleRate: 48000}
+	tuple := playbackcap.DeliveryTuple{
+		Kind: playbackcap.MediaAudiovisual, Protocol: "http", Container: "mp4",
+		Video:    playbackcap.Video{Codec: "h264", Profile: "baseline", PixelFormat: "yuv420p", Chroma: "4:2:0", HDR: "sdr", BitDepth: 8, MaxWidth: 1920, MaxHeight: 1080, MaxFrameRate: 60},
+		Audio:    playbackcap.Audio{Codec: "aac", Profile: "lc", Layout: "mono", Route: "decode", MaxChannels: 1},
+		Subtitle: playbackcap.Subtitle{Mode: playbackcap.SubtitleNone},
+	}
+	plan, err := Build(Request{
+		Facts: facts, Capabilities: playbackcap.Resolution{EvidenceID: "probe:load-harness", Tuples: []playbackcap.DeliveryTuple{tuple}},
+		Policy: MaximumFidelity, AllowedModes: []Mode{DirectPlay, Remux, DirectStream, VideoTranscode}, PreferredModes: []Mode{DirectPlay},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Mode != DirectPlay || plan.Audio.Layout != "mono" || plan.Audio.Channels != 1 {
+		t.Fatalf("generated acceptance fixture should direct play: %#v", plan)
+	}
+}
+
 func TestPlannerConstraintsForceConversionForKnownAndUnknownBitrateAndHeight(t *testing.T) {
 	tuple := avTuple("matroska", "h264", "sdr", "aac", "stereo", 2, playbackcap.Subtitle{Mode: playbackcap.SubtitleNone})
 	for _, tc := range []struct {

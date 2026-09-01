@@ -69,6 +69,26 @@ function sourceFor(value: SettingsStatusSnapshot): SettingsDataSource {
 }
 
 describe('StatusDashboard telemetry presentation', () => {
+  it('describes unavailable GPU telemetry without package-install instructions', async () => {
+    const value = snapshot('unsupported', 'GPU hardware or driver telemetry is not exposed to this server.', 0);
+    if (value.dashboard) {
+      value.dashboard.system.gpuInfo = { available: false, device: 'GPU telemetry unavailable', provider: 'Unknown' };
+    }
+    render(<MemoryRouter><StatusDashboard source={sourceFor(value)} viewer={viewer} /></MemoryRouter>);
+
+    const gpuLedger = await screen.findByRole('region', { name: 'GPU telemetry' });
+    expect(gpuLedger).toHaveTextContent('GPU hardware or driver telemetry is not exposed to this server.');
+    expect(gpuLedger).not.toHaveTextContent(/install|nvidia-smi|rocm-smi|amd-smi|intel_gpu_top|privileged/i);
+  });
+
+  it('does not turn ordinary snapshot age into a user-facing health warning', async () => {
+    render(<MemoryRouter><StatusDashboard source={sourceFor(snapshot('ok', 'Authoritative sample.', 10))} viewer={viewer} /></MemoryRouter>);
+
+    expect(await screen.findByText('Telemetry Test status')).toBeInTheDocument();
+    expect(screen.queryByText(/stale snapshot/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/refresh for current values/i)).not.toBeInTheDocument();
+  });
+
   it('does not claim the server is online when a status panel failed', async () => {
     const value = snapshot('ok', 'Authoritative sample.', 10);
     value.failures = { remoteAccess: 'Remote access status timed out.' };
@@ -76,6 +96,45 @@ describe('StatusDashboard telemetry presentation', () => {
 
     expect(await screen.findByText('Telemetry Test status is partially unavailable')).toBeInTheDocument();
     expect(screen.queryByText(/is online/i)).not.toBeInTheDocument();
+  });
+
+  it('presents the authoritative direct-access result without implementation diagnostics', async () => {
+    const value = snapshot('ok', 'Authoritative sample.', 10);
+    value.remoteAccess = {
+      settings: { enabled: true, claimStatus: 'claimed' },
+      publicEndpoint: { url: 'https://direct.example.test:32500', port: 32500 },
+      connectivity: {
+        hostedServicesStatus: 'reachable',
+        publicRouteStatus: 'public_reachable',
+        troubleshootingStatus: 'ok',
+      },
+    } as unknown as NonNullable<SettingsStatusSnapshot['remoteAccess']>;
+    render(<MemoryRouter><StatusDashboard source={sourceFor(value)} viewer={viewer} /></MemoryRouter>);
+
+    const connectivity = await screen.findByRole('heading', { name: 'Connectivity' });
+    const region = connectivity.closest('section')!;
+    expect(within(region).getByText('Direct access')).toBeInTheDocument();
+    expect(within(region).getByText('Available')).toBeInTheDocument();
+    expect(within(region).getByText('https://direct.example.test:32500')).toBeInTheDocument();
+    expect(within(region).queryByText('TLS certificate')).not.toBeInTheDocument();
+    expect(within(region).queryByText('Router mapping')).not.toBeInTheDocument();
+    expect(within(region).queryByText('Hosted control plane')).not.toBeInTheDocument();
+  });
+
+  it('shows only active work with concise progress and no scheduler internals', async () => {
+    const value = snapshot('ok', 'Authoritative sample.', 10);
+    const base = { createdAt: '2026-08-17T00:00:00.000Z', updatedAt: '2026-08-17T00:01:00.000Z', attemptCount: 1, message: '' };
+    value.jobs = [
+      { ...base, id: 'active', type: 'metadata_refresh_library', status: 'running', progress: 25, progressCurrent: 1, progressTotal: 4, message: 'Refreshing The Example Movie (1/4).', metadata: { libraryName: 'Movies' }, priority: 'background-media' },
+      { ...base, id: 'complete', type: 'library_scan', status: 'complete', progress: 100, message: 'Filesystem change check completed for Movies.', metadata: { libraryName: 'Movies' } },
+    ];
+    render(<MemoryRouter><StatusDashboard source={sourceFor(value)} viewer={viewer} /></MemoryRouter>);
+
+    const work = (await screen.findByRole('heading', { name: 'Work' })).closest('section')!;
+    expect(within(work).getByText('Refreshing metadata for Movies · 25%')).toBeInTheDocument();
+    expect(within(work).getByText('Refreshing The Example Movie (1/4)')).toBeInTheDocument();
+    expect(within(work).queryByText(/Filesystem change check completed/)).not.toBeInTheDocument();
+    expect(within(work).queryByText(/Progress unavailable|background-media|complete ·/i)).not.toBeInTheDocument();
   });
 
   it.each([

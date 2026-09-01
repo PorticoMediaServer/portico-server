@@ -1,6 +1,13 @@
 const MAX_TOKEN_LENGTH = 16_384;
 const MAX_CURSOR_LENGTH = 4_096;
 const MAX_PAGE_ITEMS = 10_000;
+const API_KEY_TOKEN_PATTERN = /^ptc_api_[A-Za-z0-9_-]{43}$/u;
+const API_KEY_SCOPES = new Set([
+  "read", "playMedia", "downloadMedia", "editMetadata", "manageLyrics",
+  "manageSubtitles", "watchWithFriends", "viewLiveTV", "playLiveTV",
+  "viewDVR", "scheduleDVR", "manageDVR", "deleteDVRRecordings",
+  "deleteMedia", "transcode",
+]);
 
 export function decodeHighRiskResponse(
   path: string,
@@ -11,6 +18,7 @@ export function decodeHighRiskResponse(
   const pathname = path.split("?", 1)[0] ?? path;
   const verb = method.toUpperCase();
 
+  if (verb === "POST" && pathname === "/api/auth/api-keys") return apiKeyCreateResponse(value);
   if (verb === "POST" && isNativeCredentialPath(pathname)) return nativeCredentials(value, api);
   if (verb === "POST" && pathname === "/api/auth/sessions/refresh") return credentialRotation(value);
   if (verb === "POST" && /^\/api\/download-preparations\/[^/]+\/grant$/.test(pathname)) return downloadGrant(value, false);
@@ -28,6 +36,38 @@ export function decodeHighRiskResponse(
   if (isPlaybackResponsePath(pathname)) return playbackRouteResponse(pathname, value);
 
   validatePaginationEnvelope(value);
+  return value;
+}
+
+function apiKeyCreateResponse(value: unknown): unknown {
+  const response = object(value, "API key creation response");
+  rejectTopLevelCredentialFields(response, ["token"]);
+  const token = boundedString(response.token, "API key token", 51);
+  if (!API_KEY_TOKEN_PATTERN.test(token)) throw new TypeError("API key token is invalid");
+
+  const key = object(response.key, "API key");
+  rejectTopLevelCredentialFields(key);
+  boundedString(key.id, "API key id", 512);
+  const name = boundedString(key.name, "API key name", 80);
+  if (name.trim().length < 2 || name !== name.trim()) throw new TypeError("API key name is invalid");
+  boundedString(key.userId, "API key user id", 512);
+  if (key.username !== undefined) boundedString(key.username, "API key username", 320);
+  const lastFour = boundedString(key.lastFour, "API key last four", 4);
+  if (lastFour.length !== 4 || lastFour !== token.slice(-4)) throw new TypeError("API key token identity is invalid");
+  timestamp(key.createdAt, "API key creation time");
+  if (key.lastUsedAt !== undefined) timestamp(key.lastUsedAt, "API key last-used time");
+  if (key.revokedAt !== undefined) timestamp(key.revokedAt, "API key revocation time");
+
+  if (!Array.isArray(key.scopes) || key.scopes.length === 0 || key.scopes.length > API_KEY_SCOPES.size) {
+    throw new TypeError("API key scopes are invalid");
+  }
+  const scopes = new Set<string>();
+  for (const value of key.scopes) {
+    const scope = boundedString(value, "API key scope", 64);
+    if (!API_KEY_SCOPES.has(scope) || scopes.has(scope)) throw new TypeError("API key scopes are invalid");
+    scopes.add(scope);
+  }
+  if (!scopes.has("read")) throw new TypeError("API key scopes are invalid");
   return value;
 }
 

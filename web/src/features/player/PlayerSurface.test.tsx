@@ -4,6 +4,7 @@ import {
   type PlaybackSessionQueueResponse,
 } from "@porticomediaserver/client-core";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -15,6 +16,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter, Route, Routes, useNavigate } from "react-router-dom";
 import type { ReactNode } from "react";
 import { DataProvider } from "../../data/DataProvider";
+import {
+  clearArtworkFailureCache,
+  rememberArtworkSuccess,
+} from "../../data/artworkFailureCache";
 import { FixturePorticoDataSource } from "../../data/fixtureSource";
 import type { PorticoDataSource, Viewer } from "../../data/models";
 import {
@@ -316,6 +321,7 @@ function NavigateAwayHarness() {
 }
 
 beforeEach(() => {
+  clearArtworkFailureCache();
   hlsFixtures.instances.length = 0;
   localStorage.clear();
   vi.spyOn(HTMLMediaElement.prototype, "canPlayType").mockReturnValue(
@@ -352,6 +358,8 @@ beforeEach(() => {
 afterEach(() => {
   vi.useRealTimers();
   cleanup();
+  clearArtworkFailureCache();
+  vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
 
@@ -904,6 +912,7 @@ describe("production playback surface", () => {
 
   it("keeps the complete control contract across the full and docked layouts", async () => {
     const source = new FixturePorticoDataSource();
+    rememberArtworkSuccess("http://localhost:3000/poster.jpg");
     vi.spyOn(source as PorticoDataSource, "startPlayback").mockResolvedValue(
       playback(),
     );
@@ -1866,17 +1875,17 @@ describe("production playback surface", () => {
     renderPlayer(source, "channel-1");
     const surface = await screen.findByLabelText("Now playing News 7");
     expect(surface).toHaveClass("mode-live");
-    const channelLogo = surface.querySelector(".player-copy-logo");
-    expect(channelLogo).toHaveAttribute(
-      "src",
-      "http://localhost:3000/thumb.jpg",
-    );
-    fireEvent.error(channelLogo as HTMLImageElement);
+    expect(surface.querySelector(".player-copy-logo:not([data-stable-image-stage])")).not.toBeInTheDocument();
+    expect(surface.querySelector(".player-copy-art-fallback")).toBeInTheDocument();
+    const stagedLogo = surface.querySelector<HTMLImageElement>(".player-copy-logo[data-stable-image-stage]");
+    expect(stagedLogo).toBeInTheDocument();
+    fireEvent.error(stagedLogo!);
     await waitFor(() =>
       expect(
         surface.querySelector(".player-copy-art-fallback"),
       ).toBeInTheDocument(),
     );
+    expect(surface.querySelector(".player-copy-logo:not([data-stable-image-stage])")).not.toBeInTheDocument();
     expect(within(surface).getByText("Live")).toBeInTheDocument();
     expect(
       within(surface).queryByLabelText("Playback position"),
@@ -1894,6 +1903,7 @@ describe("production playback surface", () => {
 
   it("resolves playback artwork against the selected server and scopes API images to the media grant", async () => {
     const source = new FixturePorticoDataSource();
+    rememberArtworkSuccess("https://server.example/api/artwork/episode-1/poster");
     const media = {
       ...coreMedia("episode-1", "The Castle"),
       images: {

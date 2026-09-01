@@ -3,6 +3,7 @@ package app
 import (
 	"bufio"
 	"bytes"
+	"compress/gzip"
 	"context"
 	"database/sql"
 	"encoding/csv"
@@ -3892,6 +3893,7 @@ func TestLargeLibraryEndpointPerformanceBudgets(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			readsBefore := server.sqliteDiagnostics().ReadOperations
 			var durations []time.Duration
 			var body []byte
 			for i := 0; i < 5; i++ {
@@ -3933,6 +3935,73 @@ func TestLargeLibraryEndpointPerformanceBudgets(t *testing.T) {
 			p95 := durations[(len(durations)*95+99)/100-1]
 			if p95 > tc.maxP95 {
 				t.Fatalf("%s p95 = %s, budget = %s, samples = %v", tc.name, p95, tc.maxP95, durations)
+			}
+			reads := server.sqliteDiagnostics().ReadOperations - readsBefore
+			t.Logf("%s p95=%s bytes=%d sqlite_reads=%d reads_per_request=%.1f samples=%v", tc.name, p95, len(body), reads, float64(reads)/float64(len(durations)), durations)
+			if tc.name == "dashboard" {
+				var dashboard DashboardResponse
+				if err := json.Unmarshal(body, &dashboard); err != nil {
+					t.Fatalf("decode dashboard guardrail response: %v", err)
+				}
+				for name, count := range map[string]int{
+					"bandwidth": len(dashboard.Bandwidth),
+					"cpu":       len(dashboard.System.CPU),
+					"ram":       len(dashboard.System.RAM),
+					"gpu":       len(dashboard.System.GPU),
+					"diskIo":    len(dashboard.System.DiskIO),
+				} {
+					if count != dashboardLiveBuckets {
+						t.Fatalf("dashboard %s samples = %d, want fixed ceiling %d", name, count, dashboardLiveBuckets)
+					}
+				}
+				if len(dashboard.Jobs) > 80 || len(dashboard.NowPlaying) > 50 {
+					t.Fatalf("dashboard bounded lists jobs=%d nowPlaying=%d", len(dashboard.Jobs), len(dashboard.NowPlaying))
+				}
+
+				transport := &http.Transport{DisableCompression: true}
+				rawClient := &http.Client{Jar: jar, Transport: transport}
+				defer transport.CloseIdleConnections()
+				compressedDurations := make([]time.Duration, 0, 5)
+				wireBytes := 0
+				for index := 0; index < 5; index++ {
+					request, err := http.NewRequest(http.MethodGet, serverURL+tc.path, nil)
+					if err != nil {
+						t.Fatal(err)
+					}
+					request.Header.Set("Accept-Encoding", "gzip")
+					startedAt := time.Now()
+					response, err := rawClient.Do(request)
+					if err != nil {
+						t.Fatalf("compressed dashboard request: %v", err)
+					}
+					wireBody, readErr := io.ReadAll(response.Body)
+					closeErr := response.Body.Close()
+					if readErr != nil || closeErr != nil {
+						t.Fatalf("read compressed dashboard: read=%v close=%v", readErr, closeErr)
+					}
+					if response.StatusCode != http.StatusOK || response.Header.Get("Content-Encoding") != "gzip" {
+						t.Fatalf("compressed dashboard status=%d encoding=%q", response.StatusCode, response.Header.Get("Content-Encoding"))
+					}
+					reader, err := gzip.NewReader(bytes.NewReader(wireBody))
+					if err != nil {
+						t.Fatal(err)
+					}
+					decoded, err := io.ReadAll(reader)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if err := reader.Close(); err != nil {
+						t.Fatal(err)
+					}
+					if !strings.Contains(string(decoded), tc.minContains) {
+						t.Fatal("compressed dashboard did not decode to expected response")
+					}
+					compressedDurations = append(compressedDurations, time.Since(startedAt))
+					wireBytes = len(wireBody)
+				}
+				sort.Slice(compressedDurations, func(i, j int) bool { return compressedDurations[i] < compressedDurations[j] })
+				compressedP95 := compressedDurations[(len(compressedDurations)*95+99)/100-1]
+				t.Logf("dashboard gzip wire_bytes=%d ratio=%.3f compressed_p95=%s samples=%v", wireBytes, float64(wireBytes)/float64(len(body)), compressedP95, compressedDurations)
 			}
 		})
 	}

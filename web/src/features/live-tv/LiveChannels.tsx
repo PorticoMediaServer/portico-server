@@ -3,6 +3,7 @@ import { type ComponentType, useDeferredValue, useEffect, useState } from 'react
 import { NavigationPreviousIcon, NavigationDisclosureIcon, PlaybackPlayIcon, NavigationSearchIcon, ActionRateIcon } from '#portico-icons';
 import { useNavigate } from 'react-router-dom';
 import { IconButton, PrimaryButton, SecondaryButton } from '../../components/controls/Buttons';
+import { StableImage } from '../../components/media/StableImage';
 import { productText, reviewedProductErrorText } from '../../components/ProductLanguage';
 import { useLiveTVMutations, usePorticoDataSource } from '../../data/DataProvider';
 import { usePlaybackSession } from '../player/PlayerSurface';
@@ -15,9 +16,7 @@ const channelPageSize = 100;
 
 function ChannelLogo({ channel, source, featured = false }: { channel: ActionableLiveTVChannel; source: ReturnType<typeof usePorticoDataSource>; featured?: boolean }) {
   const url = channel.logoUrl ? source.playbackResourceUrl(channel.logoUrl) : '';
-  const [failed, setFailed] = useState(false);
-  useEffect(() => setFailed(false), [url]);
-  return <span className={`channel-directory-logo ${featured ? 'featured' : ''}`}>{url && !failed ? <img src={url} alt="" onError={() => setFailed(true)} /> : <span>{channel.number || channel.name.slice(0, 2)}</span>}</span>;
+  return <span className={`channel-directory-logo ${featured ? 'featured' : ''}`}><StableImage src={url} alt="" fallback={<span>{channel.number || channel.name.slice(0, 2)}</span>} /></span>;
 }
 
 function ChannelTitle({ name }: { name: string }) {

@@ -1,6 +1,7 @@
 import { StatusWarningIcon, ActionConfirmIcon, MediaMovieIcon, StatusLoadingIcon, NavigationSearchIcon, ActionCloseIcon } from '#portico-icons';
 import { useEffect, useMemo, useState } from 'react';
 import { useMediaDetail, useSearchPage } from '../../data/DataProvider';
+import { StableImage } from '../../components/media/StableImage';
 import type { MediaItem } from '../../data/models';
 
 function isPlayable(item: MediaItem) {
@@ -12,7 +13,7 @@ function resultDetail(item: MediaItem) {
 }
 
 function ResultArtwork({ item }: { item: MediaItem }) {
-  return item.poster ? <img src={item.poster} alt="" /> : <span><MediaMovieIcon /></span>;
+  return <StableImage src={item.poster} alt="" retryKey={item.metadataEtag ?? item.metadataRevision} fallback={<span><MediaMovieIcon /></span>} />;
 }
 
 export function MediaSearchPicker({

@@ -108,19 +108,23 @@ type playbackContinuationRotationRequest struct {
 
 func (s *Server) issuePlaybackContinuationCredentialTx(ctx context.Context, tx *sql.Tx, user User, sessionID string, responseGeneration int64, origin string, now time.Time, rotation *playbackContinuationRotationRequest) (PlaybackContinuationCredential, error) {
 	var clientInstanceID string
+	var sessionAPIKeyID string
 	var generation int64
 	var existingAbsolute, existingOrigin, existingRevoked string
 	var lastRotationID, lastRotationFingerprint, lastRotationReceipt string
 	if err := tx.QueryRowContext(ctx, `
-		SELECT ps.client_instance_id, ps.progress_generation,
+			SELECT ps.client_instance_id, COALESCE(ps.api_key_id, ''), ps.progress_generation,
 			COALESCE(c.absolute_expires_at, ''), COALESCE(c.origin, ''), COALESCE(c.revoked_at, ''),
 			COALESCE(c.last_rotation_request_id, ''), COALESCE(c.last_rotation_fingerprint, ''), COALESCE(c.last_rotation_receipt, '')
 		FROM playback_sessions ps
 		LEFT JOIN playback_session_continuation_credentials c ON c.playback_session_id = ps.id
 		WHERE ps.id = ? AND ps.profile_id = ? AND ps.ended_at = '' AND ps.state <> 'stopped'`, sessionID, viewerProfileID(user)).Scan(
-		&clientInstanceID, &generation, &existingAbsolute, &existingOrigin, &existingRevoked,
+		&clientInstanceID, &sessionAPIKeyID, &generation, &existingAbsolute, &existingOrigin, &existingRevoked,
 		&lastRotationID, &lastRotationFingerprint, &lastRotationReceipt); err != nil {
 		return PlaybackContinuationCredential{}, err
+	}
+	if sessionAPIKeyID != strings.TrimSpace(user.APIKeyID) || !s.applyActiveAPIKeyIdentityContext(ctx, &user, sessionAPIKeyID) {
+		return PlaybackContinuationCredential{}, errPlaybackContinuationDenied
 	}
 	if rotation != nil && lastRotationID == rotation.RequestID {
 		if lastRotationFingerprint != rotation.Fingerprint {
@@ -228,10 +232,10 @@ func (s *Server) userForPlaybackContinuation(r *http.Request, sessionID string) 
 	}
 	now := time.Now().UTC()
 	origin := playbackContinuationOrigin(r)
-	var userID, profileID, storedOrigin, revoked, endedAt, state string
+	var userID, profileID, apiKeyID, storedOrigin, revoked, endedAt, state string
 	var credentialGeneration, sessionGeneration int64
 	err := s.queryUserRow(r.Context(), `
-		SELECT c.user_id, c.profile_id, c.origin, c.revoked_at,
+			SELECT c.user_id, c.profile_id, COALESCE(ps.api_key_id, ''), c.origin, c.revoked_at,
 			ps.ended_at, ps.state, c.generation, ps.progress_generation
 		FROM playback_session_continuation_credentials c
 		JOIN playback_sessions ps ON ps.id = c.playback_session_id
@@ -244,7 +248,7 @@ func (s *Server) userForPlaybackContinuation(r *http.Request, sessionID string) 
 			AND (c.token_hash = ? OR c.previous_token_hash = ?)
 			AND (c.token_hash = ? AND c.expires_at > ? OR c.previous_token_hash = ? AND c.previous_valid_until > ?)
 			AND c.origin = ? AND c.revoked_at = ''`,
-		sessionID, hashToken(token), hashToken(token), hashToken(token), now.Format(time.RFC3339Nano), hashToken(token), now.Format(time.RFC3339Nano), origin).Scan(&userID, &profileID, &storedOrigin, &revoked, &endedAt, &state, &credentialGeneration, &sessionGeneration)
+		sessionID, hashToken(token), hashToken(token), hashToken(token), now.Format(time.RFC3339Nano), hashToken(token), now.Format(time.RFC3339Nano), origin).Scan(&userID, &profileID, &apiKeyID, &storedOrigin, &revoked, &endedAt, &state, &credentialGeneration, &sessionGeneration)
 	if err != nil {
 		return User{}, 0, errPlaybackContinuationDenied
 	}
@@ -263,6 +267,9 @@ func (s *Server) userForPlaybackContinuation(r *http.Request, sessionID string) 
 	}
 	applyRequestPrincipal(&user, principal)
 	user = s.hydratePlaybackVisibilityUserContext(r.Context(), user)
+	if !s.applyActiveAPIKeyIdentityContext(r.Context(), &user, apiKeyID) {
+		return User{}, 0, errPlaybackContinuationDenied
+	}
 	if !user.Permissions["playMedia"] {
 		return User{}, 0, errPlaybackContinuationDenied
 	}

@@ -1,9 +1,9 @@
 import { NavigationDisclosureIcon, MetadataInfoIcon } from '#portico-icons';
 import { productMessage, type MediaViewModel } from '@porticomediaserver/client-core';
-import { useMemo, useSyncExternalStore } from 'react';
+import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import type { HomeRow, MediaItem } from '../../data/models';
-import { artworkFailureCacheVersion, artworkFailureExpiresAt, rememberArtworkFailure, subscribeArtworkFailureCache } from '../../data/artworkFailureCache';
+import { StableImage } from '../../components/media/StableImage';
 import { MediaRail, SectionHeading } from '../catalog/CatalogSurface';
 import {
   displayMetadataLabel,
@@ -20,13 +20,9 @@ function personInitials(name: string) {
   return name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toLocaleUpperCase()).join('') || '?';
 }
 
-function PersonPortrait({ name, imageUrl }: { name: string; imageUrl?: string }) {
-  useSyncExternalStore(subscribeArtworkFailureCache, artworkFailureCacheVersion, artworkFailureCacheVersion);
-  const failed = artworkFailureExpiresAt(imageUrl) > 0;
-  if (!imageUrl || failed) return <span className="portico-person-fallback" aria-hidden="true">{personInitials(name)}</span>;
-  return <img src={imageUrl} alt="" width="192" height="192" loading="lazy" decoding="async" onError={() => {
-    rememberArtworkFailure(imageUrl);
-  }} />;
+function PersonPortrait({ name, imageUrl, retryKey }: { name: string; imageUrl?: string; retryKey?: string | number }) {
+  const fallback = <span className="portico-person-fallback" aria-hidden="true">{personInitials(name)}</span>;
+  return <StableImage src={imageUrl} alt="" width="192" height="192" loading="lazy" decoding="async" fallback={fallback} retryKey={retryKey} />;
 }
 
 function personDetailPath(id: string | undefined, name: string) {
@@ -46,7 +42,7 @@ export function PeopleSection({ item }: { item: MediaItem }) {
     <SectionHeading title={title} detail={productMessage(people.length === 1 ? 'media.credit-count-single' : 'media.credit-count', { count: people.length }).text} />
     <div className="portico-people-list" aria-label={title}>
       {people.map((person, index) => <Link to={personDetailPath(person.id, person.name)} aria-label={productMessage('action.open-item', { title: person.name }).text} key={`${person.id || person.name}:${person.role}:${index}`}>
-        <PersonPortrait name={person.name} imageUrl={person.imageUrl} />
+        <PersonPortrait name={person.name} imageUrl={person.imageUrl} retryKey={item.metadataEtag ?? item.metadataRevision} />
         <strong>{person.name}</strong>
         <span>{person.character || person.role}</span>
       </Link>)}

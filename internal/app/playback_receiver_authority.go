@@ -103,8 +103,8 @@ func (s *Server) registerPlaybackReceiver(ctx context.Context, user User, req Pl
 			INSERT INTO playback_receivers (
 				id, user_id, profile_id, name, code, app, platform, supported_commands_json,
 				command_json, command_updated_at, receiver_public_key, receiver_public_key_fingerprint,
-				authorization_revision, expires_at, client_instance_id, created_at, last_seen_at
-			) VALUES (?, ?, ?, ?, '', ?, ?, ?, '{}', '', ?, ?, ?, ?, ?, ?, ?)
+				authorization_revision, expires_at, client_instance_id, api_key_id, created_at, last_seen_at
+			) VALUES (?, ?, ?, ?, '', ?, ?, ?, '{}', '', ?, ?, ?, ?, ?, ?, ?, ?)
 			ON CONFLICT(id) DO UPDATE SET
 				name = excluded.name, app = excluded.app, platform = excluded.platform,
 				supported_commands_json = excluded.supported_commands_json,
@@ -112,10 +112,11 @@ func (s *Server) registerPlaybackReceiver(ctx context.Context, user User, req Pl
 				receiver_public_key_fingerprint = excluded.receiver_public_key_fingerprint,
 				authorization_revision = excluded.authorization_revision,
 				expires_at = excluded.expires_at, client_instance_id = excluded.client_instance_id,
+				api_key_id = excluded.api_key_id,
 				last_seen_at = excluded.last_seen_at
 			WHERE playback_receivers.user_id = excluded.user_id AND playback_receivers.profile_id = excluded.profile_id`,
 			receiverID, accountID, profileID, name, app, platform, string(commandsJSON), publicKey, fingerprint,
-			authorizationRevision, expiresAt.Format(time.RFC3339Nano), clientInstanceID, now.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano))
+			authorizationRevision, expiresAt.Format(time.RFC3339Nano), clientInstanceID, strings.TrimSpace(user.APIKeyID), now.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano))
 		if err != nil {
 			return err
 		}
@@ -151,8 +152,9 @@ func (s *Server) listAuthorizedPlaybackReceivers(ctx context.Context, user User)
 	rows, err := s.queryUserRead(ctx, `
 		SELECT id, name, app, platform, receiver_public_key, receiver_public_key_fingerprint,
 		       supported_commands_json, expires_at, created_at, last_seen_at, client_instance_id
-		FROM playback_receivers
-		WHERE profile_id = ? AND user_id = ? AND authorization_revision = ?
+			FROM playback_receivers
+			WHERE profile_id = ? AND user_id = ? AND authorization_revision = ?
+			  AND (api_key_id = '' OR EXISTS (SELECT 1 FROM api_keys k WHERE k.id = playback_receivers.api_key_id AND k.user_id = playback_receivers.user_id AND k.revoked_at = ''))
 		  AND receiver_public_key <> '' AND julianday(expires_at) > julianday(?)
 		ORDER BY last_seen_at DESC`, viewerProfileID(user), accountIDForUser(user), revision, time.Now().UTC().Format(time.RFC3339Nano))
 	if err != nil {
@@ -293,20 +295,20 @@ func (s *Server) issueReceiverControllerGrant(ctx context.Context, user User, re
 			return errLongPollAuthorizationLost
 		}
 		var currentFingerprint string
-		err = tx.QueryRowContext(ctx, `SELECT receiver_public_key_fingerprint FROM playback_receivers WHERE id = ? AND user_id = ? AND profile_id = ? AND authorization_revision = ? AND julianday(expires_at) > julianday(?)`, receiver.ID, accountID, profileID, revision, now.Format(time.RFC3339Nano)).Scan(&currentFingerprint)
+		err = tx.QueryRowContext(ctx, `SELECT receiver_public_key_fingerprint FROM playback_receivers WHERE id = ? AND user_id = ? AND profile_id = ? AND authorization_revision = ? AND julianday(expires_at) > julianday(?) AND (api_key_id = '' OR EXISTS (SELECT 1 FROM api_keys k WHERE k.id = playback_receivers.api_key_id AND k.user_id = playback_receivers.user_id AND k.revoked_at = ''))`, receiver.ID, accountID, profileID, revision, now.Format(time.RFC3339Nano)).Scan(&currentFingerprint)
 		if err != nil || currentFingerprint != receiver.ReceiverPublicKeyFingerprint {
 			return sql.ErrNoRows
 		}
 		commandsJSON, _ := json.Marshal(commands)
 		_, err = tx.ExecContext(ctx, `
-			INSERT INTO playback_receiver_authorizations (
-				id, receiver_id, user_id, profile_id, controller_id, controller_public_key, controller_client_instance_id,
-				receiver_public_key_fingerprint, allowed_commands_json, authorization_revision,
-				request_id, request_fingerprint, response_json, created_at, expires_at, revoked_at
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '')`,
+				INSERT INTO playback_receiver_authorizations (
+					id, receiver_id, user_id, profile_id, controller_id, controller_public_key, controller_client_instance_id,
+					receiver_public_key_fingerprint, allowed_commands_json, authorization_revision,
+					request_id, request_fingerprint, response_json, created_at, expires_at, revoked_at, api_key_id
+				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?)`,
 			grant.AuthorizationID, receiver.ID, accountID, profileID, controllerID, controllerPublicKey,
 			controllerClientInstanceID, receiver.ReceiverPublicKeyFingerprint, string(commandsJSON), revision, requestID, requestFingerprint,
-			string(responseJSON), now.Format(time.RFC3339Nano), grant.ExpiresAt)
+			string(responseJSON), now.Format(time.RFC3339Nano), grant.ExpiresAt, strings.TrimSpace(user.APIKeyID))
 		return err
 	})
 	return grant, err
@@ -327,9 +329,11 @@ func (s *Server) receiverAuthorizationRecords(ctx context.Context, user User, re
 		JOIN playback_receivers r ON r.id = a.receiver_id
 		WHERE a.receiver_id = ? AND a.user_id = ? AND a.profile_id = ?
 		  AND a.authorization_revision = ? AND a.receiver_public_key_fingerprint = ?
-		  AND a.revoked_at = '' AND julianday(a.expires_at) > julianday(?)
-		  AND r.authorization_revision = a.authorization_revision
-		  AND r.receiver_public_key_fingerprint = a.receiver_public_key_fingerprint
+			  AND a.revoked_at = '' AND julianday(a.expires_at) > julianday(?)
+			  AND (a.api_key_id = '' OR EXISTS (SELECT 1 FROM api_keys k WHERE k.id = a.api_key_id AND k.user_id = a.user_id AND k.revoked_at = ''))
+			  AND r.authorization_revision = a.authorization_revision
+			  AND r.receiver_public_key_fingerprint = a.receiver_public_key_fingerprint
+			  AND (r.api_key_id = '' OR EXISTS (SELECT 1 FROM api_keys rk WHERE rk.id = r.api_key_id AND rk.user_id = r.user_id AND rk.revoked_at = ''))
 		ORDER BY a.created_at`, receiverID, accountIDForUser(user), viewerProfileID(user), revision, expectedFingerprint, time.Now().UTC().Format(time.RFC3339Nano))
 	if err != nil {
 		return nil, err
@@ -390,8 +394,10 @@ func (s *Server) authorizePlaybackReceiverHandoff(ctx context.Context, user User
 		  AND r.client_instance_id <> '' AND julianday(r.expires_at) > julianday(?)
 		  AND a.id = ? AND a.user_id = r.user_id AND a.profile_id = r.profile_id
 		  AND a.authorization_revision = r.authorization_revision
-		  AND a.receiver_public_key_fingerprint = r.receiver_public_key_fingerprint
-		  AND a.revoked_at = '' AND julianday(a.expires_at) > julianday(?)`,
+			  AND a.receiver_public_key_fingerprint = r.receiver_public_key_fingerprint
+			  AND a.revoked_at = '' AND julianday(a.expires_at) > julianday(?)
+			  AND (a.api_key_id = '' OR EXISTS (SELECT 1 FROM api_keys k WHERE k.id = a.api_key_id AND k.user_id = a.user_id AND k.revoked_at = ''))
+			  AND (r.api_key_id = '' OR EXISTS (SELECT 1 FROM api_keys rk WHERE rk.id = r.api_key_id AND rk.user_id = r.user_id AND rk.revoked_at = ''))`,
 		receiverID, accountIDForUser(user), viewerProfileID(user), revision, expectedFingerprint,
 		time.Now().UTC().Format(time.RFC3339Nano), authorizationID, time.Now().UTC().Format(time.RFC3339Nano)).Scan(
 		&receiver.ID, &receiver.ReceiverPublicKeyFingerprint, &receiver.ClientInstanceID,

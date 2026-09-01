@@ -172,6 +172,76 @@ func TestPlaybackMediaGrantIsHashedScopedExpiringAndRevocable(t *testing.T) {
 	}
 }
 
+func TestAPIKeyRevocationImmediatelyInvalidatesPlaybackCapabilitiesInLocalAndHostedModes(t *testing.T) {
+	for _, mode := range []string{"local", "hosted"} {
+		t.Run(mode, func(t *testing.T) {
+			serverURL, db, server := newEmptyAuthTestServerWithInstance(t)
+			status, body := doJSON(t, http.DefaultClient, http.MethodPost, serverURL+"/api/auth/setup", map[string]any{
+				"serverName": "API capability revocation", "username": "capability-owner", "email": "capability@example.test",
+				"displayName": "Capability Owner", "password": "Correct horse battery staple1",
+				"setupMode": "local_only", "localOnlyAcknowledged": true,
+			}, nil)
+			if status != http.StatusCreated && status != http.StatusOK {
+				t.Fatalf("setup status=%d body=%s", status, body)
+			}
+			if mode == "hosted" {
+				if _, err := db.Exec(`UPDATE settings SET value_json = ? WHERE key = 'remoteAccess'`, `{"enabled":true,"claimStatus":"claimed","serverId":"srv_capability","preferredRemoteAuthMode":"portico","hostedBaseUrl":"https://api.getportico.tv"}`); err != nil {
+					t.Fatal(err)
+				}
+			}
+			var userID, profileID string
+			if err := db.QueryRow(`SELECT id FROM users WHERE username = 'capability-owner'`).Scan(&userID); err != nil {
+				t.Fatal(err)
+			}
+			if err := db.QueryRow(`SELECT id FROM profiles WHERE account_id = ? AND is_primary = 1`, userID).Scan(&profileID); err != nil {
+				t.Fatal(err)
+			}
+			key, token, err := server.createAPIKey(userID, APIKeyCreateRequest{Name: "Playback capability", Scopes: []string{"read", "playMedia"}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			principalRequest := httptest.NewRequest(http.MethodGet, serverURL+"/api/libraries", nil)
+			principalRequest.Header.Set("Authorization", "Bearer "+token)
+			user, ok, err := server.currentLocalBearerUserWithError(principalRequest)
+			if err != nil || !ok || user.APIKeyID != key.ID {
+				t.Fatalf("resolve API key user=%#v ok=%t err=%v", user, ok, err)
+			}
+			now := time.Now().UTC().Format(time.RFC3339)
+			if _, err := db.Exec(`INSERT INTO media_items (id, type, title, sort_title, genres_json, tags_json, labels_json, added_at) VALUES ('api_capability_media', 'movie', 'Capability', 'Capability', '[]', '[]', '[]', ?)`, now); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := db.Exec(`INSERT INTO playback_sessions (id, user_id, profile_id, api_key_id, media_id, media_type, title, started_at, last_seen_at, state) VALUES ('api_capability_session', ?, ?, ?, 'api_capability_media', 'movie', 'Capability', ?, ?, 'playing')`, userID, profileID, key.ID, now, now); err != nil {
+				t.Fatal(err)
+			}
+			bindPlaybackSessionPlanForTest(t, db, "api_capability_session", "api_capability_media", false)
+			grant, err := server.issueMediaGrant(context.Background(), user, "api_capability_session", "media", "api_capability_media")
+			if err != nil {
+				t.Fatalf("issue media grant: %v", err)
+			}
+			mediaRequest := mediaGrantRequest(http.MethodGet, "/api/media/api_capability_media/stream", grant.Token)
+			if _, err := server.userForMediaGrant(mediaRequest); err != nil {
+				t.Fatalf("warm media grant: %v", err)
+			}
+			continuationRequest := httptest.NewRequest(http.MethodPost, "https://portico.example/api/playback-sessions/api_capability_session/continuation", nil)
+			continuation, err := server.issuePlaybackContinuationCredential(continuationRequest, user, "api_capability_session", 1)
+			if err != nil {
+				t.Fatalf("issue continuation: %v", err)
+			}
+			if _, err := server.revokeAPIKey(key.ID); err != nil {
+				t.Fatalf("revoke API key: %v", err)
+			}
+			if _, err := server.userForMediaGrant(mediaRequest); !errorsIsMediaGrantDenied(err) {
+				t.Fatalf("post-revoke media grant error=%v", err)
+			}
+			continuationUse := httptest.NewRequest(http.MethodGet, "https://portico.example/api/playback-sessions/api_capability_session/continuation", nil)
+			continuationUse.Header.Set("Authorization", "PorticoPlayback "+continuation.Token)
+			if _, _, err := server.userForPlaybackContinuation(continuationUse, "api_capability_session"); !errors.Is(err, errPlaybackContinuationDenied) {
+				t.Fatalf("post-revoke continuation error=%v", err)
+			}
+		})
+	}
+}
+
 func TestMediaResourceAuthRejectsLongLivedAccountTokenInQuery(t *testing.T) {
 	_, _, server := newEmptyAuthTestServerWithInstance(t)
 	handler := server.withMediaResourceAuth(func(w http.ResponseWriter, _ *http.Request, _ User) {

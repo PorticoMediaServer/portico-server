@@ -56,6 +56,7 @@ type mediaDownloadGrantRecord struct {
 	ConsumedAt            string
 	AuthorizationRevision string
 	PreparationID         string
+	APIKeyID              string
 }
 
 var (
@@ -104,11 +105,11 @@ func (s *Server) issueMediaDownloadGrantForPreparation(ctx context.Context, user
 		_, err := tx.ExecContext(ctx, `
 			INSERT INTO media_download_grants (
 				id, token_hash, server_id, principal_user_id, profile_id, media_id, version_kind,
-				version_id, version_fingerprint, profile, issued_at, expires_at, consumed_at, authorization_revision, preparation_id
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?, ?)`,
+				version_id, version_fingerprint, profile, issued_at, expires_at, consumed_at, authorization_revision, preparation_id, api_key_id
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?, ?, ?)`,
 			grantID, hashToken(token), identity.ServerID, accountIDForUser(user), viewerProfileID(user), item.ID, target.VersionKind,
 			target.VersionID, target.VersionFingerprint, target.Profile,
-			now.Format(time.RFC3339), expires.Format(time.RFC3339), authorizationRevision, strings.TrimSpace(preparationID))
+			now.Format(time.RFC3339), expires.Format(time.RFC3339), authorizationRevision, strings.TrimSpace(preparationID), strings.TrimSpace(user.APIKeyID))
 		return err
 	})
 	if err != nil {
@@ -264,12 +265,12 @@ func (s *Server) consumeMediaDownloadGrant(r *http.Request) (User, error) {
 	var grant mediaDownloadGrantRecord
 	err = s.queryUserRow(r.Context(), `
 		SELECT id, server_id, principal_user_id, profile_id, media_id, version_kind, version_id,
-			version_fingerprint, profile, expires_at, consumed_at, authorization_revision, preparation_id
+			version_fingerprint, profile, expires_at, consumed_at, authorization_revision, preparation_id, COALESCE(api_key_id, '')
 		FROM media_download_grants
 		WHERE token_hash = ? AND server_id = ?
 		LIMIT 1`, hashToken(token), identity.ServerID).Scan(
 		&grant.ID, &grant.ServerID, &grant.PrincipalUserID, &grant.ProfileID, &grant.MediaID, &grant.VersionKind,
-		&grant.VersionID, &grant.VersionFingerprint, &grant.Profile, &grant.ExpiresAt, &grant.ConsumedAt, &grant.AuthorizationRevision, &grant.PreparationID,
+		&grant.VersionID, &grant.VersionFingerprint, &grant.Profile, &grant.ExpiresAt, &grant.ConsumedAt, &grant.AuthorizationRevision, &grant.PreparationID, &grant.APIKeyID,
 	)
 	if err != nil || grant.MediaID != mediaID {
 		return User{}, errDownloadGrantDenied
@@ -303,6 +304,9 @@ func (s *Server) consumeMediaDownloadGrant(r *http.Request) (User, error) {
 	user.AccountID = grant.PrincipalUserID
 	user.ProfileID = grant.ProfileID
 	user = s.hydratePlaybackVisibilityUserContext(r.Context(), user)
+	if !s.applyActiveAPIKeyIdentityContext(r.Context(), &user, grant.APIKeyID) {
+		return User{}, errDownloadGrantDenied
+	}
 	if !user.Permissions["downloadMedia"] {
 		return User{}, errDownloadGrantDenied
 	}

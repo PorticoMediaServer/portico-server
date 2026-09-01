@@ -85,6 +85,42 @@ func TestSearchPreservesHealthyGroupsAndReportsPerGroupFailure(t *testing.T) {
 	}
 }
 
+func TestSearchBoundsSlowGroupAndPreservesFollowingGroups(t *testing.T) {
+	server := &Server{}
+	started := time.Now()
+	response, err := server.executeSearchWithGroupLoader(
+		context.Background(),
+		User{ID: "viewer", ProfileID: "profile"},
+		SearchRequest{Query: "Meridian", Limit: 8},
+		func(ctx context.Context, _ User, _ SearchRequest, definition searchGroupDefinition, _ int, _ searchResultCursor, _ searchSortSpec) ([]MediaItem, error) {
+			switch definition.ID {
+			case "movies":
+				return []MediaItem{{ID: "movie-before-timeout", Type: "movie", Title: "Meridian", SortTitle: "Meridian"}}, nil
+			case "shows":
+				<-ctx.Done()
+				return nil, ctx.Err()
+			case "episodes":
+				return []MediaItem{{ID: "episode-after-timeout", Type: "episode", Title: "Meridian", SortTitle: "Meridian"}}, nil
+			default:
+				return []MediaItem{}, nil
+			}
+		},
+	)
+	if err != nil {
+		t.Fatalf("search returned a request-level error: %v", err)
+	}
+	if elapsed := time.Since(started); elapsed < mediaSearchBranchTimeout || elapsed > mediaSearchBranchTimeout+500*time.Millisecond {
+		t.Fatalf("slow-group bound elapsed = %s, want approximately %s", elapsed, mediaSearchBranchTimeout)
+	}
+	groups := make(map[string]SearchGroup, len(response.Groups))
+	for _, group := range response.Groups {
+		groups[group.ID] = group
+	}
+	if groups["movies"].Status != "success" || groups["shows"].ErrorCode != "search_group_timeout" || groups["episodes"].Status != "success" {
+		t.Fatalf("partial search groups = %#v", response.Groups)
+	}
+}
+
 func TestSearchResponseSingleflightCoalescesOnlyCurrentCalls(t *testing.T) {
 	server := &Server{}
 	leader, owner := server.beginSearchResponseInFlight("same-search")

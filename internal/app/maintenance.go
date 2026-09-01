@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"os"
@@ -648,7 +647,7 @@ func (s *Server) scheduledAnalysisItemsForLibrariesContext(ctx context.Context, 
 	return scanScheduledMediaItems(rows)
 }
 
-func scanScheduledMediaItems(rows *sql.Rows) ([]MediaItem, error) {
+func scanScheduledMediaItems(rows sqlRows) ([]MediaItem, error) {
 	items := []MediaItem{}
 	for rows.Next() {
 		var item MediaItem

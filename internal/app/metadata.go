@@ -1178,7 +1178,7 @@ func (s *Server) refreshMediaMetadataCascade(ctx context.Context, item MediaItem
 // reclaims expired item leases without repeating terminal item work.
 func (s *Server) refreshMediaMetadataCascadeOperation(ctx context.Context, operationID string, root MediaItem, intent metadataRefreshIntent) (MediaItem, int, []error) {
 	intent = normalizeMetadataRefreshIntent(string(intent))
-	store := NewMetadataContinuationStore(s.db)
+	store := s.newPrioritizedMetadataContinuationStore()
 	provider := s.metadataProviderForItem(root)
 	op, err := store.Start(ctx, MetadataContinuationStart{
 		ID: operationID, RootKind: root.Type, RootID: root.ID, Provider: provider,
@@ -1217,6 +1217,14 @@ func (s *Server) refreshMediaMetadataCascadeOperation(ctx context.Context, opera
 		}
 		for _, queued := range claimed {
 			if err = ctx.Err(); err != nil {
+				_ = store.RetryItem(context.Background(), operationID, queued.Key, err.Error(), time.Now().UTC())
+				return root, metadataContinuationProcessed(ctx, store, operationID), []error{err}
+			}
+			if !s.waitForForegroundPressureToEase(ctx) {
+				err = context.Cause(ctx)
+				if err == nil {
+					err = ctx.Err()
+				}
 				_ = store.RetryItem(context.Background(), operationID, queued.Key, err.Error(), time.Now().UTC())
 				return root, metadataContinuationProcessed(ctx, store, operationID), []error{err}
 			}

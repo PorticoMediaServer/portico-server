@@ -1048,21 +1048,44 @@ func sqlPlaceholders(count int) string {
 }
 
 func (s *Server) rebuildLibraryCategoryFacets(libraryID string) error {
+	return s.rebuildLibraryCategoryFacetsContext(context.Background(), libraryID)
+}
+
+const libraryReadModelRepairBatchSize = 10
+
+// rebuildLibraryCategoryFacetsContext deliberately releases SQLite's single
+// writer between small item batches. A library repair used to keep one write
+// transaction open while rebuilding the entire library; on a one-core server
+// that could monopolize SQLite for a minute and make browse/playback-control
+// requests appear hung. Each batch is idempotent, so cancellation or restart
+// leaves valid partial projections and a later durable repair safely resumes.
+func (s *Server) rebuildLibraryCategoryFacetsContext(ctx context.Context, libraryID string) error {
 	libraryID = strings.TrimSpace(libraryID)
 	if libraryID == "" {
 		return nil
 	}
-	now := time.Now().UTC().Format(time.RFC3339)
-	return s.withBackgroundTxTagged(context.Background(), []string{"libraries", "library-items"}, func(tx *sql.Tx) error {
-		rows, err := tx.Query(`SELECT id, metadata_revision FROM media_items WHERE library_id = ? ORDER BY id`, libraryID)
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	type projection struct {
+		mediaID  string
+		revision int
+	}
+	cursor := ""
+	for {
+		if !s.waitForForegroundPressureToEase(ctx) {
+			return ctx.Err()
+		}
+		rows, err := s.queryBackgroundRead(ctx, `
+			SELECT id, metadata_revision
+			FROM media_items
+			WHERE library_id = ? AND id > ?
+			ORDER BY id
+			LIMIT ?`, libraryID, cursor, libraryReadModelRepairBatchSize)
 		if err != nil {
 			return fmt.Errorf("load library facet projection inputs: %w", err)
 		}
-		type projection struct {
-			mediaID  string
-			revision int
-		}
-		items := []projection{}
+		items := make([]projection, 0, libraryReadModelRepairBatchSize)
 		for rows.Next() {
 			var item projection
 			if err := rows.Scan(&item.mediaID, &item.revision); err != nil {
@@ -1074,13 +1097,58 @@ func (s *Server) rebuildLibraryCategoryFacets(libraryID string) error {
 		if err := rows.Close(); err != nil {
 			return err
 		}
-		if _, err := tx.Exec(`DELETE FROM media_category_facets WHERE library_id = ?`, libraryID); err != nil {
-			return fmt.Errorf("clear library category facets: %w", err)
+		if len(items) == 0 {
+			break
 		}
-		for _, item := range items {
-			if err := replaceMediaCategoryFacetsTx(context.Background(), tx, item.mediaID, item.revision, "read-model-repair"); err != nil {
-				return fmt.Errorf("rebuild facets for %s: %w", item.mediaID, err)
+		if err := s.withBackgroundTxTagged(ctx, []string{"libraries", "library-items"}, func(tx *sql.Tx) error {
+			for _, item := range items {
+				if err := ctx.Err(); err != nil {
+					return err
+				}
+				// The page was read before writer admission. An interactive
+				// metadata update or deletion may therefore commit while this
+				// repair waits. Never overwrite the newer atomic projection with
+				// relationships from the stale revision captured above, and treat a
+				// concurrently deleted item as already converged.
+				var currentRevision int
+				err := tx.QueryRowContext(ctx, `
+					SELECT metadata_revision FROM media_items
+					WHERE id = ? AND library_id = ?`, item.mediaID, libraryID).Scan(&currentRevision)
+				if errors.Is(err, sql.ErrNoRows) {
+					continue
+				}
+				if err != nil {
+					return err
+				}
+				if currentRevision != item.revision {
+					continue
+				}
+				if err := replaceMediaCategoryFacetRowsTx(ctx, tx, item.mediaID, item.revision, "read-model-repair", false); err != nil {
+					return fmt.Errorf("rebuild facets for %s: %w", item.mediaID, err)
+				}
 			}
+			return nil
+		}); err != nil {
+			return err
+		}
+		cursor = items[len(items)-1].mediaID
+		if s.readModelRepairBatchHook != nil {
+			s.readModelRepairBatchHook(len(items))
+		}
+	}
+	if !s.waitForForegroundPressureToEase(ctx) {
+		return ctx.Err()
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	return s.withBackgroundTxTagged(ctx, []string{"libraries", "library-items"}, func(tx *sql.Tx) error {
+		if _, err := tx.ExecContext(ctx, `
+			DELETE FROM media_category_facets
+			WHERE library_id = ?
+				AND NOT EXISTS (
+					SELECT 1 FROM media_items m
+					WHERE m.id = media_category_facets.media_id AND m.library_id = ?
+				)`, libraryID, libraryID); err != nil {
+			return fmt.Errorf("clear stale library category facets: %w", err)
 		}
 		if err := rebuildLibraryCategoryCountsTx(tx, libraryID, now); err != nil {
 			return err

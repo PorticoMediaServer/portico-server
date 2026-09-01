@@ -3,6 +3,7 @@ import { productMessage, type ProductMessagePresentation } from '@porticomediase
 import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { SecondaryButton } from '../../components/controls/Buttons';
+import { StableImage } from '../../components/media/StableImage';
 import { ProductLanguageIcon, productLanguageProblem } from '../../components/states/ProductLanguageState';
 import { usePersonDetail, usePorticoDataSource } from '../../data/DataProvider';
 import type { PersonDetail } from '../../data/models';
@@ -72,7 +73,7 @@ export function PersonDetailPage() {
   return <div className="standard-page portico-person-detail-page">
     <nav className="portico-detail-breadcrumbs" aria-label={productMessage('person.breadcrumb-label').text}><Link to="/search">{productMessage('destination.search').text}</Link><span>/</span><strong aria-current="page">{person.name}</strong></nav>
     <header className="portico-person-detail-header">
-      <div className="portico-person-detail-portrait">{person.imageUrl ? <img src={person.imageUrl} alt="" /> : <><AccountUserIcon aria-hidden="true" /><strong>{initials(person.name)}</strong></>}</div>
+      <div className="portico-person-detail-portrait"><StableImage src={person.imageUrl} alt="" fallback={<><AccountUserIcon aria-hidden="true" /><strong>{initials(person.name)}</strong></>} /></div>
       <div><p className="portico-detail-kind">{productMessage('person.kind-label').text}</p><h1>{person.name}</h1>{person.knownFor && <p className="portico-person-known-for">{productMessage('person.known-for', { title: person.knownFor }).text}</p>}{person.biography && <p>{person.biography}</p>}</div>
     </header>
     <section className="portico-detail-section">

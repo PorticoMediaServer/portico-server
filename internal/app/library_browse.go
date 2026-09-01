@@ -88,7 +88,7 @@ func (s *Server) populateMediaHierarchyProjectionContext(ctx context.Context, it
 	ids := make([]string, 0, len(items))
 	for index := range items {
 		item := &items[index]
-		if item.ID != "" {
+		if item.ID != "" && mediaItemNeedsHierarchyCounts(item.Type) {
 			byID[item.ID] = item
 			ids = append(ids, item.ID)
 		}
@@ -183,6 +183,15 @@ func (s *Server) populateMediaHierarchyProjectionContext(ctx context.Context, it
 		}
 	}
 	return rows.Err()
+}
+
+func mediaItemNeedsHierarchyCounts(mediaType string) bool {
+	switch canonicalEntityKind(mediaType) {
+	case "show", "season", "artist", "album", "release", "author", "audiobook-series", "book":
+		return true
+	default:
+		return false
+	}
 }
 
 type MediaCardUserState struct {

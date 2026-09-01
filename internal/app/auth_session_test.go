@@ -786,6 +786,269 @@ func TestAPIKeysCanBeCreatedScopedAndRevoked(t *testing.T) {
 	}
 }
 
+func TestAPIKeyManagementIsNoStoreAndDuplicateCreateReconciles(t *testing.T) {
+	serverURL := newAuthTestServer(t)
+	jar, _ := cookiejar.New(nil)
+	client := &http.Client{Jar: jar}
+	loginUser(t, client, serverURL)
+	payload, err := json.Marshal(APIKeyCreateRequest{Name: "Ambiguous integration", Scopes: []string{"read"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request, err := http.NewRequest(http.MethodPost, serverURL+"/api/auth/api-keys", bytes.NewReader(payload))
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set(csrfHeaderName, "1")
+	response, err := client.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusCreated {
+		body, _ := io.ReadAll(response.Body)
+		t.Fatalf("create status=%d body=%s", response.StatusCode, body)
+	}
+	if response.Header.Get("Cache-Control") != "no-store" || response.Header.Get("Pragma") != "no-cache" {
+		t.Fatalf("secret response cache headers = %#v", response.Header)
+	}
+	var created APIKeyCreateResponse
+	if err := json.NewDecoder(response.Body).Decode(&created); err != nil {
+		t.Fatal(err)
+	}
+	assertNoStore := func(method, path string) {
+		t.Helper()
+		req, requestErr := http.NewRequest(method, serverURL+path, nil)
+		if requestErr != nil {
+			t.Fatal(requestErr)
+		}
+		req.Header.Set(csrfHeaderName, "1")
+		resp, requestErr := client.Do(req)
+		if requestErr != nil {
+			t.Fatal(requestErr)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("%s %s status=%d", method, path, resp.StatusCode)
+		}
+		if resp.Header.Get("Cache-Control") != "no-store" || resp.Header.Get("Pragma") != "no-cache" {
+			t.Fatalf("%s %s cache headers = %#v", method, path, resp.Header)
+		}
+	}
+	assertNoStore(http.MethodGet, "/api/auth/api-keys")
+
+	var duplicate APIKeyCreateResponse
+	status, body := doJSON(t, client, http.MethodPost, serverURL+"/api/auth/api-keys", APIKeyCreateRequest{Name: "ambiguous integration", Scopes: []string{"read", "playMedia"}}, &duplicate)
+	if status != http.StatusConflict || !strings.Contains(body, "api_key_name_conflict") || !strings.Contains(body, "already uses this name") || duplicate.Token != "" {
+		t.Fatalf("ambiguous duplicate status=%d response=%#v body=%s", status, duplicate, body)
+	}
+	assertNoStore(http.MethodDelete, "/api/auth/api-keys/"+created.Key.ID)
+}
+
+func TestAPIKeyActiveLimitReturnsStableConflict(t *testing.T) {
+	serverURL, db, server := newAuthTestServerWithInstance(t)
+	var ownerID string
+	if err := db.QueryRow(`SELECT id FROM users WHERE role = 'owner' LIMIT 1`).Scan(&ownerID); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	for index := 0; index < maxActiveAPIKeysPerOwner; index++ {
+		if _, err := db.Exec(`INSERT INTO api_keys (id, user_id, name, token_hash, last_four, scopes_json, created_at) VALUES (?, ?, ?, ?, '0000', '["read"]', ?)`, fmt.Sprintf("apikey_cap_%03d", index), ownerID, fmt.Sprintf("Capped key %03d", index), fmt.Sprintf("hash_%03d", index), now); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_, _, err := server.createAPIKey(ownerID, APIKeyCreateRequest{Name: "One too many", Scopes: []string{"read"}})
+	var conflict errAPIKeyConflict
+	if !errors.As(err, &conflict) || conflict.Code != "api_key_limit_reached" {
+		t.Fatalf("active-key cap error=%#v", err)
+	}
+	_ = serverURL
+}
+
+func TestAPIKeyLastUsedRecordsOnlyAuthorizedActiveRequests(t *testing.T) {
+	serverURL, db, server := newAuthTestServerWithInstance(t)
+	var ownerID string
+	if err := db.QueryRow(`SELECT id FROM users WHERE role = 'owner' LIMIT 1`).Scan(&ownerID); err != nil {
+		t.Fatal(err)
+	}
+	key, token, err := server.createAPIKey(ownerID, APIKeyCreateRequest{Name: "Usage boundary", Scopes: []string{"read"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := func(method, path string) int {
+		req, err := http.NewRequest(method, serverURL+path, strings.NewReader(`{"mediaId":"movie_meridian"}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = resp.Body.Close()
+		return resp.StatusCode
+	}
+	if status := request(http.MethodPost, "/api/playback-sessions"); status != http.StatusForbidden {
+		t.Fatalf("scope-denied status=%d", status)
+	}
+	server.flushAPIKeyUsage(context.Background())
+	var lastUsed string
+	if err := db.QueryRow(`SELECT last_used_at FROM api_keys WHERE id = ?`, key.ID).Scan(&lastUsed); err != nil || lastUsed != "" {
+		t.Fatalf("denied request updated last-used=%q err=%v", lastUsed, err)
+	}
+	if status := request(http.MethodGet, "/api/home"); status != http.StatusOK {
+		t.Fatalf("authorized status=%d", status)
+	}
+	server.flushAPIKeyUsage(context.Background())
+	if err := db.QueryRow(`SELECT last_used_at FROM api_keys WHERE id = ?`, key.ID).Scan(&lastUsed); err != nil || lastUsed == "" {
+		t.Fatalf("authorized request last-used=%q err=%v", lastUsed, err)
+	}
+	server.apiKeyLimiterMu.Lock()
+	server.apiKeyAttempts[key.ID] = []time.Time{time.Now().UTC()}
+	server.apiKeyLimiterMu.Unlock()
+	if _, err := server.revokeAPIKey(key.ID); err != nil {
+		t.Fatal(err)
+	}
+	server.apiKeyLimiterMu.Lock()
+	_, retainedLimiterState := server.apiKeyAttempts[key.ID]
+	server.apiKeyLimiterMu.Unlock()
+	if retainedLimiterState {
+		t.Fatal("revoked API key retained request-limiter state")
+	}
+	server.observeAPIKeyUse(key.ID)
+	server.flushAPIKeyUsage(context.Background())
+	var afterRevoke string
+	if err := db.QueryRow(`SELECT last_used_at FROM api_keys WHERE id = ?`, key.ID).Scan(&afterRevoke); err != nil || afterRevoke != lastUsed {
+		t.Fatalf("revoked key last-used changed from %q to %q err=%v", lastUsed, afterRevoke, err)
+	}
+}
+
+func TestAuthorizationHeaderIsAuthoritativeOverInteractiveCookie(t *testing.T) {
+	serverURL, db, server := newAuthTestServerWithInstance(t)
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := &http.Client{Jar: jar}
+	loginUser(t, client, serverURL)
+	var ownerID string
+	if err := db.QueryRow(`SELECT id FROM users WHERE role = 'owner' LIMIT 1`).Scan(&ownerID); err != nil {
+		t.Fatal(err)
+	}
+	key, token, err := server.createAPIKey(ownerID, APIKeyCreateRequest{Name: "Mixed credential boundary", Scopes: []string{"read"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := func(method, path, bearer, body string) int {
+		t.Helper()
+		req, requestErr := http.NewRequest(method, serverURL+path, strings.NewReader(body))
+		if requestErr != nil {
+			t.Fatal(requestErr)
+		}
+		req.Header.Set("Authorization", bearer)
+		req.Header.Set(csrfHeaderName, "1")
+		if body != "" {
+			req.Header.Set("Content-Type", "application/json")
+		}
+		resp, requestErr := client.Do(req)
+		if requestErr != nil {
+			t.Fatal(requestErr)
+		}
+		defer resp.Body.Close()
+		_, _ = io.Copy(io.Discard, resp.Body)
+		return resp.StatusCode
+	}
+	if status := request(http.MethodPost, "/api/playback-sessions", "Bearer "+token, `{"mediaId":"movie_meridian"}`); status != http.StatusForbidden {
+		t.Fatalf("read-only bearer fell back to owner cookie: status=%d", status)
+	}
+	if _, err := server.revokeAPIKey(key.ID); err != nil {
+		t.Fatal(err)
+	}
+	if status := request(http.MethodGet, "/api/libraries", "Bearer "+token, ""); status != http.StatusUnauthorized {
+		t.Fatalf("revoked bearer fell back to owner cookie: status=%d", status)
+	}
+	if status := request(http.MethodGet, "/api/libraries", "Bearer ptc_api_malformed", ""); status != http.StatusUnauthorized {
+		t.Fatalf("malformed bearer fell back to owner cookie: status=%d", status)
+	}
+}
+
+func TestAPIKeysRemainServerScopedInPorticoAccountMode(t *testing.T) {
+	serverURL, db, server := newAuthTestServerWithInstance(t)
+	var ownerID string
+	if err := db.QueryRow(`SELECT id FROM users WHERE role = 'owner'`).Scan(&ownerID); err != nil {
+		t.Fatalf("find owner: %v", err)
+	}
+	readPlay, token, err := server.createAPIKey(ownerID, APIKeyCreateRequest{Name: "Hosted-mode integration", Scopes: []string{"read", "playMedia"}})
+	if err != nil {
+		t.Fatalf("create read/play API key: %v", err)
+	}
+	readOnly, readOnlyToken, err := server.createAPIKey(ownerID, APIKeyCreateRequest{Name: "Hosted-mode read only", Scopes: []string{"read"}})
+	if err != nil {
+		t.Fatalf("create read-only API key: %v", err)
+	}
+	revoked, revokedToken, err := server.createAPIKey(ownerID, APIKeyCreateRequest{Name: "Hosted-mode revoked", Scopes: []string{"read"}})
+	if err != nil {
+		t.Fatalf("create revoked API key: %v", err)
+	}
+	if _, err := server.revokeAPIKey(revoked.ID); err != nil {
+		t.Fatalf("revoke API key: %v", err)
+	}
+	// Even a matching database digest must not turn a Hosted ptc_clt_ bearer
+	// into a Server API key; the credential prefix is part of the authority.
+	if _, err := db.Exec(`INSERT INTO api_keys (id, user_id, name, token_hash, last_four, scopes_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		"apikey_hosted_boundary", ownerID, "Hosted credential boundary", hashToken("ptc_clt_not_a_server_key"), "_key", `["read"]`, time.Now().UTC().Format(time.RFC3339)); err != nil {
+		t.Fatalf("seed Hosted credential boundary: %v", err)
+	}
+	if _, err := db.Exec(`UPDATE settings SET value_json = ? WHERE key = 'remoteAccess'`, `{"enabled":true,"claimStatus":"claimed","serverId":"srv_portico","preferredRemoteAuthMode":"portico","hostedBaseUrl":"https://api.getportico.tv"}`); err != nil {
+		t.Fatalf("enable Portico Account mode: %v", err)
+	}
+	principalRequest := httptest.NewRequest(http.MethodGet, serverURL+"/api/libraries", nil)
+	principalRequest.Header.Set("Authorization", "Bearer "+token)
+	apiUser, ok, principalErr := server.currentLocalBearerUserWithError(principalRequest)
+	if principalErr != nil || !ok {
+		t.Fatalf("resolve Hosted-mode API-key principal: ok=%t err=%v", ok, principalErr)
+	}
+	if apiUser.AuthProvider != "api_key" || apiUser.AccountID != ownerID || apiUser.ProfileID == "" || !apiUser.ProfileIsPrimary || !apiUser.AllowUnrated {
+		t.Fatalf("API key did not inherit the canonical primary profile: %#v", apiUser)
+	}
+
+	request := func(method, path, bearer, body string) int {
+		t.Helper()
+		req, requestErr := http.NewRequest(method, serverURL+path, strings.NewReader(body))
+		if requestErr != nil {
+			t.Fatalf("create %s request: %v", path, requestErr)
+		}
+		req.Header.Set("Authorization", "Bearer "+bearer)
+		if body != "" {
+			req.Header.Set("Content-Type", "application/json")
+		}
+		resp, requestErr := http.DefaultClient.Do(req)
+		if requestErr != nil {
+			t.Fatalf("send %s request: %v", path, requestErr)
+		}
+		defer resp.Body.Close()
+		_, _ = io.Copy(io.Discard, resp.Body)
+		return resp.StatusCode
+	}
+	if status := request(http.MethodGet, "/api/libraries", token, ""); status != http.StatusOK {
+		t.Fatalf("read/play API key in Portico Account mode status=%d key=%s", status, readPlay.ID)
+	}
+	if status := request(http.MethodPost, "/api/search", token, `{"query":"meridian"}`); status != http.StatusOK {
+		t.Fatalf("read-only search projection in Portico Account mode status=%d", status)
+	}
+	if status := request(http.MethodPost, "/api/playback-sessions", readOnlyToken, `{"mediaId":"movie_meridian"}`); status != http.StatusForbidden {
+		t.Fatalf("read-only API key playback status=%d key=%s, want forbidden", status, readOnly.ID)
+	}
+	if status := request(http.MethodGet, "/api/libraries", revokedToken, ""); status != http.StatusUnauthorized {
+		t.Fatalf("revoked API key status=%d, want unauthorized", status)
+	}
+	if status := request(http.MethodGet, "/api/libraries", "ptc_clt_not_a_server_key", ""); status != http.StatusUnauthorized {
+		t.Fatalf("Hosted credential was accepted as a Server API key: status=%d", status)
+	}
+}
+
 func TestAPIKeyMutationsRequireRecentInteractiveAuthentication(t *testing.T) {
 	serverURL, db := newAuthTestServerWithDB(t)
 	jar, _ := cookiejar.New(nil)
@@ -868,6 +1131,76 @@ func TestAPIKeyRequestsAreRateLimited(t *testing.T) {
 	}
 	if !limited {
 		t.Fatalf("expected api key request rate limit")
+	}
+}
+
+func TestAPIKeyMiddlewareEnforcesPerKeyLimitBeforeUsageObservation(t *testing.T) {
+	serverURL, db, server := newAuthTestServerWithInstance(t)
+	var ownerID string
+	if err := db.QueryRow(`SELECT id FROM users WHERE role = 'owner' LIMIT 1`).Scan(&ownerID); err != nil {
+		t.Fatal(err)
+	}
+	limitedKey, limitedToken, err := server.createAPIKey(ownerID, APIKeyCreateRequest{Name: "Preloaded limiter", Scopes: []string{"read"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server.apiKeyLimiterMu.Lock()
+	if server.apiKeyAttempts == nil {
+		server.apiKeyAttempts = map[string][]time.Time{}
+	}
+	server.apiKeyAttempts[limitedKey.ID] = make([]time.Time, 600)
+	for index := range server.apiKeyAttempts[limitedKey.ID] {
+		server.apiKeyAttempts[limitedKey.ID][index] = time.Now().UTC()
+	}
+	server.apiKeyLimiterMu.Unlock()
+	request := func(client *http.Client, bearer string) *http.Response {
+		t.Helper()
+		req, requestErr := http.NewRequest(http.MethodGet, serverURL+"/api/home", nil)
+		if requestErr != nil {
+			t.Fatal(requestErr)
+		}
+		if bearer != "" {
+			req.Header.Set("Authorization", "Bearer "+bearer)
+		}
+		resp, requestErr := client.Do(req)
+		if requestErr != nil {
+			t.Fatal(requestErr)
+		}
+		return resp
+	}
+	limitedResponse := request(http.DefaultClient, limitedToken)
+	_ = limitedResponse.Body.Close()
+	if limitedResponse.StatusCode != http.StatusTooManyRequests || limitedResponse.Header.Get("Retry-After") == "" {
+		t.Fatalf("limited response status=%d headers=%#v", limitedResponse.StatusCode, limitedResponse.Header)
+	}
+	server.flushAPIKeyUsage(context.Background())
+	var limitedLastUsed string
+	if err := db.QueryRow(`SELECT last_used_at FROM api_keys WHERE id = ?`, limitedKey.ID).Scan(&limitedLastUsed); err != nil || limitedLastUsed != "" {
+		t.Fatalf("limited request updated last-used=%q err=%v", limitedLastUsed, err)
+	}
+
+	acceptedKey, acceptedToken, err := server.createAPIKey(ownerID, APIKeyCreateRequest{Name: "Accepted limiter", Scopes: []string{"read"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	acceptedResponse := request(http.DefaultClient, acceptedToken)
+	_ = acceptedResponse.Body.Close()
+	if acceptedResponse.StatusCode != http.StatusOK {
+		t.Fatalf("accepted API-key status=%d", acceptedResponse.StatusCode)
+	}
+	server.flushAPIKeyUsage(context.Background())
+	var acceptedLastUsed string
+	if err := db.QueryRow(`SELECT last_used_at FROM api_keys WHERE id = ?`, acceptedKey.ID).Scan(&acceptedLastUsed); err != nil || acceptedLastUsed == "" {
+		t.Fatalf("accepted request last-used=%q err=%v", acceptedLastUsed, err)
+	}
+
+	jar, _ := cookiejar.New(nil)
+	interactive := &http.Client{Jar: jar}
+	loginUser(t, interactive, serverURL)
+	interactiveResponse := request(interactive, "")
+	_ = interactiveResponse.Body.Close()
+	if interactiveResponse.StatusCode != http.StatusOK {
+		t.Fatalf("non-key interactive status=%d", interactiveResponse.StatusCode)
 	}
 }
 

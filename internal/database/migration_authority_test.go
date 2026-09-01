@@ -86,7 +86,7 @@ func TestShippingMigrationInventoryContainsCanonicalReviewedHistory(t *testing.T
 			embeddedSQL = append(embeddedSQL, entry.Name())
 		}
 	}
-	if want := []string{"001_initial.sql", "002_playback_receiver_authority.sql"}; !slices.Equal(embeddedSQL, want) {
+	if want := []string{"001_initial.sql", "002_playback_receiver_authority.sql", "003_api_key_capability_binding.sql"}; !slices.Equal(embeddedSQL, want) {
 		t.Fatalf("embedded SQL inventory=%v want=%v", embeddedSQL, want)
 	}
 }
@@ -132,8 +132,12 @@ func TestCanonicalMigrationBundleRejectsInventoryAndManifestDrift(t *testing.T) 
 		mutate func(fstest.MapFS)
 		want   string
 	}{
-		{name: "missing SQL", mutate: func(f fstest.MapFS) { delete(f, "001_initial.sql"); delete(f, "002_playback_receiver_authority.sql") }, want: "contains no SQL migrations"},
-		{name: "extra unmanifested SQL", mutate: func(f fstest.MapFS) { f["003_unreviewed.sql"] = &fstest.MapFile{Data: []byte("SELECT 1;\n")} }, want: "unexpected migration files"},
+		{name: "missing SQL", mutate: func(f fstest.MapFS) {
+			delete(f, "001_initial.sql")
+			delete(f, "002_playback_receiver_authority.sql")
+			delete(f, "003_api_key_capability_binding.sql")
+		}, want: "contains no SQL migrations"},
+		{name: "extra unmanifested SQL", mutate: func(f fstest.MapFS) { f["004_unreviewed.sql"] = &fstest.MapFile{Data: []byte("SELECT 1;\n")} }, want: "unexpected migration files"},
 		{name: "checksum mismatch", mutate: func(f fstest.MapFS) {
 			f["001_initial.sql"].Data = append(f["001_initial.sql"].Data, []byte("\n-- unauthorized edit\n")...)
 		}, want: "checksum mismatch"},
@@ -198,7 +202,7 @@ func TestCanonicalMigrationBundleRejectsInventoryAndManifestDrift(t *testing.T) 
 func canonicalMigrationFixture(t *testing.T) fstest.MapFS {
 	t.Helper()
 	fixture := fstest.MapFS{}
-	for _, name := range []string{"001_initial.sql", "002_playback_receiver_authority.sql", reviewedMigrationManifestName} {
+	for _, name := range []string{"001_initial.sql", "002_playback_receiver_authority.sql", "003_api_key_capability_binding.sql", reviewedMigrationManifestName} {
 		body, err := fs.ReadFile(embeddedMigrations.FS(), name)
 		if err != nil {
 			t.Fatalf("read embedded %s: %v", name, err)
@@ -256,7 +260,7 @@ func TestDeployed074Migration001UpgradesToCanonical002WithoutDataLoss(t *testing
 		t.Fatalf("upgrade changed application data: value=%q err=%v", value, err)
 	}
 	identity, rows, err := ReadMigrationIdentity(t.Context(), upgraded)
-	if err != nil || identity.MigrationHead != expectedMigrationHead || rows != 2 {
+	if err != nil || identity.MigrationHead != expectedMigrationHead || rows != len(expectedMigrationFiles) {
 		t.Fatalf("upgraded identity=%+v rows=%d err=%v", identity, rows, err)
 	}
 	var checksum, source string
@@ -297,7 +301,7 @@ func TestCanonicalMigration001UpgradesToCanonical002(t *testing.T) {
 	}
 	defer upgraded.Close()
 	identity, rows, err := ReadMigrationIdentity(t.Context(), upgraded)
-	if err != nil || identity.MigrationHead != expectedMigrationHead || rows != 2 {
+	if err != nil || identity.MigrationHead != expectedMigrationHead || rows != len(expectedMigrationFiles) {
 		t.Fatalf("canonical prefix identity=%+v rows=%d err=%v", identity, rows, err)
 	}
 }

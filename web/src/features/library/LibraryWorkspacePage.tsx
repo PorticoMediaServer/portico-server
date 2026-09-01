@@ -34,6 +34,7 @@ type PageState = {
 };
 
 const alphabet = ['All', '#', ...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'];
+const discoverShelfLimit = 12;
 
 function mergeUnique<T extends { id: string }>(left: T[], right: T[]) {
   const seen = new Set(left.map((item) => item.id));
@@ -233,7 +234,9 @@ export function LibraryWorkspacePage({
   }, [pivot, requestedPivotId, updateParameters]);
 
   const limit = capabilityData
-    ? Math.min(capabilityData.queryLimits.maximumLimit, Math.max(capabilityData.queryLimits.defaultLimit, 60))
+    ? pivot?.id === 'discover'
+      ? Math.min(capabilityData.queryLimits.maximumLimit, discoverShelfLimit)
+      : Math.min(capabilityData.queryLimits.maximumLimit, Math.max(capabilityData.queryLimits.defaultLimit, 60))
     : 60;
   const request = useMemo<BrowseLibraryRequest | undefined>(() => pivot ? {
     pivot: pivot.id,
@@ -257,7 +260,7 @@ export function LibraryWorkspacePage({
 	const initialPage = usePorticoQuery<LibraryPivotPage>(
 		`library-pivot:${requestKey}`,
 		initialPageLoad,
-		['libraries', 'library-items', 'media', 'metadata', 'playback-progress', 'media-state'],
+		['libraries', 'library-items', 'media', 'playback-progress', 'media-state'],
 		reloadRevision,
 		{ enabled: Boolean(request && pivot && !expressionInvalid) },
 	);
@@ -417,16 +420,19 @@ export function LibraryWorkspacePage({
     return <div className="standard-page library-workspace-page"><div className="library-workspace-state"><ProductLanguageIcon presentation={noPivotsMessage} /><strong>{noPivotsMessage.title}</strong><p>{noPivotsMessage.body}</p></div></div>;
   }
 
+  const isDiscoverPivot = pivot.id === 'discover';
   const loadedCount = page.data ? loadedResultCount(page.data) : 0;
-  const resultCount = page.data?.total ?? loadedCount;
+  // Discover's response total is the bounded recommendation count, not the
+  // library cardinality. Keep the authoritative library count in the header
+  // while shelves load and refresh instead of oscillating from 501 to 50.
+  const resultCount = isDiscoverPivot ? library.itemCount : page.data?.total ?? loadedCount;
   const pageFailure = page.status === 'error' ? productLanguageProblem(page.error, 'library.load-failed') : undefined;
   const continuationFailure = productMessage('problem.request-failed');
   const resultCountLabel = page.data
-    ? productMessage(page.data.total == null
+    ? productMessage(!isDiscoverPivot && page.data.total == null
       ? resultCount === 1 ? 'library.result-loaded-single' : 'library.results-loaded'
       : resultCount === 1 ? 'library.result-count-single' : 'library.results-count', { count: resultCount }).text
     : productMessage(library.itemCount === 1 ? 'media.item-count-single' : 'media.item-count', { count: library.itemCount }).text;
-  const isDiscoverPivot = pivot.id === 'discover';
   const artworkShape = libraryArtworkShape(library, pivot);
   return <div className={`standard-page library-workspace-page ${alphabetical ? 'has-alpha-rail' : ''}`}>
     <header className="library-workspace-header">

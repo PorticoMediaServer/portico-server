@@ -231,8 +231,51 @@ export function SearchPage() {
       if (groupRequests.current.get(descriptor.id) === controller) groupRequests.current.delete(descriptor.id);
     }
   }, [committedQuery, request, settleGroup, source]);
+  const loadInitialGroups = useCallback(async (activeGeneration: number, activeKey: string, recordHistory: boolean) => {
+    const requestID = '__initial__';
+    groupRequests.current.get(requestID)?.abort();
+    const controller = new AbortController();
+    groupRequests.current.set(requestID, controller);
+    try {
+      const response = await source.searchPage({ ...request, recordHistory }, controller.signal);
+      if (controller.signal.aborted || activeGeneration !== searchGeneration.current) return;
+      const responseGroups = new Map(response.groups.map((group) => [group.id, group]));
+      setState((current) => {
+        if (current.status === 'idle' || current.key !== activeKey) return current;
+        return {
+          status: 'success',
+          key: activeKey,
+          groups: current.groups.map((group) => {
+            const data = responseGroups.get(group.descriptor.id) ?? {
+              id: group.descriptor.id,
+              title: group.descriptor.title,
+              entityKind: group.descriptor.entityKind,
+              status: 'success' as const,
+              items: [],
+              hasMore: false,
+              nextCursor: null,
+            };
+            return data.status === 'error'
+              ? { ...group, status: 'error' as const, data: undefined, error: new Error(data.errorCode ?? 'Search group unavailable.'), messageId: data.messageId }
+              : { ...group, status: 'success' as const, data, error: undefined, messageId: undefined };
+          }),
+        };
+      });
+      if (recordHistory) lastRecordedQuery.current = committedQuery;
+    } catch (reason: unknown) {
+      if (controller.signal.aborted || activeGeneration !== searchGeneration.current) return;
+      const error = reason instanceof Error ? reason : new Error('Search is unavailable.');
+      setState((current) => current.status === 'idle' || current.key !== activeKey ? current : ({
+        status: 'success',
+        key: activeKey,
+        groups: current.groups.map((group) => ({ ...group, status: 'error' as const, data: undefined, error, messageId: 'search.group-unavailable' as const })),
+      }));
+    } finally {
+      if (groupRequests.current.get(requestID) === controller) groupRequests.current.delete(requestID);
+    }
+  }, [committedQuery, request, source]);
   useEffect(() => {
-    if (!committedQuery || searchContract.status !== 'success') {
+    if (!committedQuery || searchContract.status !== 'success' || display?.status === 'loading') {
       searchGeneration.current += 1;
       requestPool.current.clear();
       groupRequests.current.forEach((controller) => controller.abort());
@@ -255,17 +298,15 @@ export function SearchPage() {
         groups: groupDescriptors.map((descriptor) => ({ descriptor, status: 'loading', data: retained.get(descriptor.id) })),
       };
     });
-    const shouldRecord = displayPreferences.rememberSearchHistory
+    const shouldRecord = display?.status !== 'error' && displayPreferences.rememberSearchHistory
       && lastRecordedQuery.current.toLocaleLowerCase() !== committedQuery.toLocaleLowerCase();
-    groupDescriptors.forEach((descriptor, index) => {
-      requestPool.current.enqueue(`${activeGeneration}:${descriptor.id}`, () => loadGroup(descriptor, activeGeneration, requestKey, shouldRecord && index === 0));
-    });
+    if (groupDescriptors.length) void loadInitialGroups(activeGeneration, requestKey, shouldRecord);
     return () => {
       requestPool.current.clear();
       groupRequests.current.forEach((controller) => controller.abort());
       groupRequests.current.clear();
     };
-  }, [committedQuery, displayPreferences.rememberSearchHistory, groupDescriptors, loadGroup, requestKey, searchContract.status]);
+  }, [committedQuery, display?.status, displayPreferences.rememberSearchHistory, groupDescriptors, loadInitialGroups, requestKey, searchContract.status]);
 
   const retryGroup = (descriptor: SearchGroupCapability) => {
     const activeGeneration = searchGeneration.current;

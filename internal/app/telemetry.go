@@ -757,39 +757,7 @@ func memoryByteCount(value float64) int64 {
 }
 
 func detectGPUInfo() DashboardGPUInfo {
-	if _, err := exec.LookPath("nvidia-smi"); err == nil {
-		name := firstCSVField(commandString("nvidia-smi", "--query-gpu=name", "--format=csv,noheader,nounits"))
-		if name == "" {
-			name = "NVIDIA GPU"
-		}
-		return DashboardGPUInfo{Provider: "NVIDIA", Device: name, Available: true}
-	}
-	if _, err := exec.LookPath("rocm-smi"); err == nil {
-		return DashboardGPUInfo{Provider: "AMD", Device: "AMD GPU", Available: true}
-	}
-	if _, err := exec.LookPath("amd-smi"); err == nil {
-		return DashboardGPUInfo{Provider: "AMD", Device: "AMD GPU", Available: true}
-	}
-	if _, err := exec.LookPath("intel_gpu_top"); err == nil {
-		return DashboardGPUInfo{Provider: "Intel", Device: "Intel GPU", Available: true}
-	}
-	if runtime.GOOS == "darwin" {
-		brand := strings.TrimSpace(commandString("sysctl", "-n", "machdep.cpu.brand_string"))
-		if strings.Contains(strings.ToLower(brand), "apple") || runtime.GOARCH == "arm64" {
-			return DashboardGPUInfo{
-				Provider:  "Apple Silicon",
-				Device:    "Integrated Apple GPU",
-				Available: false,
-				Note:      "Apple GPU detection is supported, but utilization requires a privileged macOS collector. Hardware transcode sessions will still be reflected in encoder activity once a collector is configured.",
-			}
-		}
-	}
-	return DashboardGPUInfo{
-		Provider:  "Unknown",
-		Device:    "No GPU telemetry collector detected",
-		Available: false,
-		Note:      "Install nvidia-smi, rocm-smi/amd-smi, intel_gpu_top, or a privileged Apple Silicon collector to populate this chart.",
-	}
+	return detectPlatformGPUInfo()
 }
 
 func sampleGPU(info DashboardGPUInfo) (float64, float64, float64) {
@@ -836,6 +804,9 @@ func sampleGPUContext(ctx context.Context, state *telemetrySamplerState, info Da
 	var sample telemetryGPUSample
 	switch info.Provider {
 	case "NVIDIA":
+		if _, err := exec.LookPath("nvidia-smi"); err != nil {
+			return cacheSample(samplePlatformGPU(ctx, info))
+		}
 		output, err := runTelemetryCommand(ctx, "nvidia-smi", "--query-gpu=utilization.gpu,utilization.memory,utilization.encoder", "--format=csv,noheader,nounits")
 		if err != nil {
 			return cacheSample(unavailableGPUSample(telemetryCommandMetricStatus(err), err.Error()))
@@ -849,7 +820,16 @@ func sampleGPUContext(ctx context.Context, state *telemetrySamplerState, info Da
 			Memory:  availableTelemetryMetric(values[1]),
 			Encoder: availableTelemetryMetric(values[2]),
 		}
+	case "Apple Silicon", "Windows":
+		return cacheSample(samplePlatformGPU(ctx, info))
 	case "Intel":
+		sample = samplePlatformGPU(ctx, info)
+		if gpuSampleHasData(sample) {
+			return cacheSample(sample)
+		}
+		if _, err := exec.LookPath("intel_gpu_top"); err != nil {
+			return cacheSample(sample)
+		}
 		output, err := runIntelGPUSample(ctx)
 		if err != nil {
 			return cacheSample(unavailableGPUSample(telemetryCommandMetricStatus(err), err.Error()))
@@ -859,6 +839,15 @@ func sampleGPUContext(ctx context.Context, state *telemetrySamplerState, info Da
 			return cacheSample(unavailableGPUSample(telemetryStatusParseError, err.Error()))
 		}
 	case "AMD":
+		sample = samplePlatformGPU(ctx, info)
+		if gpuSampleHasData(sample) {
+			return cacheSample(sample)
+		}
+		if _, rocmErr := exec.LookPath("rocm-smi"); rocmErr != nil {
+			if _, amdErr := exec.LookPath("amd-smi"); amdErr != nil {
+				return cacheSample(sample)
+			}
+		}
 		output, err := runTelemetryCommand(ctx, "rocm-smi", "--showuse", "--showmemuse")
 		if err != nil || strings.TrimSpace(output) == "" {
 			output, err = runTelemetryCommand(ctx, "amd-smi", "metric")
@@ -879,6 +868,10 @@ func sampleGPUContext(ctx context.Context, state *telemetrySamplerState, info Da
 		return cacheSample(unsupported("GPU telemetry provider is not supported"))
 	}
 	return cacheSample(sample)
+}
+
+func gpuSampleHasData(sample telemetryGPUSample) bool {
+	return sample.Usage.Status == telemetryStatusOK || sample.Memory.Status == telemetryStatusOK || sample.Encoder.Status == telemetryStatusOK
 }
 
 func telemetryGPUCacheValid(cache telemetryGPUCache, info DashboardGPUInfo, now time.Time) bool {

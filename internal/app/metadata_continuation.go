@@ -13,8 +13,9 @@ import (
 // worker executing it. Callers may discard and recreate the store between any
 // two calls without losing traversal position or item retry state.
 type MetadataContinuationStore struct {
-	db  *sql.DB
-	now func() time.Time
+	db      *sql.DB
+	now     func() time.Time
+	writeTx func(context.Context, func(*sql.Tx) error) error
 }
 
 type MetadataContinuationStart struct {
@@ -52,6 +53,34 @@ func NewMetadataContinuationStore(db *sql.DB) *MetadataContinuationStore {
 	return &MetadataContinuationStore{db: db, now: time.Now}
 }
 
+// newPrioritizedMetadataContinuationStore routes every continuation mutation
+// through the Server's one-writer scheduler. The public constructor remains a
+// small standalone store for migrations and focused tests; runtime background
+// work must never compete with foreground playback/navigation through a raw
+// SQLite transaction.
+func (s *Server) newPrioritizedMetadataContinuationStore() *MetadataContinuationStore {
+	store := NewMetadataContinuationStore(s.dbHandle())
+	store.writeTx = func(ctx context.Context, fn func(*sql.Tx) error) error {
+		return s.withBackgroundTxTagged(ctx, nil, fn)
+	}
+	return store
+}
+
+func (s *MetadataContinuationStore) withWriteTx(ctx context.Context, fn func(*sql.Tx) error) error {
+	if s.writeTx != nil {
+		return s.writeTx(ctx, fn)
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err := fn(tx); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
 // Start returns the existing durable operation when ID is replayed. Immutable
 // identity/revision fields are checked so an idempotency key cannot be reused
 // for a different cascade.
@@ -60,36 +89,35 @@ func (s *MetadataContinuationStore) Start(ctx context.Context, in MetadataContin
 		return MetadataContinuationOperation{}, errors.New("metadata continuation start fields must not be empty")
 	}
 	now := formatMetadataContinuationTime(s.now())
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return MetadataContinuationOperation{}, err
-	}
-	defer tx.Rollback()
-	result, err := tx.ExecContext(ctx, `INSERT INTO metadata_continuation_operations
+	var op MetadataContinuationOperation
+	err := s.withWriteTx(ctx, func(tx *sql.Tx) error {
+		result, err := tx.ExecContext(ctx, `INSERT INTO metadata_continuation_operations
 		(id,root_kind,root_id,provider,policy_revision,provider_revision,traversal_phase,traversal_cursor,status,created_at,updated_at)
 		VALUES (?,?,?,?,?,?,?,?, 'running',?,?) ON CONFLICT(id) DO NOTHING`,
-		in.ID, in.RootKind, in.RootID, in.Provider, in.PolicyRevision, in.ProviderRevision, in.InitialPhase, in.InitialCursor, now, now)
-	if err != nil {
-		return MetadataContinuationOperation{}, err
-	}
-	inserted, err := result.RowsAffected()
-	if err != nil {
-		return MetadataContinuationOperation{}, err
-	}
-	if inserted == 1 {
-		if _, err = tx.ExecContext(ctx, `INSERT INTO metadata_continuation_cursors(operation_id,phase,parent_key,cursor,exhausted,page_count,updated_at) VALUES(?,?, '',?,0,0,?)`, in.ID, in.InitialPhase, in.InitialCursor, now); err != nil {
-			return MetadataContinuationOperation{}, err
+			in.ID, in.RootKind, in.RootID, in.Provider, in.PolicyRevision, in.ProviderRevision, in.InitialPhase, in.InitialCursor, now, now)
+		if err != nil {
+			return err
 		}
-	}
-	row := tx.QueryRowContext(ctx, `SELECT id,root_kind,root_id,provider,policy_revision,provider_revision,traversal_phase,traversal_cursor,status,processed_count,remaining_count,failed_count,retry_count,next_retry_at,last_error,created_at,updated_at,completed_at FROM metadata_continuation_operations WHERE id=?`, in.ID)
-	op, err := scanMetadataContinuationOperation(row)
-	if err != nil {
-		return op, err
-	}
-	if op.RootKind != in.RootKind || op.RootID != in.RootID || op.Provider != in.Provider || op.PolicyRevision != in.PolicyRevision || op.ProviderRevision != in.ProviderRevision {
-		return MetadataContinuationOperation{}, fmt.Errorf("metadata continuation id %q already has different identity or revisions", in.ID)
-	}
-	return op, tx.Commit()
+		inserted, err := result.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if inserted == 1 {
+			if _, err = tx.ExecContext(ctx, `INSERT INTO metadata_continuation_cursors(operation_id,phase,parent_key,cursor,exhausted,page_count,updated_at) VALUES(?,?, '',?,0,0,?)`, in.ID, in.InitialPhase, in.InitialCursor, now); err != nil {
+				return err
+			}
+		}
+		row := tx.QueryRowContext(ctx, `SELECT id,root_kind,root_id,provider,policy_revision,provider_revision,traversal_phase,traversal_cursor,status,processed_count,remaining_count,failed_count,retry_count,next_retry_at,last_error,created_at,updated_at,completed_at FROM metadata_continuation_operations WHERE id=?`, in.ID)
+		op, err = scanMetadataContinuationOperation(row)
+		if err != nil {
+			return err
+		}
+		if op.RootKind != in.RootKind || op.RootID != in.RootID || op.Provider != in.Provider || op.PolicyRevision != in.PolicyRevision || op.ProviderRevision != in.ProviderRevision {
+			return fmt.Errorf("metadata continuation id %q already has different identity or revisions", in.ID)
+		}
+		return nil
+	})
+	return op, err
 }
 
 func (s *MetadataContinuationStore) Get(ctx context.Context, id string) (MetadataContinuationOperation, error) {
@@ -104,70 +132,61 @@ func (s *MetadataContinuationStore) Get(ctx context.Context, id string) (Metadat
 // New parent cursors are created as non-exhausted, enabling arbitrary-depth
 // show/anime and music cascades without an in-memory or fixed-size frontier.
 func (s *MetadataContinuationStore) RecordPage(ctx context.Context, operationID, phase, parentKey, cursor, nextCursor string, exhausted bool, items []MetadataContinuationItemInput) error {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	now := formatMetadataContinuationTime(s.now())
-	var status string
-	if err = tx.QueryRowContext(ctx, `SELECT status FROM metadata_continuation_operations WHERE id=?`, operationID).Scan(&status); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return ErrMetadataContinuationNotFound
+	return s.withWriteTx(ctx, func(tx *sql.Tx) error {
+		now := formatMetadataContinuationTime(s.now())
+		var status string
+		if err := tx.QueryRowContext(ctx, `SELECT status FROM metadata_continuation_operations WHERE id=?`, operationID).Scan(&status); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return ErrMetadataContinuationNotFound
+			}
+			return err
 		}
-		return err
-	}
-	if status == "cancelled" || status == "completed" || status == "completed_with_failures" || status == "failed" {
-		return fmt.Errorf("metadata continuation operation is terminal: %s", status)
-	}
-	result, err := tx.ExecContext(ctx, `INSERT INTO metadata_continuation_pages(operation_id,phase,parent_key,cursor,next_cursor,exhausted,created_at)
+		if status == "cancelled" || status == "completed" || status == "completed_with_failures" || status == "failed" {
+			return fmt.Errorf("metadata continuation operation is terminal: %s", status)
+		}
+		result, err := tx.ExecContext(ctx, `INSERT INTO metadata_continuation_pages(operation_id,phase,parent_key,cursor,next_cursor,exhausted,created_at)
 		VALUES(?,?,?,?,?,?,?) ON CONFLICT(operation_id,phase,parent_key,cursor) DO NOTHING`, operationID, phase, parentKey, cursor, nextCursor, metadataContinuationBoolInt(exhausted), now)
-	if err != nil {
-		return err
-	}
-	inserted, err := result.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if inserted == 0 {
-		return tx.Commit()
-	}
-	if _, err = tx.ExecContext(ctx, `INSERT INTO metadata_continuation_cursors(operation_id,phase,parent_key,cursor,exhausted,page_count,updated_at)
+		if err != nil {
+			return err
+		}
+		inserted, err := result.RowsAffected()
+		if err != nil || inserted == 0 {
+			return err
+		}
+		if _, err = tx.ExecContext(ctx, `INSERT INTO metadata_continuation_cursors(operation_id,phase,parent_key,cursor,exhausted,page_count,updated_at)
 		VALUES(?,?,?,?,?,1,?) ON CONFLICT(operation_id,phase,parent_key) DO UPDATE SET cursor=excluded.cursor,exhausted=excluded.exhausted,page_count=metadata_continuation_cursors.page_count+1,updated_at=excluded.updated_at`,
-		operationID, phase, parentKey, nextCursor, metadataContinuationBoolInt(exhausted), now); err != nil {
-		return err
-	}
-	added := int64(0)
-	for _, item := range items {
-		if item.Key == "" || item.Kind == "" {
-			return errors.New("metadata continuation item key and kind must not be empty")
+			operationID, phase, parentKey, nextCursor, metadataContinuationBoolInt(exhausted), now); err != nil {
+			return err
 		}
-		res, insertErr := tx.ExecContext(ctx, `INSERT INTO metadata_continuation_items(operation_id,item_key,parent_key,item_kind,provider_id,payload_json,state,created_at,updated_at)
+		added := int64(0)
+		for _, item := range items {
+			if item.Key == "" || item.Kind == "" {
+				return errors.New("metadata continuation item key and kind must not be empty")
+			}
+			res, insertErr := tx.ExecContext(ctx, `INSERT INTO metadata_continuation_items(operation_id,item_key,parent_key,item_kind,provider_id,payload_json,state,created_at,updated_at)
 			VALUES(?,?,?,?,?,?,'pending',?,?) ON CONFLICT(operation_id,item_key) DO NOTHING`, operationID, item.Key, item.ParentKey, item.Kind, item.ProviderID, defaultJSON(item.PayloadJSON), now, now)
-		if insertErr != nil {
-			return insertErr
-		}
-		n, insertErr := res.RowsAffected()
-		if insertErr != nil {
-			return insertErr
-		}
-		added += n
-		if phase == "descendants" && metadataContinuationKindCanHaveChildren(item.Kind) {
-			if _, insertErr = tx.ExecContext(ctx, `
+			if insertErr != nil {
+				return insertErr
+			}
+			n, insertErr := res.RowsAffected()
+			if insertErr != nil {
+				return insertErr
+			}
+			added += n
+			if phase == "descendants" && metadataContinuationKindCanHaveChildren(item.Kind) {
+				if _, insertErr = tx.ExecContext(ctx, `
 				INSERT INTO metadata_continuation_cursors (
 					operation_id, phase, parent_key, cursor, exhausted, page_count, updated_at
 				) VALUES (?, ?, ?, '', 0, 0, ?)
 				ON CONFLICT(operation_id, phase, parent_key) DO NOTHING`,
-				operationID, phase, item.Key, now); insertErr != nil {
-				return insertErr
+					operationID, phase, item.Key, now); insertErr != nil {
+					return insertErr
+				}
 			}
 		}
-	}
-	_, err = tx.ExecContext(ctx, `UPDATE metadata_continuation_operations SET traversal_phase=?,traversal_cursor=?,remaining_count=remaining_count+?,status='running',next_retry_at='',last_error='',updated_at=? WHERE id=?`, phase, nextCursor, added, now, operationID)
-	if err != nil {
+		_, err = tx.ExecContext(ctx, `UPDATE metadata_continuation_operations SET traversal_phase=?,traversal_cursor=?,remaining_count=remaining_count+?,status='running',next_retry_at='',last_error='',updated_at=? WHERE id=?`, phase, nextCursor, added, now, operationID)
 		return err
-	}
-	return tx.Commit()
+	})
 }
 
 // ClaimReadyItems leases pending or due retry items. Expired leases are
@@ -179,49 +198,45 @@ func (s *MetadataContinuationStore) ClaimReadyItems(ctx context.Context, operati
 	if lease <= 0 {
 		return nil, errors.New("claim lease must be positive")
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback()
-	nowTime := s.now().UTC()
-	now, until := formatMetadataContinuationTime(nowTime), formatMetadataContinuationTime(nowTime.Add(lease))
-	rows, err := tx.QueryContext(ctx, `SELECT item_key FROM metadata_continuation_items WHERE operation_id=? AND
+	var items []MetadataContinuationItem
+	err := s.withWriteTx(ctx, func(tx *sql.Tx) error {
+		nowTime := s.now().UTC()
+		now, until := formatMetadataContinuationTime(nowTime), formatMetadataContinuationTime(nowTime.Add(lease))
+		rows, err := tx.QueryContext(ctx, `SELECT item_key FROM metadata_continuation_items WHERE operation_id=? AND
 		((state='pending') OR (state='retry_wait' AND next_retry_at<=?) OR (state='processing' AND lease_until<=?))
 		ORDER BY created_at,item_key LIMIT ?`, operationID, now, now, limit)
-	if err != nil {
-		return nil, err
-	}
-	var keys []string
-	for rows.Next() {
-		var key string
-		if err = rows.Scan(&key); err != nil {
-			rows.Close()
-			return nil, err
+		if err != nil {
+			return err
 		}
-		keys = append(keys, key)
-	}
-	if err = rows.Close(); err != nil {
-		return nil, err
-	}
-	for _, key := range keys {
-		if _, err = tx.ExecContext(ctx, `UPDATE metadata_continuation_items SET state='processing',attempts=attempts+1,lease_until=?,updated_at=? WHERE operation_id=? AND item_key=?`, until, now, operationID, key); err != nil {
-			return nil, err
+		var keys []string
+		for rows.Next() {
+			var key string
+			if err = rows.Scan(&key); err != nil {
+				rows.Close()
+				return err
+			}
+			keys = append(keys, key)
 		}
-	}
-	items := make([]MetadataContinuationItem, 0, len(keys))
-	for _, key := range keys {
-		row := tx.QueryRowContext(ctx, `SELECT operation_id,item_key,parent_key,item_kind,provider_id,payload_json,state,attempts,next_retry_at,lease_until,last_error,created_at,updated_at FROM metadata_continuation_items WHERE operation_id=? AND item_key=?`, operationID, key)
-		item, scanErr := scanMetadataContinuationItem(row)
-		if scanErr != nil {
-			return nil, scanErr
+		if err = rows.Close(); err != nil {
+			return err
 		}
-		items = append(items, item)
-	}
-	if err = tx.Commit(); err != nil {
-		return nil, err
-	}
-	return items, nil
+		for _, key := range keys {
+			if _, err = tx.ExecContext(ctx, `UPDATE metadata_continuation_items SET state='processing',attempts=attempts+1,lease_until=?,updated_at=? WHERE operation_id=? AND item_key=?`, until, now, operationID, key); err != nil {
+				return err
+			}
+		}
+		items = make([]MetadataContinuationItem, 0, len(keys))
+		for _, key := range keys {
+			row := tx.QueryRowContext(ctx, `SELECT operation_id,item_key,parent_key,item_kind,provider_id,payload_json,state,attempts,next_retry_at,lease_until,last_error,created_at,updated_at FROM metadata_continuation_items WHERE operation_id=? AND item_key=?`, operationID, key)
+			item, scanErr := scanMetadataContinuationItem(row)
+			if scanErr != nil {
+				return scanErr
+			}
+			items = append(items, item)
+		}
+		return nil
+	})
+	return items, err
 }
 
 func (s *MetadataContinuationStore) SucceedItem(ctx context.Context, operationID, key string) error {
@@ -243,119 +258,124 @@ func (s *MetadataContinuationStore) RetryItem(ctx context.Context, operationID, 
 }
 
 func (s *MetadataContinuationStore) finishItem(ctx context.Context, operationID, key, state, message string, next time.Time) error {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	now := formatMetadataContinuationTime(s.now())
-	var prior string
-	if err = tx.QueryRowContext(ctx, `SELECT state FROM metadata_continuation_items WHERE operation_id=? AND item_key=?`, operationID, key).Scan(&prior); err != nil {
-		return err
-	}
-	if prior == "succeeded" || prior == "failed" { // terminal result replay
-		if prior == state {
-			return tx.Commit()
+	return s.withWriteTx(ctx, func(tx *sql.Tx) error {
+		now := formatMetadataContinuationTime(s.now())
+		var prior string
+		if err := tx.QueryRowContext(ctx, `SELECT state FROM metadata_continuation_items WHERE operation_id=? AND item_key=?`, operationID, key).Scan(&prior); err != nil {
+			return err
 		}
-		return fmt.Errorf("metadata continuation item is already terminal: %s", prior)
-	}
-	nextText := ""
-	if !next.IsZero() {
-		nextText = formatMetadataContinuationTime(next)
-	}
-	if _, err = tx.ExecContext(ctx, `UPDATE metadata_continuation_items SET state=?,next_retry_at=?,lease_until='',last_error=?,updated_at=? WHERE operation_id=? AND item_key=?`, state, nextText, message, now, operationID, key); err != nil {
+		if prior == "succeeded" || prior == "failed" { // terminal result replay
+			if prior == state {
+				return nil
+			}
+			return fmt.Errorf("metadata continuation item is already terminal: %s", prior)
+		}
+		nextText := ""
+		if !next.IsZero() {
+			nextText = formatMetadataContinuationTime(next)
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE metadata_continuation_items SET state=?,next_retry_at=?,lease_until='',last_error=?,updated_at=? WHERE operation_id=? AND item_key=?`, state, nextText, message, now, operationID, key); err != nil {
+			return err
+		}
+		processedDelta, failedDelta, remainingDelta := 0, 0, 0
+		if state == "succeeded" {
+			processedDelta, remainingDelta = 1, -1
+		}
+		if state == "failed" {
+			failedDelta, remainingDelta = 1, -1
+		}
+		_, err := tx.ExecContext(ctx, `UPDATE metadata_continuation_operations SET processed_count=processed_count+?,failed_count=failed_count+?,remaining_count=remaining_count+?,updated_at=? WHERE id=?`, processedDelta, failedDelta, remainingDelta, now, operationID)
 		return err
-	}
-	processedDelta, failedDelta, remainingDelta := 0, 0, 0
-	if state == "succeeded" {
-		processedDelta, remainingDelta = 1, -1
-	}
-	if state == "failed" {
-		failedDelta, remainingDelta = 1, -1
-	}
-	if _, err = tx.ExecContext(ctx, `UPDATE metadata_continuation_operations SET processed_count=processed_count+?,failed_count=failed_count+?,remaining_count=remaining_count+?,updated_at=? WHERE id=?`, processedDelta, failedDelta, remainingDelta, now, operationID); err != nil {
-		return err
-	}
-	return tx.Commit()
+	})
 }
 
 func (s *MetadataContinuationStore) ScheduleRetry(ctx context.Context, operationID, phase, cursor, message string, next time.Time) error {
 	if next.IsZero() {
 		return errors.New("retry time must not be zero")
 	}
-	res, err := s.db.ExecContext(ctx, `UPDATE metadata_continuation_operations SET status='retry_wait',traversal_phase=?,traversal_cursor=?,retry_count=retry_count+1,next_retry_at=?,last_error=?,updated_at=? WHERE id=? AND status NOT IN ('completed','completed_with_failures','failed','cancelled')`, phase, cursor, formatMetadataContinuationTime(next), message, formatMetadataContinuationTime(s.now()), operationID)
-	if err != nil {
-		return err
-	}
-	n, err := res.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if n == 0 {
-		return ErrMetadataContinuationNotFound
-	}
-	return nil
+	return s.withWriteTx(ctx, func(tx *sql.Tx) error {
+		res, err := tx.ExecContext(ctx, `UPDATE metadata_continuation_operations SET status='retry_wait',traversal_phase=?,traversal_cursor=?,retry_count=retry_count+1,next_retry_at=?,last_error=?,updated_at=? WHERE id=? AND status NOT IN ('completed','completed_with_failures','failed','cancelled')`, phase, cursor, formatMetadataContinuationTime(next), message, formatMetadataContinuationTime(s.now()), operationID)
+		if err != nil {
+			return err
+		}
+		n, err := res.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if n == 0 {
+			return ErrMetadataContinuationNotFound
+		}
+		return nil
+	})
 }
 
 func (s *MetadataContinuationStore) ResumeDue(ctx context.Context, operationID string) (bool, error) {
 	now := formatMetadataContinuationTime(s.now())
-	res, err := s.db.ExecContext(ctx, `UPDATE metadata_continuation_operations SET status='running',next_retry_at='',updated_at=? WHERE id=? AND status='retry_wait' AND next_retry_at<=?`, now, operationID, now)
-	if err != nil {
-		return false, err
-	}
-	n, err := res.RowsAffected()
-	return n > 0, err
+	resumed := false
+	err := s.withWriteTx(ctx, func(tx *sql.Tx) error {
+		res, err := tx.ExecContext(ctx, `UPDATE metadata_continuation_operations SET status='running',next_retry_at='',updated_at=? WHERE id=? AND status='retry_wait' AND next_retry_at<=?`, now, operationID, now)
+		if err != nil {
+			return err
+		}
+		n, err := res.RowsAffected()
+		resumed = n > 0
+		return err
+	})
+	return resumed, err
 }
 
 func (s *MetadataContinuationStore) Cancel(ctx context.Context, operationID string) error {
 	now := formatMetadataContinuationTime(s.now())
-	_, err := s.db.ExecContext(ctx, `UPDATE metadata_continuation_operations SET status='cancelled',completed_at=?,updated_at=? WHERE id=? AND status NOT IN ('completed','completed_with_failures','failed','cancelled')`, now, now, operationID)
-	return err
+	return s.withWriteTx(ctx, func(tx *sql.Tx) error {
+		_, err := tx.ExecContext(ctx, `UPDATE metadata_continuation_operations SET status='cancelled',completed_at=?,updated_at=? WHERE id=? AND status NOT IN ('completed','completed_with_failures','failed','cancelled')`, now, now, operationID)
+		return err
+	})
 }
 
 // TryComplete is deliberately conservative: missing cursors, unconsumed
 // cursor pages, pending retries, and active/expired leases all prevent success.
 func (s *MetadataContinuationStore) TryComplete(ctx context.Context, operationID string) (bool, error) {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return false, err
-	}
-	defer tx.Rollback()
-	var status string
-	if err = tx.QueryRowContext(ctx, `SELECT status FROM metadata_continuation_operations WHERE id=?`, operationID).Scan(&status); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return false, ErrMetadataContinuationNotFound
+	complete := false
+	err := s.withWriteTx(ctx, func(tx *sql.Tx) error {
+		var status string
+		if err := tx.QueryRowContext(ctx, `SELECT status FROM metadata_continuation_operations WHERE id=?`, operationID).Scan(&status); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return ErrMetadataContinuationNotFound
+			}
+			return err
 		}
-		return false, err
-	}
-	if status == "completed" || status == "completed_with_failures" {
-		return true, tx.Commit()
-	}
-	if status == "cancelled" || status == "failed" || status == "retry_wait" {
-		return false, tx.Commit()
-	}
-	var openCursors, openItems, failed int
-	if err = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM metadata_continuation_cursors WHERE operation_id=? AND exhausted=0`, operationID).Scan(&openCursors); err != nil {
-		return false, err
-	}
-	if err = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM metadata_continuation_items WHERE operation_id=? AND state NOT IN ('succeeded','failed')`, operationID).Scan(&openItems); err != nil {
-		return false, err
-	}
-	if err = tx.QueryRowContext(ctx, `SELECT failed_count FROM metadata_continuation_operations WHERE id=?`, operationID).Scan(&failed); err != nil {
-		return false, err
-	}
-	if openCursors != 0 || openItems != 0 {
-		return false, tx.Commit()
-	}
-	terminal := "completed"
-	if failed > 0 {
-		terminal = "completed_with_failures"
-	}
-	now := formatMetadataContinuationTime(s.now())
-	if _, err = tx.ExecContext(ctx, `UPDATE metadata_continuation_operations SET status=?,completed_at=?,updated_at=? WHERE id=?`, terminal, now, now, operationID); err != nil {
-		return false, err
-	}
-	return true, tx.Commit()
+		if status == "completed" || status == "completed_with_failures" {
+			complete = true
+			return nil
+		}
+		if status == "cancelled" || status == "failed" || status == "retry_wait" {
+			return nil
+		}
+		var openCursors, openItems, failed int
+		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM metadata_continuation_cursors WHERE operation_id=? AND exhausted=0`, operationID).Scan(&openCursors); err != nil {
+			return err
+		}
+		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM metadata_continuation_items WHERE operation_id=? AND state NOT IN ('succeeded','failed')`, operationID).Scan(&openItems); err != nil {
+			return err
+		}
+		if err := tx.QueryRowContext(ctx, `SELECT failed_count FROM metadata_continuation_operations WHERE id=?`, operationID).Scan(&failed); err != nil {
+			return err
+		}
+		if openCursors != 0 || openItems != 0 {
+			return nil
+		}
+		terminal := "completed"
+		if failed > 0 {
+			terminal = "completed_with_failures"
+		}
+		now := formatMetadataContinuationTime(s.now())
+		if _, err := tx.ExecContext(ctx, `UPDATE metadata_continuation_operations SET status=?,completed_at=?,updated_at=? WHERE id=?`, terminal, now, now, operationID); err != nil {
+			return err
+		}
+		complete = true
+		return nil
+	})
+	return complete, err
 }
 
 func (s *MetadataContinuationStore) Failures(ctx context.Context, operationID string) ([]MetadataContinuationFailure, error) {

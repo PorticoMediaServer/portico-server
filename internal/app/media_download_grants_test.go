@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -138,6 +139,43 @@ func TestMediaDownloadGrantIsHashedScopedAndRangeSafeUntilExpiry(t *testing.T) {
 	}
 	if len(auditMetadata) < 2 {
 		t.Fatalf("expected issue and consume audits, got %v", auditMetadata)
+	}
+}
+
+func TestAPIKeyRevocationImmediatelyInvalidatesDownloadGrantInLocalAndHostedModes(t *testing.T) {
+	for _, mode := range []string{"local", "hosted"} {
+		t.Run(mode, func(t *testing.T) {
+			serverURL, db, server := newDiscoveryTestServer(t, config.Config{})
+			_, _ = seedDownloadGrantMedia(t, db)
+			if mode == "hosted" {
+				if _, err := db.Exec(`UPDATE settings SET value_json = ? WHERE key = 'remoteAccess'`, `{"enabled":true,"claimStatus":"claimed","serverId":"srv_download_capability","preferredRemoteAuthMode":"portico","hostedBaseUrl":"https://api.getportico.tv"}`); err != nil {
+					t.Fatal(err)
+				}
+			}
+			userID := adminUserID(t, db)
+			key, token, err := server.createAPIKey(userID, APIKeyCreateRequest{Name: "Download capability", Scopes: []string{"read", "downloadMedia"}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			principalRequest := httptest.NewRequest(http.MethodGet, serverURL+"/api/libraries", nil)
+			principalRequest.Header.Set("Authorization", "Bearer "+token)
+			user, ok, err := server.currentLocalBearerUserWithError(principalRequest)
+			if err != nil || !ok || user.APIKeyID != key.ID || !user.Permissions["downloadMedia"] {
+				t.Fatalf("resolve download API key user=%#v ok=%t err=%v", user, ok, err)
+			}
+			grant, _, _, err := server.issueMediaDownloadGrant(context.Background(), user, "grant_media", "source")
+			if err != nil {
+				t.Fatalf("issue download grant: %v", err)
+			}
+			if _, err := server.revokeAPIKey(key.ID); err != nil {
+				t.Fatalf("revoke API key: %v", err)
+			}
+			request := httptest.NewRequest(http.MethodGet, serverURL+grant.DownloadURL, nil)
+			request.Header.Set("Authorization", "PorticoDownload "+grant.GrantToken)
+			if _, err := server.consumeMediaDownloadGrant(request); !errors.Is(err, errDownloadGrantDenied) {
+				t.Fatalf("post-revoke download grant error=%v", err)
+			}
+		})
 	}
 }
 
@@ -624,5 +662,18 @@ func TestReusableDownloadCredentialsAreRedactedFromLogs(t *testing.T) {
 	clientRedacted := redactClientLogText(raw)
 	if strings.Contains(clientRedacted, "ptc_dg_secret") || strings.Contains(clientRedacted, "ptc_mg_secret") {
 		t.Fatalf("client log upload retained a reusable media credential: %q", clientRedacted)
+	}
+}
+
+func TestStandalonePorticoCredentialsAreRedactedFromDiagnosticLanes(t *testing.T) {
+	credential := "ptc_api_" + strings.Repeat("A", 43)
+	message := `integration failed with {"credential":"` + credential + `"}`
+	for name, redacted := range map[string]string{
+		"server": redactLogValue(message),
+		"client": redactClientLogText(message),
+	} {
+		if strings.Contains(redacted, credential) || !strings.Contains(redacted, "redacted") {
+			t.Fatalf("%s diagnostic lane did not redact the reusable credential", name)
+		}
 	}
 }

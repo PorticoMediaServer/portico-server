@@ -34,6 +34,11 @@ func silentTuple(t DeliveryTuple) DeliveryTuple {
 	t.Audio = Audio{}
 	return t
 }
+func monoTuple(t DeliveryTuple) DeliveryTuple {
+	t.Audio.Layout = "mono"
+	t.Audio.MaxChannels = 1
+	return t
+}
 func withSubtitle(t DeliveryTuple, codec, kind string, mode SubtitleMode) DeliveryTuple {
 	t.Subtitle = Subtitle{Codec: codec, Kind: kind, Mode: mode}
 	return t
@@ -70,19 +75,19 @@ func staticBand(name, family, platform, min, max string, tuples ...DeliveryTuple
 }
 
 func standardTuples() []DeliveryTuple {
-	return []DeliveryTuple{baselineTuple(), silentTuple(baselineTuple()), textSubtitleTuple(), convertedTextTuple(), bitmapBurnTuple(), hlsTuple(), silentTuple(hlsTuple()), withSubtitle(hlsTuple(), "webvtt", "text", SubtitleNative), audioMP3Tuple(), audioAACTuple()}
+	return []DeliveryTuple{baselineTuple(), monoTuple(baselineTuple()), silentTuple(baselineTuple()), textSubtitleTuple(), convertedTextTuple(), bitmapBurnTuple(), hlsTuple(), monoTuple(hlsTuple()), silentTuple(hlsTuple()), withSubtitle(hlsTuple(), "webvtt", "text", SubtitleNative), audioMP3Tuple(), audioAACTuple()}
 }
 func progressiveTuples() []DeliveryTuple {
-	return []DeliveryTuple{baselineTuple(), silentTuple(baselineTuple()), textSubtitleTuple(), convertedTextTuple(), bitmapBurnTuple(), audioMP3Tuple(), audioAACTuple()}
+	return []DeliveryTuple{baselineTuple(), monoTuple(baselineTuple()), silentTuple(baselineTuple()), textSubtitleTuple(), convertedTextTuple(), bitmapBurnTuple(), audioMP3Tuple(), audioAACTuple()}
 }
 func browserManagedHLSTuples() []DeliveryTuple {
 	return append(progressiveTuples(), hlsTuple(), silentTuple(hlsTuple()), withSubtitle(hlsTuple(), "webvtt", "text", SubtitleNative))
 }
 func dlnaTuples() []DeliveryTuple {
-	return []DeliveryTuple{baselineTuple(), silentTuple(baselineTuple()), audioMP3Tuple(), audioAACTuple()}
+	return []DeliveryTuple{baselineTuple(), monoTuple(baselineTuple()), silentTuple(baselineTuple()), audioMP3Tuple(), audioAACTuple()}
 }
 func unknownHLSTuples() []DeliveryTuple {
-	return []DeliveryTuple{baselineTuple(), silentTuple(baselineTuple()), hlsTuple(), silentTuple(hlsTuple()), audioMP3Tuple(), audioAACTuple()}
+	return []DeliveryTuple{baselineTuple(), monoTuple(baselineTuple()), silentTuple(baselineTuple()), hlsTuple(), monoTuple(hlsTuple()), silentTuple(hlsTuple()), audioMP3Tuple(), audioAACTuple()}
 }
 
 // DefaultFallbackBands names every day-one family independently so version and

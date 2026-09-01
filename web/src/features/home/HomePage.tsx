@@ -3,6 +3,7 @@ import { NavigationLibraryIcon, ActionAddIcon, ActionRefreshIcon, ActionCustomiz
 import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { PrimaryButton, SecondaryButton } from '../../components/controls/Buttons';
+import { useStableBackdrop } from '../../components/media/StableImage';
 import { ProductLanguageIcon, productLanguageProblem } from '../../components/states/ProductLanguageState';
 import { useAuthSession, useHome, useHomeRow, useLibraries, useMediaMutations, usePorticoDataSource } from '../../data/DataProvider';
 import { canManageLibraries as viewerCanManageLibraries } from '../../data/authority';
@@ -173,6 +174,7 @@ export function HomeRowSurface({ descriptor, eager, onResolved }: { descriptor: 
 }
 
 function HomeHero({ item, context, playbackOptions, showBackdrop }: { item?: MediaItem; context?: string; playbackOptions?: ReturnType<typeof playbackOptionsForItems>; showBackdrop: boolean }) {
+  const backdrop = useStableBackdrop(item?.backdrop, showBackdrop, item?.metadataEtag ?? item?.metadataRevision);
   const navigate = useNavigate();
   const mediaActions = useMediaMutations();
   const auth = useAuthSession();
@@ -226,7 +228,7 @@ function HomeHero({ item, context, playbackOptions, showBackdrop }: { item?: Med
       if (currentItemId.current === itemId) setSaving(false);
     }
   };
-  return <section className="portico-home-hero" style={{ '--backdrop': showBackdrop && item.backdrop ? `url(${item.backdrop})` : 'none' } as CSSProperties}>
+  return <section className="portico-home-hero" style={{ '--backdrop': backdrop } as CSSProperties}>
     <div className="portico-home-hero-copy">
       <span>{context || productMessage('home.continue-watching').text}</span>
       <h1>{item.title}</h1>

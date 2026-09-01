@@ -71,7 +71,14 @@ func TestIntelGPUProbeUsesOneBoundedSampleAndCleansChildren(t *testing.T) {
 		t.Fatalf("write Intel fixture: %v", err)
 	}
 	t.Setenv("PATH", directory+string(os.PathListSeparator)+os.Getenv("PATH"))
-	sample := sampleGPUContext(context.Background(), &telemetrySamplerState{}, DashboardGPUInfo{Provider: "Intel", Available: true})
+	output, err := runIntelGPUSample(context.Background())
+	if err != nil {
+		t.Fatalf("run Intel sample: %v", err)
+	}
+	sample, err := parseIntelGPUSample(output)
+	if err != nil {
+		t.Fatalf("parse Intel sample: %v", err)
+	}
 	if sample.Usage.Status != telemetryStatusOK || sample.Usage.Value != 42 {
 		t.Fatalf("unexpected Intel usage sample: %#v", sample.Usage)
 	}

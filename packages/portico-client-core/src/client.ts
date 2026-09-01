@@ -918,6 +918,8 @@ export interface PlaybackProgressDurabilityAdapter {
 
 export interface PorticoClientOptions {
   apiBaseUrl?: ValueProvider<string>;
+  /** Long-lived Server API key. Mutually exclusive with refreshable session storage. */
+  apiKey?: ValueProvider<string>;
   /** Hosted Services origin used only to rotate server-scoped Portico credentials. */
   hostedApiBaseUrl?: ValueProvider<string>;
   baseHref?: ValueProvider<string>;
@@ -1883,6 +1885,7 @@ export function createMemorySessionStore(
 }
 
 export function createPorticoClient(options: PorticoClientOptions = {}) {
+  validateAPIKeyClientOptions(options);
   const credentials = createCredentialLifecycle(options);
   const eventSubscriptions = new PorticoEventSubscriptionCoordinator();
   const inFlightJSONRequests = new Map<string, InFlightJSONRequest>();
@@ -8683,11 +8686,24 @@ function createCredentialLifecycle(
   let refreshInFlight: Promise<LocalServerSession> | undefined;
   let pendingRotation: PendingCredentialRotation | undefined;
 
-  const peek = () => config.sessionStore?.get() ?? cached;
+  const apiKeySession = (): LocalServerSession | undefined => {
+    if (config.apiKey === undefined) return undefined;
+    const apiKey = String(resolveValue(config.apiKey, "")).trim();
+    if (!/^ptc_api_[A-Za-z0-9_-]{43}$/u.test(apiKey))
+      throw new TypeError("PorticoClientOptions.apiKey must be a valid ptc_api_ Server API key.");
+    return {
+      apiBaseUrl: trimTrailingSlash(resolveValue(config.apiBaseUrl, "")),
+      accessToken: apiKey,
+      authority: "local",
+    };
+  };
+  const peek = () => apiKeySession() ?? config.sessionStore?.get() ?? cached;
   const current = ():
     | LocalServerSession
     | undefined
     | Promise<LocalServerSession | undefined> => {
+    const keySession = apiKeySession();
+    if (keySession) return keySession;
     const stored = config.sessionStore?.get();
     if (stored) {
       cached = stored;
@@ -8995,6 +9011,15 @@ function createCredentialLifecycle(
       if (currentRefreshToken(session) === refreshToken) await clear();
     },
   };
+}
+
+function validateAPIKeyClientOptions(config: PorticoClientOptions): void {
+  if (config.apiKey === undefined) return;
+  if (config.sessionStore || config.credentialAdapter)
+    throw new TypeError("PorticoClientOptions.apiKey cannot be combined with refreshable session storage.");
+  const value = String(resolveValue(config.apiKey, "")).trim();
+  if (!/^ptc_api_[A-Za-z0-9_-]{43}$/u.test(value))
+    throw new TypeError("PorticoClientOptions.apiKey must be a valid ptc_api_ Server API key.");
 }
 
 function currentAccessTokenFromSession(session?: LocalServerSession): string {

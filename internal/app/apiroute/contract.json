@@ -151,6 +151,7 @@
             "type": "string"
           },
           "scopes": {
+            "description": "Least-privilege Server API-key scopes. read permits documented read projections, including POST-based search and browse. Playback of library media requires playMedia; Live TV playback requires both playLiveTV and playMedia; DVR playback requires playMedia plus viewDVR or manageDVR. transcode permits only optimized-version create/delete operations and does not grant general server administration. read is always added to issued keys.",
             "items": {
               "enum": [
                 "read",
@@ -31510,7 +31511,21 @@
                 }
               }
             },
-            "description": "Active API keys without raw token values"
+            "description": "Active API keys without raw token values",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "const": "no-store",
+                  "type": "string"
+                }
+              },
+              "Pragma": {
+                "schema": {
+                  "const": "no-cache",
+                  "type": "string"
+                }
+              }
+            }
           },
           "400": {
             "content": {
@@ -31629,7 +31644,21 @@
                 }
               }
             },
-            "description": "API key created"
+            "description": "API key created",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "const": "no-store",
+                  "type": "string"
+                }
+              },
+              "Pragma": {
+                "schema": {
+                  "const": "no-cache",
+                  "type": "string"
+                }
+              }
+            }
           },
           "400": {
             "content": {
@@ -31750,7 +31779,21 @@
                 }
               }
             },
-            "description": "API key revoked"
+            "description": "API key revoked",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "const": "no-store",
+                  "type": "string"
+                }
+              },
+              "Pragma": {
+                "schema": {
+                  "const": "no-cache",
+                  "type": "string"
+                }
+              }
+            }
           },
           "400": {
             "content": {
@@ -36664,7 +36707,7 @@
     },
     "/client-logs": {
       "post": {
-        "description": "Disabled by default. When enabled in Troubleshooting settings, authenticated clients can upload bounded, redacted diagnostic events into an isolated client-diagnostics lane. Accepted counts may be lower than submitted counts when queue or per-account rate limits are reached; uploads never enter the server admin log stream.",
+        "description": "Disabled by default. When enabled in Troubleshooting settings, authenticated interactive clients can upload bounded, redacted diagnostic events into an isolated client-diagnostics lane. Server API keys are rejected because reusable integration credentials are not device-bound and read authority never grants log injection. Accepted counts may be lower than submitted counts when queue or per-account rate limits are reached; uploads never enter the server admin log stream.",
         "operationId": "postClientLogs",
         "requestBody": {
           "content": {
@@ -46719,6 +46762,9 @@
           }
         },
         "summary": "Browse one library with the canonical query language and keyset cursor",
+        "x-portico-api-key-scopes": [
+          "read"
+        ],
         "x-portico-audience": "viewer",
         "x-portico-audit-event": "api.browseLibrary",
         "x-portico-auth": "session",
@@ -54656,6 +54702,9 @@
           }
         },
         "summary": "Queue an optimized version for a media item",
+        "x-portico-api-key-scopes": [
+          "transcode"
+        ],
         "x-portico-audience": "viewer",
         "x-portico-audit-event": "api.postMediaIdOptimized",
         "x-portico-auth": "session",
@@ -54783,6 +54832,9 @@
           }
         },
         "summary": "Delete an optimized version",
+        "x-portico-api-key-scopes": [
+          "transcode"
+        ],
         "x-portico-audience": "viewer",
         "x-portico-audit-event": "api.deleteMediaIdOptimizedProfile",
         "x-portico-auth": "session",
@@ -67635,6 +67687,9 @@
           }
         },
         "summary": "Execute a saved view through canonical library browse",
+        "x-portico-api-key-scopes": [
+          "read"
+        ],
         "x-portico-audience": "viewer",
         "x-portico-audit-event": "api.postSavedViewsSavedViewIdBrowse",
         "x-portico-auth": "session",
@@ -67886,6 +67941,9 @@
           }
         },
         "summary": "Search accessible media using grouped previews or an independent group cursor",
+        "x-portico-api-key-scopes": [
+          "read"
+        ],
         "x-portico-audience": "viewer",
         "x-portico-audit-event": "api.postSearch",
         "x-portico-auth": "session",

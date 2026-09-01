@@ -3,15 +3,20 @@ export type SettingsBlockedNavigation = {
   reset: () => void;
 };
 
-let dirty = false;
+const dirtySources = new Set<string>();
 let blockedListener: ((navigation: SettingsBlockedNavigation) => void) | undefined;
 
-export function setSettingsNavigationDirty(next: boolean) {
-  dirty = next;
+export function setSettingsNavigationDirty(next: boolean, source = 'settings-form') {
+  if (next) dirtySources.add(source);
+  else dirtySources.delete(source);
 }
 
 export function isSettingsNavigationDirty() {
-  return dirty;
+  return dirtySources.size > 0;
+}
+
+export function isSettingsNavigationSensitive() {
+  return dirtySources.has('api-key-token');
 }
 
 export function subscribeSettingsBlockedNavigation(listener: (navigation: SettingsBlockedNavigation) => void) {

@@ -39,7 +39,9 @@ function page(input: SearchPageInput, groups: SearchGroup[]): SearchPageResult {
 describe('SearchPage history privacy', () => {
   it('sends recordHistory false when profile search history is disabled', async () => {
     const source = new FixturePorticoDataSource(viewer);
-    await source.updateWebDisplayPreferences({ rememberSearchHistory: false }, new AbortController().signal);
+    const preferences = await source.viewerPreferences(new AbortController().signal);
+    preferences.profileServer.values.search.rememberHistory = false;
+    vi.spyOn(source, 'viewerPreferences').mockResolvedValue(preferences);
     const searchPage = vi.spyOn(source as PorticoDataSource, 'searchPage');
 
     render(<DataProvider source={source} initialViewer={viewer}>
@@ -131,9 +133,10 @@ describe('SearchPage history privacy', () => {
   it('preserves healthy groups and presents a failed sibling through Product Language', async () => {
     const source = new FixturePorticoDataSource(viewer);
     await limitSearchContract(source, ['movies', 'shows']);
-    vi.spyOn(source, 'searchPage').mockImplementation(async (input) => page(input, input.group === 'shows'
-      ? [{ id: 'shows', title: 'Shows', entityKind: 'show', status: 'error', errorCode: 'search_group_timeout', messageId: 'search.group-timeout', items: [], hasMore: false, nextCursor: null }]
-      : [{ id: 'movies', title: 'Movies', entityKind: 'movie', status: 'success', items: [result('healthy-movie', 'Healthy movie result')], hasMore: false, nextCursor: null }]));
+    vi.spyOn(source, 'searchPage').mockImplementation(async (input) => page(input, [
+      { id: 'movies', title: 'Movies', entityKind: 'movie', status: 'success', items: [result('healthy-movie', 'Healthy movie result')], hasMore: false, nextCursor: null },
+      { id: 'shows', title: 'Shows', entityKind: 'show', status: 'error', errorCode: 'search_group_timeout', messageId: 'search.group-timeout', items: [], hasMore: false, nextCursor: null },
+    ]));
 
     render(<DataProvider source={source} initialViewer={viewer}>
       <MemoryRouter initialEntries={['/search?q=Fargo']}><SearchPage /></MemoryRouter>
@@ -145,45 +148,26 @@ describe('SearchPage history privacy', () => {
     expect(screen.getByText('Healthy movie result').closest('.full-search-group')).toHaveAttribute('data-retained-result-count', '1');
   });
 
-  it('loads server-ordered result groups through a deterministic two-request pool', async () => {
+  it('loads every server-ordered initial result group in one request', async () => {
     const source = new FixturePorticoDataSource(viewer);
     const contract = await source.searchContract(new AbortController().signal);
-    const started: string[] = [];
-    const completions = new Map<string, () => void>();
-    let active = 0;
-    let peak = 0;
-    vi.spyOn(source, 'searchPage').mockImplementation((input) => new Promise((resolve) => {
-      const groupID = input.group!;
-      started.push(groupID);
-      active += 1;
-      peak = Math.max(peak, active);
-      completions.set(groupID, () => {
-        active -= 1;
-        resolve(page(input, [{
-          id: groupID,
-          title: contract.groups.find((group) => group.id === groupID)?.title ?? groupID,
-          entityKind: contract.groups.find((group) => group.id === groupID)?.entityKind ?? groupID,
-          status: 'success',
-          items: [],
-          hasMore: false,
-          nextCursor: null,
-        }]));
-      });
-    }));
+    const searchPage = vi.spyOn(source, 'searchPage').mockImplementation(async (input) => page(input, contract.groupOrder.map((groupID) => ({
+      id: groupID,
+      title: contract.groups.find((group) => group.id === groupID)?.title ?? groupID,
+      entityKind: contract.groups.find((group) => group.id === groupID)?.entityKind ?? groupID,
+      status: 'success',
+      items: [],
+      hasMore: false,
+      nextCursor: null,
+    }))));
 
     render(<DataProvider source={source} initialViewer={viewer}>
       <MemoryRouter initialEntries={['/search?q=Fargo']}><SearchPage /></MemoryRouter>
     </DataProvider>);
 
-    await waitFor(() => expect(started).toHaveLength(2));
-    expect(started).toEqual(contract.groupOrder.slice(0, 2));
-    expect(peak).toBe(2);
-    for (let index = 0; index < contract.groupOrder.length; index += 1) {
-      await waitFor(() => expect(completions.has(contract.groupOrder[index])).toBe(true));
-      await act(async () => completions.get(contract.groupOrder[index])!());
-    }
-    await waitFor(() => expect(started).toEqual(contract.groupOrder));
-    expect(peak).toBe(2);
+    await waitFor(() => expect(searchPage).toHaveBeenCalledTimes(1));
+    expect(searchPage).toHaveBeenCalledWith(expect.objectContaining({ query: 'Fargo' }), expect.any(AbortSignal));
+    expect(searchPage.mock.calls[0][0].group).toBeUndefined();
   });
 
   it('includes every result-shaping field in the stale-result identity', () => {

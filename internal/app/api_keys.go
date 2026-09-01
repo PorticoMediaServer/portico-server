@@ -7,13 +7,18 @@ import (
 	"errors"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
+
+	"github.com/PorticoMediaServer/portico-server/internal/app/apiroute"
 )
 
 const apiKeyRecentAuthenticationWindow = 10 * time.Minute
+const maxActiveAPIKeysPerOwner = 100
 
 func (s *Server) handleAPIKeys(w http.ResponseWriter, r *http.Request, user User) {
+	setAPIKeyManagementNoStore(w)
 	if !canInteractivelyManageServer(user) {
 		writeError(w, http.StatusForbidden, "owner_required", "Only the server owner can manage API keys.")
 		return
@@ -36,6 +41,11 @@ func (s *Server) handleAPIKeys(w http.ResponseWriter, r *http.Request, user User
 		}
 		key, token, err := s.createAPIKeyContext(r.Context(), user.ID, req)
 		if err != nil {
+			var conflict errAPIKeyConflict
+			if errors.As(err, &conflict) {
+				writeError(w, http.StatusConflict, conflict.Code, conflict.Error())
+				return
+			}
 			writeDatabaseAccessError(w, err, http.StatusBadRequest, "api_key_create_failed", err.Error())
 			return
 		}
@@ -47,6 +57,7 @@ func (s *Server) handleAPIKeys(w http.ResponseWriter, r *http.Request, user User
 }
 
 func (s *Server) handleAPIKeyRoute(w http.ResponseWriter, r *http.Request, user User) {
+	setAPIKeyManagementNoStore(w)
 	if !canInteractivelyManageServer(user) {
 		writeError(w, http.StatusForbidden, "owner_required", "Only the server owner can manage API keys.")
 		return
@@ -70,6 +81,11 @@ func (s *Server) handleAPIKeyRoute(w http.ResponseWriter, r *http.Request, user 
 	}
 	s.recordAudit(r, user, "api_key.revoked", "api_key", key.ID, "warn", map[string]string{"name": key.Name})
 	writeJSON(w, http.StatusOK, key)
+}
+
+func setAPIKeyManagementNoStore(w http.ResponseWriter) {
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Pragma", "no-cache")
 }
 
 // API keys are long-lived bearer credentials. Interactive ownership alone is
@@ -161,10 +177,36 @@ func (s *Server) createAPIKeyContext(ctx context.Context, userID string, req API
 		CreatedAt: now,
 	}
 	scopesJSON, _ := json.Marshal(scopes)
-	if _, err := s.execUserWrite(ctx, `
-		INSERT INTO api_keys (id, user_id, name, token_hash, last_four, scopes_json, created_at, last_used_at, revoked_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, '', '')`,
-		key.ID, userID, name, hashToken(token), key.LastFour, string(scopesJSON), now); err != nil {
+	err := s.withSecurityFenceTxTagged(ctx, []string{"api_keys"}, func(tx *sql.Tx) error {
+		var existingID string
+		err := tx.QueryRowContext(ctx, `
+			SELECT id FROM api_keys
+			WHERE user_id = ? AND lower(name) = lower(?) AND revoked_at = ''
+			ORDER BY created_at DESC, id ASC LIMIT 1`, userID, name).Scan(&existingID)
+		if err == nil {
+			// An ambiguous create retry cannot safely replay a secret that the
+			// server never persisted. Fail deterministically instead of minting a
+			// second credential; the owner can reconcile from the active list,
+			// revoke the existing key, and retry intentionally.
+			return errAPIKeyConflict{Code: "api_key_name_conflict", Message: "An active API key already uses this name. Revoke it before creating a replacement."}
+		}
+		if !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+		var activeCount int
+		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM api_keys WHERE user_id = ? AND revoked_at = ''`, userID).Scan(&activeCount); err != nil {
+			return err
+		}
+		if activeCount >= maxActiveAPIKeysPerOwner {
+			return errAPIKeyConflict{Code: "api_key_limit_reached", Message: "Revoke an active API key before creating another."}
+		}
+		_, err = tx.ExecContext(ctx, `
+			INSERT INTO api_keys (id, user_id, name, token_hash, last_four, scopes_json, created_at, last_used_at, revoked_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, '', '')`,
+			key.ID, userID, name, hashToken(token), key.LastFour, string(scopesJSON), now)
+		return err
+	})
+	if err != nil {
 		return APIKey{}, "", err
 	}
 	if user, err := s.getUser(userID); err == nil {
@@ -195,13 +237,29 @@ func (s *Server) revokeAPIKeyContext(ctx context.Context, keyID string) (APIKey,
 		return APIKey{}, errInvalidAPIKey("API key was not found.")
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
-	result, err := s.execSecurityFenceWrite(ctx, `UPDATE api_keys SET revoked_at = ? WHERE id = ? AND revoked_at = ''`, now, keyID)
+	err = s.withSecurityFenceTxTagged(ctx, []string{"api_keys", "playback", "downloads", "playback-receivers", "authorization"}, func(tx *sql.Tx) error {
+		result, err := tx.ExecContext(ctx, `UPDATE api_keys SET revoked_at = ? WHERE id = ? AND revoked_at = ''`, now, keyID)
+		if err != nil {
+			return err
+		}
+		if rowsAffected(result) == 0 {
+			return errInvalidAPIKey("API key was not found.")
+		}
+		// Receiver controller grants are independently presented capabilities, so
+		// mark them terminal in the same commit as their originating key.
+		_, err = tx.ExecContext(ctx, `UPDATE playback_receiver_authorizations SET revoked_at = ? WHERE api_key_id = ? AND revoked_at = ''`, now, keyID)
+		return err
+	})
 	if err != nil {
 		return APIKey{}, err
 	}
-	if rowsAffected(result) == 0 {
-		return APIKey{}, errInvalidAPIKey("API key was not found.")
-	}
+	s.forgetMediaGrantsForAPIKey(keyID)
+	s.apiKeyUsageMu.Lock()
+	delete(s.apiKeyUsagePending, keyID)
+	s.apiKeyUsageMu.Unlock()
+	s.apiKeyLimiterMu.Lock()
+	delete(s.apiKeyAttempts, keyID)
+	s.apiKeyLimiterMu.Unlock()
 	key.RevokedAt = now
 	return key, nil
 }
@@ -227,14 +285,73 @@ func (s *Server) userForAPIKey(r *http.Request, token string) (User, bool) {
 	if err != nil {
 		return User{}, false
 	}
+	// API keys do not carry an interactive profile selection. Bind them to the
+	// account's active primary profile so browse/search/content policy uses the
+	// same canonical principal as an owner session instead of a partially
+	// enriched account row with zero-value profile restrictions.
+	var profileID string
+	if err := s.queryUserRow(ctx, `
+		SELECT id
+		FROM profiles
+		WHERE account_id = ? AND is_primary = 1 AND disabled_at = ''
+		ORDER BY sort_order ASC, id ASC
+		LIMIT 1`, userID).Scan(&profileID); err != nil {
+		return User{}, false
+	}
+	principal, err := s.resolveRequestPrincipalContext(ctx, userID, profileID)
+	if err != nil {
+		return User{}, false
+	}
+	applyRequestPrincipal(&user, principal)
 	scopes := decodeAPIKeyScopes(scopesJSON)
 	user.AuthProvider = "api_key"
 	user.APIKeyID = keyID
 	user.APIKeyScopes = scopes
 	user.Permissions = applyAPIKeyScopes(user.Permissions, scopes)
-	s.observeAPIKeyUse(keyID)
 	_ = r
 	return user, true
+}
+
+// applyActiveAPIKeyIdentityContext restores the credential boundary on a user
+// reconstructed from an API-key-derived capability. It is intentionally strict:
+// a missing, revoked, disabled-account, or malformed key record invalidates the
+// derived capability instead of silently widening it to account authority.
+func (s *Server) applyActiveAPIKeyIdentityContext(ctx context.Context, user *User, keyID string) bool {
+	keyID = strings.TrimSpace(keyID)
+	if keyID == "" {
+		return true
+	}
+	if user == nil {
+		return false
+	}
+	var scopesJSON string
+	if err := s.queryUserRow(ctx, `
+		SELECT k.scopes_json
+		FROM api_keys k
+		JOIN users u ON u.id = k.user_id AND COALESCE(u.disabled_at, '') = ''
+		WHERE k.id = ? AND k.user_id = ? AND k.revoked_at = ''`, keyID, accountIDForUser(*user)).Scan(&scopesJSON); err != nil {
+		return false
+	}
+	scopes := decodeAPIKeyScopes(scopesJSON)
+	user.AuthProvider = "api_key"
+	user.APIKeyID = keyID
+	user.APIKeyScopes = scopes
+	user.Permissions = applyAPIKeyScopes(user.Permissions, scopes)
+	return true
+}
+
+func (s *Server) applyPlaybackSessionAPIKeyContext(ctx context.Context, user *User, sessionID string) bool {
+	if user == nil || strings.TrimSpace(sessionID) == "" {
+		return false
+	}
+	var accountID, profileID, keyID string
+	if err := s.queryUserRow(ctx, `SELECT user_id, profile_id, COALESCE(api_key_id, '') FROM playback_sessions WHERE id = ?`, strings.TrimSpace(sessionID)).Scan(&accountID, &profileID, &keyID); err != nil {
+		return false
+	}
+	if accountID != accountIDForUser(*user) || profileID != viewerProfileID(*user) {
+		return false
+	}
+	return s.applyActiveAPIKeyIdentityContext(ctx, user, keyID)
 }
 
 const apiKeyUsageFlushInterval = 30 * time.Second
@@ -254,6 +371,12 @@ func (s *Server) observeAPIKeyUse(keyID string) {
 		s.apiKeyUsagePending[keyID] = time.Now().UTC()
 	}
 	s.apiKeyUsageMu.Unlock()
+}
+
+func (s *Server) observeAuthorizedAPIKeyUse(user User) {
+	if user.AuthProvider == "api_key" && user.APIKeyID != "" {
+		s.observeAPIKeyUse(user.APIKeyID)
+	}
 }
 
 func (s *Server) runAPIKeyUsageWriter(ctx context.Context) {
@@ -308,7 +431,7 @@ func (s *Server) flushAPIKeyUsage(ctx context.Context) {
 	}
 	query := `UPDATE api_keys
 		SET last_used_at = MAX(last_used_at, CASE id ` + strings.Join(caseParts, " ") + ` ELSE last_used_at END)
-		WHERE id IN (` + strings.Join(placeholders, ",") + `)`
+		WHERE revoked_at = '' AND id IN (` + strings.Join(placeholders, ",") + `)`
 	if _, err := s.execBackgroundWrite(ctx, query, args...); err != nil {
 		s.apiKeyUsageMu.Lock()
 		if s.apiKeyUsagePending == nil {
@@ -357,6 +480,16 @@ func (s *Server) allowAPIKeyRequest(user User) (bool, int) {
 	return true, 0
 }
 
+func (s *Server) enforceAPIKeyRequestLimit(w http.ResponseWriter, user User) bool {
+	allowed, retryAfter := s.allowAPIKeyRequest(user)
+	if allowed {
+		return true
+	}
+	w.Header().Set("Retry-After", strconv.Itoa(retryAfter))
+	writeError(w, http.StatusTooManyRequests, "api_key_rate_limited", "This API key has reached its request limit. Try again shortly.")
+	return false
+}
+
 func apiKeyAllowsRequest(user User, r *http.Request) bool {
 	if user.AuthProvider != "api_key" {
 		return true
@@ -369,7 +502,18 @@ func apiKeyAllowsRequest(user User, r *http.Request) bool {
 	if apiKeyOwnerOnlyPath(path) {
 		return false
 	}
+	route, routeKnown := apiroute.RouteFromRequest(r)
+	if !routeKnown {
+		// API keys are integration credentials: an unregistered operation must
+		// fail closed instead of inheriting a method/path heuristic.
+		return false
+	}
+	operation := route.OperationID
 	switch {
+	case apiKeyRouteDeclaresScope(route, scopes):
+		return true
+	case operation == "postClientLogs":
+		return false
 	case apiPathMatches(path, "/api/watch-with-friends"):
 		return scopes["watchWithFriends"]
 	case apiPathMatches(path, "/api/playback-sessions"), apiPathMatches(path, "/api/playback"):
@@ -389,8 +533,8 @@ func apiKeyAllowsRequest(user User, r *http.Request) bool {
 		return false
 	case apiPathMatches(path, "/api/live-tv/channels"):
 		return scopes["viewLiveTV"] || scopes["playLiveTV"]
-	case apiPathMatches(path, "/api/client-logs"):
-		return scopes["read"]
+	case apiKeyDownloadPreparationOperation(operation):
+		return scopes["downloadMedia"]
 	case apiPathMatches(path, "/api/playlists"):
 		if r.Method == http.MethodGet || r.Method == http.MethodHead || r.Method == http.MethodOptions {
 			return scopes["read"]
@@ -398,9 +542,9 @@ func apiKeyAllowsRequest(user User, r *http.Request) bool {
 		return scopes["playMedia"] || scopes["editMetadata"]
 	case apiPathMatches(path, "/api/media"):
 		if r.Method == http.MethodGet || r.Method == http.MethodHead || r.Method == http.MethodOptions {
-			return scopes["read"]
+			return apiKeyAllowsMediaReadOperation(operation, scopes)
 		}
-		return apiKeyAllowsMediaMutation(path, scopes)
+		return apiKeyAllowsMediaMutation(operation, scopes)
 	case apiPathMatches(path, "/api/libraries") || apiPathMatches(path, "/api/filesystem"):
 		if r.Method == http.MethodGet || r.Method == http.MethodHead || r.Method == http.MethodOptions {
 			return scopes["read"]
@@ -417,21 +561,24 @@ func apiKeyAllowsRequest(user User, r *http.Request) bool {
 	case apiPathMatches(path, "/api/admin/dvr"):
 		return false
 	case apiPathMatches(path, "/api/dvr"):
-		if strings.Contains(path, "/stream") || strings.Contains(path, "/hls/") {
-			return scopes["playMedia"] && (scopes["viewDVR"] || scopes["manageDVR"])
-		}
-		if r.Method == http.MethodDelete {
-			return scopes["deleteDVRRecordings"] || scopes["manageDVR"]
-		}
-		if r.Method == http.MethodPost || r.Method == http.MethodPatch {
-			return scopes["scheduleDVR"] || scopes["manageDVR"]
-		}
-		return scopes["viewDVR"] || scopes["manageDVR"]
+		return apiKeyAllowsDVROperation(operation, scopes)
 	}
 	if r.Method == http.MethodGet || r.Method == http.MethodHead || r.Method == http.MethodOptions {
 		return scopes["read"]
 	}
 	return false
+}
+
+func apiKeyRouteDeclaresScope(route apiroute.Route, granted map[string]bool) bool {
+	if len(route.APIKeyScopes) == 0 {
+		return false
+	}
+	for _, scope := range route.APIKeyScopes {
+		if !granted[scope] {
+			return false
+		}
+	}
+	return true
 }
 
 func apiKeyOwnerOnlyPath(path string) bool {
@@ -458,20 +605,72 @@ func apiPathMatches(path, root string) bool {
 	return root != "" && (path == root || strings.HasPrefix(path, root+"/"))
 }
 
-func apiKeyAllowsMediaMutation(path string, scopes map[string]bool) bool {
-	switch {
-	case strings.Contains(path, "/images"):
-		return scopes["editMetadata"]
-	case strings.Contains(path, "/lyrics"):
-		return scopes["editMetadata"] || scopes["manageLyrics"]
-	case strings.Contains(path, "/subtitles"):
-		return scopes["editMetadata"] || scopes["manageSubtitles"]
-	case strings.Contains(path, "/segments"):
-		return scopes["editMetadata"]
-	case strings.Contains(path, "/download"):
-		return scopes["downloadMedia"]
+func apiKeyDownloadPreparationOperation(operation string) bool {
+	switch operation {
+	case "listDownloadPreparations", "createDownloadPreparation", "getDownloadPreparation",
+		"updateDownloadPreparation", "removeDownloadPreparation", "createDownloadPreparationGrant":
+		return true
+	default:
+		return false
 	}
-	return scopes["editMetadata"] || scopes["deleteMedia"]
+}
+
+func apiKeyAllowsDVROperation(operation string, scopes map[string]bool) bool {
+	view := scopes["viewDVR"] || scopes["manageDVR"]
+	switch operation {
+	case "postDvrRecordingsIdPlayback", "getDvrRecordingsIdStream", "headDvrRecordingsIdStream",
+		"getDvrRecordingsIdHlsResource", "headDvrRecordingsIdHlsResource":
+		return view && scopes["playMedia"]
+	case "deleteDvrRecordingsId":
+		return scopes["deleteDVRRecordings"] || scopes["manageDVR"]
+	case "postDvrRecordings", "patchDvrRecordingsId", "postDvrRules", "patchDvrRulesId", "deleteDvrRulesId":
+		return scopes["scheduleDVR"] || scopes["manageDVR"]
+	case "getDvrRecordingGroups", "getDvrRecordings", "getDvrRecordingsId", "getDvrRules", "getDvrRulesId", "getDvrSchedule", "getDVRStatus":
+		return view
+	default:
+		return false
+	}
+}
+
+func apiKeyAllowsMediaReadOperation(operation string, scopes map[string]bool) bool {
+	switch operation {
+	case "getMediaIdDownload", "headMediaIdDownload", "getMediaIdDownloadOptions":
+		return scopes["downloadMedia"]
+	case "getMediaIdStream", "headMediaIdStream", "getMediaIdHlsResource", "headMediaIdHlsResource",
+		"getMediaIdOptimized", "getMediaIdOptimizedProfile", "headMediaIdOptimizedProfile",
+		"getMediaIdTrickplay", "getMediaIdTrickplaySetIdTilesM3u8", "getMediaIdTrickplaySetIdTilesTileIndexJpg":
+		return scopes["playMedia"]
+	case "getMediaIdImagesImageId", "getMediaIdLyricsSearch", "getMediaIdMatchCandidates":
+		return scopes["editMetadata"]
+	case "getMediaIdSubtitlesStreamId", "headMediaIdSubtitlesStreamId":
+		return scopes["manageSubtitles"] || scopes["editMetadata"]
+	default:
+		return scopes["read"]
+	}
+}
+
+func apiKeyAllowsMediaMutation(operation string, scopes map[string]bool) bool {
+	switch operation {
+	case "postMediaIdFavorite", "postMediaIdRating", "postMediaIdReaction", "postMediaIdWatched", "postMediaIdWatchlist", "postMediaBulkState":
+		return scopes["playMedia"]
+	case "deleteMediaId":
+		return scopes["deleteMedia"]
+	case "postMediaIdLyrics", "postMediaIdLyricsApply", "postMediaIdLyricsFetch", "deleteMediaIdLyricsLyricId":
+		return scopes["manageLyrics"] || scopes["editMetadata"]
+	case "postMediaIdSubtitles", "deleteMediaIdSubtitlesStreamId", "patchMediaIdSubtitlesStreamId":
+		return scopes["manageSubtitles"] || scopes["editMetadata"]
+	case "postMediaIdImages", "postMediaIdImagesOrder", "deleteMediaIdImagesImageId", "postMediaIdImagesImageIdPreferred",
+		"patchMediaId", "postMediaBulkMetadata", "postMediaIdMatch", "postMediaIdSegments", "deleteMediaIdSegmentsSegmentId":
+		return scopes["editMetadata"]
+	case "postMediaIdOptimized", "deleteMediaIdOptimizedProfile":
+		return scopes["transcode"]
+	case "postMediaBulkJobs", "postMediaIdJobs":
+		// Job bodies multiplex administrative mutations; without a dedicated
+		// operation-level scope contract an API key must not receive them.
+		return false
+	default:
+		return false
+	}
 }
 
 var apiKeySafeScopes = map[string]bool{
@@ -530,3 +729,10 @@ type errInvalidAPIKey string
 func (e errInvalidAPIKey) Error() string {
 	return string(e)
 }
+
+type errAPIKeyConflict struct {
+	Code    string
+	Message string
+}
+
+func (e errAPIKeyConflict) Error() string { return e.Message }

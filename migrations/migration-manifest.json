@@ -1,6 +1,6 @@
 {
   "formatVersion": 1,
-  "reviewedHead": "002_playback_receiver_authority",
+  "reviewedHead": "003_api_key_capability_binding",
   "migrations": [
     {
       "filename": "001_initial.sql",
@@ -9,6 +9,10 @@
     {
       "filename": "002_playback_receiver_authority.sql",
       "sha256": "417ef8b13c23a4f8c4a9214cc8af31364a21c6021ef97663078c877e5a91b749"
+    },
+    {
+      "filename": "003_api_key_capability_binding.sql",
+      "sha256": "1352d65e55848fa1971ba625a703137702d251a12c8a1cc15496e472b5f827f2"
     }
   ]
 }

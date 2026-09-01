@@ -7,6 +7,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/PorticoMediaServer/portico-server/internal/redaction"
 )
 
 var (
@@ -205,6 +207,7 @@ func sanitizeClientLogContext(context map[string]string) map[string]string {
 }
 
 func redactClientLogText(value string) string {
+	value = redaction.RedactPorticoCredentials(value)
 	value = clientLogBearerPattern.ReplaceAllString(value, "$1 [redacted]")
 	value = clientLogJWTLikePattern.ReplaceAllString(value, "[redacted-jwt]")
 	value = clientLogSecretPairPattern.ReplaceAllString(value, "$1=[redacted]")

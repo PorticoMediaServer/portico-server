@@ -1401,7 +1401,7 @@ export interface paths {
         put?: never;
         /**
          * Upload bounded client diagnostic logs
-         * @description Disabled by default. When enabled in Troubleshooting settings, authenticated clients can upload bounded, redacted diagnostic events into an isolated client-diagnostics lane. Accepted counts may be lower than submitted counts when queue or per-account rate limits are reached; uploads never enter the server admin log stream.
+         * @description Disabled by default. When enabled in Troubleshooting settings, authenticated interactive clients can upload bounded, redacted diagnostic events into an isolated client-diagnostics lane. Server API keys are rejected because reusable integration credentials are not device-bound and read authority never grants log injection. Accepted counts may be lower than submitted counts when queue or per-account rate limits are reached; uploads never enter the server admin log stream.
          */
         post: operations["postClientLogs"];
         delete?: never;
@@ -5731,6 +5731,7 @@ export interface components {
         };
         APIKeyCreateRequest: {
             name: string;
+            /** @description Least-privilege Server API-key scopes. read permits documented read projections, including POST-based search and browse. Playback of library media requires playMedia; Live TV playback requires both playLiveTV and playMedia; DVR playback requires playMedia plus viewDVR or manageDVR. transcode permits only optimized-version create/delete operations and does not grant general server administration. read is always added to issued keys. */
             scopes?: ("read" | "playMedia" | "downloadMedia" | "editMetadata" | "manageLyrics" | "manageSubtitles" | "watchWithFriends" | "viewLiveTV" | "playLiveTV" | "viewDVR" | "scheduleDVR" | "manageDVR" | "deleteDVRRecordings" | "deleteMedia" | "transcode")[];
         };
         APIKeyCreateResponse: {
@@ -16833,6 +16834,8 @@ export interface operations {
             /** @description Active API keys without raw token values */
             200: {
                 headers: {
+                    "Cache-Control"?: "no-store";
+                    Pragma?: "no-cache";
                     [name: string]: unknown;
                 };
                 content: {
@@ -16929,6 +16932,8 @@ export interface operations {
             /** @description API key created */
             201: {
                 headers: {
+                    "Cache-Control"?: "no-store";
+                    Pragma?: "no-cache";
                     [name: string]: unknown;
                 };
                 content: {
@@ -17023,6 +17028,8 @@ export interface operations {
             /** @description API key revoked */
             200: {
                 headers: {
+                    "Cache-Control"?: "no-store";
+                    Pragma?: "no-cache";
                     [name: string]: unknown;
                 };
                 content: {

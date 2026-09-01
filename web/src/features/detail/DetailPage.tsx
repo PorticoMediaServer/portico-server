@@ -3,6 +3,7 @@ import { productMessage, resolveMediaAvailability } from '@porticomediaserver/cl
 import { type CSSProperties, useRef, useState } from 'react';
 import { Link, Navigate, useParams } from 'react-router-dom';
 import { SecondaryButton } from '../../components/controls/Buttons';
+import { useStableBackdrop } from '../../components/media/StableImage';
 import { ProductLanguageIcon, productLanguageProblem } from '../../components/states/ProductLanguageState';
 import { useMediaDetail, useProductContract } from '../../data/DataProvider';
 import type { MediaItem } from '../../data/models';
@@ -73,12 +74,6 @@ function unavailableError(error: Error) {
   return problem.status === 404 || problem.code === 'media_not_found';
 }
 
-function detailBackdrop(value: string) {
-  if (!value) return 'none';
-  const escaped = value.replaceAll('\\', '\\\\').replaceAll('"', '\\"').replace(/[\n\r\f]/g, '');
-  return `url("${escaped}")`;
-}
-
 function DetailFailure({ error, onRetry }: { error: Error; onRetry: () => void }) {
   const missing = unavailableError(error);
   const presentation = missing ? productMessage('problem.not-found') : productLanguageProblem(error, 'media.detail-unavailable');
@@ -108,10 +103,12 @@ export function DetailPage() {
   const detail = useMediaDetail(id, reloadKey);
   const productContract = useProductContract();
   if (detail.status === 'success') previousItem.current = detail.data;
+  const pendingItem = detail.status === 'success' ? detail.data : previousItem.current;
+  const stableBackdrop = useStableBackdrop(pendingItem?.backdrop, true, pendingItem?.metadataEtag ?? pendingItem?.metadataRevision);
   if (detail.status === 'loading' && !previousItem.current) return <DetailLoading />;
   if (detail.status === 'error') return <DetailFailure error={detail.error} onRetry={() => setReloadKey((value) => value + 1)} />;
 
-  const item = detail.status === 'success' ? detail.data : previousItem.current;
+  const item = pendingItem;
   if (!item) return <DetailLoading />;
   const canonicalPath = mediaDetailPath(item);
   if ((detailKind(item) === 'season' || detailKind(item) === 'episode') && canonicalPath && canonicalPath !== `/media/${encodeURIComponent(item.id)}`) {
@@ -132,7 +129,7 @@ export function DetailPage() {
   const metadataLine = detailMetaParts(item).join(' · ');
   const onMetadataChange = () => setReloadKey((value) => value + 1);
 
-  return <div className={`portico-detail-page ${shape === 'square' ? 'music-detail' : ''}`} style={{ '--detail-backdrop': detailBackdrop(item.backdrop) } as CSSProperties}>
+  return <div className={`portico-detail-page ${shape === 'square' ? 'music-detail' : ''}`} style={{ '--detail-backdrop': stableBackdrop } as CSSProperties}>
     <section className="portico-detail-hero">
       <div className={`portico-detail-art ${shape ?? ''}`} style={contractArtwork ? { aspectRatio: contractArtwork.shape.aspectRatio } : undefined}>
         {hasArtwork ? <MediaArtwork item={item} shape={contractArtwork ? undefined : shape} /> : <span className="portico-detail-art-fallback"><DetailIcon item={item} /><strong>{item.title.slice(0, 2).toLocaleUpperCase()}</strong></span>}

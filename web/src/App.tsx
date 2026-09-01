@@ -3,6 +3,7 @@ import { lazy, Suspense, useEffect, useState } from 'react';
 import { Link, Route, Routes, useLocation } from 'react-router-dom';
 import { AppShell } from './app/AppShell';
 import { useAuthSession } from './data/DataProvider';
+import { clearArtworkFailureCache } from './data/artworkFailureCache';
 import type { Viewer } from './data/models';
 import { AccountChooserSurface, AuthFailureSurface, AuthLoadingSurface, LocalProfileSelectionSurface, SetupSurface, SignInSurface } from './features/auth/AuthSurface';
 import { PlaybackSessionProvider, PlayerDock, usePlaybackSession, WatchPage } from './features/player/PlayerSurface';
@@ -146,6 +147,7 @@ function AccountSessionTeardown() {
 		if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
 	}), [auth.registerRuntimeTeardown]);
 	useEffect(() => auth.registerRuntimeTeardown('artwork', () => {
+		clearArtworkFailureCache();
 		for (const image of document.querySelectorAll<HTMLImageElement>('#root img, #portico-overlays img')) image.removeAttribute('src');
 		for (const element of document.querySelectorAll<HTMLElement>('#root [style*="background-image"], #portico-overlays [style*="background-image"]')) element.style.backgroundImage = 'none';
 	}), [auth.registerRuntimeTeardown]);

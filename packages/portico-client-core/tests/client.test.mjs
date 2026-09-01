@@ -214,6 +214,32 @@ test("local client sends bearer auth, JSON body, CSRF, and mutation tags", async
   assert.deepEqual(tags[0], ["media-state", "library-items"]);
 });
 
+test("Server API-key clients validate strictly and never require refreshable session state", async () => {
+  const apiKey = `ptc_api_${"A".repeat(43)}`;
+  const calls = [];
+  const client = createPorticoClient({
+    apiBaseUrl: "https://server.example",
+    apiKey,
+    transport: { fetch: async (input, init) => {
+      calls.push({input: String(input), init});
+      return jsonResponse({items: [], total: 0});
+    }}
+  });
+  await client.libraries();
+  assert.equal(calls[0].init.headers.Authorization, `Bearer ${apiKey}`);
+  assert.throws(() => createPorticoClient({apiKey: "not-a-key"}), /valid ptc_api_/);
+  assert.throws(() => createPorticoClient({apiKey, sessionStore: createMemorySessionStore()}), /cannot be combined/);
+
+  let providedKey = apiKey;
+  const dynamic = createPorticoClient({
+    apiBaseUrl: "https://server.example",
+    apiKey: () => providedKey,
+    transport: { fetch: async () => jsonResponse({items: [], total: 0}) }
+  });
+  providedKey = "ptc_api_invalid";
+  await assert.rejects(() => dynamic.libraries(), /valid ptc_api_/);
+});
+
 test("supervised restore client methods send step-up, confirmation, bounded upload, and status capability", async () => {
   const calls = [];
   const client = createPorticoClient({
@@ -6598,6 +6624,65 @@ test("successful HTTP responses with malformed JSON retain structured protocol d
     assert.deepEqual(error.details, {method: "GET", path: "/api/system"});
     return true;
   });
+});
+
+test("API key creation validates the one-time bearer and its public identity", async () => {
+  const token = `ptc_api_${"A".repeat(39)}WXYZ`;
+  const response = {
+    key: {
+      id: "apikey_fixture",
+      name: "Home automation",
+      userId: "owner_fixture",
+      username: "owner",
+      lastFour: "WXYZ",
+      scopes: ["read", "playMedia"],
+      createdAt: "2026-08-31T12:00:00Z"
+    },
+    token,
+    futurePresentationHint: "benign unknown fields remain forward compatible"
+  };
+  const client = createPorticoClient({
+    transport: { fetch: async () => jsonResponse(response, {status: 201}) }
+  });
+
+  assert.deepEqual(await client.createAPIKey({name: "Home automation", scopes: ["playMedia"]}), response);
+});
+
+test("API key creation rejects malformed or inconsistent one-time credentials", async () => {
+  const token = `ptc_api_${"A".repeat(39)}WXYZ`;
+  const valid = {
+    key: {
+      id: "apikey_fixture",
+      name: "Home automation",
+      userId: "owner_fixture",
+      lastFour: "WXYZ",
+      scopes: ["read", "playMedia"],
+      createdAt: "2026-08-31T12:00:00Z"
+    },
+    token
+  };
+  const malformed = [
+    {...valid, token: `ptc_loc_${"A".repeat(39)}WXYZ`},
+    {...valid, token: `ptc_api_${"A".repeat(38)}WXYZ`},
+    {...valid, key: {...valid.key, lastFour: "NOPE"}},
+    {...valid, key: {...valid.key, id: ""}},
+    {...valid, key: {...valid.key, createdAt: "not-a-date"}},
+    {...valid, key: {...valid.key, scopes: ["read", "manageServer"]}},
+    {...valid, key: {...valid.key, scopes: ["playMedia"]}},
+    {...valid, key: {...valid.key, scopes: ["read", "read"]}},
+    {...valid, refreshToken: "must-not-cross-this-boundary"},
+    {...valid, key: {...valid.key, secret: "must-not-cross-this-boundary"}}
+  ];
+
+  for (const body of malformed) {
+    const client = createPorticoClient({
+      transport: { fetch: async () => jsonResponse(body, {status: 201}) }
+    });
+    await assert.rejects(
+      client.createAPIKey({name: "Home automation", scopes: ["playMedia"]}),
+      error => error instanceof ApiError && error.code === "invalid_response" && !error.message.includes("must-not-cross")
+    );
+  }
 });
 
 test("media detail preserves the server-selected show playback target", async () => {

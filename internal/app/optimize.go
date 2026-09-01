@@ -873,7 +873,7 @@ func (s *Server) handleOptimizedVersions(w http.ResponseWriter, r *http.Request,
 			Total:          len(versions),
 		})
 	case http.MethodPost:
-		if !canInteractivelyManageServer(user) {
+		if !canManageOptimizedVersions(user) {
 			writeError(w, http.StatusForbidden, "forbidden", "You do not have permission to create optimized versions.")
 			return
 		}
@@ -920,7 +920,7 @@ func (s *Server) handleDeleteOptimizedVersion(w http.ResponseWriter, r *http.Req
 		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "Use DELETE for this endpoint.")
 		return
 	}
-	if !canInteractivelyManageServer(user) {
+	if !canManageOptimizedVersions(user) {
 		writeError(w, http.StatusForbidden, "forbidden", "You do not have permission to delete optimized versions.")
 		return
 	}
@@ -942,6 +942,11 @@ func (s *Server) handleDeleteOptimizedVersion(w http.ResponseWriter, r *http.Req
 	}
 	s.recordAudit(r, user, "media.optimized_deleted", "media", mediaID, "info", map[string]string{"profile": strings.TrimSpace(profile)})
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+func canManageOptimizedVersions(user User) bool {
+	return canInteractivelyManageServer(user) ||
+		(user.AuthProvider == "api_key" && user.APIKeyID != "" && user.Permissions["transcode"])
 }
 
 func (s *Server) optimizedVersionsForMedia(mediaID string) ([]OptimizedVersion, error) {

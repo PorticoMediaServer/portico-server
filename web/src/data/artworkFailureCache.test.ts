@@ -1,55 +1,60 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
-  ARTWORK_FAILURE_TTL_MS,
   artworkFailureCacheVersion,
-  artworkFailureExpiresAt,
   clearArtworkFailureCache,
+  hasArtworkFailure,
   rememberArtworkFailure,
   subscribeArtworkFailureCache,
 } from './artworkFailureCache';
 
 afterEach(() => {
   clearArtworkFailureCache();
-  vi.useRealTimers();
 });
 
 describe('artwork failure cache', () => {
-  it('owns expiry and notifies mounted consumers when a failure expires', () => {
+  it('retains a failed URL without a timer-driven retry loop', () => {
     vi.useFakeTimers();
     const listener = vi.fn();
-    const unsubscribe = subscribeArtworkFailureCache(listener);
-    const expiresAt = rememberArtworkFailure('/artwork/failed');
+    const unsubscribe = subscribeArtworkFailureCache('/artwork/failed', listener);
+    rememberArtworkFailure('/artwork/failed');
 
-    expect(artworkFailureExpiresAt('/artwork/failed')).toBe(expiresAt);
+    expect(hasArtworkFailure('/artwork/failed')).toBe(true);
     expect(listener).toHaveBeenCalledTimes(1);
-    vi.advanceTimersByTime(ARTWORK_FAILURE_TTL_MS - 1);
-    expect(artworkFailureExpiresAt('/artwork/failed')).toBeGreaterThan(Date.now());
-    vi.advanceTimersByTime(1);
-    expect(artworkFailureExpiresAt('/artwork/failed')).toBe(0);
-    expect(listener).toHaveBeenCalledTimes(2);
-    expect(artworkFailureCacheVersion()).toBe(2);
+    expect(vi.getTimerCount()).toBe(0);
 
+    unsubscribe();
+    vi.useRealTimers();
+  });
+
+  it('does not republish the same failure', () => {
+    const listener = vi.fn();
+    const unsubscribe = subscribeArtworkFailureCache('/artwork/failed', listener);
+    rememberArtworkFailure('/artwork/failed');
+    rememberArtworkFailure('/artwork/failed');
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(hasArtworkFailure('/artwork/failed')).toBe(true);
     unsubscribe();
   });
 
-  it('replaces one source timer instead of allowing an older retry to expire it', () => {
-    vi.useFakeTimers();
+  it('clears failures at the explicit viewer artwork fence', () => {
     rememberArtworkFailure('/artwork/failed');
-    vi.advanceTimersByTime(10_000);
-    const renewed = rememberArtworkFailure('/artwork/failed');
-
-    vi.advanceTimersByTime(20_000);
-    expect(artworkFailureExpiresAt('/artwork/failed')).toBe(renewed);
-    vi.advanceTimersByTime(10_000);
-    expect(artworkFailureExpiresAt('/artwork/failed')).toBe(0);
+    clearArtworkFailureCache();
+    expect(hasArtworkFailure('/artwork/failed')).toBe(false);
+    expect(artworkFailureCacheVersion('/artwork/failed')).toMatch(/^\d+:false$/);
   });
 
-  it('cancels owned expiry timers when the cache is cleared', () => {
-    vi.useFakeTimers();
+  it('notifies only subscribers for the URL whose state changed', () => {
+    const matching = vi.fn();
+    const unrelated = vi.fn();
+    const unsubscribeMatching = subscribeArtworkFailureCache('/artwork/failed', matching);
+    const unsubscribeUnrelated = subscribeArtworkFailureCache('/artwork/unrelated', unrelated);
+
     rememberArtworkFailure('/artwork/failed');
-    expect(vi.getTimerCount()).toBe(1);
-    clearArtworkFailureCache();
-    expect(vi.getTimerCount()).toBe(0);
-    expect(artworkFailureExpiresAt('/artwork/failed')).toBe(0);
+
+    expect(matching).toHaveBeenCalledTimes(1);
+    expect(unrelated).not.toHaveBeenCalled();
+    unsubscribeMatching();
+    unsubscribeUnrelated();
   });
 });

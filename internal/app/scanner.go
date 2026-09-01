@@ -211,8 +211,12 @@ var (
 )
 
 const (
-	scannerWriteBatchSize        = 50
-	scannerReconcileBatchSize    = 500
+	// Catalog publication performs search, facet, hierarchy, stream and
+	// metadata work for every item while holding SQLite's single writer. Keep
+	// this intentionally small so even a one-core/1 GiB server releases the
+	// writer frequently enough for playback and navigation mutations to win.
+	scannerWriteBatchSize        = 10
+	scannerReconcileBatchSize    = 100
 	scannerCheckpointCommitBatch = 32
 	scannerChangeWatchInterval   = 30 * time.Second
 )
@@ -1752,34 +1756,59 @@ func scannerRemovedDirectories(existing, visited map[string]scannerDirectoryChec
 }
 
 func (s *Server) persistLibraryScanDirectoryCheckpoints(ctx context.Context, libraryID string, visited, existing map[string]scannerDirectoryCheckpoint, now string, removeUnseen bool) error {
-	if !s.waitForForegroundPressureToEase(ctx) {
-		return ctx.Err()
+	changedPaths := make([]string, 0, len(visited))
+	for path, checkpoint := range visited {
+		if prior, ok := existing[path]; ok && prior.Signature == checkpoint.Signature && prior.MediaFileCount == checkpoint.MediaFileCount {
+			continue
+		}
+		changedPaths = append(changedPaths, path)
 	}
-	return s.withBackgroundTxTagged(ctx, []string{}, func(tx *sql.Tx) error {
-		for path, checkpoint := range visited {
-			if prior, ok := existing[path]; ok && prior.Signature == checkpoint.Signature && prior.MediaFileCount == checkpoint.MediaFileCount {
-				continue
-			}
-			if _, err := tx.Exec(`
+	sort.Strings(changedPaths)
+	for start := 0; start < len(changedPaths); start += scannerCheckpointCommitBatch {
+		if !s.waitForForegroundPressureToEase(ctx) {
+			return ctx.Err()
+		}
+		end := min(len(changedPaths), start+scannerCheckpointCommitBatch)
+		if err := s.withBackgroundTxTagged(ctx, []string{}, func(tx *sql.Tx) error {
+			for _, path := range changedPaths[start:end] {
+				checkpoint := visited[path]
+				if _, err := tx.ExecContext(ctx, `
 				INSERT INTO library_scan_directories (library_id, path, signature, media_file_count, updated_at)
 				VALUES (?, ?, ?, ?, ?)
 				ON CONFLICT(library_id, path) DO UPDATE SET
 					signature = excluded.signature,
 					media_file_count = excluded.media_file_count,
 					updated_at = excluded.updated_at`,
-				libraryID, path, checkpoint.Signature, checkpoint.MediaFileCount, now); err != nil {
-				return err
-			}
-		}
-		if removeUnseen {
-			for _, path := range scannerRemovedDirectories(existing, visited) {
-				if _, err := tx.Exec(`DELETE FROM library_scan_directories WHERE library_id = ? AND path = ?`, libraryID, path); err != nil {
+					libraryID, path, checkpoint.Signature, checkpoint.MediaFileCount, now); err != nil {
 					return err
 				}
 			}
+			return nil
+		}); err != nil {
+			return err
 		}
+	}
+	if !removeUnseen {
 		return nil
-	})
+	}
+	removedPaths := scannerRemovedDirectories(existing, visited)
+	for start := 0; start < len(removedPaths); start += scannerCheckpointCommitBatch {
+		if !s.waitForForegroundPressureToEase(ctx) {
+			return ctx.Err()
+		}
+		end := min(len(removedPaths), start+scannerCheckpointCommitBatch)
+		if err := s.withBackgroundTxTagged(ctx, []string{}, func(tx *sql.Tx) error {
+			for _, path := range removedPaths[start:end] {
+				if _, err := tx.ExecContext(ctx, `DELETE FROM library_scan_directories WHERE library_id = ? AND path = ?`, libraryID, path); err != nil {
+					return err
+				}
+			}
+			return nil
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *Server) reconcileChangedScanDirectories(ctx context.Context, libraryID, now, scanGeneration string, changed map[string]bool, removed []string) (int, error) {

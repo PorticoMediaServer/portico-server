@@ -70,7 +70,7 @@ func TestFullAndLeanMediaHydrationShareCanonicalActions(t *testing.T) {
 	}
 	user := User{ID: "usr_action_projection", AccountID: "usr_action_projection", ProfileID: "usr_action_projection", ProfileIsPrimary: true, AllowFeedback: true, Role: "user", Permissions: map[string]bool{
 		"playMedia": true, "editMetadata": true,
-	}}
+	}, LibraryIDs: []string{libraryID}, AllowUnrated: true}
 	permissionsJSON, _ := json.Marshal(user.Permissions)
 	now := time.Now().UTC().Format(time.RFC3339)
 	if _, err := db.Exec(`

@@ -1,8 +1,10 @@
 package app
 
 import (
+	"bytes"
 	"encoding/hex"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/cookiejar"
 	"testing"
@@ -52,6 +54,58 @@ func TestSavedResourcesAreSeparateCursorPagedProducts(t *testing.T) {
 	status, _ = doJSON(t, client, http.MethodGet, serverURL+"/api/playlists?limit=1&cursor="+*first.PageInfo.NextCursor, nil, nil)
 	if status != http.StatusBadRequest {
 		t.Fatalf("collection cursor replayed in playlists: status=%d", status)
+	}
+}
+
+func TestReadAPIKeyBrowsesSavedViewWithOpaqueCursor(t *testing.T) {
+	serverURL, db, server := newDiscoveryTestServer(t, config.Config{})
+	jar, _ := cookiejar.New(nil)
+	interactive := &http.Client{Jar: jar}
+	loginUser(t, interactive, serverURL)
+	var libraryID, ownerID string
+	if err := db.QueryRow(`SELECT id FROM libraries WHERE type = 'movie' ORDER BY sort_order LIMIT 1`).Scan(&libraryID); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT id FROM users WHERE role = 'owner' LIMIT 1`).Scan(&ownerID); err != nil {
+		t.Fatal(err)
+	}
+	var view SavedView
+	status, body := doJSON(t, interactive, http.MethodPost, serverURL+"/api/saved-views", SavedViewCreateRequest{Title: "API browse", LibraryID: libraryID, Pivot: "movies", Sort: []BrowseSort{{Field: "title", Direction: "asc"}}}, &view)
+	if status != http.StatusCreated {
+		t.Fatalf("create saved view status=%d body=%s", status, body)
+	}
+	_, token, err := server.createAPIKey(ownerID, APIKeyCreateRequest{Name: "Saved view reader", Scopes: []string{"read"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	browse := func(input SavedViewBrowseRequest) BrowseLibraryResponse {
+		t.Helper()
+		payload, _ := json.Marshal(input)
+		request, requestErr := http.NewRequest(http.MethodPost, serverURL+"/api/saved-views/"+view.ID+"/browse", bytes.NewReader(payload))
+		if requestErr != nil {
+			t.Fatal(requestErr)
+		}
+		request.Header.Set("Authorization", "Bearer "+token)
+		request.Header.Set("Content-Type", "application/json")
+		response, requestErr := http.DefaultClient.Do(request)
+		if requestErr != nil {
+			t.Fatal(requestErr)
+		}
+		defer response.Body.Close()
+		var result BrowseLibraryResponse
+		responseBody, _ := io.ReadAll(response.Body)
+		if response.StatusCode != http.StatusOK || json.Unmarshal(responseBody, &result) != nil {
+			t.Fatalf("API-key saved browse status=%d body=%s", response.StatusCode, responseBody)
+		}
+		return result
+	}
+	first := browse(SavedViewBrowseRequest{Limit: 1})
+	if len(first.Items) != 1 || !first.PageInfo.HasMore || first.PageInfo.NextCursor == nil {
+		t.Fatalf("first saved-view page=%#v", first)
+	}
+	second := browse(SavedViewBrowseRequest{Limit: 1, Cursor: *first.PageInfo.NextCursor})
+	if len(second.Items) != 1 || second.Items[0].ID == first.Items[0].ID {
+		t.Fatalf("cursor did not advance: first=%#v second=%#v", first, second)
 	}
 }
 

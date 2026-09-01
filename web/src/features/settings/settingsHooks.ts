@@ -10,25 +10,36 @@ export function useSettingsQuery<T>(
   load: (source: SettingsDataSource, signal: AbortSignal) => Promise<T>,
   source: SettingsDataSource,
   revision: number,
-  options: { automaticHostedRetry?: boolean } = {},
+  options: { automaticHostedRetry?: boolean; refreshIntervalMs?: number; keepPreviousData?: boolean } = {},
 ): QueryState<T> & { hostedAvailability: ReturnType<typeof useHostedAvailabilityRetry> } {
+  const automaticHostedRetry = options.automaticHostedRetry === true;
+  const keepPreviousData = options.keepPreviousData === true;
+  const refreshIntervalMs = options.refreshIntervalMs;
   const runtime = useOptionalViewerRuntime();
   const [state, setState] = useState<QueryState<T>>({ status: 'loading' });
   const [automaticRevision, setAutomaticRevision] = useState(0);
   const availabilityFailureStartedAt = useRef<number | undefined>(undefined);
   const retryAutomatically = useCallback(() => setAutomaticRevision((current) => current + 1), []);
   const hostedAvailability = useHostedAvailabilityRetry({
-    enabled: options.automaticHostedRetry === true && state.status === 'error',
+    enabled: automaticHostedRetry && state.status === 'error',
     reason: state.status === 'error' ? state.error : undefined,
     retry: retryAutomatically,
     failureStartedAt: availabilityFailureStartedAt.current,
   });
 
   useEffect(() => {
+    if (!refreshIntervalMs || refreshIntervalMs < 1_000) return;
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === 'visible') setAutomaticRevision((current) => current + 1);
+    }, refreshIntervalMs);
+    return () => window.clearInterval(timer);
+  }, [refreshIntervalMs]);
+
+  useEffect(() => {
     const controller = new AbortController();
     const deadline = timeoutSignal(SETTINGS_QUERY_DEADLINE_MS);
     const querySignal = combineAbortSignals([controller.signal, deadline]);
-    setState({ status: 'loading' });
+    setState((current) => keepPreviousData && current.status === 'success' ? current : { status: 'loading' });
     const request = runtime
       ? runtime.run('settings.query', [revision, querySignal], (runtimeSignal) => load(source, combineAbortSignals([querySignal, runtimeSignal])))
       : load(source, querySignal);
@@ -42,14 +53,16 @@ export function useSettingsQuery<T>(
       (reason: unknown) => {
         if (controller.signal.aborted) return;
         availabilityFailureStartedAt.current ??= Date.now();
-        setState({
-          status: 'error',
-          error: reason instanceof Error ? reason : new Error('Portico could not load this settings section.'),
-        });
+        setState((current) => keepPreviousData && current.status === 'success'
+          ? current
+          : {
+              status: 'error',
+              error: reason instanceof Error ? reason : new Error('Portico could not load this settings section.'),
+            });
       },
     );
     return () => controller.abort();
-  }, [automaticRevision, load, revision, runtime, source]);
+  }, [automaticRevision, keepPreviousData, load, revision, runtime, source]);
 
   return Object.assign(state, { hostedAvailability });
 }

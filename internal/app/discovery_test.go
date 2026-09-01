@@ -376,13 +376,22 @@ func TestLibraryDiscoverEndpointComposesScopedRows(t *testing.T) {
 	if discover.GeneratedAt == "" {
 		t.Fatalf("library discover missing generatedAt: %#v", discover)
 	}
+	if len(discover.Items) > 12 {
+		t.Fatalf("library discover returned %d lead items for limit=12", len(discover.Items))
+	}
 	if row := homeRowByID(HomeResponse{Rows: discover.Rows}, "library_continue"); row == nil || (!mediaIDsContain(row.Items, "episode_northbridge_101") && !mediaIDsContain(row.Items, "show_northbridge")) {
 		t.Fatalf("library discover missing scoped continue row: %#v", discover.Rows)
 	}
 	if row := homeRowByID(HomeResponse{Rows: discover.Rows}, "library_recent"); row == nil || len(row.Items) == 0 {
 		t.Fatalf("library discover missing scoped recent row: %#v", discover.Rows)
 	}
+	if len(discover.Rows) > libraryDiscoverRowLimit {
+		t.Fatalf("library discover returned %d rows, want at most %d", len(discover.Rows), libraryDiscoverRowLimit)
+	}
 	for _, row := range discover.Rows {
+		if len(row.Items) > 12 {
+			t.Fatalf("library discover row %s returned %d items for limit=12", row.ID, len(row.Items))
+		}
 		for _, item := range row.Items {
 			if item.LibraryID != "lib_tv" {
 				t.Fatalf("library discover row %s leaked item from %s: %#v", row.ID, item.LibraryID, item)

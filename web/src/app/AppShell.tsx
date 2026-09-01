@@ -4,6 +4,7 @@ import { type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type Poin
 import { createPortal } from 'react-dom';
 import { Link, NavLink, useLocation, useNavigate, useNavigationType } from 'react-router-dom';
 import { IconButton } from '../components/controls/Buttons';
+import { StableImage } from '../components/media/StableImage';
 import { SemanticProductIcon, productText } from '../components/ProductLanguage';
 import { AnchoredOverlay } from '../components/overlay/OverlayPortal';
 import { useAuthSession, useLibraries, useSearchContract } from '../data/DataProvider';
@@ -153,7 +154,7 @@ export function AppShell({ children, viewer, player, blockingRouteFailure = fals
   const canWatchWithFriends = canManageServer || viewer.user?.permissions?.watchWithFriends === true;
   const canUseLiveTV = canManageServer || ['viewLiveTV', 'playLiveTV', 'viewDVR', 'scheduleDVR', 'manageDVR'].some((permission) => viewer.user?.permissions?.[permission] === true);
   const availableNavigation = navigation.filter(([to]) => to !== '/live' || canUseLiveTV);
-  const avatar = viewer.user?.profileImageUrl ? <img src={viewer.user.profileImageUrl} alt="" /> : initial;
+  const avatar = <StableImage src={viewer.user?.profileImageUrl} alt="" fallback={initial} />;
 	const routeTransitioning = useRouteLifecycle(location, navigationType, mainContent);
 	const connectionWarning = runtime?.connectionWarning ? productMessage(runtime.connectionWarning) : undefined;
 	const openMobileNavigation = useCallback(() => {

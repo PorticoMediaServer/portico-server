@@ -119,6 +119,16 @@ func (s *Server) forgetMediaGrantsForPlaybackSession(playbackSessionID string) {
 	s.mediaGrantCacheMu.Unlock()
 }
 
+func (s *Server) forgetMediaGrantsForAPIKey(apiKeyID string) {
+	s.mediaGrantCacheMu.Lock()
+	for key, entry := range s.mediaGrantCache {
+		if entry.user.APIKeyID == apiKeyID {
+			delete(s.mediaGrantCache, key)
+		}
+	}
+	s.mediaGrantCacheMu.Unlock()
+}
+
 func (s *Server) mediaGrantCacheMetricsSnapshot() MediaGrantCacheMetrics {
 	s.mediaGrantCacheMu.Lock()
 	entries := len(s.mediaGrantCache)

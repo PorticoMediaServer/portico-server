@@ -3,7 +3,7 @@ import type {
   PlaybackSession,
   RemoteAccessStatus,
 } from "@porticomediaserver/client-core";
-import { PlaybackTechnicalStatsIcon, StatusWarningIcon, StatusSuccessIcon, NavigationExpandIcon, StatusErrorIcon, PlaybackQualityIcon, DeviceNetworkIcon, DeviceStorageIcon, PlaybackPlayIcon, ActionRefreshIcon, StatusSecureIcon, StatusActiveIcon, DeviceWifiIcon } from "#portico-icons";
+import { PlaybackTechnicalStatsIcon, StatusWarningIcon, StatusSuccessIcon, NavigationExpandIcon, StatusErrorIcon, PlaybackQualityIcon, DeviceNetworkIcon, DeviceStorageIcon, PlaybackPlayIcon, ActionRefreshIcon, StatusActiveIcon } from "#portico-icons";
 import { useMemo, useState } from "react";
 import { reviewedProductErrorText } from "../../components/ProductLanguage";
 import { Link } from "react-router-dom";
@@ -55,16 +55,6 @@ function relativeTime(value: string): string {
   const hours = Math.floor(minutes / 60);
   if (hours < 24) return `${hours}h ago`;
   return `${Math.floor(hours / 24)}d ago`;
-}
-
-function freshness(snapshot: SettingsStatusSnapshot): { label: string; stale: boolean } {
-  const generatedAt = Date.parse(snapshot.generatedAt);
-  if (!Number.isFinite(generatedAt)) return { label: 'Freshness unavailable', stale: true };
-  const ageMs = Math.max(0, Date.now() - generatedAt);
-  // Status responses do not currently publish a server TTL. Keep this
-  // conservative so a cached dashboard cannot look live after a long pause.
-  const stale = ageMs > 60_000;
-  return { label: `${relativeTime(snapshot.generatedAt)} · generated ${new Date(generatedAt).toLocaleTimeString()}`, stale };
 }
 
 type TelemetryStatus = { status?: string; reason?: string } | undefined;
@@ -176,35 +166,67 @@ function TelemetryStatusRow({
 }
 
 function remoteHealth(remote: RemoteAccessStatus | undefined): {
+  status: string;
   label: string;
   detail: string;
   healthy: boolean;
 } {
   if (!remote)
     return {
+      status: "Unavailable",
       label: "Remote status unavailable",
-      detail: "Portico could not read direct-route health.",
+      detail: "Portico couldn't load the direct-access result.",
       healthy: false,
     };
   if (!remote.settings.enabled)
     return {
+      status: "Off",
       label: "Remote access is off",
-      detail: "Connections are limited to local routes.",
+      detail: "Open Connectivity settings to enable it.",
+      healthy: false,
+    };
+  if (remote.settings.claimStatus !== "claimed")
+    return {
+      status: "Unavailable",
+      label: "Direct access is unavailable",
+      detail: "Connect this server to a Portico Account to enable direct access.",
       healthy: false,
     };
   const reachable = remote.connectivity.troubleshootingStatus === "ok";
   if (reachable)
     return {
+      status: "Available",
       label: "Direct remote access is available",
-      detail: remote.publicEndpoint.url,
+      detail: remote.publicEndpoint.url || "Hosted Services can reach this server directly.",
       healthy: true,
     };
+  if (remote.connectivity.troubleshootingStatus === "checking")
+    return {
+      status: "Checking",
+      label: "Checking direct access",
+      detail: "Portico is confirming that this server can be reached directly.",
+      healthy: false,
+    };
+  if (remote.connectivity.troubleshootingStatus === "hosted_unreachable")
+    return {
+      status: "Unavailable",
+      label: "Direct access is unavailable",
+      detail: "This server can't reach Hosted Services. Check its internet connection, DNS, and firewall.",
+      healthy: false,
+    };
+  if (remote.connectivity.troubleshootingStatus === "public_route_missing")
+    return {
+      status: "Unavailable",
+      label: "Direct access is unavailable",
+      detail: "Portico doesn't have a usable public route. Check the public port in Connectivity settings.",
+      healthy: false,
+    };
   return {
-    label: "Direct route needs attention",
+    status: "Unavailable",
+    label: "Direct access is unavailable",
     detail:
-      remote.settings.lastHeartbeatError ||
-      remote.settings.routerMappingError ||
-      "Run a direct-route check for current results.",
+      remote.connectivity.troubleshootingHint ||
+      "Portico can't reach this server directly. Check router forwarding, firewall settings, or carrier-grade NAT.",
     healthy: false,
   };
 }
@@ -310,7 +332,8 @@ function GPUTelemetry({ snapshot }: { snapshot: SettingsStatusSnapshot }) {
           ? {
               status: "unsupported",
               reason:
-                info.note || "GPU telemetry is not supported on this server.",
+                info.note ||
+                "GPU hardware or driver telemetry is not exposed to this server.",
             }
           : {
               status: "unavailable",
@@ -599,87 +622,23 @@ function ConnectivityLedger({
 }: {
   remote: RemoteAccessStatus | undefined;
 }) {
-  const settings = remote?.settings;
-  const route = remote?.publicEndpoint.url;
-  const routeHealthy = remote?.connectivity.troubleshootingStatus === "ok";
-  const hostedHealthy =
-    remote?.connectivity.hostedServicesStatus === "reachable";
-  const certificateHealthy =
-    settings?.certificateStatus === "valid" ||
-    settings?.certificateStatus === "ready";
-  const mappingHealthy =
-    settings?.routerMappingStatus === "mapped" ||
-    settings?.routerMappingStatus === "active";
+  const direct = remoteHealth(remote);
   return (
     <section className="portico-status-section">
       <header>
         <div>
           <h2>Connectivity</h2>
-          <p>Direct access</p>
+          <p>Remote availability</p>
         </div>
       </header>
       <div className="portico-health-list">
         <div>
-          <DeviceNetworkIcon />
+          {direct.healthy ? <StatusSuccessIcon /> : <DeviceNetworkIcon />}
           <span>
-            <strong>Public route</strong>
-            <small>
-              {route ||
-                remote?.connectivity.troubleshootingHint ||
-                "No public route is active"}
-            </small>
+            <strong>Direct access</strong>
+            <small>{direct.detail}</small>
           </span>
-          <b className={routeHealthy ? "healthy" : ""}>
-            {routeHealthy
-              ? "Reachable"
-              : remote?.connectivity.publicRouteStatus || "Unavailable"}
-          </b>
-        </div>
-        <div>
-          <StatusSecureIcon />
-          <span>
-            <strong>TLS certificate</strong>
-            <small>
-              {settings?.certificateRenewalError ||
-                (settings?.certificateExpiresAt
-                  ? `Expires ${new Date(settings.certificateExpiresAt).toLocaleDateString()}`
-                  : "No certificate expiry reported")}
-            </small>
-          </span>
-          <b className={certificateHealthy ? "healthy" : ""}>
-            {settings?.certificateStatus || "Unknown"}
-          </b>
-        </div>
-        <div>
-          <DeviceWifiIcon />
-          <span>
-            <strong>Router mapping</strong>
-            <small>
-              {settings?.routerMappingError ||
-                (settings
-                  ? `${settings.publicPortMode} · port ${settings.manualPublicPort || remote?.publicEndpoint.port || "automatic"}`
-                  : "Remote status unavailable")}
-            </small>
-          </span>
-          <b className={mappingHealthy ? "healthy" : ""}>
-            {settings?.routerMappingStatus || "Unknown"}
-          </b>
-        </div>
-        <div>
-          <PlaybackQualityIcon />
-          <span>
-            <strong>Hosted control plane</strong>
-            <small>
-              {settings?.lastHeartbeatAt
-                ? `Last contact ${relativeTime(settings.lastHeartbeatAt)}`
-                : "No recent hosted heartbeat"}
-            </small>
-          </span>
-          <b className={hostedHealthy ? "healthy" : ""}>
-            {hostedHealthy
-              ? "Connected"
-              : remote?.connectivity.hostedServicesStatus || "Not connected"}
-          </b>
+          <b className={direct.healthy ? "healthy" : ""}>{direct.status}</b>
         </div>
       </div>
       <Link
@@ -693,29 +652,46 @@ function ConnectivityLedger({
 }
 
 function WorkLedger({ snapshot }: { snapshot: SettingsStatusSnapshot }) {
-  const jobs = useMemo(() => uniqueJobs(snapshot).slice(0, 6), [snapshot]);
-  const progressLabel = (job: Job): string => {
+  const jobs = useMemo(
+    () => uniqueJobs(snapshot).filter((job) => job.status === 'queued' || job.status === 'running').slice(0, 6),
+    [snapshot],
+  );
+  const progressLabel = (job: Job): string | undefined => {
     const current = job.progressCurrent;
     const total = job.progressTotal;
     if (typeof current === 'number' && Number.isFinite(current) && typeof total === 'number' && Number.isFinite(total) && total > 0) {
-      return `${Math.max(0, Math.min(current, total))} / ${total} (${Math.round(Math.max(0, Math.min(1, current / total)) * 100)}%)`;
+      return `${Math.round(Math.max(0, Math.min(1, current / total)) * 100)}%`;
     }
-    return 'Progress unavailable';
+    if (Number.isFinite(job.progress) && job.progress > 0) return `${Math.max(0, Math.min(100, Math.round(job.progress)))}%`;
+    return undefined;
+  };
+  const jobTitle = (job: Job): string => {
+    const library = job.metadata?.libraryName?.trim();
+    if (job.type === 'library_scan') return `${job.status === 'queued' ? 'Waiting to scan' : 'Scanning'}${library ? ` ${library}` : ' library'}`;
+    if (job.type === 'metadata_refresh_library') return `${job.status === 'queued' ? 'Waiting to refresh metadata for' : 'Refreshing metadata for'}${library ? ` ${library}` : ' library'}`;
+    if (job.type === 'metadata_refresh') return `${job.status === 'queued' ? 'Waiting to refresh' : 'Refreshing'}${job.metadata?.mediaTitle ? ` ${job.metadata.mediaTitle}` : ' metadata'}`;
+    const readable = job.type.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
+    return job.status === 'queued' ? `Waiting: ${readable}` : readable;
+  };
+  const jobDetail = (job: Job): string => {
+    const message = job.message.trim().replace(/[.]+$/, '');
+    if (message && message.toLocaleLowerCase() !== jobTitle(job).toLocaleLowerCase()) return message;
+    return job.status === 'queued' ? 'Waiting for available capacity.' : 'In progress.';
   };
   return (
     <section className="portico-status-section">
       <header>
         <div>
           <h2>Work</h2>
-          <p>Scheduled and recent</p>
+          <p>In progress</p>
         </div>
       </header>
       {jobs.length === 0 ? (
         <div className="portico-status-empty compact">
           <PlaybackTechnicalStatsIcon />
           <span>
-            <strong>No recent server work</strong>
-            <p>Scans, backups, and maintenance jobs will appear here.</p>
+            <strong>No active server work</strong>
+            <p>Background work will appear here while it is running.</p>
           </span>
         </div>
       ) : (
@@ -726,12 +702,8 @@ function WorkLedger({ snapshot }: { snapshot: SettingsStatusSnapshot }) {
                 <PlaybackTechnicalStatsIcon />
               </span>
               <span>
-                  <strong>{job.message || job.type.replaceAll("_", " ")}</strong>
-                  <small>
-                  {job.status} · {progressLabel(job)} · {relativeTime(job.updatedAt)}
-                  {job.phase ? ` · ${job.phase}` : ''}
-                  {job.priority ? ` · ${job.priority} lane` : ''}
-                </small>
+                <strong>{jobTitle(job)}{progressLabel(job) ? ` · ${progressLabel(job)}` : ''}</strong>
+                <small>{jobDetail(job)}</small>
               </span>
             </div>
           ))}
@@ -791,7 +763,7 @@ export function StatusDashboard({
 }) {
   const [revision, setRevision] = useState(0);
   const [checkError, setCheckError] = useState("");
-  const state = useSettingsQuery(loadStatus, source, revision);
+  const state = useSettingsQuery(loadStatus, source, revision, { refreshIntervalMs: 5_000, keepPreviousData: true });
   const checks = useAbortableMutation();
   if (state.status === "loading")
     return <SettingsLoading label="Loading server status" />;
@@ -807,7 +779,6 @@ export function StatusDashboard({
     );
   const snapshot = state.data;
   const health = remoteHealth(snapshot.remoteAccess);
-  const statusFreshness = freshness(snapshot);
   const failedPanels = Object.keys(snapshot.failures ?? {});
   const serverName = snapshot.activity?.serverName || viewer.serverName;
   const statusHeadline = failedPanels.length > 0
@@ -855,7 +826,6 @@ export function StatusDashboard({
         )}
       </div>
       {checkError && <InlineNotice tone="error">{checkError}</InlineNotice>}
-      <p className={`portico-status-freshness${statusFreshness.stale ? ' stale' : ''}`} data-testid="server-status-freshness"><strong>{statusFreshness.stale ? 'Stale snapshot' : 'Current snapshot'}</strong><span>{statusFreshness.label}</span>{statusFreshness.stale && <span>Refresh for current values.</span>}</p>
       {Object.keys(snapshot.failures ?? {}).length > 0 && (
         <InlineNotice tone="warn">
           Some server status sources could not be refreshed. Available sections

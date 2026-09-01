@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { createMemoryRouter, MemoryRouter, RouterProvider, useLocation, useNavigate } from 'react-router-dom';
 import { SaveBar, SettingsSaveCoordinator, useSettingsNavigationGuard } from './SettingsControls';
 import { SettingsNavigationBlocker } from './SettingsNavigationBlocker';
+import { setSettingsNavigationDirty } from './settingsNavigationGuard';
 
 function deferred() {
   let resolve!: () => void;
@@ -45,6 +46,14 @@ function ProgrammaticNavigation() {
   const navigate = useNavigate();
   const location = useLocation();
   return <><span>{location.pathname}</span><button type="button" onClick={() => navigate('/profile')}>Open profile</button></>;
+}
+
+function SensitiveAPIKeyToken() {
+  useEffect(() => {
+    setSettingsNavigationDirty(true, 'api-key-token');
+    return () => setSettingsNavigationDirty(false, 'api-key-token');
+  }, []);
+  return null;
 }
 
 describe('SettingsSaveCoordinator', () => {
@@ -134,5 +143,24 @@ describe('SettingsSaveCoordinator', () => {
     expect(await screen.findByRole('dialog', { name: 'Unsaved settings' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
     await waitFor(() => expect(router.state.location.pathname).toBe('/profile'));
+  });
+
+  it('does not offer a destructive navigation choice while an API-key token is visible', async () => {
+    const router = createMemoryRouter([{
+      path: '*',
+      element: <><SettingsNavigationBlocker /><SettingsSaveCoordinator><SensitiveAPIKeyToken /><ProgrammaticNavigation /></SettingsSaveCoordinator></>,
+    }], { initialEntries: ['/settings/people'] });
+    render(<RouterProvider router={router} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open profile' }));
+    expect(await screen.findByRole('dialog', { name: 'Save your API key' })).toBeInTheDocument();
+    expect(screen.getByText(/copy it or confirm that you saved it before leaving/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Discard' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Save and continue' })).not.toBeInTheDocument();
+    expect(router.state.location.pathname).toBe('/settings/people');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Stay' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(router.state.location.pathname).toBe('/settings/people');
   });
 });

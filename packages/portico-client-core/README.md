@@ -89,6 +89,21 @@ responses throw `ApiError`; use its stable `status`, `code`, `type`, `title`,
 `detail`, `details`, `requestId`, `responseHeaders`, `retryAfter`, `retryAt`,
 and `retryAfterMs` fields rather than parsing an error message.
 
+### Server API keys
+
+For non-interactive integrations, pass the one-time Server API key directly. API-key clients never attempt session refresh and cannot be combined with a session store or credential adapter:
+
+```ts
+const client = createPorticoClient({
+  apiBaseUrl: "http://127.0.0.1:32500",
+  apiKey: process.env.PORTICO_API_KEY
+});
+
+const firstPage = await client.search({ query: "Meridian" });
+```
+
+Use the narrowest scopes possible. Every key includes `read`. Library playback requires `playMedia`; Live TV playback requires `playLiveTV` plus `playMedia`; DVR playback requires `playMedia` plus `viewDVR` or `manageDVR`. `transcode` is limited to optimized-version creation and deletion. A `401` means the key is invalid or revoked, `403` means its scopes do not authorize the operation, and `429` includes retry timing in `ApiError.retryAfterMs`.
+
 ## Credential lifecycle
 
 Authenticated server requests automatically perform one refresh-and-retry when

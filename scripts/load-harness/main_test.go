@@ -2,6 +2,10 @@ package main
 
 import (
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -87,6 +91,186 @@ func TestMinDuration(t *testing.T) {
 	}
 }
 
+func TestScanDuringRunUsesExplicitReconcileMode(t *testing.T) {
+	payload, err := json.Marshal(reconcileScanRequest())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(payload) != `{"mode":"reconcile"}` {
+		t.Fatalf("scan request payload = %s", payload)
+	}
+}
+
+func TestAcceptanceCredentialEnvironmentFallback(t *testing.T) {
+	t.Setenv("PORTICO_ACCEPTANCE_LOGIN", "  benchmark-owner@example.test  ")
+	if got := firstNonEmptyEnvironment("PORTICO_ACCEPTANCE_LOGIN", "admin"); got != "benchmark-owner@example.test" {
+		t.Fatalf("credential environment login = %q", got)
+	}
+	t.Setenv("PORTICO_ACCEPTANCE_LOGIN", " ")
+	if got := firstNonEmptyEnvironment("PORTICO_ACCEPTANCE_LOGIN", "admin"); got != "admin" {
+		t.Fatalf("empty credential environment fallback = %q", got)
+	}
+}
+
+func TestAcceptanceBearerTokenRequiresPrivateFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "acceptance-token")
+	if err := os.WriteFile(path, []byte("  test-secret\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	token, err := acceptanceBearerToken(path, "")
+	if err != nil {
+		t.Fatalf("load private bearer token: %v", err)
+	}
+	if token != "test-secret" {
+		t.Fatalf("loaded bearer token mismatch")
+	}
+	if err := os.Chmod(path, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := acceptanceBearerToken(path, ""); err == nil {
+		t.Fatal("world-readable bearer token file should be rejected")
+	}
+	if _, err := acceptanceBearerToken(path, "environment-secret"); err == nil {
+		t.Fatal("simultaneous file and environment bearer token should be rejected")
+	}
+}
+
+func TestVirtualUserUsesBearerWithoutLoginOrCSRF(t *testing.T) {
+	loginRequests := 0
+	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/auth/login" {
+			loginRequests++
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer test-secret" {
+			t.Errorf("authorization header = %q", got)
+		}
+		if got := r.Header.Get(csrfHeaderName); got != "" {
+			t.Errorf("bearer request unexpectedly included CSRF header %q", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer testServer.Close()
+
+	vu, err := newVirtualUser(testServer.URL, "", "", "test-secret", time.Second)
+	if err != nil {
+		t.Fatalf("new bearer virtual user: %v", err)
+	}
+	if sample := vu.doJSON("search", http.MethodPost, "/api/search", map[string]string{"query": "movie"}, nil); sample.Err != "" || sample.Status != http.StatusOK {
+		t.Fatalf("bearer request failed: %#v", sample)
+	}
+	if body := vu.rawJSON("/api/read"); len(body) == 0 {
+		t.Fatal("raw bearer request returned no body")
+	}
+	if loginRequests != 0 {
+		t.Fatalf("bearer virtual user sent %d password login requests", loginRequests)
+	}
+}
+
+func TestRunPlaybackUsesCanonicalSessionAndOperationScopedMediaGrant(t *testing.T) {
+	var requests []string
+	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.Method+" "+r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/api/playback-sessions":
+			if got := r.Header.Get("Authorization"); got != "Bearer test-api-key" {
+				t.Errorf("playback create authorization = %q", got)
+			}
+			var body map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Errorf("decode playback create: %v", err)
+			}
+			profile, _ := body["clientProfile"].(map[string]any)
+			if profile["capabilitySchemaVersion"] != "playback-capability-v2" {
+				t.Errorf("playback capability profile = %#v", profile)
+			}
+			_, _ = w.Write([]byte(`{"sessionId":"session-1","sourceUrl":"/api/media/movie-1/stream","directPlay":true,"nextEventSequence":1,"generation":2,"mediaGrant":{"token":"grant-secret","expiresAt":"2099-01-01T00:00:00Z"},"timeline":{"durationSeconds":120}}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/api/media/movie-1/stream":
+			if got := r.Header.Get("Authorization"); got != "PorticoMedia grant-secret" {
+				t.Errorf("media authorization = %q", got)
+			}
+			if got := r.Header.Get("Range"); got != "bytes=0-65535" {
+				t.Errorf("media range = %q", got)
+			}
+			w.WriteHeader(http.StatusPartialContent)
+			_, _ = w.Write([]byte("media"))
+		case r.Method == http.MethodPatch && r.URL.Path == "/api/playback-sessions/session-1":
+			if got := r.Header.Get("Authorization"); got != "Bearer test-api-key" {
+				t.Errorf("playback progress authorization = %q", got)
+			}
+			var body struct {
+				EventSequence int64 `json:"eventSequence"`
+				Generation    int64 `json:"generation"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Errorf("decode playback progress: %v", err)
+			}
+			if body.Generation != 2 || body.EventSequence < 1 || body.EventSequence > 2 {
+				t.Errorf("playback progress authority = %#v", body)
+			}
+			_, _ = w.Write([]byte(`{"accepted":true,"highestEventSequence":` + string(rune('0'+body.EventSequence)) + `,"generation":2}`))
+		case r.Method == http.MethodDelete && r.URL.Path == "/api/playback-sessions/session-1":
+			var body struct {
+				RequestID string `json:"requestId"`
+				Terminal  struct {
+					Disposition   string `json:"disposition"`
+					EventSequence int64  `json:"eventSequence"`
+					Generation    int64  `json:"generation"`
+				} `json:"terminal"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Errorf("decode playback stop: %v", err)
+			}
+			if body.RequestID == "" || body.Terminal.Disposition != "stopped" || body.Terminal.EventSequence != 3 || body.Terminal.Generation != 2 {
+				t.Errorf("playback terminal authority = %#v", body)
+			}
+			_, _ = w.Write([]byte(`{"accepted":true}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer testServer.Close()
+
+	vu, err := newVirtualUser(testServer.URL, "", "", "test-api-key", time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	samples := make(chan sample, 5)
+	runPlayback(vu, "movie-1", samples, &playbackTracker{})
+	close(samples)
+	for got := range samples {
+		if got.Err != "" || got.Status < 200 || got.Status >= 300 {
+			t.Fatalf("playback sample failed: %#v", got)
+		}
+	}
+	want := []string{
+		"POST /api/playback-sessions",
+		"GET /api/media/movie-1/stream",
+		"PATCH /api/playback-sessions/session-1",
+		"PATCH /api/playback-sessions/session-1",
+		"DELETE /api/playback-sessions/session-1",
+	}
+	if len(requests) != len(want) {
+		t.Fatalf("playback requests = %#v", requests)
+	}
+	for i := range want {
+		if requests[i] != want[i] {
+			t.Fatalf("playback request[%d] = %q, want %q", i, requests[i], want[i])
+		}
+	}
+}
+
+func TestParseServerTimingSeparatesServerQueueAndHandler(t *testing.T) {
+	server, queue, handler, ok := parseServerTiming(`portico;dur=18.250, queue;dur=1.125, handler;dur=17.125`)
+	if !ok || server != 18250*time.Microsecond || queue != 1125*time.Microsecond || handler != 17125*time.Microsecond {
+		t.Fatalf("unexpected parsed timing: server=%s queue=%s handler=%s ok=%t", server, queue, handler, ok)
+	}
+	if _, _, _, ok := parseServerTiming(`portico;dur=invalid`); ok {
+		t.Fatal("invalid Server-Timing duration should not be accepted")
+	}
+}
+
 func TestParseLoadProfile(t *testing.T) {
 	profile, scenarios, err := parseLoadProfile("browsing,search,stream,transcode")
 	if err != nil {
@@ -154,8 +338,8 @@ func TestBudgetFailuresTreatsZeroOptionalBudgetsAsDisabled(t *testing.T) {
 
 func TestSummarizeReportsThroughput(t *testing.T) {
 	samples := make(chan sample, 2)
-	samples <- sample{Name: "home", Status: 200, Bytes: 300, Took: 10 * time.Millisecond}
-	samples <- sample{Name: "search", Status: 200, Bytes: 700, Took: 20 * time.Millisecond}
+	samples <- sample{Name: "home", Status: 200, Bytes: 300, Took: 10 * time.Millisecond, Server: 2 * time.Millisecond, Queue: 100 * time.Microsecond, Handler: 1900 * time.Microsecond, HasServerTiming: true}
+	samples <- sample{Name: "search", Status: 200, Bytes: 700, Took: 20 * time.Millisecond, Server: 8 * time.Millisecond, Queue: 200 * time.Microsecond, Handler: 7800 * time.Microsecond, HasServerTiming: true}
 	close(samples)
 
 	started := time.Date(2026, 5, 5, 1, 0, 0, 0, time.UTC)
@@ -166,5 +350,11 @@ func TestSummarizeReportsThroughput(t *testing.T) {
 	}
 	if result.RequestsPerSecond != 1 || result.BytesPerSecond != 500 {
 		t.Fatalf("unexpected throughput: requests/s=%f bytes/s=%f", result.RequestsPerSecond, result.BytesPerSecond)
+	}
+	if result.ServerP95Millis != 8 || result.QueueP95Millis != 0.2 || result.HandlerP95Millis != 7.8 {
+		t.Fatalf("unexpected Server-Timing summary: server=%f queue=%f handler=%f", result.ServerP95Millis, result.QueueP95Millis, result.HandlerP95Millis)
+	}
+	if result.ByName["search"].AverageBytes != 700 || result.ByName["search"].P95Bytes != 700 || result.ByName["search"].P99Millis != 20 {
+		t.Fatalf("unexpected per-route payload/latency summary: %#v", result.ByName["search"])
 	}
 }

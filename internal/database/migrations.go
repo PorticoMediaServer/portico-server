@@ -23,7 +23,7 @@ import (
 
 const (
 	currentDatabaseFormatVersion  = 2
-	expectedMigrationHead         = "002_playback_receiver_authority"
+	expectedMigrationHead         = "003_api_key_capability_binding"
 	reviewedMigrationManifestName = "migration-manifest.json"
 	// 0.1.74 shipped this exact reviewed 001 ledger before receiver authority
 	// became append-only migration 002. No other historical checksum is a
@@ -185,6 +185,7 @@ type migrationConnection interface {
 var expectedMigrationFiles = map[int]string{
 	1: "001_initial.sql",
 	2: "002_playback_receiver_authority.sql",
+	3: "003_api_key_capability_binding.sql",
 }
 
 // ValidateEmbeddedMigrationBundle performs the release-time bundle check
@@ -683,7 +684,7 @@ func canonicalizeLegacy074MigrationLedger(ctx context.Context, conn migrationCon
 	canonical002, has002 := migrationForNumber(bundle, 2)
 	if !ok || !has002 || canonical001.Version != legacy074MigrationHead || canonical001.Filename != "001_initial.sql" ||
 		!strings.EqualFold(canonical001.Checksum, legacy074Forward001Checksum) ||
-		canonical002.Version != expectedMigrationHead || canonical002.Filename != "002_playback_receiver_authority.sql" ||
+		canonical002.Version != "002_playback_receiver_authority" || canonical002.Filename != "002_playback_receiver_authority.sql" ||
 		!strings.EqualFold(canonical002.Checksum, legacy074Forward002Checksum) {
 		return false, migrationIntegrityError("canonical 001/002 bundle does not match the reviewed 0.1.74 forward bridge")
 	}

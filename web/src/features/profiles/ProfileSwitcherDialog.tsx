@@ -3,6 +3,7 @@ import { type ServerManagedProfileDirectory } from '@porticomediaserver/client-c
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { IconButton } from '../../components/controls/Buttons';
 import { PasswordInput } from '../../components/controls/PasswordInput';
+import { StableImage } from '../../components/media/StableImage';
 import { ModalOverlay } from '../../components/overlay/OverlayPortal';
 import { productProblemText, productText } from '../../components/ProductLanguage';
 import { useAuthSession, usePorticoDataSource } from '../../data/DataProvider';
@@ -99,7 +100,7 @@ export function ProfileSwitcherDialog({ onDismiss, required = false, onSignOut }
         const current = profile.id === auth.viewer?.viewerScope?.profileId;
         const image = avatarSource(profile);
         return <button key={profile.id} type="button" role="listitem" disabled={busy} className={`${selectedId === profile.id ? 'selected' : ''} ${current ? 'current' : ''}`} onClick={() => void choose(profile.id)}>
-          <span className="profile-switcher-avatar">{image ? <img src={image} alt="" /> : initials(profile.name)}{profile.hasPIN ? <span className="profile-switcher-lock"><StatusLockedIcon /></span> : null}{current ? <span className="profile-switcher-current"><ActionConfirmIcon /></span> : null}</span>
+          <span className="profile-switcher-avatar"><StableImage src={image} alt="" fallback={initials(profile.name)} />{profile.hasPIN ? <span className="profile-switcher-lock"><StatusLockedIcon /></span> : null}{current ? <span className="profile-switcher-current"><ActionConfirmIcon /></span> : null}</span>
           <strong>{profile.name}</strong>
           <small>{current ? 'Current profile' : profile.hasPIN ? 'PIN required' : 'Open profile'}</small>
         </button>;

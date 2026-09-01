@@ -40,6 +40,8 @@ contents:
     dst: /etc/xdg/autostart/tv.getportico.server.desktop
   - src: packaging/linux/portico-media-server.svg
     dst: /usr/share/icons/hicolor/scalable/status/portico-media-server.svg
+  - src: packaging/linux/portico-media-server-symbolic.svg
+    dst: /usr/share/icons/hicolor/scalable/status/portico-media-server-symbolic.svg
 scripts:
   postinstall: packaging/linux/postinstall.sh
   preremove: packaging/linux/preremove.sh

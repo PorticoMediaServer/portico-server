@@ -1,72 +1,74 @@
-export const ARTWORK_FAILURE_TTL_MS = 30_000;
 export const MAX_REMEMBERED_ARTWORK_FAILURES = 512;
 
-type ArtworkFailureRecord = {
-  expiresAt: number;
-  timer?: ReturnType<typeof setTimeout>;
-};
+const failures = new Set<string>();
+const successes = new Set<string>();
+const listenersBySource = new Map<string, Set<() => void>>();
+let clearVersion = 0;
 
-const failures = new Map<string, ArtworkFailureRecord>();
-const listeners = new Set<() => void>();
-let version = 0;
-
-function notifyChange(): void {
-  version += 1;
-  for (const listener of listeners) listener();
+function notifyChange(source: string): void {
+  for (const listener of listenersBySource.get(source) ?? []) listener();
 }
 
-function expireArtworkFailure(source: string, record: ArtworkFailureRecord): void {
-  if (failures.get(source) !== record) return;
-  failures.delete(source);
-  notifyChange();
-}
-
-export function rememberArtworkFailure(source: string): number {
-  if (!source) return 0;
-  const previous = failures.get(source);
-  if (previous?.timer) clearTimeout(previous.timer);
-  const record: ArtworkFailureRecord = { expiresAt: Date.now() + ARTWORK_FAILURE_TTL_MS };
-  record.timer = setTimeout(() => expireArtworkFailure(source, record), ARTWORK_FAILURE_TTL_MS);
-  failures.delete(source);
-  failures.set(source, record);
+/** Failed URLs remain settled until the active viewer scope is torn down. */
+export function rememberArtworkFailure(source: string): void {
+  if (!source || failures.has(source)) return;
+  failures.add(source);
   while (failures.size > MAX_REMEMBERED_ARTWORK_FAILURES) {
-    const oldest = failures.keys().next().value as string | undefined;
+    const oldest = failures.values().next().value as string | undefined;
     if (!oldest) break;
-    const oldestRecord = failures.get(oldest);
-    if (oldestRecord?.timer) clearTimeout(oldestRecord.timer);
     failures.delete(oldest);
+    notifyChange(oldest);
   }
-  notifyChange();
-  return record.expiresAt;
+  notifyChange(source);
 }
 
-export function artworkFailureExpiresAt(source: string | undefined): number {
-  if (!source) return 0;
-  const expiresAt = failures.get(source)?.expiresAt ?? 0;
-  return expiresAt > Date.now() ? expiresAt : 0;
+export function hasArtworkFailure(source: string | undefined): boolean {
+  return Boolean(source && failures.has(source));
+}
+
+export function forgetArtworkFailure(source: string | undefined): void {
+  if (!source || !failures.delete(source)) return;
+  notifyChange(source);
+}
+
+export function rememberArtworkSuccess(source: string): void {
+  if (!source || successes.has(source)) return;
+  successes.add(source);
+  while (successes.size > MAX_REMEMBERED_ARTWORK_FAILURES * 4) {
+    const oldest = successes.values().next().value as string | undefined;
+    if (!oldest) break;
+    successes.delete(oldest);
+  }
+}
+
+export function hasArtworkSuccess(source: string | undefined): boolean {
+  return Boolean(source && successes.has(source));
 }
 
 export function clearArtworkFailureCache(): void {
-  if (!failures.size) return;
-  for (const record of failures.values()) {
-    if (record.timer) clearTimeout(record.timer);
-  }
+  if (!failures.size && !successes.size) return;
   failures.clear();
-  notifyChange();
-}
-
-export function subscribeArtworkFailureCache(listener: () => void): () => void {
-  listeners.add(listener);
-  return () => listeners.delete(listener);
-}
-
-export function artworkFailureCacheVersion(): number {
-  return version;
-}
-
-export function tagsMayRefreshArtwork(tags: Iterable<string>): boolean {
-  for (const tag of tags) {
-    if (tag === '*' || tag === 'media' || tag === 'metadata' || tag === 'library-items' || tag === 'artwork') return true;
+  successes.clear();
+  clearVersion += 1;
+  for (const listeners of listenersBySource.values()) {
+    for (const listener of listeners) listener();
   }
-  return false;
+}
+
+export function subscribeArtworkFailureCache(source: string | undefined, listener: () => void): () => void {
+  const key = source ?? '';
+  let listeners = listenersBySource.get(key);
+  if (!listeners) {
+    listeners = new Set();
+    listenersBySource.set(key, listeners);
+  }
+  listeners.add(listener);
+  return () => {
+    listeners!.delete(listener);
+    if (!listeners!.size) listenersBySource.delete(key);
+  };
+}
+
+export function artworkFailureCacheVersion(source: string | undefined): string {
+  return `${clearVersion}:${source ? failures.has(source) : false}`;
 }

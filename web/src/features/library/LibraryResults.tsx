@@ -3,6 +3,7 @@ import { productMessage } from '@porticomediaserver/client-core';
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { IconButton } from '../../components/controls/Buttons';
+import { StableImage } from '../../components/media/StableImage';
 import { useMediaMutations } from '../../data/DataProvider';
 import type { MediaItem, PlaybackStartOptions } from '../../data/models';
 import {
@@ -165,7 +166,7 @@ function FacetResults({ page, onApply }: { page: LibraryPivotPage; onApply: (que
   if (!page.facets?.length) return null;
   return <div className="library-facet-grid" data-retained-result-count={page.facets.length} data-retained-result-budget={RETAINED_RESULT_ITEM_BUDGET} data-retained-result-budget-state={retainedResultBudgetState(page.facets.length)}>
     {page.facets.map((facet) => <button type="button" key={facet.id} onClick={() => onApply(facet.query, facet.pivotId)}>
-      {facet.artwork ? <img src={facet.artwork} alt="" loading="lazy" /> : <span className="library-facet-mark">{facet.title.slice(0, 2).toLocaleUpperCase()}</span>}
+      <StableImage src={facet.artwork} alt="" loading="lazy" fallback={<span className="library-facet-mark">{facet.title.slice(0, 2).toLocaleUpperCase()}</span>} />
       <span><strong>{facet.title}</strong><span>{facet.detail || productMessage(facet.count === 1 ? 'media.item-count-single' : 'media.item-count', { count: facet.count }).text}</span></span>
     </button>)}
   </div>;

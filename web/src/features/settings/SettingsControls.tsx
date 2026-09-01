@@ -6,7 +6,7 @@ import { PasswordInput } from '../../components/controls/PasswordInput';
 import { SelectMenu } from '../../components/controls/SelectMenu';
 import { ModalOverlay } from '../../components/overlay/OverlayPortal';
 import { productText } from '../../components/ProductLanguage';
-import { setSettingsNavigationDirty, subscribeSettingsBlockedNavigation, type SettingsBlockedNavigation } from './settingsNavigationGuard';
+import { isSettingsNavigationDirty, isSettingsNavigationSensitive, setSettingsNavigationDirty, subscribeSettingsBlockedNavigation, type SettingsBlockedNavigation } from './settingsNavigationGuard';
 
 export function SettingsGroup({ title, description, children, actions }: { title: string; description?: string; children: ReactNode; actions?: ReactNode }) {
   return <section className="portico-settings-group">
@@ -106,6 +106,7 @@ export function SettingsSaveCoordinator({ children }: { children: ReactNode }) {
   const dirty = entries.some((entry) => entry.dirty);
   const busy = coordinatorSaving || entries.some((entry) => entry.busy);
   const errors = entries.map((entry) => entry.error).filter(Boolean);
+  const sensitiveNavigation = isSettingsNavigationSensitive();
   const saveAll = useCallback(async (): Promise<boolean> => {
     const targets = [...registrations.current.entries()]
       .map(([id, read]) => ({ id, read, entry: read() }))
@@ -134,7 +135,7 @@ export function SettingsSaveCoordinator({ children }: { children: ReactNode }) {
   }, [blockedNavigation]);
   useEffect(() => {
     const warn = (event: BeforeUnloadEvent) => {
-      if (![...registrations.current.values()].some((read) => read().dirty)) return;
+      if (!isSettingsNavigationDirty()) return;
       event.preventDefault();
       event.returnValue = '';
     };
@@ -160,11 +161,11 @@ export function SettingsSaveCoordinator({ children }: { children: ReactNode }) {
     </div>}
     {showSaved && errors.length === 0 && <div className="portico-settings-saved-toast" role="status" aria-live="polite"><ActionConfirmIcon /> Settings Saved</div>}
     {(pendingDestination || blockedNavigation) && <ModalOverlay className="portico-settings-dialog portico-settings-unsaved-dialog" labelledBy="settings-unsaved-title" describedBy="settings-unsaved-description" onDismiss={stayOnCurrentSettings}>
-        <div><StatusWarningIcon /><h2 id="settings-unsaved-title">Unsaved settings</h2><p id="settings-unsaved-description">Save or discard your changes before opening another settings section.</p></div>
+        <div><StatusWarningIcon /><h2 id="settings-unsaved-title">{sensitiveNavigation ? 'Save your API key' : 'Unsaved settings'}</h2><p id="settings-unsaved-description">{sensitiveNavigation ? 'This API key is shown only once. Copy it or confirm that you saved it before leaving this page.' : 'Save or discard your changes before opening another settings section.'}</p></div>
         <footer>
           <SecondaryButton disabled={busy} onClick={stayOnCurrentSettings}>Stay</SecondaryButton>
-          <SecondaryButton disabled={busy} onClick={() => { entries.forEach((entry) => entry.dirty && entry.onReset()); const destination = pendingDestination; const blocked = blockedNavigation; setBlockedNavigation(undefined); setPendingDestination(undefined); if (blocked) blocked.proceed(); else if (destination) navigate(destination); }}>Discard</SecondaryButton>
-          <PrimaryButton disabled={busy} onClick={() => void saveAll().then((saved) => { if (!saved) return; const destination = pendingDestination; const blocked = blockedNavigation; setBlockedNavigation(undefined); setPendingDestination(undefined); if (blocked) blocked.proceed(); else if (destination) navigate(destination); })}>{busy ? 'Saving…' : 'Save and continue'}</PrimaryButton>
+          {!sensitiveNavigation && <><SecondaryButton disabled={busy} onClick={() => { entries.forEach((entry) => entry.dirty && entry.onReset()); const destination = pendingDestination; const blocked = blockedNavigation; setBlockedNavigation(undefined); setPendingDestination(undefined); if (blocked) blocked.proceed(); else if (destination) navigate(destination); }}>Discard</SecondaryButton>
+          <PrimaryButton disabled={busy} onClick={() => void saveAll().then((saved) => { if (!saved) return; const destination = pendingDestination; const blocked = blockedNavigation; setBlockedNavigation(undefined); setPendingDestination(undefined); if (blocked) blocked.proceed(); else if (destination) navigate(destination); })}>{busy ? 'Saving…' : 'Save and continue'}</PrimaryButton></>}
         </footer>
     </ModalOverlay>}
   </SaveCoordinatorContext.Provider>;

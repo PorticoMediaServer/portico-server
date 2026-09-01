@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { productMessage } from '@porticomediaserver/client-core';
 import { useNavigate } from 'react-router-dom';
 import { IconButton, PrimaryButton, SecondaryButton } from '../../components/controls/Buttons';
+import { StableImage } from '../../components/media/StableImage';
 import { AnchoredOverlay, ModalOverlay } from '../../components/overlay/OverlayPortal';
 import { ProductLanguageIcon } from '../../components/product/ProductLanguageIcon';
 import { useMediaMutations, useMediaOperations } from '../../data/DataProvider';
@@ -321,7 +322,7 @@ export function DetailActionMenu({
     <div className="more-actions" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()}>
       <IconButton ref={triggerRef} label={productMessage('action.more-for', { title: item.title }).text ?? ''} className={open ? 'selected' : ''} onClick={() => setOpen((value) => !value)}><ActionMoreIcon /></IconButton>
       {open && <AnchoredOverlay anchorRef={triggerRef} placement="bottom-end" className="context-menu detail-context-menu" role="menu" onDismiss={closeMenu}>
-        <div className="context-title">{item.poster ? <img src={item.poster} alt="" /> : <span className="context-artwork-fallback"><MediaMovieIcon /></span>}<span><strong>{item.title}</strong><small>{item.subtitle}</small></span></div>
+        <div className="context-title"><StableImage src={item.poster} alt="" retryKey={item.metadataEtag ?? item.metadataRevision} fallback={<span className="context-artwork-fallback"><MediaMovieIcon /></span>} /><span><strong>{item.title}</strong><small>{item.subtitle}</small></span></div>
         <div className="context-section">
           {canPlayVersion && <button type="button" onClick={() => { closeMenu(); setPlayVersionOpen(true); }}><MediaMovieIcon /> {productText('action.play-version')}</button>}
           {allowWatchWithFriends && action('watch-with-friends.start') && <button type="button" onClick={() => { closeMenu(); navigate(`/watch-with-friends?media=${encodeURIComponent(item.id)}`); }}><MediaActionIcon action={action('watch-with-friends.start')!} /> {action('watch-with-friends.start')!.label}</button>}

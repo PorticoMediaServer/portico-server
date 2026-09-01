@@ -591,7 +591,7 @@ func requestPrincipalLibraryIDsTx(tx *sql.Tx, accountID, role string) ([]string,
 	return scanRequestPrincipalLibraryIDs(rows)
 }
 
-func scanRequestPrincipalLibraryIDs(rows *sql.Rows) ([]string, error) {
+func scanRequestPrincipalLibraryIDs(rows sqlRows) ([]string, error) {
 	ids := []string{}
 	for rows.Next() {
 		var id string
@@ -662,6 +662,9 @@ func (s *Server) accountAndProfileIDsContext(ctx context.Context, identityID str
 	identityID = strings.TrimSpace(identityID)
 	if identityID == "" {
 		return "", ""
+	}
+	if user, ok := mediaActionUserFromContext(ctx, identityID); ok {
+		return accountIDForUser(user), viewerProfileID(user)
 	}
 	accountID, err := s.accountIDForProfileContext(ctx, identityID)
 	if err != nil {

@@ -87,6 +87,7 @@ type Route struct {
 	Audience       string                       `json:"audience"`
 	Surfaces       []string                     `json:"surfaces"`
 	RatePolicy     string                       `json:"ratePolicy"`
+	APIKeyScopes   []string                     `json:"apiKeyScopes,omitempty"`
 	AuditEvent     string                       `json:"auditEvent"`
 	RequestSchema  string                       `json:"requestSchema,omitempty"`
 	ResponseSchema string                       `json:"responseSchema"`
@@ -212,15 +213,16 @@ func familyMatches(pattern, candidate string) bool {
 
 func RouteFromOperation(method, path string, raw json.RawMessage, auth Auth) Route {
 	var op struct {
-		OperationID string   `json:"operationId"`
-		RuntimePath string   `json:"x-portico-runtime-path"`
-		Auth        Auth     `json:"x-portico-auth"`
-		Permission  string   `json:"x-portico-permission"`
-		Audience    string   `json:"x-portico-audience"`
-		Surfaces    []string `json:"x-portico-surfaces"`
-		RatePolicy  string   `json:"x-portico-rate-policy"`
-		AuditEvent  string   `json:"x-portico-audit-event"`
-		Responses   map[string]struct {
+		OperationID  string   `json:"operationId"`
+		RuntimePath  string   `json:"x-portico-runtime-path"`
+		Auth         Auth     `json:"x-portico-auth"`
+		Permission   string   `json:"x-portico-permission"`
+		Audience     string   `json:"x-portico-audience"`
+		Surfaces     []string `json:"x-portico-surfaces"`
+		RatePolicy   string   `json:"x-portico-rate-policy"`
+		APIKeyScopes []string `json:"x-portico-api-key-scopes"`
+		AuditEvent   string   `json:"x-portico-audit-event"`
+		Responses    map[string]struct {
 			Content map[string]struct {
 				Schema struct {
 					Ref string `json:"$ref"`
@@ -257,7 +259,7 @@ func RouteFromOperation(method, path string, raw json.RawMessage, auth Auth) Rou
 	if response == "" {
 		panic(fmt.Sprintf("apiroute: missing response schema for %s %s", method, path))
 	}
-	return Route{Method: method, Path: path, OperationID: op.OperationID, Auth: op.Auth, Permission: op.Permission, Audience: op.Audience, Surfaces: append([]string(nil), op.Surfaces...), RatePolicy: op.RatePolicy, AuditEvent: op.AuditEvent, RequestSchema: request, ResponseSchema: response, SuccessStatus: status, TypedAdapter: true, WorkClass: workClassForOperation(op.OperationID, op.RatePolicy)}
+	return Route{Method: method, Path: path, OperationID: op.OperationID, Auth: op.Auth, Permission: op.Permission, Audience: op.Audience, Surfaces: append([]string(nil), op.Surfaces...), RatePolicy: op.RatePolicy, APIKeyScopes: append([]string(nil), op.APIKeyScopes...), AuditEvent: op.AuditEvent, RequestSchema: request, ResponseSchema: response, SuccessStatus: status, TypedAdapter: true, WorkClass: workClassForOperation(op.OperationID, op.RatePolicy)}
 }
 
 func validateAudienceSurfaces(audience string, surfaces []string) error {

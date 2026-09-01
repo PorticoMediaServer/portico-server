@@ -136,6 +136,30 @@ describe('LibraryWorkspacePage', () => {
     expect(container.querySelector('.library-workspace-toolbar')).not.toBeInTheDocument();
     expect(container.querySelector('.library-results-summary')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Shelves view' })).not.toBeInTheDocument();
+    expect(workspaceSource.libraryPivot).toHaveBeenCalledWith(expect.objectContaining({
+      request: expect.objectContaining({ limit: 12 }),
+    }), expect.any(AbortSignal));
+  });
+
+  it('keeps the authoritative library total when the first Discover page contains only 50 of 501 items', async () => {
+    const largeLibrary = { ...library, itemCount: 501 };
+    const firstPage = Array.from({ length: 50 }, (_, index) => item(`discover-${index}`, `Discover ${index + 1}`));
+    const workspaceSource = source();
+    vi.mocked(workspaceSource.libraryPivot).mockResolvedValue({
+      ...page(firstPage),
+      total: 50,
+      applied: { pivot: 'discover', sort: [], presentationFields: [] },
+      presentation: 'shelves',
+    });
+    render(<DataProvider source={new FixturePorticoDataSource()}>
+      <MemoryRouter initialEntries={['/library/lib-real-movies?pivot=discover']}>
+        <LibraryWorkspacePage library={largeLibrary} source={workspaceSource} />
+      </MemoryRouter>
+    </DataProvider>);
+
+    await screen.findByText('Discover 1');
+    expect(screen.getByText('501 results')).toBeInTheDocument();
+    expect(screen.queryByText('50 results')).not.toBeInTheDocument();
   });
 
   it('applies capability-backed filters and ordered sorts to the canonical request', async () => {

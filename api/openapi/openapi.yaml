@@ -2183,6 +2183,8 @@ components:
           maxLength: 80
         scopes:
           type: array
+          description: >-
+            Least-privilege Server API-key scopes. read permits documented read projections, including POST-based search and browse. Playback of library media requires playMedia; Live TV playback requires both playLiveTV and playMedia; DVR playback requires playMedia plus viewDVR or manageDVR. transcode permits only optimized-version create/delete operations and does not grant general server administration. read is always added to issued keys.
           items:
             type: string
             enum: [read, playMedia, downloadMedia, editMetadata, manageLyrics, manageSubtitles, watchWithFriends, viewLiveTV, playLiveTV, viewDVR, scheduleDVR, manageDVR, deleteDVRRecordings, deleteMedia, transcode]
@@ -12693,6 +12695,9 @@ paths:
       responses:
         "200":
           description: Active API keys without raw token values
+          headers:
+            Cache-Control: { schema: { type: string, const: no-store } }
+            Pragma: { schema: { type: string, const: no-cache } }
           content:
             application/json:
               schema:
@@ -12717,6 +12722,9 @@ paths:
       responses:
         "201":
           description: API key created
+          headers:
+            Cache-Control: { schema: { type: string, const: no-store } }
+            Pragma: { schema: { type: string, const: no-cache } }
           content:
             application/json:
               schema:
@@ -12735,6 +12743,9 @@ paths:
       responses:
         "200":
           description: API key revoked
+          headers:
+            Cache-Control: { schema: { type: string, const: no-store } }
+            Pragma: { schema: { type: string, const: no-cache } }
           content:
             application/json:
               schema:
@@ -13424,6 +13435,7 @@ paths:
   /libraries/{libraryId}/browse:
     post:
       operationId: browseLibrary
+      x-portico-api-key-scopes: [read]
       summary: Browse one library with the canonical query language and keyset cursor
       x-portico-permission: view-library
       parameters:
@@ -14718,6 +14730,7 @@ paths:
                 $ref: "#/components/schemas/OptimizedVersionListResponse"
     post:
       summary: Queue an optimized version for a media item
+      x-portico-api-key-scopes: [transcode]
       parameters:
         - name: id
           in: path
@@ -14779,6 +14792,7 @@ paths:
               schema: { $ref: "#/components/schemas/BinaryPayload" }
     delete:
       summary: Delete an optimized version
+      x-portico-api-key-scopes: [transcode]
       parameters:
         - name: id
           in: path
@@ -17588,6 +17602,7 @@ paths:
                 $ref: "#/components/schemas/BinaryPayload"
   /search:
     post:
+      x-portico-api-key-scopes: [read]
       summary: Search accessible media using grouped previews or an independent group cursor
       description: Results default to relevance desc. Title, releaseYear, and dateAdded support asc or desc for media results. Live TV is relevance-desc only; a non-relevance request whose scope includes Live TV is rejected rather than silently reordered or omitted. Continuation cursors are encrypted and bound to the normalized query, group, library scope, sort, direction, and principal.
       requestBody:
@@ -17771,7 +17786,7 @@ paths:
   /client-logs:
     post:
       summary: Upload bounded client diagnostic logs
-      description: Disabled by default. When enabled in Troubleshooting settings, authenticated clients can upload bounded, redacted diagnostic events into an isolated client-diagnostics lane. Accepted counts may be lower than submitted counts when queue or per-account rate limits are reached; uploads never enter the server admin log stream.
+      description: Disabled by default. When enabled in Troubleshooting settings, authenticated interactive clients can upload bounded, redacted diagnostic events into an isolated client-diagnostics lane. Server API keys are rejected because reusable integration credentials are not device-bound and read authority never grants log injection. Accepted counts may be lower than submitted counts when queue or per-account rate limits are reached; uploads never enter the server admin log stream.
       requestBody:
         required: true
         content:
@@ -18559,6 +18574,7 @@ paths:
           type: string
     post:
       summary: Execute a saved view through canonical library browse
+      x-portico-api-key-scopes: [read]
       requestBody:
         required: true
         content:

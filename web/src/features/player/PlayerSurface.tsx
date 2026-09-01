@@ -20,6 +20,7 @@ import {
 } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { SecondaryButton } from '../../components/controls/Buttons';
+import { StableImage } from '../../components/media/StableImage';
 import { AnchoredOverlay, ModalOverlay } from '../../components/overlay/OverlayPortal';
 import { ProductLanguageIcon } from '../../components/product/ProductLanguageIcon';
 import { useAuthSession, usePorticoDataSource } from '../../data/DataProvider';
@@ -2964,7 +2965,7 @@ export function PlayerDock() {
         <PostPlaySurface onClose={closePlayer} autoplay={sessionAutoplay} />
       </div>
       <div className="player-copy">
-        <PlayerIdentityArtwork src={identityArtwork} live={mode === 'live'} />
+        <PlayerIdentityArtwork src={identityArtwork} live={mode === 'live'} retryKey={playback.media.metadataEtag ?? playback.media.metadataRevision} />
         <span className="player-copy-text"><strong>{identityTitle}</strong><span>{identitySubtitle}</span></span>
       </div>
       <PlayerControls full={effectiveFull} browserFullscreen={browserFullscreen} sessionAutoplay={sessionAutoplay} onSessionAutoplayChange={setSessionAutoplay} onToggleBrowserFullscreen={toggleBrowserFullscreen} onClose={closePlayer} />
@@ -2972,10 +2973,7 @@ export function PlayerDock() {
   </PlayerSubtitleProvider>;
 }
 
-function PlayerIdentityArtwork({ src, live }: { src?: string; live: boolean }) {
-  const [failed, setFailed] = useState(false);
-  useEffect(() => setFailed(false), [src]);
-  if (src && !failed) return <img className={`player-copy-art ${live ? 'player-copy-logo' : ''}`} src={src} alt="" onError={() => setFailed(true)} />;
-  if (!live) return null;
-  return <span className="player-copy-art player-copy-art-fallback" aria-hidden="true"><ProductLanguageIcon id="status.live-tv" /></span>;
+function PlayerIdentityArtwork({ src, live, retryKey }: { src?: string; live: boolean; retryKey?: string | number }) {
+  const fallback = <span className="player-copy-art player-copy-art-fallback" aria-hidden="true">{live ? <ProductLanguageIcon id="status.live-tv" /> : null}</span>;
+  return <StableImage src={src} retryKey={retryKey} className={`player-copy-art ${live ? 'player-copy-logo' : ''}`} alt="" fallback={fallback} />;
 }

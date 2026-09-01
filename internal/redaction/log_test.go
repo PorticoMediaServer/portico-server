@@ -81,6 +81,50 @@ func TestSensitiveKeyPolicyDoesNotMatchPublicIdentifiers(t *testing.T) {
 	}
 }
 
+func TestReusablePorticoCredentialsAreRedactedInEveryTextPosition(t *testing.T) {
+	prefixes := []string{"api", "clt", "loc", "lrf", "srv", "mg", "dg", "pb", "cb", "cr", "sdp"}
+	for _, prefix := range prefixes {
+		credential := "ptc_" + prefix + "_" + strings.Repeat("A", 42) + "_"
+		messages := []string{
+			credential,
+			"(" + credential + "),",
+			`{"credential":"` + credential + `"}`,
+			"https://example.test/callback?proof=" + credential + "&page=2",
+			"AuThOrIzAtIoN: bEaReR " + credential,
+			"token=" + credential,
+		}
+		for _, message := range messages {
+			redacted := RedactPorticoCredentials(message)
+			if strings.Contains(redacted, credential) || !strings.Contains(redacted, secretLabel) {
+				t.Fatalf("credential prefix %q was not redacted", prefix)
+			}
+		}
+	}
+}
+
+func TestReusablePorticoCredentialRedactionPreservesHarmlessIdentifiers(t *testing.T) {
+	harmless := []string{
+		"ptc_api_id",
+		"ptc_media_" + strings.Repeat("A", 43),
+		"public_ptc_api_" + strings.Repeat("A", 43),
+		"apikey_" + strings.Repeat("A", 43),
+	}
+	for _, value := range harmless {
+		if redacted := RedactPorticoCredentials(value); redacted != value {
+			t.Fatalf("harmless identifier was redacted")
+		}
+	}
+}
+
+func TestPolicyRedactsAdjacentReusablePorticoCredentials(t *testing.T) {
+	first := "ptc_api_" + strings.Repeat("A", 43)
+	second := "ptc_mg_" + strings.Repeat("B", 43)
+	redacted := (Policy{}).RedactString(first + "," + second)
+	if strings.Contains(redacted, first) || strings.Contains(redacted, second) || strings.Count(redacted, secretLabel) != 2 {
+		t.Fatal("adjacent credentials were not independently redacted")
+	}
+}
+
 func TestOperationIDIsOpaqueAndStable(t *testing.T) {
 	secretPath := filepath.Join(t.TempDir(), "restore-pending.db")
 	first := OperationID("restore", secretPath)

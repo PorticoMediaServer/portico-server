@@ -66,6 +66,25 @@ func TestMediaHierarchyProjectionUsesLibraryNameAndUnboundedCatalogCounts(t *tes
 	}
 }
 
+func TestMovieHierarchyProjectionSkipsUnusedRecursiveCounts(t *testing.T) {
+	_, db, server := newDiscoveryTestServer(t, config.Config{})
+	if _, err := db.Exec(`INSERT INTO libraries (id, name, type, sort_order, path, settings_json, created_at) VALUES ('lib_movies_no_counts', 'Movies', 'movies', 903, '/tmp/movies-no-counts', '{}', '2026-08-31T00:00:00Z')`); err != nil {
+		t.Fatal(err)
+	}
+	server.sqliteMetrics = SQLiteDiagnostics{}
+	server.latencyMetrics = latencyMetricsRegistry{}
+	items := []MediaItem{{ID: "movie-no-counts", LibraryID: "lib_movies_no_counts", Type: "movie"}}
+	if err := server.populateMediaHierarchyProjectionContext(context.Background(), items); err != nil {
+		t.Fatal(err)
+	}
+	if items[0].LibraryName != "Movies" || items[0].Counts != nil {
+		t.Fatalf("movie projection = %#v", items[0])
+	}
+	if reads := server.sqliteDiagnostics().ReadOperations; reads != 1 {
+		t.Fatalf("movie projection used %d reads; expected library-name lookup only", reads)
+	}
+}
+
 func TestMediaHierarchyProjectionTraversesBeyondSixteenLevels(t *testing.T) {
 	_, db, server := newDiscoveryTestServer(t, config.Config{})
 	if _, err := db.Exec(`INSERT INTO libraries (id, name, type, sort_order, path, settings_json, created_at) VALUES ('lib_deep_counts', 'Deep Counts', 'mixed', 901, '/tmp/deep-counts', '{}', '2026-08-05T00:00:00Z')`); err != nil {

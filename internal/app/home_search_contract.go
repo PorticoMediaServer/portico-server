@@ -478,7 +478,13 @@ func (s *Server) executeSearchWithGroupLoader(ctx context.Context, user User, re
 			continue
 		}
 		attemptedGroups++
-		items, err := load(ctx, user, request, definition, limit+1, cursor, sortSpec)
+		branchTimeout := mediaSearchBranchTimeout
+		if definition.Live {
+			branchTimeout = liveTVSearchBranchTimeout
+		}
+		branchCtx, cancelBranch := context.WithTimeout(ctx, branchTimeout)
+		items, err := load(branchCtx, user, request, definition, limit+1, cursor, sortSpec)
+		cancelBranch()
 		if err != nil {
 			lastGroupErr = err
 			errorCode := "search_group_unavailable"

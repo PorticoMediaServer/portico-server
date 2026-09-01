@@ -13,6 +13,17 @@ import (
 // the caller's transaction boundary. revision and source describe the
 // canonical metadata snapshot from which the rows were derived.
 func replaceMediaCategoryFacetsTx(ctx context.Context, tx *sql.Tx, mediaID string, revision int, source string) error {
+	return replaceMediaCategoryFacetRowsTx(ctx, tx, mediaID, revision, source, true)
+}
+
+// replaceMediaCategoryFacetRowsTx owns the shared row projection used by both
+// ordinary one-item metadata updates and whole-library repair. Ordinary
+// updates rebuild the library aggregate inside the same transaction so readers
+// never observe mismatched rows and counts. Library repair deliberately passes
+// rebuildCounts=false for its bounded item batches and rebuilds the aggregate
+// once, after every item row has converged; rebuilding the whole aggregate for
+// every repaired item is quadratic on large libraries.
+func replaceMediaCategoryFacetRowsTx(ctx context.Context, tx *sql.Tx, mediaID string, revision int, source string, rebuildCounts bool) error {
 	if tx == nil {
 		return errors.New("replace media category facets: nil transaction")
 	}
@@ -90,7 +101,7 @@ func replaceMediaCategoryFacetsTx(ctx context.Context, tx *sql.Tx, mediaID strin
 	if err := normalizeAccessLabelFacetSortValuesTx(tx, "media_id", mediaID); err != nil {
 		return err
 	}
-	if libraryID != "" {
+	if rebuildCounts && libraryID != "" {
 		// A one-item projection changes a library-wide materialized view. Rebuild
 		// it before the caller commits so readers can never observe a partially
 		// invalidated category cache, and rollback restores both projections.

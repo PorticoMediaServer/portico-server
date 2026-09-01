@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"crypto/ecdh"
 	"crypto/rand"
 	"encoding/base64"
@@ -17,6 +18,48 @@ func receiverPublicKeyForTest(t *testing.T) string {
 		t.Fatal(err)
 	}
 	return base64.RawURLEncoding.EncodeToString(key.PublicKey().Bytes())
+}
+
+func TestAPIKeyRevocationInvalidatesReceiverAuthorization(t *testing.T) {
+	serverURL, db, server := newAuthTestServerWithInstance(t)
+	var ownerID string
+	if err := db.QueryRow(`SELECT id FROM users WHERE role = 'owner' LIMIT 1`).Scan(&ownerID); err != nil {
+		t.Fatal(err)
+	}
+	key, token, err := server.createAPIKey(ownerID, APIKeyCreateRequest{Name: "Receiver capability", Scopes: []string{"read", "playMedia"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	principalRequest, _ := http.NewRequest(http.MethodGet, serverURL+"/api/playback/receivers", nil)
+	principalRequest.Header.Set("Authorization", "Bearer "+token)
+	user, ok, err := server.currentLocalBearerUserWithError(principalRequest)
+	if err != nil || !ok || user.APIKeyID != key.ID {
+		t.Fatalf("resolve receiver API key user=%#v ok=%t err=%v", user, ok, err)
+	}
+	receiver, err := server.registerPlaybackReceiver(context.Background(), user, PlaybackReceiverRequest{
+		ReceiverID: "receiver-api-key", Name: "API receiver", Platform: "Portico Test",
+		ClientInstanceID: "receiver-api-client", ReceiverPublicKey: receiverPublicKeyForTest(t), SupportedCommands: []string{"load", "play"},
+	})
+	if err != nil {
+		t.Fatalf("register receiver: %v", err)
+	}
+	grant, err := server.issueReceiverControllerGrant(context.Background(), user, receiver.ID, ReceiverAuthorizationRequest{
+		RequestID: "receiver-api-authorization", ControllerID: "api-controller", ControllerPublicKey: receiverPublicKeyForTest(t),
+		AllowedCommands: []string{"load", "play"}, ClientInstanceID: "api-controller-client",
+	})
+	if err != nil {
+		t.Fatalf("issue receiver authorization: %v", err)
+	}
+	if _, err := server.revokeAPIKey(key.ID); err != nil {
+		t.Fatalf("revoke API key: %v", err)
+	}
+	if _, _, err := server.authorizePlaybackReceiverHandoff(context.Background(), user, receiver.ID, grant.AuthorizationID, receiver.ReceiverPublicKeyFingerprint); err == nil {
+		t.Fatal("revoked API key receiver authorization remained usable")
+	}
+	var revokedAt string
+	if err := db.QueryRow(`SELECT revoked_at FROM playback_receiver_authorizations WHERE id = ?`, grant.AuthorizationID).Scan(&revokedAt); err != nil || revokedAt == "" {
+		t.Fatalf("receiver authorization was not transactionally revoked: revokedAt=%q err=%v", revokedAt, err)
+	}
 }
 
 func TestPlaybackReceiverKeyBoundAuthorizationLifecycle(t *testing.T) {

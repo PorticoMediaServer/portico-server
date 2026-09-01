@@ -66,6 +66,59 @@ func mediaActionUserFromContext(ctx context.Context, userID string) (User, bool)
 	return user, identityID != "" && (identityID == viewerProfileID(user) || identityID == accountIDForUser(user))
 }
 
+// requestPrincipalForIdentityContext reuses only the immutable authorization
+// snapshot attached by withAuth to this request. That snapshot was fenced while
+// authenticating the request, so every downstream query sees one consistent
+// revision without re-running the authorization-revision query. Requests that
+// bypass withAuth (tests and internal jobs) retain the verified shared-cache
+// path and its per-hit revision check.
+func (s *Server) requestPrincipalForIdentityContext(ctx context.Context, userID string) (RequestPrincipal, error) {
+	if user, ok := mediaActionUserFromContext(ctx, userID); ok {
+		accountID := accountIDForUser(user)
+		profileID := viewerProfileID(user)
+		return RequestPrincipal{
+			AuthenticationAuthority: normalizeAuthenticationAuthority(user.AuthOrigin),
+			MembershipIdentity: RequestMembershipIdentity{
+				ServerAccountID:    accountID,
+				HostedAccountID:    user.PorticoUserID,
+				HostedMembershipID: user.PorticoMembershipID,
+			},
+			MembershipEnvelope: RequestMembershipEnvelope{
+				Role:                   user.Role,
+				Permissions:            clonePermissionMap(user.Permissions),
+				LibraryIDs:             append([]string(nil), user.LibraryIDs...),
+				AccessSchedule:         user.AccessSchedule,
+				TagPolicy:              user.TagPolicy,
+				DevicePolicy:           user.DevicePolicy,
+				ChannelPolicy:          user.ChannelPolicy,
+				MaxContentRating:       user.MaxContentRating,
+				MaxActiveSessions:      user.MaxActiveSessions,
+				MaxActiveStreams:       user.MaxActiveStreams,
+				RemoteBitrateLimitMbps: user.RemoteBitrateLimitMbps,
+				AccountProfilesAllowed: user.AccountProfilesAllowed,
+			},
+			AccountID:              accountID,
+			ProfileID:              profileID,
+			ProfileIsPrimary:       user.ProfileIsPrimary,
+			DisplayName:            user.DisplayName,
+			AvatarURL:              user.ProfileImageURL,
+			Preferences:            user.Preferences,
+			Permissions:            clonePermissionMap(user.Permissions),
+			MaxContentRating:       user.MaxContentRating,
+			MaximumAgeRating:       user.MaximumAgeRating,
+			AllowUnrated:           user.AllowUnrated,
+			BlockedLabels:          append([]string(nil), user.BlockedProfileLabels...),
+			AllowFeedback:          user.AllowFeedback,
+			MaxActiveSessions:      user.MaxActiveSessions,
+			MaxActiveStreams:       user.MaxActiveStreams,
+			RemoteBitrateLimitMbps: user.RemoteBitrateLimitMbps,
+			AccountProfilesAllowed: user.AccountProfilesAllowed,
+		}, nil
+	}
+	accountID, profileID := s.accountAndProfileIDsContext(ctx, userID)
+	return s.resolveRequestPrincipalContext(ctx, accountID, profileID)
+}
+
 func (s *Server) mediaActionUserContext(ctx context.Context, userID string) (User, error) {
 	userID = strings.TrimSpace(userID)
 	if userID == "" {

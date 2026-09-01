@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -42,6 +43,10 @@ type browseResponse struct {
 	Items []mediaInfo `json:"items"`
 }
 
+type libraryScanRequest struct {
+	Mode string `json:"mode"`
+}
+
 type imageSet struct {
 	Poster   string `json:"poster"`
 	Backdrop string `json:"backdrop"`
@@ -49,17 +54,37 @@ type imageSet struct {
 }
 
 type playbackResponse struct {
-	SessionID string `json:"sessionId"`
+	SessionID         string `json:"sessionId"`
+	SourceURL         string `json:"sourceUrl"`
+	DirectPlay        bool   `json:"directPlay"`
+	NextEventSequence int64  `json:"nextEventSequence"`
+	Generation        int64  `json:"generation"`
+	MediaGrant        struct {
+		Token     string `json:"token"`
+		ExpiresAt string `json:"expiresAt"`
+	} `json:"mediaGrant"`
+	Timeline struct {
+		DurationSeconds int `json:"durationSeconds"`
+	} `json:"timeline"`
+}
+
+type playbackProgressAcknowledgement struct {
+	HighestEventSequence int64 `json:"highestEventSequence"`
+	Generation           int64 `json:"generation"`
 }
 
 type sample struct {
-	Name   string
-	Method string
-	Path   string
-	Status int
-	Bytes  int
-	Took   time.Duration
-	Err    string
+	Name            string
+	Method          string
+	Path            string
+	Status          int
+	Bytes           int
+	Took            time.Duration
+	Server          time.Duration
+	Queue           time.Duration
+	Handler         time.Duration
+	HasServerTiming bool
+	Err             string
 }
 
 type report struct {
@@ -74,6 +99,9 @@ type report struct {
 	P50Millis           int64                      `json:"p50Millis"`
 	P95Millis           int64                      `json:"p95Millis"`
 	P99Millis           int64                      `json:"p99Millis"`
+	ServerP95Millis     float64                    `json:"serverP95Millis,omitempty"`
+	QueueP95Millis      float64                    `json:"queueP95Millis,omitempty"`
+	HandlerP95Millis    float64                    `json:"handlerP95Millis,omitempty"`
 	PeakPlayback        int64                      `json:"peakPlayback"`
 	StatusCounts        map[int]int                `json:"statusCounts"`
 	ByName              map[string]metric          `json:"byName"`
@@ -88,9 +116,17 @@ type report struct {
 }
 
 type metric struct {
-	Requests  int   `json:"requests"`
-	Errors    int   `json:"errors"`
-	P95Millis int64 `json:"p95Millis"`
+	Requests         int     `json:"requests"`
+	Errors           int     `json:"errors"`
+	Bytes            int64   `json:"bytes"`
+	AverageBytes     int64   `json:"averageBytes"`
+	P95Bytes         int     `json:"p95Bytes"`
+	P50Millis        int64   `json:"p50Millis"`
+	P95Millis        int64   `json:"p95Millis"`
+	P99Millis        int64   `json:"p99Millis"`
+	ServerP95Millis  float64 `json:"serverP95Millis,omitempty"`
+	QueueP95Millis   float64 `json:"queueP95Millis,omitempty"`
+	HandlerP95Millis float64 `json:"handlerP95Millis,omitempty"`
 }
 
 type diagnosticsSnapshot struct {
@@ -214,8 +250,10 @@ type diagnosticsTimelinePoint struct {
 
 func main() {
 	baseURL := flag.String("base-url", "http://127.0.0.1:32500", "Portico server base URL")
-	login := flag.String("login", "admin", "Portico login username or email")
-	password := flag.String("password", "", "Portico password")
+	libraryID := flag.String("library-id", strings.TrimSpace(os.Getenv("PORTICO_ACCEPTANCE_LIBRARY_ID")), "specific library fixture to exercise (defaults to PORTICO_ACCEPTANCE_LIBRARY_ID or the first accessible library)")
+	login := flag.String("login", firstNonEmptyEnvironment("PORTICO_ACCEPTANCE_LOGIN", "admin"), "Portico login username or email (defaults to PORTICO_ACCEPTANCE_LOGIN)")
+	password := flag.String("password", os.Getenv("PORTICO_ACCEPTANCE_PASSWORD"), "Portico password (defaults to PORTICO_ACCEPTANCE_PASSWORD)")
+	bearerTokenFile := flag.String("bearer-token-file", strings.TrimSpace(os.Getenv("PORTICO_ACCEPTANCE_BEARER_TOKEN_FILE")), "path to a 0600 file containing a temporary API bearer token (defaults to PORTICO_ACCEPTANCE_BEARER_TOKEN_FILE)")
 	users := flag.Int("users", 24, "number of concurrent virtual users")
 	duration := flag.Duration("duration", 30*time.Second, "test duration")
 	timeout := flag.Duration("timeout", 10*time.Second, "per-request timeout")
@@ -232,8 +270,12 @@ func main() {
 	maxAdmissionRejections := flag.Uint64("max-admission-rejections", 0, "maximum allowed per-user admission rejection delta across search, downloads, direct streams, and transcodes; 0 disables")
 	flag.Parse()
 
-	if strings.TrimSpace(*password) == "" {
-		fail("missing -password")
+	bearerToken, err := acceptanceBearerToken(*bearerTokenFile, os.Getenv("PORTICO_ACCEPTANCE_BEARER_TOKEN"))
+	if err != nil {
+		fail("load bearer token: %v", err)
+	}
+	if bearerToken == "" && strings.TrimSpace(*password) == "" {
+		fail("missing -password or PORTICO_ACCEPTANCE_BEARER_TOKEN_FILE")
 	}
 	if *users < 1 {
 		fail("-users must be at least 1")
@@ -248,19 +290,17 @@ func main() {
 	if err != nil {
 		fail("invalid -profile: %v", err)
 	}
-	if !*enablePlayback {
-		profile.Playback = false
-	}
+	profile.Playback = *enablePlayback
 	root, err := normalizeBaseURL(*baseURL)
 	if err != nil {
 		fail("invalid -base-url: %v", err)
 	}
 
-	coordinator, err := newVirtualUser(root, *login, *password, *timeout)
+	coordinator, err := newVirtualUser(root, *login, *password, bearerToken, *timeout)
 	if err != nil {
-		fail("login coordinator: %v", err)
+		fail("authenticate coordinator: %v", err)
 	}
-	fixture, err := discoverFixture(coordinator)
+	fixture, err := discoverFixture(coordinator, *libraryID)
 	if err != nil {
 		fail("discover libraries/media: %v", err)
 	}
@@ -269,6 +309,14 @@ func main() {
 	started := time.Now().UTC()
 	deadline := time.Now().Add(*duration)
 	samples := make(chan sample, *users*32)
+	collectedSamples := make([]sample, 0, *users*64)
+	samplesDrained := make(chan struct{})
+	go func() {
+		defer close(samplesDrained)
+		for item := range samples {
+			collectedSamples = append(collectedSamples, item)
+		}
+	}()
 	var wg sync.WaitGroup
 	var diagnosticsWG sync.WaitGroup
 	var playback playbackTracker
@@ -283,6 +331,9 @@ func main() {
 		}()
 	}
 	scenarios := append([]string(nil), profileScenarios...)
+	if bearerToken != "" {
+		scenarios = append(scenarios, "authentication_api_key")
+	}
 	if profile.Playback {
 		scenarios = append(scenarios, "playback")
 	}
@@ -296,7 +347,7 @@ func main() {
 				time.Sleep(delay)
 			}
 			path := "/api/libraries/" + url.PathEscape(fixture.Library.ID) + "/scan"
-			samples <- coordinator.doJSON("queue-library-scan", http.MethodPost, path, nil, nil)
+			samples <- coordinator.doJSON("queue-library-scan", http.MethodPost, path, reconcileScanRequest(), nil)
 		}()
 	}
 	if *metadataRefreshDuringRun {
@@ -320,9 +371,9 @@ func main() {
 		scenarios = append(scenarios, "live_tv_guide_unavailable")
 	}
 	for i := 0; i < *users; i++ {
-		user, err := newVirtualUser(root, *login, *password, *timeout)
+		user, err := newVirtualUser(root, *login, *password, bearerToken, *timeout)
 		if err != nil {
-			fail("login virtual user %d: %v", i+1, err)
+			fail("authenticate virtual user %d: %v", i+1, err)
 		}
 		wg.Add(1)
 		go func(id int, vu *virtualUser) {
@@ -334,10 +385,16 @@ func main() {
 	close(diagnosticsDone)
 	diagnosticsWG.Wait()
 	close(samples)
+	<-samplesDrained
 
 	finished := time.Now().UTC()
 	diagnosticsAfter := coordinator.rawJSON("/api/system/diagnostics")
-	result := summarize(root, *users, *duration, started, finished, samples)
+	reportSamples := make(chan sample, len(collectedSamples))
+	for _, item := range collectedSamples {
+		reportSamples <- item
+	}
+	close(reportSamples)
+	result := summarize(root, *users, *duration, started, finished, reportSamples)
 	result.PeakPlayback = playback.max.Load()
 	result.DiagnosticsBefore = diagnosticsBefore
 	result.DiagnosticsAfter = diagnosticsAfter
@@ -423,6 +480,17 @@ type loadProfile struct {
 	Transcode bool
 }
 
+func firstNonEmptyEnvironment(name, fallback string) string {
+	if value := strings.TrimSpace(os.Getenv(name)); value != "" {
+		return value
+	}
+	return fallback
+}
+
+func reconcileScanRequest() libraryScanRequest {
+	return libraryScanRequest{Mode: "reconcile"}
+}
+
 func parseLoadProfile(raw string) (loadProfile, []string, error) {
 	tokens := strings.Split(strings.TrimSpace(raw), ",")
 	if len(tokens) == 0 {
@@ -474,7 +542,7 @@ func parseLoadProfile(raw string) (loadProfile, []string, error) {
 	return profile, scenarios, nil
 }
 
-func discoverFixture(vu *virtualUser) (fixtureData, error) {
+func discoverFixture(vu *virtualUser, preferredLibraryID string) (fixtureData, error) {
 	var libraries listResponse[libraryInfo]
 	if sample := vu.doJSON("libraries", http.MethodGet, "/api/libraries", nil, &libraries); sample.Err != "" || sample.Status != http.StatusOK {
 		return fixtureData{}, fmt.Errorf("libraries status=%d error=%s", sample.Status, sample.Err)
@@ -483,6 +551,19 @@ func discoverFixture(vu *virtualUser) (fixtureData, error) {
 		return fixtureData{}, fmt.Errorf("server has no libraries")
 	}
 	library := libraries.Items[0]
+	if preferredLibraryID = strings.TrimSpace(preferredLibraryID); preferredLibraryID != "" {
+		found := false
+		for _, candidate := range libraries.Items {
+			if candidate.ID == preferredLibraryID {
+				library = candidate
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fixtureData{}, fmt.Errorf("library %q is not accessible", preferredLibraryID)
+		}
+	}
 	var media browseResponse
 	path := "/api/libraries/" + url.PathEscape(library.ID) + "/browse"
 	payload := map[string]any{"pivot": defaultLibraryPivot(library.Type), "limit": 48, "sort": []map[string]string{{"field": "dateAdded", "direction": "desc"}}}
@@ -516,20 +597,25 @@ func defaultLibraryPivot(libraryType string) string {
 }
 
 type virtualUser struct {
-	root   string
-	client *http.Client
-	rng    *rand.Rand
+	root        string
+	client      *http.Client
+	rng         *rand.Rand
+	bearerToken string
 }
 
-func newVirtualUser(root, login, password string, timeout time.Duration) (*virtualUser, error) {
+func newVirtualUser(root, login, password, bearerToken string, timeout time.Duration) (*virtualUser, error) {
 	jar, _ := cookiejar.New(nil)
 	vu := &virtualUser{
-		root: root,
+		root:        root,
+		bearerToken: strings.TrimSpace(bearerToken),
 		client: &http.Client{
 			Jar:     jar,
 			Timeout: timeout,
 		},
 		rng: rand.New(rand.NewSource(time.Now().UnixNano())),
+	}
+	if vu.bearerToken != "" {
+		return vu, nil
 	}
 	sample := vu.doJSON("login", http.MethodPost, "/api/auth/login", map[string]string{
 		"login":    login,
@@ -587,7 +673,7 @@ func runUser(id int, vu *virtualUser, fixture fixtureData, deadline time.Time, p
 			}
 		}
 		if profile.Search {
-			out <- vu.doJSON("search", http.MethodGet, "/api/search?q="+url.QueryEscape(searchTerm(item.Title)), nil, nil)
+			out <- vu.doJSON("search", http.MethodPost, "/api/search", map[string]any{"query": searchTerm(item.Title)}, nil)
 		}
 		if profile.Dashboard {
 			out <- vu.doJSON("settings", http.MethodGet, "/api/settings", nil, nil)
@@ -601,16 +687,17 @@ func runUser(id int, vu *virtualUser, fixture fixtureData, deadline time.Time, p
 		if profile.Download {
 			out <- vu.doJSON("download-head", http.MethodHead, "/api/media/"+mediaID+"/download", nil, nil)
 		}
-		if profile.Stream {
-			out <- vu.doJSONWithHeaders("direct-stream-range", http.MethodGet, "/api/media/"+mediaID+"/stream", nil, nil, map[string]string{"Range": "bytes=0-65535"})
-		}
 		if profile.Artwork {
 			artworkPath := firstNonEmpty(item.Artwork.Poster, item.Artwork.Thumb, item.Artwork.Backdrop, item.Images.Poster, item.Images.Thumb, item.Images.Backdrop)
 			if artworkPath != "" {
 				out <- vu.doJSON("artwork", http.MethodGet, artworkPath, nil, nil)
 			}
 		}
-		if profile.Playback && iteration%3 == 0 {
+		// Byte routes deliberately reject account and API-key credentials. A
+		// canonical playback session mints the short-lived PorticoMedia grant
+		// that authorizes the range read, so stream-only profiles still need a
+		// bounded session lifecycle.
+		if (profile.Playback || profile.Stream) && iteration%3 == 0 {
 			runPlayback(vu, item.ID, out, tracker)
 		}
 		if profile.Transcode && iteration%3 == 0 {
@@ -622,16 +709,11 @@ func runUser(id int, vu *virtualUser, fixture fixtureData, deadline time.Time, p
 
 func runPlayback(vu *virtualUser, mediaID string, out chan<- sample, tracker *playbackTracker) {
 	var started playbackResponse
-	startSample := vu.doJSON("playback-start", http.MethodPost, "/api/playback/start", map[string]any{
-		"mediaId":     mediaID,
-		"skipPreroll": true,
-		"clientProfile": map[string]any{
-			"device":               "load-harness",
-			"platform":             "web",
-			"supportedContainers":  []string{"mp4"},
-			"supportedVideoCodecs": []string{"h264"},
-			"supportedAudioCodecs": []string{"aac"},
-		},
+	startSample := vu.doJSON("playback-start", http.MethodPost, "/api/playback-sessions", map[string]any{
+		"mediaId":       mediaID,
+		"skipPreroll":   true,
+		"intent":        map[string]any{"transportClass": "remote", "quality": map[string]any{"mode": "automatic"}},
+		"clientProfile": loadHarnessPlaybackClientProfile(),
 	}, &started)
 	out <- startSample
 	if startSample.Err != "" || startSample.Status != http.StatusOK || started.SessionID == "" {
@@ -639,15 +721,92 @@ func runPlayback(vu *virtualUser, mediaID string, out chan<- sample, tracker *pl
 	}
 	tracker.begin()
 	defer tracker.end()
-	for i := 0; i < 2; i++ {
-		out <- vu.doJSON("playback-heartbeat", http.MethodPatch, "/api/playback/"+url.PathEscape(started.SessionID), map[string]any{
-			"state":           "playing",
-			"progressSeconds": 30 + i*15,
-			"durationSeconds": 7200,
-			"bandwidthMbps":   8.5,
-		}, nil)
+	if started.SourceURL != "" && started.MediaGrant.Token != "" {
+		out <- vu.doJSONWithHeaders("direct-stream-range", http.MethodGet, started.SourceURL, nil, nil, map[string]string{
+			"Authorization": "PorticoMedia " + started.MediaGrant.Token,
+			"Range":         "bytes=0-65535",
+		})
 	}
-	out <- vu.doJSON("playback-end", http.MethodDelete, "/api/playback/"+url.PathEscape(started.SessionID), nil, nil)
+	eventSequence := started.NextEventSequence
+	if eventSequence < 1 {
+		eventSequence = 1
+	}
+	generation := started.Generation
+	for i := 0; i < 2; i++ {
+		position := float64(30 + i*15)
+		var acknowledgement playbackProgressAcknowledgement
+		heartbeat := vu.doJSON("playback-heartbeat", http.MethodPatch, "/api/playback-sessions/"+url.PathEscape(started.SessionID), map[string]any{
+			"eventSequence":   eventSequence,
+			"generation":      generation,
+			"recordedAt":      time.Now().UTC().Format(time.RFC3339Nano),
+			"state":           "playing",
+			"positionSeconds": position,
+			"durationSeconds": max(started.Timeline.DurationSeconds, 60),
+			"bandwidthMbps":   8.5,
+		}, &acknowledgement)
+		out <- heartbeat
+		if heartbeat.Err == "" && heartbeat.Status >= 200 && heartbeat.Status < 300 {
+			eventSequence = max(eventSequence+1, acknowledgement.HighestEventSequence+1)
+			if acknowledgement.Generation > 0 {
+				generation = acknowledgement.Generation
+			}
+		}
+	}
+	duration := max(started.Timeline.DurationSeconds, 60)
+	out <- vu.doJSON("playback-end", http.MethodDelete, "/api/playback-sessions/"+url.PathEscape(started.SessionID), map[string]any{
+		"requestId": fmt.Sprintf("load-harness-stop-%d", time.Now().UnixNano()),
+		"terminal": map[string]any{
+			"disposition":     "stopped",
+			"generation":      generation,
+			"eventSequence":   eventSequence,
+			"recordedAt":      time.Now().UTC().Format(time.RFC3339Nano),
+			"positionSeconds": 45,
+			"durationSeconds": duration,
+		},
+	}, nil)
+}
+
+func loadHarnessPlaybackClientProfile() map[string]any {
+	return map[string]any{
+		"capabilitySchemaVersion": "playback-capability-v2",
+		"clientFamily":            "chromium",
+		"clientVersion":           "load-harness-1",
+		"platform":                "web",
+		"device":                  "Portico acceptance load harness",
+		"capabilityEvidence": []any{map[string]any{
+			"id":         "portico-load-harness-runtime-v1",
+			"source":     "unauthenticated_probe",
+			"confidence": "high",
+			"producer":   "portico-load-harness",
+			"reviewedAt": time.Now().UTC().Format(time.RFC3339),
+			"tuples": []any{
+				map[string]any{
+					"mediaKind": "audiovisual", "protocol": "http", "container": "mp4",
+					"video":    map[string]any{"codec": "h264", "dynamicRange": "sdr", "bitDepth": 8, "maxWidth": 1920, "maxHeight": 1080, "maxFrameRate": 60},
+					"audio":    map[string]any{"codec": "aac", "layout": "mono", "route": "decode", "maxChannels": 1},
+					"subtitle": map[string]any{"mode": "none"},
+				},
+				map[string]any{
+					"mediaKind": "audiovisual", "protocol": "http", "container": "mp4",
+					"video":    map[string]any{"codec": "h264", "dynamicRange": "sdr", "bitDepth": 8, "maxWidth": 1920, "maxHeight": 1080, "maxFrameRate": 60},
+					"audio":    map[string]any{"codec": "aac", "layout": "stereo", "route": "decode", "maxChannels": 2},
+					"subtitle": map[string]any{"mode": "none"},
+				},
+				map[string]any{
+					"mediaKind": "audiovisual", "protocol": "http", "container": "matroska",
+					"video":    map[string]any{"codec": "h264", "dynamicRange": "sdr", "bitDepth": 8, "maxWidth": 1920, "maxHeight": 1080, "maxFrameRate": 60},
+					"audio":    map[string]any{"codec": "aac", "layout": "stereo", "route": "decode", "maxChannels": 2},
+					"subtitle": map[string]any{"mode": "none"},
+				},
+				map[string]any{
+					"mediaKind": "audiovisual", "protocol": "hls", "container": "mp4",
+					"video":    map[string]any{"codec": "h264", "dynamicRange": "sdr", "bitDepth": 8, "maxWidth": 1920, "maxHeight": 1080, "maxFrameRate": 60},
+					"audio":    map[string]any{"codec": "aac", "layout": "stereo", "route": "decode", "maxChannels": 2},
+					"subtitle": map[string]any{"mode": "none"},
+				},
+			},
+		}},
+	}
 }
 
 func runTranscode(vu *virtualUser, mediaID string, out chan<- sample) {
@@ -682,7 +841,8 @@ func (vu *virtualUser) doJSONWithHeaders(name, method, path string, payload any,
 	for key, value := range headers {
 		req.Header.Set(key, value)
 	}
-	if method != http.MethodGet && method != http.MethodHead {
+	vu.authorize(req)
+	if vu.bearerToken == "" && method != http.MethodGet && method != http.MethodHead {
 		req.Header.Set(csrfHeaderName, "1")
 	}
 	start := time.Now()
@@ -694,6 +854,7 @@ func (vu *virtualUser) doJSONWithHeaders(name, method, path string, payload any,
 		return item
 	}
 	defer resp.Body.Close()
+	item.Server, item.Queue, item.Handler, item.HasServerTiming = parseServerTiming(resp.Header.Get("Server-Timing"))
 	responseBody, err := io.ReadAll(resp.Body)
 	item.Status = resp.StatusCode
 	item.Bytes = len(responseBody)
@@ -714,6 +875,7 @@ func (vu *virtualUser) rawJSON(path string) json.RawMessage {
 	if err != nil {
 		return nil
 	}
+	vu.authorize(req)
 	resp, err := vu.client.Do(req)
 	if err != nil {
 		return nil
@@ -727,6 +889,80 @@ func (vu *virtualUser) rawJSON(path string) json.RawMessage {
 		return nil
 	}
 	return json.RawMessage(body)
+}
+
+func (vu *virtualUser) authorize(req *http.Request) {
+	if vu.bearerToken != "" && req.Header.Get("Authorization") == "" {
+		req.Header.Set("Authorization", "Bearer "+vu.bearerToken)
+	}
+}
+
+func parseServerTiming(value string) (server, queue, handler time.Duration, ok bool) {
+	for _, entry := range strings.Split(value, ",") {
+		fields := strings.Split(entry, ";")
+		if len(fields) < 2 {
+			continue
+		}
+		name := strings.ToLower(strings.TrimSpace(fields[0]))
+		var duration time.Duration
+		found := false
+		for _, parameter := range fields[1:] {
+			key, raw, present := strings.Cut(strings.TrimSpace(parameter), "=")
+			if !present || !strings.EqualFold(strings.TrimSpace(key), "dur") {
+				continue
+			}
+			millis, err := strconv.ParseFloat(strings.Trim(strings.TrimSpace(raw), `"`), 64)
+			if err != nil || millis < 0 {
+				continue
+			}
+			duration = time.Duration(millis * float64(time.Millisecond))
+			found = true
+			break
+		}
+		if !found {
+			continue
+		}
+		switch name {
+		case "portico":
+			server = duration
+			ok = true
+		case "queue":
+			queue = duration
+		case "handler":
+			handler = duration
+		}
+	}
+	return server, queue, handler, ok
+}
+
+func acceptanceBearerToken(path, environmentToken string) (string, error) {
+	path = strings.TrimSpace(path)
+	environmentToken = strings.TrimSpace(environmentToken)
+	if path != "" && environmentToken != "" {
+		return "", fmt.Errorf("set only one of PORTICO_ACCEPTANCE_BEARER_TOKEN_FILE or PORTICO_ACCEPTANCE_BEARER_TOKEN")
+	}
+	if path == "" {
+		return environmentToken, nil
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return "", err
+	}
+	if !info.Mode().IsRegular() {
+		return "", fmt.Errorf("bearer token path is not a regular file")
+	}
+	if info.Mode().Perm()&0o077 != 0 {
+		return "", fmt.Errorf("bearer token file permissions must be 0600 or stricter")
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	token := strings.TrimSpace(string(data))
+	if token == "" {
+		return "", fmt.Errorf("bearer token file is empty")
+	}
+	return token, nil
 }
 
 func diagnosticsDeltaFor(beforeRaw, afterRaw json.RawMessage) *diagnosticsDelta {
@@ -900,8 +1136,15 @@ func jobBacklogValue(queued, running int, field string) int {
 
 func summarize(baseURL string, users int, duration time.Duration, started, finished time.Time, samples <-chan sample) report {
 	var durations []time.Duration
+	var serverDurations []time.Duration
+	var queueDurations []time.Duration
+	var handlerDurations []time.Duration
 	statusCounts := map[int]int{}
 	byNameDurations := map[string][]time.Duration{}
+	byNameServerDurations := map[string][]time.Duration{}
+	byNameQueueDurations := map[string][]time.Duration{}
+	byNameHandlerDurations := map[string][]time.Duration{}
+	byNameBytes := map[string][]int{}
 	byNameErrors := map[string]int{}
 	var errors int
 	var bytes int64
@@ -910,19 +1153,51 @@ func summarize(baseURL string, users int, duration time.Duration, started, finis
 		statusCounts[item.Status]++
 		bytes += int64(item.Bytes)
 		byNameDurations[item.Name] = append(byNameDurations[item.Name], item.Took)
+		byNameBytes[item.Name] = append(byNameBytes[item.Name], item.Bytes)
+		if item.HasServerTiming {
+			serverDurations = append(serverDurations, item.Server)
+			queueDurations = append(queueDurations, item.Queue)
+			handlerDurations = append(handlerDurations, item.Handler)
+			byNameServerDurations[item.Name] = append(byNameServerDurations[item.Name], item.Server)
+			byNameQueueDurations[item.Name] = append(byNameQueueDurations[item.Name], item.Queue)
+			byNameHandlerDurations[item.Name] = append(byNameHandlerDurations[item.Name], item.Handler)
+		}
 		if item.Err != "" || item.Status < 200 || item.Status >= 300 {
 			errors++
 			byNameErrors[item.Name]++
 		}
 	}
 	sort.Slice(durations, func(i, j int) bool { return durations[i] < durations[j] })
+	sort.Slice(serverDurations, func(i, j int) bool { return serverDurations[i] < serverDurations[j] })
+	sort.Slice(queueDurations, func(i, j int) bool { return queueDurations[i] < queueDurations[j] })
+	sort.Slice(handlerDurations, func(i, j int) bool { return handlerDurations[i] < handlerDurations[j] })
 	byName := map[string]metric{}
 	for name, values := range byNameDurations {
 		sort.Slice(values, func(i, j int) bool { return values[i] < values[j] })
+		responseBytes := byNameBytes[name]
+		sort.Ints(responseBytes)
+		serverValues := byNameServerDurations[name]
+		queueValues := byNameQueueDurations[name]
+		handlerValues := byNameHandlerDurations[name]
+		sort.Slice(serverValues, func(i, j int) bool { return serverValues[i] < serverValues[j] })
+		sort.Slice(queueValues, func(i, j int) bool { return queueValues[i] < queueValues[j] })
+		sort.Slice(handlerValues, func(i, j int) bool { return handlerValues[i] < handlerValues[j] })
+		var totalBytes int64
+		for _, responseBytes := range responseBytes {
+			totalBytes += int64(responseBytes)
+		}
 		byName[name] = metric{
-			Requests:  len(values),
-			Errors:    byNameErrors[name],
-			P95Millis: percentile(values, 95).Milliseconds(),
+			Requests:         len(values),
+			Errors:           byNameErrors[name],
+			Bytes:            totalBytes,
+			AverageBytes:     totalBytes / int64(len(values)),
+			P95Bytes:         percentileInt(responseBytes, 95),
+			P50Millis:        percentile(values, 50).Milliseconds(),
+			P95Millis:        percentile(values, 95).Milliseconds(),
+			P99Millis:        percentile(values, 99).Milliseconds(),
+			ServerP95Millis:  durationMillis(percentile(serverValues, 95)),
+			QueueP95Millis:   durationMillis(percentile(queueValues, 95)),
+			HandlerP95Millis: durationMillis(percentile(handlerValues, 95)),
 		}
 	}
 	elapsed := finished.Sub(started).Seconds()
@@ -947,11 +1222,32 @@ func summarize(baseURL string, users int, duration time.Duration, started, finis
 		P50Millis:         percentile(durations, 50).Milliseconds(),
 		P95Millis:         percentile(durations, 95).Milliseconds(),
 		P99Millis:         percentile(durations, 99).Milliseconds(),
+		ServerP95Millis:   durationMillis(percentile(serverDurations, 95)),
+		QueueP95Millis:    durationMillis(percentile(queueDurations, 95)),
+		HandlerP95Millis:  durationMillis(percentile(handlerDurations, 95)),
 		StatusCounts:      statusCounts,
 		ByName:            byName,
 		StartedAt:         started.Format(time.RFC3339),
 		FinishedAt:        finished.Format(time.RFC3339),
 	}
+}
+
+func durationMillis(value time.Duration) float64 {
+	return float64(value) / float64(time.Millisecond)
+}
+
+func percentileInt(sorted []int, p int) int {
+	if len(sorted) == 0 {
+		return 0
+	}
+	index := (len(sorted)*p + 99) / 100
+	if index < 1 {
+		index = 1
+	}
+	if index > len(sorted) {
+		index = len(sorted)
+	}
+	return sorted[index-1]
 }
 
 func percentile(sorted []time.Duration, p int) time.Duration {

@@ -10,12 +10,53 @@ import (
 	"net/url"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"strings"
 	"unicode"
 )
 
 const privatePathLabel = "<private-path>"
 const secretLabel = "<redacted-secret>"
+
+// reusablePorticoCredentialPattern is deliberately prefix-allowlisted. These
+// prefixes identify bearer credentials issued by Server or Hosted lifecycle
+// boundaries; arbitrary ptc_* public identifiers must remain diagnosable.
+// Eight characters is below every production credential's entropy-bearing
+// suffix while avoiding short logical labels such as ptc_api_id.
+var reusablePorticoCredentialPattern = regexp.MustCompile(`ptc_(?:api|clt|loc|lrf|srv|mg|dg|pb|cb|cr|sdp)_[A-Za-z0-9_-]{8,}`)
+
+// RedactPorticoCredentials removes standalone reusable Portico credentials
+// without requiring them to appear in an Authorization header or key/value
+// pair. It preserves surrounding punctuation and benign identifiers.
+func RedactPorticoCredentials(value string) string {
+	matches := reusablePorticoCredentialPattern.FindAllStringIndex(value, -1)
+	if len(matches) == 0 {
+		return value
+	}
+	var output strings.Builder
+	output.Grow(len(value))
+	cursor := 0
+	for _, match := range matches {
+		start, end := match[0], match[1]
+		if (start > 0 && isPorticoCredentialCharacter(value[start-1])) ||
+			(end < len(value) && isPorticoCredentialCharacter(value[end])) {
+			continue
+		}
+		output.WriteString(value[cursor:start])
+		output.WriteString(secretLabel)
+		cursor = end
+	}
+	if cursor == 0 {
+		return value
+	}
+	output.WriteString(value[cursor:])
+	return output.String()
+}
+
+func isPorticoCredentialCharacter(value byte) bool {
+	return value >= 'a' && value <= 'z' || value >= 'A' && value <= 'Z' ||
+		value >= '0' && value <= '9' || value == '_'
+}
 
 // Policy is the process-wide operational logging policy. Paths are replaced
 // with a generic marker, known credentials are replaced by value, and
@@ -45,6 +86,7 @@ func OperationID(kind, value string) string {
 }
 
 func (p Policy) RedactString(value string) string {
+	value = RedactPorticoCredentials(value)
 	for _, sensitive := range p.SensitivePaths {
 		sensitive = strings.TrimSpace(sensitive)
 		if sensitive == "" {

@@ -60,6 +60,10 @@ func (s *Server) withMediaResourceAuth(next authedHandler) http.HandlerFunc {
 				writeError(w, http.StatusForbidden, "api_key_scope_denied", "This API key is not scoped for that request.")
 				return
 			}
+			if !s.enforceAPIKeyRequestLimit(w, user) {
+				return
+			}
+			s.observeAuthorizedAPIKeyUse(user)
 			// Library Channel manifests and segments are playback capabilities, not
 			// ordinary account resources. A cookie or API key identifies the caller
 			// but must never substitute for the operation-scoped media grant minted
@@ -328,6 +332,7 @@ func (s *Server) userForMediaGrant(r *http.Request) (User, error) {
 	}
 	var userID string
 	var profileID string
+	var apiKeyID string
 	var playbackSessionID string
 	var operationClassesJSON string
 	var lastAuthorizedAt string
@@ -337,7 +342,7 @@ func (s *Server) userForMediaGrant(r *http.Request) (User, error) {
 	var allowedQualitiesJSON string
 	var expiresAt string
 	err := s.queryUserRow(r.Context(), `
-		SELECT g.principal_user_id, g.profile_id, g.playback_session_id, g.operation_classes_json, g.last_authorized_at, g.authorization_revision, g.expires_at,
+		SELECT g.principal_user_id, g.profile_id, COALESCE(ps.api_key_id, ''), g.playback_session_id, g.operation_classes_json, g.last_authorized_at, g.authorization_revision, g.expires_at,
 			COALESCE(g.delivery_mode, ''), COALESCE(g.transcode_quality, ''), COALESCE(g.allowed_qualities_json, '[]')
 		FROM playback_media_grants g
 		JOIN playback_sessions ps ON ps.id = g.playback_session_id
@@ -349,7 +354,7 @@ func (s *Server) userForMediaGrant(r *http.Request) (User, error) {
 			AND ps.profile_id = g.profile_id
 			AND ps.ended_at = '' AND ps.state <> 'stopped'
 			AND COALESCE(u.disabled_at, '') = ''
-		LIMIT 1`, tokenHash, scope.ResourceKind, scope.ResourceID, now.Format(time.RFC3339)).Scan(&userID, &profileID, &playbackSessionID, &operationClassesJSON, &lastAuthorizedAt, &authorizationRevision, &expiresAt, &deliveryMode, &transcodeQuality, &allowedQualitiesJSON)
+		LIMIT 1`, tokenHash, scope.ResourceKind, scope.ResourceID, now.Format(time.RFC3339)).Scan(&userID, &profileID, &apiKeyID, &playbackSessionID, &operationClassesJSON, &lastAuthorizedAt, &authorizationRevision, &expiresAt, &deliveryMode, &transcodeQuality, &allowedQualitiesJSON)
 	if err != nil {
 		return User{}, errMediaGrantDenied
 	}
@@ -383,6 +388,10 @@ func (s *Server) userForMediaGrant(r *http.Request) (User, error) {
 	user := User{ID: userID, AccountID: userID, ProfileID: profileID}
 	applyRequestPrincipal(&user, principal)
 	user = s.hydratePlaybackVisibilityUserContext(r.Context(), user)
+	if !s.applyActiveAPIKeyIdentityContext(r.Context(), &user, apiKeyID) {
+		terminateAuthorization(playbackSessionID)
+		return User{}, errMediaGrantDenied
+	}
 	currentAuthorizationRevision, revisionErr := s.authorizationRevisionForUserContextStrict(r.Context(), user)
 	if revisionErr != nil || authorizationRevision == "" || authorizationRevision != currentAuthorizationRevision {
 		terminateAuthorization(playbackSessionID)
@@ -571,16 +580,17 @@ func (s *Server) issueMediaGrantBoundToPlan(ctx context.Context, user User, play
 	}
 	var sessionOwner string
 	var sessionProfileID string
+	var sessionAPIKeyID string
 	var sessionMediaID string
 	var isLive int
 	var planDigest string
 	var planJSON string
 	var sourceRevision string
 	var playbackGeneration int
-	if err := s.queryUserRow(ctx, `SELECT user_id, profile_id, media_id, is_live, COALESCE(plan_digest, ''), COALESCE(plan_json, '{}'), COALESCE(source_revision, ''), COALESCE(playback_generation, 0) FROM playback_sessions WHERE id = ? AND ended_at = '' AND state <> 'stopped'`, playbackSessionID).Scan(&sessionOwner, &sessionProfileID, &sessionMediaID, &isLive, &planDigest, &planJSON, &sourceRevision, &playbackGeneration); err != nil {
+	if err := s.queryUserRow(ctx, `SELECT user_id, profile_id, COALESCE(api_key_id, ''), media_id, is_live, COALESCE(plan_digest, ''), COALESCE(plan_json, '{}'), COALESCE(source_revision, ''), COALESCE(playback_generation, 0) FROM playback_sessions WHERE id = ? AND ended_at = '' AND state <> 'stopped'`, playbackSessionID).Scan(&sessionOwner, &sessionProfileID, &sessionAPIKeyID, &sessionMediaID, &isLive, &planDigest, &planJSON, &sourceRevision, &playbackGeneration); err != nil {
 		return MediaGrant{}, err
 	}
-	if sessionOwner != accountIDForUser(user) || sessionProfileID != viewerProfileID(user) || (resourceKind == "live_channel") != (isLive == 1) {
+	if sessionOwner != accountIDForUser(user) || sessionProfileID != viewerProfileID(user) || sessionAPIKeyID != strings.TrimSpace(user.APIKeyID) || (resourceKind == "live_channel") != (isLive == 1) {
 		return MediaGrant{}, errMediaGrantDenied
 	}
 	if requireSessionResource && sessionMediaID != resourceID {
@@ -607,6 +617,9 @@ func (s *Server) issueMediaGrantBoundToPlan(ctx context.Context, user User, play
 	authoritativeUser := User{ID: accountIDForUser(user), AccountID: accountIDForUser(user), ProfileID: viewerProfileID(user)}
 	applyRequestPrincipal(&authoritativeUser, principal)
 	authoritativeUser = s.hydratePlaybackVisibilityUserContext(ctx, authoritativeUser)
+	if !s.applyActiveAPIKeyIdentityContext(ctx, &authoritativeUser, sessionAPIKeyID) {
+		return MediaGrant{}, errMediaGrantDenied
+	}
 	if !requireSessionResource {
 		var queued int
 		_ = s.queryUserRow(ctx, `SELECT COUNT(*) FROM playback_session_queue WHERE session_id = ? AND media_id = ?`, playbackSessionID, resourceID).Scan(&queued)

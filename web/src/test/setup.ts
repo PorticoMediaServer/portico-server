@@ -3,6 +3,19 @@ import { cleanup } from '@testing-library/react';
 import { afterEach, beforeEach } from 'vitest';
 
 const lockTails = new Map<string, Promise<void>>();
+const browserImage = globalThis.Image;
+
+class SuccessfulTestImage {
+  onload: (() => void) | null = null;
+  onerror: (() => void) | null = null;
+  private value = '';
+  get src() { return this.value; }
+  set src(value: string) {
+    this.value = value;
+    queueMicrotask(() => this.onload?.());
+  }
+  decode() { return Promise.resolve(); }
+}
 
 const testLockManager = {
   request: <T,>(name: string, _options: LockOptions, callback: () => Promise<T> | T): Promise<T> => {
@@ -19,6 +32,7 @@ const testLockManager = {
 };
 
 beforeEach(() => {
+  Object.defineProperty(globalThis, 'Image', { configurable: true, writable: true, value: SuccessfulTestImage });
   lockTails.clear();
   Object.defineProperty(navigator, 'locks', {configurable: true, value: testLockManager});
   const overlays = document.createElement('div');
@@ -27,6 +41,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  Object.defineProperty(globalThis, 'Image', { configurable: true, writable: true, value: browserImage });
   lockTails.clear();
   cleanup();
   document.getElementById('portico-overlays')?.remove();

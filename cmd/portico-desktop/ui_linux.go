@@ -15,6 +15,7 @@ import (
 const (
 	statusNotifierInterface = "org.kde.StatusNotifierItem"
 	dbusMenuInterface       = "com.canonical.dbusmenu"
+	linuxStatusIconName     = "portico-media-server-symbolic"
 )
 
 type linuxTray struct {
@@ -88,7 +89,7 @@ func runDesktopUI(ctx context.Context, app *application) {
 			revision := tray.revision
 			tray.mu.Unlock()
 			_ = conn.Emit(dbus.ObjectPath("/Menu"), dbusMenuInterface+".LayoutUpdated", revision, int32(0))
-			_ = tray.props.Set(statusNotifierInterface, "ToolTip", dbus.MakeVariant(notifierToolTip{IconName: "portico-media-server", Title: "Portico Media Server", Text: "Server: " + serverStatusLabel(status.Server) + " · Remote Access: " + status.RemoteLabel}))
+			_ = tray.props.Set(statusNotifierInterface, "ToolTip", dbus.MakeVariant(notifierToolTip{IconName: linuxStatusIconName, Title: "Portico Media Server", Text: "Server: " + serverStatusLabel(status.Server) + " · Remote Access: " + status.RemoteLabel}))
 		}
 	}
 }
@@ -100,8 +101,8 @@ func (t *linuxTray) export() error {
 			"Id":         {Value: "portico-media-server", Emit: prop.EmitConst},
 			"Title":      {Value: "Portico Media Server", Emit: prop.EmitConst},
 			"Status":     {Value: "Active", Emit: prop.EmitTrue},
-			"IconName":   {Value: "portico-media-server", Emit: prop.EmitConst},
-			"ToolTip":    {Value: notifierToolTip{IconName: "portico-media-server", Title: "Portico Media Server", Text: "Server status"}, Emit: prop.EmitTrue},
+			"IconName":   {Value: linuxStatusIconName, Emit: prop.EmitConst},
+			"ToolTip":    {Value: notifierToolTip{IconName: linuxStatusIconName, Title: "Portico Media Server", Text: "Server status"}, Emit: prop.EmitTrue},
 			"ItemIsMenu": {Value: true, Emit: prop.EmitConst},
 			"Menu":       {Value: dbus.ObjectPath("/Menu"), Emit: prop.EmitConst},
 		},

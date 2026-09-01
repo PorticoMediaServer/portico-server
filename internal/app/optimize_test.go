@@ -1,8 +1,12 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
+	"encoding/json"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,6 +16,53 @@ import (
 	"github.com/PorticoMediaServer/portico-server/internal/config"
 	"github.com/PorticoMediaServer/portico-server/internal/ffmpegsupervisor"
 )
+
+func TestAPIKeyTranscodeScopeQueuesExactOptimizedVersionOperation(t *testing.T) {
+	serverURL, db, server := newDiscoveryTestServer(t, config.Config{})
+	var ownerID string
+	if err := db.QueryRow(`SELECT id FROM users WHERE role = 'owner' LIMIT 1`).Scan(&ownerID); err != nil {
+		t.Fatal(err)
+	}
+	_, token, err := server.createAPIKey(ownerID, APIKeyCreateRequest{Name: "Transcode integration", Scopes: []string{"transcode"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, readToken, err := server.createAPIKey(ownerID, APIKeyCreateRequest{Name: "Read integration", Scopes: []string{"read"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	doRequest := func(method, path, bearer string, body []byte) (int, string) {
+		t.Helper()
+		request, requestErr := http.NewRequest(method, serverURL+path, bytes.NewReader(body))
+		if requestErr != nil {
+			t.Fatal(requestErr)
+		}
+		request.Header.Set("Authorization", "Bearer "+bearer)
+		if len(body) > 0 {
+			request.Header.Set("Content-Type", "application/json")
+		}
+		response, requestErr := http.DefaultClient.Do(request)
+		if requestErr != nil {
+			t.Fatal(requestErr)
+		}
+		defer response.Body.Close()
+		responseBody, _ := io.ReadAll(response.Body)
+		return response.StatusCode, string(responseBody)
+	}
+	payload, _ := json.Marshal(OptimizedVersionRequest{Profile: "universal-720p"})
+	if status, body := doRequest(http.MethodPost, "/api/media/movie_meridian/optimized", token, payload); status != http.StatusCreated {
+		t.Fatalf("transcode API key create status=%d body=%s", status, body)
+	}
+	if status, body := doRequest(http.MethodPost, "/api/media/movie_meridian/optimized", readToken, payload); status != http.StatusForbidden {
+		t.Fatalf("read API key create status=%d body=%s", status, body)
+	}
+	if status, body := doRequest(http.MethodDelete, "/api/media/movie_meridian/optimized/universal-1080p", token, nil); status != http.StatusNotFound && status != http.StatusOK {
+		t.Fatalf("transcode API key delete status=%d body=%s", status, body)
+	}
+	if status, body := doRequest(http.MethodDelete, "/api/media/movie_meridian/optimized/universal-1080p", readToken, nil); status != http.StatusForbidden {
+		t.Fatalf("read API key delete status=%d body=%s", status, body)
+	}
+}
 
 func TestPruneOptimizedVersionsAppliesRetentionAndPathSafety(t *testing.T) {
 	_, db, server := newDiscoveryTestServer(t, config.Config{})

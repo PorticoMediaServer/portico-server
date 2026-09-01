@@ -48,7 +48,6 @@ import type {
 } from './models';
 import { HttpPorticoDataSource, LocalProfileSelectionRequiredError } from './httpSource';
 import { scopedDataSource, WebViewerRuntime } from './viewerRuntime';
-import { clearArtworkFailureCache, tagsMayRefreshArtwork } from './artworkFailureCache';
 import {
 	ambientCookieRestoreStatus,
 	bindAmbientCookieMutationToViewer,
@@ -1014,7 +1013,6 @@ export function DataProvider({ children, source, initialViewer, expectedViewerSc
 			},
 		});
 		const onEvent = (event: AppEvent) => {
-			if (tagsMayRefreshArtwork(event.tags)) clearArtworkFailureCache();
 			if (mayChangeViewerIdentity(event.tags)) {
 				// Identity and authorization boundaries are never delayed behind
 				// ordinary UI invalidation coalescing.
