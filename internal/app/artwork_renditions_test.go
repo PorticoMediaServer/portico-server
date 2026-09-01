@@ -67,6 +67,64 @@ func TestArtworkRenditionsNormalizeLargeFileWithoutUpscaling(t *testing.T) {
 	}
 }
 
+func TestArtworkRenditionsPreserveTransparentWideArtwork(t *testing.T) {
+	appDataDir := t.TempDir()
+	img := image.NewNRGBA(image.Rect(0, 0, 1600, 600))
+	for y := 150; y < 450; y++ {
+		for x := 200; x < 1400; x++ {
+			img.SetNRGBA(x, y, color.NRGBA{R: 32, G: 180, B: 240, A: 180})
+		}
+	}
+	sourcePath := filepath.Join(appDataDir, "logo.png")
+	file, err := os.Create(sourcePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := png.Encode(file, img); err != nil {
+		_ = file.Close()
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	server := &Server{cfg: config.Config{AppDataDir: appDataDir}}
+	if err := server.prepareArtworkRenditions(sourcePath, "logo"); err != nil {
+		t.Fatal(err)
+	}
+	smallPath, ok := server.preparedArtworkRenditionPath(sourcePath, "logo", artworkRenditionSmall)
+	if !ok || filepath.Ext(smallPath) != ".png" {
+		t.Fatalf("transparent small path=%q ok=%v", smallPath, ok)
+	}
+	decodedFile, err := os.Open(smallPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, format, err := image.Decode(decodedFile)
+	_ = decodedFile.Close()
+	if err != nil || format != "png" || decoded.Bounds().Dx() != 960 || decoded.Bounds().Dy() != 360 {
+		t.Fatalf("transparent rendition format=%q dimensions=%dx%d err=%v", format, decoded.Bounds().Dx(), decoded.Bounds().Dy(), err)
+	}
+	_, _, _, alpha := decoded.At(0, 0).RGBA()
+	if alpha != 0 {
+		t.Fatalf("transparent background alpha=%d, want 0", alpha)
+	}
+}
+
+func TestPersonRenditionUsesStablePublicVisualClass(t *testing.T) {
+	appDataDir := t.TempDir()
+	sourcePath := writeArtworkRenditionTestPNG(t, appDataDir, 600, 900, false)
+	server := &Server{cfg: config.Config{AppDataDir: appDataDir}}
+	if err := server.prepareArtworkRenditions(sourcePath, "person-provider-identity"); err != nil {
+		t.Fatal(err)
+	}
+	ingestedPath, ingested := server.preparedArtworkRenditionPath(sourcePath, "person-provider-identity", artworkRenditionSmall)
+	publicPath, served := server.preparedArtworkRenditionPath(sourcePath, "person", artworkRenditionSmall)
+	if !ingested || !served || ingestedPath != publicPath {
+		t.Fatalf("person rendition mismatch: ingested=%q/%v public=%q/%v", ingestedPath, ingested, publicPath, served)
+	}
+}
+
 func writeArtworkRenditionTestPNG(t *testing.T, dir string, width, height int, pad bool) string {
 	t.Helper()
 	img := image.NewRGBA(image.Rect(0, 0, width, height))

@@ -25,6 +25,7 @@ var adminHeavyRequestOperations = map[string]bool{
 
 var mediaTransformRequestOperations = map[string]bool{
 	"getArtworkIdKind":                          true,
+	"getPersonArtwork":                          true,
 	"getMediaIdAttachmentsAttachmentId":         true,
 	"getMediaIdImagesImageId":                   true,
 	"getMediaIdTrickplay":                       true,

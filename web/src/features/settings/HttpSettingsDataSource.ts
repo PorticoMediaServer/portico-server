@@ -1160,7 +1160,7 @@ export class HttpSettingsDataSource implements SettingsDataSource {
       return value;
     if (value.startsWith("/api/account/me/image"))
       return this.hosted.hostedApiUrl(value);
-    return this.client.imageResourceUrl(value, { width: 192, height: 192 });
+    return this.client.imageResourceUrl(value, { rendition: "small" });
   }
 
   async changeLocalPassword(

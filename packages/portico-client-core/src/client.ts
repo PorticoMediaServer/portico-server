@@ -2913,14 +2913,12 @@ export function createPorticoClient(options: PorticoClientOptions = {}) {
   };
   const imageResourceUrl = (
     path: string,
-    imageOptions: { width?: number; height?: number } = {},
+    imageOptions: { rendition?: "small" | "large" } = {},
   ) => {
     if (!path || !path.startsWith("/api/")) return "";
     const url = new URL(resourceUrl(path), baseHref(options.baseHref));
-    if (imageOptions.width)
-      url.searchParams.set("width", String(imageOptions.width));
-    if (imageOptions.height)
-      url.searchParams.set("height", String(imageOptions.height));
+    if (imageOptions.rendition)
+      url.searchParams.set("rendition", imageOptions.rendition);
     return url.toString();
   };
   const profile = () =>

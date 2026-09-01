@@ -101,6 +101,38 @@ func TestPersonFallbackIdentitySurvivesCreditReorderAndRescan(t *testing.T) {
 	}
 }
 
+func TestPersonArtworkServesRenditionPreparedUnderIngestIdentity(t *testing.T) {
+	serverURL, db, server := newDiscoveryTestServer(t, config.Config{})
+	var mediaID string
+	if err := db.QueryRow(`SELECT id FROM media_items WHERE type = 'movie' ORDER BY id LIMIT 1`).Scan(&mediaID); err != nil {
+		t.Fatalf("load media fixture: %v", err)
+	}
+	portraitPath := writeArtworkRenditionTestPNG(t, server.cfg.AppDataDir, 600, 900, false)
+	if err := server.prepareArtworkRenditions(portraitPath, "person-ingest-identity"); err != nil {
+		t.Fatalf("prepare ingested portrait: %v", err)
+	}
+	if _, err := db.Exec(`
+		INSERT INTO media_people (id, media_id, name, role, source, sort_order, image_url, provider_ids_json, created_at)
+		VALUES ('person-artwork-credit', ?, 'Portrait Performer', 'Actor', 'tmdb', 0, ?, '{"tmdb":"8675309"}', '2026-01-01T00:00:00Z')`, mediaID, portraitPath); err != nil {
+		t.Fatalf("insert portrait credit: %v", err)
+	}
+	personID, err := server.publicPersonIDForIdentity(context.Background(), personIdentitySelector{Kind: "provider", Provider: "tmdb", ExternalID: "8675309"})
+	if err != nil {
+		t.Fatalf("allocate person id: %v", err)
+	}
+	jar, _ := cookiejar.New(nil)
+	client := &http.Client{Jar: jar}
+	loginUser(t, client, serverURL)
+	response, err := client.Get(serverURL + "/api/people/" + personID + "/artwork?rendition=small")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK || response.Header.Get("X-Portico-Artwork-Rendition") != "small" {
+		t.Fatalf("person artwork status=%d rendition=%q", response.StatusCode, response.Header.Get("X-Portico-Artwork-Rendition"))
+	}
+}
+
 func TestNFOCharacterMetadataDoesNotBecomePersonIdentityRole(t *testing.T) {
 	people := peopleFromNFO(nfoDocument{Actors: []nfoActor{{Name: "Alex Smith", Role: "The Pilot", Order: 4}}})
 	if len(people) != 1 {

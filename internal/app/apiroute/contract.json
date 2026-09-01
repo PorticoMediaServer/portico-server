@@ -6058,6 +6058,11 @@
         "type": "string",
         "x-portico-audience": "viewer"
       },
+      "GetPersonArtworkResponse": {
+        "format": "binary",
+        "type": "string",
+        "x-portico-audience": "viewer"
+      },
       "GetPlaybackBitrateTestResponse": {
         "format": "binary",
         "type": "string",
@@ -58979,7 +58984,7 @@
             "name": "personId",
             "required": true,
             "schema": {
-              "pattern": "^person_[A-Za-z0-9_-]+$",
+              "pattern": "^[A-Za-z0-9_-]+$",
               "type": "string"
             }
           },
@@ -59095,6 +59100,151 @@
           }
         },
         "summary": "Get a stable person detail pivot and accessible media credits",
+        "x-portico-audience": "viewer",
+        "x-portico-audit-event": "none",
+        "x-portico-auth": "session",
+        "x-portico-permission": "browse",
+        "x-portico-rate-policy": "interactive-read",
+        "x-portico-runtime-registered": true,
+        "x-portico-surfaces": [
+          "web",
+          "mobile",
+          "television"
+        ]
+      }
+    },
+    "/people/{personId}/artwork": {
+      "get": {
+        "description": "Returns a pre-generated portrait rendition. The person must have at least one credit visible to the active profile.",
+        "operationId": "getPersonArtwork",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "personId",
+            "required": true,
+            "schema": {
+              "pattern": "^[A-Za-z0-9_-]+$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "rendition",
+            "schema": {
+              "default": "large",
+              "enum": [
+                "small",
+                "large"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "image/jpeg": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetPersonArtworkResponse"
+                }
+              },
+              "image/png": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              },
+              "image/webp": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Prepared person portrait rendition"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "400 Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "401 Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "403 Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Person portrait was not found or is not visible to this profile"
+          },
+          "405": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "405 Method Not Allowed"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "409 Conflict"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "429 Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "500 Internal Server Error"
+          }
+        },
+        "summary": "Load the authenticated portrait for a visible person credit",
         "x-portico-audience": "viewer",
         "x-portico-audit-event": "none",
         "x-portico-auth": "session",

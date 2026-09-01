@@ -3739,6 +3739,8 @@ test("resource URLs never add account tokens to query strings", () => {
   assert.equal(client.resourceUrl("/api/live-tv/hls/chan1/playlist.m3u8"), "https://server.example/api/live-tv/hls/chan1/playlist.m3u8");
   assert.equal(client.resourceUrl("/api/system/identity"), "https://server.example/api/system/identity");
   assert.equal(client.resourceUrl("https://cdn.example/image.jpg"), "https://cdn.example/image.jpg");
+  assert.equal(client.imageResourceUrl("/api/people/person-id/artwork", {rendition: "small"}), "https://server.example/api/people/person-id/artwork?rendition=small");
+  assert.equal(client.imageResourceUrl("/api/artwork/media/backdrop", {rendition: "large"}), "https://server.example/api/artwork/media/backdrop?rendition=large");
 });
 
 test("hosted connector accepts only the two published route qualities", () => {

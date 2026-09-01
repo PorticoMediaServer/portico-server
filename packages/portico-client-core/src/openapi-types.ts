@@ -3961,6 +3961,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/people/{personId}/artwork": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Load the authenticated portrait for a visible person credit
+         * @description Returns a pre-generated portrait rendition. The person must have at least one credit visible to the active profile.
+         */
+        get: operations["getPersonArtwork"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/playback-sessions": {
         parameters: {
             query?: never;
@@ -7273,6 +7293,8 @@ export interface components {
         GetMediaIdTrickplaySetIdTilesM3u8Response: string;
         /** Format: binary */
         GetMediaIdTrickplaySetIdTilesTileIndexJpgResponse: string;
+        /** Format: binary */
+        GetPersonArtworkResponse: string;
         /** Format: binary */
         GetPlaybackBitrateTestResponse: string;
         /** Format: binary */
@@ -37774,6 +37796,104 @@ export interface operations {
                 };
             };
             /** @description Person was not found in media visible to this profile */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 405 Method Not Allowed */
+            405: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 409 Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 429 Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 500 Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getPersonArtwork: {
+        parameters: {
+            query?: {
+                rendition?: "small" | "large";
+            };
+            header?: never;
+            path: {
+                personId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Prepared person portrait rendition */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": components["schemas"]["GetPersonArtworkResponse"];
+                    "image/png": string;
+                    "image/webp": string;
+                };
+            };
+            /** @description 400 Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 401 Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 403 Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Person portrait was not found or is not visible to this profile */
             404: {
                 headers: {
                     [name: string]: unknown;

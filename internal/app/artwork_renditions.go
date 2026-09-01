@@ -7,6 +7,7 @@ import (
 	"errors"
 	"image"
 	"image/jpeg"
+	"image/png"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -30,8 +31,26 @@ const (
 )
 
 type artworkRenditionSpec struct {
-	maxWidth  int
-	maxHeight int
+	maxWidth      int
+	maxHeight     int
+	preserveAlpha bool
+}
+
+func transparentArtworkKind(kind string) bool {
+	kind = strings.ToLower(strings.TrimSpace(kind))
+	return kind == "logo" || kind == "clearart" || kind == "clear-art" || kind == "clearlogo"
+}
+
+// Provider portrait ingestion uses a person-<identity> bookkeeping kind so
+// independently sourced files cannot collide. Rendition policy and public
+// serving deliberately use the stable visual class instead; the source path
+// already supplies file identity to the cache key.
+func artworkRenditionKind(kind string) string {
+	kind = strings.ToLower(strings.TrimSpace(kind))
+	if strings.HasPrefix(kind, "person-") {
+		return "person"
+	}
+	return kind
 }
 
 func parseArtworkRendition(value string) (artworkRendition, error) {
@@ -47,12 +66,13 @@ func parseArtworkRendition(value string) (artworkRendition, error) {
 
 func artworkRenditionSpecFor(kind string, rendition artworkRendition) artworkRenditionSpec {
 	kind = strings.ToLower(strings.TrimSpace(kind))
-	landscape := kind == "backdrop" || kind == "thumb" || kind == "banner" || kind == "still"
+	transparent := transparentArtworkKind(kind)
+	landscape := kind == "backdrop" || kind == "thumb" || kind == "banner" || kind == "still" || transparent
 	square := strings.HasPrefix(kind, "person-") || kind == "person" || kind == "avatar" || kind == "disc"
 	if rendition == artworkRenditionSmall {
 		switch {
 		case landscape:
-			return artworkRenditionSpec{maxWidth: 960, maxHeight: 540}
+			return artworkRenditionSpec{maxWidth: 960, maxHeight: 540, preserveAlpha: transparent}
 		case square:
 			return artworkRenditionSpec{maxWidth: 384, maxHeight: 384}
 		default:
@@ -61,7 +81,7 @@ func artworkRenditionSpecFor(kind string, rendition artworkRendition) artworkRen
 	}
 	switch {
 	case landscape:
-		return artworkRenditionSpec{maxWidth: 1920, maxHeight: 1080}
+		return artworkRenditionSpec{maxWidth: 1920, maxHeight: 1080, preserveAlpha: transparent}
 	case square:
 		return artworkRenditionSpec{maxWidth: 1000, maxHeight: 1000}
 	default:
@@ -130,11 +150,15 @@ func (s *Server) artworkRenditionCachePath(sourcePath, kind string, rendition ar
 		filepath.Clean(sourcePath),
 		strconv.FormatInt(info.ModTime().UnixNano(), 10),
 		strconv.FormatInt(info.Size(), 10),
-		strings.ToLower(strings.TrimSpace(kind)),
+		artworkRenditionKind(kind),
 		string(rendition),
 	}, "\x00")
 	sum := sha256.Sum256([]byte(seed))
-	return filepath.Join(s.cfg.AppDataDir, "image-cache", "artwork-renditions", hex.EncodeToString(sum[:])+".jpg"), true
+	extension := ".jpg"
+	if transparentArtworkKind(kind) {
+		extension = ".png"
+	}
+	return filepath.Join(s.cfg.AppDataDir, "image-cache", "artwork-renditions", hex.EncodeToString(sum[:])+extension), true
 }
 
 func writeArtworkRendition(sourcePath, cachePath string, spec artworkRenditionSpec) error {
@@ -152,17 +176,36 @@ func writeArtworkRendition(sourcePath, cachePath string, spec artworkRenditionSp
 	if width <= 0 || height <= 0 {
 		return errors.New("artwork dimensions are invalid")
 	}
-	target := image.NewRGBA(image.Rect(0, 0, width, height))
-	xdraw.CatmullRom.Scale(target, target.Bounds(), source, bounds, xdraw.Over, nil)
-
 	var encoded bytes.Buffer
-	for _, quality := range []int{88, 84, 80, 76, 72} {
-		encoded.Reset()
-		if err := jpeg.Encode(&encoded, target, &jpeg.Options{Quality: quality}); err != nil {
-			return err
+	if spec.preserveAlpha {
+		for {
+			target := image.NewNRGBA(image.Rect(0, 0, width, height))
+			xdraw.CatmullRom.Scale(target, target.Bounds(), source, bounds, xdraw.Src, nil)
+			encoded.Reset()
+			encoder := png.Encoder{CompressionLevel: png.BestCompression}
+			if err := encoder.Encode(&encoded, target); err != nil {
+				return err
+			}
+			if encoded.Len() < artworkLargeFileLimit {
+				break
+			}
+			if width == 1 && height == 1 {
+				return errors.New("normalized transparent artwork exceeds the one megabyte limit")
+			}
+			width = max(1, width*4/5)
+			height = max(1, height*4/5)
 		}
-		if encoded.Len() < artworkLargeFileLimit {
-			break
+	} else {
+		target := image.NewRGBA(image.Rect(0, 0, width, height))
+		xdraw.CatmullRom.Scale(target, target.Bounds(), source, bounds, xdraw.Src, nil)
+		for _, quality := range []int{88, 84, 80, 76, 72} {
+			encoded.Reset()
+			if err := jpeg.Encode(&encoded, target, &jpeg.Options{Quality: quality}); err != nil {
+				return err
+			}
+			if encoded.Len() < artworkLargeFileLimit {
+				break
+			}
 		}
 	}
 	if encoded.Len() >= artworkLargeFileLimit {
@@ -171,7 +214,7 @@ func writeArtworkRendition(sourcePath, cachePath string, spec artworkRenditionSp
 	if err := os.MkdirAll(filepath.Dir(cachePath), 0o700); err != nil {
 		return err
 	}
-	temp, err := os.CreateTemp(filepath.Dir(cachePath), ".artwork-rendition-*.jpg")
+	temp, err := os.CreateTemp(filepath.Dir(cachePath), ".artwork-rendition-*"+filepath.Ext(cachePath))
 	if err != nil {
 		return err
 	}

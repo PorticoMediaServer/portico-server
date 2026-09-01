@@ -14040,7 +14040,7 @@ paths:
         - name: personId
           in: path
           required: true
-          schema: { type: string, pattern: '^person_[A-Za-z0-9_-]+$' }
+          schema: { type: string, pattern: '^[A-Za-z0-9_-]+$' }
         - name: cursor
           in: query
           schema: { type: string, maxLength: 4096 }
@@ -14055,6 +14055,33 @@ paths:
               schema: { $ref: "#/components/schemas/PersonDetailResponse" }
         "404":
           description: Person was not found in media visible to this profile
+  /people/{personId}/artwork:
+    get:
+      operationId: getPersonArtwork
+      summary: Load the authenticated portrait for a visible person credit
+      description: Returns a pre-generated portrait rendition. The person must have at least one credit visible to the active profile.
+      x-portico-permission: browse
+      x-portico-surfaces: [web, mobile, television]
+      parameters:
+        - name: personId
+          in: path
+          required: true
+          schema: { type: string, pattern: '^[A-Za-z0-9_-]+$' }
+        - name: rendition
+          in: query
+          schema: { type: string, enum: [small, large], default: large }
+      responses:
+        "200":
+          description: Prepared person portrait rendition
+          content:
+            image/jpeg:
+              schema: { type: string, format: binary }
+            image/png:
+              schema: { type: string, format: binary }
+            image/webp:
+              schema: { type: string, format: binary }
+        "404":
+          description: Person portrait was not found or is not visible to this profile
   /watchlist:
     get:
       summary: Browse the authenticated user's watchlist
