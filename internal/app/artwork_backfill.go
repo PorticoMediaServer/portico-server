@@ -44,7 +44,10 @@ func BackfillArtworkRenditions(ctx context.Context, cfg config.Config, db *sql.D
 		}
 		kind, path = artworkRenditionKind(kind), strings.TrimSpace(path)
 		key := kind + "\x00" + path
-		if path == "" {
+		// media_images also records provider-evidence provenance identifiers.
+		// Those identifiers intentionally are not filesystem paths and therefore
+		// cannot have local renditions prepared from them.
+		if path == "" || strings.HasPrefix(path, "provider-evidence:") {
 			result.Skipped++
 			continue
 		}
