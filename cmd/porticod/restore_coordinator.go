@@ -69,7 +69,7 @@ func defaultRestoreCoordinatorTimeouts() restoreCoordinatorTimeouts {
 		Shutdown:   30 * time.Second,
 		Install:    2 * time.Minute,
 		Open:       2 * time.Minute,
-		Health:     45 * time.Second,
+		Health:     restoreHostHealthTimeout(),
 		Rollback:   2 * time.Minute,
 	}
 }

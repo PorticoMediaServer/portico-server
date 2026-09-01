@@ -47,6 +47,12 @@ func TestEarlyStartupHandlerRejectsApplicationRoutesWithRetryAfter(t *testing.T)
 	}
 }
 
+func TestRestoreHostHealthTimeoutAllowsFullIntegrityCheckOnSlowHosts(t *testing.T) {
+	if got := restoreHostHealthTimeout(); got < 5*time.Minute {
+		t.Fatalf("restore host health timeout = %s, want at least 5m", got)
+	}
+}
+
 func TestSwitchableHandlerSwapsToApplicationHandler(t *testing.T) {
 	switcher := newSwitchableHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusServiceUnavailable)

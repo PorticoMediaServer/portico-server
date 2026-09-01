@@ -654,10 +654,12 @@ func restoreHostIOTimeout(cfg config.Config) time.Duration {
 }
 
 func restoreHostHealthTimeout() time.Duration {
-	// Health probes are short bounded application checks, separate from the
-	// size/progress-aware filesystem I/O deadline used for open, recovery, and
-	// rollback. Native slow-I/O evidence remains a platform gate.
-	return 45 * time.Second
+	// Runtime health validation includes SQLite's full integrity_check. That is
+	// intentionally stronger than a readiness probe and can take tens of
+	// seconds on low-power, single-core hosts with a realistically sized media
+	// database. Keep it bounded, but do not convert slow hardware into a false
+	// corruption/startup failure.
+	return 5 * time.Minute
 }
 
 type switchableHandler struct {
