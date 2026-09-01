@@ -1851,7 +1851,7 @@ func (s *Server) generateMediaThumbnailFromPath(ctx context.Context, item MediaI
 		version, versionErr := os.ReadFile(versionPath)
 		sourceInfo, sourceErr := s.analysisSourceStat(ctx, path, "inspect thumbnail source")
 		if versionErr == nil && strings.TrimSpace(string(version)) == mediaThumbnailVersion && (sourceErr != nil || !outputInfo.ModTime().Before(sourceInfo.ModTime())) {
-			return nil
+			return s.prepareArtworkRenditions(outputPath, "thumb")
 		}
 	}
 	tempPath := outputPath + ".tmp"
@@ -1887,6 +1887,9 @@ func (s *Server) generateMediaThumbnailFromPath(ctx context.Context, item MediaI
 		return err
 	}
 	if err := os.Chmod(outputPath, 0o600); err != nil {
+		return err
+	}
+	if err := s.prepareArtworkRenditions(outputPath, "thumb"); err != nil {
 		return err
 	}
 	if err := os.WriteFile(versionPath, []byte(mediaThumbnailVersion+"\n"), 0o600); err != nil {

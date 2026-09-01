@@ -5,6 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"image"
+	"image/color"
+	"image/jpeg"
+	"image/png"
 	"io"
 	"io/fs"
 	"log/slog"
@@ -21,6 +25,32 @@ import (
 	"github.com/PorticoMediaServer/portico-server/internal/config"
 	"github.com/PorticoMediaServer/portico-server/internal/database"
 )
+
+func writeScannerTestArtwork(t *testing.T, path string) {
+	t.Helper()
+	file, err := os.Create(path)
+	if err != nil {
+		t.Fatalf("create artwork fixture %s: %v", path, err)
+	}
+	img := image.NewRGBA(image.Rect(0, 0, 12, 18))
+	for y := 0; y < 18; y++ {
+		for x := 0; x < 12; x++ {
+			img.Set(x, y, color.RGBA{R: uint8(x * 12), G: uint8(y * 8), B: 96, A: 255})
+		}
+	}
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".jpg", ".jpeg":
+		err = jpeg.Encode(file, img, &jpeg.Options{Quality: 88})
+	default:
+		err = png.Encode(file, img)
+	}
+	if closeErr := file.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		t.Fatalf("write artwork fixture %s: %v", path, err)
+	}
+}
 
 func TestLibraryScannerIndexesFilesInsideConfiguredRoots(t *testing.T) {
 	server := newScannerTestServer(t)
@@ -1028,6 +1058,9 @@ func TestLibraryScannerPrunesDeletedLocalArtworkWithinAuthoritativeScope(t *test
 			t.Fatal(err)
 		}
 	}
+	for _, path := range []string{showPoster, seasonOnePoster, seasonTwoPoster} {
+		writeScannerTestArtwork(t, path)
+	}
 	library, err := server.createLibrary(CreateLibraryRequest{Name: "Artwork Scope", Type: "show", Paths: []string{root}})
 	if err != nil {
 		t.Fatal(err)
@@ -1468,15 +1501,8 @@ func TestLibraryScannerIngestsSidecarNFO(t *testing.T) {
 </movie>`), 0o600); err != nil {
 		t.Fatalf("write nfo: %v", err)
 	}
-	for name, contents := range map[string]string{
-		"logo.png":     "logo",
-		"banner.jpg":   "banner",
-		"disc.png":     "disc",
-		"clearart.png": "clearart",
-	} {
-		if err := os.WriteFile(filepath.Join(root, name), []byte(contents), 0o600); err != nil {
-			t.Fatalf("write local artwork %s: %v", name, err)
-		}
+	for _, name := range []string{"logo.png", "banner.jpg", "disc.png", "clearart.png"} {
+		writeScannerTestArtwork(t, filepath.Join(root, name))
 	}
 
 	library, err := server.createLibrary(CreateLibraryRequest{Name: "Movies", Type: "movie", Paths: []string{root}})
@@ -1852,24 +1878,18 @@ func TestLibraryScannerBuildsNestedTVHierarchy(t *testing.T) {
 	if err := os.MkdirAll(specialsDir, 0o700); err != nil {
 		t.Fatalf("create specials dir: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(root, "The Rookie", "poster.jpg"), []byte("show poster"), 0o600); err != nil {
-		t.Fatalf("write show poster: %v", err)
-	}
+	writeScannerTestArtwork(t, filepath.Join(root, "The Rookie", "poster.jpg"))
 	if err := os.WriteFile(filepath.Join(root, "The Rookie", "tvshow.nfo"), []byte(`<tvshow><title>The Rookie</title><plot>Local show summary.</plot><genre>Crime</genre><uniqueid type="tvdb">350665</uniqueid></tvshow>`), 0o600); err != nil {
 		t.Fatalf("write show nfo: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(seasonDir, "season.jpg"), []byte("season poster"), 0o600); err != nil {
-		t.Fatalf("write season poster: %v", err)
-	}
+	writeScannerTestArtwork(t, filepath.Join(seasonDir, "season.jpg"))
 	if err := os.WriteFile(filepath.Join(seasonDir, "season.nfo"), []byte(`<season><title>Season Eight</title><plot>Local season summary.</plot><year>2026</year></season>`), 0o600); err != nil {
 		t.Fatalf("write season nfo: %v", err)
 	}
 	if err := os.WriteFile(filepath.Join(seasonDir, "The Rookie S08E15 Survive the Streets 1080p AMZN WEB-DL H264-Kitsune.mkv"), []byte("not real video"), 0o600); err != nil {
 		t.Fatalf("write episode: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(seasonDir, "The Rookie S08E15 Survive the Streets 1080p AMZN WEB-DL H264-Kitsune.jpg"), []byte("episode still"), 0o600); err != nil {
-		t.Fatalf("write episode still: %v", err)
-	}
+	writeScannerTestArtwork(t, filepath.Join(seasonDir, "The Rookie S08E15 Survive the Streets 1080p AMZN WEB-DL H264-Kitsune.jpg"))
 	if err := os.WriteFile(filepath.Join(specialsDir, "The Rookie - S00E01 - Behind the Badge.mkv"), []byte("not real video"), 0o600); err != nil {
 		t.Fatalf("write special: %v", err)
 	}
@@ -2075,9 +2095,7 @@ func TestLibraryScannerBuildsMusicArtistAlbumTrackHierarchy(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "Daft Punk", "artist.nfo"), []byte(`<artist><title>Daft Punk</title><plot>French electronic duo.</plot><genre>House</genre><uniqueid type="musicbrainz">artist-mbid</uniqueid></artist>`), 0o600); err != nil {
 		t.Fatalf("write artist nfo: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(root, "Daft Punk", "folder.jpg"), []byte("artist photo"), 0o600); err != nil {
-		t.Fatalf("write artist image: %v", err)
-	}
+	writeScannerTestArtwork(t, filepath.Join(root, "Daft Punk", "folder.jpg"))
 	if err := os.WriteFile(filepath.Join(albumDir, "01 - Give Life Back to Music.mp3"), []byte("not real audio"), 0o600); err != nil {
 		t.Fatalf("write track one: %v", err)
 	}
@@ -2087,9 +2105,7 @@ func TestLibraryScannerBuildsMusicArtistAlbumTrackHierarchy(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(albumDir, "02 - The Game of Love.flac"), []byte("not real audio"), 0o600); err != nil {
 		t.Fatalf("write track two: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(albumDir, "cover.jpg"), []byte("fake cover"), 0o600); err != nil {
-		t.Fatalf("write album cover: %v", err)
-	}
+	writeScannerTestArtwork(t, filepath.Join(albumDir, "cover.jpg"))
 	if err := os.WriteFile(filepath.Join(albumDir, "album.nfo"), []byte(`<album><title>Random Access Memories</title><year>2013</year><plot>Local album notes.</plot><genre>Electronic</genre></album>`), 0o600); err != nil {
 		t.Fatalf("write album nfo: %v", err)
 	}
@@ -2256,9 +2272,7 @@ func TestLibraryScannerIngestsAudiobookOPF(t *testing.T) {
 		t.Fatalf("create cover dir: %v", err)
 	}
 	coverPath := filepath.Join(coverDir, "cover.png")
-	if err := os.WriteFile(coverPath, []byte("cover image"), 0o600); err != nil {
-		t.Fatalf("write cover: %v", err)
-	}
+	writeScannerTestArtwork(t, coverPath)
 	if err := os.WriteFile(filepath.Join(bookDir, "metadata.opf"), []byte(`
 <package>
   <metadata xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:opf="http://www.idpf.org/2007/opf">

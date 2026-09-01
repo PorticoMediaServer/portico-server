@@ -132,7 +132,7 @@ export function DetailPage() {
   return <div className={`portico-detail-page ${shape === 'square' ? 'music-detail' : ''}`} style={{ '--detail-backdrop': stableBackdrop } as CSSProperties}>
     <section className="portico-detail-hero">
       <div className={`portico-detail-art ${shape ?? ''}`} style={contractArtwork ? { aspectRatio: contractArtwork.shape.aspectRatio } : undefined}>
-        {hasArtwork ? <MediaArtwork item={item} shape={contractArtwork ? undefined : shape} /> : <span className="portico-detail-art-fallback"><DetailIcon item={item} /><strong>{item.title.slice(0, 2).toLocaleUpperCase()}</strong></span>}
+        {hasArtwork ? <MediaArtwork item={item} shape={contractArtwork ? undefined : shape} rendition="large" /> : <span className="portico-detail-art-fallback"><DetailIcon item={item} /><strong>{item.title.slice(0, 2).toLocaleUpperCase()}</strong></span>}
       </div>
       <div className="portico-detail-copy">
         <DetailBreadcrumbs item={item} />

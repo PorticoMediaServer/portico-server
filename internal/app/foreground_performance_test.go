@@ -79,7 +79,7 @@ func TestAppDataArtworkAuthorizationAvoidsCatalogReads(t *testing.T) {
 	}
 }
 
-func TestArtworkTransformCapacityFallsBackToOriginalWithoutWaiting(t *testing.T) {
+func TestArtworkRequestNeverTransformsMissingRendition(t *testing.T) {
 	appDataDir := t.TempDir()
 	artworkPath := filepath.Join(appDataDir, "artwork", "poster.png")
 	if err := os.MkdirAll(filepath.Dir(artworkPath), 0o755); err != nil {
@@ -98,33 +98,52 @@ func TestArtworkTransformCapacityFallsBackToOriginalWithoutWaiting(t *testing.T)
 	if err := os.WriteFile(artworkPath, encoded.Bytes(), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	slots := make(chan struct{}, 1)
-	slots <- struct{}{}
-	server := &Server{
-		cfg:                      config.Config{AppDataDir: appDataDir},
-		artworkWorkSlots:         slots,
-		artworkTransformInFlight: map[string]*artworkTransformCall{},
-		artworkIngestInFlight:    map[string]*artworkIngestCall{},
-	}
-	request := httptest.NewRequest("GET", "/api/artwork/item/poster.svg?width=64&height=64", nil)
+	server := &Server{cfg: config.Config{AppDataDir: appDataDir}}
+	request := httptest.NewRequest("GET", "/api/artwork/item/poster.svg?rendition=small&v=revision", nil)
 	response := httptest.NewRecorder()
 	started := time.Now()
-	server.serveArtworkFile(response, request, artworkPath)
+	server.serveArtworkFile(response, request, artworkPath, "poster")
 	if elapsed := time.Since(started); elapsed > 100*time.Millisecond {
-		t.Fatalf("busy transform delayed original fallback for %s", elapsed)
+		t.Fatalf("missing prepared rendition delayed request for %s", elapsed)
+	}
+	if response.Code != 404 {
+		t.Fatalf("missing prepared rendition status=%d, want 404", response.Code)
+	}
+	if err := server.prepareArtworkRenditions(artworkPath, "poster"); err != nil {
+		t.Fatal(err)
+	}
+	cachePath, ok := server.artworkRenditionCachePath(artworkPath, "poster", artworkRenditionSmall)
+	if !ok {
+		t.Fatal("small rendition cache path was not resolved")
+	}
+	before, err := os.Stat(cachePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response = httptest.NewRecorder()
+	server.serveArtworkFile(response, request, artworkPath, "poster")
+	if response.Code != 200 {
+		t.Fatalf("prepared rendition status=%d body=%q, want 200", response.Code, response.Body.String())
 	}
 	decoded, format, err := image.Decode(bytes.NewReader(response.Body.Bytes()))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if format != "png" || decoded.Bounds().Dx() != 128 || decoded.Bounds().Dy() != 192 {
-		t.Fatalf("busy transform response format=%s bounds=%v", format, decoded.Bounds())
+	if format != "jpeg" || decoded.Bounds().Dx() != 128 || decoded.Bounds().Dy() != 192 {
+		t.Fatalf("prepared rendition response format=%s bounds=%v", format, decoded.Bounds())
 	}
-	if got := response.Header().Get("Cache-Control"); got != "private, max-age=60" {
-		t.Fatalf("busy transform fallback cache control=%q", got)
+	if got := response.Header().Get("Cache-Control"); got != "private, max-age=31536000, immutable" {
+		t.Fatalf("prepared rendition cache control=%q", got)
 	}
-	if got := response.Header().Get("X-Portico-Artwork-Variant"); got != "original-fallback" {
-		t.Fatalf("busy transform fallback variant=%q", got)
+	if got := response.Header().Get("X-Portico-Artwork-Rendition"); got != "small" {
+		t.Fatalf("prepared rendition header=%q", got)
+	}
+	after, err := os.Stat(cachePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !after.ModTime().Equal(before.ModTime()) || after.Size() != before.Size() {
+		t.Fatal("interactive request modified the prepared rendition")
 	}
 }
 

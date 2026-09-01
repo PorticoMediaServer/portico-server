@@ -58,7 +58,7 @@ const (
 	browserSessionTTL           = 180 * 24 * time.Hour
 	homeRowItemLimit            = 48
 	playbackStopMessageMaxRunes = 500
-	artworkRenderVersion        = "portico-art-v3"
+	artworkRenderVersion        = "portico-art-v4"
 )
 
 var providerArtworkHTTPClient = &http.Client{
@@ -72,7 +72,6 @@ var providerArtworkHTTPClient = &http.Client{
 }
 
 var errMediaTreeNotFullyVisible = errors.New("media tree contains items outside the profile's access")
-var errArtworkTransformBusy = errors.New("artwork transform capacity is busy")
 
 type sessionCreateOptions struct {
 	TrustDevice               bool
@@ -192,7 +191,6 @@ type Server struct {
 	localContentRootsGeneration          uint64
 	artworkWorkMu                        sync.Mutex
 	artworkIngestInFlight                map[string]*artworkIngestCall
-	artworkTransformInFlight             map[string]*artworkTransformCall
 	artworkWorkSlots                     chan struct{}
 	artworkResolutionMu                  sync.Mutex
 	artworkNegativeCache                 map[string]time.Time
@@ -946,11 +944,6 @@ type artworkIngestCall struct {
 	ok   bool
 }
 
-type artworkTransformCall struct {
-	done chan struct{}
-	err  error
-}
-
 type artworkResolution struct {
 	path       string
 	mediaFound bool
@@ -1052,7 +1045,6 @@ func newServer(cfg config.Config, db *sql.DB, log *slog.Logger, startBackground 
 		categoryCache:               map[string]categoryCacheEntry{},
 		categoryInFlight:            map[string]chan struct{}{},
 		artworkIngestInFlight:       map[string]*artworkIngestCall{},
-		artworkTransformInFlight:    map[string]*artworkTransformCall{},
 		artworkWorkSlots:            make(chan struct{}, artworkTransformConcurrency()),
 		artworkNegativeCache:        map[string]time.Time{},
 		artworkResolutionInFlight:   map[string]*artworkResolutionCall{},
@@ -13597,6 +13589,11 @@ func (s *Server) handleMediaImageUpload(w http.ResponseWriter, r *http.Request, 
 		writeError(w, http.StatusInternalServerError, "image_upload_failed", "Unable to store artwork file.")
 		return
 	}
+	if err := s.prepareArtworkRenditions(path, imageType); err != nil {
+		_ = os.Remove(path)
+		writeError(w, http.StatusInternalServerError, "image_upload_failed", "Unable to prepare artwork renditions.")
+		return
+	}
 	_, err = s.applyMetadata(r.Context(), metadataApplyRequest{
 		MediaID: mediaID, ExpectedRevision: expectedRevision, Origin: metadataSourceManual,
 		Source: "manual", Provider: "upload", ActorUserID: user.ID,
@@ -15352,7 +15349,7 @@ func (s *Server) handleArtwork(w http.ResponseWriter, r *http.Request, user User
 		return
 	}
 	if resolution.path != "" {
-		s.serveArtworkFile(w, r, resolution.path)
+		s.serveArtworkFile(w, r, resolution.path, kind)
 		return
 	}
 	// A missing artwork slot remains missing. Do not turn a presentation
@@ -15506,7 +15503,7 @@ func (s *Server) handlePersonArtwork(w http.ResponseWriter, r *http.Request, use
 		writeError(w, http.StatusNotFound, "artwork_not_found", "Person artwork was not found.")
 		return
 	}
-	s.serveArtworkFile(w, r, imagePath)
+	s.serveArtworkFile(w, r, imagePath, "person")
 }
 
 func (s *Server) getMediaArtworkSeedContext(ctx context.Context, userID, id string) (MediaItem, error) {
@@ -15554,7 +15551,7 @@ func (s *Server) getMediaArtworkSeedContext(ctx context.Context, userID, id stri
 func (s *Server) serveResolvedArtwork(w http.ResponseWriter, r *http.Request, item MediaItem, kind string) bool {
 	path, ok := s.resolvedArtworkPath(r.Context(), item, kind)
 	if ok {
-		s.serveArtworkFile(w, r, path)
+		s.serveArtworkFile(w, r, path, kind)
 	}
 	return ok
 }
@@ -15693,46 +15690,29 @@ func (s *Server) inheritedArtworkItemContext(ctx context.Context, userID string,
 	return MediaItem{}, "", false
 }
 
-func (s *Server) serveArtworkFile(w http.ResponseWriter, r *http.Request, path string) {
+func (s *Server) serveArtworkFile(w http.ResponseWriter, r *http.Request, path string, kind string) {
 	validatedPath, ok := s.validatedLocalContentPath(r.Context(), path)
 	if !ok {
 		writeError(w, http.StatusNotFound, "artwork_not_found", "Artwork was not found.")
 		return
 	}
-	path = validatedPath
-	width, height, resizeRequested, err := artworkResizeParams(r)
+	rendition, err := parseArtworkRendition(r.URL.Query().Get("rendition"))
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_artwork_size", err.Error())
+		writeError(w, http.StatusBadRequest, "invalid_artwork_rendition", err.Error())
 		return
 	}
-	w.Header().Set("Cache-Control", "private, max-age=3600")
-	if !resizeRequested {
-		http.ServeFile(w, r, path)
+	preparedPath, ok := s.preparedArtworkRenditionPath(validatedPath, kind, rendition)
+	if !ok {
+		writeError(w, http.StatusNotFound, "artwork_rendition_not_found", "The requested artwork rendition is unavailable.")
 		return
 	}
-	if cachePath, ok := s.resizedImageCachePath("artwork", path, width, height); ok {
-		if _, err := os.Stat(cachePath); err == nil {
-			w.Header().Set("X-Portico-Artwork-Variant", "resized")
-			http.ServeFile(w, r, cachePath)
-			return
-		}
-		if r.Method != http.MethodHead {
-			if err := s.ensureResizedImageCache(r.Context(), path, cachePath, width, height); err == nil {
-				w.Header().Set("X-Portico-Artwork-Variant", "resized")
-				http.ServeFile(w, r, cachePath)
-				return
-			} else if !errors.Is(err, errArtworkTransformBusy) {
-				s.log.Warn("cache resized artwork failed", "path", path, "cachePath", cachePath, "error", err)
-			}
-		}
+	if strings.TrimSpace(r.URL.Query().Get("v")) != "" {
+		w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
+	} else {
+		w.Header().Set("Cache-Control", "private, max-age=3600")
 	}
-	// If a bounded transform cannot be produced, serve the validated original
-	// instead of decoding/encoding again on the interactive request goroutine.
-	// Keep this requested-size URL's fallback cache short so a later request can
-	// pick up the exact resized variant once background capacity is available.
-	w.Header().Set("Cache-Control", "private, max-age=60")
-	w.Header().Set("X-Portico-Artwork-Variant", "original-fallback")
-	http.ServeFile(w, r, path)
+	w.Header().Set("X-Portico-Artwork-Rendition", string(rendition))
+	http.ServeFile(w, r, preparedPath)
 }
 
 // validatedLocalContentPath is the final authorization boundary for files that
@@ -15820,50 +15800,9 @@ func (s *Server) invalidateLocalContentRoots() {
 	s.localContentRootsMu.Unlock()
 }
 
-func (s *Server) ensureResizedImageCache(ctx context.Context, sourcePath, cachePath string, width, height int) error {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	s.artworkWorkMu.Lock()
-	s.ensureArtworkWorkerStateLocked()
-	if existing := s.artworkTransformInFlight[cachePath]; existing != nil {
-		s.artworkWorkMu.Unlock()
-		select {
-		case <-existing.done:
-			return existing.err
-		default:
-			return errArtworkTransformBusy
-		}
-	}
-	call := &artworkTransformCall{done: make(chan struct{})}
-	s.artworkTransformInFlight[cachePath] = call
-	s.artworkWorkMu.Unlock()
-	defer func() {
-		s.artworkWorkMu.Lock()
-		delete(s.artworkTransformInFlight, cachePath)
-		close(call.done)
-		s.artworkWorkMu.Unlock()
-	}()
-	select {
-	case s.artworkWorkSlots <- struct{}{}:
-		defer func() { <-s.artworkWorkSlots }()
-	case <-ctx.Done():
-		call.err = ctx.Err()
-		return call.err
-	default:
-		call.err = errArtworkTransformBusy
-		return call.err
-	}
-	call.err = s.writeResizedImageCache(sourcePath, cachePath, width, height)
-	return call.err
-}
-
 func (s *Server) ensureArtworkWorkerStateLocked() {
 	if s.artworkIngestInFlight == nil {
 		s.artworkIngestInFlight = map[string]*artworkIngestCall{}
-	}
-	if s.artworkTransformInFlight == nil {
-		s.artworkTransformInFlight = map[string]*artworkTransformCall{}
 	}
 	if s.artworkWorkSlots == nil {
 		s.artworkWorkSlots = make(chan struct{}, artworkTransformConcurrency())
@@ -23539,6 +23478,10 @@ func (s *Server) cacheProviderOriginalArtworkUncoalesced(ctx context.Context, me
 	if matches, globErr := filepath.Glob(filepath.Join(dir, prefix+"*")); globErr == nil {
 		for _, candidate := range matches {
 			if localArtworkFileExists(candidate) {
+				if err := s.prepareArtworkRenditions(candidate, kind); err != nil {
+					s.log.Warn("prepare cached provider artwork renditions failed", "media", mediaID, "kind", kind, "provider", provider, "error", err)
+					return "", false
+				}
 				return candidate, true
 			}
 		}
@@ -23612,6 +23555,11 @@ func (s *Server) cacheProviderOriginalArtworkUncoalesced(ctx context.Context, me
 	}
 	if err := os.Rename(tempPath, path); err != nil {
 		_ = os.Remove(tempPath)
+		return "", false
+	}
+	if err := s.prepareArtworkRenditions(path, kind); err != nil {
+		s.log.Warn("prepare provider artwork renditions failed", "media", mediaID, "kind", kind, "provider", provider, "error", err)
+		_ = os.Remove(path)
 		return "", false
 	}
 	return path, true

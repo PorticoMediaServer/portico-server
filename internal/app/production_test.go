@@ -5486,22 +5486,27 @@ func TestMediaImageUploadServesAndDeletesManualArtwork(t *testing.T) {
 	if artResp.StatusCode != http.StatusOK || !bytes.HasPrefix(artBytes, []byte{0x89, 'P', 'N', 'G'}) {
 		t.Fatalf("artwork status=%d prefix=%x", artResp.StatusCode, artBytes[:min(len(artBytes), 8)])
 	}
-	resizedResp, err := client.Get(serverURL + "/api/artwork/movie_meridian/poster.svg?width=64&height=64")
+	resizedResp, err := client.Get(serverURL + "/api/artwork/movie_meridian/poster.svg?rendition=small")
 	if err != nil {
 		t.Fatalf("load resized artwork: %v", err)
 	}
 	config, format, err := image.DecodeConfig(resizedResp.Body)
 	_ = resizedResp.Body.Close()
-	if resizedResp.StatusCode != http.StatusOK || err != nil || format != "jpeg" || config.Width != 64 || config.Height != 64 {
+	if resizedResp.StatusCode != http.StatusOK || err != nil || format != "jpeg" || config.Width != 1 || config.Height != 1 {
 		t.Fatalf("resized artwork status=%d format=%s config=%#v err=%v", resizedResp.StatusCode, format, config, err)
 	}
-	cacheDir := filepath.Join(server.cfg.AppDataDir, "image-cache", "artwork")
+	cacheDir := filepath.Join(server.cfg.AppDataDir, "image-cache", "artwork-renditions")
 	cacheEntries, err := os.ReadDir(cacheDir)
 	if err != nil {
 		t.Fatalf("read artwork image cache: %v", err)
 	}
-	if len(cacheEntries) != 1 || cacheEntries[0].IsDir() || filepath.Ext(cacheEntries[0].Name()) != ".jpg" {
+	if len(cacheEntries) < 1 {
 		t.Fatalf("unexpected artwork image cache entries: %#v", cacheEntries)
+	}
+	for _, entry := range cacheEntries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".jpg" {
+			t.Fatalf("unexpected artwork image cache entry: %#v", entry)
+		}
 	}
 	status, deleteBody := doJSON(t, client, http.MethodDelete, serverURL+"/api/media/movie_meridian/images/"+uploaded.ID+"?expectedRevision="+strconv.Itoa(item.MetadataRevision), nil, nil)
 	if status != http.StatusOK {

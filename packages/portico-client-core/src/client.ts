@@ -5387,12 +5387,18 @@ export function createPorticoClient(options: PorticoClientOptions = {}) {
     artworkUrl: (
       id: string,
       kind: string,
-      imageOptions: { width?: number; height?: number } = {},
-    ) =>
-      imageResourceUrl(
-        `/api/artwork/${encodeURIComponent(id)}/${encodeURIComponent(kind)}`,
-        imageOptions,
-      ),
+      imageOptions: { rendition?: "small" | "large" } = {},
+    ) => {
+      const url = new URL(
+        resourceUrl(
+          `/api/artwork/${encodeURIComponent(id)}/${encodeURIComponent(kind)}`,
+        ),
+        baseHref(options.baseHref),
+      );
+      if (imageOptions.rendition)
+        url.searchParams.set("rendition", imageOptions.rendition);
+      return url.toString();
+    },
     mediaStreamUrl: (id: string) =>
       resourceUrl(`/api/media/${encodeURIComponent(id)}/stream`),
     mediaAttachmentUrl: (id: string, attachmentId: string) =>

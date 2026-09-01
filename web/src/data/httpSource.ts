@@ -340,17 +340,21 @@ export function imagePath(
   value: string | undefined,
   fallback = "/brand/portico-wordmark-white.svg",
   resolveResource: ResourceResolver = identityResource,
-  dimensions?: { width: number; height: number },
+  options?: { width: number; height: number } | { rendition: "small" | "large" },
 ) {
   if (!value) return fallback;
   const trusted = trustedServerResource(value, resolveResource);
   if (!trusted) return fallback;
   if (value.startsWith("/api/")) {
     const resolved = trusted;
-    if (!dimensions) return resolved;
+    if (!options) return resolved;
     const url = new URL(resolved, "http://portico.invalid");
-    url.searchParams.set("width", String(dimensions.width));
-    url.searchParams.set("height", String(dimensions.height));
+    if ("rendition" in options) {
+      url.searchParams.set("rendition", options.rendition);
+    } else {
+      url.searchParams.set("width", String(options.width));
+      url.searchParams.set("height", String(options.height));
+    }
     return resolved.startsWith("http://") || resolved.startsWith("https://")
       ? url.toString()
       : `${url.pathname}${url.search}${url.hash}`;
@@ -390,18 +394,12 @@ function cardToMedia(
     subtitle: item.subtitle ?? "",
     summary: item.summary,
     year: item.year ?? 0,
-    poster: imagePath(item.artwork.poster, undefined, resolveResource, {
-      width: 480,
-      height: 720,
-    }),
+    poster: imagePath(item.artwork.poster, undefined, resolveResource, { rendition: "small" }),
     backdrop: imagePath(
       item.artwork.backdrop,
-      imagePath(item.artwork.thumb, undefined, resolveResource, {
-        width: 1280,
-        height: 720,
-      }),
+      imagePath(item.artwork.thumb, undefined, resolveResource, { rendition: "large" }),
       resolveResource,
-      { width: 1280, height: 720 },
+      { rendition: "large" },
     ),
     artwork: Object.fromEntries(
       Object.entries(item.artwork).flatMap(([role, value]) => {
@@ -449,18 +447,12 @@ function detailToMedia(
     title: item.title,
     subtitle: item.tagline ?? item.parentTitle ?? "",
     year: item.year ?? 0,
-    poster: imagePath(item.images.poster, undefined, resolveResource, {
-      width: 480,
-      height: 720,
-    }),
+    poster: imagePath(item.images.poster, undefined, resolveResource, { rendition: "large" }),
     backdrop: imagePath(
       item.displayImages?.backdrop ?? item.images.backdrop,
-      imagePath(item.images.thumb, undefined, resolveResource, {
-        width: 1280,
-        height: 720,
-      }),
+      imagePath(item.images.thumb, undefined, resolveResource, { rendition: "large" }),
       resolveResource,
-      { width: 1280, height: 720 },
+      { rendition: "large" },
     ),
     artwork: Object.fromEntries(
       Object.entries(item.artwork ?? {}).flatMap(([role, value]) => {
@@ -510,10 +502,7 @@ function detailToMedia(
     people: item.people?.map((person) => ({
       ...person,
       imageUrl:
-        imagePath(person.imageUrl, "", resolveResource, {
-          width: 192,
-          height: 192,
-        }) || undefined,
+        imagePath(person.imageUrl, "", resolveResource, { rendition: "small" }) || undefined,
     })),
     extras: includeRelations
       ? item.extras?.map((relationship) => ({
@@ -2390,10 +2379,7 @@ export class HttpPorticoDataSource implements PorticoDataSource {
     return {
       ...person,
       imageUrl:
-        imagePath(person.imageUrl, "", this.resolveResource, {
-          width: 256,
-          height: 256,
-        }) || undefined,
+        imagePath(person.imageUrl, "", this.resolveResource, { rendition: "small" }) || undefined,
       knownFor: person.roles?.join(" · "),
       credits: response.credits.map(this.mediaCard),
       hasMore: response.pageInfo.hasMore,

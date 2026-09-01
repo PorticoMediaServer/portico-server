@@ -15332,7 +15332,7 @@ paths:
   /artwork/{id}/{kind}:
     get:
       summary: Stream media artwork
-      description: Streams the preferred local/provider/generated artwork for a media item. Optional JPEG resize requests are normalized to a bounded set of square, poster, and widescreen variants so clients cannot create unbounded cache cardinality.
+      description: Streams a prepared small or large rendition of the preferred local, provider, or generated artwork for a media item. Renditions are created before artwork is published; this request never performs image transformation.
       parameters:
         - name: id
           in: path
@@ -15345,18 +15345,13 @@ paths:
           schema:
             type: string
           description: Artwork kind filename, such as poster.svg, backdrop.svg, thumb.svg, or poster.jpg.
-        - name: width
+        - name: rendition
           in: query
           schema:
-            type: integer
-            minimum: 32
-            maximum: 2000
-        - name: height
-          in: query
-          schema:
-            type: integer
-            minimum: 32
-            maximum: 2000
+            type: string
+            enum: [small, large]
+            default: large
+          description: Named prepared rendition. Small is intended for cards, rows, and compact surfaces; large is intended for detail, hero, and high-density surfaces.
       responses:
         "200":
           description: Artwork image

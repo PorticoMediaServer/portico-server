@@ -5138,7 +5138,7 @@ test("documented resource URL helpers do not leak account credentials", () => {
   assert.equal(client.mediaAttachmentUrl("m1", "font/1"), "https://server.example/api/media/m1/attachments/font%2F1");
   assert.equal(client.mediaTrickplayPlaylistUrl("m1", "set1"), "https://server.example/api/media/m1/trickplay/set1/tiles.m3u8");
   assert.equal(client.mediaTrickplayTileUrl("m1", "set1", 4), "https://server.example/api/media/m1/trickplay/set1/tiles/4.jpg");
-  assert.equal(client.artworkUrl("m1", "poster.jpg", { width: 300 }), "https://server.example/api/artwork/m1/poster.jpg?width=300");
+  assert.equal(client.artworkUrl("m1", "poster.jpg", { rendition: "small" }), "https://server.example/api/artwork/m1/poster.jpg?rendition=small");
   assert.equal(client.liveTvStreamUrl("chan 1"), "https://server.example/api/live-tv/streams/chan%201");
   assert.equal(client.liveTvLogoUrl("chan1"), "https://server.example/api/live-tv/logos/chan1");
   assert.equal(client.watchWithFriendsGroupEventsUrl("group1"), "https://server.example/api/watch-with-friends/groups/group1/events");

@@ -2035,6 +2035,7 @@ func (s *Server) writeScannedMediaBatch(ctx context.Context, library Library, ba
 	if err := s.publishScannedSidecarSubtitles(subtitleReplacements); err != nil {
 		return batchSeen, indexed, metadataQueued, analysisQueued, scannerCatalogApplyError{err: err}
 	}
+	s.prepareScannedLocalArtworkRenditions(ctx, batch)
 	err = s.withBackgroundTxTagged(ctx, []string{}, func(tx *sql.Tx) error {
 		localSeen := map[string]bool{}
 		localIndexed := 0
@@ -4272,6 +4273,34 @@ type scannedLocalImageCandidate struct {
 	Path           string
 	Preferred      bool
 	DiscoveryScope string
+}
+
+func (s *Server) prepareScannedLocalArtworkRenditions(ctx context.Context, batch []scannerMediaFile) {
+	prepared := map[string]bool{}
+	failed := map[string]bool{}
+	for index := range batch {
+		for _, candidate := range localImageCandidatesForScannedFile(batch[index]) {
+			path := filepath.Clean(candidate.Path)
+			if !batch[index].ExistingLocalImages[path] {
+				continue
+			}
+			if err := ctx.Err(); err != nil {
+				return
+			}
+			key := path + "\x00" + candidate.Type
+			if !prepared[key] && !failed[key] {
+				if err := s.prepareArtworkRenditions(path, candidate.Type); err != nil {
+					failed[key] = true
+					s.log.Warn("prepare scanned local artwork renditions failed", "path", path, "kind", candidate.Type, "error", err)
+				} else {
+					prepared[key] = true
+				}
+			}
+			if failed[key] {
+				batch[index].ExistingLocalImages[path] = false
+			}
+		}
+	}
 }
 
 func localImageCandidatesForScannedFile(file scannerMediaFile) []scannedLocalImageCandidate {

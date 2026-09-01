@@ -624,7 +624,7 @@ export interface paths {
         };
         /**
          * Stream media artwork
-         * @description Streams the preferred local/provider/generated artwork for a media item. Optional JPEG resize requests are normalized to a bounded set of square, poster, and widescreen variants so clients cannot create unbounded cache cardinality.
+         * @description Streams a prepared small or large rendition of the preferred local, provider, or generated artwork for a media item. Renditions are created before artwork is published; this request never performs image transformation.
          */
         get: operations["getArtworkIdKind"];
         put?: never;
@@ -16632,8 +16632,8 @@ export interface operations {
     getArtworkIdKind: {
         parameters: {
             query?: {
-                width?: number;
-                height?: number;
+                /** @description Named prepared rendition. Small is intended for cards, rows, and compact surfaces; large is intended for detail, hero, and high-density surfaces. */
+                rendition?: "small" | "large";
             };
             header?: never;
             path: {

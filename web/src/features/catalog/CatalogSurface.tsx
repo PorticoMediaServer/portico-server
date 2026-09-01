@@ -138,15 +138,14 @@ function artworkShapeFor(item: MediaItem, preferred?: ArtworkShape, aspectRatio?
   return mediaPresentation(item).artworkShape;
 }
 
-function displayArtworkVariant(source: string, width: number, height: number) {
+function displayArtworkVariant(source: string, rendition: 'small' | 'large') {
   if (!source.includes('/api/')) return source;
   const url = new URL(source, 'http://portico.invalid');
-  url.searchParams.set('width', String(width));
-  url.searchParams.set('height', String(height));
+  url.searchParams.set('rendition', rendition);
   return source.startsWith('http://') || source.startsWith('https://') ? url.toString() : `${url.pathname}${url.search}${url.hash}`;
 }
 
-export function MediaArtwork({ item, shape, className = '' }: { item: MediaItem; shape?: ArtworkShape; className?: string }) {
+export function MediaArtwork({ item, shape, className = '', rendition = 'small' }: { item: MediaItem; shape?: ArtworkShape; className?: string; rendition?: 'small' | 'large' }) {
   const viewModel = useWebMediaViewModel(item);
   const resolvedShape = artworkShapeFor(item, shape, viewModel?.artwork.shape.aspectRatio, viewModel?.semantics.known);
   const source = viewModel?.artwork.url || item.poster;
@@ -157,14 +156,12 @@ export function MediaArtwork({ item, shape, className = '' }: { item: MediaItem;
   const height = resolvedShape === 'square' ? 320 : resolvedShape === 'landscape' ? 180 : 480;
   return <StableImage
     className={className}
-    src={displayArtworkVariant(source, width, height)}
-    srcSet={`${displayArtworkVariant(source, Math.round(width / 2), Math.round(height / 2))} 160w, ${displayArtworkVariant(source, width, height)} 320w, ${displayArtworkVariant(source, Math.round(width * 1.5), Math.round(height * 1.5))} 480w`}
-    sizes="(max-width: 720px) 36vw, 200px"
+    src={displayArtworkVariant(source, rendition)}
     width={width}
     height={height}
     alt=""
     data-artwork-role={viewModel?.artwork.role}
-    loading="lazy"
+    loading={rendition === 'large' ? 'eager' : 'lazy'}
     decoding="async"
     style={{ objectFit: viewModel?.artwork.shape.fit }}
     fallback={fallback}
