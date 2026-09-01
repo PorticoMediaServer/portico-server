@@ -4358,6 +4358,14 @@ func TestSystemStorageReportAndCleanup(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(imageCacheDir, "cached.jpg"), []byte("cached"), 0o600); err != nil {
 		t.Fatalf("write image cache file: %v", err)
 	}
+	renditionDir := filepath.Join(server.cfg.AppDataDir, "image-cache", "artwork-renditions")
+	if err := os.MkdirAll(renditionDir, 0o700); err != nil {
+		t.Fatalf("create artwork rendition dir: %v", err)
+	}
+	preparedRendition := filepath.Join(renditionDir, "prepared.jpg")
+	if err := os.WriteFile(preparedRendition, []byte("prepared"), 0o600); err != nil {
+		t.Fatalf("write prepared artwork rendition: %v", err)
+	}
 	if _, err := db.Exec(`
 		INSERT INTO media_trickplay_sets (
 			id, media_id, media_file_id, width, height, tile_width, tile_height,
@@ -4419,6 +4427,9 @@ func TestSystemStorageReportAndCleanup(t *testing.T) {
 	}
 	if _, err := os.Stat(imageCacheDir); !os.IsNotExist(err) {
 		t.Fatalf("expected image cache dir to be removed, stat err=%v", err)
+	}
+	if contents, err := os.ReadFile(preparedRendition); err != nil || string(contents) != "prepared" {
+		t.Fatalf("prepared artwork rendition was removed by generic cache cleanup: contents=%q err=%v", contents, err)
 	}
 	var remainingStale int
 	if err := db.QueryRow(`SELECT COUNT(*) FROM media_trickplay_sets WHERE id = 'stale_set'`).Scan(&remainingStale); err != nil {

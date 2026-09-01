@@ -1833,14 +1833,29 @@ func (s *Server) storageCategory(key string, label string, path string, cleanupS
 
 func (s *Server) pruneImageCache() (int, error) {
 	root := filepath.Join(s.cfg.AppDataDir, "image-cache")
-	count, err := countRegularFiles(root)
+	entries, err := os.ReadDir(root)
 	if err != nil {
 		return 0, err
 	}
-	if err := os.RemoveAll(root); err != nil {
-		return 0, err
+	removed := 0
+	for _, entry := range entries {
+		// Prepared media renditions are part of the published artwork model.
+		// Interactive requests cannot regenerate them, so generic cache cleanup
+		// must never remove this durable derived state.
+		if entry.Name() == "artwork-renditions" {
+			continue
+		}
+		path := filepath.Join(root, entry.Name())
+		count, countErr := countRegularFiles(path)
+		if countErr != nil {
+			return removed, countErr
+		}
+		if err := os.RemoveAll(path); err != nil {
+			return removed, err
+		}
+		removed += count
 	}
-	return count, nil
+	return removed, nil
 }
 
 func countRegularFiles(root string) (int, error) {
