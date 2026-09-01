@@ -2356,7 +2356,8 @@ func (s *Server) replaceProviderMediaPeople(mediaID string, people []MediaPerson
 	}); err != nil {
 		return err
 	}
-	s.publishDataChanged("data.changed", []string{"media", "library-items", "metadata"}, "media", mediaID, map[string]string{"source": provider, "kind": "people"})
+	s.invalidateMediaDetailCacheForMedia(mediaID)
+	s.publishDataChanged("data.changed", []string{"metadata"}, "media", mediaID, map[string]string{"source": provider, "kind": "people"})
 	return nil
 }
 

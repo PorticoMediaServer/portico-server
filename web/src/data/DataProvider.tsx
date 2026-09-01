@@ -120,6 +120,38 @@ const emptyLiveDataRevisionStore = new LiveDataRevisionStore();
 const LiveDataRevisionContext = createContext<LiveDataRevisionStore>(emptyLiveDataRevisionStore);
 
 const viewerIdentityEventTags = new Set(['account', 'profiles', 'users']);
+const resourceScopedEventTags = new Set(['artwork', 'library-items', 'media', 'metadata']);
+const scopedLiveTagPrefix = 'exact:';
+
+function scopedLiveTag(tag: string, resourceId: string): string {
+	const normalizedId = resourceId.trim().toLowerCase();
+	// ViewerSync deliberately admits a small, portable tag alphabet. Portico's
+	// authoritative IDs use that alphabet; an unexpected legacy ID safely falls
+	// back to broad invalidation instead of being lossy-normalized or colliding.
+	if (!normalizedId || normalizedId.length > 96 || !/^[a-z0-9][a-z0-9._/-]*$/.test(normalizedId)) return tag;
+	return `${scopedLiveTagPrefix}${tag}:${normalizedId}`;
+}
+
+function scopedApplicationEventTags(event: AppEvent): string[] {
+	const resource = (event.resource ?? '').trim().toLowerCase();
+	const resourceId = (event.resourceId ?? '').trim();
+	if (!resourceId || (resource !== 'media' && resource !== 'artwork')) return [...event.tags];
+	const tags = event.tags.map((tag) => resourceScopedEventTags.has(tag) ? scopedLiveTag(tag, resourceId) : tag);
+	if (resourceScopedEventTags.has(resource)) tags.push(scopedLiveTag(resource, resourceId));
+	return [...new Set(tags)];
+}
+
+function liveTagMatches(invalidationTag: string, subscriptionTag: string): boolean {
+	if (subscriptionTag === '*') return true;
+	if (invalidationTag.startsWith(scopedLiveTagPrefix)) return invalidationTag === subscriptionTag;
+	return invalidationTag === subscriptionTag || subscriptionTag.startsWith(`${scopedLiveTagPrefix}${invalidationTag}:`);
+}
+
+function queryMatchesLiveTags(meta: Record<string, unknown> | undefined, tags: readonly string[]): boolean {
+	const liveTags = meta?.liveTags;
+	return Array.isArray(liveTags) && liveTags.some((subscriptionTag) => typeof subscriptionTag === 'string'
+		&& tags.some((tag) => liveTagMatches(tag, subscriptionTag)));
+}
 
 function mayChangeViewerIdentity(tags: readonly string[]): boolean {
 	return tags.includes('*') || tags.some((tag) => viewerIdentityEventTags.has(tag));
@@ -1002,24 +1034,25 @@ export function DataProvider({ children, source, initialViewer, expectedViewerSc
 				// but let TanStack own query invalidation directly. This prevents a
 				// React render from becoming an accidental prerequisite for refresh.
 				liveDataRevisions.publish(tags);
+				const foreground = document.visibilityState === 'visible';
 				await queryClient.invalidateQueries({
-					predicate: (query) => {
-						if (tags.includes('*')) return true;
-						const liveTags = query.meta?.liveTags;
-						return Array.isArray(liveTags) && liveTags.some((tag) => tag === '*' || (typeof tag === 'string' && tags.includes(tag)));
-					},
-					refetchType: 'active',
+					predicate: (query) => tags.includes('*') || queryMatchesLiveTags(query.meta, tags),
+					// A mounted query in a background browser tab is technically
+					// "active" to TanStack. Mark it stale without spending server work;
+					// ViewerSync refreshes the affected resource when it resumes.
+					refetchType: foreground ? 'active' : 'none',
 				});
 			},
 		});
 		const onEvent = (event: AppEvent) => {
+			const tags = scopedApplicationEventTags(event);
 			if (mayChangeViewerIdentity(event.tags)) {
 				// Identity and authorization boundaries are never delayed behind
 				// ordinary UI invalidation coalescing.
-				sync.invalidate(event.tags, 'immediate');
+				sync.invalidate(tags, 'immediate');
 				void reconcileLiveViewer();
 			} else {
-				sync.invalidate(event.tags, 'coalesced');
+				sync.invalidate(tags, 'coalesced');
 			}
 		};
 		const onReset = async () => {
@@ -1039,8 +1072,9 @@ export function DataProvider({ children, source, initialViewer, expectedViewerSc
 		// before the application event stream was listening.
 		setQueryRuntimeReadyScopeKey(runtime.activeScopeKey());
 		const publishRuntimeState = () => {
+			const foreground = document.visibilityState === 'visible';
 			runtime.setRuntimeState({
-				foreground: document.visibilityState === 'visible',
+				foreground,
 				online: navigator.onLine,
 			});
 		};
@@ -1459,7 +1493,14 @@ export function useMediaDetail(id: string | undefined, reloadKey = 0): QueryStat
   const load = useMemo(() => (source: PorticoDataSource, signal: AbortSignal) => mediaId
     ? source.media(mediaId, signal)
     : Promise.reject(new Error('No media item was selected.')), [mediaId]);
-  return useSourceQuery(`media:${mediaId}`, load, ['media', 'metadata', 'library-items', 'playback-progress', 'media-state'], reloadKey);
+  return useSourceQuery(`media:${mediaId}`, load, [
+		scopedLiveTag('media', mediaId),
+		scopedLiveTag('metadata', mediaId),
+		scopedLiveTag('library-items', mediaId),
+		scopedLiveTag('artwork', mediaId),
+		'playback-progress',
+		'media-state',
+	], reloadKey);
 }
 
 export function usePersonDetail(id: string | undefined, reloadKey = 0): QueryState<PersonDetail> {

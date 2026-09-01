@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -133,6 +134,57 @@ func TestBackgroundMetadataInvalidationDoesNotFanOutToBrowse(t *testing.T) {
 	}
 	if got, want := metadataApplyInvalidationTags(metadataSourceManual), []string{"media", "metadata", "library-items", "search", "libraries"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("manual invalidation tags=%v, want %v", got, want)
+	}
+}
+
+func TestMediaDetailCacheInvalidationTargetsOnlyChangedMedia(t *testing.T) {
+	server := &Server{mediaDetailCache: map[string]mediaDetailCacheEntry{
+		"profile-a\x00auth-a\x00movie-a\x00false\x00false": {item: MediaItem{ID: "movie-a"}, expiresAt: time.Now().Add(time.Minute)},
+		"profile-a\x00auth-a\x00movie-b\x00false\x00false": {item: MediaItem{ID: "movie-b"}, expiresAt: time.Now().Add(time.Minute)},
+		"profile-b\x00auth-b\x00movie-a\x00false\x00false": {item: MediaItem{ID: "movie-a"}, expiresAt: time.Now().Add(time.Minute)},
+	}}
+
+	server.invalidateMediaDetailCacheForMedia("movie-a")
+
+	if len(server.mediaDetailCache) != 1 {
+		t.Fatalf("cache entries = %d, want only unrelated media entry", len(server.mediaDetailCache))
+	}
+	for key := range server.mediaDetailCache {
+		if !strings.Contains(key, "\x00movie-b\x00") {
+			t.Fatalf("unexpected surviving cache key %q", key)
+		}
+	}
+}
+
+func TestLibraryDiscoverCacheSingleflightAndInvalidationFence(t *testing.T) {
+	server := &Server{
+		suggestionsCache:    map[string]suggestionsCacheEntry{},
+		suggestionsInFlight: map[string]chan struct{}{},
+	}
+	user := User{ProfileID: "profile-a", Role: "owner", Permissions: map[string]bool{"playMedia": true}}
+	key := libraryDiscoverCacheKey(user, "library-a", 12)
+	wait, leader, generation := server.beginSuggestionsFlight(key)
+	if !leader {
+		t.Fatal("first Discover caller did not own the singleflight")
+	}
+	follower, followerLeader, _ := server.beginSuggestionsFlight(key)
+	if followerLeader || follower != wait {
+		t.Fatal("concurrent Discover caller did not join the existing singleflight")
+	}
+	server.invalidateSuggestionsCache()
+	server.storeSuggestionsAtGeneration(key, SuggestionsResponse{Total: 12}, generation)
+	if _, ok := server.cachedSuggestions(key); ok {
+		t.Fatal("an invalidated in-flight Discover response repopulated the cache")
+	}
+	server.finishSuggestionsFlight(key, wait)
+}
+
+func TestLibraryDiscoveryNormalizationReusesAlreadyHydratedItems(t *testing.T) {
+	server := &Server{}
+	item := MediaItem{ID: "movie-a", LibraryID: "library-a", Type: "movie", Title: "Movie A", Summary: "Hydrated"}
+	items := server.normalizeLibraryDiscoveryItemsContext(context.Background(), "profile-a", Library{ID: "library-a", Type: "movie"}, []MediaItem{item}, 12)
+	if len(items) != 1 || items[0].ID != item.ID || items[0].Summary != item.Summary {
+		t.Fatalf("normalized items = %#v, want existing hydrated item", items)
 	}
 }
 

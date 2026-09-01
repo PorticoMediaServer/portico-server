@@ -160,6 +160,8 @@ type Server struct {
 	porticoAttachmentHandshakes          map[string]*porticoAttachmentHandshakeState
 	suggestionsCacheMu                   sync.Mutex
 	suggestionsCache                     map[string]suggestionsCacheEntry
+	suggestionsInFlight                  map[string]chan struct{}
+	suggestionsCacheGeneration           uint64
 	smartPlaylistCacheMu                 sync.Mutex
 	smartPlaylistCache                   map[string]smartPlaylistCacheEntry
 	dashboardCacheMu                     sync.Mutex
@@ -192,6 +194,10 @@ type Server struct {
 	artworkIngestInFlight                map[string]*artworkIngestCall
 	artworkTransformInFlight             map[string]*artworkTransformCall
 	artworkWorkSlots                     chan struct{}
+	artworkResolutionMu                  sync.Mutex
+	artworkNegativeCache                 map[string]time.Time
+	artworkResolutionInFlight            map[string]*artworkResolutionCall
+	artworkResolutionHook                func()
 	metadataArtworkCommitMu              sync.Mutex
 	metadataArtworkCommitLocks           map[string]*metadataArtworkCommitLock
 	readModelRepairMu                    sync.Mutex
@@ -834,7 +840,7 @@ const (
 	serverActivityRefreshMs   = 1000
 	homeCacheTTL              = 15 * time.Second
 	homeRowRequestTimeout     = 250 * time.Millisecond
-	mediaDetailCacheTTL       = 5 * time.Second
+	mediaDetailCacheTTL       = 30 * time.Second
 	categoryCacheTTL          = 60 * time.Second
 	jobLaneMaintenance        = "maintenance"
 	jobLaneWriteHeavy         = "write-heavy"
@@ -945,6 +951,17 @@ type artworkTransformCall struct {
 	err  error
 }
 
+type artworkResolution struct {
+	path       string
+	mediaFound bool
+}
+
+type artworkResolutionCall struct {
+	done   chan struct{}
+	result artworkResolution
+	err    error
+}
+
 type workloadLane struct {
 	id        string
 	label     string
@@ -1024,6 +1041,7 @@ func newServer(cfg config.Config, db *sql.DB, log *slog.Logger, startBackground 
 		hostedDocumentPublicKeys:    copyHostedDocumentPublicKeys(cfg.HostedDocumentPublicKeys),
 		porticoAttachmentHandshakes: map[string]*porticoAttachmentHandshakeState{},
 		suggestionsCache:            map[string]suggestionsCacheEntry{},
+		suggestionsInFlight:         map[string]chan struct{}{},
 		smartPlaylistCache:          map[string]smartPlaylistCacheEntry{},
 		dashboardCache:              map[string]dashboardCacheEntry{},
 		dashboardInFlight:           map[string]chan struct{}{},
@@ -1036,6 +1054,8 @@ func newServer(cfg config.Config, db *sql.DB, log *slog.Logger, startBackground 
 		artworkIngestInFlight:       map[string]*artworkIngestCall{},
 		artworkTransformInFlight:    map[string]*artworkTransformCall{},
 		artworkWorkSlots:            make(chan struct{}, artworkTransformConcurrency()),
+		artworkNegativeCache:        map[string]time.Time{},
+		artworkResolutionInFlight:   map[string]*artworkResolutionCall{},
 		readModelRepairs:            map[string]chan struct{}{},
 		workloadLanes:               newWorkloadLanes(),
 		dlnaBrowseActive:            map[string]int{},
@@ -5671,7 +5691,7 @@ func (s *Server) handleLibraryRoute(w http.ResponseWriter, r *http.Request, user
 			return
 		}
 		limit := clampInt(queryInt(r, "limit", 48), 1, 50)
-		response, err := s.libraryDiscoverContext(ctx, user, library, limit)
+		response, err := s.cachedLibraryDiscoverContext(ctx, user, library, limit)
 		if err != nil {
 			if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
 				w.Header().Set("Retry-After", "1")
@@ -15319,30 +15339,20 @@ func (s *Server) handleArtwork(w http.ResponseWriter, r *http.Request, user User
 	}
 	mediaID := parts[0]
 	kind := strings.TrimSuffix(strings.TrimSuffix(parts[1], ".svg"), ".jpg")
-	item, err := s.getMediaArtworkSeedContext(r.Context(), viewerProfileID(user), mediaID)
+	resolution, err := s.resolveArtworkRequest(r.Context(), viewerProfileID(user), user.ID, mediaID, kind, r.URL.Query().Get("v"))
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || r.Context().Err() != nil {
 			w.Header().Set("Retry-After", "1")
 			writeError(w, http.StatusServiceUnavailable, "artwork_timeout", "Artwork lookup timed out. Please retry shortly.")
 			return
 		}
+	}
+	if !resolution.mediaFound {
 		writeError(w, http.StatusNotFound, "media_not_found", "Media item was not found.")
 		return
 	}
-	if s.serveResolvedArtwork(w, r, item, kind) {
-		return
-	}
-	// Tracks reuse locally stored album artwork for presentation while their own
-	// artwork slot stays empty for later scanner/provider enrichment.
-	if item.Type == "track" {
-		if inherited, inheritedKind, ok := s.inheritedArtworkItemContext(r.Context(), viewerProfileID(user), item, kind); ok && s.serveResolvedArtwork(w, r, inherited, inheritedKind) {
-			return
-		}
-	}
-	// Poster/thumb consumers are card surfaces. Prefer a real still belonging
-	// to the item (provider still or locally extracted frame) before borrowing
-	// presentation artwork from a parent.
-	if (kind == "poster" || kind == "thumb") && s.serveFrameArtworkFallback(w, r, user.ID, item, kind) {
+	if resolution.path != "" {
+		s.serveArtworkFile(w, r, resolution.path)
 		return
 	}
 	// A missing artwork slot remains missing. Do not turn a presentation
@@ -15350,6 +15360,104 @@ func (s *Server) handleArtwork(w http.ResponseWriter, r *http.Request, user User
 	// Clients can consequently use their intentional page-glow/card/player
 	// empty states while scanners remain free to fill the slot later.
 	writeOptionalArtworkMiss(w)
+}
+
+const (
+	artworkNegativeCacheTTL = 5 * time.Minute
+	artworkNegativeCacheMax = 4096
+)
+
+// resolveArtworkRequest coalesces the comparatively expensive catalog and
+// filesystem walk needed to prove that an optional artwork slot is empty. Only
+// negative results are retained: a cached positive path could outlive a
+// profile's library authorization, while a profile-keyed negative can at worst
+// delay newly-added artwork until the versioned URL or short TTL changes.
+func (s *Server) resolveArtworkRequest(ctx context.Context, profileID, accountID, mediaID, kind, version string) (artworkResolution, error) {
+	key := strings.Join([]string{strings.TrimSpace(profileID), strings.TrimSpace(accountID), strings.TrimSpace(mediaID), strings.TrimSpace(kind), strings.TrimSpace(version)}, "\x00")
+	now := time.Now()
+	s.artworkResolutionMu.Lock()
+	if expiresAt, ok := s.artworkNegativeCache[key]; ok {
+		if now.Before(expiresAt) {
+			s.artworkResolutionMu.Unlock()
+			return artworkResolution{mediaFound: true}, nil
+		}
+		delete(s.artworkNegativeCache, key)
+	}
+	if call := s.artworkResolutionInFlight[key]; call != nil {
+		done := call.done
+		s.artworkResolutionMu.Unlock()
+		select {
+		case <-done:
+			return call.result, call.err
+		case <-ctx.Done():
+			return artworkResolution{}, ctx.Err()
+		}
+	}
+	call := &artworkResolutionCall{done: make(chan struct{})}
+	if s.artworkResolutionInFlight == nil {
+		s.artworkResolutionInFlight = map[string]*artworkResolutionCall{}
+	}
+	s.artworkResolutionInFlight[key] = call
+	hook := s.artworkResolutionHook
+	s.artworkResolutionMu.Unlock()
+
+	if hook != nil {
+		hook()
+	}
+	result, err := s.resolveArtworkRequestUncached(ctx, profileID, accountID, mediaID, kind)
+
+	s.artworkResolutionMu.Lock()
+	call.result = result
+	call.err = err
+	delete(s.artworkResolutionInFlight, key)
+	if err == nil && result.mediaFound && result.path == "" {
+		if s.artworkNegativeCache == nil {
+			s.artworkNegativeCache = map[string]time.Time{}
+		}
+		if len(s.artworkNegativeCache) >= artworkNegativeCacheMax {
+			for cachedKey, expiresAt := range s.artworkNegativeCache {
+				if !now.Before(expiresAt) || len(s.artworkNegativeCache) >= artworkNegativeCacheMax {
+					delete(s.artworkNegativeCache, cachedKey)
+				}
+				if len(s.artworkNegativeCache) < artworkNegativeCacheMax {
+					break
+				}
+			}
+		}
+		s.artworkNegativeCache[key] = time.Now().Add(artworkNegativeCacheTTL)
+	}
+	close(call.done)
+	s.artworkResolutionMu.Unlock()
+	return result, err
+}
+
+func (s *Server) resolveArtworkRequestUncached(ctx context.Context, profileID, accountID, mediaID, kind string) (artworkResolution, error) {
+	item, err := s.getMediaArtworkSeedContext(ctx, profileID, mediaID)
+	if err != nil {
+		return artworkResolution{}, err
+	}
+	result := artworkResolution{mediaFound: true}
+	if path, ok := s.resolvedArtworkPath(ctx, item, kind); ok {
+		result.path = path
+		return result, nil
+	}
+	if item.Type == "track" {
+		if inherited, inheritedKind, ok := s.inheritedArtworkItemContext(ctx, profileID, item, kind); ok {
+			if path, ok := s.resolvedArtworkPath(ctx, inherited, inheritedKind); ok {
+				result.path = path
+				return result, nil
+			}
+		}
+	}
+	if kind == "poster" || kind == "thumb" {
+		for _, candidate := range s.frameArtworkFallbackCandidates(accountID, item) {
+			if path, ok := s.resolvedArtworkPath(ctx, candidate, "thumb"); ok {
+				result.path = path
+				return result, nil
+			}
+		}
+	}
+	return result, nil
 }
 
 func writeOptionalArtworkMiss(w http.ResponseWriter) {
@@ -15444,38 +15552,42 @@ func (s *Server) getMediaArtworkSeedContext(ctx context.Context, userID, id stri
 }
 
 func (s *Server) serveResolvedArtwork(w http.ResponseWriter, r *http.Request, item MediaItem, kind string) bool {
+	path, ok := s.resolvedArtworkPath(r.Context(), item, kind)
+	if ok {
+		s.serveArtworkFile(w, r, path)
+	}
+	return ok
+}
+
+func (s *Server) resolvedArtworkPath(ctx context.Context, item MediaItem, kind string) (string, bool) {
 	// Keep the ordered image projection for the whole resolution attempt. This
 	// request used to read media_images once for the preferred row and again for
 	// the provider fallback; serveArtworkFile remains the path authorization
 	// boundary.
-	images := s.mediaImagesForContext(r.Context(), item.ID)
+	images := s.mediaImagesForContext(ctx, item.ID)
 	for _, image := range images {
 		if image.Type == kind && image.Preferred && strings.TrimSpace(image.Path) != "" {
-			s.serveArtworkFile(w, r, image.Path)
-			return true
+			return image.Path, true
 		}
 	}
 	for _, source := range artworkSourceOrder(s.artworkPolicyForItem(item)) {
 		switch source {
 		case "local":
 			if localPath, ok := s.localArtworkPath(item, kind); ok {
-				s.serveArtworkFile(w, r, localPath)
-				return true
+				return localPath, true
 			}
 		case "provider":
 			for _, image := range images {
 				if image.Type == kind && strings.TrimSpace(image.Path) != "" {
-					s.serveArtworkFile(w, r, image.Path)
-					return true
+					return image.Path, true
 				}
 			}
 		}
 	}
 	if generatedPath, ok := s.generatedArtworkPath(item.ID, kind); ok {
-		s.serveArtworkFile(w, r, generatedPath)
-		return true
+		return generatedPath, true
 	}
-	return false
+	return "", false
 }
 
 func (s *Server) serveFrameArtworkFallback(w http.ResponseWriter, r *http.Request, userID string, item MediaItem, kind string) bool {
@@ -22512,6 +22624,21 @@ func (s *Server) invalidateMediaDetailCacheForProfile(profileID string) {
 	s.mediaDetailCacheMu.Unlock()
 }
 
+func (s *Server) invalidateMediaDetailCacheForMedia(mediaID string) {
+	mediaID = strings.TrimSpace(mediaID)
+	if mediaID == "" {
+		return
+	}
+	s.mediaDetailCacheMu.Lock()
+	for key := range s.mediaDetailCache {
+		parts := strings.Split(key, "\x00")
+		if len(parts) >= 3 && parts[2] == mediaID {
+			delete(s.mediaDetailCache, key)
+		}
+	}
+	s.mediaDetailCacheMu.Unlock()
+}
+
 func (s *Server) getMediaDetailWithOptionsContext(ctx context.Context, userID, id string, options mediaDetailOptions) (MediaItem, error) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -22535,7 +22662,7 @@ func (s *Server) getMediaDetailWithOptionsContext(ctx context.Context, userID, i
 	}
 	item.Streams = streams
 	item.AudioNormalization = s.audioNormalizationForMediaContext(ctx, item.ID)
-	item.MediaFiles = s.mediaFilesForContext(ctx, item.ID, item.SourceURL)
+	item.MediaFiles = s.mediaFilesWithStreamsContext(ctx, item.ID, item.SourceURL, streams)
 	s.attachResumeInfo(&item)
 	if !options.Playback {
 		item.Attachments = s.attachmentsForMediaContext(ctx, item.ID)
@@ -22876,6 +23003,13 @@ func (s *Server) mediaFilesForContext(ctx context.Context, mediaID, selectedPath
 		ctx = context.Background()
 	}
 	allStreams, _ := s.listStreamsContext(ctx, mediaID)
+	return s.mediaFilesWithStreamsContext(ctx, mediaID, selectedPath, allStreams)
+}
+
+func (s *Server) mediaFilesWithStreamsContext(ctx context.Context, mediaID, selectedPath string, allStreams []Stream) []MediaFileVersion {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	rows, err := s.queryUserRead(ctx, `
 		SELECT mf.id, mf.path, mf.quality, mf.container, mf.source_type, mf.version_label, mf.resolution, mf.source, mf.video_codec, mf.audio_codec, mf.dynamic_range,
 			release_group, three_d, version_group, quality_rank,

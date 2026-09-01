@@ -503,7 +503,7 @@ func TestTVSeasonAndEpisodeDetailsExposeCastAndCrew(t *testing.T) {
 	}
 }
 
-func TestProviderPeoplePublishMediaDataChange(t *testing.T) {
+func TestProviderPeoplePublishExactMetadataDataChange(t *testing.T) {
 	_, _, server := newDiscoveryTestServer(t, config.Config{})
 	events := server.subscribeAppEvents()
 	defer server.unsubscribeAppEvents(events)
@@ -514,7 +514,7 @@ func TestProviderPeoplePublishMediaDataChange(t *testing.T) {
 
 	select {
 	case event := <-events:
-		if !stringSliceContains(event.Tags, "media") || event.Resource != "media" || event.ResourceID != "movie_meridian" {
+		if !stringSliceContains(event.Tags, "metadata") || stringSliceContains(event.Tags, "library-items") || event.Resource != "media" || event.ResourceID != "movie_meridian" {
 			t.Fatalf("unexpected event: %#v", event)
 		}
 	case <-time.After(time.Second):

@@ -141,6 +141,18 @@ describe('LibraryWorkspacePage', () => {
     }), expect.any(AbortSignal));
   });
 
+  it('starts canonical Discover while richer browse capabilities are still loading', async () => {
+    const workspaceSource = source();
+    workspaceSource.libraryBrowseCapabilities = vi.fn(() => new Promise(() => {}));
+    renderWorkspace(workspaceSource, '/library/lib-real-movies?pivot=discover');
+
+    expect(await screen.findByText('Alpha')).toBeInTheDocument();
+    expect(workspaceSource.libraryPivot).toHaveBeenCalledWith(expect.objectContaining({
+      libraryId: library.id,
+      request: expect.objectContaining({ pivot: 'discover', limit: 12 }),
+    }), expect.any(AbortSignal));
+  });
+
   it('keeps the authoritative library total when the first Discover page contains only 50 of 501 items', async () => {
     const largeLibrary = { ...library, itemCount: 501 };
     const firstPage = Array.from({ length: 50 }, (_, index) => item(`discover-${index}`, `Discover ${index + 1}`));

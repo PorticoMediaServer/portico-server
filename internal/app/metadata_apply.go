@@ -424,7 +424,9 @@ func (s *Server) applyMetadata(ctx context.Context, req metadataApplyRequest) (m
 	if req.Origin == metadataSourceManual {
 		err = s.withUserTxTaggedForViewer(ctx, req.ActorUserID, "", tags, apply)
 	} else {
-		err = s.withBackgroundTxTagged(ctx, tags, apply)
+		// The generic transaction publisher cannot attach the exact media ID and
+		// would turn each provider item into a global metadata invalidation.
+		err = s.withBackgroundTxTagged(ctx, nil, apply)
 	}
 	if err != nil {
 		return metadataApplyResult{}, err
@@ -433,10 +435,10 @@ func (s *Server) applyMetadata(ctx context.Context, req metadataApplyRequest) (m
 		s.invalidateHomeCache()
 		s.invalidateCategoryCache()
 	} else {
-		// Foreground projections already have short bounded TTLs. Let those TTLs
-		// absorb a background cascade rather than forcing every metadata item to
-		// delete the recommendation read model and cold-start all browse caches.
-		s.invalidateMediaDetailCache()
+		// A provider continuation can touch hundreds of items. Expire only the
+		// changed detail; unrelated open pages retain their warm projections.
+		s.invalidateMediaDetailCacheForMedia(req.MediaID)
+		s.publishDataChanged("data.changed", tags, "media", req.MediaID, map[string]string{"source": string(req.Origin)})
 	}
 	return result, nil
 }

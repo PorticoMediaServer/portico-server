@@ -4,7 +4,6 @@ import {
   type PlaybackSessionQueueResponse,
 } from "@porticomediaserver/client-core";
 import {
-  act,
   cleanup,
   fireEvent,
   render,

@@ -173,7 +173,10 @@ func (s *Server) libraryDiscoverContext(ctx context.Context, user User, library 
 	} else if len(row.Items) > 0 {
 		rows = append(rows, row)
 	}
-	rows = append(rows, s.discoveryRowsForLibraryContext(ctx, user, library, limit)...)
+	rows = append(rows, s.discoveryRowsForLibraryWithoutRecommendationsContext(ctx, user, library, limit)...)
+	if recommended := libraryRecommendationRowFromSuggestions(library, suggestions, limit); len(recommended.Items) > 0 {
+		rows = append(rows, recommended)
+	}
 	rows = boundedLibraryDiscoveryRows(rows)
 	return SuggestionsResponse{
 		Items:       suggestions,
@@ -181,6 +184,60 @@ func (s *Server) libraryDiscoverContext(ctx context.Context, user User, library 
 		Total:       len(suggestions),
 		GeneratedAt: time.Now().UTC().Format(time.RFC3339),
 	}, ctx.Err()
+}
+
+func libraryDiscoverCacheKey(user User, libraryID string, limit int) string {
+	return strings.Join([]string{
+		"library-discover",
+		strings.TrimSpace(viewerProfileID(user)),
+		effectiveAuthorizationCacheFingerprint(user),
+		strings.TrimSpace(libraryID),
+		strconv.Itoa(clampInt(limit, 1, 50)),
+	}, "\x00")
+}
+
+func (s *Server) cachedLibraryDiscoverContext(ctx context.Context, user User, library Library, limit int) (SuggestionsResponse, error) {
+	key := libraryDiscoverCacheKey(user, library.ID, limit)
+	for {
+		if cached, ok := s.cachedSuggestions(key); ok {
+			return cached, nil
+		}
+		wait, leader, generation := s.beginSuggestionsFlight(key)
+		if leader {
+			defer s.finishSuggestionsFlight(key, wait)
+			response, err := s.libraryDiscoverContext(ctx, user, library, limit)
+			if err == nil {
+				s.storeSuggestionsAtGeneration(key, response, generation)
+			}
+			return response, err
+		}
+		select {
+		case <-wait:
+		case <-ctx.Done():
+			return SuggestionsResponse{}, ctx.Err()
+		}
+	}
+}
+
+func libraryRecommendationRowFromSuggestions(library Library, suggestions []MediaSuggestion, limit int) HomeRow {
+	items := make([]MediaItem, 0, min(len(suggestions), limit))
+	seen := map[string]bool{}
+	for _, suggestion := range suggestions {
+		if suggestion.Source == "local_trending" || suggestion.Item.ID == "" || seen[suggestion.Item.ID] {
+			continue
+		}
+		seen[suggestion.Item.ID] = true
+		items = append(items, suggestion.Item)
+		if len(items) >= limit {
+			break
+		}
+	}
+	row := HomeRow{ID: "recommended_for_you", Title: "Recommended For You", Type: "poster", LibraryID: library.ID, Items: items, Total: len(items), Limit: limit}
+	resolved := resolveLibraryHomeRowArtworkShapes([]HomeRow{row}, library)
+	if len(resolved) == 0 {
+		return row
+	}
+	return resolved[0]
 }
 
 func boundedLibraryDiscoveryRows(rows []HomeRow) []HomeRow {
@@ -318,9 +375,60 @@ func (s *Server) storeSuggestions(key string, response SuggestionsResponse) {
 	}
 }
 
+func (s *Server) storeSuggestionsAtGeneration(key string, response SuggestionsResponse, generation uint64) {
+	if key == "" {
+		return
+	}
+	s.suggestionsCacheMu.Lock()
+	defer s.suggestionsCacheMu.Unlock()
+	if generation != s.suggestionsCacheGeneration {
+		return
+	}
+	if s.suggestionsCache == nil {
+		s.suggestionsCache = map[string]suggestionsCacheEntry{}
+	}
+	now := time.Now()
+	for cachedKey, entry := range s.suggestionsCache {
+		if !now.Before(entry.expiresAt) {
+			delete(s.suggestionsCache, cachedKey)
+		}
+	}
+	for len(s.suggestionsCache) >= 512 {
+		for cachedKey := range s.suggestionsCache {
+			delete(s.suggestionsCache, cachedKey)
+			break
+		}
+	}
+	s.suggestionsCache[key] = suggestionsCacheEntry{response: cloneSuggestionsResponse(response), expiresAt: now.Add(15 * time.Second)}
+}
+
+func (s *Server) beginSuggestionsFlight(key string) (<-chan struct{}, bool, uint64) {
+	s.suggestionsCacheMu.Lock()
+	defer s.suggestionsCacheMu.Unlock()
+	if s.suggestionsInFlight == nil {
+		s.suggestionsInFlight = map[string]chan struct{}{}
+	}
+	if wait := s.suggestionsInFlight[key]; wait != nil {
+		return wait, false, s.suggestionsCacheGeneration
+	}
+	wait := make(chan struct{})
+	s.suggestionsInFlight[key] = wait
+	return wait, true, s.suggestionsCacheGeneration
+}
+
+func (s *Server) finishSuggestionsFlight(key string, wait <-chan struct{}) {
+	s.suggestionsCacheMu.Lock()
+	if current := s.suggestionsInFlight[key]; current != nil && current == wait {
+		delete(s.suggestionsInFlight, key)
+		close(current)
+	}
+	s.suggestionsCacheMu.Unlock()
+}
+
 func (s *Server) invalidateSuggestionsCache() {
 	s.suggestionsCacheMu.Lock()
 	defer s.suggestionsCacheMu.Unlock()
+	s.suggestionsCacheGeneration++
 	if len(s.suggestionsCache) > 0 {
 		s.suggestionsCache = map[string]suggestionsCacheEntry{}
 	}
@@ -434,6 +542,15 @@ func (s *Server) discoveryRowsForLibrary(user User, library Library) []HomeRow {
 }
 
 func (s *Server) discoveryRowsForLibraryContext(ctx context.Context, user User, library Library, limit int) []HomeRow {
+	rows := s.discoveryRowsForLibraryWithoutRecommendationsContext(ctx, user, library, limit)
+	if err := ctx.Err(); err != nil {
+		return rows
+	}
+	rows = append(rows, s.recommendationRowsForLibraryLimitContext(ctx, user, library, limit)...)
+	return resolveLibraryHomeRowArtworkShapes(rows, library)
+}
+
+func (s *Server) discoveryRowsForLibraryWithoutRecommendationsContext(ctx context.Context, user User, library Library, limit int) []HomeRow {
 	limit = clampInt(limit, 1, homeRowItemLimit)
 	var rows []HomeRow
 	if err := ctx.Err(); err != nil {
@@ -448,10 +565,6 @@ func (s *Server) discoveryRowsForLibraryContext(ctx context.Context, user User, 
 	if trending := s.trendingRowForLibraryLimitContext(ctx, user, library, limit); len(trending.Items) > 0 {
 		rows = append(rows, trending)
 	}
-	if err := ctx.Err(); err != nil {
-		return rows
-	}
-	rows = append(rows, s.recommendationRowsForLibraryLimitContext(ctx, user, library, limit)...)
 	return resolveLibraryHomeRowArtworkShapes(rows, library)
 }
 
@@ -491,7 +604,7 @@ func (s *Server) trendingRowForLibraryLimitContext(ctx context.Context, user Use
 	if len(items) == 0 {
 		items = s.localTrendingItemsForLibraryContext(ctx, viewerProfileID(user), library, limit)
 	}
-	items = s.normalizeLibraryDiscoveryItems(viewerProfileID(user), library, items, limit)
+	items = s.normalizeLibraryDiscoveryItemsContext(ctx, viewerProfileID(user), library, items, limit)
 	return HomeRow{ID: "tmdb_trending", Title: "Trending Now", Type: "poster", LibraryID: library.ID, Items: items}
 }
 
@@ -1141,7 +1254,7 @@ func (s *Server) recommendationRowsForLibraryLimitContext(ctx context.Context, u
 	if err != nil || len(items) == 0 {
 		return nil
 	}
-	items = s.normalizeLibraryDiscoveryItems(viewerProfileID(user), library, items, limit)
+	items = s.normalizeLibraryDiscoveryItemsContext(ctx, viewerProfileID(user), library, items, limit)
 	if len(items) == 0 {
 		return nil
 	}
@@ -1181,15 +1294,11 @@ func (s *Server) mediaSuggestionsForLibraryContext(ctx context.Context, user Use
 		}
 	}
 	if len(orderedIDs) < limit {
-		for _, item := range s.localTrendingItemsForLibraryContext(ctx, viewerProfileID(user), library, limit*2) {
+		trending := s.normalizeLibraryDiscoveryItemsContext(ctx, viewerProfileID(user), library, s.localTrendingItemsForLibraryContext(ctx, viewerProfileID(user), library, limit*2), limit)
+		for _, item := range trending {
 			if err := ctx.Err(); err != nil {
 				return nil, err
 			}
-			normalized := s.normalizeLibraryDiscoveryItems(viewerProfileID(user), library, []MediaItem{item}, 1)
-			if len(normalized) == 0 {
-				continue
-			}
-			item = normalized[0]
 			if seen[item.ID] {
 				continue
 			}
@@ -1205,7 +1314,7 @@ func (s *Server) mediaSuggestionsForLibraryContext(ctx context.Context, user Use
 	if err != nil {
 		return nil, err
 	}
-	items = s.normalizeLibraryDiscoveryItems(viewerProfileID(user), library, items, limit)
+	items = s.normalizeLibraryDiscoveryItemsContext(ctx, viewerProfileID(user), library, items, limit)
 	suggestions := make([]MediaSuggestion, 0, len(items))
 	for _, item := range items {
 		score := scores[item.ID]
@@ -2541,12 +2650,18 @@ func sqlInList(column string, values []string) (string, []any) {
 }
 
 func (s *Server) normalizeLibraryDiscoveryItems(userID string, library Library, items []MediaItem, limit int) []MediaItem {
+	return s.normalizeLibraryDiscoveryItemsContext(context.Background(), userID, library, items, limit)
+}
+
+func (s *Server) normalizeLibraryDiscoveryItemsContext(ctx context.Context, userID string, library Library, items []MediaItem, limit int) []MediaItem {
 	capacity := len(items)
 	if limit > 0 {
 		capacity = min(len(items), limit)
 	}
 	ids := make([]string, 0, capacity)
 	seen := map[string]bool{}
+	existing := make(map[string]MediaItem, capacity)
+	missing := make([]string, 0, capacity)
 	for _, item := range items {
 		id := s.libraryDiscoveryDisplayID(library, item)
 		if id == "" || seen[id] {
@@ -2554,13 +2669,29 @@ func (s *Server) normalizeLibraryDiscoveryItems(userID string, library Library, 
 		}
 		seen[id] = true
 		ids = append(ids, id)
+		if id == item.ID {
+			existing[id] = item
+		} else {
+			missing = append(missing, id)
+		}
 		if limit > 0 && len(ids) >= limit {
 			break
 		}
 	}
-	normalized, err := s.mediaByOrderedIDs(userID, ids)
-	if err != nil {
-		return nil
+	if len(missing) > 0 {
+		hydrated, err := s.mediaByOrderedIDsContext(ctx, userID, missing)
+		if err != nil {
+			return nil
+		}
+		for _, item := range hydrated {
+			existing[item.ID] = item
+		}
+	}
+	normalized := make([]MediaItem, 0, len(ids))
+	for _, id := range ids {
+		if item, ok := existing[id]; ok {
+			normalized = append(normalized, item)
+		}
 	}
 	return normalized
 }

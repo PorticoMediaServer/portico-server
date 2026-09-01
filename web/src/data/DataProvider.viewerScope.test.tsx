@@ -189,8 +189,16 @@ class LiveHomeSource extends SessionSource {
     await new Promise<void>((resolve) => signal.addEventListener('abort', () => resolve(), { once: true }));
   }
 
-  publish(tags: string[]) {
-    this.appEvent?.({ id: Date.now(), type: 'data.changed', tags, resource: '', resourceId: '', fields: {}, createdAt: new Date().toISOString() });
+  publish(tags: string[], scope: { resource?: string; resourceId?: string; type?: string } = {}) {
+    this.appEvent?.({
+		id: Date.now(),
+		type: scope.type ?? 'data.changed',
+		tags,
+		resource: scope.resource ?? '',
+		resourceId: scope.resourceId ?? '',
+		fields: {},
+		createdAt: new Date().toISOString(),
+	});
   }
 
   reset() {
@@ -266,6 +274,17 @@ function MediaDetailState() {
 	</>;
 }
 
+function ScopedMediaStates() {
+	const first = useMediaDetail('media-first');
+	const second = useMediaDetail('media-second');
+	const homeState = useHome();
+	return <>
+		<output aria-label="first-media">{first.status === 'success' ? first.data.title : first.status}</output>
+		<output aria-label="second-media">{second.status === 'success' ? second.data.title : second.status}</output>
+		<output aria-label="scoped-home">{homeState.status === 'success' ? homeState.data.rows[0]?.title : homeState.status}</output>
+	</>;
+}
+
 function ReplacementProbe() {
   const auth = useAuthSession();
   return <>
@@ -306,6 +325,77 @@ describe('DataProvider viewer scope integration', () => {
 		act(() => source.publish(['playback-progress']));
 		expect(screen.getByLabelText('home-title')).toHaveTextContent('Home 1');
 		act(() => pending.resolve(home('Home 2')));
+		await waitFor(() => expect(screen.getByLabelText('home-title')).toHaveTextContent('Home 2'));
+		expect(source.homeCalls).toBe(2);
+	});
+
+	it('scopes exact media metadata events to the matching detail query', async () => {
+		class ScopedMediaSource extends LiveHomeSource {
+			mediaCalls = new Map<string, number>();
+			override async media(id: string) {
+				const calls = (this.mediaCalls.get(id) ?? 0) + 1;
+				this.mediaCalls.set(id, calls);
+				return {
+					id, title: `${id} ${calls}`, subtitle: '', year: 2026, entityKind: 'movie' as const,
+					poster: '', backdrop: '', rating: '', length: '', genre: '', actions: [],
+				};
+			}
+		}
+		const source = new ScopedMediaSource(viewer('adult', 'policy-live'));
+		render(<DataProvider source={source}><ScopedMediaStates /></DataProvider>);
+		await waitFor(() => {
+			expect(screen.getByLabelText('first-media')).toHaveTextContent('media-first 1');
+			expect(screen.getByLabelText('second-media')).toHaveTextContent('media-second 1');
+			expect(screen.getByLabelText('scoped-home')).toHaveTextContent('Home 1');
+		});
+
+		act(() => source.publish(['media', 'metadata', 'library-items'], { resource: 'media', resourceId: 'media-first' }));
+		await waitFor(() => expect(screen.getByLabelText('first-media')).toHaveTextContent('media-first 2'));
+		expect(source.mediaCalls.get('media-second')).toBe(1);
+		expect(source.homeCalls).toBe(1);
+	});
+
+	it('keeps broad catalog invalidations authoritative for all matching details', async () => {
+		class ScopedMediaSource extends LiveHomeSource {
+			mediaCalls = new Map<string, number>();
+			override async media(id: string) {
+				const calls = (this.mediaCalls.get(id) ?? 0) + 1;
+				this.mediaCalls.set(id, calls);
+				return {
+					id, title: `${id} ${calls}`, subtitle: '', year: 2026, entityKind: 'movie' as const,
+					poster: '', backdrop: '', rating: '', length: '', genre: '', actions: [],
+				};
+			}
+		}
+		const source = new ScopedMediaSource(viewer('adult', 'policy-live'));
+		render(<DataProvider source={source}><ScopedMediaStates /></DataProvider>);
+		await waitFor(() => expect(screen.getByLabelText('second-media')).toHaveTextContent('media-second 1'));
+
+		act(() => source.publish(['media', 'library-items'], { resource: 'library', resourceId: 'library-movies' }));
+		await waitFor(() => {
+			expect(screen.getByLabelText('first-media')).toHaveTextContent('media-first 2');
+			expect(screen.getByLabelText('second-media')).toHaveTextContent('media-second 2');
+			expect(screen.getByLabelText('scoped-home')).toHaveTextContent('Home 2');
+		});
+	});
+
+	it('defers live refetches while the browser tab is hidden and catches up when visible', async () => {
+		const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
+		const source = new LiveHomeSource(viewer('adult', 'policy-live'));
+		render(<DataProvider source={source}><ReplacementHome /></DataProvider>);
+		await waitFor(() => expect(screen.getByLabelText('home-title')).toHaveTextContent('Home 1'));
+
+		visibility.mockReturnValue('hidden');
+		act(() => {
+			document.dispatchEvent(new Event('visibilitychange'));
+			source.publish(['home']);
+		});
+		await new Promise((resolve) => setTimeout(resolve, 150));
+		expect(source.homeCalls).toBe(1);
+		expect(screen.getByLabelText('home-title')).toHaveTextContent('Home 1');
+
+		visibility.mockReturnValue('visible');
+		act(() => document.dispatchEvent(new Event('visibilitychange')));
 		await waitFor(() => expect(screen.getByLabelText('home-title')).toHaveTextContent('Home 2'));
 		expect(source.homeCalls).toBe(2);
 	});

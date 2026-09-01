@@ -1,4 +1,4 @@
-import { availableFields, availableSorts, countConditions, encodeExpression, encodeSorts, expressionToFilter, queryChips, removeExpressionAtPath, resolveBrowseWorkspaceQuery, sortLabel, productMessage, type BrowseLibraryRequest, type LibraryBrowseCapabilities, type SavedView, } from '@porticomediaserver/client-core';
+import { availableFields, availableSorts, countConditions, encodeExpression, encodeSorts, expressionToFilter, queryChips, removeExpressionAtPath, resolveBrowseWorkspaceQuery, sortLabel, productMessage, type BrowseLibraryRequest, type LibraryBrowseCapabilities, type LibraryPivotCapability, type SavedView, } from '@porticomediaserver/client-core';
 import {
   NavigationMoveDownIcon, ActionConfirmIcon, ViewGridIcon, ViewListIcon, ActionRefreshIcon, MediaCollectionIcon, ActionCloseIcon } from '#portico-icons';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -35,6 +35,33 @@ type PageState = {
 
 const alphabet = ['All', '#', ...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'];
 const discoverShelfLimit = 12;
+
+const discoverEntityKinds: Record<LibraryWorkspaceLibrary['kind'], string[]> = {
+  movies: ['movie'],
+  tv: ['show'],
+  anime: ['show'],
+  music: ['album', 'track'],
+  audiobooks: ['book'],
+  'recorded-tv': [],
+};
+
+function provisionalDiscoverPivot(library: LibraryWorkspaceLibrary, requestedPivotId: string): LibraryPivotCapability | undefined {
+  if (library.kind === 'recorded-tv' || (requestedPivotId && requestedPivotId !== 'discover')) return undefined;
+  return {
+    id: 'discover',
+    label: 'Discover',
+    entityKinds: discoverEntityKinds[library.kind],
+    browseSupported: false,
+    endpointTemplate: '/api/libraries/{libraryId}/discover',
+    defaultSort: [{ field: 'dateAdded', direction: 'desc' }, { field: 'title', direction: 'asc' }],
+    defaultView: 'shelves',
+    supportedViews: ['shelves'],
+    presentationFields: [
+      'year', 'durationSeconds', 'contentRating', 'communityRating', 'criticRating',
+      'playState', 'progressSeconds', 'availability', 'parentTitle', 'seasonNumber', 'episodeNumber',
+    ],
+  };
+}
 
 function mergeUnique<T extends { id: string }>(left: T[], right: T[]) {
   const seen = new Set(left.map((item) => item.id));
@@ -201,6 +228,10 @@ export function LibraryWorkspacePage({
   const rawSorts = parameters.get('sort');
   const rawPresentation = parameters.get('view');
   const capabilityData = capabilities.status === 'success' ? capabilities.data : undefined;
+  const provisionalPivot = useMemo(
+    () => capabilityData ? undefined : provisionalDiscoverPivot(library, requestedPivotId),
+    [capabilityData, library.id, library.kind, library.name, requestedPivotId],
+  );
   const resolvedQuery = useMemo(() => capabilityData
     ? resolveBrowseWorkspaceQuery({
         pivot: requestedPivotId,
@@ -209,11 +240,11 @@ export function LibraryWorkspacePage({
         view: rawPresentation,
       }, capabilityData)
     : undefined, [capabilityData, rawExpression, rawPresentation, rawSorts, requestedPivotId]);
-  const pivot = resolvedQuery?.pivot;
+  const pivot = resolvedQuery?.pivot ?? provisionalPivot;
   const expression = resolvedQuery?.expression;
   const expressionInvalid = resolvedQuery?.expressionInvalid ?? false;
-  const sorts = resolvedQuery?.sorts ?? [];
-  const presentation = resolvedQuery?.presentation ?? 'grid';
+  const sorts = resolvedQuery?.sorts ?? provisionalPivot?.defaultSort ?? [];
+  const presentation = resolvedQuery?.presentation ?? (provisionalPivot ? 'shelves' : 'grid');
   const fields = capabilityData && pivot ? availableFields(capabilityData, pivot) : [];
   const chips = useMemo(() => queryChips(expression, fields), [expression, fields]);
   const queryConditionCount = useMemo(() => expression ? countConditions(expressionToFilter(expression, fields)) : 0, [expression, fields]);
@@ -233,7 +264,9 @@ export function LibraryWorkspacePage({
     updateParameters({ pivot: pivot.id }, true);
   }, [pivot, requestedPivotId, updateParameters]);
 
-  const limit = capabilityData
+  const limit = provisionalPivot
+    ? discoverShelfLimit
+    : capabilityData
     ? pivot?.id === 'discover'
       ? Math.min(capabilityData.queryLimits.maximumLimit, discoverShelfLimit)
       : Math.min(capabilityData.queryLimits.maximumLimit, Math.max(capabilityData.queryLimits.defaultLimit, 60))
@@ -406,16 +439,16 @@ export function LibraryWorkspacePage({
   const loadingMoreMessage = productMessage('state.loading-more');
   const loadMoreLabel = productMessage('action.load-more-group', { group: productMessage('library.results-label').text }).text;
 
-  if (capabilities.status === 'loading' && !capabilities.data) {
+  if (capabilities.status === 'loading' && !capabilities.data && !provisionalPivot) {
     return <LibraryWorkspaceFrame library={library} />;
   }
 
-  if (capabilities.status === 'error' && !capabilities.data) {
+  if (capabilities.status === 'error' && !capabilities.data && !provisionalPivot) {
     const failure = productLanguageProblem(capabilities.error, 'library.load-failed');
     return <div className="standard-page library-workspace-page"><div className="library-workspace-state error" role="alert"><ProductLanguageIcon presentation={failure} /><strong>{failure.title}</strong><p>{failure.body}</p><SecondaryButton onClick={() => setReloadRevision((current) => current + 1)}><ActionRefreshIcon /> {failure.actions[0]?.label}</SecondaryButton></div></div>;
   }
 
-  if (!pivot || !capabilityData) {
+  if (!pivot) {
     const noPivotsMessage = productMessage('library.no-pivots', { libraryName: library.name });
     return <div className="standard-page library-workspace-page"><div className="library-workspace-state"><ProductLanguageIcon presentation={noPivotsMessage} /><strong>{noPivotsMessage.title}</strong><p>{noPivotsMessage.body}</p></div></div>;
   }
@@ -434,14 +467,15 @@ export function LibraryWorkspacePage({
       : resultCount === 1 ? 'library.result-count-single' : 'library.results-count', { count: resultCount }).text
     : productMessage(library.itemCount === 1 ? 'media.item-count-single' : 'media.item-count', { count: library.itemCount }).text;
   const artworkShape = libraryArtworkShape(library, pivot);
+  const renderedPivots = capabilityData?.pivots ?? [pivot];
   return <div className={`standard-page library-workspace-page ${alphabetical ? 'has-alpha-rail' : ''}`}>
     <header className="library-workspace-header">
       <div><p className="route-context">{productMessage('library.route-context', { libraryName: library.name }).text}</p><h1>{library.name}</h1><p>{resultCountLabel}</p></div>
-      {capabilityData.actions.includes('manageLibrary') && <Link className="button secondary" to={`/settings/media?library=${encodeURIComponent(library.id)}`}>{productMessage('action.library-settings').text}</Link>}
+      {capabilityData?.actions.includes('manageLibrary') && <Link className="button secondary" to={`/settings/media?library=${encodeURIComponent(library.id)}`}>{productMessage('action.library-settings').text}</Link>}
     </header>
 
     <nav className="library-pivots" aria-label={productMessage('library.views-label', { libraryName: library.name }).text}>
-      {capabilityData.pivots.map((candidate) => <Link key={candidate.id} className={candidate.id === pivot.id ? 'active' : ''} aria-current={candidate.id === pivot.id ? 'page' : undefined} to={pivotUrl(candidate.id)}>{candidate.label}</Link>)}
+      {renderedPivots.map((candidate) => <Link key={candidate.id} className={candidate.id === pivot.id ? 'active' : ''} aria-current={candidate.id === pivot.id ? 'page' : undefined} to={pivotUrl(candidate.id)}>{candidate.label}</Link>)}
     </nav>
 
     {!isDiscoverPivot && <div className="library-workspace-toolbar">
@@ -510,7 +544,7 @@ export function LibraryWorkspacePage({
       >{seekingLetter === letter ? '·' : letter}</button>)}
     </nav>}
 
-    {advancedOpen && <AdvancedLibraryDialog
+    {advancedOpen && capabilityData && <AdvancedLibraryDialog
       capabilities={capabilityData}
       library={library}
       source={source}

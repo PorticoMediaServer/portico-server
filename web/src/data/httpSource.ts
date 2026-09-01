@@ -2122,6 +2122,34 @@ export class HttpPorticoDataSource implements PorticoDataSource {
     input: LibraryPivotInput,
     signal: AbortSignal,
   ): Promise<LibraryPivotPage> {
+    // Discover is the canonical first surface for every non-DVR library. It is
+    // safe to start while the richer editing/filter capability envelope loads
+    // in parallel; waiting for that envelope added a full WAN RTT before any
+    // useful library content could begin.
+    if (input.pivot.id === "discover") {
+      const response = await this.client.libraryDiscover(
+        input.libraryId,
+        { limit: input.request.limit },
+        { signal },
+      );
+      const sections =
+        response.rows?.map((row) => ({
+          id: row.id,
+          title: row.title,
+          items: row.items.map((item) => this.mediaDetail(item, false)),
+        })) ?? [];
+      const items = response.items.map((suggestion) =>
+        this.mediaDetail(suggestion.item, false),
+      );
+      return nonBrowsePage(input, {
+        items,
+        sections,
+        total: response.total,
+        nextCursor: null,
+        hasMore: false,
+      });
+    }
+
     const capabilities = await this.browseCapabilities(input.libraryId, signal);
     const pivot = capabilities.pivots.find(
       (candidate) => candidate.id === input.pivot.id,
@@ -2151,30 +2179,6 @@ export class HttpPorticoDataSource implements PorticoDataSource {
       "{libraryId}",
       encodeURIComponent(input.libraryId),
     );
-    if (pivot.id === "discover") {
-      const response = await this.client.libraryDiscover(
-        input.libraryId,
-        { limit: input.request.limit },
-        { signal },
-      );
-      const sections =
-        response.rows?.map((row) => ({
-          id: row.id,
-          title: row.title,
-          items: row.items.map((item) => this.mediaDetail(item, false)),
-        })) ?? [];
-      const items = response.items.map((suggestion) =>
-        this.mediaDetail(suggestion.item, false),
-      );
-      return nonBrowsePage(input, {
-        items,
-        sections,
-        total: response.total,
-        nextCursor: null,
-        hasMore: false,
-      });
-    }
-
     if (pivot.id === "categories" || pivot.id === "genres") {
       const response = await this.client.request<ApiLibraryCategoryList>(
         endpoint,

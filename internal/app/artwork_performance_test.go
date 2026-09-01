@@ -1,6 +1,15 @@
 package app
 
-import "testing"
+import (
+	"net/http"
+	"net/http/cookiejar"
+	"sync"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	"github.com/PorticoMediaServer/portico-server/internal/config"
+)
 
 func TestCanonicalArtworkResizeBoundsVariantCardinality(t *testing.T) {
 	tests := []struct {
@@ -23,5 +32,69 @@ func TestCanonicalArtworkResizeBoundsVariantCardinality(t *testing.T) {
 				t.Fatalf("canonicalArtworkResize(%d, %d) = (%d, %d, %v), want (%d, %d, %v)", test.width, test.height, width, height, ok, test.wantWidth, test.wantHeight, test.wantOK)
 			}
 		})
+	}
+}
+
+func TestMissingArtworkResolutionCoalescesAndNegativeCachesConcurrentRequests(t *testing.T) {
+	serverURL, _, server := newDiscoveryTestServer(t, config.Config{})
+	jar, _ := cookiejar.New(nil)
+	client := &http.Client{Jar: jar}
+	loginUser(t, client, serverURL)
+
+	started := make(chan struct{})
+	release := make(chan struct{})
+	var resolutions atomic.Int32
+	server.artworkResolutionHook = func() {
+		if resolutions.Add(1) == 1 {
+			close(started)
+		}
+		<-release
+	}
+
+	const requestCount = 24
+	statuses := make(chan int, requestCount)
+	var requests sync.WaitGroup
+	requests.Add(requestCount)
+	for range requestCount {
+		go func() {
+			defer requests.Done()
+			resp, err := client.Get(serverURL + "/api/artwork/movie_saffron/poster.svg?v=missing-cache-test")
+			if err != nil {
+				statuses <- 0
+				return
+			}
+			_ = resp.Body.Close()
+			statuses <- resp.StatusCode
+		}()
+	}
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("artwork resolution did not start")
+	}
+	// Give every request time to join the same in-flight lookup.
+	time.Sleep(25 * time.Millisecond)
+	close(release)
+	requests.Wait()
+	close(statuses)
+	for status := range statuses {
+		if status != http.StatusNoContent {
+			t.Fatalf("missing artwork status = %d", status)
+		}
+	}
+	if got := resolutions.Load(); got != 1 {
+		t.Fatalf("concurrent missing artwork performed %d resolutions, want 1", got)
+	}
+
+	resp, err := client.Get(serverURL + "/api/artwork/movie_saffron/poster.svg?v=missing-cache-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("negative-cache status = %d", resp.StatusCode)
+	}
+	if got := resolutions.Load(); got != 1 {
+		t.Fatalf("negative-cache request performed another resolution; count=%d", got)
 	}
 }
