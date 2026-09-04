@@ -4,7 +4,7 @@ go 1.26.6
 
 require (
 	github.com/cyberphone/json-canonicalization v0.0.0-20241213102144-19d51d7fe467
-	github.com/godbus/dbus/v5 v5.1.0
+	github.com/godbus/dbus/v5 v5.2.2
 	github.com/grandcat/zeroconf v1.0.0
 	github.com/slytomcat/systray v1.10.5-0.20250611183948-9bd0132c1649
 	github.com/srwiley/oksvg v0.0.0-20221011165216-be6e8873101c
