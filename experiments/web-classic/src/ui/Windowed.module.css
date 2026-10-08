@@ -1,0 +1,7 @@
+.root { position: relative; padding: 0 var(--gutter); }
+.probe { position: absolute; visibility: hidden; height: 0; }
+.canvas { position: relative; }
+.row { position: absolute; left: 0; right: 0; display: grid; gap: var(--grid-gap, 16px); }
+@media (max-width: 767px) { .root { --grid-gap: 12px; } }
+.list { position: relative; }
+.listRow { position: absolute; left: 0; right: 0; }

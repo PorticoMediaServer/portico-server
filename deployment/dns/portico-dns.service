@@ -1,0 +1,31 @@
+# Portico direct-DNS authority (direct.getportico.tv). dnsdist on :53 forwards
+# direct.getportico.tv here; the address table comes from Hosted's
+# authenticated feed. Installed by scripts/provision-dns-node.sh; releases by
+# scripts/deploy-dns-release.py.
+[Unit]
+Description=Portico direct DNS authority
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=portico-dns
+Group=portico-dns
+EnvironmentFile=/etc/portico-dns/portico-dns.env
+ExecStart=/opt/portico-dns/current/portico-dns dns
+Restart=on-failure
+RestartSec=2
+StateDirectory=portico-dns
+StateDirectoryMode=0700
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+MemoryMax=256M
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

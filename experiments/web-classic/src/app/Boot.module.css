@@ -1,0 +1,5 @@
+.splash { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 28px; animation: fade-in 400ms var(--ease) 120ms both; }
+.splash img { height: 40px; width: auto; }
+.bar { width: 120px; height: 3px; border-radius: 3px; background: var(--track); overflow: hidden; position: relative; }
+.bar::after { content: ''; position: absolute; inset: 0; width: 40%; border-radius: inherit; background: var(--accent); animation: slide 1.1s var(--ease) infinite; }
+@keyframes slide { from { transform: translateX(-100%); } to { transform: translateX(260%); } }

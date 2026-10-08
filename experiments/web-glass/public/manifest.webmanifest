@@ -1,0 +1,13 @@
+{
+  "name": "Portico",
+  "short_name": "Portico",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#071018",
+  "theme_color": "#071018",
+  "icons": [
+    { "src": "/brand/portico-appicon-dark-180.png", "sizes": "180x180", "type": "image/png" },
+    { "src": "/brand/portico-appicon-dark-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/brand/portico-appicon-dark-1024.png", "sizes": "1024x1024", "type": "image/png" }
+  ]
+}

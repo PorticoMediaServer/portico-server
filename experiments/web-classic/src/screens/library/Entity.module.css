@@ -1,0 +1,10 @@
+.head { position: relative; padding: 36px var(--gutter) 28px; margin-bottom: 8px; overflow: hidden; isolation: isolate; min-height: 220px; display: flex; align-items: flex-end; }
+.backdrop { position: absolute; inset: 0; z-index: -1; background-size: cover; background-position: center 30%; opacity: 0.4; mask-image: linear-gradient(180deg, #000 0%, transparent 100%); }
+.headInner { display: flex; gap: 24px; align-items: flex-end; width: 100%; }
+.poster { width: 132px; flex: none; box-shadow: var(--shadow-card); }
+@media (max-width: 767px) { .poster { width: 88px; } .head { min-height: 0; padding-top: 20px; } }
+.text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.eyebrow { font-size: 12px; font-weight: 750; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-3); }
+.title { font-size: var(--fs-display); font-weight: 800; letter-spacing: -0.028em; line-height: 1.05; text-wrap: balance; }
+.overview { color: var(--text-2); max-width: 70ch; font-size: 14.5px; line-height: 1.55; }
+.buttons { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }

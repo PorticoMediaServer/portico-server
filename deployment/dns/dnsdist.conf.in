@@ -1,0 +1,30 @@
+-- /etc/dnsdist/dnsdist.conf, rendered by scripts/provision-dns-node.sh.
+-- Public :53 on @PUBLIC_IP@. direct.getportico.tv goes to portico-dns
+-- (127.0.0.1:5353); acme.getportico.tv to BIND (@WG_IP@:5354); all else REFUSED.
+setLocal("@PUBLIC_IP@:53", {maxConcurrentTCPConnections=512, tcpListenQueueSize=1024})
+setACL({"0.0.0.0/0", "::/0"})
+setMaxTCPConnectionsPerClient(64)
+setMaxTCPQueriesPerConnection(50)
+setMaxTCPConnectionDuration(15)
+setMaxTCPQueuedConnections(1024)
+setTCPConnectionsOverloadThreshold(80)
+setTCPRecvTimeout(2)
+setTCPSendTimeout(2)
+setMaxUDPOutstanding(4096)
+
+-- Admission belongs at the frontend where the real resolver address is visible.
+addAction(MaxQPSIPRule(20000, 32, 64), DropAction())
+addAction(NotRule(MaxQPSRule(50000)), DropAction())
+
+newServer({address="127.0.0.1:5353", pool="direct", name="portico-direct", checkName="direct.getportico.tv.", checkType="SOA", mustResolve=true})
+newServer({address="@WG_IP@:5354", pool="acme", name="portico-acme", checkName="acme.getportico.tv.", checkType="SOA", mustResolve=true})
+
+directCache = newPacketCache(10000, {maxTTL=300, minTTL=0, temporaryFailureTTL=1, staleTTL=30})
+getPool("direct"):setCache(directCache)
+-- The ACME validation zone is deliberately not cached: Hosted polls each
+-- authority after an update and must see NOTIFY/IXFR convergence at once.
+
+addAction(NotRule(OpcodeRule(DNSOpcode.Query)), RCodeAction(DNSRCode.REFUSED))
+addAction(SuffixMatchNodeRule("direct.getportico.tv."), PoolAction("direct"))
+addAction(SuffixMatchNodeRule("acme.getportico.tv."), PoolAction("acme"))
+addAction(AllRule(), RCodeAction(DNSRCode.REFUSED))

@@ -1,0 +1,169 @@
+/* Portico design tokens. One dark theme, tuned around the Portico navy and blue glow. */
+:root {
+  color-scheme: dark;
+
+  /* Canvas */
+  --navy-950: #040a10;
+  --navy-900: #071018;
+  --navy-850: #0a1621;
+  --navy-800: #0d1c2a;
+  --navy-750: #10233a;
+  --navy-700: #142b42;
+  --navy-600: #1c3a57;
+
+  /* Portico blue */
+  --blue-200: #bfe6fa;
+  --blue-300: #8fd0f2;
+  --blue-400: #5cb3e2;
+  --blue-500: #409fd4;
+  --blue-600: #2f86bb;
+  --blue-700: #216b99;
+  --accent: var(--blue-400);
+  --accent-strong: var(--blue-500);
+  --accent-ink: #04121c;
+
+  /* Text */
+  --text-1: rgba(250, 253, 255, 0.97);
+  --text-2: rgba(226, 239, 250, 0.74);
+  --text-3: rgba(208, 226, 243, 0.54);
+  --text-4: rgba(200, 220, 240, 0.36);
+
+  /* Lines and fills */
+  --line: rgba(170, 210, 245, 0.11);
+  --line-2: rgba(170, 210, 245, 0.18);
+  --line-3: rgba(170, 210, 245, 0.28);
+  --fill-1: rgba(150, 200, 245, 0.055);
+  --fill-2: rgba(150, 200, 245, 0.09);
+  --fill-3: rgba(150, 200, 245, 0.14);
+  --fill-4: rgba(150, 200, 245, 0.2);
+  --surface-1: rgba(16, 34, 52, 0.62);
+  --surface-2: rgba(20, 42, 64, 0.72);
+  --surface-solid: #0e1d2c;
+  --surface-solid-2: #13263a;
+
+  /* Status */
+  --green: #3fd89a;
+  --green-bg: rgba(63, 216, 154, 0.14);
+  --amber: #ffbd4a;
+  --amber-bg: rgba(255, 189, 74, 0.14);
+  --red: #ff5f66;
+  --red-bg: rgba(255, 95, 102, 0.14);
+  --violet: #a193ff;
+  --pink: #ff7ab8;
+  --live: #ff4d58;
+
+  /* Glass */
+  /* Nearly clear: the content behind carries the colour, the rim and highlights carry the shape. */
+  --glass-tint: rgba(28, 56, 84, 0.14);
+  --glass-tint-strong: rgba(14, 30, 46, 0.5);
+  --glass-tint-chrome: rgba(16, 34, 52, 0.2);
+  --glass-blur: 11px;
+  --glass-sat: 170%;
+  --glass-rim-hi: rgba(255, 255, 255, 0.78);
+  --glass-rim-lo: rgba(255, 255, 255, 0.1);
+  --glass-shadow: 0 12px 40px rgba(0, 4, 10, 0.42), 0 2px 6px rgba(0, 4, 10, 0.25);
+
+  /* Type */
+  --font: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter Variable', 'Segoe UI Variable', system-ui, sans-serif;
+  --font-display: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter Variable', 'Segoe UI Variable Display', system-ui, sans-serif;
+  --font-rounded: ui-rounded, 'SF Pro Rounded', -apple-system, 'Inter Variable', system-ui, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace;
+
+  /* Radii */
+  --r-xs: 6px;
+  --r-sm: 10px;
+  --r-md: 14px;
+  --r-lg: 20px;
+  --r-xl: 28px;
+  --r-2xl: 36px;
+  --r-pill: 999px;
+
+  /* Motion */
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+  --dur-1: 140ms;
+  --dur-2: 240ms;
+  --dur-3: 420ms;
+  --dur-4: 640ms;
+
+  /* Layout */
+  --gutter: 48px;
+  --topbar-h: 76px;
+  --tabbar-h: 0px;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --poster-w: 176px;
+  --landscape-w: 320px;
+  --square-w: 184px;
+  --z-bar: 50;
+  --z-mini: 55;
+  --z-overlay: 80;
+  --z-sheet: 90;
+  --z-toast: 100;
+}
+
+@media (min-width: 1680px) {
+  :root {
+    --gutter: 64px;
+    --poster-w: 196px;
+    --landscape-w: 360px;
+    --square-w: 204px;
+  }
+}
+
+@media (max-width: 1099px) {
+  :root {
+    --gutter: 32px;
+    --poster-w: 156px;
+    --landscape-w: 288px;
+    --square-w: 164px;
+  }
+}
+
+@media (max-width: 767px) {
+  :root {
+    --gutter: 20px;
+    --topbar-h: 0px;
+    --tabbar-h: calc(62px + max(var(--safe-bottom), 12px) + 8px);
+    --poster-w: 124px;
+    --landscape-w: 264px;
+    --square-w: 148px;
+  }
+}
+
+/* Accessibility: reduced transparency swaps glass for solid, still-dimensional surfaces. */
+@media (prefers-reduced-transparency: reduce) {
+  :root:not([data-transparency='full']) {
+    --glass-tint: #132638;
+    --glass-tint-strong: #0f2031;
+    --glass-tint-chrome: #122536;
+    --glass-blur: 0px;
+    --glass-sat: 100%;
+  }
+}
+:root[data-transparency='reduced'] {
+  --glass-tint: #132638;
+  --glass-tint-strong: #0f2031;
+  --glass-tint-chrome: #122536;
+  --glass-blur: 0px;
+  --glass-sat: 100%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-motion='full']) {
+    --dur-1: 0ms;
+    --dur-2: 0ms;
+    --dur-3: 0ms;
+    --dur-4: 0ms;
+  }
+}
+:root[data-motion='reduced'] {
+  --dur-1: 0ms;
+  --dur-2: 0ms;
+  --dur-3: 0ms;
+  --dur-4: 0ms;
+}

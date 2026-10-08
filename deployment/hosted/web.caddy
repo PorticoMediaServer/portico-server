@@ -1,0 +1,4 @@
+# Include in the HTTPS Hosted Web site block. Verified server routes still own
+# endpoint selection; media and worker directives permit the resulting player.
+# www.gstatic.com serves the Google Cast sender framework the web app loads.
+header Content-Security-Policy "default-src 'self'; img-src 'self' data: blob: https:; media-src 'self' blob: https:; worker-src 'self' blob:; connect-src 'self' https:; script-src 'self' https://www.gstatic.com; style-src 'self' 'unsafe-inline'; font-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"

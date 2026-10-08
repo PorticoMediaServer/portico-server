@@ -1,0 +1,98 @@
+# Portico Hosted edge (portico-core-us-1). Managed by hand; see
+# deployment/hosted/TOPOLOGY.md. Every public name is proxied by Cloudflare,
+# which presents its origin-pull client certificate; only Cloudflare can connect.
+{
+	admin 127.0.0.1:2019
+	servers {
+		trusted_proxies static 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32
+		trusted_proxies_strict
+		client_ip_headers CF-Connecting-IP X-Forwarded-For
+		# Cloudflare reaches the origin over TCP; the firewall admits no UDP 443.
+		protocols h1 h2
+	}
+}
+
+(origin_tls) {
+	tls /etc/caddy/tls/cloudflare-origin.crt /etc/caddy/tls/cloudflare-origin.key {
+		client_auth {
+			mode require_and_verify
+			trust_pool file {
+				pem_file /etc/caddy/tls/cloudflare-origin-pull-ca.pem
+			}
+		}
+	}
+}
+
+(security) {
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "same-origin"
+		X-Frame-Options "DENY"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+	}
+}
+
+(hosted_api) {
+	reverse_proxy 127.0.0.1:19410 {
+		header_up X-Forwarded-For {client_ip}
+		header_up X-Forwarded-Proto https
+	}
+}
+
+# Hosted web: the account API (Hosted, loopback 19410) and the web app (web-host, loopback 19418).
+web.getportico.tv {
+	import origin_tls
+	import security
+	encode zstd gzip
+	import /etc/caddy/portico-web.caddy
+	@account_api path /v1/* /auth/sso/google/callback /auth/sso/apple/callback
+	handle @account_api {
+		import hosted_api
+	}
+	handle {
+		reverse_proxy 127.0.0.1:19418
+	}
+}
+
+# Public site: static files (not in the Portico repo; kept from the previous deployment).
+getportico.tv {
+	import origin_tls
+	import security
+	encode zstd gzip
+	@association path /.well-known/apple-app-site-association /apple-app-site-association
+	handle @association {
+		rewrite * /.well-known/apple-app-site-association
+		reverse_proxy 127.0.0.1:19418
+	}
+	handle {
+		header Content-Security-Policy "default-src 'self'; img-src 'self'; font-src 'self'; style-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'none'"
+		root * /opt/portico-public-site/current
+		file_server
+	}
+	handle_errors 404 {
+		root * /opt/portico-public-site/current
+		rewrite * /404.html
+		file_server
+	}
+}
+
+www.getportico.tv {
+	import origin_tls
+	redir https://getportico.tv{uri} permanent
+}
+
+# The shared Google Cast receiver: exactly portico-server/server/receiver/cast.
+cast.getportico.tv {
+	import origin_tls
+	import security
+	encode zstd gzip
+	header {
+		Referrer-Policy "no-referrer"
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+		Content-Security-Policy "default-src 'self' https://www.gstatic.com; script-src 'self' https://www.gstatic.com; connect-src https:; media-src https: blob:; img-src https: data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'"
+		Cache-Control "no-store"
+	}
+	root * /opt/portico-cast-receiver/current
+	file_server
+}

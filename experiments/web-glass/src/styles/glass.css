@@ -1,0 +1,120 @@
+/*
+  Liquid glass.
+  Layers, back to front:
+   1. backdrop: blur + saturation of whatever is behind (only on chrome that floats over content)
+   2. tint: a thin navy wash so text always has contrast
+   3. body gradient: brighter at the top, like light falling on a lens
+   4. ::before  specular rim — a 1px gradient border, bright top-left, dim bottom-right
+   5. ::after   sheen — a soft highlight that follows the pointer on interactive glass
+  Refraction (edge lensing) is layered on in Chromium via an SVG displacement filter; see lib/refraction.ts.
+*/
+.glass {
+  position: relative;
+  isolation: isolate;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.13) 0%, rgba(255, 255, 255, 0.03) 42%, rgba(255, 255, 255, 0.05) 100%),
+    var(--glass-tint);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
+  box-shadow:
+    inset 0 1px 0.5px rgba(255, 255, 255, 0.5),
+    inset 0 -1px 1px rgba(255, 255, 255, 0.14),
+    inset 0 0 14px rgba(255, 255, 255, 0.06),
+    var(--glass-shadow);
+}
+.glass::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(
+    150deg,
+    var(--glass-rim-hi) 0%,
+    rgba(255, 255, 255, 0.2) 22%,
+    var(--glass-rim-lo) 45%,
+    rgba(255, 255, 255, 0.06) 62%,
+    rgba(255, 255, 255, 0.24) 88%,
+    rgba(255, 255, 255, 0.5) 100%
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+.glass::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: radial-gradient(
+    180px 120px at var(--mx, 30%) var(--my, -30%),
+    rgba(255, 255, 255, 0.16),
+    rgba(255, 255, 255, 0) 70%
+  );
+  opacity: var(--sheen, 0.7);
+  transition: opacity var(--dur-2) var(--ease);
+}
+.glass > * {
+  position: relative;
+  z-index: 2;
+}
+
+/* Thicker material for sheets, menus and dialogs that hold dense content */
+.glass-thick {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.02) 30%, rgba(255, 255, 255, 0) 100%),
+    var(--glass-tint-strong);
+  -webkit-backdrop-filter: blur(28px) saturate(170%);
+  backdrop-filter: blur(28px) saturate(170%);
+}
+/* Chrome material for bars */
+.glass-chrome {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.04) 45%, rgba(255, 255, 255, 0.02) 100%),
+    var(--glass-tint-chrome);
+}
+/* Clear glass for controls over imagery (player, hero) */
+.glass-clear {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.06));
+  -webkit-backdrop-filter: blur(9px) saturate(160%) brightness(1.05);
+  backdrop-filter: blur(9px) saturate(160%) brightness(1.05);
+}
+/* With so little tint, labels on floating glass lean on a soft shadow to stay legible over bright art. */
+.glass-chrome,
+.glass-clear {
+  text-shadow: 0 1px 3px rgba(0, 8, 16, 0.45);
+}
+.glass-chrome .lucide,
+.glass-clear .lucide {
+  filter: drop-shadow(0 1px 2px rgba(0, 8, 16, 0.4));
+}
+
+/* Where the lens runs, the blur stays light: any heavier and it smears the bending at the rim away. */
+html.refraction .glass.refract {
+  --refract-blur: 3.5px;
+  -webkit-backdrop-filter: var(--refract-filter, blur(var(--glass-blur))) blur(var(--refract-blur)) saturate(var(--glass-sat));
+  backdrop-filter: var(--refract-filter, blur(var(--glass-blur))) blur(var(--refract-blur)) saturate(var(--glass-sat));
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  :root:not([data-transparency='full']) .glass,
+  :root:not([data-transparency='full']) .glass-thick,
+  :root:not([data-transparency='full']) .glass-clear {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0)), var(--glass-tint-strong);
+  }
+}
+:root[data-transparency='reduced'] .glass,
+:root[data-transparency='reduced'] .glass-thick,
+:root[data-transparency='reduced'] .glass-clear {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0)), var(--glass-tint-strong);
+}

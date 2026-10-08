@@ -1,0 +1,20 @@
+{
+  "items": [
+    {
+      "baseUrl": "",
+      "endpointVerified": false,
+      "id": "<id>",
+      "lastSeenAt": "<time>",
+      "name": "Local",
+      "ownedByMe": true,
+      "policyRevision": 1,
+      "presence": {
+        "lastSeenAt": "<time>"
+      },
+      "publicKey": "<publicKey>",
+      "status": "quiet"
+    }
+  ],
+  "version": "0",
+  "watch": "<watch>"
+}

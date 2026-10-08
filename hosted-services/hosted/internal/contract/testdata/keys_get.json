@@ -1,0 +1,17 @@
+{
+  "certificates": [
+    {
+      "keyId": "<keyId>",
+      "notAfter": "<time>",
+      "notBefore": "<time>",
+      "publicKey": "<publicKey>",
+      "purpose": "documents",
+      "revision": 1,
+      "revoked": [],
+      "signature": "<signature>"
+    }
+  ],
+  "keyId": "<keyId>",
+  "publicKey": "<publicKey>",
+  "root": "<root>"
+}

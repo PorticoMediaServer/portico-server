@@ -1,0 +1,27 @@
+// /etc/bind/named.conf on ns2 (ACME secondary), rendered by
+// scripts/provision-dns-node.sh. /etc/bind/portico-keys.conf holds only
+// "acme-transfer.". BIND listens on WireGuard only; the public path is dnsdist.
+include "/etc/bind/portico-keys.conf";
+
+options {
+  directory "/var/cache/bind";
+  listen-on port 5354 { @WG_IP@; };
+  listen-on-v6 { none; };
+  recursion no;
+  allow-query { any; };
+  allow-query-cache { none; };
+  allow-recursion { none; };
+  allow-notify { @PEER_WG_IP@; };
+  minimal-responses yes;
+  max-cache-size 16M;
+  rate-limit { responses-per-second 200; window 5; slip 2; };
+  dnssec-validation no;
+  version none;
+};
+
+zone "acme.getportico.tv" IN {
+  type secondary;
+  file "/var/lib/bind/db.acme.getportico.tv";
+  primaries { @PEER_WG_IP@ port 5354 key "acme-transfer."; };
+  allow-transfer { none; };
+};

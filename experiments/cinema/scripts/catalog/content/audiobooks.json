@@ -1,0 +1,2045 @@
+[
+ {
+  "id": "b-pride-and-prejudice",
+  "title": "Pride and Prejudice",
+  "author": "Jane Austen",
+  "authorBio": "Jane Austen turned the manners and marriage markets of Regency England into comedy with a sharp moral eye. Her novels were published between 1811 and 1817.",
+  "narrator": "Elena Marsh",
+  "year": 1813,
+  "genres": [
+   "Romance",
+   "Classics"
+  ],
+  "synopsis": "At Longbourn, Elizabeth Bennet dismisses the reserved Mr. Darcy after a disastrous first meeting. As her sisters' prospects shift and an old accusation resurfaces, Elizabeth must reconsider what pride has concealed from them both.",
+  "series": null,
+  "publicDomain": true,
+  "palette": "rose",
+  "chapters": [
+   {
+    "title": "Chapter 1",
+    "minutes": 34
+   },
+   {
+    "title": "Chapter 2",
+    "minutes": 31
+   },
+   {
+    "title": "Chapter 3",
+    "minutes": 36
+   },
+   {
+    "title": "Chapter 4",
+    "minutes": 29
+   },
+   {
+    "title": "Chapter 5",
+    "minutes": 38
+   },
+   {
+    "title": "Chapter 6",
+    "minutes": 35
+   },
+   {
+    "title": "Chapter 7",
+    "minutes": 33
+   },
+   {
+    "title": "Chapter 8",
+    "minutes": 37
+   },
+   {
+    "title": "Chapter 9",
+    "minutes": 32
+   },
+   {
+    "title": "Chapter 10",
+    "minutes": 39
+   },
+   {
+    "title": "Chapter 11",
+    "minutes": 30
+   },
+   {
+    "title": "Chapter 12",
+    "minutes": 36
+   },
+   {
+    "title": "Chapter 13",
+    "minutes": 34
+   },
+   {
+    "title": "Chapter 14",
+    "minutes": 33
+   },
+   {
+    "title": "Chapter 15",
+    "minutes": 35
+   },
+   {
+    "title": "Chapter 16",
+    "minutes": 37
+   }
+  ]
+ },
+ {
+  "id": "b-frankenstein",
+  "title": "Frankenstein",
+  "author": "Mary Shelley",
+  "authorBio": "Mary Shelley wrote Frankenstein while still a teenager and later built a career as a novelist and editor. Her fiction often tests the cost of ambition against human responsibility.",
+  "narrator": "Jonah Vale",
+  "year": 1818,
+  "genres": [
+   "Horror",
+   "Science Fiction",
+   "Classics"
+  ],
+  "synopsis": "Scientist Victor Frankenstein assembles a living being in Ingolstadt, then abandons him in terror. Rejected by every family he approaches, the creature pursues his maker across Europe and demands an answer for his loneliness.",
+  "series": null,
+  "publicDomain": true,
+  "palette": "slate",
+  "chapters": [
+   {
+    "title": "Letter 1",
+    "minutes": 22
+   },
+   {
+    "title": "Letter 2",
+    "minutes": 19
+   },
+   {
+    "title": "Letter 3",
+    "minutes": 17
+   },
+   {
+    "title": "Letter 4",
+    "minutes": 24
+   },
+   {
+    "title": "Chapter 01",
+    "minutes": 32
+   },
+   {
+    "title": "Chapter 02",
+    "minutes": 35
+   },
+   {
+    "title": "Chapter 03",
+    "minutes": 30
+   },
+   {
+    "title": "Chapter 04",
+    "minutes": 34
+   },
+   {
+    "title": "Chapter 05",
+    "minutes": 31
+   },
+   {
+    "title": "Chapter 06",
+    "minutes": 29
+   },
+   {
+    "title": "Chapter 07",
+    "minutes": 33
+   },
+   {
+    "title": "Chapter 08",
+    "minutes": 36
+   },
+   {
+    "title": "Chapter 09",
+    "minutes": 32
+   },
+   {
+    "title": "Chapter 10: Trial",
+    "minutes": 35
+   },
+   {
+    "title": "Chapter 11: Creature's Tale",
+    "minutes": 33
+   },
+   {
+    "title": "Chapter 12: In the Cottage",
+    "minutes": 34
+   }
+  ]
+ },
+ {
+  "id": "b-dracula",
+  "title": "Dracula",
+  "author": "Bram Stoker",
+  "authorBio": "Bram Stoker managed a London theater while writing novels and short fiction. His best-known book gathers letters, diaries, and newspaper reports into a single mounting threat.",
+  "narrator": "Callum Reed",
+  "year": 1897,
+  "genres": [
+   "Horror",
+   "Gothic",
+   "Classics"
+  ],
+  "synopsis": "Solicitor Jonathan Harker arrives at a Transylvanian castle whose host never seems to eat and casts no reflection. Once Count Dracula reaches England, Mina Murray and a small circle of friends trace a series of strange illnesses back to his voyage.",
+  "series": null,
+  "publicDomain": true,
+  "palette": "crimson",
+  "chapters": [
+   {
+    "title": "Chapter I",
+    "minutes": 38
+   },
+   {
+    "title": "Chapter II",
+    "minutes": 42
+   },
+   {
+    "title": "Chapter III",
+    "minutes": 39
+   },
+   {
+    "title": "Chapter IV",
+    "minutes": 36
+   },
+   {
+    "title": "Chapter V",
+    "minutes": 41
+   },
+   {
+    "title": "Chapter VI",
+    "minutes": 37
+   },
+   {
+    "title": "Chapter VII",
+    "minutes": 44
+   },
+   {
+    "title": "Chapter VIII",
+    "minutes": 40
+   },
+   {
+    "title": "Chapter IX",
+    "minutes": 43
+   },
+   {
+    "title": "Chapter X",
+    "minutes": 39
+   },
+   {
+    "title": "Chapter XI",
+    "minutes": 41
+   },
+   {
+    "title": "Chapter XII",
+    "minutes": 38
+   },
+   {
+    "title": "Chapter XIII",
+    "minutes": 42
+   },
+   {
+    "title": "Chapter XIV",
+    "minutes": 37
+   },
+   {
+    "title": "Chapter XV",
+    "minutes": 45
+   },
+   {
+    "title": "Chapter XVI",
+    "minutes": 40
+   }
+  ]
+ },
+ {
+  "id": "b-the-adventures-of-sherlock-holmes",
+  "title": "The Adventures of Sherlock Holmes",
+  "author": "Arthur Conan Doyle",
+  "authorBio": "Arthur Conan Doyle was a Scottish physician whose detective stories made close observation into a form of drama. He also wrote historical novels, adventure fiction, and public essays.",
+  "narrator": "Miles Fenwick",
+  "year": 1892,
+  "genres": [
+   "Mystery",
+   "Classics"
+  ],
+  "synopsis": "From a vanished bridegroom to a royal photograph, twelve cases pull Dr. Watson back into Holmes's London rooms. Each puzzle hinges on an overlooked detail that places a client's reputation, livelihood, or life in danger.",
+  "series": null,
+  "publicDomain": true,
+  "palette": "amber",
+  "chapters": [
+   {
+    "title": "A Scandal in Bohemia",
+    "minutes": 48
+   },
+   {
+    "title": "The Red-Headed League",
+    "minutes": 46
+   },
+   {
+    "title": "A Case of Identity",
+    "minutes": 39
+   },
+   {
+    "title": "The Boscombe Valley Mystery (Case Four)",
+    "minutes": 51
+   },
+   {
+    "title": "The Five Orange Pips (Case Five)",
+    "minutes": 42
+   },
+   {
+    "title": "The Man with the Twisted Lip",
+    "minutes": 49
+   },
+   {
+    "title": "Case Seven: The Adventure of the Blue Carbuncle",
+    "minutes": 43
+   },
+   {
+    "title": "Watson's Eighth Case: The Adventure of the Speckled Band",
+    "minutes": 52
+   },
+   {
+    "title": "From Baker Street: The Adventure of the Engineer's Thumb",
+    "minutes": 45
+   },
+   {
+    "title": "A London Affair: The Adventure of the Noble Bachelor",
+    "minutes": 44
+   },
+   {
+    "title": "Casebook Eleven: The Adventure of the Beryl Coronet",
+    "minutes": 50
+   },
+   {
+    "title": "At Copper Beeches: The Adventure of the Copper Beeches",
+    "minutes": 53
+   }
+  ]
+ },
+ {
+  "id": "b-moby-dick",
+  "title": "Moby-Dick",
+  "author": "Herman Melville",
+  "authorBio": "Herman Melville drew on years at sea for novels that range from adventure to philosophical inquiry. Moby-Dick found its broad readership long after its original publication.",
+  "narrator": "Dorian Pike",
+  "year": 1851,
+  "genres": [
+   "Adventure",
+   "Literary Fiction",
+   "Classics"
+  ],
+  "synopsis": "Ishmael signs aboard the Pequod in Nantucket, expecting a whaling voyage under Captain Ahab. He soon learns the captain means to chase the white whale that took his leg, no matter what the hunt costs the crew.",
+  "series": null,
+  "publicDomain": true,
+  "palette": "cobalt",
+  "chapters": [
+   {
+    "title": "Loomings",
+    "minutes": 31
+   },
+   {
+    "title": "The Carpet-Bag",
+    "minutes": 26
+   },
+   {
+    "title": "The Spouter-Inn",
+    "minutes": 34
+   },
+   {
+    "title": "The Counterpane",
+    "minutes": 23
+   },
+   {
+    "title": "Breakfast",
+    "minutes": 20
+   },
+   {
+    "title": "The Street",
+    "minutes": 22
+   },
+   {
+    "title": "The Chapel",
+    "minutes": 28
+   },
+   {
+    "title": "The Pulpit",
+    "minutes": 29
+   },
+   {
+    "title": "The Sermon",
+    "minutes": 44
+   },
+   {
+    "title": "A Bosom Friend (Queequeg)",
+    "minutes": 25
+   },
+   {
+    "title": "Nightgown",
+    "minutes": 21
+   },
+   {
+    "title": "Biographical",
+    "minutes": 27
+   },
+   {
+    "title": "Wheelbarrow",
+    "minutes": 24
+   },
+   {
+    "title": "Nantucket",
+    "minutes": 30
+   },
+   {
+    "title": "Chowder",
+    "minutes": 25
+   },
+   {
+    "title": "The Ship",
+    "minutes": 38
+   },
+   {
+    "title": "The Ramadan",
+    "minutes": 31
+   },
+   {
+    "title": "His Mark",
+    "minutes": 24
+   },
+   {
+    "title": "The Prophet",
+    "minutes": 28
+   },
+   {
+    "title": "All Astir",
+    "minutes": 33
+   }
+  ]
+ },
+ {
+  "id": "b-the-time-machine",
+  "title": "The Time Machine",
+  "author": "H. G. Wells",
+  "authorBio": "H. G. Wells used speculative fiction to examine class, power, and scientific change. His early novels helped establish the modern language of science fiction.",
+  "narrator": "Tessa Rowan",
+  "year": 1895,
+  "genres": [
+   "Science Fiction",
+   "Classics"
+  ],
+  "synopsis": "A London inventor reaches the year 802,701 and befriends Weena, a woman among the carefree Eloi. When the subterranean Morlocks steal his machine, he must descend beneath their ruined world to recover his only route home.",
+  "series": null,
+  "publicDomain": true,
+  "palette": "teal",
+  "chapters": [
+   {
+    "title": "Introduction",
+    "minutes": 18
+   },
+   {
+    "title": "The Machine",
+    "minutes": 24
+   },
+   {
+    "title": "The Time Traveller Returns (Home)",
+    "minutes": 20
+   },
+   {
+    "title": "Time Travelling",
+    "minutes": 34
+   },
+   {
+    "title": "In the Golden Age",
+    "minutes": 32
+   },
+   {
+    "title": "The Sunset of Mankind",
+    "minutes": 31
+   },
+   {
+    "title": "A Sudden Shock",
+    "minutes": 27
+   },
+   {
+    "title": "Explanation",
+    "minutes": 30
+   },
+   {
+    "title": "The Morlocks",
+    "minutes": 29
+   },
+   {
+    "title": "When Night Came",
+    "minutes": 33
+   },
+   {
+    "title": "The Palace of Green Porcelain",
+    "minutes": 36
+   },
+   {
+    "title": "In the Darkness",
+    "minutes": 28
+   },
+   {
+    "title": "The Trap of the White Sphinx",
+    "minutes": 31
+   },
+   {
+    "title": "The Further Vision",
+    "minutes": 22
+   },
+   {
+    "title": "The Time Traveller's Return",
+    "minutes": 19
+   },
+   {
+    "title": "Epilogue",
+    "minutes": 14
+   }
+  ]
+ },
+ {
+  "id": "b-little-women",
+  "title": "Little Women",
+  "author": "Louisa May Alcott",
+  "authorBio": "Louisa May Alcott supported her family through writing and nursing before the March sisters made her famous. Her stories draw on the work and ambitions of women in her own household.",
+  "narrator": "Sophie Bell",
+  "year": 1868,
+  "genres": [
+   "Family",
+   "Coming of Age",
+   "Classics"
+  ],
+  "synopsis": "With their father away at war, Meg, Jo, Beth, and Amy March find ways to grow up without losing one another. In Concord, small acts of generosity and painful mistakes test each sister's idea of the life she wants.",
+  "series": null,
+  "publicDomain": true,
+  "palette": "gold",
+  "chapters": [
+   {
+    "title": "Playing Pilgrims",
+    "minutes": 31
+   },
+   {
+    "title": "A Merry Christmas",
+    "minutes": 28
+   },
+   {
+    "title": "The Laurence Boy",
+    "minutes": 32
+   },
+   {
+    "title": "Burdens",
+    "minutes": 30
+   },
+   {
+    "title": "Being Neighborly",
+    "minutes": 33
+   },
+   {
+    "title": "Beth Finds the Palace Beautiful",
+    "minutes": 35
+   },
+   {
+    "title": "Amy's Valley of Humiliation",
+    "minutes": 29
+   },
+   {
+    "title": "Jo Meets Apollyon",
+    "minutes": 34
+   },
+   {
+    "title": "Meg Goes to Vanity Fair",
+    "minutes": 36
+   },
+   {
+    "title": "The P.C. and P.O.",
+    "minutes": 27
+   },
+   {
+    "title": "Experiments",
+    "minutes": 31
+   },
+   {
+    "title": "Camp Laurence",
+    "minutes": 38
+   },
+   {
+    "title": "Castles in the Air",
+    "minutes": 34
+   },
+   {
+    "title": "Secrets",
+    "minutes": 32
+   },
+   {
+    "title": "A Telegram",
+    "minutes": 30
+   },
+   {
+    "title": "Letters",
+    "minutes": 33
+   },
+   {
+    "title": "Little Faithful",
+    "minutes": 34
+   },
+   {
+    "title": "Dark Days",
+    "minutes": 37
+   },
+   {
+    "title": "Amy's Will",
+    "minutes": 30
+   },
+   {
+    "title": "Confidential",
+    "minutes": 29
+   }
+  ]
+ },
+ {
+  "id": "b-the-great-gatsby",
+  "title": "The Great Gatsby",
+  "author": "F. Scott Fitzgerald",
+  "authorBio": "F. Scott Fitzgerald chronicled wealth and aspiration in American fiction of the 1920s. His precise, restless prose gave the Jazz Age one of its enduring portraits.",
+  "narrator": "Adrian Wells",
+  "year": 1925,
+  "genres": [
+   "Literary Fiction",
+   "Classics"
+  ],
+  "synopsis": "Nick Carraway rents a modest Long Island house beside Jay Gatsby's glittering estate. Gatsby's elaborate parties conceal a plan to reclaim Daisy Buchanan, and Nick watches that dream collide with money, marriage, and a fatal drive.",
+  "series": null,
+  "publicDomain": true,
+  "palette": "gold",
+  "chapters": [
+   {
+    "title": "Chapter 1, Part 1",
+    "minutes": 31
+   },
+   {
+    "title": "Chapter 1, Part 2",
+    "minutes": 28
+   },
+   {
+    "title": "Chapter 2: The Valley of Ashes",
+    "minutes": 43
+   },
+   {
+    "title": "Chapter 3, Part 1",
+    "minutes": 30
+   },
+   {
+    "title": "Chapter 3, Part 2",
+    "minutes": 29
+   },
+   {
+    "title": "Chapter 4: A Story Over Lunch",
+    "minutes": 48
+   },
+   {
+    "title": "Chapter 5: Tea at Nick's",
+    "minutes": 46
+   },
+   {
+    "title": "Chapter 6: James Gatz",
+    "minutes": 44
+   },
+   {
+    "title": "Chapter 7, Part 1",
+    "minutes": 34
+   },
+   {
+    "title": "Chapter 7, Part 2",
+    "minutes": 38
+   },
+   {
+    "title": "Chapter 8: The Pool",
+    "minutes": 48
+   },
+   {
+    "title": "Chapter 9: After the Funeral",
+    "minutes": 51
+   }
+  ]
+ },
+ {
+  "id": "b-a-christmas-carol",
+  "title": "A Christmas Carol",
+  "author": "Charles Dickens",
+  "authorBio": "Charles Dickens published serial fiction that brought crowded Victorian streets and social inequality to a vast audience. He also campaigned for children's welfare and better public institutions.",
+  "narrator": "Graham Sloane",
+  "year": 1843,
+  "genres": [
+   "Fantasy",
+   "Holiday",
+   "Classics"
+  ],
+  "synopsis": "On Christmas Eve in London, the miser Ebenezer Scrooge is visited by his dead business partner, who warns that three spirits will follow. Their journeys through memory, present hardship, and a lonely future give him one night to change course.",
+  "series": null,
+  "publicDomain": true,
+  "palette": "emerald",
+  "chapters": [
+   {
+    "title": "Stave One: Marley's Ghost, Part 1",
+    "minutes": 24
+   },
+   {
+    "title": "Stave One: Marley's Ghost, Part 2",
+    "minutes": 26
+   },
+   {
+    "title": "Stave One: Marley's Ghost, Part 3",
+    "minutes": 22
+   },
+   {
+    "title": "Stave Two: The First of the Three Spirits, Part 1",
+    "minutes": 27
+   },
+   {
+    "title": "Stave Two: The First of the Three Spirits, Part 2",
+    "minutes": 28
+   },
+   {
+    "title": "Stave Three: The Second of the Three Spirits, Part 1",
+    "minutes": 30
+   },
+   {
+    "title": "Stave Three: The Second of the Three Spirits — Christmas Present",
+    "minutes": 29
+   },
+   {
+    "title": "Stave Three: The Second of the Three Spirits — A Farewell",
+    "minutes": 27
+   },
+   {
+    "title": "Stave Four: The Last of the Spirits, Part 1",
+    "minutes": 25
+   },
+   {
+    "title": "Stave Four: The Last of the Spirits, Part 2",
+    "minutes": 26
+   },
+   {
+    "title": "Stave Five: The End of It, Part 1",
+    "minutes": 22
+   },
+   {
+    "title": "Stave Five: The End of It, Part 2",
+    "minutes": 19
+   }
+  ]
+ },
+ {
+  "id": "b-treasure-island",
+  "title": "Treasure Island",
+  "author": "Robert Louis Stevenson",
+  "authorBio": "Robert Louis Stevenson wrote adventure stories, essays, and travel books while living across Britain, Europe, and the Pacific. His fiction often lets a young narrator discover adult danger firsthand.",
+  "narrator": "Felix Arden",
+  "year": 1883,
+  "genres": [
+   "Adventure",
+   "Classics"
+  ],
+  "synopsis": "Young Jim Hawkins finds a map in a dead sailor's chest at the Admiral Benbow Inn. A voyage to recover the buried treasure turns perilous when Jim overhears the ship's cook, Long John Silver, planning a mutiny.",
+  "series": null,
+  "publicDomain": true,
+  "palette": "amber",
+  "chapters": [
+   {
+    "title": "The Old Sea-Dog at the Admiral Benbow",
+    "minutes": 29
+   },
+   {
+    "title": "Black Dog Appears and Disappears",
+    "minutes": 27
+   },
+   {
+    "title": "The Black Spot",
+    "minutes": 25
+   },
+   {
+    "title": "The Sea-Chest",
+    "minutes": 31
+   },
+   {
+    "title": "The Last of the Blind Man",
+    "minutes": 28
+   },
+   {
+    "title": "The Captain's Papers",
+    "minutes": 33
+   },
+   {
+    "title": "I Go to Bristol",
+    "minutes": 26
+   },
+   {
+    "title": "At the Sign of the Spy-glass",
+    "minutes": 30
+   },
+   {
+    "title": "Powder and Arms",
+    "minutes": 28
+   },
+   {
+    "title": "The Voyage",
+    "minutes": 34
+   },
+   {
+    "title": "What I Heard in the Apple Barrel",
+    "minutes": 32
+   },
+   {
+    "title": "Council of War",
+    "minutes": 31
+   },
+   {
+    "title": "How My Shore Adventure Began",
+    "minutes": 29
+   },
+   {
+    "title": "The First Blow",
+    "minutes": 27
+   },
+   {
+    "title": "The Man of the Island",
+    "minutes": 34
+   },
+   {
+    "title": "Narrative Continued by the Doctor: How the Ship Was Abandoned",
+    "minutes": 36
+   },
+   {
+    "title": "Narrative Continued by the Doctor: The Jolly-boat's Last Trip",
+    "minutes": 33
+   },
+   {
+    "title": "Narrative Continued by the Doctor: End of the First Day's Fighting",
+    "minutes": 31
+   }
+  ]
+ },
+ {
+  "id": "b-jane-eyre",
+  "title": "Jane Eyre",
+  "author": "Charlotte Brontë",
+  "authorBio": "Charlotte Brontë published poetry and fiction under the name Currer Bell. Her novels joined intense inner life to questions of work, independence, and social rank.",
+  "narrator": "Iris Venn",
+  "year": 1847,
+  "genres": [
+   "Gothic",
+   "Romance",
+   "Classics"
+  ],
+  "synopsis": "After a harsh childhood at Gateshead and Lowood, Jane Eyre becomes a governess at Thornfield Hall. Her growing bond with Edward Rochester is threatened by strange laughter and a hidden secret that could cost Jane her hard-won independence.",
+  "series": null,
+  "publicDomain": true,
+  "palette": "violet",
+  "chapters": [
+   {
+    "title": "Chapter I: Gateshead",
+    "minutes": 31
+   },
+   {
+    "title": "Chapter II: The Red Room",
+    "minutes": 29
+   },
+   {
+    "title": "Chapter III: Recovery",
+    "minutes": 32
+   },
+   {
+    "title": "Chapter IV: Mr. Brocklehurst",
+    "minutes": 33
+   },
+   {
+    "title": "Chapter V: Lowood",
+    "minutes": 34
+   },
+   {
+    "title": "Chapter VI: Helen Burns",
+    "minutes": 30
+   },
+   {
+    "title": "Chapter VII: Inspection",
+    "minutes": 35
+   },
+   {
+    "title": "Chapter VIII: Miss Temple",
+    "minutes": 36
+   },
+   {
+    "title": "Chapter IX: Spring",
+    "minutes": 33
+   },
+   {
+    "title": "Chapter X: Leaving Lowood",
+    "minutes": 37
+   },
+   {
+    "title": "Chapter XI: Thornfield",
+    "minutes": 34
+   },
+   {
+    "title": "Chapter XII: The Road",
+    "minutes": 38
+   },
+   {
+    "title": "Chapter XIII: The Master",
+    "minutes": 32
+   },
+   {
+    "title": "Chapter XIV: Conversation",
+    "minutes": 35
+   },
+   {
+    "title": "Chapter XV: Firelight",
+    "minutes": 39
+   },
+   {
+    "title": "Chapter XVI: Doubts",
+    "minutes": 36
+   }
+  ]
+ },
+ {
+  "id": "b-the-call-of-the-wild",
+  "title": "The Call of the Wild",
+  "author": "Jack London",
+  "authorBio": "Jack London drew on his travels and manual labor for stories of survival and social conflict. His Alaska fiction remains closely tied to the Klondike Gold Rush.",
+  "narrator": "Nolan Mercer",
+  "year": 1903,
+  "genres": [
+   "Adventure",
+   "Nature",
+   "Classics"
+  ],
+  "synopsis": "Stolen from a comfortable California home, Buck is sold into sled work in the Yukon. As brutal handlers and rival dogs reshape his life, his attachment to prospector John Thornton pulls against an older instinct for the forest.",
+  "series": null,
+  "publicDomain": true,
+  "palette": "cobalt",
+  "chapters": [
+   {
+    "title": "Into the Primitive, Part 1",
+    "minutes": 26
+   },
+   {
+    "title": "Into the Primitive, Part 2",
+    "minutes": 27
+   },
+   {
+    "title": "The Law of Club and Fang, Part 1",
+    "minutes": 28
+   },
+   {
+    "title": "The Law of Club and Fang, Part 2",
+    "minutes": 29
+   },
+   {
+    "title": "The Dominant Primordial Beast, Part 1",
+    "minutes": 30
+   },
+   {
+    "title": "The Dominant Primordial Beast, Part 2",
+    "minutes": 27
+   },
+   {
+    "title": "Who Has Won to Mastership, Part 1",
+    "minutes": 31
+   },
+   {
+    "title": "Who Has Won to Mastership, Part 2",
+    "minutes": 29
+   },
+   {
+    "title": "The Toil of Trace and Trail, Part 1",
+    "minutes": 30
+   },
+   {
+    "title": "The Toil of Trace and Trail — Second Part",
+    "minutes": 28
+   },
+   {
+    "title": "For the Love of a Man, Part 1",
+    "minutes": 32
+   },
+   {
+    "title": "For the Love of a Man, Part 2",
+    "minutes": 31
+   },
+   {
+    "title": "The Sounding of the Call, Part 1",
+    "minutes": 33
+   },
+   {
+    "title": "The Sounding of the Call, Part 2",
+    "minutes": 30
+   }
+  ]
+ },
+ {
+  "id": "b-the-tide-clerk",
+  "title": "The Tide Clerk",
+  "author": "Mara Ellison",
+  "authorBio": "Mara Ellison grew up around working harbors and writes mysteries about the records people leave behind. The Tide Clerk is her first novel.",
+  "narrator": "Celia Rook",
+  "year": 2021,
+  "genres": [
+   "Mystery",
+   "Crime"
+  ],
+  "synopsis": "When a ledger vanishes from Bellwether's harbor office, clerk Ada Voss finds its last entry names a ferry passenger who died twenty years earlier. Her search through tide tables exposes a smuggling route that still carries people at night.",
+  "series": {
+   "name": "Bellwether Files",
+   "number": 1
+  },
+  "publicDomain": false,
+  "palette": "teal",
+  "chapters": [
+   {
+    "title": "The Empty Drawer",
+    "minutes": 32
+   },
+   {
+    "title": "Low Water",
+    "minutes": 30
+   },
+   {
+    "title": "Passenger Seventeen",
+    "minutes": 36
+   },
+   {
+    "title": "Salt in the Ledger",
+    "minutes": 33
+   },
+   {
+    "title": "The Night Ferry",
+    "minutes": 37
+   },
+   {
+    "title": "Forged Manifest",
+    "minutes": 31
+   },
+   {
+    "title": "Mrs. Venn's Key",
+    "minutes": 35
+   },
+   {
+    "title": "The Sounding Line",
+    "minutes": 34
+   },
+   {
+    "title": "Where the Pilings End",
+    "minutes": 38
+   },
+   {
+    "title": "Borrowed Identity",
+    "minutes": 32
+   },
+   {
+    "title": "Flood Mark",
+    "minutes": 36
+   },
+   {
+    "title": "Final Crossing",
+    "minutes": 40
+   }
+  ]
+ },
+ {
+  "id": "b-the-glass-buoy",
+  "title": "The Glass Buoy",
+  "author": "Mara Ellison",
+  "authorBio": "For her second Bellwether mystery, Mara Ellison drew on accounts of salvage crews and disputed wrecks. She writes from a small coastal town.",
+  "narrator": "Celia Rook",
+  "year": 2023,
+  "genres": [
+   "Mystery",
+   "Crime"
+  ],
+  "synopsis": "A diver brings Ada Voss a sealed buoy recovered outside Bellwether, with a fresh note inside from a captain presumed lost at sea. Ada follows the buoy's drift back to a private salvage crew whose next job could erase the harbor's only witness.",
+  "series": {
+   "name": "Bellwether Files",
+   "number": 2
+  },
+  "publicDomain": false,
+  "palette": "cobalt",
+  "chapters": [
+   {
+    "title": "The Diver's Parcel",
+    "minutes": 34
+   },
+   {
+    "title": "Submerged Glass",
+    "minutes": 31
+   },
+   {
+    "title": "The Captain's Hand",
+    "minutes": 38
+   },
+   {
+    "title": "Soundings",
+    "minutes": 33
+   },
+   {
+    "title": "The Salvage Claim",
+    "minutes": 36
+   },
+   {
+    "title": "North of the Bell",
+    "minutes": 35
+   },
+   {
+    "title": "Quiet Anchorage",
+    "minutes": 32
+   },
+   {
+    "title": "The Diver Returns",
+    "minutes": 37
+   },
+   {
+    "title": "Paper Hull",
+    "minutes": 34
+   },
+   {
+    "title": "The Weather Window",
+    "minutes": 39
+   },
+   {
+    "title": "Depth Charge",
+    "minutes": 35
+   },
+   {
+    "title": "The Signal Lamp",
+    "minutes": 42
+   }
+  ]
+ },
+ {
+  "id": "b-orbit-of-ashes",
+  "title": "Orbit of Ashes",
+  "author": "Keon Park",
+  "authorBio": "Keon Park writes near-future fiction about ordinary workers inside extraordinary machines. He studied mechanical engineering before turning to novels.",
+  "narrator": "Rafi Calder",
+  "year": 2020,
+  "genres": [
+   "Science Fiction",
+   "Thriller"
+  ],
+  "synopsis": "After an orbital refinery burns, mechanic Leda Saye survives in a maintenance pod with enough air for two days. Her distress call reaches a rescue ship, but its crew has orders to destroy the refinery's flight recorder before she can hand it over.",
+  "series": {
+   "name": "The Cinder Orbit",
+   "number": 1
+  },
+  "publicDomain": false,
+  "palette": "orange",
+  "chapters": [
+   {
+    "title": "Debris Field",
+    "minutes": 35
+   },
+   {
+    "title": "Twenty-Eight Hours",
+    "minutes": 39
+   },
+   {
+    "title": "The Rescue Vector",
+    "minutes": 37
+   },
+   {
+    "title": "Hull Number Nine",
+    "minutes": 36
+   },
+   {
+    "title": "The Burn Record",
+    "minutes": 41
+   },
+   {
+    "title": "Signal Delay",
+    "minutes": 34
+   },
+   {
+    "title": "Narrow Dock",
+    "minutes": 38
+   },
+   {
+    "title": "False Vacuum",
+    "minutes": 40
+   },
+   {
+    "title": "The Black Box",
+    "minutes": 35
+   },
+   {
+    "title": "Earthside Orders",
+    "minutes": 42
+   },
+   {
+    "title": "The Cinder Line",
+    "minutes": 39
+   },
+   {
+    "title": "One Last Thruster",
+    "minutes": 43
+   }
+  ]
+ },
+ {
+  "id": "b-the-silent-apogee",
+  "title": "The Silent Apogee",
+  "author": "Keon Park",
+  "authorBio": "Keon Park returns to orbital infrastructure in his second Cinder Orbit novel. His stories follow technicians forced to question the missions they maintain.",
+  "narrator": "Rafi Calder",
+  "year": 2022,
+  "genres": [
+   "Science Fiction",
+   "Thriller"
+  ],
+  "synopsis": "Leda Saye is hired to inspect a weather station that has gone dark above the Indian Ocean. Its last transmission includes a voice message from her dead brother, drawing her into a dispute over who controls the planet's storm forecasts.",
+  "series": {
+   "name": "The Cinder Orbit",
+   "number": 2
+  },
+  "publicDomain": false,
+  "palette": "slate",
+  "chapters": [
+   {
+    "title": "Weather Silence",
+    "minutes": 37
+   },
+   {
+    "title": "A Voice in Static",
+    "minutes": 36
+   },
+   {
+    "title": "The Empty Array",
+    "minutes": 40
+   },
+   {
+    "title": "Station Glass",
+    "minutes": 38
+   },
+   {
+    "title": "Dead Reckoning",
+    "minutes": 35
+   },
+   {
+    "title": "Unauthorized Forecast",
+    "minutes": 42
+   },
+   {
+    "title": "The Director's Key",
+    "minutes": 39
+   },
+   {
+    "title": "Cloud Wall",
+    "minutes": 41
+   },
+   {
+    "title": "Second Orbit",
+    "minutes": 36
+   },
+   {
+    "title": "Lightning Map",
+    "minutes": 43
+   },
+   {
+    "title": "The Brother File",
+    "minutes": 38
+   },
+   {
+    "title": "Clear Sky",
+    "minutes": 44
+   }
+  ]
+ },
+ {
+  "id": "b-small-hours-at-mercy-street",
+  "title": "Small Hours at Mercy Street",
+  "author": "Nina Calder",
+  "authorBio": "Nina Calder writes about family obligations and the places where people rebuild their routines. Her fiction has appeared in independent literary magazines.",
+  "narrator": "Imani Hart",
+  "year": 2019,
+  "genres": [
+   "Literary Fiction",
+   "Family"
+  ],
+  "synopsis": "After her mother's stroke, June Mercer takes over the overnight shift at a laundromat in Pittsburgh. The regular customers know pieces of her mother's past that June never heard, and their stories force her to reconsider a long-avoided move.",
+  "series": null,
+  "publicDomain": false,
+  "palette": "rose",
+  "chapters": [
+   {
+    "title": "Last Load",
+    "minutes": 33
+   },
+   {
+    "title": "The Blue Apron",
+    "minutes": 32
+   },
+   {
+    "title": "Two Quarters Short",
+    "minutes": 36
+   },
+   {
+    "title": "Mrs. Flores Waits",
+    "minutes": 34
+   },
+   {
+    "title": "The Folding Table",
+    "minutes": 31
+   },
+   {
+    "title": "A Phone Call at Dawn",
+    "minutes": 37
+   },
+   {
+    "title": "Lost Socks",
+    "minutes": 32
+   },
+   {
+    "title": "Mercy Street Map",
+    "minutes": 35
+   },
+   {
+    "title": "The Wednesday Regular",
+    "minutes": 34
+   },
+   {
+    "title": "No More Night Shift",
+    "minutes": 38
+   },
+   {
+    "title": "Clear Window",
+    "minutes": 33
+   },
+   {
+    "title": "First Light on the Block",
+    "minutes": 39
+   }
+  ]
+ },
+ {
+  "id": "b-maps-for-the-missing",
+  "title": "Maps for the Missing",
+  "author": "Avery Chen",
+  "authorBio": "Avery Chen writes investigative thrillers with an eye for civic systems and overlooked neighborhoods. Chen lives in the Pacific Northwest.",
+  "narrator": "Morgan Hale",
+  "year": 2024,
+  "genres": [
+   "Thriller",
+   "Mystery"
+  ],
+  "synopsis": "Cartographer Ellis Ward notices that three city evacuation maps omit the same apartment block in Tacoma. Days before a coastal drill, a tenant disappears there, and Ellis must find who altered the maps before the building is sealed.",
+  "series": null,
+  "publicDomain": false,
+  "palette": "crimson",
+  "chapters": [
+   {
+    "title": "Blank Square",
+    "minutes": 38
+   },
+   {
+    "title": "The Printed Route",
+    "minutes": 35
+   },
+   {
+    "title": "Unit 4B",
+    "minutes": 39
+   },
+   {
+    "title": "A Map Without Scale",
+    "minutes": 37
+   },
+   {
+    "title": "The Tenant List",
+    "minutes": 41
+   },
+   {
+    "title": "Fire Door",
+    "minutes": 36
+   },
+   {
+    "title": "The Drill Notice",
+    "minutes": 40
+   },
+   {
+    "title": "False Legend",
+    "minutes": 38
+   },
+   {
+    "title": "Below Street Level",
+    "minutes": 42
+   },
+   {
+    "title": "The Old Survey",
+    "minutes": 39
+   },
+   {
+    "title": "Evacuation Day",
+    "minutes": 43
+   },
+   {
+    "title": "An Address Restored",
+    "minutes": 45
+   }
+  ]
+ },
+ {
+  "id": "b-when-the-orchards-froze",
+  "title": "When the Orchards Froze",
+  "author": "Elise Varga",
+  "authorBio": "Elise Varga researches rural labor and food history. Her narrative histories connect family archives with changes in land and industry.",
+  "narrator": "Marta Greer",
+  "year": 2018,
+  "genres": [
+   "History",
+   "Nonfiction"
+  ],
+  "synopsis": "In 1917, an early freeze devastated apple growers around Brackenford. Varga follows Nora and Ellis Vale through farm ledgers and family diaries as they organize credit, storage, and a shared rail shipment to survive the winter.",
+  "series": null,
+  "publicDomain": false,
+  "palette": "amber",
+  "chapters": [
+   {
+    "title": "The October Warning",
+    "minutes": 42
+   },
+   {
+    "title": "Root Cellars",
+    "minutes": 39
+   },
+   {
+    "title": "A Crop on Paper",
+    "minutes": 43
+   },
+   {
+    "title": "The Railroad Agent",
+    "minutes": 40
+   },
+   {
+    "title": "Twenty Degrees",
+    "minutes": 41
+   },
+   {
+    "title": "The Packing Shed",
+    "minutes": 38
+   },
+   {
+    "title": "Borrowed Barrels",
+    "minutes": 44
+   },
+   {
+    "title": "Neighbors' Accounts",
+    "minutes": 42
+   },
+   {
+    "title": "The Winter Auction",
+    "minutes": 40
+   },
+   {
+    "title": "Letters from Albany",
+    "minutes": 43
+   },
+   {
+    "title": "April Thaw",
+    "minutes": 39
+   },
+   {
+    "title": "What the Trees Kept",
+    "minutes": 45
+   }
+  ]
+ },
+ {
+  "id": "b-an-atlas-of-rain",
+  "title": "An Atlas of Rain",
+  "author": "Samira Dey",
+  "authorBio": "Samira Dey writes personal essays about migration, memory, and the work of making a home. Her first book grew out of notebooks kept across three cities.",
+  "narrator": "Samira Dey",
+  "year": 2021,
+  "genres": [
+   "Memoir",
+   "Travel"
+  ],
+  "synopsis": "From monsoon afternoons in Kolkata to wet bus stops in Seattle, Samira Dey charts the weather that marked her family's moves. A box of damaged photographs prompts her to revisit each address and ask what her parents chose to leave unsaid.",
+  "series": null,
+  "publicDomain": false,
+  "palette": "teal",
+  "chapters": [
+   {
+    "title": "The First Forecast",
+    "minutes": 34
+   },
+   {
+    "title": "Balcony Season",
+    "minutes": 31
+   },
+   {
+    "title": "A Suitcase in July",
+    "minutes": 36
+   },
+   {
+    "title": "Greyhound Window",
+    "minutes": 33
+   },
+   {
+    "title": "The Basement Leak",
+    "minutes": 35
+   },
+   {
+    "title": "Mothers of the Monsoon",
+    "minutes": 32
+   },
+   {
+    "title": "Salt Air",
+    "minutes": 37
+   },
+   {
+    "title": "Photographs in a Tin",
+    "minutes": 34
+   },
+   {
+    "title": "Three Umbrellas",
+    "minutes": 36
+   },
+   {
+    "title": "Dry Spell",
+    "minutes": 33
+   },
+   {
+    "title": "New Address",
+    "minutes": 38
+   },
+   {
+    "title": "Weather We Carry",
+    "minutes": 40
+   }
+  ]
+ },
+ {
+  "id": "b-the-brass-garden",
+  "title": "The Brass Garden",
+  "author": "Liora Fen",
+  "authorBio": "Liora Fen writes fantasy shaped by craft, apprenticeship, and difficult promises. She lives near a botanical garden and collects broken clocks.",
+  "narrator": "Arden Quill",
+  "year": 2022,
+  "genres": [
+   "Fantasy",
+   "Adventure"
+  ],
+  "synopsis": "Apprentice gardener Nera finds metal roots growing beneath the royal greenhouse in Valenne. When the plants begin copying people's voices, she must identify who planted them before the queen's treaty feast becomes a trap.",
+  "series": null,
+  "publicDomain": false,
+  "palette": "emerald",
+  "chapters": [
+   {
+    "title": "The Locked Conservatory",
+    "minutes": 38
+   },
+   {
+    "title": "Roots of Brass",
+    "minutes": 37
+   },
+   {
+    "title": "An Apprentice's Oath",
+    "minutes": 39
+   },
+   {
+    "title": "Voice in the Fig Tree",
+    "minutes": 40
+   },
+   {
+    "title": "The Treaty Feast",
+    "minutes": 36
+   },
+   {
+    "title": "Polished Leaves",
+    "minutes": 42
+   },
+   {
+    "title": "The North Glasshouse",
+    "minutes": 39
+   },
+   {
+    "title": "Clockmaker's Debt",
+    "minutes": 41
+   },
+   {
+    "title": "The Queen's Gardener",
+    "minutes": 37
+   },
+   {
+    "title": "Burnished Thorn",
+    "minutes": 43
+   },
+   {
+    "title": "Final Graft",
+    "minutes": 39
+   },
+   {
+    "title": "New Growth",
+    "minutes": 44
+   }
+  ]
+ },
+ {
+  "id": "b-good-enough-tomorrow",
+  "title": "Good Enough Tomorrow",
+  "author": "Leah Sorrel",
+  "authorBio": "Leah Sorrel is a counselor and workshop leader who studies how people sustain small changes. She writes in practical exercises drawn from everyday setbacks.",
+  "narrator": "Dina Cole",
+  "year": 2025,
+  "genres": [
+   "Self-Help",
+   "Wellness"
+  ],
+  "synopsis": "In Bellwick, night-shift nurse Tessa Reed tries to keep healthy habits through a changing schedule. Sorrel uses Tessa's setbacks alongside a new parent's and a returning student's to show how small restarts can keep one missed task from becoming a verdict.",
+  "series": null,
+  "publicDomain": false,
+  "palette": "gold",
+  "chapters": [
+   {
+    "title": "Start Where the Day Is",
+    "minutes": 28
+   },
+   {
+    "title": "The Five-Minute Promise",
+    "minutes": 27
+   },
+   {
+    "title": "Better Defaults",
+    "minutes": 31
+   },
+   {
+    "title": "When Plans Slip",
+    "minutes": 29
+   },
+   {
+    "title": "Rest as a Decision",
+    "minutes": 32
+   },
+   {
+    "title": "The Second Attempt",
+    "minutes": 30
+   },
+   {
+    "title": "People Who Can Help",
+    "minutes": 28
+   },
+   {
+    "title": "A Calendar with Room",
+    "minutes": 33
+   },
+   {
+    "title": "The Useful No",
+    "minutes": 29
+   },
+   {
+    "title": "Measure What Matters",
+    "minutes": 31
+   },
+   {
+    "title": "After a Hard Week",
+    "minutes": 30
+   },
+   {
+    "title": "Tomorrow's First Step",
+    "minutes": 34
+   }
+  ]
+ },
+ {
+  "id": "b-the-bridge-keeper",
+  "title": "The Bridge Keeper",
+  "author": "Owen Rusk",
+  "authorBio": "Owen Rusk writes historical fiction centered on workers whose decisions change a community. His novels favor tools, trades, and precise local detail.",
+  "narrator": "Peter Lorne",
+  "year": 2017,
+  "genres": [
+   "Historical Fiction",
+   "Drama"
+  ],
+  "synopsis": "During the spring flood of 1936, bridge keeper Thomas Bell is ordered to keep a mill road open outside Marlowe. A school bus stalls on the span, leaving Thomas to choose between his employer's orders and the families waiting downstream.",
+  "series": null,
+  "publicDomain": false,
+  "palette": "slate",
+  "chapters": [
+   {
+    "title": "River Gauge",
+    "minutes": 35
+   },
+   {
+    "title": "The Mill Road",
+    "minutes": 37
+   },
+   {
+    "title": "Water at the Steps",
+    "minutes": 33
+   },
+   {
+    "title": "Orders from Marlowe",
+    "minutes": 39
+   },
+   {
+    "title": "Last Bus Home",
+    "minutes": 36
+   },
+   {
+    "title": "Missing Bolt",
+    "minutes": 38
+   },
+   {
+    "title": "Upstream",
+    "minutes": 34
+   },
+   {
+    "title": "The Chain Gate",
+    "minutes": 40
+   },
+   {
+    "title": "Midnight Level",
+    "minutes": 37
+   },
+   {
+    "title": "The Weight of Timber",
+    "minutes": 41
+   },
+   {
+    "title": "After the Crest",
+    "minutes": 35
+   },
+   {
+    "title": "New Crossing",
+    "minutes": 42
+   }
+  ]
+ },
+ {
+  "id": "b-birds-over-briar-lake",
+  "title": "Birds Over Briar Lake",
+  "author": "Ruth Haldane",
+  "authorBio": "Ruth Haldane is a naturalist whose field writing follows the people who protect ordinary habitats. She has spent many springs counting wetland birds.",
+  "narrator": "Ruth Haldane",
+  "year": 2020,
+  "genres": [
+   "Nature",
+   "Nonfiction"
+  ],
+  "synopsis": "At Briar Lake, volunteers record the return of marsh birds while a proposed road threatens the reed beds. Haldane follows one breeding season through dawn counts, local hearings, and the patient work of restoring a shoreline.",
+  "series": null,
+  "publicDomain": false,
+  "palette": "emerald",
+  "chapters": [
+   {
+    "title": "Before Sunrise",
+    "minutes": 33
+   },
+   {
+    "title": "The Reed Edge",
+    "minutes": 31
+   },
+   {
+    "title": "Count Day",
+    "minutes": 35
+   },
+   {
+    "title": "A Map of Nests",
+    "minutes": 34
+   },
+   {
+    "title": "Road Markers",
+    "minutes": 36
+   },
+   {
+    "title": "The Listening Blind",
+    "minutes": 32
+   },
+   {
+    "title": "Late Hatches",
+    "minutes": 37
+   },
+   {
+    "title": "Public Hearing",
+    "minutes": 35
+   },
+   {
+    "title": "Water Level",
+    "minutes": 33
+   },
+   {
+    "title": "The Mud Crew",
+    "minutes": 38
+   },
+   {
+    "title": "Southbound",
+    "minutes": 34
+   },
+   {
+    "title": "Spring Again",
+    "minutes": 39
+   }
+  ]
+ },
+ {
+  "id": "b-every-door-in-june",
+  "title": "Every Door in June",
+  "author": "Petra Moss",
+  "authorBio": "Petra Moss writes romantic comedies about people who make lists and then fall off them. Her work is set in walkable, slightly chaotic cities.",
+  "narrator": "Holly Ames",
+  "year": 2023,
+  "genres": [
+   "Romance",
+   "Comedy"
+  ],
+  "synopsis": "Apartment manager Bea Linden has one month to fix a condemned stairwell in Providence, but the building's carpenter is the ex who once left her mid-renovation. Every repair reveals another secret in the walls, and their residents start taking bets on which problem will be solved first.",
+  "series": null,
+  "publicDomain": false,
+  "palette": "rose",
+  "chapters": [
+   {
+    "title": "The Condemnation Notice",
+    "minutes": 31
+   },
+   {
+    "title": "A Carpenter at the Door",
+    "minutes": 32
+   },
+   {
+    "title": "Second-Floor Opinions",
+    "minutes": 35
+   },
+   {
+    "title": "The Wrong Paint",
+    "minutes": 33
+   },
+   {
+    "title": "Hidden Hinges",
+    "minutes": 34
+   },
+   {
+    "title": "Dinner on the Landing",
+    "minutes": 32
+   },
+   {
+    "title": "Rent Board",
+    "minutes": 36
+   },
+   {
+    "title": "Walls Come Down",
+    "minutes": 31
+   },
+   {
+    "title": "Some Assembly Required",
+    "minutes": 37
+   },
+   {
+    "title": "An Open House",
+    "minutes": 34
+   },
+   {
+    "title": "Inspection Day",
+    "minutes": 38
+   },
+   {
+    "title": "A Key for Two",
+    "minutes": 39
+   }
+  ]
+ },
+ {
+  "id": "b-the-quiet-archive",
+  "title": "The Quiet Archive",
+  "author": "Ivo Serrano",
+  "authorBio": "Ivo Serrano writes suspense about institutions and the people asked to trust them. He previously worked as a records conservator.",
+  "narrator": "Emilio Cruz",
+  "year": 2024,
+  "genres": [
+   "Thriller",
+   "Mystery"
+  ],
+  "synopsis": "An archivist in Santa Fe receives a reel labeled with tomorrow's date and the sound of a woman confessing to a fire that has not happened. He identifies her as a museum guard and races to locate the recording's source before someone stages the blaze.",
+  "series": null,
+  "publicDomain": false,
+  "palette": "violet",
+  "chapters": [
+   {
+    "title": "Tomorrow's Reel",
+    "minutes": 38
+   },
+   {
+    "title": "The Guard's Voice",
+    "minutes": 36
+   },
+   {
+    "title": "Cold Storage",
+    "minutes": 39
+   },
+   {
+    "title": "The Missing Inventory",
+    "minutes": 37
+   },
+   {
+    "title": "A Door Behind the Wall",
+    "minutes": 40
+   },
+   {
+    "title": "Tape Hiss",
+    "minutes": 38
+   },
+   {
+    "title": "The Night Watch",
+    "minutes": 42
+   },
+   {
+    "title": "Second Confession",
+    "minutes": 39
+   },
+   {
+    "title": "Smoke Test",
+    "minutes": 41
+   },
+   {
+    "title": "The Curator's Alibi",
+    "minutes": 37
+   },
+   {
+    "title": "Before the Fire",
+    "minutes": 43
+   },
+   {
+    "title": "The Uncut Tape",
+    "minutes": 45
+   }
+  ]
+ },
+ {
+  "id": "b-the-salt-road-kitchen",
+  "title": "The Salt Road Kitchen",
+  "author": "Fern Bellamy",
+  "authorBio": "Fern Bellamy writes food memoir rooted in family recipes and working kitchens. She learned to cook beside her aunt at a seaside guesthouse.",
+  "narrator": "Fern Bellamy",
+  "year": 2019,
+  "genres": [
+   "Memoir",
+   "Food"
+  ],
+  "synopsis": "When Fern inherits her aunt's shuttered guesthouse in Northumberland, she finds a recipe book annotated with the names of former visitors. Reopening the kitchen one supper at a time brings back people whose stories alter what she remembers about her childhood summers.",
+  "series": null,
+  "publicDomain": false,
+  "palette": "orange",
+  "chapters": [
+   {
+    "title": "The House on Salt Road",
+    "minutes": 32
+   },
+   {
+    "title": "Aunt Liv's Notebook",
+    "minutes": 30
+   },
+   {
+    "title": "First Stock",
+    "minutes": 34
+   },
+   {
+    "title": "The Fisherman's Table",
+    "minutes": 31
+   },
+   {
+    "title": "Three Types of Bread",
+    "minutes": 33
+   },
+   {
+    "title": "The Summer Guests",
+    "minutes": 35
+   },
+   {
+    "title": "Sunday Fish Pie",
+    "minutes": 32
+   },
+   {
+    "title": "What Was Left in the Pantry",
+    "minutes": 36
+   },
+   {
+    "title": "A Chair by the Window",
+    "minutes": 34
+   },
+   {
+    "title": "The Winter Menu",
+    "minutes": 37
+   },
+   {
+    "title": "Open for Supper",
+    "minutes": 33
+   },
+   {
+    "title": "Closing Page",
+    "minutes": 38
+   }
+  ]
+ },
+ {
+  "id": "b-the-city-beneath-tuesday",
+  "title": "The City Beneath Tuesday",
+  "author": "Dalia Wren",
+  "authorBio": "Dalia Wren builds speculative cities around familiar civic problems and improbable solutions. She writes from a small studio above a train station.",
+  "narrator": "Zara Flint",
+  "year": 2026,
+  "genres": [
+   "Fantasy",
+   "Urban Fantasy"
+  ],
+  "synopsis": "Every Tuesday, a second city appears below the subway platforms of Holloway, and courier Niko Vale delivers messages between its residents and those above. When the stairs fail to disappear on Wednesday, both cities face a flood from a river neither remembers building.",
+  "series": null,
+  "publicDomain": false,
+  "palette": "cobalt",
+  "chapters": [
+   {
+    "title": "Platform Thirteen",
+    "minutes": 36
+   },
+   {
+    "title": "The Tuesday Stairs",
+    "minutes": 38
+   },
+   {
+    "title": "Courier's Fee",
+    "minutes": 34
+   },
+   {
+    "title": "Below Holloway",
+    "minutes": 39
+   },
+   {
+    "title": "A River Without Banks",
+    "minutes": 37
+   },
+   {
+    "title": "The Wednesday Door",
+    "minutes": 40
+   },
+   {
+    "title": "Messages Unsent",
+    "minutes": 36
+   },
+   {
+    "title": "Flood Charter",
+    "minutes": 42
+   },
+   {
+    "title": "Ticket Hall",
+    "minutes": 38
+   },
+   {
+    "title": "Two City Councils",
+    "minutes": 41
+   },
+   {
+    "title": "Final Train Down",
+    "minutes": 39
+   },
+   {
+    "title": "Morning Aboveground",
+    "minutes": 44
+   }
+  ]
+ }
+]

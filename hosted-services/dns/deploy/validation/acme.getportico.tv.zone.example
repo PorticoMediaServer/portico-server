@@ -1,0 +1,9 @@
+$ORIGIN acme.getportico.tv.
+$TTL 30
+@ IN SOA ns1.portico-acme.getportico.tv. hostmaster.getportico.tv. (
+  2026090601 300 60 604800 30
+)
+@ IN NS ns1.portico-acme.getportico.tv.
+@ IN NS ns2.portico-acme.getportico.tv.
+; No prefilled TXT. BIND owns the writable zone and journal after startup.
+; Parent NS delegation and nameserver address records are operator configuration.

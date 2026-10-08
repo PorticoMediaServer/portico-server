@@ -1,0 +1,927 @@
+[
+ {
+  "group": "Getting in",
+  "items": [
+   {
+    "id": "landing",
+    "title": "Landing: finding servers",
+    "path": "/welcome/landing"
+   },
+   {
+    "id": "signin",
+    "title": "Portico Account sign-in",
+    "path": "/welcome/signin"
+   },
+   {
+    "id": "signin-error",
+    "title": "Sign-in error",
+    "path": "/welcome/signin?error=That%20username%20or%20email%20and%20password%20didn%E2%80%99t%20match%20a%20Portico%20Account."
+   },
+   {
+    "id": "create",
+    "title": "Create account",
+    "path": "/welcome/create"
+   },
+   {
+    "id": "forgot",
+    "title": "Forgot password",
+    "path": "/welcome/forgot"
+   },
+   {
+    "id": "code",
+    "title": "Two-step code",
+    "path": "/welcome/code"
+   },
+   {
+    "id": "direct",
+    "title": "Direct server sign-in",
+    "path": "/welcome/direct"
+   },
+   {
+    "id": "new-password",
+    "title": "Forced new password",
+    "path": "/welcome/new-password"
+   },
+   {
+    "id": "servers",
+    "title": "Server chooser",
+    "path": "/welcome/servers"
+   },
+   {
+    "id": "profiles",
+    "title": "Who’s watching (PIN on Ava)",
+    "path": "/welcome/profiles"
+   },
+   {
+    "id": "setup",
+    "title": "Server setup (first run)",
+    "path": "/welcome/setup"
+   },
+   {
+    "id": "restore",
+    "title": "Restore saved connection",
+    "path": "/welcome/restore"
+   },
+   {
+    "id": "link-tv",
+    "title": "Sign in with a code (TV)",
+    "path": "/welcome/link-tv"
+   },
+   {
+    "id": "waiting",
+    "title": "Waiting for approval",
+    "path": "/welcome/waiting"
+   },
+   {
+    "id": "unavailable",
+    "title": "Server unavailable",
+    "path": "/welcome/unavailable"
+   },
+   {
+    "id": "offline",
+    "title": "Offline",
+    "path": "/welcome/offline"
+   },
+   {
+    "id": "ended",
+    "title": "Signed out (ended)",
+    "path": "/welcome/ended"
+   },
+   {
+    "id": "device",
+    "title": "Link a TV (approve)",
+    "path": "/device"
+   },
+   {
+    "id": "claim",
+    "title": "Claim a server",
+    "path": "/claim"
+   },
+   {
+    "id": "reset",
+    "title": "Reset password link",
+    "path": "/reset"
+   },
+   {
+    "id": "verify",
+    "title": "Verify email",
+    "path": "/verify-email"
+   },
+   {
+    "id": "verify-expired",
+    "title": "Verify email: expired",
+    "path": "/verify-email#token=expired"
+   },
+   {
+    "id": "join",
+    "title": "Join by invitation",
+    "path": "/join"
+   },
+   {
+    "id": "together-join",
+    "title": "Join a Watch Together group",
+    "path": "/together/join"
+   },
+   {
+    "id": "account-return",
+    "title": "Account return",
+    "path": "/app/account-return"
+   }
+  ]
+ },
+ {
+  "group": "Home",
+  "items": [
+   {
+    "id": "home",
+    "title": "Home",
+    "path": "/"
+   },
+   {
+    "id": "home-customize",
+    "title": "Customize Home",
+    "path": "/?customize=true"
+   },
+   {
+    "id": "home-row",
+    "title": "A row’s See all",
+    "path": "/home/rows/picks"
+   },
+   {
+    "id": "home-continue",
+    "title": "Continue Watching See all",
+    "path": "/home/rows/continue"
+   },
+   {
+    "id": "home-member",
+    "title": "Home as a member",
+    "path": "/?as=member"
+   },
+   {
+    "id": "home-kids",
+    "title": "Home on the Kids profile",
+    "path": "/?profile=pr-kids"
+   },
+   {
+    "id": "reconnecting",
+    "title": "Reconnecting banner",
+    "path": "/?connection=reconnecting"
+   },
+   {
+    "id": "offline-banner",
+    "title": "Offline banner",
+    "path": "/?connection=offline"
+   }
+  ]
+ },
+ {
+  "group": "Libraries",
+  "items": [
+   {
+    "id": "movies",
+    "title": "Movies · Discover",
+    "path": "/library/lib-movies"
+   },
+   {
+    "id": "movies-browse",
+    "title": "Movies · Browse",
+    "path": "/library/lib-movies?view=browse"
+   },
+   {
+    "id": "movies-filtered",
+    "title": "Browse with filters",
+    "path": "/library/lib-movies?view=browse&filters=%7B%22quick%22%3A%5B%22unwatched%22%5D%2C%22fields%22%3A%7B%22genre%22%3A%5B%22Drama%22%5D%7D%7D"
+   },
+   {
+    "id": "movies-list",
+    "title": "Browse as a list",
+    "path": "/library/lib-movies?view=browse&layout=list"
+   },
+   {
+    "id": "movies-title",
+    "title": "Browse by title (alphabet jump)",
+    "path": "/library/lib-movies?view=browse&sort=title&direction=asc"
+   },
+   {
+    "id": "movies-nomatch",
+    "title": "No matches",
+    "path": "/library/lib-movies?view=browse&filters=%7B%22quick%22%3A%5B%22uhd%22%5D%2C%22fields%22%3A%7B%22decade%22%3A%5B%221920s%22%5D%7D%7D"
+   },
+   {
+    "id": "movies-collections",
+    "title": "Movies · Collections",
+    "path": "/library/lib-movies?view=collections"
+   },
+   {
+    "id": "movies-categories",
+    "title": "Movies · Categories",
+    "path": "/library/lib-movies?view=categories"
+   },
+   {
+    "id": "tv",
+    "title": "TV Shows",
+    "path": "/library/lib-tv"
+   },
+   {
+    "id": "anime",
+    "title": "Anime (scanning)",
+    "path": "/library/lib-anime"
+   },
+   {
+    "id": "music",
+    "title": "Music · Discover",
+    "path": "/library/lib-music"
+   },
+   {
+    "id": "music-artists",
+    "title": "Music · Artists",
+    "path": "/library/lib-music?view=browse"
+   },
+   {
+    "id": "music-releases",
+    "title": "Music · Releases",
+    "path": "/library/lib-music?view=releases"
+   },
+   {
+    "id": "music-songs",
+    "title": "Music · Songs",
+    "path": "/library/lib-music?view=songs"
+   },
+   {
+    "id": "books",
+    "title": "Audiobooks",
+    "path": "/library/lib-books"
+   },
+   {
+    "id": "books-authors",
+    "title": "Audiobooks · Authors",
+    "path": "/library/lib-books?view=authors"
+   },
+   {
+    "id": "books-series",
+    "title": "Audiobooks · Series",
+    "path": "/library/lib-books?view=series"
+   },
+   {
+    "id": "photos",
+    "title": "Photos",
+    "path": "/library/lib-photos"
+   },
+   {
+    "id": "photos-timeline",
+    "title": "Photos · Timeline",
+    "path": "/library/lib-photos?view=timeline"
+   },
+   {
+    "id": "home-videos",
+    "title": "Home Videos",
+    "path": "/library/lib-home"
+   },
+   {
+    "id": "genre",
+    "title": "Genre page",
+    "path": "/library/lib-movies/genre/genre:Drama"
+   },
+   {
+    "id": "collection",
+    "title": "Collection page",
+    "path": "/library/lib-movies/collection/col-midnight-movies"
+   },
+   {
+    "id": "author",
+    "title": "Author page",
+    "path": "/library/lib-books/author/author:Jane%20Austen"
+   },
+   {
+    "id": "filters",
+    "title": "Filters sheet",
+    "path": "/library/lib-movies?view=browse&demo=filters"
+   },
+   {
+    "id": "select",
+    "title": "Multi-select and bulk actions",
+    "path": "/library/lib-movies?view=browse&demo=select"
+   }
+  ]
+ },
+ {
+  "group": "Titles",
+  "items": [
+   {
+    "id": "movie",
+    "title": "Film",
+    "path": "/media/m-charade"
+   },
+   {
+    "id": "movie-4k",
+    "title": "Film in 4K with versions",
+    "path": "/media/m-the-red-audit"
+   },
+   {
+    "id": "show",
+    "title": "Show",
+    "path": "/show/s-signal-bloom"
+   },
+   {
+    "id": "episode",
+    "title": "Episode panel",
+    "path": "/show/s-signal-bloom/episode/s-signal-bloom-s1e3"
+   },
+   {
+    "id": "album",
+    "title": "Album",
+    "path": "/media/al-lantern-parade-familiar-roads"
+   },
+   {
+    "id": "artist",
+    "title": "Artist",
+    "path": "/media/a-lantern-parade"
+   },
+   {
+    "id": "audiobook",
+    "title": "Audiobook",
+    "path": "/media/b-pride-and-prejudice"
+   },
+   {
+    "id": "photo-album",
+    "title": "Photo album",
+    "path": "/media/pa-lisbon-spring"
+   },
+   {
+    "id": "photo",
+    "title": "Photo viewer",
+    "path": "/media/pa-lisbon-spring?photo=pa-lisbon-spring-3"
+   },
+   {
+    "id": "slideshow",
+    "title": "Slideshow",
+    "path": "/media/pa-lisbon-spring?photo=pa-lisbon-spring-1&slideshow=true"
+   },
+   {
+    "id": "home-video",
+    "title": "Home video",
+    "path": "/media/hv-first-night-in-the-new-house"
+   },
+   {
+    "id": "person",
+    "title": "Person",
+    "path": "/person/p-cary-grant"
+   },
+   {
+    "id": "missing",
+    "title": "Title not on the server",
+    "path": "/media/nothing-here"
+   }
+  ]
+ },
+ {
+  "group": "Dialogs and actions",
+  "items": [
+   {
+    "id": "playlist",
+    "title": "Add to playlist",
+    "path": "/media/m-charade?demo=playlist"
+   },
+   {
+    "id": "collection-add",
+    "title": "Add to collection",
+    "path": "/media/m-charade?demo=collection"
+   },
+   {
+    "id": "download",
+    "title": "Download quality",
+    "path": "/media/m-charade?demo=download"
+   },
+   {
+    "id": "download-show",
+    "title": "Download a show",
+    "path": "/show/s-signal-bloom?demo=download-show"
+   },
+   {
+    "id": "rate",
+    "title": "Rate",
+    "path": "/media/m-charade?demo=rate"
+   },
+   {
+    "id": "feedback",
+    "title": "Report a problem",
+    "path": "/media/m-charade?demo=feedback"
+   },
+   {
+    "id": "metadata",
+    "title": "Metadata editor",
+    "path": "/media/m-charade?demo=metadata"
+   },
+   {
+    "id": "fix-match",
+    "title": "Fix match",
+    "path": "/media/m-charade?demo=fix-match"
+   },
+   {
+    "id": "delete",
+    "title": "Delete media",
+    "path": "/media/m-charade?demo=delete"
+   }
+  ]
+ },
+ {
+  "group": "Player",
+  "items": [
+   {
+    "id": "player",
+    "title": "Video player",
+    "path": "/media/m-charade?demo=player"
+   },
+   {
+    "id": "player-intro",
+    "title": "Skip intro",
+    "path": "/show/s-signal-bloom?demo=player-intro"
+   },
+   {
+    "id": "player-options",
+    "title": "Playback options",
+    "path": "/media/m-charade?demo=player-options"
+   },
+   {
+    "id": "player-audio",
+    "title": "Audio and subtitles",
+    "path": "/media/m-charade?demo=player-audio"
+   },
+   {
+    "id": "player-chapters",
+    "title": "Chapters",
+    "path": "/media/m-charade?demo=player-chapters"
+   },
+   {
+    "id": "player-queue",
+    "title": "Up next queue",
+    "path": "/show/s-signal-bloom?demo=player-queue"
+   },
+   {
+    "id": "player-playon",
+    "title": "Play on",
+    "path": "/media/m-charade?demo=player-playon"
+   },
+   {
+    "id": "player-shortcuts",
+    "title": "Keyboard shortcuts",
+    "path": "/media/m-charade?demo=player-shortcuts"
+   },
+   {
+    "id": "player-info",
+    "title": "Playback info",
+    "path": "/media/m-charade?demo=player-info"
+   },
+   {
+    "id": "postplay",
+    "title": "Up next countdown",
+    "path": "/show/s-signal-bloom?demo=postplay"
+   },
+   {
+    "id": "still-watching",
+    "title": "Still watching?",
+    "path": "/show/s-signal-bloom?demo=still-watching"
+   },
+   {
+    "id": "postplay-film",
+    "title": "Film finished",
+    "path": "/media/m-charade?demo=postplay-film"
+   },
+   {
+    "id": "live-player",
+    "title": "Live TV player",
+    "path": "/channels/all?demo=live"
+   },
+   {
+    "id": "live-guide",
+    "title": "Live mini guide",
+    "path": "/channels/all?demo=live-guide"
+   },
+   {
+    "id": "channel-problem",
+    "title": "Channel problem",
+    "path": "/channels/all?demo=channel-problem"
+   },
+   {
+    "id": "owner-stopped",
+    "title": "Stopped by the owner",
+    "path": "/media/m-charade?demo=owner-stopped"
+   },
+   {
+    "id": "unplayable",
+    "title": "Can’t play",
+    "path": "/media/m-charade?demo=unplayable"
+   },
+   {
+    "id": "dolby-vision",
+    "title": "Dolby Vision warning",
+    "path": "/media/m-charade?demo=dolby-vision"
+   },
+   {
+    "id": "player-reconnecting",
+    "title": "Player reconnecting",
+    "path": "/media/m-charade?demo=player-reconnecting"
+   },
+   {
+    "id": "group-pill",
+    "title": "Player with group pill",
+    "path": "/media/m-charade?demo=group"
+   },
+   {
+    "id": "nowplaying",
+    "title": "Now Playing with lyrics",
+    "path": "/library/lib-music?demo=nowplaying"
+   },
+   {
+    "id": "nowplaying-queue",
+    "title": "Now Playing queue",
+    "path": "/library/lib-music?demo=nowplaying-queue"
+   },
+   {
+    "id": "audiobook-player",
+    "title": "Audiobook player",
+    "path": "/library/lib-books?demo=audiobook"
+   },
+   {
+    "id": "mini",
+    "title": "Mini player",
+    "path": "/library/lib-music?demo=mini"
+   },
+   {
+    "id": "mini-video",
+    "title": "Minimized video",
+    "path": "/?demo=mini-video"
+   }
+  ]
+ },
+ {
+  "group": "Search and Saved",
+  "items": [
+   {
+    "id": "search",
+    "title": "Search",
+    "path": "/search"
+   },
+   {
+    "id": "search-results",
+    "title": "Search results",
+    "path": "/search?q=the"
+   },
+   {
+    "id": "search-people",
+    "title": "Search: people",
+    "path": "/search?q=grant&kind=people"
+   },
+   {
+    "id": "search-none",
+    "title": "No results",
+    "path": "/search?q=zzzzqq"
+   },
+   {
+    "id": "saved",
+    "title": "Watchlist",
+    "path": "/saved"
+   },
+   {
+    "id": "favorites",
+    "title": "Favorites",
+    "path": "/saved?view=favorites"
+   },
+   {
+    "id": "playlists",
+    "title": "Playlists",
+    "path": "/saved?view=playlists"
+   },
+   {
+    "id": "collections",
+    "title": "Collections",
+    "path": "/saved?view=collections"
+   },
+   {
+    "id": "views",
+    "title": "Saved views",
+    "path": "/saved?view=views"
+   },
+   {
+    "id": "history",
+    "title": "History",
+    "path": "/saved?view=history&period=all"
+   },
+   {
+    "id": "playlist-page",
+    "title": "Music playlist",
+    "path": "/saved/playlist/pl-late-night-drive"
+   },
+   {
+    "id": "video-playlist",
+    "title": "Video playlist",
+    "path": "/saved/playlist/pl-halloween-marathon"
+   },
+   {
+    "id": "my-collection",
+    "title": "Your collection",
+    "path": "/saved/collection/col-my-comfort"
+   },
+   {
+    "id": "saved-view",
+    "title": "Saved view",
+    "path": "/saved/view/sv-unwatched-4k"
+   }
+  ]
+ },
+ {
+  "group": "Live TV",
+  "items": [
+   {
+    "id": "channels",
+    "title": "Channels guide",
+    "path": "/channels/all"
+   },
+   {
+    "id": "channels-list",
+    "title": "Channel list",
+    "path": "/channels/all?view=list"
+   },
+   {
+    "id": "channels-source",
+    "title": "One source (stale guide)",
+    "path": "/channels/iptv"
+   },
+   {
+    "id": "library-channels",
+    "title": "Library Channels",
+    "path": "/channels/library"
+   },
+   {
+    "id": "channels-favorites",
+    "title": "Favorite channels",
+    "path": "/channels/all?favorites=true"
+   },
+   {
+    "id": "recordings",
+    "title": "Recordings · Upcoming",
+    "path": "/channels/recordings"
+   },
+   {
+    "id": "recorded",
+    "title": "Recordings · Recorded",
+    "path": "/channels/recordings?tab=recorded"
+   },
+   {
+    "id": "rules",
+    "title": "Series rules",
+    "path": "/channels/recordings?tab=rules"
+   },
+   {
+    "id": "rec-history",
+    "title": "Recording history",
+    "path": "/channels/recordings?tab=history"
+   },
+   {
+    "id": "rec-storage",
+    "title": "Recording space",
+    "path": "/channels/recordings?tab=storage"
+   }
+  ]
+ },
+ {
+  "group": "Together and downloads",
+  "items": [
+   {
+    "id": "together",
+    "title": "Watch Together",
+    "path": "/together"
+   },
+   {
+    "id": "together-room",
+    "title": "A group",
+    "path": "/together?group=tg-1"
+   },
+   {
+    "id": "downloads",
+    "title": "Downloads",
+    "path": "/downloads"
+   },
+   {
+    "id": "downloads-server",
+    "title": "Prepared on the server",
+    "path": "/downloads?tab=server"
+   },
+   {
+    "id": "downloads-settings",
+    "title": "Download settings",
+    "path": "/downloads?tab=settings"
+   }
+  ]
+ },
+ {
+  "group": "Settings and account",
+  "items": [
+   {
+    "id": "settings",
+    "title": "Settings",
+    "path": "/settings"
+   },
+   {
+    "id": "preferences",
+    "title": "Preferences",
+    "path": "/settings/preferences"
+   },
+   {
+    "id": "settings-account",
+    "title": "Account (this server)",
+    "path": "/settings/account"
+   },
+   {
+    "id": "settings-profiles",
+    "title": "Profiles",
+    "path": "/settings/profiles"
+   },
+   {
+    "id": "settings-servers",
+    "title": "Servers",
+    "path": "/settings/servers"
+   },
+   {
+    "id": "notifications",
+    "title": "Notifications",
+    "path": "/settings/notifications"
+   },
+   {
+    "id": "about",
+    "title": "About",
+    "path": "/settings/about"
+   },
+   {
+    "id": "account",
+    "title": "Portico Account",
+    "path": "/account"
+   },
+   {
+    "id": "account-security",
+    "title": "Account security",
+    "path": "/account?tab=security"
+   },
+   {
+    "id": "account-sessions",
+    "title": "Where you’re signed in",
+    "path": "/account?tab=sessions"
+   },
+   {
+    "id": "account-servers",
+    "title": "Account servers",
+    "path": "/account?tab=servers"
+   },
+   {
+    "id": "account-invites",
+    "title": "Invitations",
+    "path": "/account?tab=invitations"
+   },
+   {
+    "id": "account-data",
+    "title": "Email and data",
+    "path": "/account?tab=notifications"
+   }
+  ]
+ },
+ {
+  "group": "Server administration",
+  "items": [
+   {
+    "id": "admin-overview",
+    "title": "Overview",
+    "path": "/server/overview"
+   },
+   {
+    "id": "admin-now-playing",
+    "title": "Now Playing",
+    "path": "/server/now-playing"
+   },
+   {
+    "id": "admin-activity",
+    "title": "Activity",
+    "path": "/server/activity"
+   },
+   {
+    "id": "admin-logs",
+    "title": "Logs",
+    "path": "/server/logs"
+   },
+   {
+    "id": "admin-diagnostics",
+    "title": "Diagnostics",
+    "path": "/server/diagnostics"
+   },
+   {
+    "id": "admin-feedback",
+    "title": "Feedback",
+    "path": "/server/feedback"
+   },
+   {
+    "id": "admin-alerts",
+    "title": "Alerts",
+    "path": "/server/alerts"
+   },
+   {
+    "id": "admin-libraries",
+    "title": "Libraries",
+    "path": "/server/libraries"
+   },
+   {
+    "id": "admin-library-settings",
+    "title": "Library settings",
+    "path": "/server/library-settings"
+   },
+   {
+    "id": "admin-metadata",
+    "title": "Metadata",
+    "path": "/server/metadata"
+   },
+   {
+    "id": "admin-storage",
+    "title": "Storage",
+    "path": "/server/storage"
+   },
+   {
+    "id": "admin-live-tv",
+    "title": "Live TV",
+    "path": "/server/live-tv"
+   },
+   {
+    "id": "admin-dvr",
+    "title": "DVR",
+    "path": "/server/dvr"
+   },
+   {
+    "id": "admin-channels",
+    "title": "Library Channels",
+    "path": "/server/channels"
+   },
+   {
+    "id": "admin-channel-builder",
+    "title": "Channel Builder",
+    "path": "/server/channel-builder"
+   },
+   {
+    "id": "admin-transcoding",
+    "title": "Transcoding",
+    "path": "/server/transcoding"
+   },
+   {
+    "id": "admin-network",
+    "title": "Network",
+    "path": "/server/network"
+   },
+   {
+    "id": "admin-people",
+    "title": "People",
+    "path": "/server/people"
+   },
+   {
+    "id": "admin-access",
+    "title": "Access & API keys",
+    "path": "/server/access"
+   },
+   {
+    "id": "admin-schedules",
+    "title": "Schedules",
+    "path": "/server/schedules"
+   },
+   {
+    "id": "admin-maintenance",
+    "title": "Maintenance",
+    "path": "/server/maintenance"
+   },
+   {
+    "id": "admin-backups",
+    "title": "Backups",
+    "path": "/server/backups"
+   },
+   {
+    "id": "admin-general",
+    "title": "General",
+    "path": "/server/general"
+   },
+   {
+    "id": "admin-denied",
+    "title": "Console as a member",
+    "path": "/server/overview?as=member"
+   }
+  ]
+ },
+ {
+  "group": "States",
+  "items": [
+   {
+    "id": "not-found",
+    "title": "Not found",
+    "path": "/nothing/here"
+   },
+   {
+    "id": "slow",
+    "title": "Loading skeletons (slow network)",
+    "path": "/?latency=4"
+   }
+  ]
+ }
+]

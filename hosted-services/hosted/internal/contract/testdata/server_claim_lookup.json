@@ -1,0 +1,9 @@
+{
+  "address": "http://192.168.1.10:32500",
+  "code": "<code>",
+  "expiresAt": "<time>",
+  "name": "Living Room",
+  "requestedAt": "<time>",
+  "serverId": "<serverId>",
+  "status": "pending"
+}

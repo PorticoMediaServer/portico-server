@@ -1,0 +1,22 @@
+.box { padding: 0 var(--gutter); margin-bottom: 18px; }
+.field { position: relative; max-width: 760px; }
+.input { width: 100%; height: 56px; padding: 0 56px 0 52px; border-radius: var(--r-lg); border: 1px solid var(--line); background: rgb(5 11 17 / 0.6); color: var(--text); font-size: 19px; font-weight: 550; transition: border-color var(--t-quick), box-shadow var(--t-quick); }
+.input::placeholder { color: var(--placeholder); }
+.input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgb(64 159 212 / 0.25); }
+.input::-webkit-search-cancel-button { display: none; }
+.icon { position: absolute; left: 18px; top: 50%; transform: translateY(-50%); color: var(--text-3); pointer-events: none; }
+.clear { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); }
+.chips { padding: 0 var(--gutter); margin-bottom: 24px; }
+.groups { display: flex; flex-direction: column; gap: var(--row-gap); }
+.recent { padding: 0 var(--gutter); max-width: 760px; }
+.recentHead { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.recentItem { display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 8px; border-radius: var(--r-md); text-align: left; font-size: 15px; color: var(--text-2); }
+.recentItem:hover { background: var(--hover); color: var(--text); }
+.browse { padding: 0 var(--gutter); margin-top: 32px; }
+.browseGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; margin-top: 12px; }
+@media (max-width: 767px) { .browseGrid { grid-template-columns: repeat(2, 1fr); } .input { height: 50px; font-size: 17px; } }
+.browseTile { display: flex; align-items: center; gap: 12px; padding: 14px; border-radius: var(--r-lg); background: var(--surface-1); border: 1px solid var(--line-soft); font-weight: 700; transition: background var(--t-quick), border-color var(--t-quick); }
+.browseTile:hover { background: var(--raised-high); border-color: var(--line); }
+.browseTile svg { color: var(--accent-strong); }
+.seeAll { font-size: 13px; font-weight: 650; color: var(--text-2); white-space: nowrap; padding: 4px 8px; margin: -4px -8px; border-radius: var(--r-sm); }
+.seeAll:hover { color: var(--text); background: var(--hover); }

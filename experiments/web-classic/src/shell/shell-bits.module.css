@@ -1,0 +1,21 @@
+.banner { position: sticky; top: 0; z-index: calc(var(--z-sticky) + 1); display: flex; align-items: center; gap: 12px; padding: 10px var(--gutter); font-size: 14px; font-weight: 600; animation: rise-in var(--t-standard) var(--ease-out) both; }
+@media (max-width: 767px) { .banner { top: var(--topbar-h); } }
+.reconnecting { background: #3a2f12; color: var(--amber); }
+.offline { background: #3a1818; color: var(--danger); }
+.online { background: #11332a; color: var(--healthy); }
+.bannerText { flex: 1; min-width: 0; }
+.bannerText span { color: var(--text-2); font-weight: 500; }
+.spin { width: 14px; height: 14px; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent; animation: spin 0.9s linear infinite; flex: none; }
+
+.keys { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px 32px; }
+@media (max-width: 640px) { .keys { grid-template-columns: 1fr; } }
+.keyGroup h3 { font-size: 12px; font-weight: 750; letter-spacing: 0.07em; text-transform: uppercase; color: var(--text-3); margin-bottom: 8px; }
+.key { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 0; font-size: 14px; color: var(--text-2); border-bottom: 1px solid var(--line-soft); }
+.key:last-child { border-bottom: 0; }
+.key span:last-child { display: inline-flex; gap: 4px; flex: none; }
+
+.selbar { position: fixed; left: 50%; bottom: calc(20px + var(--dock-h, 0px)); transform: translateX(-50%); width: max-content; z-index: var(--z-menu); display: flex; align-items: center; gap: 8px; padding: 8px 8px 8px 16px; border-radius: var(--r-xl); background: var(--surface-menu); border: 1px solid var(--line-strong); box-shadow: var(--shadow-pop); max-width: calc(100vw - 24px); animation: rise-in var(--t-standard) var(--ease-out) both; }
+@media (min-width: 768px) { .selbar { margin-left: calc(var(--rail-w, 0px) / 2); } }
+@media (max-width: 767px) { .selbar { left: 8px; right: 8px; transform: none; bottom: calc(var(--bottombar-h) + 8px + env(safe-area-inset-bottom)); flex-wrap: wrap; } }
+.selCount { font-weight: 750; white-space: nowrap; margin-right: 6px; }
+.selActions { display: flex; gap: 4px; flex-wrap: wrap; }

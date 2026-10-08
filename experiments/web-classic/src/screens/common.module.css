@@ -1,0 +1,8 @@
+.loading { padding: 32px var(--gutter); display: flex; flex-direction: column; }
+.cards { display: flex; gap: 16px; margin-top: 36px; overflow: hidden; }
+.detail { padding: 48px var(--gutter); }
+.detailInner { display: flex; gap: 32px; align-items: flex-start; }
+.detailPoster { width: 240px; aspect-ratio: 2 / 3; flex: none; border-radius: var(--r-lg); }
+@media (max-width: 767px) { .detailPoster { width: 120px; } .detailInner { gap: 16px; } }
+.meta { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; color: var(--text-2); font-size: 14px; font-weight: 550; }
+.dot { color: var(--text-3); }

@@ -1,0 +1,17 @@
+{
+  "provider": "letsencrypt",
+  "environment": "production",
+  "contactEmail": "operator@example.invalid",
+  "acceptTerms": false,
+  "eabKeyId": "",
+  "eabMacKey": "",
+  "accountSealKeyFile": "/private/portico/acme/letsencrypt-production.seal",
+  "stagingRootsFile": "",
+  "dnsUpdateAddress": "10.77.0.10:5354",
+  "dnsUpdateSecret": "REPLACE_WITH_BASE64_32_RANDOM_BYTES",
+  "propagationResolvers": [
+    "8.8.8.8:53",
+    "1.1.1.1:53"
+  ],
+  "workers": 2
+}

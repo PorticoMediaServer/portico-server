@@ -1,0 +1,413 @@
+{
+  "schema": "portico.private-product-contract-registry.v1",
+  "authorityIndex": "../37 Product Contract Authority.md",
+  "originalBaseline": "../../References/Contract Baseline 2026-09-05",
+  "policy": "Prose and explicitly named domain amendments govern intended behavior. Old wire artifacts are references only. No implementation qualification is inferred.",
+  "contracts": [
+    {
+      "id": "PC-FOUNDATION",
+      "revision": "portico.reconciled.1",
+      "document": "foundation/contract.md",
+      "status": "reconciled-required-behavior",
+      "implementationQualification": "not-asserted-by-this-review",
+      "baselineDocument": "foundation/contract.md",
+      "referenceArtifacts": [
+        {
+          "path": "foundation/viewer-scope.schema.json",
+          "role": "legacy-reference-requires-porting"
+        },
+        {
+          "path": "foundation/permissions.yaml",
+          "role": "legacy-reference-requires-porting"
+        },
+        {
+          "path": "foundation/work-classes.yaml",
+          "role": "legacy-reference-requires-porting"
+        },
+        {
+          "path": "foundation/runtime.yaml",
+          "role": "legacy-reference-requires-porting"
+        },
+        {
+          "path": "foundation/exceptions.yaml",
+          "role": "legacy-reference-requires-porting"
+        }
+      ]
+    },
+    {
+      "id": "PC-GOVERNANCE",
+      "revision": "portico.reconciled.1",
+      "document": "governance.md",
+      "status": "reconciled-required-behavior",
+      "implementationQualification": "not-asserted-by-this-review",
+      "baselineDocument": "governance.md",
+      "referenceArtifacts": []
+    },
+    {
+      "id": "PC-GLOSSARY",
+      "revision": "portico.reconciled.1",
+      "document": "glossary.md",
+      "status": "reconciled-required-behavior",
+      "implementationQualification": "not-asserted-by-this-review",
+      "baselineDocument": "glossary.md",
+      "referenceArtifacts": []
+    },
+    {
+      "id": "PC-VISUAL",
+      "revision": "portico.reconciled.1",
+      "document": "visual/contract.md",
+      "status": "reconciled-required-behavior",
+      "implementationQualification": "not-asserted-by-this-review",
+      "baselineDocument": "visual/contract.md",
+      "referenceArtifacts": [
+        {
+          "path": "visual/tokens.json",
+          "role": "legacy-reference-requires-porting"
+        },
+        {
+          "path": "visual/exceptions.yaml",
+          "role": "legacy-reference-requires-porting"
+        }
+      ]
+    },
+    {
+      "id": "PC-MEDIA-PRESENTATION",
+      "revision": "portico.reconciled.1",
+      "document": "media-presentation/contract.md",
+      "status": "reconciled-required-behavior",
+      "implementationQualification": "not-asserted-by-this-review",
+      "baselineDocument": "media-presentation/contract.md",
+      "referenceArtifacts": [
+        {
+          "path": "media-presentation/presentation-matrix.json",
+          "role": "legacy-reference-requires-porting"
+        },
+        {
+          "path": "media-presentation/exceptions.yaml",
+          "role": "legacy-reference-requires-porting"
+        }
+      ]
+    },
+    {
+      "id": "PC-NAVIGATION-INPUT",
+      "revision": "portico.reconciled.1",
+      "document": "navigation-and-input/contract.md",
+      "status": "reconciled-required-behavior",
+      "implementationQualification": "not-asserted-by-this-review",
+      "baselineDocument": "navigation-and-input/contract.md",
+      "referenceArtifacts": [
+        {
+          "path": "navigation-and-input/navigation-state.schema.json",
+          "role": "legacy-reference-requires-porting"
+        },
+        {
+          "path": "navigation-and-input/conformance.json",
+          "role": "legacy-reference-requires-porting"
+        },
+        {
+          "path": "navigation-and-input/exceptions.yaml",
+          "role": "legacy-reference-requires-porting"
+        }
+      ]
+    },
+    {
+      "id": "PC-IDENTITY",
+      "revision": "portico.reconciled.1",
+      "document": "identity/contract.md",
+      "status": "reconciled-required-behavior",
+      "implementationQualification": "not-asserted-by-this-review",
+      "baselineDocument": "identity/contract.md",
+      "referenceArtifacts": [
+        {
+          "path": "identity/identity-model.schema.json",
+          "role": "legacy-reference-requires-porting"
+        },
+        {
+          "path": "identity/conformance.json",
+          "role": "legacy-reference-requires-porting"
+        },
+        {
+          "path": "identity/exceptions.yaml",
+          "role": "legacy-reference-requires-porting"
+        }
+      ]
+    },
+    {
+      "id": "PC-ONBOARDING",
+      "revision": "portico.reconciled.1",
+      "document": "onboarding/contract.md",
+      "status": "reconciled-required-behavior",
+      "implementationQualification": "not-asserted-by-this-review",
+      "baselineDocument": "onboarding/contract.md",
+      "referenceArtifacts": [
+        {
+          "path": "onboarding/setup-state.schema.json",
+          "role": "legacy-reference-requires-porting"
+        },
+        {
+          "path": "onboarding/conformance.json",
+          "role": "legacy-reference-requires-porting"
+        },
+        {
+          "path": "onboarding/exceptions.yaml",
+          "role": "legacy-reference-requires-porting"
+        }
+      ]
+    },
+    {
+      "id": "PC-NETWORKING",
+      "revision": "portico.reconciled.1",
+      "document": "networking/contract.md",
+      "status": "reconciled-required-behavior",
+      "implementationQualification": "not-asserted-by-this-review",
+      "baselineDocument": "networking/contract.md",
+      "referenceArtifacts": [
+        {
+          "path": "networking/connection-state.schema.json",
+          "role": "legacy-reference-requires-porting"
+        },
+        {
+          "path": "networking/conformance.json",
+          "role": "legacy-reference-requires-porting"
+        },
+        {
+          "path": "networking/exceptions.yaml",
+          "role": "legacy-reference-requires-porting"
+        }
+      ]
+    },
+    {
+      "id": "PC-LIBRARY-SCANNING",
+      "revision": "portico.reconciled.1",
+      "document": "libraries-and-scanning/contract.md",
+      "status": "reconciled-required-behavior",
+      "implementationQualification": "not-asserted-by-this-review",
+      "baselineDocument": "libraries-and-scanning/contract.md",
+      "referenceArtifacts": [
+        {
+          "path": "libraries-and-scanning/scan-profile.schema.json",
+          "role": "legacy-reference-requires-porting"
+        },
+        {
+          "path": "libraries-and-scanning/conformance.json",
+          "role": "legacy-reference-requires-porting"
+        },
+        {
+          "path": "libraries-and-scanning/exceptions.yaml",
+          "role": "legacy-reference-requires-porting"
+        }
+      ]
+    },
+    {
+      "id": "PC-METADATA",
+      "revision": "portico.reconciled.1",
+      "document": "metadata/contract.md",
+      "status": "reconciled-required-behavior",
+      "implementationQualification": "not-asserted-by-this-review",
+      "baselineDocument": "metadata/contract.md",
+      "referenceArtifacts": [
+        {
+          "path": "metadata/metadata-decision.schema.json",
+          "role": "legacy-reference-requires-porting"
+        },
+        {
+          "path": "metadata/conformance.json",
+          "role": "legacy-reference-requires-porting"
+        },
+        {
+          "path": "metadata/exceptions.yaml",
+          "role": "legacy-reference-requires-porting"
+        }
+      ]
+    },
+    {
+      "id": "PC-PLAYBACK",
+      "revision": "document-32.v1.0",
+      "document": "playback/contract.md",
+      "status": "existing-active-authority-unchanged",
+      "implementationQualification": "not-asserted-by-this-review",
+      "baselineDocument": "playback/contract.md",
+      "referenceArtifacts": [
+        {
+          "path": "playback/hls-profile.md",
+          "role": "legacy-reference-requires-porting"
+        },
+        {
+          "path": "playback/player-lifecycle.md",
+          "role": "legacy-reference-requires-porting"
+        },
+        {
+          "path": "playback/tracks-and-presentation.md",
+          "role": "legacy-reference-requires-porting"
+        },
+        {
+          "path": "playback/compatibility-matrix.yaml",
+          "role": "legacy-reference-requires-porting"
+        },
+        {
+          "path": "playback/schemas/media-facts.schema.json",
+          "role": "legacy-reference-requires-porting"
+        },
+        {
+          "path": "playback/schemas/playback-intent.schema.json",
+          "role": "legacy-reference-requires-porting"
+        },
+        {
+          "path": "playback/schemas/quality-offers.schema.json",
+          "role": "legacy-reference-requires-porting"
+        },
+        {
+          "path": "playback/schemas/client-capability.schema.json",
+          "role": "legacy-reference-requires-porting"
+        },
+        {
+          "path": "playback/schemas/delivery-plan.schema.json",
+          "role": "legacy-reference-requires-porting"
+        },
+        {
+          "path": "playback/test-vectors/contract-vectors.yaml",
+          "role": "legacy-reference-requires-porting"
+        },
+        {
+          "path": "playback/exceptions.yaml",
+          "role": "legacy-reference-requires-porting"
+        }
+      ]
+    },
+    {
+      "id": "PC-SAVED-DOWNLOADS",
+      "revision": "portico.reconciled.1",
+      "document": "saved-state-and-downloads/contract.md",
+      "status": "reconciled-required-behavior",
+      "implementationQualification": "not-asserted-by-this-review",
+      "baselineDocument": "saved-state-and-downloads/contract.md",
+      "referenceArtifacts": [
+        {
+          "path": "saved-state-and-downloads/offline-download-authorization-receipt.schema.json",
+          "role": "legacy-reference-requires-porting"
+        },
+        {
+          "path": "saved-state-and-downloads/state-machines.yaml",
+          "role": "legacy-reference-requires-porting"
+        },
+        {
+          "path": "saved-state-and-downloads/conformance-vectors.yaml",
+          "role": "legacy-reference-requires-porting"
+        },
+        {
+          "path": "saved-state-and-downloads/exceptions.yaml",
+          "role": "legacy-reference-requires-porting"
+        }
+      ]
+    },
+    {
+      "id": "PC-LIVE-DVR",
+      "revision": "portico.reconciled.1",
+      "document": "live-tv-and-dvr/contract.md",
+      "status": "reconciled-required-behavior",
+      "implementationQualification": "not-asserted-by-this-review",
+      "baselineDocument": "live-tv-and-dvr/contract.md",
+      "referenceArtifacts": [
+        {
+          "path": "live-tv-and-dvr/state-machines.yaml",
+          "role": "legacy-reference-requires-porting"
+        },
+        {
+          "path": "live-tv-and-dvr/conformance-vectors.yaml",
+          "role": "legacy-reference-requires-porting"
+        },
+        {
+          "path": "live-tv-and-dvr/exceptions.yaml",
+          "role": "legacy-reference-requires-porting"
+        }
+      ]
+    },
+    {
+      "id": "PC-SHARING-SOCIAL",
+      "revision": "portico.reconciled.1",
+      "document": "sharing-and-social-playback/contract.md",
+      "status": "reconciled-required-behavior",
+      "implementationQualification": "not-asserted-by-this-review",
+      "baselineDocument": "sharing-and-social-playback/contract.md",
+      "referenceArtifacts": [
+        {
+          "path": "sharing-and-social-playback/state-machines.yaml",
+          "role": "legacy-reference-requires-porting"
+        },
+        {
+          "path": "sharing-and-social-playback/conformance-vectors.yaml",
+          "role": "legacy-reference-requires-porting"
+        },
+        {
+          "path": "sharing-and-social-playback/remote-playback-acceptance-matrix.yaml",
+          "role": "legacy-reference-requires-porting"
+        },
+        {
+          "path": "sharing-and-social-playback/exceptions.yaml",
+          "role": "legacy-reference-requires-porting"
+        }
+      ]
+    },
+    {
+      "id": "PC-SETTINGS-OPERATIONS",
+      "revision": "portico.reconciled.1",
+      "document": "settings-and-operations/contract.md",
+      "status": "reconciled-required-behavior",
+      "implementationQualification": "not-asserted-by-this-review",
+      "baselineDocument": "settings-and-operations/contract.md",
+      "referenceArtifacts": [
+        {
+          "path": "settings-and-operations/settings-operation.schema.json",
+          "role": "legacy-reference-requires-porting"
+        },
+        {
+          "path": "settings-and-operations/state-machines.yaml",
+          "role": "legacy-reference-requires-porting"
+        },
+        {
+          "path": "settings-and-operations/conformance.json",
+          "role": "legacy-reference-requires-porting"
+        },
+        {
+          "path": "settings-and-operations/exceptions.yaml",
+          "role": "legacy-reference-requires-porting"
+        }
+      ]
+    },
+    {
+      "id": "PC-ACCESSIBILITY-LANGUAGE",
+      "revision": "portico.reconciled.1",
+      "document": "accessibility-and-language/contract.md",
+      "status": "reconciled-required-behavior",
+      "implementationQualification": "not-asserted-by-this-review",
+      "baselineDocument": "accessibility-and-language/contract.md",
+      "referenceArtifacts": [
+        {
+          "path": "accessibility-and-language/conformance.json",
+          "role": "legacy-reference-requires-porting"
+        },
+        {
+          "path": "accessibility-and-language/exceptions.yaml",
+          "role": "legacy-reference-requires-porting"
+        }
+      ]
+    },
+    {
+      "id": "PC-LIBRARY-CHANNELS",
+      "revision": "portico.reconciled.1",
+      "document": "library-channels.md",
+      "status": "reconciled-required-behavior",
+      "implementationQualification": "not-asserted-by-this-review",
+      "baselineDocument": null,
+      "referenceArtifacts": []
+    }
+  ],
+  "crossDomainDocuments": [
+    "architecture.md",
+    "architecture-amendments.md",
+    "decisions.md",
+    "conformance.md",
+    "scope-completion.md"
+  ],
+  "applicationSchemas": "Owned and reviewed in implementation packages; this registry does not adopt old serialized-authority paths."
+}

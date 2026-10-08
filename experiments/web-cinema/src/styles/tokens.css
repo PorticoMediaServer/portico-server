@@ -1,0 +1,154 @@
+/*
+ * Portico Web Cinema design tokens. Every colour, size, radius, shadow and duration used by the
+ * app is defined here; component styles only reference these variables.
+ */
+@font-face {
+  font-family: 'Portico Sans';
+  src: url('./fonts/manrope-latin-wght-normal.woff2') format('woff2');
+  font-weight: 200 800;
+  font-display: swap;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Portico Sans';
+  src: url('./fonts/manrope-latin-ext-wght-normal.woff2') format('woff2');
+  font-weight: 200 800;
+  font-display: swap;
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* Archivo (OFL), a grotesque with a width axis: set expanded and heavy for marquee titles. */
+@font-face {
+  font-family: 'Portico Display';
+  src: url('./fonts/archivo-latin-wdth-normal.woff2') format('woff2');
+  font-weight: 100 900;
+  font-stretch: 62% 125%;
+  font-display: swap;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Portico Display';
+  src: url('./fonts/archivo-latin-ext-wdth-normal.woff2') format('woff2');
+  font-weight: 100 900;
+  font-stretch: 62% 125%;
+  font-display: swap;
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+1E00-1E9F, U+1EF2-1EFF, U+20A0-20AB, U+20AD-20C0, U+2C60-2C7F, U+A720-A7FF;
+}
+
+/* The ambient tint follows the artwork in focus; registered so it can transition. */
+@property --tint {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #409fd4;
+}
+
+:root {
+  color-scheme: dark;
+
+  /* Portico brand colours */
+  --ink: #071018;
+  --ambient: #153749;
+  --raised-bright: #1d3848;
+  --accent: #409fd4;
+  --accent-strong: #5cb3e2;
+  --accent-deep: #2f86bb;
+
+  /* Surfaces */
+  --canvas: var(--ink);
+  --surface-1: #0c1923;
+  --surface-2: #11212d;
+  --surface-3: #172a38;
+  --surface-4: #1f3544;
+  --glass: rgba(18, 34, 46, 0.62);
+  --glass-strong: rgba(12, 24, 34, 0.86);
+  --glass-line: rgba(255, 255, 255, 0.09);
+  --line: rgba(214, 232, 245, 0.1);
+  --line-strong: rgba(214, 232, 245, 0.18);
+  --fill: rgba(214, 232, 245, 0.07);
+  --fill-hover: rgba(214, 232, 245, 0.12);
+  --fill-press: rgba(214, 232, 245, 0.17);
+  --scrim: rgba(3, 8, 12, 0.7);
+
+  /* Text */
+  --text: #f1f6fa;
+  --text-2: rgba(226, 238, 247, 0.74);
+  --text-3: rgba(214, 230, 242, 0.54);
+  --text-on-light: #071018;
+  --text-accent: #7cc4ea;
+
+  /* Status */
+  --good: #4cc38a;
+  --warn: #e8b04c;
+  --bad: #ef6a6a;
+  --live: #ff4d5e;
+  --good-fill: rgba(76, 195, 138, 0.14);
+  --warn-fill: rgba(232, 176, 76, 0.14);
+  --bad-fill: rgba(239, 106, 106, 0.14);
+  --accent-fill: rgba(64, 159, 212, 0.16);
+
+  /* Type */
+  --font: 'Portico Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-display: 'Portico Display', 'Portico Sans', ui-sans-serif, system-ui, sans-serif;
+  --display-stretch: 118%;
+  --fs-hero: clamp(2.6rem, 1.4rem + 4.2vw, 5.6rem);
+  --fs-display: clamp(2.1rem, 1.3rem + 2.6vw, 3.6rem);
+  --fs-title: clamp(1.6rem, 1.2rem + 1.2vw, 2.25rem);
+  --fs-heading: 1.25rem;
+  --fs-subheading: 1.05rem;
+  --fs-body: 0.9375rem;
+  --fs-small: 0.8125rem;
+  --fs-micro: 0.6875rem;
+
+  /* Space (4px base) */
+  --s1: 4px;
+  --s2: 8px;
+  --s3: 12px;
+  --s4: 16px;
+  --s5: 20px;
+  --s6: 24px;
+  --s8: 32px;
+  --s10: 40px;
+  --s12: 48px;
+  --s16: 64px;
+  /* Page gutter: content edges line up with hero text and row starts. */
+  --gutter: clamp(16px, 3.4vw, 56px);
+
+  /* Shape */
+  --r-xs: 6px;
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 16px;
+  --r-xl: 22px;
+  --r-pill: 999px;
+
+  /* Depth */
+  --shadow-1: 0 2px 8px rgba(0, 0, 0, 0.28);
+  --shadow-2: 0 10px 30px rgba(0, 0, 0, 0.42);
+  --shadow-3: 0 24px 60px rgba(0, 0, 0, 0.55);
+  --focus-ring: 0 0 0 2px var(--ink), 0 0 0 4px #ffffff, 0 0 22px 4px rgba(92, 179, 226, 0.55);
+
+  /* Motion */
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --t-fast: 140ms;
+  --t-med: 240ms;
+  --t-slow: 520ms;
+  --t-glow: 1400ms;
+
+  /* Layout */
+  --rail-w: 248px;
+  --rail-w-collapsed: 76px;
+  --topbar-h: 56px;
+  --tabbar-h: 64px;
+  --mini-h: 72px;
+  --poster-w: clamp(132px, 10.4vw, 196px);
+  --square-w: clamp(140px, 11vw, 200px);
+  --landscape-w: clamp(240px, 19vw, 340px);
+}
+
+@media (max-width: 767px) {
+  :root {
+    --poster-w: 118px;
+    --square-w: 132px;
+    --landscape-w: 236px;
+  }
+}

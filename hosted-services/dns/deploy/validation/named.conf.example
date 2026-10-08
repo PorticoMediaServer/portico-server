@@ -1,0 +1,27 @@
+// Copy to an operator-owned runtime directory and replace the absolute paths.
+// Run named unprivileged on 5354 for local integration. Real public delegation
+// needs authoritative TCP/UDP port 53 on the validation service's public address.
+options {
+    directory "/private/portico/validation/data";
+    listen-on port 5354 { any; };
+    listen-on-v6 port 5354 { any; };
+    recursion no;
+    allow-query { any; };
+    allow-transfer { none; };
+    allow-query-cache { none; };
+    minimal-responses yes;
+    version none;
+    querylog no;
+    pid-file "/private/portico/validation/data/named.pid";
+    session-keyfile "/private/portico/validation/data/session.key";
+};
+controls {};
+include "/private/portico/validation/acme-update.conf";
+zone "acme.getportico.tv" {
+    type primary;
+    file "acme.getportico.tv.zone";
+    // Dedicated key can update TXT only, never NS/SOA/A/CNAME or other zones.
+    // Do not also set allow-update: BIND forbids combining it with update-policy.
+    update-policy { grant acme-update. zonesub TXT; };
+    notify no;
+};

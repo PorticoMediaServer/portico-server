@@ -1,0 +1,13 @@
+[Unit]
+Description=Portico Hosted isolated weekly restore drill
+[Service]
+Type=oneshot
+User=postgres
+EnvironmentFile=/etc/portico/restore-drill.env
+ExecStart=/opt/portico/scripts/hosted-restore-test.sh
+TimeoutStartSec=2h
+UMask=0077
+Nice=19
+IOSchedulingClass=idle
+CPUSchedulingPolicy=batch
+NoNewPrivileges=true

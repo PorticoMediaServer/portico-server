@@ -1,0 +1,23 @@
+node_modules/
+dist/
+build/
+.cache/
+.scratch/
+runtime/
+__pycache__/
+*.py[cod]
+*.log
+*.db
+*.sqlite*
+.DS_Store
+
+.env
+.env.*
+!.env.example
+*.p8
+*.p12
+*.key
+
+# Protected operator material. Keep this local or in the approved encrypted
+# secrets/backup system; a private Git repository is not a secrets vault.
+/Deployment Information/Hosted Services/

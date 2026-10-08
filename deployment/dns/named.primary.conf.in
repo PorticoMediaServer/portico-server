@@ -1,0 +1,35 @@
+// /etc/bind/named.conf on ns1 (the ACME primary), rendered by
+// scripts/provision-dns-node.sh. TSIG keys live in /etc/bind/portico-keys.conf
+// (root:bind 0640): "acme-update." (Hosted's RFC 2136 updates) and
+// "acme-transfer." (zone transfer to ns2). BIND listens on WireGuard only;
+// the public path is dnsdist.
+include "/etc/bind/portico-keys.conf";
+
+options {
+  directory "/var/cache/bind";
+  listen-on port 5354 { @WG_IP@; };
+  listen-on-v6 { none; };
+  recursion no;
+  allow-query { any; };
+  allow-query-cache { none; };
+  allow-recursion { none; };
+  minimal-responses yes;
+  max-cache-size 16M;
+  rate-limit { responses-per-second 200; window 5; slip 2; };
+  dnssec-validation no;
+  version none;
+};
+
+acl "acme-transfer-sources" { @PEER_WG_IP@; };
+// ACL entries are ORed; this nested negation requires BOTH the peer's address
+// and the transfer key.
+acl "acme-authenticated-transfer" { !{ !acme-transfer-sources; any; }; key "acme-transfer."; };
+
+zone "acme.getportico.tv" IN {
+  type primary;
+  file "/var/lib/bind/db.acme.getportico.tv";
+  update-policy { grant "acme-update." zonesub TXT; };
+  allow-transfer { acme-authenticated-transfer; };
+  notify explicit;
+  also-notify { @PEER_WG_IP@ port 5354 key "acme-transfer."; };
+};

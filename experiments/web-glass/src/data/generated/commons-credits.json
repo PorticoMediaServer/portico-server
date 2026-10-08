@@ -1,0 +1,303 @@
+{
+ "bbb-poster": {
+  "file": "Big buck bunny poster big.jpg",
+  "license": "CC BY 3.0",
+  "artist": "(c) copyright Blender Foundation | peach.blender.org",
+  "source": "https://commons.wikimedia.org/wiki/File:Big_buck_bunny_poster_big.jpg",
+  "path": "bbb-poster.jpg"
+ },
+ "bbb-back": {
+  "file": "Big.Buck.Bunny.-.Frank.Rinky.Gimera.png",
+  "license": "CC BY 3.0",
+  "artist": "(c) Blender Foundation I <a rel=\"nofollow\" class=\"external text\" href=\"http://www.bigbuckbunny.org/\">www.bigbuckbunny.org</a> see copyright information on <a rel=\"nofollow\" class=\"external free\" href=",
+  "source": "https://commons.wikimedia.org/wiki/File:Big.Buck.Bunny.-.Frank.Rinky.Gimera.png",
+  "path": "bbb-back.png"
+ },
+ "sintel-poster": {
+  "file": "Sintel poster.jpg",
+  "license": "CC BY 3.0",
+  "artist": "(c) copyright Blender Foundation | durian.blender.org",
+  "source": "https://commons.wikimedia.org/wiki/File:Sintel_poster.jpg",
+  "path": "sintel-poster.jpg"
+ },
+ "sintel-poster2": {
+  "file": "Sintel Poster Paintover clean.jpg",
+  "license": "CC BY 3.0",
+  "artist": "Durian Team, Blender Foundation",
+  "source": "https://commons.wikimedia.org/wiki/File:Sintel_Poster_Paintover_clean.jpg",
+  "path": "sintel-poster2.jpg"
+ },
+ "sintel-back": {
+  "file": "Sintel-screenshot-1.jpg",
+  "license": "CC BY 3.0",
+  "artist": "\u00a9 copyright Blender Foundation www.sintel.org",
+  "source": "https://commons.wikimedia.org/wiki/File:Sintel-screenshot-1.jpg",
+  "path": "sintel-back.jpg"
+ },
+ "sintel-back2": {
+  "file": "Sintel-screenshot-3.jpg",
+  "license": "CC BY 3.0",
+  "artist": "\u00a9 copyright Blender Foundation www.sintel.org",
+  "source": "https://commons.wikimedia.org/wiki/File:Sintel-screenshot-3.jpg",
+  "path": "sintel-back2.jpg"
+ },
+ "tos-poster": {
+  "file": "Tos-poster.png",
+  "license": "CC BY 3.0",
+  "artist": "(CC) Blender Foundation | <a rel=\"nofollow\" class=\"external text\" href=\"http://mango.blender.org\">Project Mango</a>",
+  "source": "https://commons.wikimedia.org/wiki/File:Tos-poster.png",
+  "path": "tos-poster.png"
+ },
+ "tos-back": {
+  "file": "Tears of Steel frame 01 2a.jpg",
+  "license": "CC BY 3.0",
+  "artist": "(CC) Blender Foundation | <a rel=\"nofollow\" class=\"external text\" href=\"http://mango.blender.org\">Project Mango</a>",
+  "source": "https://commons.wikimedia.org/wiki/File:Tears_of_Steel_frame_01_2a.jpg",
+  "path": "tos-back.jpg"
+ },
+ "tos-back2": {
+  "file": "Tears of Steel frame 09 1a.jpg",
+  "license": "CC BY 3.0",
+  "artist": "(CC) Blender Foundation | <a rel=\"nofollow\" class=\"external text\" href=\"http://mango.blender.org\">Project Mango</a>",
+  "source": "https://commons.wikimedia.org/wiki/File:Tears_of_Steel_frame_09_1a.jpg",
+  "path": "tos-back2.jpg"
+ },
+ "ed-poster": {
+  "file": "ElephantsDreamPoster.jpg",
+  "license": "CC BY 4.0",
+  "artist": "Bassam Kurdali, Andy Goralczyk, and the Blender Foundation",
+  "source": "https://commons.wikimedia.org/wiki/File:ElephantsDreamPoster.jpg",
+  "path": "ed-poster.jpg"
+ },
+ "ed-back": {
+  "file": "Elephants Dream s3 platform.jpg",
+  "license": "CC BY 2.5",
+  "artist": "Ton Roosendaal et al.",
+  "source": "https://commons.wikimedia.org/wiki/File:Elephants_Dream_s3_platform.jpg",
+  "path": "ed-back.jpg"
+ },
+ "cosmos-poster": {
+  "file": "CosmosLaundromatPoster.jpg",
+  "license": "CC BY 4.0",
+  "artist": "Andy Goralczyk and the Blender Foundation",
+  "source": "https://commons.wikimedia.org/wiki/File:CosmosLaundromatPoster.jpg",
+  "path": "cosmos-poster.jpg"
+ },
+ "cosmos-back": {
+  "file": "CosmosLaundromatYouTubeThumbnail.jpg",
+  "license": "CC BY 3.0",
+  "artist": "(CC) Blender Foundation | gooseberry.blender.org",
+  "source": "https://commons.wikimedia.org/wiki/File:CosmosLaundromatYouTubeThumbnail.jpg",
+  "path": "cosmos-back.jpg"
+ },
+ "spring-poster": {
+  "file": "Spring2019AlphaPosterBlender.jpg",
+  "license": "CC BY 4.0",
+  "artist": "Blender Foundation",
+  "source": "https://commons.wikimedia.org/wiki/File:Spring2019AlphaPosterBlender.jpg",
+  "path": "spring-poster.jpg"
+ },
+ "spring-back": {
+  "file": "Blender Open Movie - Spring (2019).png",
+  "license": "CC0",
+  "artist": "<a href=\"//commons.wikimedia.org/wiki/User:Alexandru.rosu\" class=\"mw-redirect\" title=\"User:Alexandru.rosu\">Alexandru.rosu</a>",
+  "source": "https://commons.wikimedia.org/wiki/File:Blender_Open_Movie_-_Spring_(2019).png",
+  "path": "spring-back.png"
+ },
+ "sprite-poster": {
+  "file": "Sprite Fright-movie poster.jpg",
+  "license": "CC BY 4.0",
+  "artist": "<bdi><a href=\"https://www.wikidata.org/wiki/Q66424857\" class=\"extiw\" title=\"d:Q66424857\"><span title=\"animation studio that publishes open-source films\">Blender Studio</span></a></bdi>",
+  "source": "https://commons.wikimedia.org/wiki/File:Sprite_Fright-movie_poster.jpg",
+  "path": "sprite-poster.jpg"
+ },
+ "charge-poster": {
+  "file": "Charge-movie poster.jpg",
+  "license": "CC BY 4.0",
+  "artist": "<bdi><a href=\"https://www.wikidata.org/wiki/Q66424857\" class=\"extiw\" title=\"d:Q66424857\"><span title=\"animation studio that publishes open-source films\">Blender Studio</span></a></bdi>",
+  "source": "https://commons.wikimedia.org/wiki/File:Charge-movie_poster.jpg",
+  "path": "charge-poster.jpg"
+ },
+ "charge-back": {
+  "file": "Charge - Blender Open Movie-YouTube thumbnail.jpg",
+  "license": "CC BY 4.0",
+  "artist": "<bdi><a href=\"https://www.wikidata.org/wiki/Q66424857\" class=\"extiw\" title=\"d:Q66424857\"><span title=\"animation studio that publishes open-source films\">Blender Studio</span></a></bdi>",
+  "source": "https://commons.wikimedia.org/wiki/File:Charge_-_Blender_Open_Movie-YouTube_thumbnail.jpg",
+  "path": "charge-back.jpg"
+ },
+ "charge-logo": {
+  "file": "Charge-movie logo.png",
+  "license": "CC BY 4.0",
+  "artist": "<bdi><a href=\"https://www.wikidata.org/wiki/Q66424857\" class=\"extiw\" title=\"d:Q66424857\"><span title=\"animation studio that publishes open-source films\">Blender Studio</span></a></bdi>",
+  "source": "https://commons.wikimedia.org/wiki/File:Charge-movie_logo.png",
+  "path": "charge-logo.png"
+ },
+ "coffee-poster": {
+  "file": "Coffee Run-movie poster.png",
+  "license": "CC BY 4.0",
+  "artist": "Hjalti Hjalmarsson (Blender Cloud)",
+  "source": "https://commons.wikimedia.org/wiki/File:Coffee_Run-movie_poster.png",
+  "path": "coffee-poster.png"
+ },
+ "coffee-back": {
+  "file": "Coffee Run - screenshot-intro.png",
+  "license": "CC BY 4.0",
+  "artist": "Blender Foundation",
+  "source": "https://commons.wikimedia.org/wiki/File:Coffee_Run_-_screenshot-intro.png",
+  "path": "coffee-back.png"
+ },
+ "coffee-back2": {
+  "file": "Coffee Run - screenshot-Location 01 Outisde-Run 1-coffee.png",
+  "license": "CC BY 4.0",
+  "artist": "Blender Foundation",
+  "source": "https://commons.wikimedia.org/wiki/File:Coffee_Run_-_screenshot-Location_01_Outisde-Run_1-coffee.png",
+  "path": "coffee-back2.png"
+ },
+ "caminandes-back": {
+  "file": "Blender Foundation - Caminandes - Episode 3 - Llamigos - Cover thumbnail.png",
+  "license": "CC BY 4.0",
+  "artist": "Blender Foundation",
+  "source": "https://commons.wikimedia.org/wiki/File:Blender_Foundation_-_Caminandes_-_Episode_3_-_Llamigos_-_Cover_thumbnail.png",
+  "path": "caminandes-back.png"
+ },
+ "caminandes1-back": {
+  "file": "Pablo Vazquez - Caminandes - Episode 1 - Llama Drama - Cover thumbnail.png",
+  "license": "CC BY 3.0",
+  "artist": "Pablo Vazquez, Beorn Leonard, Francesco Siddi",
+  "source": "https://commons.wikimedia.org/wiki/File:Pablo_Vazquez_-_Caminandes_-_Episode_1_-_Llama_Drama_-_Cover_thumbnail.png",
+  "path": "caminandes1-back.png"
+ },
+ "metropolis-poster": {
+  "file": "Boris Bilinski (1900-1948) Plakat f\u00fcr den Film Metropolis (1).jpg",
+  "license": "Public domain",
+  "artist": "<bdi><a href=\"https://www.wikidata.org/wiki/Q893627\" class=\"extiw\" title=\"d:Q893627\"><span title=\"Russian scenographer and costume designer (1900\u20131948)\">Boris Bilinsky</span></a></bdi>",
+  "source": "https://commons.wikimedia.org/wiki/File:Boris_Bilinski_(1900-1948)_Plakat_f\u00fcr_den_Film_Metropolis_(1).jpg",
+  "path": "metropolis-poster.jpg"
+ },
+ "general-poster": {
+  "file": "The General (1926) - Movie Poster.png",
+  "license": "Public domain",
+  "artist": "United Artists Corporation",
+  "source": "https://commons.wikimedia.org/wiki/File:The_General_(1926)_-_Movie_Poster.png",
+  "path": "general-poster.png"
+ },
+ "general-back": {
+  "file": "Buster Keaton on the cow-catcher in The General.jpg",
+  "license": "Public domain",
+  "artist": "Buster Keaton Productions",
+  "source": "https://commons.wikimedia.org/wiki/File:Buster_Keaton_on_the_cow-catcher_in_The_General.jpg",
+  "path": "general-back.jpg"
+ },
+ "notld-poster": {
+  "file": "Night Of The Living Dead (1968) - Poster.jpg",
+  "license": "Public domain",
+  "artist": "Unknown author<span style=\"display: none;\">Unknown author</span>",
+  "source": "https://commons.wikimedia.org/wiki/File:Night_Of_The_Living_Dead_(1968)_-_Poster.jpg",
+  "path": "notld-poster.jpg"
+ },
+ "notld-back": {
+  "file": "Judith O'Dea clutching grave in Night of the Living Dead bw.jpg",
+  "license": "Public domain",
+  "artist": "Direction and cinematography both by George A. Romero",
+  "source": "https://commons.wikimedia.org/wiki/File:Judith_O'Dea_clutching_grave_in_Night_of_the_Living_Dead_bw.jpg",
+  "path": "notld-back.jpg"
+ },
+ "hgf-poster": {
+  "file": "His Girl Friday (1940 poster).jpg",
+  "license": "Public domain",
+  "artist": "\"Copyrighted by <a href=\"https://en.wikipedia.org/wiki/Columbia_Pictures\" class=\"extiw\" title=\"w:Columbia Pictures\">Columbia Pictures Corp</a>, New York, N.\u00a0Y. 1939\"",
+  "source": "https://commons.wikimedia.org/wiki/File:His_Girl_Friday_(1940_poster).jpg",
+  "path": "hgf-poster.jpg"
+ },
+ "hgf-back": {
+  "file": "His Girl Friday 7.jpg",
+  "license": "Public domain",
+  "artist": "film screenshot (Columbia Pictures)",
+  "source": "https://commons.wikimedia.org/wiki/File:His_Girl_Friday_7.jpg",
+  "path": "hgf-back.jpg"
+ },
+ "charade-poster": {
+  "file": "Charade (1963 poster).jpg",
+  "license": "Public domain",
+  "artist": "\"Copyright \u00a9 1963 by <a href=\"https://en.wikipedia.org/wiki/Universal_Pictures\" class=\"extiw\" title=\"w:Universal Pictures\">Universal Pictures Co., Inc.</a>\"",
+  "source": "https://commons.wikimedia.org/wiki/File:Charade_(1963_poster).jpg",
+  "path": "charade-poster.jpg"
+ },
+ "charade-back": {
+  "file": "Charade 1963 Audrey Hepburn and Cary Grant.jpg",
+  "license": "Public domain",
+  "artist": "Directed and produced by Stanley Donen; cinematography by Charles Lang",
+  "source": "https://commons.wikimedia.org/wiki/File:Charade_1963_Audrey_Hepburn_and_Cary_Grant.jpg",
+  "path": "charade-back.jpg"
+ },
+ "sherlockjr-poster": {
+  "file": "Sherlock jr poster.jpg",
+  "license": "Public domain",
+  "artist": "Unknown author<span style=\"display: none;\">Unknown author</span>",
+  "source": "https://commons.wikimedia.org/wiki/File:Sherlock_jr_poster.jpg",
+  "path": "sherlockjr-poster.jpg"
+ },
+ "sherlockjr-back": {
+  "file": "Silent film theater in Sherlock Jr., 1924, with Buster Keaton.png",
+  "license": "Public domain",
+  "artist": "Unknown photographer<span style=\"display: none;\">Unknown photographer</span>",
+  "source": "https://commons.wikimedia.org/wiki/File:Silent_film_theater_in_Sherlock_Jr.,_1924,_with_Buster_Keaton.png",
+  "path": "sherlockjr-back.png"
+ },
+ "kid-poster": {
+  "file": "The Kid (1921) poster.jpg",
+  "license": "Public domain",
+  "artist": "First National",
+  "source": "https://commons.wikimedia.org/wiki/File:The_Kid_(1921)_poster.jpg",
+  "path": "kid-poster.jpg"
+ },
+ "kid-back": {
+  "file": "Still from Charles Chaplin - The Kid - 1921 - Charles Chaplin Productions - EYE FOT2415.JPG",
+  "license": "Public domain",
+  "artist": "Charles Chaplin, <i>The Kid</i>, 1921, Charles Chaplin Productions (US)",
+  "source": "https://commons.wikimedia.org/wiki/File:Still_from_Charles_Chaplin_-_The_Kid_-_1921_-_Charles_Chaplin_Productions_-_EYE_FOT2415.JPG",
+  "path": "kid-back.jpg"
+ },
+ "trip-back": {
+  "file": "Trip-to-moon-1902.jpg",
+  "license": "Public domain",
+  "artist": "Filmdirector: <a href=\"https://en.wikipedia.org/wiki/Georges_M%C3%A9li%C3%A8s\" class=\"extiw\" title=\"en:Georges M\u00e9li\u00e8s\">en:Georges M\u00e9li\u00e8s</a> 1861-1938",
+  "source": "https://commons.wikimedia.org/wiki/File:Trip-to-moon-1902.jpg",
+  "path": "trip-back.jpg"
+ },
+ "trip-poster": {
+  "file": "Le voyage dans la lune drawing.jpg",
+  "license": "Public domain",
+  "artist": "Georges M\u00e9li\u00e8s",
+  "source": "https://commons.wikimedia.org/wiki/File:Le_voyage_dans_la_lune_drawing.jpg",
+  "path": "trip-poster.jpg"
+ },
+ "caligari-poster": {
+  "file": "The Cabinet of Doctor Caligari Movie poster.jpg",
+  "license": "Public domain",
+  "artist": "<bdi><a href=\"https://en.wikipedia.org/wiki/en:Lionel_S._Reiss\" class=\"extiw\" title=\"w:en:Lionel S. Reiss\"><span title=\"Polish-born American artist (1894\u20131988)\">Lionel S. Reiss</span></a></bdi>",
+  "source": "https://commons.wikimedia.org/wiki/File:The_Cabinet_of_Doctor_Caligari_Movie_poster.jpg",
+  "path": "caligari-poster.jpg"
+ },
+ "caligari-back": {
+  "file": "Caligari 1920 still 01.jpg",
+  "license": "Public domain",
+  "artist": "<p>Willy Hameister.\n</p>\nOriginal uploader was <a href=\"https://ru.wikipedia.org/wiki/User:%D0%91%D0%B5%D1%80%D0%B5%D0%B6%D0%BD%D0%BE%D0%B9%D0%A1%D0%B5%D1%80%D0%B3%D0%B5%D0%B9\" class=\"extiw\" title=\"ru",
+  "source": "https://commons.wikimedia.org/wiki/File:Caligari_1920_still_01.jpg",
+  "path": "caligari-back.jpg"
+ },
+ "detour-poster": {
+  "file": "Detour (poster).jpg",
+  "license": "Public domain",
+  "artist": "Producers Releasing Corporation",
+  "source": "https://commons.wikimedia.org/wiki/File:Detour_(poster).jpg",
+  "path": "detour-poster.jpg"
+ },
+ "detour-back": {
+  "file": "Edmund MacDonald in Detour (1945).jpg",
+  "license": "Public domain",
+  "artist": "Producers Releasing Corporation",
+  "source": "https://commons.wikimedia.org/wiki/File:Edmund_MacDonald_in_Detour_(1945).jpg",
+  "path": "detour-back.jpg"
+ }
+}

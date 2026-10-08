@@ -1,0 +1,183 @@
+/*
+ * Portico Web Classic design tokens. Every colour, size and duration used by
+ * the app is defined here; component stylesheets only reference these.
+ * The palette is Portico's shared one (packages/design): a navy canvas, the
+ * blue projection glow and Portico blue for actions.
+ */
+@font-face {
+  font-family: 'Manrope';
+  src: url('./fonts/manrope-var-latin.woff2') format('woff2');
+  font-weight: 200 800;
+  font-display: swap;
+}
+
+:root {
+  color-scheme: dark;
+
+  /* Palette */
+  --ink: #071018;
+  --ink-deep: #050b11;
+  --raised-soft: #0c1a25;
+  --raised: #10212d;
+  --raised-high: #162c3a;
+  --raised-bright: #1d3848;
+  --overlay: #132634;
+  --ambient: #153749;
+  --accent: #409fd4;
+  --accent-strong: #5cb3e2;
+  --accent-deep: #2f86bb;
+  --accent-ink: #03121c;
+  --accent-soft: rgb(64 159 212 / 0.16);
+  --text: #edf5fa;
+  --text-2: #bdccd6;
+  --text-3: #96a9b5;
+  --placeholder: #8298a6;
+  --line-soft: #1c3341;
+  --line: #28404f;
+  --line-strong: #3b5668;
+  --line-control: #637580;
+  --danger: #f38b88;
+  --danger-deep: #c65a57;
+  --danger-soft: rgb(243 139 136 / 0.14);
+  --focus: #d5efff;
+  --amber: #e8bc6a;
+  --amber-soft: rgb(232 188 106 / 0.14);
+  --record: #f17979;
+  --healthy: #86cfb3;
+  --healthy-soft: rgb(134 207 179 / 0.14);
+  --track: #35505f;
+  --scrim: rgb(7 16 24 / 0.86);
+  --scrim-soft: rgb(7 16 24 / 0.55);
+  --hover: rgb(213 239 255 / 0.06);
+  --press: rgb(213 239 255 / 0.1);
+  --selected: rgb(64 159 212 / 0.18);
+
+  /* Profile colours */
+  --art-blue: #28587a;
+  --art-violet: #685294;
+  --art-mint: #28665d;
+  --art-coral: #985243;
+  --art-gold: #796120;
+  --art-slate: #4a596a;
+  --art-rose: #854d73;
+  --art-sky: #376f8c;
+
+  /* Surfaces */
+  --surface-1: rgb(16 33 45 / 0.72);
+  --surface-2: var(--raised-high);
+  --surface-menu: #132634;
+  --surface-sheet: #0f1f2b;
+  --border: 1px solid var(--line-soft);
+
+  /* Type */
+  --font: 'Manrope', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --fs-display: 40px;
+  --fs-title: 28px;
+  --fs-heading: 20px;
+  --fs-subheading: 17px;
+  --fs-body: 15px;
+  --fs-caption: 13px;
+  --fs-micro: 11px;
+  --lh-tight: 1.15;
+  --lh-body: 1.45;
+
+  /* Space */
+  --s1: 4px;
+  --s2: 8px;
+  --s3: 12px;
+  --s4: 16px;
+  --s5: 20px;
+  --s6: 24px;
+  --s7: 32px;
+  --s8: 40px;
+  --s9: 48px;
+  --s10: 64px;
+  --gutter: 40px;
+  --row-gap: 36px;
+
+  /* Shape */
+  --r-xs: 4px;
+  --r-sm: 6px;
+  --r-md: 8px;
+  --r-lg: 12px;
+  --r-xl: 16px;
+  --r-pill: 999px;
+
+  /* Cards (the poster width drives every card size) */
+  --poster-base: 158px;
+  --wide-base: 280px;
+  --square-base: 170px;
+  --circle-base: 140px;
+
+  --card-scale: 1;
+  --poster-w: calc(var(--poster-base) * var(--card-scale));
+  --wide-w: calc(var(--wide-base) * var(--card-scale));
+  --square-w: calc(var(--square-base) * var(--card-scale));
+  --circle-w: calc(var(--circle-base) * var(--card-scale));
+
+  /* Chrome */
+  --sidebar-w: 248px;
+  --sidebar-collapsed-w: 72px;
+  --topbar-h: 56px;
+  --bottombar-h: 64px;
+  --miniplayer-h: 72px;
+  --control-h: 36px;
+  --control-h-lg: 44px;
+
+  /* Motion */
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --t-quick: 120ms;
+  --t-standard: 200ms;
+  --t-slow: 320ms;
+
+  /* Layers */
+  --z-sticky: 10;
+  --z-nav: 20;
+  --z-miniplayer: 25;
+  --z-player: 30;
+  --z-menu: 40;
+  --z-dialog: 50;
+  --z-toast: 60;
+
+  --shadow-pop: 0 18px 48px rgb(0 0 0 / 0.45), 0 2px 8px rgb(0 0 0 / 0.3);
+  --shadow-card: 0 6px 18px rgb(0 0 0 / 0.35);
+  --focus-ring: 0 0 0 2px var(--ink), 0 0 0 4px var(--focus);
+}
+
+@media (min-width: 1800px) {
+  :root {
+    --gutter: 48px;
+    --poster-base: 176px;
+    --wide-base: 312px;
+    --square-base: 188px;
+    --circle-base: 152px;
+    --fs-display: 46px;
+  }
+}
+@media (max-width: 1279px) {
+  :root {
+    --gutter: 28px;
+    --poster-base: 144px;
+    --wide-base: 256px;
+    --square-base: 156px;
+    --circle-base: 128px;
+    --fs-display: 34px;
+  }
+}
+@media (max-width: 767px) {
+  :root {
+    --gutter: 16px;
+    --row-gap: 28px;
+    --poster-base: 112px;
+    --wide-base: 220px;
+    --square-base: 132px;
+    --circle-base: 104px;
+    --fs-display: 28px;
+    --fs-title: 24px;
+    --fs-heading: 18px;
+  }
+}
+
+[data-card-size='small'] { --card-scale: 0.86; }
+[data-card-size='large'] { --card-scale: 1.16; }

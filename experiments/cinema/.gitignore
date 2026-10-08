@@ -1,0 +1,14 @@
+node_modules/
+ios/Pods/
+tvos/Pods/
+ios/build/
+tvos/build/
+*.xcuserstate
+xcuserdata/
+.DS_Store
+android/.gradle/
+android/build/
+android/app/build/
+*.jsbundle
+/scripts/art/cache/
+__pycache__/

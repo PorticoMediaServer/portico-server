@@ -1,0 +1,8 @@
+.start { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; padding: 0 var(--gutter); align-items: start; max-width: 1200px; }
+@media (max-width: 900px) { .start { grid-template-columns: 1fr; } }
+.room { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(300px, 1fr); gap: 20px; padding: 0 var(--gutter); align-items: start; }
+@media (max-width: 1023px) { .room { grid-template-columns: 1fr; } }
+.now { min-width: 0; }
+.code { font-size: 32px; font-weight: 800; letter-spacing: 0.2em; text-align: center; padding: 14px; border-radius: var(--r-lg); background: rgb(5 11 17 / 0.6); border: 1px dashed var(--line-strong); font-variant-numeric: tabular-nums; }
+.member { display: flex; align-items: center; gap: 12px; padding: 8px 0; }
+.member + .member { border-top: 1px solid var(--line-soft); }

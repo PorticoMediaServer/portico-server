@@ -1,0 +1,29 @@
+{
+  "name": "portico-web-cinema",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 5402 --strictPort",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --host 127.0.0.1 --port 5412 --strictPort",
+    "typecheck": "tsc --noEmit",
+    "art": "node scripts/build-art.mjs",
+    "shots": "node scripts/shots.mjs"
+  },
+  "dependencies": {
+    "@tanstack/react-router": "1.170.40",
+    "lucide-react": "1.48.0",
+    "radix-ui": "1.6.7",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  },
+  "devDependencies": {
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.1.1",
+    "playwright": "1.63.0",
+    "typescript": "7.0.2",
+    "vite": "8.2.2"
+  }
+}

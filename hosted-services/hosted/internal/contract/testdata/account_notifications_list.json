@@ -1,0 +1,28 @@
+{
+  "items": [
+    {
+      "detail": {},
+      "id": "<id>",
+      "kind": "storage_nearly_full",
+      "occurredAt": "<time>",
+      "read": false,
+      "server": {
+        "id": "<id>",
+        "name": "Local"
+      }
+    },
+    {
+      "detail": {
+        "app": "",
+        "deviceId": "<deviceId>",
+        "name": "Portico session",
+        "platform": "unknown"
+      },
+      "id": "<id>",
+      "kind": "new_device",
+      "occurredAt": "<time>",
+      "read": false
+    }
+  ],
+  "unread": 2
+}

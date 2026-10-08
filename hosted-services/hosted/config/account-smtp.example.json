@@ -1,0 +1,8 @@
+{
+  "host": "smtp.example.invalid",
+  "port": 587,
+  "tls": "starttls",
+  "from": "accounts@example.invalid",
+  "username": "REPLACE_WITH_SMTP_USERNAME",
+  "passwordFile": "/etc/portico/secrets/smtp-password"
+}

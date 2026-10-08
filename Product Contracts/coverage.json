@@ -1,0 +1,1147 @@
+{
+  "sourceInventory": "../../Evidence/Capability Review.md",
+  "note": "Coverage, not completion. Historical sequence labels do not silently authorize scope reduction. CAP048/050 handoff wording is reconciled to document32.",
+  "capabilities": [
+    {
+      "id": "CAP-001",
+      "capability": "Global account",
+      "retainedScope": "Password registration; verified contact email; required username; Google/Apple sign-in; SSO completion without generated identity",
+      "contracts": [
+        "PC-IDENTITY"
+      ],
+      "supplements": [
+        "architecture.md",
+        "architecture-amendments.md",
+        "conformance.md"
+      ],
+      "contractCoverage": "covered",
+      "implementationStatus": "not-certified; consult current Build evidence",
+      "scopeDecision": "required; capability staging is not a deferral"
+    },
+    {
+      "id": "CAP-002",
+      "capability": "Account security",
+      "retainedScope": "Password change/reset, provider link/unlink, TOTP, recovery codes, email change, device/session review, deletion",
+      "contracts": [
+        "PC-IDENTITY"
+      ],
+      "supplements": [
+        "architecture.md",
+        "architecture-amendments.md",
+        "conformance.md"
+      ],
+      "contractCoverage": "covered",
+      "implementationStatus": "not-certified; consult current Build evidence",
+      "scopeDecision": "required; capability staging is not a deferral"
+    },
+    {
+      "id": "CAP-003",
+      "capability": "Direct server identity",
+      "retainedScope": "Independent direct login, Local profiles, password/account/session management",
+      "contracts": [
+        "PC-IDENTITY"
+      ],
+      "supplements": [
+        "architecture.md",
+        "architecture-amendments.md",
+        "conformance.md"
+      ],
+      "contractCoverage": "covered",
+      "implementationStatus": "not-certified; consult current Build evidence",
+      "scopeDecision": "required; capability staging is not a deferral"
+    },
+    {
+      "id": "CAP-004",
+      "capability": "Profiles and switching",
+      "retainedScope": "Eight active profiles, PIN, profile order/art, trusted selection, subordinate policy, exact viewer scope",
+      "contracts": [
+        "PC-IDENTITY"
+      ],
+      "supplements": [
+        "architecture.md",
+        "architecture-amendments.md",
+        "conformance.md"
+      ],
+      "contractCoverage": "covered",
+      "implementationStatus": "not-certified; consult current Build evidence",
+      "scopeDecision": "required; capability staging is not a deferral"
+    },
+    {
+      "id": "CAP-005",
+      "capability": "Server setup and claim",
+      "retainedScope": "Durable server identity; Hosted/direct choice; cross-origin resume; claim install/acknowledgement; separate Local recovery owner",
+      "contracts": [
+        "PC-ONBOARDING",
+        "PC-IDENTITY"
+      ],
+      "supplements": [
+        "architecture.md",
+        "architecture-amendments.md",
+        "conformance.md"
+      ],
+      "contractCoverage": "covered",
+      "implementationStatus": "not-certified; consult current Build evidence",
+      "scopeDecision": "required; capability staging is not a deferral"
+    },
+    {
+      "id": "CAP-006",
+      "capability": "Device onboarding",
+      "retainedScope": "Eight-character code + QR, local Quick Connect, Nearby TV approval, manual remote-network TV code, code rotation, device-secret polling",
+      "contracts": [
+        "PC-ONBOARDING",
+        "PC-IDENTITY"
+      ],
+      "supplements": [
+        "architecture.md",
+        "architecture-amendments.md",
+        "conformance.md"
+      ],
+      "contractCoverage": "covered",
+      "implementationStatus": "not-certified; consult current Build evidence",
+      "scopeDecision": "required; capability staging is not a deferral"
+    },
+    {
+      "id": "CAP-007",
+      "capability": "Server selection and networking",
+      "retainedScope": "Zero/one/multiple servers, manual address, verified LAN/public route race, signed route/policy, direct TLS/DNS/cert renewal, outage continuity",
+      "contracts": [
+        "PC-NETWORKING",
+        "PC-IDENTITY"
+      ],
+      "supplements": [
+        "architecture.md",
+        "architecture-amendments.md",
+        "conformance.md"
+      ],
+      "contractCoverage": "covered",
+      "implementationStatus": "not-certified; consult current Build evidence",
+      "scopeDecision": "required; capability staging is not a deferral"
+    },
+    {
+      "id": "CAP-008",
+      "capability": "Membership invitations",
+      "retainedScope": "Email/link/username-bound invites, preview permissions/limits, resend/revoke/decline/accept, owner transfer/leave",
+      "contracts": [
+        "PC-SHARING-SOCIAL",
+        "PC-IDENTITY"
+      ],
+      "supplements": [
+        "architecture.md",
+        "architecture-amendments.md",
+        "conformance.md"
+      ],
+      "contractCoverage": "covered",
+      "implementationStatus": "not-certified; consult current Build evidence",
+      "scopeDecision": "required; capability staging is not a deferral"
+    },
+    {
+      "id": "CAP-009",
+      "capability": "Authorization/resource framework",
+      "retainedScope": "Permission intersection, scoped grants, auth revisions, resource lanes, interactive-owner distinctions, API keys",
+      "contracts": [
+        "PC-FOUNDATION",
+        "PC-SETTINGS-OPERATIONS"
+      ],
+      "supplements": [
+        "architecture.md",
+        "architecture-amendments.md",
+        "conformance.md"
+      ],
+      "contractCoverage": "covered",
+      "implementationStatus": "not-certified; consult current Build evidence",
+      "scopeDecision": "required; capability staging is not a deferral"
+    },
+    {
+      "id": "CAP-010",
+      "capability": "Five first-class library families",
+      "retainedScope": "Movies, TV, anime, music and audiobooks; typed hierarchy; recorded-TV projection; multi-source composition",
+      "contracts": [
+        "PC-LIBRARY-SCANNING",
+        "PC-MEDIA-PRESENTATION",
+        "PC-METADATA"
+      ],
+      "supplements": [
+        "architecture.md",
+        "architecture-amendments.md",
+        "conformance.md"
+      ],
+      "contractCoverage": "covered",
+      "implementationStatus": "not-certified; consult current Build evidence",
+      "scopeDecision": "required; capability staging is not a deferral"
+    },
+    {
+      "id": "CAP-011",
+      "capability": "Local/mounted sources",
+      "retainedScope": "Local paths and OS-mounted SMB/NFS/rclone; source health; root boundaries; symlink policy/cycle protection",
+      "contracts": [
+        "PC-LIBRARY-SCANNING"
+      ],
+      "supplements": [
+        "architecture.md",
+        "architecture-amendments.md",
+        "conformance.md"
+      ],
+      "contractCoverage": "covered",
+      "implementationStatus": "not-certified; consult current Build evidence",
+      "scopeDecision": "required; capability staging is not a deferral"
+    },
+    {
+      "id": "CAP-012",
+      "capability": "Managed rclone",
+      "retainedScope": "Owner executable approval/fingerprint; import and managed remote setup; credential rotation; native listing; supervised optional read-only mount/cache",
+      "contracts": [
+        "PC-LIBRARY-SCANNING"
+      ],
+      "supplements": [
+        "architecture.md",
+        "architecture-amendments.md",
+        "conformance.md"
+      ],
+      "contractCoverage": "covered",
+      "implementationStatus": "not-certified; consult current Build evidence",
+      "scopeDecision": "required; capability staging is not a deferral"
+    },
+    {
+      "id": "CAP-013",
+      "capability": "Native WebDAV",
+      "retainedScope": "HTTPS/origin authority, Depth:1 BFS, sync-token delta, range reads, candidate config generation",
+      "contracts": [
+        "PC-LIBRARY-SCANNING"
+      ],
+      "supplements": [
+        "architecture.md",
+        "architecture-amendments.md",
+        "conformance.md"
+      ],
+      "contractCoverage": "covered",
+      "implementationStatus": "not-certified; consult current Build evidence",
+      "scopeDecision": "required; capability staging is not a deferral"
+    },
+    {
+      "id": "CAP-014",
+      "capability": "STRM",
+      "retainedScope": "First-class descriptor inventory; playback-time bounded resolve; secret URL never in catalogue; explicit high-I/O analysis",
+      "contracts": [
+        "PC-LIBRARY-SCANNING",
+        "PC-PLAYBACK"
+      ],
+      "supplements": [
+        "architecture.md",
+        "architecture-amendments.md",
+        "conformance.md"
+      ],
+      "contractCoverage": "covered",
+      "implementationStatus": "not-certified; consult current Build evidence",
+      "scopeDecision": "required; capability staging is not a deferral"
+    },
+    {
+      "id": "CAP-015",
+      "capability": "Inventory/scan tiers",
+      "retainedScope": "File List Only, Basic, Complete, Custom; durable pages; progress; scheduler; pause/cancel/retry; missing grace/trash",
+      "contracts": [
+        "PC-LIBRARY-SCANNING"
+      ],
+      "supplements": [
+        "architecture.md",
+        "architecture-amendments.md",
+        "conformance.md"
+      ],
+      "contractCoverage": "covered",
+      "implementationStatus": "not-certified; consult current Build evidence",
+      "scopeDecision": "required; capability staging is not a deferral"
+    },
+    {
+      "id": "CAP-016",
+      "capability": "Deep analysis",
+      "retainedScope": "Checksums, waveform, loudness, fingerprint, intro/recap/commercial/credit detection, chapter images, trickplay",
+      "contracts": [
+        "PC-LIBRARY-SCANNING",
+        "PC-PLAYBACK"
+      ],
+      "supplements": [
+        "architecture.md",
+        "architecture-amendments.md",
+        "conformance.md",
+        "scope-completion.md"
+      ],
+      "contractCoverage": "covered",
+      "implementationStatus": "not-certified; consult current Build evidence",
+      "scopeDecision": "required; capability staging is not a deferral"
+    },
+    {
+      "id": "CAP-017",
+      "capability": "Metadata providers and identity",
+      "retainedScope": "TMDB/TheTVDB; AniList anime, MusicBrainz music, AcoustID/Cover Art Archive; exact IDs vs match confidence/margin, local NFO/OPF/embedded evidence, unknown-state precision",
+      "contracts": [
+        "PC-METADATA"
+      ],
+      "supplements": [
+        "architecture.md",
+        "architecture-amendments.md",
+        "conformance.md"
+      ],
+      "contractCoverage": "covered",
+      "implementationStatus": "not-certified; consult current Build evidence",
+      "scopeDecision": "required; capability staging is not a deferral"
+    },
+    {
+      "id": "CAP-018",
+      "capability": "Owner metadata tools",
+      "retainedScope": "Identify, edit, granular locks/unlock, undo, field/relationship provenance, refresh intents, hierarchy ordering/cascades, merge review",
+      "contracts": [
+        "PC-METADATA"
+      ],
+      "supplements": [
+        "architecture.md",
+        "architecture-amendments.md",
+        "conformance.md"
+      ],
+      "contractCoverage": "covered",
+      "implementationStatus": "not-certified; consult current Build evidence",
+      "scopeDecision": "required; capability staging is not a deferral"
+    },
+    {
+      "id": "CAP-019",
+      "capability": "Artwork and attribution",
+      "retainedScope": "Local selected originals/derivatives; roles; atomic replacement; missing-art fallback; people art; TMDB/TheTVDB credits and terms retention",
+      "contracts": [
+        "PC-METADATA"
+      ],
+      "supplements": [
+        "architecture.md",
+        "architecture-amendments.md",
+        "conformance.md"
+      ],
+      "contractCoverage": "covered",
+      "implementationStatus": "not-certified; consult current Build evidence",
+      "scopeDecision": "required; capability staging is not a deferral"
+    },
+    {
+      "id": "CAP-020",
+      "capability": "Home/discovery",
+      "retainedScope": "Ordered server rows, hero eligibility, continue watching/listening, recent/recommended rows, customization and see-all",
+      "contracts": [
+        "PC-MEDIA-PRESENTATION",
+        "PC-NAVIGATION-INPUT",
+        "PC-METADATA"
+      ],
+      "supplements": [
+        "architecture.md",
+        "architecture-amendments.md",
+        "conformance.md"
+      ],
+      "contractCoverage": "covered",
+      "implementationStatus": "not-certified; consult current Build evidence",
+      "scopeDecision": "required; capability staging is not a deferral"
+    },
+    {
+      "id": "CAP-021",
+      "capability": "Browse/query",
+      "retainedScope": "Per-family pivots, filters/operators, sorting, grid/list/table/hierarchy, stable pagination/restoration, categories",
+      "contracts": [
+        "PC-MEDIA-PRESENTATION",
+        "PC-NAVIGATION-INPUT",
+        "PC-METADATA"
+      ],
+      "supplements": [
+        "architecture.md",
+        "architecture-amendments.md",
+        "conformance.md"
+      ],
+      "contractCoverage": "covered",
+      "implementationStatus": "not-certified; consult current Build evidence",
+      "scopeDecision": "required; capability staging is not a deferral"
+    },
+    {
+      "id": "CAP-022",
+      "capability": "Search and people",
+      "retainedScope": "Quick/full grouped search, independent group cursors, clearable scoped search history; person credits/relationships",
+      "contracts": [
+        "PC-MEDIA-PRESENTATION",
+        "PC-NAVIGATION-INPUT",
+        "PC-METADATA"
+      ],
+      "supplements": [
+        "architecture.md",
+        "architecture-amendments.md",
+        "conformance.md",
+        "scope-completion.md"
+      ],
+      "contractCoverage": "covered",
+      "implementationStatus": "not-certified; consult current Build evidence",
+      "scopeDecision": "required; capability staging is not a deferral"
+    },
+    {
+      "id": "CAP-023",
+      "capability": "Detail/extras/recommendations",
+      "retainedScope": "Rich decision region, immediate personal actions, contextual versions, trailers/extras, cast/crew, related titles",
+      "contracts": [
+        "PC-MEDIA-PRESENTATION",
+        "PC-NAVIGATION-INPUT",
+        "PC-METADATA"
+      ],
+      "supplements": [
+        "architecture.md",
+        "architecture-amendments.md",
+        "conformance.md"
+      ],
+      "contractCoverage": "covered",
+      "implementationStatus": "not-certified; consult current Build evidence",
+      "scopeDecision": "required; capability staging is not a deferral"
+    },
+    {
+      "id": "CAP-024",
+      "capability": "Show/anime workspace",
+      "retainedScope": "Stable show hero; one season selector; season/episode deep links; specials, alternate ordering, resume-next",
+      "contracts": [
+        "PC-MEDIA-PRESENTATION",
+        "PC-NAVIGATION-INPUT",
+        "PC-METADATA"
+      ],
+      "supplements": [
+        "architecture.md",
+        "architecture-amendments.md",
+        "conformance.md"
+      ],
+      "contractCoverage": "covered",
+      "implementationStatus": "not-certified; consult current Build evidence",
+      "scopeDecision": "required; capability staging is not a deferral"
+    },
+    {
+      "id": "CAP-025",
+      "capability": "Music experience",
+      "retainedScope": "Artists/releases/discs/tracks, duplicate titles, instant mix, listening queues, cover-led Now Playing",
+      "contracts": [
+        "PC-MEDIA-PRESENTATION",
+        "PC-NAVIGATION-INPUT",
+        "PC-METADATA"
+      ],
+      "supplements": [
+        "architecture.md",
+        "architecture-amendments.md",
+        "conformance.md",
+        "scope-completion.md"
+      ],
+      "contractCoverage": "covered",
+      "implementationStatus": "not-certified; consult current Build evidence",
+      "scopeDecision": "required; capability staging is not a deferral"
+    },
+    {
+      "id": "CAP-026",
+      "capability": "Audiobooks",
+      "retainedScope": "Books/authors/series/chapters, chapter-accurate resume, speed/sleep/output; bookmarks only if explicitly supported",
+      "contracts": [
+        "PC-MEDIA-PRESENTATION",
+        "PC-NAVIGATION-INPUT",
+        "PC-METADATA"
+      ],
+      "supplements": [
+        "architecture.md",
+        "architecture-amendments.md",
+        "conformance.md",
+        "scope-completion.md"
+      ],
+      "contractCoverage": "covered",
+      "implementationStatus": "not-certified; consult current Build evidence",
+      "scopeDecision": "required; capability staging is not a deferral"
+    },
+    {
+      "id": "CAP-027",
+      "capability": "Playback planning",
+      "retainedScope": "Source/version identity, probed facts, capability tuples, deterministic sealed plan; direct/remux/audio-convert/video-transcode",
+      "contracts": [
+        "PC-PLAYBACK",
+        "PC-METADATA",
+        "PC-LIBRARY-SCANNING"
+      ],
+      "supplements": [
+        "architecture.md",
+        "architecture-amendments.md",
+        "conformance.md"
+      ],
+      "contractCoverage": "covered",
+      "implementationStatus": "not-certified; consult current Build evidence",
+      "scopeDecision": "required; capability staging is not a deferral"
+    },
+    {
+      "id": "CAP-028",
+      "capability": "Quality/tracks/HDR",
+      "retainedScope": "Automatic vs fixed explicit offer, original picture, audio language/layout/description, subtitle/off/burn-in, geometry, HDR/DV/tone map",
+      "contracts": [
+        "PC-PLAYBACK",
+        "PC-METADATA",
+        "PC-LIBRARY-SCANNING"
+      ],
+      "supplements": [
+        "architecture.md",
+        "architecture-amendments.md",
+        "conformance.md"
+      ],
+      "contractCoverage": "covered",
+      "implementationStatus": "not-certified; consult current Build evidence",
+      "scopeDecision": "required; capability staging is not a deferral"
+    },
+    {
+      "id": "CAP-029",
+      "capability": "HLS/delivery/grants",
+      "retainedScope": "TS/CMAF, correct timeline/keyframes, protected manifests/children/seek ranges, buffer-safe renewal/recovery",
+      "contracts": [
+        "PC-PLAYBACK",
+        "PC-METADATA",
+        "PC-LIBRARY-SCANNING"
+      ],
+      "supplements": [
+        "architecture.md",
+        "architecture-amendments.md",
+        "conformance.md"
+      ],
+      "contractCoverage": "covered",
+      "implementationStatus": "not-certified; consult current Build evidence",
+      "scopeDecision": "required; capability staging is not a deferral"
+    },
+    {
+      "id": "CAP-030",
+      "capability": "Player lifecycle and continuation",
+      "retainedScope": "Generation-fenced seek/renegotiation, atomic replacement, route recovery, suspend/resume, PiP, audio mini-player, TV exit",
+      "contracts": [
+        "PC-PLAYBACK",
+        "PC-METADATA",
+        "PC-LIBRARY-SCANNING"
+      ],
+      "supplements": [
+        "architecture.md",
+        "architecture-amendments.md",
+        "conformance.md"
+      ],
+      "contractCoverage": "covered",
+      "implementationStatus": "not-certified; consult current Build evidence",
+      "scopeDecision": "required; capability staging is not a deferral"
+    },
+    {
+      "id": "CAP-031",
+      "capability": "Player utilities",
+      "retainedScope": "Queue inspect/reorder, repeat/shuffle, speed, sleep timer, volume/mute, lyrics/output, explicit autoplay preference, passout/Are you still watching protection",
+      "contracts": [
+        "PC-PLAYBACK",
+        "PC-METADATA",
+        "PC-LIBRARY-SCANNING"
+      ],
+      "supplements": [
+        "architecture.md",
+        "architecture-amendments.md",
+        "conformance.md",
+        "scope-completion.md"
+      ],
+      "contractCoverage": "covered",
+      "implementationStatus": "not-certified; consult current Build evidence",
+      "scopeDecision": "required; capability staging is not a deferral"
+    },
+    {
+      "id": "CAP-032",
+      "capability": "Chapters/markers/trickplay",
+      "retainedScope": "Chapter seek; skip intro/recap/commercial/credits, revision-bound previews, owner edits where offered",
+      "contracts": [
+        "PC-PLAYBACK",
+        "PC-METADATA",
+        "PC-LIBRARY-SCANNING"
+      ],
+      "supplements": [
+        "architecture.md",
+        "architecture-amendments.md",
+        "conformance.md",
+        "scope-completion.md"
+      ],
+      "contractCoverage": "covered",
+      "implementationStatus": "not-certified; consult current Build evidence",
+      "scopeDecision": "required; capability staging is not a deferral"
+    },
+    {
+      "id": "CAP-033",
+      "capability": "Lyrics and subtitles editing",
+      "retainedScope": "Local/provider/upload lyrics, synchronized/unsynchronized forms, search/apply/delete; subtitle upload/offset/update/delete",
+      "contracts": [
+        "PC-PLAYBACK",
+        "PC-METADATA",
+        "PC-LIBRARY-SCANNING"
+      ],
+      "supplements": [
+        "architecture.md",
+        "architecture-amendments.md",
+        "conformance.md",
+        "scope-completion.md"
+      ],
+      "contractCoverage": "covered",
+      "implementationStatus": "not-certified; consult current Build evidence",
+      "scopeDecision": "required; capability staging is not a deferral"
+    },
+    {
+      "id": "CAP-034",
+      "capability": "Gapless/crossfade/normalization",
+      "retainedScope": "Separate user features; album/track gain, actual delay/padding evidence, prepared transition",
+      "contracts": [
+        "PC-PLAYBACK",
+        "PC-METADATA",
+        "PC-LIBRARY-SCANNING"
+      ],
+      "supplements": [
+        "architecture.md",
+        "architecture-amendments.md",
+        "conformance.md",
+        "scope-completion.md"
+      ],
+      "contractCoverage": "covered",
+      "implementationStatus": "not-certified; consult current Build evidence",
+      "scopeDecision": "required; capability staging is not a deferral"
+    },
+    {
+      "id": "CAP-035",
+      "capability": "Versions and optimization",
+      "retainedScope": "Explicit editions/physical versions, prepared compatible derivatives, optimize cancel/prune, source revision validation",
+      "contracts": [
+        "PC-PLAYBACK",
+        "PC-METADATA",
+        "PC-LIBRARY-SCANNING"
+      ],
+      "supplements": [
+        "architecture.md",
+        "architecture-amendments.md",
+        "conformance.md",
+        "scope-completion.md"
+      ],
+      "contractCoverage": "covered",
+      "implementationStatus": "not-certified; consult current Build evidence",
+      "scopeDecision": "required; capability staging is not a deferral"
+    },
+    {
+      "id": "CAP-036",
+      "capability": "Discs/archives",
+      "retainedScope": "Ordinary extracted files playable; ISO/BDMV/VIDEO_TS catalogued with unsupported reason; no auto mount/decrypt/menu or general archive expansion",
+      "contracts": [
+        "PC-PLAYBACK",
+        "PC-METADATA",
+        "PC-LIBRARY-SCANNING"
+      ],
+      "supplements": [
+        "architecture.md",
+        "architecture-amendments.md",
+        "conformance.md",
+        "scope-completion.md"
+      ],
+      "contractCoverage": "covered",
+      "implementationStatus": "not-certified; consult current Build evidence",
+      "scopeDecision": "required; capability staging is not a deferral"
+    },
+    {
+      "id": "CAP-037",
+      "capability": "Personal state",
+      "retainedScope": "Watchlist/favorite/reaction/rating independent; watched/unwatched; resume/history thresholds; explicit offline conflict resolution",
+      "contracts": [
+        "PC-SAVED-DOWNLOADS",
+        "PC-PLAYBACK"
+      ],
+      "supplements": [
+        "architecture.md",
+        "architecture-amendments.md",
+        "conformance.md"
+      ],
+      "contractCoverage": "covered",
+      "implementationStatus": "not-certified; consult current Build evidence",
+      "scopeDecision": "required; capability staging is not a deferral"
+    },
+    {
+      "id": "CAP-038",
+      "capability": "Saved resources",
+      "retainedScope": "Duplicate-safe ordered playlists, unordered collections, saved query views, pinning, viewer/editor sharing",
+      "contracts": [
+        "PC-SAVED-DOWNLOADS",
+        "PC-PLAYBACK"
+      ],
+      "supplements": [
+        "architecture.md",
+        "architecture-amendments.md",
+        "conformance.md"
+      ],
+      "contractCoverage": "covered",
+      "implementationStatus": "not-certified; consult current Build evidence",
+      "scopeDecision": "required; capability staging is not a deferral"
+    },
+    {
+      "id": "CAP-039",
+      "capability": "Playback queues",
+      "retainedScope": "Server-backed ephemeral authority queue, duplicate entries, materialized shuffle, repeat, auto advance, save-as-playlist",
+      "contracts": [
+        "PC-SAVED-DOWNLOADS",
+        "PC-PLAYBACK"
+      ],
+      "supplements": [
+        "architecture.md",
+        "architecture-amendments.md",
+        "conformance.md"
+      ],
+      "contractCoverage": "covered",
+      "implementationStatus": "not-certified; consult current Build evidence",
+      "scopeDecision": "required; capability staging is not a deferral"
+    },
+    {
+      "id": "CAP-040",
+      "capability": "Download preparation",
+      "retainedScope": "Source or exact requested quality, compatibility remux disclosure, size estimate, batch season/show/album/playlist and next-episode expansion",
+      "contracts": [
+        "PC-SAVED-DOWNLOADS",
+        "PC-PLAYBACK"
+      ],
+      "supplements": [
+        "architecture.md",
+        "architecture-amendments.md",
+        "conformance.md"
+      ],
+      "contractCoverage": "covered",
+      "implementationStatus": "not-certified; consult current Build evidence",
+      "scopeDecision": "required; capability staging is not a deferral"
+    },
+    {
+      "id": "CAP-041",
+      "capability": "Offline device downloads",
+      "retainedScope": "Background/resumable transfer, verify/atomic publish, Wi-Fi/cellular/storage quota/pin/eviction, scoped catalogue, offline outbox",
+      "contracts": [
+        "PC-SAVED-DOWNLOADS",
+        "PC-PLAYBACK"
+      ],
+      "supplements": [
+        "architecture.md",
+        "architecture-amendments.md",
+        "conformance.md"
+      ],
+      "contractCoverage": "covered",
+      "implementationStatus": "not-certified; consult current Build evidence",
+      "scopeDecision": "required; capability staging is not a deferral"
+    },
+    {
+      "id": "CAP-042",
+      "capability": "Offline authority",
+      "retainedScope": "Signed immutable receipt, 30-day verifyBy, scope/key/digest binding, revalidation, revocation/remote wipe/sign-out cleanup",
+      "contracts": [
+        "PC-SAVED-DOWNLOADS",
+        "PC-PLAYBACK"
+      ],
+      "supplements": [
+        "architecture.md",
+        "architecture-amendments.md",
+        "conformance.md"
+      ],
+      "contractCoverage": "covered",
+      "implementationStatus": "not-certified; consult current Build evidence",
+      "scopeDecision": "required; capability staging is not a deferral"
+    },
+    {
+      "id": "CAP-043",
+      "capability": "Live sources/guide",
+      "retainedScope": "M3U/IPTV, Xtream, HDHomeRun, XMLTV; multi-source mapping; atomic guide generations; seven days if supplied; favorite/hidden channels",
+      "contracts": [
+        "PC-LIVE-DVR",
+        "PC-PLAYBACK"
+      ],
+      "supplements": [
+        "architecture.md",
+        "architecture-amendments.md",
+        "conformance.md"
+      ],
+      "contractCoverage": "covered",
+      "implementationStatus": "not-certified; consult current Build evidence",
+      "scopeDecision": "required; capability staging is not a deferral"
+    },
+    {
+      "id": "CAP-044",
+      "capability": "Live tuning/timeshift",
+      "retainedScope": "Capacity leases, tune/channel change, published seek window, pause/go-live/reconnect, grant-protected stream",
+      "contracts": [
+        "PC-LIVE-DVR",
+        "PC-PLAYBACK"
+      ],
+      "supplements": [
+        "architecture.md",
+        "architecture-amendments.md",
+        "conformance.md"
+      ],
+      "contractCoverage": "covered",
+      "implementationStatus": "not-certified; consult current Build evidence",
+      "scopeDecision": "required; capability staging is not a deferral"
+    },
+    {
+      "id": "CAP-045",
+      "capability": "DVR scheduling/rules/conflicts",
+      "retainedScope": "One-time and series, predicates/new/all limits, channel restriction, padding, priority, deterministic conflicts, rule edits/disable/delete",
+      "contracts": [
+        "PC-LIVE-DVR",
+        "PC-PLAYBACK"
+      ],
+      "supplements": [
+        "architecture.md",
+        "architecture-amendments.md",
+        "conformance.md"
+      ],
+      "contractCoverage": "covered",
+      "implementationStatus": "not-certified; consult current Build evidence",
+      "scopeDecision": "required; capability staging is not a deferral"
+    },
+    {
+      "id": "CAP-046",
+      "capability": "DVR artifacts/retention",
+      "retainedScope": "Partial/final validation, Recorded TV import, Keep, episode caps/days, storage forecast/floor, deferred delete during active use",
+      "contracts": [
+        "PC-LIVE-DVR",
+        "PC-PLAYBACK"
+      ],
+      "supplements": [
+        "architecture.md",
+        "architecture-amendments.md",
+        "conformance.md"
+      ],
+      "contractCoverage": "covered",
+      "implementationStatus": "not-certified; consult current Build evidence",
+      "scopeDecision": "required; capability staging is not a deferral"
+    },
+    {
+      "id": "CAP-047",
+      "capability": "Library Channels",
+      "retainedScope": "Separate programmed library schedules: rules, selection/episode mode, templates, reorder, regenerate, defaults, channel logos/bug overlay, health",
+      "contracts": [
+        "PC-LIBRARY-CHANNELS",
+        "PC-PLAYBACK"
+      ],
+      "supplements": [
+        "architecture.md",
+        "architecture-amendments.md",
+        "conformance.md"
+      ],
+      "contractCoverage": "covered",
+      "implementationStatus": "not-certified; consult current Build evidence",
+      "scopeDecision": "required; capability staging is not a deferral"
+    },
+    {
+      "id": "CAP-048",
+      "capability": "Cast sender/receiver",
+      "retainedScope": "Real Sender SDK/custom receiver, encrypted proof-bound bootstrap, readiness-based atomic handoff commit, reconnect, remote controls/mini-controller",
+      "contracts": [
+        "PC-SHARING-SOCIAL",
+        "PC-PLAYBACK"
+      ],
+      "supplements": [
+        "architecture.md",
+        "architecture-amendments.md",
+        "conformance.md"
+      ],
+      "contractCoverage": "covered",
+      "implementationStatus": "not-certified; consult current Build evidence",
+      "scopeDecision": "required; capability staging is not a deferral"
+    },
+    {
+      "id": "CAP-049",
+      "capability": "AirPlay/output",
+      "retainedScope": "OS output-route changes remain originating session/progress authority; route capability changes may renegotiate",
+      "contracts": [
+        "PC-SHARING-SOCIAL",
+        "PC-PLAYBACK"
+      ],
+      "supplements": [
+        "architecture.md",
+        "architecture-amendments.md",
+        "conformance.md"
+      ],
+      "contractCoverage": "covered",
+      "implementationStatus": "not-certified; consult current Build evidence",
+      "scopeDecision": "required; capability staging is not a deferral"
+    },
+    {
+      "id": "CAP-050",
+      "capability": "Portico remote receiver",
+      "retainedScope": "Server-authorized receiver/controller identities, direct-LAN sealed command channel, discovery fingerprint, opaque handoff, receiver-owned renewal",
+      "contracts": [
+        "PC-SHARING-SOCIAL",
+        "PC-PLAYBACK"
+      ],
+      "supplements": [
+        "architecture.md",
+        "architecture-amendments.md",
+        "conformance.md"
+      ],
+      "contractCoverage": "covered",
+      "implementationStatus": "not-certified; consult current Build evidence",
+      "scopeDecision": "required; capability staging is not a deferral"
+    },
+    {
+      "id": "CAP-051",
+      "capability": "Detached remote controller",
+      "retainedScope": "Keep playing and switch / Stop and switch / Cancel; minimal original-server control context only",
+      "contracts": [
+        "PC-SHARING-SOCIAL",
+        "PC-PLAYBACK"
+      ],
+      "supplements": [
+        "architecture.md",
+        "architecture-amendments.md",
+        "conformance.md"
+      ],
+      "contractCoverage": "covered",
+      "implementationStatus": "not-certified; consult current Build evidence",
+      "scopeDecision": "required; capability staging is not a deferral"
+    },
+    {
+      "id": "CAP-052",
+      "capability": "Watch Together",
+      "retainedScope": "Explicit invited groups, host commands/transfer, lobby readiness/start-anyway, drift correction, late join, per-viewer state, reconnect deadlines",
+      "contracts": [
+        "PC-SHARING-SOCIAL",
+        "PC-PLAYBACK"
+      ],
+      "supplements": [
+        "architecture.md",
+        "architecture-amendments.md",
+        "conformance.md"
+      ],
+      "contractCoverage": "covered",
+      "implementationStatus": "not-certified; consult current Build evidence",
+      "scopeDecision": "required; capability staging is not a deferral"
+    },
+    {
+      "id": "CAP-053",
+      "capability": "DLNA",
+      "retainedScope": "Existing discovery/content-directory/connection-manager and media endpoint surface; user-owned LAN compatibility",
+      "contracts": [
+        "PC-PLAYBACK",
+        "PC-NETWORKING",
+        "PC-FOUNDATION"
+      ],
+      "supplements": [
+        "architecture.md",
+        "architecture-amendments.md",
+        "conformance.md",
+        "scope-completion.md"
+      ],
+      "contractCoverage": "covered",
+      "implementationStatus": "not-certified; consult current Build evidence",
+      "scopeDecision": "required; capability staging is not a deferral"
+    },
+    {
+      "id": "CAP-054",
+      "capability": "Viewer feedback/notifications",
+      "retainedScope": "Consumer issue feedback/capability, owner triage, owner notices/recipients, scoped notification inbox",
+      "contracts": [
+        "PC-SETTINGS-OPERATIONS"
+      ],
+      "supplements": [
+        "architecture.md",
+        "architecture-amendments.md",
+        "conformance.md",
+        "scope-completion.md"
+      ],
+      "contractCoverage": "covered",
+      "implementationStatus": "not-certified; consult current Build evidence",
+      "scopeDecision": "required; capability staging is not a deferral"
+    },
+    {
+      "id": "CAP-055",
+      "capability": "Preferences/settings",
+      "retainedScope": "Account/profile/server/library/device-class/installation/session scopes; desired vs effective; playback/language/privacy/appearance/spoiler/download settings",
+      "contracts": [
+        "PC-SETTINGS-OPERATIONS"
+      ],
+      "supplements": [
+        "architecture.md",
+        "architecture-amendments.md",
+        "conformance.md"
+      ],
+      "contractCoverage": "covered",
+      "implementationStatus": "not-certified; consult current Build evidence",
+      "scopeDecision": "required; capability staging is not a deferral"
+    },
+    {
+      "id": "CAP-056",
+      "capability": "Console/stream intervention",
+      "retainedScope": "Health/readiness/resources/storage/IO/network/tuners/jobs, active streams/history, owner Stop, audit",
+      "contracts": [
+        "PC-SETTINGS-OPERATIONS"
+      ],
+      "supplements": [
+        "architecture.md",
+        "architecture-amendments.md",
+        "conformance.md"
+      ],
+      "contractCoverage": "covered",
+      "implementationStatus": "not-certified; consult current Build evidence",
+      "scopeDecision": "required; capability staging is not a deferral"
+    },
+    {
+      "id": "CAP-057",
+      "capability": "Jobs/maintenance/cleanup",
+      "retainedScope": "Durable jobs, scan/analysis/optimization schedules, timezone/window/catch-up, cancel/retry, trash/generated-artifact cleanup",
+      "contracts": [
+        "PC-SETTINGS-OPERATIONS"
+      ],
+      "supplements": [
+        "architecture.md",
+        "architecture-amendments.md",
+        "conformance.md"
+      ],
+      "contractCoverage": "covered",
+      "implementationStatus": "not-certified; consult current Build evidence",
+      "scopeDecision": "required; capability staging is not a deferral"
+    },
+    {
+      "id": "CAP-058",
+      "capability": "Logs/audit/support export",
+      "retainedScope": "Separate runtime/client/audit lanes, redaction before persist/export, bounded debug, owner manifest/export/expiry",
+      "contracts": [
+        "PC-SETTINGS-OPERATIONS"
+      ],
+      "supplements": [
+        "architecture.md",
+        "architecture-amendments.md",
+        "conformance.md"
+      ],
+      "contractCoverage": "covered",
+      "implementationStatus": "not-certified; consult current Build evidence",
+      "scopeDecision": "required; capability staging is not a deferral"
+    },
+    {
+      "id": "CAP-059",
+      "capability": "Backup/restore/recovery",
+      "retainedScope": "Verified application-consistent backup; manifests/checksums; staged restore/safety copy/rollback/epoch fencing; fail-closed recovery",
+      "contracts": [
+        "PC-SETTINGS-OPERATIONS"
+      ],
+      "supplements": [
+        "architecture.md",
+        "architecture-amendments.md",
+        "conformance.md"
+      ],
+      "contractCoverage": "covered",
+      "implementationStatus": "not-certified; consult current Build evidence",
+      "scopeDecision": "required; capability staging is not a deferral"
+    },
+    {
+      "id": "CAP-060",
+      "capability": "Distribution/update",
+      "retainedScope": "Native server installers/services, containers, release checks/manual update, rollback-compatible migrations, client stores",
+      "contracts": [
+        "PC-SETTINGS-OPERATIONS"
+      ],
+      "supplements": [
+        "architecture.md",
+        "architecture-amendments.md",
+        "conformance.md",
+        "scope-completion.md"
+      ],
+      "contractCoverage": "covered",
+      "implementationStatus": "not-certified; consult current Build evidence",
+      "scopeDecision": "required; capability staging is not a deferral"
+    },
+    {
+      "id": "CAP-061",
+      "capability": "Public website/docs/downloads",
+      "retainedScope": "Product/features/developer/docs/legal/abuse/download routes; honest platform availability",
+      "contracts": [
+        "PC-SETTINGS-OPERATIONS",
+        "PC-ACCESSIBILITY-LANGUAGE"
+      ],
+      "supplements": [
+        "architecture.md",
+        "architecture-amendments.md",
+        "conformance.md",
+        "scope-completion.md"
+      ],
+      "contractCoverage": "covered",
+      "implementationStatus": "not-certified; consult current Build evidence",
+      "scopeDecision": "required; capability staging is not a deferral"
+    },
+    {
+      "id": "CAP-062",
+      "capability": "Hosted operations",
+      "retainedScope": "Separate operator login, health/readiness, DNS/certs, backup/recovery, secrets and fleet scale; no server media administration",
+      "contracts": [
+        "PC-SETTINGS-OPERATIONS",
+        "PC-NETWORKING"
+      ],
+      "supplements": [
+        "architecture.md",
+        "architecture-amendments.md",
+        "conformance.md",
+        "scope-completion.md"
+      ],
+      "contractCoverage": "covered",
+      "implementationStatus": "not-certified; consult current Build evidence",
+      "scopeDecision": "required; capability staging is not a deferral"
+    },
+    {
+      "id": "CAP-063",
+      "capability": "Accessibility/language",
+      "retainedScope": "Semantic roles/focus, VoiceOver/keyboard, scaling/reflow, contrast/reduced motion, captions/audio description, message catalogue/localization/RTL",
+      "contracts": [
+        "PC-ACCESSIBILITY-LANGUAGE"
+      ],
+      "supplements": [
+        "architecture.md",
+        "architecture-amendments.md",
+        "conformance.md"
+      ],
+      "contractCoverage": "covered",
+      "implementationStatus": "not-certified; consult current Build evidence",
+      "scopeDecision": "required; capability staging is not a deferral"
+    },
+    {
+      "id": "CAP-064",
+      "capability": "Visual/navigation continuity",
+      "retainedScope": "Manrope/blue atmospheric brand, artwork precedence, stable shell, one navigation authority, remote focus/Back, deep links/restoration, player-independent route",
+      "contracts": [
+        "PC-VISUAL",
+        "PC-NAVIGATION-INPUT",
+        "PC-MEDIA-PRESENTATION"
+      ],
+      "supplements": [
+        "architecture.md",
+        "architecture-amendments.md",
+        "conformance.md"
+      ],
+      "contractCoverage": "covered",
+      "implementationStatus": "not-certified; consult current Build evidence",
+      "scopeDecision": "required; capability staging is not a deferral"
+    },
+    {
+      "id": "CAP-065",
+      "capability": "Platform expansion",
+      "retainedScope": "Android phone/tablet/TV, Fire TV/Vega, Roku, Tizen/webOS and future clients consume same semantics with dedicated player/input/storage adapters",
+      "contracts": [
+        "PC-FOUNDATION",
+        "PC-PLAYBACK",
+        "PC-NAVIGATION-INPUT"
+      ],
+      "supplements": [
+        "architecture.md",
+        "architecture-amendments.md",
+        "conformance.md",
+        "scope-completion.md"
+      ],
+      "contractCoverage": "covered",
+      "implementationStatus": "not-certified; consult current Build evidence",
+      "scopeDecision": "later platform rollout retained"
+    },
+    {
+      "id": "CAP-066",
+      "capability": "Subscription/paid relay seam",
+      "retainedScope": "Future entitlement representation only; no initial relay media transport, metering/purchases or paid feature locks",
+      "contracts": [
+        "PC-FOUNDATION",
+        "PC-NETWORKING"
+      ],
+      "supplements": [
+        "architecture.md",
+        "architecture-amendments.md",
+        "conformance.md",
+        "scope-completion.md"
+      ],
+      "contractCoverage": "covered",
+      "implementationStatus": "not-certified; consult current Build evidence",
+      "scopeDecision": "future separate paid relay seam only; no current relay/billing deployment"
+    }
+  ]
+}

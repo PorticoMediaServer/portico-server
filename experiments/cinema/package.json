@@ -1,0 +1,37 @@
+{
+  "name": "portico-cinema",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "start": "react-native start --port 8092",
+    "typecheck": "tsc --noEmit",
+    "art": "python3 scripts/art/build_art.py",
+    "fixtures": "node scripts/fixtures/build.mjs"
+  },
+  "dependencies": {
+    "@react-navigation/native": "7.4.1",
+    "@react-navigation/native-stack": "7.19.1",
+    "react": "19.2.8",
+    "react-native": "npm:react-native-tvos@0.83.10-1",
+    "react-native-qrcode-svg": "6.3.22",
+    "react-native-reanimated": "4.6.0",
+    "react-native-safe-area-context": "5.9.1",
+    "react-native-screens": "4.23.0",
+    "react-native-svg": "15.15.5",
+    "react-native-worklets": "0.12.2"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.25.2",
+    "@babel/preset-env": "^7.25.3",
+    "@babel/runtime": "^7.25.0",
+    "@react-native-community/cli": "20.0.0",
+    "@react-native-community/cli-platform-android": "20.0.0",
+    "@react-native-community/cli-platform-ios": "20.0.0",
+    "@react-native/babel-preset": "0.83.10",
+    "@react-native/metro-config": "0.83.10",
+    "@react-native/typescript-config": "0.83.10",
+    "@types/react": "^19.2.0",
+    "typescript": "^5.8.3"
+  },
+  "engines": {"node": ">=20"}
+}

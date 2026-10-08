@@ -1,0 +1,9 @@
+{
+  "_comment": "Template only. This is not a usable credential: the certificate below is a placeholder and LoadKeySet refuses a file with no parseable certificate. Copy to a private operator-owned file (mode 0600, no group or other bits) and pass it with --appstore-config-file.",
+  "_bundleId": "The application's bundle identifier exactly as App Store Connect shows it. A notification for any other bundle is refused.",
+  "_environment": "Production or Sandbox. A notification from the other environment is refused, so sandbox traffic can never move real entitlements.",
+  "_rootCertificatePEM": "The pinned trust anchor, normally Apple Root CA - G3, as PEM. Apple publishes no JWKS for these notifications, so this is the only thing bounding who may sign one. A system trust store is deliberately not used: it would let any public CA mint a signer.",
+  "bundleId": "tv.getportico.app",
+  "environment": "Sandbox",
+  "rootCertificatePEM": "-----BEGIN CERTIFICATE-----\nREPLACE-WITH-THE-APPLE-ROOT-CA-G3-CERTIFICATE\n-----END CERTIFICATE-----\n"
+}

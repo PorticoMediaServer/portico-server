@@ -1,0 +1,384 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  background: var(--navy-900);
+  scrollbar-gutter: stable;
+  overflow-x: clip;
+}
+body {
+  margin: 0;
+  min-height: 100dvh;
+  font-family: var(--font);
+  font-size: 15px;
+  line-height: 1.45;
+  letter-spacing: -0.005em;
+  color: var(--text-1);
+  background: var(--navy-900);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: clip;
+  text-rendering: optimizeLegibility;
+  -webkit-tap-highlight-color: transparent;
+}
+@media (max-width: 767px) {
+  body {
+    font-size: 16px;
+  }
+}
+img {
+  display: block;
+  max-width: 100%;
+}
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+  letter-spacing: inherit;
+}
+button {
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  -webkit-user-select: none;
+  user-select: none;
+}
+a {
+  color: inherit;
+  text-decoration: none;
+}
+h1,
+h2,
+h3,
+h4,
+p,
+ul,
+ol,
+dl,
+dd,
+figure {
+  margin: 0;
+}
+ul,
+ol {
+  padding: 0;
+  list-style: none;
+}
+::selection {
+  background: rgba(92, 179, 226, 0.4);
+}
+:focus {
+  outline: none;
+}
+:focus-visible {
+  outline: 2px solid var(--blue-300);
+  outline-offset: 3px;
+  border-radius: 8px;
+}
+input::placeholder,
+textarea::placeholder {
+  color: var(--text-4);
+}
+
+/* Scrollbars: thin and quiet on desktop, hidden on touch rails */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(170, 210, 245, 0.2) transparent;
+}
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* The canvas: deep navy with the Portico glow falling from the top left. */
+.canvas {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(1100px 760px at -8% -18%, rgba(64, 159, 212, 0.52), rgba(64, 159, 212, 0) 62%),
+    radial-gradient(760px 520px at 12% -12%, rgba(92, 179, 226, 0.32), rgba(92, 179, 226, 0) 60%),
+    radial-gradient(1500px 1000px at 34% -6%, rgba(47, 134, 187, 0.2), rgba(47, 134, 187, 0) 70%),
+    radial-gradient(1200px 900px at 110% 120%, rgba(33, 107, 153, 0.12), rgba(33, 107, 153, 0) 60%),
+    linear-gradient(180deg, #081421 0%, var(--navy-900) 38%, #060d14 100%);
+}
+.canvas::after {
+  /* fine grain so the gradients never band */
+  content: '';
+  position: absolute;
+  inset: 0;
+  opacity: 0.05;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .6 0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+@media (max-width: 767px) {
+  .canvas {
+    background:
+      radial-gradient(520px 480px at -20% -12%, rgba(64, 159, 212, 0.5), rgba(64, 159, 212, 0) 64%),
+      radial-gradient(420px 380px at 20% -10%, rgba(92, 179, 226, 0.28), rgba(92, 179, 226, 0) 62%),
+      linear-gradient(180deg, #081421 0%, var(--navy-900) 40%, #060d14 100%);
+  }
+}
+
+/* Typography */
+.t-display {
+  font-family: var(--font-display);
+  font-size: clamp(34px, 3.6vw, 56px);
+  line-height: 1.02;
+  font-weight: 700;
+  letter-spacing: -0.028em;
+}
+.t-large {
+  font-family: var(--font-display);
+  font-size: 34px;
+  line-height: 1.12;
+  font-weight: 700;
+  letter-spacing: -0.022em;
+}
+.t-title1 {
+  font-family: var(--font-display);
+  font-size: 28px;
+  line-height: 1.15;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+.t-title2 {
+  font-family: var(--font-display);
+  font-size: 22px;
+  line-height: 1.2;
+  font-weight: 700;
+  letter-spacing: -0.016em;
+}
+.t-title3 {
+  font-family: var(--font-display);
+  font-size: 19px;
+  line-height: 1.25;
+  font-weight: 600;
+  letter-spacing: -0.012em;
+}
+.t-headline {
+  font-size: 15px;
+  line-height: 1.3;
+  font-weight: 600;
+}
+.t-body {
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+.t-sub {
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--text-3);
+}
+.t-caption {
+  font-size: 12px;
+  line-height: 1.3;
+  color: var(--text-3);
+}
+.t-eyebrow {
+  font-size: 12px;
+  line-height: 1;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.t-mono {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+.clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.clamp-3 {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.ellipsis {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+@media (max-width: 767px) {
+  .t-body {
+    font-size: 16px;
+  }
+  .t-sub {
+    font-size: 14px;
+  }
+}
+
+/* Skeletons */
+.skel {
+  position: relative;
+  overflow: hidden;
+  background: rgba(150, 200, 245, 0.07);
+  border-radius: var(--r-sm);
+}
+.skel::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(190, 225, 255, 0.07), transparent);
+  animation: skel 1.4s var(--ease-in-out) infinite;
+}
+@keyframes skel {
+  to {
+    transform: translateX(100%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .skel::after {
+    animation: none;
+  }
+}
+
+/* Page transitions (View Transitions API) */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 260ms;
+  animation-timing-function: var(--ease-out);
+}
+::view-transition-old(root) {
+  animation-name: vt-out;
+}
+::view-transition-new(root) {
+  animation-name: vt-in;
+}
+@keyframes vt-out {
+  to {
+    opacity: 0;
+    transform: scale(0.992);
+  }
+}
+@keyframes vt-in {
+  from {
+    opacity: 0;
+    transform: scale(1.008);
+  }
+}
+@media (max-width: 767px) {
+  html[data-nav='push']::view-transition-old(root) {
+    animation: vt-push-out 380ms var(--ease-out) both;
+  }
+  html[data-nav='push']::view-transition-new(root) {
+    animation: vt-push-in 380ms var(--ease-out) both;
+  }
+  html[data-nav='pop']::view-transition-old(root) {
+    animation: vt-pop-out 340ms var(--ease-out) both;
+    z-index: 2;
+  }
+  html[data-nav='pop']::view-transition-new(root) {
+    animation: vt-pop-in 340ms var(--ease-out) both;
+  }
+}
+@keyframes vt-push-out {
+  to {
+    transform: translateX(-28%);
+    opacity: 0.6;
+  }
+}
+@keyframes vt-push-in {
+  from {
+    transform: translateX(100%);
+  }
+}
+@keyframes vt-pop-out {
+  to {
+    transform: translateX(100%);
+  }
+}
+@keyframes vt-pop-in {
+  from {
+    transform: translateX(-28%);
+    opacity: 0.6;
+  }
+}
+::view-transition-group(tabbar),
+::view-transition-group(tabsearch),
+::view-transition-group(navcapsule),
+::view-transition-group(mini) {
+  animation: none;
+}
+::view-transition-old(tabbar),
+::view-transition-old(tabsearch),
+::view-transition-old(navcapsule),
+::view-transition-old(mini) {
+  display: none;
+}
+::view-transition-new(tabbar),
+::view-transition-new(tabsearch),
+::view-transition-new(navcapsule),
+::view-transition-new(mini) {
+  animation: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation: none !important;
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(-4px);
+  }
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes pulse {
+  50% {
+    opacity: 0.45;
+  }
+}
+/* Keep focused / scrolled-to elements clear of the floating chrome. */
+html {
+  scroll-padding-top: calc(var(--topbar-h) + 12px);
+  scroll-padding-bottom: calc(var(--tabbar-h) + 16px);
+}
+html:has(.has-mini) {
+  scroll-padding-bottom: calc(var(--tabbar-h) + 110px);
+}

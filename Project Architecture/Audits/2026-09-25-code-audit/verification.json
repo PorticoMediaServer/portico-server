@@ -1,0 +1,157 @@
+{
+  "checkedAt": "2026-09-26T01:12:31.983619+00:00",
+  "method": "Read-only SHA-256 comparison of source inventory; Git revision/status comparison; document link/line and ledger checks. No application code was executed.",
+  "inventoriedFilesChecked": 3752,
+  "changedFiles": [],
+  "missingFiles": [],
+  "repositories": [
+    {
+      "path": "apps/portico-server",
+      "revision": "820dde1342aaf33dbddc69a03c859e225191de7f",
+      "revisionUnchanged": true,
+      "status": [],
+      "statusUnchanged": true
+    },
+    {
+      "path": "apps/portico-react-native",
+      "revision": "62463dda2ac7e163249857e9f3f0efc288a137d9",
+      "revisionUnchanged": true,
+      "status": [],
+      "statusUnchanged": true
+    },
+    {
+      "path": "portico-internal",
+      "revision": "8f412e4d5993ff4c2c71491ba35a1204a3b83500",
+      "revisionUnchanged": false,
+      "status": [
+        "?? \"Project Architecture/Audits/\""
+      ],
+      "statusUnchanged": false,
+      "baselineToCurrentChangedPaths": [
+        "A\tDeployment Information/README.md",
+        "M\tProject Architecture/Backlog.md"
+      ]
+    },
+    {
+      "path": "getportico-tv",
+      "revision": "949f0d4a7a25a88f66af7b6247013a4ff00e552e",
+      "revisionUnchanged": true,
+      "status": [],
+      "statusUnchanged": true
+    },
+    {
+      "path": "portico-recommendation-enhancement",
+      "revision": "unborn repository",
+      "revisionUnchanged": true,
+      "status": [
+        "?? .gitignore",
+        "?? DATA_LICENSE",
+        "?? LICENSE",
+        "?? Makefile",
+        "?? NOTICE",
+        "?? README.md",
+        "?? instructions/",
+        "?? pyproject.toml",
+        "?? queries/",
+        "?? schema/",
+        "?? src/",
+        "?? uv.lock",
+        "?? vocabulary/"
+      ],
+      "statusUnchanged": true
+    }
+  ],
+  "repositoryChangeExplanation": "The internal repository advanced externally with only Deployment Information/README.md and Project Architecture/Backlog.md changed. Its audit directory is newly untracked. Inventoried application source hashes remain unchanged.",
+  "reports": {
+    "00-overview.md": {
+      "bytes": 12783,
+      "lines": 82,
+      "sha256": "4a7a2e76735912ea2c89b5117161a07512651bbad26256be2b1e57c8a0d4d355",
+      "brokenAbsoluteLinks": []
+    },
+    "01-hosted-services.md": {
+      "bytes": 39227,
+      "lines": 233,
+      "sha256": "429b4588b815b4d5b49f135f88665b53aa91354ebf5d9b5ee716316976319b89",
+      "brokenAbsoluteLinks": []
+    },
+    "02-server.md": {
+      "bytes": 48633,
+      "lines": 355,
+      "sha256": "c986b2c3707f15e7be3ac3f11f4a55bd043faed9b2048b777ca2e29780592e04",
+      "brokenAbsoluteLinks": []
+    },
+    "03-web-and-client-core.md": {
+      "bytes": 29237,
+      "lines": 219,
+      "sha256": "840459bba7f195e7910940fc0bdecf5fb88e7e51cce16c6f982a1f36d4e62955",
+      "brokenAbsoluteLinks": []
+    },
+    "04-apple-react-native.md": {
+      "bytes": 50757,
+      "lines": 409,
+      "sha256": "90a69d8c145cd2a476acea758726f78761be2510a5dd9b0b9471e12a4090f051",
+      "brokenAbsoluteLinks": []
+    },
+    "05-ancillary-and-cross-cutting.md": {
+      "bytes": 10561,
+      "lines": 74,
+      "sha256": "89f40d018b5aea7da14e1d168b4ac2bf5d1f3d10a878d0c49d135c02c4060e04",
+      "brokenAbsoluteLinks": []
+    },
+    "06-review-ledger.md": {
+      "bytes": 18784,
+      "lines": 65,
+      "sha256": "ecabceea68e7a4f8673a664503130a71fe99b0d0ffb5e95bdadf4388949f183c",
+      "brokenAbsoluteLinks": []
+    },
+    "07-adversarial-hosted-reviewer.md": {
+      "bytes": 33099,
+      "lines": 219,
+      "sha256": "5ad33cf5617baf651c2ee84543389d385dbb32e8bb717149d3e138e68051af6a",
+      "brokenAbsoluteLinks": []
+    },
+    "08-adversarial-server-reviewer.md": {
+      "bytes": 40142,
+      "lines": 250,
+      "sha256": "1cac4a6be0556df680ac1b6861966ef56a2afa66dbd5c420cbb7198aaf17e6ce",
+      "brokenAbsoluteLinks": []
+    },
+    "09-adversarial-native-reviewer.md": {
+      "bytes": 34938,
+      "lines": 210,
+      "sha256": "729670a2e64db35bcb50d4a7634438dc71f45b2cce9b76c55645a922639cf810",
+      "brokenAbsoluteLinks": []
+    },
+    "10-adversarial-primary-reviewer.md": {
+      "bytes": 12715,
+      "lines": 76,
+      "sha256": "860a50626c714e15ca087024d5a65be337c38103badfc0e66394fe8502db6974",
+      "brokenAbsoluteLinks": []
+    },
+    "11-adversarial-summary.md": {
+      "bytes": 8684,
+      "lines": 56,
+      "sha256": "31980824a40e861d4324058c9b8e8a35d93305a0c16695286baaee623f3194de",
+      "brokenAbsoluteLinks": []
+    }
+  },
+  "outOfRangeSourceLinks": [],
+  "ledgerCount": 57,
+  "priorities": {
+    "P1": 8,
+    "P2": 48,
+    "P3": 1
+  },
+  "secondPassVerdicts": {
+    "Upheld": 22,
+    "Narrowed": 31,
+    "Severity lowered": 3,
+    "Moved to conditional": 1
+  },
+  "classifications": {
+    "Source-supported finding": 54,
+    "Conditional assessment": 3
+  },
+  "duplicateLedgerIds": []
+}

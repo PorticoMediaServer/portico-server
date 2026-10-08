@@ -1,0 +1,10 @@
+{
+  "webOrigin": "https://web.getportico.tv",
+  "googleClientId": "REPLACE_WITH_GOOGLE_WEB_CLIENT_ID",
+  "googleClientSecret": "REPLACE_WITH_GOOGLE_CLIENT_SECRET",
+  "appleClientId": "REPLACE_WITH_APPLE_SERVICES_ID",
+  "appleNativeClientIds": ["tv.getportico.portico.ios", "tv.getportico.portico.tv"],
+  "appleTeamId": "REPLACE_WITH_APPLE_TEAM_ID",
+  "appleKeyId": "REPLACE_WITH_APPLE_KEY_ID",
+  "appleKeyFile": "/etc/portico/secrets/apple-sign-in.p8"
+}

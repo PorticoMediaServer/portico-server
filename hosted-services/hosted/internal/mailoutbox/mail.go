@@ -1,0 +1,307 @@
+// Package mailoutbox owns typed mail intents and bounded SMTP delivery. Domain
+// repositories enqueue in the same transaction as the fact authorizing a mail.
+package mailoutbox
+
+import (
+	"bytes"
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"html/template"
+	"mime"
+	"mime/multipart"
+	"mime/quotedprintable"
+	"net/mail"
+	"net/textproto"
+	"net/url"
+	"regexp"
+	"strings"
+	"time"
+)
+
+type Kind string
+
+const (
+	Registration  Kind = "registration"
+	OIDCContact   Kind = "oidc_contact"
+	PasswordReset Kind = "password_reset"
+	EmailChange   Kind = "email_change"
+	Invitation    Kind = "invitation"
+)
+
+// Email is sent only to set up an account (address verification), to invite
+// someone, and to reset a password (Justin, 23 Sep: no extra reasons to send
+// email). Alerts, security notices and new sign-ins are in-app notifications.
+
+// ResourceID/Revision are authoritative eligibility fences, not template data.
+// Invitation owners may use this boundary without implementing invitation logic
+// in the account service. They must commit the invitation before enqueueing.
+type Intent struct {
+	ID           string
+	Kind         Kind
+	ResourceID   string
+	Revision     int64
+	AccountID    string
+	AccountEpoch int64
+	ExpiresAt    time.Time
+	Payload      Payload
+}
+type Payload struct {
+	Inviter string `json:"inviter,omitempty"`
+	Server  string `json:"server,omitempty"`
+	To      string `json:"to"`
+	Code    string `json:"code,omitempty"`
+	Event   string `json:"event,omitempty"`
+}
+type Delivery struct {
+	Intent
+	Lease     string
+	Attempts  int
+	CreatedAt time.Time
+}
+
+// ErrQueueProgress means a row was durably discarded; the lane should keep draining.
+var ErrQueueProgress = errors.New("mail queue progressed")
+
+type Repository interface {
+	ClaimMail(context.Context) (*Delivery, error)
+	MailEligible(context.Context, Delivery) (bool, error)
+	FinishMail(context.Context, Delivery, string, bool) error
+}
+type Sender interface {
+	Send(context.Context, string, []byte) error
+	FromAddress() string
+	// ReplyToAddress is the optional Reply-To config value; empty omits it.
+	ReplyToAddress() string
+	// InvitationListUnsubscribe is the optional List-Unsubscribe URL for
+	// invitation mail only; empty omits it.
+	InvitationListUnsubscribe() string
+}
+
+func ValidAddress(value string) bool {
+	if len(value) < 3 || len(value) > 320 || strings.ContainsAny(value, "\r\n\x00") {
+		return false
+	}
+	a, e := mail.ParseAddress(value)
+	return e == nil && a.Address == value && a.Name == ""
+}
+
+// ValidListUnsubscribe reports whether value is a usable List-Unsubscribe URL:
+// an https URL with a host, or a mailto address, without whitespace or
+// header-breaking characters.
+func ValidListUnsubscribe(value string) bool {
+	if len(value) == 0 || len(value) > 2048 || strings.ContainsAny(value, "\r\n\x00 \t") {
+		return false
+	}
+	u, e := url.Parse(value)
+	if e != nil {
+		return false
+	}
+	switch strings.ToLower(u.Scheme) {
+	case "https":
+		return u.Host != ""
+	case "mailto":
+		rest := strings.TrimPrefix(value, "mailto:")
+		if i := strings.Index(rest, "?"); i >= 0 {
+			rest = rest[:i]
+		}
+		return ValidAddress(rest)
+	}
+	return false
+}
+
+func (i Intent) Validate() error {
+	if !regexp.MustCompile(`^[A-Za-z0-9_-]{16,128}$`).MatchString(i.ID) || len(i.ResourceID) > 128 || i.Revision < 0 || !ValidAddress(i.Payload.To) || len(i.Payload.Code) > 160 || len(i.Payload.Event) > 160 || len(i.Payload.Inviter) > 120 || len(i.Payload.Server) > 120 || i.ExpiresAt.IsZero() {
+		return errors.New("invalid mail intent")
+	}
+	switch i.Kind {
+	case Registration, OIDCContact, PasswordReset, EmailChange, Invitation:
+		return nil
+	}
+	return errors.New("unknown mail kind")
+}
+func MarshalPayload(p Payload) (string, error) { b, e := json.Marshal(p); return string(b), e }
+
+func isCodeKind(k Kind) bool {
+	return k == Registration || k == OIDCContact || k == EmailChange
+}
+
+// codeTTLMinutes is the real code lifetime from the intent's expiry and the
+// outbox creation time (MAIL-05: never a hard-coded number). Both are set at
+// enqueue time from the challenge's expires_at, including resends shortened by
+// LEAST(expires_at, ...). A zero or inverted pair falls back to 10 so a
+// malformed delivery still renders; production rows always carry both.
+func codeTTLMinutes(d Delivery) int {
+	if d.CreatedAt.IsZero() || d.ExpiresAt.IsZero() || !d.ExpiresAt.After(d.CreatedAt) {
+		return 10
+	}
+	mins := int((d.ExpiresAt.Sub(d.CreatedAt) + 30*time.Second) / time.Minute)
+	if mins < 1 {
+		return 1
+	}
+	return mins
+}
+
+func minutePhrase(mins int) string {
+	if mins == 1 {
+		return "1 minute"
+	}
+	return fmt.Sprintf("%d minutes", mins)
+}
+
+// sendingDomain is the domain of the configured sender, for Message-ID
+// (MAIL-07: with the sending domain, never a literal).
+func sendingDomain(from string) string {
+	a, e := mail.ParseAddress(from)
+	if e != nil {
+		return ""
+	}
+	parts := strings.Split(a.Address, "@")
+	if len(parts) != 2 || parts[1] == "" {
+		return ""
+	}
+	return strings.ToLower(parts[1])
+}
+
+// Tokens are confined to fragments. Mail retries keep the exact link and ID.
+func Render(d Delivery, from, replyTo, listUnsubscribe string) ([]byte, error) {
+	if e := d.Intent.Validate(); e != nil {
+		return nil, e
+	}
+	if !ValidAddress(from) {
+		return nil, errors.New("invalid sender")
+	}
+	if replyTo != "" && !ValidAddress(replyTo) {
+		return nil, errors.New("invalid reply-to")
+	}
+	if listUnsubscribe != "" && !ValidListUnsubscribe(listUnsubscribe) {
+		return nil, errors.New("invalid list-unsubscribe")
+	}
+	domain := sendingDomain(from)
+	if domain == "" {
+		return nil, errors.New("invalid sender domain")
+	}
+	subject, heading, body, button := "Portico account security", "Your Portico Account", "A security setting changed on your Portico Account.", "Review account"
+	switch d.Kind {
+	case Registration:
+		subject = "Verify your Portico Account"
+		heading = "Verify your email"
+		body = "Confirm your email address to finish creating your Portico Account."
+		button = "Verify email"
+	case OIDCContact:
+		subject = "Verify your Portico contact email"
+		heading = "Verify your contact email"
+		body = "Confirm the contact address for your Portico Account. You can open this link on any device, then finish on the one where you started."
+		button = "Verify email"
+	case PasswordReset:
+		subject = "Reset your Portico password"
+		heading = "Choose a new password"
+		body = "Use this link to reset your password. If two-step verification is enabled, you will also need your authenticator or a recovery code."
+		button = "Reset password"
+	case EmailChange:
+		subject = "Verify your new Portico email"
+		heading = "Confirm your new email"
+		body = "Your previous email remains active until you confirm this address."
+		button = "Confirm email"
+	case Invitation:
+		subject = "You are invited to " + d.Payload.Server
+		heading = "An invitation from " + d.Payload.Inviter
+		body = d.Payload.Inviter + " invited you to " + d.Payload.Server + ". Sign in to review the invitation and choose whether to join."
+		button = "Review invitation"
+	}
+	link := Link(d)
+	expiry := d.ExpiresAt.UTC().Format(time.RFC1123)
+	// A33: verification mails also show the code, for typing into the device
+	// that started the flow when the link is opened somewhere else.
+	code := ""
+	switch d.Kind {
+	case Registration, OIDCContact, EmailChange:
+		code = d.Payload.Code
+	}
+	// MAIL-05: code emails put the code in the subject, open the body with
+	// the code before any instructions, and end the text part with the
+	// origin-bound autofill line. The preheader lifetime comes from the
+	// code's real TTL.
+	preheader := ""
+	text := ""
+	if isCodeKind(d.Kind) && code != "" {
+		mins := codeTTLMinutes(d)
+		preheader = "Enter it to confirm your email. It expires in " + minutePhrase(mins) + "."
+		autofill := "@" + WebHost() + " #" + code
+		text = code + "\n\n" + preheader + "\n\n" + heading + "\n\n" + body + "\n\n" + button + ": " + link + "\nValid until " + expiry + ".\n\nNever share this message. If you did not request a verification or password reset, ignore that request.\n" + autofill + "\n"
+		subject = "Your Portico code is " + code
+	} else {
+		codeLine := ""
+		if code != "" {
+			codeLine = "Or enter this code in Portico: " + code + "\n"
+		}
+		text = heading + "\n\n" + body + "\n\n" + button + ": " + link + "\n" + codeLine + "Valid until " + expiry + ".\n\nNever share this message. If you did not request a verification or password reset, ignore that request.\n"
+	}
+	var html bytes.Buffer
+	e := template.Must(template.New("mail").Parse(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark light"><style>@media(prefers-color-scheme:light){body,.surface{background:#edf5fa!important;color:#071018!important}.card{background:#ffffff!important;color:#071018!important}.muted{color:#28404f!important}}@media(max-width:600px){.card{padding:24px!important}}</style></head><body style="margin:0;background:#071018;color:#edf5fa;font-family:Manrope,Arial,sans-serif">{{if .Preheader}}<div style="display:none;max-height:0;overflow:hidden;opacity:0;mso-hide:all;">{{.Preheader}}</div>{{end}}<table role="presentation" width="100%" class="surface" style="background:#071018"><tr><td align="center" style="padding:32px 16px"><table role="presentation" width="100%" style="max-width:560px"><tr><td style="padding:0 0 24px"><img src="https://web.getportico.tv/assets/portico-wordmark-mono-white.svg" alt="Portico" width="128" style="display:block;background:#071018;padding:12px;border-radius:8px"></td></tr><tr><td class="card" style="padding:40px;background:#10212d;border:1px solid #28404f;border-radius:16px">{{if .Code}}<div style="font-size:32px;font-weight:800;letter-spacing:0.12em;font-family:ui-monospace,Menlo,monospace;margin:0 0 16px;word-break:break-all;">{{.Code}}</div>{{end}}<h1 style="margin:0 0 24px;font-size:28px;line-height:1.25">{{.Heading}}</h1>{{if .Preheader}}<p style="font-size:16px;line-height:1.7;margin:0 0 16px">{{.Preheader}}</p>{{end}}<p style="font-size:16px;line-height:1.7;margin:0 0 32px">{{.Body}}</p><a href="{{.Link}}" style="display:inline-block;background:#409fd4;color:#03121c;padding:14px 24px;border-radius:8px;font-weight:700;text-decoration:none">{{.Button}}</a>{{if .CodeFallback}}<p style="font-size:14px;line-height:1.6;margin:24px 0 0">Or enter this code in Portico:<br><span style="font-size:22px;font-weight:700;letter-spacing:0.12em;font-family:ui-monospace,Menlo,monospace">{{.CodeFallback}}</span></p>{{end}}<p class="muted" style="font-size:12px;line-height:1.6;color:#96a9b5;margin:32px 0 0">Valid until {{.Expiry}}.<br>Never share this message. If you did not request verification or a password reset, ignore that request.</p></td></tr></table></td></tr></table></body></html>`)).Execute(&html, map[string]string{"Heading": heading, "Body": body, "Button": button, "Link": link, "Expiry": expiry, "Code": codeFirstHTML(code, d.Kind), "CodeFallback": codeFallbackHTML(code, d.Kind), "Preheader": preheader})
+	if e != nil {
+		return nil, e
+	}
+	var bodyBuffer bytes.Buffer
+	multi := multipart.NewWriter(&bodyBuffer)
+	// The ID is restricted to safe characters by the enqueue repository.
+	digest := sha256.Sum256([]byte(d.ID))
+	boundary := "portico-" + hex.EncodeToString(digest[:20])
+	if e = multi.SetBoundary(boundary); e != nil {
+		return nil, e
+	}
+	for _, part := range []struct{ kind, body string }{{"text/plain", text}, {"text/html", html.String()}} {
+		header := textproto.MIMEHeader{}
+		header.Set("Content-Type", part.kind+"; charset=utf-8")
+		header.Set("Content-Transfer-Encoding", "quoted-printable")
+		w, err := multi.CreatePart(header)
+		if err != nil {
+			return nil, err
+		}
+		q := quotedprintable.NewWriter(w)
+		if _, err = q.Write([]byte(part.body)); err != nil {
+			return nil, err
+		}
+		if err = q.Close(); err != nil {
+			return nil, err
+		}
+	}
+	if e = multi.Close(); e != nil {
+		return nil, e
+	}
+	var out bytes.Buffer
+	fmt.Fprintf(&out, "From: %s\r\nTo: %s\r\nSubject: %s\r\n", (&mail.Address{Name: "Portico", Address: from}).String(), (&mail.Address{Address: d.Payload.To}).String(), mime.QEncoding.Encode("UTF-8", subject))
+	if replyTo != "" {
+		fmt.Fprintf(&out, "Reply-To: %s\r\n", (&mail.Address{Address: replyTo}).String())
+	}
+	fmt.Fprintf(&out, "Date: %s\r\nMessage-ID: <%s@%s>\r\nMIME-Version: 1.0\r\nContent-Type: multipart/alternative; boundary=%q\r\n", d.CreatedAt.UTC().Format(time.RFC1123Z), d.ID, domain, boundary)
+	if d.Kind == Invitation && listUnsubscribe != "" {
+		fmt.Fprintf(&out, "List-Unsubscribe: <%s>\r\n", listUnsubscribe)
+	}
+	fmt.Fprintf(&out, "\r\n")
+	out.Write(bodyBuffer.Bytes())
+	return out.Bytes(), nil
+}
+
+// codeFirstHTML renders the code as the first visible block for code emails
+// (MAIL-05). Other kinds render no leading code; their code fallback (always
+// empty now that every code kind is code-first) stays for the template shape.
+func codeFirstHTML(code string, k Kind) string {
+	if isCodeKind(k) && code != "" {
+		return code
+	}
+	return ""
+}
+
+// codeFallbackHTML is the old "Or enter this code" block. Code emails show
+// the code first instead, so there is no fallback; it remains only to keep
+// the template's non-code path explicit.
+func codeFallbackHTML(code string, k Kind) string {
+	if isCodeKind(k) {
+		return ""
+	}
+	return code
+}

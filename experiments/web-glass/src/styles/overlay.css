@@ -1,0 +1,171 @@
+.sheet-root {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-sheet);
+  display: grid;
+}
+.sheet-scrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(2, 6, 12, 0.5);
+  animation: fade-in var(--dur-3) var(--ease-out);
+}
+.sheet-root.closing .sheet-scrim {
+  opacity: 0;
+  transition: opacity 260ms var(--ease);
+}
+.sheet:focus {
+  outline: none;
+}
+.sheet {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  touch-action: pan-y;
+}
+.sheet-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 18px 18px 10px 24px;
+}
+.sheet-title {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-display);
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+}
+.sheet-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 6px 24px 24px;
+}
+.sheet-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 20px 18px;
+  border-top: 1px solid var(--line);
+}
+
+/* Desktop: a centered panel */
+.sheet-root.is-desktop {
+  place-items: center;
+  padding: 32px;
+}
+.sheet-root.is-desktop .sheet {
+  width: min(560px, 100%);
+  max-height: min(86vh, 900px);
+  border-radius: 28px;
+  animation: sheet-pop var(--dur-3) var(--ease-out);
+}
+.sheet-root.is-desktop .sheet-sm {
+  width: min(420px, 100%);
+}
+.sheet-root.is-desktop .sheet-lg {
+  width: min(760px, 100%);
+}
+.sheet-root.is-desktop .sheet-xl {
+  width: min(1040px, 100%);
+}
+.sheet-root.is-desktop.closing .sheet {
+  opacity: 0;
+  transform: scale(0.97);
+  transition:
+    opacity 220ms var(--ease),
+    transform 220ms var(--ease);
+}
+@keyframes sheet-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.955) translateY(8px);
+  }
+}
+
+/* Phones: a bottom sheet with a grabber, drag to dismiss */
+.sheet-root.is-mobile {
+  align-items: end;
+}
+.sheet-root.is-mobile .sheet {
+  width: 100%;
+  max-height: calc(100dvh - var(--safe-top) - 12px);
+  border-radius: 34px 34px 0 0;
+  padding-bottom: max(var(--safe-bottom), 10px);
+  animation: sheet-up 460ms var(--ease-out);
+  transition: transform 320ms var(--ease-out);
+}
+.sheet-root.is-mobile .sheet.sheet-lg,
+.sheet-root.is-mobile .sheet.sheet-xl {
+  height: calc(100dvh - var(--safe-top) - 12px);
+}
+.sheet-root.is-mobile.closing .sheet {
+  transform: translateY(100%);
+}
+.sheet-root.is-mobile .sheet-head {
+  padding: 6px 14px 8px 22px;
+}
+.sheet-root.is-mobile .sheet-body {
+  padding: 4px 20px 20px;
+}
+.sheet-root.is-mobile .sheet.compact .sheet-body {
+  padding: 4px 12px 8px;
+}
+@keyframes sheet-up {
+  from {
+    transform: translateY(100%);
+  }
+}
+.sheet-grabber {
+  flex: none;
+  width: 38px;
+  height: 5px;
+  margin: 8px auto 6px;
+  border-radius: 5px;
+  background: rgba(220, 235, 250, 0.3);
+}
+.action-sheet .menu-item {
+  min-height: 52px;
+  font-size: 17px;
+  border-radius: 14px;
+  padding: 10px 14px;
+}
+.action-sheet .menu-item .lucide {
+  width: 20px;
+  height: 20px;
+}
+
+.confirm {
+  display: grid;
+  gap: 20px;
+  padding-top: 4px;
+}
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+@media (max-width: 767px) {
+  .confirm-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+  .confirm-actions .btn {
+    height: 50px;
+  }
+}
+.sheet-root.is-mobile .sheet-head {
+  flex-wrap: wrap;
+  row-gap: 10px;
+}
+.sheet-root.is-mobile .sheet-head .segmented {
+  order: 3;
+  width: 100%;
+}
+.sheet-root.is-mobile .sheet-head .segmented button {
+  flex: 1;
+}

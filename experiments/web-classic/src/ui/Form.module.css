@@ -1,0 +1,72 @@
+.field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.label { font-size: 13px; font-weight: 650; color: var(--text-2); }
+.help { font-size: 12.5px; line-height: 1.45; color: var(--text-3); }
+.error { font-size: 12.5px; line-height: 1.45; color: var(--danger); display: flex; gap: 6px; align-items: flex-start; }
+.control {
+  height: 40px; width: 100%; padding: 0 12px;
+  border-radius: var(--r-md); border: 1px solid var(--line);
+  background: rgb(5 11 17 / 0.55); color: var(--text);
+  font-size: 15px; transition: border-color var(--t-quick), box-shadow var(--t-quick), background var(--t-quick);
+}
+.control::placeholder { color: var(--placeholder); }
+.control:hover { border-color: var(--line-strong); }
+.control:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgb(64 159 212 / 0.25); background: rgb(5 11 17 / 0.8); }
+.control[aria-invalid='true'] { border-color: var(--danger); }
+.control:disabled { opacity: 0.55; }
+textarea.control { height: auto; min-height: 96px; padding: 10px 12px; line-height: 1.45; resize: vertical; }
+.inputWrap { position: relative; display: flex; align-items: center; }
+.inputWrap .control { padding-left: 38px; }
+.inputIcon { position: absolute; left: 12px; color: var(--text-3); pointer-events: none; }
+.inputTrail { position: absolute; right: 4px; }
+.select { appearance: none; padding-right: 36px; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2396a9b5' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; cursor: pointer; }
+.select option { background: var(--overlay); color: var(--text); }
+.compact { height: var(--control-h); font-size: 14px; }
+
+/* Switch */
+.switch { position: relative; width: 40px; height: 24px; border-radius: 12px; background: var(--track); border: 0; flex: none; transition: background var(--t-standard) var(--ease); }
+.switch[data-state='checked'] { background: var(--accent); }
+.switch:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.switch:disabled { opacity: 0.45; }
+.thumb { display: block; width: 18px; height: 18px; border-radius: 50%; background: var(--text); transform: translateX(3px); transition: transform var(--t-standard) var(--ease); box-shadow: 0 1px 3px rgb(0 0 0 / 0.4); }
+.thumb[data-state='checked'] { transform: translateX(19px); background: #fff; }
+
+/* Checkbox */
+.checkbox { width: 20px; height: 20px; border-radius: 5px; border: 1.5px solid var(--line-control); background: transparent; display: inline-flex; align-items: center; justify-content: center; color: var(--accent-ink); flex: none; transition: background var(--t-quick), border-color var(--t-quick); }
+.checkbox[data-state='checked'] { background: var(--accent); border-color: var(--accent); }
+.checkbox:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.checkRow { display: flex; align-items: flex-start; gap: 12px; cursor: pointer; padding: 6px 0; }
+.checkRow > span { padding-top: 1px; }
+
+/* Segmented */
+.segmented { display: inline-flex; padding: 3px; gap: 2px; border-radius: var(--r-md); background: rgb(5 11 17 / 0.5); border: 1px solid var(--line-soft); max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+.segmented::-webkit-scrollbar { display: none; }
+.segment { height: 30px; padding: 0 14px; border-radius: 6px; font-size: 13.5px; font-weight: 650; color: var(--text-2); white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; transition: background var(--t-quick), color var(--t-quick); }
+.segment:hover { color: var(--text); background: var(--hover); }
+.segment[data-state='on'] { background: var(--raised-bright); color: var(--text); box-shadow: 0 1px 2px rgb(0 0 0 / 0.3); }
+.segment:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--focus); }
+
+/* Slider */
+.slider { position: relative; display: flex; align-items: center; height: 24px; width: 100%; touch-action: none; user-select: none; }
+.sliderTrack { position: relative; flex: 1; height: 4px; border-radius: 4px; background: var(--track); overflow: hidden; }
+.sliderRange { position: absolute; height: 100%; background: var(--accent); }
+.sliderThumb { display: block; width: 16px; height: 16px; border-radius: 50%; background: var(--text); box-shadow: 0 1px 4px rgb(0 0 0 / 0.5); transition: transform var(--t-quick); }
+.sliderThumb:hover { transform: scale(1.15); }
+.sliderThumb:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+
+/* Radio cards */
+.radios { display: grid; gap: 8px; }
+.radio { display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; border-radius: var(--r-md); border: 1px solid var(--line); text-align: left; transition: border-color var(--t-quick), background var(--t-quick); width: 100%; }
+.radio:hover { border-color: var(--line-strong); background: var(--hover); }
+.radio[data-state='checked'] { border-color: var(--accent); background: var(--selected); }
+.radio:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.radioDot { width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid var(--line-control); flex: none; margin-top: 1px; display: inline-flex; align-items: center; justify-content: center; }
+.radio[data-state='checked'] .radioDot { border-color: var(--accent); }
+.radio[data-state='checked'] .radioDot::after { content: ''; width: 9px; height: 9px; border-radius: 50%; background: var(--accent); }
+.radioText { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.radioTitle { font-weight: 650; font-size: 14.5px; }
+.radioHelp { color: var(--text-3); font-size: 13px; line-height: 1.4; }
+
+/* PIN */
+.pin { display: flex; gap: 10px; justify-content: center; }
+.pinBox { width: 52px; height: 60px; text-align: center; font-size: 26px; font-weight: 700; border-radius: var(--r-md); border: 1px solid var(--line); background: rgb(5 11 17 / 0.55); color: var(--text); caret-color: var(--accent); }
+.pinBox:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgb(64 159 212 / 0.25); }

@@ -1,0 +1,54 @@
+.card { position: relative; width: var(--card-w, var(--poster-w)); min-width: 0; flex: none; }
+.gridCard { width: auto; }
+.artBox { position: relative; }
+.hit { display: block; position: relative; border-radius: var(--r-md); outline: none; -webkit-tap-highlight-color: transparent; }
+.circleCard .hit { border-radius: 50%; }
+.frame { position: relative; transition: transform var(--t-standard) var(--ease), box-shadow var(--t-standard) var(--ease); border-radius: var(--r-md); }
+.circleCard .frame { border-radius: 50%; }
+.hit:hover .frame { transform: translateY(-2px); box-shadow: var(--shadow-card); }
+.hit:focus-visible .frame { box-shadow: 0 0 0 2px var(--ink), 0 0 0 4px var(--focus), 0 10px 26px rgb(64 159 212 / 0.28); }
+.hit:active .frame { transform: scale(0.985); }
+
+/* Hover layer: darken plus the play button */
+.hover { position: absolute; inset: 0; border-radius: inherit; background: linear-gradient(180deg, rgb(7 16 24 / 0.05), rgb(7 16 24 / 0.45)); opacity: 0; transition: opacity var(--t-standard) var(--ease); pointer-events: none; }
+.card:hover .hover, .card:focus-within .hover { opacity: 1; }
+.circleCard .hover { border-radius: 50%; }
+.play { position: absolute; left: 50%; top: 50%; width: 48px; height: 48px; margin: -24px 0 0 -24px; border-radius: 50%; background: var(--accent); color: var(--accent-ink); display: flex; align-items: center; justify-content: center; box-shadow: 0 6px 18px rgb(0 0 0 / 0.45); opacity: 0; transform: scale(0.86); transition: opacity var(--t-standard) var(--ease), transform var(--t-standard) var(--ease), background var(--t-quick); z-index: 2; }
+.play:hover { background: var(--accent-strong); transform: scale(1.06) !important; }
+.card:hover .play { opacity: 1; transform: scale(1); }
+.play svg { margin-left: 2px; }
+.more { position: absolute; right: 6px; bottom: 6px; width: 30px; height: 30px; border-radius: 50%; background: rgb(7 16 24 / 0.72); color: var(--text); display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity var(--t-standard) var(--ease), background var(--t-quick); z-index: 2; }
+.more:hover { background: var(--raised-bright); }
+.more[data-state='open'] { opacity: 1; }
+.card:hover .more { opacity: 1; }
+.circleCard .more { right: 4%; bottom: 4%; }
+/* Touch: no hover layer; long-press opens the same menu as ⋯. */
+@media (hover: none) { .play, .hover, .more { display: none; } }
+
+/* Status overlays */
+.watched { position: absolute; top: 6px; right: 6px; width: 22px; height: 22px; border-radius: 50%; background: var(--accent); color: var(--accent-ink); display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 4px rgb(0 0 0 / 0.4); z-index: 1; }
+.count { position: absolute; top: 6px; right: 6px; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 11px; background: var(--accent); color: var(--accent-ink); display: flex; align-items: center; justify-content: center; font-size: 11.5px; font-weight: 800; box-shadow: 0 1px 4px rgb(0 0 0 / 0.4); z-index: 1; }
+.live { position: absolute; top: 8px; left: 8px; padding: 1px 7px; border-radius: 5px; background: var(--record); color: #2a0707; font-size: 10.5px; font-weight: 800; letter-spacing: 0.06em; z-index: 1; }
+.corner { position: absolute; top: 8px; left: 8px; padding: 2px 7px; border-radius: 5px; background: rgb(7 16 24 / 0.78); color: var(--text); font-size: 10.5px; font-weight: 750; letter-spacing: 0.03em; z-index: 1; }
+.progress { position: absolute; left: 8px; right: 8px; bottom: 8px; z-index: 1; }
+.card:hover .progress { right: 44px; }
+.caption { position: absolute; left: 0; right: 0; bottom: 0; padding: 22px 10px 8px; background: linear-gradient(180deg, transparent, rgb(7 16 24 / 0.85)); font-size: 12px; font-weight: 700; color: var(--text); border-radius: 0 0 var(--r-md) var(--r-md); z-index: 1; }
+.caption + .progress { bottom: 30px; }
+
+/* Selection */
+.select { position: absolute; top: 8px; left: 8px; width: 24px; height: 24px; border-radius: 50%; border: 2px solid var(--text); background: rgb(7 16 24 / 0.5); display: flex; align-items: center; justify-content: center; color: var(--accent-ink); z-index: 3; }
+.selected .select { background: var(--accent); border-color: var(--accent); }
+.selected .frame { box-shadow: 0 0 0 3px var(--accent); }
+.selecting .play, .selecting .more { display: none; }
+
+/* Text */
+.text { margin-top: 8px; padding: 0 2px; min-width: 0; }
+.circleCard .text { text-align: center; }
+.title { display: block; font-size: 13.5px; line-height: 1.35; font-weight: 650; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.title:hover { text-decoration: underline; text-decoration-color: rgb(237 245 250 / 0.4); text-underline-offset: 2px; }
+.sub { display: block; font-size: 12.5px; line-height: 1.35; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 1px; }
+
+/* Skeleton card */
+.skelText { height: 10px; border-radius: 4px; margin-top: 10px; width: 80%; }
+.skelText2 { height: 9px; border-radius: 4px; margin-top: 7px; width: 50%; }
+.selecting .watched, .selecting .count { display: none; }

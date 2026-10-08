@@ -1,0 +1,6 @@
+// PRIVATE file, mode 0600. Use exactly the same independent TSIG secret in
+// Hosted's private dnsUpdateSecret. This placeholder is deliberately not usable.
+key "acme-update." {
+    algorithm hmac-sha256;
+    secret "REPLACE_WITH_BASE64_32_RANDOM_BYTES";
+};

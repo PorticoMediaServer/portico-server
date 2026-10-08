@@ -1,0 +1,15 @@
+[Unit]
+Description=Portico Hosted encrypted off-site database base backup
+After=postgresql.service network-online.target
+[Service]
+Type=oneshot
+User=postgres
+ExecStart=/opt/portico/scripts/hosted-backup.sh
+TimeoutStartSec=2h
+# Background work yields to the live service (all lanes' background-priority rule).
+Nice=19
+IOSchedulingClass=idle
+CPUSchedulingPolicy=batch
+NoNewPrivileges=true
+PrivateTmp=true
+UMask=0077

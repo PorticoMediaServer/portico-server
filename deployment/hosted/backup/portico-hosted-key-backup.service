@@ -1,0 +1,17 @@
+[Unit]
+Description=Portico Hosted encrypted off-site online-key backup
+After=network-online.target
+[Service]
+Type=oneshot
+# The Hosted service user owns the 0600 signing, certificate and sealing files.
+User=portico-astra-hosted
+Group=portico-astra-hosted
+EnvironmentFile=/etc/portico/backup.env
+ExecStart=/opt/portico/scripts/hosted-key-backup.sh
+TimeoutStartSec=30min
+Nice=19
+IOSchedulingClass=idle
+CPUSchedulingPolicy=batch
+NoNewPrivileges=true
+PrivateTmp=true
+UMask=0077
