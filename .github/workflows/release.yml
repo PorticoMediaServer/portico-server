@@ -179,7 +179,7 @@ jobs:
             PORTICO_BUILT_AT=${{ needs.identity.outputs.built_at }}
           provenance: mode=max
           sbom: true
-      - uses: actions/attest-build-provenance@96b4a1ef7235a096b17240c259729fdd70c83d45 # v2
+      - uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
         with: {subject-name: 'ghcr.io/porticomediaserver/portico-server', subject-digest: '${{ steps.build.outputs.digest }}', push-to-registry: true}
 
   publish:
@@ -217,7 +217,7 @@ jobs:
           cp dist/portico-update-manifest.json dist/artifacts/
       - uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
         with: {path: dist/artifacts, format: spdx-json, output-file: dist/artifacts/portico-release.spdx.json}
-      - uses: actions/attest-build-provenance@96b4a1ef7235a096b17240c259729fdd70c83d45 # v2
+      - uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
         with: {subject-path: 'dist/artifacts/*'}
       - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
