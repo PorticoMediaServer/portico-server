@@ -21,7 +21,7 @@
     "hls.js": "file:../third_party/hls.js/hls.js-1.7.2-portico.1.tgz",
     "qrcode": "^1.5.4",
     "radix-ui": "^1.4.0",
-    "react": "19.2.8",
+    "react": "19.3.0",
     "react-dom": "19.2.8"
   },
   "devDependencies": {
