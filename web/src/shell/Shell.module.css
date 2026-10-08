@@ -1,0 +1,58 @@
+.frame { display: grid; grid-template-columns: var(--rail-current, var(--rail-width-expanded)) 1fr; min-height: 100vh; transition: grid-template-columns var(--motion-standard) var(--ease-out); }
+.frame.collapsed { --rail-current: var(--rail-width); }
+.main { min-width: 0; position: relative; }
+.content { min-height: 100vh; }
+@media (max-width: 720px) {
+  .frame { grid-template-columns: 1fr; }
+  .content { padding-bottom: calc(var(--bottom-bar-height) + env(safe-area-inset-bottom)); }
+}
+
+.rail { position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; padding: 14px 10px; gap: 4px; border-right: 1px solid var(--line-soft); background: color-mix(in srgb, var(--surface-projector) 94%, transparent); z-index: var(--layer-navigation); overflow: hidden; }
+/* The libraries and channels scroll on a short window; the top group and the footer stay put. */
+.railScroll { flex: 1; min-height: 0; overflow: hidden auto; scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; display: flex; flex-direction: column; gap: 4px; margin: 0 -10px; padding: 0 10px; }
+.railScroll::-webkit-scrollbar { width: 6px; }
+.railScroll::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 3px; }
+.pageSkeleton { display: flex; flex-direction: column; gap: 28px; padding: 36px var(--page-gutter) 0; max-width: var(--content-max); margin: 0 auto; }
+.skeletonRow { display: flex; flex-direction: column; gap: 12px; }
+.skeletonCards { display: grid; grid-template-columns: repeat(auto-fill, minmax(clamp(120px, 11vw, 168px), 1fr)); gap: 16px; overflow: hidden; max-height: 280px; }
+.bellPanel { width: min(420px, calc(100vw - 24px)); max-height: 70vh; overflow-y: auto; }
+.brand { display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 10px; margin-bottom: 10px; color: var(--text-primary); overflow: hidden; }
+.brand img { flex-shrink: 0; }
+.railItem { display: flex; align-items: center; gap: 12px; height: 42px; padding: 0 11px; border-radius: var(--radius-control); color: var(--text-secondary); font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; transition: background-color var(--motion-quick) var(--ease-out), color var(--motion-quick) var(--ease-out); position: relative; text-decoration: none; }
+.railItem:hover { background: var(--surface-translucent); color: var(--text-primary); }
+.railItem[data-status='active'], .railItem[aria-current='page'] { background: var(--accent-tint); color: var(--text-primary); }
+.railItem[data-status='active']::before, .railItem[aria-current='page']::before { content: ''; position: absolute; left: 0; top: 10px; bottom: 10px; width: 3px; border-radius: 2px; background: var(--accent); }
+.railItem svg { flex-shrink: 0; }
+.railLabel { opacity: 1; transition: opacity var(--motion-quick) var(--ease-out); }
+.collapsed .railLabel, .collapsed .brand span { opacity: 0; width: 0; }
+.collapsed .railItem { padding: 0 10px; justify-content: flex-start; }
+.railGroup { display: flex; flex-direction: column; gap: 2px; }
+.railHeading { padding: 12px 11px 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-tertiary); white-space: nowrap; overflow: hidden; }
+.collapsed .railHeading { visibility: hidden; height: 12px; padding: 0; }
+.railFoot { display: flex; flex-direction: column; gap: 2px; padding-top: 8px; border-top: 1px solid var(--line-soft); }
+.avatarItem { gap: 10px; }
+.collapseToggle { align-self: flex-start; }
+
+.bottomBar { position: fixed; left: 0; right: 0; bottom: 0; z-index: var(--layer-navigation); display: grid; grid-template-columns: repeat(5, 1fr); height: calc(var(--bottom-bar-height) + env(safe-area-inset-bottom)); padding-bottom: env(safe-area-inset-bottom); background: var(--surface-projector); border-top: 1px solid var(--line-soft); }
+.tab { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; color: var(--text-tertiary); font-size: 10.5px; font-weight: 600; text-decoration: none; }
+.tab[data-status='active'], .tab[aria-current='page'] { color: var(--accent); }
+
+.topBar { position: sticky; top: 0; z-index: var(--layer-sticky); display: flex; align-items: center; justify-content: space-between; gap: 12px; height: 54px; padding: 0 16px; background: color-mix(in srgb, var(--surface-projector) 94%, transparent); }
+.topBar img { height: 18px; }
+.topActions { display: flex; align-items: center; gap: 4px; }
+
+.libraryPicker { display: flex; flex-direction: column; gap: 4px; }
+
+.connectionNotice { padding: 16px 16px 0; max-width: 960px; margin: 0 auto; }
+.connectionStatus { min-height: calc(100vh - 120px); display: flex; align-items: center; justify-content: center; padding: 24px 16px; }
+
+.railCount { margin-left: auto; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px; background: var(--accent); color: var(--text-on-action); font-size: 11px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; font-variant-numeric: tabular-nums; }
+.collapsed .railCount { position: absolute; top: 6px; right: 6px; min-width: 8px; width: 8px; height: 8px; padding: 0; font-size: 0; }
+.topBell { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; border-radius: var(--radius-control); color: var(--text-secondary); }
+.topBell:hover { background: var(--surface-translucent); color: var(--text-primary); }
+.topBellDot { position: absolute; top: 9px; right: 9px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+
+/* WEB-SYS-07: on short windows the rail scrolls instead of squashing its rows. */
+.brand, .railItem, .railHeading, .railFoot { flex-shrink: 0; }
+.railBadge { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; margin-left: auto; border-radius: 5px; background: var(--accent-tint); color: var(--accent-strong); flex-shrink: 0; }
+.railHeading:hover { color: var(--text-secondary); }

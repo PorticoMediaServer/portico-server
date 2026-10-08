@@ -1,0 +1,3008 @@
+{
+  "web": {
+    "version": 1,
+    "evidence": "declared",
+    "client": {
+      "family": "web",
+      "engine": "hls.js",
+      "app": "portico-web"
+    },
+    "display": {
+      "dynamicRanges": [
+        "sdr"
+      ]
+    },
+    "video": [
+      {
+        "codec": "h264",
+        "evidence": "declared",
+        "bitDepths": [
+          8
+        ],
+        "maxWidth": 4096,
+        "maxHeight": 2160,
+        "maxFrameRate": 60,
+        "dynamicRanges": [
+          "sdr"
+        ]
+      }
+    ],
+    "audio": [
+      {
+        "codec": "aac",
+        "maxChannels": 2,
+        "evidence": "declared"
+      },
+      {
+        "codec": "mp3",
+        "maxChannels": 2,
+        "evidence": "declared"
+      }
+    ],
+    "audioOutput": {
+      "maxChannels": 2
+    },
+    "transports": [
+      {
+        "transport": "direct",
+        "containers": [
+          "mp4",
+          "m4v",
+          "mov"
+        ],
+        "video": [
+          "h264"
+        ],
+        "audio": [
+          "aac",
+          "mp3"
+        ]
+      },
+      {
+        "transport": "direct",
+        "containers": [
+          "mp3",
+          "m4a",
+          "m4b",
+          "aac"
+        ],
+        "video": [],
+        "audio": [
+          "aac",
+          "mp3"
+        ]
+      },
+      {
+        "transport": "hls_ts",
+        "containers": [
+          "mpegts"
+        ],
+        "video": [
+          "h264"
+        ],
+        "audio": [
+          "aac",
+          "mp3"
+        ]
+      }
+    ],
+    "subtitles": {
+      "text": [
+        "srt",
+        "vtt"
+      ],
+      "styled": [],
+      "bitmap": []
+    }
+  },
+  "ios": {
+    "version": 1,
+    "evidence": "declared",
+    "client": {
+      "family": "apple",
+      "platform": "ios",
+      "os": "ios",
+      "app": "portico-apple",
+      "engine": "avplayer"
+    },
+    "display": {
+      "dynamicRanges": [
+        "sdr"
+      ]
+    },
+    "video": [
+      {
+        "codec": "h264",
+        "evidence": "declared",
+        "bitDepths": [
+          8
+        ],
+        "maxWidth": 4096,
+        "maxHeight": 2304,
+        "maxFrameRate": 60,
+        "dynamicRanges": [
+          "sdr"
+        ]
+      },
+      {
+        "codec": "hevc",
+        "evidence": "declared",
+        "bitDepths": [
+          8,
+          10
+        ],
+        "maxWidth": 4096,
+        "maxHeight": 2304,
+        "maxFrameRate": 60,
+        "dynamicRanges": [
+          "sdr"
+        ]
+      }
+    ],
+    "audio": [
+      {
+        "codec": "aac",
+        "maxChannels": 8,
+        "evidence": "declared"
+      },
+      {
+        "codec": "mp3",
+        "maxChannels": 2,
+        "evidence": "declared"
+      },
+      {
+        "codec": "ac3",
+        "maxChannels": 6,
+        "evidence": "declared"
+      },
+      {
+        "codec": "eac3",
+        "maxChannels": 8,
+        "evidence": "declared",
+        "objectAudio": [
+          "atmos"
+        ]
+      },
+      {
+        "codec": "alac",
+        "maxChannels": 8,
+        "evidence": "declared"
+      },
+      {
+        "codec": "flac",
+        "maxChannels": 8,
+        "evidence": "declared"
+      },
+      {
+        "codec": "pcm",
+        "maxChannels": 8,
+        "evidence": "declared"
+      }
+    ],
+    "audioOutput": {
+      "maxChannels": 2
+    },
+    "transports": [
+      {
+        "transport": "direct",
+        "containers": [
+          "mp4",
+          "m4v",
+          "mov"
+        ],
+        "video": [
+          "h264",
+          "hevc"
+        ],
+        "audio": [
+          "aac",
+          "mp3",
+          "ac3",
+          "eac3",
+          "alac",
+          "flac"
+        ]
+      },
+      {
+        "transport": "direct",
+        "containers": [
+          "mp3",
+          "m4a",
+          "m4b",
+          "aac",
+          "flac",
+          "wav",
+          "aiff"
+        ],
+        "video": [],
+        "audio": [
+          "aac",
+          "mp3",
+          "alac",
+          "flac",
+          "pcm"
+        ]
+      },
+      {
+        "transport": "hls_ts",
+        "containers": [
+          "mpegts"
+        ],
+        "video": [
+          "h264"
+        ],
+        "audio": [
+          "aac",
+          "mp3",
+          "ac3",
+          "eac3"
+        ]
+      },
+      {
+        "transport": "hls_fmp4",
+        "containers": [
+          "fmp4"
+        ],
+        "video": [
+          "h264",
+          "hevc"
+        ],
+        "audio": [
+          "aac",
+          "mp3",
+          "ac3",
+          "eac3",
+          "alac",
+          "flac"
+        ]
+      }
+    ],
+    "subtitles": {
+      "text": [
+        "srt",
+        "vtt"
+      ],
+      "styled": [],
+      "bitmap": []
+    },
+    "embeddedAudioSwitching": true
+  },
+  "tvos": {
+    "version": 1,
+    "evidence": "declared",
+    "client": {
+      "family": "apple",
+      "platform": "tvos",
+      "os": "tvos",
+      "app": "portico-apple",
+      "engine": "avplayer"
+    },
+    "display": {
+      "dynamicRanges": [
+        "sdr"
+      ]
+    },
+    "video": [
+      {
+        "codec": "h264",
+        "evidence": "declared",
+        "bitDepths": [
+          8
+        ],
+        "maxWidth": 4096,
+        "maxHeight": 2304,
+        "maxFrameRate": 60,
+        "dynamicRanges": [
+          "sdr"
+        ]
+      },
+      {
+        "codec": "hevc",
+        "evidence": "declared",
+        "bitDepths": [
+          8,
+          10
+        ],
+        "maxWidth": 4096,
+        "maxHeight": 2304,
+        "maxFrameRate": 60,
+        "dynamicRanges": [
+          "sdr"
+        ]
+      }
+    ],
+    "audio": [
+      {
+        "codec": "aac",
+        "maxChannels": 8,
+        "evidence": "declared"
+      },
+      {
+        "codec": "mp3",
+        "maxChannels": 2,
+        "evidence": "declared"
+      },
+      {
+        "codec": "ac3",
+        "maxChannels": 6,
+        "evidence": "declared"
+      },
+      {
+        "codec": "eac3",
+        "maxChannels": 8,
+        "evidence": "declared",
+        "objectAudio": [
+          "atmos"
+        ]
+      },
+      {
+        "codec": "alac",
+        "maxChannels": 8,
+        "evidence": "declared"
+      },
+      {
+        "codec": "flac",
+        "maxChannels": 8,
+        "evidence": "declared"
+      },
+      {
+        "codec": "pcm",
+        "maxChannels": 8,
+        "evidence": "declared"
+      }
+    ],
+    "audioOutput": {
+      "maxChannels": 2
+    },
+    "transports": [
+      {
+        "transport": "direct",
+        "containers": [
+          "mp4",
+          "m4v",
+          "mov"
+        ],
+        "video": [
+          "h264",
+          "hevc"
+        ],
+        "audio": [
+          "aac",
+          "mp3",
+          "ac3",
+          "eac3",
+          "alac",
+          "flac"
+        ]
+      },
+      {
+        "transport": "direct",
+        "containers": [
+          "mp3",
+          "m4a",
+          "m4b",
+          "aac",
+          "flac",
+          "wav",
+          "aiff"
+        ],
+        "video": [],
+        "audio": [
+          "aac",
+          "mp3",
+          "alac",
+          "flac",
+          "pcm"
+        ]
+      },
+      {
+        "transport": "hls_ts",
+        "containers": [
+          "mpegts"
+        ],
+        "video": [
+          "h264"
+        ],
+        "audio": [
+          "aac",
+          "mp3",
+          "ac3",
+          "eac3"
+        ]
+      },
+      {
+        "transport": "hls_fmp4",
+        "containers": [
+          "fmp4"
+        ],
+        "video": [
+          "h264",
+          "hevc"
+        ],
+        "audio": [
+          "aac",
+          "mp3",
+          "ac3",
+          "eac3",
+          "alac",
+          "flac"
+        ]
+      }
+    ],
+    "subtitles": {
+      "text": [
+        "srt",
+        "vtt"
+      ],
+      "styled": [],
+      "bitmap": []
+    },
+    "embeddedAudioSwitching": true
+  },
+  "android": {
+    "version": 1,
+    "evidence": "declared",
+    "client": {
+      "family": "android",
+      "platform": "android",
+      "os": "android",
+      "engine": "exoplayer"
+    },
+    "display": {
+      "dynamicRanges": [
+        "sdr"
+      ]
+    },
+    "video": [
+      {
+        "codec": "h264",
+        "evidence": "declared",
+        "bitDepths": [
+          8
+        ],
+        "maxWidth": 1920,
+        "maxHeight": 1080,
+        "maxFrameRate": 60,
+        "dynamicRanges": [
+          "sdr"
+        ]
+      },
+      {
+        "codec": "hevc",
+        "evidence": "declared",
+        "bitDepths": [
+          8
+        ],
+        "maxWidth": 1920,
+        "maxHeight": 1080,
+        "dynamicRanges": [
+          "sdr"
+        ]
+      },
+      {
+        "codec": "vp9",
+        "evidence": "declared",
+        "bitDepths": [
+          8
+        ],
+        "maxWidth": 1920,
+        "maxHeight": 1080,
+        "dynamicRanges": [
+          "sdr"
+        ]
+      },
+      {
+        "codec": "vp8",
+        "evidence": "declared",
+        "bitDepths": [
+          8
+        ]
+      },
+      {
+        "codec": "mpeg4",
+        "evidence": "declared",
+        "bitDepths": [
+          8
+        ]
+      }
+    ],
+    "audio": [
+      {
+        "codec": "aac",
+        "maxChannels": 6,
+        "evidence": "declared"
+      },
+      {
+        "codec": "mp3",
+        "maxChannels": 2,
+        "evidence": "declared"
+      },
+      {
+        "codec": "opus",
+        "maxChannels": 6,
+        "evidence": "declared"
+      },
+      {
+        "codec": "vorbis",
+        "maxChannels": 6,
+        "evidence": "declared"
+      },
+      {
+        "codec": "flac",
+        "maxChannels": 8,
+        "evidence": "declared"
+      },
+      {
+        "codec": "pcm",
+        "maxChannels": 8,
+        "evidence": "declared"
+      }
+    ],
+    "audioOutput": {
+      "maxChannels": 2
+    },
+    "transports": [
+      {
+        "transport": "direct",
+        "containers": [
+          "mp4",
+          "m4v",
+          "mov",
+          "mkv",
+          "webm",
+          "ts",
+          "m2ts"
+        ],
+        "video": [
+          "h264",
+          "hevc",
+          "vp9",
+          "vp8",
+          "mpeg4"
+        ],
+        "audio": [
+          "aac",
+          "mp3",
+          "opus",
+          "vorbis",
+          "flac",
+          "pcm"
+        ]
+      },
+      {
+        "transport": "direct",
+        "containers": [
+          "mp3",
+          "m4a",
+          "m4b",
+          "aac",
+          "flac",
+          "ogg",
+          "opus",
+          "wav"
+        ],
+        "video": [],
+        "audio": [
+          "aac",
+          "mp3",
+          "opus",
+          "vorbis",
+          "flac",
+          "pcm"
+        ]
+      },
+      {
+        "transport": "hls_ts",
+        "containers": [
+          "mpegts"
+        ],
+        "video": [
+          "h264",
+          "hevc"
+        ],
+        "audio": [
+          "aac",
+          "mp3",
+          "ac3",
+          "eac3"
+        ]
+      },
+      {
+        "transport": "hls_fmp4",
+        "containers": [
+          "fmp4"
+        ],
+        "video": [
+          "h264",
+          "hevc",
+          "vp9",
+          "av1"
+        ],
+        "audio": [
+          "aac",
+          "mp3",
+          "ac3",
+          "eac3",
+          "flac",
+          "opus"
+        ]
+      }
+    ],
+    "subtitles": {
+      "text": [
+        "srt",
+        "vtt"
+      ],
+      "styled": [
+        "ass",
+        "ssa"
+      ],
+      "bitmap": [
+        "pgs"
+      ]
+    },
+    "embeddedAudioSwitching": true
+  },
+  "androidtv": {
+    "version": 1,
+    "evidence": "declared",
+    "client": {
+      "family": "androidtv",
+      "platform": "android",
+      "os": "android",
+      "engine": "exoplayer"
+    },
+    "display": {
+      "dynamicRanges": [
+        "sdr"
+      ]
+    },
+    "video": [
+      {
+        "codec": "h264",
+        "evidence": "declared",
+        "bitDepths": [
+          8
+        ],
+        "maxWidth": 1920,
+        "maxHeight": 1080,
+        "maxFrameRate": 60,
+        "dynamicRanges": [
+          "sdr"
+        ]
+      },
+      {
+        "codec": "hevc",
+        "evidence": "declared",
+        "bitDepths": [
+          8
+        ],
+        "maxWidth": 1920,
+        "maxHeight": 1080,
+        "dynamicRanges": [
+          "sdr"
+        ]
+      },
+      {
+        "codec": "vp9",
+        "evidence": "declared",
+        "bitDepths": [
+          8
+        ],
+        "maxWidth": 1920,
+        "maxHeight": 1080,
+        "dynamicRanges": [
+          "sdr"
+        ]
+      },
+      {
+        "codec": "vp8",
+        "evidence": "declared",
+        "bitDepths": [
+          8
+        ]
+      },
+      {
+        "codec": "mpeg4",
+        "evidence": "declared",
+        "bitDepths": [
+          8
+        ]
+      }
+    ],
+    "audio": [
+      {
+        "codec": "aac",
+        "maxChannels": 6,
+        "evidence": "declared"
+      },
+      {
+        "codec": "mp3",
+        "maxChannels": 2,
+        "evidence": "declared"
+      },
+      {
+        "codec": "opus",
+        "maxChannels": 6,
+        "evidence": "declared"
+      },
+      {
+        "codec": "vorbis",
+        "maxChannels": 6,
+        "evidence": "declared"
+      },
+      {
+        "codec": "flac",
+        "maxChannels": 8,
+        "evidence": "declared"
+      },
+      {
+        "codec": "pcm",
+        "maxChannels": 8,
+        "evidence": "declared"
+      }
+    ],
+    "audioOutput": {
+      "maxChannels": 2
+    },
+    "transports": [
+      {
+        "transport": "direct",
+        "containers": [
+          "mp4",
+          "m4v",
+          "mov",
+          "mkv",
+          "webm",
+          "ts",
+          "m2ts"
+        ],
+        "video": [
+          "h264",
+          "hevc",
+          "vp9",
+          "vp8",
+          "mpeg4"
+        ],
+        "audio": [
+          "aac",
+          "mp3",
+          "opus",
+          "vorbis",
+          "flac",
+          "pcm"
+        ]
+      },
+      {
+        "transport": "direct",
+        "containers": [
+          "mp3",
+          "m4a",
+          "m4b",
+          "aac",
+          "flac",
+          "ogg",
+          "opus",
+          "wav"
+        ],
+        "video": [],
+        "audio": [
+          "aac",
+          "mp3",
+          "opus",
+          "vorbis",
+          "flac",
+          "pcm"
+        ]
+      },
+      {
+        "transport": "hls_ts",
+        "containers": [
+          "mpegts"
+        ],
+        "video": [
+          "h264",
+          "hevc"
+        ],
+        "audio": [
+          "aac",
+          "mp3",
+          "ac3",
+          "eac3"
+        ]
+      },
+      {
+        "transport": "hls_fmp4",
+        "containers": [
+          "fmp4"
+        ],
+        "video": [
+          "h264",
+          "hevc",
+          "vp9",
+          "av1"
+        ],
+        "audio": [
+          "aac",
+          "mp3",
+          "ac3",
+          "eac3",
+          "flac",
+          "opus"
+        ]
+      }
+    ],
+    "subtitles": {
+      "text": [
+        "srt",
+        "vtt"
+      ],
+      "styled": [
+        "ass",
+        "ssa"
+      ],
+      "bitmap": [
+        "pgs"
+      ]
+    },
+    "embeddedAudioSwitching": true
+  },
+  "firetv": {
+    "version": 1,
+    "evidence": "declared",
+    "client": {
+      "family": "firetv",
+      "platform": "android",
+      "os": "android",
+      "engine": "exoplayer"
+    },
+    "display": {
+      "dynamicRanges": [
+        "sdr"
+      ]
+    },
+    "video": [
+      {
+        "codec": "h264",
+        "evidence": "declared",
+        "bitDepths": [
+          8
+        ],
+        "maxWidth": 1920,
+        "maxHeight": 1080,
+        "maxFrameRate": 60,
+        "dynamicRanges": [
+          "sdr"
+        ]
+      },
+      {
+        "codec": "hevc",
+        "evidence": "declared",
+        "bitDepths": [
+          8
+        ],
+        "maxWidth": 1920,
+        "maxHeight": 1080,
+        "dynamicRanges": [
+          "sdr"
+        ]
+      },
+      {
+        "codec": "vp9",
+        "evidence": "declared",
+        "bitDepths": [
+          8
+        ],
+        "maxWidth": 1920,
+        "maxHeight": 1080,
+        "dynamicRanges": [
+          "sdr"
+        ]
+      },
+      {
+        "codec": "vp8",
+        "evidence": "declared",
+        "bitDepths": [
+          8
+        ]
+      },
+      {
+        "codec": "mpeg4",
+        "evidence": "declared",
+        "bitDepths": [
+          8
+        ]
+      }
+    ],
+    "audio": [
+      {
+        "codec": "aac",
+        "maxChannels": 6,
+        "evidence": "declared"
+      },
+      {
+        "codec": "mp3",
+        "maxChannels": 2,
+        "evidence": "declared"
+      },
+      {
+        "codec": "opus",
+        "maxChannels": 6,
+        "evidence": "declared"
+      },
+      {
+        "codec": "vorbis",
+        "maxChannels": 6,
+        "evidence": "declared"
+      },
+      {
+        "codec": "flac",
+        "maxChannels": 8,
+        "evidence": "declared"
+      },
+      {
+        "codec": "pcm",
+        "maxChannels": 8,
+        "evidence": "declared"
+      }
+    ],
+    "audioOutput": {
+      "maxChannels": 2
+    },
+    "transports": [
+      {
+        "transport": "direct",
+        "containers": [
+          "mp4",
+          "m4v",
+          "mov",
+          "mkv",
+          "webm",
+          "ts",
+          "m2ts"
+        ],
+        "video": [
+          "h264",
+          "hevc",
+          "vp9",
+          "vp8",
+          "mpeg4"
+        ],
+        "audio": [
+          "aac",
+          "mp3",
+          "opus",
+          "vorbis",
+          "flac",
+          "pcm"
+        ]
+      },
+      {
+        "transport": "direct",
+        "containers": [
+          "mp3",
+          "m4a",
+          "m4b",
+          "aac",
+          "flac",
+          "ogg",
+          "opus",
+          "wav"
+        ],
+        "video": [],
+        "audio": [
+          "aac",
+          "mp3",
+          "opus",
+          "vorbis",
+          "flac",
+          "pcm"
+        ]
+      },
+      {
+        "transport": "hls_ts",
+        "containers": [
+          "mpegts"
+        ],
+        "video": [
+          "h264",
+          "hevc"
+        ],
+        "audio": [
+          "aac",
+          "mp3",
+          "ac3",
+          "eac3"
+        ]
+      },
+      {
+        "transport": "hls_fmp4",
+        "containers": [
+          "fmp4"
+        ],
+        "video": [
+          "h264",
+          "hevc",
+          "vp9",
+          "av1"
+        ],
+        "audio": [
+          "aac",
+          "mp3",
+          "ac3",
+          "eac3",
+          "flac",
+          "opus"
+        ]
+      }
+    ],
+    "subtitles": {
+      "text": [
+        "srt",
+        "vtt"
+      ],
+      "styled": [
+        "ass",
+        "ssa"
+      ],
+      "bitmap": [
+        "pgs"
+      ]
+    },
+    "embeddedAudioSwitching": true
+  },
+  "vega": {
+    "version": 1,
+    "evidence": "declared",
+    "client": {
+      "family": "vega",
+      "engine": "w3cmedia",
+      "app": "portico-vega",
+      "platform": "vega",
+      "os": "vega"
+    },
+    "display": {
+      "dynamicRanges": [
+        "sdr"
+      ]
+    },
+    "video": [
+      {
+        "codec": "h264",
+        "evidence": "declared",
+        "bitDepths": [
+          8
+        ],
+        "maxWidth": 4096,
+        "maxHeight": 2160,
+        "maxFrameRate": 60,
+        "dynamicRanges": [
+          "sdr"
+        ]
+      },
+      {
+        "codec": "hevc",
+        "evidence": "declared",
+        "bitDepths": [
+          8,
+          10
+        ],
+        "maxWidth": 3840,
+        "maxHeight": 2160,
+        "maxFrameRate": 60,
+        "dynamicRanges": [
+          "sdr"
+        ]
+      }
+    ],
+    "audio": [
+      {
+        "codec": "aac",
+        "maxChannels": 2,
+        "evidence": "declared"
+      },
+      {
+        "codec": "mp3",
+        "maxChannels": 2,
+        "evidence": "declared"
+      },
+      {
+        "codec": "ac3",
+        "maxChannels": 6,
+        "evidence": "declared",
+        "passthrough": true
+      },
+      {
+        "codec": "eac3",
+        "maxChannels": 8,
+        "evidence": "declared",
+        "passthrough": true,
+        "objectAudio": [
+          "atmos"
+        ]
+      }
+    ],
+    "audioOutput": {
+      "maxChannels": 2
+    },
+    "transports": [
+      {
+        "transport": "direct",
+        "containers": [
+          "mp4",
+          "m4v",
+          "mov"
+        ],
+        "video": [
+          "h264",
+          "hevc"
+        ],
+        "audio": [
+          "aac",
+          "mp3",
+          "ac3",
+          "eac3"
+        ]
+      },
+      {
+        "transport": "direct",
+        "containers": [
+          "mp3",
+          "m4a",
+          "m4b",
+          "aac"
+        ],
+        "video": [],
+        "audio": [
+          "aac",
+          "mp3"
+        ]
+      },
+      {
+        "transport": "hls_ts",
+        "containers": [
+          "mpegts"
+        ],
+        "video": [
+          "h264"
+        ],
+        "audio": [
+          "aac",
+          "mp3",
+          "ac3",
+          "eac3"
+        ]
+      },
+      {
+        "transport": "hls_fmp4",
+        "containers": [
+          "fmp4"
+        ],
+        "video": [
+          "h264",
+          "hevc"
+        ],
+        "audio": [
+          "aac",
+          "mp3",
+          "ac3",
+          "eac3"
+        ]
+      }
+    ],
+    "subtitles": {
+      "text": [
+        "srt",
+        "vtt"
+      ],
+      "styled": [],
+      "bitmap": []
+    }
+  },
+  "webos": {
+    "version": 1,
+    "evidence": "declared",
+    "client": {
+      "family": "webos",
+      "platform": "webos",
+      "os": "webos",
+      "engine": "webos-media"
+    },
+    "display": {
+      "dynamicRanges": [
+        "sdr"
+      ]
+    },
+    "video": [
+      {
+        "codec": "h264",
+        "evidence": "declared",
+        "bitDepths": [
+          8
+        ],
+        "maxWidth": 3840,
+        "maxHeight": 2160,
+        "maxFrameRate": 60,
+        "dynamicRanges": [
+          "sdr"
+        ],
+        "interlaced": true
+      },
+      {
+        "codec": "hevc",
+        "evidence": "declared",
+        "bitDepths": [
+          8,
+          10
+        ],
+        "maxWidth": 3840,
+        "maxHeight": 2160,
+        "maxFrameRate": 60,
+        "dynamicRanges": [
+          "sdr"
+        ]
+      },
+      {
+        "codec": "vp9",
+        "evidence": "declared",
+        "bitDepths": [
+          8,
+          10
+        ],
+        "maxWidth": 3840,
+        "maxHeight": 2160,
+        "dynamicRanges": [
+          "sdr"
+        ]
+      },
+      {
+        "codec": "mpeg2video",
+        "evidence": "declared",
+        "bitDepths": [
+          8
+        ],
+        "maxWidth": 1920,
+        "maxHeight": 1080,
+        "interlaced": true
+      },
+      {
+        "codec": "mpeg4",
+        "evidence": "declared",
+        "bitDepths": [
+          8
+        ],
+        "maxWidth": 1920,
+        "maxHeight": 1080
+      }
+    ],
+    "audio": [
+      {
+        "codec": "aac",
+        "maxChannels": 6,
+        "evidence": "declared"
+      },
+      {
+        "codec": "mp3",
+        "maxChannels": 2,
+        "evidence": "declared"
+      },
+      {
+        "codec": "ac3",
+        "maxChannels": 6,
+        "evidence": "declared",
+        "passthrough": true
+      },
+      {
+        "codec": "eac3",
+        "maxChannels": 8,
+        "evidence": "declared",
+        "passthrough": true,
+        "objectAudio": [
+          "atmos"
+        ]
+      },
+      {
+        "codec": "pcm",
+        "maxChannels": 6,
+        "evidence": "declared"
+      },
+      {
+        "codec": "vorbis",
+        "maxChannels": 2,
+        "evidence": "declared"
+      },
+      {
+        "codec": "opus",
+        "maxChannels": 2,
+        "evidence": "declared"
+      },
+      {
+        "codec": "flac",
+        "maxChannels": 2,
+        "evidence": "declared"
+      }
+    ],
+    "audioOutput": {
+      "maxChannels": 2
+    },
+    "transports": [
+      {
+        "transport": "direct",
+        "containers": [
+          "mp4",
+          "m4v",
+          "mov",
+          "mkv",
+          "ts",
+          "m2ts",
+          "webm",
+          "avi"
+        ],
+        "video": [
+          "h264",
+          "hevc",
+          "vp9",
+          "mpeg2video",
+          "mpeg4"
+        ],
+        "audio": [
+          "aac",
+          "mp3",
+          "ac3",
+          "eac3",
+          "pcm",
+          "vorbis",
+          "opus",
+          "flac"
+        ]
+      },
+      {
+        "transport": "direct",
+        "containers": [
+          "mp3",
+          "m4a",
+          "aac",
+          "flac",
+          "ogg",
+          "wav"
+        ],
+        "video": [],
+        "audio": [
+          "aac",
+          "mp3",
+          "flac",
+          "vorbis",
+          "pcm"
+        ]
+      },
+      {
+        "transport": "hls_ts",
+        "containers": [
+          "mpegts"
+        ],
+        "video": [
+          "h264",
+          "hevc"
+        ],
+        "audio": [
+          "aac",
+          "mp3",
+          "ac3",
+          "eac3"
+        ]
+      },
+      {
+        "transport": "hls_fmp4",
+        "containers": [
+          "fmp4"
+        ],
+        "video": [
+          "h264",
+          "hevc"
+        ],
+        "audio": [
+          "aac",
+          "ac3",
+          "eac3"
+        ]
+      }
+    ],
+    "subtitles": {
+      "text": [
+        "srt",
+        "vtt"
+      ],
+      "styled": [],
+      "bitmap": []
+    }
+  },
+  "tizen": {
+    "version": 1,
+    "evidence": "declared",
+    "client": {
+      "family": "tizen",
+      "platform": "tizen",
+      "os": "tizen",
+      "engine": "avplay"
+    },
+    "display": {
+      "dynamicRanges": [
+        "sdr"
+      ]
+    },
+    "video": [
+      {
+        "codec": "h264",
+        "evidence": "declared",
+        "bitDepths": [
+          8
+        ],
+        "maxWidth": 3840,
+        "maxHeight": 2160,
+        "maxFrameRate": 60,
+        "dynamicRanges": [
+          "sdr"
+        ],
+        "interlaced": true
+      },
+      {
+        "codec": "hevc",
+        "evidence": "declared",
+        "bitDepths": [
+          8,
+          10
+        ],
+        "maxWidth": 3840,
+        "maxHeight": 2160,
+        "maxFrameRate": 60,
+        "dynamicRanges": [
+          "sdr"
+        ]
+      },
+      {
+        "codec": "vp9",
+        "evidence": "declared",
+        "bitDepths": [
+          8,
+          10
+        ],
+        "maxWidth": 3840,
+        "maxHeight": 2160,
+        "dynamicRanges": [
+          "sdr"
+        ]
+      },
+      {
+        "codec": "mpeg2video",
+        "evidence": "declared",
+        "bitDepths": [
+          8
+        ],
+        "maxWidth": 1920,
+        "maxHeight": 1080,
+        "interlaced": true
+      },
+      {
+        "codec": "mpeg4",
+        "evidence": "declared",
+        "bitDepths": [
+          8
+        ],
+        "maxWidth": 1920,
+        "maxHeight": 1080
+      }
+    ],
+    "audio": [
+      {
+        "codec": "aac",
+        "maxChannels": 6,
+        "evidence": "declared"
+      },
+      {
+        "codec": "mp3",
+        "maxChannels": 2,
+        "evidence": "declared"
+      },
+      {
+        "codec": "ac3",
+        "maxChannels": 6,
+        "evidence": "declared",
+        "passthrough": true
+      },
+      {
+        "codec": "eac3",
+        "maxChannels": 8,
+        "evidence": "declared",
+        "passthrough": true,
+        "objectAudio": [
+          "atmos"
+        ]
+      },
+      {
+        "codec": "pcm",
+        "maxChannels": 6,
+        "evidence": "declared"
+      },
+      {
+        "codec": "vorbis",
+        "maxChannels": 2,
+        "evidence": "declared"
+      },
+      {
+        "codec": "opus",
+        "maxChannels": 2,
+        "evidence": "declared"
+      },
+      {
+        "codec": "flac",
+        "maxChannels": 2,
+        "evidence": "declared"
+      }
+    ],
+    "audioOutput": {
+      "maxChannels": 2
+    },
+    "transports": [
+      {
+        "transport": "direct",
+        "containers": [
+          "mp4",
+          "m4v",
+          "mov",
+          "mkv",
+          "ts",
+          "m2ts",
+          "webm",
+          "avi"
+        ],
+        "video": [
+          "h264",
+          "hevc",
+          "vp9",
+          "mpeg2video",
+          "mpeg4"
+        ],
+        "audio": [
+          "aac",
+          "mp3",
+          "ac3",
+          "eac3",
+          "pcm",
+          "vorbis",
+          "opus",
+          "flac"
+        ]
+      },
+      {
+        "transport": "direct",
+        "containers": [
+          "mp3",
+          "m4a",
+          "aac",
+          "flac",
+          "ogg",
+          "wav"
+        ],
+        "video": [],
+        "audio": [
+          "aac",
+          "mp3",
+          "flac",
+          "vorbis",
+          "pcm"
+        ]
+      },
+      {
+        "transport": "hls_ts",
+        "containers": [
+          "mpegts"
+        ],
+        "video": [
+          "h264",
+          "hevc"
+        ],
+        "audio": [
+          "aac",
+          "mp3",
+          "ac3",
+          "eac3"
+        ]
+      },
+      {
+        "transport": "hls_fmp4",
+        "containers": [
+          "fmp4"
+        ],
+        "video": [
+          "h264",
+          "hevc"
+        ],
+        "audio": [
+          "aac",
+          "ac3",
+          "eac3"
+        ]
+      }
+    ],
+    "subtitles": {
+      "text": [
+        "srt",
+        "vtt"
+      ],
+      "styled": [],
+      "bitmap": []
+    }
+  },
+  "chromecast": {
+    "version": 1,
+    "evidence": "declared",
+    "client": {
+      "family": "cast",
+      "platform": "cast",
+      "model": "chromecast",
+      "engine": "caf-shaka",
+      "app": "portico-cast"
+    },
+    "display": {
+      "width": 1920,
+      "height": 1080,
+      "dynamicRanges": [
+        "sdr"
+      ],
+      "maxFrameRate": 30
+    },
+    "video": [
+      {
+        "codec": "h264",
+        "evidence": "declared",
+        "bitDepths": [
+          8
+        ],
+        "maxWidth": 1920,
+        "maxHeight": 1080,
+        "maxLevel": 41,
+        "maxFrameRate": 30,
+        "dynamicRanges": [
+          "sdr"
+        ]
+      },
+      {
+        "codec": "vp8",
+        "evidence": "declared",
+        "bitDepths": [
+          8
+        ],
+        "maxWidth": 1920,
+        "maxHeight": 1080
+      }
+    ],
+    "audio": [
+      {
+        "codec": "aac",
+        "maxChannels": 2,
+        "evidence": "declared"
+      },
+      {
+        "codec": "mp3",
+        "maxChannels": 2,
+        "evidence": "declared"
+      },
+      {
+        "codec": "opus",
+        "maxChannels": 2,
+        "evidence": "declared"
+      },
+      {
+        "codec": "vorbis",
+        "maxChannels": 2,
+        "evidence": "declared"
+      },
+      {
+        "codec": "flac",
+        "maxChannels": 2,
+        "evidence": "declared"
+      }
+    ],
+    "audioOutput": {
+      "route": "hdmi",
+      "maxChannels": 2
+    },
+    "transports": [
+      {
+        "transport": "direct",
+        "containers": [
+          "mp4",
+          "m4v"
+        ],
+        "video": [
+          "h264"
+        ],
+        "audio": [
+          "aac",
+          "mp3"
+        ]
+      },
+      {
+        "transport": "direct",
+        "containers": [
+          "webm"
+        ],
+        "video": [
+          "vp8"
+        ],
+        "audio": [
+          "opus",
+          "vorbis"
+        ]
+      },
+      {
+        "transport": "direct",
+        "containers": [
+          "mp3",
+          "m4a",
+          "aac",
+          "flac",
+          "ogg",
+          "wav"
+        ],
+        "video": [],
+        "audio": [
+          "aac",
+          "mp3",
+          "opus",
+          "vorbis",
+          "flac"
+        ]
+      },
+      {
+        "transport": "hls_ts",
+        "containers": [
+          "mpegts"
+        ],
+        "video": [
+          "h264"
+        ],
+        "audio": [
+          "aac",
+          "mp3"
+        ]
+      },
+      {
+        "transport": "hls_fmp4",
+        "containers": [
+          "fmp4"
+        ],
+        "video": [
+          "h264"
+        ],
+        "audio": [
+          "aac",
+          "mp3"
+        ]
+      }
+    ],
+    "subtitles": {
+      "text": [
+        "vtt",
+        "srt"
+      ],
+      "styled": [],
+      "bitmap": []
+    }
+  },
+  "ultra": {
+    "version": 1,
+    "evidence": "declared",
+    "client": {
+      "family": "cast",
+      "platform": "cast",
+      "model": "chromecast_ultra",
+      "engine": "caf-shaka",
+      "app": "portico-cast"
+    },
+    "display": {
+      "width": 3840,
+      "height": 2160,
+      "dynamicRanges": [
+        "sdr",
+        "hdr10",
+        "hlg"
+      ],
+      "maxFrameRate": 60
+    },
+    "video": [
+      {
+        "codec": "h264",
+        "evidence": "declared",
+        "bitDepths": [
+          8
+        ],
+        "maxWidth": 3840,
+        "maxHeight": 2160,
+        "maxLevel": 51,
+        "maxFrameRate": 60,
+        "dynamicRanges": [
+          "sdr"
+        ]
+      },
+      {
+        "codec": "vp8",
+        "evidence": "declared",
+        "bitDepths": [
+          8
+        ],
+        "maxWidth": 3840,
+        "maxHeight": 2160
+      },
+      {
+        "codec": "hevc",
+        "evidence": "declared",
+        "bitDepths": [
+          8,
+          10
+        ],
+        "maxWidth": 3840,
+        "maxHeight": 2160,
+        "maxLevel": 153,
+        "maxFrameRate": 60,
+        "dynamicRanges": [
+          "sdr",
+          "hdr10",
+          "hlg"
+        ],
+        "dolbyVisionProfiles": []
+      },
+      {
+        "codec": "vp9",
+        "evidence": "declared",
+        "bitDepths": [
+          8,
+          10
+        ],
+        "maxWidth": 3840,
+        "maxHeight": 2160,
+        "dynamicRanges": [
+          "sdr",
+          "hdr10",
+          "hlg"
+        ]
+      }
+    ],
+    "audio": [
+      {
+        "codec": "aac",
+        "maxChannels": 2,
+        "evidence": "declared"
+      },
+      {
+        "codec": "mp3",
+        "maxChannels": 2,
+        "evidence": "declared"
+      },
+      {
+        "codec": "opus",
+        "maxChannels": 2,
+        "evidence": "declared"
+      },
+      {
+        "codec": "vorbis",
+        "maxChannels": 2,
+        "evidence": "declared"
+      },
+      {
+        "codec": "flac",
+        "maxChannels": 2,
+        "evidence": "declared"
+      }
+    ],
+    "audioOutput": {
+      "route": "hdmi",
+      "maxChannels": 2
+    },
+    "transports": [
+      {
+        "transport": "direct",
+        "containers": [
+          "mp4",
+          "m4v"
+        ],
+        "video": [
+          "h264",
+          "hevc"
+        ],
+        "audio": [
+          "aac",
+          "mp3"
+        ]
+      },
+      {
+        "transport": "direct",
+        "containers": [
+          "webm"
+        ],
+        "video": [
+          "vp8",
+          "vp9"
+        ],
+        "audio": [
+          "opus",
+          "vorbis"
+        ]
+      },
+      {
+        "transport": "direct",
+        "containers": [
+          "mp3",
+          "m4a",
+          "aac",
+          "flac",
+          "ogg",
+          "wav"
+        ],
+        "video": [],
+        "audio": [
+          "aac",
+          "mp3",
+          "opus",
+          "vorbis",
+          "flac"
+        ]
+      },
+      {
+        "transport": "hls_ts",
+        "containers": [
+          "mpegts"
+        ],
+        "video": [
+          "h264"
+        ],
+        "audio": [
+          "aac",
+          "mp3"
+        ]
+      },
+      {
+        "transport": "hls_fmp4",
+        "containers": [
+          "fmp4"
+        ],
+        "video": [
+          "h264",
+          "hevc"
+        ],
+        "audio": [
+          "aac",
+          "mp3"
+        ]
+      }
+    ],
+    "subtitles": {
+      "text": [
+        "vtt",
+        "srt"
+      ],
+      "styled": [],
+      "bitmap": []
+    }
+  },
+  "google_tv": {
+    "version": 1,
+    "evidence": "declared",
+    "client": {
+      "family": "cast",
+      "platform": "cast",
+      "model": "google_tv_4k",
+      "engine": "caf-shaka",
+      "app": "portico-cast"
+    },
+    "display": {
+      "width": 3840,
+      "height": 2160,
+      "dynamicRanges": [
+        "sdr",
+        "hdr10",
+        "hlg",
+        "hdr10plus",
+        "dolby_vision"
+      ],
+      "maxFrameRate": 60
+    },
+    "video": [
+      {
+        "codec": "h264",
+        "evidence": "declared",
+        "bitDepths": [
+          8
+        ],
+        "maxWidth": 3840,
+        "maxHeight": 2160,
+        "maxLevel": 51,
+        "maxFrameRate": 60,
+        "dynamicRanges": [
+          "sdr"
+        ]
+      },
+      {
+        "codec": "vp8",
+        "evidence": "declared",
+        "bitDepths": [
+          8
+        ],
+        "maxWidth": 3840,
+        "maxHeight": 2160
+      },
+      {
+        "codec": "hevc",
+        "evidence": "declared",
+        "bitDepths": [
+          8,
+          10
+        ],
+        "maxWidth": 3840,
+        "maxHeight": 2160,
+        "maxLevel": 153,
+        "maxFrameRate": 60,
+        "dynamicRanges": [
+          "sdr",
+          "hdr10",
+          "hlg",
+          "hdr10plus",
+          "dolby_vision"
+        ],
+        "dolbyVisionProfiles": [
+          5,
+          8
+        ]
+      },
+      {
+        "codec": "vp9",
+        "evidence": "declared",
+        "bitDepths": [
+          8,
+          10
+        ],
+        "maxWidth": 3840,
+        "maxHeight": 2160,
+        "dynamicRanges": [
+          "sdr",
+          "hdr10",
+          "hlg"
+        ]
+      },
+      {
+        "codec": "av1",
+        "evidence": "declared",
+        "bitDepths": [
+          8,
+          10
+        ],
+        "maxWidth": 3840,
+        "maxHeight": 2160,
+        "dynamicRanges": [
+          "sdr",
+          "hdr10",
+          "hlg",
+          "hdr10plus"
+        ]
+      }
+    ],
+    "audio": [
+      {
+        "codec": "aac",
+        "maxChannels": 2,
+        "evidence": "declared"
+      },
+      {
+        "codec": "mp3",
+        "maxChannels": 2,
+        "evidence": "declared"
+      },
+      {
+        "codec": "opus",
+        "maxChannels": 2,
+        "evidence": "declared"
+      },
+      {
+        "codec": "vorbis",
+        "maxChannels": 2,
+        "evidence": "declared"
+      },
+      {
+        "codec": "flac",
+        "maxChannels": 2,
+        "evidence": "declared"
+      }
+    ],
+    "audioOutput": {
+      "route": "hdmi",
+      "maxChannels": 2
+    },
+    "transports": [
+      {
+        "transport": "direct",
+        "containers": [
+          "mp4",
+          "m4v"
+        ],
+        "video": [
+          "h264",
+          "hevc",
+          "av1"
+        ],
+        "audio": [
+          "aac",
+          "mp3"
+        ]
+      },
+      {
+        "transport": "direct",
+        "containers": [
+          "webm"
+        ],
+        "video": [
+          "vp8",
+          "vp9",
+          "av1"
+        ],
+        "audio": [
+          "opus",
+          "vorbis"
+        ]
+      },
+      {
+        "transport": "direct",
+        "containers": [
+          "mp3",
+          "m4a",
+          "aac",
+          "flac",
+          "ogg",
+          "wav"
+        ],
+        "video": [],
+        "audio": [
+          "aac",
+          "mp3",
+          "opus",
+          "vorbis",
+          "flac"
+        ]
+      },
+      {
+        "transport": "hls_ts",
+        "containers": [
+          "mpegts"
+        ],
+        "video": [
+          "h264"
+        ],
+        "audio": [
+          "aac",
+          "mp3"
+        ]
+      },
+      {
+        "transport": "hls_fmp4",
+        "containers": [
+          "fmp4"
+        ],
+        "video": [
+          "h264",
+          "hevc"
+        ],
+        "audio": [
+          "aac",
+          "mp3"
+        ]
+      }
+    ],
+    "subtitles": {
+      "text": [
+        "vtt",
+        "srt"
+      ],
+      "styled": [],
+      "bitmap": []
+    }
+  },
+  "chromium": {
+    "version": 1,
+    "evidence": "probed",
+    "client": {
+      "family": "web",
+      "engine": "chromium",
+      "app": "portico-web"
+    },
+    "display": {
+      "dynamicRanges": [
+        "sdr"
+      ],
+      "maxFrameRate": 60
+    },
+    "video": [
+      {
+        "codec": "h264",
+        "bitDepths": [
+          8
+        ],
+        "dynamicRanges": [
+          "sdr"
+        ],
+        "evidence": "probed",
+        "maxFrameRate": 60,
+        "maxWidth": 4096,
+        "maxHeight": 2160
+      },
+      {
+        "codec": "av1",
+        "bitDepths": [
+          8,
+          10
+        ],
+        "dynamicRanges": [
+          "sdr"
+        ],
+        "evidence": "probed",
+        "maxFrameRate": 60,
+        "maxWidth": 4096,
+        "maxHeight": 2160
+      },
+      {
+        "codec": "vp9",
+        "bitDepths": [
+          8,
+          10
+        ],
+        "dynamicRanges": [
+          "sdr"
+        ],
+        "evidence": "probed",
+        "maxFrameRate": 60,
+        "maxWidth": 4096,
+        "maxHeight": 2160
+      }
+    ],
+    "audio": [
+      {
+        "codec": "aac",
+        "maxChannels": 6,
+        "evidence": "probed"
+      },
+      {
+        "codec": "mp3",
+        "maxChannels": 2,
+        "evidence": "probed"
+      },
+      {
+        "codec": "flac",
+        "maxChannels": 6,
+        "evidence": "probed"
+      },
+      {
+        "codec": "opus",
+        "maxChannels": 6,
+        "evidence": "probed"
+      },
+      {
+        "codec": "vorbis",
+        "maxChannels": 6,
+        "evidence": "probed"
+      }
+    ],
+    "audioOutput": {
+      "maxChannels": 2
+    },
+    "transports": [
+      {
+        "transport": "direct",
+        "containers": [
+          "mp4",
+          "m4v",
+          "mov"
+        ],
+        "video": [
+          "h264",
+          "av1"
+        ],
+        "audio": [
+          "aac",
+          "mp3",
+          "flac",
+          "opus"
+        ]
+      },
+      {
+        "transport": "direct",
+        "containers": [
+          "webm"
+        ],
+        "video": [
+          "av1",
+          "vp9"
+        ],
+        "audio": [
+          "opus",
+          "vorbis"
+        ]
+      },
+      {
+        "transport": "direct",
+        "containers": [
+          "m4a",
+          "m4b",
+          "aac",
+          "mp3",
+          "flac",
+          "opus",
+          "ogg"
+        ],
+        "video": [],
+        "audio": [
+          "aac",
+          "mp3",
+          "flac",
+          "opus",
+          "vorbis"
+        ]
+      },
+      {
+        "transport": "hls_ts",
+        "containers": [
+          "mpegts"
+        ],
+        "video": [
+          "h264"
+        ],
+        "audio": [
+          "aac",
+          "mp3"
+        ]
+      },
+      {
+        "transport": "hls_fmp4",
+        "containers": [
+          "fmp4"
+        ],
+        "video": [
+          "h264",
+          "av1"
+        ],
+        "audio": [
+          "aac",
+          "mp3",
+          "flac",
+          "opus"
+        ]
+      }
+    ],
+    "subtitles": {
+      "text": [
+        "srt",
+        "vtt"
+      ],
+      "styled": [],
+      "bitmap": []
+    },
+    "embeddedAudioSwitching": false
+  },
+  "safari_hdr": {
+    "version": 1,
+    "evidence": "probed",
+    "client": {
+      "family": "web",
+      "engine": "safari",
+      "app": "portico-web"
+    },
+    "display": {
+      "dynamicRanges": [
+        "sdr",
+        "hdr10",
+        "hlg"
+      ],
+      "maxFrameRate": 60
+    },
+    "video": [
+      {
+        "codec": "h264",
+        "bitDepths": [
+          8
+        ],
+        "dynamicRanges": [
+          "sdr"
+        ],
+        "evidence": "probed",
+        "maxFrameRate": 60,
+        "maxWidth": 4096,
+        "maxHeight": 2160
+      },
+      {
+        "codec": "hevc",
+        "bitDepths": [
+          8,
+          10
+        ],
+        "dynamicRanges": [
+          "sdr",
+          "hdr10",
+          "hlg"
+        ],
+        "evidence": "probed",
+        "maxFrameRate": 60,
+        "maxWidth": 4096,
+        "maxHeight": 2160
+      }
+    ],
+    "audio": [
+      {
+        "codec": "aac",
+        "maxChannels": 6,
+        "evidence": "probed"
+      },
+      {
+        "codec": "mp3",
+        "maxChannels": 2,
+        "evidence": "probed"
+      },
+      {
+        "codec": "ac3",
+        "maxChannels": 6,
+        "evidence": "probed"
+      },
+      {
+        "codec": "eac3",
+        "maxChannels": 8,
+        "evidence": "probed",
+        "objectAudio": [
+          "atmos"
+        ]
+      },
+      {
+        "codec": "flac",
+        "maxChannels": 6,
+        "evidence": "probed"
+      },
+      {
+        "codec": "alac",
+        "maxChannels": 6,
+        "evidence": "probed"
+      }
+    ],
+    "audioOutput": {
+      "maxChannels": 6
+    },
+    "transports": [
+      {
+        "transport": "direct",
+        "containers": [
+          "mp4",
+          "m4v",
+          "mov"
+        ],
+        "video": [
+          "h264",
+          "hevc"
+        ],
+        "audio": [
+          "aac",
+          "mp3",
+          "ac3",
+          "eac3",
+          "flac",
+          "alac"
+        ]
+      },
+      {
+        "transport": "direct",
+        "containers": [
+          "m4a",
+          "m4b",
+          "aac",
+          "mp3",
+          "flac"
+        ],
+        "video": [],
+        "audio": [
+          "aac",
+          "mp3",
+          "flac",
+          "alac"
+        ]
+      },
+      {
+        "transport": "hls_ts",
+        "containers": [
+          "mpegts"
+        ],
+        "video": [
+          "h264"
+        ],
+        "audio": [
+          "aac",
+          "mp3",
+          "ac3",
+          "eac3"
+        ]
+      },
+      {
+        "transport": "hls_fmp4",
+        "containers": [
+          "fmp4"
+        ],
+        "video": [
+          "h264",
+          "hevc"
+        ],
+        "audio": [
+          "aac",
+          "mp3",
+          "ac3",
+          "eac3",
+          "flac",
+          "alac"
+        ]
+      }
+    ],
+    "subtitles": {
+      "text": [
+        "srt",
+        "vtt"
+      ],
+      "styled": [],
+      "bitmap": []
+    },
+    "embeddedAudioSwitching": true
+  },
+  "appletv_dv": {
+    "version": 1,
+    "evidence": "mixed",
+    "client": {
+      "family": "apple",
+      "platform": "tvos",
+      "os": "tvos",
+      "app": "portico-apple",
+      "engine": "avplayer"
+    },
+    "display": {
+      "width": 3840,
+      "height": 2160,
+      "maxFrameRate": 60,
+      "dynamicRanges": [
+        "sdr",
+        "hdr10",
+        "hlg",
+        "dolby_vision"
+      ]
+    },
+    "video": [
+      {
+        "codec": "h264",
+        "evidence": "declared",
+        "bitDepths": [
+          8
+        ],
+        "maxWidth": 4096,
+        "maxHeight": 2304,
+        "maxFrameRate": 60,
+        "dynamicRanges": [
+          "sdr"
+        ]
+      },
+      {
+        "codec": "hevc",
+        "evidence": "probed",
+        "bitDepths": [
+          8,
+          10
+        ],
+        "maxWidth": 4096,
+        "maxHeight": 2304,
+        "maxFrameRate": 60,
+        "dynamicRanges": [
+          "sdr",
+          "hdr10",
+          "hlg",
+          "dolby_vision"
+        ],
+        "dolbyVisionProfiles": [
+          5,
+          8
+        ]
+      }
+    ],
+    "audio": [
+      {
+        "codec": "aac",
+        "maxChannels": 8,
+        "evidence": "declared"
+      },
+      {
+        "codec": "mp3",
+        "maxChannels": 2,
+        "evidence": "declared"
+      },
+      {
+        "codec": "ac3",
+        "maxChannels": 6,
+        "evidence": "declared"
+      },
+      {
+        "codec": "eac3",
+        "maxChannels": 8,
+        "evidence": "declared",
+        "objectAudio": [
+          "atmos"
+        ]
+      },
+      {
+        "codec": "alac",
+        "maxChannels": 8,
+        "evidence": "declared"
+      },
+      {
+        "codec": "flac",
+        "maxChannels": 8,
+        "evidence": "declared"
+      },
+      {
+        "codec": "pcm",
+        "maxChannels": 8,
+        "evidence": "declared"
+      }
+    ],
+    "audioOutput": {
+      "maxChannels": 8,
+      "route": "hdmi",
+      "spatial": true
+    },
+    "transports": [
+      {
+        "transport": "direct",
+        "containers": [
+          "mp4",
+          "m4v",
+          "mov"
+        ],
+        "video": [
+          "h264",
+          "hevc"
+        ],
+        "audio": [
+          "aac",
+          "mp3",
+          "ac3",
+          "eac3",
+          "alac",
+          "flac"
+        ]
+      },
+      {
+        "transport": "direct",
+        "containers": [
+          "mp3",
+          "m4a",
+          "m4b",
+          "aac",
+          "flac",
+          "wav",
+          "aiff"
+        ],
+        "video": [],
+        "audio": [
+          "aac",
+          "mp3",
+          "alac",
+          "flac",
+          "pcm"
+        ]
+      },
+      {
+        "transport": "hls_ts",
+        "containers": [
+          "mpegts"
+        ],
+        "video": [
+          "h264"
+        ],
+        "audio": [
+          "aac",
+          "mp3",
+          "ac3",
+          "eac3"
+        ]
+      },
+      {
+        "transport": "hls_fmp4",
+        "containers": [
+          "fmp4"
+        ],
+        "video": [
+          "h264",
+          "hevc"
+        ],
+        "audio": [
+          "aac",
+          "mp3",
+          "ac3",
+          "eac3",
+          "alac",
+          "flac"
+        ]
+      }
+    ],
+    "subtitles": {
+      "text": [
+        "srt",
+        "vtt"
+      ],
+      "styled": [],
+      "bitmap": []
+    },
+    "embeddedAudioSwitching": true
+  },
+  "shield_avr": {
+    "version": 1,
+    "evidence": "mixed",
+    "client": {
+      "family": "androidtv",
+      "platform": "android",
+      "os": "android",
+      "engine": "exoplayer"
+    },
+    "display": {
+      "dynamicRanges": [
+        "sdr",
+        "hdr10",
+        "dolby_vision"
+      ]
+    },
+    "video": [
+      {
+        "codec": "h264",
+        "maxLevel": 52,
+        "bitDepths": [
+          8
+        ],
+        "maxWidth": 3840,
+        "maxHeight": 2160,
+        "maxFrameRate": 60,
+        "dynamicRanges": [
+          "sdr"
+        ],
+        "evidence": "probed"
+      },
+      {
+        "codec": "hevc",
+        "bitDepths": [
+          8,
+          10
+        ],
+        "maxWidth": 3840,
+        "maxHeight": 2160,
+        "maxFrameRate": 60,
+        "dynamicRanges": [
+          "sdr",
+          "hdr10",
+          "dolby_vision"
+        ],
+        "dolbyVisionProfiles": [
+          5,
+          8
+        ],
+        "evidence": "probed"
+      },
+      {
+        "codec": "vp9",
+        "bitDepths": [
+          8,
+          10
+        ],
+        "maxWidth": 3840,
+        "maxHeight": 2160,
+        "maxFrameRate": 60,
+        "dynamicRanges": [
+          "sdr"
+        ],
+        "evidence": "probed"
+      },
+      {
+        "codec": "mpeg2video",
+        "bitDepths": [
+          8
+        ],
+        "maxWidth": 1920,
+        "maxHeight": 1080,
+        "maxFrameRate": 60,
+        "dynamicRanges": [
+          "sdr"
+        ],
+        "evidence": "probed"
+      },
+      {
+        "codec": "vc1",
+        "bitDepths": [
+          8
+        ],
+        "maxWidth": 1920,
+        "maxHeight": 1080,
+        "maxFrameRate": 60,
+        "dynamicRanges": [
+          "sdr"
+        ],
+        "evidence": "probed"
+      }
+    ],
+    "audio": [
+      {
+        "codec": "aac",
+        "maxChannels": 6,
+        "evidence": "declared"
+      },
+      {
+        "codec": "mp3",
+        "maxChannels": 2,
+        "evidence": "declared"
+      },
+      {
+        "codec": "opus",
+        "maxChannels": 6,
+        "evidence": "declared"
+      },
+      {
+        "codec": "vorbis",
+        "maxChannels": 6,
+        "evidence": "declared"
+      },
+      {
+        "codec": "flac",
+        "maxChannels": 8,
+        "evidence": "declared"
+      },
+      {
+        "codec": "pcm",
+        "maxChannels": 8,
+        "evidence": "declared"
+      },
+      {
+        "codec": "ac3",
+        "maxChannels": 6,
+        "passthrough": true,
+        "evidence": "probed"
+      },
+      {
+        "codec": "eac3",
+        "maxChannels": 8,
+        "passthrough": true,
+        "objectAudio": [
+          "atmos"
+        ],
+        "evidence": "probed"
+      },
+      {
+        "codec": "dts",
+        "maxChannels": 8,
+        "passthrough": true,
+        "objectAudio": [
+          "dtsx"
+        ],
+        "evidence": "probed"
+      },
+      {
+        "codec": "truehd",
+        "maxChannels": 8,
+        "passthrough": true,
+        "objectAudio": [
+          "atmos"
+        ],
+        "evidence": "probed"
+      }
+    ],
+    "audioOutput": {
+      "maxChannels": 8,
+      "route": "hdmi"
+    },
+    "transports": [
+      {
+        "transport": "direct",
+        "containers": [
+          "mp4",
+          "m4v",
+          "mov",
+          "mkv",
+          "webm",
+          "ts",
+          "m2ts"
+        ],
+        "video": [
+          "h264",
+          "hevc",
+          "vp9",
+          "mpeg2video",
+          "vc1"
+        ],
+        "audio": [
+          "aac",
+          "mp3",
+          "opus",
+          "vorbis",
+          "flac",
+          "pcm",
+          "ac3",
+          "eac3",
+          "dts",
+          "truehd"
+        ]
+      },
+      {
+        "transport": "direct",
+        "containers": [
+          "mp3",
+          "m4a",
+          "m4b",
+          "aac",
+          "flac",
+          "ogg",
+          "opus",
+          "wav"
+        ],
+        "video": [],
+        "audio": [
+          "aac",
+          "mp3",
+          "opus",
+          "vorbis",
+          "flac",
+          "pcm"
+        ]
+      },
+      {
+        "transport": "hls_ts",
+        "containers": [
+          "mpegts"
+        ],
+        "video": [
+          "h264",
+          "hevc"
+        ],
+        "audio": [
+          "aac",
+          "mp3",
+          "ac3",
+          "eac3"
+        ]
+      },
+      {
+        "transport": "hls_fmp4",
+        "containers": [
+          "fmp4"
+        ],
+        "video": [
+          "h264",
+          "hevc",
+          "vp9"
+        ],
+        "audio": [
+          "aac",
+          "mp3",
+          "ac3",
+          "eac3",
+          "flac",
+          "opus"
+        ]
+      }
+    ],
+    "subtitles": {
+      "text": [
+        "srt",
+        "vtt"
+      ],
+      "styled": [
+        "ass",
+        "ssa"
+      ],
+      "bitmap": [
+        "pgs"
+      ]
+    },
+    "embeddedAudioSwitching": true
+  }
+}

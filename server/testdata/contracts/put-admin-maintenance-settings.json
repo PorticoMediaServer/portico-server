@@ -1,0 +1,296 @@
+{
+  "schema": "PutAdminMaintenanceSettingsResponse",
+  "method": "PUT",
+  "path": "/v1/admin/maintenance/settings",
+  "auth": "owner",
+  "request": {
+    "expectedRevision": 1,
+    "operationId": "maintenance-typed-1",
+    "settings": {
+      "windows": [
+        {
+          "id": "nightly",
+          "name": "Overnight",
+          "enabled": true,
+          "cadence": "nightly",
+          "days": [
+            "friday",
+            "monday",
+            "saturday",
+            "sunday",
+            "thursday",
+            "tuesday",
+            "wednesday"
+          ],
+          "startMinute": 180,
+          "durationMinutes": 240,
+          "timezone": "",
+          "tasks": [
+            "analysis",
+            "library-scan",
+            "trickplay"
+          ]
+        }
+      ],
+      "retention": {
+        "backups": 365,
+        "conversions": 7,
+        "downloads": 30,
+        "logs": 30,
+        "prepared": 90,
+        "subtitles": 365,
+        "trash": 30,
+        "trickplay": 365
+      },
+      "backupKeepCount": 7,
+      "backgroundTaskPriority": "lower"
+    }
+  },
+  "status": 200,
+  "response": {
+    "revision": 2,
+    "digest": "a503d034c9370087f032852cfcfef06ca8f69d8c23cd377c707ebd699bf9f190",
+    "settings": {
+      "windows": [
+        {
+          "id": "nightly",
+          "name": "Overnight",
+          "enabled": true,
+          "cadence": "nightly",
+          "days": [
+            "friday",
+            "monday",
+            "saturday",
+            "sunday",
+            "thursday",
+            "tuesday",
+            "wednesday"
+          ],
+          "startMinute": 180,
+          "durationMinutes": 240,
+          "timezone": "",
+          "tasks": [
+            "analysis",
+            "library-scan",
+            "trickplay"
+          ]
+        }
+      ],
+      "retention": {
+        "backups": 365,
+        "conversions": 7,
+        "downloads": 30,
+        "logs": 30,
+        "prepared": 90,
+        "subtitles": 365,
+        "trash": 30,
+        "trickplay": 365
+      },
+      "backupKeepCount": 7,
+      "backgroundTaskPriority": "lower"
+    },
+    "cadences": [
+      {
+        "id": "nightly",
+        "name": "Every night",
+        "days": [
+          "monday",
+          "tuesday",
+          "wednesday",
+          "thursday",
+          "friday",
+          "saturday",
+          "sunday"
+        ],
+        "description": "Runs every day inside the window."
+      },
+      {
+        "id": "weekdays",
+        "name": "Weekdays",
+        "days": [
+          "monday",
+          "tuesday",
+          "wednesday",
+          "thursday",
+          "friday"
+        ],
+        "description": "Monday to Friday."
+      },
+      {
+        "id": "weekends",
+        "name": "Weekends",
+        "days": [
+          "saturday",
+          "sunday"
+        ],
+        "description": "Saturday and Sunday."
+      },
+      {
+        "id": "weekly",
+        "name": "Once a week",
+        "days": [
+          "sunday"
+        ],
+        "description": "One night a week."
+      },
+      {
+        "id": "custom",
+        "name": "Chosen days",
+        "days": [],
+        "description": "Exactly the days selected."
+      }
+    ],
+    "tasks": [
+      "library-scan",
+      "metadata-refresh",
+      "analysis",
+      "trickplay"
+    ],
+    "days": [
+      "monday",
+      "tuesday",
+      "wednesday",
+      "thursday",
+      "friday",
+      "saturday",
+      "sunday"
+    ],
+    "retentionMaxima": {
+      "backups": 3650,
+      "conversions": 90,
+      "downloads": 365,
+      "logs": 365,
+      "prepared": 3650,
+      "subtitles": 3650,
+      "trash": 3650,
+      "trickplay": 3650
+    },
+    "storageCategories": [
+      {
+        "id": "artwork",
+        "name": "Artwork",
+        "description": "Posters, backdrops and thumbnails the server has fetched, extracted or been given.",
+        "directories": [
+          "artwork",
+          "local-artwork"
+        ],
+        "cleanable": false,
+        "regenerable": false,
+        "retentionKey": ""
+      },
+      {
+        "id": "trickplay",
+        "name": "Trickplay tiles",
+        "description": "Scrubbing tiles generated per file. This is usually the largest regenerable category.",
+        "directories": [
+          "analysis",
+          "trickplay"
+        ],
+        "cleanable": false,
+        "regenerable": true,
+        "retentionKey": "trickplay"
+      },
+      {
+        "id": "prepared-media",
+        "name": "Prepared media",
+        "description": "Optimised versions prepared for download or for a device that cannot play the original.",
+        "directories": [
+          "prepared-media"
+        ],
+        "cleanable": false,
+        "regenerable": true,
+        "retentionKey": "prepared"
+      },
+      {
+        "id": "conversions",
+        "name": "Conversion working files",
+        "description": "Segments written while a stream was being converted. Safe to remove when nothing is playing.",
+        "directories": [
+          "hls",
+          "transcode"
+        ],
+        "cleanable": false,
+        "regenerable": true,
+        "retentionKey": "conversions"
+      },
+      {
+        "id": "subtitles",
+        "name": "Subtitles",
+        "description": "Extracted, downloaded and rendered subtitle tracks.",
+        "directories": [
+          "subtitles",
+          "subtitle-video"
+        ],
+        "cleanable": false,
+        "regenerable": true,
+        "retentionKey": "subtitles"
+      },
+      {
+        "id": "live-cache",
+        "name": "Live buffer",
+        "description": "Buffered live and channel segments.",
+        "directories": [
+          "linear-media"
+        ],
+        "cleanable": false,
+        "regenerable": true,
+        "retentionKey": "conversions"
+      },
+      {
+        "id": "downloads",
+        "name": "Downloads",
+        "description": "Packages staged for a client to take offline.",
+        "directories": [
+          "downloads"
+        ],
+        "cleanable": false,
+        "regenerable": true,
+        "retentionKey": "downloads"
+      },
+      {
+        "id": "logs",
+        "name": "Logs",
+        "description": "Diagnostic records written to disk.",
+        "directories": [
+          "logs"
+        ],
+        "cleanable": true,
+        "regenerable": false,
+        "retentionKey": "logs"
+      },
+      {
+        "id": "trash",
+        "name": "Trash",
+        "description": "Files held after a delete, waiting for their retention to run out.",
+        "directories": [
+          "trash"
+        ],
+        "cleanable": true,
+        "regenerable": false,
+        "retentionKey": "trash"
+      },
+      {
+        "id": "backups",
+        "name": "Backups",
+        "description": "Encrypted server backups.",
+        "directories": [
+          "backups"
+        ],
+        "cleanable": false,
+        "regenerable": false,
+        "retentionKey": "backups"
+      },
+      {
+        "id": "recordings",
+        "name": "Recordings",
+        "description": "Captured recordings. These are content: the maintenance page never removes them.",
+        "directories": [
+          "recordings"
+        ],
+        "cleanable": false,
+        "regenerable": false,
+        "retentionKey": ""
+      }
+    ]
+  }
+}

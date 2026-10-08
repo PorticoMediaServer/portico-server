@@ -1,0 +1,116 @@
+openapi: 3.1.0
+info:
+  title: Portico whole-container download requests
+  version: '1.0.0'
+  description: |
+    Submit once for a show, season, album, book or playlist. Admission returns
+    202 and totalKnown=false while the existing downloads worker captures visible
+    membership in durable keyset pages of at most 20. No 100-item truncation.
+    Capture is fenced on catalogue, personal and visibility revisions; a changed
+    source fails with selection_changed before admitting any preparations.
+    Each capture/admission transaction handles at most 20 members. A restart
+    resumes committed cursors. One request row is the idempotency receipt.
+    At most 200 preparations per viewer run concurrently; queued and ready claims
+    do not consume active slots. Conversions start only after slot admission.
+    Storage limits still apply; a member that cannot reserve space reports storage_full.
+    Membership is a distinct item set in canonical container order; a repeated
+    playlist item uses its first occurrence. Next means the first keepNext
+    currently unwatched visible members, default 1, maximum 10000. This is a
+    snapshot request, not an automatically replenishing subscription.
+    Workers recheck the originating session/device, library access, restrictions
+    and allowDownloads. DeviceId must match the authenticated session's device.
+    Any authenticated device of the same profile may read the request; no other
+    profile may, including an owner. Every count and member page is filtered by
+    current visibility. Hidden members never contribute to returned counts.
+    Existing preparation actions, transfer grants, signed receipts, storage and
+    retention rules apply. A request never itself authorizes artifact transfer.
+    Ready means server preparation completed; the client must still transfer
+    and verify the artifact and obtain its ordinary offline receipt.
+servers: [{url: /}]
+security: [{bearerAuth: []}]
+paths:
+  /v1/downloads/requests:
+    post:
+      operationId: create_download_request
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ContainerRequest'}
+      responses:
+        '202':
+          description: Accepted or idempotently replayed; poll for exact membership and progress
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/RequestView'}
+        '400': {description: invalid_request}
+        '401': {description: unauthorized or device does not match session}
+        '403': {description: not_permitted when downloads are disabled}
+        '404': {description: Target has no visible members or is not accessible}
+        '422': {description: idempotency_key_reused (shared v1 error catalogue)}
+        '429': {description: rate_limited; at most 100 capturing/admitting requests per profile}
+  /v1/downloads/requests/{id}:
+    get:
+      operationId: get_download_request
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+        - {name: cursor, in: query, schema: {type: string}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 100}}
+      responses:
+        '200':
+          description: Live visible-member counts and a keyset page of preparations
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/RequestView'}
+        '404': {description: Unknown request or another profile's request}
+components:
+  securitySchemes:
+    bearerAuth: {type: http, scheme: bearer}
+  schemas:
+    ContainerRequest:
+      type: object
+      additionalProperties: false
+      required: [operationId, target, deviceId, quality, policy]
+      properties:
+        operationId: {type: string, pattern: '^[A-Za-z0-9_-]{1,160}$'}
+        target:
+          type: object
+          additionalProperties: false
+          required: [kind, id]
+          properties:
+            kind: {type: string, enum: [show, season, album, book, playlist]}
+            id: {type: string, pattern: '^[A-Za-z0-9_-]{1,160}$'}
+        deviceId: {type: string, description: Device ID from the authentication envelope}
+        quality: {type: string, description: original or a published quality ladder rung}
+        policy:
+          type: object
+          additionalProperties: false
+          required: [episodes]
+          properties:
+            episodes: {type: string, enum: [all, unwatched, next]}
+            keepNext: {type: integer, minimum: 1, maximum: 10000, description: Only for next; defaults to 1}
+    RequestView:
+      type: object
+      required: [requestId, total, totalKnown, state, ready, preparing, queued, failed, paused, items]
+      properties:
+        requestId: {type: string}
+        total: {type: integer, minimum: 0, description: Visible captured membership so far; exact once totalKnown is true}
+        totalKnown: {type: boolean}
+        state: {type: string, enum: [capturing, admitting, preparing, complete, failed]}
+        errorCode: {type: string, enum: [selection_changed, authority_revoked, target_not_found]}
+        ready: {type: integer, minimum: 0}
+        preparing: {type: integer, minimum: 0}
+        queued: {type: integer, minimum: 0}
+        failed: {type: integer, minimum: 0, description: Includes failed, unavailable, cancelled and expired members}
+        paused: {type: integer, minimum: 0}
+        items:
+          type: array
+          maxItems: 100
+          items:
+            type: object
+            required: [itemId]
+            properties:
+              itemId: {type: string}
+              reason: {type: string}
+              preparation: {$ref: './downloads.openapi.yaml#/components/schemas/Preparation'}
+        nextCursor: {type: string, description: Omitted at end; pass back verbatim}

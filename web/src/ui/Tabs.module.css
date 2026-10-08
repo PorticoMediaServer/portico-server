@@ -1,0 +1,24 @@
+.list { display: flex; gap: 4px; position: relative; overflow-x: auto; scrollbar-width: none; padding: 0 var(--page-gutter); border-bottom: 1px solid var(--line-soft); }
+.list::-webkit-scrollbar { display: none; }
+.inline { padding: 0; border-bottom: 0; gap: 2px; }
+.tab { position: relative; padding: 12px 14px; font-size: 14.5px; font-weight: 600; color: var(--text-tertiary); white-space: nowrap; border-radius: var(--radius-control) var(--radius-control) 0 0; transition: color var(--motion-quick) var(--ease-out); }
+.tab:hover { color: var(--text-secondary); }
+.tab[data-state='active'] { color: var(--text-primary); }
+.tab::after { content: ''; position: absolute; left: 10px; right: 10px; bottom: -1px; height: 2px; border-radius: 2px; background: var(--accent); transform: scaleX(0); transition: transform var(--motion-standard) var(--ease-out); }
+.tab[data-state='active']::after { transform: scaleX(1); }
+.tab:disabled { opacity: 0.4; cursor: not-allowed; }
+.large .tab { padding: 14px 18px; font-size: 16px; }
+.content { outline: none; }
+
+.segmented { display: inline-flex; height: 32px; box-sizing: border-box; align-items: stretch; padding: 3px; gap: 2px; background: var(--color-raised-soft); border: 1px solid var(--line-soft); border-radius: var(--radius-control); }
+.segment { min-height: 0; padding: 0 12px; border-radius: 6px; font-size: 13px; font-weight: 600; color: var(--text-tertiary); display: inline-flex; align-items: center; gap: 6px; transition: background-color var(--motion-quick) var(--ease-out), color var(--motion-quick) var(--ease-out); }
+.segment:hover { color: var(--text-secondary); }
+.segment[aria-pressed='true'], .segment[data-state='on'] { background: var(--surface-raised); color: var(--text-primary); }
+
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { min-height: 32px; padding: 0 12px; border-radius: var(--radius-pill); border: 1px solid var(--line-soft); background: var(--color-raised); color: var(--text-secondary); font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; transition: all var(--motion-quick) var(--ease-out); }
+.chip:hover { background: var(--surface-raised); border-color: var(--line-strong); color: var(--text-primary); }
+.chip[aria-pressed='true'] { background: color-mix(in srgb, var(--accent) 28%, transparent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); color: var(--text-primary); }
+
+/* Touch: 32 px chips and segments keep a 44 px hit area. */
+@media (pointer: coarse) { .chip, .segment { position: relative; } .chip::after, .segment::after { content: ''; position: absolute; inset: -6px 0; } }

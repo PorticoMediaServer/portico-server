@@ -1,0 +1,60 @@
+.seasonBar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 0 var(--page-gutter); margin-bottom: 16px; }
+.seasonTabs { display: flex; flex-wrap: wrap; gap: 8px; min-width: 0; }
+.seasonTab { height: 32px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--line-soft); background: var(--surface-raised); color: var(--text-secondary); font-size: 13px; font-weight: 600; }
+.seasonTab:hover { color: var(--text-primary); }
+.seasonTab[aria-selected='true'] { background: color-mix(in srgb, var(--accent) 28%, transparent); border-color: var(--accent); color: var(--text-primary); }
+.seasonTab:focus-visible { outline: 2px solid var(--line-focus); outline-offset: 2px; }
+.seasonInfo { padding: 0 var(--page-gutter); margin-bottom: 16px; max-width: 80ch; }
+
+.panelStill { width: 100%; }
+/* M26: the episode placeholder in the panel (episode code, large, neutral). */
+.panelStillPlaceholder { display: grid; place-items: center; aspect-ratio: 16 / 9; width: 100%; border-radius: var(--radius-artwork);
+  background: var(--placeholder-bg, linear-gradient(160deg, var(--surface-raised), var(--surface-recess))); color: var(--text-primary);
+  font-size: 22px; font-weight: 700; letter-spacing: 0.02em; font-variant-numeric: tabular-nums; }
+.panelFacts { font-size: 13px; color: var(--text-secondary); }
+.panelNav { display: flex; justify-content: space-between; gap: 8px; }
+.people { display: flex; flex-direction: column; gap: 4px; }
+.loadingGrid { display: grid; gap: 20px 16px; grid-template-columns: repeat(auto-fill, minmax(clamp(240px, 24vw, 320px), 1fr)); padding: 0 var(--page-gutter); }
+
+/* The episode list (default on web): still, number and title, air date · runtime, two-line synopsis, progress, actions. */
+/* The row sits in a cell that already carries the page gutter: a 12px inset that bleeds back out, so the still lines up with the heading. */
+.episodeRow { display: grid; grid-template-columns: clamp(140px, 16vw, 200px) 1fr auto; gap: 16px; align-items: center; padding: 8px 12px; margin: 0 -12px; border-radius: var(--radius-control); }
+.episodeRow:focus-visible { outline: 2px solid var(--line-focus); outline-offset: -2px; }
+.episodeRow:hover { background: var(--surface-translucent); }
+.episodeRow[data-selected] { box-shadow: inset 3px 0 0 var(--accent); }
+.episodeRowStill { position: relative; }
+.episodeRowCopy { display: flex; flex-direction: column; gap: 3px; min-width: 0; text-align: left; color: inherit; border-radius: 4px; }
+.episodeRowCopy:focus-visible { outline: 2px solid var(--line-focus); outline-offset: 2px; }
+.episodeRowTitle { font-size: 15px; font-weight: 600; color: var(--text-primary); display: flex; gap: 8px; align-items: baseline; min-width: 0; }
+.episodeRowTitle > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.episodeRowNumber { color: var(--text-tertiary); font-variant-numeric: tabular-nums; flex-shrink: 0; }
+.episodeRowMeta { font-size: 12.5px; color: var(--text-tertiary); display: flex; gap: 8px; align-items: center; }
+.episodeRowSynopsis { font-size: 13px; line-height: 1.45; color: var(--text-secondary); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.episodeRowActions { display: flex; align-items: center; gap: 4px; opacity: 0; transition: opacity var(--motion-quick) var(--ease-out); }
+.episodeRow:hover .episodeRowActions, .episodeRow:focus-within .episodeRowActions { opacity: 1; }
+.episodeRowWatched { position: absolute; top: 6px; right: 6px; width: 22px; height: 22px; border-radius: 50%; background: color-mix(in srgb, var(--color-ink) 70%, transparent); color: var(--status-healthy); display: grid; place-items: center; }
+.episodeRowPlaceholder { position: relative; display: grid; place-items: center; aspect-ratio: 16 / 9; width: 100%; border-radius: var(--radius-artwork); overflow: hidden;
+  background: var(--placeholder-bg, linear-gradient(160deg, var(--surface-raised), var(--surface-recess))); color: var(--text-primary); font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.episodeRowPlaceholder:focus-visible { outline: 2px solid var(--line-focus); outline-offset: 2px; }
+.episodeRowProgress { position: absolute; left: 0; bottom: 0; height: 3px; background: var(--accent); }
+.episodeRowPlaceholder > span:first-child { position: static; }
+.episodeList { display: flex; flex-direction: column; }
+.episodeToolbar { display: flex; align-items: center; gap: 12px; }
+@media (max-width: 720px) {
+  .episodeRow { grid-template-columns: 112px 1fr; }
+  .episodeRowActions { display: none; }
+  .episodeRowSynopsis { display: none; }
+}
+.episodeRowArt { position: relative; display: block; width: 100%; padding: 0; border: 0; background: none; border-radius: var(--radius-artwork); overflow: hidden; color: inherit; }
+.episodeRowArt:focus-visible { outline: 2px solid var(--line-focus); outline-offset: 2px; }
+.episodeRowPlay { position: absolute; inset: 0; display: grid; place-items: center; background: color-mix(in srgb, var(--color-ink) 35%, transparent); color: var(--color-text); opacity: 0; transition: opacity var(--motion-quick) var(--ease-out); }
+.episodeRowArt:hover .episodeRowPlay, .episodeRowArt:focus-visible .episodeRowPlay { opacity: 1; }
+.showFacts { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; padding: 0 var(--page-gutter); }
+@media (max-width: 720px) { .showFacts { grid-template-columns: 1fr; } }
+.heroActions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.episodeRowPlaceholderRow { height: 96px; margin: 8px 0; border-radius: var(--radius-control); background: var(--surface-raised); }
+/* Next up, pinned above the season's list when it is not already the first row. */
+.nextUp { margin: 0 calc(var(--page-gutter) - 12px) 12px; padding: 4px 12px 8px; border-radius: var(--radius-control); background: var(--surface-raised); border: 1px solid var(--line-soft); }
+.nextUp .episodeRow { margin: 0 -12px; }
+.nextUpLabel { display: block; padding: 6px 0 0; font-size: 12px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--accent-strong); }
+.seasonProgress { font-size: 13px; color: var(--text-secondary); font-variant-numeric: tabular-nums; white-space: nowrap; }

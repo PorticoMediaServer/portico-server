@@ -1,0 +1,18 @@
+.shelf { display: flex; flex-direction: column; gap: 12px; }
+.head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; padding: 0 var(--page-gutter); }
+.headLeft { display: flex; align-items: baseline; gap: 12px; min-width: 0; }
+.title { font-size: 18px; font-weight: 600; letter-spacing: -0.01em; }
+.count { font-size: 13px; color: var(--text-tertiary); }
+.headRight { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+.scroller { position: relative; }
+.track { display: grid; grid-auto-flow: column; grid-auto-columns: var(--card-width); gap: var(--card-gap, 16px); overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x proximity; scroll-padding-inline: var(--page-gutter); padding: 6px var(--page-gutter) 12px; scrollbar-width: none; }
+.track::-webkit-scrollbar { display: none; }
+.track > * { scroll-snap-align: start; }
+.arrow { position: absolute; top: 0; bottom: 12px; width: 56px; display: grid; place-items: center; opacity: 0; transition: opacity var(--motion-quick) var(--ease-out); z-index: 1; pointer-events: none; }
+.scroller:hover .arrow, .scroller:focus-within .arrow { opacity: 1; pointer-events: auto; }
+.arrowLeft { left: 0; background: linear-gradient(90deg, color-mix(in srgb, var(--color-ink) 80%, transparent), transparent); }
+.arrowRight { right: 0; background: linear-gradient(270deg, color-mix(in srgb, var(--color-ink) 80%, transparent), transparent); }
+.arrowButton { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; background: var(--surface-raised); border: 1px solid var(--line-soft); color: var(--text-primary); }
+.arrowButton:hover { background: var(--surface-bright); }
+.arrowButton:disabled { display: none; }
+@media (hover: none) { .arrow { display: none; } }

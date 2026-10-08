@@ -1,0 +1,26 @@
+[Unit]
+Description=Portico Media Server
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=portico
+Group=portico
+Environment=PORTICO_BIND=0.0.0.0:32500
+Environment=PORTICO_STATE_DIR=/var/lib/portico-media-server
+Environment=PORTICO_WEB_DIR=/usr/lib/portico-media-server/web
+# FFmpeg and FFprobe are found beside the server, in third_party/ffmpeg/bin.
+ExecStart=/usr/lib/portico-media-server/portico-server
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/var/lib/portico-media-server
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,51 @@
+package playback
+
+import (
+	"context"
+	"fmt"
+	"math"
+	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/subtitles"
+	"strings"
+)
+
+type TextRenditionPlan struct {
+	Resource               string
+	Revision               int64
+	Language, Label, Grant string
+}
+
+func (h *HLS) loadTextRenditions(ctx context.Context, id string, p *DeliveryPlan) error {
+	rows, e := dbwork.Query(ctx, h.db, `SELECT pin.resource_id,pin.resource_revision,v.language,v.title,s.grant_token FROM playback_manifest_subtitles pin JOIN playback_sessions s ON s.id=pin.session_id JOIN subtitle_revisions v ON v.resource_id=pin.resource_id AND v.revision=pin.resource_revision WHERE pin.session_id=? ORDER BY pin.resource_id LIMIT 8`, id)
+	if e != nil {
+		return e
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var r TextRenditionPlan
+		if e = rows.Scan(&r.Resource, &r.Revision, &r.Language, &r.Label, &r.Grant); e != nil {
+			return e
+		}
+		r.Label = subtitles.ManifestSubtitleName(r.Label, r.Language, len(p.TextRenditions))
+		p.TextRenditions = append(p.TextRenditions, r)
+	}
+	return rows.Err()
+}
+func publishTextManifests(dir string, p *DeliveryPlan) error {
+	count := int(math.Ceil(p.Duration / 60))
+	if count < 1 || count > 1440 {
+		return nil
+	}
+	for ordinal, r := range p.TextRenditions {
+		var b strings.Builder
+		b.WriteString("#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:60\n#EXT-X-MEDIA-SEQUENCE:0\n#EXT-X-PLAYLIST-TYPE:VOD\n")
+		for i := 0; i < count; i++ {
+			fmt.Fprintf(&b, "#EXTINF:%.6f,\n/v1/media/%s/subtitles/%s/%d.vtt?segment=%d\n", math.Min(60, p.Duration-float64(i*60)), r.Grant, r.Resource, r.Revision, i)
+		}
+		b.WriteString("#EXT-X-ENDLIST\n")
+		if e := writeNamedManifest(dir, fmt.Sprintf("text-%d.m3u8", ordinal), []byte(b.String())); e != nil {
+			return e
+		}
+	}
+	return nil
+}

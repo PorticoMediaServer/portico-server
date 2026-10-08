@@ -1,0 +1,52 @@
+/* The list view of a library is a table: one header whose columns sort the list (the same server
+ * sorts as the Sort control), and windowed rows on the same column grid. */
+.table { --cols: minmax(0, 1fr) 64px 84px 64px 84px 112px 28px 84px; }
+.table[data-kind='tracks'] { --cols: minmax(0, 1.2fr) minmax(0, 0.7fr) minmax(0, 0.8fr) 72px 56px 112px 28px 84px; }
+.head, .row { display: grid; grid-template-columns: var(--cols); align-items: center; column-gap: var(--space-md); padding: 0 var(--space-md); }
+.head { position: sticky; top: var(--sticky-top, 0px); z-index: 1; height: 36px; margin: 0 var(--page-gutter); border-bottom: 1px solid var(--line-soft); background: var(--surface-page, var(--color-ink)); color: var(--text-tertiary); font-size: 12px; font-weight: 600; letter-spacing: 0.02em; }
+.headCell { display: inline-flex; align-items: center; gap: 4px; min-width: 0; height: 100%; color: inherit; font: inherit; text-align: start; white-space: nowrap; }
+button.headCell { cursor: pointer; }
+button.headCell:hover, .headCell[aria-sort='ascending'], .headCell[aria-sort='descending'] { color: var(--text-primary); }
+button.headCell:focus-visible { outline: 2px solid var(--line-focus); outline-offset: -2px; border-radius: 4px; }
+.end { justify-content: flex-end; text-align: end; }
+.row { min-height: 64px; border-bottom: 1px solid var(--line-soft); font-size: 14px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.row:hover { background: var(--surface-translucent); }
+.row[data-playing='true'] .name { color: var(--accent-strong); }
+.main { display: flex; align-items: center; gap: var(--space-md); min-width: 0; padding: 8px 0; text-align: start; color: inherit; font: inherit; cursor: pointer; }
+.main:focus-visible { outline: 2px solid var(--line-focus); outline-offset: 2px; border-radius: 6px; }
+.art { flex: 0 0 auto; width: 32px; }
+.art[data-shape='square'] { width: 44px; }
+.text { display: flex; flex-direction: column; min-width: 0; }
+.name { color: var(--text-primary); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.caption, .cell { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.caption { font-size: 12.5px; color: var(--text-tertiary); }
+.link { color: inherit; text-align: start; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.link:hover { color: var(--text-primary); text-decoration: underline; }
+.state { display: flex; justify-content: flex-end; color: var(--status-healthy); }
+.actions { display: flex; justify-content: flex-end; gap: 2px; opacity: 0; }
+.row:hover .actions, .row:focus-within .actions { opacity: 1; }
+@media (hover: none) { .actions { opacity: 1; } }
+/* Narrower windows drop the least useful columns, never the title. */
+@media (max-width: 1100px) {
+  .table { --cols: minmax(0, 1fr) 64px 84px 64px 112px 28px 84px; }
+  .table .resolution { display: none; }
+}
+@media (max-width: 860px) {
+  .table { --cols: minmax(0, 1fr) 64px 84px 28px 84px; }
+  .table .rating, .table .added, .table .plays { display: none; }
+  .table[data-kind='tracks'] { --cols: minmax(0, 1.2fr) minmax(0, 0.8fr) 72px 28px 84px; }
+  .table[data-kind='tracks'] .album { display: none; }
+}
+@media (max-width: 560px) {
+  .table { --cols: minmax(0, 1fr) 28px 44px; }
+  .table .year, .table .runtime { display: none; }
+  .table[data-kind='tracks'] { --cols: minmax(0, 1fr) 56px 28px 44px; }
+  .table[data-kind='tracks'] .artist { display: none; }
+  .actions { opacity: 1; }
+}
+
+/* Genre cards: a 2 × 2 of covers from the genre, its name and how much is in it. */
+.genre { display: flex; flex-direction: column; gap: 8px; padding: 0; text-align: start; cursor: pointer; border-radius: var(--radius-surface); }
+.genre:focus-visible { outline: 2px solid var(--line-focus); outline-offset: 4px; }
+.mosaic { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.genreText { display: flex; flex-direction: column; gap: 2px; }

@@ -1,0 +1,71 @@
+name: CI
+on:
+  push:
+  pull_request:
+  # The release workflow runs this whole suite against the tag it publishes.
+  workflow_call:
+permissions:
+  contents: read
+jobs:
+  repository:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: No built binaries or large files in Git (A77)
+        run: scripts/check-repo-binaries.sh
+  go:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        module: [apikit, server]
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: portico
+          POSTGRES_PASSWORD: disposable-ci-password
+          POSTGRES_DB: portico_test
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version-file: ${{ matrix.module }}/go.mod
+          cache: ${{ matrix.module != 'apikit' }}
+          cache-dependency-path: ${{ matrix.module }}/go.sum
+      - name: Disposable database
+        run: |
+          mkdir -p .scratch
+          printf '%s' 'postgres://portico:disposable-ci-password@localhost:5432/portico_test?sslmode=disable' > .scratch/postgres.url
+          echo "PORTICO_TEST_DATABASE_URL_FILE=$PWD/.scratch/postgres.url" >> "$GITHUB_ENV"
+      - name: Build server playback helper
+        if: matrix.module == 'server'
+        run: |
+          cd server
+          go build -o ../.scratch/portico-server ./cmd/server
+          echo "PORTICO_PLAYBACK_TEST_HELPER=$GITHUB_WORKSPACE/.scratch/portico-server" >> "$GITHUB_ENV"
+      - run: go test ./...
+        working-directory: ${{ matrix.module }}
+      - name: Check generated contracts
+        if: matrix.module == 'server'
+        run: |
+          cd server
+          go run ./cmd/apigen
+          git diff --exit-code -- api/portico.openapi.json ../packages/contracts/src
+      - run: go vet ./...
+        working-directory: ${{ matrix.module }}
+  clients:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22.22.2'
+          cache: npm
+      - run: npm ci
+      - run: node --experimental-strip-types --test packages/contracts/test/*.test.ts
+      - run: npm run build --prefix packages/contracts
+      - run: npm run test:core
+      - run: npm run check:web
+      - run: npm run build --workspace portico-web

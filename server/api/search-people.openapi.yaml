@@ -1,0 +1,524 @@
+openapi: 3.1.0
+info:
+  title: Portico search, people, bulk personal state, saved lists and collections
+  version: "1.0.0"
+  description: |
+    Every capability here is reachable by a third-party client. Requests are bounded and
+    cursor paged; the server owns matching, ranking, filtering, classification and
+    permission. A client picks a published name (a group, a sort, a filter, a period) and
+    never evaluates a predicate, re-ranks a page, or composes a provider address.
+
+    Expected cost. `GET /v1/search` runs each group under its own 600 ms budget in
+    parallel: one indexed FTS count plus one indexed page of at most `limit` rows per
+    group (5 per group when no `group` is given). A group that overruns its budget or
+    whose projection is missing reports `status: "error"` with an `errorCode`; the
+    response is still `200` and the other groups are unaffected.
+    `GET /v1/people/{id}` is one indexed count, one indexed page, and two bounded
+    rollups (roles, at most 8 known-for rows). Bulk personal state and collection
+    membership batches are one request for up to 200 rows with a per-row outcome.
+servers:
+  - url: /
+security:
+  - bearerAuth: []
+tags:
+  - name: search
+  - name: people
+  - name: personal
+  - name: collections
+paths:
+  /v1/search:
+    get:
+      tags: [search]
+      operationId: search
+      summary: Search every published group, with per-group failure isolation.
+      parameters:
+        - { name: q, in: query, required: true, schema: { type: string, minLength: 2, maxLength: 128 }, description: "1 to 8 tokens; at least one token of 2 or more characters." }
+        - { name: group, in: query, schema: { $ref: '#/components/schemas/SearchGroupId' }, description: "Answer only this group, at the full limit. Required to page with a cursor." }
+        - { name: groups, in: query, schema: { type: string }, description: "Comma separated group ids to restrict the response. Mutually exclusive with group." }
+        - { name: sort, in: query, schema: { type: string, enum: [relevance, title, releaseYear, dateAdded], default: relevance } }
+        - { name: direction, in: query, schema: { type: string, enum: [asc, desc] }, description: "Defaults to asc for title and desc for every other sort." }
+        - { name: libraryIds, in: query, schema: { type: string }, description: "Comma separated library ids. Narrows the authorized set; never widens it." }
+        - { name: cursor, in: query, schema: { type: string, maxLength: 4096 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 40, default: 40 } }
+        - { name: record, in: query, schema: { type: string, enum: ["0", "1"] }, description: "1 records the normalized query in this viewer's recent searches." }
+      responses:
+        '200': { description: Results, content: { application/json: { schema: { $ref: '#/components/schemas/SearchResponse' } } } }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/StaleContinuation' }
+        '503': { description: The whole request exceeded its budget., content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+  /v1/search/history:
+    get:
+      tags: [search]
+      operationId: readSearchHistory
+      summary: This viewer's recent searches.
+      parameters:
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 50, default: 50 } }
+      responses:
+        '200': { description: Recent searches, content: { application/json: { schema: { $ref: '#/components/schemas/SearchHistoryPage' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    delete:
+      tags: [search]
+      operationId: clearSearchHistory
+      summary: Erase one recorded query, or the whole history when q is omitted.
+      parameters:
+        - { name: q, in: query, schema: { type: string } }
+      responses:
+        '204': { description: Erased. Nothing is retained. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /v1/people:
+    get:
+      tags: [people]
+      operationId: searchPeople
+      summary: Bounded canonical person name search.
+      parameters:
+        - { name: q, in: query, required: true, schema: { type: string, minLength: 2, maxLength: 128 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 25 } }
+      responses:
+        '200': { description: People, content: { application/json: { schema: { $ref: '#/components/schemas/PeopleDirectory' } } } }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /v1/people/{id}:
+    get:
+      tags: [people]
+      operationId: readPerson
+      summary: One canonical person with a cursor page of their credits.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: role, in: query, schema: { type: string, enum: [cast, crew, all] } }
+        - { name: cursor, in: query, schema: { type: string, maxLength: 4096 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 40 } }
+      responses:
+        '200': { description: Person page, content: { application/json: { schema: { $ref: '#/components/schemas/PersonPage' } } } }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/StaleContinuation' }
+  /v1/people/{id}/portrait:
+    get:
+      tags: [people]
+      operationId: readPersonPortrait
+      summary: The person's portrait, served from artwork on an item this viewer may read.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: size, in: query, schema: { type: string, enum: [thumbnail] } }
+        - { name: v, in: query, schema: { type: string }, description: "Cache key from person.portraitUrl. Opaque to clients." }
+      responses:
+        '200': { description: Image, content: { image/*: { schema: { type: string, format: binary } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { description: No portrait is available, or it is still being fetched. }
+  /v1/items/personal-state:batch:
+    put:
+      tags: [personal]
+      operationId: setPersonalStateBatch
+      summary: Apply up to 200 personal-state intents, each independently.
+      description: |
+        Each row is applied under the same conflict rules as
+        `PUT /v1/items/{id}/personal-state`. One rejected row never rolls back the rest.
+        `expectedRevision` is optional: omit it to apply to whatever the row is at now.
+        The batch as a whole carries the retry receipt, so replaying the identical body
+        under the same `operationId` returns the first outcome rather than reapplying it.
+
+        Rows name playable items. A show, season, album, artist, book or collection is
+        not an item: its watched state is `PUT /v1/containers/{kind}/{id}/personal-state`
+        (one O(1) write), and any personal field over all of its members is a
+        `POST /v1/jobs` with a container selector. A container id in a row answers
+        `not_found` for that row, the same as any id that isn't a visible item.
+        The one exception is `notInterested`, a statement about a title rather than a
+        file: a row that sets only `notInterested` may name a visible show, album or
+        book, since recommendations offer those as titles. Undo it by sending `false`.
+        More than 200 items is a job with an items, container or query selector.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PersonalBatchRequest' }
+      responses:
+        '200': { description: Per-row outcomes, content: { application/json: { schema: { $ref: '#/components/schemas/PersonalBatchReceipt' } } } }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { description: The same operationId was reused for a different body., content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '429': { description: Too many personal-state requests. }
+  /v1/content:
+    get:
+      tags: [personal]
+      operationId: readSavedList
+      summary: The viewer's watchlist or favorites, filtered and sorted by the server.
+      parameters:
+        - { name: view, in: query, required: true, schema: { type: string, enum: [watchlist, favorites, playlists] } }
+        - { name: filter, in: query, schema: { type: string, enum: [all, unwatched, inProgress], default: all } }
+        - { name: sort, in: query, schema: { type: string, enum: [title, added, updated, year, duration, progress], default: title } }
+        - { name: direction, in: query, schema: { type: string, enum: [asc, desc], default: asc } }
+        - { name: cursor, in: query, schema: { type: string, maxLength: 4096 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 40 } }
+      responses:
+        '200': { description: "A content envelope whose filters[] publishes the count behind each filter." }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/StaleContinuation' }
+  /v1/personal-history:
+    get:
+      tags: [personal]
+      operationId: readPersonalHistory
+      summary: The viewer's playback history, windowed and scoped by the server.
+      parameters:
+        - { name: period, in: query, schema: { type: string, enum: ["24h", "7d", "30d", "90d", all], default: all } }
+        - { name: libraryId, in: query, schema: { type: string }, description: "Must be a library this viewer may read." }
+        - { name: cursor, in: query, schema: { type: string, maxLength: 4096 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 40 } }
+      responses:
+        '200': { description: History page }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /v1/saved-resources/{id}/entries:
+    put:
+      tags: [collections]
+      operationId: setSavedCollectionEntries
+      summary: Change a viewer-owned collection's membership, reporting each item.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [operationId, expectedRevision]
+              properties:
+                operationId: { type: string, pattern: '^[A-Za-z0-9_-]{1,128}$' }
+                expectedRevision: { type: integer, minimum: 0 }
+                addItemIds: { type: array, maxItems: 100, items: { type: string } }
+                removeEntryIds: { type: array, maxItems: 100, items: { type: string } }
+      responses:
+        '200':
+          description: The receipt carries per-item outcomes.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  serverId: { type: string }
+                  viewerFence: { type: string }
+                  receipt:
+                    type: object
+                    properties:
+                      operationId: { type: string }
+                      resourceId: { type: string }
+                      revision: { type: integer }
+                      deleted: { type: boolean }
+                      entries: { $ref: '#/components/schemas/EntryOutcomes' }
+                  receiptLifetimeSeconds: { type: integer }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: The expectedRevision no longer matches. }
+  /v1/collections/{id}/items:batch:
+    post:
+      tags: [collections]
+      operationId: setLibraryCollectionItemsBatch
+      summary: Change a library collection's membership in one owner request.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                addItemIds: { type: array, maxItems: 200, items: { type: string } }
+                removeItemIds: { type: array, maxItems: 200, items: { type: string } }
+      responses:
+        '200':
+          description: The collection after the batch, with per-item outcomes.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  collection: { $ref: '#/components/schemas/Collection' }
+                  entries: { $ref: '#/components/schemas/EntryOutcomes' }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer }
+  responses:
+    InvalidRequest: { description: The request is malformed or names something unpublished., content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+    Unauthorized: { description: No session, or access changed mid-request., content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+    NotFound: { description: Not found, or not visible to this viewer., content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+    StaleContinuation: { description: The catalog or viewer state changed; restart from the first page., content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code: { type: string }
+            message: { type: string }
+            retryable: { type: boolean }
+    SearchGroupId:
+      type: string
+      enum: [movies, shows, episodes, artists, albums, songs, books, people, live-tv]
+    ContentEntry:
+      type: object
+      description: A media row. People and live-tv rows carry no libraryId, availability or playback.
+      required: [id, kind, title]
+      properties:
+        userRating: {type: number, format: double, minimum: 0.5, maximum: 5, description: "The viewer's own rating in half steps, on item rows the viewer has rated; absent otherwise."}
+        plays: {type: integer, minimum: 1, description: "How many times the viewer has played a song to the end; song entries only, absent when never played."}
+        id: { type: string }
+        libraryId: { type: string }
+        kind: { type: string }
+        title: { type: string }
+        subtitle: { type: string }
+        posterUrl: { type: string }
+        overview: { type: string, description: "Present on episode rows only; omitted from other search rows." }
+        available: { type: boolean }
+        duration: { type: number }
+        progressSeconds: { type: number }
+        addedAt: { type: [string, 'null'] }
+        count: { type: integer }
+        year: { type: integer, description: 'Release year; album entities only, absent when unknown.' }
+        artist:
+          type: object
+          description: 'The album artist; album entities only.'
+          required: [id, name]
+          properties:
+            id: { type: string }
+            name: { type: string }
+        role: { type: string, enum: [album, appearance], description: 'Album when the artist is the album artist, appearance otherwise; artist releases only.' }
+        artworkPaths: { type: array, items: { type: string }, description: 'Up to 4 poster paths for a 2x2 mosaic; category rows only.' }
+        navigation:
+          type: object
+          properties:
+            view: { type: string }
+            entityId: { type: string }
+        playback:
+          type: object
+          properties:
+            itemId: { type: string }
+            startSeconds: { type: number }
+    SearchResponse:
+      type: object
+      required: [scope, revision, heading, query, groups, capabilities]
+      properties:
+        scope:
+          type: object
+          properties:
+            serverId: { type: string }
+            libraryId: { type: string, const: '' }
+            libraryKind: { type: string, const: mixed }
+            view: { type: string, const: search }
+            entityId: { type: string, const: '' }
+            viewerFence: { type: string }
+        revision:
+          type: object
+          properties: { catalog: { type: integer }, viewer: { type: integer } }
+        heading:
+          type: object
+          properties: { key: { type: string }, fallback: { type: string } }
+        query:
+          type: object
+          properties:
+            q: { type: string }
+            sort: { type: string }
+            direction: { type: string }
+            group: { type: string }
+            groups: { type: array, items: { $ref: '#/components/schemas/SearchGroupId' } }
+            libraryIds: { type: array, items: { type: string } }
+            limit: { type: integer }
+            searchMode: { type: string, const: token_prefix }
+            recorded: { type: boolean }
+        groups:
+          type: array
+          items: { $ref: '#/components/schemas/SearchGroupResult' }
+        capabilities: { $ref: '#/components/schemas/SearchCapabilities' }
+        empty:
+          type: object
+          properties: { key: { type: string }, fallback: { type: string } }
+    SearchGroupResult:
+      type: object
+      required: [id, title, entityKind, status, errorCode, items, totalCount, hasMore, nextCursor]
+      properties:
+        id: { $ref: '#/components/schemas/SearchGroupId' }
+        title: { type: string }
+        entityKind: { type: string }
+        status: { type: string, enum: [success, error] }
+        errorCode: { type: string, enum: ['', search_group_timeout, search_group_unavailable] }
+        items: { type: array, items: { $ref: '#/components/schemas/ContentEntry' } }
+        totalCount: { type: integer }
+        hasMore: { type: boolean }
+        nextCursor: { type: string }
+    SearchCapabilities:
+      type: object
+      properties:
+        groups:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { $ref: '#/components/schemas/SearchGroupId' }
+              title: { type: string }
+              entityKind: { type: string }
+              available: { type: boolean }
+              reason: { type: string, description: "Present and non-empty whenever available is false." }
+              sorts: { type: array, items: { type: string } }
+        sorts: { type: array, items: { type: string } }
+        directions: { type: array, items: { type: string } }
+        maxLimit: { type: integer }
+        groupBudgetMs: { type: integer }
+    SearchHistoryPage:
+      type: object
+      properties:
+        serverId: { type: string }
+        viewerFence: { type: string }
+        maxEntries: { type: integer }
+        entries:
+          type: array
+          items:
+            type: object
+            properties:
+              q: { type: string }
+              updatedAt: { type: string }
+              uses: { type: integer }
+    Person:
+      type: object
+      required: [id, name, sortName, biography, birthDate, deathDate, portraitUrl, roles, knownFor, providerIds, revision]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        sortName: { type: string }
+        biography: { type: string }
+        birthDate: { type: string }
+        deathDate: { type: string }
+        portraitUrl: { type: string, description: "Server-authored address, empty when no portrait is held." }
+        roles: { type: array, items: { type: string } }
+        knownFor: { type: array, maxItems: 8, items: { $ref: '#/components/schemas/ContentEntry' } }
+        providerIds: { type: object, additionalProperties: { type: string } }
+        revision: { type: integer }
+    PersonPage:
+      type: object
+      required: [serverId, viewerFence, revision, person, credits, pageInfo]
+      properties:
+        serverId: { type: string }
+        viewerFence: { type: string }
+        revision:
+          type: object
+          properties: { catalog: { type: integer }, viewer: { type: integer } }
+        person: { $ref: '#/components/schemas/Person' }
+        credits:
+          type: array
+          items:
+            type: object
+            properties:
+              media: { $ref: '#/components/schemas/ContentEntry' }
+              role: { type: string }
+              character: { type: string }
+              department: { type: string }
+              creditKind: { type: string, enum: [cast, crew] }
+        pageInfo:
+          type: object
+          properties:
+            total: { type: integer }
+            nextCursor: { type: string }
+    PeopleDirectory:
+      type: object
+      properties:
+        serverId: { type: string }
+        viewerFence: { type: string }
+        revision:
+          type: object
+          properties: { catalog: { type: integer }, viewer: { type: integer } }
+        q: { type: string }
+        people:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              name: { type: string }
+              sortName: { type: string }
+              portraitUrl: { type: string }
+              roles: { type: array, items: { type: string } }
+              creditCount: { type: integer }
+    PersonalBatchRequest:
+      type: object
+      required: [operationId, items]
+      properties:
+        operationId: { type: string, pattern: '^[A-Za-z0-9_-]{1,128}$' }
+        items:
+          type: array
+          minItems: 1
+          maxItems: 200
+          items:
+            type: object
+            required: [itemId]
+            properties:
+              itemId: { type: string }
+              expectedRevision: { type: integer, minimum: 0 }
+              watched: { type: boolean }
+              favorite: { type: boolean }
+              watchlisted: { type: boolean }
+              notInterested: { type: boolean, description: 'Hide the title from every recommendation (true) or undo that (false). A mild "less like this" for similar titles.' }
+    PersonalBatchReceipt:
+      type: object
+      properties:
+        serverId: { type: string }
+        viewerFence: { type: string }
+        operationId: { type: string }
+        updated: { type: integer }
+        failed: { type: integer }
+        receiptLifetimeSeconds: { type: integer }
+        results:
+          type: array
+          items:
+            type: object
+            properties:
+              itemId: { type: string }
+              ok: { type: boolean }
+              code: { type: string, description: "Present only when ok is false." }
+              message: { type: string }
+              personal: { type: object, description: "The row's personal state after the attempt." }
+    EntryOutcomes:
+      type: object
+      required: [added, removed, unchanged, failed]
+      properties:
+        added: { type: array, items: { type: string } }
+        removed: { type: array, items: { type: string } }
+        unchanged: { type: array, items: { type: string } }
+        failed:
+          type: array
+          items:
+            type: object
+            properties:
+              itemId: { type: string }
+              code: { type: string, enum: [not_found, unauthorized] }
+    Collection:
+      type: object
+      properties:
+        id: { type: string }
+        libraryId: { type: string }
+        name: { type: string }
+        itemCount: { type: integer }
+    SavedCollection:
+      type: object
+      description: A viewer-owned saved resource of kind collection.
+      properties:
+        id: { type: string }
+        kind: { type: string, enum: [collection, view] }
+        name: { type: string }
+        summary: { type: string }
+        visibility:
+          type: string
+          enum: [private, server]
+          description: |
+            server makes the collection readable by every member of this server.
+            Visibility publishes; it never delegates editing. Editing still needs an
+            explicit share, so a server-visible collection reports role "viewer" and
+            offers only "pin" to anyone but its owner and its named editors.
+        revision: { type: integer }
+        role: { type: string, enum: [owner, editor, viewer] }
+        entryCount: { type: integer }
+        actions: { type: array, items: { type: string } }

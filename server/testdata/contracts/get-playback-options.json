@@ -1,0 +1,45 @@
+{
+  "schema": "GetPlaybackOptionsResponse",
+  "method": "GET",
+  "path": "/v1/items/{itemId}/playback-options",
+  "auth": "device",
+  "status": 200,
+  "response": {
+    "itemId": "8tuuO7q001UpbtFA-9BZO67b2__8ewInS-MbZa47_DE",
+    "kind": "movie",
+    "versions": [
+      {
+        "id": "5nJh_cGVeI4cvzxXhO6qU8jx0k0j1_38xHZ48t3LI7E",
+        "label": "1080p · MP4",
+        "container": "mp4",
+        "sizeBytes": 10,
+        "durationMs": 600000,
+        "parts": [
+          {
+            "id": "5nJh_cGVeI4cvzxXhO6qU8jx0k0j1_38xHZ48t3LI7E",
+            "index": 0,
+            "durationMs": 600000,
+            "sizeBytes": 10
+          }
+        ],
+        "video": [],
+        "audio": [],
+        "subtitles": []
+      }
+    ],
+    "chapters": [],
+    "markers": [],
+    "preferred": {
+      "versionId": "5nJh_cGVeI4cvzxXhO6qU8jx0k0j1_38xHZ48t3LI7E",
+      "reason": "default"
+    },
+    "plan": {
+      "versionId": "5nJh_cGVeI4cvzxXhO6qU8jx0k0j1_38xHZ48t3LI7E",
+      "mode": "direct",
+      "streams": [],
+      "quality": {
+        "mode": "original"
+      }
+    }
+  }
+}

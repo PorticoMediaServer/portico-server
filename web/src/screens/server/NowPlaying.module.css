@@ -1,0 +1,10 @@
+/* The v1 Now Playing list: fixed-pitch rows, only those in view are in the DOM
+   (NOW_PLAYING_ROW_PX in admin/now-playing.ts is the pitch). */
+.list { max-height: calc(68px * 7); overflow-y: auto; overscroll-behavior: contain; }
+.track { position: relative; }
+.row { position: absolute; left: 0; right: 0; height: 68px; box-sizing: border-box; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 0 16px; border-top: 1px solid var(--line-soft); }
+.first { border-top: 0; }
+.copy { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.meta { font-size: 12.5px; color: var(--text-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.actions { display: flex; gap: 8px; }
+.pending { display: grid; gap: 8px; padding: 16px; }

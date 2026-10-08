@@ -1,0 +1,21 @@
+[extend]
+useDefault = true
+
+# Portico ships built-in application credentials for its metadata providers on
+# purpose (see THIRD-PARTY-NOTICES.md). They identify Portico to TMDB and
+# TheTVDB and are not user or server secrets.
+[[allowlists]]
+description = "Built-in metadata provider credentials"
+paths = ['''server/internal/metadata/project\.go''']
+
+# Example tokens in the API guide, idempotency and request keys in tests, and
+# SQL that matches the generic key pattern.
+[[allowlists]]
+description = "Documentation examples, test request keys and SQL"
+paths = [
+  '''server/api/guide/.*\.md''',
+  '''.*_test\.go''',
+  '''server/internal/catalog/local_artwork\.go''',
+  '''server/internal/playbackv1/queue_counts\.go''',
+  '''packages/client-core/src/session-selection\.ts''',
+]

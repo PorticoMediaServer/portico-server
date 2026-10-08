@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Portico</title>
+<!--
+  The Cast receiver framework is the one external script this page loads. Every
+  other byte (fonts, logo, script) is served from this Portico server, so the
+  page works on a LAN with no internet route once the framework is cached, and it
+  never contacts a third party for media, credentials or telemetry.
+
+  Presentation (decision V-11 / D-FEAT-6): Google's standard player
+  (<cast-media-player>) styled for Portico draws playback, pause, seek and
+  buffering. The overlays below cover the states it doesn't: the idle splash,
+  preparing a title, errors, and another phone asking to take over the TV.
+  Colours are Portico's design tokens (packages/design).
+-->
+<script src="https://www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
+<style>
+  @font-face { font-family: 'Portico Sans'; src: url('assets/manrope-400.ttf') format('truetype'); font-weight: 400; }
+  @font-face { font-family: 'Portico Sans'; src: url('assets/manrope-600.ttf') format('truetype'); font-weight: 600; }
+  :root {
+    color-scheme: dark;
+    --ink: #071018; --raised: #10212d; --overlay: #132634; --ambient: #153749;
+    --text: #edf5fa; --text-secondary: #bdccd6; --text-tertiary: #96a9b5;
+    --accent: #409fd4; --danger: #f38b88; --line: #28404f;
+  }
+  html, body { margin: 0; height: 100%; background: var(--ink); color: var(--text);
+    font: 400 24px/1.4 'Portico Sans', 'Avenir Next', system-ui, sans-serif; overflow: hidden; }
+  cast-media-player {
+    --background-color: var(--ink);
+    --font-family: 'Portico Sans', 'Avenir Next', sans-serif;
+    --progress-color: var(--accent);
+    --logo-image: url('assets/portico-wordmark-mono-white.svg');
+    --logo-size: 22vw;
+    --splash-image: url('assets/portico-wordmark-mono-white.svg');
+    --splash-size: 22vw;
+    --playback-logo-image: url('assets/portico-symbol-mono-white.svg');
+    position: absolute; inset: 0;
+  }
+  /* Overlays: one visible at a time, chosen by #ui[data-state]. */
+  #ui > section { position: absolute; inset: 0; display: none; }
+  #ui[data-state="idle"] #splash,
+  #ui[data-state="loading"] #loading,
+  #ui[data-state="error"] #error { display: grid; }
+  .atmosphere { background: radial-gradient(ellipse 84% 52% at 50% -6%, rgba(21, 55, 73, .78) 0%, transparent 74%), linear-gradient(180deg, #0a1720 0%, var(--ink) 46%); }
+  .center { place-items: center; text-align: center; padding: 8vh 10vw; }
+  .wordmark { width: 18vw; min-width: 220px; margin: 0 auto 5vh; display: block; }
+  h1 { font-size: 44px; line-height: 52px; font-weight: 600; letter-spacing: -0.02em; margin: 0 0 16px; }
+  p { margin: 0 0 12px; color: var(--text-secondary); }
+  .hint { color: var(--text-tertiary); font-size: 24px; }
+  /* Preparing a title: artwork and identity while the server gets the stream ready. */
+  #loading { grid-template-columns: auto 1fr; align-items: end; gap: 56px; padding: 0 80px 120px; }
+  #loading-art { width: 280px; aspect-ratio: 2 / 3; object-fit: cover; border-radius: 14px; background: var(--raised); }
+  #loading-art.square { aspect-ratio: 1; }
+  .eyebrow { font-size: 18px; font-weight: 600; letter-spacing: .055em; text-transform: uppercase; color: var(--text-tertiary); margin-bottom: 8px; }
+  .spinner { width: 52px; height: 52px; border-radius: 50%; border: 4px solid rgba(150, 169, 181, .35); border-top-color: var(--accent); animation: spin 1s linear infinite; margin-top: 28px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  /* Error card */
+  #error .card { max-width: 900px; background: var(--overlay); border: 1px solid var(--line); border-radius: 24px; padding: 48px 64px; }
+  #error h1 { color: var(--text); }
+  #error .mark { width: 56px; height: 56px; border-radius: 50%; margin: 0 auto 24px; display: grid; place-items: center; background: rgba(243, 139, 136, .16); color: var(--danger); font-size: 32px; font-weight: 600; }
+  /* Takeover prompt and transient notices sit over the video, bottom centre, opaque. */
+  #takeover, #notice { position: absolute; left: 50%; transform: translateX(-50%); bottom: 96px; max-width: 70vw;
+    background: var(--overlay); border: 1px solid var(--line); border-radius: 20px; padding: 28px 44px; text-align: center; }
+  #takeover h2 { font-size: 32px; line-height: 40px; font-weight: 600; margin: 0 0 8px; }
+  #takeover p, #notice { font-size: 24px; color: var(--text-secondary); margin: 0; }
+  #notice { bottom: 48px; padding: 18px 32px; }
+  [hidden] { display: none !important; }
+  /* Only when the page is opened in an ordinary browser (a Cast device has no keyboard). */
+  #browser-pair { margin-top: 32px; }
+  #browser-pair label { display: block; margin-bottom: 8px; color: var(--text-tertiary); font-size: 18px; }
+  #browser-pair input { font: 600 40px/1.2 ui-monospace, Menlo, monospace; letter-spacing: .12em; text-align: center; text-transform: uppercase;
+    width: 9ch; padding: 8px; border-radius: 8px; border: 1px solid #637580; background: var(--raised); color: var(--text); }
+  #browser-pair button { font: 600 20px/1 'Portico Sans', system-ui, sans-serif; margin-left: 12px; padding: 16px 28px; border-radius: 8px; border: 0; background: var(--accent); color: #03121c; }
+  #status { min-height: 32px; color: var(--text-tertiary); font-size: 20px; margin-top: 16px; }
+  #status[data-tone="error"] { color: var(--danger); }
+</style>
+</head>
+<body>
+<cast-media-player id="player"></cast-media-player>
+<div id="ui" data-state="idle">
+  <section id="splash" class="atmosphere center" aria-live="polite">
+    <div>
+      <img class="wordmark" src="assets/portico-wordmark-mono-white.svg" alt="Portico">
+      <h1>Ready to play from Portico</h1>
+      <p class="hint">On your phone or computer, open Portico, choose Play on, and pick this TV.</p>
+      <form id="browser-pair" hidden>
+        <label for="code-input">Pairing code</label>
+        <input id="code-input" maxlength="8" autocomplete="off" autocapitalize="characters" spellcheck="false">
+        <button id="pair" type="submit">Connect</button>
+      </form>
+      <p id="status" role="status"></p>
+    </div>
+  </section>
+  <section id="loading" class="atmosphere" aria-live="polite">
+    <img id="loading-art" alt="" hidden>
+    <div>
+      <p class="eyebrow" id="loading-eyebrow">Getting ready</p>
+      <h1 id="loading-title"></h1>
+      <p id="loading-subtitle"></p>
+      <div class="spinner" aria-hidden="true"></div>
+    </div>
+  </section>
+  <section id="error" class="atmosphere center" role="alert">
+    <div class="card">
+      <div class="mark" aria-hidden="true">!</div>
+      <h1 id="error-title">This title couldn’t play on this TV</h1>
+      <p id="error-body">Try again from your phone or computer.</p>
+    </div>
+  </section>
+  <div id="takeover" role="alert" hidden>
+    <h2 id="takeover-title">Someone wants to play on this TV</h2>
+    <p id="takeover-body">Waiting for the person watching now to allow it.</p>
+  </div>
+  <div id="notice" role="status" hidden></div>
+</div>
+<script src="receiver.js"></script>
+</body>
+</html>

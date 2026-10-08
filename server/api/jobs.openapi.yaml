@@ -1,0 +1,292 @@
+openapi: 3.1.0
+info:
+  title: Portico bulk jobs and container personal state
+  version: '1.0.0'
+  description: |
+    Implements personal-state, playlist-add, collection-add, metadata-edit, refresh and trash.
+    A job returns 202 with totalKnown false and captures membership asynchronously
+    in durable keyset pages of at most 20. It then executes batches of at most 20.
+    The accepted catalogue/personal revision fence must remain unchanged during
+    capture. A changed source fails with selection_changed before any mutations.
+    Clients send one request; neither creation nor polling enumerates membership.
+    One durable receipt per job counts against 10,000 jobs/profile/30 days and
+    100,000 jobs/server/30 days. Item receipt retention no longer limits actions.
+    All operations use the requesting authority/account/profile. Identical
+    operationId and normalized body replay the job; a changed body returns 422 idempotency_key_reused.
+    Workers recheck current authority and restrictions in each write transaction.
+    A restarted server resumes both capture and execution at committed cursors.
+    Retry a failed selection with a new operationId after reviewing its new scope.
+    Permanent execution errors preserve committed progress and become terminal;
+    lock contention and interrupted batches are retried without duplicating writes.
+    job.updated events on /v1/events carry profile-scoped progress, no item titles.
+    Playlist-add requires current owner/editor access and a destination revision.
+    Placement next prepends; after identifies an existing occurrence. Items selectors
+    preserve supplied order. Containers use canonical media order; query selectors
+    preserve browse sort then canonical member order. Membership is a distinct item
+    set; selecting a playlist copies each referenced item once, using its first occurrence.
+    Collection-add targets viewer-owned saved collections, not library catalogue groups.
+    Destination revisions advance per batch; external edits fail with revision_mismatch.
+    Metadata-edit and refresh require current owner authority. Metadata revisions are
+    captured per item; subsequent changes yield metadata_conflict failures. Refresh
+    queues the existing movie metadata pipeline; other leaf kinds fail unsupported_item_kind.
+    Completion of refresh means durable enqueue, not completion of provider work.
+    Trash requires current owner authority and library media-deletion permission.
+    It is a single-step recoverable move, with no preview or confirmation argument.
+    Emptying trash remains a separate confirmed action. Zero retention holds trash
+    indefinitely until explicitly emptied; it never causes immediate permanent deletion.
+    File moves are journaled outside the SQLite writer. Each item effect and job
+    cursor commit together; restart recovery finishes or rolls back the file move.
+servers: [{url: /}]
+security: [{bearerAuth: []}]
+paths:
+  /v1/jobs:
+    post:
+      operationId: create_job
+      summary: Capture a selection and enqueue a bulk command
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/JobRequest'}
+      responses:
+        '202':
+          description: Accepted; totalKnown is false until immutable membership capture finishes
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Job'}
+        '409': {description: revision_mismatch}
+        '422': {description: idempotency_key_reused (shared v1 error catalogue)}
+        '429': {description: rate_limited}
+  /v1/jobs/{id}:
+    parameters: [{$ref: '#/components/parameters/jobId'}]
+    get:
+      operationId: get_job
+      responses:
+        '200':
+          description: This profile's durable progress
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Job'}
+        '404': {description: Missing or owned by a different profile}
+  /v1/jobs/{id}/failures:
+    parameters: [{$ref: '#/components/parameters/jobId'}]
+    get:
+      operationId: get_job_failures
+      parameters:
+        - {name: cursor, in: query, schema: {type: string}}
+      responses:
+        '200':
+          description: At most 100 failures still visible to this viewer; cursor is exclusive
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    maxItems: 100
+                    items:
+                      type: object
+                      required: [itemId, code]
+                      properties:
+                        itemId: {type: string}
+                        code: {type: string}
+                  nextCursor: {type: string}
+  /v1/containers/{kind}/{id}/personal-state:
+    parameters:
+      - {name: kind, in: path, required: true, schema: {type: string, enum: [show, season, album, book, artist]}}
+      - {name: id, in: path, required: true, schema: {type: string}}
+    get:
+      operationId: get_container_personal_state
+      summary: Read the revision, the title's saved flags, its library and the visible-member detail counts
+      responses:
+        '200':
+          description: Default revision is zero; counts include only currently visible members. An artist carries Favorite only (its revision, watched and counts are zero).
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - {$ref: '#/components/schemas/ContainerState'}
+                  - type: object
+                    required: [libraryId, watchedCount, unwatchedCount]
+                    properties:
+                      libraryId: {type: string, description: The library the title lives in.}
+                      watchedCount: {type: integer, minimum: 0}
+                      unwatchedCount: {type: integer, minimum: 0}
+    put:
+      operationId: set_container_personal_state
+      description: |
+        Writes one profile/container watermark. Explicit item intent wins, then
+        the most recent applicable container watermark (season breaks a tie). Album/book defaults apply to their parts. Inheritance
+        requires item added_at <= watermark. Items added later are unwatched.
+        A hidden item that existed at the watermark inherits if it later becomes
+        visible. This is the profile's own state, not disclosure of a hidden item.
+        Unwatched immediately fences older watched overrides, then the job worker
+        removes those overrides in bounded batches; later item intents survive.
+        The same route sets the title's own saved flags: send exactly one of
+        `watched`, `watchlisted` or `favorite`. `watchlisted` is for a show;
+        `favorite` for a show, album, book or artist. The flags are plain values
+        (last write wins; `expectedRevision` is ignored for them) stored in the
+        title's personal-state row, so Saved lists, Home rows and recommendations
+        read them like an item's. Favorite, watchlist and rating are preserved by a watched write. Watched/unwatched counts
+        are read-time detail calculations over visible members, never cached
+        unrestricted totals. List/grid counts are omitted pending the projector.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [expectedRevision]
+              additionalProperties: false
+              properties:
+                expectedRevision: {type: integer, minimum: 0}
+                watched: {type: boolean}
+                watchlisted: {type: boolean}
+                favorite: {type: boolean}
+      responses:
+        '200':
+          description: Watermark and new revision
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ContainerState'}
+        '409': {description: revision_mismatch; read current state before a new intent}
+components:
+  securitySchemes:
+    bearerAuth: {type: http, scheme: bearer}
+  parameters:
+    jobId: {name: id, in: path, required: true, schema: {type: string}}
+  schemas:
+    ContainerState:
+      type: object
+      required: [revision, watched, watermark, watchlisted, favorite]
+      properties:
+        revision: {type: integer, minimum: 0}
+        watched: {type: boolean}
+        watermark: {type: string, description: 'UTC existence cutoff, empty when no state exists'}
+        watchlisted: {type: boolean, description: The title itself is on the Watchlist (shows).}
+        favorite: {type: boolean, description: 'The title itself is a Favorite (shows, albums, books, artists).'}
+    Selector:
+      oneOf:
+        - type: object
+          required: [container]
+          additionalProperties: false
+          properties:
+            container:
+              type: object
+              required: [kind, id]
+              additionalProperties: false
+              properties:
+                kind: {type: string, enum: [show, season, album, artist, book, collection, playlist, library]}
+                id: {type: string}
+        - type: object
+          required: [items]
+          additionalProperties: false
+          properties:
+            items:
+              type: object
+              required: [ids]
+              additionalProperties: false
+              properties:
+                ids: {type: array, minItems: 1, maxItems: 200, uniqueItems: true, items: {type: string}}
+        - type: object
+          required: [query]
+          additionalProperties: false
+          properties:
+            query:
+              type: object
+              required: [libraryId, pivot]
+              additionalProperties: false
+              properties:
+                libraryId: {type: string}
+                pivot: {type: string}
+                filter: {type: object, description: 'The published browse expression tree (all/any/not/field/operator/value)'}
+                sort:
+                  type: array
+                  items:
+                    type: object
+                    required: [field, direction]
+                    properties:
+                      field: {type: string}
+                      direction: {type: string, enum: [asc, desc]}
+    MetadataField:
+      type: object
+      additionalProperties: false
+      properties:
+        value: {type: string}
+        values: {type: array, items: {type: string}}
+        locked: {type: boolean}
+        useAutomatic: {type: boolean}
+    MetadataList:
+      type: object
+      additionalProperties: false
+      properties:
+        add: {type: array, items: {type: string}}
+        remove: {type: array, items: {type: string}}
+    JobRequest:
+      type: object
+      required: [operationId, command, selector, args]
+      additionalProperties: false
+      properties:
+        operationId: {type: string, pattern: '^[A-Za-z0-9_-]{1,128}$'}
+        command: {type: string, enum: [personal-state, playlist-add, collection-add, metadata-edit, refresh, trash]}
+        selector: {$ref: '#/components/schemas/Selector'}
+        args:
+          oneOf:
+            - type: object
+              minProperties: 1
+              additionalProperties: false
+              properties:
+                watched: {type: boolean}
+                favorite: {type: boolean}
+                watchlist: {type: boolean}
+                rating: {type: [number, 'null'], minimum: 0.5, maximum: 5, multipleOf: 0.5}
+            - type: object
+              required: [playlistId, expectedRevision, placement]
+              additionalProperties: false
+              properties:
+                playlistId: {type: string}
+                expectedRevision: {type: integer, minimum: 1}
+                placement:
+                  oneOf:
+                    - {type: string, enum: [end, next]}
+                    - type: object
+                      required: [after]
+                      additionalProperties: false
+                      properties:
+                        after: {type: string, minLength: 1}
+            - type: object
+              required: [collectionId, expectedRevision]
+              additionalProperties: false
+              properties:
+                collectionId: {type: string, description: Viewer-owned saved collection ID}
+                expectedRevision: {type: integer, minimum: 1}
+            - type: object
+              minProperties: 1
+              additionalProperties: false
+              properties:
+                fields: {type: object, additionalProperties: {$ref: '#/components/schemas/MetadataField'}}
+                lists: {type: object, additionalProperties: {$ref: '#/components/schemas/MetadataList'}}
+                genres: {$ref: '#/components/schemas/MetadataList'}
+                lockEdited: {type: boolean}
+            - {type: object, additionalProperties: false, description: Refresh and trash have no arguments}
+        expected:
+          type: object
+          properties:
+            catalogRevision:
+              type: string
+              description: 'Query selectors use browse page revision; single-library container selectors use the decimal catalog revision. Unsupported for cross-library selectors.'
+    Job:
+      type: object
+      required: [jobId, command, state, total, totalKnown, done, failed]
+      properties:
+        jobId: {type: string}
+        command: {type: string, enum: [personal-state, playlist-add, collection-add, metadata-edit, refresh, trash]}
+        state: {type: string, enum: [queued, running, complete, partial, failed]}
+        total: {type: integer, minimum: 0, description: Captured membership so far; exact once totalKnown is true}
+        totalKnown: {type: boolean}
+        errorCode: {type: string, enum: [selection_changed, selection_too_large, authority_revoked, execution_failed, revision_mismatch, destination_not_found]}
+        done: {type: integer, minimum: 0}
+        failed: {type: integer, minimum: 0}
+        failuresCursor: {type: string}

@@ -1,0 +1,98 @@
+name: Qualified FFmpeg toolchain
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: ffmpeg-toolchain
+  cancel-in-progress: false
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {runner: ubuntu-24.04, target: linux-x64}
+          - {runner: ubuntu-24.04, target: linux-arm64}
+          - {runner: ubuntu-24.04, target: windows-x64}
+          - {runner: ubuntu-24.04, target: windows-arm64}
+          - {runner: macos-15, target: macos-arm64}
+          - {runner: macos-15-intel, target: macos-x64}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - run: ./scripts/build-ffmpeg.sh '${{ matrix.target }}'
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ffmpeg-${{ matrix.target }}
+          path: runtime/ffmpeg-build/${{ matrix.target }}/portico-ffmpeg-${{ matrix.target }}.tar.xz
+          if-no-files-found: error
+  verify:
+    env:
+      PORTICO_REQUIRE_QUALIFIED_FFMPEG: "1"
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {runner: ubuntu-24.04, target: linux-x64}
+          - {runner: ubuntu-24.04-arm, target: linux-arm64}
+          - {runner: windows-2025, target: windows-x64}
+          - {runner: windows-11-arm, target: windows-arm64}
+          - {runner: macos-15, target: macos-arm64}
+          - {runner: macos-15-intel, target: macos-x64}
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: ffmpeg-${{ matrix.target }}
+          path: bundle
+      - shell: bash
+        run: |
+          mkdir qualified
+          tar -xJf bundle/portico-ffmpeg-${{ matrix.target }}.tar.xz -C qualified
+          ./scripts/verify-ffmpeg-bundle.sh qualified full
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+      - shell: bash
+        run: |
+          mkdir -p third_party/ffmpeg
+          mv qualified third_party/ffmpeg/bundle
+          cd server
+          mkdir -p ../../runtime
+          export PORTICO_PLAYBACK_TEST_HELPER="$PWD/../../runtime/playback-test-helper"
+          if [ "$RUNNER_OS" = Windows ]; then export PORTICO_PLAYBACK_TEST_HELPER="${PORTICO_PLAYBACK_TEST_HELPER}.exe"; fi
+          go build -o "$PORTICO_PLAYBACK_TEST_HELPER" ./cmd/server
+          go test -v ./internal/decoder ./internal/playback -run 'Test(BurnGraphDrawsOnlyAtTheTitleClock|OrdinaryBurnSelectionReplansRotatesGrantAndReturnsToCopy)$'
+  publish:
+    # Publish the qualified toolchain as its own release, named by the
+    # releaseTag in third_party/ffmpeg/sources.lock.json. Application releases
+    # download their FFmpeg from here; it is never marked as the latest release.
+    needs: verify
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with: {path: .toolchain, pattern: 'ffmpeg-*'}
+      - name: Publish the toolchain release
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          set -euo pipefail
+          tag="$(python3 -c "import json;print(json.load(open('third_party/ffmpeg/sources.lock.json'))['releaseTag'])")"
+          mkdir -p .release
+          for archive in .toolchain/ffmpeg-*/portico-ffmpeg-*.tar.xz; do
+            target="$(basename "$archive" .tar.xz)"; target="${target#portico-ffmpeg-}"
+            cp "$archive" ".release/portico-ffmpeg-${tag}-${target}.tar.xz"
+          done
+          (cd .release && sha256sum ./*.tar.xz | sort -k2 > checksums.sha256)
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "Toolchain release $tag already exists; bump releaseTag for a new build." >&2
+            exit 1
+          fi
+          gh release create "$tag" .release/* --title "FFmpeg toolchain $tag" --latest=false \
+            --notes "Qualified FFmpeg and FFprobe build for Portico Media Server, built from the pinned recipe in third_party/ffmpeg/sources.lock.json with GPL and version-3 licensing and without nonfree components. Each archive includes its corresponding source and license texts."
+

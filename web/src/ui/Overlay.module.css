@@ -1,0 +1,62 @@
+.overlay { position: fixed; inset: 0; z-index: var(--layer-dialog); background: color-mix(in srgb, var(--color-ink) 62%, transparent); backdrop-filter: blur(6px); animation: fade var(--motion-standard) var(--ease-out); }
+.dialog { position: fixed; z-index: var(--layer-dialog); left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(var(--dialog-width, 520px), calc(100vw - 32px)); max-height: 88vh; display: flex; flex-direction: column; background: var(--surface-overlay); border: 1px solid color-mix(in srgb, var(--line-strong) 70%, transparent); border-radius: var(--radius-overlay); box-shadow: var(--shadow-overlay), inset 0 1px 0 color-mix(in srgb, white 8%, transparent); animation: pop var(--motion-standard) var(--ease-out); outline: none; }
+.sheet { top: auto; bottom: 0; left: 0; transform: none; width: 100vw; max-height: 88vh; border-radius: var(--radius-overlay) var(--radius-overlay) 0 0; border-bottom: 0; animation: rise var(--motion-standard) var(--ease-out); padding-bottom: env(safe-area-inset-bottom); }
+.grabber { width: 36px; height: 4px; border-radius: 2px; background: color-mix(in srgb, var(--text-tertiary) 50%, transparent); margin: 8px auto 0; }
+.head { display: flex; align-items: flex-start; gap: 12px; padding: var(--overlay-header-top) var(--overlay-inset) 8px; }
+.headCopy { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--overlay-header-gap); }
+/* CON-29: the overlay title is the `heading` role and the description is `caption`, as on Apple. */
+.title { font-size: var(--type-heading-size); line-height: var(--type-heading-line); font-weight: var(--type-heading-weight); letter-spacing: var(--type-heading-tracking); }
+.description { font-size: var(--type-caption-size); line-height: var(--type-caption-line); color: var(--text-secondary); }
+.body { padding: 8px var(--overlay-inset) 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; }
+.actions { display: flex; justify-content: flex-end; gap: var(--overlay-footer-gap); padding: var(--overlay-footer-padding-y) var(--overlay-inset); border-top: 1px solid var(--line-soft); background: var(--surface-overlay); flex-wrap: wrap; }
+.actions.spread { justify-content: space-between; }
+@media (max-width: 720px) { .actions { flex-direction: column-reverse; } .actions > * { width: 100%; } }
+.close { flex-shrink: 0; }
+
+.menu { z-index: var(--layer-menu); min-width: 220px; max-width: 320px; padding: var(--menu-padding); background: var(--surface-overlay); border: 1px solid var(--line-soft); border-radius: var(--radius-panel); box-shadow: var(--shadow-overlay); animation: pop var(--motion-quick) var(--ease-out); outline: none; }
+.menuItem { display: flex; align-items: center; gap: var(--menu-row-gap); min-height: var(--menu-row-min); padding: 4px var(--menu-row-padding-x); border-radius: var(--radius-control); font-size: 14px; color: var(--text-primary); cursor: default; outline: none; user-select: none; }
+.menuItem[data-highlighted] { background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--text-primary); }
+.menuItem[data-disabled] { opacity: 0.45; }
+.menuItem.destructive { color: var(--status-danger); }
+.menuItem .check { margin-left: auto; color: var(--accent); }
+.menuHeader { display: flex; align-items: center; gap: 10px; padding: 10px 12px 8px; min-width: 220px; }
+.menuLabel { padding: 8px 12px 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-tertiary); }
+.separator { height: 1px; margin: 4px 4px; background: var(--line-soft); }
+.menuIcon { color: var(--text-secondary); }
+.menuMeta { margin-left: auto; font-size: 12px; color: var(--text-tertiary); }
+.menuTrailing { margin-left: auto; color: var(--text-tertiary); }
+.menuButton { width: 100%; border: 0; background: none; font: inherit; text-align: left; }
+.menuButton:hover, .menuButton:focus-visible { background: color-mix(in srgb, var(--accent) 16%, transparent); outline: none; }
+.menuButton:disabled { opacity: 0.45; }
+.menuHeading { display: flex; flex-direction: column; gap: 2px; padding: 8px 12px 4px; }
+.menuTitle { font-size: 14px; font-weight: 600; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.menuCaption { font-size: 12px; color: var(--text-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.popover { z-index: var(--layer-menu); background: var(--surface-overlay); border: 1px solid var(--line-soft); border-radius: var(--radius-panel); box-shadow: var(--shadow-overlay); padding: 14px; animation: pop var(--motion-quick) var(--ease-out); outline: none; max-width: min(360px, calc(100vw - 24px)); }
+.tooltip { z-index: var(--layer-notice); padding: 6px 10px; border-radius: 6px; background: var(--surface-bright); color: var(--text-primary); font-size: 12.5px; box-shadow: var(--shadow-overlay); animation: fade var(--motion-quick) var(--ease-out); }
+
+/* Right-side panel: full height, slides in from the trailing edge. */
+.side { top: 0; bottom: 0; left: auto; right: 0; transform: none; width: min(var(--dialog-width, 480px), 100vw); max-height: none; height: 100vh; border-radius: var(--radius-overlay) 0 0 var(--radius-overlay); border-right: 0; animation: slideIn var(--motion-standard) var(--ease-out); }
+@keyframes slideIn { from { transform: translateX(24px); opacity: 0; } }
+@keyframes fade { from { opacity: 0; } }
+@keyframes pop { from { opacity: 0; transform: translate(-50%, -50%) scale(0.98); } }
+.menu, .popover, .tooltip { animation-name: popPlain; }
+@keyframes popPlain { from { opacity: 0; transform: translateY(-3px); } }
+@keyframes rise { from { transform: translateY(24px); opacity: 0; } }
+
+/* WEB-SYS-02 / V-1 / X-16: overlays are opaque (the shared overlay surface). On a
+   desktop pointer device that can blur, a barely translucent variant (96 %) plus
+   blur is the only enhancement, per Justin: "a small amount of transparency
+   where performance allows". Written once, unprefixed: a hand-written
+   -webkit- duplicate made the minifier drop the standard declaration. */
+@media (hover: hover) and (pointer: fine) and (min-width: 1024px) {
+  @supports (backdrop-filter: blur(1px)) {
+    .dialog, .menu, .popover { background: var(--surface-overlay-translucent); backdrop-filter: blur(20px) saturate(1.15); }
+  }
+}
+/* WEB-SYS-08: a menu or popover never runs off the screen; it scrolls inside the space Radix measures. */
+.menu { max-height: var(--radix-dropdown-menu-content-available-height, 70vh); overflow-y: auto; overscroll-behavior: contain; }
+.popover { max-height: var(--radix-popover-content-available-height, 80vh); overflow-y: auto; overscroll-behavior: contain; }
+
+/* Touch: menu rows are 44 high (component spec). */
+@media (pointer: coarse) { .menuItem { min-height: var(--menu-row-min-touch); } }

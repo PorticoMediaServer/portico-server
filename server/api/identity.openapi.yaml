@@ -1,0 +1,953 @@
+openapi: 3.1.0
+info:
+  title: Portico identity, profiles, devices and account
+  version: "1.0.0"
+  description: |
+    Profiles, per-profile content restrictions, avatars, PIN
+    recovery, device records, remembered browser accounts, direct-server
+    two-factor authentication, self-registration and the tvOS Top Shelf feed.
+
+    Credentials and audiences:
+      * `/v1/direct/*` takes the **account session token** returned by
+        `POST /v1/direct/sign-in`, not a viewing session. It is the same
+        credential the rest of the Direct Sign-In surface uses and it can never
+        be used for media.
+      * `/v1/auth/*` is unauthenticated on purpose. A client must be able to ask
+        what sign-in methods exist, and a browser must be able to draw its
+        account switcher, before it holds anything.
+      * `/v1/profiles/{id}/avatar` and `/v1/rating-systems` take a viewing
+        session bearer token.
+      * `/v1/topshelf*` takes a Top Shelf feed token, which is not a session:
+        it reads this feed and its artwork and nothing else.
+
+    Content restrictions:
+      * A profile carries `maximumAgeRating` (in one named rating system),
+        `allowUnrated` and `blockedLabels[]`, and these three decide **catalog
+        visibility**. They are enforced by one predicate the catalog applies to
+        the browse engine, facet counts, home rows, search, library content,
+        single-item reads and playback. A title the predicate refuses is absent
+        from every list and answers `403 content_restricted` when opened or
+        played, so knowing an id is not a way around a filtered list.
+      * `allowDownloads`, `allowLiveTv`, `allowDvr` and `allowWatchTogether`
+        gate features, not visibility, and are answered by the feature that
+        owns them.
+      * Ratings from different bodies are compared on one scale: the minimum
+        admission age the issuing body attaches to the rating. A rating this
+        server does not recognise is unrated, and unrated is governed by
+        `allowUnrated` rather than admitted silently.
+      * Changing restrictions revokes the profile's viewing families, so an open
+        page, cursor or playback grant cannot outlive the change.
+
+    Devices:
+      * A device record is keyed by an installation id the client generates once
+        and keeps. It is not a fingerprint and grants nothing; an unknown
+        installation id is registered rather than refused.
+      * Token families remain the unit of revocation. A device owns the families
+        issued to it, so signing one device out revokes exactly those.
+      * When the owner sets `deviceApproval` to `owner-approves-new-devices`, a
+        newly seen device is `pending` and cannot obtain a viewing session until
+        the owner approves it.
+
+    Mid-playback profile switch:
+      * `POST /v1/direct/profile-switch` **ends** the outgoing profile's active
+        playback occurrences on that device; it never hands them over. A handover
+        would carry one profile's position, restrictions and personal state into
+        another's session, and a child profile inheriting a parent's occurrence
+        would inherit content its own restrictions forbid. Ending runs through
+        the family revocation hook, so occurrences, queues and physical readers
+        retire through the v2 controller model rather than being orphaned.
+servers:
+  - url: https://server.local
+security:
+  - bearerAuth: []
+tags:
+  - name: restrictions
+  - name: profiles
+  - name: devices
+  - name: auth
+  - name: topshelf
+paths:
+  /v1/rating-systems:
+    get:
+      summary: The ordered rating tables a restriction may be expressed in
+      operationId: listRatingSystems
+      tags: [restrictions]
+      description: Any signed-in viewer may read the vocabulary; it describes no account.
+      responses:
+        "200":
+          description: Rating systems, each ordered ascending by admission age.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: {$ref: "#/components/schemas/RatingSystem"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        default: {$ref: "#/components/responses/Error"}
+  /v1/direct/profiles/{id}/restrictions:
+    get:
+      summary: Read one profile's restriction document
+      operationId: getProfileRestrictions
+      tags: [restrictions]
+      description: Any holder of the account session may read; a profile with no stored row reads as nothing blocked, revision 1.
+      parameters:
+        - {$ref: "#/components/parameters/ProfileID"}
+      responses:
+        "200":
+          description: The complete restriction document.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ProfileRestrictions"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        default: {$ref: "#/components/responses/Error"}
+    put:
+      summary: Replace one profile's restriction document
+      operationId: setProfileRestrictions
+      tags: [restrictions]
+      description: |
+        Requires an account session that may manage the account. The whole
+        document is replaced, guarded by `expectedRevision`. On success the
+        profile's viewing families are revoked.
+      x-error-codes: [invalid_request, restrictions_changed, unauthorized]
+      parameters:
+        - {$ref: "#/components/parameters/ProfileID"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ProfileRestrictionEdit"}
+      responses:
+        "200":
+          description: The stored document at its new revision.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ProfileRestrictions"}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        default: {$ref: "#/components/responses/Error"}
+  /v1/direct/pin-recovery:
+    get:
+      summary: Which confirmations can reset a profile PIN on this account
+      operationId: getPINRecoveryMethods
+      tags: [profiles]
+      description: Reveals nothing about whether a specific profile has a PIN.
+      responses:
+        "200":
+          description: The available confirmations.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/PINRecoveryMethods"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        default: {$ref: "#/components/responses/Error"}
+  /v1/direct/profiles/{id}/pin-reset:
+    post:
+      summary: Clear or replace a profile PIN
+      operationId: resetProfilePIN
+      tags: [profiles]
+      description: |
+        Requires an account session that may manage the account. An empty `pin` clears the PIN. The profile's remembered device trust and
+        viewing families are retired.
+      x-error-codes: [invalid_request, unauthorized]
+      parameters:
+        - {$ref: "#/components/parameters/ProfileID"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [pin]
+              properties:
+                pin: {type: string, pattern: "^[0-9]{4}$|^$"}
+      responses:
+        "200":
+          description: The account's profiles after the reset.
+          content:
+            application/json:
+              schema: {type: object, additionalProperties: true}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        default: {$ref: "#/components/responses/Error"}
+  /v1/direct/profiles/avatars:
+    get:
+      summary: Avatar versions for every live profile on the account
+      operationId: listProfileAvatars
+      tags: [profiles]
+      description: One request builds every picture URL, so a profile list needs no request per profile.
+      responses:
+        "200":
+          description: One entry per profile that has an avatar.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: {$ref: "#/components/schemas/ProfileAvatar"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        default: {$ref: "#/components/responses/Error"}
+  /v1/direct/profiles/{id}/avatar:
+    post:
+      summary: Upload a profile picture
+      operationId: uploadProfileAvatar
+      tags: [profiles]
+      description: |
+        Accepts a multipart form with an `image` part, or the raw bytes as the
+        body. The declared content type and file name are ignored: the bytes are
+        sniffed, and only JPEG, PNG and WebP are read. The image is decoded,
+        cropped to its largest centred square, re-encoded to PNG at 64, 160 and
+        512 pixels, and only those renditions are stored, so EXIF, colour
+        profiles and trailing data never survive. The original may not exceed
+        4 MiB, 8000 pixels on a side, or 24 million pixels.
+      x-error-codes: [avatar_unsupported, unauthorized, invalid_request]
+      parameters:
+        - {$ref: "#/components/parameters/ProfileID"}
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                image: {type: string, format: binary}
+          image/jpeg: {schema: {type: string, format: binary}}
+          image/png: {schema: {type: string, format: binary}}
+          image/webp: {schema: {type: string, format: binary}}
+      responses:
+        "201":
+          description: The stored avatar and its new version.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ProfileAvatar"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "415": {$ref: "#/components/responses/Unsupported"}
+        default: {$ref: "#/components/responses/Error"}
+    delete:
+      summary: Remove a profile picture
+      operationId: deleteProfileAvatar
+      tags: [profiles]
+      description: The profile falls back to its colour token. Rendition rows no profile points at are deleted with it.
+      parameters:
+        - {$ref: "#/components/parameters/ProfileID"}
+      responses:
+        "204": {description: Removed.}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        default: {$ref: "#/components/responses/Error"}
+  /v1/profiles/{id}/avatar:
+    get:
+      summary: Read a profile picture rendition
+      operationId: getProfileAvatar
+      tags: [profiles]
+      description: |
+        Takes a viewing session on the same account: a profile picture is
+        personal data, not public artwork. `v` is the avatar version; supplying
+        it makes the response immutably cacheable, and a stale `v` is answered
+        `404 avatar_not_found` rather than with a different picture.
+      x-error-codes: [avatar_not_found, unauthorized, invalid_request]
+      parameters:
+        - {$ref: "#/components/parameters/ProfileID"}
+        - name: v
+          in: query
+          description: The avatar version the client expects.
+          schema: {type: string}
+        - name: size
+          in: query
+          description: Desired edge in pixels; the smallest stored rendition at least this large is served (64, 160 or 512).
+          schema: {type: integer, minimum: 1, maximum: 512}
+      responses:
+        "200":
+          description: A square PNG.
+          content:
+            image/png: {schema: {type: string, format: binary}}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        default: {$ref: "#/components/responses/Error"}
+  /v1/direct/profile-switch:
+    post:
+      summary: Fence a mid-playback profile switch on one device
+      operationId: switchProfileFence
+      tags: [devices]
+      description: |
+        Ends the outgoing profile's active playback on this device before another
+        profile takes it over. Occurrences are ended, never handed over; see the
+        document description for why. Call this before selecting the new profile.
+      x-error-codes: [invalid_request, device_not_found, unauthorized]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [installationId]
+              properties:
+                installationId: {type: string}
+                outgoingProfileId: {type: string, description: Empty ends every family on the device.}
+      responses:
+        "204": {description: Fenced.}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        default: {$ref: "#/components/responses/Error"}
+  /v1/auth/remembered-accounts:
+    get:
+      summary: Accounts remembered on one installation
+      operationId: listRememberedAccounts
+      tags: [auth]
+      security: []
+      description: |
+        Unauthenticated by design: a browser that has not signed in is exactly
+        the caller that needs its account switcher, and no entry is a credential.
+        The server keeps only descriptors; the tokens stay in the client. An
+        installation id is a 256-bit value the client generated, so guessing one
+        is guessing a secret.
+      parameters:
+        - name: installationId
+          in: query
+          required: true
+          schema: {type: string}
+      responses:
+        "200":
+          description: At most ten accounts, most recently used first.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: {$ref: "#/components/schemas/RememberedAccount"}
+        "400": {$ref: "#/components/responses/Invalid"}
+        default: {$ref: "#/components/responses/Error"}
+  /v1/direct/remembered-accounts:
+    post:
+      summary: Remember this account on an installation
+      operationId: rememberAccount
+      tags: [auth]
+      description: |
+        Refused when the device record says the account may not be remembered on
+        it. At most one account per installation may sign in automatically, and
+        at most ten are kept.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [installationId]
+              properties:
+                installationId: {type: string}
+                automaticSignIn: {type: boolean}
+      responses:
+        "200":
+          description: The installation's list after the change.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: {$ref: "#/components/schemas/RememberedAccount"}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        default: {$ref: "#/components/responses/Error"}
+  /v1/direct/remembered-accounts/{accountId}:
+    delete:
+      summary: Forget one remembered account on an installation
+      operationId: forgetRememberedAccount
+      tags: [auth]
+      description: The caller must hold a session for the account being removed, or the installation's own device record.
+      parameters:
+        - name: accountId
+          in: path
+          required: true
+          schema: {type: string}
+        - name: installationId
+          in: query
+          required: true
+          schema: {type: string}
+      responses:
+        "204": {description: Forgotten.}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        default: {$ref: "#/components/responses/Error"}
+  /v1/auth/refresh:
+    post:
+      operationId: refreshFirstPartySession
+      tags: [auth]
+      summary: Rotate a device-bound first-party refresh credential
+      description: Requires HTTPS, the current refresh credential, its installation id and a unique retry request id. The response contains a 15-minute access token and the next refresh credential. Reusing a predecessor with a different request id is refused.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken, installationId, requestId]
+              additionalProperties: false
+              properties:
+                refreshToken: { type: string }
+                installationId: { type: string }
+                requestId: { type: string }
+      responses:
+        '200': { description: Rotated access and refresh credentials., content: { application/json: { schema: { $ref: '#/components/schemas/AuthSession' } } } }
+        default: { $ref: '#/components/responses/Error' }
+      x-error-codes: [unauthorized, invalid_request]
+  /v1/auth/capabilities:
+    get:
+      summary: Which sign-in methods this server offers
+      operationId: getAuthCapabilities
+      tags: [auth]
+      security: []
+      description: |
+        Unauthenticated by design: a client must know which affordances to show
+        before it holds anything. The answer describes the server only. It never
+        takes a username, because that would make it an account-existence oracle.
+      responses:
+        "200":
+          description: The server's sign-in capabilities.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AuthCapabilities"}
+        default: {$ref: "#/components/responses/Error"}
+  /v1/auth/register:
+    post:
+      summary: Create an account under the owner's self-registration policy
+      operationId: selfRegister
+      tags: [auth]
+      security: []
+      description: |
+        Refused unless the owner set `identity.selfRegistration` to `open` or
+        `invite-only`. A new account is always a member with no libraries:
+        reaching the server is not evidence of what its owner wants shared.
+        Under `invite-only` a valid invitation code is required, and invitations
+        are owned by the administration surface, not by this route. Rate limited.
+      x-error-codes: [registration_closed, registration_invitation_required, username_taken, invalid_request, rate_limited]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username: {type: string, maxLength: 64}
+                password: {type: string, description: At least eight runes with upper, lower and non-letter characters.}
+                invitationCode: {type: string}
+      responses:
+        "201":
+          description: The account session, and the viewing session when the single profile is unprotected.
+          content:
+            application/json:
+              schema: {type: object, additionalProperties: true}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "429": {$ref: "#/components/responses/RateLimited"}
+        default: {$ref: "#/components/responses/Error"}
+  /v1/auth/two-factor/challenge:
+    post:
+      summary: Finish a sign-in that stopped at the second factor
+      operationId: completeTwoFactorChallenge
+      tags: [auth]
+      security: []
+      description: |
+        When an account has a confirmed factor, `POST /v1/direct/sign-in` returns
+        a `challenge` instead of an account token: the password has been proven,
+        nothing else has. Exchange the challenge and a code (authenticator or
+        recovery) here. Five wrong attempts retire the challenge. Rate limited.
+      x-error-codes: [unauthorized, two_factor_invalid, rate_limited]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, code]
+              properties:
+                token: {type: string}
+                code: {type: string}
+      responses:
+        "200":
+          description: The account session the password step would have returned.
+          content:
+            application/json:
+              schema: {type: object, additionalProperties: true}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "429": {$ref: "#/components/responses/RateLimited"}
+        default: {$ref: "#/components/responses/Error"}
+  /v1/direct/two-factor:
+    get:
+      summary: This account's second-factor state
+      operationId: getTwoFactor
+      tags: [auth]
+      responses:
+        "200":
+          description: Whether a factor is in force, pending, and how many recovery codes remain.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/TwoFactorState"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        default: {$ref: "#/components/responses/Error"}
+    delete:
+      summary: Disable the second factor
+      operationId: disableTwoFactor
+      tags: [auth]
+      description: Requires the account password, so a borrowed signed-in device cannot quietly weaken the account.
+      x-error-codes: [unauthorized, two_factor_missing, authentication_busy]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password]
+              properties:
+                password: {type: string}
+      responses:
+        "204": {description: Disabled.}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        default: {$ref: "#/components/responses/Error"}
+  /v1/direct/two-factor/enrol:
+    post:
+      summary: Start second-factor enrolment
+      operationId: enrolTwoFactor
+      tags: [auth]
+      description: |
+        Requires the account password. Returns the TOTP secret, an `otpauth://`
+        URI and ten recovery codes **once**; they are never readable again. The
+        factor is not in force until a code from it is verified, so a mistyped
+        secret cannot lock the account holder out.
+      x-error-codes: [unauthorized, two_factor_enrolled, authentication_busy]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password]
+              properties:
+                password: {type: string}
+      responses:
+        "201":
+          description: The enrolment material, returned once.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/TwoFactorEnrolment"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        default: {$ref: "#/components/responses/Error"}
+  /v1/direct/two-factor/verify:
+    post:
+      summary: Put a pending enrolment into force
+      operationId: verifyTwoFactor
+      tags: [auth]
+      x-error-codes: [two_factor_invalid, two_factor_missing, two_factor_enrolled]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code: {type: string}
+      responses:
+        "200":
+          description: The factor state after verification.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/TwoFactorState"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        default: {$ref: "#/components/responses/Error"}
+  /v1/direct/registration-policy:
+    get:
+      summary: Read the owner's registration and device-approval policy
+      operationId: getRegistrationPolicy
+      tags: [auth]
+      description: Owner only.
+      responses:
+        "200":
+          description: The current policy.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/RegistrationPolicy"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        default: {$ref: "#/components/responses/Error"}
+    put:
+      summary: Set the owner's registration and device-approval policy
+      operationId: setRegistrationPolicy
+      tags: [auth]
+      description: Owner only. An unset or unrecognised stored value always reads as `off` and `auto`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/RegistrationPolicy"}
+      responses:
+        "200":
+          description: The stored policy.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/RegistrationPolicy"}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        default: {$ref: "#/components/responses/Error"}
+  /v1/topshelf/token:
+    post:
+      summary: Mint a Top Shelf feed token for this device
+      operationId: createTopShelfToken
+      tags: [topshelf]
+      description: |
+        Takes a live viewing session and an approved device record. The token is
+        bound to the account, the profile and that device, lives 24 hours, and
+        reads the feed and its artwork only. It is not a session and cannot be
+        exchanged for one.
+      x-error-codes: [invalid_request, device_approval_pending, device_not_found, unauthorized]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [installationId]
+              properties:
+                installationId: {type: string}
+      responses:
+        "201":
+          description: The feed token.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/TopShelfToken"}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        default: {$ref: "#/components/responses/Error"}
+  /v1/topshelf:
+    get:
+      summary: The tvOS Top Shelf feed
+      operationId: getTopShelf
+      tags: [topshelf]
+      description: |
+        Built from the profile's home rows under the same library permissions and
+        the same content restriction every other read applies. At most four
+        sections of at most ten entries. The feed token may be sent as a bearer
+        token or as `token` in the query string.
+      x-error-codes: [topshelf_token_expired]
+      parameters:
+        - name: token
+          in: query
+          description: The feed token, for callers that cannot set headers.
+          schema: {type: string}
+      responses:
+        "200":
+          description: The feed.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/TopShelfFeed"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        default: {$ref: "#/components/responses/Error"}
+  /v1/topshelf/art/{id}:
+    get:
+      summary: Artwork for one Top Shelf entry
+      operationId: getTopShelfArt
+      tags: [topshelf]
+      description: |
+        Authorised by the feed token. The library permission and the content
+        restriction are both re-proven, so the token cannot reach artwork the
+        feed itself would not have listed.
+      x-error-codes: [topshelf_token_expired, content_restricted, not_found]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: string}
+        - name: token
+          in: query
+          description: The feed token.
+          schema: {type: string}
+      responses:
+        "200":
+          description: The poster image.
+          content:
+            image/jpeg: {schema: {type: string, format: binary}}
+            image/png: {schema: {type: string, format: binary}}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        default: {$ref: "#/components/responses/Error"}
+components:
+  securitySchemes:
+    bearerAuth: {type: http, scheme: bearer}
+  parameters:
+    ProfileID:
+      name: id
+      in: path
+      required: true
+      description: The profile id.
+      schema: {type: string}
+    DeviceID:
+      name: id
+      in: path
+      required: true
+      description: The device record id.
+      schema: {type: string}
+  schemas:
+    Error:
+      type: object
+      required: [code, message, retryable]
+      properties:
+        code: {type: string}
+        message: {type: string}
+        retryable: {type: boolean}
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error: {$ref: "#/components/schemas/Error"}
+      additionalProperties: true
+    RatingValue:
+      type: object
+      required: [code, label, minimumAge]
+      properties:
+        code: {type: string, description: The value as its issuing body writes it.}
+        label: {type: string}
+        minimumAge: {type: integer, description: The minimum admission age, which is the only cross-system comparison this server makes.}
+    RatingSystem:
+      type: object
+      required: [id, name, region, values]
+      properties:
+        id: {type: string, enum: [mpaa, us-tv, bbfc, fsk, cnc, acb, age]}
+        name: {type: string}
+        region: {type: string, description: ISO country code, empty for the generic age scale.}
+        values:
+          type: array
+          description: Ascending by admission age.
+          items: {$ref: "#/components/schemas/RatingValue"}
+        screens: {type: array, items: {type: string}}
+    ProfileRestrictions:
+      type: object
+      required: [profileId, ratingSystem, maximumAgeRating, maximumAge, allowUnrated, blockedLabels, allowDownloads, allowLiveTv, allowDvr, allowWatchTogether, revision]
+      properties:
+        profileId: {type: string}
+        ratingSystem: {type: string, description: Empty when there is no ceiling.}
+        maximumAgeRating: {type: string, description: Empty when there is no ceiling.}
+        maximumAge: {type: integer, description: The resolved admission-age ceiling, or -1 for none.}
+        allowUnrated: {type: boolean, description: When false, content this server cannot resolve to a known rating is hidden.}
+        blockedLabels: {type: array, items: {type: string}}
+        allowDownloads: {type: boolean}
+        allowLiveTv: {type: boolean}
+        allowDvr: {type: boolean}
+        allowWatchTogether: {type: boolean}
+        revision: {type: integer}
+    ProfileRestrictionEdit:
+      type: object
+      required: [expectedRevision]
+      description: A full replacement, so a document read and re-submitted whole cannot lose a field a newer client added.
+      properties:
+        expectedRevision: {type: integer, minimum: 1}
+        ratingSystem: {type: string}
+        maximumAgeRating: {type: string}
+        allowUnrated: {type: boolean}
+        blockedLabels: {type: array, maxItems: 64, items: {type: string, maxLength: 120}}
+        allowDownloads: {type: boolean}
+        allowLiveTv: {type: boolean}
+        allowDvr: {type: boolean}
+        allowWatchTogether: {type: boolean}
+    PINRecoveryMethods:
+      type: object
+      required: [password, authenticator, recoveryCode]
+      properties:
+        password: {type: boolean}
+        authenticator: {type: boolean}
+        recoveryCode: {type: boolean}
+    ProfileAvatar:
+      type: object
+      required: [profileId, version, updatedAt, sourceMime, url]
+      properties:
+        profileId: {type: string}
+        version: {type: integer}
+        updatedAt: {type: string, format: date-time}
+        sourceMime: {type: string, enum: [image/jpeg, image/png, image/webp]}
+        url: {type: string}
+    Device:
+      type: object
+      required: [id, authority, installationId, name, platform, app, appVersion, ip, firstSeen, lastSeen, trusted, approvalState, rememberAccount, current, sessions]
+      properties:
+        id: {type: string}
+        authority:
+          type: string
+          enum: [local, hosted]
+          description: >
+            Which sign-in the record belongs to. A Portico Account viewer gets the same record,
+            kept entirely on this server; no part of a device list is ever sent to Hosted
+            Services. Approval policy, per-device sign-out and the Top Shelf feed token behave
+            identically for both.
+        installationId: {type: string}
+        name: {type: string}
+        platform: {type: string}
+        app: {type: string}
+        appVersion: {type: string}
+        ip: {type: string, description: The peer address, taken from the connection and never from a caller-supplied header.}
+        firstSeen: {type: string, format: date-time}
+        lastSeen: {type: string, format: date-time}
+        trusted: {type: boolean}
+        approvalState: {type: string, enum: [approved, pending, denied]}
+        lastProfileId: {type: string}
+        rememberAccount: {type: boolean}
+        current: {type: boolean}
+        sessions: {type: integer, description: "Unrevoked token families bound to this device whose authorization horizon has not expired."}
+    DeviceRegistration:
+      type: object
+      description: Device name/platform/app/version reject all C0 characters and DEL, including leading or trailing controls.
+      required: [installationId]
+      properties:
+        installationId: {type: string, description: A value the client generates once and keeps. Not a fingerprint; grants nothing.}
+        name: {type: string, maxLength: 120}
+        platform: {type: string, maxLength: 64}
+        app: {type: string, maxLength: 64}
+        appVersion: {type: string, maxLength: 64}
+    DeviceEdit:
+      type: object
+      properties:
+        name: {type: string, maxLength: 120}
+        lastProfileId: {type: string}
+        rememberAccount: {type: boolean}
+        trusted: {type: boolean, description: Owner only.}
+    RememberedAccount:
+      type: object
+      required: [accountId, username, displayName, avatarVersion, automaticSignIn, lastUsed]
+      properties:
+        accountId: {type: string}
+        username: {type: string}
+        displayName: {type: string}
+        avatarVersion: {type: integer}
+        avatarUrl: {type: string}
+        automaticSignIn: {type: boolean}
+        lastUsed: {type: string, format: date-time}
+    AuthCapabilities:
+      type: object
+      required: [serverId, serverName, setupRequired, methods, selfRegistration, quickConnect, twoFactor, hostedAttach]
+      properties:
+        serverId: {type: string}
+        serverName: {type: string}
+        setupRequired: {type: boolean}
+        methods: {type: array, items: {type: string, enum: [password, quick-connect, hosted, self-registration]}}
+        selfRegistration: {type: string, enum: [off, invite-only, open]}
+        quickConnect: {type: boolean}
+        twoFactor: {type: boolean}
+        hostedAttach: {type: boolean}
+    RegistrationPolicy:
+      type: object
+      required: [selfRegistration, deviceApproval]
+      properties:
+        selfRegistration: {type: string, enum: [off, invite-only, open]}
+        deviceApproval: {type: string, enum: [auto, owner-approves-new-devices]}
+    TwoFactorState:
+      type: object
+      required: [enabled, pendingEnrolment, recoveryCodesRemaining]
+      properties:
+        enabled: {type: boolean}
+        pendingEnrolment: {type: boolean}
+        recoveryCodesRemaining: {type: integer}
+    TwoFactorEnrolment:
+      type: object
+      required: [secret, uri, recoveryCodes]
+      properties:
+        secret: {type: string}
+        uri: {type: string}
+        recoveryCodes: {type: array, items: {type: string}}
+    TopShelfToken:
+      type: object
+      required: [token, expiresAt, feedUrl]
+      properties:
+        token: {type: string}
+        expiresAt: {type: string, format: date-time}
+        feedUrl: {type: string}
+    TopShelfEntry:
+      type: object
+      required: [id, title, displayUrl]
+      properties:
+        id: {type: string}
+        title: {type: string}
+        subtitle: {type: string}
+        imageUrl: {type: string, description: Valid for the life of the feed token.}
+        displayUrl: {type: string}
+        playUrl: {type: string}
+        progressPercent: {type: integer, minimum: 1, maximum: 99}
+    TopShelfSection:
+      type: object
+      required: [id, title, shape, entries]
+      properties:
+        id: {type: string}
+        title: {type: string}
+        shape: {type: string, enum: [poster, landscape, square]}
+        entries: {type: array, maxItems: 10, items: {$ref: "#/components/schemas/TopShelfEntry"}}
+    TopShelfFeed:
+      type: object
+      required: [serverId, profileId, expiresAt, sections]
+      properties:
+        serverId: {type: string}
+        profileId: {type: string}
+        expiresAt: {type: string, format: date-time}
+        sections: {type: array, maxItems: 4, items: {$ref: "#/components/schemas/TopShelfSection"}}
+  responses:
+    Error:
+      description: An error envelope.
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/ErrorEnvelope"}
+    Invalid:
+      description: The request was malformed or out of bounds.
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/ErrorEnvelope"}
+    Unauthorized:
+      description: No usable credential.
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/ErrorEnvelope"}
+    Forbidden:
+      description: The credential is real but does not authorise this.
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/ErrorEnvelope"}
+    NotFound:
+      description: No such record.
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/ErrorEnvelope"}
+    Conflict:
+      description: The stored state moved, or the request contradicts it.
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/ErrorEnvelope"}
+    Unsupported:
+      description: The uploaded bytes are not a JPEG, PNG or WebP image.
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/ErrorEnvelope"}
+    RateLimited:
+      description: Too many attempts from this peer.
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/ErrorEnvelope"}
+    Busy:
+      description: Password hashing capacity is exhausted; retry shortly.
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/ErrorEnvelope"}

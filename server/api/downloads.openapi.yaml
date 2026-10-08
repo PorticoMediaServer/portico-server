@@ -1,0 +1,1049 @@
+openapi: 3.1.0
+info:
+  title: Portico offline downloads
+  version: "1.0.0"
+  summary: Download preparations, per-item download options, transfer grants, offline receipts, deferred progress sync and storage accounting.
+  description: |
+    Everything a client needs to take media offline and play it with no server in
+    reach. The flow is always the same four steps, and a third-party client can
+    drive all of them:
+
+    1. `GET /v1/items/{id}/download-options` — what can be downloaded, at what
+       size, under what policy, with how much room left on the server.
+    2. `POST /v1/downloads/preparations` — claim one or many items at one
+       quality. The server resolves each claim to a concrete artifact and
+       publishes a SHA-256 for it.
+    3. `POST /v1/downloads/preparations/{id}/grant` then
+       `GET /v1/downloads/artifacts/{grant}` — move the bytes, with `Range`,
+       `ETag` and `206` so an interrupted transfer resumes.
+    4. `POST /v1/downloads/receipts` — take a signed offline receipt. The client
+       keeps it and plays the downloaded file offline; it revalidates on the next
+       contact and polls the revocation list.
+
+    Downloads produce no media of their own. `quality: original` points at the
+    catalogue's own file. A quality ladder rung points at a published prepared
+    version from the optimization producer, mapped as: an audio item takes
+    `audio-aac-v3`; a rung at 720p or below takes `portable-720-v3`; a rung above
+    720p takes `portable-1080-v3`. An audio item therefore publishes exactly one
+    optimized option rather than six copies of the same AAC recipe under video
+    rung names: the `1080p` rung, labelled `AAC 192 kbps`, whose audio budget is
+    the recipe's own. Naming any other rung for an audio item resolves to the
+    same recipe and the same size estimate. Conversions stay owner-authorized: an owner
+    asking for a rung that is not prepared yet queues the conversion, and any
+    other viewer's preparation publishes `optimized_version_unavailable` instead
+    of ordering work it has no authority for.
+
+    Cost and paging: every route here is bounded. `POST /v1/downloads/preparations`
+    accepts at most 100 explicit items and does one indexed read per item. A legacy
+    container request larger than 100 is refused instead of silently truncated.
+    Whole containers use POST /v1/downloads/requests (download-requests.openapi.yaml).
+    `GET /v1/downloads/preparations` is a keyset page over
+    `(profile_key, created_ms DESC, id DESC)`; the cursor is opaque, is `""` when
+    exhausted, and must be sent back verbatim. The revocation list pages on a
+    monotonic sequence, so a client that was offline for a month fetches only
+    what it missed by passing the sequence it last saw. `GET /v1/downloads/usage`
+    runs three aggregate reads over the preparation table and nothing else.
+    The transfer route streams through the same isolated media process playback
+    uses; it holds a deletion lease on prepared bytes for the life of the
+    transfer, so a collector cannot remove a file mid-copy.
+
+    Progress recorded offline is applied last-write-wins by `observedAt` against
+    ordinary personal state — the same `progress`, `progress_activity` and
+    `personal_items` rows an online client writes. There is no second kind of
+    progress. An entry that lost is reported per entry with the server's current
+    value, never silently dropped.
+
+    While a preparation is `queued` or `running`, poll
+    `GET /v1/downloads/preparations/{id}` no more than once every 3 seconds; the
+    worker advances in bounded passes and a tighter loop buys nothing.
+servers:
+  - url: /
+security:
+  - bearerAuth: []
+tags:
+  - name: downloads
+  - name: receipts
+paths:
+  /v1/items/{id}/download-options:
+    get:
+      tags: [downloads]
+      operationId: getDownloadOptions
+      summary: Publish the download menu for one item.
+      description: |
+        One read returns the source description, every quality the ladder offers
+        for this source with a size for each, the profile's download policy and
+        the storage the server is still willing to commit. `estimated` is false
+        for the original and for a rung that is already prepared, and true where
+        the size is bitrate times duration plus 3% container overhead. A rung
+        taller than the source is omitted rather than offered as an upscale.
+        `preparationId` and `preparationState` are present when this viewer
+        already holds a live claim at that quality.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: string}
+      responses:
+        "200":
+          description: The item's download menu.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/DownloadOptionsView"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "503": {$ref: "#/components/responses/DownloadsUnavailable"}
+      x-error-codes: [unauthorized, not_found, downloads_unavailable]
+  /v1/downloads/preparations:
+    post:
+      tags: [downloads]
+      operationId: createDownloadPreparations
+      summary: Claim one or more items for offline download.
+      description: |
+        Exactly one target form is accepted: `mediaId`, `mediaIds` or
+        `nextAfterMediaId` (the one episode that follows the named one). A
+        whole show, season, album, book or playlist is a durable request
+        (`POST /v1/downloads/requests`), never a batch here. `operationId` makes the
+        request idempotent: replaying it returns the original batch and answers
+        `200` with `duplicate: true` instead of `201`.
+
+        Targets are admitted independently. One unavailable episode in a selection
+        appears in `rejected` while the rest are accepted, because failing the
+        whole batch would make a client re-derive which items were fine. A
+        target this viewer already holds a live claim on is returned in `items`
+        unchanged rather than duplicated.
+
+        A request that could admit nothing because the prepared store is full
+        answers `409 storage_full`; a batch that partly fit reports
+        `storage_full` per rejected target instead.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/PreparationRequest"}
+            examples:
+              oneEpisodeAtOriginal:
+                summary: One episode, untouched source file
+                value: {operationId: op-4f21, mediaId: item_0001, quality: original}
+              threeEpisodesAt720:
+                summary: Three chosen episodes at 720p
+                value: {operationId: op-4f22, mediaIds: [item_0001, item_0002, item_0003], quality: 720p}
+              autoNextEpisode:
+                summary: Stay one episode ahead
+                value: {operationId: op-4f23, nextAfterMediaId: item_0001, quality: 1080p}
+      responses:
+        "201":
+          description: The batch as admitted.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/PreparationBatch"}
+        "200":
+          description: A replay of an earlier operationId; the original batch.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/PreparationBatch"}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/DownloadsNotAllowed"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/StorageFull"}
+        "429": {$ref: "#/components/responses/DownloadCapacity"}
+        "503": {$ref: "#/components/responses/DownloadsUnavailable"}
+      x-error-codes: [invalid_request, unauthorized, downloads_not_allowed, not_found, storage_full, download_capacity, operation_conflict, operation_expired]
+    get:
+      tags: [downloads]
+      operationId: listDownloadPreparations
+      summary: Page this viewer's download preparations, newest first.
+      parameters:
+        - name: state
+          in: query
+          required: false
+          description: One published state. Omit for every state.
+          schema:
+            type: string
+            enum: [queued, running, ready, paused, failed, unavailable, cancelled, expired]
+        - name: profileId
+          in: query
+          required: false
+          description: |
+            Owner only: read another profile's list. Ignored for anyone else,
+            who always reads their own, because a download list is personal
+            state rather than a server-wide resource.
+          schema: {type: string}
+        - name: cursor
+          in: query
+          required: false
+          schema: {type: string}
+        - name: limit
+          in: query
+          required: false
+          schema: {type: integer, minimum: 1, maximum: 200, default: 50}
+      responses:
+        "200":
+          description: One page of preparations.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/PreparationPage"}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "503": {$ref: "#/components/responses/DownloadsUnavailable"}
+      x-error-codes: [invalid_request, unauthorized, downloads_unavailable]
+  /v1/downloads/preparations/{id}:
+    get:
+      tags: [downloads]
+      operationId: getDownloadPreparation
+      summary: Read one preparation, including byte progress and ETA.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: string}
+      responses:
+        "200":
+          description: The preparation.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Preparation"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "503": {$ref: "#/components/responses/DownloadsUnavailable"}
+      x-error-codes: [unauthorized, not_found, downloads_unavailable]
+  /v1/downloads/preparations/{id}/actions:
+    post:
+      tags: [downloads]
+      operationId: actOnDownloadPreparation
+      summary: Pause, resume, cancel, retry or remove a preparation.
+      description: |
+        Every action names `expectedRevision`. A mismatch, or an action the
+        current state does not offer, answers `409 download_conflict` with the
+        current preparation beside the error so the client can re-render without
+        a second read. The actions a state offers are published in the
+        preparation's own `actions` array, so a client renders exactly the
+        controls the server will accept.
+
+        `pause` keeps the work already done: the SHA-256 of a partly hashed
+        original is checkpointed, so `resume` continues rather than restarting.
+        `cancel` and `remove` also revoke every offline receipt that vouched for
+        this claim, because a receipt outliving its preparation would authorize
+        bytes the server no longer accounts for.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: string}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/PreparationCommand"}
+            examples:
+              pause:
+                summary: Pause a running preparation
+                value: {operationId: op-5a01, action: pause, expectedRevision: 3}
+              retry:
+                summary: Retry after a failure
+                value: {operationId: op-5a02, action: retry, expectedRevision: 7}
+      responses:
+        "200":
+          description: The preparation after the action.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Preparation"}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/PreparationConflict"}
+        "503": {$ref: "#/components/responses/DownloadsUnavailable"}
+      x-error-codes: [invalid_request, unauthorized, not_found, download_conflict, storage_full, operation_conflict]
+  /v1/downloads/preparations/{id}/grant:
+    post:
+      tags: [downloads]
+      operationId: createDownloadGrant
+      summary: Mint a short-lived transfer grant for a ready preparation.
+      description: |
+        The grant is a capability URL, not a session: the token in the path is
+        the whole authority, it names the viewer it was issued to, and the
+        viewer's library permission is re-checked before any byte is served. It
+        lives 10 minutes. The first request opens a 10 minute replay window
+        during which the same grant may issue as many ranged requests as a
+        resumable transfer needs; after the window, or after the TTL, the client
+        mints a new grant rather than resuming indefinitely.
+
+        `operationId` is idempotent, so a client that retried the request is not
+        handed a second token while the first one burns its window.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: string}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [operationId]
+              properties:
+                operationId: {type: string}
+            examples:
+              grant:
+                summary: Take a transfer grant
+                value: {operationId: op-6b10}
+      responses:
+        "201":
+          description: The transfer grant.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/DownloadGrant"}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/DownloadsNotAllowed"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/NotReady"}
+        "503": {$ref: "#/components/responses/DownloadsUnavailable"}
+      x-error-codes: [invalid_request, unauthorized, downloads_not_allowed, not_found, download_not_ready]
+  /v1/downloads/artifacts/{grant}:
+    get:
+      tags: [downloads]
+      operationId: transferDownloadArtifact
+      summary: Transfer the prepared bytes.
+      description: |
+        Authority is the grant in the path; no bearer token is required or read,
+        exactly as for playback media URLs. The response carries
+        `Accept-Ranges: bytes`, `Content-Length`, an `ETag` of
+        `"sha256-<hex>"` and `X-Portico-Artifact-Sha256`. A `Range` request
+        answers `206` with `Content-Range`; `If-Range` against the ETag makes a
+        resumed transfer safe across a server restart. The client verifies the
+        completed file against the preparation's `artifact.sha256` before
+        trusting it offline.
+      security: []
+      parameters:
+        - name: grant
+          in: path
+          required: true
+          schema: {type: string}
+        - name: Range
+          in: header
+          required: false
+          schema: {type: string}
+        - name: If-Range
+          in: header
+          required: false
+          schema: {type: string}
+      responses:
+        "200":
+          description: The whole artifact.
+          headers:
+            ETag: {schema: {type: string}}
+            Accept-Ranges: {schema: {type: string}}
+            X-Portico-Artifact-Sha256: {schema: {type: string}}
+            Content-Disposition: {schema: {type: string}}
+          content:
+            application/octet-stream:
+              schema: {type: string, format: binary}
+        "206":
+          description: One byte range of the artifact.
+          headers:
+            Content-Range: {schema: {type: string}}
+            ETag: {schema: {type: string}}
+          content:
+            application/octet-stream:
+              schema: {type: string, format: binary}
+        "401": {$ref: "#/components/responses/InvalidGrant"}
+        "409": {$ref: "#/components/responses/NotReady"}
+        "503": {$ref: "#/components/responses/DownloadsUnavailable"}
+      x-error-codes: [invalid_download_grant, download_not_ready, downloads_not_allowed, unauthorized]
+    head:
+      tags: [downloads]
+      operationId: headDownloadArtifact
+      summary: Read the artifact's size and validator without transferring it.
+      security: []
+      parameters:
+        - name: grant
+          in: path
+          required: true
+          schema: {type: string}
+      responses:
+        "200":
+          description: Headers only.
+          headers:
+            ETag: {schema: {type: string}}
+            Accept-Ranges: {schema: {type: string}}
+            X-Portico-Artifact-Sha256: {schema: {type: string}}
+        "401": {$ref: "#/components/responses/InvalidGrant"}
+      x-error-codes: [invalid_download_grant, download_not_ready]
+  /v1/downloads/receipts:
+    post:
+      tags: [receipts]
+      operationId: issueDownloadReceipts
+      summary: Issue signed offline receipts for ready preparations.
+      description: |
+        A receipt is an Ed25519-signed statement that this viewer may play these
+        exact bytes offline for 30 days. It names the viewer, the item, the
+        quality, the artifact SHA-256 and size, and the key that signed it. The
+        client stores the envelope and verifies it against the keys published by
+        `GET /v1/downloads/receipt-keys`; `payload` carries the exact signed
+        bytes, so a verifier never has to reproduce this server's JSON
+        formatting. Each preparation answers on its own.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [operationId, preparationIds]
+              properties:
+                operationId: {type: string}
+                preparationIds: {type: array, minItems: 1, maxItems: 100, items: {type: string}}
+            examples:
+              issue:
+                summary: Receipts for two ready downloads
+                value: {operationId: op-7c01, preparationIds: [prep_a, prep_b]}
+      responses:
+        "201":
+          description: One outcome per preparation.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ReceiptResults"}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/DownloadsNotAllowed"}
+        "503": {$ref: "#/components/responses/DownloadsUnavailable"}
+      x-error-codes: [invalid_request, unauthorized, downloads_not_allowed, operation_conflict]
+  /v1/downloads/receipts/revalidate:
+    post:
+      tags: [receipts]
+      operationId: revalidateDownloadReceipts
+      summary: Renew offline receipts on the next contact with the server.
+      description: |
+        The client sends the receipt ids it holds. The server answers from its
+        own rows rather than from the envelope, because a stale envelope is
+        exactly what a client that has been offline would be holding. A receipt
+        is renewed for another 30 days unless the profile lost `allowDownloads`,
+        the item was deleted, the account was disabled, the receipt was revoked,
+        or its preparation is no longer ready — in which case it is refused with
+        a reason and revoked, and the client deletes the downloaded file.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [operationId, receiptIds]
+              properties:
+                operationId: {type: string}
+                receiptIds: {type: array, minItems: 1, maxItems: 100, items: {type: string}}
+            examples:
+              revalidate:
+                summary: Renew after coming back online
+                value: {operationId: op-7c02, receiptIds: [rcpt_a, rcpt_b]}
+      responses:
+        "200":
+          description: One outcome per receipt.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ReceiptResults"}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "503": {$ref: "#/components/responses/DownloadsUnavailable"}
+      x-error-codes: [invalid_request, unauthorized, operation_conflict]
+  /v1/downloads/receipts/revoke:
+    post:
+      tags: [receipts]
+      operationId: revokeDownloadReceipts
+      summary: Withdraw offline authorization.
+      description: |
+        A viewer revokes their own receipts — the action behind "remove this
+        download from my other device". An owner may additionally pass
+        `allProfiles: true` to revoke a receipt belonging to any profile. The
+        revocation appears immediately in the revocation list.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [operationId, receiptIds]
+              properties:
+                operationId: {type: string}
+                receiptIds: {type: array, minItems: 1, maxItems: 100, items: {type: string}}
+                reason:
+                  type: string
+                  description: |
+                    Recorded verbatim in the revocation list, so it is a code
+                    rather than a sentence: letters, digits, `_` and `-` only,
+                    at most 160 characters. Defaults to `revoked`.
+                  pattern: "^[A-Za-z0-9_-]{1,160}$"
+                allProfiles: {type: boolean, description: "Owner only; ignored otherwise."}
+            examples:
+              revoke:
+                summary: Drop a download held on a lost device
+                value: {operationId: op-7c03, receiptIds: [rcpt_a], reason: removed}
+      responses:
+        "200":
+          description: One outcome per receipt.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ReceiptResults"}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "503": {$ref: "#/components/responses/DownloadsUnavailable"}
+      x-error-codes: [invalid_request, unauthorized, operation_conflict]
+  /v1/downloads/receipts/revocations:
+    get:
+      tags: [receipts]
+      operationId: listDownloadRevocations
+      summary: Page the revocation list.
+      description: |
+        Entries are ordered by a monotonic `sequence`. A client that was offline
+        passes the sequence it last saw as `cursor` and receives only what it
+        missed. The list is scoped to the viewer's own receipts; an owner may
+        pass `scope=server` for every profile's.
+      parameters:
+        - name: cursor
+          in: query
+          required: false
+          description: The sequence last seen. Omit to read from the beginning.
+          schema: {type: string}
+        - name: limit
+          in: query
+          required: false
+          schema: {type: integer, minimum: 1, maximum: 500, default: 200}
+        - name: scope
+          in: query
+          required: false
+          schema: {type: string, enum: [profile, server], default: profile}
+      responses:
+        "200":
+          description: One page of revocations.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/RevocationPage"}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "503": {$ref: "#/components/responses/DownloadsUnavailable"}
+      x-error-codes: [invalid_request, unauthorized, downloads_unavailable]
+  /v1/downloads/receipt-keys:
+    get:
+      tags: [receipts]
+      operationId: listDownloadReceiptKeys
+      summary: Publish the Ed25519 keys that verify offline receipts.
+      description: |
+        A client pins these and refuses a receipt signed by anything else.
+        Retired keys stay listed so a receipt signed before a rotation can still
+        be verified; a new receipt is only ever signed by the active key.
+      responses:
+        "200":
+          description: The verification keys, newest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [keys]
+                properties:
+                  keys: {type: array, items: {$ref: "#/components/schemas/ReceiptKey"}}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "503": {$ref: "#/components/responses/DownloadsUnavailable"}
+      x-error-codes: [unauthorized, downloads_unavailable]
+  /v1/downloads/progress:
+    post:
+      tags: [downloads]
+      operationId: syncDeferredProgress
+      summary: Apply progress a client recorded while it was offline.
+      description: |
+        Entries are applied last-write-wins by `observedAt` against two things:
+        the last offline observation this server accepted for that viewer and
+        item, and the last online activity it recorded. An entry older than
+        either loses and is reported with `outcome` `stale_observation` or
+        `superseded_online`, carrying the server's current value so the client
+        can reconcile without a second read. An observation more than 24 hours in
+        the future is refused as `observation_in_future` rather than allowed to
+        pin the item against every later write.
+
+        Applied entries land in ordinary personal state: the same resume
+        position, activity row and watched flag an online client writes.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [operationId, entries]
+              properties:
+                operationId: {type: string}
+                entries: {type: array, minItems: 1, maxItems: 100, items: {$ref: "#/components/schemas/ProgressEntry"}}
+            examples:
+              catchUp:
+                summary: Two episodes watched on a plane
+                value:
+                  operationId: op-8d01
+                  entries:
+                    - {itemId: item_0001, positionSeconds: 1723.5, observedAt: "2026-09-14T09:12:00Z"}
+                    - {itemId: item_0002, positionSeconds: 0, watched: true, observedAt: "2026-09-14T10:41:00Z"}
+      responses:
+        "200":
+          description: One outcome per entry.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ProgressReceipt"}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "503": {$ref: "#/components/responses/DownloadsUnavailable"}
+      x-error-codes: [invalid_request, unauthorized, operation_conflict]
+  /v1/downloads/usage:
+    get:
+      tags: [downloads]
+      operationId: getDownloadUsage
+      summary: Report the storage downloads have committed.
+      description: |
+        `profileBytes` is this viewer's share and `serverBytes` the whole
+        server's. Both count claims, not files: two viewers holding the same
+        prepared version each account for its bytes, because either of them
+        releasing the claim frees nothing while the other holds it.
+        `distinctArtifactBytes` is what the disk actually holds.
+        `remainingBytes` is null when `maxPreparedBytes` is 0, which means
+        unlimited. An owner may pass `scope=server` for a per-profile breakdown.
+      parameters:
+        - name: scope
+          in: query
+          required: false
+          schema: {type: string, enum: [profile, server], default: profile}
+      responses:
+        "200":
+          description: Storage accounting.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/DownloadUsage"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "503": {$ref: "#/components/responses/DownloadsUnavailable"}
+      x-error-codes: [unauthorized, downloads_unavailable]
+  /v1/downloads/settings:
+    get:
+      tags: [downloads]
+      operationId: getDownloadSettings
+      summary: Read the owner policy for downloads.
+      responses:
+        "200":
+          description: The download settings.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/DownloadSettings"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "503": {$ref: "#/components/responses/DownloadsUnavailable"}
+      x-error-codes: [unauthorized, downloads_unavailable]
+    put:
+      tags: [downloads]
+      operationId: applyDownloadSettings
+      summary: Change the owner policy for downloads.
+      description: |
+        Owner only, fenced on `expectedRevision` and idempotent on
+        `operationId`. `maxPreparedBytes` of 0 means unlimited; any other value
+        refuses new preparations once committed claims would exceed it, with
+        `storage_full`. `retentionDays` is when an unused ready preparation
+        expires — measured from the last transfer if there was one, and from the
+        moment it became ready if there was not.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/DownloadSettingsChange"}
+            examples:
+              cap:
+                summary: Cap the prepared store at 200 GB, keep for 14 days
+                value: {operationId: op-9e01, expectedRevision: 1, maxPreparedBytes: 214748364800, retentionDays: 14}
+      responses:
+        "200":
+          description: The settings after the change.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/DownloadSettings"}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "409": {$ref: "#/components/responses/PreparationConflict"}
+        "503": {$ref: "#/components/responses/DownloadsUnavailable"}
+      x-error-codes: [invalid_request, unauthorized, download_conflict, operation_conflict]
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  responses:
+    Invalid:
+      description: The request could not be read.
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+    Unauthorized:
+      description: Authentication required.
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+    NotFound:
+      description: No such item, preparation or container.
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+    StorageFull:
+      description: The prepared download store has no room for this request.
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+    NotReady:
+      description: The preparation is not ready to transfer.
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+    InvalidGrant:
+      description: The transfer grant expired, was revoked, or fell outside its replay window.
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+    DownloadsNotAllowed:
+      description: This profile may not hold downloads.
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+    DownloadCapacity:
+      description: This viewer holds too many live preparations.
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+    DownloadsUnavailable:
+      description: Offline downloads are not configured on this server.
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+    PreparationConflict:
+      description: The fence did not match, or the action is not offered from the current state.
+      content:
+        application/json:
+          schema:
+            allOf:
+              - {$ref: "#/components/schemas/Error"}
+              - type: object
+                properties:
+                  preparation: {$ref: "#/components/schemas/Preparation"}
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, retryable]
+          properties:
+            code: {type: string}
+            message: {type: string}
+            retryable: {type: boolean}
+    DownloadArtifact:
+      type: object
+      required: [kind, bytes, estimated]
+      properties:
+        kind: {type: string, enum: ["", source, prepared], description: "source is the catalogue file; prepared is a published optimization."}
+        ref: {type: string, description: "The asset id or prepared version id the bytes come from."}
+        sha256: {type: string, description: "Published once the preparation is ready. Verify the transferred file against it."}
+        bytes: {type: integer}
+        estimated: {type: boolean}
+        container: {type: string}
+        contentType: {type: string}
+        fileName: {type: string}
+    DownloadProgress:
+      type: object
+      required: [bytesDone, bytesTotal, bytesTotalEstimated, percent]
+      properties:
+        bytesDone: {type: integer}
+        bytesTotal: {type: integer, description: "An in-progress estimate is raised to at least bytesDone when production exceeds it. Exact totals and ready artifacts retain their measured size."}
+        bytesTotalEstimated: {type: boolean}
+        percent: {type: number}
+        etaSeconds:
+          type: [integer, "null"]
+          description: Present only while running, once a rate can be measured.
+    Preparation:
+      type: object
+      required: [id, itemId, libraryId, profileId, quality, origin, state, artifact, progress, actions, revision, createdAt, updatedAt]
+      properties:
+        id: {type: string}
+        itemId: {type: string}
+        libraryId: {type: string}
+        profileId: {type: string}
+        quality: {type: string, description: "original, or a quality ladder rung id such as 1080p."}
+        origin: {type: string, enum: [item, items, container, next]}
+        batchId: {type: string}
+        state: {type: string, enum: [queued, running, ready, paused, failed, unavailable, cancelled, expired]}
+        reason: {$ref: "#/components/schemas/ReasonCode"}
+        artifact: {$ref: "#/components/schemas/DownloadArtifact"}
+        progress: {$ref: "#/components/schemas/DownloadProgress"}
+        actions:
+          type: array
+          description: Exactly the actions this state accepts.
+          items: {type: string, enum: [pause, resume, cancel, retry, remove]}
+        revision: {type: integer}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+        readyAt: {type: string, format: date-time}
+        expiresAt: {type: string, format: date-time, description: "When retention will expire an unused ready claim."}
+    ReasonCode:
+      type: string
+      description: |
+        Why a preparation is not progressing, or why a receipt was refused. The
+        set is closed; an unexpected internal failure collapses to
+        preparation_failed rather than leaking a cause.
+      enum:
+        - downloads_not_allowed
+        - item_deleted
+        - source_unavailable
+        - source_changed
+        - optimized_version_unavailable
+        - optimization_failed
+        - storage_full
+        - artifact_changed
+        - verification_failed
+        - retention_expired
+        - cancelled
+        - removed
+        - preparation_failed
+        - account_disabled
+        - revoked
+        - unknown_receipt
+        - transcoding_disabled
+    PreparationRequest:
+      type: object
+      required: [operationId, quality]
+      description: Exactly one of mediaId, mediaIds or nextAfterMediaId.
+      properties:
+        operationId: {type: string}
+        mediaId: {type: string}
+        mediaIds: {type: array, maxItems: 100, items: {type: string}}
+        nextAfterMediaId: {type: string, description: "The episode to follow; resolves to exactly one item."}
+        quality: {type: string, description: "original, or a quality ladder rung id."}
+    PreparationRejection:
+      type: object
+      required: [itemId, code]
+      properties:
+        itemId: {type: string}
+        code: {$ref: "#/components/schemas/ReasonCode"}
+    PreparationBatch:
+      type: object
+      required: [batchId, items, rejected, accepted, duplicate]
+      properties:
+        batchId: {type: string}
+        items: {type: array, items: {$ref: "#/components/schemas/Preparation"}}
+        rejected: {type: array, items: {$ref: "#/components/schemas/PreparationRejection"}}
+        accepted: {type: integer, description: "Newly admitted claims; entries already held appear in items but are not counted."}
+        duplicate: {type: boolean, description: "True when this response replays an earlier operationId."}
+    PreparationPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items: {type: array, items: {$ref: "#/components/schemas/Preparation"}}
+        nextCursor: {type: string}
+    PreparationCommand:
+      type: object
+      required: [operationId, action, expectedRevision]
+      properties:
+        operationId: {type: string}
+        action: {type: string, enum: [pause, resume, cancel, retry, remove]}
+        expectedRevision: {type: integer}
+    DownloadGrant:
+      type: object
+      required: [preparationId, itemId, url, token, issuedAt, expiresAt, replayWindowSeconds, artifact]
+      properties:
+        preparationId: {type: string}
+        itemId: {type: string}
+        url: {type: string, description: "Path on this server. Use it verbatim; do not construct it."}
+        token: {type: string, description: "Returned once. The server stores only its digest."}
+        issuedAt: {type: string, format: date-time}
+        expiresAt: {type: string, format: date-time}
+        replayWindowSeconds: {type: integer}
+        artifact: {$ref: "#/components/schemas/DownloadArtifact"}
+    QualityOption:
+      type: object
+      required: [quality, label, kind, estimatedBytes, estimated, available, requiresPreparation]
+      properties:
+        quality: {type: string}
+        label: {type: string}
+        kind: {type: string, enum: [source, optimized]}
+        targetDisplayHeight: {type: integer}
+        maxVideoBitrateBps: {type: integer}
+        maxAudioBitrateBps: {type: integer}
+        estimatedBytes: {type: integer}
+        estimated: {type: boolean, description: "True when the size is bitrate times duration rather than a measured artifact."}
+        available: {type: boolean}
+        reason: {$ref: "#/components/schemas/ReasonCode"}
+        requiresPreparation: {type: boolean, description: "True when asking for this rung will queue a conversion first."}
+        preparedProfileId: {type: string, description: "The optimization recipe this rung maps onto."}
+        preparedVersionId: {type: string, description: "Present when a published version already satisfies the rung."}
+        preparationId: {type: string, description: "A live claim this viewer already holds at this quality."}
+        preparationState: {type: string}
+    DownloadOptionsView:
+      type: object
+      required: [itemId, kind, source, options, policy, storage]
+      properties:
+        itemId: {type: string}
+        kind: {type: string}
+        source:
+          type: object
+          required: [container, durationSeconds, bytes, available]
+          properties:
+            container: {type: string}
+            videoCodec: {type: string}
+            audioCodec: {type: string}
+            height: {type: integer}
+            durationSeconds: {type: number}
+            bytes: {type: integer}
+            available: {type: boolean}
+        options: {type: array, items: {$ref: "#/components/schemas/QualityOption"}}
+        policy:
+          type: object
+          required: [allowDownloads]
+          properties:
+            allowDownloads: {type: boolean}
+            reason: {$ref: "#/components/schemas/ReasonCode"}
+        storage:
+          type: object
+          required: [maxPreparedBytes, committedBytes, retentionDays]
+          properties:
+            maxPreparedBytes: {type: integer, description: "0 means unlimited."}
+            committedBytes: {type: integer}
+            remainingBytes: {type: [integer, "null"]}
+            retentionDays: {type: integer}
+    ReceiptViewer:
+      type: object
+      required: [authority, accountId, profileId, serverId]
+      properties:
+        authority: {type: string}
+        accountId: {type: string}
+        profileId: {type: string}
+        serverId: {type: string}
+    ReceiptClaims:
+      type: object
+      required: [kind, version, receiptId, keyId, viewer, itemId, preparationId, quality, artifact, issuedAt, expiresAt]
+      properties:
+        kind: {type: string, const: portico.download-receipt}
+        version: {type: string, const: "1"}
+        receiptId: {type: string}
+        keyId: {type: string}
+        viewer: {$ref: "#/components/schemas/ReceiptViewer"}
+        itemId: {type: string}
+        preparationId: {type: string}
+        quality: {type: string}
+        qualityLabel: {type: string}
+        artifact:
+          type: object
+          required: [sha256, bytes]
+          properties:
+            sha256: {type: string}
+            bytes: {type: integer}
+        issuedAt: {type: string, format: date-time}
+        expiresAt: {type: string, format: date-time}
+    DownloadReceipt:
+      type: object
+      required: [receiptId, algorithm, keyId, payload, signature, claims, revision]
+      properties:
+        receiptId: {type: string}
+        algorithm: {type: string, const: ed25519}
+        keyId: {type: string}
+        payload: {type: string, description: "base64url, unpadded. The exact bytes that were signed."}
+        signature: {type: string, description: "base64url, unpadded Ed25519 signature over payload."}
+        claims: {$ref: "#/components/schemas/ReceiptClaims"}
+        revision: {type: integer}
+    ReceiptOutcome:
+      type: object
+      required: [outcome]
+      properties:
+        preparationId: {type: string}
+        receiptId: {type: string}
+        outcome: {type: string, enum: [issued, renewed, refused]}
+        code: {$ref: "#/components/schemas/ReasonCode"}
+        receipt: {$ref: "#/components/schemas/DownloadReceipt"}
+    ReceiptResults:
+      type: object
+      required: [results]
+      properties:
+        results: {type: array, items: {$ref: "#/components/schemas/ReceiptOutcome"}}
+    ReceiptKey:
+      type: object
+      required: [id, algorithm, publicKey, createdAt]
+      properties:
+        id: {type: string}
+        algorithm: {type: string, const: ed25519}
+        publicKey: {type: string, description: "base64url, unpadded, 32 bytes."}
+        createdAt: {type: string, format: date-time}
+        retiredAt: {type: string, format: date-time}
+    Revocation:
+      type: object
+      required: [receiptId, itemId, profileId, reason, revokedAt, sequence]
+      properties:
+        receiptId: {type: string}
+        itemId: {type: string}
+        profileId: {type: string}
+        reason: {$ref: "#/components/schemas/ReasonCode"}
+        revokedAt: {type: string, format: date-time}
+        sequence: {type: integer}
+    RevocationPage:
+      type: object
+      required: [items, nextCursor, asOf]
+      properties:
+        items: {type: array, items: {$ref: "#/components/schemas/Revocation"}}
+        nextCursor: {type: string}
+        asOf: {type: string, format: date-time}
+    ProgressEntry:
+      type: object
+      required: [itemId, positionSeconds, observedAt]
+      properties:
+        itemId: {type: string}
+        positionSeconds: {type: number, minimum: 0, description: "Clamped to the current known item duration before writing progress. Unknown duration preserves the finite nonnegative observation."}
+        watched: {type: boolean}
+        observedAt: {type: string, format: date-time, description: "The client's own clock when the observation was made."}
+    ProgressResult:
+      type: object
+      required: [itemId, outcome, positionSeconds, watched]
+      properties:
+        itemId: {type: string}
+        outcome: {type: string, enum: [applied, stale_observation, superseded_online, item_deleted, invalid_entry, observation_in_future]}
+        positionSeconds: {type: number, description: "The server's value after the batch."}
+        watched: {type: boolean}
+        observedAt: {type: string, format: date-time}
+    ProgressReceipt:
+      type: object
+      required: [applied, conflicts, entries]
+      properties:
+        applied: {type: integer}
+        conflicts: {type: integer}
+        entries: {type: array, items: {$ref: "#/components/schemas/ProgressResult"}}
+    DownloadUsage:
+      type: object
+      required: [profileId, profileBytes, profileCount, serverBytes, serverCount, distinctArtifactBytes, maxPreparedBytes, retentionDays, profiles]
+      properties:
+        profileId: {type: string}
+        profileBytes: {type: integer}
+        profileCount: {type: integer}
+        serverBytes: {type: integer}
+        serverCount: {type: integer}
+        distinctArtifactBytes: {type: integer}
+        maxPreparedBytes: {type: integer}
+        remainingBytes: {type: [integer, "null"]}
+        retentionDays: {type: integer}
+        profiles:
+          type: array
+          items:
+            type: object
+            required: [profileId, bytes, count]
+            properties:
+              profileId: {type: string}
+              bytes: {type: integer}
+              count: {type: integer}
+    DownloadSettings:
+      type: object
+      required: [maxPreparedBytes, retentionDays, revision]
+      properties:
+        maxPreparedBytes: {type: integer, minimum: 0, description: "0 means unlimited."}
+        retentionDays: {type: integer, minimum: 1, maximum: 365}
+        revision: {type: integer}
+    DownloadSettingsChange:
+      type: object
+      required: [operationId, expectedRevision, maxPreparedBytes, retentionDays]
+      properties:
+        operationId: {type: string}
+        expectedRevision: {type: integer}
+        maxPreparedBytes: {type: integer, minimum: 0}
+        retentionDays: {type: integer, minimum: 1, maximum: 365}

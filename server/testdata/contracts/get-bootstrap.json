@@ -1,0 +1,1331 @@
+{
+  "schema": "GetBootstrapResponse",
+  "method": "GET",
+  "path": "/v1/bootstrap",
+  "auth": "viewer",
+  "status": 200,
+  "response": {
+    "server": {
+      "id": "88amE6UqLFrMUlN4wypfJ3yVQh2gX3ld7q6bSnrenrc",
+      "name": "Portico",
+      "api": {
+        "major": 1,
+        "level": 1
+      },
+      "setupRequired": false
+    },
+    "capabilities": {
+      "api": {
+        "major": 1,
+        "level": 1
+      },
+      "features": {
+        "downloads": "unavailable",
+        "dvr": "unavailable",
+        "feedback": "enabled",
+        "live_tv": "unavailable",
+        "watch_together": "enabled"
+      },
+      "limits": {
+        "longPollSecondsMax": 55,
+        "pageSizeMax": 100,
+        "selectorIdsMax": 500
+      }
+    },
+    "me": {
+      "viewer": {
+        "accountId": "account",
+        "profileId": "profile",
+        "serverId": "88amE6UqLFrMUlN4wypfJ3yVQh2gX3ld7q6bSnrenrc",
+        "authority": "local",
+        "role": "owner"
+      }
+    },
+    "libraries": [],
+    "preferences": {
+      "audioEffects": {
+        "gapless": true,
+        "crossfadeSeconds": 0,
+        "normalization": "off"
+      },
+      "deviceClass": "web",
+      "registry": {
+        "revision": "p39.CD32.B4",
+        "fields": [
+          {
+            "consumer": "client.playback.controls",
+            "step": 1,
+            "key": "playback.skipBackSeconds",
+            "type": "integer",
+            "default": 10,
+            "allowedValues": [
+              5,
+              10,
+              15,
+              30
+            ],
+            "scopes": [
+              "profile-server"
+            ],
+            "group": "playback",
+            "labelKey": "preferences.playback.skipBackSeconds"
+          },
+          {
+            "consumer": "client.playback.controls",
+            "step": 1,
+            "key": "playback.skipForwardSeconds",
+            "type": "integer",
+            "default": 30,
+            "allowedValues": [
+              10,
+              15,
+              30,
+              60
+            ],
+            "scopes": [
+              "profile-server"
+            ],
+            "group": "playback",
+            "labelKey": "preferences.playback.skipForwardSeconds"
+          },
+          {
+            "consumer": "client.playback.continuation",
+            "key": "playback.autoplayNext",
+            "type": "boolean",
+            "default": true,
+            "scopes": [
+              "profile-server"
+            ],
+            "group": "playback",
+            "labelKey": "preferences.playback.autoplayNext"
+          },
+          {
+            "consumer": "client.playback.continuation",
+            "step": 1,
+            "key": "playback.upNextCountdownSeconds",
+            "type": "integer",
+            "default": 10,
+            "allowedValues": [
+              0,
+              5,
+              10,
+              15
+            ],
+            "scopes": [
+              "profile-server"
+            ],
+            "group": "playback",
+            "labelKey": "preferences.playback.upNextCountdownSeconds"
+          },
+          {
+            "consumer": "client.playback.continuation",
+            "key": "playback.passoutProtection",
+            "type": "boolean",
+            "default": true,
+            "scopes": [
+              "profile-server"
+            ],
+            "group": "playback",
+            "labelKey": "preferences.playback.passoutProtection"
+          },
+          {
+            "consumer": "client.playback.continuation",
+            "step": 1,
+            "key": "playback.passoutAfterEpisodes",
+            "type": "integer",
+            "default": 3,
+            "min": 2,
+            "max": 5,
+            "scopes": [
+              "profile-server"
+            ],
+            "group": "playback",
+            "labelKey": "preferences.playback.passoutAfterEpisodes"
+          },
+          {
+            "consumer": "client.playback.markers",
+            "key": "playback.introSkip",
+            "type": "string",
+            "default": "ask",
+            "allowedValues": [
+              "ask",
+              "auto",
+              "off"
+            ],
+            "scopes": [
+              "profile-server"
+            ],
+            "group": "playback",
+            "labelKey": "preferences.playback.introSkip"
+          },
+          {
+            "consumer": "client.playback.markers",
+            "key": "playback.creditsSkip",
+            "type": "string",
+            "default": "ask",
+            "allowedValues": [
+              "ask",
+              "auto",
+              "off"
+            ],
+            "scopes": [
+              "profile-server"
+            ],
+            "group": "playback",
+            "labelKey": "preferences.playback.creditsSkip"
+          },
+          {
+            "consumer": "client.playback.markers",
+            "key": "playback.recapSkip",
+            "type": "string",
+            "default": "ask",
+            "allowedValues": [
+              "ask",
+              "auto",
+              "off"
+            ],
+            "scopes": [
+              "profile-server"
+            ],
+            "group": "playback",
+            "labelKey": "preferences.playback.recapSkip"
+          },
+          {
+            "consumer": "client.playback.speed",
+            "key": "playback.defaultSpeed",
+            "type": "number",
+            "default": 1,
+            "allowedValues": [
+              0.5,
+              0.75,
+              1,
+              1.25,
+              1.5,
+              1.75,
+              2
+            ],
+            "scopes": [
+              "profile-server"
+            ],
+            "group": "playback",
+            "labelKey": "preferences.playback.defaultSpeed"
+          },
+          {
+            "consumer": "server.catalog.listening_preferences",
+            "key": "music.defaultSpeed",
+            "type": "number",
+            "default": 1,
+            "allowedValues": [
+              0.5,
+              0.75,
+              1,
+              1.25,
+              1.5,
+              1.75,
+              2
+            ],
+            "scopes": [
+              "profile-server"
+            ],
+            "group": "music",
+            "labelKey": "preferences.music.defaultSpeed"
+          },
+          {
+            "consumer": "server.catalog.listening_preferences",
+            "key": "audiobooks.defaultSpeed",
+            "type": "number",
+            "default": 1,
+            "allowedValues": [
+              0.5,
+              0.75,
+              1,
+              1.25,
+              1.5,
+              1.75,
+              2
+            ],
+            "scopes": [
+              "profile-server"
+            ],
+            "group": "audiobooks",
+            "labelKey": "preferences.audiobooks.defaultSpeed"
+          },
+          {
+            "consumer": "server.catalog.listening_preferences",
+            "step": 1,
+            "key": "playback.sleepTimerMinutes",
+            "type": "integer",
+            "default": 0,
+            "allowedValues": [
+              0,
+              30,
+              60,
+              90,
+              120
+            ],
+            "scopes": [
+              "profile-server"
+            ],
+            "group": "playback",
+            "labelKey": "preferences.playback.sleepTimerMinutes"
+          },
+          {
+            "consumer": "server.catalog.personal_activity",
+            "step": 1,
+            "key": "playback.startedThresholdPercent",
+            "type": "integer",
+            "default": 5,
+            "min": 1,
+            "max": 25,
+            "scopes": [
+              "profile-server"
+            ],
+            "group": "playback",
+            "labelKey": "preferences.playback.startedThresholdPercent"
+          },
+          {
+            "consumer": "server.catalog.personal_activity",
+            "step": 1,
+            "key": "playback.playedThresholdPercent",
+            "type": "integer",
+            "default": 95,
+            "min": 75,
+            "max": 100,
+            "scopes": [
+              "profile-server"
+            ],
+            "group": "playback",
+            "labelKey": "preferences.playback.playedThresholdPercent"
+          },
+          {
+            "consumer": "client.playback.tracks",
+            "key": "playback.preferredAudioLanguages",
+            "type": "languageList",
+            "default": [],
+            "scopes": [
+              "profile-server"
+            ],
+            "group": "playback",
+            "labelKey": "preferences.playback.preferredAudioLanguages"
+          },
+          {
+            "consumer": "client.playback.tracks",
+            "key": "playback.preferredSubtitleLanguages",
+            "type": "languageList",
+            "default": [],
+            "scopes": [
+              "profile-server"
+            ],
+            "group": "playback",
+            "labelKey": "preferences.playback.preferredSubtitleLanguages"
+          },
+          {
+            "consumer": "client.playback.subtitles",
+            "key": "playback.subtitleMode",
+            "type": "string",
+            "default": "forced",
+            "allowedValues": [
+              "off",
+              "forced",
+              "always"
+            ],
+            "scopes": [
+              "profile-server"
+            ],
+            "group": "playback",
+            "labelKey": "preferences.playback.subtitleMode"
+          },
+          {
+            "consumer": "client.playback.subtitles",
+            "key": "playback.subtitleSize",
+            "type": "string",
+            "default": "medium",
+            "allowedValues": [
+              "small",
+              "medium",
+              "large",
+              "extra-large"
+            ],
+            "scopes": [
+              "profile-server"
+            ],
+            "group": "playback",
+            "labelKey": "preferences.playback.subtitleSize"
+          },
+          {
+            "consumer": "client.playback.subtitles",
+            "key": "playback.subtitleBackground",
+            "type": "string",
+            "default": "translucent",
+            "allowedValues": [
+              "none",
+              "translucent",
+              "opaque"
+            ],
+            "scopes": [
+              "profile-server"
+            ],
+            "group": "playback",
+            "labelKey": "preferences.playback.subtitleBackground"
+          },
+          {
+            "consumer": "client.playback.lyrics",
+            "key": "playback.showSyncedLyrics",
+            "type": "boolean",
+            "default": true,
+            "scopes": [
+              "profile-server"
+            ],
+            "group": "playback",
+            "labelKey": "preferences.playback.showSyncedLyrics"
+          },
+          {
+            "consumer": "server.playback.delivery_policy",
+            "key": "delivery.directPlay",
+            "type": "string",
+            "default": "prefer",
+            "allowedValues": [
+              "allow",
+              "prefer",
+              "never",
+              "require"
+            ],
+            "scopes": [
+              "profile-device-class"
+            ],
+            "group": "delivery",
+            "labelKey": "preferences.delivery.directPlay"
+          },
+          {
+            "consumer": "server.playback.delivery_policy",
+            "key": "delivery.directStream",
+            "type": "string",
+            "default": "allow",
+            "allowedValues": [
+              "allow",
+              "prefer",
+              "never",
+              "require"
+            ],
+            "scopes": [
+              "profile-device-class"
+            ],
+            "group": "delivery",
+            "labelKey": "preferences.delivery.directStream"
+          },
+          {
+            "consumer": "server.playback.delivery_policy",
+            "key": "delivery.transcode",
+            "type": "string",
+            "default": "allow",
+            "allowedValues": [
+              "allow",
+              "prefer",
+              "never",
+              "require"
+            ],
+            "scopes": [
+              "profile-device-class"
+            ],
+            "group": "delivery",
+            "labelKey": "preferences.delivery.transcode"
+          },
+          {
+            "consumer": "server.playback.delivery_policy",
+            "key": "quality.local.mode",
+            "type": "string",
+            "default": "original",
+            "allowedValues": [
+              "off",
+              "automatic",
+              "original",
+              "high",
+              "standard",
+              "data-saver"
+            ],
+            "scopes": [
+              "profile-device-class"
+            ],
+            "group": "quality",
+            "labelKey": "preferences.quality.local.mode"
+          },
+          {
+            "consumer": "server.playback.delivery_policy",
+            "step": 1,
+            "key": "quality.local.maxVideoBitrateMbps",
+            "type": "integer",
+            "default": 0,
+            "allowedValues": [
+              {
+                "value": 0,
+                "label": "Original"
+              },
+              {
+                "value": 40,
+                "label": "40 Mbps",
+                "maxVideoHeight": 2160
+              },
+              {
+                "value": 20,
+                "label": "20 Mbps",
+                "maxVideoHeight": 2160
+              },
+              {
+                "value": 12,
+                "label": "12 Mbps",
+                "maxVideoHeight": 1080
+              },
+              {
+                "value": 8,
+                "label": "8 Mbps",
+                "maxVideoHeight": 1080
+              },
+              {
+                "value": 4,
+                "label": "4 Mbps",
+                "maxVideoHeight": 720
+              },
+              {
+                "value": 2,
+                "label": "2 Mbps",
+                "maxVideoHeight": 720
+              },
+              {
+                "value": 1,
+                "label": "1 Mbps",
+                "maxVideoHeight": 480
+              }
+            ],
+            "scopes": [
+              "profile-device-class"
+            ],
+            "group": "quality",
+            "labelKey": "preferences.quality.local.maxVideoBitrateMbps"
+          },
+          {
+            "consumer": "server.playback.delivery_policy",
+            "step": 1,
+            "key": "quality.local.maxAudioBitrateKbps",
+            "type": "integer",
+            "default": 0,
+            "allowedValues": [
+              {
+                "value": 0,
+                "label": "Original"
+              },
+              {
+                "value": 320,
+                "label": "320 kbps"
+              },
+              {
+                "value": 256,
+                "label": "256 kbps"
+              },
+              {
+                "value": 192,
+                "label": "192 kbps"
+              },
+              {
+                "value": 128,
+                "label": "128 kbps"
+              },
+              {
+                "value": 96,
+                "label": "96 kbps"
+              }
+            ],
+            "scopes": [
+              "profile-device-class"
+            ],
+            "group": "quality",
+            "labelKey": "preferences.quality.local.maxAudioBitrateKbps"
+          },
+          {
+            "consumer": "server.playback.delivery_policy",
+            "step": 1,
+            "key": "quality.local.maxVideoHeight",
+            "type": "integer",
+            "default": 4320,
+            "allowedValues": [
+              360,
+              480,
+              720,
+              1080,
+              1440,
+              2160,
+              4320
+            ],
+            "scopes": [
+              "profile-device-class"
+            ],
+            "group": "quality",
+            "labelKey": "preferences.quality.local.maxVideoHeight"
+          },
+          {
+            "consumer": "server.playback.delivery_policy",
+            "key": "quality.local.allowHDR",
+            "type": "boolean",
+            "default": true,
+            "scopes": [
+              "profile-device-class"
+            ],
+            "group": "quality",
+            "labelKey": "preferences.quality.local.allowHDR"
+          },
+          {
+            "consumer": "server.playback.delivery_policy",
+            "key": "quality.wifi.mode",
+            "type": "string",
+            "default": "automatic",
+            "allowedValues": [
+              "off",
+              "automatic",
+              "original",
+              "high",
+              "standard",
+              "data-saver"
+            ],
+            "scopes": [
+              "profile-device-class"
+            ],
+            "group": "quality",
+            "labelKey": "preferences.quality.wifi.mode"
+          },
+          {
+            "consumer": "server.playback.delivery_policy",
+            "step": 1,
+            "key": "quality.wifi.maxVideoBitrateMbps",
+            "type": "integer",
+            "default": 0,
+            "allowedValues": [
+              {
+                "value": 0,
+                "label": "Original"
+              },
+              {
+                "value": 40,
+                "label": "40 Mbps",
+                "maxVideoHeight": 2160
+              },
+              {
+                "value": 20,
+                "label": "20 Mbps",
+                "maxVideoHeight": 2160
+              },
+              {
+                "value": 12,
+                "label": "12 Mbps",
+                "maxVideoHeight": 1080
+              },
+              {
+                "value": 8,
+                "label": "8 Mbps",
+                "maxVideoHeight": 1080
+              },
+              {
+                "value": 4,
+                "label": "4 Mbps",
+                "maxVideoHeight": 720
+              },
+              {
+                "value": 2,
+                "label": "2 Mbps",
+                "maxVideoHeight": 720
+              },
+              {
+                "value": 1,
+                "label": "1 Mbps",
+                "maxVideoHeight": 480
+              }
+            ],
+            "scopes": [
+              "profile-device-class"
+            ],
+            "group": "quality",
+            "labelKey": "preferences.quality.wifi.maxVideoBitrateMbps"
+          },
+          {
+            "consumer": "server.playback.delivery_policy",
+            "step": 1,
+            "key": "quality.wifi.maxAudioBitrateKbps",
+            "type": "integer",
+            "default": 0,
+            "allowedValues": [
+              {
+                "value": 0,
+                "label": "Original"
+              },
+              {
+                "value": 320,
+                "label": "320 kbps"
+              },
+              {
+                "value": 256,
+                "label": "256 kbps"
+              },
+              {
+                "value": 192,
+                "label": "192 kbps"
+              },
+              {
+                "value": 128,
+                "label": "128 kbps"
+              },
+              {
+                "value": 96,
+                "label": "96 kbps"
+              }
+            ],
+            "scopes": [
+              "profile-device-class"
+            ],
+            "group": "quality",
+            "labelKey": "preferences.quality.wifi.maxAudioBitrateKbps"
+          },
+          {
+            "consumer": "server.playback.delivery_policy",
+            "step": 1,
+            "key": "quality.wifi.maxVideoHeight",
+            "type": "integer",
+            "default": 2160,
+            "allowedValues": [
+              360,
+              480,
+              720,
+              1080,
+              1440,
+              2160,
+              4320
+            ],
+            "scopes": [
+              "profile-device-class"
+            ],
+            "group": "quality",
+            "labelKey": "preferences.quality.wifi.maxVideoHeight"
+          },
+          {
+            "consumer": "server.playback.delivery_policy",
+            "key": "quality.wifi.allowHDR",
+            "type": "boolean",
+            "default": true,
+            "scopes": [
+              "profile-device-class"
+            ],
+            "group": "quality",
+            "labelKey": "preferences.quality.wifi.allowHDR"
+          },
+          {
+            "consumer": "server.playback.delivery_policy",
+            "key": "quality.cellular.mode",
+            "type": "string",
+            "default": "standard",
+            "allowedValues": [
+              "off",
+              "automatic",
+              "original",
+              "high",
+              "standard",
+              "data-saver"
+            ],
+            "scopes": [
+              "profile-device-class"
+            ],
+            "group": "quality",
+            "labelKey": "preferences.quality.cellular.mode"
+          },
+          {
+            "consumer": "server.playback.delivery_policy",
+            "step": 1,
+            "key": "quality.cellular.maxVideoBitrateMbps",
+            "type": "integer",
+            "default": 8,
+            "allowedValues": [
+              {
+                "value": 0,
+                "label": "Original"
+              },
+              {
+                "value": 40,
+                "label": "40 Mbps",
+                "maxVideoHeight": 2160
+              },
+              {
+                "value": 20,
+                "label": "20 Mbps",
+                "maxVideoHeight": 2160
+              },
+              {
+                "value": 12,
+                "label": "12 Mbps",
+                "maxVideoHeight": 1080
+              },
+              {
+                "value": 8,
+                "label": "8 Mbps",
+                "maxVideoHeight": 1080
+              },
+              {
+                "value": 4,
+                "label": "4 Mbps",
+                "maxVideoHeight": 720
+              },
+              {
+                "value": 2,
+                "label": "2 Mbps",
+                "maxVideoHeight": 720
+              },
+              {
+                "value": 1,
+                "label": "1 Mbps",
+                "maxVideoHeight": 480
+              }
+            ],
+            "scopes": [
+              "profile-device-class"
+            ],
+            "group": "quality",
+            "labelKey": "preferences.quality.cellular.maxVideoBitrateMbps"
+          },
+          {
+            "consumer": "server.playback.delivery_policy",
+            "step": 1,
+            "key": "quality.cellular.maxAudioBitrateKbps",
+            "type": "integer",
+            "default": 256,
+            "allowedValues": [
+              {
+                "value": 0,
+                "label": "Original"
+              },
+              {
+                "value": 320,
+                "label": "320 kbps"
+              },
+              {
+                "value": 256,
+                "label": "256 kbps"
+              },
+              {
+                "value": 192,
+                "label": "192 kbps"
+              },
+              {
+                "value": 128,
+                "label": "128 kbps"
+              },
+              {
+                "value": 96,
+                "label": "96 kbps"
+              }
+            ],
+            "scopes": [
+              "profile-device-class"
+            ],
+            "group": "quality",
+            "labelKey": "preferences.quality.cellular.maxAudioBitrateKbps"
+          },
+          {
+            "consumer": "server.playback.delivery_policy",
+            "step": 1,
+            "key": "quality.cellular.maxVideoHeight",
+            "type": "integer",
+            "default": 1080,
+            "allowedValues": [
+              360,
+              480,
+              720,
+              1080,
+              1440,
+              2160,
+              4320
+            ],
+            "scopes": [
+              "profile-device-class"
+            ],
+            "group": "quality",
+            "labelKey": "preferences.quality.cellular.maxVideoHeight"
+          },
+          {
+            "consumer": "server.playback.delivery_policy",
+            "key": "quality.cellular.allowHDR",
+            "type": "boolean",
+            "default": false,
+            "scopes": [
+              "profile-device-class"
+            ],
+            "group": "quality",
+            "labelKey": "preferences.quality.cellular.allowHDR"
+          },
+          {
+            "consumer": "server.playback.delivery_policy",
+            "key": "quality.unknown.mode",
+            "type": "string",
+            "default": "automatic",
+            "allowedValues": [
+              "off",
+              "automatic",
+              "original",
+              "high",
+              "standard",
+              "data-saver"
+            ],
+            "scopes": [
+              "profile-device-class"
+            ],
+            "group": "quality",
+            "labelKey": "preferences.quality.unknown.mode"
+          },
+          {
+            "consumer": "server.playback.delivery_policy",
+            "step": 1,
+            "key": "quality.unknown.maxVideoBitrateMbps",
+            "type": "integer",
+            "default": 20,
+            "allowedValues": [
+              {
+                "value": 0,
+                "label": "Original"
+              },
+              {
+                "value": 40,
+                "label": "40 Mbps",
+                "maxVideoHeight": 2160
+              },
+              {
+                "value": 20,
+                "label": "20 Mbps",
+                "maxVideoHeight": 2160
+              },
+              {
+                "value": 12,
+                "label": "12 Mbps",
+                "maxVideoHeight": 1080
+              },
+              {
+                "value": 8,
+                "label": "8 Mbps",
+                "maxVideoHeight": 1080
+              },
+              {
+                "value": 4,
+                "label": "4 Mbps",
+                "maxVideoHeight": 720
+              },
+              {
+                "value": 2,
+                "label": "2 Mbps",
+                "maxVideoHeight": 720
+              },
+              {
+                "value": 1,
+                "label": "1 Mbps",
+                "maxVideoHeight": 480
+              }
+            ],
+            "scopes": [
+              "profile-device-class"
+            ],
+            "group": "quality",
+            "labelKey": "preferences.quality.unknown.maxVideoBitrateMbps"
+          },
+          {
+            "consumer": "server.playback.delivery_policy",
+            "step": 1,
+            "key": "quality.unknown.maxAudioBitrateKbps",
+            "type": "integer",
+            "default": 320,
+            "allowedValues": [
+              {
+                "value": 0,
+                "label": "Original"
+              },
+              {
+                "value": 320,
+                "label": "320 kbps"
+              },
+              {
+                "value": 256,
+                "label": "256 kbps"
+              },
+              {
+                "value": 192,
+                "label": "192 kbps"
+              },
+              {
+                "value": 128,
+                "label": "128 kbps"
+              },
+              {
+                "value": 96,
+                "label": "96 kbps"
+              }
+            ],
+            "scopes": [
+              "profile-device-class"
+            ],
+            "group": "quality",
+            "labelKey": "preferences.quality.unknown.maxAudioBitrateKbps"
+          },
+          {
+            "consumer": "server.playback.delivery_policy",
+            "step": 1,
+            "key": "quality.unknown.maxVideoHeight",
+            "type": "integer",
+            "default": 1080,
+            "allowedValues": [
+              360,
+              480,
+              720,
+              1080,
+              1440,
+              2160,
+              4320
+            ],
+            "scopes": [
+              "profile-device-class"
+            ],
+            "group": "quality",
+            "labelKey": "preferences.quality.unknown.maxVideoHeight"
+          },
+          {
+            "consumer": "server.playback.delivery_policy",
+            "key": "quality.unknown.allowHDR",
+            "type": "boolean",
+            "default": true,
+            "scopes": [
+              "profile-device-class"
+            ],
+            "group": "quality",
+            "labelKey": "preferences.quality.unknown.allowHDR"
+          },
+          {
+            "consumer": "client.audio_effects",
+            "key": "music.audioNormalization",
+            "type": "string",
+            "default": "off",
+            "allowedValues": [
+              "off",
+              "track",
+              "album"
+            ],
+            "scopes": [
+              "profile-server"
+            ],
+            "group": "music",
+            "labelKey": "preferences.music.audioNormalization"
+          },
+          {
+            "consumer": "client.audio_effects",
+            "step": 1,
+            "key": "music.crossfadeSeconds",
+            "type": "integer",
+            "default": 0,
+            "min": 0,
+            "max": 12,
+            "scopes": [
+              "profile-server"
+            ],
+            "group": "music",
+            "labelKey": "preferences.music.crossfadeSeconds"
+          },
+          {
+            "consumer": "client.audio_effects",
+            "key": "music.gapless",
+            "type": "boolean",
+            "default": true,
+            "scopes": [
+              "profile-server"
+            ],
+            "group": "music",
+            "labelKey": "preferences.music.gapless"
+          },
+          {
+            "consumer": "server.catalog.personal_activity",
+            "key": "privacy.pauseWatchHistory",
+            "type": "boolean",
+            "default": false,
+            "scopes": [
+              "profile-server"
+            ],
+            "group": "privacy",
+            "labelKey": "preferences.privacy.pauseWatchHistory"
+          },
+          {
+            "consumer": "server.catalog.recommendation_engine",
+            "key": "privacy.showActivityToMembers",
+            "type": "boolean",
+            "default": true,
+            "scopes": [
+              "profile-server"
+            ],
+            "group": "privacy",
+            "labelKey": "preferences.privacy.showActivityToMembers"
+          },
+          {
+            "consumer": "server.social.privacy",
+            "key": "privacy.includeInWatchTogether",
+            "type": "boolean",
+            "default": true,
+            "scopes": [
+              "profile-server"
+            ],
+            "group": "privacy",
+            "labelKey": "preferences.privacy.includeInWatchTogether"
+          },
+          {
+            "consumer": "server.httpapi.search_history",
+            "key": "search.rememberHistory",
+            "type": "boolean",
+            "default": true,
+            "scopes": [
+              "profile-server"
+            ],
+            "group": "search",
+            "labelKey": "preferences.search.rememberHistory"
+          },
+          {
+            "consumer": "client.region",
+            "key": "region.locale",
+            "type": "locale",
+            "default": "auto",
+            "scopes": [
+              "profile-server"
+            ],
+            "group": "region",
+            "labelKey": "preferences.region.locale"
+          },
+          {
+            "consumer": "client.region",
+            "key": "region.hourCycle",
+            "type": "string",
+            "default": "auto",
+            "allowedValues": [
+              "auto",
+              "h12",
+              "h23"
+            ],
+            "scopes": [
+              "profile-server"
+            ],
+            "group": "region",
+            "labelKey": "preferences.region.hourCycle"
+          },
+          {
+            "consumer": "server.catalog.home_layout",
+            "key": "home.rowOrder",
+            "type": "string-list",
+            "default": [],
+            "scopes": [
+              "profile-server"
+            ],
+            "group": "home",
+            "labelKey": "preferences.home.rowOrder"
+          },
+          {
+            "consumer": "server.catalog.home_layout",
+            "key": "home.hiddenRowIds",
+            "type": "string-list",
+            "default": [],
+            "scopes": [
+              "profile-server"
+            ],
+            "group": "home",
+            "labelKey": "preferences.home.hiddenRowIds"
+          },
+          {
+            "consumer": "client.appearance",
+            "key": "appearance.showBackdrops",
+            "type": "boolean",
+            "default": true,
+            "scopes": [
+              "profile-device-class"
+            ],
+            "group": "appearance",
+            "labelKey": "preferences.appearance.showBackdrops"
+          },
+          {
+            "consumer": "client.appearance",
+            "step": 1,
+            "key": "appearance.cardSizePercent",
+            "type": "integer",
+            "default": 100,
+            "min": 75,
+            "max": 150,
+            "scopes": [
+              "profile-device-class"
+            ],
+            "group": "appearance",
+            "labelKey": "preferences.appearance.cardSizePercent"
+          },
+          {
+            "consumer": "client.appearance",
+            "key": "appearance.reduceMotion",
+            "type": "boolean",
+            "default": false,
+            "scopes": [
+              "profile-device-class"
+            ],
+            "group": "appearance",
+            "labelKey": "preferences.appearance.reduceMotion"
+          },
+          {
+            "consumer": "client.notifications",
+            "key": "notifications.badges",
+            "type": "boolean",
+            "default": true,
+            "scopes": [
+              "profile-server"
+            ],
+            "group": "notifications",
+            "labelKey": "preferences.notifications.badges"
+          }
+        ]
+      },
+      "documents": [
+        {
+          "scope": "profile-server",
+          "revision": 1,
+          "values": {},
+          "digest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "activeRevision": 1
+        },
+        {
+          "scope": "profile-device-class",
+          "revision": 1,
+          "values": {},
+          "digest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "activeRevision": 1
+        }
+      ],
+      "effective": {
+        "appearance.cardSizePercent": 100,
+        "appearance.reduceMotion": false,
+        "appearance.showBackdrops": true,
+        "audiobooks.defaultSpeed": 1,
+        "delivery.directPlay": "prefer",
+        "delivery.directStream": "allow",
+        "delivery.transcode": "allow",
+        "home.hiddenRowIds": [],
+        "home.rowOrder": [],
+        "music.audioNormalization": "off",
+        "music.crossfadeSeconds": 0,
+        "music.defaultSpeed": 1,
+        "music.gapless": true,
+        "notifications.badges": true,
+        "playback.autoplayNext": true,
+        "playback.creditsSkip": "ask",
+        "playback.defaultSpeed": 1,
+        "playback.introSkip": "ask",
+        "playback.passoutAfterEpisodes": 3,
+        "playback.passoutProtection": true,
+        "playback.playedThresholdPercent": 95,
+        "playback.preferredAudioLanguages": [],
+        "playback.preferredSubtitleLanguages": [],
+        "playback.recapSkip": "ask",
+        "playback.showSyncedLyrics": true,
+        "playback.skipBackSeconds": 10,
+        "playback.skipForwardSeconds": 30,
+        "playback.sleepTimerMinutes": 0,
+        "playback.startedThresholdPercent": 5,
+        "playback.subtitleBackground": "translucent",
+        "playback.subtitleSize": "medium",
+        "playback.subtitleMode": "forced",
+        "playback.upNextCountdownSeconds": 10,
+        "privacy.includeInWatchTogether": true,
+        "privacy.pauseWatchHistory": false,
+        "privacy.showActivityToMembers": true,
+        "quality.cellular.allowHDR": false,
+        "quality.cellular.maxAudioBitrateKbps": 256,
+        "quality.cellular.maxVideoBitrateMbps": 8,
+        "quality.cellular.maxVideoHeight": 1080,
+        "quality.cellular.mode": "off",
+        "quality.local.allowHDR": true,
+        "quality.local.maxAudioBitrateKbps": 0,
+        "quality.local.maxVideoBitrateMbps": 0,
+        "quality.local.maxVideoHeight": 4320,
+        "quality.local.mode": "original",
+        "quality.unknown.allowHDR": true,
+        "quality.unknown.maxAudioBitrateKbps": 320,
+        "quality.unknown.maxVideoBitrateMbps": 20,
+        "quality.unknown.maxVideoHeight": 1080,
+        "quality.unknown.mode": "automatic",
+        "quality.wifi.allowHDR": true,
+        "quality.wifi.maxAudioBitrateKbps": 0,
+        "quality.wifi.maxVideoBitrateMbps": 0,
+        "quality.wifi.maxVideoHeight": 2160,
+        "quality.wifi.mode": "automatic",
+        "region.hourCycle": "auto",
+        "region.locale": "auto",
+        "search.rememberHistory": true
+      },
+      "effectiveSource": {
+        "appearance.cardSizePercent": "default",
+        "appearance.reduceMotion": "default",
+        "appearance.showBackdrops": "default",
+        "audiobooks.defaultSpeed": "default",
+        "delivery.directPlay": "default",
+        "delivery.directStream": "default",
+        "delivery.transcode": "default",
+        "home.hiddenRowIds": "default",
+        "home.rowOrder": "default",
+        "music.audioNormalization": "default",
+        "music.crossfadeSeconds": "default",
+        "music.defaultSpeed": "default",
+        "music.gapless": "default",
+        "notifications.badges": "default",
+        "playback.autoplayNext": "default",
+        "playback.creditsSkip": "default",
+        "playback.defaultSpeed": "default",
+        "playback.introSkip": "default",
+        "playback.passoutAfterEpisodes": "default",
+        "playback.passoutProtection": "default",
+        "playback.playedThresholdPercent": "default",
+        "playback.preferredAudioLanguages": "default",
+        "playback.preferredSubtitleLanguages": "default",
+        "playback.recapSkip": "default",
+        "playback.showSyncedLyrics": "default",
+        "playback.skipBackSeconds": "default",
+        "playback.skipForwardSeconds": "default",
+        "playback.sleepTimerMinutes": "default",
+        "playback.startedThresholdPercent": "default",
+        "playback.subtitleBackground": "default",
+        "playback.subtitleSize": "default",
+        "playback.subtitleMode": "default",
+        "playback.upNextCountdownSeconds": "default",
+        "privacy.includeInWatchTogether": "default",
+        "privacy.pauseWatchHistory": "default",
+        "privacy.showActivityToMembers": "default",
+        "quality.cellular.allowHDR": "default",
+        "quality.cellular.maxAudioBitrateKbps": "default",
+        "quality.cellular.maxVideoBitrateMbps": "default",
+        "quality.cellular.maxVideoHeight": "default",
+        "quality.cellular.mode": "policy",
+        "quality.local.allowHDR": "default",
+        "quality.local.maxAudioBitrateKbps": "default",
+        "quality.local.maxVideoBitrateMbps": "default",
+        "quality.local.maxVideoHeight": "default",
+        "quality.local.mode": "default",
+        "quality.unknown.allowHDR": "default",
+        "quality.unknown.maxAudioBitrateKbps": "default",
+        "quality.unknown.maxVideoBitrateMbps": "default",
+        "quality.unknown.maxVideoHeight": "default",
+        "quality.unknown.mode": "default",
+        "quality.wifi.allowHDR": "default",
+        "quality.wifi.maxAudioBitrateKbps": "default",
+        "quality.wifi.maxVideoBitrateMbps": "default",
+        "quality.wifi.maxVideoHeight": "default",
+        "quality.wifi.mode": "default",
+        "region.hourCycle": "default",
+        "region.locale": "default",
+        "search.rememberHistory": "default"
+      },
+      "clampedFields": [],
+      "registryRevision": "p39.CD32.B4"
+    },
+    "homeLayout": {
+      "revision": 1,
+      "rowOrder": [],
+      "hiddenRowIds": []
+    }
+  }
+}

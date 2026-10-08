@@ -1,0 +1,1568 @@
+openapi: 3.1.0
+info:
+  title: Portico social and remote playback
+  version: "1.0.0"
+  summary: Watch Together groups, Portico-to-Portico receiver handoff and Google Cast pairing.
+  description: |
+    Three capabilities share this document because they share one idea: playback
+    that is not confined to the device that started it.
+
+    **Watch Together groups.** A group owns one authoritative timeline — a
+    position anchor, the time that anchor was taken, a rate and a state. Members
+    do not share a playback session; each member plays its own v1 session and
+    steers it onto the group timeline using the correction bands published in
+    `group.sync`. Every authoritative command carries `expectedRevision` (a fence
+    against the group revision the caller last read) and `idempotencyKey` (a
+    replay-safe receipt). See `social.md` for the group timeline and the handoff
+    state machine in prose.
+
+    **Receiver handoff.** A first-party Portico player registers as a receiver
+    with a stable device id and a public key fingerprint. A controller asks for a
+    grant; the receiver accepts. A transfer is then two-phase and readiness
+    gated: prepare retains the source, the receiver proves it reached `playing`,
+    and only the controller's commit ends the source session. Readiness is never
+    acceptance.
+
+    **Google Cast.** The viewer's sender asks for a short pairing code; the
+    receiver page at `/receiver/cast/` redeems it for a device-scoped token and
+    an ordinary viewer session, and plays through the ordinary playback session
+    API. The Cast application id is the `cast.applicationId` setting.
+
+    All bodies carry `protocolVersion: "1.0"`. All counters (`revision`,
+    `playbackRevision`, `queueRevision`, `reconnectGeneration`, `positionUs`) are
+    decimal strings so no client has to rely on a 53-bit number.
+servers:
+  - url: /
+security:
+  - bearerAuth: []
+tags:
+  - name: groups
+  - name: receivers
+  - name: handoff
+  - name: cast
+paths:
+  /v1/groups:
+    get:
+      tags: [groups]
+      operationId: listGroups
+      summary: List the live groups the viewer has joined.
+      responses:
+        "200":
+          description: The viewer's groups, without their queues.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/GroupList"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+    post:
+      tags: [groups]
+      operationId: createGroup
+      summary: Open a Watch Together group.
+      description: |
+        Binds the group to the caller's authenticated device: the group follows
+        the v1 session that device plays. A bearer with no device is refused
+        (`device_required`). The request carries no playback authority.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CreateGroupRequest"}
+      responses:
+        "201":
+          description: The new group as its host sees it.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/GroupSnapshot"}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "410": {$ref: "#/components/responses/Gone"}
+  /v1/groups/join:
+    post:
+      tags: [groups]
+      operationId: joinGroup
+      summary: Redeem an invitation code and join a group.
+      description: |
+        Redemption is rate limited per viewer. A code bound to a recipient
+        profile refuses everybody else with `invite_wrong_recipient`; the
+        state-specific codes (`invite_expired`, `invite_revoked`,
+        `invite_consumed`) are only reported once the recipient binding is
+        satisfied, so an unbound guesser learns only `invite_not_found`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/JoinRequest"}
+      responses:
+        "200":
+          description: The group as the new member sees it.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/GroupSnapshot"}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "410": {$ref: "#/components/responses/Gone"}
+        "429": {$ref: "#/components/responses/RateLimited"}
+  /v1/groups/{id}:
+    get:
+      tags: [groups]
+      operationId: readGroup
+      summary: Read one group as the calling member sees it.
+      parameters:
+        - {$ref: "#/components/parameters/GroupID"}
+      responses:
+        "200":
+          description: The group snapshot, including the queue projected for this member.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/GroupSnapshot"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /v1/groups/{id}/end:
+    post:
+      tags: [groups]
+      operationId: endGroup
+      summary: End a group.
+      description: Host only. An explicit host Leave without a transfer also ends the group.
+      parameters:
+        - {$ref: "#/components/parameters/GroupID"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/EndRequest"}
+      responses:
+        "200":
+          description: The ended group.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/GroupSnapshot"}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /v1/groups/{id}/leave:
+    post:
+      tags: [groups]
+      operationId: leaveGroup
+      summary: Leave a group.
+      parameters:
+        - {$ref: "#/components/parameters/GroupID"}
+      responses:
+        "200":
+          description: The group after the departure.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/GroupSnapshot"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /v1/groups/{id}/heartbeat:
+    post:
+      tags: [groups]
+      operationId: groupHeartbeat
+      summary: Report presence.
+      description: |
+        For the host this is the proof of life the reconnect timeline is measured
+        from. A host returning before the pause boundary restores the group's
+        prior playing or paused state; a host returning after it finds the group
+        paused and must send an explicit `play`.
+      parameters:
+        - {$ref: "#/components/parameters/GroupID"}
+      responses:
+        "200":
+          description: The group snapshot.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/GroupSnapshot"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /v1/groups/{id}/host-transfer:
+    post:
+      tags: [groups]
+      operationId: transferGroupHost
+      summary: Move host authority to another joined member.
+      description: |
+        A revisioned transaction. The sitting host may hand authority to any
+        joined member; a member may claim authority only for itself and only
+        while the group is in a `host-reconnecting-*` state. When the incoming
+        host is the caller the group binds the caller's device at once; otherwise
+        it follows no device until the new host's first heartbeat binds its own.
+      parameters:
+        - {$ref: "#/components/parameters/GroupID"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/TransferRequest"}
+      responses:
+        "200":
+          description: The group after the transfer.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/GroupSnapshot"}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /v1/groups/{id}/invites:
+    post:
+      tags: [groups]
+      operationId: createGroupInvite
+      summary: Mint a short invitation code.
+      description: |
+        Host only, rate limited per group. Only the code's digest is stored, so a
+        database read never yields a usable invitation. The plaintext code is
+        returned exactly once, in this response.
+      parameters:
+        - {$ref: "#/components/parameters/GroupID"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/InviteRequest"}
+      responses:
+        "201":
+          description: The invitation, with its plaintext code.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/InviteResponse"}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "429": {$ref: "#/components/responses/RateLimited"}
+  /v1/groups/{id}/invites/{inviteId}:
+    delete:
+      tags: [groups]
+      operationId: revokeGroupInvite
+      summary: Revoke an invitation before it expires.
+      parameters:
+        - {$ref: "#/components/parameters/GroupID"}
+        - name: inviteId
+          in: path
+          required: true
+          schema: {type: string}
+      responses:
+        "204": {description: The invitation is revoked.}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /v1/groups/{id}/transport:
+    post:
+      tags: [groups]
+      operationId: groupTransport
+      summary: Issue one authoritative transport command.
+      description: |
+        Commands: `play`, `pause`, `stop`, `seek`, `next`, `previous`, `load`,
+        `set-queue-position`. Under `hostAuthority: host-only` only the host may
+        command; under `anyone` any joined member may, but governance (ending,
+        transferring, inviting, overriding visibility) stays with the host.
+
+        A command whose target entry is invisible to some member is refused with
+        `media_no_longer_accessible` and the blocked member ids. The host may
+        retry with `allowUnavailable: true`; the override is recorded on the
+        receipt and broadcast to the group.
+      parameters:
+        - {$ref: "#/components/parameters/GroupID"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/TransportRequest"}
+      responses:
+        "200":
+          description: The receipt. `disposition` is `accepted` or `duplicate`.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/TransportReceipt"}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /v1/groups/{id}/settings:
+    post:
+      tags: [groups]
+      operationId: updateGroupSettings
+      summary: Change group shuffle and repeat.
+      parameters:
+        - {$ref: "#/components/parameters/GroupID"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/SettingsRequest"}
+      responses:
+        "200":
+          description: The group after the change.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/GroupSnapshot"}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /v1/groups/{id}/readiness:
+    post:
+      tags: [groups]
+      operationId: reportGroupReadiness
+      summary: Report the calling member's own readiness.
+      description: |
+        Readiness is evidence, never a command: it can hold the group out of
+        `ready` but it can never start or stop playback. A report older than 30
+        seconds counts as stale and, like `lagging`, holds the aggregate away
+        from `ready`. One member buffering does not pause the others.
+      parameters:
+        - {$ref: "#/components/parameters/GroupID"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ReadinessRequest"}
+      responses:
+        "200":
+          description: The group with the recomputed aggregate.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/GroupSnapshot"}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+  /v1/groups/{id}/queue:
+    get:
+      tags: [groups]
+      operationId: readGroupQueue
+      summary: Read the shared queue as the calling member may see it.
+      description: |
+        An entry the member cannot see is an opaque placeholder: `entryId` and
+        `position` survive, `itemId` is null and `unavailable` is true. The host
+        additionally receives `eligibility`, naming which members are blocked by
+        which entries, so the host can remove the member or replace the entry
+        before it becomes current.
+      parameters:
+        - {$ref: "#/components/parameters/GroupID"}
+      responses:
+        "200":
+          description: The projected queue.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/QueueResponse"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+    post:
+      tags: [groups]
+      operationId: mutateGroupQueue
+      summary: Append, replace, remove or move shared-queue entries.
+      parameters:
+        - {$ref: "#/components/parameters/GroupID"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/QueueRequest"}
+      responses:
+        "200":
+          description: The queue after the mutation.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/QueueResponse"}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /v1/groups/{id}/events:
+    get:
+      tags: [groups]
+      operationId: streamGroupEvents
+      summary: Server-sent event stream for one group.
+      description: |
+        `Content-Type: text/event-stream`. Membership is checked before a single
+        byte is written.
+
+        Frames carry `id:` (the durable ledger ordinal) and `event:` (the kind).
+        Event kinds:
+
+        * `group.snapshot` — a full `GroupSnapshot` projected for this member.
+          Sent once when a stream opens without `Last-Event-ID`, and again after
+          a `resume-gap`. It carries the `id:` of the ordinal it was taken at, so
+          echoing the last `id:` seen is always a valid resume point.
+        * `group.transport` — `{command, state, itemId, currentEntryId,
+          anchorPositionUs, anchorAt, rate, queuePosition, revision, override}`.
+        * `group.settings` — `{shuffleEnabled, repeatMode}`.
+        * `group.members` — `{revision}`; re-read the group.
+        * `group.readiness` — `{memberId, readiness, positionUs, aggregate}`.
+        * `group.queue` — `{queueRevision, currentEntryId?}`. It deliberately
+          carries no entries: the queue is projected per member, so the client
+          re-reads `GET /v1/groups/{id}/queue`.
+        * `group.host` — `{presence, pausedAt?, hostMemberId?,
+          reconnectGeneration?}`.
+        * `group.ended` — `{reason, endedAt}`. The server closes the stream.
+        * `heartbeat` — `{serverTime}` every 15 seconds. It carries no `id:`, so
+          it never moves the client's resume point. Treat a silence longer than
+          two heartbeat intervals as a dead connection.
+        * `resume-gap` — `{reason, resumeFrom}`. The requested `Last-Event-ID`
+          has fallen out of the retention window (512 events per group); the
+          client must discard its state and take the snapshot that follows.
+
+        Resume by sending `Last-Event-ID: <ordinal>`; the server replays every
+        durable event after it. `group.eventOrdinal` in any snapshot is a valid
+        resume point.
+
+        One viewer may hold at most four group streams open at once. No
+        legitimate client reaches that; a reconnect loop that does gets
+        `429 too_many_streams` with `Retry-After: 5`, and no other viewer is
+        affected.
+      parameters:
+        - {$ref: "#/components/parameters/GroupID"}
+        - name: Last-Event-ID
+          in: header
+          required: false
+          description: Resume after this ledger ordinal.
+          schema: {type: string, pattern: "^[0-9]{1,19}$"}
+      responses:
+        "200":
+          description: The event stream.
+          content:
+            text/event-stream:
+              schema: {type: string}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "429":
+          description: This viewer already holds the maximum number of group streams.
+          headers:
+            Retry-After: {schema: {type: integer}}
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+  /v1/receivers:
+    get:
+      tags: [receivers]
+      operationId: listReceivers
+      summary: The viewer's receiver directory.
+      description: |
+        Lists only this viewer's own receivers, Portico players and paired Cast
+        devices alike. `presence` is `offline` once a receiver has not beaten for
+        two minutes; an offline receiver is not retired.
+      responses:
+        "200":
+          description: The directory.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ReceiverList"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+    post:
+      tags: [receivers]
+      operationId: registerReceiver
+      summary: Register or re-register a Portico receiver.
+      description: |
+        Re-registering with a different `keyFingerprint` revokes every open grant
+        on that receiver, fails every handoff in flight against it, and advances
+        `authorizationRevision`. A rotated key can never be driven with a
+        credential minted against the old one.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ReceiverRequest"}
+      responses:
+        "201":
+          description: The registered receiver.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ReceiverResponse"}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+  /v1/receivers/{id}:
+    delete:
+      tags: [receivers]
+      operationId: retireReceiver
+      summary: Remove a receiver and revoke its grants.
+      parameters:
+        - {$ref: "#/components/parameters/ReceiverID"}
+      responses:
+        "204": {description: The receiver is retired.}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /v1/receivers/{id}/heartbeat:
+    post:
+      tags: [receivers]
+      operationId: receiverHeartbeat
+      summary: Refresh receiver presence.
+      parameters:
+        - {$ref: "#/components/parameters/ReceiverID"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                protocolVersion: {type: string, const: "1.0"}
+                keyFingerprint:
+                  type: string
+                  description: Optional. When present it must match the registration.
+      responses:
+        "200":
+          description: The receiver.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ReceiverResponse"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /v1/receivers/{id}/inbox:
+    get:
+      tags: [receivers]
+      operationId: readReceiverInbox
+      summary: What is waiting on this receiver.
+      description: |
+        The grant requests still `pending` and the handoffs addressed to this
+        receiver that are still open, oldest first. A snapshot read that takes no
+        write gate: a receiver polls it every few seconds while idle. Presence is
+        proved by the heartbeat, not by this read.
+      parameters:
+        - {$ref: "#/components/parameters/ReceiverID"}
+      responses:
+        "200":
+          description: Pending grants and open handoffs.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ReceiverInbox"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /v1/receivers/{id}/inbox/wait:
+    get:
+      tags: [receivers]
+      operationId: waitReceiverInbox
+      summary: The same inbox, held open until something is waiting.
+      description: |
+        For a receiver that cannot keep the notifications event stream open. Answers
+        at once when the inbox holds a pending grant or an open handoff; otherwise
+        holds the request until one arrives or `waitSeconds` elapse, and then answers
+        with the inbox as it is (empty). The body is the same as the plain read, and
+        the inbox remains the source of truth: a receiver asks again as soon as it
+        has an answer. At most four held reads per viewer.
+      parameters:
+        - {$ref: "#/components/parameters/ReceiverID"}
+        - name: waitSeconds
+          in: query
+          required: false
+          description: How long to hold the request, 0 to 55 seconds. Default 25.
+          schema: {type: integer, minimum: 0, maximum: 55, default: 25}
+      responses:
+        "200":
+          description: Pending grants and open handoffs, or an empty inbox when the wait elapsed.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ReceiverInbox"}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "429": {$ref: "#/components/responses/RateLimited"}
+  /v1/receivers/{id}/grants:
+    get:
+      tags: [receivers]
+      operationId: listReceiverGrants
+      summary: The receiver polls for controller authorizations.
+      parameters:
+        - {$ref: "#/components/parameters/ReceiverID"}
+      responses:
+        "200":
+          description: Every grant on this receiver.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/GrantList"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
+    post:
+      tags: [receivers]
+      operationId: requestReceiverGrant
+      summary: A controller asks to control a receiver.
+      description: |
+        `allowedCommands` is the intersection of the requested commands and the
+        receiver's declared set, and must include `load`. Under `grantPolicy:
+        open` the grant is accepted immediately; under `per-device` a controller
+        that already holds a live accepted grant is renewed and a new device
+        lands in `pending`; under `always-ask` every request lands in `pending`.
+      parameters:
+        - {$ref: "#/components/parameters/ReceiverID"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/GrantRequest"}
+      responses:
+        "201":
+          description: The grant.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/GrantResponse"}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /v1/receivers/{id}/grants/{grantId}/decision:
+    post:
+      tags: [receivers]
+      operationId: decideReceiverGrant
+      summary: The receiver accepts, declines or revokes an authorization.
+      parameters:
+        - {$ref: "#/components/parameters/ReceiverID"}
+        - name: grantId
+          in: path
+          required: true
+          schema: {type: string}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [protocolVersion, decision]
+              properties:
+                protocolVersion: {type: string, const: "1.0"}
+                decision: {type: string, enum: [accept, decline, revoke]}
+      responses:
+        "200":
+          description: The grant after the decision.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/GrantResponse"}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /v1/handoffs:
+    post:
+      tags: [handoff]
+      operationId: prepareHandoff
+      summary: Phase one — propose a transfer without touching the source.
+      description: |
+        The source v1 session keeps playing. A retried `requestId` returns the
+        same handoff; the same id with a different proposal is
+        `handoff_request_conflict`. Only one open handoff per source.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/HandoffRequest"}
+      responses:
+        "201":
+          description: 'The prepared handoff, `state: prepared`, `outcome: waiting`.'
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/HandoffResponse"}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /v1/handoffs/{id}:
+    get:
+      tags: [handoff]
+      operationId: readHandoff
+      summary: Poll a handoff.
+      description: |
+        An open handoff past its deadline is reported as `expired` with reason
+        `handoff-timeout`; the prepared target is discarded and the source is
+        untouched.
+      parameters:
+        - {$ref: "#/components/parameters/HandoffID"}
+      responses:
+        "200":
+          description: The handoff.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/HandoffResponse"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /v1/handoffs/{id}/readiness:
+    post:
+      tags: [handoff]
+      operationId: reportHandoffReadiness
+      summary: Phase two — the receiver proves it reached `playing`.
+      description: |
+        The only accepted `readiness` value is `playing`. An HTTP success, a
+        metadata load or a buffered first segment is not readiness. This moves
+        `outcome` from `waiting` to `pending` and nothing else: the source is
+        still live and still authoritative.
+      parameters:
+        - {$ref: "#/components/parameters/HandoffID"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/HandoffReadiness"}
+      responses:
+        "200":
+          description: 'The handoff, `outcome: pending`.'
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/HandoffResponse"}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "410": {$ref: "#/components/responses/Gone"}
+  /v1/handoffs/{id}/commit:
+    post:
+      tags: [handoff]
+      operationId: commitHandoff
+      summary: Phase three — end the source and adopt the receiver.
+      description: |
+        The only step that ends the source session (end reason `transferred`). It
+        requires `outcome: pending` and the handoff revision the controller last
+        read. The receiver's session
+        becomes authoritative at `committedPositionUs`, which is the position the
+        receiver proved in phase two. A retried commit returns the same commit.
+      parameters:
+        - {$ref: "#/components/parameters/HandoffID"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/HandoffCommit"}
+      responses:
+        "200":
+          description: The committed handoff.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/HandoffResponse"}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "410": {$ref: "#/components/responses/Gone"}
+  /v1/handoffs/{id}/rollback:
+    post:
+      tags: [handoff]
+      operationId: rollbackHandoff
+      summary: Discard a prepared target.
+      description: The source was never retired, so there is nothing to restore.
+      parameters:
+        - {$ref: "#/components/parameters/HandoffID"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/HandoffRollback"}
+      responses:
+        "200":
+          description: The rolled-back handoff.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/HandoffResponse"}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "410": {$ref: "#/components/responses/Gone"}
+  /v1/cast/bootstrap:
+    post:
+      tags: [cast]
+      operationId: castBootstrap
+      summary: Issue a one-use Cast pairing code.
+      description: |
+        The code is six characters from an alphabet with no visually confusable
+        glyphs, valid for five minutes. Only its digest is stored. A viewer holds
+        one pending code at a time.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CastBootstrapRequest"}
+      responses:
+        "201":
+          description: The pairing code and the published application id.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CastBootstrapResponse"}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "429": {$ref: "#/components/responses/RateLimited"}
+  /v1/cast/bootstrap/{id}:
+    get:
+      tags: [cast]
+      operationId: castBootstrapStatus
+      summary: Watch a pairing code without re-reading it.
+      description: The code itself is never echoed back.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: string}
+      responses:
+        "200":
+          description: The bootstrap state.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CastBootstrapResponse"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /v1/cast/redeem:
+    post:
+      tags: [cast]
+      operationId: castRedeem
+      summary: Exchange a pairing code for a device token and a viewer session.
+      description: |
+        Unauthenticated: the receiver page has no credential yet. Rate limited,
+        and the code is single use. Two distinct credentials are returned — the
+        device-scoped `deviceToken`, accepted only by `/v1/cast/reconnect`, and
+        `session.accessToken`, an ordinary short-lived viewer bearer the receiver
+        plays with. The device token is never a bearer.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CastRedeemRequest"}
+      responses:
+        "200":
+          description: 'The receiver session, `grantSemantics: initial`.'
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CastReceiverSession"}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "410": {$ref: "#/components/responses/Gone"}
+        "429": {$ref: "#/components/responses/RateLimited"}
+  /v1/cast/reconnect:
+    post:
+      tags: [cast]
+      operationId: castReconnect
+      summary: Renew a paired receiver after a restart.
+      description: |
+        The device token is rotated on every call, so a captured token is useful
+        for exactly one renewal and the legitimate receiver detects the theft at
+        its next reconnect.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CastReconnectRequest"}
+      responses:
+        "200":
+          description: 'The renewed receiver session, `grantSemantics: rotation`.'
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CastReceiverSession"}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "410": {$ref: "#/components/responses/Gone"}
+        "429": {$ref: "#/components/responses/RateLimited"}
+  /v1/cast/devices/{id}:
+    delete:
+      tags: [cast]
+      operationId: revokeCastDevice
+      summary: Unpair a Cast receiver.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: string}
+      responses:
+        "204": {description: The pairing is revoked; the next reconnect fails closed.}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /v1/cast/configuration:
+    get:
+      tags: [cast]
+      operationId: readCastConfiguration
+      summary: Read the published Cast application id.
+      description: |
+        `applicationId` is the `cast.applicationId` setting. It has no default:
+        an empty value means this server has not been registered with the Google
+        Cast console and a sender must not advertise Cast.
+      responses:
+        "200":
+          description: The configuration.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CastConfiguration"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+    put:
+      tags: [cast]
+      operationId: writeCastConfiguration
+      summary: Set the published Cast application id.
+      description: Server owner only.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [protocolVersion, applicationId]
+              properties:
+                protocolVersion: {type: string, const: "1.0"}
+                applicationId: {type: string, maxLength: 64}
+      responses:
+        "200":
+          description: The stored configuration.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CastConfiguration"}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+  /receiver/cast/:
+    get:
+      tags: [cast]
+      operationId: castReceiverApplication
+      summary: The Google Cast receiver application.
+      description: |
+        A static HTML and JavaScript bundle compiled into the server binary, so
+        every platform and the Docker image serve identical bytes with no build
+        step. `index.html` and `receiver.js` are served from this prefix. The page
+        redeems a pairing code and then plays through the ordinary playback
+        session API with progress reporting; its only external resource is
+        Google's Cast receiver framework script.
+      security: []
+      responses:
+        "200":
+          description: The receiver page.
+          content:
+            text/html:
+              schema: {type: string}
+components:
+  securitySchemes:
+    bearerAuth: {type: http, scheme: bearer}
+  parameters:
+    GroupID:
+      name: id
+      in: path
+      required: true
+      schema: {type: string}
+    ReceiverID:
+      name: id
+      in: path
+      required: true
+      schema: {type: string}
+    HandoffID:
+      name: id
+      in: path
+      required: true
+      schema: {type: string}
+  responses:
+    Invalid:
+      description: The request could not be understood.
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+    Unauthorized:
+      description: Authentication is required.
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+    Forbidden:
+      description: The caller may not do that.
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+    NotFound:
+      description: No such resource.
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+    Conflict:
+      description: A revision, state or idempotency conflict.
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+    Gone:
+      description: The resource expired, was revoked or was consumed.
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+    RateLimited:
+      description: Too many attempts. `Retry-After` names the wait in seconds.
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+  schemas:
+    Counter:
+      type: string
+      pattern: "^[0-9]{1,19}$"
+      description: A decimal counter carried as a string.
+    Error:
+      type: object
+      required: [protocolVersion, error]
+      properties:
+        protocolVersion: {type: string, const: "1.0"}
+        error:
+          type: object
+          required: [code, message, retryable]
+          properties:
+            code:
+              type: string
+              description: |
+                Group codes — `invalid_request`, `not_found`, `host_required`,
+                `membership_revoked`, `revision_conflict`, `idempotency_conflict`,
+                `group_ended`, `group_full`, `queue_full`, `entry_not_found`,
+                `target_unavailable`, `media_no_longer_accessible`,
+                `participant_incompatible`, `device_required`,
+                `playback_authority_unavailable`,
+                `rate_limited`.
+                Invitation codes — `invite_not_found`, `invite_wrong_recipient`,
+                `invite_expired`, `invite_revoked`, `invite_consumed`.
+                Receiver and handoff codes — `receiver_key_mismatch`,
+                `grant_not_pending`, `grant_not_accepted`,
+                `handoff_request_conflict`, `handoff_in_progress`,
+                `handoff_not_ready`, `handoff_state_conflict`, `handoff_expired`,
+                `handoff_source_conflict`, `handoff_source_revision_conflict`.
+                Cast codes — `cast_code_not_found`, `cast_code_expired`,
+                `cast_code_consumed`, `cast_code_revoked`, `cast_device_not_found`,
+                `cast_device_expired`, `cast_device_revoked`, `cast_access_ended`, `cast_unavailable`.
+            message: {type: string}
+            retryable: {type: boolean}
+            currentRevision: {$ref: "#/components/schemas/Counter"}
+            blockedMemberIds: {type: array, items: {type: string}}
+            entryId: {type: string}
+    Rate:
+      type: object
+      required: [numerator, denominator]
+      properties:
+        numerator: {$ref: "#/components/schemas/Counter"}
+        denominator: {$ref: "#/components/schemas/Counter"}
+    Timeline:
+      type: object
+      description: |
+        The group's authoritative clock. While `state` is `playing` a member's
+        target position is `anchorPositionUs + (serverTime - anchorAt) * rate`.
+      required: [itemId, currentEntryId, state, anchorPositionUs, anchorAt, rate, queuePosition]
+      properties:
+        itemId: {type: string}
+        currentEntryId: {type: string}
+        state: {type: string, enum: [idle, playing, paused, stopped]}
+        anchorPositionUs: {$ref: "#/components/schemas/Counter"}
+        anchorAt: {type: string, format: date-time}
+        rate: {$ref: "#/components/schemas/Rate"}
+        queuePosition: {type: integer}
+    Sync:
+      type: object
+      description: |
+        The drift correction bands, in milliseconds. Under
+        `noCorrectionUnderMs` a member does nothing. Between that and
+        `seekAtOrOverMs` it corrects by rate, bounded by the published minimum
+        and maximum for at most `rateCorrectionMaxMs`. At or over
+        `seekAtOrOverMs` it applies an authoritative seek atomically with state.
+      properties:
+        noCorrectionUnderMs: {type: integer}
+        rateCorrectionMinimum: {type: string}
+        rateCorrectionMaximum: {type: string}
+        rateCorrectionMaxMs: {type: integer}
+        seekAtOrOverMs: {type: integer}
+    Member:
+      type: object
+      required: [id, displayName, role, state, readiness, positionUs, presence, joinedAt]
+      properties:
+        id: {type: string}
+        displayName: {type: string}
+        role: {type: string, enum: [host, member]}
+        state: {type: string, enum: [invited, joined, left, removed]}
+        readiness: {type: string, enum: [buffering, ready, lagging]}
+        positionUs: {$ref: "#/components/schemas/Counter"}
+        reportedAt: {type: [string, "null"], format: date-time}
+        presence: {type: string, enum: [connected, away, disconnected]}
+        joinedAt: {type: string, format: date-time}
+    ReadinessSummary:
+      type: object
+      properties:
+        aggregate: {type: string, enum: [ready, buffering, lagging]}
+        ready: {type: integer}
+        buffering: {type: integer}
+        lagging: {type: integer}
+        stale: {type: integer}
+        memberCount: {type: integer}
+    QueueEntry:
+      type: object
+      required: [entryId, position, unavailable]
+      properties:
+        entryId: {type: string}
+        position: {type: integer}
+        itemId:
+          type: [string, "null"]
+          description: Null for a member who cannot see the entry.
+        unavailable: {type: boolean}
+        addedBy: {type: string}
+    Queue:
+      type: object
+      required: [revision, position, entries]
+      properties:
+        revision: {$ref: "#/components/schemas/Counter"}
+        position: {type: integer}
+        entries: {type: array, items: {$ref: "#/components/schemas/QueueEntry"}}
+        eligibility:
+          type: [object, "null"]
+          description: Host only.
+          properties:
+            blockedEntries: {type: integer}
+            currentEntryBlocked: {type: boolean}
+            members:
+              type: array
+              items:
+                type: object
+                properties:
+                  memberId: {type: string}
+                  displayName: {type: string}
+                  blockedEntryIds: {type: array, items: {type: string}}
+    Group:
+      type: object
+      required: [id, name, state, hostAuthority, hostMemberId, revision, queueRevision]
+      properties:
+        id: {type: string}
+        name: {type: string}
+        state:
+          type: string
+          enum: [creating, lobby, preparing, ready, playing, paused, host-reconnecting-playing, host-reconnecting-paused, degraded, ending, ended, failed]
+        hostAuthority: {type: string, enum: [host-only, anyone]}
+        hostMemberId: {type: string}
+        revision: {$ref: "#/components/schemas/Counter"}
+        playbackRevision: {$ref: "#/components/schemas/Counter"}
+        queueRevision: {$ref: "#/components/schemas/Counter"}
+        reconnectGeneration: {$ref: "#/components/schemas/Counter"}
+        lastCommand: {type: string}
+        lastCommandId: {type: string}
+        endedReason:
+          type: string
+          description: "`host-ended`, `host-left`, `host-unavailable` or `empty`."
+        eventOrdinal:
+          allOf: [{$ref: "#/components/schemas/Counter"}]
+          description: A valid `Last-Event-ID` resume point for the event stream.
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+        permissions:
+          type: object
+          properties:
+            isHost: {type: boolean}
+            canControl: {type: boolean}
+            canManageQueue: {type: boolean}
+        authority:
+          type: object
+          description: |
+            The host's device and the v1 session it plays. `state` is `bound`
+            while that device plays a session (`playbackId`), `fresh` when it plays
+            nothing or no device is bound yet (after a transfer, `deviceId` is
+            empty), and `retired` when the device is signed out.
+          required: [deviceId, playbackId, state]
+          properties:
+            deviceId: {type: string}
+            playbackId: {type: [string, "null"]}
+            state: {type: string, enum: [fresh, bound, retired]}
+        host:
+          type: object
+          properties:
+            presence: {type: string, enum: [connected, reconnecting, absent]}
+            lastSeenAt: {type: string, format: date-time}
+            pauseAt: {type: [string, "null"], format: date-time}
+            endAt: {type: [string, "null"], format: date-time}
+        timeline: {$ref: "#/components/schemas/Timeline"}
+        settings: {$ref: "#/components/schemas/Settings"}
+        sync: {$ref: "#/components/schemas/Sync"}
+        readiness: {$ref: "#/components/schemas/ReadinessSummary"}
+        members: {type: array, items: {$ref: "#/components/schemas/Member"}}
+        queue: {oneOf: [{$ref: "#/components/schemas/Queue"}, {type: "null"}]}
+        viewerMemberId: {type: string}
+    Settings:
+      type: object
+      properties:
+        shuffleEnabled: {type: boolean}
+        repeatMode: {type: string, enum: [none, one, all]}
+    GroupSnapshot:
+      type: object
+      required: [protocolVersion, serverTime, group]
+      properties:
+        protocolVersion: {type: string, const: "1.0"}
+        serverTime: {type: string, format: date-time}
+        group: {$ref: "#/components/schemas/Group"}
+    GroupList:
+      type: object
+      required: [protocolVersion, serverTime, groups]
+      properties:
+        protocolVersion: {type: string, const: "1.0"}
+        serverTime: {type: string, format: date-time}
+        groups: {type: array, items: {$ref: "#/components/schemas/Group"}}
+    CreateGroupRequest:
+      type: object
+      required: [protocolVersion, name]
+      properties:
+        protocolVersion: {type: string, const: "1.0"}
+        name: {type: string, maxLength: 120}
+        displayName: {type: string, maxLength: 64}
+        hostAuthority: {type: string, enum: [host-only, anyone], default: host-only}
+    JoinRequest:
+      type: object
+      required: [protocolVersion, code]
+      properties:
+        protocolVersion: {type: string, const: "1.0"}
+        code: {type: string}
+        displayName: {type: string, maxLength: 64}
+    EndRequest:
+      type: object
+      required: [protocolVersion]
+      properties:
+        protocolVersion: {type: string, const: "1.0"}
+        expectedRevision: {$ref: "#/components/schemas/Counter"}
+    TransferRequest:
+      type: object
+      required: [protocolVersion, memberId, expectedRevision]
+      properties:
+        protocolVersion: {type: string, const: "1.0"}
+        memberId: {type: string}
+        expectedRevision: {$ref: "#/components/schemas/Counter"}
+    InviteRequest:
+      type: object
+      required: [protocolVersion]
+      properties:
+        protocolVersion: {type: string, const: "1.0"}
+        expiresInSeconds: {type: integer, minimum: 60, maximum: 3600, default: 900}
+        maxUses: {type: integer, minimum: 1, maximum: 32, default: 8}
+        recipientProfileId:
+          type: string
+          description: Bind the code to one profile. Recommended.
+    InviteResponse:
+      type: object
+      required: [protocolVersion, serverTime, invite]
+      properties:
+        protocolVersion: {type: string, const: "1.0"}
+        serverTime: {type: string, format: date-time}
+        invite:
+          type: object
+          properties:
+            id: {type: string}
+            groupId: {type: string}
+            code: {type: string}
+            expiresAt: {type: string, format: date-time}
+            maxUses: {type: integer}
+            uses: {type: integer}
+            recipientProfileId: {type: string}
+    TransportRequest:
+      type: object
+      required: [protocolVersion, idempotencyKey, expectedRevision, command]
+      properties:
+        protocolVersion: {type: string, const: "1.0"}
+        idempotencyKey: {type: string, minLength: 1, maxLength: 120}
+        expectedRevision: {$ref: "#/components/schemas/Counter"}
+        command: {type: string, enum: [play, pause, stop, seek, next, previous, load, set-queue-position]}
+        positionUs: {$ref: "#/components/schemas/Counter"}
+        queuePosition: {type: [integer, "null"]}
+        entryId: {type: string}
+        rate: {oneOf: [{$ref: "#/components/schemas/Rate"}, {type: "null"}]}
+        allowUnavailable:
+          type: boolean
+          description: Host only. Start an entry some members cannot see.
+    TransportReceipt:
+      type: object
+      required: [protocolVersion, serverTime, groupId, idempotencyKey, disposition, command, revision, queueRevision, recordedAt]
+      properties:
+        protocolVersion: {type: string, const: "1.0"}
+        serverTime: {type: string, format: date-time, description: "Time of this answer, as on every social response (CD-01). A replayed receipt carries the replay's time."}
+        groupId: {type: string}
+        idempotencyKey: {type: string}
+        disposition: {type: string, enum: [accepted, duplicate]}
+        command: {type: string}
+        revision: {$ref: "#/components/schemas/Counter"}
+        queueRevision: {$ref: "#/components/schemas/Counter"}
+        recordedAt: {type: string, format: date-time}
+        timeline: {$ref: "#/components/schemas/Timeline"}
+        settings: {$ref: "#/components/schemas/Settings"}
+        override:
+          type: [object, "null"]
+          properties:
+            reason: {type: string, const: host-override}
+            blockedMemberIds: {type: array, items: {type: string}}
+    SettingsRequest:
+      type: object
+      required: [protocolVersion, idempotencyKey, expectedRevision]
+      properties:
+        protocolVersion: {type: string, const: "1.0"}
+        idempotencyKey: {type: string, maxLength: 120}
+        expectedRevision: {$ref: "#/components/schemas/Counter"}
+        shuffleEnabled: {type: [boolean, "null"]}
+        repeatMode: {type: [string, "null"], enum: [none, one, all, null]}
+    ReadinessRequest:
+      type: object
+      required: [protocolVersion, readiness]
+      properties:
+        protocolVersion: {type: string, const: "1.0"}
+        readiness: {type: string, enum: [buffering, ready, lagging]}
+        positionUs: {$ref: "#/components/schemas/Counter"}
+    QueueRequest:
+      type: object
+      required: [protocolVersion, idempotencyKey, expectedRevision, operation]
+      properties:
+        protocolVersion: {type: string, const: "1.0"}
+        idempotencyKey: {type: string, maxLength: 120}
+        expectedRevision:
+          allOf: [{$ref: "#/components/schemas/Counter"}]
+          description: The queue revision, not the group revision.
+        operation: {type: string, enum: [append, replace, remove, move]}
+        itemIds: {type: array, items: {type: string}, maxItems: 256}
+        entryId: {type: string}
+        destinationEntryId: {type: string}
+        placement: {type: string, enum: [before, after]}
+    QueueResponse:
+      type: object
+      required: [protocolVersion, serverTime, groupId, queue]
+      properties:
+        protocolVersion: {type: string, const: "1.0"}
+        serverTime: {type: string, format: date-time}
+        groupId: {type: string}
+        queue: {$ref: "#/components/schemas/Queue"}
+    ReceiverRequest:
+      type: object
+      required: [protocolVersion, deviceId, displayName, keyFingerprint]
+      properties:
+        protocolVersion: {type: string, const: "1.0"}
+        deviceId: {type: string}
+        displayName: {type: string, maxLength: 64}
+        platform: {type: string, maxLength: 64}
+        keyFingerprint:
+          type: string
+          pattern: "^[A-Za-z0-9_-]{43}$"
+          description: Base64url SHA-256 of the receiver's public key.
+        publicKey: {type: string, maxLength: 256}
+        supportedCommands:
+          type: array
+          items: {type: string, enum: [load, play, pause, seek, stop]}
+        grantPolicy: {type: string, enum: [per-device, always-ask, open], default: per-device}
+    Receiver:
+      type: object
+      properties:
+        id: {type: string}
+        kind: {type: string, enum: [portico, cast]}
+        deviceId: {type: string}
+        displayName: {type: string}
+        platform: {type: string}
+        keyFingerprint: {type: string}
+        supportedCommands: {type: array, items: {type: string}}
+        grantPolicy: {type: string, enum: [per-device, always-ask, open]}
+        authorizationRevision: {$ref: "#/components/schemas/Counter"}
+        state: {type: string, enum: [active, retired]}
+        presence: {type: string, enum: [online, offline]}
+        lastSeenAt: {type: string, format: date-time}
+        createdAt: {type: string, format: date-time}
+    ReceiverResponse:
+      type: object
+      required: [protocolVersion, serverTime, receiver]
+      properties:
+        protocolVersion: {type: string, const: "1.0"}
+        serverTime: {type: string, format: date-time}
+        receiver: {$ref: "#/components/schemas/Receiver"}
+    ReceiverList:
+      type: object
+      required: [protocolVersion, serverTime, receivers]
+      properties:
+        protocolVersion: {type: string, const: "1.0"}
+        serverTime: {type: string, format: date-time}
+        receivers: {type: array, items: {$ref: "#/components/schemas/Receiver"}}
+    GrantRequest:
+      type: object
+      required: [protocolVersion, controllerDeviceId]
+      properties:
+        protocolVersion: {type: string, const: "1.0"}
+        controllerDeviceId: {type: string}
+        controllerDisplayName: {type: string, maxLength: 64}
+        requestedCommands: {type: array, items: {type: string, enum: [load, play, pause, seek, stop]}}
+        keyFingerprint:
+          type: string
+          description: Optional. When present it must match the receiver registration.
+    Grant:
+      type: object
+      properties:
+        id: {type: string}
+        receiverId: {type: string}
+        controllerDeviceId: {type: string}
+        controllerDisplayName: {type: string}
+        receiverKeyFingerprint: {type: string}
+        allowedCommands: {type: array, items: {type: string}}
+        authorizationRevision: {$ref: "#/components/schemas/Counter"}
+        state: {type: string, enum: [pending, accepted, declined, revoked, expired]}
+        expiresAt: {type: string, format: date-time}
+        createdAt: {type: string, format: date-time}
+        decidedAt: {type: [string, "null"], format: date-time}
+    GrantResponse:
+      type: object
+      required: [protocolVersion, serverTime, grant]
+      properties:
+        protocolVersion: {type: string, const: "1.0"}
+        serverTime: {type: string, format: date-time}
+        grant: {$ref: "#/components/schemas/Grant"}
+    ReceiverInbox:
+      type: object
+      additionalProperties: false
+      required: [protocolVersion, serverTime, receiverId, grants, handoffs]
+      properties:
+        protocolVersion: {type: string, const: "1.0"}
+        serverTime: {type: string, format: date-time}
+        receiverId: {type: string}
+        grants:
+          type: array
+          maxItems: 16
+          items: {$ref: "#/components/schemas/Grant"}
+        handoffs:
+          type: array
+          maxItems: 4
+          items: {$ref: "#/components/schemas/Handoff"}
+    GrantList:
+      type: object
+      required: [protocolVersion, serverTime, grants]
+      properties:
+        protocolVersion: {type: string, const: "1.0"}
+        serverTime: {type: string, format: date-time}
+        grants: {type: array, items: {$ref: "#/components/schemas/Grant"}}
+    HandoffRequest:
+      type: object
+      required: [protocolVersion, requestId, receiverId, grantId, sourcePlaybackId]
+      properties:
+        protocolVersion: {type: string, const: "1.0"}
+        requestId: {type: string}
+        receiverId: {type: string}
+        grantId: {type: string}
+        sourcePlaybackId: {type: string}
+        startPositionUs:
+          allOf: [{$ref: "#/components/schemas/Counter"}]
+          description: Defaults to the source's last observed position.
+        expectedPlaybackRevision: {$ref: "#/components/schemas/Counter"}
+    HandoffReadiness:
+      type: object
+      required: [protocolVersion, readiness, receiverPlaybackId, positionUs]
+      properties:
+        protocolVersion: {type: string, const: "1.0"}
+        readiness: {type: string, const: playing}
+        receiverPlaybackId: {type: string}
+        positionUs: {$ref: "#/components/schemas/Counter"}
+        expectedRevision: {$ref: "#/components/schemas/Counter"}
+    HandoffCommit:
+      type: object
+      required: [protocolVersion, expectedRevision]
+      properties:
+        protocolVersion: {type: string, const: "1.0"}
+        expectedRevision: {$ref: "#/components/schemas/Counter"}
+    HandoffRollback:
+      type: object
+      required: [protocolVersion]
+      properties:
+        protocolVersion: {type: string, const: "1.0"}
+        expectedRevision: {$ref: "#/components/schemas/Counter"}
+        reason: {type: string, maxLength: 64}
+    Handoff:
+      type: object
+      properties:
+        id: {type: string}
+        receiverId: {type: string}
+        grantId: {type: string}
+        requestId: {type: string}
+        state: {type: string, enum: [prepared, committing, committed, rolled_back, expired, failed]}
+        outcome: {type: string, enum: [waiting, pending, accepted, rejected]}
+        reason: {type: string}
+        revision: {$ref: "#/components/schemas/Counter"}
+        itemId: {type: string}
+        sourcePlaybackId: {type: string}
+        receiverPlaybackId: {type: string}
+        requestedPositionUs: {$ref: "#/components/schemas/Counter"}
+        readyPositionUs: {$ref: "#/components/schemas/Counter"}
+        committedPositionUs: {$ref: "#/components/schemas/Counter"}
+        sourceRetired: {type: boolean}
+        createdAt: {type: string, format: date-time}
+        expiresAt: {type: string, format: date-time}
+        settledAt: {type: [string, "null"], format: date-time}
+    HandoffResponse:
+      type: object
+      required: [protocolVersion, serverTime, handoff]
+      properties:
+        protocolVersion: {type: string, const: "1.0"}
+        serverTime: {type: string, format: date-time}
+        handoff: {$ref: "#/components/schemas/Handoff"}
+    CastBootstrapRequest:
+      type: object
+      required: [protocolVersion]
+      properties:
+        protocolVersion: {type: string, const: "1.0"}
+        displayName: {type: string, maxLength: 64}
+        capabilities:
+          type: array
+          items: {type: string, enum: [load, control, stop, progress, renew, reconnect, advance, segment-skip]}
+    CastBootstrapResponse:
+      type: object
+      required: [protocolVersion, serverTime, bootstrap]
+      properties:
+        protocolVersion: {type: string, const: "1.0"}
+        serverTime: {type: string, format: date-time}
+        bootstrap:
+          type: object
+          properties:
+            id: {type: string}
+            code:
+              type: string
+              description: Present only on the issuing response, never on a status read.
+            state: {type: string, enum: [pending, redeemed, expired, cancelled]}
+            displayName: {type: string}
+            capabilities: {type: array, items: {type: string}}
+            expiresAt: {type: string, format: date-time}
+            applicationId: {type: string}
+            receiverUrl: {type: string, const: /receiver/cast/}
+    CastRedeemRequest:
+      type: object
+      required: [protocolVersion, code, deviceId]
+      properties:
+        protocolVersion: {type: string, const: "1.0"}
+        code: {type: string}
+        deviceId: {type: string}
+        displayName: {type: string, maxLength: 64}
+    CastReconnectRequest:
+      type: object
+      required: [protocolVersion, deviceToken]
+      properties:
+        protocolVersion: {type: string, const: "1.0"}
+        deviceToken: {type: string, minLength: 43, maxLength: 256}
+        deviceId:
+          type: string
+          description: The receiver's own device id. Required only to recover with the token a lost reconnect replaced.
+    CastReceiverSession:
+      type: object
+      required: [protocolVersion, serverTime, grantSemantics, deviceToken, device, scope, session]
+      properties:
+        protocolVersion: {type: string, const: "1.0"}
+        serverTime: {type: string, format: date-time}
+        grantSemantics: {type: string, enum: [initial, extension, rotation]}
+        deviceToken:
+          type: string
+          description: Device-scoped. Accepted only by /v1/cast/reconnect; never a bearer.
+        device:
+          type: object
+          properties:
+            id: {type: string}
+            deviceId: {type: string}
+            displayName: {type: string}
+            receiverId: {type: string}
+            state: {type: string, enum: [pending, active, stopped, expired, revoked]}
+            generation: {$ref: "#/components/schemas/Counter"}
+            expiresAt: {type: string, format: date-time}
+        scope:
+          type: object
+          properties:
+            accountId: {type: string}
+            profileId: {type: string}
+            authority: {type: string}
+            capabilities: {type: array, items: {type: string}}
+        session:
+          type: object
+          description: An ordinary viewer bearer. The receiver plays with this.
+          properties:
+            accessToken: {type: string}
+            expiresAt: {type: string, format: date-time}
+        applicationId: {type: string}
+    CastConfiguration:
+      type: object
+      required: [protocolVersion, applicationId, receiverUrl]
+      properties:
+        protocolVersion: {type: string, const: "1.0"}
+        applicationId: {type: string}
+        receiverUrl: {type: string, const: /receiver/cast/}

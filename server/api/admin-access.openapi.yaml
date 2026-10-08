@@ -1,0 +1,1245 @@
+openapi: 3.1.0
+info:
+  title: Portico administration — people, diagnostics and connectivity
+  version: "1.0.0"
+  summary: Access tiers, invitations, per-member limits, devices, API keys, message logs, client log uploads, diagnostics bundles and connectivity policy.
+  description: |
+    This document covers the server administration a person does after the
+    libraries exist: who may use the server, what each of them may do, what the
+    server is saying about itself, and how clients reach it.
+
+    Tiers. There are three, ordered `owner` > `admin` > `member`, defined once in
+    `internal/identity/access_tier.go` and asked through a single predicate,
+    `identity.Grants(role, needed)`. An `admin` may manage libraries, metadata,
+    invitations, member limits, device trust and diagnostics, and may manage any
+    account strictly below the admin tier. An `admin` may not change server
+    security, connectivity policy, backups or API keys, and may not create,
+    promote or edit another admin. Each operation below names the tier it needs.
+    The tier is re-read from the live membership row inside the same transaction
+    that performs the work, so a token minted while an account was an
+    administrator stops working the moment the account is demoted.
+
+    Concurrency. Every mutation carries `expectedRevision` and `operationId`.
+    `expectedRevision` is the revision of the document being changed; a mismatch
+    is `409` with `error.currentRevision`. `operationId` is an idempotency key of
+    8–128 characters: a retry with the same key and the same body replays the
+    stored response rather than applying twice, and the same key with a different
+    body is `400`. Every mutation returns the document it changed.
+
+    Paging. Lists take `cursor` and `limit` (1–100, default 25) and return
+    `nextCursor` when more rows exist. A cursor is opaque; it encodes the sort
+    key and identifier the page stopped at, so a concurrent insert cannot cause a
+    row to be skipped.
+
+    Secrets. An invitation code and an API key secret are returned exactly once,
+    in the response that creates them. The server stores only their SHA-256
+    digest and cannot show them again.
+
+    Limits enforcement. Where each per-member limit is applied is documented in
+    `internal/httpapi/access_admission.go` and summarised in `admin-access.md`.
+servers:
+  - url: /
+security:
+  - bearerAuth: []
+tags:
+  - name: access
+  - name: diagnostics
+  - name: connectivity
+paths:
+  /v1/admin/access/members:
+    get:
+      tags: [access]
+      operationId: listAccessMembers
+      summary: List accounts with their tier, libraries and limits.
+      description: Admin tier. Returns every account, its membership revision and the revision of its limits envelope.
+      parameters:
+        - {name: cursor, in: query, required: false, schema: {type: string}}
+        - {name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 100}}
+      responses:
+        "200":
+          description: A page of accounts.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/MemberPage"}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+  /v1/admin/access/members/{id}/role:
+    put:
+      tags: [access]
+      operationId: setAccessMemberRole
+      summary: Move an account between the admin and member tiers.
+      description: |
+        Admin tier, but the caller must out-rank both the account's current tier
+        and the tier it is moving to, so an admin can neither promote anyone to
+        admin nor demote another admin. Ownership is not reachable here; it moves
+        only through `POST /v1/direct/ownership`, which proves the owner's
+        password. A tier change bumps the account epoch and revokes its sessions.
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/RoleChange"}
+      responses:
+        "200":
+          description: The account after the change.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Member"}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /v1/admin/access/members/{id}/limits:
+    get:
+      tags: [access]
+      operationId: getAccessMemberLimits
+      summary: Read one account's limits envelope.
+      description: Admin tier. An account with no stored envelope reads as unrestricted at revision 1.
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      responses:
+        "200":
+          description: The limits document.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/LimitsDocument"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
+    put:
+      tags: [access]
+      operationId: setAccessMemberLimits
+      summary: Replace one account's limits envelope.
+      description: Admin tier. The whole envelope is written at once, so a client never observes half a policy.
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [expectedRevision, operationId, limits]
+              properties:
+                expectedRevision: {type: integer, format: int64}
+                operationId: {type: string, minLength: 8, maxLength: 128}
+                limits: {$ref: "#/components/schemas/Limits"}
+      responses:
+        "200":
+          description: The limits document after the change.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/LimitsDocument"}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /v1/admin/access/invitations:
+    get:
+      tags: [access]
+      operationId: listAccessInvitations
+      summary: List invitations.
+      description: Admin tier. Newest first. The invitation code is never returned here.
+      parameters:
+        - {name: cursor, in: query, required: false, schema: {type: string}}
+        - {name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 100}}
+        - {name: state, in: query, required: false, schema: {type: string, enum: [pending, accepted, revoked]}}
+      responses:
+        "200":
+          description: A page of invitations.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/InvitationPage"}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+    post:
+      tags: [access]
+      operationId: createAccessInvitation
+      summary: Invite an account by email address.
+      description: |
+        Admin tier; an admin may invite only at the member tier. The response is
+        the only place the `code` appears. A direct server has no mail transport,
+        so the address identifies the invitee and the code is delivered out of
+        band. One pending invitation per address.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/InvitationRequest"}
+      responses:
+        "201":
+          description: The pending invitation, with its code.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Invitation"}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "429": {$ref: "#/components/responses/Capacity"}
+  /v1/admin/access/invitations/{id}/revoke:
+    post:
+      tags: [access]
+      operationId: revokeAccessInvitation
+      summary: Revoke a pending invitation.
+      description: Admin tier. An accepted invitation cannot be revoked; removing the account it created is a separate act.
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/RevokeRequest"}
+      responses:
+        "200":
+          description: The invitation after the change.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Invitation"}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /v1/access/invitations/accept:
+    post:
+      tags: [access]
+      operationId: acceptAccessInvitation
+      summary: Redeem an invitation code and create the account.
+      description: |
+        Unauthenticated: the invitee has no account yet, so the code is the whole
+        authority. Rate-limited per peer like the sign-in routes. The password
+        must satisfy the same policy the owner's own member creation uses.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, username, password]
+              properties:
+                code: {type: string}
+                username: {type: string, minLength: 3, maxLength: 64}
+                password: {type: string}
+                name: {type: string, maxLength: 120}
+      responses:
+        "201":
+          description: The account that was created.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Member"}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "410":
+          description: The invitation has expired, was revoked, or the code is wrong.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+        "429": {$ref: "#/components/responses/Capacity"}
+  /v1/admin/access/devices:
+    get:
+      tags: [access]
+      operationId: listAccessDevices
+      summary: List the device inventory.
+      description: |
+        Admin tier. Devices are recorded at playback admission from the
+        `X-Portico-Device-Id` header. `approvalRequired` mirrors the server
+        setting that governs the list.
+      parameters:
+        - {name: cursor, in: query, required: false, schema: {type: string}}
+        - {name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 100}}
+        - {name: trust, in: query, required: false, schema: {type: string, enum: [pending, approved, blocked]}}
+        - {name: account, in: query, required: false, description: Only this account's devices., schema: {type: string, maxLength: 128}}
+      responses:
+        "200":
+          description: A page of devices.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/DevicePage"}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+  /v1/admin/access/devices/{id}/trust:
+    put:
+      tags: [access]
+      operationId: setAccessDeviceTrust
+      summary: Approve, block or reset a device.
+      description: Admin tier. Blocking a device also stops its account's live playback leases.
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [expectedRevision, operationId, trust]
+              properties:
+                expectedRevision: {type: integer, format: int64}
+                operationId: {type: string, minLength: 8, maxLength: 128}
+                trust: {type: string, enum: [pending, approved, blocked]}
+      responses:
+        "200":
+          description: The device after the change.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Device"}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /v1/admin/access/api-keys:
+    get:
+      tags: [access]
+      operationId: listAccessAPIKeys
+      summary: List API keys.
+      description: Owner only. Secrets are never returned; `hint` is the last six characters.
+      parameters:
+        - {name: cursor, in: query, required: false, schema: {type: string}}
+        - {name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 100}}
+      responses:
+        "200":
+          description: A page of keys.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/APIKeyPage"}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+    post:
+      tags: [access]
+      operationId: createAccessAPIKey
+      summary: Issue an API key.
+      description: |
+        Owner only. The key is bound to the calling account and never exceeds its
+        tier. `secret` appears only in this response. A key authenticates like a
+        bearer token (`Authorization: Bearer pk_…`) and resolves to the `api-key`
+        authority, which is a distinct principal type from a session.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [operationId, name, scope]
+              properties:
+                operationId: {type: string, minLength: 8, maxLength: 128}
+                name: {type: string, maxLength: 80}
+                scope: {type: string, enum: [read-only, playback, library-management, full]}
+      responses:
+        "201":
+          description: The key, with its secret.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/APIKey"}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "429": {$ref: "#/components/responses/Capacity"}
+  /v1/admin/access/api-keys/{id}/revoke:
+    post:
+      tags: [access]
+      operationId: revokeAccessAPIKey
+      summary: Revoke an API key.
+      description: Owner only. A revoked key stops authenticating immediately.
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/RevokeRequest"}
+      responses:
+        "200":
+          description: The key after the change.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/APIKey"}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /v1/admin/logs:
+    get:
+      tags: [diagnostics]
+      operationId: readMessageLog
+      summary: Read the message log.
+      description: |
+        Admin tier. Newest first, from a bounded in-memory ring. `level` names
+        the least severe level to include. `cursor` is the sequence to read
+        before. Rotating files under the state directory hold the longer history
+        and travel in the diagnostics bundle.
+      parameters:
+        - {name: level, in: query, required: false, schema: {type: string, enum: [error, warn, info, debug]}}
+        - {name: category, in: query, required: false, schema: {type: string, enum: [server, playback, scan, network, client]}}
+        - {name: cursor, in: query, required: false, schema: {type: string}}
+        - {name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 500}}
+      responses:
+        "200":
+          description: A page of messages.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/LogPage"}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+  /v1/admin/logs/events:
+    get:
+      tags: [diagnostics]
+      operationId: tailMessageLog
+      summary: Live tail of the message log.
+      description: |
+        Admin tier. Server-sent events. Each `message` event carries one log
+        record as JSON. A `: keep-alive` comment is sent every 20 seconds. A
+        subscriber that cannot keep up drops records rather than stalling the
+        server.
+      parameters:
+        - {name: level, in: query, required: false, schema: {type: string, enum: [error, warn, info, debug]}}
+      responses:
+        "200":
+          description: An event stream.
+          content:
+            text/event-stream:
+              schema: {type: string}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+  /v1/admin/logs/settings:
+    get:
+      tags: [diagnostics]
+      operationId: getLogSettings
+      summary: Read the log level and per-category retention.
+      description: Admin tier. `revision` is the settings document revision.
+      responses:
+        "200":
+          description: The diagnostics projection of the settings document.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/LogSettings"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+    patch:
+      tags: [diagnostics]
+      operationId: setLogSettings
+      summary: Change the log level and per-category retention.
+      description: Owner only — this is a settings write. Takes effect without a restart.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [expectedRevision, operationId]
+              properties:
+                expectedRevision: {type: integer, format: int64}
+                operationId: {type: string, minLength: 8, maxLength: 128}
+                logLevel: {type: string, enum: [error, warn, info, debug]}
+                retention:
+                  type: array
+                  items: {$ref: "#/components/schemas/LogRetention"}
+      responses:
+        "200":
+          description: The settings after the change.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/LogSettings"}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /v1/admin/logs/debug-window:
+    post:
+      tags: [diagnostics]
+      operationId: openDebugWindow
+      summary: Raise the log level to debug for a bounded time.
+      description: |
+        Admin tier. Raises the effective level to `debug` for `minutes` (0–240)
+        and reverts on its own. This is runtime state, not a settings change: the
+        saved `logLevel` is untouched and the settings revision does not move.
+        The expiry is persisted, so a restart inside the window keeps debugging.
+        `minutes: 0` closes an open window immediately.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [minutes, operationId]
+              properties:
+                minutes: {type: integer, minimum: 0, maximum: 240}
+                operationId: {type: string, minLength: 8, maxLength: 128}
+      responses:
+        "200":
+          description: The diagnostics settings, including the window's expiry.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/LogSettings"}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+  /v1/diagnostics/client-logs:
+    post:
+      tags: [diagnostics]
+      operationId: uploadClientLog
+      summary: Upload a client log.
+      description: |
+        Any authenticated principal, including an API key. The body is bounded at
+        256 KiB; the account and profile are taken from the credential, never
+        from the body. The server keeps the newest 500 uploads.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [body]
+              properties:
+                deviceId: {type: string, maxLength: 128}
+                platform: {type: string, maxLength: 60}
+                appVersion: {type: string, maxLength: 60}
+                body: {type: string, maxLength: 262144}
+      responses:
+        "201":
+          description: The stored upload's metadata.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ClientUpload"}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+  /v1/admin/diagnostics/client-logs:
+    get:
+      tags: [diagnostics]
+      operationId: listClientLogs
+      summary: List client log uploads.
+      description: Admin tier. Newest first. Bodies are not included in a list.
+      parameters:
+        - {name: cursor, in: query, required: false, schema: {type: string}}
+        - {name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 100}}
+      responses:
+        "200":
+          description: A page of uploads.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ClientUploadPage"}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+  /v1/admin/diagnostics/client-logs/{id}:
+    get:
+      tags: [diagnostics]
+      operationId: readClientLog
+      summary: Read one client log upload with its body.
+      description: Admin tier.
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      responses:
+        "200":
+          description: The upload, with its body.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ClientUpload"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /v1/admin/diagnostics/bundle:
+    get:
+      tags: [diagnostics]
+      operationId: exportDiagnosticsBundle
+      summary: Export a diagnostics bundle.
+      description: |
+        Owner only. A zip containing `manifest.json`, `settings.json` (with every
+        field the settings registry marks secret removed), `system-report.json`,
+        `connectivity.json`, `messages.json` and `logs/` — the rotating log files.
+        The archive stops at 16 MiB rather than growing without a ceiling.
+      responses:
+        "200":
+          description: The bundle.
+          content:
+            application/zip:
+              schema: {type: string, format: binary}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+  /v1/admin/diagnostics/concurrency:
+    get:
+      tags: [diagnostics]
+      operationId: getConcurrencyDiagnostics
+      summary: Read database and admission concurrency diagnostics.
+      description: |
+        Owner only. Reports the SQLite connection pool (including `waitCount` and
+        `waitMillis`, which say whether the pool is the bottleneck), the write
+        gate's acquisitions, queue waits and per-class backlog, the
+        background-pressure counters, the health watchdog state, per-HTTP-lane
+        active/capacity/admitted/queued/rejected counts with their queue waits and
+        request budgets, per-job-lane occupancy and backlog, and the search
+        governor. These are the numbers every capacity decision in the server was
+        made from.
+      responses:
+        "200":
+          description: The diagnostics.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ConcurrencyDiagnostics"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+  /v1/admin/diagnostics/integrity:
+    post:
+      tags: [diagnostics]
+      operationId: checkDatabaseIntegrity
+      summary: Check the database's structural health now.
+      description: |
+        Owner only, and served in the `admin-heavy` lane because `quick_check`
+        and `foreign_key_check` both read the whole database. It reports what
+        the scheduled pass reports — the quick check's answer, the count of
+        orphaned child rows and which child tables they are in, and how many
+        schema objects this build does not define — but for the database as it
+        is at this moment rather than as it was when the last scheduled pass
+        ran. A POST rather than a GET because it is expensive and not cached.
+      responses:
+        "200":
+          description: The integrity report.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/IntegrityDiagnostics"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+  /v1/admin/diagnostics/integrity/repair:
+    post:
+      tags: [diagnostics]
+      operationId: repairDatabaseIntegrity
+      summary: Remove orphaned rows whose parent's removal already implied it.
+      description: |
+        Owner only. Deletes orphaned rows from child tables the schema declares
+        `ON DELETE CASCADE` — where the schema has already said that removing
+        the parent removes the child, so the rows are ones a correct delete
+        would have taken with it. It works in batches and yields to foreground
+        traffic between them, so a repair on a large library never holds up
+        anybody watching anything.
+
+        Violations in children that are *not* declared `ON DELETE CASCADE` are
+        reported and never deleted: what removing one of those means is a
+        judgement about the owner's data that the schema does not make, so the
+        server does not make it either. Nothing here runs on a timer.
+
+        `incomplete` is true when the pass stopped early — a cancelled request,
+        or a database error — in which case `repair` still says what was removed
+        before it stopped and the route may simply be called again.
+      responses:
+        "200":
+          description: What was removed, and what was left for a person to decide.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [repair, incomplete]
+                properties:
+                  repair: {$ref: "#/components/schemas/OrphanRepairReport"}
+                  incomplete: {type: boolean}
+                  error: {type: string}
+  /v1/admin/diagnostics/pprof/{profile}:
+    get:
+      tags: [diagnostics]
+      operationId: getRuntimeProfile
+      summary: Read a Go runtime profile.
+      description: |
+        Owner only, and served in the `admin-heavy` lane so profiling can never be
+        the reason a viewer waits. `profile` is one of the runtime's registered
+        profiles (`goroutine`, `heap`, `allocs`, `block`, `mutex`,
+        `threadcreate`), or `profile` (CPU), `trace`, `cmdline` or `symbol`.
+        `seconds` applies to `profile` and `trace` and is clamped to the lane's
+        request budget; anything outside 1-8 becomes 8. `debug=1` on a
+        goroutine profile returns text rather than the binary pprof format.
+      parameters:
+        - {name: profile, in: path, required: true, schema: {type: string}}
+        - {name: seconds, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 8}}
+        - {name: debug, in: query, required: false, schema: {type: integer}}
+      responses:
+        "200":
+          description: The profile, in pprof format unless `debug` asked for text.
+          content:
+            application/octet-stream:
+              schema: {type: string, format: binary}
+            text/plain:
+              schema: {type: string}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /v1/readiness:
+    get:
+      tags: [diagnostics]
+      operationId: getReadiness
+      summary: Report whether the server is ready to serve.
+      description: |
+        Unauthenticated and free of database work, so a supervisor can ask it of a
+        server that is still opening its database. `503` with `Retry-After: 2`
+        while starting; `status` is `starting`, `ready`, `degraded` or `corrupt`.
+      responses:
+        "200":
+          description: The server is ready.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Readiness"}
+        "503":
+          description: The server is still starting, or its database is unusable.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Readiness"}
+  /v1/admin/connectivity/policy:
+    get:
+      tags: [connectivity]
+      operationId: getConnectivityPolicy
+      summary: Read the connectivity policy.
+      description: Owner only — this is server security. `revision` is the settings document revision.
+      responses:
+        "200":
+          description: The policy.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ConnectivityPolicy"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+    patch:
+      tags: [connectivity]
+      operationId: setConnectivityPolicy
+      summary: Change the connectivity policy.
+      description: |
+        Owner only. Every field is optional; an omitted field is left as it is.
+        `lanNetworks` entries are stored in masked form. `lanDiscoveryEnabled`
+        takes effect immediately, without a restart.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [expectedRevision, operationId]
+              properties:
+                expectedRevision: {type: integer, format: int64}
+                operationId: {type: string, minLength: 8, maxLength: 128}
+                remoteSignInPolicy: {type: string, enum: [allow, owner-only, off]}
+                remoteBitrateLimitKbps: {type: integer, minimum: 0, maximum: 200000}
+                secureConnectionsPolicy: {type: string, enum: [required, preferred, lan-plain-allowed]}
+                lanNetworks: {type: array, items: {type: string}}
+                accessUrls: {type: array, items: {type: string}}
+                lanDiscoveryEnabled: {type: boolean}
+      responses:
+        "200":
+          description: The policy after the change.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ConnectivityPolicy"}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /v1/admin/connectivity/status:
+    get:
+      tags: [connectivity]
+      operationId: getConnectivityStatus
+      summary: Report how this server can be reached.
+      description: |
+        Admin tier. Combines the policy with what the host can observe: network
+        interfaces and their addresses, the class of each address, the TLS
+        certificate state, and the LAN discovery advertisement's real state.
+        `warnings` names policy this host cannot satisfy.
+      responses:
+        "200":
+          description: The connectivity report.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ConnectivityStatus"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: A session access token, or an API key beginning `pk_`.
+  responses:
+    Invalid:
+      description: The request was rejected. `error.fields` names the rejected fields.
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+    Unauthorized:
+      description: Authentication is required, or the caller's tier is too low.
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+    NotFound:
+      description: No such record.
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+    Conflict:
+      description: The document changed. `error.currentRevision` carries the revision to resubmit against.
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+    Capacity:
+      description: Too many records of this kind already exist.
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+  schemas:
+    Readiness:
+      type: object
+      required: [ready, status]
+      properties:
+        ready: {type: boolean}
+        status: {type: string, enum: [starting, ready, degraded, corrupt]}
+    ConcurrencyLane:
+      type: object
+      required: [lane, active, capacity, admitted, queued, rejected, queueWaitMillis, requestBudgetMillis, queueLimitMillis, workClass, countsAsForegroundLoad]
+      properties:
+        lane: {type: string}
+        active: {type: integer, format: int64}
+        capacity: {type: integer}
+        admitted: {type: integer, format: int64}
+        queued: {type: integer, format: int64}
+        rejected: {type: integer, format: int64}
+        queueWaitMillis: {type: integer, format: int64}
+        requestBudgetMillis: {type: integer, format: int64}
+        queueLimitMillis: {type: integer, format: int64}
+        workClass: {type: string}
+        countsAsForegroundLoad: {type: boolean}
+    ConcurrencyJobLane:
+      type: object
+      required: [lane, active, capacity, backlog]
+      properties:
+        lane: {type: string}
+        active: {type: integer}
+        capacity: {type: integer}
+        backlog: {type: integer}
+    IntegrityDiagnostics:
+      type: object
+      description: |
+        The database's structural health. `checkedUnix` is zero when no check
+        has run. `foreignSchemaObjects` counts schema objects this build does
+        not define — a state directory written by a different or newer Portico —
+        and the server never touches them.
+      properties:
+        checkedUnix: {type: integer, format: int64}
+        durationMillis: {type: integer, format: int64}
+        quickCheck: {type: string}
+        foreignKeyViolations: {type: integer}
+        foreignKeyViolationsByTable: {type: object, additionalProperties: {type: integer}}
+        foreignSchemaObjects: {type: integer}
+        error: {type: string}
+    OrphanRepairReport:
+      type: object
+      required: [removedByTable, reportedByTable, durationMillis]
+      description: |
+        `removedByTable` is what the pass deleted: orphans in children declared
+        `ON DELETE CASCADE`. `reportedByTable` is what it deliberately left:
+        orphans in children that are not, where deleting a row is a judgement
+        about the owner's data.
+      properties:
+        removedByTable: {type: object, additionalProperties: {type: integer}}
+        reportedByTable: {type: object, additionalProperties: {type: integer}}
+        durationMillis: {type: integer, format: int64}
+    ConcurrencyDiagnostics:
+      type: object
+      required: [pool, writeGate, pressure, health, httpLanes, jobLanes, search, process, wal, storageHelpers, integrity]
+      properties:
+        conversions:
+          type: object
+          description: |
+            Media conversion admitted against the host's own capacity.
+            `capacity` is derived from the processor count; `refused` counts new
+            conversions turned away past it, answered with the same retryable
+            429 the server already gives when conversion capacity is in use. A
+            session that is already converting keeps its slot through seeks and
+            rung changes, and direct play never consults this at all.
+          properties:
+            active: {type: integer}
+            capacity: {type: integer}
+            refused: {type: integer, format: int64}
+        integrity:
+          type: object
+          description: |
+            The database's structural health, from the opt-in scheduled check
+            (`PORTICO_INTEGRITY_CHECK`; off by default because both passes are
+            the size of the database). `checkedUnix` is zero when none has run.
+            `foreignSchemaObjects` counts schema objects this build does not
+            define — a state directory written by a different or newer Portico —
+            and the server never touches them.
+          properties:
+            checkedUnix: {type: integer, format: int64}
+            durationMillis: {type: integer, format: int64}
+            quickCheck: {type: string}
+            foreignKeyViolations: {type: integer}
+            foreignKeyViolationsByTable: {type: object, additionalProperties: {type: integer}}
+            foreignSchemaObjects: {type: integer}
+            error: {type: string}
+        storageHelpers:
+          type: object
+          description: |
+            The storage helper supervisor, in two pools. `playback` holds one
+            process for the length of a stream and exists only for
+            Portico-managed network mounts and on Windows; `helper` is short
+            probes, scans and encodes and is sized to the CPU. `queued` counts
+            playback admissions that waited for a slot rather than being refused,
+            and `refused` counts the honest 503s past that wait.
+          properties:
+            playbackActive: {type: integer}
+            playbackCapacity: {type: integer}
+            helperActive: {type: integer}
+            helperCapacity: {type: integer}
+            admitted: {type: integer, format: int64}
+            queued: {type: integer, format: int64}
+            refused: {type: integer, format: int64}
+            queueWaitMillis: {type: integer, format: int64}
+        process:
+          type: object
+          description: |
+            The runtime triage view. `containedPanics` counts goroutine panics the
+            server recovered rather than dying from; a non-zero value is always
+            worth looking at. `memoryLimitBytes` is the soft heap limit the
+            collector is working to, `math.MaxInt64` when none was set.
+          properties:
+            goroutines: {type: integer}
+            heapAllocBytes: {type: integer, format: int64}
+            heapInUseBytes: {type: integer, format: int64}
+            heapSysBytes: {type: integer, format: int64}
+            nextGCBytes: {type: integer, format: int64}
+            gcCycles: {type: integer}
+            memoryLimitBytes: {type: integer, format: int64}
+            containedPanics: {type: integer, format: int64}
+            supervisedLoopRestarts: {type: integer, format: int64}
+            maxProcs: {type: integer}
+            databaseCalls: {type: integer, format: int64}
+            openFileSoftLimit: {type: integer, format: int64}
+            openFileHardLimit: {type: integer, format: int64}
+        wal:
+          type: object
+          description: |
+            The write-ahead log. `busy`, `logFrames` and `checkpointedFrames` are
+            what `PRAGMA wal_checkpoint(PASSIVE)` returned; a `logFrames` that
+            keeps growing while `checkpointedFrames` stays behind it means a
+            long-lived reader is holding checkpointing back. `walFileBytes` is the
+            `-wal` on disk and `walPeakFileBytes` its high-water mark since start.
+          properties:
+            busy: {type: integer}
+            logFrames: {type: integer}
+            checkpointedFrames: {type: integer}
+            walFileBytes: {type: integer, format: int64}
+            walPeakFileBytes: {type: integer, format: int64}
+            lastError: {type: string}
+        pool:
+          type: object
+          properties:
+            maxOpenConnections: {type: integer}
+            openConnections: {type: integer}
+            inUse: {type: integer}
+            idle: {type: integer}
+            waitCount: {type: integer, format: int64}
+            waitMillis: {type: integer, format: int64}
+            maxIdleClosed: {type: integer, format: int64}
+            maxLifetimeClosed: {type: integer, format: int64}
+        writeGate:
+          type: object
+          properties:
+            active: {type: boolean}
+            acquired: {type: integer, format: int64}
+            queued: {type: integer, format: int64}
+            cancelled: {type: integer, format: int64}
+            queueWaitMillis: {type: integer, format: int64}
+            heldMillis: {type: integer, format: int64}
+            maxHeldMillis: {type: integer, format: int64}
+            waiting: {type: object, additionalProperties: {type: integer}}
+        pressure:
+          type: object
+          properties:
+            yields: {type: integer, format: int64}
+            yieldWaitMillis: {type: integer, format: int64}
+            valveBlocks: {type: integer, format: int64}
+            foregroundActive: {type: boolean}
+            healthy: {type: boolean}
+        health:
+          type: object
+          properties:
+            state: {type: string, enum: [healthy, degraded, recovering, corrupt]}
+            consecutiveFailures: {type: integer}
+            consecutiveSuccesses: {type: integer}
+            lastError: {type: string}
+            lastProbeMillis: {type: integer, format: int64}
+            handleRecycles: {type: integer}
+            lastCheckedUnix: {type: integer, format: int64}
+            backgroundPaused: {type: boolean}
+        httpLanes:
+          type: array
+          items: {$ref: "#/components/schemas/ConcurrencyLane"}
+        jobLanes:
+          type: array
+          items: {$ref: "#/components/schemas/ConcurrencyJobLane"}
+        search:
+          type: object
+          properties:
+            active: {type: integer}
+            perViewerLimit: {type: integer}
+            globalLimit: {type: integer}
+            rejected: {type: integer, format: int64}
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, retryable]
+          properties:
+            code: {type: string}
+            message: {type: string}
+            retryable: {type: boolean}
+            currentRevision: {type: integer, format: int64}
+            fields: {type: array, items: {type: string}}
+    RevokeRequest:
+      type: object
+      required: [expectedRevision, operationId]
+      properties:
+        expectedRevision: {type: integer, format: int64}
+        operationId: {type: string, minLength: 8, maxLength: 128}
+    RoleChange:
+      type: object
+      required: [expectedRevision, operationId, role]
+      properties:
+        expectedRevision: {type: integer, format: int64}
+        operationId: {type: string, minLength: 8, maxLength: 128}
+        role: {type: string, enum: [admin, member]}
+    Member:
+      type: object
+      required: [accountId, username, profileId, role, disabled, revision, allowedLibraries, limitsRevision, limits]
+      properties:
+        accountId: {type: string}
+        username: {type: string}
+        profileId: {type: string}
+        role: {type: string, enum: [owner, admin, member]}
+        disabled: {type: boolean}
+        revision: {type: integer, format: int64}
+        allowedLibraries: {type: array, items: {type: string}}
+        limitsRevision: {type: integer, format: int64}
+        limits: {$ref: "#/components/schemas/Limits"}
+    MemberPage:
+      type: object
+      required: [limit, items]
+      properties:
+        limit: {type: integer}
+        nextCursor: {type: string}
+        items: {type: array, items: {$ref: "#/components/schemas/Member"}}
+    ScheduleWindow:
+      type: object
+      required: [days, startMinute, endMinute]
+      properties:
+        days: {type: array, items: {type: integer, minimum: 0, maximum: 6}, description: "0 is Sunday."}
+        startMinute: {type: integer, minimum: 0, maximum: 1439}
+        endMinute: {type: integer, minimum: 0, maximum: 1440, description: "A window whose end is not after its start wraps past local midnight."}
+    Limits:
+      type: object
+      required: [maxStreams, remoteBitrateKbps, maxContentRating, allowUnrated, schedule, channelPolicy, tagPolicy]
+      description: Zero means unlimited for every count; an empty `maxContentRating` means no ceiling.
+      properties:
+        maxStreams: {type: integer, minimum: 0, maximum: 1000}
+        remoteBitrateKbps: {type: integer, minimum: 0, maximum: 200000}
+        maxContentRating:
+          type: string
+          enum: ["", TV-Y, TV-Y7, G, TV-G, PG, TV-PG, PG-13, TV-14, R, TV-MA, NC-17]
+        allowUnrated: {type: boolean, description: "Whether a title whose rating is not on the published ladder is allowed."}
+        schedule:
+          type: object
+          required: [timezone, windows]
+          properties:
+            timezone: {type: string, description: "An IANA zone name. Empty means UTC."}
+            windows: {type: array, items: {$ref: "#/components/schemas/ScheduleWindow"}}
+        channelPolicy:
+          type: object
+          required: [mode, channels]
+          properties:
+            mode: {type: string, enum: [all, allow, deny]}
+            channels: {type: array, items: {type: string}}
+        tagPolicy:
+          type: object
+          required: [deniedLabels]
+          properties:
+            deniedLabels: {type: array, items: {type: string}, description: "Matched case-insensitively against the catalog's `label` and `tag` attributes."}
+    LimitsDocument:
+      type: object
+      required: [accountId, revision, limits]
+      properties:
+        accountId: {type: string}
+        revision: {type: integer, format: int64}
+        updatedAt: {type: string, format: date-time}
+        limits: {$ref: "#/components/schemas/Limits"}
+    InvitationRequest:
+      type: object
+      required: [operationId, email]
+      properties:
+        operationId: {type: string, minLength: 8, maxLength: 128}
+        email: {type: string, format: email}
+        role: {type: string, enum: [admin, member], default: member}
+        allowedLibraries: {type: array, items: {type: string}}
+        expiresInHours: {type: integer, minimum: 1, maximum: 720, default: 168}
+    Invitation:
+      type: object
+      required: [id, email, role, allowedLibraries, state, createdAt, expiresAt, revision]
+      properties:
+        id: {type: string}
+        email: {type: string, format: email}
+        role: {type: string, enum: [admin, member]}
+        allowedLibraries: {type: array, items: {type: string}}
+        state: {type: string, enum: [pending, accepted, revoked]}
+        createdAt: {type: string, format: date-time}
+        expiresAt: {type: string, format: date-time}
+        acceptedAt: {type: string, format: date-time}
+        accountId: {type: string}
+        revision: {type: integer, format: int64}
+        code: {type: string, description: "Present only in the response that creates the invitation."}
+    InvitationPage:
+      type: object
+      required: [limit, items]
+      properties:
+        limit: {type: integer}
+        nextCursor: {type: string}
+        items: {type: array, items: {$ref: "#/components/schemas/Invitation"}}
+    Device:
+      type: object
+      required: [id, accountId, name, platform, trust, firstSeenAt, lastSeenAt, revision]
+      properties:
+        id: {type: string}
+        accountId: {type: string}
+        profileId: {type: string}
+        name: {type: string}
+        platform: {type: string}
+        trust: {type: string, enum: [pending, approved, blocked]}
+        firstSeenAt: {type: string, format: date-time}
+        lastSeenAt: {type: string, format: date-time}
+        revision: {type: integer, format: int64}
+    DevicePage:
+      type: object
+      required: [limit, approvalRequired, items]
+      properties:
+        limit: {type: integer}
+        nextCursor: {type: string}
+        approvalRequired: {type: boolean}
+        items: {type: array, items: {$ref: "#/components/schemas/Device"}}
+    APIKey:
+      type: object
+      required: [id, name, scope, accountId, hint, createdAt, revoked, revision]
+      properties:
+        id: {type: string}
+        name: {type: string}
+        scope: {type: string, enum: [read-only, playback, library-management, full]}
+        accountId: {type: string}
+        hint: {type: string, description: "The last six characters of the secret."}
+        createdAt: {type: string, format: date-time}
+        lastUsedAt: {type: string, format: date-time}
+        revoked: {type: boolean}
+        revision: {type: integer, format: int64}
+        secret: {type: string, description: "Present only in the response that creates the key."}
+    APIKeyPage:
+      type: object
+      required: [limit, items]
+      properties:
+        limit: {type: integer}
+        nextCursor: {type: string}
+        items: {type: array, items: {$ref: "#/components/schemas/APIKey"}}
+    LogRecord:
+      type: object
+      required: [sequence, at, level, category, message]
+      properties:
+        sequence: {type: string, description: "Monotonic for the life of the process; the cursor points at it."}
+        at: {type: string, format: date-time}
+        level: {type: string, enum: [error, warn, info, debug]}
+        category: {type: string, enum: [server, playback, scan, network, client]}
+        message: {type: string}
+    LogPage:
+      type: object
+      required: [level, effectiveLevel, limit, items]
+      properties:
+        level: {type: string}
+        effectiveLevel: {type: string}
+        limit: {type: integer}
+        nextCursor: {type: string}
+        items: {type: array, items: {$ref: "#/components/schemas/LogRecord"}}
+    LogRetention:
+      type: object
+      required: [category, days]
+      properties:
+        category: {type: string, enum: [server, playback, scan, network, client]}
+        days: {type: integer, minimum: 1, maximum: 90}
+    LogSettings:
+      type: object
+      required: [revision, logLevel, effectiveLevel, retention, levels, categories]
+      properties:
+        revision: {type: integer, format: int64}
+        logLevel: {type: string, enum: [error, warn, info, debug]}
+        effectiveLevel: {type: string, enum: [error, warn, info, debug]}
+        debugWindowUntil: {type: string, format: date-time}
+        retention: {type: array, items: {$ref: "#/components/schemas/LogRetention"}}
+        levels: {type: array, items: {type: string}}
+        categories: {type: array, items: {type: string}}
+    ClientUpload:
+      type: object
+      required: [id, accountId, profileId, deviceId, platform, receivedAt, bytes]
+      properties:
+        id: {type: string}
+        accountId: {type: string}
+        profileId: {type: string}
+        deviceId: {type: string}
+        platform: {type: string}
+        appVersion: {type: string}
+        receivedAt: {type: string, format: date-time}
+        bytes: {type: integer, format: int64}
+        body: {type: string, description: "Present only when reading a single upload."}
+    ClientUploadPage:
+      type: object
+      required: [limit, items]
+      properties:
+        limit: {type: integer}
+        nextCursor: {type: string}
+        items: {type: array, items: {$ref: "#/components/schemas/ClientUpload"}}
+    ConnectivityPolicy:
+      type: object
+      required: [revision, remoteSignInPolicy, remoteBitrateLimitKbps, secureConnectionsPolicy, lanNetworks, accessUrls, lanDiscoveryEnabled]
+      properties:
+        revision: {type: integer, format: int64}
+        remoteSignInPolicy: {type: string, enum: [allow, owner-only, off]}
+        remoteBitrateLimitKbps: {type: integer, minimum: 0, maximum: 200000}
+        secureConnectionsPolicy: {type: string, enum: [required, preferred, lan-plain-allowed]}
+        lanNetworks: {type: array, items: {type: string}}
+        accessUrls: {type: array, items: {type: string}}
+        lanDiscoveryEnabled: {type: boolean}
+    ConnectivityStatus:
+      type: object
+      required: [observedAt, policy, tls, discovery, addresses, interfaces, warnings]
+      properties:
+        observedAt: {type: string, format: date-time}
+        policy: {$ref: "#/components/schemas/ConnectivityPolicy"}
+        tls:
+          type: object
+          required: [configured, tlsReady, publiclyTrusted, listenerBound, listenPort]
+          properties:
+            configured: {type: boolean}
+            state: {type: string}
+            errorCode: {type: string}
+            dnsName: {type: string}
+            issuer: {type: string}
+            notAfter: {type: string, format: date-time}
+            tlsReady: {type: boolean}
+            publiclyTrusted: {type: boolean}
+            listenerBound: {type: boolean}
+            listenPort: {type: integer}
+            routeUrl: {type: string}
+            reachability: {type: string}
+        discovery:
+          type: object
+          required: [enabled, supported, state]
+          properties:
+            enabled: {type: boolean, description: "What the owner asked for."}
+            supported: {type: boolean, description: "Whether this host can advertise at all."}
+            state: {type: string, enum: [stopped, advertising, announcing, degraded, unavailable]}
+            detail: {type: string}
+            serviceType: {type: string}
+        addresses:
+          type: array
+          items:
+            type: object
+            required: [address, family, class, source]
+            properties:
+              address: {type: string}
+              family: {type: string, enum: [ipv4, ipv6, hostname]}
+              class: {type: string, enum: [public, lan, loopback]}
+              source: {type: string, enum: [interface, accessUrl]}
+        interfaces:
+          type: array
+          items:
+            type: object
+            required: [name, up, loopback, addresses]
+            properties:
+              name: {type: string}
+              up: {type: boolean}
+              loopback: {type: boolean}
+              addresses: {type: array, items: {type: string}}
+        warnings: {type: array, items: {type: string}}

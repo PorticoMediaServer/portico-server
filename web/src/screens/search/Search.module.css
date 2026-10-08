@@ -1,0 +1,17 @@
+.field { position: relative; display: flex; align-items: center; }
+.fieldIcon { position: absolute; left: 16px; color: var(--text-tertiary); pointer-events: none; }
+.input { width: 100%; min-height: 52px; padding: 0 48px 0 48px; font-size: 17px; background: var(--surface-slate); border: 1px solid var(--line-standard); border-radius: var(--radius-surface); color: var(--text-primary); }
+.input::placeholder { color: var(--text-placeholder); }
+.input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-tint); outline: none; }
+.input::-webkit-search-cancel-button { display: none; }
+.clear { position: absolute; right: 8px; }
+.recent { display: flex; flex-direction: column; gap: 8px; }
+
+/* The field and chips stay under the top of the page while results scroll, on an opaque band. */
+.sticky { position: sticky; top: 0; z-index: var(--layer-sticky); display: flex; flex-direction: column; gap: var(--space-sm); padding: var(--space-sm) 0; background: var(--surface-page, var(--color-ink)); }
+/* Top result: one title that matched the words strongly. */
+.top { display: flex; flex-direction: column; gap: var(--space-sm); padding: var(--space-md); border: 1px solid var(--line-soft); border-radius: var(--radius-surface); background: var(--surface-raised); }
+.topBody { display: flex; gap: var(--space-lg); align-items: center; }
+.topArt { flex: 0 0 auto; width: 112px; padding: 0; cursor: pointer; }
+.topArt[data-shape='landscape'] { width: 200px; }
+.topCopy { display: flex; flex-direction: column; gap: var(--space-sm); min-width: 0; }

@@ -1,0 +1,733 @@
+openapi: 3.1.0
+info:
+  title: Portico delivery, transcoding and diagnostics
+  version: "1.0.0"
+  description: |
+    How a Portico server decides to deliver one title, and how a client reads that
+    decision. Three things are published here and nothing is inferred by clients:
+
+    * the **resolved delivery policy** for this request's network, which combines
+      the server's own view of how far the client is with the viewer's per-network
+      preferences and the owner's clamps;
+    * the **quality ladder** — the rungs a client may select, including the ones
+      it may not, each with the reason it is unavailable;
+    * the **per-session decision detail** — the route taken, the stable reason
+      codes that produced it, which stream was copied or converted, where each
+      operation ran, and how far conversion has actually got.
+
+    A client declares at most one thing about itself: the transport it is
+    connected over, in `X-Portico-Transport-Class`. The server decides what that
+    means. A declaration can only narrow the resolved lane; it can never widen it,
+    and a client can never claim locality.
+
+    Expected cost: both operations here are constant-cost reads with no paging.
+    `delivery-policy` is one preference-document read; `transcode/capacity` is a
+    map lookup after the first hardware probe on a host.
+servers:
+  - url: /
+    description: The selected Portico server.
+tags:
+  - name: delivery
+    description: Delivery policy and conversion capacity.
+paths:
+  /v1/playback/delivery-policy:
+    get:
+      tags: [delivery]
+      operationId: readDeliveryPolicy
+      summary: Read the delivery policy resolved for this viewer on this network.
+      description: |
+        Returns what this request's network lane resolved to after the viewer's
+        preferences and the owner's clamps. The response is never cacheable: the
+        same viewer on a different network gets a different answer.
+      parameters:
+        - $ref: '#/components/parameters/TransportClass'
+        - $ref: '#/components/parameters/DeviceClass'
+      responses:
+        '200':
+          description: The resolved policy, with the ladder the client renders.
+          headers:
+            Cache-Control:
+              schema: { type: string, const: no-store }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DeliveryPolicyDocument' }
+        '400':
+          description: The request carried query options. The lane is resolved by the server; it is not requested.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: No viewer session.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /v1/playback/client-profile:
+    put:
+      tags: [delivery]
+      operationId: publishClientProfile
+      summary: Publish what this device can decode, display and output.
+      description: |
+        A device publishes one versioned capability document per sign-in: at launch,
+        after signing in, and whenever something that changes the answer changes
+        (the audio route, an HDMI sink, the display's HDR mode). The server stores it
+        against the sign-in, so every route that creates a session — first play,
+        the automatic next episode, recovery, a quality change — plans against the
+        same facts without the client repeating them. A device that has published
+        nothing is planned against a conservative built-in profile.
+
+        Each fact carries its evidence: `declared` (the app's own table for its
+        platform) or `probed` (asked of the device at run time). Planning treats
+        them alike; the distinction is kept so a wrong decision can be traced.
+
+        Version 1 grows by addition: a field this server does not know is ignored.
+        A different `version` is refused with `unsupported_profile_version`.
+
+        Expected cost: one bounded body (32 KiB), one indexed read, and a write
+        only when the document's content actually changed.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ClientProfile' }
+      responses:
+        '200':
+          description: The accepted document's revision and summary.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ClientProfileReceipt' }
+        '400':
+          description: The document is malformed or exceeds a bound (`invalid_playback_report`).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: No viewer session.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '422':
+          description: The document's version is not one this server understands.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+    get:
+      tags: [delivery]
+      operationId: readClientProfile
+      summary: Read the capability document the server holds for this sign-in.
+      description: |
+        Returns the stored document, or the built-in baseline (evidence `builtin`)
+        when nothing has been published. Constant cost: one indexed read.
+      responses:
+        '200':
+          description: The document planning will use.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ClientProfileReceipt'
+                  - type: object
+                    required: [profile]
+                    properties:
+                      profile: { $ref: '#/components/schemas/ClientProfile' }
+        '401':
+          description: No viewer session.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /v1/playback/route-failures:
+    post:
+      tags: [delivery]
+      operationId: reportRouteFailure
+      summary: Report that the delivery route of one of this device's sessions failed in the player engine.
+      description: |
+        A capability document can be wrong. When a player's engine rejects the
+        stream it was given (a decode error, an unsupported source — not a network
+        failure), the device reports it here and then asks for playback again. The
+        server remembers the failed route for that file on that sign-in for a week,
+        and the next plan takes the next route up: original, then repackaged, then
+        audio converted, then fully converted. A wrong claim costs one retry.
+
+        Reporting against a full conversion changes nothing (`escalates: false`):
+        there is nothing above it. Constant cost.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sessionId, code]
+              properties:
+                sessionId: { type: string }
+                code:
+                  type: string
+                  pattern: '^[a-z0-9_]{1,48}$'
+                  description: The engine's classification, for example `decode_error`, `source_not_supported`, `audio_decode_error`.
+                detail: { type: string, maxLength: 512, description: Free text for diagnostics. Never a path or a credential. }
+      responses:
+        '200':
+          description: What the report changed.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [route, escalates]
+                properties:
+                  route: { type: string, enum: [original, copy_remux, audio_conversion, video_conversion, ''] }
+                  escalates: { type: boolean }
+        '400':
+          description: The report is malformed (`invalid_playback_report`).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: No viewer session, or the session belongs to another sign-in.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+components:
+  parameters:
+    TransportClass:
+      name: X-Portico-Transport-Class
+      in: header
+      required: false
+      description: |
+        What this device is connected over. Optional, and an unrecognised value is
+        treated as `unknown` rather than refused. The server combines it with the
+        address it actually sees: a LAN peer that declares `wifi` lands in the wifi
+        lane, a public peer that declares `wifi` is still remote, and any peer that
+        declares `cellular` is believed, because only the client can know that.
+      schema: { $ref: '#/components/schemas/TransportClass' }
+    DeviceClass:
+      name: X-Portico-Device-Class
+      in: header
+      required: false
+      description: The surface this client renders on, which scopes its device-class preferences.
+      schema: { type: string, enum: [web, mobile, television] }
+  schemas:
+    NetworkClass:
+      type: string
+      enum: [local, wifi, cellular, remote, unknown]
+      description: The server's conclusion about how far this playback has to travel.
+    TransportClass:
+      type: string
+      enum: [wifi, cellular, ethernet, unknown]
+    DeliveryMode:
+      type: string
+      enum: [allow, prefer, never, require]
+      description: |
+        A viewer's stance on one delivery route. `never` refuses that route outright
+        and `require` refuses everything else; both can end in a refusal with a
+        reason code rather than a silent fallback.
+    PlanningPolicy:
+      type: string
+      enum: [maximum_fidelity, maximum_compatibility, minimize_server_work]
+      description: |
+        How the owner wants ties broken when more than one route is admissible.
+        `maximum_fidelity` and `minimize_server_work` both take the cheapest
+        admissible route; `maximum_compatibility` deliberately takes the most
+        normalized output, because that is the most widely playable.
+    DeliveryClamp:
+      type: object
+      required: [field, source, requested, applied]
+      description: One narrowing the server applied over the viewer's choice. Clamps only ever narrow.
+      properties:
+        field: { type: string, example: maxVideoBitrateBps }
+        source: { type: string, enum: [server_clamp, owner_remux_disabled] }
+        requested: { type: integer, minimum: 0 }
+        applied: { type: integer, minimum: 0 }
+    ResolvedDeliveryPolicy:
+      type: object
+      required: [networkClass, serverLocality, transportClass, preferenceLane, directPlay, directStream, transcode, qualityMode, maxVideoBitrateBps, maxAudioBitrateBps, maxVideoHeight, allowHDR, planningPolicy, clamps]
+      properties:
+        networkClass: { $ref: '#/components/schemas/NetworkClass' }
+        serverLocality:
+          type: string
+          enum: [local, remote, unknown]
+          description: What the server saw of the client's address. A proxy hop is not LAN evidence.
+        transportClass: { $ref: '#/components/schemas/TransportClass' }
+        preferenceLane:
+          type: string
+          enum: [local, wifi, cellular, unknown]
+          description: |
+            The preference lane the class maps onto. A `remote` class borrows the
+            `unknown` lane, because no viewer configures every network they visit.
+        directPlay: { $ref: '#/components/schemas/DeliveryMode' }
+        directStream: { $ref: '#/components/schemas/DeliveryMode' }
+        transcode: { $ref: '#/components/schemas/DeliveryMode' }
+        qualityMode: { type: string, example: data-saver }
+        maxVideoBitrateBps: { type: integer, minimum: 0, description: Zero means no ceiling. }
+        maxAudioBitrateBps: { type: integer, minimum: 0 }
+        maxVideoHeight: { type: integer, minimum: 0, maximum: 4320 }
+        allowHDR: { type: boolean }
+        planningPolicy: { $ref: '#/components/schemas/PlanningPolicy' }
+        clamps:
+          type: array
+          items: { $ref: '#/components/schemas/DeliveryClamp' }
+    QualityRung:
+      type: object
+      required: [id, kind, label, enabled]
+      description: |
+        One selectable delivery target. A published set contains exactly one
+        `automatic` rung and it is first. `automatic` and `original` carry no
+        ceilings of their own — their ceiling is the resolved policy and the source
+        respectively — and a `fixed` rung always carries at least one.
+      properties:
+        id: { type: string, pattern: '^[A-Za-z0-9_-]+$', example: 1080p }
+        kind: { type: string, enum: [automatic, original, fixed] }
+        label: { type: string, example: 1080p }
+        enabled: { type: boolean }
+        reason:
+          type: string
+          enum: [above_source_height, transcoding_disabled, exceeds_network_policy, source_unavailable, original_exceeds_policy]
+          description: Present only on a rung that is published but not selectable.
+        maxVideoBitrateBps: { type: integer, minimum: 1 }
+        maxAudioBitrateBps: { type: integer, minimum: 1 }
+        targetDisplayHeight: { type: integer, minimum: 1, maximum: 4320 }
+    QualityPreset:
+      type: object
+      required: [id, label, targetDisplayHeight, maxVideoBitrateBps, maxAudioBitrateBps]
+      properties:
+        id: { type: string }
+        label: { type: string }
+        targetDisplayHeight: { type: integer }
+        maxVideoBitrateBps: { type: integer }
+        maxAudioBitrateBps: { type: integer }
+    DeliveryPolicyDocument:
+      type: object
+      required: [serverId, policy, ladder]
+      properties:
+        serverId: { type: string }
+        policy: { $ref: '#/components/schemas/ResolvedDeliveryPolicy' }
+        ladder:
+          type: array
+          description: The full ladder, widest first, before any source or policy capping.
+          items: { $ref: '#/components/schemas/QualityPreset' }
+        planningPolicies:
+          type: array
+          items: { $ref: '#/components/schemas/PlanningPolicy' }
+        transportClasses:
+          type: array
+          items: { $ref: '#/components/schemas/TransportClass' }
+    HardwareProbe:
+      type: object
+      required: [backend, available, reason, nativeFilters, identity, durationMs]
+      properties:
+        backend: { type: string, enum: [software, videotoolbox, vaapi, qsv, nvenc, amf] }
+        available: { type: boolean }
+        reason:
+          type: string
+          enum: [available, unsupported_platform, confinement_unavailable, probe_encode_failed, probe_timed_out, probe_disabled]
+        encoder: { type: string, example: h264_videotoolbox }
+        nativeFilters:
+          type: boolean
+          description: |
+            Whether this backend's own tone-map and scale filters ran, not merely
+            its encoder. A backend without them keeps its encoder and tone maps in
+            software.
+        device: { type: string }
+        identity: { type: string, description: The ffmpeg binary identity this verdict is cached against. }
+        durationMs: { type: integer }
+    DeliveryConfiguration:
+      type: object
+      description: The owner configuration in force, after invalid stored values have been repaired per field.
+      properties:
+        hardwareBackend: { type: string, description: '"auto", "software", or a backend name.' }
+        hardwareDevice: { type: string }
+        toneMapping: { type: boolean }
+        toneMapAlgorithm: { type: string, enum: [clip, linear, gamma, reinhard, hable, mobius] }
+        softwarePreset: { type: string, enum: [ultrafast, superfast, veryfast, faster, fast, medium, slow, slower] }
+        planningPolicy: { $ref: '#/components/schemas/PlanningPolicy' }
+        throttleBufferSeconds: { type: integer, minimum: 10, maximum: 3600, default: 60 }
+        playedRetentionSeconds: { type: integer, minimum: 0, maximum: 86400, default: 300 }
+        remuxEnabled: { type: boolean }
+        maxVideoBitrateBps: { type: integer, minimum: 0 }
+        maxAudioBitrateBps: { type: integer, minimum: 0 }
+        maxVideoHeight: { type: integer, minimum: 0, maximum: 4320 }
+        allowHDR: { type: boolean }
+    TranscodeCapacity:
+      type: object
+      required: [serverId, observedAt, configuration, backends, ladder]
+      properties:
+        serverId: { type: string }
+        observedAt: { type: string, format: date-time }
+        configuration: { $ref: '#/components/schemas/DeliveryConfiguration' }
+        backends:
+          type: array
+          items: { $ref: '#/components/schemas/HardwareProbe' }
+        ladder:
+          type: array
+          items: { $ref: '#/components/schemas/QualityPreset' }
+    DynamicRange:
+      type: string
+      enum: [sdr, hdr10, hdr10plus, hlg, dolby_vision]
+    ProfileEvidence:
+      type: string
+      enum: [declared, probed, mixed]
+      description: How a fact was obtained. The built-in baseline reports `builtin`.
+    ClientProfile:
+      type: object
+      description: |
+        Version 1 of the device capability document. Codec names are FFmpeg's
+        (`h264`, `hevc`, `av1`, `vp9`, `mpeg2video`, `vc1`, `aac`, `ac3`, `eac3`,
+        `truehd`, `dts`, `flac`, `alac`, `opus`, `vorbis`, `mp3`, `pcm`). Levels use
+        FFmpeg's numbering (H.264 4.1 is `41`, HEVC 5.1 is `153`). Every limit is
+        optional: zero or an empty list means "not stated", which never rejects.
+      required: [version, client, evidence]
+      properties:
+        version: { type: integer, const: 1 }
+        client:
+          type: object
+          required: [family]
+          properties:
+            family: { type: string, description: 'web, apple, android, androidtv, firetv, vega, webos, tizen, cast, roku …' }
+            platform: { type: string }
+            platformVersion: { type: string }
+            os: { type: string }
+            osVersion: { type: string }
+            model: { type: string }
+            app: { type: string }
+            appVersion: { type: string }
+            engine: { type: string, description: 'hls.js, avplayer, exoplayer, shaka, avplay, …' }
+            engineVersion: { type: string }
+        evidence: { $ref: '#/components/schemas/ProfileEvidence' }
+        display:
+          type: object
+          description: The panel or HDMI sink. Diagnostic; what the device presents acceptably is stated per codec.
+          properties:
+            width: { type: integer }
+            height: { type: integer }
+            dynamicRanges: { type: array, items: { $ref: '#/components/schemas/DynamicRange' } }
+            maxFrameRate: { type: number }
+        video:
+          type: array
+          maxItems: 32
+          items:
+            type: object
+            required: [codec]
+            properties:
+              codec: { type: string }
+              profiles: { type: array, items: { type: string } }
+              maxLevel: { type: integer }
+              bitDepths: { type: array, items: { type: integer } }
+              maxWidth: { type: integer }
+              maxHeight: { type: integer }
+              maxFrameRate: { type: number }
+              maxBitrateBps: { type: integer }
+              dynamicRanges: { type: array, items: { $ref: '#/components/schemas/DynamicRange' } }
+              dolbyVisionProfiles: { type: array, items: { type: integer } }
+              interlaced: { type: boolean }
+              evidence: { $ref: '#/components/schemas/ProfileEvidence' }
+        audio:
+          type: array
+          maxItems: 48
+          items:
+            type: object
+            required: [codec]
+            properties:
+              codec: { type: string }
+              maxChannels: { type: integer }
+              maxSampleRate: { type: integer }
+              objectAudio: { type: array, items: { type: string, enum: [atmos, dtsx] } }
+              passthrough: { type: boolean, description: The device hands the bitstream to a receiver instead of decoding it. }
+              evidence: { $ref: '#/components/schemas/ProfileEvidence' }
+        audioOutput:
+          type: object
+          properties:
+            route: { type: string, description: 'speaker, headphones, bluetooth, airplay, hdmi, arc, optical …' }
+            maxChannels: { type: integer }
+            spatial: { type: boolean }
+        transports:
+          type: array
+          maxItems: 16
+          description: Which containers and codecs the device takes over each transport. `direct` is the original file by byte range.
+          items:
+            type: object
+            required: [transport]
+            properties:
+              transport: { type: string, enum: [direct, hls_ts, hls_fmp4] }
+              containers: { type: array, items: { type: string } }
+              video: { type: array, items: { type: string } }
+              audio: { type: array, items: { type: string } }
+        subtitles:
+          type: object
+          description: What the device draws itself. Anything else is converted to text where that loses little, and burned in otherwise.
+          properties:
+            text: { type: array, items: { type: string } }
+            styled: { type: array, items: { type: string } }
+            bitmap: { type: array, items: { type: string } }
+        maxBitrateBps: { type: integer, description: The device's own ceiling. The network policy still applies on top. }
+        embeddedAudioSwitching: { type: boolean, description: The engine can choose between audio tracks inside an original file. }
+    ClientProfileReceipt:
+      type: object
+      required: [version, revision, summary]
+      properties:
+        version: { type: integer }
+        revision: { type: string, description: A digest of the accepted document. Equal documents have equal revisions. }
+        summary:
+          type: object
+          required: [family, evidence, revision, published]
+          properties:
+            family: { type: string }
+            platform: { type: string }
+            model: { type: string }
+            engine: { type: string }
+            evidence: { type: string }
+            revision: { type: string }
+            published: { type: boolean, description: False when planning is using the built-in baseline. }
+    RouteRejection:
+      type: object
+      required: [code]
+      properties:
+        code:
+          type: string
+          description: |
+            Why a route was not taken. Stable vocabulary, added to and never
+            reworded: `container_unsupported`, `video_codec_unsupported`,
+            `video_profile_unsupported`, `video_level_exceeds_device`,
+            `video_bit_depth_unsupported`, `resolution_exceeds_device`,
+            `frame_rate_exceeds_device`, `video_bitrate_exceeds_device`,
+            `interlaced_unsupported`, `dynamic_range_unsupported`,
+            `dolby_vision_profile_unsupported`,
+            `dolby_vision_sample_entry_unsupported`, `rotation_requires_conversion`,
+            `audio_codec_unsupported`, `audio_channels_exceed_device`,
+            `audio_sample_rate_exceeds_device`,
+            `audio_track_not_selectable_in_original`, `transport_unsupported`,
+            `server_output_unavailable`, `client_reported_failure`,
+            `owner_remux_disabled`, `transcoding_disabled`,
+            `source_has_no_audio_to_convert`, and the policy codes
+            `quality_rung_selected`, `height_exceeds_policy`, `bitrate_exceeds_policy`,
+            `hdr_tone_mapping_required`, `direct_play_refused_by_preference`,
+            `direct_stream_refused_by_preference`.
+        detail: { type: string }
+    DecisionTrace:
+      type: object
+      description: |
+        The stored explanation of one plan: the device it was made for, the source
+        as the planner saw it, the audio track and why it was chosen, and for every
+        route whether it was admissible and, if not, each rule that rejected it.
+        It names no path and no source identifier.
+      required: [version, client, container, routes, notes]
+      properties:
+        version: { type: integer }
+        client: { $ref: '#/components/schemas/ClientProfileReceipt/properties/summary' }
+        container: { type: string }
+        bitRate: { type: integer }
+        video:
+          type: object
+          properties:
+            codec: { type: string }
+            profile: { type: string }
+            level: { type: integer }
+            bitDepth: { type: integer }
+            width: { type: integer }
+            height: { type: integer }
+            frameRate: { type: number }
+            interlaced: { type: boolean }
+            dynamicRange: { $ref: '#/components/schemas/DynamicRange' }
+            dolbyVisionProfile: { type: integer }
+            bitRate: { type: integer }
+        audio:
+          type: object
+          properties:
+            streamIndex: { type: integer }
+            codec: { type: string }
+            channels: { type: integer }
+            language: { type: string }
+            objectAudio: { type: string }
+            chosenBy: { type: string, enum: [explicit, preferred_language, default, first, only_reachable_track] }
+            tracks: { type: integer }
+        routes:
+          type: array
+          items:
+            type: object
+            required: [route, admissible, chosen, rejections]
+            properties:
+              route: { type: string, enum: [original, copy_remux, audio_conversion, video_conversion] }
+              transport: { type: string }
+              admissible: { type: boolean }
+              chosen: { type: boolean }
+              rejections: { type: array, items: { $ref: '#/components/schemas/RouteRejection' } }
+        notes:
+          type: array
+          items: { type: string }
+    HardwareStage:
+      type: object
+      required: [operation, execution]
+      properties:
+        operation: { type: string, enum: [decode, deinterlace, tone_map, scale, encode] }
+        execution: { type: string, enum: [hardware, software] }
+    StreamDecision:
+      type: object
+      required: [kind, inputCodec, outputCodec, action]
+      properties:
+        kind: { type: string, enum: [video, audio, subtitle] }
+        inputCodec: { type: string }
+        outputCodec: { type: string }
+        action: { type: string, enum: [copy, convert, original, drop, burn_in, unknown] }
+    DeliveryReasonCode:
+      type: string
+      description: |
+        Stable vocabulary. Clients key their explanations off these strings, so they
+        are added to rather than reworded. Chosen-route codes:
+        `direct_play_compatible`, `direct_audio_compatible`,
+        `remote_preflight_compatible`, `prepared_version_compatible`,
+        `container_requires_remux`, `audio_codec_requires_conversion`,
+        `video_codec_requires_conversion`, `height_exceeds_policy`,
+        `bitrate_exceeds_policy`, `hdr_tone_mapping_required`,
+        `quality_rung_selected`, `subtitle_burn_in`,
+        `finite_timeline_normalization`, `alternate_audio_fixed_output_policy`,
+        `dolby_vision_colors_approximate` (a Dolby Vision Profile 5 picture is
+        converted by a tone mapper that can't apply its reshaping: clients warn
+        before play). Preference and owner-policy codes: `direct_play_preferred`,
+        `direct_stream_preferred`, `transcode_preferred`,
+        `planning_maximum_fidelity`, `planning_maximum_compatibility`,
+        `planning_minimize_server_work`, `hardware_backend_selected`,
+        `software_encode_fallback`, `direct_play_refused_by_preference`,
+        `direct_stream_refused_by_preference`. Refusal codes, exactly one per
+        refusal: `direct_play_required_but_unavailable`,
+        `direct_stream_required_but_unavailable`,
+        `transcode_refused_by_preference`, `transcode_disabled_by_owner`,
+        `no_admissible_delivery_route`.
+      enum:
+        - direct_play_compatible
+        - direct_audio_compatible
+        - remote_preflight_compatible
+        - prepared_version_compatible
+        - container_requires_remux
+        - audio_codec_requires_conversion
+        - video_codec_requires_conversion
+        - height_exceeds_policy
+        - bitrate_exceeds_policy
+        - hdr_tone_mapping_required
+        - quality_rung_selected
+        - subtitle_burn_in
+        - finite_timeline_normalization
+        - alternate_audio_fixed_output_policy
+        - dolby_vision_colors_approximate
+        - direct_play_preferred
+        - direct_stream_preferred
+        - transcode_preferred
+        - planning_maximum_fidelity
+        - planning_maximum_compatibility
+        - planning_minimize_server_work
+        - hardware_backend_selected
+        - software_encode_fallback
+        - direct_play_required_but_unavailable
+        - direct_stream_required_but_unavailable
+        - direct_play_refused_by_preference
+        - direct_stream_refused_by_preference
+        - transcode_refused_by_preference
+        - transcode_disabled_by_owner
+        - no_admissible_delivery_route
+        - hardware_encode_failed_software_retry
+        - copy_timeline_unavailable
+    SessionDelivery:
+      type: object
+      description: |
+        Per-session decision detail, published on `GET /v2/playback/occurrences/{id}`
+        as `delivery`. Null for an occurrence that converts nothing. It carries no
+        paths, source identifiers or credentials: it is an explanation, not a handle.
+      required: [mode, strategy, reasonCodes, qualityId, hardware, streams, throttled, convertedThroughSeconds, toneMap, playedRetentionSeconds, throttleBufferSeconds]
+      properties:
+        mode: { type: string, enum: [direct, hls, remote] }
+        strategy: { type: string, enum: [original, copy_remux, audio_conversion, video_conversion] }
+        reasonCodes:
+          type: array
+          description: Every applicable reason, not only the first.
+          items: { $ref: '#/components/schemas/DeliveryReasonCode' }
+        policy:
+          oneOf:
+            - $ref: '#/components/schemas/ResolvedDeliveryPolicy'
+            - type: 'null'
+        qualityId: { type: string, description: The rung this session was planned for. }
+        hardware:
+          type: object
+          required: [backend, stages]
+          properties:
+            backend: { type: string, enum: [software, videotoolbox, vaapi, qsv, nvenc, amf] }
+            stages:
+              type: array
+              items: { $ref: '#/components/schemas/HardwareStage' }
+        streams:
+          type: array
+          items: { $ref: '#/components/schemas/StreamDecision' }
+        throttled:
+          type: boolean
+          description: Conversion is stopped because it ran further ahead of the viewer than the throttle buffer allows. The next segment request restarts it.
+        convertedThroughSeconds: { type: number, minimum: 0 }
+        toneMap: { type: boolean }
+        toneMapAlgorithm: { type: string }
+        targetDisplayHeight: { type: integer }
+        targetVideoBitrateBps: { type: integer }
+        targetAudioBitrateBps: { type: integer }
+        playedRetentionSeconds: { type: integer }
+        throttleBufferSeconds: { type: integer }
+        decision: { $ref: '#/components/schemas/DecisionTrace' }
+        audioChannels: { type: integer, description: Output channels when the audio is converted. }
+        downmix: { type: string, description: '`itu_limited` when surround was folded down by the server.' }
+        deinterlace: { type: boolean }
+        outputContainer: { type: string, enum: [mpegts_hls, fmp4_hls] }
+        failure:
+          type: string
+          description: |
+            The class of a conversion failure, or of a hardware failure the session
+            recovered from in software (`hardware_encoder_failed:<backend>`):
+            `converter_failed`, `source_codec_not_decodable`, `encoder_unavailable`,
+            `filter_unavailable`, `source_unreadable`, `conversion_storage_full`,
+            `copy_timeline_unavailable`. The converter's own diagnostics are on the
+            owner's `GET /v1/admin/playback/diagnostics`.
+    ControlQuality:
+      type: object
+      description: |
+        The quality block of a v2 control intent. `qualityRungId` and
+        `qualityOffersRevision` travel together or not at all: a selection made
+        against a ladder the viewer never read is refused with
+        `quality_unavailable` (HTTP 422), not approximated. Changing rung re-plans
+        the same presentation and restarts conversion at the viewer's current
+        position; it does not create a new presentation.
+      required: [mode]
+      properties:
+        mode: { type: string, enum: [automatic, original, limited] }
+        maxBitrateBps: { type: [integer, 'null'] }
+        maxWidth: { type: [integer, 'null'] }
+        maxHeight: { type: [integer, 'null'] }
+        allowLossyConversion: { type: boolean }
+        allowHDRToSDR: { type: boolean }
+        qualityRungId:
+          type: [string, 'null']
+          description: A rung id from `playback-offers.sources[].qualities[]`.
+        qualityOffersRevision:
+          type: [string, 'null']
+          pattern: '^[0-9a-f]{64}$'
+          description: The `offersRevision` the client read the rung set at.
+    PlaybackOffersDelivery:
+      type: object
+      description: |
+        The delivery fields added to `GET /v1/items/{id}/playback-offers`. Each
+        source publishes its own rung set, capped by that source's height;
+        `offersRevision` fences a rung selection independently of the rest of the
+        offer, and `deliveryPlan.policy` is the policy the current session was
+        planned under.
+      properties:
+        deliveryPolicy: { $ref: '#/components/schemas/ResolvedDeliveryPolicy' }
+        offersRevision: { type: string, pattern: '^[0-9a-f]{64}$' }
+        transcodingEnabled: { type: boolean, description: Whether the owner permits conversion at all. }
+        sources:
+          type: array
+          items:
+            type: object
+            properties:
+              qualities:
+                type: array
+                items: { $ref: '#/components/schemas/QualityRung' }
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, retryable]
+          properties:
+            code: { type: string }
+            message: { type: string }
+            retryable: { type: boolean }

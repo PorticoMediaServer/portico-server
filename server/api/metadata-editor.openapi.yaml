@@ -1,0 +1,472 @@
+openapi: 3.1.0
+info:
+  title: Portico metadata editor
+  version: "1.0.0"
+  summary: Editable field registry, single and bulk metadata edits, artwork upload and match search.
+  description: |
+    A full metadata editor for owners, built on the repair engine. Everything an
+    editor needs to render itself comes from one read: `GET /v1/metadata/{kind}/{id}`
+    returns the editable field registry (`schema`), the current value, automatic
+    value, lock and provenance of every field (`snapshot.fields`), the artwork
+    roles this kind publishes (`artworkRoles`), the artwork candidates and the
+    identity candidates. A client never hard-codes a field list.
+
+    Concurrency is a value fence, not a lock: every write carries the
+    `expectedRevision` the client last read. A write whose fence no longer matches
+    answers `409 metadata_conflict`, and the client reloads the state and shows
+    the owner what changed. Every successful write returns the full state after
+    the change, so an editor never needs a second read.
+
+    Locks survive refreshes. An edited field is locked by default; a provider or
+    scanner that later rewrites the underlying column has its value recorded as
+    the field's `automaticValue` while the owner's value is restored. `useAutomatic`
+    puts the automatic value back and releases the lock.
+
+    This document carries the typed schemas for the two repair routes that
+    openapi.yaml describes as free-form objects; where the two disagree, this one
+    is authoritative.
+servers:
+  - url: /
+security:
+  - bearerAuth: []
+tags:
+  - name: editor
+paths:
+  /v1/metadata/{kind}/{id}:
+    parameters:
+      - {name: kind, in: path, required: true, schema: {$ref: "#/components/schemas/TargetKind"}}
+      - {name: id, in: path, required: true, schema: {type: string}}
+    get:
+      tags: [editor]
+      operationId: readMetadataEditorState
+      summary: Read everything an editor needs for one entity.
+      description: |
+        Server owner only. Accepts no query string. One bounded read per table:
+        the field registry, the field values with their provenance, the identity
+        candidates, the artwork candidates and jobs, the undo history and any
+        running cascade. Never cached (`Cache-Control: no-store`).
+      responses:
+        "200":
+          description: The editor state.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/EditorState"}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+    post:
+      tags: [editor]
+      operationId: applyMetadataEditorCommand
+      summary: Apply one editor command to one entity.
+      description: |
+        Server owner only, rate limited per profile. `action: edit` writes the
+        named fields; `search` asks the matching engine for candidates and accepts
+        `query`, `year` and `provider`; the remaining actions are the repair
+        engine's (`lock_all`, `unlock_all`, `relationship_lock`,
+        `edit_relationships`, `retry`, `identify`, `undo`, `preview_artwork`,
+        `select_artwork`, `repair_assets`, `artwork_lock`, `cascade`,
+        `cancel_cascade`, `discover_artwork`).
+
+        Which providers a `search` can name depends on the target: movies and
+        episodes search the screen engine's enabled providers (tmdb, tvdb,
+        anilist as configured for the library); shows search tvdb through the
+        same engine; albums and songs search musicbrainz; artists and books have
+        no remote matcher and refuse `search`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/EditorCommand"}
+            examples:
+              editFields:
+                summary: Edit three fields, locking each
+                value:
+                  expectedRevision: "9f1c…"
+                  action: edit
+                  fields:
+                    contentRating: {value: "PG-13"}
+                    releaseDate: {value: "1999-03-31"}
+                    tags: {values: ["Noir", "Rewatch"]}
+              clearAndRelease:
+                summary: Clear a number and hand a field back to the provider
+                value:
+                  expectedRevision: "9f1c…"
+                  action: edit
+                  fields:
+                    trackNumber: {value: ""}
+                    tagline: {useAutomatic: true}
+              searchWithYear:
+                summary: Search a named provider with an owner-supplied title and year
+                value:
+                  expectedRevision: "9f1c…"
+                  action: search
+                  provider: tmdb
+                  query: "The Thin Man"
+                  year: 1934
+      responses:
+        "200":
+          description: The editor state after the command.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/EditorState"}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "429": {$ref: "#/components/responses/RateLimited"}
+  /v1/metadata/bulk:
+    post:
+      tags: [editor]
+      operationId: bulkEditMetadata
+      summary: Apply one edit to up to 200 entities of one kind.
+      description: |
+        Server owner only. Each target is applied in its own transaction behind
+        its own `expectedRevision`, so one stale target cannot discard the rest.
+        The response always reports every target; a partial failure is a `200`
+        with `failed > 0`, never an error status.
+
+        Only fields whose registry entry says `bulk: true` are accepted; a
+        request naming any other field fails that target with
+        `invalid_metadata_repair`. Lists are add/remove, never replace, so two
+        items with different tags keep the tags they do not share. `lockEdited`
+        (default `true`) decides whether the written fields are locked.
+
+        Replaying the same `operationId` returns the stored receipt without
+        editing anything a second time. A different body under the same
+        `operationId` is refused.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/BulkEdit"}
+            examples:
+              rateAndTag:
+                summary: Set a content rating, add a tag and a genre across three movies
+                value:
+                  operationId: "2026-09-16-rate-and-tag"
+                  targets:
+                    - {kind: item, id: item-a, expectedRevision: "9f1c…"}
+                    - {kind: item, id: item-b, expectedRevision: "44ab…"}
+                    - {kind: item, id: item-c, expectedRevision: "0c7e…"}
+                  fields:
+                    contentRating: {value: "PG-13"}
+                  lists:
+                    tags: {add: ["Noir"], remove: ["Unsorted"]}
+                  genres: {add: ["Drama"]}
+                  lockEdited: true
+      responses:
+        "200":
+          description: One result per target, in request order.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BulkReceipt"}
+              examples:
+                partial:
+                  summary: Two applied, one stale
+                  value:
+                    operationId: "2026-09-16-rate-and-tag"
+                    updated: 2
+                    failed: 1
+                    results:
+                      - {kind: item, id: item-a, ok: true, revision: "b31d…"}
+                      - {kind: item, id: item-b, ok: false, code: metadata_conflict, message: "Metadata changed. Reload and review your decision."}
+                      - {kind: item, id: item-c, ok: true, revision: "77f0…"}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "429": {$ref: "#/components/responses/RateLimited"}
+  /v1/metadata/{kind}/{id}/art/{role}/upload:
+    post:
+      tags: [editor]
+      operationId: uploadEntityArtwork
+      summary: Upload an image for one artwork role.
+      description: |
+        Server owner only. `multipart/form-data` with the image in `file` and the
+        editor's `expectedRevision` as a form field; `subject` names a sub-entity
+        or person where the role takes one. At most 10 MiB, JPEG, PNG or WebP
+        determined from the bytes themselves rather than the declared type or the
+        filename, and at most 10000x10000 pixels.
+
+        The image is normalized and stored in the server's private artwork store
+        exactly like a provider candidate, becomes a candidate with provider
+        `upload`, and is then selected and locked for that role. Any acquisition
+        already in flight for the role is stalled so it cannot overwrite the
+        upload. The role must be one of the `artworkRoles` the editor state
+        publishes for this kind.
+      parameters:
+        - {name: kind, in: path, required: true, schema: {$ref: "#/components/schemas/TargetKind"}}
+        - {name: id, in: path, required: true, schema: {type: string}}
+        - {name: role, in: path, required: true, schema: {$ref: "#/components/schemas/ArtworkRole"}}
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file, expectedRevision]
+              properties:
+                file: {type: string, format: binary, description: JPEG, PNG or WebP image, at most 10 MiB.}
+                expectedRevision: {type: string, description: The revision the editor last read.}
+                subject: {type: string, description: Sub-entity or person the artwork is of.}
+      responses:
+        "200":
+          description: The editor state with the upload selected and locked.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/EditorState"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "415":
+          description: The bytes are not an accepted image, or are too large.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+        "429": {$ref: "#/components/responses/RateLimited"}
+  /v1/metadata/{kind}/{id}/art/{role}/upload/{candidateId}:
+    delete:
+      tags: [editor]
+      operationId: deleteUploadedEntityArtwork
+      summary: Withdraw an uploaded image.
+      description: |
+        Server owner only. Removes one candidate whose provider is `upload`; a
+        provider candidate cannot be withdrawn this way. When the withdrawn image
+        was the selected one, the best remaining candidate for that role is
+        queued, and when there is none the role's selection is cleared.
+      parameters:
+        - {name: kind, in: path, required: true, schema: {$ref: "#/components/schemas/TargetKind"}}
+        - {name: id, in: path, required: true, schema: {type: string}}
+        - {name: role, in: path, required: true, schema: {$ref: "#/components/schemas/ArtworkRole"}}
+        - {name: candidateId, in: path, required: true, schema: {type: string}}
+        - {name: expectedRevision, in: query, required: true, schema: {type: string}}
+      responses:
+        "200":
+          description: The editor state after the withdrawal.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/EditorState"}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "429": {$ref: "#/components/responses/RateLimited"}
+components:
+  securitySchemes:
+    bearerAuth: {type: http, scheme: bearer}
+  responses:
+    Invalid:
+      description: The request could not be understood.
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+    Unauthorized:
+      description: Server owner authority is required.
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+    Conflict:
+      description: The metadata changed; reload and review.
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+    RateLimited:
+      description: Too many metadata changes.
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code: {type: string, enum: [unauthorized, invalid_metadata_repair, metadata_conflict, unsupported_artwork, rate_limited]}
+            message: {type: string}
+            retryable: {type: boolean}
+    TargetKind:
+      type: string
+      enum: [item, show, season, album, artist, book]
+    ArtworkRole:
+      type: string
+      enum: [poster, backdrop, thumbnail, still, logo, square, portrait, banner, cover]
+    FieldSpec:
+      type: object
+      description: One editable field. A client renders the editor from this list alone.
+      required: [field, label, group, type, bulk]
+      properties:
+        field: {type: string}
+        label: {type: string}
+        group: {type: string, enum: [general, numbers, text, identity]}
+        type: {type: string, enum: [text, multiline, integer, number, date, enum, list]}
+        maxLength: {type: integer, description: "Longest value; for a list, the longest single entry."}
+        min: {type: integer}
+        max: {type: integer, description: "Largest value; for a list, the greatest number of entries."}
+        allowed: {type: array, items: {type: string}}
+        bulk: {type: boolean, description: Whether POST /v1/metadata/bulk accepts this field.}
+    Field:
+      type: object
+      description: |
+        One field's current state. `value` is the published value, `automaticValue`
+        is what the provider or scanner last supplied. For a `list` field `value`
+        is the canonical JSON array text and `values` is that array parsed.
+      required: [value, automaticValue, locked, source]
+      properties:
+        value: {type: string}
+        automaticValue: {type: string}
+        values: {type: array, items: {type: string}}
+        locked: {type: boolean}
+        source:
+          type: string
+          description: |
+            `manual` when the owner set it, `provider:<name>` when it came from an
+            accepted provider identity, `scanner` when it came from the local
+            files, `automatic` when the field has no value.
+        observedAt: {type: string}
+    FieldEdit:
+      type: object
+      description: |
+        Exactly one of `value`, `values` or `useAutomatic` decides the new value;
+        `locked` may accompany any of them, or stand alone to change only the
+        lock. An empty `value` clears the field, including a number, which is
+        never coerced to zero.
+      properties:
+        value: {type: string}
+        values: {type: array, items: {type: string}}
+        locked: {type: boolean}
+        useAutomatic: {type: boolean}
+    Candidate:
+      type: object
+      description: One identity a match search proposes.
+      properties:
+        id: {type: string}
+        provider: {type: string}
+        title: {type: string}
+        subtitle: {type: string}
+        year: {type: integer}
+        previewUrl:
+          type: string
+          description: |
+            A path this server serves from its own artwork store, present only
+            when the candidate's image has already been fetched. A provider URL
+            is never published.
+        observedAt: {type: string}
+    ArtworkCandidate:
+      type: object
+      description: One image a provider (or an upload) offers for an artwork role.
+      required: [id, role, subject, provider, imageId, locale, rank, votes, attribution, observedAt, current]
+      properties:
+        id: {type: string}
+        role: {type: string}
+        subject: {type: string}
+        provider: {type: string}
+        imageId: {type: string}
+        locale: {type: string}
+        rank: {type: number, description: "The provider's rating (TMDB vote_average, TVDB score), or a local preference order."}
+        votes:
+          type: [integer, "null"]
+          minimum: 0
+          description: How many people rated the image at the provider (TMDB vote_count); null when the provider publishes no count (TVDB, Cover Art Archive, uploads, local files).
+        attribution: {type: string}
+        observedAt: {type: string}
+        current: {type: boolean, description: Offered for the current metadata; false for a retained older candidate.}
+        previewUrl:
+          type: string
+          description: |
+            Present once the preview is fetched. It serves a thumbnail inside
+            400x400 from this server's artwork store (never a provider URL), so
+            size=thumbnail and a plain request return the same small image; the
+            full image is published only after the candidate is selected.
+    EditorState:
+      type: object
+      required: [target, revision, snapshot, schema, artworkRoles]
+      properties:
+        target:
+          type: object
+          properties:
+            kind: {$ref: "#/components/schemas/TargetKind"}
+            id: {type: string}
+        libraryId: {type: string}
+        serverId: {type: string}
+        viewerFence: {type: string}
+        revision: {type: string, description: Pass back as expectedRevision on the next write.}
+        schema: {type: array, items: {$ref: "#/components/schemas/FieldSpec"}}
+        artworkRoles: {type: array, items: {$ref: "#/components/schemas/ArtworkRole"}}
+        snapshot:
+          type: object
+          properties:
+            fields: {type: object, additionalProperties: {$ref: "#/components/schemas/Field"}}
+            identity: {type: object, additionalProperties: true}
+            relationships: {type: array, items: {type: object, additionalProperties: true}}
+            relationshipLocks: {type: object, additionalProperties: {type: boolean}}
+            artwork: {type: array, items: {type: object, additionalProperties: true}}
+        candidates: {type: array, items: {$ref: "#/components/schemas/Candidate"}}
+        history: {type: array, items: {type: object, additionalProperties: true}}
+        artwork:
+          type: object
+          properties:
+            candidates: {type: array, items: {$ref: "#/components/schemas/ArtworkCandidate"}}
+            jobs: {type: array, items: {type: object, additionalProperties: true}}
+        cascades: {type: array, items: {type: object, additionalProperties: true}}
+    EditorCommand:
+      type: object
+      required: [expectedRevision, action]
+      properties:
+        expectedRevision: {type: string}
+        action:
+          type: string
+          enum: [edit, lock_all, unlock_all, relationship_lock, edit_relationships, search, retry, identify, undo, preview_artwork, select_artwork, repair_assets, artwork_lock, cascade, cancel_cascade, discover_artwork]
+        fields: {type: object, additionalProperties: {$ref: "#/components/schemas/FieldEdit"}}
+        query: {type: string, description: "search: the title to look for instead of the scanned one."}
+        year: {type: integer, minimum: 0, maximum: 9999, description: "search: narrow to this year instead of the scanned one."}
+        provider: {type: string, description: "search and identify: which engine to ask."}
+        candidateId: {type: string}
+        order: {type: string}
+        historyId: {type: integer}
+        confirm: {type: boolean}
+        role: {type: string}
+        subject: {type: string}
+        locked: {type: boolean}
+        intent: {type: string}
+        operationId: {type: string}
+        relationships: {type: array, items: {type: object, additionalProperties: true}}
+    BulkTarget:
+      type: object
+      required: [kind, id, expectedRevision]
+      properties:
+        kind: {$ref: "#/components/schemas/TargetKind"}
+        id: {type: string}
+        expectedRevision: {type: string}
+    ListEdit:
+      type: object
+      description: Add and remove entries. Removal matches case-insensitively.
+      properties:
+        add: {type: array, items: {type: string}, maxItems: 64}
+        remove: {type: array, items: {type: string}, maxItems: 64}
+    BulkEdit:
+      type: object
+      required: [operationId, targets]
+      properties:
+        operationId: {type: string, maxLength: 160}
+        targets: {type: array, minItems: 1, maxItems: 200, items: {$ref: "#/components/schemas/BulkTarget"}}
+        fields: {type: object, additionalProperties: {$ref: "#/components/schemas/FieldEdit"}}
+        lists:
+          type: object
+          properties:
+            tags: {$ref: "#/components/schemas/ListEdit"}
+            labels: {$ref: "#/components/schemas/ListEdit"}
+        genres: {$ref: "#/components/schemas/ListEdit"}
+        lockEdited: {type: boolean, default: true}
+    BulkResult:
+      type: object
+      required: [kind, id, ok]
+      properties:
+        kind: {$ref: "#/components/schemas/TargetKind"}
+        id: {type: string}
+        ok: {type: boolean}
+        code: {type: string, enum: [metadata_conflict, invalid_metadata_repair, not_found, edit_failed]}
+        message: {type: string}
+        revision: {type: string, description: The target's revision after the edit.}
+    BulkReceipt:
+      type: object
+      required: [operationId, results, updated, failed]
+      properties:
+        operationId: {type: string}
+        results: {type: array, items: {$ref: "#/components/schemas/BulkResult"}}
+        updated: {type: integer}
+        failed: {type: integer}

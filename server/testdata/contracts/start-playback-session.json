@@ -1,0 +1,41 @@
+{
+  "schema": "StartPlaybackSessionResponse",
+  "method": "POST",
+  "path": "/v1/playback/sessions",
+  "auth": "device",
+  "request": {
+    "itemId": "\u003citem\u003e",
+    "startFrom": "beginning"
+  },
+  "status": 201,
+  "response": {
+    "id": "ps_ATxHOe-9b-HeHiFirwx6",
+    "revision": "1",
+    "kind": "vod",
+    "role": "local",
+    "state": "playing",
+    "itemId": "8tuuO7q001UpbtFA-9BZO67b2__8ewInS-MbZa47_DE",
+    "versionId": "5nJh_cGVeI4cvzxXhO6qU8jx0k0j1_38xHZ48t3LI7E",
+    "lease": {
+      "expiresAt": "2026-09-23T04:57:50.904Z",
+      "reportEveryMs": 10000
+    },
+    "presentation": {
+      "generation": 1,
+      "mode": "direct",
+      "url": "/v1/media/oA6n_-3T9qiya9wv-x1akqiMBoRJj69l1ZGdY-lsKzI",
+      "startPositionMs": 0,
+      "subtitles": [],
+      "decision": {
+        "video": {
+          "action": "direct",
+          "reasons": []
+        },
+        "audio": {
+          "action": "direct",
+          "reasons": []
+        }
+      }
+    }
+  }
+}

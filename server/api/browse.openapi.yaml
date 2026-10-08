@@ -1,0 +1,534 @@
+openapi: 3.1.0
+info:
+  title: Portico browse engine
+  version: "1.0.0"
+  summary: Library browse capabilities, expression queries, facets, pin order and pinned libraries.
+  description: |
+    Every library surface a client can render is driven from here. A client reads
+    `browse-capabilities` once per library and pivot, builds an expression query
+    from the published fields and operators, and posts it to `browse`. Nothing in
+    this API requires the client to know server policy: visibility, ordering,
+    counts and position indexes are computed on the server.
+
+    Cost and paging: published library and policy-class browse surfaces use
+    maintained counts and position indexes (every column sort, both directions,
+    restricted viewers included). An ad hoc `query` is counted exactly, once per
+    revision, and pages by offset over its order; it has no position index.
+    Paging is either a
+    revision-fenced cursor (sequential reading) or `range` (absolute positioning
+    for a virtualized grid); the two are mutually exclusive. `pageInfo.revision`
+    is a hash of the library, pivot, authorization fence, query, sort and the
+    catalog and viewer revisions. A range may start anywhere. Ad hoc `seek` and `range.anchorId` are
+    unavailable. A `range` carrying a stale `revision` is refused with
+    `409 stale_continuation`; published browse surfaces may supply
+    `range.anchorId` to re-anchor on a surviving entry.
+servers:
+  - url: /
+security:
+  - bearerAuth: []
+tags:
+  - name: browse
+  - name: pins
+paths:
+  /v1/libraries/{id}/browse-capabilities:
+    get:
+      tags: [browse]
+      operationId: getBrowseCapabilities
+      summary: Publish the browse vocabulary for a library.
+      description: |
+        Lists the pivots a library kind publishes, the fields and operators that
+        can be queried, the sorts that can be applied, the named quick filters
+        and the query limits. Passing `pivot` narrows `fields` and `sorts` to
+        those applicable to that pivot's entity kinds and sets `resolvedPivot`.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: string}
+        - name: pivot
+          in: query
+          required: false
+          schema: {type: string}
+      responses:
+        "200":
+          description: The library's browse vocabulary.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BrowseCapabilities"}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+  /v1/libraries/{id}/browse:
+    post:
+      tags: [browse]
+      operationId: browseLibrary
+      summary: Run one expression query against a library.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/BrowseRequest"}
+            examples:
+              unwatchedNineties:
+                summary: Unwatched nineties action, newest first, first page
+                value:
+                  pivot: movies
+                  query:
+                    all:
+                      - {field: genre, operator: contains, value: Action}
+                      - {field: decade, operator: equals, value: 1990}
+                      - {field: playState, operator: equals, value: unplayed}
+                  sort: [{field: added, direction: desc}]
+                  limit: 40
+              virtualizedRange:
+                summary: Absolute range for a virtualized grid, re-anchored after a publication
+                value:
+                  pivot: movies
+                  sort: [{field: title, direction: asc}]
+                  limit: 60
+                  range: {start: 480, revision: browse_9f2c…, anchorId: item-1234}
+              letterJump:
+                summary: Jump the alphabet rail to D
+                value:
+                  pivot: movies
+                  sort: [{field: title, direction: asc}]
+                  limit: 60
+                  seek: {prefix: D}
+      responses:
+        "200":
+          description: One page of entries with its absolute position.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BrowseResult"}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "409": {$ref: "#/components/responses/Stale"}
+  /v1/libraries/{id}/facets:
+    get:
+      tags: [browse]
+      operationId: getLibraryFacets
+      summary: Count the values of one field under the viewer's visibility.
+      description: |
+        Counts are taken through the same projection the browse engine reads, so
+        retired and out-of-library rows are excluded by construction. Results are
+        capped at 200 values and cached per catalog revision.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: string}
+        - name: field
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [genre, decade, year, contentRating, resolution, audioLanguage, studio, network, tag, label, collection, series]
+        - name: q
+          in: query
+          required: false
+          description: Case-insensitive prefix filter on the value's label.
+          schema: {type: string, maxLength: 100}
+        - name: limit
+          in: query
+          required: false
+          schema: {type: integer, minimum: 1, maximum: 200}
+      responses:
+        "200":
+          description: The counted values.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/FacetPage"}
+              example: {field: genre, values: [{value: Action, label: Action, count: 128}, {value: Drama, label: Drama, count: 96}]}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+  /v1/saved-pins/order:
+    get:
+      tags: [pins]
+      operationId: getPinOrder
+      summary: Read the viewer's arrangement of pinned resources.
+      responses:
+        "200":
+          description: The arrangement and its revision.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/PinOrder"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+    put:
+      tags: [pins]
+      operationId: setPinOrder
+      summary: Replace the viewer's arrangement of pinned resources.
+      description: Only resources the viewer has pinned may appear. Anything pinned but not arranged sorts after the arranged entries, by name.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [expectedRevision, order]
+              properties:
+                expectedRevision: {type: integer, minimum: 0}
+                order:
+                  type: array
+                  maxItems: 200
+                  items: {$ref: "#/components/schemas/PinOrderEntry"}
+            example: {expectedRevision: 3, order: [{kind: view, id: res-a}, {kind: collection, id: res-b}]}
+      responses:
+        "200":
+          description: The stored arrangement.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/PinOrder"}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /v1/me/library-navigation:
+    get:
+      tags: [pins]
+      operationId: getLibraryNavigation
+      summary: Read the viewer's pinned libraries, in their order.
+      responses:
+        "200":
+          description: The pinned libraries and their revision.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/LibraryNavigation"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+    put:
+      tags: [pins]
+      operationId: setLibraryNavigation
+      summary: Replace the viewer's pinned libraries.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [expectedRevision, pinnedLibraryIds]
+              properties:
+                expectedRevision: {type: integer, minimum: 0}
+                pinnedLibraryIds:
+                  type: array
+                  maxItems: 100
+                  items: {type: string}
+            example: {expectedRevision: 0, pinnedLibraryIds: [lib-tv, lib-movies]}
+      responses:
+        "200":
+          description: The stored arrangement.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/LibraryNavigation"}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /v1/libraries:
+    get:
+      tags: [pins]
+      operationId: listLibraries
+      summary: List the libraries visible to the viewer, pinned first.
+      description: Pinned libraries lead the listing in the viewer's own order and are flagged with a true `pinned` field.
+      responses:
+        "200":
+          description: The viewer's libraries.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: {$ref: "#/components/schemas/Library"}
+              example:
+                items:
+                  - {id: lib-tv, name: Television, kind: tv, defaultView: browse, pinned: true}
+                  - {id: lib-movies, name: Movies, kind: movie, defaultView: discover, pinned: false}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+components:
+  securitySchemes:
+    bearerAuth: {type: http, scheme: bearer}
+  responses:
+    Invalid:
+      description: The request names something the capabilities do not publish. `error.field` is the offending path.
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+          example: {error: {code: invalid_query, message: "field \"studio\" is not supported", field: "query.all[1].field", retryable: false}}
+    Unauthorized:
+      description: The caller is not authorized for this library.
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+    Stale:
+      description: The catalog or the viewer's state changed; restart from the first page or supply `range.anchorId`.
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+          example: {error: {code: stale_continuation, message: "catalog or viewer state changed", retryable: true}}
+    Conflict:
+      description: The arrangement changed on another device.
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: {type: string}
+            message: {type: string}
+            field: {type: string}
+            retryable: {type: boolean}
+    Library:
+      type: object
+      required: [id, name, kind, defaultView, pinned]
+      properties:
+        id: {type: string}
+        name: {type: string}
+        kind: {type: string, enum: [movie, tv, anime, music, audiobook]}
+        defaultView: {type: string}
+        pinned: {type: boolean}
+    BrowseNode:
+      description: One node of the expression tree. Exactly one of `all`, `any`, `not` or a `field`/`operator`/`value` predicate.
+      oneOf:
+        - type: object
+          required: [all]
+          properties:
+            all: {type: array, minItems: 1, maxItems: 40, items: {$ref: "#/components/schemas/BrowseNode"}}
+        - type: object
+          required: [any]
+          properties:
+            any: {type: array, minItems: 1, maxItems: 40, items: {$ref: "#/components/schemas/BrowseNode"}}
+        - type: object
+          required: [not]
+          properties:
+            not: {$ref: "#/components/schemas/BrowseNode"}
+        - type: object
+          required: [field, operator, value]
+          properties:
+            field:
+              type: string
+              enum: [entityKind, title, year, decade, releaseDate, dateAdded, playState, favorite, watchlisted, personalRating, lastPlayedAt, genre, tag, label, collection, contentRating, communityRating, criticRating, availability, resolution, dynamicRange, audioLanguage, studio, network, actor, director, writer, durationSeconds, artist, album, author, narrator, series]
+            operator:
+              type: string
+              enum: [equals, not-equals, contains, starts-with, in, not-in, less-than, at-most, greater-than, at-least, between, is-present, is-missing, contains-any, contains-all]
+            value:
+              description: A scalar for most operators, a two-element array for `between`, a list for `in`/`not-in`/`contains-any`/`contains-all`, and null for the presence operators.
+    BrowseSortSelection:
+      type: object
+      required: [field, direction]
+      properties:
+        field: {type: string, enum: [title, added, year, duration, communityRating, personalRating, lastPlayed, forYou], description: "forYou: the viewer's recommendation ranking of the pivot and filter (unwatched first), then the rest in title order; desc only, never combined with another sort, no position anchors."}
+        direction: {type: string, enum: [asc, desc]}
+    BrowseRange:
+      type: object
+      required: [start]
+      description: "Absolute positioning at any start; with an ad hoc query anchorId is unavailable."
+      properties:
+        start: {type: integer, minimum: 0}
+        revision: {type: string, maxLength: 128}
+        anchorId: {type: string, maxLength: 256}
+    BrowseSeek:
+      type: object
+      required: [prefix]
+      description: "Title-letter jump for published browse surfaces; unavailable with an ad hoc query."
+      properties:
+        prefix: {type: string, minLength: 1, maxLength: 8}
+    BrowseRequest:
+      type: object
+      properties:
+        pivot: {type: string}
+        query: {$ref: "#/components/schemas/BrowseNode"}
+        sort: {type: array, maxItems: 3, items: {$ref: "#/components/schemas/BrowseSortSelection"}}
+        limit: {type: integer, minimum: 1, maximum: 100}
+        cursor: {type: string, maxLength: 4096}
+        range: {$ref: "#/components/schemas/BrowseRange"}
+        seek: {$ref: "#/components/schemas/BrowseSeek"}
+    BrowseFieldCapability:
+      type: object
+      required: [id, labelKey, type, operators, controlHint, complexity, cost, applicableKinds]
+      properties:
+        id: {type: string}
+        labelKey: {type: string}
+        type: {type: string, enum: [string, enum, number, date, boolean, identity-set], description: "A number field accepts a JSON number or numeric text, so the string values a facet publishes (a decade facet answers \"1990\") can be sent back as filter values (CD-02)."}
+        operators: {type: array, items: {type: string}}
+        controlHint: {type: string, enum: [toggle, select, number-range, date-range, facet-multi-select, text]}
+        complexity: {type: string, enum: [quick, standard, advanced]}
+        cost: {type: string, enum: [indexed, indexed-join]}
+        applicableKinds: {type: array, items: {type: string}}
+        allowedValues: {type: array, items: {type: string}}
+        facetSource:
+          type: object
+          required: [endpoint, field]
+          properties:
+            endpoint: {type: string}
+            field: {type: string}
+    BrowseSortCapability:
+      type: object
+      required: [id, labelKey, directions, defaultDirection, expensive, applicableKinds]
+      properties:
+        id: {type: string}
+        labelKey: {type: string}
+        directions: {type: array, items: {type: string, enum: [asc, desc]}}
+        defaultDirection: {type: string, enum: [asc, desc]}
+        expensive: {type: boolean}
+        applicableKinds: {type: array, items: {type: string}}
+    BrowsePivotCapability:
+      type: object
+      required: [id, labelKey, entityKinds, defaultSort, supportedViews, browsable]
+      properties:
+        id: {type: string}
+        labelKey: {type: string}
+        entityKinds: {type: array, items: {type: string}}
+        defaultSort: {type: array, items: {$ref: "#/components/schemas/BrowseSortSelection"}}
+        supportedViews: {type: array, items: {type: string, enum: [grid, list, rail]}}
+        browsable: {type: boolean}
+        aggregate:
+          type: string
+          description: Present when the pivot projects a counted facet (decade, genre, series) instead of entities; such a pivot accepts no expression query.
+    BrowseQuickFilter:
+      type: object
+      required: [id, labelKey, query]
+      properties:
+        id: {type: string, enum: [in-progress, unwatched, watched, favorites, watchlist, available, missing]}
+        labelKey: {type: string}
+        query: {$ref: "#/components/schemas/BrowseNode"}
+    BrowseQueryLimits:
+      type: object
+      required: [maximumDepth, maximumClauses, maximumBytes, maximumSorts, defaultLimit, maximumLimit, cursorTtlSeconds]
+      properties:
+        maximumDepth: {type: integer}
+        maximumClauses: {type: integer}
+        maximumBytes: {type: integer}
+        maximumSorts: {type: integer}
+        defaultLimit: {type: integer}
+        maximumLimit: {type: integer}
+        cursorTtlSeconds: {type: integer}
+    BrowseCapabilities:
+      type: object
+      required: [library, pivots, fields, sorts, quickFilters, queryLimits]
+      properties:
+        library: {$ref: "#/components/schemas/Library"}
+        pivots: {type: array, items: {$ref: "#/components/schemas/BrowsePivotCapability"}}
+        resolvedPivot: {$ref: "#/components/schemas/BrowsePivotCapability"}
+        fields: {type: array, items: {$ref: "#/components/schemas/BrowseFieldCapability"}}
+        sorts: {type: array, items: {$ref: "#/components/schemas/BrowseSortCapability"}}
+        quickFilters: {type: array, items: {$ref: "#/components/schemas/BrowseQuickFilter"}}
+        queryLimits: {$ref: "#/components/schemas/BrowseQueryLimits"}
+    ContentEntry:
+      type: object
+      description: The existing server-owned semantic projection used by every library surface.
+      required: [id, kind, title]
+      properties:
+        userRating: {type: number, format: double, minimum: 0.5, maximum: 5, description: "The viewer's own rating in half steps, on item rows the viewer has rated; absent otherwise."}
+        plays: {type: integer, minimum: 1, description: "How many times the viewer has played a song to the end; song entries only, absent when never played."}
+        id: {type: string}
+        kind: {type: string}
+        title: {type: string}
+        subtitle: {type: string}
+        libraryId: {type: string}
+        overview: {type: string, description: "Present on episode entries only; omitted from other grid and row entries. Featured and detail projections still carry it."}
+        posterUrl: {type: string}
+        backdropUrl: {type: string}
+        addedAt: {type: [string, "null"]}
+        available: {type: boolean}
+        watched: {type: boolean}
+        duration: {type: number}
+        progressSeconds: {type: number}
+        count: {type: integer}
+        year: {type: integer, description: "Release year; album entities only, absent when unknown."}
+        artist:
+          type: object
+          description: "The album artist; album entities only."
+          required: [id, name]
+          properties:
+            id: {type: string}
+            name: {type: string}
+        role: {type: string, enum: [album, appearance], description: "The release's relationship to the artist; artist releases only."}
+        artworkPaths: {type: array, items: {type: string}, description: "Up to 4 poster paths for a 2x2 mosaic; category rows only."}
+        navigation:
+          type: object
+          properties:
+            view: {type: string}
+            entityId: {type: string}
+            category: {type: string}
+        playback:
+          type: object
+          properties:
+            itemId: {type: string}
+            startSeconds: {type: number}
+    BrowsePageInfo:
+      type: object
+      required: [start, total, revision, hasMore, nextCursor]
+      properties:
+        start: {type: integer, description: Absolute index of the first entry in the full result.}
+        total: {type: integer, description: "Exact count, for ad hoc queries too."}
+        revision: {type: string, description: Hash of the scope revisions; pass it back in `range.revision`.}
+        hasMore: {type: boolean, description: "For an ad hoc query, determined by the next matching row even when total is capped."}
+        nextCursor: {type: string}
+    BrowsePositionAnchor:
+      type: object
+      required: [key, index]
+      properties:
+        key: {type: string, description: "Uppercase first letter, or # for anything that does not start with A-Z."}
+        index: {type: integer}
+    BrowseResult:
+      type: object
+      required: [pivot, applied, entries, pageInfo, positionIndex]
+      properties:
+        pivot: {type: string}
+        applied:
+          type: object
+          required: [query, sort]
+          properties:
+            query: {$ref: "#/components/schemas/BrowseNode"}
+            sort: {type: array, items: {$ref: "#/components/schemas/BrowseSortSelection"}}
+            seek: {$ref: "#/components/schemas/BrowseSeek"}
+        entries: {type: array, items: {$ref: "#/components/schemas/ContentEntry"}}
+        pageInfo: {$ref: "#/components/schemas/BrowsePageInfo"}
+        positionIndex:
+          type: array
+          description: >-
+            Where each run of the first sort begins, on the first page (no cursor) of every sort:
+            letters for title (either direction), years for year (decades when there would be more than
+            240), months for added and lastPlayed (years beyond 240), whole points for the ratings, and
+            half hours (in minutes) for duration. The key is empty for rows without a value. Jump with
+            range.start = index. Continuation pages and ad hoc query results carry it empty.
+          items: {$ref: "#/components/schemas/BrowsePositionAnchor"}
+    FacetPage:
+      type: object
+      required: [field, values]
+      properties:
+        field: {type: string}
+        values:
+          type: array
+          maxItems: 200
+          items:
+            type: object
+            required: [value, label, count]
+            properties:
+              value: {type: string}
+              label: {type: string}
+              count: {type: integer, minimum: 1}
+    PinOrderEntry:
+      type: object
+      required: [kind, id]
+      properties:
+        kind: {type: string, enum: [collection, view, playlist]}
+        id: {type: string}
+    PinOrder:
+      type: object
+      required: [serverId, viewerFence, revision, order]
+      properties:
+        serverId: {type: string}
+        viewerFence: {type: string}
+        revision: {type: integer}
+        order: {type: array, items: {$ref: "#/components/schemas/PinOrderEntry"}}
+    LibraryNavigation:
+      type: object
+      required: [pinnedLibraryIds, revision]
+      properties:
+        pinnedLibraryIds: {type: array, items: {type: string}}
+        revision: {type: integer}

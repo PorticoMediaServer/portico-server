@@ -1,0 +1,7 @@
+/* The window is sized for the whole collection; only the rows in view are rendered inside it. */
+.window { position: relative; }
+.grid { display: grid; gap: var(--grid-gap, 20px) var(--grid-gap-x, 16px); grid-template-columns: repeat(auto-fill, minmax(var(--card-min), 1fr)); padding: 0 var(--page-gutter); will-change: transform; }
+.list { display: flex; flex-direction: column; padding: 0 var(--page-gutter); will-change: transform; }
+/* Every row is held to the settled pitch (set from measurement), so mixed row heights can't move the window. */
+.grid { grid-auto-rows: minmax(var(--row-min, auto), auto); }
+.list > * { min-height: var(--row-min, auto); }

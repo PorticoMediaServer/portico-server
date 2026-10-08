@@ -1,0 +1,21 @@
+node_modules/
+.build/
+build/
+DerivedData/
+.cache/
+.scratch/
+runtime/
+__pycache__/
+*.tsbuildinfo
+.DS_Store
+
+# Go writes a binary named after the package directory when built without -o.
+server/server
+server/server.exe
+
+.env
+.env.*
+!.env.example
+*.p8
+*.p12
+*.key

@@ -1,0 +1,62 @@
+{
+  "schema": "GetDeviceCapabilitiesResponse",
+  "method": "GET",
+  "path": "/v1/me/devices/current/capabilities",
+  "auth": "device",
+  "status": 200,
+  "response": {
+    "revision": 1,
+    "capabilities": {
+      "form": "browser",
+      "network": {
+        "class": "local"
+      },
+      "containers": [
+        {
+          "container": "mp4",
+          "direct": true
+        },
+        {
+          "container": "webm",
+          "direct": true
+        }
+      ],
+      "streaming": {
+        "hls": {
+          "fmp4": true,
+          "ts": true
+        },
+        "progressive": true
+      },
+      "video": [
+        {
+          "codec": "h264",
+          "maxBitDepth": 8,
+          "maxWidth": 3840,
+          "maxHeight": 2160,
+          "maxFps": 60
+        }
+      ],
+      "audio": [
+        {
+          "codec": "aac",
+          "maxChannels": 6
+        },
+        {
+          "codec": "mp3",
+          "maxChannels": 2
+        }
+      ],
+      "subtitles": [
+        {
+          "format": "webvtt",
+          "render": "native"
+        }
+      ],
+      "features": {
+        "chapters": true,
+        "embeddedAudioSwitching": true
+      }
+    }
+  }
+}

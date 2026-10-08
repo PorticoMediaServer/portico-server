@@ -1,0 +1,39 @@
+.field { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.label { font-size: 13px; font-weight: 600; color: var(--text-secondary); display: flex; justify-content: space-between; gap: 8px; }
+.optional { font-weight: 400; color: var(--text-tertiary); }
+.control { position: relative; display: flex; align-items: center; }
+.input { width: 100%; min-height: 40px; padding: 0 12px; background: var(--color-raised); border: 1px solid var(--line-control); border-radius: var(--radius-control); color: var(--text-primary); font-size: 15px; transition: border-color var(--motion-quick) var(--ease-out), background-color var(--motion-quick) var(--ease-out); }
+.input::placeholder { color: var(--text-placeholder); }
+.input:hover { background: var(--surface-raised); }
+/* Component spec: accent border while editing; keyboard focus adds the standard ring; no glow. */
+.input:focus { border-color: var(--accent); background: var(--surface-raised); outline: none; }
+.input:focus-visible { outline: 2px solid var(--line-focus); outline-offset: 2px; }
+.input:disabled { opacity: 0.45; }
+.input[aria-invalid='true'] { border-color: var(--status-danger); }
+.withTrailing { padding-right: 44px; }
+.textarea { min-height: 96px; padding: 10px 12px; resize: vertical; line-height: 1.45; }
+.select { appearance: none; padding-right: 36px; cursor: pointer; }
+.selectIcon { position: absolute; right: 12px; pointer-events: none; color: var(--text-tertiary); }
+.trailing { position: absolute; right: 4px; }
+.help { font-size: 12.5px; color: var(--text-tertiary); line-height: 1.4; }
+.error { font-size: 12.5px; color: var(--status-danger); line-height: 1.4; display: flex; gap: 6px; align-items: flex-start; }
+.mono { font-family: var(--font-mono); letter-spacing: 0.04em; }
+.code { text-align: center; font-size: 22px; letter-spacing: 0.25em; text-transform: uppercase; font-family: var(--font-mono); }
+
+.switchRoot { width: 44px; height: 26px; border-radius: 13px; background: color-mix(in oklab, var(--text-tertiary) 35%, var(--surface-recess)); position: relative; flex-shrink: 0; transition: background-color var(--motion-quick) var(--ease-out); border: 1px solid transparent; }
+.switchRoot[data-state='checked'] { background: var(--accent); }
+.switchRoot:disabled { opacity: 0.45; cursor: not-allowed; }
+.switchRoot:focus-visible { outline: 2px solid var(--line-focus); outline-offset: 2px; }
+.switchThumb { display: block; width: 22px; height: 22px; border-radius: 50%; background: var(--color-text); transform: translateX(1px); transition: transform var(--motion-quick) var(--ease-out); box-shadow: 0 1px 3px color-mix(in srgb, var(--color-ink) 60%, transparent); }
+.switchThumb[data-state='checked'] { transform: translateX(19px); }
+@media (pointer: coarse) { .input { min-height: 44px; } }
+
+.checkRow { display: flex; align-items: flex-start; gap: 10px; cursor: pointer; font-size: 14px; line-height: 1.45; }
+.checkBox { width: 20px; height: 20px; flex-shrink: 0; border-radius: 5px; border: 1px solid var(--line-control); background: var(--surface-slate); display: grid; place-items: center; color: var(--text-on-action); margin-top: 1px; transition: all var(--motion-quick) var(--ease-out); }
+.checkBox[data-state='checked'] { background: var(--accent); border-color: var(--accent); }
+.checkBox:focus-visible { outline: 2px solid var(--line-focus); outline-offset: 2px; }
+.radio { border-radius: 50%; }
+.radio[data-state='checked'] { background: var(--surface-slate); border-color: var(--accent); }
+.radio[data-state='checked']::after { content: ''; width: 10px; height: 10px; border-radius: 50%; background: var(--accent); }
+.checkCopy { display: flex; flex-direction: column; gap: 2px; }
+.checkHelp { font-size: 12.5px; color: var(--text-tertiary); }

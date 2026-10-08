@@ -1,0 +1,46 @@
+.page { min-height: 100vh; display: grid; place-items: center; padding: 24px 16px 40px; }
+.panel { width: min(460px, 100%); display: flex; flex-direction: column; gap: 22px; padding: 32px 28px; background: color-mix(in srgb, var(--surface-slate) 72%, transparent); border: 1px solid var(--line-soft); border-radius: var(--radius-overlay); backdrop-filter: blur(20px); box-shadow: var(--shadow-overlay); animation: enter var(--motion-slow) var(--ease-out); }
+.wide { width: min(640px, 100%); }
+@keyframes enter { from { opacity: 0; transform: translateY(8px); } }
+.brand { display: flex; justify-content: center; padding-bottom: 4px; }
+.heading { display: flex; flex-direction: column; gap: 6px; text-align: center; }
+.title { font-size: 24px; font-weight: 700; letter-spacing: -0.02em; }
+.lede { font-size: 14px; color: var(--text-secondary); line-height: 1.5; }
+.stepTitle { font-size: 20px; font-weight: 700; letter-spacing: -0.01em; }
+.stack { display: flex; flex-direction: column; gap: 14px; }
+.legal { display: flex; justify-content: center; gap: 16px; font-size: 12.5px; color: var(--text-tertiary); padding-top: 6px; }
+.legal a { color: var(--text-tertiary); }
+.legal a:hover { color: var(--text-primary); }
+.code { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 18px; background: var(--surface-recess); border: 1px solid var(--line-soft); border-radius: var(--radius-surface); }
+.codeValue { font-family: var(--font-mono); font-size: 30px; letter-spacing: 0.22em; font-weight: 600; padding-left: 0.22em; }
+.codeHint { font-size: 13px; color: var(--text-secondary); text-align: center; line-height: 1.45; }
+.divider { display: flex; align-items: center; gap: 12px; color: var(--text-tertiary); font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; }
+.divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: var(--line-soft); }
+.list { display: flex; flex-direction: column; gap: 4px; }
+/* X-13: a server Hosted says is offline stays tappable but reads as gone. */
+.dimmed { opacity: 0.55; }
+.pin { display: flex; flex-direction: column; gap: 14px; padding: 16px; background: var(--surface-recess); border-radius: var(--radius-surface); border: 1px solid var(--line-soft); }
+.fingerprint { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; background: var(--surface-recess); border-radius: var(--radius-surface); border: 1px solid var(--line-soft); font-size: 13px; }
+.fingerprint code { display: block; word-break: break-all; color: var(--text-secondary); font-size: 12px; }
+.links { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 18px; }
+.profiles { display: flex; flex-wrap: wrap; justify-content: center; align-items: flex-start; gap: 12px; }
+.profile { width: 112px; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 14px 8px; border-radius: var(--radius-surface); border: 1px solid transparent; color: var(--text-primary); transition: all var(--motion-quick) var(--ease-out); }
+.profile:hover { background: var(--surface-translucent); border-color: var(--line-soft); }
+.profile:disabled { opacity: 0.5; cursor: not-allowed; }
+.profileArt { width: 64px; height: 64px; border-radius: 50%; display: grid; place-items: center; font-size: 24px; font-weight: 700; color: var(--color-text); }
+.profileName { font-size: 14px; font-weight: 600; text-align: center; }
+.profileNote { font-size: 11.5px; color: var(--text-tertiary); text-align: center; }
+/* ONB-01 first-run setup */
+.setupChoice { display: flex; flex-direction: column; gap: 10px; border: 0; margin: 0; padding: 0; min-width: 0; }
+.setupLegend { padding: 0 0 6px; font-size: 14px; font-weight: 600; color: var(--text-primary); }
+.setupCard { display: flex; align-items: flex-start; gap: 14px; width: 100%; padding: 16px; text-align: left; border-radius: var(--radius-surface); border: 1px solid var(--line-standard); background: var(--surface-recess); color: var(--text-primary); transition: border-color var(--motion-quick) var(--ease-out), background-color var(--motion-quick) var(--ease-out); }
+.setupCard:hover { border-color: var(--line-strong); }
+.setupCardSelected { border-color: var(--accent); background: var(--accent-tint); }
+.setupCardIcon { flex-shrink: 0; width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; background: var(--surface-slate); color: var(--text-secondary); }
+.setupCardSelected .setupCardIcon { color: var(--accent-strong); }
+.setupCardCopy { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.setupCardTitle { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 15px; font-weight: 600; }
+.setupCardBody { font-size: 13.5px; line-height: 1.45; color: var(--text-secondary); }
+.setupBadge { font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; padding: 2px 8px; border-radius: var(--radius-pill); background: var(--accent-tint-strong); color: var(--accent-strong); }
+.setupRadio { flex-shrink: 0; width: 20px; height: 20px; margin-top: 8px; border-radius: 50%; border: 2px solid var(--line-strong); }
+.setupRadioOn { border-color: var(--accent); box-shadow: inset 0 0 0 4px var(--surface-recess); background: var(--accent); }

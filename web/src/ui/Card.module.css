@@ -1,0 +1,40 @@
+.card { contain: layout style; position: relative; display: flex; flex-direction: column; gap: 8px; width: 100%; text-align: left; color: inherit; border-radius: var(--radius-artwork); transition: transform var(--motion-standard) var(--ease-out); }
+.card:focus-visible { outline: none; }
+/* WEB-SYS-05: hover is a quiet lift and hairline; only keyboard focus draws the focus ring, so two cards never look focused at once. */
+.card:hover .art { box-shadow: 0 0 0 1px var(--line-strong); }
+.card:has(:focus-visible) .art { box-shadow: 0 0 0 2px var(--line-focus); }
+.card:hover { transform: translateY(-2px); }
+.art { position: relative; border-radius: var(--radius-artwork); transition: box-shadow var(--motion-standard) var(--ease-out); }
+.artButton { display: block; width: 100%; padding: 0; border-radius: var(--radius-artwork); color: inherit; text-decoration: none; -webkit-touch-callout: none; }
+.artButton:focus-visible { outline: none; }
+.overlay { position: absolute; inset: 0; display: flex; align-items: flex-end; justify-content: space-between; padding: 8px; gap: 6px; border-radius: var(--radius-artwork); background: linear-gradient(180deg, transparent 50%, color-mix(in srgb, var(--color-ink) 78%, transparent) 100%); opacity: 0; transition: opacity var(--motion-quick) var(--ease-out); pointer-events: none; }
+.overlay > * { pointer-events: auto; }
+.card:hover .overlay, .card:focus-within .overlay { opacity: 1; }
+.playButton { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; background: var(--accent); color: var(--text-on-action); box-shadow: 0 6px 20px -6px var(--color-ink); }
+.playButton:hover { background: var(--accent-strong); }
+.moreButton { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: color-mix(in srgb, var(--color-ink) 60%, transparent); color: var(--text-primary); }
+.moreButton:hover { background: color-mix(in srgb, var(--color-ink) 80%, transparent); }
+.badges { position: absolute; top: 8px; left: 8px; right: 8px; display: flex; justify-content: space-between; pointer-events: none; }
+.badges > * { pointer-events: auto; }
+.watched { width: 22px; height: 22px; border-radius: 50%; background: color-mix(in srgb, var(--color-ink) 70%, transparent); color: var(--status-healthy); display: grid; place-items: center; margin-left: auto; }
+.copy { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding: 0 2px; }
+/* Two lines at most (a long audiobook title would run to four); the full title is the element's tooltip. */
+.title { font-size: 14px; font-weight: 600; line-height: 1.3; color: var(--text-primary); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.caption { font-size: 12.5px; line-height: 1.35; color: var(--text-tertiary); }
+.unavailable .art { opacity: 0.55; }
+.person { align-items: center; text-align: center; }
+.person .art { width: 76%; }
+.banner { border-radius: var(--radius-surface); overflow: hidden; }
+.bannerCopy { position: absolute; inset: auto 0 0 0; padding: 16px; background: linear-gradient(180deg, transparent, color-mix(in srgb, var(--color-ink) 85%, transparent)); }
+
+/* Selection mode: a checkbox where the badges live; selected cards get the focus ring and a tint. */
+.checkbox { width: 24px; height: 24px; border-radius: 7px; border: 2px solid color-mix(in srgb, var(--color-text) 85%, transparent); background: color-mix(in srgb, var(--color-ink) 45%, transparent); color: var(--text-on-action); display: grid; place-items: center; box-shadow: 0 2px 8px -2px var(--color-ink); opacity: 0; transition: opacity var(--motion-quick) var(--ease-out), transform var(--motion-quick) var(--ease-out); }
+.checkboxLive { opacity: 0.7; }
+.selecting .checkbox, .card:has(:focus-visible) .checkbox, .checkbox:focus-visible, .checked { opacity: 1; }
+.card:hover .checkbox { opacity: 0.85; transition-delay: 400ms; }
+.checkbox:hover { transform: scale(1.08); }
+.checkbox:focus-visible { outline: 2px solid var(--line-focus); outline-offset: 2px; }
+.checked { background: var(--accent); border-color: var(--accent); }
+.selecting .artButton { cursor: pointer; }
+.selected .art { box-shadow: 0 0 0 2px var(--accent), 0 0 0 6px var(--glow-strong); }
+.selected .art::after { content: ''; position: absolute; inset: 0; border-radius: var(--radius-artwork); background: color-mix(in srgb, var(--accent) 18%, transparent); pointer-events: none; }

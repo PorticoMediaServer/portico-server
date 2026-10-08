@@ -1,0 +1,16 @@
+{
+  "schema": "PreviewInvitationResponse",
+  "method": "POST",
+  "path": "/v1/access/invitations/preview",
+  "request": {
+    "code": "example-invitation-code"
+  },
+  "status": 200,
+  "response": {
+    "serverName": "Portico",
+    "email": "j***@example.com",
+    "expiresAt": "2026-09-24T06:49:47Z",
+    "role": "member",
+    "libraryCount": 1
+  }
+}

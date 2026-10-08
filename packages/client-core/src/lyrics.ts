@@ -1,0 +1,273 @@
+import {unreadableServerResponse} from './server-messages.ts';
+import type { ContentScope, LibraryContentApi } from './library-content.ts';
+export type LyricLine = Readonly<{
+    atMs: number | null;
+    text: string;
+}>;
+export type LyricDocument = Readonly<{
+    format: 'lrc' | 'text';
+    text: string;
+    lines: readonly LyricLine[];
+    embeddedOffsetMs: number;
+}>;
+export type LyricProvenance = Readonly<{
+    origin: 'upload' | 'sidecar' | 'embedded' | 'lrclib';
+    providerId: string;
+    label: string;
+    rights: string;
+}>;
+export type LyricRevision = Readonly<{
+    id: string;
+    revision: number;
+    scope: 'library' | 'private';
+    canManage: boolean;
+    deleted: boolean;
+    language: string;
+    offsetMs: number;
+    format: 'lrc' | 'text';
+    digest: string;
+    provenance: LyricProvenance;
+    createdAt: string;
+    document?: LyricDocument;
+}>;
+export type LyricSource = Readonly<{
+    id: string;
+    version: string;
+    startSeconds: number;
+    duration: number;
+    sourceDuration: number;
+    local: boolean;
+}>;
+export type LyricsTarget = Readonly<{
+    itemId: string;
+    libraryId: string;
+    sessionId?: string;
+    sessionGeneration?: number;
+    sourceId?: string;
+}>;
+export type LyricsView = Readonly<{
+    scope: Readonly<{
+        serverId: string;
+        libraryId: string;
+        itemId: string;
+        viewerFence: string;
+        sessionId: string;
+        sessionGeneration: number;
+    }>;
+    sources: readonly LyricSource[];
+    source: LyricSource | null;
+    resources: readonly LyricRevision[];
+    selection: Readonly<{
+        revision: number;
+        resource: LyricRevision | null;
+    }>;
+    canShare: boolean;
+    providers: Readonly<{
+        lrclib: boolean;
+        configured: boolean;
+        revision: number;
+    }>;
+}>;
+export type LyricCandidate = Readonly<{
+    id: string;
+    language: string;
+    format: 'text' | 'lrc';
+    provenance: LyricProvenance;
+    preview: string;
+}>;
+export type LyricsSnapshot = Readonly<{
+    data: LyricsView | null;
+    candidates: readonly LyricCandidate[];
+    warnings: readonly string[];
+    preview: LyricRevision | null;
+    busy: boolean;
+    error: string;
+    generation: number;
+}>;
+export type LyricUpload = Readonly<{
+    text?: string;
+    contentBase64?: string;
+    format?: 'text' | 'lrc';
+    language: string;
+    scope: 'private' | 'library';
+    rights?: string;
+    candidateId?: string;
+    resourceId?: string;
+    expectedRevision?: number;
+}>;
+type LyricsApi = LibraryContentApi & {
+    requestLyrics?<T>(path: string, method?: string, body?: unknown, signal?: AbortSignal): Promise<T>;
+};
+const obj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
+const str = (v: unknown, max = 1024): v is string => typeof v === 'string' && v.length <= max && !/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f\ufffd]/.test(v);
+const id = (v: unknown): v is string => typeof v === 'string' && /^[A-Za-z0-9_-]{1,256}$/.test(v);
+const hash = (v: unknown): v is string => typeof v === 'string' && /^[0-9a-f]{64}$/.test(v);
+const integer = (v: unknown): v is number => Number.isSafeInteger(v) && Number(v) >= 0;
+const seconds = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 86400;
+const offset = (v: unknown): v is number => Number.isSafeInteger(v) && Math.abs(Number(v)) <= 600000;
+const language = (v: unknown): v is string => typeof v === 'string' && v.length <= 63 && /^[A-Za-z]{2,8}(-[A-Za-z0-9]{1,8})*$/.test(v);
+function invalid(): never { throw new Error(unreadableServerResponse); }
+function provenance(v: unknown): LyricProvenance { if (!obj(v) || !['upload', 'sidecar', 'embedded', 'lrclib'].includes(String(v.origin)) || !str(v.providerId, 64) || !str(v.label, 1024) || !str(v.rights, 1024))
+    invalid(); return Object.freeze(v) as LyricProvenance; }
+function document(v: unknown): LyricDocument {
+    if (!obj(v) || !['lrc', 'text'].includes(String(v.format)) || !str(v.text, 262144) || !offset(v.embeddedOffsetMs) || !Array.isArray(v.lines) || !v.lines.length || v.lines.length > 4096)
+        invalid();
+    let previous = -1, length = 0;
+    const format = v.format;
+    const lines = v.lines.map((line: unknown) => { if (!obj(line) || !str(line.text, 8192))
+        invalid(); if (format === 'lrc' ? !integer(line.atMs) || line.atMs > 86400000 || line.atMs < previous : line.atMs !== null)
+        invalid(); if (typeof line.atMs === 'number')
+        previous = line.atMs; length += line.text.length; if (length > 262144)
+        invalid(); return Object.freeze({ atMs: line.atMs as number | null, text: line.text }); });
+    return Object.freeze({ format: format as 'lrc' | 'text', text: v.text, lines: Object.freeze(lines), embeddedOffsetMs: v.embeddedOffsetMs });
+}
+function revision(v: unknown, content = false): LyricRevision {
+    if (!obj(v) || !id(v.id) || !integer(v.revision) || v.revision < 1 || v.revision > 128 || !['private', 'library'].includes(String(v.scope)) || typeof v.canManage !== 'boolean' || typeof v.deleted !== 'boolean' || !language(v.language) || !offset(v.offsetMs) || !['lrc', 'text'].includes(String(v.format)) || !hash(v.digest) || !str(v.createdAt, 64))
+        invalid();
+    const d = v.document === undefined ? undefined : document(v.document);
+    if (content && !d || d && d.format !== v.format || v.format === 'text' && v.offsetMs !== 0)
+        invalid();
+    return Object.freeze({ ...v, provenance: provenance(v.provenance), ...(d ? { document: d } : {}) }) as LyricRevision;
+}
+function source(v: unknown): LyricSource { if (!obj(v) || !id(v.id) || !hash(v.version) || !seconds(v.startSeconds) || !seconds(v.duration) || !seconds(v.sourceDuration) || v.duration <= 0 || v.sourceDuration <= 0 || v.startSeconds + v.duration > v.sourceDuration + .1 || typeof v.local !== 'boolean')
+    invalid(); return Object.freeze(v) as LyricSource; }
+export function parseLyricsView(raw: unknown, scope: ContentScope, target: LyricsTarget): LyricsView {
+    if (!obj(raw) || !obj(raw.scope) || raw.scope.serverId !== scope.serverId || raw.scope.itemId !== target.itemId || raw.scope.libraryId !== target.libraryId || !hash(raw.scope.viewerFence) || raw.scope.sessionId !== (target.sessionId ?? '') || raw.scope.sessionGeneration !== (target.sessionGeneration ?? 0) || !Array.isArray(raw.sources) || raw.sources.length > 32 || !Array.isArray(raw.resources) || raw.resources.length > 64 || typeof raw.canShare !== 'boolean' || !obj(raw.selection) || !integer(raw.selection.revision) || !obj(raw.providers) || typeof raw.providers.lrclib !== 'boolean' || typeof raw.providers.configured !== 'boolean' || !integer(raw.providers.revision))
+        invalid();
+    const sources = raw.sources.map(source), chosen = raw.source === null ? null : source(raw.source), resources = raw.resources.map(v => revision(v)), selected = raw.selection.resource === null ? null : revision(raw.selection.resource, true);
+    if (new Set(sources.map(v => v.id)).size !== sources.length || new Set(resources.map(v => v.id)).size !== resources.length || chosen && (!sources.some(v => v.id === chosen.id && v.version === chosen.version) || target.sourceId && chosen.id !== target.sourceId) || !chosen && (resources.length || selected) || !target.sessionId && selected)
+        invalid();
+    if (selected?.document && chosen)
+        for (const line of selected.document.lines)
+            if (line.atMs !== null && line.atMs > chosen.sourceDuration * 1000 + 1000)
+                invalid();
+    return Object.freeze({ scope: Object.freeze({ ...raw.scope }) as LyricsView['scope'], sources: Object.freeze(sources), source: chosen, resources: Object.freeze(resources), selection: Object.freeze({ revision: raw.selection.revision, resource: selected }), canShare: raw.canShare, providers: Object.freeze({ ...raw.providers }) as LyricsView['providers'] });
+}
+/** Positive offsets delay lyrics. The input is the existing accepted player
+ * position, never elapsed wall time or an optimistic pending seek position.
+ * Equal timestamps select the last line in document order, including after seeks. */
+export function activeLyricLine(doc: LyricDocument, positionSeconds: number, offsetMs: number, sourceStartSeconds = 0): number {
+    if (doc.format !== 'lrc' || !Number.isFinite(positionSeconds))
+        return -1;
+    const at = (positionSeconds + sourceStartSeconds) * 1000 - offsetMs;
+    let lo = 0, hi = doc.lines.length;
+    while (lo < hi) {
+        const mid = (lo + hi) >>> 1;
+        if ((doc.lines[mid].atMs ?? Infinity) <= at)
+            lo = mid + 1;
+        else
+            hi = mid;
+    }
+    return lo - 1;
+}
+export function lyricSeekPosition(line: LyricLine, offsetMs: number, source: LyricSource): number | null {
+    if (line.atMs === null)
+        return null;
+    const seconds = (line.atMs + offsetMs) / 1000 - source.startSeconds;
+    return Number.isFinite(seconds) && seconds >= 0 && seconds < source.duration ? seconds : null;
+}
+/** One instance belongs to an exact viewer/server/song/playback intent. Async
+ * generations fence responses even when a transport ignores AbortSignal. */
+export class LyricsService {
+    private state: LyricsSnapshot = Object.freeze({ data: null, candidates: [], warnings: [], preview: null, busy: false, error: '', generation: 0 });
+    private listeners = new Set<() => void>();
+    private controller?: AbortController;
+    private generation = 0;
+    private disposed = false;
+    private fence?: string;
+    private readonly api: LyricsApi;
+    private readonly scope: ContentScope;
+    private readonly target: LyricsTarget;
+    constructor(api: LyricsApi, scope: ContentScope, target: LyricsTarget) {
+        this.api = api;
+        this.scope = scope;
+        this.target = target;
+        if (!id(scope.serverId) || !scope.viewerId || !id(target.itemId) || !id(target.libraryId) || target.sessionId && (!id(target.sessionId) || !integer(target.sessionGeneration) || target.sessionGeneration < 1))
+            throw new Error('Lyrics require a bound song and viewer.');
+    }
+    getSnapshot = () => this.state;
+    subscribe = (f: () => void) => { this.listeners.add(f); return () => { this.listeners.delete(f); }; };
+    private publish(p: Partial<LyricsSnapshot>) { this.state = Object.freeze({ ...this.state, ...p, generation: this.generation }); for (const f of this.listeners)
+        f(); }
+    private path(suffix = '') { return '/v1/items/' + encodeURIComponent(this.target.itemId) + '/lyrics' + suffix; }
+    private query() { const q = new URLSearchParams(); if (this.target.sessionId)
+        q.set('sessionId', this.target.sessionId); if (this.target.sourceId)
+        q.set('sourceId', this.target.sourceId); return q.size ? '?' + q.toString() : ''; }
+    private request(path: string, method: string, body: unknown, signal: AbortSignal) { return this.api.requestLyrics ? this.api.requestLyrics<unknown>(path, method, body, signal) : this.api.request<unknown>(path, method, body, signal); }
+    private bound() { const source = this.state.data?.source; if (!source)
+        throw new Error('No verified song source is selected.'); return { sourceId: source.id, sourceVersion: source.version, sessionId: this.target.sessionId ?? '' }; }
+    private check(raw: unknown) { return parseLyricsView(raw, this.scope, this.target); }
+    private async run(work: (signal: AbortSignal) => Promise<Partial<LyricsSnapshot>>) {
+        if (this.disposed)
+            return;
+        const g = ++this.generation;
+        this.controller?.abort();
+        const controller = new AbortController();
+        this.controller = controller;
+        this.publish({ busy: true, error: '' });
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        try {
+            let result = await Promise.race([work(controller.signal), new Promise<never>((_, reject) => { timer = setTimeout(() => { controller.abort(); reject(new Error('Lyrics request timed out.')); }, 22000); })]);
+            if (g === this.generation && !this.disposed) {
+                if (result.data) {
+                    const incoming = result.data;
+                    if (this.fence && this.fence !== incoming.scope.viewerFence) {
+                        const error = new Error('Viewer permissions changed.') as Error & {
+                            status: number;
+                        };
+                        error.status = 401;
+                        throw error;
+                    }
+                    this.fence = incoming.scope.viewerFence;
+                    const oldPreview = this.state.preview;
+                    if (oldPreview && !incoming.resources.some(r => r.id === oldPreview.id && r.revision === oldPreview.revision))
+                        result = { ...result, preview: null };
+                    if (this.state.data?.source?.version !== incoming.source?.version) {
+                        result = { ...result, preview: null, candidates: [], warnings: [] };
+                    }
+                }
+                this.publish({ ...result, busy: false });
+            }
+        }
+        catch (error) {
+            if (g !== this.generation || this.disposed)
+                return;
+            const e = error as {
+                code?: string;
+                status?: number;
+            };
+            const denied = e.status === 401 || e.status === 403, changed = e.code === 'lyrics_source_changed';
+            if (denied)
+                this.fence = undefined;
+            this.publish({ busy: false, ...(denied || changed ? { data: null, preview: null, candidates: [] } : {}), error: denied ? 'This viewer can no longer access these lyrics.' : changed ? 'The song source changed. Start a new playback session or reopen the song.' : e.code === 'lyrics_conflict' || e.status === 409 ? 'Lyrics changed. Refresh and review the latest revision before trying again.' : e.code === 'invalid_lyrics' ? 'Invalid lyrics. Check text encoding, timestamps, language and offset.' : e.code === 'lyrics_capacity' || e.status === 429 ? 'A lyric resource, revision, or request limit was reached. For request limits, wait before retrying.' : e.code === 'lyrics_unavailable' ? 'Lyrics could not be acquired. Check source access or provider configuration.' : 'Lyrics could not be loaded or saved. Refresh before retrying.' });
+        }
+        finally {
+            if (timer)
+                clearTimeout(timer);
+        }
+    }
+    // A song with no lyrics answers 404: that is the empty state ("No lyrics"), not a failure.
+    refresh = () => this.run(async (signal) => { let raw: unknown; try { raw = await this.request(this.path() + this.query(), 'GET', undefined, signal); } catch (e) { if ((e as { status?: number } | null)?.status === 404) return { data: null, preview: null, candidates: [] }; throw e; } return { data: this.check(raw) }; });
+    choose = (resource: LyricRevision | null) => { const d = this.state.data; if (!d || !this.target.sessionId)
+        return Promise.resolve(); const body = { ...this.bound(), expectedSelectionRevision: d.selection.revision, resourceId: resource?.id ?? '', revision: resource?.revision ?? 0 }; return this.mutate('/selection', 'PUT', body); };
+    private mutate(suffix: string, method: string, body: unknown) { return this.run(async (signal) => { await this.request(this.path(suffix), method, body, signal); const raw = await this.request(this.path() + this.query(), 'GET', undefined, signal); return { data: this.check(raw), candidates: [], preview: null }; }); }
+    upload = (input: LyricUpload) => !this.state.data?.source ? Promise.resolve() : this.mutate('', 'POST', { ...this.bound(), ...input, resourceId: input.resourceId ?? '', expectedRevision: input.expectedRevision ?? 0 });
+    setOffset = (resource: LyricRevision, milliseconds: number) => !this.state.data?.source ? Promise.resolve() : this.mutate('/' + encodeURIComponent(resource.id) + '/offset', 'PATCH', { ...this.bound(), expectedRevision: resource.revision, offsetMs: milliseconds });
+    remove = (resource: LyricRevision) => !this.state.data?.source ? Promise.resolve() : this.mutate('/' + encodeURIComponent(resource.id), 'DELETE', { ...this.bound(), expectedRevision: resource.revision });
+    search = (provider: 'local' | 'lrclib', query: string, language: string, replacement?: LyricRevision) => {
+        if (!this.state.data?.source)
+            return Promise.resolve();
+        this.publish({ candidates: [], warnings: [] });
+        const body = { ...this.bound(), provider, query, language, resourceId: replacement?.id ?? '', expectedRevision: replacement?.revision ?? 0 };
+        return this.run(async (signal) => { const raw = await this.request(this.path('/search'), 'POST', body, signal); if (!obj(raw) || !Array.isArray(raw.candidates) || raw.candidates.length > 24 || !Array.isArray(raw.warnings) || raw.warnings.length > 12 || !raw.warnings.every(v => str(v, 512)))
+            invalid(); const candidates = raw.candidates.map((v: unknown) => { if (!obj(v) || !id(v.id) || !languageTag(v.language) || !['text', 'lrc'].includes(String(v.format)) || !str(v.preview, 512))
+            invalid(); return Object.freeze({ ...v, provenance: provenance(v.provenance) }) as LyricCandidate; }); return { candidates: Object.freeze(candidates), warnings: Object.freeze(raw.warnings as string[]) }; });
+    };
+    preview = (resource: LyricRevision) => this.run(async (signal) => { const raw = await this.request(this.path('/' + encodeURIComponent(resource.id) + '/revisions/' + resource.revision) + this.query(), 'GET', undefined, signal); const r = revision(raw, true); if (r.id !== resource.id || r.revision !== resource.revision)
+        invalid(); return { preview: r }; });
+    configureProvider = (enabled: boolean) => { const revision = this.state.data?.providers.revision; if (revision === undefined)
+        return Promise.resolve(); return this.run(async (signal) => { await this.request('/v1/lyrics/provider', 'PUT', { enabled, expectedRevision: revision }, signal); const raw = await this.request(this.path() + this.query(), 'GET', undefined, signal); return { data: this.check(raw), candidates: [] }; }); };
+    cancel = () => { this.generation++; this.controller?.abort(); this.fence = undefined; this.publish({ data: null, preview: null, candidates: [], warnings: [], busy: false, error: '' }); };
+    dispose = () => { this.disposed = true; this.generation++; this.controller?.abort(); this.listeners.clear(); };
+}
+const languageTag = language;

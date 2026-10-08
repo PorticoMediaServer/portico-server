@@ -1,0 +1,47 @@
+.top { padding: 20px var(--page-gutter) 0; position: relative; z-index: 1; }
+.hero { position: relative; z-index: 1; display: grid; grid-template-columns: clamp(140px, 18vw, 240px) 1fr; gap: clamp(20px, 3vw, 40px); align-items: end; padding: 24px var(--page-gutter) 8px; min-height: clamp(300px, 44vh, 480px); }
+.poster { width: 100%; box-shadow: 0 20px 50px -20px var(--color-ink); }
+.identity { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.title { font-size: clamp(28px, 4vw, 48px); font-weight: 700; letter-spacing: -0.03em; line-height: 1.05; text-shadow: 0 2px 24px color-mix(in srgb, var(--color-ink) 70%, transparent); }
+.facts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; font-size: 14.5px; color: var(--text-secondary); }
+.facts .sep::before { content: '·'; color: var(--text-tertiary); }
+.rating { display: inline-flex; align-items: center; gap: 6px; }
+.ratingProvider { font-size: 11px; font-weight: 700; letter-spacing: 0.05em; padding: 2px 6px; border-radius: 4px; background: var(--accent-tint-strong); color: var(--accent-strong); }
+.overview { font-size: 15px; line-height: 1.55; color: var(--text-secondary); max-width: 66ch; }
+.clamped { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; overflow: hidden; }
+.actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 8px; }
+.actionsRow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.body { position: relative; z-index: 1; display: flex; flex-direction: column; gap: 32px; }
+.choices { display: flex; flex-wrap: wrap; gap: 8px; }
+.choice { display: inline-flex; align-items: center; gap: 8px; min-height: 36px; padding: 0 12px; border-radius: var(--radius-control); background: var(--surface-translucent); border: 1px solid var(--line-soft); font-size: 13px; color: var(--text-secondary); }
+.choice strong { color: var(--text-primary); font-weight: 600; }
+.episodes { display: flex; flex-direction: column; }
+.seasonBar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 0 var(--page-gutter); }
+@media (max-width: 720px) {
+  .hero { grid-template-columns: 1fr; min-height: 0; padding-top: 12px; }
+  .poster { display: none; }
+  .actions > :first-child { width: 100%; }
+}
+
+/* Pick before play (version · audio · subtitles): compact selects in one row; a wrapping row on phones. */
+.choicesRow { display: flex; flex-wrap: wrap; gap: 8px 12px; }
+.choicesRow > * { min-width: 160px; max-width: 280px; }
+.choicesCompact { display: flex; flex-direction: column; gap: 8px; }
+/* Details: two columns of facts on wide pages, one on phones. */
+.details { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px 40px; padding: 0 var(--page-gutter); max-width: 1100px; }
+.fileRow { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 13.5px; color: var(--text-secondary); }
+.fileRow strong { color: var(--text-primary); font-weight: 600; }
+.peopleList { display: flex; flex-direction: column; gap: 2px; }
+.ratings { display: inline-flex; flex-wrap: wrap; gap: 4px 12px; }
+/* Files: one block per file — what it is, its facts, then tracks and location as a definition list. */
+.files { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.file { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border-radius: var(--radius-control); background: var(--surface-raised); border: 1px solid var(--line-soft); min-width: 0; }
+.fileHead { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; font-size: 14px; color: var(--text-primary); }
+.fileVersion { font-size: 12px; font-weight: 600; color: var(--text-tertiary); }
+.fileMissing { font-size: 12px; color: var(--status-warning); }
+.fileFacts { display: flex; flex-wrap: wrap; gap: 2px 12px; font-size: 13px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.fileLines { display: flex; flex-direction: column; gap: 2px; }
+.filePath { font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace); font-size: 12.5px; overflow-wrap: anywhere; user-select: all; }
+.genreLink { color: inherit; text-decoration: none; border-radius: 3px; }
+.genreLink:hover { color: var(--text-primary); text-decoration: underline; text-underline-offset: 3px; }
+.genreLink:focus-visible { outline: 2px solid var(--line-focus); outline-offset: 2px; }

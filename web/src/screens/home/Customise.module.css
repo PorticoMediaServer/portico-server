@@ -1,0 +1,23 @@
+.list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; border: 1px solid var(--line-soft); border-radius: var(--radius-panel); background: var(--surface-translucent); }
+/* CON-10: one group with separators, no border or fill per row. */
+.row { display: flex; align-items: center; gap: 10px; min-height: 56px; padding: 6px 12px 6px 6px; }
+.row + .row { border-top: 1px solid var(--line-soft); }
+.always { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-tertiary); white-space: nowrap; }
+.row[draggable='true'] { cursor: grab; }
+.dragging { background: var(--surface-raised); }
+.hidden { opacity: 0.55; }
+.handle { display: flex; flex-direction: column; }
+.arrow { width: 24px; height: 18px; display: grid; place-items: center; color: var(--text-tertiary); border-radius: 4px; }
+.arrow:hover:not(:disabled) { color: var(--text-primary); background: var(--surface-raised); }
+.arrow:disabled { opacity: 0.3; }
+.arrow:focus-visible { outline: 2px solid var(--line-focus); outline-offset: 2px; }
+.copy { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+
+/* P6: Add a saved view. */
+.picker {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 12px;
+}

@@ -1,0 +1,25 @@
+{
+  "schema": "GetCapabilitiesResponse",
+  "method": "GET",
+  "path": "/v1/capabilities",
+  "auth": "viewer",
+  "status": 200,
+  "response": {
+    "api": {
+      "major": 1,
+      "level": 1
+    },
+    "features": {
+      "downloads": "unavailable",
+      "dvr": "unavailable",
+      "feedback": "enabled",
+      "live_tv": "unavailable",
+      "watch_together": "enabled"
+    },
+    "limits": {
+      "longPollSecondsMax": 55,
+      "pageSizeMax": 100,
+      "selectorIdsMax": 500
+    }
+  }
+}

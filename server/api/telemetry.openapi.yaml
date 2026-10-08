@@ -1,0 +1,527 @@
+openapi: 3.1.0
+info:
+  title: Portico Server — transcoding administration, telemetry and attention
+  version: "1.0.0"
+  description: |
+    Owner-only observability for a selected Portico server: what the transcoder
+    can do, what the host is doing, what needs attention, and what has played.
+
+    Three rules hold across every operation here.
+
+    * Every measurement carries its own `status`. A platform that cannot expose
+      a figure reports `unavailable` with a `detail` saying why, and a figure
+      that could only be derived reports `limited` with the derivation named. No
+      response substitutes a zero for a measurement that was not taken.
+    * Sampling never happens on a request. These reads answer from the
+      collector's memory or from one bounded, indexed query, so polling them is
+      cheap: a dashboard refreshing every few seconds starts no processes.
+    * Settings are read and written only through `GET`/`PATCH
+      /v1/admin/console/settings`, which is the single settings surface. The
+      capacity report reflects those settings; it does not accept them.
+
+    Every operation requires an owner session on the selected server
+    (`Authorization: Bearer <access token>`). Members and Portico Account
+    sessions without server ownership receive 401.
+servers:
+  - url: https://{server}
+    variables:
+      server:
+        default: localhost:8443
+        description: The selected Portico server.
+security:
+  - ownerSession: []
+tags:
+  - name: transcoding
+    description: Transcoding administration and runtime capacity.
+  - name: telemetry
+    description: Host, storage, network and GPU observations with history.
+  - name: attention
+    description: The composed needs-attention list.
+  - name: playback
+    description: Delivery diagnostics and playback history.
+paths:
+  /v1/admin/transcode/capacity:
+    get:
+      tags: [transcoding]
+      operationId: getTranscodeCapacity
+      summary: Transcoding capacity, probes, dependencies and warnings
+      description: |
+        The effective transcoding policy together with what this server can
+        actually do with it: which hardware backends probed successfully, which
+        one will be used, whether ffmpeg and ffprobe run, whether the conversion
+        working directory is writable, and the published quality ladder.
+
+        Cost: reads the settings document plus cached probe and dependency
+        results, refreshed at most once a minute. No paging.
+      responses:
+        "200":
+          description: The capacity report.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [scope, data]
+                properties:
+                  scope: { $ref: "#/components/schemas/Scope" }
+                  data: { $ref: "#/components/schemas/TranscodeCapacity" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/Busy" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+  /v1/admin/telemetry:
+    get:
+      tags: [telemetry]
+      operationId: getTelemetry
+      summary: Host and GPU history for one window
+      description: |
+        Charted history for the requested window. The ten-minute window is
+        served from two-second samples; the hour and day windows from one-minute
+        averages, which are persisted hourly so charts survive a restart.
+
+        A series contains a point only for a moment the metric was actually
+        measured, so a gap in a chart is a real gap and must be drawn as one.
+
+        Cost: answered from memory. No paging; the window bounds the response.
+      parameters:
+        - name: window
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: ["10m", "1h", "24h"]
+            default: "10m"
+      responses:
+        "200":
+          description: The reading.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [scope, data]
+                properties:
+                  scope: { $ref: "#/components/schemas/Scope" }
+                  data: { $ref: "#/components/schemas/TelemetryReading" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/Busy" }
+  /v1/admin/telemetry/now:
+    get:
+      tags: [telemetry]
+      operationId: getTelemetryNow
+      summary: The latest host and GPU sample
+      description: |
+        The most recent observation, for a headline reading rather than a chart.
+        Before the first sample lands, every metric reports `unavailable`.
+
+        Cost: answered from memory.
+      responses:
+        "200":
+          description: The latest sample.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [scope, data]
+                properties:
+                  scope: { $ref: "#/components/schemas/Scope" }
+                  data: { $ref: "#/components/schemas/TelemetrySample" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /v1/admin/attention:
+    get:
+      tags: [attention]
+      operationId: getAttention
+      summary: What needs the owner's attention
+      description: |
+        Open alerts, unavailable library sources, failed and paused scans, a
+        certificate expiring within fourteen days, a state volume below five per
+        cent free, transcoding turned off while viewers needed it, a conversion
+        directory that cannot be written, and a missing ffmpeg — composed into
+        one ordered list, most urgent first.
+
+        Ordering and severity are server policy: render the list as given.
+
+        Cost: several capped queries, composed and cached for thirty seconds.
+      responses:
+        "200":
+          description: The list.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [scope, data]
+                properties:
+                  scope: { $ref: "#/components/schemas/Scope" }
+                  data:
+                    type: object
+                    required: [items]
+                    properties:
+                      items:
+                        type: array
+                        maxItems: 50
+                        items: { $ref: "#/components/schemas/AttentionItem" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+  /v1/admin/playback/history:
+    get:
+      tags: [playback]
+      operationId: getPlaybackHistory
+      summary: What has played, newest first
+      description: |
+        One page of Playback v1 sessions over the requested period, newest
+        first in one keyset order over (start time, id), so paging cannot repeat
+        or skip a row while new playback starts. The cursor is opaque.
+
+        `endedAt` and `durationSeconds` are null while a session is still
+        running; a client shows that as still playing, never as zero length.
+        Ended sessions are kept for 30 days, the longest period.
+
+        Cost: one indexed range query per page, at most 200 rows.
+      parameters:
+        - name: period
+          in: query
+          schema: { type: string, enum: ["24h", "7d", "30d"], default: "24h" }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+        - name: cursor
+          in: query
+          schema: { type: string, maxLength: 200 }
+      responses:
+        "200":
+          description: One page.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [scope, data]
+                properties:
+                  scope: { $ref: "#/components/schemas/Scope" }
+                  data:
+                    type: object
+                    required: [items, nextCursor]
+                    properties:
+                      items:
+                        type: array
+                        items: { $ref: "#/components/schemas/PlaybackHistoryEntry" }
+                      nextCursor:
+                        type: string
+                        description: Empty when this is the last page.
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /v1/admin/playback/history.csv:
+    get:
+      tags: [playback]
+      operationId: exportPlaybackHistory
+      summary: Playback history as a CSV download
+      description: |
+        The same rows as a spreadsheet-ready file, capped at 5000 rows. Cells
+        are quoted and a leading formula character is neutralised, so opening
+        the file cannot execute a media title.
+      parameters:
+        - name: period
+          in: query
+          schema: { type: string, enum: ["24h", "7d", "30d"], default: "24h" }
+      responses:
+        "200":
+          description: The export.
+          content:
+            text/csv:
+              schema: { type: string }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /v1/admin/playback/diagnostics:
+    get:
+      tags: [playback]
+      operationId: getPlaybackDiagnostics
+      summary: Delivery diagnostics, with hardware and session detail
+      description: |
+        The delivery service's own configuration document, plus the transcoding
+        hardware status, session counts and conversion throughput.
+
+        `throughput.convertedSecondsPerSecond` is null while the delivery
+        service publishes no progress figure; it is never reported as zero,
+        which would read as "converting nothing".
+      responses:
+        "200":
+          description: The diagnostics document.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [scope, observedAt, freshUntil, diagnostics]
+                properties:
+                  scope: { $ref: "#/components/schemas/Scope" }
+                  observedAt: { type: string, format: date-time }
+                  freshUntil: { type: string, format: date-time }
+                  diagnostics: { $ref: "#/components/schemas/PlaybackOverview" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/Busy" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+components:
+  securitySchemes:
+    ownerSession:
+      type: http
+      scheme: bearer
+      description: An access token for an owner session on the selected server.
+  responses:
+    Invalid:
+      description: A query value outside what this server accepts.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Unauthorized:
+      description: No owner session on this server.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Busy:
+      description: Too many owner observations at once. Retry-After is set.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Unavailable:
+      description: The observation could not be completed. Retry.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string }
+            message: { type: string }
+            retryable: { type: boolean }
+            fields:
+              type: array
+              items: { type: string }
+    Scope:
+      type: object
+      description: Binds the response to one server and one viewer session.
+      required: [serverId, viewerFence]
+      properties:
+        serverId: { type: string }
+        viewerFence: { type: string, pattern: "^[a-f0-9]{64}$" }
+    Metric:
+      type: object
+      description: |
+        One observation with its own provenance. `value` is meaningful only when
+        `status` is `available` or `limited`.
+      required: [status, value]
+      properties:
+        status: { type: string, enum: [available, limited, unavailable] }
+        value: { type: number }
+        detail:
+          type: string
+          description: Why the figure is limited or unavailable, in plain words.
+    MetricSet:
+      type: object
+      description: Every published metric, by name.
+      required: [cpu, memory, diskRead, diskWrite, netIn, netOut, gpuUsage, gpuMemory, gpuEncoder]
+      properties:
+        cpu: { $ref: "#/components/schemas/Metric" }
+        memory: { $ref: "#/components/schemas/Metric" }
+        diskRead: { $ref: "#/components/schemas/Metric" }
+        diskWrite: { $ref: "#/components/schemas/Metric" }
+        netIn: { $ref: "#/components/schemas/Metric" }
+        netOut: { $ref: "#/components/schemas/Metric" }
+        gpuUsage: { $ref: "#/components/schemas/Metric" }
+        gpuMemory: { $ref: "#/components/schemas/Metric" }
+        gpuEncoder: { $ref: "#/components/schemas/Metric" }
+    TelemetrySample:
+      type: object
+      required: [at, metrics, memoryUsedBytes, memoryTotalBytes]
+      properties:
+        at: { type: integer, description: Unix milliseconds. }
+        metrics: { $ref: "#/components/schemas/MetricSet" }
+        memoryUsedBytes: { type: integer }
+        memoryTotalBytes: { type: integer }
+        gpuDevice: { type: string }
+        gpuProvider: { type: string }
+    TelemetryPoint:
+      type: object
+      required: [t, v]
+      properties:
+        t: { type: integer, description: Unix milliseconds. }
+        v: { type: number }
+    TelemetryReading:
+      type: object
+      required: [window, series, status, observedAt]
+      properties:
+        window: { type: string, enum: ["10m", "1h", "24h"] }
+        series:
+          type: object
+          description: One ascending series per metric name. An empty series is a metric that was never measured in this window.
+          additionalProperties:
+            type: array
+            items: { $ref: "#/components/schemas/TelemetryPoint" }
+        status:
+          allOf:
+            - $ref: "#/components/schemas/MetricSet"
+          description: The latest sample's status for each metric.
+        observedAt: { type: integer }
+    HardwareProbe:
+      type: object
+      required: [backend, supported, detail]
+      properties:
+        backend: { type: string, enum: [software, videotoolbox, vaapi, qsv, nvenc, amf] }
+        supported: { type: boolean }
+        detail: { type: string }
+    HardwareStatus:
+      type: object
+      required: [configured, effective, device, probes]
+      properties:
+        configured:
+          type: string
+          description: The owner's setting, including `auto`.
+        effective:
+          type: string
+          description: The backend conversions will actually use.
+        device: { type: string }
+        probes:
+          type: array
+          items: { $ref: "#/components/schemas/HardwareProbe" }
+    SessionCounts:
+      type: object
+      description: A null count means the delivery service publishes no figure, never "no sessions".
+      required: [active, hardware, software, background, limits]
+      properties:
+        active: { type: [integer, "null"] }
+        hardware: { type: [integer, "null"] }
+        software: { type: [integer, "null"] }
+        background: { type: [integer, "null"] }
+        limits:
+          type: object
+          description: Owner caps. 0 means unlimited.
+          required: [concurrent, hardware, software, background]
+          properties:
+            concurrent: { type: integer }
+            hardware: { type: integer }
+            software: { type: integer }
+            background: { type: integer }
+    TranscodeCapacity:
+      type: object
+      required:
+        [enabled, hardware, sessions, hdrToneMapping, directStreamRemux, x264Preset, planningPolicy,
+         throttleBufferSeconds, playedRetentionSeconds, temporaryDirectory, presets, dependencies, warnings, observedAt]
+      properties:
+        enabled: { type: boolean }
+        hardware: { $ref: "#/components/schemas/HardwareStatus" }
+        sessions: { $ref: "#/components/schemas/SessionCounts" }
+        hdrToneMapping:
+          type: object
+          required: [status, detail]
+          properties:
+            status: { type: string, enum: [disabled, available, limited, unavailable] }
+            detail: { type: string }
+        directStreamRemux: { type: boolean }
+        x264Preset: { type: string }
+        planningPolicy: { type: string, enum: [maximum_fidelity, maximum_compatibility, minimize_server_work] }
+        throttleBufferSeconds: { type: integer }
+        playedRetentionSeconds: { type: integer }
+        temporaryDirectory:
+          type: object
+          required: [path, ready, freeBytes]
+          properties:
+            path: { type: string }
+            ready:
+              type: boolean
+              description: Proved by writing and removing a probe file, not by inspecting permissions.
+            freeBytes: { type: [integer, "null"] }
+        presets:
+          type: array
+          description: The server's published quality ladder.
+          items:
+            type: object
+            required: [id, label, height, videoKbps, audioKbps]
+            properties:
+              id: { type: string }
+              label: { type: string }
+              height: { type: integer }
+              videoKbps: { type: integer }
+              audioKbps: { type: integer }
+        dependencies:
+          type: object
+          additionalProperties:
+            type: object
+            required: [path, version, ok]
+            properties:
+              path: { type: string }
+              version: { type: string }
+              ok: { type: boolean }
+        warnings:
+          type: array
+          items: { type: string }
+        observedAt: { type: integer }
+    AttentionItem:
+      type: object
+      required: [id, severity, title, detail, action]
+      properties:
+        id: { type: string }
+        severity: { type: string, enum: [critical, warning, info] }
+        title: { type: string }
+        detail: { type: string }
+        action:
+          type: object
+          description: Where to send the owner. `kind` is a stable key; `target` names the record where one exists.
+          required: [kind, target]
+          properties:
+            kind:
+              type: string
+              enum: [alert, library-source, scan, networking, storage, setting, dependency]
+            target: { type: string }
+    PlaybackHistoryEntry:
+      type: object
+      required:
+        [id, viewer, authority, accountId, profileId, title, mediaKind, libraryName, itemId,
+         startedAt, endedAt, durationSeconds, deliveryMode, deliveryStrategy, qualityMode, state]
+      properties:
+        id: { type: string }
+        viewer: { type: string }
+        authority: { type: string, enum: [local, hosted] }
+        accountId: { type: string }
+        profileId: { type: string }
+        title: { type: string }
+        libraryName: { type: string }
+        itemId: { type: string, description: The item, or the channel id for a channel. }
+        startedAt: { type: integer }
+        endedAt:
+          type: [integer, "null"]
+          description: Null while the session is still running.
+        durationSeconds: { type: [integer, "null"] }
+        mediaKind:
+          type: string
+          description: The item's kind, or `channel` for Live TV and Library Channels (titled by the channel's name).
+        deliveryMode: { type: string, enum: ["", direct, stream] }
+        deliveryStrategy:
+          type: string
+          enum: ["", original, copy_remux, audio_conversion, video_conversion]
+          description: What the server did to the media; empty for a channel.
+        qualityMode: { type: string, description: The quality the viewer asked for (`original` or `limit`). }
+        state:
+          type: string
+          description: The live session's state (`playing`, `paused`), or why it ended (`stopped`, `ended`, `transferred`, `lease_expired`, `terminated`, ...).
+    PlaybackOverview:
+      type: object
+      description: The delivery service's document with the transcoding sections added.
+      required: [directConfigured, hlsConfigured, finiteHlsConfigured, lifecycle, outputPolicy, hardware, sessions, throughput]
+      properties:
+        directConfigured: { type: boolean }
+        hlsConfigured: { type: boolean }
+        finiteHlsConfigured: { type: boolean }
+        lifecycle: { type: string }
+        activeConversionSessions: { type: [integer, "null"] }
+        conversionSessionLimit: { type: [integer, "null"] }
+        conversionLimitSource: { type: string }
+        outputPolicy: { type: string }
+        hardware: { $ref: "#/components/schemas/HardwareStatus" }
+        sessions: { $ref: "#/components/schemas/SessionCounts" }
+        throughput:
+          type: object
+          required: [convertedSecondsPerSecond]
+          properties:
+            convertedSecondsPerSecond: { type: [number, "null"] }
+            detail: { type: string }

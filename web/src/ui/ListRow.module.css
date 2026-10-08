@@ -1,0 +1,28 @@
+/* Component spec rows: 48 single line, 64 with a subtitle or artwork; 16 × 8 padding; 12 gap. */
+.row { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px; width: 100%; min-height: max(48px, var(--row-min, 0px)); padding: 8px 16px; border-radius: var(--radius-control); text-align: left; color: inherit; transition: background-color var(--motion-quick) var(--ease-out); }
+/* In a windowed list, --row-min (the list's settled pitch) makes a short row as tall as its neighbors. */
+.row:has(.subtitle), .row:has(.art) { min-height: max(64px, var(--row-min, 0px)); }
+.row:hover { background: var(--surface-raised); }
+.row:focus-visible { outline: 2px solid var(--line-focus); outline-offset: -2px; }
+.static { cursor: default; }
+.static:hover { background: transparent; }
+.selected { background: color-mix(in srgb, var(--accent) 16%, transparent); }
+.leading { display: grid; place-items: center; width: 24px; color: var(--text-secondary); }
+.art { width: 40px; }
+.artSquare { width: 48px; }
+.artLandscape { width: 96px; }
+.copy { display: flex; flex-direction: column; min-width: 0; gap: 2px; }
+.title { font-weight: 600; font-size: 14.5px; line-height: 1.3; color: var(--text-primary); }
+.subtitle { font-size: 13px; color: var(--text-tertiary); line-height: 1.35; }
+.trailing { display: flex; align-items: center; gap: 8px; color: var(--text-tertiary); font-size: 13px; }
+.index { width: 28px; text-align: center; font-variant-numeric: tabular-nums; color: var(--text-tertiary); font-size: 13px; }
+.numberPlay { position: relative; width: 28px; height: 28px; display: grid; place-items: center; }
+.numberPlay .playIcon { position: absolute; opacity: 0; }
+.row:hover .numberPlay .index, .row:focus-within .numberPlay .index { opacity: 0; }
+.row:hover .numberPlay .playIcon, .row:focus-within .numberPlay .playIcon { opacity: 1; }
+
+.host { position: relative; }
+.withActions { padding-right: 56px; }
+.actions { position: absolute; top: 50%; right: 12px; transform: translateY(-50%); display: flex; align-items: center; gap: 4px; opacity: 0; transition: opacity var(--motion-quick) var(--ease-out); }
+.host:hover .actions, .host:focus-within .actions { opacity: 1; }
+@media (hover: none) { .actions { opacity: 1; } }

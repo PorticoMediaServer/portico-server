@@ -1,0 +1,54 @@
+.bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.spacer { flex: 1; }
+.panel { display: flex; flex-direction: column; gap: 10px; width: min(330px, calc(100vw - 52px)); }
+.group { display: flex; flex-direction: column; gap: 6px; padding-bottom: 10px; border-bottom: 1px solid var(--line-soft); }
+.group:last-child { border-bottom: 0; padding-bottom: 0; }
+.groupHead { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; padding: 4px 0; color: var(--text-primary); font-size: 13.5px; font-weight: 600; text-align: left; }
+.groupHead:focus-visible { outline: 2px solid var(--line-focus); outline-offset: 2px; border-radius: 4px; }
+.groupCount { font-size: 11.5px; color: var(--accent-strong); background: var(--accent-tint); border-radius: var(--radius-pill); padding: 1px 7px; }
+.options { display: flex; flex-direction: column; gap: 2px; max-height: 240px; overflow-y: auto; }
+.option { display: flex; align-items: center; gap: 8px; padding: 5px 6px; border-radius: var(--radius-small); font-size: 13px; color: var(--text-primary); cursor: pointer; }
+.option:hover { background: var(--surface-translucent); }
+.option > label { width: 100%; align-items: center; }
+.option > label > span:last-child { flex: 1; min-width: 0; }
+.optionLabel { display: flex; align-items: center; gap: 8px; }
+.optionCount { margin-left: auto; font-size: 11.5px; color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
+.range > * { min-width: 0; }
+.range { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto; align-items: center; gap: 8px; font-size: 12px; color: var(--text-tertiary); }
+.rail { position: sticky; top: 96px; align-self: flex-start; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 4px 2px; border-radius: var(--radius-pill); background: color-mix(in srgb, var(--surface-slate) 94%, transparent); border: 1px solid var(--line-soft); }
+.railKey { width: 28px; height: 22px; display: grid; place-items: center; border-radius: 6px; font-size: 10.5px; font-weight: 600; color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
+.railKey:hover { color: var(--text-primary); background: var(--surface-translucent); }
+.railKey[aria-current='true'] { color: var(--accent-strong); background: var(--accent-tint); }
+.railKey:focus-visible { outline: 2px solid var(--line-focus); outline-offset: -2px; }
+.layout { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-sm); align-items: start; }
+.summary { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--text-tertiary); }
+@media (max-width: 720px) {
+  .layout { grid-template-columns: 1fr; }
+  .rail { position: static; flex-direction: row; flex-wrap: wrap; justify-content: center; padding: 6px; }
+}
+/* WEB-LIB-06: the panel fits a 768 px-tall window (the field list scrolls), and on wide windows the
+ * bar is one row: quick filters scroll sideways, Filters, count, Sort and Save stay put. */
+.fields { display: flex; flex-direction: column; gap: 10px; max-height: min(520px, calc(100vh - 240px)); overflow-y: auto; }
+.chipScroll { min-width: 0; }
+@media (min-width: 1024px) {
+  .bar { flex-wrap: nowrap; }
+  .chipScroll { flex: 0 1 auto; overflow-x: auto; scrollbar-width: none; }
+  .chipScroll::-webkit-scrollbar { display: none; }
+  .chipScroll > * { flex-wrap: nowrap; }
+  .chipScroll > * > * { flex-shrink: 0; white-space: nowrap; }
+  .bar > :not(.chipScroll):not(.spacer) { flex-shrink: 0; }
+}
+.footer { position: sticky; bottom: 0; display: flex; justify-content: space-between; gap: 8px; padding-top: 10px; border-top: 1px solid var(--line-soft); background: var(--surface-overlay); }
+/* The toolbar: one row of controls, then the applied filters as chips. */
+.toolbar { display: flex; flex-direction: column; gap: 8px; }
+.applied { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.panelHead { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 28px; }
+.fieldName { font-weight: 600; }
+.fieldSummary { display: inline-flex; align-items: center; gap: 6px; color: var(--accent-strong); font-weight: 500; font-size: 12.5px; max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* One choice of several (Any / Yes / No, a range's presets): the current one carries a check. */
+.choice { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-height: 32px; padding: 4px 8px; border-radius: var(--radius-control); color: var(--text-secondary); font-size: 13.5px; text-align: left; }
+.choice:hover { background: var(--surface-translucent); color: var(--text-primary); }
+.choice[aria-checked='true'] { color: var(--text-primary); font-weight: 600; }
+.choice:focus-visible { outline: 2px solid var(--line-focus); outline-offset: -2px; }
+.loading { padding: 8px; }

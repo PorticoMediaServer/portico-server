@@ -1,0 +1,115 @@
+/* Channels and the program guide (Spec — Channels and Guide §2, §3, §7, §10). Geometry: 30-minute
+ * column 240 px, channel column 220 px, row 72 px, ruler 40 px, 2 px cell gap. */
+
+.page { display: flex; flex-direction: column; min-height: 0; }
+.headerTitle { display: inline-flex; align-items: center; gap: 10px; }
+
+.controls { display: flex; align-items: center; gap: 8px; padding: 0 var(--page-gutter) 12px; flex-wrap: nowrap; min-width: 0; }
+.chipScroll { flex: 0 1 auto; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.chipScroll::-webkit-scrollbar { display: none; }
+.chipScroll > * { flex-wrap: nowrap; }
+.chipScroll > * > * { flex-shrink: 0; white-space: nowrap; }
+.spacer { flex: 1; }
+.controls > :not(.chipScroll):not(.spacer) { flex-shrink: 0; }
+.picker { padding: 0 var(--page-gutter) 10px; }
+@media (max-width: 720px) { .controls { flex-wrap: wrap; } }
+
+/* ── The guide grid ── */
+.grid { --ch: 220px; --row: 72px; --ruler: 40px; position: relative; margin: 0 var(--page-gutter) 16px; border: 1px solid var(--line-soft); border-radius: var(--radius-surface); background: var(--surface-slate); overflow: hidden; }
+.scroller { position: relative; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; outline: none; }
+.ruler { position: sticky; top: 0; z-index: var(--layer-sticky); display: flex; height: var(--ruler); background: var(--surface-slate); border-bottom: 1px solid var(--line-soft); }
+.rulerCorner { width: var(--ch); flex-shrink: 0; display: flex; align-items: center; padding: 0 12px; border-right: 1px solid var(--line-soft); font-size: 12px; font-weight: 600; color: var(--text-tertiary); }
+.rulerLane { position: relative; flex: 1; overflow: hidden; }
+.tick { position: absolute; top: 0; bottom: 0; display: flex; align-items: center; padding-left: 8px; font-size: 12px; color: var(--text-tertiary); white-space: nowrap; border-left: 1px solid var(--line-soft); font-variant-numeric: tabular-nums; }
+.tickHour { color: var(--text-secondary); font-weight: 600; }
+.tickDay { color: var(--text-primary); font-weight: 700; }
+.nowTab { position: absolute; top: 9px; transform: translateX(-50%); padding: 2px 7px; border-radius: var(--radius-pill); background: var(--accent); color: var(--text-on-action); font-size: 11px; font-weight: 700; white-space: nowrap; pointer-events: none; z-index: 1; }
+.edge { position: absolute; top: 6px; z-index: 1; display: inline-flex; align-items: center; gap: 2px; height: 28px; padding: 0 8px; border-radius: var(--radius-pill); background: color-mix(in srgb, var(--surface-raised) 92%, transparent); border: 1px solid var(--line-soft); color: var(--text-secondary); font-size: 12px; font-weight: 600; }
+.edge:hover { color: var(--text-primary); background: var(--surface-raised); }
+.edgeLeft { left: 6px; }
+.edgeRight { right: 6px; }
+
+.body { position: relative; }
+.row { position: absolute; left: 0; right: 0; height: var(--row); display: flex; border-bottom: 1px solid var(--line-soft); }
+.rowDim .lane, .rowDim .channel { opacity: 0.6; }
+.channel { width: var(--ch); flex-shrink: 0; display: flex; align-items: center; gap: 10px; padding: 0 6px 0 10px; border-right: 1px solid var(--line-soft); background: var(--surface-slate); min-width: 0; }
+.channelMain { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1; height: 100%; text-align: left; border-radius: var(--radius-small); }
+.channelMain:hover .channelName { color: var(--text-primary); }
+.channelMain:focus-visible { outline: 2px solid var(--line-focus); outline-offset: -2px; }
+.logo { width: 40px; height: 40px; flex-shrink: 0; border-radius: 8px; display: grid; place-items: center; overflow: hidden; background: var(--surface-raised); color: var(--text-primary); font-size: 13px; font-weight: 700; letter-spacing: 0.02em; }
+.logo img { width: 100%; height: 100%; object-fit: contain; padding: 4px; }
+.channelCopy { display: flex; flex-direction: column; min-width: 0; gap: 2px; }
+.channelName { font-size: 13.5px; font-weight: 600; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 5px; }
+.channelName > span:first-child { overflow: hidden; text-overflow: ellipsis; }
+.channelMeta { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-tertiary); font-variant-numeric: tabular-nums; min-width: 0; white-space: nowrap; overflow: hidden; }
+.star { color: var(--accent); flex-shrink: 0; }
+.libraryMark { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; flex-shrink: 0; border-radius: 5px; background: var(--accent-tint); color: var(--accent-strong); }
+.channelMore { opacity: 0; transition: opacity var(--motion-quick) var(--ease-out); flex-shrink: 0; }
+.row:hover .channelMore, .channelMore:focus-visible, .channelMore[data-state='open'] { opacity: 1; }
+@media (hover: none) { .channelMore { opacity: 1; } }
+
+.lane { position: relative; flex: 1; overflow: hidden; }
+.cell { position: absolute; z-index: 1; top: 5px; bottom: 5px; display: flex; flex-direction: column; justify-content: center; gap: 3px; padding: 0 10px; border-radius: 6px; background: var(--surface-raised); border: 1px solid var(--line-soft); color: var(--text-primary); text-align: left; overflow: hidden; cursor: pointer; outline: none; }
+.cell:hover { background: color-mix(in srgb, var(--surface-raised) 80%, var(--text-primary) 6%); }
+.cell:focus-visible, .cell[data-focused='true']:focus { box-shadow: inset 0 0 0 2px var(--line-focus); }
+.cellNow { background: color-mix(in srgb, var(--accent) 16%, var(--surface-raised)); border-color: color-mix(in srgb, var(--accent) 40%, var(--line-soft)); }
+.cellPast .cellTitle, .cellPast .cellSub { color: var(--text-tertiary); }
+.cellDim { opacity: 0.4; }
+.cellSliver { padding: 0; }
+.cellTitle { display: flex; align-items: center; gap: 6px; font-size: 13.5px; font-weight: 600; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.cellTitle > span { overflow: hidden; text-overflow: ellipsis; }
+.cellSub { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; font-variant-numeric: tabular-nums; }
+.clip { color: var(--text-tertiary); font-weight: 400; flex-shrink: 0; }
+.flag { flex-shrink: 0; padding: 1px 6px; border-radius: var(--radius-pill); font-size: 10.5px; font-weight: 700; letter-spacing: 0.02em; background: var(--accent-tint); color: var(--accent-strong); }
+.flagLive { background: color-mix(in srgb, var(--color-record) 22%, transparent); color: var(--text-primary); }
+.flagDot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); flex-shrink: 0; }
+.recDot { width: 8px; height: 8px; border-radius: 50%; background: var(--color-record); flex-shrink: 0; }
+.progress { position: absolute; left: 0; bottom: 0; height: 2px; background: var(--accent); }
+.gap { background: transparent; border: 1px dashed var(--line-strong); color: var(--text-tertiary); }
+.gap .cellTitle { font-weight: 500; color: var(--text-tertiary); }
+.loadingBar { position: absolute; top: 5px; bottom: 5px; left: 0; right: 0; }
+.failedBand { position: absolute; inset: 5px 0; display: flex; align-items: center; gap: 10px; padding: 0 12px; border-radius: 6px; border: 1px dashed var(--line-strong); color: var(--text-secondary); font-size: 12.5px; }
+.nowLine { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--accent); pointer-events: none; z-index: 0; }
+
+/* ── The list view ── */
+.list { margin: 0 var(--page-gutter) 16px; border: 1px solid var(--line-soft); border-radius: var(--radius-surface); background: var(--surface-slate); overflow: hidden; }
+.listScroller { position: relative; overflow-y: auto; overscroll-behavior: contain; }
+.listRow { position: absolute; left: 0; right: 0; display: flex; align-items: center; gap: 14px; padding: 0 12px 0 14px; border-bottom: 1px solid var(--line-soft); }
+.listRow:hover { background: var(--surface-translucent); }
+.listMain { flex: 1; min-width: 0; display: flex; align-items: center; gap: 14px; height: 100%; text-align: left; }
+.listMain:focus-visible { outline: 2px solid var(--line-focus); outline-offset: -2px; border-radius: var(--radius-small); }
+.listCopy { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.listNow { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--text-secondary); min-width: 0; }
+.listNow > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.listProgress { width: 120px; flex-shrink: 0; height: 3px; border-radius: 2px; background: var(--line-soft); overflow: hidden; }
+.listProgress > i { display: block; height: 100%; background: var(--accent); }
+.listLeft { flex-shrink: 0; font-size: 12px; color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
+.listNext { font-size: 12px; color: var(--text-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 720px) {
+  .listRow { gap: 8px; padding: 0 6px 0 12px; }
+  .listNow { flex-wrap: wrap; row-gap: 4px; }
+  .listNow > span:first-child { flex-basis: 100%; }
+  .listProgress { flex: 1; width: auto; max-width: 160px; }
+  .channelName .channelMeta { display: none; }
+}
+
+/* ── Sheet ── */
+.sheetHead { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.sheetChips { display: flex; flex-wrap: wrap; gap: 6px; }
+.sheetBody { display: flex; flex-direction: column; gap: 14px; }
+.sheetActions { display: flex; flex-wrap: wrap; gap: 8px; }
+.radioRow { display: flex; flex-direction: column; gap: 8px; }
+
+.toast { position: fixed; left: 50%; bottom: calc(24px + var(--player-reserve, 0px)); transform: translateX(-50%); z-index: var(--layer-notice); display: flex; align-items: center; gap: 12px; padding: 10px 12px 10px 16px; border-radius: var(--radius-panel); background: var(--surface-overlay); border: 1px solid var(--line-soft); box-shadow: var(--shadow-overlay); color: var(--text-primary); font-size: 13.5px; max-width: calc(100vw - 32px); }
+
+/* ── A channel's timeline (§6) ── */
+.timeline { display: flex; flex-direction: column; gap: 4px; max-height: min(70vh, 720px); overflow-y: auto; overscroll-behavior: contain; margin: 0 -4px; padding: 0 4px; }
+.timelineDay { display: flex; flex-direction: column; gap: 4px; }
+.timelineHeader { position: sticky; top: 0; z-index: 1; margin: 0; padding: 10px 2px 6px; background: var(--surface-overlay); font-size: 12px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-tertiary); }
+.timelineRow { position: relative; display: flex; gap: 12px; align-items: flex-start; padding: 10px 10px; border-radius: 8px; text-align: left; color: var(--text-primary); }
+.timelineRow:hover { background: var(--surface-translucent); }
+.timelineRow:focus-visible { outline: 2px solid var(--line-focus); outline-offset: -2px; }
+.timelineNow { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.timelineTime { width: 64px; flex-shrink: 0; padding-top: 1px; font-size: 12.5px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.timelineCopy { display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 1; }
+.timelineLoading { display: flex; flex-direction: column; gap: 6px; padding: 6px 0; }

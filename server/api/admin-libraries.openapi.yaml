@@ -1,0 +1,2469 @@
+openapi: 3.1.0
+info:
+  title: Portico administration pages
+  version: "1.0.0"
+  summary: Media deletion and trash, library configuration, live source configuration, DVR defaults, library channel presets and server maintenance.
+  description: |
+    These are the owner administration pages. Everything here is owner-only with
+    one exception, `GET /v1/library-channels/{id}/logo`, because a channel logo
+    is part of what a viewer sees.
+
+    Shape. Every response is `{protocolVersion, serverId, result}`. Every
+    configuration page reads a document carrying a `revision`, and every write
+    presents that value as `expectedRevision`; a write whose expectation does not
+    match is refused with `409 administration_conflict` and nothing is stored.
+    Every write also accepts an `operationId`: replaying the same identifier with
+    the same body returns the first result instead of applying the change twice,
+    and replaying it with a different body is refused. Every list pages by an
+    opaque `cursor` and accepts `limit` (1-200, default 40); a cursor minted for
+    one listing is refused by any other.
+
+    Deleting media. A delete is a three-step conversation. The preview lists the
+    exact files, their bytes, everything that depends on the item, and the text
+    the owner must type back: one item's title, or the target count for a bulk
+    delete. The delete then presents that text, the preview's `revision`, and
+    whether the files themselves should go. Deletion is refused entirely unless
+    the library's `allowMediaDeletion` is on. Files that go are moved into a
+    trash that holds them for the library's `trashRetentionDays`, and restoring
+    an entry puts the bytes back where they were so the next scan readopts them.
+
+    Costs. `GET /v1/admin/storage-usage` walks the state directory and is bounded
+    at 200,000 files per category; `GET /v1/admin/filesystem` reads at most
+    20,000 names from one directory and pages them. Backups (`/v1/admin/backups`,
+    published with the API registry) copy the whole database under a SQLite backup, so it is the
+    one long operation on these pages.
+servers:
+  - url: /
+security:
+  - bearerAuth: []
+tags:
+  - name: deletion
+  - name: libraries
+  - name: live
+  - name: dvr
+  - name: channels
+  - name: maintenance
+paths:
+  /v1/items/{id}/delete/preview:
+    post:
+      tags: [deletion]
+      operationId: previewItemDelete
+      summary: List exactly what deleting one item would take.
+      description: |
+        Reads only. Returns the item's files with their sizes and whether they
+        are still present, everything that refers to the item, the library's
+        deletion policy, the fence the delete must present as `expectedRevision`,
+        and the confirmation text to type back.
+      parameters: [{$ref: "#/components/parameters/ItemID"}]
+      responses:
+        "200":
+          description: The preview.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/DeletePreviewEnvelope"}
+              examples:
+                oneMovie:
+                  summary: One movie with two parts and a collection that lists it
+                  value:
+                    protocolVersion: "1.0"
+                    serverId: srv-1
+                    result:
+                      revision: 41
+                      confirmation: The Lighthouse
+                      confirmationKind: title
+                      totalBytes: 9663676416
+                      totalFiles: 2
+                      totalBytesText: 9.0 GiB
+                      blocked: []
+                      trashRetentionDays: 30
+                      targets:
+                        - itemId: item-9
+                          title: The Lighthouse
+                          kind: movie
+                          libraryId: lib-films
+                          libraryName: Films
+                          allowMediaDeletion: true
+                          trashRetentionDays: 30
+                          bytes: 9663676416
+                          files:
+                            - {assetId: asset-1, path: /media/films/The Lighthouse/part1.mkv, bytes: 5368709120, present: true, shared: false}
+                            - {assetId: asset-2, path: /media/films/The Lighthouse/part2.mkv, bytes: 4294967296, present: true, shared: false}
+                          dependents:
+                            - {kind: collection, count: 1, description: collections that list this item}
+                            - {kind: progress, count: 3, description: profiles with saved playback position}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /v1/items/{id}/delete:
+    post:
+      tags: [deletion]
+      operationId: deleteItem
+      summary: Delete one item, optionally taking its files.
+      description: |
+        `confirmation` must equal the item's title exactly. `expectedRevision` is
+        the preview's `revision`. `deleteFiles` false removes the catalog entry
+        and leaves the bytes where they are, which the next scan readopts.
+      parameters: [{$ref: "#/components/parameters/ItemID"}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/DeleteRequest"}
+            examples:
+              withFiles:
+                summary: Remove the entry and move the files to the trash
+                value: {deleteFiles: true, confirmation: The Lighthouse, expectedRevision: 41, operationId: delete-lighthouse-1}
+      responses:
+        "200":
+          description: The outcome, one receipt per target.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/DeleteResultEnvelope"}
+              examples:
+                removed:
+                  value:
+                    protocolVersion: "1.0"
+                    serverId: srv-1
+                    result:
+                      revision: 42
+                      removed: 1
+                      failed: 0
+                      bytesTrashed: 9663676416
+                      filesRetained: false
+                      receipts:
+                        - {itemId: item-9, title: The Lighthouse, removed: true, trashEntryId: 8Qd1m0rVYQ2fJ0mXkFQyEA, filesMoved: 2, filesKept: 0, bytes: 9663676416}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Denied"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /v1/admin/media/delete/preview:
+    post:
+      tags: [deletion]
+      operationId: previewBulkDelete
+      summary: List what deleting several items would take.
+      description: At most 200 items. The confirmation for a bulk delete is the target count as a decimal string.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                itemIds: {type: array, items: {type: string}, maxItems: 200}
+              required: [itemIds]
+      responses:
+        "200":
+          description: The preview.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/DeletePreviewEnvelope"}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /v1/admin/media/delete:
+    post:
+      tags: [deletion]
+      operationId: deleteMediaBulk
+      summary: Delete several items.
+      description: |
+        `confirmation` is the number of items as a decimal string. The whole
+        request is refused if any target sits in a library that has not enabled
+        deletion, so a bulk delete never half-applies across policies.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/DeleteRequest"}
+            examples:
+              twelve:
+                value: {itemIds: [item-1, item-2], deleteFiles: false, confirmation: "2", expectedRevision: 41, operationId: sweep-1}
+      responses:
+        "200":
+          description: The outcome, one receipt per target.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/DeleteResultEnvelope"}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Denied"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /v1/admin/trash:
+    get:
+      tags: [deletion]
+      operationId: listTrash
+      summary: Page the held deletions.
+      parameters:
+        - {name: state, in: query, required: false, schema: {type: string, enum: [held, restored, purged, all], default: held}}
+        - {$ref: "#/components/parameters/Cursor"}
+        - {$ref: "#/components/parameters/Limit"}
+      responses:
+        "200":
+          description: One page of trash entries, newest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  protocolVersion: {type: string}
+                  serverId: {type: string}
+                  result: {$ref: "#/components/schemas/TrashPage"}
+              examples:
+                held:
+                  value:
+                    protocolVersion: "1.0"
+                    serverId: srv-1
+                    result:
+                      heldCount: 1
+                      heldBytes: 9663676416
+                      nextCursor: ""
+                      items:
+                        - id: 8Qd1m0rVYQ2fJ0mXkFQyEA
+                          libraryId: lib-films
+                          itemId: item-9
+                          title: The Lighthouse
+                          kind: movie
+                          fileCount: 2
+                          bytes: 9663676416
+                          bytesText: 9.0 GiB
+                          trashedAt: "2026-09-16T20:11:04Z"
+                          expiresAt: "2026-10-16T20:11:04Z"
+                          state: held
+                          expired: false
+                          files:
+                            - {originalPath: /media/films/The Lighthouse/part1.mkv, bytes: 5368709120}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /v1/admin/trash/{id}/restore:
+    post:
+      tags: [deletion]
+      operationId: restoreFromTrash
+      summary: Put a held deletion's files back where they came from.
+      description: |
+        A path that is occupied again is reported in `conflicts` rather than
+        overwritten. The catalog rows are not recreated here: `reindexRequired`
+        is always true, and the next scan of the library readopts the files.
+      parameters: [{$ref: "#/components/parameters/ResourceID"}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties: {operationId: {type: string}}
+      responses:
+        "200":
+          description: What was put back.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  protocolVersion: {type: string}
+                  serverId: {type: string}
+                  result: {$ref: "#/components/schemas/RestoreResult"}
+              examples:
+                restored:
+                  value: {protocolVersion: "1.0", serverId: srv-1, result: {entryId: 8Qd1m0rVYQ2fJ0mXkFQyEA, restored: 2, skipped: 0, conflicts: [], reindexRequired: true}}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /v1/admin/trash/empty:
+    post:
+      tags: [deletion]
+      operationId: emptyTrash
+      summary: Permanently remove held deletions.
+      description: |
+        `confirmation` is the number of entries that will be purged as a decimal
+        string, which is why the count is computed before the confirmation is
+        checked. `expiredOnly` keeps entries whose retention has not run out.
+        Nothing purged here is recoverable.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                expiredOnly: {type: boolean, default: false}
+                confirmation: {type: string}
+                operationId: {type: string}
+              required: [confirmation]
+      responses:
+        "200":
+          description: What was purged.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  protocolVersion: {type: string}
+                  serverId: {type: string}
+                  result:
+                    type: object
+                    properties:
+                      purged: {type: integer}
+                      bytesFreed: {type: integer}
+                      bytesFreedText: {type: string}
+                      remaining: {type: integer}
+                      incomplete: {type: integer}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /v1/admin/filesystem:
+    get:
+      tags: [libraries]
+      operationId: browseFilesystem
+      summary: Browse the server's filesystem for a folder to add.
+      description: |
+        With no `path`, returns the platform roots: drive letters and the user
+        profile on Windows (plus a UNC hint, which is typed rather than browsed),
+        `/`, `/Volumes` and the home folder on macOS, `/` plus every real kernel
+        mount point on Linux, up to 64 roots (`truncated` when more exist).
+        Other permitted roots remain reachable by an explicit `path`.
+        With a `path`, returns one bounded page of that
+        directory. Dotfiles, Windows system folders and the kernel trees
+        (`/proc`, `/sys`, `/dev`, `/run`) are never listed and browsing into them
+        is refused. Files are omitted unless `includeFiles=true`.
+      parameters:
+        - {name: path, in: query, required: false, schema: {type: string}, description: Absolute path. Omit for the platform roots.}
+        - {name: includeFiles, in: query, required: false, schema: {type: boolean, default: false}}
+        - {$ref: "#/components/parameters/Cursor"}
+        - {$ref: "#/components/parameters/Limit"}
+      responses:
+        "200":
+          description: The roots, or one page of a directory.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  protocolVersion: {type: string}
+                  serverId: {type: string}
+                  result: {$ref: "#/components/schemas/FilesystemPage"}
+              examples:
+                roots:
+                  summary: The roots on a Windows server
+                  value:
+                    protocolVersion: "1.0"
+                    serverId: srv-1
+                    result:
+                      path: ""
+                      parent: ""
+                      separator: \
+                      platform: windows
+                      writable: false
+                      truncated: false
+                      entries: []
+                      nextCursor: ""
+                      roots:
+                        - {path: "C:\\", name: "C:", kind: drive, description: "Drive C:"}
+                        - {path: "D:\\", name: "D:", kind: drive, description: "Drive D:"}
+                        - {path: "\\\\", name: Network share, kind: unc, description: "Type a UNC path such as \\\\server\\share"}
+                directory:
+                  summary: One directory on a Linux server
+                  value:
+                    protocolVersion: "1.0"
+                    serverId: srv-1
+                    result:
+                      path: /mnt/media
+                      parent: /mnt
+                      separator: /
+                      platform: linux
+                      writable: true
+                      truncated: false
+                      nextCursor: ""
+                      roots: [{path: /, name: /, kind: root, description: The root filesystem}]
+                      entries:
+                        - {name: Films, path: /mnt/media/Films, kind: directory, readable: true, symlink: false}
+                        - {name: Television, path: /mnt/media/Television, kind: directory, readable: true, symlink: false}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Denied"}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /v1/admin/library-settings:
+    get:
+      tags: [libraries]
+      operationId: listLibrarySettings
+      summary: Page the libraries with their administration summary.
+      parameters: [{$ref: "#/components/parameters/Cursor"}, {$ref: "#/components/parameters/Limit"}]
+      responses:
+        "200":
+          description: One page of libraries.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  protocolVersion: {type: string}
+                  serverId: {type: string}
+                  result:
+                    type: object
+                    properties:
+                      nextCursor: {type: string}
+                      items:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id: {type: string}
+                            name: {type: string}
+                            kind: {type: string}
+                            revision: {type: integer}
+                            allowMediaDeletion: {type: boolean}
+                            trashRetentionDays: {type: integer}
+                            analysisOperationCount: {type: integer}
+                            sourceCount: {type: integer}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+  /v1/admin/analysis-operations:
+    get:
+      tags: [libraries]
+      operationId: listAnalysisOperations
+      summary: Publish every analysis operation and its cost class.
+      description: |
+        Static server knowledge. The cost classes are ordered cheapest first
+        (`metadata-only`, `single-pass-read`, `decode`, `network`) so a client can
+        group the matrix without inventing an order. `requires` names operations
+        that must also be enabled, which the library write enforces.
+      responses:
+        "200":
+          description: The operation matrix.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  protocolVersion: {type: string}
+                  serverId: {type: string}
+                  result: {$ref: "#/components/schemas/AnalysisMatrix"}
+              examples:
+                matrix:
+                  value:
+                    protocolVersion: "1.0"
+                    serverId: srv-1
+                    result:
+                      costClasses:
+                        - {id: metadata-only, name: Metadata only, description: Reads container headers and sidecar files. Costs one small read per file., order: 1}
+                        - {id: decode, name: Decodes the video, description: "Decodes frames. This is the expensive class.", order: 3}
+                      operations:
+                        - {id: probe, name: Media probe, costClass: metadata-only, description: Reads container, stream, codec, resolution and duration facts., mediaKinds: [movie, show, episode, music, book], defaultEnabled: true, requires: null, producesArtifacts: false, network: false}
+                        - {id: trickplay, name: Trickplay tiles, costClass: decode, description: Decodes evenly spaced frames into scrubbing tiles., mediaKinds: [movie, show, episode], defaultEnabled: false, requires: [probe], producesArtifacts: true, network: false}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+  /v1/admin/metadata-providers:
+    get:
+      tags: [libraries]
+      operationId: listMetadataProviders
+      summary: Publish the metadata providers and the media kinds each serves.
+      responses:
+        "200":
+          description: The providers.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  protocolVersion: {type: string}
+                  serverId: {type: string}
+                  result:
+                    type: object
+                    properties:
+                      providers: {type: array, items: {$ref: "#/components/schemas/MetadataProvider"}}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+  /v1/admin/libraries/{id}/settings:
+    get:
+      tags: [libraries]
+      operationId: getLibrarySettings
+      summary: Read one library's administration document.
+      description: |
+        Carries the settings, the library's sources (so the folder picker opens
+        where the library already looks), the analysis matrix and the provider
+        list. A configured provider API key is never returned: `apiKey` reads as
+        the empty string and `apiKeySet` says whether one is stored.
+      parameters: [{$ref: "#/components/parameters/ResourceID"}]
+      responses:
+        "200":
+          description: The library's document.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/LibraryDocumentEnvelope"}
+              examples:
+                films:
+                  value:
+                    protocolVersion: "1.0"
+                    serverId: srv-1
+                    result:
+                      libraryId: lib-films
+                      libraryName: Films
+                      libraryKind: movie
+                      revision: 3
+                      digest: 8f1c…
+                      settings:
+                        allowMediaDeletion: true
+                        trashRetentionDays: 30
+                        analysis: [artwork_extraction, chapter_read, local_metadata, probe, subtitle_discovery, trickplay]
+                        providers:
+                          - {mediaKind: movie, provider: tmdb, apiKey: "", apiKeySet: true, language: en, region: GB}
+                        navigation:
+                          trickplayIntervalSeconds: 10
+                          trickplayTileWidth: 320
+                          trickplayMaxTiles: 400
+                          chapterThumbnailMode: generated
+                          videoPreviewEnabled: false
+                          videoPreviewSeconds: 30
+                      sources:
+                        - {id: src-1, name: Films, root: /mnt/media/Films, classification: local, enabled: true}
+                      enumerations: {chapterThumbnailMode: [none, embedded, generated]}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
+    put:
+      tags: [libraries]
+      operationId: saveLibrarySettings
+      summary: Write one library's administration document.
+      description: |
+        An empty `apiKey` keeps whatever key is already stored, so a client that
+        never receives a key can still save the rest of the form. An analysis
+        operation whose `requires` are not also enabled is refused by name.
+      parameters: [{$ref: "#/components/parameters/ResourceID"}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                expectedRevision: {type: integer}
+                operationId: {type: string}
+                settings: {$ref: "#/components/schemas/LibrarySettings"}
+              required: [expectedRevision, settings]
+            examples:
+              enableDeletion:
+                value:
+                  expectedRevision: 3
+                  operationId: films-settings-7
+                  settings:
+                    allowMediaDeletion: true
+                    trashRetentionDays: 14
+                    analysis: [probe, local_metadata, subtitle_discovery, chapter_read, artwork_extraction, trickplay]
+                    providers: [{mediaKind: movie, provider: tmdb, apiKey: "", apiKeySet: false, language: en, region: GB}]
+                    navigation: {trickplayIntervalSeconds: 8, trickplayTileWidth: 320, trickplayMaxTiles: 500, chapterThumbnailMode: generated, videoPreviewEnabled: true, videoPreviewSeconds: 30}
+      responses:
+        "200":
+          description: The document after the write.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/LibraryDocumentEnvelope"}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /v1/admin/live/settings:
+    get:
+      tags: [live]
+      operationId: getLiveDefaults
+      summary: Read the server-wide live source settings.
+      responses:
+        "200":
+          description: The live defaults document.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/LiveDefaultsEnvelope"}
+              examples:
+                defaults:
+                  value:
+                    protocolVersion: "1.0"
+                    serverId: srv-1
+                    result:
+                      scope: live
+                      revision: 1
+                      digest: 1a2b…
+                      settings: {streamBufferSeconds: 8, retryWindowSeconds: 60, userAgent: Portico/1.0, guideDays: 7, logoImport: true, discoveryEnabled: true}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+    put:
+      tags: [live]
+      operationId: saveLiveDefaults
+      summary: Write the server-wide live source settings.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                expectedRevision: {type: integer}
+                operationId: {type: string}
+                settings: {$ref: "#/components/schemas/LiveDefaults"}
+              required: [expectedRevision, settings]
+      responses:
+        "200":
+          description: The document after the write.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/LiveDefaultsEnvelope"}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /v1/admin/live-sources/{id}/configuration:
+    get:
+      tags: [live]
+      operationId: getLiveSourceConfiguration
+      summary: Read one live source's configuration.
+      description: |
+        `kind` is `playlist` (channels and streams), `xmltv-guide` (a standalone
+        guide-only source that publishes programmes for channels that come from
+        elsewhere) or `hdhomerun`. `effective` is the server defaults with this
+        source's overrides applied, so a client never recomputes them.
+      parameters: [{$ref: "#/components/parameters/ResourceID"}]
+      responses:
+        "200":
+          description: The source's configuration.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/LiveSourceEnvelope"}
+              examples:
+                guideOnly:
+                  summary: A standalone XMLTV guide source
+                  value:
+                    protocolVersion: "1.0"
+                    serverId: srv-1
+                    result:
+                      sourceId: src-guide
+                      sourceName: Regional guide
+                      revision: 2
+                      digest: cc91…
+                      tunerCount: 0
+                      availableKinds: [playlist, xmltv-guide, hdhomerun]
+                      settings:
+                        kind: xmltv-guide
+                        streamBufferSeconds: null
+                        retryWindowSeconds: 900
+                        userAgent: ""
+                        guideSourceId: ""
+                        filters:
+                          categories: {mode: include, values: [Documentary, News]}
+                          countries: {mode: include, values: []}
+                          keywords: {mode: exclude, values: [shopping]}
+                        logoImport: {enabled: true, overwriteExisting: false}
+                        channelNumbering: {mode: source, startAt: 100, step: 1}
+                      effective: {streamBufferSeconds: 8, retryWindowSeconds: 900, userAgent: Portico/1.0, guideDays: 7, logoImport: true, discoveryEnabled: true}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
+    put:
+      tags: [live]
+      operationId: saveLiveSourceConfiguration
+      summary: Write one live source's configuration.
+      description: |
+        A null `streamBufferSeconds` or `retryWindowSeconds` inherits the server
+        default. A guide-only source refuses stream tuning and a guide
+        attachment, because it has nothing to stream.
+      parameters: [{$ref: "#/components/parameters/ResourceID"}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                expectedRevision: {type: integer}
+                operationId: {type: string}
+                settings: {$ref: "#/components/schemas/LiveSourceSettings"}
+              required: [expectedRevision, settings]
+      responses:
+        "200":
+          description: The configuration after the write.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/LiveSourceEnvelope"}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /v1/admin/live-sources/{id}/channel-map:
+    get:
+      tags: [live]
+      operationId: getChannelMap
+      summary: Page a source's channels with the owner's renumbering and guide mapping.
+      description: |
+        `sourceNumber` is what the source published and `number` is what the
+        server serves: the sequential numbering when that mode is chosen, or the
+        per-channel override when one exists.
+      parameters: [{$ref: "#/components/parameters/ResourceID"}, {$ref: "#/components/parameters/Cursor"}, {$ref: "#/components/parameters/Limit"}]
+      responses:
+        "200":
+          description: One page of the channel map.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ChannelMapEnvelope"}
+              examples:
+                page:
+                  value:
+                    protocolVersion: "1.0"
+                    serverId: srv-1
+                    result:
+                      sourceId: src-1
+                      generation: gen-42
+                      nextCursor: ""
+                      items:
+                        - {channelId: bbc-two, name: BBC Two, sourceNumber: "2", number: "102", group: Terrestrial, guideChannelId: bbctwo.uk, hidden: false, position: 1, overridden: true}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+    put:
+      tags: [live]
+      operationId: saveChannelMap
+      summary: Renumber channels and map them onto guide channels.
+      description: |
+        `expectedRevision` is the source configuration's revision, so a renumber
+        cannot land on top of a numbering-mode change the caller never saw. An
+        override with an empty number, no guide mapping and `hidden` false clears
+        that channel's row. Two overrides may not claim the same number.
+      parameters: [{$ref: "#/components/parameters/ResourceID"}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                expectedRevision: {type: integer}
+                operationId: {type: string}
+                overrides:
+                  type: array
+                  maxItems: 200
+                  items:
+                    type: object
+                    properties:
+                      channelId: {type: string}
+                      number: {type: string, description: Digits and dots only, or empty to clear.}
+                      guideChannelId: {type: string}
+                      hidden: {type: boolean}
+                    required: [channelId]
+              required: [expectedRevision, overrides]
+            examples:
+              renumber:
+                value:
+                  expectedRevision: 2
+                  operationId: renumber-1
+                  overrides:
+                    - {channelId: bbc-two, number: "102", guideChannelId: bbctwo.uk, hidden: false}
+                    - {channelId: shopping-1, number: "", guideChannelId: "", hidden: true}
+      responses:
+        "200":
+          description: The channel map after the write.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ChannelMapEnvelope"}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /v1/admin/live-sources/{id}/logos:
+    post:
+      tags: [live]
+      operationId: importSourceLogos
+      summary: Import the channel logos a source advertises.
+      description: |
+        Nothing is fetched unless this server was composed with a fetcher and the
+        source's effective `logoImport` is on; otherwise the result explains why
+        it did nothing. Each image is validated exactly like an uploaded logo.
+      parameters: [{$ref: "#/components/parameters/ResourceID"}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties: {operationId: {type: string}}
+      responses:
+        "200":
+          description: What was imported.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  protocolVersion: {type: string}
+                  serverId: {type: string}
+                  result:
+                    type: object
+                    properties:
+                      sourceId: {type: string}
+                      requested: {type: integer}
+                      imported: {type: integer}
+                      skipped: {type: integer}
+                      message: {type: string}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /v1/admin/live-sources/discover:
+    post:
+      tags: [live]
+      operationId: discoverTuners
+      summary: Look for HDHomeRun tuners on the local network.
+      description: |
+        Sends the HDHomeRun discovery packet to every interface broadcast address
+        and to the global broadcast on UDP 65001, plus an SSDP `M-SEARCH` to
+        239.255.255.250:1900, and waits at most `windowSeconds` (default 2,
+        maximum 10). An SSDP answer counts only when it identifies itself as a
+        tuner. Each responder is reported with the address its `discover.json`
+        and `lineup.json` are served from. Discovery only runs while
+        `discoveryEnabled` is on in the live settings.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties: {windowSeconds: {type: integer, minimum: 0, maximum: 10}}
+      responses:
+        "200":
+          description: What answered.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  protocolVersion: {type: string}
+                  serverId: {type: string}
+                  result:
+                    type: object
+                    properties:
+                      searchedFor: {type: string}
+                      discoveryEnabled: {type: boolean}
+                      message: {type: string}
+                      devices: {type: array, items: {$ref: "#/components/schemas/TunerDevice"}}
+              examples:
+                found:
+                  value:
+                    protocolVersion: "1.0"
+                    serverId: srv-1
+                    result:
+                      searchedFor: hdhomerun
+                      discoveryEnabled: true
+                      devices:
+                        - {deviceId: 192.168.1.40, model: "", friendlyName: "", address: 192.168.1.40, baseUrl: "http://192.168.1.40", lineupUrl: "http://192.168.1.40/lineup.json", tunerCount: 0, firmwareVersion: "", configured: false}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+  /v1/admin/dvr/recording-owners:
+    get:
+      tags: [dvr]
+      operationId: listRecordingOwners
+      summary: List current accounts and profiles eligible to receive an explicit recording grant.
+      description: >-
+        Current server owner only. Reads direct identities and the current Hosted policy cache,
+        filtering disabled, deleted, revoked and unavailable membership/claim authority in one snapshot.
+        This read grants no recording permission and makes no Hosted request. Follow nextCursor even
+        when a page has no visible items; pagination advances over filtered candidates as well.
+      parameters:
+        - in: query
+          name: limit
+          schema: {type: integer, minimum: 1, maximum: 200, default: 100}
+        - in: query
+          name: cursor
+          schema: {type: string, maxLength: 4096}
+      responses:
+        '200':
+          description: Server-bound administration envelope with a page of current owner choices.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [protocolVersion, serverId, result]
+                properties:
+                  protocolVersion: {type: string}
+                  serverId: {type: string}
+                  result:
+                    type: object
+                    required: [items, nextCursor]
+                    properties:
+                      nextCursor: {type: string}
+                      items:
+                        type: array
+                        maxItems: 200
+                        items:
+                          type: object
+                          required: [owner, accountName, profileName]
+                          properties:
+                            accountName: {type: string}
+                            profileName: {type: string}
+                            owner:
+                              type: object
+                              required: [authority, accountId, profileId]
+                              properties:
+                                authority: {type: string, enum: [local, hosted]}
+                                accountId: {type: string}
+                                profileId: {type: string}
+        '400': {description: Invalid or repeated query parameter, invalid limit or cursor.}
+        '401': {description: Current server owner required.}
+  /v1/admin/dvr/recording-permissions:
+    get:
+      summary: List explicit recording grants (server owner only)
+      responses:
+        '200': { description: Result array of grants with owner, enabled, inheritProfiles and revision. }
+        '401': { description: Current server owner required. }
+    put:
+      summary: Grant or revoke recording permission for an explicit account and profile
+      description: Current server owner only. Enabling validates current target membership. No account role grants recording permission implicitly. Exact profile denial overrides inherited permission.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [owner, enabled, inheritProfiles, revision]
+              properties:
+                owner:
+                  type: object
+                  required: [authority, accountId, profileId]
+                  properties:
+                    authority: { type: string, enum: [local, hosted] }
+                    accountId: { type: string }
+                    profileId: { type: string }
+                enabled: { type: boolean }
+                inheritProfiles: { type: boolean }
+                revision: { type: integer, minimum: 0, description: Zero creates a grant; otherwise the current revision is required. }
+      responses:
+        '200': { description: Updated grant with advanced revision. }
+        '400': { description: Invalid grant. }
+        '401': { description: Current server owner required. }
+        '403': { description: Target membership unavailable. }
+        '409': { description: Revision conflict. }
+  /v1/admin/dvr/settings:
+    get:
+      tags: [dvr]
+      operationId: getDVRSettings
+      summary: Read the server-wide recording defaults.
+      description: Carries the folder template vocabulary and every enumeration the page renders from.
+      responses:
+        "200":
+          description: The DVR document.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/DVRDocumentEnvelope"}
+              examples:
+                defaults:
+                  value:
+                    protocolVersion: "1.0"
+                    serverId: srv-1
+                    result:
+                      revision: 1
+                      digest: 77aa…
+                      settings:
+                        prePaddingSeconds: 60
+                        postPaddingSeconds: 180
+                        keepPolicy: {mode: keep-count, keepCount: 5, keepDays: 0, keepUntilWatched: true}
+                        conversion: {mode: remux, ladderId: "", deleteOriginal: false}
+                        folderTemplate: "{series}/Season {season:02}/{series} - S{season:02}E{episode:02} - {title}"
+                        movieFolderTemplate: "{title} ({year})/{title} ({year})"
+                        recordingProfile: original
+                        sidecars: {nfo: true, poster: true, fanart: false, thumbnail: true}
+                        tunerPreference: least-busy
+                      folderTokens:
+                        - {token: "{series}", description: Series title, or the programme title when there is no series., example: Nova, supportsPadding: false}
+                        - {token: "{season}", description: Season number., example: "3", supportsPadding: true}
+                      enumerations:
+                        keepMode: [keep-all, keep-count, keep-days]
+                        conversionMode: [none, remux, ladder]
+                        recordingProfile: [original, high, balanced, compact]
+                        tunerPreference: [first-available, least-busy, prefer-source-order]
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+    put:
+      tags: [dvr]
+      operationId: saveDVRSettings
+      summary: Write the server-wide recording defaults.
+      description: |
+        A folder template may use only the published tokens, may not escape the
+        recordings root, and must carry at least one token that varies per
+        recording (`{title}`, `{episode}` or `{date}`) or every recording would
+        collide. `{season}` and `{episode}` also accept the padded `{season:02}`
+        form. A conversion mode of `none` refuses `deleteOriginal`, because there
+        would be no converted copy to keep instead.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                expectedRevision: {type: integer}
+                operationId: {type: string}
+                settings: {$ref: "#/components/schemas/DVRDefaults"}
+              required: [expectedRevision, settings]
+      responses:
+        "200":
+          description: The document after the write.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/DVRDocumentEnvelope"}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /v1/admin/dvr/tuners:
+    get:
+      tags: [dvr]
+      operationId: getTunerAllocation
+      summary: Show which tuner each source is using and what is queued.
+      description: |
+        `active` is what is recording now; `upcoming` looks 48 hours ahead.
+        `conflicts` is how many upcoming recordings cannot fit, computed by
+        sweeping the start and end points against the source's tuner count.
+      responses:
+        "200":
+          description: The allocation view.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  protocolVersion: {type: string}
+                  serverId: {type: string}
+                  result: {$ref: "#/components/schemas/TunerView"}
+              examples:
+                busy:
+                  value:
+                    protocolVersion: "1.0"
+                    serverId: srv-1
+                    result:
+                      observedAt: "2026-09-16T20:11:04Z"
+                      upcomingWindowHours: 48
+                      sources:
+                        - sourceId: src-1
+                          sourceName: Rooftop aerial
+                          tunerCount: 2
+                          inUse: 1
+                          conflicts: 1
+                          active:
+                            - {recordingId: rec-1, channelId: bbc-two, title: Nova, state: recording, startsAt: "2026-09-16T20:00:00Z", endsAt: "2026-09-16T21:00:00Z", allocationId: alloc-1}
+                          upcoming:
+                            - {recordingId: rec-2, channelId: bbc-four, title: Storyville, state: scheduled, startsAt: "2026-09-16T22:00:00Z", endsAt: "2026-09-16T23:30:00Z"}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+  /v1/admin/dvr/recording-groups:
+    get:
+      tags: [dvr]
+      operationId: listRecordingGroups
+      summary: Page the series and keyword recording groups.
+      parameters: [{$ref: "#/components/parameters/Cursor"}, {$ref: "#/components/parameters/Limit"}]
+      responses:
+        "200":
+          description: One page of groups, newest first.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/RecordingGroupPageEnvelope"}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "409": {$ref: "#/components/responses/Conflict"}
+    post:
+      tags: [dvr]
+      operationId: createRecordingGroup
+      summary: Create a recording group.
+      description: Creating presents `expectedRevision` of 0. A group's options override the server defaults; a null option inherits.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/RecordingGroupChange"}
+            examples:
+              series:
+                value:
+                  expectedRevision: 0
+                  operationId: group-nova-1
+                  kind: series
+                  name: Nova
+                  match: Nova
+                  sourceId: src-1
+                  enabled: true
+                  options: {prePaddingSeconds: 120, postPaddingSeconds: null, keepPolicy: {mode: keep-count, keepCount: 10, keepDays: 0, keepUntilWatched: true}, newEpisodesOnly: true, priority: 10, folderTemplate: ""}
+      responses:
+        "200":
+          description: The group.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/RecordingGroupEnvelope"}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /v1/admin/dvr/recording-groups/{id}:
+    put:
+      tags: [dvr]
+      operationId: updateRecordingGroup
+      summary: Update a recording group.
+      parameters: [{$ref: "#/components/parameters/ResourceID"}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/RecordingGroupChange"}
+      responses:
+        "200":
+          description: The group after the write.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/RecordingGroupEnvelope"}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+    delete:
+      tags: [dvr]
+      operationId: deleteRecordingGroup
+      summary: Remove a recording group.
+      description: Recordings the group already scheduled keep their own state; this only stops it scheduling more.
+      parameters:
+        - {$ref: "#/components/parameters/ResourceID"}
+        - {$ref: "#/components/parameters/ExpectedRevision"}
+        - {$ref: "#/components/parameters/OperationID"}
+      responses:
+        "200":
+          description: The group is gone.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/DeletedEnvelope"}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /v1/admin/library-channels/criteria:
+    get:
+      tags: [channels]
+      operationId: listChannelCriteria
+      summary: Publish the tag and label vocabulary a library channel can select on.
+      description: |
+        With no `field`, returns the attribute fields the catalog actually holds
+        and how many distinct values each has. With a `field`, pages that field's
+        values with the number of items carrying each. `libraryId` narrows both.
+      parameters:
+        - {name: libraryId, in: query, required: false, schema: {type: string}}
+        - {name: field, in: query, required: false, schema: {type: string}}
+        - {$ref: "#/components/parameters/Cursor"}
+        - {$ref: "#/components/parameters/Limit"}
+      responses:
+        "200":
+          description: The fields, or one page of a field's values.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  protocolVersion: {type: string}
+                  serverId: {type: string}
+                  result: {$ref: "#/components/schemas/CriteriaPage"}
+              examples:
+                values:
+                  value:
+                    protocolVersion: "1.0"
+                    serverId: srv-1
+                    result:
+                      libraryId: lib-films
+                      field: genre
+                      fields: []
+                      nextCursor: ""
+                      values:
+                        - {value: Action, valueKey: action, itemCount: 184}
+                        - {value: Documentary, valueKey: documentary, itemCount: 61}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /v1/admin/library-channels/block-presets:
+    get:
+      tags: [channels]
+      operationId: listBlockPresets
+      summary: Page the named block presets.
+      parameters: [{$ref: "#/components/parameters/Cursor"}, {$ref: "#/components/parameters/Limit"}]
+      responses:
+        "200":
+          description: One page of presets, by name.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BlockPresetPageEnvelope"}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "409": {$ref: "#/components/responses/Conflict"}
+    post:
+      tags: [channels]
+      operationId: createBlockPreset
+      summary: Create a named block preset.
+      description: Names are unique after case and whitespace folding. Creating presents `expectedRevision` of 0.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/BlockPresetChange"}
+            examples:
+              saturdayMatinee:
+                value:
+                  expectedRevision: 0
+                  operationId: preset-matinee-1
+                  name: Saturday matinee
+                  body:
+                    libraryId: lib-films
+                    order: shuffle
+                    durationMinutes: 180
+                    startMinute: 840
+                    days: [saturday]
+                    description: Family films, nothing after 1989
+                    criteria:
+                      - {field: genre, operator: includes, values: [Family, Adventure]}
+                      - {field: decade, operator: excludes, values: ["1990", "2000"]}
+      responses:
+        "200":
+          description: The preset.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BlockPresetEnvelope"}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /v1/admin/library-channels/block-presets/{id}:
+    put:
+      tags: [channels]
+      operationId: updateBlockPreset
+      summary: Update a named block preset.
+      parameters: [{$ref: "#/components/parameters/ResourceID"}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/BlockPresetChange"}
+      responses:
+        "200":
+          description: The preset after the write.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BlockPresetEnvelope"}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+    delete:
+      tags: [channels]
+      operationId: deleteBlockPreset
+      summary: Remove a named block preset.
+      description: Channels already built from it keep their schedule; only the reusable definition goes.
+      parameters:
+        - {$ref: "#/components/parameters/ResourceID"}
+        - {$ref: "#/components/parameters/ExpectedRevision"}
+        - {$ref: "#/components/parameters/OperationID"}
+      responses:
+        "200":
+          description: The preset is gone.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/DeletedEnvelope"}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /v1/admin/library-channels/{id}/health:
+    get:
+      tags: [channels]
+      operationId: getChannelHealth
+      summary: Report one generated channel's condition.
+      parameters: [{$ref: "#/components/parameters/ResourceID"}]
+      responses:
+        "200":
+          description: The channel's health.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  protocolVersion: {type: string}
+                  serverId: {type: string}
+                  result: {$ref: "#/components/schemas/ChannelHealth"}
+              examples:
+                empty:
+                  value:
+                    protocolVersion: "1.0"
+                    serverId: srv-1
+                    result:
+                      channelId: chan-1
+                      name: Saturday matinee
+                      enabled: true
+                      state: ready
+                      healthCode: ""
+                      healthy: false
+                      activeGeneration: gen-7
+                      generatedThrough: "2026-09-18T00:00:00Z"
+                      scheduledEntries: 0
+                      candidates: 0
+                      unresolved: 0
+                      pendingGeneration: false
+                      message: The published schedule is empty; the block criteria matched nothing.
+                      observedAt: "2026-09-16T20:11:04Z"
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "503": {$ref: "#/components/responses/Unavailable"}
+  /v1/admin/library-channels/{id}/logo:
+    post:
+      tags: [channels]
+      operationId: uploadChannelLogo
+      summary: Upload a channel's logo.
+      description: |
+        `multipart/form-data` with a `file` part and `operationId` field.
+        Optional `expectedRevision` fences the logo revision (zero means no logo),
+        never the channel configuration revision. Omit it for an unconditional
+        replacement. Operation IDs retain idempotent retry semantics. The container is identified from the bytes
+        themselves, never from a declared content type or a filename: JPEG, PNG
+        and WebP are accepted, up to 10 MiB, between 16 and 4096 pixels on each
+        side. The image is proved decodable before anything is written and is
+        stored under its own digest, so an identical upload costs nothing.
+      parameters: [{$ref: "#/components/parameters/ResourceID"}]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file: {type: string, format: binary}
+                expectedRevision: {type: string, pattern: "^[0-9]+$"}
+                operationId: {type: string}
+              required: [file, operationId]
+      responses:
+        "200":
+          description: The stored logo.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  protocolVersion: {type: string}
+                  serverId: {type: string}
+                  result: {$ref: "#/components/schemas/ChannelLogo"}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "415": {$ref: "#/components/responses/UnsupportedImage"}
+  /v1/library-channels/{id}/logo:
+    get:
+      tags: [channels]
+      operationId: getChannelLogo
+      summary: Read a channel's logo.
+      description: |
+        The one endpoint on these pages that any signed-in viewer may call: a
+        channel logo is part of what a viewer sees. Carries a strong `ETag` of
+        the stored digest and answers `304` to a matching `If-None-Match`.
+      parameters: [{$ref: "#/components/parameters/ResourceID"}]
+      responses:
+        "200":
+          description: The image bytes.
+          content:
+            image/png: {schema: {type: string, format: binary}}
+            image/jpeg: {schema: {type: string, format: binary}}
+            image/webp: {schema: {type: string, format: binary}}
+        "304": {description: The cached copy is current.}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /v1/admin/maintenance/settings:
+    get:
+      tags: [maintenance]
+      operationId: getMaintenanceSettings
+      summary: Read the maintenance windows and retention policy.
+      description: |
+        Carries the cadence presets and the day set each means, the tasks a
+        window may admit, and the longest retention each category accepts. The
+        maxima are deliberately long: an owner with a large disk should be able
+        to keep artwork effectively forever.
+      responses:
+        "200":
+          description: The maintenance document.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/MaintenanceEnvelope"}
+              examples:
+                defaults:
+                  value:
+                    protocolVersion: "1.0"
+                    serverId: srv-1
+                    result:
+                      revision: 1
+                      digest: 5b30…
+                      settings:
+                        backupKeepCount: 7
+                        retention: {artwork: 365, trickplay: 365, prepared: 90, conversions: 7, subtitles: 365, downloads: 30, logs: 30, trash: 30}
+                        windows:
+                          - {id: nightly, name: Overnight, enabled: true, cadence: nightly, days: [friday, monday, saturday, sunday, thursday, tuesday, wednesday], startMinute: 180, durationMinutes: 240, timezone: "", tasks: [analysis, cleanup, library-scan, trickplay]}
+                      cadences:
+                        - {id: nightly, name: Every night, days: [monday, tuesday, wednesday, thursday, friday, saturday, sunday], description: Runs every day inside the window.}
+                        - {id: weekends, name: Weekends, days: [saturday, sunday], description: Saturday and Sunday.}
+                      tasks: [library-scan, metadata-refresh, analysis, trickplay, cleanup, backup, database-maintenance]
+                      retentionMaxima: {artwork: 3650, trickplay: 3650, prepared: 3650, conversions: 90, subtitles: 3650, downloads: 365, logs: 365, trash: 3650}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+    put:
+      tags: [maintenance]
+      operationId: saveMaintenanceSettings
+      summary: Write the maintenance windows and retention policy.
+      description: A window's `timezone`, when set, must be an IANA zone this server can load; empty means the server's own zone.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                expectedRevision: {type: integer}
+                operationId: {type: string}
+                settings: {$ref: "#/components/schemas/MaintenanceSettings"}
+              required: [expectedRevision, settings]
+      responses:
+        "200":
+          description: The document after the write.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/MaintenanceEnvelope"}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /v1/admin/storage-usage:
+    get:
+      tags: [maintenance]
+      operationId: getStorageUsage
+      summary: Measure what the server keeps, by category.
+      description: |
+        Walks the state directory. Each category names the directories it covers,
+        whether the maintenance page may remove them, and whether the bytes are
+        regenerable. Content categories (recordings, backups) and trash are never cleanable.
+        Trash uses its dedicated empty action with a typed count confirmation.
+        A sweep is bounded at 200,000 files per category; `truncated` says so.
+      responses:
+        "200":
+          description: The measurement.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  protocolVersion: {type: string}
+                  serverId: {type: string}
+                  result: {$ref: "#/components/schemas/StorageReport"}
+              examples:
+                report:
+                  value:
+                    protocolVersion: "1.0"
+                    serverId: srv-1
+                    result:
+                      stateDirectory: /var/lib/portico
+                      totalBytes: 42949672960
+                      totalBytesText: 40.0 GiB
+                      observedAt: "2026-09-16T20:11:04Z"
+                      truncated: false
+                      categories:
+                        - {id: trickplay, name: Trickplay tiles, description: Scrubbing tiles generated per file., directories: [analysis, trickplay], cleanable: true, regenerable: true, retentionKey: trickplay, bytes: 32212254720, bytesText: 30.0 GiB, fileCount: 184020, paths: [/var/lib/portico/analysis], present: true, oldestDays: 412}
+                        - {id: trash, name: Trash, description: Files held after a delete., directories: [trash], cleanable: false, regenerable: false, retentionKey: trash, bytes: 9663676416, bytesText: 9.0 GiB, fileCount: 2, paths: [/var/lib/portico/trash], present: true, oldestDays: 0, entries: 1}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "503": {$ref: "#/components/responses/Unavailable"}
+  /v1/admin/storage-usage/{category}/cleanup:
+    post:
+      tags: [maintenance]
+      operationId: cleanupStorageCategory
+      summary: Remove regenerable bytes from one storage category.
+      description: |
+        `confirmation` is the category identifier typed back. `olderThanDays` of
+        zero uses the category's configured retention. The trash is refused here
+        because emptying it is a different decision with its own endpoint, and
+        content categories are refused outright.
+      parameters:
+        - {name: category, in: path, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                olderThanDays: {type: integer, minimum: 0, maximum: 3650}
+                confirmation: {type: string}
+                operationId: {type: string}
+              required: [confirmation]
+            examples:
+              trickplay:
+                value: {olderThanDays: 0, confirmation: trickplay, operationId: cleanup-trickplay-1}
+      responses:
+        "200":
+          description: What was removed.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  protocolVersion: {type: string}
+                  serverId: {type: string}
+                  result:
+                    type: object
+                    properties:
+                      category: {type: string}
+                      filesRemoved: {type: integer}
+                      bytesFreed: {type: integer}
+                      bytesFreedText: {type: string}
+                      skipped: {type: integer}
+                      olderThanDays: {type: integer}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Denied"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "503": {$ref: "#/components/responses/Unavailable"}
+  /v1/admin/updates:
+    get:
+      tags: [maintenance]
+      operationId: getUpdates
+      summary: Report the running build and, when a feed is configured, the newest release.
+      description: |
+        The release channel and the feed URL are owner settings
+        (`updates.releaseChannel`, `updates.feedUrl`) read from the settings
+        registry. With no feed configured the server reports only what it is
+        running. Nothing is ever installed: `autoInstall` is always false.
+      responses:
+        "200":
+          description: The update report.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  protocolVersion: {type: string}
+                  serverId: {type: string}
+                  result: {$ref: "#/components/schemas/UpdateReport"}
+              examples:
+                noFeed:
+                  value:
+                    protocolVersion: "1.0"
+                    serverId: srv-1
+                    result:
+                      channel: stable
+                      feedConfigured: false
+                      latest: null
+                      updateAvailable: false
+                      status: no-feed
+                      message: No release feed is configured, so this server only reports the build it is running.
+                      autoInstall: false
+                      checkedAt: "2026-09-16T20:11:04Z"
+                      current: {version: 0.1.0-dev, buildId: development, sourceDigest: unsealed, builtAt: "", channel: stable}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+  /v1/admin/backups:
+    get:
+      tags: [maintenance]
+      operationId: getBackups
+      summary: List server backups and restore status.
+      description: |
+        Plain server backups: each folder holds portico.db (a consistent copy
+        made with SQLite's online backup while the server runs), the state
+        files needed to come back as the same server, and a manifest with
+        integrity hashes. Nothing is encrypted; folder permissions protect it.
+      responses:
+        "200":
+          description: The backups, the running backup's progress, and the last restore's outcome.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BackupsReport"}
+              examples:
+                empty:
+                  value: {backups: []}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        default: {$ref: "#/components/responses/Error"}
+    post:
+      tags: [maintenance]
+      operationId: startBackup
+      summary: Start a server backup.
+      description: Asynchronous and idempotent per operation id; progress appears in the list's running entry.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                operationId: {type: string}
+              required: [operationId]
+      responses:
+        "202":
+          description: The backup job.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  jobId: {type: string}
+                required: [jobId]
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "507": {$ref: "#/components/responses/InsufficientStorage"}
+        default: {$ref: "#/components/responses/Error"}
+  /v1/admin/backups/{id}:
+    delete:
+      tags: [maintenance]
+      operationId: deleteBackup
+      summary: Delete a server backup.
+      responses:
+        "204": {description: The backup is gone.}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        default: {$ref: "#/components/responses/Error"}
+  /v1/admin/backups/restore:
+    post:
+      tags: [maintenance]
+      operationId: restoreBackup
+      summary: Stage a backup for restore on restart.
+      description: |
+        Stages one of the listed backups or a server path (a backup folder or
+        a bare .db file that is a Portico database) and answers validation.
+        The server then restarts; the next start moves the current state into
+        a pre-restore backup, moves the staged copy into place, and runs the
+        ordinary migrations, rolling back automatically on failure. A bare .db
+        replaces only the database.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                operationId: {type: string}
+                source:
+                  type: object
+                  properties:
+                    backupId: {type: string}
+                    path: {type: string}
+              required: [operationId, source]
+      responses:
+        "200":
+          description: The staged restore and its validation.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/RestoreStaged"}
+              examples:
+                staged:
+                  value: {staged: true, restartRequired: true, validation: {schemaVersion: 195, integrity: ok}}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "422": {$ref: "#/components/responses/Unprocessable"}
+        "507": {$ref: "#/components/responses/InsufficientStorage"}
+        default: {$ref: "#/components/responses/Error"}
+  /v1/admin/state-permissions:fix:
+    post:
+      tags: [maintenance]
+      operationId: fixStatePermissions
+      summary: Tighten state folder permissions.
+      description: |
+        Removes group and other permission bits from the state folder and its
+        files, keeping every owner bit. Only ever runs on the owner's explicit
+        action; a loose tree otherwise only raises a console warning and never
+        refuses to start.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example: {}
+      responses:
+        "200":
+          description: Whether the tree is still exposed after the fix ran.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  exposed: {type: boolean}
+                required: [exposed]
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        default: {$ref: "#/components/responses/Error"}
+components:
+  securitySchemes:
+    bearerAuth: {type: http, scheme: bearer}
+  parameters:
+    ItemID: {name: id, in: path, required: true, schema: {type: string}, description: Catalog item identifier.}
+    ResourceID: {name: id, in: path, required: true, schema: {type: string}}
+    Cursor: {name: cursor, in: query, required: false, schema: {type: string}, description: Opaque continuation from the previous page.}
+    Limit: {name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 200, default: 40}}
+    ExpectedRevision: {name: expectedRevision, in: query, required: true, schema: {type: integer}}
+    OperationID: {name: operationId, in: query, required: false, schema: {type: string}}
+  responses:
+    Invalid:
+      description: The request could not be accepted. `fields` names the exact values at fault.
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+          examples:
+            fields:
+              value: {error: {code: invalid_administration_input, message: "invalid values: settings.folderTemplate", fields: [settings.folderTemplate], retryable: false}}
+    Unauthorized:
+      description: Owner authority is required.
+      content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+    Denied:
+      description: Policy refuses this operation, such as deletion on a library that has not enabled it.
+      content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+    NotFound:
+      description: The addressed resource does not exist.
+      content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+    Conflict:
+      description: The document moved under `expectedRevision`, the confirmation did not match, or a cursor is stale.
+      content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+    UnsupportedImage:
+      description: The uploaded bytes are not a JPEG, PNG or WebP image within the accepted size.
+      content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+    Unavailable:
+      description: A dependency (the state directory, the recovery key) cannot be reached right now.
+      content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+    Error:
+      description: The request failed. `error.code` names the failure.
+      content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+    Unprocessable:
+      description: The addressed backup failed its integrity check or is not a Portico database.
+      content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+    InsufficientStorage:
+      description: Free disk space is below 1.1 times the estimated size.
+      content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code: {type: string}
+            message: {type: string}
+            retryable: {type: boolean}
+            fields: {type: array, items: {type: string}}
+    DeleteFile:
+      type: object
+      properties:
+        assetId: {type: string}
+        path: {type: string}
+        bytes: {type: integer}
+        present: {type: boolean, description: False when the file is already gone from storage.}
+        shared: {type: boolean, description: True when another item also uses this file, which keeps the bytes.}
+    Dependent:
+      type: object
+      properties:
+        kind: {type: string, enum: [collection, playlist, progress, library-channel, recording, saved]}
+        count: {type: integer}
+        description: {type: string}
+    DeleteTarget:
+      type: object
+      properties:
+        itemId: {type: string}
+        title: {type: string}
+        kind: {type: string}
+        libraryId: {type: string}
+        libraryName: {type: string}
+        allowMediaDeletion: {type: boolean}
+        trashRetentionDays: {type: integer}
+        bytes: {type: integer}
+        files: {type: array, items: {$ref: "#/components/schemas/DeleteFile"}}
+        dependents: {type: array, items: {$ref: "#/components/schemas/Dependent"}}
+    DeletePreview:
+      type: object
+      properties:
+        revision: {type: integer, description: Present this as expectedRevision on the delete.}
+        confirmation: {type: string}
+        confirmationKind: {type: string, enum: [title, count]}
+        totalBytes: {type: integer}
+        totalFiles: {type: integer}
+        totalBytesText: {type: string}
+        blocked: {type: array, items: {type: string}, description: Libraries among the targets that have not enabled deletion.}
+        trashRetentionDays: {type: integer}
+        targets: {type: array, items: {$ref: "#/components/schemas/DeleteTarget"}}
+    DeletePreviewEnvelope:
+      type: object
+      properties:
+        protocolVersion: {type: string}
+        serverId: {type: string}
+        result: {$ref: "#/components/schemas/DeletePreview"}
+    DeleteRequest:
+      type: object
+      properties:
+        itemIds: {type: array, items: {type: string}, maxItems: 200, description: Bulk only; the single-item route takes the item from the path.}
+        deleteFiles: {type: boolean}
+        confirmation: {type: string}
+        expectedRevision: {type: integer}
+        operationId: {type: string}
+      required: [confirmation, expectedRevision]
+    DeleteReceipt:
+      type: object
+      properties:
+        itemId: {type: string}
+        title: {type: string}
+        removed: {type: boolean}
+        trashEntryId: {type: string}
+        filesMoved: {type: integer}
+        filesKept: {type: integer}
+        bytes: {type: integer}
+        code: {type: string, enum: [file_not_moved, file_not_removed]}
+    DeleteResultEnvelope:
+      type: object
+      properties:
+        protocolVersion: {type: string}
+        serverId: {type: string}
+        result:
+          type: object
+          properties:
+            revision: {type: integer}
+            removed: {type: integer}
+            failed: {type: integer}
+            bytesTrashed: {type: integer}
+            filesRetained: {type: boolean}
+            receipts: {type: array, items: {$ref: "#/components/schemas/DeleteReceipt"}}
+    TrashEntry:
+      type: object
+      properties:
+        id: {type: string}
+        libraryId: {type: string}
+        itemId: {type: string}
+        title: {type: string}
+        kind: {type: string}
+        fileCount: {type: integer}
+        bytes: {type: integer}
+        bytesText: {type: string}
+        trashedAt: {type: string, format: date-time}
+        expiresAt: {type: string, format: date-time}
+        state: {type: string, enum: [held, restored, purged]}
+        expired: {type: boolean}
+        files:
+          type: array
+          items:
+            type: object
+            properties:
+              originalPath: {type: string}
+              bytes: {type: integer}
+    TrashPage:
+      type: object
+      properties:
+        items: {type: array, items: {$ref: "#/components/schemas/TrashEntry"}}
+        nextCursor: {type: string}
+        heldBytes: {type: integer}
+        heldCount: {type: integer}
+    RestoreResult:
+      type: object
+      properties:
+        entryId: {type: string}
+        restored: {type: integer}
+        skipped: {type: integer}
+        conflicts: {type: array, items: {type: string}}
+        reindexRequired: {type: boolean}
+    FilesystemRoot:
+      type: object
+      required: [path, name, kind, description]
+      properties:
+        path: {type: string}
+        name: {type: string}
+        kind: {type: string, enum: [root, drive, volumes, mount, home, unc, configured]}
+        description: {type: string}
+    FilesystemEntry:
+      type: object
+      required: [name, path, kind, readable, symlink]
+      properties:
+        name: {type: string}
+        path: {type: string}
+        kind: {type: string, enum: [directory, file, unknown]}
+        readable: {type: boolean}
+        symlink: {type: boolean}
+        bytes: {type: integer}
+    FilesystemPage:
+      type: object
+      required: [path, parent, separator, platform, writable, truncated, roots, entries, nextCursor]
+      description: |
+        One page of at most `limit` entries (1-200, like every listing here; a
+        larger limit is refused with `fields: [limit]`). A folder with more
+        entries answers a non-empty `nextCursor`; pass it back as `cursor` for
+        the next page. `truncated` means the directory held more than the
+        20000 names one scan reads, or the root list held more than 64 roots.
+        A truncated root list does not limit which permitted paths can be browsed.
+      properties:
+        path: {type: string}
+        parent: {type: string}
+        separator: {type: string}
+        platform: {type: string}
+        writable: {type: boolean}
+        truncated: {type: boolean}
+        roots: {type: array, maxItems: 64, items: {$ref: "#/components/schemas/FilesystemRoot"}}
+        entries: {type: array, items: {$ref: "#/components/schemas/FilesystemEntry"}}
+        nextCursor: {type: string}
+    CostClass:
+      type: object
+      properties:
+        id: {type: string, enum: [metadata-only, single-pass-read, decode, network]}
+        name: {type: string}
+        description: {type: string}
+        order: {type: integer}
+    AnalysisOperation:
+      type: object
+      properties:
+        id: {type: string}
+        name: {type: string}
+        costClass: {type: string}
+        description: {type: string}
+        mediaKinds: {type: array, items: {type: string}}
+        defaultEnabled: {type: boolean}
+        requires: {type: array, items: {type: string}}
+        producesArtifacts: {type: boolean}
+        network: {type: boolean}
+    AnalysisMatrix:
+      type: object
+      properties:
+        costClasses: {type: array, items: {$ref: "#/components/schemas/CostClass"}}
+        operations: {type: array, items: {$ref: "#/components/schemas/AnalysisOperation"}}
+    MetadataProvider:
+      type: object
+      properties:
+        id: {type: string, enum: [tmdb, tvdb, musicbrainz, anilist, local]}
+        name: {type: string}
+        mediaKinds: {type: array, items: {type: string}}
+        supportsApiKey: {type: boolean}
+        supportsLocale: {type: boolean}
+        attributionNote: {type: string}
+    ProviderSelection:
+      type: object
+      properties:
+        mediaKind: {type: string}
+        provider: {type: string}
+        apiKey: {type: string, description: Write-only. Empty on a write keeps the stored key; reads always return empty.}
+        apiKeySet: {type: boolean, readOnly: true}
+        language: {type: string}
+        region: {type: string}
+    GeneratedNavigation:
+      type: object
+      properties:
+        trickplayIntervalSeconds: {type: integer, minimum: 1, maximum: 600}
+        trickplayTileWidth: {type: integer, minimum: 96, maximum: 640}
+        trickplayMaxTiles: {type: integer, minimum: 20, maximum: 20000}
+        chapterThumbnailMode: {type: string, enum: [none, embedded, generated]}
+        videoPreviewEnabled: {type: boolean}
+        videoPreviewSeconds: {type: integer, minimum: 5, maximum: 120}
+    LibrarySettings:
+      type: object
+      properties:
+        allowMediaDeletion: {type: boolean}
+        trashRetentionDays: {type: integer, minimum: 0, maximum: 3650}
+        providers: {type: array, items: {$ref: "#/components/schemas/ProviderSelection"}, maxItems: 16}
+        analysis: {type: array, items: {type: string}}
+        navigation: {$ref: "#/components/schemas/GeneratedNavigation"}
+    LibraryDocumentEnvelope:
+      type: object
+      properties:
+        protocolVersion: {type: string}
+        serverId: {type: string}
+        result:
+          type: object
+          properties:
+            libraryId: {type: string}
+            libraryName: {type: string}
+            libraryKind: {type: string}
+            revision: {type: integer}
+            digest: {type: string}
+            settings: {$ref: "#/components/schemas/LibrarySettings"}
+            analysisMatrix: {$ref: "#/components/schemas/AnalysisMatrix"}
+            availableProviders: {type: array, items: {$ref: "#/components/schemas/MetadataProvider"}}
+            enumerations: {type: object, additionalProperties: {type: array, items: {type: string}}}
+            sources:
+              type: array
+              items:
+                type: object
+                properties:
+                  id: {type: string}
+                  name: {type: string}
+                  root: {type: string}
+                  classification: {type: string, enum: [local, network]}
+                  enabled: {type: boolean}
+    LiveDefaults:
+      type: object
+      properties:
+        streamBufferSeconds: {type: integer, minimum: 0, maximum: 120}
+        retryWindowSeconds: {type: integer, minimum: 5, maximum: 3600}
+        userAgent: {type: string, maxLength: 200}
+        guideDays: {type: integer, minimum: 1, maximum: 14}
+        logoImport: {type: boolean}
+        discoveryEnabled: {type: boolean}
+    LiveDefaultsEnvelope:
+      type: object
+      properties:
+        protocolVersion: {type: string}
+        serverId: {type: string}
+        result:
+          type: object
+          properties:
+            scope: {type: string}
+            revision: {type: integer}
+            digest: {type: string}
+            settings: {$ref: "#/components/schemas/LiveDefaults"}
+    FilterRule:
+      type: object
+      properties:
+        mode: {type: string, enum: [include, exclude]}
+        values: {type: array, items: {type: string}, maxItems: 200}
+    LiveSourceSettings:
+      type: object
+      properties:
+        kind: {type: string, enum: [playlist, xmltv-guide, hdhomerun]}
+        streamBufferSeconds: {type: [integer, "null"], minimum: 0, maximum: 120}
+        retryWindowSeconds: {type: [integer, "null"], minimum: 5, maximum: 3600}
+        userAgent: {type: string, maxLength: 200}
+        guideSourceId: {type: string, description: The XMLTV guide source that supplies this source's programmes.}
+        filters:
+          type: object
+          properties:
+            categories: {$ref: "#/components/schemas/FilterRule"}
+            countries: {$ref: "#/components/schemas/FilterRule"}
+            keywords: {$ref: "#/components/schemas/FilterRule"}
+        logoImport:
+          type: object
+          properties:
+            enabled: {type: boolean}
+            overwriteExisting: {type: boolean}
+        channelNumbering:
+          type: object
+          properties:
+            mode: {type: string, enum: [source, sequential]}
+            startAt: {type: integer, minimum: 1, maximum: 99999}
+            step: {type: integer, minimum: 1, maximum: 1000}
+    LiveSourceEnvelope:
+      type: object
+      properties:
+        protocolVersion: {type: string}
+        serverId: {type: string}
+        result:
+          type: object
+          properties:
+            sourceId: {type: string}
+            sourceName: {type: string}
+            revision: {type: integer}
+            digest: {type: string}
+            tunerCount: {type: integer}
+            availableKinds: {type: array, items: {type: string}}
+            settings: {$ref: "#/components/schemas/LiveSourceSettings"}
+            effective: {$ref: "#/components/schemas/LiveDefaults"}
+    ChannelMapEntry:
+      type: object
+      properties:
+        channelId: {type: string}
+        name: {type: string}
+        sourceNumber: {type: string}
+        number: {type: string}
+        group: {type: string}
+        guideChannelId: {type: string}
+        hidden: {type: boolean}
+        position: {type: integer}
+        overridden: {type: boolean}
+    ChannelMapEnvelope:
+      type: object
+      properties:
+        protocolVersion: {type: string}
+        serverId: {type: string}
+        result:
+          type: object
+          properties:
+            sourceId: {type: string}
+            generation: {type: string}
+            items: {type: array, items: {$ref: "#/components/schemas/ChannelMapEntry"}}
+            nextCursor: {type: string}
+    TunerDevice:
+      type: object
+      properties:
+        deviceId: {type: string}
+        model: {type: string}
+        friendlyName: {type: string}
+        address: {type: string}
+        baseUrl: {type: string}
+        lineupUrl: {type: string}
+        tunerCount: {type: integer}
+        firmwareVersion: {type: string}
+        configured: {type: boolean, description: True when a live source already points at this device.}
+    KeepPolicy:
+      type: object
+      properties:
+        mode: {type: string, enum: [keep-all, keep-count, keep-days]}
+        keepCount: {type: integer, minimum: 0, maximum: 1000}
+        keepDays: {type: integer, minimum: 0, maximum: 3650}
+        keepUntilWatched: {type: boolean}
+    DVRDefaults:
+      type: object
+      properties:
+        prePaddingSeconds: {type: integer, minimum: 0, maximum: 1800}
+        postPaddingSeconds: {type: integer, minimum: 0, maximum: 7200}
+        keepPolicy: {$ref: "#/components/schemas/KeepPolicy"}
+        conversion:
+          type: object
+          properties:
+            mode: {type: string, enum: [none]}
+            ladderId: {type: string, description: The workstream C conversion ladder; only with mode "ladder".}
+            deleteOriginal: {type: boolean}
+        folderTemplate: {type: string}
+        movieFolderTemplate: {type: string}
+        recordingProfile: {type: string, enum: [original]}
+        sidecars:
+          type: object
+          properties:
+            nfo: {type: boolean}
+            poster: {type: boolean}
+            fanart: {type: boolean}
+            thumbnail: {type: boolean}
+        tunerPreference: {type: string, enum: [first-available]}
+    DVRDocumentEnvelope:
+      type: object
+      properties:
+        protocolVersion: {type: string}
+        serverId: {type: string}
+        result:
+          type: object
+          properties:
+            revision: {type: integer}
+            digest: {type: string}
+            settings: {$ref: "#/components/schemas/DVRDefaults"}
+            folderTokens:
+              type: array
+              items:
+                type: object
+                properties:
+                  token: {type: string}
+                  description: {type: string}
+                  example: {type: string}
+                  supportsPadding: {type: boolean}
+            enumerations: {type: object, additionalProperties: {type: array, items: {type: string}}}
+    TunerAssignment:
+      type: object
+      properties:
+        recordingId: {type: string}
+        channelId: {type: string}
+        title: {type: string}
+        state: {type: string}
+        startsAt: {type: string, format: date-time}
+        endsAt: {type: string, format: date-time}
+        allocationId: {type: string}
+    TunerView:
+      type: object
+      properties:
+        observedAt: {type: string, format: date-time}
+        upcomingWindowHours: {type: integer}
+        sources:
+          type: array
+          items:
+            type: object
+            properties:
+              sourceId: {type: string}
+              sourceName: {type: string}
+              tunerCount: {type: integer}
+              inUse: {type: integer}
+              conflicts: {type: integer}
+              active: {type: array, items: {$ref: "#/components/schemas/TunerAssignment"}}
+              upcoming: {type: array, items: {$ref: "#/components/schemas/TunerAssignment"}}
+    GroupOptions:
+      type: object
+      properties:
+        prePaddingSeconds: {type: [integer, "null"]}
+        postPaddingSeconds: {type: [integer, "null"]}
+        keepPolicy: {oneOf: [{$ref: "#/components/schemas/KeepPolicy"}, {type: "null"}]}
+        newEpisodesOnly: {type: boolean}
+        priority: {type: integer, minimum: -100, maximum: 100}
+        folderTemplate: {type: string}
+    RecordingGroup:
+      type: object
+      properties:
+        owner: {type: object, description: "Explicit authority, accountId and profileId; recording grant required."}
+        id: {type: string}
+        kind: {type: string, enum: [series]}
+        name: {type: string}
+        match: {type: string}
+        sourceId: {type: string}
+        enabled: {type: boolean}
+        revision: {type: integer}
+        options: {$ref: "#/components/schemas/GroupOptions"}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+    RecordingGroupChange:
+      type: object
+      description: Creates or edits a real owned DVR series rule. Keyword-only groups are unsupported.
+      properties:
+        owner: {type: object, description: "Explicit authority, accountId and profileId; recording grant required."}
+        anchor: {type: object, description: "Required on create: sourceId, channelId, generation and programmeId from current guide."}
+        expectedRevision: {type: integer}
+        operationId: {type: string}
+        kind: {type: string, enum: [series]}
+        name: {type: string, maxLength: 160}
+        match: {type: string, maxLength: 200}
+        sourceId: {type: string}
+        enabled: {type: boolean}
+        options: {$ref: "#/components/schemas/GroupOptions"}
+      required: [kind, name, match, owner, sourceId]
+    RecordingGroupEnvelope:
+      type: object
+      properties:
+        protocolVersion: {type: string}
+        serverId: {type: string}
+        result: {$ref: "#/components/schemas/RecordingGroup"}
+    RecordingGroupPageEnvelope:
+      type: object
+      properties:
+        protocolVersion: {type: string}
+        serverId: {type: string}
+        result:
+          type: object
+          properties:
+            items: {type: array, items: {$ref: "#/components/schemas/RecordingGroup"}}
+            nextCursor: {type: string}
+    CriteriaPage:
+      type: object
+      properties:
+        libraryId: {type: string}
+        field: {type: string}
+        fields:
+          type: array
+          items:
+            type: object
+            properties:
+              field: {type: string}
+              name: {type: string}
+              valueCount: {type: integer}
+              description: {type: string}
+        values:
+          type: array
+          items:
+            type: object
+            properties:
+              value: {type: string}
+              valueKey: {type: string}
+              itemCount: {type: integer}
+        nextCursor: {type: string}
+    BlockCriterion:
+      type: object
+      properties:
+        field: {type: string}
+        operator: {type: string, enum: [includes, excludes]}
+        values: {type: array, items: {type: string}, maxItems: 200}
+    BlockPresetBody:
+      type: object
+      properties:
+        libraryId: {type: string}
+        criteria: {type: array, items: {$ref: "#/components/schemas/BlockCriterion"}, maxItems: 16}
+        order: {type: string, enum: [shuffle, sequential, recent, least-played]}
+        durationMinutes: {type: integer, minimum: 5, maximum: 1440}
+        startMinute: {type: integer, minimum: -1, maximum: 1439, description: -1 places the block anywhere in the day.}
+        days: {type: array, items: {type: string}}
+        description: {type: string, maxLength: 400}
+    BlockPreset:
+      type: object
+      properties:
+        id: {type: string}
+        name: {type: string}
+        revision: {type: integer}
+        body: {$ref: "#/components/schemas/BlockPresetBody"}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+    BlockPresetChange:
+      type: object
+      properties:
+        expectedRevision: {type: integer}
+        operationId: {type: string}
+        name: {type: string, maxLength: 120}
+        body: {$ref: "#/components/schemas/BlockPresetBody"}
+      required: [name, body]
+    BlockPresetEnvelope:
+      type: object
+      properties:
+        protocolVersion: {type: string}
+        serverId: {type: string}
+        result: {$ref: "#/components/schemas/BlockPreset"}
+    BlockPresetPageEnvelope:
+      type: object
+      properties:
+        protocolVersion: {type: string}
+        serverId: {type: string}
+        result:
+          type: object
+          properties:
+            items: {type: array, items: {$ref: "#/components/schemas/BlockPreset"}}
+            nextCursor: {type: string}
+            enumerations: {type: object, additionalProperties: {type: array, items: {type: string}}}
+    ChannelLogo:
+      type: object
+      properties:
+        channelId: {type: string}
+        digest: {type: string}
+        mediaType: {type: string, enum: [image/png, image/jpeg, image/webp]}
+        bytes: {type: integer}
+        width: {type: integer}
+        height: {type: integer}
+        revision: {type: integer}
+        updatedAt: {type: string, format: date-time}
+        url: {type: string}
+    ChannelHealth:
+      type: object
+      properties:
+        channelId: {type: string}
+        name: {type: string}
+        enabled: {type: boolean}
+        state: {type: string}
+        healthCode: {type: string}
+        healthy: {type: boolean}
+        activeGeneration: {type: string}
+        generatedThrough: {type: string, format: date-time}
+        scheduledEntries: {type: integer}
+        candidates: {type: integer}
+        unresolved: {type: integer}
+        pendingGeneration: {type: boolean}
+        message: {type: string}
+        observedAt: {type: string, format: date-time}
+    MaintenanceWindow:
+      type: object
+      properties:
+        id: {type: string, maxLength: 64}
+        name: {type: string, maxLength: 120}
+        enabled: {type: boolean}
+        cadence: {type: string, enum: [nightly, weekdays, weekends, weekly, custom]}
+        days: {type: array, items: {type: string, enum: [monday, tuesday, wednesday, thursday, friday, saturday, sunday]}}
+        startMinute: {type: integer, minimum: 0, maximum: 1439}
+        durationMinutes: {type: integer, minimum: 15, maximum: 1440}
+        timezone: {type: string, description: IANA zone, or empty for the server's own.}
+        tasks: {type: array, items: {type: string}}
+    MaintenanceSettings:
+      type: object
+      properties:
+        windows: {type: array, items: {$ref: "#/components/schemas/MaintenanceWindow"}, maxItems: 12}
+        retention: {type: object, additionalProperties: {type: integer}}
+        backupKeepCount: {type: integer, minimum: 1, maximum: 365}
+    MaintenanceEnvelope:
+      type: object
+      properties:
+        protocolVersion: {type: string}
+        serverId: {type: string}
+        result:
+          type: object
+          properties:
+            revision: {type: integer}
+            digest: {type: string}
+            settings: {$ref: "#/components/schemas/MaintenanceSettings"}
+            cadences:
+              type: array
+              items:
+                type: object
+                properties:
+                  id: {type: string}
+                  name: {type: string}
+                  days: {type: array, items: {type: string}}
+                  description: {type: string}
+            tasks: {type: array, items: {type: string}}
+            days: {type: array, items: {type: string}}
+            retentionMaxima: {type: object, additionalProperties: {type: integer}}
+            storageCategories: {type: array, items: {$ref: "#/components/schemas/StorageCategory"}}
+    StorageCategory:
+      type: object
+      properties:
+        id: {type: string}
+        name: {type: string}
+        description: {type: string}
+        directories: {type: array, items: {type: string}}
+        cleanable: {type: boolean}
+        regenerable: {type: boolean}
+        retentionKey: {type: string}
+    StorageUsage:
+      allOf:
+        - {$ref: "#/components/schemas/StorageCategory"}
+        - type: object
+          properties:
+            bytes: {type: integer}
+            bytesText: {type: string}
+            fileCount: {type: integer}
+            paths: {type: array, items: {type: string}}
+            present: {type: boolean}
+            oldestDays: {type: integer}
+            entries: {type: integer}
+    StorageReport:
+      type: object
+      properties:
+        stateDirectory: {type: string}
+        categories: {type: array, items: {$ref: "#/components/schemas/StorageUsage"}}
+        totalBytes: {type: integer}
+        totalBytesText: {type: string}
+        observedAt: {type: string, format: date-time}
+        truncated: {type: boolean}
+    UpdateBuild:
+      type: object
+      properties:
+        version: {type: string}
+        buildId: {type: string}
+        sourceDigest: {type: string}
+        builtAt: {type: string}
+        channel: {type: string}
+        notes: {type: string}
+        url: {type: string}
+    UpdateReport:
+      type: object
+      properties:
+        current: {$ref: "#/components/schemas/UpdateBuild"}
+        channel: {type: string, enum: [stable, beta]}
+        feedConfigured: {type: boolean}
+        latest: {oneOf: [{$ref: "#/components/schemas/UpdateBuild"}, {type: "null"}]}
+        updateAvailable: {type: boolean}
+        checkedAt: {type: string, format: date-time}
+        status: {type: string, enum: [current, update-available, no-feed, no-release, unavailable]}
+        message: {type: string}
+        autoInstall: {type: boolean, const: false}
+    DeletedEnvelope:
+      type: object
+      properties:
+        protocolVersion: {type: string}
+        serverId: {type: string}
+        result:
+          type: object
+          properties:
+            deleted: {type: boolean}
+            id: {type: string}
+    BackupInfo:
+      type: object
+      properties:
+        id: {type: string}
+        createdAt: {type: string, format: date-time}
+        kind: {type: string, enum: [scheduled, manual, pre-restore]}
+        schemaVersion: {type: integer}
+        serverVersion: {type: string}
+        bytes: {type: integer}
+        path: {type: string}
+      required: [id, kind]
+    BackupsReport:
+      type: object
+      properties:
+        backups:
+          type: array
+          items: {$ref: "#/components/schemas/BackupInfo"}
+        running:
+          type: object
+          properties:
+            jobId: {type: string}
+            phase: {type: string}
+            bytesDone: {type: integer}
+            bytesTotal: {type: integer}
+        lastRestore:
+          type: object
+          properties:
+            at: {type: string, format: date-time}
+            outcome: {type: string, enum: [restored, rolled_back]}
+            reason: {type: string}
+      required: [backups]
+    RestoreStaged:
+      type: object
+      properties:
+        staged: {type: boolean}
+        restartRequired: {type: boolean}
+        validation:
+          type: object
+          properties:
+            schemaVersion: {type: integer}
+            integrity: {type: string}
+          required: [schemaVersion, integrity]
+      required: [staged, restartRequired, validation]

@@ -1,0 +1,34 @@
+{
+  "schema": "GetDirectAccountResponse",
+  "method": "GET",
+  "path": "/v1/direct",
+  "auth": "owner",
+  "status": 200,
+  "response": {
+    "authority": "local",
+    "serverId": "5yunKmx9fgmwygTqGYYa4Wa1vFzKKUHC1twahpFHBcY",
+    "account": {
+      "id": "account",
+      "username": "owner",
+      "primaryProfileId": "profile",
+      "role": "owner",
+      "revision": 1,
+      "disabled": false,
+      "allowedLibraries": []
+    },
+    "profiles": [
+      {
+        "id": "profile",
+        "name": "owner",
+        "primary": true,
+        "position": 0,
+        "art": "blue",
+        "revision": 1,
+        "pinRevision": 1,
+        "pinRequired": false,
+        "allowedLibraries": []
+      }
+    ],
+    "canManage": true
+  }
+}

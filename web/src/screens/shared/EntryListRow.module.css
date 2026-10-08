@@ -1,0 +1,8 @@
+/* WEB-LIB-04: list mode keeps the card's identity and actions: a column group on the right
+ * (length, date added, watched or progress) and Play / More on hover, like a card. */
+.row > button, .row > div:first-child { padding-right: 96px; }
+.meta { display: flex; align-items: center; gap: 16px; font-variant-numeric: tabular-nums; }
+.duration { width: 64px; text-align: right; }
+.added { width: 96px; text-align: right; }
+.state { width: 36px; display: flex; justify-content: flex-end; color: var(--text-secondary); }
+@media (max-width: 720px) { .added { display: none; } .meta { gap: 10px; } }

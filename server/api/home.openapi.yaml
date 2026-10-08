@@ -1,0 +1,398 @@
+openapi: 3.1.0
+info:
+  title: Portico home, suggestions and recommendations
+  version: "1.0.0"
+  description: |
+    The home surface is composed by the server. One request renders it; each row
+    then pages on its own endpoint with keyset cursors or anchored ranges.
+
+    Cost and paging shape:
+      * `GET /v1/home` runs one bounded count and one bounded page per published
+        row (at most nine fixed rows plus one per visible library), each an
+        indexed keyset read. Rows with no entries are omitted unless `critical`.
+      * `GET /v1/home/rows/{id}` is one count plus one page; supplying `anchorId`
+        adds one ranked lookup so a client can keep a card on screen after a
+        publication moved it.
+      * Cursors are opaque, signed, viewer-bound and revision-bound. A cursor
+        presented after a catalog or viewer change fails with
+        `stale_continuation`; restart from the first page or use an anchored
+        range.
+      * `limit` defaults to 12 and may not exceed 60.
+servers:
+  - url: https://server.local
+security:
+  - bearerAuth: []
+paths:
+  /v1/home:
+    get:
+      summary: The viewer's composed home surface
+      operationId: getHome
+      parameters:
+        - name: limit
+          in: query
+          description: Inline preview size per row (1-60, default 12).
+          schema: {type: integer, minimum: 1, maximum: 60}
+      responses:
+        "200":
+          description: Rows in the viewer's order, with their saved layout and revision.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/HomeDocument"}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "409": {$ref: "#/components/responses/Stale"}
+  /v1/home/rows/{id}:
+    get:
+      summary: One home row, paged
+      operationId: getHomeRow
+      description: |
+        Page with `cursor` (keyset) or with `start` (anchored range). They are
+        mutually exclusive. `anchorId` re-resolves `start` to the current rank of
+        that entry; `revision` (as `catalog:viewer`) asserts the projection the
+        client last observed.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: string}
+          description: Row id, for example `continue`, `ondeck` or `recent_<libraryId>`.
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 60}}
+        - {name: cursor, in: query, schema: {type: string}}
+        - {name: start, in: query, schema: {type: integer, minimum: 0}}
+        - {name: revision, in: query, schema: {type: string}, description: "`catalog:viewer`"}
+        - {name: anchorId, in: query, schema: {type: string}}
+      responses:
+        "200":
+          description: The row with its resolved start and next cursor.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/HomeRow"}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404":
+          description: No such row for this viewer, or the row is disabled by owner policy.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "409": {$ref: "#/components/responses/Stale"}
+  /v1/home/layout:
+    get:
+      summary: Every row the viewer can arrange, with the saved layout (CON-23)
+      operationId: getHomeLayout
+      description: |
+        Customise Home lists from this: every row this viewer could have on Home, in their
+        order, whether it has entries today or not (`GET /v1/home` omits empty rows). Rows
+        the owner turned off are left out. No row is composed: one read of the row
+        definitions and the viewer's visible libraries.
+      responses:
+        "200":
+          description: The saved layout and its rows.
+          content: {application/json: {schema: {$ref: "#/components/schemas/HomeLayoutView"}}}
+        "400": {$ref: "#/components/responses/Invalid"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+    put:
+      summary: Save the viewer's home order and hidden rows
+      operationId: putHomeLayout
+      description: |
+        Writes the `home.rowOrder` and `home.hiddenRowIds` preference keys through
+        the settings registry. Ids are validated against the rows this server
+        publishes; required rows (`continue`, `continue_listening`, `ondeck`)
+        cannot be hidden and the refusal names the row.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [expectedRevision, rowOrder, hiddenRowIds]
+              properties:
+                expectedRevision: {type: integer, description: Layout revision last observed.}
+                idempotencyKey: {type: string}
+                rowOrder: {type: array, maxItems: 64, items: {type: string, maxLength: 128}}
+                hiddenRowIds: {type: array, maxItems: 64, items: {type: string, maxLength: 128}}
+      responses:
+        "200":
+          description: The saved layout.
+          content: {application/json: {schema: {$ref: "#/components/schemas/HomeLayout"}}}
+        "400":
+          description: A row id is unknown, repeated, not reorderable, or required and cannot be hidden.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "409":
+          description: The layout changed elsewhere; `currentRevision` is returned.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+  /v1/home/layout/reset:
+    post:
+      summary: Clear the viewer's home customisation
+      operationId: resetHomeLayout
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                idempotencyKey: {type: string}
+      responses:
+        "200":
+          description: The cleared layout.
+          content: {application/json: {schema: {$ref: "#/components/schemas/HomeLayout"}}}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+  /v1/suggestions:
+    get:
+      summary: Ranked viewer suggestions with reasons
+      operationId: getSuggestions
+      parameters:
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 60}}
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, total, revision, generatedAt]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [entry, reason, source, score]
+                      properties:
+                        entry: {$ref: "#/components/schemas/ContentEntry"}
+                        reason: {type: string, description: Human-readable explanation, server-authored.}
+                        source: {type: string, enum: [because_you_watched, watchlist]}
+                        score: {type: number, minimum: 0, maximum: 1}
+                  total: {type: integer}
+                  revision: {$ref: "#/components/schemas/Revision"}
+                  generatedAt: {type: string, format: date-time}
+          description: Suggestions for the viewer.
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "409": {$ref: "#/components/responses/Stale"}
+  /v1/items/{id}/recommendations:
+    get:
+      summary: Related rows for one item, of any kind
+      operationId: getItemRecommendations
+      description: |
+        Rows are the same shape as home rows, in the server's order (priority):
+        the recommendation engine's `more_like` (titleText home.row.moreLike
+        {title}), `starring` {name}, `creator` {name} and `viewers_also_watched`
+        (members who finished it, when the owner allows community activity),
+        then `director`, the published `genre` and `person` rows, `album`,
+        `artist`, `book`, `author` and `collection`. At most six rows.
+        `detail.related` keeps its own published shape.
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 60}}
+      responses:
+        "200":
+          description: Related rows.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [itemId, rows, revision]
+                properties:
+                  itemId: {type: string}
+                  rows: {type: array, items: {$ref: "#/components/schemas/HomeRow"}}
+                  revision: {$ref: "#/components/schemas/Revision"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Stale"}
+  /v1/shows/{id}/recommendations:
+    get:
+      summary: Library-local More like this for one show
+      operationId: getShowRecommendations
+      description: |
+        One row of shows from the same library-local engine as item
+        recommendations, seeded by the show's own episodes (an episode's
+        entity is its show). 404 when the viewer may see no episode of the
+        show. Relations are `show`.
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 60}}
+      responses:
+        "200":
+          description: Related rows.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [showId, rows, revision]
+                properties:
+                  showId: {type: string}
+                  rows: {type: array, items: {$ref: "#/components/schemas/HomeRow"}}
+                  revision: {$ref: "#/components/schemas/Revision"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Stale"}
+components:
+  securitySchemes:
+    bearerAuth: {type: http, scheme: bearer}
+  responses:
+    Invalid:
+      description: The request or its cursor is invalid.
+      content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+    Unauthorized:
+      description: No session, or the session may not see this library.
+      content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+    NotFound:
+      description: No such item for this viewer.
+      content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+    Stale:
+      description: The catalog or viewer state changed; restart the query from its first page.
+      content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, retryable]
+          properties:
+            code: {type: string}
+            message: {type: string}
+            retryable: {type: boolean}
+            currentRevision: {type: integer}
+    Revision:
+      type: object
+      required: [catalog, viewer]
+      properties:
+        catalog: {type: integer}
+        viewer: {type: integer}
+    ContentEntry:
+      type: object
+      description: The shared catalog entry projection, as published by /v1/content and /v1/items/{id}/detail.
+      required: [id, kind, title]
+      properties:
+        userRating: {type: number, format: double, minimum: 0.5, maximum: 5, description: "The viewer's own rating in half steps, on item rows the viewer has rated; absent otherwise."}
+        plays: {type: integer, minimum: 1, description: "How many times the viewer has played a song to the end; song entries only, absent when never played."}
+        id: {type: string}
+        kind: {type: string, description: "movie, episode, song, audiobook_file, album, book, extra, …"}
+        title: {type: string}
+        subtitle: {type: string}
+        libraryId: {type: string}
+        posterUrl: {type: string}
+        backdropUrl: {type: string}
+        overview: {type: string, description: "Present on episode entries, Home row entries and detail; omitted from other grid and row entries."}
+        available: {type: boolean}
+        watched: {type: boolean}
+        duration: {type: number}
+        progressSeconds: {type: number}
+        addedAt: {type: [string, "null"]}
+        year: {type: integer, description: "Release year, absent when unknown. Present on album entities and on Home entries."}
+        artist:
+          type: object
+          description: "The album artist; album entities only."
+          required: [id, name]
+          properties:
+            id: {type: string}
+            name: {type: string}
+        role: {type: string, enum: [album, appearance], description: "The release's relationship to the artist; artist releases only."}
+        artworkPaths: {type: array, items: {type: string}, description: "Up to 4 poster paths for a 2x2 mosaic; category rows only."}
+        navigation: {type: object, properties: {view: {type: string}, entityId: {type: string}}}
+        playback: {type: object, properties: {itemId: {type: string}, startSeconds: {type: number}}}
+        contentRating: {type: string, description: "Home entries: the item's content rating (e.g. PG-13)."}
+        genres: {type: array, maxItems: 2, items: {type: string}, description: "Home entries: the first two genres."}
+        watchlisted: {type: boolean, description: "Home entries: whether this entry's id is on the viewer's watchlist. Present only on entries that can be watchlisted; toggle it with PUT /v1/items/personal-state:batch (or /v1/items/{id}/personal-state) on this entry's id."}
+    HomeLayout:
+      type: object
+      required: [revision, rowOrder, hiddenRowIds]
+      properties:
+        revision: {type: integer}
+        rowOrder: {type: array, maxItems: 64, items: {type: string, maxLength: 128}}
+        hiddenRowIds: {type: array, maxItems: 64, items: {type: string, maxLength: 128}}
+    HomeLayoutView:
+      type: object
+      required: [revision, rowOrder, hiddenRowIds, rows]
+      properties:
+        revision: {type: integer}
+        rowOrder: {type: array, maxItems: 64, items: {type: string, maxLength: 128}}
+        hiddenRowIds: {type: array, maxItems: 64, items: {type: string, maxLength: 128}}
+        rows:
+          type: array
+          items:
+            type: object
+            required: [id, title, kind, artworkShape, required, hideable, reorderable, hidden]
+            properties:
+              id: {type: string}
+              title: {type: string, description: "US English, sentence case except named features (Continue Watching); clients name the row from titleText.code."}
+              titleText: {$ref: '#/components/schemas/ServerText'}
+              kind: {type: string, enum: [continue, ondeck, saved, recommendation, community, recent, family, saved_view]}
+              artworkShape: {type: string, enum: [poster, square, landscape]}
+              libraryId: {type: string}
+              required: {type: boolean, description: Required rows can never be hidden.}
+              hideable: {type: boolean}
+              reorderable: {type: boolean}
+              hidden: {type: boolean, description: The saved layout hides this row.}
+    ServerText:
+      type: object
+      description: "A server-authored label as a catalogue message id, its parameters and the US English fallback, in sentence case except named features such as Continue Watching (CON-19). Codes: continueWatching, continueListening, watchlist, favorites, recommended, trending, popularOnServer, recentlyAdded, recentlyAddedIn {library}, becauseYouWatched {title}, directedBy {name}, moreLike {title}, moreFrom {name}; the personal rows: picksForYou (the family in a layout), genreForYou {genre}, moreWith {name}, fromCreator {name}, moreFromArtist {name}, moreByAuthor {name}, nextInFranchise, nextInSeries, newForYou, hiddenGems, topRated, rediscover, shortPicks, moodForYou {mood} and themeForYou {theme} (from the Portico title dataset's tags, when installed). An empty code means only the fallback is known."
+      required: [code, fallback]
+      properties:
+        code: {type: string}
+        params: {type: object, additionalProperties: {type: string}}
+        fallback: {type: string}
+    HomeRow:
+      type: object
+      required:
+        [id, title, kind, artworkShape, endpoint, privacySensitivity, policyState, priority,
+         cacheTtlSeconds, required, hideable, reorderable, critical, cursorCapable, entries,
+         total, start, limit, hasMore, nextCursor, revision]
+      properties:
+        id: {type: string, description: "continue, continue_listening, ondeck, watchlist, favorites, recommended, trending, recent_all, recent_<libraryId>, a personal row for_you:<generator>[:<key>] (paged at /v1/home/rows/{id}), a saved view view:<savedResourceId> (a viewer adds one by placing its id in the layout order; the row is the view's browse under its name, its first 60 entries; the view's own page is the complete list; a view the viewer can no longer read is left out, and its id may stay in a saved layout), or relation:provider:evidence for per-item rows."}
+        title: {type: string, description: "US English, sentence case except named features (Continue Watching); clients name the row from titleText.code."}
+        titleText: {$ref: '#/components/schemas/ServerText'}
+        kind: {type: string, enum: [continue, ondeck, saved, recommendation, community, recent, related, saved_view]}
+        family: {type: string, description: "for_you on the personal rows: the layout arranges and hides them together under the row id for_you (Picks for you). Which personal rows Home shows varies with the profile's taste and the day."}
+        artworkShape: {type: string, enum: [poster, square, landscape]}
+        explanation: {type: string}
+        endpoint: {type: string}
+        libraryId: {type: string}
+        privacySensitivity: {type: string, enum: [personal, catalog, aggregated]}
+        policyState: {type: string, enum: [available, disabled_by_owner]}
+        relation: {type: string}
+        provider: {type: string}
+        evidenceId: {type: string}
+        priority: {type: integer}
+        cacheTtlSeconds: {type: integer}
+        required: {type: boolean, description: Required rows can never be hidden by a viewer layout.}
+        hideable: {type: boolean}
+        reorderable: {type: boolean}
+        critical: {type: boolean, description: Critical rows are published even when empty.}
+        cursorCapable: {type: boolean}
+        entries: {type: array, items: {$ref: "#/components/schemas/ContentEntry"}}
+        total: {type: integer}
+        start: {type: integer}
+        limit: {type: integer}
+        hasMore: {type: boolean}
+        nextCursor: {type: string}
+        anchorId: {type: string}
+        revision: {$ref: "#/components/schemas/Revision"}
+    HomeDocument:
+      type: object
+      required: [serverId, viewerFence, rows, layout, revision, generatedAt]
+      properties:
+        serverId: {type: string}
+        viewerFence: {type: string}
+        rows: {type: array, maxItems: 64, description: "At most 64 populated previews in configured order; required rows are retained. Additional rows remain in the customization catalogue.", items: {$ref: "#/components/schemas/HomeRow"}}
+        layout: {$ref: "#/components/schemas/HomeLayout"}
+        revision: {$ref: "#/components/schemas/Revision"}
+        hero:
+          type: object
+          description: "The entry Home opens with: whatever the viewer was last in the middle of. It is the first entry of the Continue Watching row (continue) or of the Continue Listening row (continue_listening), whichever was played more recently, so it is an unfinished title or the next episode of the show last watched, by those rows' own rules. Absent when neither row is on this Home (nothing is in progress, or the viewer hid both)."
+          required: [rowId, entryId]
+          properties:
+            rowId: {type: string, enum: [continue, continue_listening]}
+            entryId: {type: string}
+        generatedAt: {type: string, format: date-time}
+    DetailExtras:
+      type: array
+      description: |
+        Added to `GET /v1/items/{id}/detail` as `extras`. Each entry is a playable
+        item of kind `extra` discovered in a sidecar folder beside the media.
+      items:
+        type: object
+        required: [type, label, items]
+        properties:
+          type: {type: string, enum: [trailer, featurette, deleted_scene, behind_the_scenes, interview, scene, short, other]}
+          label: {type: string}
+          items: {type: array, items: {$ref: "#/components/schemas/ContentEntry"}}

@@ -1,0 +1,15 @@
+.pill { align-self: flex-start; margin-top: 8px; text-shadow: none; display: inline-flex; align-items: center; gap: 10px; min-height: 40px; padding: 4px 12px 4px 4px; border: 1px solid var(--line-soft); border-radius: var(--radius-pill); background: color-mix(in srgb, var(--surface-recess) 72%, transparent); color: var(--color-text); cursor: pointer; max-width: 280px; }
+.pill:hover { background: var(--surface-raised); }
+.faces { display: inline-flex; }
+.face { display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: var(--surface-bright); color: var(--text-primary); font-size: 12px; font-weight: 600; border: 2px solid var(--surface-recess); flex-shrink: 0; }
+.faces .face + .face { margin-left: -8px; }
+.copy { display: flex; flex-direction: column; min-width: 0; text-align: left; line-height: 1.2; }
+.name { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ok, .wait, .warn { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ok { color: var(--text-secondary); }
+.wait { color: var(--status-warning); }
+.warn { color: var(--status-warning); }
+.panel { display: flex; flex-direction: column; gap: 8px; min-width: 220px; max-width: 300px; }
+.list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.member { display: flex; align-items: center; gap: 10px; }
+.memberName { flex: 1; min-width: 0; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

@@ -1,0 +1,18 @@
+/* Floating pill, centred, above the player reserve. Slides up when the first item is chosen. */
+.bar { position: fixed; left: 50%; bottom: calc(var(--player-reserve, 0px) + 24px); transform: translateX(-50%); z-index: var(--layer-sticky); display: flex; align-items: center; gap: 4px; max-width: calc(100vw - 32px); padding: 6px 6px 6px 18px; border-radius: 999px; background: var(--surface-overlay); border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line-soft)); box-shadow: 0 24px 60px -20px var(--color-ink), 0 0 0 1px color-mix(in srgb, var(--accent) 12%, transparent) inset; animation: rise var(--motion-standard) var(--ease-out); }
+@keyframes rise { from { opacity: 0; transform: translate(-50%, 12px); } to { opacity: 1; transform: translate(-50%, 0); } }
+.count { display: flex; align-items: baseline; gap: 6px; white-space: nowrap; padding-right: 8px; }
+.countNumber { font-size: 18px; font-weight: 700; letter-spacing: -0.02em; color: var(--accent-strong); font-variant-numeric: tabular-nums; }
+.countCopy { font-size: 13.5px; color: var(--text-secondary); }
+.link { font-size: 13px; color: var(--accent-strong); padding: 4px 6px; border-radius: 6px; }
+.link:hover { background: var(--accent-tint); }
+.divider { width: 1px; height: 24px; background: var(--line-soft); margin: 0 6px; flex-shrink: 0; }
+.actions { display: flex; align-items: center; gap: 2px; }
+.action { display: inline-flex; align-items: center; gap: 8px; height: 38px; padding: 0 12px; border-radius: 999px; color: var(--text-primary); font-size: 13.5px; font-weight: 500; transition: background-color var(--motion-quick) var(--ease-out); }
+.action:hover:not(:disabled) { background: var(--surface-translucent); }
+.action:focus-visible { outline: 2px solid var(--line-focus); outline-offset: -2px; }
+.action:disabled { opacity: 0.4; }
+.actionSpinner { width: 18px; height: 18px; }
+.done { height: 38px; padding: 0 16px; border-radius: 999px; background: var(--accent); color: var(--text-on-action); font-weight: 600; font-size: 13.5px; }
+.done:hover { background: var(--accent-strong); }
+@media (max-width: 720px) { .bar { left: 8px; right: 8px; transform: none; max-width: none; bottom: calc(var(--player-reserve, 0px) + 68px); padding-left: 14px; justify-content: space-between; } @keyframes rise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } } .link { display: none; } .divider { display: none; } .action { padding: 0 9px; } }

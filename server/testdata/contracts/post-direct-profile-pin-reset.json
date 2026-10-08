@@ -1,0 +1,48 @@
+{
+  "schema": "PostDirectProfilePinResetResponse",
+  "method": "POST",
+  "path": "/v1/direct/profiles/profile/pin-reset",
+  "auth": "owner",
+  "request": {
+    "pin": ""
+  },
+  "status": 200,
+  "response": {
+    "authority": "local",
+    "serverId": "i4G6pWxpxhRSmpuU3U_DLvV5wIpWiuO8e1UZMR5F1bE",
+    "account": {
+      "id": "account",
+      "username": "owner",
+      "primaryProfileId": "profile",
+      "role": "owner",
+      "revision": 1,
+      "disabled": false,
+      "allowedLibraries": []
+    },
+    "profiles": [
+      {
+        "id": "profile",
+        "name": "owner",
+        "primary": true,
+        "position": 0,
+        "art": "blue",
+        "revision": 2,
+        "pinRevision": 2,
+        "pinRequired": false,
+        "allowedLibraries": []
+      },
+      {
+        "id": "2jHPAZOyhs9iIDXHfO4HMon87NqVaUr4dJaJljX67F8",
+        "name": "Child",
+        "primary": false,
+        "position": 1,
+        "art": "blue",
+        "revision": 2,
+        "pinRevision": 2,
+        "pinRequired": true,
+        "allowedLibraries": []
+      }
+    ],
+    "canManage": true
+  }
+}

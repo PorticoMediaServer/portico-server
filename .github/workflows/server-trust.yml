@@ -1,0 +1,11 @@
+name: Default server trust boundary
+on: [push, pull_request]
+jobs:
+  no-development-root:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: server/go.mod
+      - run: scripts/check-server-trust.sh
