@@ -1,6 +1,7 @@
 name: CI
 on:
   push:
+    branches: [main]
   pull_request:
   # The release workflow runs this whole suite against the tag it publishes.
   workflow_call:

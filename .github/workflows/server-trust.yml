@@ -1,5 +1,8 @@
 name: Default server trust boundary
-on: [push, pull_request]
+on:
+  push:
+    branches: [main]
+  pull_request:
 jobs:
   no-development-root:
     runs-on: ubuntu-latest
