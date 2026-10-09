@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"portico.local/server/internal/identity"
+	"portico.local/server/internal/imagework"
 )
 
 // identityRoutes registers the workstream-H identity surface: profile
@@ -32,11 +33,32 @@ func (d Dependencies) identityRoutes(mux *http.ServeMux) {
 
 func (d Dependencies) identityProfileRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /v1/direct/profiles/{id}/avatar", func(w http.ResponseWriter, r *http.Request) {
+		if e := d.Identity.AuthorizeProfileAvatarUpload(r.Context(), directBearer(r), r.PathValue("id")); e != nil {
+			closeUnreadUpload(w, r)
+			failure(w, e)
+			return
+		}
+		release, e := imagework.AcquireUploadBody(r.Context())
+		if e != nil {
+			closeUnreadUpload(w, r)
+			failure(w, e)
+			return
+		}
+		defer release()
+		if deadline, ok := r.Context().Deadline(); ok {
+			_ = http.NewResponseController(w).SetReadDeadline(deadline)
+			defer func() {
+				if r.Context().Err() == nil && w.Header().Get("Connection") != "close" {
+					_ = http.NewResponseController(w).SetReadDeadline(time.Time{})
+				}
+			}()
+		}
 		// A picture is not JSON, so this route reads the body itself rather than
 		// through decode. The envelope allowance covers multipart framing only.
 		r.Body = http.MaxBytesReader(w, r.Body, identity.AvatarUploadBytes+(1<<20))
 		raw, e := avatarBody(r)
 		if e != nil {
+			closeUnreadUpload(w, r)
 			failure(w, e)
 			return
 		}
@@ -95,6 +117,17 @@ func (d Dependencies) identityProfileRoutes(mux *http.ServeMux) {
 		}
 		http.ServeContent(w, r, "avatar.png", modified, bytes.NewReader(raw))
 	})
+}
+
+// A refusal before consuming an HTTP/1 upload must not make net/http wait for
+// the remaining body while finalizing the answer. HTTP/2 resets only the stream.
+func closeUnreadUpload(w http.ResponseWriter, r *http.Request) {
+	if r.ProtoMajor == 1 && r.ContentLength != 0 {
+		w.Header().Set("Connection", "close")
+		// finishRequest closes the body even with Connection: close. Bound its
+		// early-close drain after this handler has finished using the body.
+		_ = http.NewResponseController(w).SetReadDeadline(time.Now())
+	}
 }
 
 // avatarBody reads the uploaded picture from either a multipart form field named

@@ -281,3 +281,56 @@ func TestPlannerStatisticsCoverTheWholeSchema(t *testing.T) {
 		t.Fatalf("%d empty tables were given statistics: %v", len(stale), stale)
 	}
 }
+
+func TestPlannerRowidBoundsUseIndexedEndpoints(t *testing.T) {
+	db := openPlannerStatsDB(t)
+	if _, err := db.Exec(`CREATE TABLE probe(id INTEGER PRIMARY KEY); INSERT INTO probe VALUES(7),(50001)`); err != nil {
+		t.Fatal(err)
+	}
+	queries := []string{
+		plannerRowidBoundsSQL("probe"),
+		`SELECT COALESCE((SELECT max(rowid) FROM "probe")-(SELECT min(rowid) FROM "probe")+1,0)`,
+	}
+	for _, query := range queries {
+		rows, err := db.Query(`EXPLAIN QUERY PLAN ` + query)
+		if err != nil {
+			t.Fatal(err)
+		}
+		searches := 0
+		for rows.Next() {
+			var id, parent, unused int
+			var detail string
+			if err = rows.Scan(&id, &parent, &unused, &detail); err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(detail, "SCAN probe") {
+				t.Fatalf("rowid endpoint scanned table: %s", detail)
+			}
+			if strings.Contains(detail, "SEARCH probe") {
+				searches++
+			}
+		}
+		err = rows.Err()
+		rows.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if searches != 2 {
+			t.Fatalf("query needs two endpoint probes, got %d: %s", searches, query)
+		}
+	}
+	var low, high int64
+	if err := db.QueryRow(queries[0]).Scan(&low, &high); err != nil || low != 7 || high != 50001 {
+		t.Fatalf("sparse endpoints: %d,%d %v", low, high, err)
+	}
+	var span int64
+	if err := db.QueryRow(queries[1]).Scan(&span); err != nil || span != 49995 {
+		t.Fatalf("sparse span: %d %v", span, err)
+	}
+	if _, err := db.Exec(`DELETE FROM probe`); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(queries[1]).Scan(&span); err != nil || span != 0 {
+		t.Fatalf("empty span: %d %v", span, err)
+	}
+}

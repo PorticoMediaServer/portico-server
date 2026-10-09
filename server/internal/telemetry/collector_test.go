@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	_ "modernc.org/sqlite"
+	_ "portico.local/server/internal/thirdparty/sqlite"
 )
 
 // fakeSampler produces a predictable ramp so rollup averages and window bounds

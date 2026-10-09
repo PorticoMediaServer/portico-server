@@ -4,11 +4,37 @@ package hostlimits
 
 import (
 	"bufio"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 )
+
+func physicalMemoryBytes() (uint64, bool) {
+	file, err := os.Open("/proc/meminfo")
+	if err != nil {
+		return 0, false
+	}
+	defer file.Close()
+	return parsePhysicalMemory(file)
+}
+
+func parsePhysicalMemory(reader io.Reader) (uint64, bool) {
+	scanner := bufio.NewScanner(reader)
+	for scanner.Scan() {
+		fields := strings.Fields(scanner.Text())
+		if len(fields) != 3 || fields[0] != "MemTotal:" || fields[2] != "kB" {
+			continue
+		}
+		value, err := strconv.ParseUint(fields[1], 10, 64)
+		if err != nil || value == 0 || value > (1<<63-1)/1024 {
+			return 0, false
+		}
+		return value * 1024, true
+	}
+	return 0, false
+}
 
 // With the default GOGC the heap grows to twice the live set before a
 // collection. Inside a Docker memory limit, or on a 4 GiB home server, the
@@ -27,9 +53,13 @@ import (
 func cgroupMemoryLimit() (uint64, bool) {
 	// cgroup v2 first: the unified hierarchy is what every current distribution
 	// and Docker release uses.
-	if path, ok := unifiedMemoryPath(); ok {
-		if value, ok := readMemoryValue(path); ok {
-			return value, true
+	if self, err := os.ReadFile("/proc/self/cgroup"); err == nil {
+		if mounts, err := os.ReadFile("/proc/self/mountinfo"); err == nil {
+			if dir, root, ok := memoryHierarchy(string(self), string(mounts)); ok {
+				if value, ok := hierarchyMemoryLimit(dir, root); ok {
+					return value, true
+				}
+			}
 		}
 	}
 	// v1, for older hosts.
@@ -44,23 +74,67 @@ func cgroupMemoryLimit() (uint64, bool) {
 	return 0, false
 }
 
-// unifiedMemoryPath resolves this process's own cgroup v2 memory.max, which is
-// where a container's limit actually lives — the root file usually says "max".
-func unifiedMemoryPath() (string, bool) {
-	file, err := os.Open("/proc/self/cgroup")
-	if err != nil {
-		return "", false
-	}
-	defer file.Close()
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		// v2 lines are "0::<path>".
-		fields := strings.SplitN(scanner.Text(), ":", 3)
-		if len(fields) == 3 && fields[0] == "0" {
-			return filepath.Join("/sys/fs/cgroup", fields[2], "memory.max"), true
+// memoryHierarchy accounts for both a host mount rooted at / and a container
+// mount rooted at an ancestor. Cgroup namespaces may report the process path
+// relative to that mount; no candidate may escape the actual mount point.
+func memoryHierarchy(self, mounts string) (dir, root string, ok bool) {
+	var process string
+	for _, line := range strings.Split(self, "\n") {
+		fields := strings.SplitN(line, ":", 3)
+		if len(fields) == 3 && fields[0] == "0" && fields[1] == "" {
+			process = fields[2]
+			break
 		}
 	}
-	return "", false
+	if !safeHierarchyPath(process) {
+		return "", "", false
+	}
+	unescape := strings.NewReplacer(`\040`, " ", `\011`, "\t", `\012`, "\n", `\134`, `\`)
+	for _, line := range strings.Split(mounts, "\n") {
+		left, right, found := strings.Cut(line, " - ")
+		fields, filesystem := strings.Fields(left), strings.Fields(right)
+		if !found || len(fields) < 5 || len(filesystem) < 1 || filesystem[0] != "cgroup2" {
+			continue
+		}
+		mountRoot, mountPoint := unescape.Replace(fields[3]), unescape.Replace(fields[4])
+		if !safeHierarchyPath(mountRoot) || !safeHierarchyPath(mountPoint) {
+			continue
+		}
+		relative := strings.TrimPrefix(process, "/")
+		if mountRoot != "/" && (process == mountRoot || strings.HasPrefix(process, mountRoot+"/")) {
+			relative = strings.TrimPrefix(strings.TrimPrefix(process, mountRoot), "/")
+		}
+		return filepath.Join(mountPoint, relative), filepath.Clean(mountPoint), true
+	}
+	return "", "", false
+}
+
+func safeHierarchyPath(path string) bool {
+	if !filepath.IsAbs(path) || strings.ContainsRune(path, '\x00') {
+		return false
+	}
+	for _, part := range strings.Split(path, "/") {
+		if part == ".." || part == "." {
+			return false
+		}
+	}
+	return true
+}
+
+func hierarchyMemoryLimit(dir, root string) (uint64, bool) {
+	if !safeHierarchyPath(dir) || !safeHierarchyPath(root) || dir != root && !strings.HasPrefix(dir, root+"/") {
+		return 0, false
+	}
+	var minimum uint64
+	for {
+		if value, ok := readMemoryValue(filepath.Join(dir, "memory.max")); ok && (minimum == 0 || value < minimum) {
+			minimum = value
+		}
+		if dir == root {
+			return minimum, minimum > 0
+		}
+		dir = filepath.Dir(dir)
+	}
 }
 
 // readMemoryValue reads one cgroup byte value, rejecting the several spellings

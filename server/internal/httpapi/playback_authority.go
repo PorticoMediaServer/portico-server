@@ -84,9 +84,13 @@ func (d Dependencies) playbackFamilyAuthorityTx(ctx context.Context, tx *sql.Tx,
 	if err != nil {
 		return identity.Principal{}, err
 	}
-	if _, err = d.Identity.FamilyAuthorityTx(ctx, tx, family, expected); err != nil {
+	verifiedFamily, err := d.Identity.FamilyAuthorityTx(ctx, tx, family, expected)
+	if err != nil {
 		return identity.Principal{}, err
 	}
+	// Grant principals can start with no device metadata. The existing family
+	// authority lookup proves the binding before it is used for accounting.
+	expected.DeviceID = verifiedFamily.DeviceID
 	if err = tx.QueryRowContext(ctx, `SELECT t.token_hash FROM authorization_session_families f JOIN authorization_family_tokens t ON t.family_id=f.id AND t.generation=f.current_generation WHERE f.id=? AND f.revoked=0 AND t.retired=0`, family).Scan(&expected.Hash); err != nil {
 		return identity.Principal{}, err
 	}

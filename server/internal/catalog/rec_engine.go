@@ -79,10 +79,13 @@ func recFacetWeight(f string) float64 {
 }
 
 type recTaste struct {
-	values  map[string]float64 // today's value of each facet
-	engaged map[int64]bool
-	hidden  map[int64]bool
-	seeds   []recSeed
+	values      map[string]float64 // today's value of each facet
+	engaged     map[int64]bool
+	hidden      map[int64]bool
+	loaded      map[int64]bool // only candidate IDs, plus exact pending overlays
+	stored      bool           // the profile has a persisted taste epoch
+	bulkPending bool           // pending jobs exceed the exact overlay bound
+	seeds       []recSeed
 	// revision is the taste revision the values were read at; pending is
 	// true when unprocessed jobs were overlaid (then nothing is memoised).
 	revision int64
@@ -94,10 +97,12 @@ type recSeed struct {
 	weight float64
 }
 
-// recLoadTaste reads the profile's taste, signals and recent favorites, and
+const recSeedSQL = `SELECT work_id,long,short FROM rec_profile_signals INDEXED BY rec_profile_signals_positive_recent WHERE profile_id=? AND weight>0 ORDER BY at DESC LIMIT ?`
+
+// recLoadTaste reads the profile's taste and recent favorites, and
 // overlays jobs the worker hasn't processed yet.
 func (s *Service) recLoadTaste(profile string, now time.Time) (recTaste, error) {
-	t := recTaste{values: map[string]float64{}, engaged: map[int64]bool{}, hidden: map[int64]bool{}}
+	t := recTaste{values: map[string]float64{}, engaged: map[int64]bool{}, hidden: map[int64]bool{}, loaded: map[int64]bool{}}
 	if profile == "" {
 		return t, nil
 	}
@@ -107,7 +112,7 @@ func (s *Service) recLoadTaste(profile string, now time.Time) (recTaste, error) 
 	if err != nil {
 		return t, err
 	}
-	t.revision = revision
+	t.revision, t.stored = revision, known
 	dl, ds := 0.0, 0.0
 	if known {
 		dl, ds = compactcatalog.RecDecay(epoch, day, compactcatalog.RecLongHalfLife), compactcatalog.RecDecay(epoch, day, compactcatalog.RecShortHalfLife)
@@ -128,24 +133,7 @@ func (s *Service) recLoadTaste(profile string, now time.Time) (recTaste, error) 
 		if err = rows.Err(); err != nil {
 			return t, err
 		}
-		rows, err = q.Query(`SELECT work_id,engaged,hidden FROM rec_profile_signals WHERE profile_id=? AND (engaged=1 OR hidden=1)`, profile)
-		if err != nil {
-			return t, err
-		}
-		for rows.Next() {
-			var work int64
-			var engaged, hidden bool
-			if err = rows.Scan(&work, &engaged, &hidden); err != nil {
-				rows.Close()
-				return t, err
-			}
-			t.engaged[work], t.hidden[work] = engaged, hidden
-		}
-		rows.Close()
-		if err = rows.Err(); err != nil {
-			return t, err
-		}
-		rows, err = q.Query(`SELECT work_id,long,short FROM rec_profile_signals INDEXED BY rec_profile_signals_recent WHERE profile_id=? AND weight>0 ORDER BY at DESC LIMIT ?`, profile, recSeeds)
+		rows, err = q.Query(recSeedSQL, profile, recSeeds)
 		if err != nil {
 			return t, err
 		}
@@ -173,7 +161,7 @@ func (s *Service) recLoadTaste(profile string, now time.Time) (recTaste, error) 
 		return t, err
 	}
 	// Overlay the jobs not processed yet with the worker's own computation.
-	rows, err := q.Query(`SELECT work_id FROM rec_profile_jobs WHERE profile_id=?`, profile)
+	rows, err := q.Query(`SELECT work_id FROM rec_profile_jobs WHERE profile_id=? ORDER BY work_id LIMIT ?`, profile, recOverlayJobs+1)
 	if err != nil {
 		return t, err
 	}
@@ -196,10 +184,7 @@ func (s *Service) recLoadTaste(profile string, now time.Time) (recTaste, error) 
 	// taken them into taste (they are recommended neither early nor wrongly),
 	// and the ranking catches up then. The memo keys on pending work either way.
 	if len(jobs) > recOverlayJobs {
-		t.pending = true
-		for _, work := range jobs {
-			t.engaged[work], t.hidden[work] = true, true
-		}
+		t.pending, t.bulkPending = true, true
 		return t, nil
 	}
 	for _, work := range jobs {
@@ -228,7 +213,7 @@ func (s *Service) recLoadTaste(profile string, now time.Time) (recTaste, error) 
 				t.values[f] += delta
 			}
 		}
-		t.engaged[work], t.hidden[work] = next.Engaged, next.Hidden
+		t.engaged[work], t.hidden[work], t.loaded[work] = next.Engaged, next.Hidden, true
 		// The work's stored seed is replaced: an undone favorite or a new
 		// dislike stops promoting its similar titles at once.
 		kept := t.seeds[:0]
@@ -243,6 +228,59 @@ func (s *Service) recLoadTaste(profile string, now time.Time) (recTaste, error) 
 		}
 	}
 	return t, nil
+}
+
+const recSignalsSQL = `SELECT j.value,COALESCE(s.engaged,0),COALESCE(s.hidden,0),
+	 CASE WHEN ? THEN EXISTS(SELECT 1 FROM rec_profile_jobs p WHERE p.profile_id=? AND p.work_id=j.value) ELSE 0 END
+	 FROM json_each(?) j LEFT JOIN rec_profile_signals s ON s.profile_id=? AND s.work_id=j.value`
+
+// recLoadSignals reads only the IDs a row may use. Profile history and a bulk
+// import can grow independently of that candidate set; neither is hydrated
+// into request-sized maps. Exact job overlays already loaded in recLoadTaste
+// win over stored signals, including an undone watch or dislike.
+func (s *Service) recLoadSignals(profile string, t *recTaste, works []int64) error {
+	if profile == "" || len(works) == 0 {
+		return nil
+	}
+	missing := make([]int64, 0, len(works))
+	for _, work := range works {
+		if !t.loaded[work] {
+			missing = append(missing, work)
+		}
+	}
+	if len(missing) == 0 {
+		return nil
+	}
+	storedProfile := profile
+	if !t.stored {
+		storedProfile = ""
+	}
+	rows, err := s.read().Query(recSignalsSQL, t.bulkPending, profile, idsJSON64(missing), storedProfile)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var work int64
+		var engaged, hidden, pending bool
+		if err = rows.Scan(&work, &engaged, &hidden, &pending); err != nil {
+			return err
+		}
+		t.engaged[work], t.hidden[work], t.loaded[work] = engaged || pending, hidden || pending, true
+	}
+	return rows.Err()
+}
+
+// recCandidateWorks supplies IDs to the bounded signal reader even when a
+// ranking came from the memo and rank did not run during this request.
+func recCandidateWorks(ranked []recCandidate) []int64 {
+	works := make([]int64, 0, len(ranked))
+	for _, c := range ranked {
+		if work, err := strconv.ParseInt(c.Work, 10, 64); err == nil {
+			works = append(works, work)
+		}
+	}
+	return works
 }
 
 // recOverlayJobs bounds the pending profile jobs a request overlays exactly.
@@ -524,6 +562,13 @@ func (x *recSession) rank(o recOptions) ([]recCandidate, error) {
 	}
 	for _, work := range o.works {
 		candidate(work)
+	}
+	works := make([]int64, 0, len(pool))
+	for work := range pool {
+		works = append(works, work)
+	}
+	if err := x.s.recLoadSignals(x.r.Profile, &x.taste, works); err != nil {
+		return nil, err
 	}
 	// Drop what the profile has engaged with or hidden before spending the
 	// full rescoring on it.

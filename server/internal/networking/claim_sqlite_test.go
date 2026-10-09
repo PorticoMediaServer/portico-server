@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	_ "modernc.org/sqlite"
+	_ "portico.local/server/internal/thirdparty/sqlite"
 	"portico.local/server/internal/persistence"
 )
 

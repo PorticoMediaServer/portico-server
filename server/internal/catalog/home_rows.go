@@ -165,6 +165,9 @@ type homeSource struct {
 	// restriction itself, so the generic item wrap must not run again.
 	selfRestricted bool
 	fingerprint    string
+	// candidates is an engine source's immutable ranking within this request.
+	// Recommended suppresses Trending's preview using this same scored list.
+	candidates []recCandidate
 }
 
 func (spec homeRowSpec) descriptor() HomeRow {
@@ -630,7 +633,7 @@ func (r HomeRequest) now() time.Time {
 	return r.Now
 }
 
-func (s *Service) homeRowFor(r HomeRequest, spec homeRowSpec, revision ContentRevision, page HomeRowPage) (HomeRow, error) {
+func (s *Service) homeRowFor(r HomeRequest, spec homeRowSpec, revision ContentRevision, page HomeRowPage, enrich bool) (HomeRow, error) {
 	row := spec.descriptor()
 	row.Revision = revision
 	row.Limit = homeLimit(page.Limit)
@@ -646,8 +649,10 @@ func (s *Service) homeRowFor(r HomeRequest, spec homeRowSpec, revision ContentRe
 	if e != nil {
 		return row, e
 	}
-	if e = s.homeEnrich(r.Profile, entries); e != nil {
-		return row, e
+	if enrich {
+		if e = s.homeEnrich(r.Profile, entries); e != nil {
+			return row, e
+		}
 	}
 	row.Entries = entries
 	row.lead = lead
@@ -838,7 +843,7 @@ func (s *Service) HomeRows(r HomeRequest) (HomeDocument, error) {
 			}
 			continue
 		}
-		row, e := s.homeRowFor(r, spec, before, HomeRowPage{Limit: r.Limit})
+		row, e := s.homeRowFor(r, spec, before, HomeRowPage{Limit: r.Limit}, false)
 		if e != nil {
 			return out, e
 		}
@@ -856,6 +861,9 @@ func (s *Service) HomeRows(r HomeRequest) (HomeDocument, error) {
 			}
 		}
 		out.Rows = append(out.Rows, row)
+	}
+	if e = s.homeEnrichRows(r.Profile, out.Rows); e != nil {
+		return out, e
 	}
 	after, e := s.homeRevision(r.Libraries, r.Profile)
 	if e != nil {
@@ -943,7 +951,7 @@ func (s *Service) HomeSingleRow(r HomeRequest, id string, page HomeRowPage) (Hom
 	if page.Revision != "" && page.Revision != fmt.Sprintf("%d:%d", before.Catalog, before.Viewer) {
 		return HomeRow{}, ErrStaleContinuation
 	}
-	row, e := s.homeRowFor(r, *found, before, page)
+	row, e := s.homeRowFor(r, *found, before, page, true)
 	if e != nil {
 		return row, e
 	}
@@ -967,7 +975,7 @@ func (s *Service) recFamilyRows(r HomeRequest, revision ContentRevision) ([]Home
 	out := make([]HomeRow, 0, len(generated))
 	for _, g := range generated {
 		s.recSources[g.spec.ID+":"+idsJSON(r.Libraries)] = candidateSource(g.items)
-		row, err := s.homeRowFor(r, g.spec, revision, HomeRowPage{Limit: r.Limit})
+		row, err := s.homeRowFor(r, g.spec, revision, HomeRowPage{Limit: r.Limit}, false)
 		if err != nil {
 			return nil, err
 		}
@@ -1065,17 +1073,40 @@ func homeCanonicalLayout(ids []string) []string {
 	return out
 }
 
+// homeEnrichRows decorates the final Home previews together. The document's
+// row and page limits bound this batch; hidden, empty and displaced rows cost
+// no decoration queries. A row fetched on its own still decorates its own page.
+func (s *Service) homeEnrichRows(profile string, rows []HomeRow) error {
+	entries := []ContentEntry{}
+	for _, row := range rows {
+		entries = append(entries, row.Entries...)
+	}
+	if err := s.homeEnrich(profile, entries); err != nil {
+		return err
+	}
+	start := 0
+	for _, row := range rows {
+		copy(row.Entries, entries[start:start+len(row.Entries)])
+		start += len(row.Entries)
+	}
+	return nil
+}
+
 // homeEnrich adds what a Home card or the hero shows beyond the shared entry (M5): the year, the
 // content rating, the first two genres and the viewer's watchlist state. Four bounded reads for
-// the whole page (at most one page of ids), never one per entry. A container work (a show, an
+// the whole preview batch, never one per entry. A container work (a show, an
 // album) takes its year from the browse projection; attributes and watchlist state are items'.
 func (s *Service) homeEnrich(profile string, entries []ContentEntry) error {
 	if len(entries) == 0 {
 		return nil
 	}
 	ids := make([]string, 0, len(entries))
+	seen := map[string]bool{}
 	for _, entry := range entries {
-		ids = append(ids, entry.ID)
+		if !seen[entry.ID] {
+			ids = append(ids, entry.ID)
+			seen[entry.ID] = true
+		}
 	}
 	list := idsJSON(ids)
 	years := map[string]int{}

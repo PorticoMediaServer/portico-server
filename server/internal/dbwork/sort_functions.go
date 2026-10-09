@@ -4,8 +4,8 @@ import (
 	"database/sql/driver"
 	"strings"
 
-	"modernc.org/sqlite"
 	"portico.local/server/internal/sorttext"
+	"portico.local/server/internal/thirdparty/sqlite"
 )
 
 func init() {

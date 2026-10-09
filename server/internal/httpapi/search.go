@@ -151,7 +151,7 @@ func (d Dependencies) searchRoutes(mux *http.ServeMux) {
 		// submits or opens a result), never typeahead pages or continuations.
 		out.Query.Recorded = false
 		if q.Get("record") == "1" && q.Get("cursor") == "" {
-			if e = d.Catalog.RecordSearch(p.Viewer, q.Get("q")); e != nil {
+			if e = d.Catalog.WithContext(r.Context()).RecordSearch(p.Viewer, q.Get("q")); e != nil {
 				failure(w, e)
 				return
 			}
@@ -183,7 +183,7 @@ func (d Dependencies) searchRoutes(mux *http.ServeMux) {
 			failure(w, e)
 			return
 		}
-		out, e := d.Catalog.ClearSearchHistory(p.Viewer)
+		out, e := d.Catalog.WithContext(r.Context()).ClearSearchHistory(p.Viewer)
 		if e != nil {
 			failure(w, e)
 			return

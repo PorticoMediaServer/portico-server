@@ -241,6 +241,9 @@ func (x *recSession) franchiseRow() ([]recCandidate, error) {
 		if err = members.Err(); err != nil {
 			return nil, err
 		}
+		if err := x.s.recLoadSignals(x.r.Profile, &x.taste, order); err != nil {
+			return nil, err
+		}
 		last := -1
 		for i, id := range order {
 			if x.taste.engaged[id] {
@@ -285,8 +288,11 @@ func (x *recSession) seriesRow() ([]recCandidate, error) {
 	}
 	var next []int64
 	for _, sr := range all {
-		order, err := scanInt64s(x.s.read().Query(`SELECT book_id FROM catalog_book_context INDEXED BY catalog_book_context_series WHERE library_id=? AND series_key=? ORDER BY series_index,book_id`, sr.library, sr.key))
+		order, err := scanInt64s(x.s.read().Query(`SELECT book_id FROM catalog_book_context INDEXED BY catalog_book_context_series WHERE library_id=? AND series_key=? AND series_key<>'' ORDER BY series_index,book_id`, sr.library, sr.key))
 		if err != nil {
+			return nil, err
+		}
+		if err := x.s.recLoadSignals(x.r.Profile, &x.taste, order); err != nil {
 			return nil, err
 		}
 		last := -1

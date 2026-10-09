@@ -2,6 +2,7 @@ package ingestion
 
 import (
 	"context"
+	"fmt"
 	"image"
 	"image/color"
 	"image/png"
@@ -23,7 +24,8 @@ import (
 
 func TestMain(m *testing.M) {
 	if len(os.Args) == 2 && os.Args[1] == "--portico-storage-helper" {
-		if storage.Helper(os.Stdin, os.Stdout) != nil {
+		if err := storage.Helper(os.Stdin, os.Stdout); err != nil {
+			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
 		os.Exit(0)

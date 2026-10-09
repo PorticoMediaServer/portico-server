@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"portico.local/apikit"
+	"portico.local/apikit/apierror"
 	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/contentaccess"
 	"portico.local/server/internal/dbwork"
@@ -230,6 +231,7 @@ func setSessionHeaders(ctx context.Context, v playbackv1.SessionView) {
 }
 
 func registerPlaybackV1Sessions(r *apikit.Registry, d Dependencies) {
+	timelineRate := newTimelineLimiter()
 	sessionErrors := []string{"invalid_request", "unauthorized", "not_found", "session_ended", "revision_required", "revision_mismatch"}
 	v1Route(r, apikit.Metadata{ID: "start_playback_session", Method: "POST", Path: "/v1/playback/sessions", Summary: "Start playback (201), or report that it is being prepared (202)",
 		Access: apikit.Device, Lane: apikit.Media, Cost: apikit.Constant, BodyLimit: 8 << 10, Status: 201,
@@ -272,9 +274,13 @@ func registerPlaybackV1Sessions(r *apikit.Registry, d Dependencies) {
 			return noBody{}, d.playbackV1().Stop(ctx, d.v1ServiceCaller(q, callerFrom(ctx)), q.PathValue("id"), in.PositionMs)
 		})
 	v1Route(r, apikit.Metadata{ID: "report_playback_timeline", Method: "POST", Path: "/v1/playback/sessions/{id}/timeline", Summary: "Report progress; renews the lease",
-		Access: apikit.Device, Lane: apikit.Media, Cost: apikit.Constant, BodyLimit: 4 << 10, Status: 204, Errors: sessionErrors},
+		Access: apikit.Device, Lane: apikit.Media, Cost: apikit.Constant, BodyLimit: 4 << 10, Status: 204, Errors: append(sessionErrors, "rate_limited")},
 		func(ctx context.Context, q *http.Request, in playbackv1.Report) (noBody, error) {
-			every, err := d.playbackV1().Timeline(ctx, d.v1ServiceCaller(q, callerFrom(ctx)), q.PathValue("id"), in)
+			caller := callerFrom(ctx)
+			if !timelineRate.allow(caller, time.Now()) {
+				return noBody{}, &apierror.Error{Code: "rate_limited", RetryAfterSeconds: 1}
+			}
+			every, err := d.playbackV1().Timeline(ctx, d.v1ServiceCaller(q, caller), q.PathValue("id"), in)
 			if err == nil {
 				apikit.SetHeader(ctx, "Report-Every-Ms", strconv.FormatInt(every.Milliseconds(), 10))
 			}

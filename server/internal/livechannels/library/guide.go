@@ -20,11 +20,18 @@ import (
 // Guide uses the same consumer DTO/window model, but never shares a tuner source.
 func (s *Store) Guide(ctx context.Context, a Authority, q livechannels.GuideQuery, key []byte) (livechannels.Guide, error) {
 	out := livechannels.Guide{Sources: []livechannels.GuideSource{}, Channels: []livechannels.Channel{}, Timezone: q.Timezone, Start: q.Start.UTC().Format(time.RFC3339), End: q.End.UTC().Format(time.RFC3339), ObservedAt: s.now().UTC().Format(time.RFC3339)}
-	if q.Kind != livechannels.LibraryChannel || q.Start.IsZero() || !q.End.After(q.Start) || q.End.Sub(q.Start) > 24*time.Hour || q.Limit < 1 || q.Limit > 30 || len(q.Search) > 120 || len(key) < 32 {
+	if q.Kind != livechannels.LibraryChannel || q.Start.IsZero() || !q.End.After(q.Start) || q.End.Sub(q.Start) > 24*time.Hour || q.Limit < 1 || q.Limit > 50 || len(q.ChannelIDs) > 50 || len(q.Group) > 120 || len(q.Search) > 120 || len(key) < 32 {
 		return out, ErrInvalid
 	}
 	if _, e := time.LoadLocation(q.Timezone); e != nil {
 		return out, ErrInvalid
+	}
+	selected := make(map[string]bool, len(q.ChannelIDs))
+	for _, id := range q.ChannelIDs {
+		if id == "" || len(id) > 256 {
+			return out, ErrInvalid
+		}
+		selected[id] = true
 	}
 	e := s.snapshot(ctx, a, false, func(tx *sql.Tx, scope Scope) error {
 		out.ViewerFence = scope.Fence
@@ -83,11 +90,14 @@ func (s *Store) Guide(ctx context.Context, a Authority, q livechannels.GuideQuer
 				out.NextCursor = signCursor(libraryCursor{binding, index}, key)
 				break
 			}
+			if (len(selected) > 0 && !selected[all[index].id]) || (q.Group != "" && q.Group != "Library Channels") {
+				continue
+			}
 			c, e := readChannel(ctx, tx, all[index].id)
 			if e != nil {
 				return e
 			}
-			if !scope.permits(c.Config) || (q.SourceID != "" && q.SourceID != c.Config.ID) || (q.Search != "" && !strings.Contains(strings.ToLower(c.Config.Name), strings.ToLower(q.Search))) {
+			if (len(selected) > 0 && !selected[c.Config.ID]) || (q.Group != "" && q.Group != "Library Channels") || !scope.permits(c.Config) || (q.SourceID != "" && q.SourceID != c.Config.ID) || (q.Search != "" && !strings.Contains(strings.ToLower(c.Config.Name), strings.ToLower(q.Search))) {
 				continue
 			}
 			ch := livechannels.Channel{ID: c.Config.ID, SourceID: c.Config.ID, Provenance: livechannels.LibraryChannel, TuneUnavailableReason: "delivery-unavailable", RecordUnavailableReason: "not-recordable", Name: c.Config.Name, Number: fmt.Sprint(c.Config.Position + 1), Group: "Library Channels", Generation: c.Generation, Programmes: []livechannels.Programme{}}
@@ -116,7 +126,7 @@ func (s *Store) Guide(ctx context.Context, a Authority, q livechannels.GuideQuer
 		// generations returns the same rows as N per-channel window queries.
 		byGeneration := map[string][]Entry{}
 		combined := []Entry{}
-		if len(page) > 0 {
+		if len(page) > 0 && !q.NoProgrammes {
 			gens := make([]string, 0, len(page))
 			for _, p := range page {
 				gens = append(gens, p.channel.Generation)
@@ -126,8 +136,8 @@ func (s *Store) Guide(ctx context.Context, a Authority, q livechannels.GuideQuer
 			for _, g := range gens {
 				args = append(args, g)
 			}
-			args = append(args, q.End.UnixMilli(), q.Start.UnixMilli(), 10001)
-			rows, e := tx.QueryContext(ctx, `SELECT occurrence_id,channel_id,start_ms,end_ms,COALESCE((SELECT pid(public_id) FROM catalog_entities WHERE id=lc_entries.item_id),''),asset_id,library_id,source_fence,title,rule_id,block_id,source_offset_ms,slate_reason,generation_id FROM lc_entries WHERE generation_id IN (`+marks+`) AND start_ms<? AND end_ms>? ORDER BY generation_id,start_ms LIMIT ?`, args...)
+			args = append(args, q.End.UnixMilli(), q.Start.UnixMilli())
+			rows, e := tx.QueryContext(ctx, `SELECT occurrence_id,channel_id,start_ms,end_ms,COALESCE((SELECT pid(public_id) FROM catalog_entities WHERE id=lc_entries.item_id),''),asset_id,library_id,source_fence,title,rule_id,block_id,source_offset_ms,slate_reason,generation_id FROM lc_entries WHERE generation_id IN (`+marks+`) AND start_ms<? AND end_ms>? ORDER BY generation_id,start_ms`, args...)
 			if e != nil {
 				return unavailable(e)
 			}

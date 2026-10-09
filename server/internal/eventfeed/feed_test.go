@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -271,5 +272,121 @@ func TestFeedPagingWithHiddenLibraryEvents(t *testing.T) {
 		if cur <= prev {
 			t.Fatalf("visible events out of order or skipped: %v", collected)
 		}
+	}
+}
+
+func TestEventBoundsUseIndexedEndpoints(t *testing.T) {
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err = db.Exec(`CREATE TABLE api_events(id INTEGER PRIMARY KEY)`); err != nil {
+		t.Fatal(err)
+	}
+	// The actual production driver must keep both endpoints indexed, regardless
+	// of ring size. The old combined aggregate produces SCAN api_events.
+	rows, err := db.Query(`EXPLAIN QUERY PLAN ` + eventBoundsSQL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	searches := 0
+	for rows.Next() {
+		var id, parent, unused int
+		var detail string
+		if err = rows.Scan(&id, &parent, &unused, &detail); err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(detail, "SCAN api_events") {
+			t.Fatalf("ring scan: %s", detail)
+		}
+		if strings.Contains(detail, "SEARCH api_events") {
+			searches++
+		}
+	}
+	if err = rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if searches != 2 {
+		t.Fatalf("want two indexed endpoint probes, got %d", searches)
+	}
+	var low, high int64
+	if err = db.QueryRow(eventBoundsSQL).Scan(&low, &high); err != nil || low != 0 || high != 0 {
+		t.Fatalf("empty bounds: %d %d %v", low, high, err)
+	}
+	if _, err = db.Exec(`INSERT INTO api_events VALUES(17),(19001)`); err != nil {
+		t.Fatal(err)
+	}
+	if err = db.QueryRow(eventBoundsSQL).Scan(&low, &high); err != nil || low != 17 || high != 19001 {
+		t.Fatalf("sparse bounds: %d %d %v", low, high, err)
+	}
+}
+
+func TestLibraryVisibilityCheckedOncePerSnapshotPage(t *testing.T) {
+	db, err := persistence.Open(filepath.Join(t.TempDir(), "state.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err = dbwork.WithWriteTx(context.Background(), db, dbwork.ClassInteractive, func(tx *sql.Tx) error {
+		for i := 0; i < 80; i++ {
+			for _, library := range []string{"visible", "hidden"} {
+				if e := apievents.Append(tx, apievents.LibraryAudience(library), "library.scan.updated", "library", library, strconv.Itoa(i), nil); e != nil {
+					return e
+				}
+			}
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	h := New(db)
+	calls := map[string]int{}
+	h.LibraryVisible = func(tx *sql.Tx, p identity.Principal, library string) bool {
+		calls[library]++
+		return library == "visible"
+	}
+	p := identity.Principal{Viewer: identity.Viewer{Authority: "local", AccountID: "member", ProfileID: "one"}}
+	first, err := h.Read(context.Background(), p, false, 0, true)
+	if err != nil || len(first.Events) != 51 || first.NextAfter != "101" {
+		t.Fatalf("first mixed page: events=%d cursor=%s err=%v", len(first.Events), first.NextAfter, err)
+	}
+	if calls["visible"] != 1 || calls["hidden"] != 1 {
+		t.Fatalf("repeated checks within snapshot: %v", calls)
+	}
+	second, err := h.Read(context.Background(), p, false, 101, true)
+	if err != nil || len(second.Events) != 29 || second.NextAfter != "160" {
+		t.Fatalf("next mixed page: events=%d cursor=%s err=%v", len(second.Events), second.NextAfter, err)
+	}
+	if calls["visible"] != 2 || calls["hidden"] != 2 {
+		t.Fatalf("verdict escaped snapshot boundary: %v", calls)
+	}
+}
+
+func BenchmarkEventBounds(b *testing.B) {
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+	if _, err = db.Exec(`CREATE TABLE api_events(id INTEGER PRIMARY KEY); WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM n WHERE i<20000) INSERT INTO api_events SELECT i FROM n`); err != nil {
+		b.Fatal(err)
+	}
+	for _, tc := range []struct{ name, query string }{
+		{"combined_scan", `SELECT COALESCE(min(id),0),COALESCE(max(id),0) FROM api_events`},
+		{"indexed_endpoints", eventBoundsSQL},
+	} {
+		b.Run(tc.name, func(b *testing.B) {
+			var low, high int64
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				if err := db.QueryRow(tc.query).Scan(&low, &high); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
 	}
 }

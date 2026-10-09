@@ -35,7 +35,7 @@ import (
 	"strings"
 	"time"
 
-	_ "modernc.org/sqlite" // the dataset file is a plain SQLite file
+	_ "portico.local/server/internal/thirdparty/sqlite" // the dataset file is a plain SQLite file
 
 	"portico.local/server/internal/dbwork"
 )

@@ -3,6 +3,9 @@ package dbwork
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
+	"errors"
+	"fmt"
 	"os"
 	"sync/atomic"
 	"time"
@@ -10,8 +13,8 @@ import (
 
 // The write-ahead log is the one resource in this design with no natural ceiling
 // and no observability. `wal_autocheckpoint=1000` (≈4 MiB) only runs a PASSIVE
-// checkpoint, and a PASSIVE checkpoint silently does nothing while any reader
-// holds a snapshot older than the WAL head. A scan of a two-million-item library
+// checkpoint, which copies frames through the oldest reader's end mark but
+// cannot reset the log while that reader still needs it. A large library scan
 // writing continuously while two hundred viewers hold browse snapshots is
 // exactly that shape, and the failure mode — a `-wal` file growing into the tens
 // of gigabytes on the same volume as the generated media — is invisible in every
@@ -37,9 +40,10 @@ type WALStats struct {
 var walPeak atomic.Int64
 
 // WAL reports the write-ahead log's state, running the same PASSIVE checkpoint
-// the autocheckpoint would run. PASSIVE never blocks: if a reader holds an older
-// snapshot it returns busy=1 and checkpoints what it can, which is precisely the
-// signal worth publishing.
+// the autocheckpoint would run. PASSIVE does not invoke the busy handler and
+// normally reports busy=0 even when readers prevent a complete checkpoint.
+// Compare LogFrames with CheckpointedFrames to observe that incomplete work;
+// copying available pages can still take time on slow storage.
 func WAL(ctx context.Context, db *sql.DB) WALStats {
 	out := WALStats{}
 	if db == nil {
@@ -100,16 +104,16 @@ func DatabaseFile(ctx context.Context, db *sql.DB) string {
 
 // One checkpoint ran in the whole life of the process: a PASSIVE pass at
 // startup. `wal_autocheckpoint=1000` covers roughly four mebibytes, and a PASSIVE
-// checkpoint does nothing at all while any reader holds a snapshot older than the
-// log head — which, during a scan of a two-million-item library with viewers
-// browsing, is continuously. The log grows onto the same volume as the generated
+// checkpoint cannot reset the log while a reader needs older frames. Overlapping
+// browse snapshots can retain that boundary continuously. The log grows onto
+// the same volume as the generated
 // media until the disk fills and SQLite starts answering SQLITE_FULL.
 //
 // So there is a recurring checkpoint, in the maintenance class, and it escalates:
 // PASSIVE while the log is small, TRUNCATE once the log is past a threshold AND
-// nobody is writing or waiting to write. TRUNCATE blocks until readers drain and
-// can stall a writer, which is exactly why it is gated on the same quiet-period
-// signals the deferred maintenance already consults rather than run on a timer.
+// nobody is writing or waiting to write, or at the hard threshold. A short
+// SQLite busy budget bounds waiting for readers; the shared gate preserves
+// writer priority. Page copying and filesystem sync still depend on storage.
 
 const (
 	// CheckpointTruncateFrames is the log length past which a PASSIVE pass is
@@ -122,10 +126,14 @@ const (
 	// server that is never quiet is exactly the one whose log grows until the
 	// volume fills, and a stall is recoverable where a full disk is not.
 	CheckpointHardFrames = 48000
-	// CheckpointDeadline bounds one checkpoint attempt. A checkpoint that cannot
-	// finish in this long is being held back by a reader, and the next pass will
-	// find it again.
+	// CheckpointDeadline bounds connection/gate waiting and supplies query
+	// cancellation. It is not a guaranteed wall-clock cap for SQLite's WAL
+	// copying, fsync or busy callback; the lock wait has a separate short budget.
 	CheckpointDeadline = 20 * time.Second
+	// SQLite's WAL busy callback does not observe context interruption. Bound
+	// its wait separately so a pinned reader cannot monopolize the write gate.
+	CheckpointBusyTimeout     = 50 * time.Millisecond
+	checkpointCleanupDeadline = time.Second
 )
 
 // CheckpointResult says what one maintenance checkpoint did.
@@ -139,21 +147,38 @@ type CheckpointResult struct {
 
 // Checkpoint runs one maintenance checkpoint, escalating to TRUNCATE when the
 // log has grown past the threshold and the write gate is idle.
-func Checkpoint(ctx context.Context, db *sql.DB) CheckpointResult {
-	out := CheckpointResult{Mode: "passive"}
+func Checkpoint(ctx context.Context, db *sql.DB) (out CheckpointResult) {
+	out = CheckpointResult{Mode: "passive"}
 	if db == nil {
 		return out
 	}
 	ctx, cancel := context.WithTimeout(ctx, CheckpointDeadline)
 	defer cancel()
+	ctx = WithClass(ctx, ClassMaintenance)
 	// One dedicated connection, because a PRAGMA through the pool lands on
 	// whichever connection it is handed; the same rule the statistics pass learned.
-	conn, err := db.Conn(ctx)
+	conn, err := ReadHandle(ctx, db).Conn(ctx)
 	if err != nil {
 		out.Err = err
 		return out
 	}
 	defer conn.Close()
+	var priorBusy int
+	if err = conn.QueryRowContext(ctx, `PRAGMA busy_timeout`).Scan(&priorBusy); err != nil {
+		out.Err = err
+		return out
+	}
+	// Register restoration before changing the pragma: even a cancellation
+	// racing a successful SET must not return altered policy to the pool.
+	defer func() {
+		if cleanupErr := restoreCheckpointBusyTimeout(conn, priorBusy); cleanupErr != nil {
+			out.Err = errors.Join(out.Err, cleanupErr)
+		}
+	}()
+	if _, err = conn.ExecContext(ctx, fmt.Sprintf("PRAGMA busy_timeout=%d", CheckpointBusyTimeout.Milliseconds())); err != nil {
+		out.Err = err
+		return out
+	}
 	if err = conn.QueryRowContext(ctx, `PRAGMA wal_checkpoint(PASSIVE)`).Scan(&out.Busy, &out.LogFrames, &out.Checkpoint); err != nil {
 		out.Err = err
 		return out
@@ -170,6 +195,7 @@ func Checkpoint(ctx context.Context, db *sql.DB) CheckpointResult {
 	}
 	release, err := WriteGate().Acquire(ctx, ClassMaintenance)
 	if err != nil {
+		out.Err = err
 		return out
 	}
 	defer release()
@@ -178,4 +204,18 @@ func Checkpoint(ctx context.Context, db *sql.DB) CheckpointResult {
 		out.Err = err
 	}
 	return out
+}
+
+// Cleanup must survive the request context being cancelled. A connection whose
+// original policy cannot be restored is discarded rather than silently loaned
+// to subsequent background work with a different contention budget.
+func restoreCheckpointBusyTimeout(conn *sql.Conn, prior int) error {
+	ctx, cancel := context.WithTimeout(context.Background(), checkpointCleanupDeadline)
+	defer cancel()
+	_, err := conn.ExecContext(ctx, fmt.Sprintf("PRAGMA busy_timeout=%d", prior))
+	if err == nil {
+		return nil
+	}
+	_ = conn.Raw(func(any) error { return driver.ErrBadConn })
+	return fmt.Errorf("dbwork: restore checkpoint busy timeout: %w", err)
 }

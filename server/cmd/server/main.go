@@ -957,7 +957,8 @@ func run() error {
 	serverReadyHook()
 	supervise.Supervise(ctx, "cmd.visibility-rebuilder", cat.RunVisibilityRebuilder)
 	supervise.Supervise(ctx, "cmd.compact-catalogue", compactcatalog.NewWorker(db).Run)
-	server := &http.Server{Addr: bind, Handler: handlerSwitch, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 32 << 10}
+	server := &http.Server{Addr: bind, Handler: handlerSwitch, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 32 << 10, HTTP2: serverHTTP2Policy()}
+	connectionLimit := connectionBudget(hostlimits.EffectiveMemoryBytes())
 	// The watchdog and the deferred database housekeeping both start only now, so
 	// neither competes with the work of coming up.
 	supervise.Supervise(ctx, "cmd.database-watchdog", watchdog.Run)
@@ -993,8 +994,9 @@ func run() error {
 			customConfigured = document.Effective.CustomCertificatePath != "" && document.Effective.CustomCertificateKeyPath != "" && document.Effective.CustomCertificateDomain != ""
 		}
 	}
-	if certificates != nil || !ip.IsLoopback() || customConfigured {
-		direct, err := boundedDirectListener(listener, maximumConnections, func(raw net.Listener) (*networking.DirectListener, error) {
+	usesDirectListener := certificates != nil || !ip.IsLoopback() || customConfigured
+	if usesDirectListener {
+		direct, err := boundedDirectListener(listener, connectionLimit, func(raw net.Listener) (*networking.DirectListener, error) {
 			return networking.NewDirectListenerWithCustom(raw, certificates, customCertificate)
 		})
 		if err != nil {
@@ -1040,9 +1042,10 @@ func run() error {
 
 	// The lanes protect handlers; this protects the process. Every accepted
 	// connection is a goroutine and two buffers before any lane is consulted.
-	if certificates == nil && ip.IsLoopback() {
-		listener = capConnections(listener, maximumConnections)
+	if !usesDirectListener {
+		listener = capConnections(listener, connectionLimit)
 	}
+	log.Printf("Connection ceiling set to %d (HTTP/2 streams per connection: %d)", connectionLimit, server.HTTP2.MaxConcurrentStreams)
 	log.Printf("Portico server listening on %s (remote traffic requires TLS; recovery HTTP is private-LAN only)", listener.Addr())
 	// ONB-02 item 1: while setup is unfinished, every start names the address
 	// to open. The port comes from the bound listener, not the configured

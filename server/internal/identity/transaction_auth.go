@@ -18,7 +18,9 @@ func (s *Service) ReauthorizeTx(ctx context.Context, tx *sql.Tx, expected Princi
 	if err := ctx.Err(); err != nil {
 		return Principal{}, err
 	}
-	current := Principal{Hash: expected.Hash}
+	// Preserve already verified accounting metadata. No authority guard uses
+	// DeviceID; identity is still checked against the live token and account.
+	current := Principal{Hash: expected.Hash, DeviceID: expected.DeviceID}
 	current.ServerID = s.serverID
 	var expiry string
 	var revoked int

@@ -213,7 +213,7 @@ func (s *Service) Stop(ctx context.Context, c Caller, id string, positionMs *int
 		return nil
 	}
 	if positionMs != nil && *positionMs >= 0 && r.media != "" {
-		_ = s.Playback.Progress(c.Principal, r.media, r.mediaGeneration, int64(r.lastSeq)+1, float64(*positionMs)/1000, "paused")
+		_ = s.Playback.ProgressContext(ctx, c.Principal, r.media, r.mediaGeneration, int64(r.lastSeq)+1, float64(*positionMs)/1000, "paused")
 		_, _ = s.DB.ExecContext(ctx, `UPDATE playback_v1_sessions SET position_ms=?,last_seq=last_seq+1 WHERE id=? AND ended_ms=0`, *positionMs, r.id)
 	}
 	return s.End(ctx, id, "stopped", "")
@@ -290,7 +290,15 @@ func (s *Service) Timeline(ctx context.Context, c Caller, id string, report Repo
 	lease := now.Add(s.lease()).UnixMilli()
 	fresh := report.Generation == r.generation && report.Seq > r.lastSeq && r.state != "preparing"
 	if !fresh {
-		_, err = dbwork.ExecWrite(ctx, s.DB, dbwork.ClassEstablishedPlayback, `UPDATE playback_v1_sessions SET lease_expires_ms=? WHERE id=? AND ended_ms=0`, lease, r.id)
+		// Replays still renew the lease, but a repeated sequence must not turn
+		// into a writer storm. Keep ample lease headroom and extend at most once
+		// per half report interval (never more than a quarter of the lease).
+		interval := max(time.Millisecond, min(s.reportEvery(r.state)/2, s.lease()/4))
+		threshold := lease - interval.Milliseconds()
+		if r.lease >= threshold {
+			return s.reportEvery(r.state), nil
+		}
+		_, err = dbwork.ExecWrite(ctx, s.DB, dbwork.ClassEstablishedPlayback, `UPDATE playback_v1_sessions SET lease_expires_ms=? WHERE id=? AND ended_ms=0 AND lease_expires_ms<?`, lease, r.id, threshold)
 		return s.reportEvery(r.state), err
 	}
 	state := r.state
@@ -319,7 +327,7 @@ func (s *Service) Timeline(ctx context.Context, c Caller, id string, report Repo
 	if r.media != "" {
 		// Resume, played threshold, watch history (respecting pause-history) and
 		// Continue Watching are written by the existing evidence path.
-		if err = s.Playback.Progress(c.Principal, r.media, r.mediaGeneration, report.Seq, float64(report.PositionMs)/1000, legacy); err != nil && !errors.Is(err, identity.ErrUnauthorized) {
+		if err = s.Playback.ProgressContext(ctx, c.Principal, r.media, r.mediaGeneration, report.Seq, float64(report.PositionMs)/1000, legacy); err != nil && !errors.Is(err, identity.ErrUnauthorized) {
 			return 0, err
 		}
 	}

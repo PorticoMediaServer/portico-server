@@ -362,7 +362,7 @@ export const routes = [
     "id": "get_container_personal_state",
     "method": "GET",
     "path": "/v1/containers/{kind}/{id}/personal-state",
-    "summary": "Read a container watermark, revision and visible-member counts",
+    "summary": "Read a container watermark, revision, saved flags and visible-member counts",
     "access": "device",
     "lane": "browsing",
     "cost": "page_sized",
@@ -1157,7 +1157,8 @@ export const routes = [
       "not_found",
       "session_ended",
       "revision_required",
-      "revision_mismatch"
+      "revision_mismatch",
+      "rate_limited"
     ],
     "status": 204
   },
@@ -1188,7 +1189,7 @@ export const routes = [
     "id": "set_container_personal_state",
     "method": "PUT",
     "path": "/v1/containers/{kind}/{id}/personal-state",
-    "summary": "Set a container watched watermark for this profile",
+    "summary": "Set a container watched watermark, or its Watchlist or Favorite flag, for this profile",
     "access": "device",
     "lane": "default",
     "cost": "constant",

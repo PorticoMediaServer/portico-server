@@ -469,6 +469,8 @@ func restrictionRoutes() map[string]restrictionRoute {
 		// restriction (channel_restriction_test, recordings_switch_test); the
 		// matrix still checks that no catalogue title leaks through them.
 		"GET /v1/guide":                 static("/v1/guide?kind=live-source&start=2026-09-19T12:00:00Z&end=2026-09-19T14:00:00Z&timezone=UTC&limit=30"),
+		"GET /v1/guide/channels":        static("/v1/guide/channels?kind=all&sort=number&offset=0&limit=50"),
+		"GET /v1/guide/sources":         static("/v1/guide/sources"),
 		"GET /v1/guide/images/{digest}": exempt("image bytes addressed by content digest; a programme the profile may not see is published without its image path"),
 		"GET /v1/dvr":                   static("/v1/dvr"),
 		"GET /v1/dvr/channels":          static("/v1/dvr/channels"),

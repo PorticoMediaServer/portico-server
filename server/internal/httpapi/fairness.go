@@ -1,8 +1,6 @@
 package httpapi
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"net/http"
 	"net/netip"
 	"strings"
@@ -69,18 +67,9 @@ func (l *lane) sharedLocked() bool {
 	return len(l.interest) > 1 && l.active.Load()*100 >= int64(l.spec.capacity*fairnessEngagesAbove)
 }
 
-// fairnessKey identifies the client for share accounting. It has to be decided
-// before authentication — admission runs in front of every handler, which is the
-// only place a flood can be stopped before it costs anything — so it cannot look
-// an account up. It uses, in order:
-//
-//   - the presented credential, hashed. A credential is issued per device, so
-//     this is the granularity that matters: one device cannot crowd out another
-//     device on the same account, which is the case a household actually hits.
-//     Rotating it costs a sign-in, which is itself rate limited.
-//   - the client's own address otherwise, so unauthenticated floods — the
-//     sign-in routes, the setup route, discovery — are still shared out rather
-//     than raced for.
+// fairnessKey is the unauthenticated peer share. admission.clientKey replaces
+// it only for a credential recorded after successful authentication. Merely
+// presenting a different token, cookie or grant must not mint another share.
 //
 // The address is the exact address, not its network. Two hundred devices on one
 // home LAN signing in after a restart are two hundred addresses in one /24, and
@@ -92,10 +81,6 @@ func (l *lane) sharedLocked() bool {
 // It is never the account: two people in one house are two clients, and a shared
 // profile on two televisions is two clients too.
 func fairnessKey(r *http.Request, trusted []netip.Prefix) string {
-	if credential := presentedCredential(r); credential != "" {
-		sum := sha256.Sum256([]byte(credential))
-		return "c:" + hex.EncodeToString(sum[:12])
-	}
 	return "a:" + clientAddress(r, trusted)
 }
 

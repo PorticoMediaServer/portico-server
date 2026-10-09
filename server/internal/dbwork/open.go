@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 
 	// The pure-Go driver: no cgo, so every server target cross-compiles.
-	_ "modernc.org/sqlite"
+	_ "portico.local/server/internal/thirdparty/sqlite"
 )
 
 // The observed driver is registered once, at package init, so every handle this

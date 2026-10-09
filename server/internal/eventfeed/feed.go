@@ -19,6 +19,10 @@ import (
 
 const PageLimit = 100
 
+// Separate endpoint probes preserve SQLite's min/max optimization. Combining
+// both aggregates scans the retained ring for every subscriber on every wake.
+const eventBoundsSQL = `SELECT COALESCE((SELECT min(id) FROM api_events),0),COALESCE((SELECT max(id) FROM api_events),0)`
+
 type Resource struct {
 	Kind string `json:"kind"`
 	ID   string `json:"id"`
@@ -139,7 +143,7 @@ func (h *Hub) Read(ctx context.Context, p identity.Principal, owner bool, after 
 	defer gate.Rollback()
 	tx := gate.Tx()
 	var minimum, maximum int64
-	if err = tx.QueryRowContext(ctx, `SELECT COALESCE(min(id),0),COALESCE(max(id),0) FROM api_events`).Scan(&minimum, &maximum); err != nil {
+	if err = tx.QueryRowContext(ctx, eventBoundsSQL).Scan(&minimum, &maximum); err != nil {
 		return out, err
 	}
 	out.NextAfter = strconv.FormatInt(maximum, 10)
@@ -174,6 +178,9 @@ func (h *Hub) Read(ctx context.Context, p identity.Principal, owner bool, after 
 	}
 	examined := 0
 	var lastExamined int64
+	// All events and access checks use this one snapshot: each library's
+	// verdict is stable for the page, including denied libraries.
+	visibility := map[string]bool{}
 	for rows.Next() {
 		var id, at int64
 		var rowAudience, kind, resourceKind, resource, revision, data string
@@ -186,7 +193,13 @@ func (h *Hub) Read(ctx context.Context, p identity.Principal, owner bool, after 
 			if h.LibraryVisible == nil {
 				continue
 			}
-			if !h.LibraryVisible(tx, p, strings.TrimPrefix(rowAudience, "library:")) {
+			library := strings.TrimPrefix(rowAudience, "library:")
+			visible, checked := visibility[library]
+			if !checked {
+				visible = h.LibraryVisible(tx, p, library)
+				visibility[library] = visible
+			}
+			if !visible {
 				continue
 			}
 		}

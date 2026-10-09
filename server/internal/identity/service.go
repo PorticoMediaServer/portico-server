@@ -65,6 +65,8 @@ type Principal struct {
 	Viewer
 	Hash  string
 	Epoch int
+	// DeviceID is verified accounting metadata, never an authorization claim.
+	DeviceID string `json:"-"`
 }
 
 // NativeServerIdentity is a pin delivered only with a successful native session.
@@ -244,12 +246,14 @@ func (s *Service) AuthenticateContext(ctx context.Context, token string) (Princi
 	if err != nil {
 		return Principal{}, err
 	}
-	if _, err = s.sessionFamilyRecordTx(ctx, tx, record.principal, record); err != nil {
+	family, err := s.sessionFamilyRecordTx(ctx, tx, record.principal, record)
+	if err != nil {
 		return Principal{}, err
 	}
 	if record.principal.Role == "account" {
 		return Principal{}, ErrUnauthorized
 	}
+	record.principal.DeviceID = family.DeviceID
 	return record.principal, nil
 }
 func (s *Service) Logout(p Principal) error {

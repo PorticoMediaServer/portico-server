@@ -21,7 +21,7 @@ import (
 // baseline?". Which migrations have run is the schema_migrations set, not that
 // number, because numbers arrive out of order (see schemaMigrations).
 const baselineSchemaVersion = 1
-const schemaVersion = 10
+const schemaVersion = 11
 const schemaVersionKey = "schema_version"
 
 var ErrSchemaNewer = errors.New("this database was written by a newer version of Portico")

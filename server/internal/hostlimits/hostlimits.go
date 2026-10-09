@@ -29,6 +29,26 @@ const memoryLimitShare = 0.9
 // fabricated ceiling.
 func OpenFiles() (soft, hard uint64) { return openFileLimits() }
 
+// EffectiveMemoryBytes reports the smaller discoverable physical-memory and
+// process cgroup ceiling. It sizes bounded transport resources, not the Go heap;
+// zero means neither source could be measured.
+func EffectiveMemoryBytes() int64 {
+	physical, _ := physicalMemoryBytes()
+	cgroup, _ := cgroupMemoryLimit()
+	return effectiveMemoryBytes(physical, cgroup)
+}
+
+func effectiveMemoryBytes(physical, cgroup uint64) int64 {
+	if physical == 0 || cgroup > 0 && cgroup < physical {
+		physical = cgroup
+	}
+	// Untrusted OS text must never wrap a signed budget negative.
+	if physical > 1<<63-1 {
+		return 0
+	}
+	return int64(physical)
+}
+
 // Apply raises the descriptor limit and, where a memory ceiling is discoverable,
 // gives the garbage collector one to work to. It logs what it did, because both
 // numbers are things an owner reading a support bundle needs to see, and it

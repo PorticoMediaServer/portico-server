@@ -76,7 +76,7 @@ func (d Dependencies) playbackSessionRoutes(mux *http.ServeMux) {
 			State           string  `json:"state"`
 		}
 		if e = decode(w, r, &body); e == nil {
-			e = d.Playback.Progress(p, r.PathValue("id"), body.Generation, body.Sequence, body.PositionSeconds, body.State)
+			e = d.Playback.ProgressContext(r.Context(), p, r.PathValue("id"), body.Generation, body.Sequence, body.PositionSeconds, body.State)
 		}
 		if e != nil {
 			failure(w, e)

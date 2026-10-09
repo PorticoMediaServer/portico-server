@@ -68,7 +68,7 @@ func rangeLength(header string, size int64) int64 {
 // plan in the wanted mode, and whether it is a prepared (private) one.
 func (d Dependencies) audioGrant(w http.ResponseWriter, r *http.Request, mode string) (grant, aid, item, session string, plan *playback.AudioPlan, private, ok bool) {
 	grant = r.PathValue("grant")
-	aid, p, item, e := d.Playback.ResolveDecodeGrant(grant)
+	aid, p, item, e := d.Playback.ResolveDecodeGrantContext(r.Context(), grant)
 	if errors.Is(e, sql.ErrNoRows) || errors.Is(e, identity.ErrUnauthorized) {
 		// A grant is a capability, not a credential: an unknown one is a hidden
 		// 404, never a 401 that tells the client to sign in again (NEW-33). An
@@ -78,6 +78,9 @@ func (d Dependencies) audioGrant(w http.ResponseWriter, r *http.Request, mode st
 	}
 	if e == nil {
 		e = d.itemAccess(r.Context(), p, item)
+		if e == nil {
+			d.admission.rememberCredential(grant, p)
+		}
 	}
 	if e != nil {
 		failure(w, e)
@@ -117,9 +120,12 @@ func (d Dependencies) audioDecodeRoutes(mux *http.ServeMux) {
 			w = counted
 		}
 		d.serveOriginal(w, r, grant, aid, true, func() error {
-			_, p, item, e := d.Playback.ResolveDecodeGrant(grant)
+			_, p, item, e := d.Playback.ResolveDecodeGrantContext(r.Context(), grant)
 			if e == nil {
 				e = d.itemAccess(r.Context(), p, item)
+				if e == nil {
+					d.admission.rememberCredential(grant, p)
+				}
 			}
 			return e
 		})

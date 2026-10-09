@@ -91,7 +91,6 @@ func (s *Service) recMoreLike(base *recSession, work int64) ([]recCandidate, err
 	if err != nil {
 		return nil, err
 	}
-	engaged := x.taste.engaged
 	ranked, err := x.memo("more_like", func() ([]recCandidate, error) {
 		return x.rank(recOptions{head: recTitleHead, noFill: true, includeEngaged: true, diversify: true,
 			keep: func(c *recScored) bool { return c.work != work }})
@@ -99,6 +98,10 @@ func (s *Service) recMoreLike(base *recSession, work int64) ([]recCandidate, err
 	if err != nil {
 		return nil, err
 	}
+	if err := s.recLoadSignals(x.r.Profile, &x.taste, recCandidateWorks(ranked)); err != nil {
+		return nil, err
+	}
+	engaged := x.taste.engaged
 	sort.SliceStable(ranked, func(i, j int) bool {
 		a, _ := strconv.ParseInt(ranked[i].Work, 10, 64)
 		b, _ := strconv.ParseInt(ranked[j].Work, 10, 64)

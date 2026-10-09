@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"testing"
 
-	"modernc.org/sqlite"
 	"portico.local/server/internal/entityid"
+	"portico.local/server/internal/thirdparty/sqlite"
 )
 
 // pid(public_id) is a catalogue entity's public id and pid_blob(text) its

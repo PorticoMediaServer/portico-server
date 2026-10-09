@@ -10,10 +10,9 @@ import (
 )
 
 // The admission lanes protect handlers, not accepted connections. Every accepted
-// connection is a goroutine and two buffers — call it thirty kilobytes — before
-// any lane is consulted, and nothing bounded how many there could be except the
-// descriptor limit. Ten times the target load is therefore ten times the memory,
-// spent on connections that will be refused anyway.
+// connection has buffers and goroutine state before any lane is consulted.
+// HTTP/2 adds concurrent stream state and flow-control buffers, so transport
+// memory cannot be budgeted as just two HTTP/1 buffers per connection.
 //
 // The cap is a listener, not a handler: a connection that is never accepted
 // costs nothing at all. Past it the kernel's own listen backlog absorbs the
@@ -21,11 +20,11 @@ import (
 // honest answer when the server has no capacity left to explain itself with, and
 // is what every HTTP client already retries.
 //
-// The number is a ceiling, not a working value. Two hundred viewers with a
-// handful of connections each, plus browsers that open six per host, is a few
-// hundred; 2,048 is several times that and about sixty megabytes of buffers.
+// The absolute ceiling is 2,048; connectionBudget selects a smaller bound from
+// the discoverable host/process memory using a conservative planning allowance.
+// This is one part of overload protection, alongside stream and admission caps.
 
-// maximumConnections is how many accepted connections the server will hold.
+// maximumConnections is the upper bound even on large hosts.
 const maximumConnections = 2048
 
 // cappedListener bounds accepted connections.
@@ -34,16 +33,19 @@ type cappedListener struct {
 	slots chan struct{}
 	// held is published so the diagnostics and the log can say how close to the
 	// ceiling the server is running.
-	held     atomic.Int64
-	deferred atomic.Uint64
-	warned   sync.Once
+	held      atomic.Int64
+	deferred  atomic.Uint64
+	warned    sync.Once
+	done      chan struct{}
+	closeOnce sync.Once
+	closeErr  error
 }
 
 func capConnections(inner net.Listener, limit int) *cappedListener {
 	if limit < 1 {
 		limit = maximumConnections
 	}
-	l := &cappedListener{Listener: inner, slots: make(chan struct{}, limit)}
+	l := &cappedListener{Listener: inner, slots: make(chan struct{}, limit), done: make(chan struct{})}
 	for i := 0; i < limit; i++ {
 		l.slots <- struct{}{}
 	}
@@ -64,6 +66,11 @@ func boundedDirectListener(raw net.Listener, limit int, build func(net.Listener)
 
 func (l *cappedListener) Accept() (net.Conn, error) {
 	select {
+	case <-l.done:
+		return nil, net.ErrClosed
+	default:
+	}
+	select {
 	case <-l.slots:
 	default:
 		// At the ceiling. Wait for a slot rather than accepting a connection there
@@ -72,7 +79,11 @@ func (l *cappedListener) Accept() (net.Conn, error) {
 		l.warned.Do(func() {
 			log.Printf("Connection ceiling of %d reached; further connections wait in the listen backlog", cap(l.slots))
 		})
-		<-l.slots
+		select {
+		case <-l.slots:
+		case <-l.done:
+			return nil, net.ErrClosed
+		}
 	}
 	conn, err := l.Listener.Accept()
 	if err != nil {
@@ -81,6 +92,16 @@ func (l *cappedListener) Accept() (net.Conn, error) {
 	}
 	l.held.Add(1)
 	return &cappedConn{Conn: conn, listener: l}, nil
+}
+
+// Closing the transport must also wake an accept parked at the capacity ceiling.
+// Otherwise http.Server.Shutdown waits forever for its serving listener to exit.
+func (l *cappedListener) Close() error {
+	l.closeOnce.Do(func() {
+		close(l.done)
+		l.closeErr = l.Listener.Close()
+	})
+	return l.closeErr
 }
 
 // Held reports how many connections are open, and how many accepts have had to

@@ -174,6 +174,7 @@ func (w *Worker) Run(ctx context.Context) {
 		if !dbwork.Yield(ctx) {
 			return 0
 		}
+		batchStarted := time.Now()
 		n, err := w.Step(ctx, BatchLimit)
 		if ctx.Err() != nil {
 			return 0
@@ -183,6 +184,9 @@ func (w *Worker) Run(ctx context.Context) {
 			return 5 * time.Second
 		}
 		if n > 0 {
+			if !dbwork.PaceBackground(ctx, batchStarted) {
+				return 0
+			}
 			return time.Millisecond
 		}
 		return 0

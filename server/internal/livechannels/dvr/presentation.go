@@ -170,40 +170,49 @@ func (s *Store) AnnotateGuide(ctx context.Context, a livechannels.Authority, o l
 		return ErrInvalid
 	}
 	return s.snapshot(ctx, a, o, func(tx *sql.Tx, allowed func(string, string) bool) error {
+		type channelKey struct{ source, channel string }
+		channels := map[channelKey]map[string][]*livechannels.Programme{}
+		pairs := []string{}
+		args := []any{o.Key(), mustTime(g.Start).UnixMilli(), mustTime(g.End).UnixMilli()}
 		for i := range g.Channels {
 			ch := &g.Channels[i]
-			if ch.Provenance != livechannels.LiveSource || !allowed(ch.SourceID, ch.ID) {
+			if len(ch.Programmes) == 0 || ch.Provenance != livechannels.LiveSource || !allowed(ch.SourceID, ch.ID) {
 				continue
 			}
-			rows, e := tx.QueryContext(ctx, `SELECT programme_id,id,state FROM dvr_recordings WHERE owner_key=? AND source_id=? AND channel_id=? AND end_ms>? AND start_ms<? AND state NOT IN('cancelled','deleted')`, o.Key(), ch.SourceID, ch.ID, mustTime(g.Start).UnixMilli(), mustTime(g.End).UnixMilli())
-			if e != nil {
-				return e
-			}
-			type status struct{ id, state string }
-			values := map[string]status{}
-			for rows.Next() {
-				var p string
-				var v status
-				if e = rows.Scan(&p, &v.id, &v.state); e != nil {
-					rows.Close()
-					return e
-				}
-				values[p] = v
-			}
-			e = rows.Err()
-			rows.Close()
-			if e != nil {
-				return e
+			key := channelKey{ch.SourceID, ch.ID}
+			if _, exists := channels[key]; !exists {
+				pairs = append(pairs, "(?,?)")
+				args = append(args, ch.SourceID, ch.ID)
+				channels[key] = map[string][]*livechannels.Programme{}
 			}
 			for j := range ch.Programmes {
 				p := &ch.Programmes[j]
-				if v, ok := values[p.ID]; ok {
-					p.RecordingID = v.id
-					p.RecordingState = v.state
-				}
+				channels[key][p.ID] = append(channels[key][p.ID], p)
 			}
 		}
-		return nil
+		if len(pairs) == 0 {
+			return nil
+		}
+		// Scan this owner's overlapping recordings once for the authorized page,
+		// rather than once per channel. Pair membership also keeps equal channel
+		// or programme IDs from another source out of the annotation.
+		rows, e := tx.QueryContext(ctx, `SELECT source_id,channel_id,programme_id,id,state FROM dvr_recordings WHERE owner_key=? AND end_ms>? AND start_ms<? AND state NOT IN('cancelled','deleted') AND (source_id,channel_id) IN (VALUES `+strings.Join(pairs, ",")+`)`, args...)
+		if e != nil {
+			return e
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var key channelKey
+			var programme, id, state string
+			if e = rows.Scan(&key.source, &key.channel, &programme, &id, &state); e != nil {
+				return e
+			}
+			for _, p := range channels[key][programme] {
+				p.RecordingID = id
+				p.RecordingState = state
+			}
+		}
+		return rows.Err()
 	})
 }
 func mustTime(s string) time.Time { v, _ := time.Parse(time.RFC3339Nano, s); return v }

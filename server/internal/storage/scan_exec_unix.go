@@ -3,7 +3,6 @@
 package storage
 
 import (
-	"errors"
 	"runtime"
 	"syscall"
 
@@ -23,13 +22,8 @@ var descriptorInput = func() string {
 const scanCPUSeconds = 300
 
 func inventoryCommandHelper(r request) error {
-	if r.Inventory == nil || len(r.Argv) < 2 || len(r.Argv) > 1024 {
-		return errors.New("invalid inventory command")
-	}
-	for _, arg := range r.Argv {
-		if len(arg) > 16384 {
-			return errors.New("invalid scan argument")
-		}
+	if err := validateInventoryCommand(r); err != nil {
+		return err
 	}
 	file, err := openInventoryContent(*r.Inventory)
 	if err != nil {

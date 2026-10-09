@@ -1,0 +1,22 @@
+# SQLite driver maintenance patch
+
+Source: modernc.org/sqlite v1.58.0, https://gitlab.com/cznic/sqlite.
+Upstream commit: `722282f38b49191a4e24569eeac960bc033bd8f0`.
+Module checksum: `h1:38u40/bwkfM7f0Myhosl+SEMltSDxnGdQf8o6Kjmys0=`.
+Only its handwritten top-level Go driver files are copied here. SQLite's generated library and virtual-table support remain the pinned upstream module imports. Original copyright and BSD license are preserved in each source file and LICENSE.
+
+Portico additions:
+
+- `context_progress.go`: scoped cancellation progress callbacks, including later row iteration, with reusable per-connection state and closure cleanup.
+- `stmt.go`: recheck context after binding and before initial execution; preserve the query context in returned rows.
+- `rows.go`: restore that context during each `Next` call.
+- `conn.go`: own and release progress callback state.
+- `tx.go`: scope transaction execution cancellation.
+
+A canceled `sqlite3_interrupt` before VM activation can be cleared at activation. The additional progress callback checks the request's closed cancellation channel inside the VM every 1,000 instructions. It is removed/restored before another call uses the connection. Nothing caches results or authorizations.
+
+The package keeps the `sqlite` database/sql registration name. Server imports must use this maintained package rather than also importing upstream's root driver (which would register the same name and introduce incompatible nominal error, backup and function-context types).
+
+When upgrading, diff these files against the exact upstream tag, preserve the small cancellation patch and rerun driver, dbwork, backup, scalar/collation, race and ARMv6 checks. Upstream v1.60.1 was inspected during this work and still had the same bind-to-step cancellation gap.
+
+`go vet` reports inherited `unsafe.Pointer` diagnostics in the upstream driver. Compare these with the exact upstream source when reviewing an upgrade; this patch introduced no new warning expressions. `go vet -unsafeptr=false` passes for this package.

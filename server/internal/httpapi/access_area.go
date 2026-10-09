@@ -94,7 +94,11 @@ func (d Dependencies) bearerPrincipal(r *http.Request) (identity.Principal, erro
 	if err != nil {
 		return p, err
 	}
-	return p, d.Identity.CheckRecoveryRoute(r.Context(), p, d.privateSetupPeer(r))
+	err = d.Identity.CheckRecoveryRoute(r.Context(), p, d.privateSetupPeer(r))
+	if err == nil {
+		d.admission.rememberCredential(secret, p)
+	}
+	return p, err
 }
 
 // accessAuthority adapts a checked principal into the store's in-transaction

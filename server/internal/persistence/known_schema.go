@@ -379,6 +379,7 @@ index queue_v1_snapshots_queue
 index queues_v1_idle
 index queues_v1_owner
 index quick_connect_expiry_v1
+index rec_profile_signals_positive_recent
 index rec_profile_signals_recent
 index rec_profile_signals_work
 index remote_inventory_check_job

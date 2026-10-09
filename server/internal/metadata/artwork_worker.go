@@ -24,6 +24,7 @@ import (
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/diskspace"
 	"portico.local/server/internal/identity"
+	"portico.local/server/internal/imagework"
 )
 
 const artworkBytes = 8 << 20
@@ -208,6 +209,10 @@ func normalizeArtwork(raw []byte) ([]byte, []byte, int, int, error) {
 }
 
 func normalizeArtworkFormats(raw []byte, allowed map[string]bool) ([]byte, []byte, int, int, error) {
+	return normalizeArtworkFormatsContext(context.Background(), raw, allowed)
+}
+
+func normalizeArtworkFormatsContext(ctx context.Context, raw []byte, allowed map[string]bool) ([]byte, []byte, int, int, error) {
 	config, format, err := image.DecodeConfig(bytes.NewReader(raw))
 	if err != nil || !allowed[format] {
 		return nil, nil, 0, 0, errors.New("unsupported_image")
@@ -215,16 +220,33 @@ func normalizeArtworkFormats(raw []byte, allowed map[string]bool) ([]byte, []byt
 	if config.Width < 1 || config.Height < 1 || config.Width > 10000 || config.Height > 10000 || int64(config.Width)*int64(config.Height) > 24000000 {
 		return nil, nil, 0, 0, errors.New("dimension_limit")
 	}
+	release, err := imagework.Acquire(ctx)
+	if err != nil {
+		return nil, nil, 0, 0, err
+	}
+	defer release()
 	decoded, _, err := image.Decode(bytes.NewReader(raw))
 	if err != nil {
 		return nil, nil, 0, 0, errors.New("malformed_image")
+	}
+	if err = ctx.Err(); err != nil {
+		return nil, nil, 0, 0, err
+	}
+	if decoded.Bounds().Dx() != config.Width || decoded.Bounds().Dy() != config.Height {
+		return nil, nil, 0, 0, errors.New("dimension_limit")
 	}
 	// Keep bounded display representations, never the provider original.
 	original, w, h, err := encodeDisplayArtwork(decoded, artworkLargeEdge, format == "jpeg")
 	if err != nil {
 		return nil, nil, 0, 0, err
 	}
+	if err = ctx.Err(); err != nil {
+		return nil, nil, 0, 0, err
+	}
 	thumb, _, _, err := encodeDisplayArtwork(decoded, artworkSmallEdge, format == "jpeg")
+	if err == nil {
+		err = ctx.Err()
+	}
 	return original, thumb, w, h, err
 }
 
@@ -235,12 +257,24 @@ func normalizeArtworkFormats(raw []byte, allowed map[string]bool) ([]byte, []byt
 var ErrArtworkSpace = errors.New("not enough free space to store artwork")
 
 func (s *Service) installArtwork(raw []byte, w, h int) (artworkInstalled, error) {
+	return s.installArtworkContext(context.Background(), raw, w, h)
+}
+
+func (s *Service) installArtworkContext(ctx context.Context, raw []byte, w, h int) (artworkInstalled, error) {
 	a, err := s.installArtworkFile(raw, w, h)
 	if err != nil || max(w, h) <= 400 {
 		return a, err
 	}
+	release, err := imagework.Acquire(ctx)
+	if err != nil {
+		return a, err
+	}
+	defer release()
 	decoded, format, err := image.Decode(bytes.NewReader(raw))
 	if err != nil {
+		return a, err
+	}
+	if err = ctx.Err(); err != nil {
 		return a, err
 	}
 	medium, mw, mh, err := encodeDisplayArtwork(decoded, 800, format == "jpeg")
@@ -408,18 +442,18 @@ func (s *Service) ArtworkStep(ctx context.Context) error {
 	if err != nil {
 		return s.failArtwork(ctx, j, err)
 	}
-	original, thumb, w, h, err := normalizeArtwork(raw)
+	original, thumb, w, h, err := normalizeArtworkFormatsContext(workCtx, raw, map[string]bool{"jpeg": true, "png": true})
 	if err != nil {
 		return s.failArtwork(ctx, j, err)
 	}
 	// No lock: files are installed first, the publication commits, and any file
 	// a concurrent retirement moved aside is reinstalled (artwork_lifecycle.go).
-	a, err := s.installArtwork(original, w, h)
+	a, err := s.installArtworkContext(workCtx, original, w, h)
 	if err != nil {
 		return s.failArtwork(ctx, j, errors.New("storage_unavailable"))
 	}
 	tc, _, _ := image.DecodeConfig(bytes.NewReader(thumb))
-	b, err := s.installArtwork(thumb, tc.Width, tc.Height)
+	b, err := s.installArtworkContext(workCtx, thumb, tc.Width, tc.Height)
 	if err != nil {
 		return s.failArtwork(ctx, j, errors.New("storage_unavailable"))
 	}

@@ -190,6 +190,8 @@ var routeLanes = map[string]string{
 	"GET /v1/dvr/recordings/{id}/delete-preview":                      laneBrowsing,
 	"GET /v1/dvr/storage":                                             laneBrowsing,
 	"GET /v1/guide":                                                   laneDefault,
+	"GET /v1/guide/channels":                                          laneBrowsing,
+	"GET /v1/guide/sources":                                           laneBrowsing,
 	"GET /v1/guide/images/{digest}":                                   laneMedia,
 	"GET /v1/home":                                                    laneBrowsing,
 	"GET /v1/home/rows/{id}":                                          laneBrowsing,

@@ -44,7 +44,8 @@ func (d Dependencies) ownerContext(ctx context.Context, r *http.Request) (identi
 	if d.Identity == nil || d.DB == nil || len(headers) != 1 || !strings.HasPrefix(headers[0], "Bearer ") {
 		return identity.Principal{}, identity.ErrUnauthorized
 	}
-	p, err := d.Identity.AuthenticateContext(ctx, strings.TrimPrefix(headers[0], "Bearer "))
+	token := strings.TrimPrefix(headers[0], "Bearer ")
+	p, err := d.Identity.AuthenticateContext(ctx, token)
 	if err != nil {
 		return p, err
 	}
@@ -57,7 +58,10 @@ func (d Dependencies) ownerContext(ctx context.Context, r *http.Request) (identi
 	}
 	tx := gated.Tx()
 	defer gated.Rollback()
-	return p, d.ownerAuthorityTx(ctx, tx, p)
+	if err = d.ownerAuthorityTx(ctx, tx, p); err == nil {
+		d.admission.rememberCredential(token, p)
+	}
+	return p, err
 }
 
 // Bootstrap/recovery and local Quick Connect must never substitute a Hosted

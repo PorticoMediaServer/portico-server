@@ -28,11 +28,12 @@ var bundledFont []byte
 var bundledFontLicense []byte
 
 // hostFontDirs are read-only font sources a decoder may use when present:
-// the distribution's configuration and fonts on Linux, the system's on macOS.
-var hostFontDirs = []string{"/etc/fonts", "/usr/share/fonts", "/usr/local/share/fonts", "/System/Library/Fonts", "/Library/Fonts"}
+// the distribution's configuration, symlinked rules and fonts on Linux, the
+// system's fonts on macOS. Debian/Ubuntu conf.d links target /usr/share/fontconfig.
+var hostFontDirs = []string{"/etc/fonts", "/usr/share/fontconfig", "/usr/share/fonts", "/usr/local/share/fonts", "/System/Library/Fonts", "/Library/Fonts"}
 
 // FontPack is the materialized font set: Dir holds the bundled face and
-// Config (FONTCONFIG_FILE); Host lists the host font directories that exist.
+// Config (FONTCONFIG_FILE); Host lists existing font/configuration sources.
 type FontPack struct {
 	Dir, Config string
 	Host        []string
@@ -64,6 +65,9 @@ func Fonts() (FontPack, error) {
 	var conf strings.Builder
 	conf.WriteString("<?xml version=\"1.0\"?>\n<!DOCTYPE fontconfig SYSTEM \"urn:fontconfig:fonts.dtd\">\n<fontconfig>\n")
 	for _, d := range host {
+		if d == "/usr/share/fontconfig" {
+			continue // Fontconfig rule symlink targets; not a font directory.
+		}
 		if d == "/etc/fonts" {
 			// The distribution's rules (aliases, language preferences) when it has them.
 			conf.WriteString("  <include ignore_missing=\"yes\">/etc/fonts/fonts.conf</include>\n")

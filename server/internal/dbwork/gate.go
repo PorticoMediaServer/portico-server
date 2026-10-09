@@ -38,6 +38,9 @@ type Gate struct {
 	notify    chan struct{}
 	// maxQueueAge is the longest any waiter of a class has ever queued.
 	maxQueueAge map[Class]uint64
+	byClass     [len(classNames)]gateClassCounters
+	holderClass Class
+	heldSince   time.Time
 
 	holder    string
 	acquired  atomic.Uint64
@@ -46,6 +49,11 @@ type Gate struct {
 	cancelled atomic.Uint64
 	heldNanos atomic.Uint64
 	maxHeld   atomic.Uint64
+}
+
+type gateClassCounters struct {
+	acquired, queued, cancelled   uint64
+	waitNanos, heldNanos, maxHeld uint64
 }
 
 // waiter is one queued acquisition: its ticket, and when it started waiting.
@@ -100,6 +108,7 @@ func (g *Gate) Acquire(ctx context.Context, class Class) (func(), error) {
 				g.grantID = g.pickWinnerLocked()
 			}
 			g.signalLocked()
+			g.byClass[class].cancelled++
 			g.mu.Unlock()
 			g.cancelled.Add(1)
 			return nil, err
@@ -112,6 +121,13 @@ func (g *Gate) Acquire(ctx context.Context, class Class) (func(), error) {
 				g.holder = callerStack()
 			}
 			held := time.Now()
+			g.holderClass, g.heldSince = class, held
+			metrics := &g.byClass[class]
+			metrics.acquired++
+			if queued {
+				metrics.queued++
+				metrics.waitNanos += uint64(held.Sub(start))
+			}
 			g.mu.Unlock()
 			g.acquired.Add(1)
 			if queued {
@@ -130,7 +146,13 @@ func (g *Gate) Acquire(ctx context.Context, class Class) (func(), error) {
 						}
 					}
 					g.mu.Lock()
+					metrics := &g.byClass[class]
+					metrics.heldNanos += elapsed
+					if elapsed > metrics.maxHeld {
+						metrics.maxHeld = elapsed
+					}
 					g.active = false
+					g.holderClass, g.heldSince = 0, time.Time{}
 					g.grantID = g.pickWinnerLocked()
 					g.holder = ""
 					g.signalLocked()
@@ -158,6 +180,7 @@ func (g *Gate) Acquire(ctx context.Context, class Class) (func(), error) {
 				g.grantID = g.pickWinnerLocked()
 			}
 			g.signalLocked()
+			g.byClass[class].cancelled++
 			g.mu.Unlock()
 			g.cancelled.Add(1)
 			return nil, ctx.Err()
@@ -282,14 +305,15 @@ func (g *Gate) Waiting() map[string]int {
 
 // GateStats is the observable state of the write gate.
 type GateStats struct {
-	Active         bool           `json:"active"`
-	Acquired       uint64         `json:"acquired"`
-	Queued         uint64         `json:"queued"`
-	Cancelled      uint64         `json:"cancelled"`
-	QueueWaitMilli uint64         `json:"queueWaitMillis"`
-	HeldMilli      uint64         `json:"heldMillis"`
-	MaxHeldMilli   uint64         `json:"maxHeldMillis"`
-	Waiting        map[string]int `json:"waiting"`
+	Active         bool                      `json:"active"`
+	Acquired       uint64                    `json:"acquired"`
+	Queued         uint64                    `json:"queued"`
+	Cancelled      uint64                    `json:"cancelled"`
+	QueueWaitMilli uint64                    `json:"queueWaitMillis"`
+	HeldMilli      uint64                    `json:"heldMillis"`
+	MaxHeldMilli   uint64                    `json:"maxHeldMillis"`
+	Waiting        map[string]int            `json:"waiting"`
+	ByClass        map[string]GateClassStats `json:"byClass"`
 	// MaxQueueAgeMilli is the longest wait ever seen per class, and
 	// QueueAgeMilli the age of the oldest waiter in each class right now. A
 	// ladder without aging can starve its bottom rung; these are how that would
@@ -298,10 +322,40 @@ type GateStats struct {
 	QueueAgeMilli    map[string]uint64 `json:"queueAgeMillis"`
 }
 
+// GateClassStats distinguishes a maintenance hold from an interactive or
+// playback write without recording SQL, arguments or caller identity.
+type GateClassStats struct {
+	Active           bool   `json:"active"`
+	Acquired         uint64 `json:"acquired"`
+	Queued           uint64 `json:"queued"`
+	Cancelled        uint64 `json:"cancelled"`
+	QueueWaitMilli   uint64 `json:"queueWaitMillis"`
+	HeldMilli        uint64 `json:"heldMillis"`
+	MaxHeldMilli     uint64 `json:"maxHeldMillis"`
+	CurrentHeldMilli uint64 `json:"currentHeldMillis"`
+}
+
 // Stats snapshots the gate counters.
 func (g *Gate) Stats() GateStats {
 	g.mu.Lock()
 	active := g.active
+	byClass := make(map[string]GateClassStats, len(classNames)-1)
+	for _, class := range Classes() {
+		entry := g.byClass[class]
+		value := GateClassStats{
+			Active:         active && g.holderClass == class,
+			Acquired:       entry.acquired,
+			Queued:         entry.queued,
+			Cancelled:      entry.cancelled,
+			QueueWaitMilli: entry.waitNanos / uint64(time.Millisecond),
+			HeldMilli:      entry.heldNanos / uint64(time.Millisecond),
+			MaxHeldMilli:   entry.maxHeld / uint64(time.Millisecond),
+		}
+		if value.Active {
+			value.CurrentHeldMilli = uint64(time.Since(g.heldSince) / time.Millisecond)
+		}
+		byClass[class.String()] = value
+	}
 	g.mu.Unlock()
 	peak, current := g.QueueAges()
 	return GateStats{
@@ -313,6 +367,7 @@ func (g *Gate) Stats() GateStats {
 		HeldMilli:        g.heldNanos.Load() / uint64(time.Millisecond),
 		MaxHeldMilli:     g.maxHeld.Load() / uint64(time.Millisecond),
 		Waiting:          g.Waiting(),
+		ByClass:          byClass,
 		MaxQueueAgeMilli: peak,
 		QueueAgeMilli:    current,
 	}
@@ -326,6 +381,9 @@ func (g *Gate) ResetPeak() {
 	g.maxHeld.Store(0)
 	g.mu.Lock()
 	clear(g.maxQueueAge)
+	for class := range g.byClass {
+		g.byClass[class].maxHeld = 0
+	}
 	g.mu.Unlock()
 }
 

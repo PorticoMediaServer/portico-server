@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/imagework"
 )
 
 // CompactArtworkStep upgrades one legacy object without provider IO. Selected,
@@ -65,6 +66,11 @@ func (s *Service) compactArtworkObject(ctx context.Context, old string) error {
 	if cfg.Width < 1 || cfg.Height < 1 || cfg.Width > 10000 || cfg.Height > 10000 || int64(cfg.Width)*int64(cfg.Height) > 24000000 {
 		return fail("dimension_limit")
 	}
+	release, err := imagework.Acquire(ctx)
+	if err != nil {
+		return err
+	}
+	defer release()
 	decoded, format, err := image.Decode(bytes.NewReader(raw))
 	if err != nil {
 		return fail("undecodable")
@@ -72,6 +78,9 @@ func (s *Service) compactArtworkObject(ctx context.Context, old string) error {
 	var small bool
 	err = s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM artwork_selections WHERE thumbnail_digest=?) OR EXISTS(SELECT 1 FROM artwork_previews WHERE digest=?) OR EXISTS(SELECT 1 FROM artwork_uploads WHERE thumbnail_digest=?)`, old, old, old).Scan(&small)
 	if err != nil {
+		return err
+	}
+	if err = ctx.Err(); err != nil {
 		return err
 	}
 	edge := artworkLargeEdge
@@ -82,7 +91,8 @@ func (s *Service) compactArtworkObject(ctx context.Context, old string) error {
 	if err != nil {
 		return err
 	}
-	installed, err := s.installArtwork(data, w, h)
+	release()
+	installed, err := s.installArtworkContext(ctx, data, w, h)
 	if err != nil {
 		return err
 	}

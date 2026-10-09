@@ -248,7 +248,7 @@ func (s *Service) OpenRemote(ctx context.Context, grant, method, rangeHeader str
 	if s.remote == nil {
 		return nil, nil, false, nil
 	}
-	if _, _, _, e := s.resolveGrant(grant, decode); e != nil {
+	if _, _, _, e := s.resolveGrant(ctx, grant, decode); e != nil {
 		return nil, nil, false, e
 	}
 	return s.remote.open(ctx, grant, method, rangeHeader)

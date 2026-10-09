@@ -1,6 +1,10 @@
 package supervise
 
 import (
+	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -19,6 +23,42 @@ import (
 // Test files are exempt: a test is allowed to model a caller that does not
 // contain its panics, which is exactly what the containment has to survive.
 var bareGo = regexp.MustCompile(`^\s*go\s+(func\b|[A-Za-z_][A-Za-z0-9_.]*\()`)
+
+// The maintained upstream driver already owns this cancellation watcher's
+// lifetime through its returned cleanup function. Permit exactly its one
+// goroutine, without excluding other driver or application code from the rule.
+func upstreamInterruptGoLines(relative string, data []byte) (map[int]bool, error) {
+	if relative != "internal/thirdparty/sqlite/sqlite.go" {
+		return nil, nil
+	}
+	positions := token.NewFileSet()
+	file, err := parser.ParseFile(positions, relative, data, 0)
+	if err != nil {
+		return nil, err
+	}
+	var matches []*ast.GoStmt
+	functions := 0
+	for _, declaration := range file.Decls {
+		function, ok := declaration.(*ast.FuncDecl)
+		if !ok || function.Name.Name != "interruptOnDone" || function.Recv != nil {
+			continue
+		}
+		functions++
+		ast.Inspect(function.Body, func(node ast.Node) bool {
+			if statement, ok := node.(*ast.GoStmt); ok {
+				matches = append(matches, statement)
+			}
+			return true
+		})
+	}
+	if functions != 1 || len(matches) != 1 {
+		return nil, fmt.Errorf("upstream interruptOnDone exception requires one function and one goroutine; found %d and %d", functions, len(matches))
+	}
+	if _, ok := matches[0].Call.Fun.(*ast.FuncLit); !ok || len(matches[0].Call.Args) != 0 {
+		return nil, fmt.Errorf("upstream interruptOnDone watcher must remain an immediately invoked function literal")
+	}
+	return map[int]bool{positions.Position(matches[0].Go).Line: true}, nil
+}
 
 func TestEveryGoroutineIsStartedThroughThisPackage(t *testing.T) {
 	root, err := filepath.Abs("../..")
@@ -48,8 +88,12 @@ func TestEveryGoroutineIsStartedThroughThisPackage(t *testing.T) {
 			if readErr != nil {
 				return readErr
 			}
+			exceptions, exceptionErr := upstreamInterruptGoLines(relative, data)
+			if exceptionErr != nil {
+				return exceptionErr
+			}
 			for index, line := range strings.Split(string(data), "\n") {
-				if bareGo.MatchString(line) {
+				if bareGo.MatchString(line) && !exceptions[index+1] {
 					offenders = append(offenders, relative+":"+strconv.Itoa(index+1)+": "+strings.TrimSpace(line))
 				}
 			}
@@ -67,5 +111,27 @@ supervise.Supervise (the same, then restart with backoff — only for a loop who
 state is in the database rather than in the goroutine):
 
 %s`, strings.Join(offenders, "\n"))
+	}
+}
+
+func TestUpstreamInterruptExceptionIsLimitedToOneFunctionAndGoroutine(t *testing.T) {
+	const path = "internal/thirdparty/sqlite/sqlite.go"
+	const valid = "package sqlite\nfunc interruptOnDone() {\n go func() {}()\n}\nfunc other() {\n go func() {}()\n}\n"
+	lines, err := upstreamInterruptGoLines(path, []byte(valid))
+	if err != nil || len(lines) != 1 || !lines[3] || lines[6] {
+		t.Fatalf("exception escaped its function: %v, %v", lines, err)
+	}
+	if lines, err := upstreamInterruptGoLines("internal/application/sqlite.go", []byte(valid)); err != nil || len(lines) != 0 {
+		t.Fatalf("exception escaped its exact file: %v, %v", lines, err)
+	}
+	for _, invalid := range []string{
+		"package sqlite; func other() { go func() {}() }",
+		"package sqlite; func interruptOnDone() { go func() {}(); go func() {}() }",
+		"package sqlite; func interruptOnDone() { go worker() }",
+		"package sqlite; func interruptOnDone() { go func() { go func() {}() }() }",
+	} {
+		if _, err := upstreamInterruptGoLines(path, []byte(invalid)); err == nil {
+			t.Fatal("accepted changed upstream goroutine shape")
+		}
 	}
 }

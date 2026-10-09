@@ -4,12 +4,13 @@ This directory is the published contract for everything the Portico media server
 
 | File | What it is |
 | --- | --- |
-| `openapi.yaml` | **The complete API.** Every route registered by `server/internal/httpapi`, plus the `internal/networking` claim/remote/certificate routes composed into the same mux. 331 operations. |
+| `openapi.yaml` | **The complete API.** Every route registered by `server/internal/httpapi`, plus the `internal/networking` claim/remote/certificate routes composed into the same mux. |
 | `playback-v2.openapi.json` | The renderer-independent playback protocol in full, including operations this server build does not yet register. `openapi.yaml` references its schemas by external `$ref` rather than copying them. |
 | `playback-v2-protocol.md` | Normative semantics for that protocol — canonical encoding, receipt dispositions, provenance, lane ordering. |
 | `playback-v2-canonical-fixtures.json`, `playback-v2-source-reference-fixtures.json` | Wire fixtures the protocol tests run against. |
 | `social.openapi.yaml` | Watch Together groups, Portico receiver handoff and Google Cast pairing, including the group SSE stream and its event types. |
 | `social.md` | Normative semantics for that group — the group timeline and correction bands, the host-disconnect timeline, the two-phase handoff state machine, and why DLNA is omitted and AirPlay is client-only. |
+| `playback-admission.md` | Active typed timeline reporting cadence, authenticated device limits, response deadlines and overload recovery. |
 
 `server/internal/httpapi/openapi_coverage_test.go` fails the build if a route is
 registered without an entry in `openapi.yaml`, so the document cannot silently drift. This is
@@ -195,6 +196,21 @@ Live TV uses a windowed guide instead: `GET /v1/guide` takes `start`, `end` and 
 returns `nextCursor` for channels within that window. A window larger than the server will build
 answers `422 guide_window_too_large`; a cursor outstanding across a guide refresh answers
 `409 guide_refresh_required`.
+
+Servers advertising `features.guide_windowed_directory=enabled` offer two small navigation reads:
+`GET /v1/guide/sources` provides all authorized source summaries, group/favorite counts and current
+availability without programmes. `GET /v1/guide/channels?kind=all&sort=name&offset=0&limit=50`
+provides globally sorted channel rows and an exact authorized total. Pass its `revision` on later
+pages; if it changes, discard loaded positions and restart. Use `GET /v1/guide` with `channels`
+and a time window only for programmes of visible channels, for live and Library Channels alike.
+For channel up/down, use the same channel directory request with `direction=next` or `previous`
+and `anchorChannelId`, `anchorSourceId`, `anchorProvenance` instead of an offset. The server
+returns at most one watchable neighbor, wraps at the ends and preserves the selected view's
+sorting and filters; never download the complete lineup just to change channels.
+
+Older servers retain the original endpoint. Only an absent endpoint (404/405) justifies falling
+back; permission, malformed response, overload and transient errors must remain visible.
+
 
 ---
 

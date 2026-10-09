@@ -297,7 +297,7 @@ func candidateSource(c []recCandidate) homeSource {
 	}
 	raw, _ := json.Marshal(c)
 	n := len(c)
-	return homeSource{fingerprint: fmt.Sprintf("%x", sha256.Sum256(raw)), base: `SELECT json_extract(value,'$.id') AS id,printf('%08d',CAST(key AS INTEGER)) AS ord FROM json_each(?)`, args: []any{string(raw)}, total: &n, selfRestricted: true}
+	return homeSource{fingerprint: fmt.Sprintf("%x", sha256.Sum256(raw)), base: `SELECT json_extract(value,'$.id') AS id,printf('%08d',CAST(key AS INTEGER)) AS ord FROM json_each(?)`, args: []any{string(raw)}, total: &n, selfRestricted: true, candidates: c}
 }
 func (s *Service) homeEngineSource(r HomeRequest, spec homeRowSpec) (homeSource, error) {
 	cacheKey := spec.ID + ":" + idsJSON(r.Libraries)
@@ -324,10 +324,11 @@ func (s *Service) homeEngineSource(r HomeRequest, spec homeRowSpec) (homeSource,
 	// Trends retain their genuine feed identity. Suppress only the visible first
 	// rail of trends in personalized results; saved/resume rows are untouched.
 	if row == "recommended" && !containsString(r.HiddenRowIDs, "trending_now") {
-		trends, e := s.recommendationCandidates(r, "trending_now", "")
+		trending, e := s.homeEngineSource(r, homeRowSpec{ID: "trending_now"})
 		if e != nil {
 			return homeSource{}, e
 		}
+		trends := trending.candidates
 		if len(trends) >= recMinimumTrend {
 			seen := map[string]bool{}
 			for i, c := range trends {

@@ -63,8 +63,8 @@ func (s *Service) CreateCollection(library, name string) (Collection, error) {
 		return Collection{}, err
 	}
 	var id string
-	ctx := context.Background()
-	err = dbwork.WithWriteTx(ctx, s.db, dbwork.ClassInteractive, func(tx *sql.Tx) error {
+	ctx := s.Context()
+	err = dbwork.WithWriteTx(ctx, s.db, dbwork.ClassFrom(ctx, dbwork.ClassInteractive), func(tx *sql.Tx) error {
 		handle, err := compactcatalog.LibraryTx(ctx, tx, library)
 		if err != nil {
 			return err
@@ -95,8 +95,8 @@ func (s *Service) RenameCollection(id, name string) (Collection, error) {
 	if err != nil {
 		return Collection{}, err
 	}
-	ctx := context.Background()
-	err = dbwork.WithWriteTx(ctx, s.db, dbwork.ClassInteractive, func(tx *sql.Tx) error {
+	ctx := s.Context()
+	err = dbwork.WithWriteTx(ctx, s.db, dbwork.ClassFrom(ctx, dbwork.ClassInteractive), func(tx *sql.Tx) error {
 		entity, _, err := collectionTx(ctx, tx, id)
 		if err != nil {
 			return err
@@ -116,7 +116,7 @@ func (s *Service) RenameCollection(id, name string) (Collection, error) {
 	return s.Collection(id)
 }
 func (s *Service) DeleteCollection(id string) error {
-	ctx := context.Background()
+	ctx := s.Context()
 	return dbwork.WithWriteTx(ctx, s.db, dbwork.ClassFrom(ctx, dbwork.ClassInteractive), func(tx *sql.Tx) error {
 		entity, _, err := collectionTx(ctx, tx, id)
 		if errors.Is(err, sql.ErrNoRows) {
@@ -141,7 +141,7 @@ func collectionMovieTx(ctx context.Context, tx *sql.Tx, library int64, item stri
 }
 
 func (s *Service) SetCollectionItem(collection, item string, present bool) error {
-	ctx := context.Background()
+	ctx := s.Context()
 	gated, err := dbwork.Begin(ctx, s.db, dbwork.ClassFrom(ctx, dbwork.ClassInteractive))
 	if err != nil {
 		return err
@@ -208,7 +208,7 @@ func (s *Service) SetCollectionItems(collection string, add, remove []string) (C
 		}
 		seen[id] = true
 	}
-	ctx := context.Background()
+	ctx := s.Context()
 	gated2, err := dbwork.Begin(ctx, s.db, dbwork.ClassFrom(ctx, dbwork.ClassInteractive))
 	if err != nil {
 		return out, err

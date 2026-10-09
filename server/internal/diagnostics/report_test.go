@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	_ "modernc.org/sqlite"
+	_ "portico.local/server/internal/thirdparty/sqlite"
 	"path/filepath"
 	"strings"
 	"testing"

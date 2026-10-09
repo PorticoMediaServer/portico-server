@@ -56,6 +56,14 @@ var (
 // maxLibraryFiles bounds the exact dependency files a sandbox mounts.
 const maxLibraryFiles = 512
 
+const maxJobArguments = 4096
+
+// MaxGeneratedArguments bounds the complete sandbox and limits-shim argv.
+// Each exact dependency contributes three mount arguments; the remaining
+// overhead covers the sandbox, declared input paths and limits shim. Helpers
+// receiving a generated argv use this bound in addition to their byte limits.
+const MaxGeneratedArguments = maxJobArguments + 3*maxLibraryFiles + 128
+
 // DefaultOutputBytes bounds any one file a job with output folders writes.
 // HLS sessions are budgeted at 4 GiB in total, so one file never needs more.
 const DefaultOutputBytes int64 = 4 << 30
@@ -196,12 +204,16 @@ func Argv(job Job) ([]string, error) {
 			}
 		}
 	}
+	argv := shimArgv(job, inner)
+	if len(argv) > MaxGeneratedArguments {
+		return nil, ErrInvalidJob
+	}
 	noteCommand()
-	return shimArgv(job, inner), nil
+	return argv, nil
 }
 
 func validate(job *Job) error {
-	if job.Executable == "" || len(job.Files) > 32 || len(job.Args) > 4096 {
+	if job.Executable == "" || len(job.Files) > 32 || len(job.Args) > maxJobArguments {
 		return ErrInvalidJob
 	}
 	if job.PreConfined && !filepath.IsAbs(job.Executable) {

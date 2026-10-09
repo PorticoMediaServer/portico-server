@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"io"
 	"net/http"
 	"time"
 )
@@ -60,33 +61,78 @@ type rollingDeadlineWriter struct {
 	http.ResponseWriter
 	controller *http.ResponseController
 	refreshed  time.Time
+	window     time.Duration
+	interval   time.Duration
+	chunkSize  int
 }
 
 // withRollingDeadline wraps w so every write is covered by a deadline that moves
 // with the transfer.
 func withRollingDeadline(w http.ResponseWriter) *rollingDeadlineWriter {
-	wrapped := &rollingDeadlineWriter{ResponseWriter: w, controller: http.NewResponseController(w)}
+	wrapped := &rollingDeadlineWriter{ResponseWriter: w, controller: http.NewResponseController(w), window: mediaWriteDeadline, interval: deadlineRefreshInterval}
 	wrapped.refresh()
 	return wrapped
 }
 
+// JSON encoders can submit an entire document in one Write. Chunk that write so
+// a large response making progress can refresh its budget, while an HTTP/2 peer
+// withholding flow-control credit cannot keep a lane occupied indefinitely.
+// Arm lazily: database work before the first response byte has its own budget.
+func withResponseDeadline(w http.ResponseWriter) *rollingDeadlineWriter {
+	return &rollingDeadlineWriter{ResponseWriter: w, controller: http.NewResponseController(w), window: 15 * time.Second, interval: time.Second, chunkSize: 16 << 10}
+}
+
 func (r *rollingDeadlineWriter) refresh() {
 	r.refreshed = time.Now()
-	_ = r.controller.SetWriteDeadline(r.refreshed.Add(mediaWriteDeadline))
+	_ = r.controller.SetWriteDeadline(r.refreshed.Add(r.window))
 }
 
 func (r *rollingDeadlineWriter) Write(p []byte) (int, error) {
-	if time.Since(r.refreshed) >= deadlineRefreshInterval {
-		r.refresh()
+	if r.chunkSize == 0 {
+		if time.Since(r.refreshed) >= r.interval {
+			r.refresh()
+		}
+		return r.ResponseWriter.Write(p)
 	}
-	return r.ResponseWriter.Write(p)
+	written := 0
+	for len(p) > 0 {
+		if time.Since(r.refreshed) >= r.interval {
+			r.refresh()
+		}
+		chunk := len(p)
+		if chunk > r.chunkSize {
+			chunk = r.chunkSize
+		}
+		n, err := r.ResponseWriter.Write(p[:chunk])
+		written += n
+		if err != nil {
+			return written, err
+		}
+		if n != chunk {
+			return written, io.ErrShortWrite
+		}
+		p = p[n:]
+	}
+	return written, nil
 }
 
 // Unwrap keeps http.NewResponseController and net/http's own feature detection
 // working through the wrapper.
 func (r *rollingDeadlineWriter) Unwrap() http.ResponseWriter { return r.ResponseWriter }
 
-func (r *rollingDeadlineWriter) Flush() { _ = r.controller.Flush() }
+func (r *rollingDeadlineWriter) Flush() {
+	if time.Since(r.refreshed) >= r.interval {
+		r.refresh()
+	}
+	_ = r.controller.Flush()
+}
+
+// Finish after compression's close, so trailers and net/http's buffered bytes
+// reach the client while still bounded. Clear only after that explicit flush.
+func (r *rollingDeadlineWriter) finishResponse() {
+	defer r.release()
+	r.Flush()
+}
 
 // release drops the deadline once the body is done, so a keep-alive connection
 // carries nothing from this response into the next.

@@ -52,6 +52,8 @@ type compressingWriter struct {
 	failed  bool
 }
 
+func (c *compressingWriter) Unwrap() http.ResponseWriter { return c.ResponseWriter }
+
 func (c *compressingWriter) WriteHeader(status int) {
 	if c.status == 0 {
 		c.status = status

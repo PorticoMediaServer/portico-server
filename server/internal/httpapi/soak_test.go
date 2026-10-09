@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	binaryencoding "encoding/binary"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -14,6 +15,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"runtime/pprof"
 	"sort"
 	"strconv"
 	"strings"
@@ -25,6 +27,7 @@ import (
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/httpapi/fixture"
 	"portico.local/server/internal/playback"
+	"portico.local/server/internal/playbackv1"
 	"portico.local/server/internal/supervise"
 )
 
@@ -41,21 +44,26 @@ import (
 //
 //	PORTICO_PERFORMANCE_TIER=soak go test ./internal/httpapi -run TestSoak
 //
-// Defaults are sized to finish locally in about five minutes;
-// PORTICO_SOAK_SECONDS and PORTICO_SOAK_VIEWERS make it a nightly job.
+// Defaults are sized to finish locally in about five minutes. Seconds, viewers,
+// streams, event holds, catalogue size and stream byte rate are configurable.
 
 // soakSettings is one run's shape.
 type soakSettings struct {
-	seconds     int
-	viewers     int
-	streams     int
-	eventHolds  int
-	catalogue   int
-	faultPeriod time.Duration
+	seconds              int
+	viewers              int
+	streams              int
+	eventHolds           int
+	catalogue            int
+	faultPeriod          time.Duration
+	streamBytesPerSecond int
+	playbackProtocol     string
 }
 
 func soakConfiguration() soakSettings {
-	s := soakSettings{seconds: 180, viewers: 200, streams: 40, eventHolds: 20, catalogue: 4000, faultPeriod: 5 * time.Second}
+	s := soakSettings{seconds: 180, viewers: 200, streams: 100, eventHolds: 20, catalogue: 4000, faultPeriod: 5 * time.Second, streamBytesPerSecond: 1 << 20, playbackProtocol: "v1"}
+	if os.Getenv("PORTICO_SOAK_PLAYBACK") == "legacy" {
+		s.playbackProtocol = "legacy"
+	}
 	if value, err := strconv.Atoi(os.Getenv("PORTICO_SOAK_SECONDS")); err == nil && value > 0 {
 		s.seconds = value
 	}
@@ -64,6 +72,15 @@ func soakConfiguration() soakSettings {
 	}
 	if value, err := strconv.Atoi(os.Getenv("PORTICO_SOAK_CATALOGUE")); err == nil && value > 0 {
 		s.catalogue = value
+	}
+	if value, err := strconv.Atoi(os.Getenv("PORTICO_SOAK_STREAMS")); err == nil && value > 0 {
+		s.streams = value
+	}
+	if value, err := strconv.Atoi(os.Getenv("PORTICO_SOAK_EVENT_HOLDS")); err == nil && value >= 0 && os.Getenv("PORTICO_SOAK_EVENT_HOLDS") != "" {
+		s.eventHolds = value
+	}
+	if value, err := strconv.Atoi(os.Getenv("PORTICO_SOAK_STREAM_BYTES_PER_SECOND")); err == nil && value > 0 {
+		s.streamBytesPerSecond = value
 	}
 	return s
 }
@@ -175,8 +192,9 @@ func soakMedia(t *testing.T) string {
 		return ""
 	}
 	// Not t.TempDir: the fixture copies it, and generating it once per run is
-	// enough. Thirty seconds of small-frame video is a few megabytes, which is
-	// plenty to be interrupted part way through.
+	// enough. A few-megabyte file fits socket buffers: paced client readers can
+	// appear concurrent after every server handler has already finished. Append
+	// a valid MP4 free box so each paced body remains active server-side.
 	directory, err := os.MkdirTemp("", "portico-soak-media-")
 	if err != nil {
 		t.Fatal(err)
@@ -200,6 +218,26 @@ func soakMedia(t *testing.T) string {
 		t.Log("the generated soak media file is too small to stream; the soak runs without the media-byte leg")
 		return ""
 	}
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND, 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const padding = 64 << 20
+	header := make([]byte, 8)
+	binaryencoding.BigEndian.PutUint32(header[:4], padding)
+	copy(header[4:], "free")
+	_, err = file.Write(header)
+	if err == nil {
+		err = file.Truncate(info.Size() + padding)
+	}
+	closeErr := file.Close()
+	if err != nil || closeErr != nil {
+		t.Fatalf("padding soak media: write=%v close=%v", err, closeErr)
+	}
+	info, err = os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
 	t.Logf("soak media: %s (%d KiB)", path, info.Size()>>10)
 	return path
 }
@@ -213,12 +251,15 @@ func TestSoakUnderFaultsAndRealMediaBytes(t *testing.T) {
 	}
 	settings := soakConfiguration()
 	media := soakMedia(t)
+	if media == "" {
+		t.Skip("the streaming capacity tier requires real media; install ffmpeg or supply PORTICO_SOAK_MEDIA")
+	}
 	dbwork.ResetProbes()
 	t.Cleanup(dbwork.ResetProbes)
 	lockEscapes.Store(0)
 
 	shape := soakShape(settings.catalogue)
-	tier := performanceTier{name: "soak", shape: shape, catalogItems: shape.Items(), concurrentViewers: settings.viewers, iterations: 1, think: 250 * time.Millisecond, mediaPath: media}
+	tier := performanceTier{name: "soak", shape: shape, catalogItems: shape.Items(), concurrentViewers: settings.viewers, iterations: 1, think: 250 * time.Millisecond, mediaPath: media, playbackV1: settings.playbackProtocol == "v1"}
 	f := newLoadFixture(t, tier)
 
 	// Real sockets, not a recorder: a write deadline, a client that stops reading
@@ -229,8 +270,26 @@ func TestSoakUnderFaultsAndRealMediaBytes(t *testing.T) {
 
 	panicsBefore := supervise.Panics()
 	baseline := takeSoakSample(context.Background(), f.db)
+	readsBefore := dbwork.Reads()
+	cacheBefore := readsBefore.StatementCache
+	gateBefore, poolBefore := dbwork.WriteGate().Stats(), dbwork.Pool(f.db)
+	// Fixture construction is not request load and must not set its maximum
+	// transaction hold or inflate request-phase wait/cache counters.
+	dbwork.WriteGate().ResetPeak()
+	ResetRouteCosts()
 	t.Logf("baseline: goroutines=%d fds=%d heap=%d KiB wal=%d KiB children=%d",
 		baseline.goroutines, baseline.descriptors, baseline.heapBytes>>10, baseline.walBytes>>10, baseline.children)
+	if profilePath := os.Getenv("PORTICO_SOAK_CPU_PROFILE"); profilePath != "" {
+		profile, err := os.Create(profilePath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := pprof.StartCPUProfile(profile); err != nil {
+			profile.Close()
+			t.Fatal(err)
+		}
+		defer func() { pprof.StopCPUProfile(); profile.Close() }()
+	}
 
 	ctx, stop := context.WithTimeout(context.Background(), time.Duration(settings.seconds)*time.Second)
 	defer stop()
@@ -239,6 +298,8 @@ func TestSoakUnderFaultsAndRealMediaBytes(t *testing.T) {
 	// where it means something; faults start after it.
 	quiet := time.Duration(settings.seconds/3) * time.Second
 	faultsFrom := time.Now().Add(quiet)
+	recoveryFrom := faultsFrom.Add(quiet)
+	isClean := func() bool { now := time.Now(); return now.Before(faultsFrom) || !now.Before(recoveryFrom) }
 
 	var scanned, refreshed atomic.Int64
 	var background sync.WaitGroup
@@ -257,8 +318,38 @@ func TestSoakUnderFaultsAndRealMediaBytes(t *testing.T) {
 		}, &refreshed)
 	})
 
-	observed := &soakObservations{codes: map[string]int{}, caps: map[string]int{}, byLabel: map[string]int{}}
+	observed := &soakObservations{codes: map[string]int{}, caps: map[string]int{}, byLabel: map[string]int{}, phaseAt: func() string {
+		now := time.Now()
+		if now.Before(faultsFrom) {
+			return "quiet"
+		}
+		if now.Before(recoveryFrom) {
+			return "fault"
+		}
+		return "recovery"
+	}}
 	var work sync.WaitGroup
+	work.Add(1)
+	supervise.Go("soak.capacity-observer", func() {
+		defer work.Done()
+		for ctx.Err() == nil {
+			code, _, raw := f.callTimed(f.owner.AccessToken, "GET", "/v1/admin/diagnostics/concurrency", nil)
+			var diagnostics ConcurrencyDiagnostics
+			if code == 200 && json.Unmarshal([]byte(raw), &diagnostics) == nil {
+				for _, lane := range diagnostics.Lanes {
+					observed.sampleLane(lane)
+					if lane.Lane == laneMediaBody {
+						observed.sampleStreams(lane.Active, settings.streams, isClean(), !time.Now().Before(recoveryFrom))
+					}
+				}
+			}
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(250 * time.Millisecond):
+			}
+		}
+	})
 
 	// The server checkpoints the write-ahead log on a timer; the fixture has no
 	// such loop, so without this the soak would measure a configuration nobody
@@ -283,13 +374,20 @@ func TestSoakUnderFaultsAndRealMediaBytes(t *testing.T) {
 		index := index
 		supervise.Go("soak.viewer", func() {
 			defer work.Done()
+			// Spread arrival over two seconds. A synchronized restart storm is a
+			// separate overload shape, not the steady browsing capacity claim.
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(time.Duration(index) * 2 * time.Second / time.Duration(settings.viewers)):
+			}
 			// A viewer that waits longer than this has already given up in any real
 			// sense, and a round that never returns is a round whose remaining
 			// requests never happen — which would quietly empty the workload.
 			client := &http.Client{Timeout: 8 * time.Second}
 			token := f.viewers[index%len(f.viewers)].AccessToken
 			for ctx.Err() == nil {
-				soakViewerRound(ctx, client, server.URL, token, f, index, observed, time.Now().Before(faultsFrom))
+				soakViewerRound(ctx, client, server.URL, token, f, index, observed, isClean())
 			}
 		})
 	}
@@ -303,10 +401,15 @@ func TestSoakUnderFaultsAndRealMediaBytes(t *testing.T) {
 			index := index
 			supervise.Go("soak.stream", func() {
 				defer work.Done()
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(time.Duration(index) * 2 * time.Second / time.Duration(settings.streams)):
+				}
 				client := &http.Client{Timeout: 60 * time.Second}
 				token := f.viewers[index%len(f.viewers)].AccessToken
 				for ctx.Err() == nil {
-					soakStream(ctx, client, server.URL, token, f, index, observed, time.Now().Before(faultsFrom))
+					soakStream(ctx, client, server.URL, token, f, index, observed, isClean, settings.streamBytesPerSecond, settings.playbackProtocol)
 				}
 			})
 		}
@@ -355,7 +458,7 @@ func TestSoakUnderFaultsAndRealMediaBytes(t *testing.T) {
 		}
 		t.Logf("chaos self-check: %d of 200 probes fired", fired)
 		injected := 0
-		for ctx.Err() == nil {
+		for ctx.Err() == nil && time.Now().Before(recoveryFrom) {
 			soakFault(ctx, t, f, server.URL, injected, observed)
 			injected++
 			select {
@@ -364,31 +467,94 @@ func TestSoakUnderFaultsAndRealMediaBytes(t *testing.T) {
 			}
 		}
 		t.Logf("faults injected: %d", injected)
+		restoreChaos()
+		// The final third must recover while clients remain active; a process
+		// surviving faults alone does not establish usable recovery.
+		client := &http.Client{Timeout: 8 * time.Second}
+		for ctx.Err() == nil {
+			soakCall(ctx, client, server.URL, f.owner.AccessToken, "recovery-home", "GET", "/v1/home", nil, observed, true)
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(time.Second):
+			}
+		}
 	})
 
 	work.Wait()
 	stop()
 	background.Wait()
+	// Remove this harness's client keep-alives and accept machinery before
+	// comparing at-rest descriptors with the pre-client baseline.
+	server.Close()
+	if transport, ok := http.DefaultTransport.(*http.Transport); ok {
+		transport.CloseIdleConnections()
+	}
 	// Let everything that was in flight actually finish before measuring at rest.
 	time.Sleep(10 * time.Second)
 	rest := takeSoakSample(context.Background(), f.db)
+	if code, _, raw := f.callTimed(f.owner.AccessToken, "GET", "/v1/admin/diagnostics/concurrency", nil); code == 200 {
+		var diagnostics ConcurrencyDiagnostics
+		if json.Unmarshal([]byte(raw), &diagnostics) == nil {
+			for _, lane := range diagnostics.Lanes {
+				observed.sampleLane(lane)
+			}
+		}
+	}
 
 	report := observed.snapshot()
 	integrity := dbwork.Integrity(context.Background(), f.db)
 	gate := dbwork.WriteGate().Stats()
 	pool := dbwork.Pool(f.db)
+	gate.Acquired -= gateBefore.Acquired
+	gate.Queued -= gateBefore.Queued
+	pool.WaitCount -= poolBefore.WaitCount
+	pool.WaitMillis -= poolBefore.WaitMillis
+	cache := dbwork.Reads().StatementCache
+	cache.Hits -= cacheBefore.Hits
+	cache.Misses -= cacheBefore.Misses
+	cache.Bypasses -= cacheBefore.Bypasses
+	cache.Evictions -= cacheBefore.Evictions
 
 	t.Logf("soak: %d s, %d viewers, %d streams, %d event holds, catalogue %d",
 		settings.seconds, settings.viewers, settings.streams, settings.eventHolds, settings.catalogue)
+	t.Logf("playback protocol: %s", settings.playbackProtocol)
 	t.Logf("requests=%d p50=%s p95=%s p99=%s", report.total, report.p50, report.p95, report.p99)
 	t.Logf("refusals: quiet=%d faulted=%d fixedCeilings=%v failures=%d clientTimeouts=%d mediaBytes=%d MiB",
 		report.quietRefusals, report.faultedRefusals, report.caps, report.failures, report.timeouts, report.mediaBytes>>20)
 	t.Logf("deliberately abandoned mid-flight: %d", report.abandoned)
+	t.Logf("actual server media-body concurrency: peak=%d cleanSamples=%d cleanSamplesAtTarget=%d recoverySamplesAtTarget=%d", report.streamPeak, report.cleanStreamSamples, report.cleanStreamsAtTarget, report.recoveryStreamsAtTarget)
+	t.Logf("consecutive samples at stream target: clean=%d recovery=%d; distinct readers consuming at least 1MiB=%d", report.cleanTargetStreakPeak, report.recoveryTargetStreakPeak, report.streamReaders)
+	t.Logf("clean requests=%d p95=%s p99=%s", report.cleanRequests, report.cleanP95, report.cleanP99)
+	t.Logf("normal client retries=%d; clean logical requests=%d unresolvedFailures=%d endToEndP95=%s (raw refusals remain gated)", report.clientRetries, report.logicalCleanRequests, report.logicalCleanFailures, report.logicalCleanP95)
 	t.Logf("at rest: goroutines %d -> %d, fds %d -> %d, heap %d -> %d KiB, children %d -> %d",
 		baseline.goroutines, rest.goroutines, baseline.descriptors, rest.descriptors, baseline.heapBytes>>10, rest.heapBytes>>10, baseline.children, rest.children)
 	t.Logf("wal peak %d KiB, integrity quick_check=%q foreignKeyViolations=%d", rest.walPeak>>10, integrity.QuickCheck, integrity.ForeignKeyViolations)
 	t.Logf("gate acquired=%d queued=%d maxHeld=%dms, pool waits=%d/%dms",
 		gate.Acquired, gate.Queued, gate.MaxHeldMilli, pool.WaitCount, pool.WaitMillis)
+	t.Logf("request-phase statement cache: hits=%d misses=%d bypasses=%d evictions=%d", cache.Hits, cache.Misses, cache.Bypasses, cache.Evictions)
+	t.Logf("achieved HTTP attempts/s=%.1f; normal clean logical completions/s=%.1f", float64(report.total)/float64(settings.seconds), float64(report.logicalCleanRequests)/(float64(settings.seconds)*2/3))
+	for _, phase := range []string{"quiet", "fault", "recovery"} {
+		if p, ok := report.phases[phase]; ok {
+			t.Logf("phase %s: rawAttempts=%d refusals=%d hardFailures=%d p95=%s p99=%s logicalRequests=%d unresolved=%d endToEndP95=%s", phase, p.attempts, p.refusals, p.failures, p.p95, p.p99, p.logicalRequests, p.logicalFailures, p.logicalP95)
+		}
+	}
+	beforeClasses := map[string]dbwork.ClassReadStats{}
+	for _, class := range readsBefore.ByClass {
+		beforeClasses[class.Class] = class
+	}
+	for _, class := range dbwork.Reads().ByClass {
+		before := beforeClasses[class.Class]
+		t.Logf("work class %s: statements=%d measuredStatementMs=%d", class.Class, class.Statements-before.Statements, class.TotalMs-before.TotalMs)
+	}
+	for _, route := range RouteCosts() {
+		if route.Requests > 0 {
+			t.Logf("route cost %s: requests=%d statementsMean=%.1f statementsMax=%d acquisitionsMean=%.1f acquisitionsMax=%d", route.Route, route.Requests, route.MeanStatements(), route.MaxStatements, route.MeanAcquisitions(), route.MaxAcquisitions)
+		}
+	}
+	for _, lane := range report.lanes {
+		t.Logf("lane %s: activePeak=%d waitingPeak=%d final=%s", lane.last.Lane, lane.activePeak, lane.waitingPeak, mustSoakJSON(lane.last))
+	}
 	contained := supervise.Panics() - panicsBefore
 	t.Logf("contained panics: %d (injected throughout the fault phase)", contained)
 	for _, line := range report.transportErrors {
@@ -428,14 +594,20 @@ func TestSoakUnderFaultsAndRealMediaBytes(t *testing.T) {
 	if len(report.caps) > 0 {
 		t.Errorf("fixed ceilings refused legitimate requests: %v", report.caps)
 	}
-	// A lane refusal is the server telling the truth about this host's headroom,
-	// so it is bounded rather than forbidden: a fifth of the workload being shed
-	// with no faults means the host has run out, which is a capacity finding
-	// about the read path rather than a defect in these caps.
-	if report.quietRefusals*5 > report.total {
-		t.Errorf("%d of %d requests were refused at %d viewers with no faults; this host has no headroom left at that viewer count", report.quietRefusals, report.total, settings.viewers)
-	} else if report.quietRefusals != 0 {
-		t.Logf("%d of %d requests were shed by lane admission with no faults; this host's headroom, not a fixed ceiling", report.quietRefusals, report.total)
+	// Fault-phase shedding is expected. Clean-load shedding means the configured
+	// browsing/stream target has not been demonstrated, even if the refusal was
+	// honest and the process remained healthy.
+	if report.quietRefusals != 0 {
+		t.Errorf("%d of %d clean requests were refused at %d viewers; target capacity has not been established", report.quietRefusals, report.cleanRequests, settings.viewers)
+	}
+	if report.streamPeak < int64(settings.streams) || report.cleanTargetStreakPeak < 20 || report.recoveryTargetStreakPeak < 8 || report.streamReaders < settings.streams {
+		t.Errorf("configured %d streams were not sustained server-side during clean load and recovery: peak=%d cleanTargetSamples=%d recoveryTargetSamples=%d (250ms samples)", settings.streams, report.streamPeak, report.cleanStreamsAtTarget, report.recoveryStreamsAtTarget)
+	}
+	if report.cleanP95 > 750*time.Millisecond || report.cleanP99 > 1500*time.Millisecond {
+		t.Errorf("clean-load latency target missed: p95=%s p99=%s", report.cleanP95, report.cleanP99)
+	}
+	if report.recoverySuccesses < 5 {
+		t.Errorf("usable recovery was not demonstrated: %d successful recovery Home requests", report.recoverySuccesses)
 	}
 	if report.failures != 0 {
 		t.Errorf("%d requests failed for a reason other than admission or revision movement", report.failures)
@@ -481,18 +653,35 @@ func TestSoakUnderFaultsAndRealMediaBytes(t *testing.T) {
 
 // soakObservations collects what every client saw.
 type soakObservations struct {
-	mu              sync.Mutex
-	latencies       []time.Duration
-	codes           map[string]int
-	caps            map[string]int
-	byLabel         map[string]int
-	transportErrors []string
-	quietRefusals   int
-	faultedRefusals int
-	failures        int
-	timeouts        int
-	abandoned       int
-	mediaBytes      int64
+	lanes                    map[string]soakLaneReport
+	phaseAt                  func() string
+	phases                   map[string]*soakPhaseObservations
+	mu                       sync.Mutex
+	latencies                []time.Duration
+	cleanLatencies           []time.Duration
+	streamPeak               int64
+	cleanStreamSamples       int
+	cleanStreamsAtTarget     int
+	recoveryStreamsAtTarget  int
+	streamReaderBytes        map[int]int64
+	recoverySuccesses        int
+	cleanTargetStreak        int
+	cleanTargetStreakPeak    int
+	recoveryTargetStreak     int
+	recoveryTargetStreakPeak int
+	clientRetries            int
+	logicalCleanLatencies    []time.Duration
+	logicalCleanFailures     int
+	codes                    map[string]int
+	caps                     map[string]int
+	byLabel                  map[string]int
+	transportErrors          []string
+	quietRefusals            int
+	faultedRefusals          int
+	failures                 int
+	timeouts                 int
+	abandoned                int
+	mediaBytes               int64
 	// serverErrors are 5xx answers other than 503 to deliberately malformed
 	// requests. A malformed request is the client's mistake and must be answered
 	// as one; a 500 says the server broke, and under load is the shape a crash
@@ -500,20 +689,75 @@ type soakObservations struct {
 	serverErrors []string
 }
 
+type soakPhaseObservations struct {
+	latencies, logicalLatencies         []time.Duration
+	refusals, failures, logicalFailures int
+}
+
+type soakPhaseReport struct {
+	attempts, refusals, failures     int
+	p95, p99                         time.Duration
+	logicalRequests, logicalFailures int
+	logicalP95                       time.Duration
+}
+
 type soakReport struct {
-	total           int
-	p50, p95, p99   time.Duration
-	codes           map[string]int
-	caps            map[string]int
-	byLabel         map[string]int
-	transportErrors []string
-	quietRefusals   int
-	faultedRefusals int
-	failures        int
-	timeouts        int
-	abandoned       int
-	mediaBytes      int64
-	serverErrors    []string
+	lanes                    []soakLaneReport
+	phases                   map[string]soakPhaseReport
+	total                    int
+	p50, p95, p99            time.Duration
+	cleanRequests            int
+	cleanP95, cleanP99       time.Duration
+	streamPeak               int64
+	cleanStreamSamples       int
+	cleanStreamsAtTarget     int
+	recoveryStreamsAtTarget  int
+	streamReaders            int
+	recoverySuccesses        int
+	cleanTargetStreakPeak    int
+	recoveryTargetStreakPeak int
+	clientRetries            int
+	logicalCleanRequests     int
+	logicalCleanFailures     int
+	logicalCleanP95          time.Duration
+	codes                    map[string]int
+	caps                     map[string]int
+	byLabel                  map[string]int
+	transportErrors          []string
+	quietRefusals            int
+	faultedRefusals          int
+	failures                 int
+	timeouts                 int
+	abandoned                int
+	mediaBytes               int64
+	serverErrors             []string
+}
+
+type soakLaneReport struct {
+	last        LaneDiagnostics
+	activePeak  int64
+	waitingPeak int
+}
+
+func mustSoakJSON(value any) string {
+	raw, err := json.Marshal(value)
+	if err != nil {
+		return "unavailable"
+	}
+	return string(raw)
+}
+
+func (o *soakObservations) sampleLane(lane LaneDiagnostics) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if o.lanes == nil {
+		o.lanes = map[string]soakLaneReport{}
+	}
+	report := o.lanes[lane.Lane]
+	report.last = lane
+	report.activePeak = max(report.activePeak, lane.Active)
+	report.waitingPeak = max(report.waitingPeak, lane.Waiting)
+	o.lanes[lane.Lane] = report
 }
 
 // hostile records a deliberately malformed request's answer. A 4xx here is the
@@ -558,9 +802,28 @@ func (o *soakObservations) capRefusal(label, body string) bool {
 func (o *soakObservations) record(label string, code int, elapsed time.Duration, quiet, windowClosed bool) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
+	if o.phaseAt != nil {
+		quiet = o.phaseAt() != "fault"
+	}
 	o.latencies = append(o.latencies, elapsed)
 	o.byLabel[label]++
+	if !windowClosed {
+		if phase := o.phaseLocked(); phase != nil {
+			phase.latencies = append(phase.latencies, elapsed)
+			if code == 429 || code == 503 {
+				phase.refusals++
+			} else if code == 0 || code < 200 || (code >= 300 && code != 409) {
+				phase.failures++
+			}
+		}
+	}
+	if quiet && !windowClosed {
+		o.cleanLatencies = append(o.cleanLatencies, elapsed)
+	}
 	if code >= 200 && code <= 299 {
+		if label == "recovery-home" {
+			o.recoverySuccesses++
+		}
 		return
 	}
 	o.codes[fmt.Sprintf("%s=%d", label, code)]++
@@ -606,10 +869,127 @@ func (o *soakObservations) bytes(n int64) {
 	o.mu.Unlock()
 }
 
+func (o *soakObservations) sampleStreams(active int64, target int, clean, recovery bool) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.streamPeak = max(o.streamPeak, active)
+	if clean {
+		o.cleanStreamSamples++
+		if active >= int64(target) {
+			o.cleanTargetStreak++
+			o.cleanTargetStreakPeak = max(o.cleanTargetStreakPeak, o.cleanTargetStreak)
+			o.cleanStreamsAtTarget++
+			if recovery {
+				o.recoveryTargetStreak++
+				o.recoveryTargetStreakPeak = max(o.recoveryTargetStreakPeak, o.recoveryTargetStreak)
+				o.recoveryStreamsAtTarget++
+			}
+		}
+	}
+	if !clean || active < int64(target) {
+		o.cleanTargetStreak = 0
+	}
+	if !recovery || active < int64(target) {
+		o.recoveryTargetStreak = 0
+	}
+}
+
+func (o *soakObservations) streamRead(index int, n int64) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if o.streamReaderBytes == nil {
+		o.streamReaderBytes = map[int]int64{}
+	}
+	o.streamReaderBytes[index] += n
+}
+
+func (o *soakObservations) retry() {
+	o.mu.Lock()
+	o.clientRetries++
+	o.mu.Unlock()
+}
+
+func (o *soakObservations) logical(code int, elapsed time.Duration, clean, windowClosed bool) {
+	if windowClosed {
+		return
+	}
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if o.phaseAt != nil {
+		clean = o.phaseAt() != "fault"
+	}
+	if phase := o.phaseLocked(); phase != nil {
+		phase.logicalLatencies = append(phase.logicalLatencies, elapsed)
+		if code == 0 || code == 429 || code >= 500 {
+			phase.logicalFailures++
+		}
+	}
+	if !clean {
+		return
+	}
+	o.logicalCleanLatencies = append(o.logicalCleanLatencies, elapsed)
+	if code == 0 || code == 429 || code >= 500 {
+		o.logicalCleanFailures++
+	}
+}
+
+// phaseLocked classifies completion time independently of a request/round's
+// initial phase, so a retry crossing a phase boundary remains observable.
+func (o *soakObservations) phaseLocked() *soakPhaseObservations {
+	if o.phaseAt == nil {
+		return nil
+	}
+	if o.phases == nil {
+		o.phases = map[string]*soakPhaseObservations{}
+	}
+	name := o.phaseAt()
+	if o.phases[name] == nil {
+		o.phases[name] = &soakPhaseObservations{}
+	}
+	return o.phases[name]
+}
+
+func soakPercentile(latencies []time.Duration, percent int) time.Duration {
+	if len(latencies) == 0 {
+		return 0
+	}
+	sorted := append([]time.Duration(nil), latencies...)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i] < sorted[j] })
+	return sorted[min(len(sorted)-1, len(sorted)*percent/100)]
+}
+
 func (o *soakObservations) snapshot() soakReport {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	out := soakReport{total: len(o.latencies), codes: map[string]int{}, caps: map[string]int{}, quietRefusals: o.quietRefusals, faultedRefusals: o.faultedRefusals, failures: o.failures, timeouts: o.timeouts, abandoned: o.abandoned, mediaBytes: o.mediaBytes}
+	out.phases = map[string]soakPhaseReport{}
+	for _, lane := range o.lanes {
+		out.lanes = append(out.lanes, lane)
+	}
+	sort.Slice(out.lanes, func(i, j int) bool { return out.lanes[i].last.Lane < out.lanes[j].last.Lane })
+	for name, phase := range o.phases {
+		out.phases[name] = soakPhaseReport{attempts: len(phase.latencies), refusals: phase.refusals, failures: phase.failures, p95: soakPercentile(phase.latencies, 95), p99: soakPercentile(phase.latencies, 99), logicalRequests: len(phase.logicalLatencies), logicalFailures: phase.logicalFailures, logicalP95: soakPercentile(phase.logicalLatencies, 95)}
+	}
+	out.streamPeak, out.cleanStreamSamples, out.cleanStreamsAtTarget, out.recoveryStreamsAtTarget = o.streamPeak, o.cleanStreamSamples, o.cleanStreamsAtTarget, o.recoveryStreamsAtTarget
+	out.cleanRequests = len(o.cleanLatencies)
+	out.recoverySuccesses = o.recoverySuccesses
+	out.cleanTargetStreakPeak, out.recoveryTargetStreakPeak = o.cleanTargetStreakPeak, o.recoveryTargetStreakPeak
+	out.clientRetries, out.logicalCleanRequests, out.logicalCleanFailures = o.clientRetries, len(o.logicalCleanLatencies), o.logicalCleanFailures
+	if len(o.logicalCleanLatencies) > 0 {
+		latencies := append([]time.Duration(nil), o.logicalCleanLatencies...)
+		sort.Slice(latencies, func(i, j int) bool { return latencies[i] < latencies[j] })
+		out.logicalCleanP95 = latencies[min(len(latencies)-1, len(latencies)*95/100)]
+	}
+	for _, n := range o.streamReaderBytes {
+		if n >= 1<<20 {
+			out.streamReaders++
+		}
+	}
+	if len(o.cleanLatencies) > 0 {
+		clean := append([]time.Duration(nil), o.cleanLatencies...)
+		sort.Slice(clean, func(i, j int) bool { return clean[i] < clean[j] })
+		out.cleanP95, out.cleanP99 = clean[min(len(clean)-1, len(clean)*95/100)], clean[min(len(clean)-1, len(clean)*99/100)]
+	}
 	for key, count := range o.codes {
 		out.codes[key] = count
 	}
@@ -635,16 +1015,47 @@ func (o *soakObservations) snapshot() soakReport {
 
 // soakCall is one request over a real socket.
 func soakCall(ctx context.Context, client *http.Client, base, token, label, method, path string, body any, o *soakObservations, quiet bool) (int, []byte) {
+	return soakCallHeaders(ctx, client, base, token, label, method, path, body, nil, o, quiet)
+}
+
+func soakCallHeaders(ctx context.Context, client *http.Client, base, token, label, method, path string, body any, headers map[string]string, o *soakObservations, quiet bool) (int, []byte) {
+	// Ordinary clients replay retryable refusals after Retry-After, with jitter.
+	// Hostile/cancellation/reconnect faults retain their raw aggressive shape.
+	normal := label == "home" || label == "browse" || label == "search" || label == "detail" || label == "personal-state" || label == "playback-create" || label == "playback-stop" || label == "playback-timeline" || label == "recovery-home"
+	start := time.Now()
+	code, raw, retryAfter := soakCallAttempt(ctx, client, base, token, label, method, path, body, headers, o, quiet)
+	if normal && (code == 429 || code == 503) {
+		o.retry()
+		wait := time.NewTimer(retryAfter + time.Duration(rand.Int63n(250))*time.Millisecond)
+		select {
+		case <-ctx.Done():
+			wait.Stop()
+		case <-wait.C:
+			code, raw, _ = soakCallAttempt(ctx, client, base, token, label, method, path, body, headers, o, quiet)
+		}
+	}
+	if normal {
+		o.logical(code, time.Since(start), quiet, ctx.Err() != nil)
+	}
+	return code, raw
+}
+
+func soakCallAttempt(ctx context.Context, client *http.Client, base, token, label, method, path string, body any, headers map[string]string, o *soakObservations, quiet bool) (int, []byte, time.Duration) {
 	var payload []byte
 	if body != nil {
 		payload, _ = json.Marshal(body)
 	}
 	request, err := http.NewRequestWithContext(ctx, method, base+path, bytes.NewReader(payload))
 	if err != nil {
-		return 0, nil
+		return 0, nil, 0
 	}
 	request.Header.Set("Authorization", "Bearer "+token)
-	request.Header.Set("Content-Type", "application/json")
+	if body != nil {
+		request.Header.Set("Content-Type", "application/json")
+	}
+	for key, value := range headers {
+		request.Header.Set(key, value)
+	}
 	start := time.Now()
 	response, err := client.Do(request)
 	if err != nil {
@@ -655,15 +1066,28 @@ func soakCall(ctx context.Context, client *http.Client, base, token, label, meth
 			o.transport(label, err)
 		}
 		o.record(label, 0, time.Since(start), quiet, ctx.Err() != nil)
-		return 0, nil
+		return 0, nil, 0
 	}
-	raw, _ := io.ReadAll(io.LimitReader(response.Body, 1<<20))
+	raw, readErr := io.ReadAll(io.LimitReader(response.Body, 1<<20))
 	response.Body.Close()
+	if readErr != nil {
+		if ctx.Err() == nil {
+			o.transport(label+"-body", readErr)
+		}
+		o.record(label, 0, time.Since(start), quiet, ctx.Err() != nil)
+		return 0, nil, 0
+	}
 	o.record(label, response.StatusCode, time.Since(start), quiet, false)
 	if response.StatusCode == 429 || response.StatusCode == 503 {
 		o.capRefusal(label, string(raw))
 	}
-	return response.StatusCode, raw
+	retryAfter := time.Second
+	if seconds, err := strconv.Atoi(response.Header.Get("Retry-After")); err == nil && seconds > 0 {
+		retryAfter = time.Duration(seconds) * time.Second
+	} else if deadline, err := http.ParseTime(response.Header.Get("Retry-After")); err == nil && time.Until(deadline) > 0 {
+		retryAfter = time.Until(deadline)
+	}
+	return response.StatusCode, raw, retryAfter
 }
 
 // soakViewerRound is one person's pass through the product.
@@ -689,9 +1113,16 @@ func soakViewerRound(ctx context.Context, client *http.Client, base, token strin
 }
 
 // soakStream creates a session and reads real bytes from it, sometimes badly.
-func soakStream(ctx context.Context, client *http.Client, base, token string, f *loadFixture, index int, o *soakObservations, quiet bool) {
-	code, body := soakCall(ctx, client, base, token, "playback-create", "POST", "/v1/playback/sessions",
-		map[string]string{"itemId": f.playable, "quality": "auto", "requestId": fmt.Sprintf("soak-stream-%d-%d", index, time.Now().UnixNano())}, o, quiet)
+func soakStream(ctx context.Context, client *http.Client, base, token string, f *loadFixture, index int, o *soakObservations, isClean func() bool, bytesPerSecond int, protocol string) {
+	quiet := isClean()
+	requestID := fmt.Sprintf("soak-stream-%d-%d", index, time.Now().UnixNano())
+	startBody := map[string]string{"itemId": f.playable, "quality": "auto", "requestId": requestID}
+	var headers map[string]string
+	if protocol == "v1" {
+		startBody = map[string]string{"itemId": f.playable, "startFrom": "beginning"}
+		headers = map[string]string{"Idempotency-Key": requestID}
+	}
+	code, body := soakCallHeaders(ctx, client, base, token, "playback-create", "POST", "/v1/playback/sessions", startBody, headers, o, quiet)
 	if code != 201 {
 		select {
 		case <-ctx.Done():
@@ -700,10 +1131,44 @@ func soakStream(ctx context.Context, client *http.Client, base, token string, f 
 		return
 	}
 	var session playback.Session
-	if json.Unmarshal(body, &session) != nil || session.StreamURL == "" {
+	var view playbackv1.SessionView
+	if protocol == "v1" {
+		if json.Unmarshal(body, &view) != nil || view.Presentation.Mode != "direct" {
+			o.record("playback-invalid-presentation", http.StatusBadGateway, 0, quiet, false)
+			return
+		}
+		session.ID, session.StreamURL = view.ID, view.Presentation.URL
+	} else if json.Unmarshal(body, &session) != nil {
 		return
 	}
-	defer soakCall(ctx, client, base, token, "playback-stop", "DELETE", "/v1/playback/sessions/"+session.ID, nil, o, quiet)
+	if session.StreamURL == "" {
+		o.record("playback-missing-media", http.StatusBadGateway, 0, quiet, false)
+		return
+	}
+	defer func() {
+		soakCall(ctx, client, base, token, "playback-stop", "DELETE", "/v1/playback/sessions/"+session.ID, nil, o, isClean())
+	}()
+	if protocol == "v1" {
+		reportCtx, cancel := context.WithCancel(ctx)
+		var reports sync.WaitGroup
+		reports.Add(1)
+		reportStart := time.Now()
+		go func() {
+			defer reports.Done()
+			interval := max(time.Second, time.Duration(view.Lease.ReportEveryMs)*time.Millisecond)
+			ticker := time.NewTicker(interval)
+			defer ticker.Stop()
+			for seq := int64(1); ; seq++ {
+				select {
+				case <-reportCtx.Done():
+					return
+				case <-ticker.C:
+				}
+				soakCall(reportCtx, client, base, token, "playback-timeline", "POST", "/v1/playback/sessions/"+session.ID+"/timeline", playbackv1.Report{Generation: view.Presentation.Generation, Seq: seq, State: "playing", PositionMs: time.Since(reportStart).Milliseconds()}, o, isClean())
+			}
+		}()
+		defer func() { cancel(); reports.Wait() }()
+	}
 
 	behaviour := "healthy"
 	if !quiet {
@@ -739,13 +1204,19 @@ func soakStream(ctx context.Context, client *http.Client, base, token string, f 
 	// as the socket will go. Without pacing, forty streams pull half a gigabyte a
 	// second and the soak stops being a model of a household and becomes a
 	// throughput benchmark that starves everything else on the machine.
-	const bytesPerSecond = 1 << 20 // about 8 Mbps, a high-bitrate stream
 	buffer := make([]byte, 32<<10)
 	read := int64(0)
-	deadline := time.Now().Add(20 * time.Second)
+	var bodyErr error
+	hold := 20 * time.Second
+	if protocol == "v1" {
+		// Exercise several lease/progress reports on one presentation rather
+		// than mostly measuring session creation and replacement.
+		hold = 45 * time.Second
+	}
+	deadline := time.Now().Add(hold)
 	for ctx.Err() == nil && time.Now().Before(deadline) {
 		if behaviour != "slow" {
-			time.Sleep(time.Duration(len(buffer)) * time.Second / bytesPerSecond)
+			time.Sleep(time.Duration(len(buffer)) * time.Second / time.Duration(bytesPerSecond))
 		}
 		switch behaviour {
 		case "dead":
@@ -765,10 +1236,16 @@ func soakStream(ctx context.Context, client *http.Client, base, token string, f 
 		n, err := response.Body.Read(buffer)
 		read += int64(n)
 		if err != nil {
+			bodyErr = err
 			break
 		}
 	}
 	o.bytes(read)
+	o.streamRead(index, read)
+	if behaviour == "healthy" && bodyErr != nil && ctx.Err() == nil && time.Now().Before(deadline) {
+		o.transport("media-body-dropped", bodyErr)
+		o.record("media-body-dropped", http.StatusBadGateway, time.Since(start), quiet, false)
+	}
 	if behaviour == "slow" && read == 0 && ctx.Err() == nil {
 		o.record("media-slow-dropped", 0, time.Since(start), quiet, false)
 	}
