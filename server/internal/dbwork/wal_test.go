@@ -52,3 +52,22 @@ func TestWALOnANilHandleIsEmptyRatherThanAPanic(t *testing.T) {
 		t.Fatalf("a nil handle reported %#v", stats)
 	}
 }
+
+func TestWALSeparatesCopiedBacklogFromReusedPhysicalAllocation(t *testing.T) {
+	db := readerFixture(t)
+	ctx := context.Background()
+	if _, err := ExecWrite(ctx, db, ClassInteractive, `CREATE TABLE payload(body BLOB); WITH RECURSIVE ids(id) AS (VALUES(1) UNION ALL SELECT id+1 FROM ids WHERE id<128) INSERT INTO payload SELECT zeroblob(8192) FROM ids`); err != nil {
+		t.Fatal(err)
+	}
+	copied := WAL(ctx, db)
+	if copied.LastError != "" || copied.LogFrames <= 100 || copied.BacklogFrames != 0 || copied.FileBytes <= 1<<20 {
+		t.Fatalf("PASSIVE did not expose copied physical allocation: %+v", copied)
+	}
+	if _, err := ExecWrite(ctx, db, ClassInteractive, `INSERT INTO sample VALUES(3)`); err != nil {
+		t.Fatal(err)
+	}
+	reused := WAL(ctx, db)
+	if reused.LastError != "" || reused.LogFrames >= copied.LogFrames || reused.BacklogFrames != 0 || reused.FileBytes != copied.FileBytes {
+		t.Fatalf("physical allocation was confused with logical backlog: before%+v after%+v", copied, reused)
+	}
+}

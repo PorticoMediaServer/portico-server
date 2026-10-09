@@ -3,6 +3,7 @@ package httpapi
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -11,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/playbackv1"
 )
 
@@ -135,5 +137,49 @@ func TestSoakCompletionPhasesRemainSeparateAcrossRetries(t *testing.T) {
 	r := o.snapshot()
 	if r.phases["quiet"].refusals != 1 || r.phases["quiet"].logicalRequests != 0 || r.phases["fault"].refusals != 1 || r.phases["fault"].logicalFailures != 1 || r.phases["recovery"].refusals != 0 || r.phases["recovery"].logicalFailures != 0 || r.phases["recovery"].logicalRequests != 1 {
 		t.Fatalf("phase crossing hid overload or recovery: %+v", r.phases)
+	}
+}
+
+func TestSoakBulkSQLAttributedToBackgroundClass(t *testing.T) {
+	db, err := dbwork.OpenHandle(filepath.Join(t.TempDir(), "background.sqlite"), dbwork.DefaultPolicy())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(`CREATE TABLE sample(value INTEGER)`); err != nil {
+		t.Fatal(err)
+	}
+	before := uint64(0)
+	for _, class := range dbwork.Reads().ByClass {
+		if class.Class == dbwork.ClassBackgroundMedia.String() {
+			before = class.Statements
+		}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	var committed atomic.Int64
+	runBulkWriter(ctx, db, "test", func(ctx context.Context, tx *sql.Tx, n int) error {
+		if n > 10 {
+			cancel()
+			return ctx.Err()
+		}
+		_, err := tx.ExecContext(ctx, `INSERT INTO sample(value) VALUES(?)`, n)
+		return err
+	}, &committed)
+	if committed.Load() != 1 {
+		t.Fatalf("committed batches: %d", committed.Load())
+	}
+	after := uint64(0)
+	for _, class := range dbwork.Reads().ByClass {
+		if class.Class == dbwork.ClassBackgroundMedia.String() {
+			after = class.Statements
+		}
+	}
+	if after-before < 10 {
+		t.Fatalf("background SQL was misattributed: before=%d after=%d", before, after)
+	}
+	var rows int
+	if err := db.QueryRow(`SELECT count(*) FROM sample`).Scan(&rows); err != nil || rows != 10 {
+		t.Fatalf("background work changed: rows=%d err=%v", rows, err)
 	}
 }

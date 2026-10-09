@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -26,12 +27,15 @@ import (
 // CheckpointedFrames are the three values `PRAGMA wal_checkpoint` itself returns;
 // FileBytes is the `-wal` file on disk, which is the number that fills a volume.
 type WALStats struct {
-	Busy               int    `json:"busy"`
-	LogFrames          int    `json:"logFrames"`
-	CheckpointedFrames int    `json:"checkpointedFrames"`
-	FileBytes          int64  `json:"walFileBytes"`
-	PeakFileBytes      int64  `json:"walPeakFileBytes"`
-	LastError          string `json:"lastError,omitempty"`
+	Busy               int                 `json:"busy"`
+	LogFrames          int                 `json:"logFrames"`
+	CheckpointedFrames int                 `json:"checkpointedFrames"`
+	BacklogFrames      int                 `json:"backlogFrames"`
+	FileBytes          int64               `json:"walFileBytes"`
+	PeakFileBytes      int64               `json:"walPeakFileBytes"`
+	LastError          string              `json:"lastError,omitempty"`
+	Readers            ReaderLifetimeStats `json:"readers"`
+	Checkpoints        CheckpointStats     `json:"checkpoints"`
 }
 
 // walPeak remembers the largest `-wal` ever observed in this process's life. A
@@ -53,6 +57,7 @@ func WAL(ctx context.Context, db *sql.DB) WALStats {
 		out.LastError = err.Error()
 	}
 	out.FileBytes = walFileBytes(ctx, db)
+	out.BacklogFrames = max(0, out.LogFrames-out.CheckpointedFrames)
 	for {
 		peak := walPeak.Load()
 		if out.FileBytes <= peak || walPeak.CompareAndSwap(peak, out.FileBytes) {
@@ -60,6 +65,8 @@ func WAL(ctx context.Context, db *sql.DB) WALStats {
 		}
 	}
 	out.PeakFileBytes = walPeak.Load()
+	out.Readers = ReaderLifetimes()
+	out.Checkpoints = Checkpoints()
 	return out
 }
 
@@ -138,11 +145,63 @@ const (
 
 // CheckpointResult says what one maintenance checkpoint did.
 type CheckpointResult struct {
-	Mode       string `json:"mode"`
-	Busy       int    `json:"busy"`
-	LogFrames  int    `json:"logFrames"`
-	Checkpoint int    `json:"checkpointedFrames"`
-	Err        error  `json:"-"`
+	Mode                     string              `json:"mode"`
+	Busy                     int                 `json:"busy"`
+	LogFrames                int                 `json:"logFrames"`
+	Checkpoint               int                 `json:"checkpointedFrames"`
+	BeforeLogFrames          int                 `json:"beforeLogFrames"`
+	BeforeCheckpointedFrames int                 `json:"beforeCheckpointedFrames"`
+	DurationMs               int64               `json:"durationMs"`
+	DrainMs                  int64               `json:"drainMs"`
+	Outcome                  string              `json:"outcome"`
+	BackoffMs                int64               `json:"backoffMs"`
+	Readers                  ReaderLifetimeStats `json:"readers"`
+	Err                      error               `json:"-"`
+}
+
+// CheckpointStats retains fixed counts and the last outcome; SQL, arguments,
+// database paths and error messages never enter this diagnostic state.
+type CheckpointStats struct {
+	Attempts         uint64           `json:"attempts"`
+	Truncates        uint64           `json:"truncates"`
+	Busy             uint64           `json:"busy"`
+	Errors           uint64           `json:"errors"`
+	PressureTimeouts uint64           `json:"pressureTimeouts"`
+	MaxDurationMs    int64            `json:"maxDurationMs"`
+	Last             CheckpointResult `json:"last"`
+}
+
+var checkpointObservation struct {
+	sync.Mutex
+	stats CheckpointStats
+}
+
+func Checkpoints() CheckpointStats {
+	checkpointObservation.Lock()
+	defer checkpointObservation.Unlock()
+	return checkpointObservation.stats
+}
+
+func observeCheckpoint(out CheckpointResult) {
+	checkpointObservation.Lock()
+	defer checkpointObservation.Unlock()
+	s := &checkpointObservation.stats
+	s.Attempts++
+	if out.Mode == "truncate" {
+		s.Truncates++
+	}
+	if out.Busy != 0 {
+		s.Busy++
+	}
+	if out.Err != nil {
+		s.Errors++
+	}
+	if out.Outcome == "reader-timeout" {
+		s.PressureTimeouts++
+	}
+	s.MaxDurationMs = max(s.MaxDurationMs, out.DurationMs)
+	out.Err = nil
+	s.Last = out
 }
 
 // Checkpoint runs one maintenance checkpoint, escalating to TRUNCATE when the
@@ -152,9 +211,28 @@ func Checkpoint(ctx context.Context, db *sql.DB) (out CheckpointResult) {
 	if db == nil {
 		return out
 	}
+	start := time.Now()
+	defer func() {
+		out.DurationMs = time.Since(start).Milliseconds()
+		if out.Err != nil {
+			out.Outcome = "error"
+		} else if out.Outcome == "" {
+			if out.Busy != 0 {
+				out.Outcome = "busy"
+			} else if out.LogFrames != out.Checkpoint {
+				out.Outcome = "partial"
+			} else if out.Mode == "truncate" {
+				out.Outcome = "truncated"
+			} else {
+				out.Outcome = "copied"
+			}
+		}
+		observeCheckpoint(out)
+	}()
 	ctx, cancel := context.WithTimeout(ctx, CheckpointDeadline)
 	defer cancel()
 	ctx = WithClass(ctx, ClassMaintenance)
+	ctx = context.WithValue(ctx, checkpointReaderBypassKey{}, true)
 	// One dedicated connection, because a PRAGMA through the pool lands on
 	// whichever connection it is handed; the same rule the statistics pass learned.
 	conn, err := ReadHandle(ctx, db).Conn(ctx)
@@ -183,6 +261,14 @@ func Checkpoint(ctx context.Context, db *sql.DB) (out CheckpointResult) {
 		out.Err = err
 		return out
 	}
+	out.BeforeLogFrames = out.LogFrames
+	out.BeforeCheckpointedFrames = out.Checkpoint
+	scope := checkpointReaderScope(conn)
+	if scope != nil {
+		out.Readers = scope.stats()
+	} else {
+		out.Readers = ReaderLifetimes()
+	}
 	if out.LogFrames < CheckpointTruncateFrames {
 		return out
 	}
@@ -193,7 +279,34 @@ func Checkpoint(ctx context.Context, db *sql.DB) (out CheckpointResult) {
 	if out.LogFrames < CheckpointHardFrames && (WriteGate().ActiveOrWaiting() || ForegroundWorkActive()) {
 		return out
 	}
-	release, err := WriteGate().Acquire(ctx, ClassMaintenance)
+	gateCtx := ctx
+	if out.LogFrames >= CheckpointHardFrames && scope != nil {
+		reopen, drained, backoff := scope.pause()
+		if reopen == nil {
+			out.Outcome, out.BackoffMs = "reader-backoff", backoff.Milliseconds()
+			return out
+		}
+		// Register immediately: cancellation, error and panic must all resume
+		// normal readers. Failed drains never acquire the writer gate.
+		defer func() {
+			reopen(out.Err == nil && out.Mode == "truncate" && out.Busy == 0)
+			out.BackoffMs = scope.pressureBackoff().Milliseconds()
+		}()
+		var drainCancel context.CancelFunc
+		gateCtx, drainCancel = context.WithTimeout(ctx, CheckpointReaderDrainDeadline)
+		defer drainCancel()
+		drainStart := time.Now()
+		err = waitReaderDrain(gateCtx, drained)
+		out.DrainMs = time.Since(drainStart).Milliseconds()
+		if err != nil {
+			out.Outcome = "reader-timeout"
+			if ctx.Err() != nil {
+				out.Err = ctx.Err()
+			}
+			return out
+		}
+	}
+	release, err := WriteGate().Acquire(gateCtx, ClassMaintenance)
 	if err != nil {
 		out.Err = err
 		return out

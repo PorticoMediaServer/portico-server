@@ -32,6 +32,9 @@ const (
 func (s *Service) recTitleSession(base *recSession, work int64) (*recSession, error) {
 	copied := *base
 	x := &copied
+	// This session changes the taste and similar-title seeds. Its source reads
+	// must not reuse edges or facet rarity hydrated for the viewer's own taste.
+	x.hydration = recHydration{}
 	x.taste.seeds = nil
 	x.idf = map[string]float64{}
 	x.strongest = nil

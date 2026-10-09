@@ -161,7 +161,7 @@ func (s *Service) recLoadTaste(profile string, now time.Time) (recTaste, error) 
 		return t, err
 	}
 	// Overlay the jobs not processed yet with the worker's own computation.
-	rows, err := q.Query(`SELECT work_id FROM rec_profile_jobs WHERE profile_id=? ORDER BY work_id LIMIT ?`, profile, recOverlayJobs+1)
+	rows, err := q.Query(`SELECT work_id FROM rec_profile_jobs WHERE profile_id=? ORDER BY work_id LIMIT `+strconv.Itoa(recOverlayJobs+1), profile)
 	if err != nil {
 		return t, err
 	}
@@ -369,7 +369,18 @@ func (s *Service) recLibraries(libraries []string) (recLibraries, error) {
 
 // recRarity reads each facet's work count and the number of works.
 func (s *Service) recRarity(facets []string) (map[string]float64, error) {
-	raw, _ := json.Marshal(append(facets, compactcatalog.RecAllFacet))
+	keys := make([]string, 0, len(facets)+1)
+	seen := make(map[string]bool, len(facets)+1)
+	for _, facet := range facets {
+		if !seen[facet] {
+			seen[facet] = true
+			keys = append(keys, facet)
+		}
+	}
+	if !seen[compactcatalog.RecAllFacet] {
+		keys = append(keys, compactcatalog.RecAllFacet)
+	}
+	raw, _ := json.Marshal(keys)
 	rows, err := s.read().Query(`SELECT facet,works FROM catalog_rec_df WHERE facet IN(SELECT value FROM json_each(?))`, string(raw))
 	if err != nil {
 		return nil, err
@@ -424,7 +435,8 @@ type recSession struct {
 	key       string // every revision the session reads, for the memo
 	// discover is the library kind when the session ranks one library's
 	// Discover view (which adds kind-specific rows), "" on Home.
-	discover string
+	discover  string
+	hydration recHydration // immutable source reads shared only within this request snapshot
 }
 
 func (s *Service) recSession(r HomeRequest) (*recSession, error) {
@@ -537,7 +549,7 @@ func (x *recSession) rank(o recOptions) ([]recCandidate, error) {
 	for _, f := range facets {
 		strength := x.strength(f)
 		for _, library := range x.libraries.ids {
-			if err := x.s.recPostings(f, library, head, func(work int64, quality float64) {
+			if err := x.recPostings(f, library, head, func(work int64, quality float64) {
 				c := candidate(work)
 				c.partial += strength
 				c.quality = quality
@@ -548,7 +560,7 @@ func (x *recSession) rank(o recOptions) ([]recCandidate, error) {
 	}
 	if !o.noFill {
 		for _, library := range x.libraries.ids {
-			if err := x.s.recPostings(compactcatalog.RecAllFacet, library, recQualityFill, func(work int64, quality float64) {
+			if err := x.recPostings(compactcatalog.RecAllFacet, library, recQualityFill, func(work int64, quality float64) {
 				candidate(work).quality = quality
 			}); err != nil {
 				return nil, err
@@ -556,7 +568,7 @@ func (x *recSession) rank(o recOptions) ([]recCandidate, error) {
 		}
 	}
 	if !o.noSimilar {
-		if err := x.s.recSimilar(x.taste.seeds, func(work int64, weight float64) { candidate(work).similar += weight }); err != nil {
+		if err := x.recSimilar(func(work int64, weight float64) { candidate(work).similar += weight }); err != nil {
 			return nil, err
 		}
 	}
@@ -600,7 +612,7 @@ func (x *recSession) rank(o recOptions) ([]recCandidate, error) {
 	if len(scored) > recRescore && !o.all {
 		scored = scored[:recRescore]
 	}
-	if err := x.s.recRescore(scored, x.taste, x.idf, maxSimilar); err != nil {
+	if err := x.recRescore(scored, maxSimilar); err != nil {
 		return nil, err
 	}
 	// With taste, a recommendation must match it (beyond the decade) or be a
@@ -668,7 +680,7 @@ func (s *Service) recRank(r HomeRequest) ([]recCandidate, error) {
 
 // recPostings reads the head of one facet's best-first list in one library.
 func (s *Service) recPostings(facet string, library int64, limit int, each func(work int64, quality float64)) error {
-	rows, err := s.read().Query(`SELECT entity_id,quality FROM catalog_rec_postings WHERE facet=? AND library_id=? ORDER BY quality DESC,entity_id DESC LIMIT ?`, facet, library, limit)
+	rows, err := s.read().Query(`SELECT entity_id,quality FROM catalog_rec_postings WHERE facet=? AND library_id=? ORDER BY quality DESC,entity_id DESC LIMIT `+strconv.Itoa(limit), facet, library)
 	if err != nil {
 		return err
 	}
@@ -726,69 +738,14 @@ func (s *Service) recSimilar(seeds []recSeed, each func(work int64, weight float
 // times type weight, normalised by the candidate's own facet mass (so a title
 // with forty keywords doesn't win by count) and the taste's, plus quality and
 // similar-title evidence.
-func (s *Service) recRescore(scored []*recScored, taste recTaste, idf map[string]float64, maxSimilar float64) error {
+func (x *recSession) recRescore(scored []*recScored, maxSimilar float64) error {
 	if len(scored) == 0 {
 		return nil
 	}
-	index := map[int64]*recScored{}
-	ids := make([]int64, 0, len(scored))
-	for _, c := range scored {
-		index[c.work] = c
-		ids = append(ids, c.work)
-	}
-	raw, _ := json.Marshal(ids)
-	votes, err := s.read().Query(`SELECT j.value,max(r.votes) FROM json_each(?) j CROSS JOIN metadata_ratings r ON r.item_id=j.value GROUP BY j.value`, string(raw))
-	if err != nil {
+	if err := x.hydrateScored(scored); err != nil {
 		return err
 	}
-	for votes.Next() {
-		var work, n int64
-		if err = votes.Scan(&work, &n); err != nil {
-			votes.Close()
-			return err
-		}
-		index[work].votes = n
-	}
-	votes.Close()
-	if err = votes.Err(); err != nil {
-		return err
-	}
-	rows, err := s.read().Query(`SELECT p.entity_id,p.facet,p.quality FROM json_each(?) j CROSS JOIN catalog_rec_postings p INDEXED BY catalog_rec_postings_entity ON p.entity_id=j.value`, string(raw))
-	if err != nil {
-		return err
-	}
-	var unknown []string
-	for rows.Next() {
-		var work int64
-		var f string
-		var quality float64
-		if err = rows.Scan(&work, &f, &quality); err != nil {
-			rows.Close()
-			return err
-		}
-		c := index[work]
-		c.quality = quality
-		if f == compactcatalog.RecAllFacet {
-			continue
-		}
-		c.facets = append(c.facets, f)
-		if _, ok := idf[f]; !ok {
-			unknown = append(unknown, f)
-		}
-	}
-	rows.Close()
-	if err = rows.Err(); err != nil {
-		return err
-	}
-	if len(unknown) > 0 {
-		more, err := s.recRarity(unknown)
-		if err != nil {
-			return err
-		}
-		for f, v := range more {
-			idf[f] = v
-		}
-	}
+	taste, idf := x.taste, x.idf
 	norm := 0.0
 	for f, v := range taste.values {
 		if w := recFacetWeight(f) * idf[f] * v; w != 0 {

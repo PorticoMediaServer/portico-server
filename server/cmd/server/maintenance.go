@@ -111,10 +111,10 @@ func runDatabaseHousekeeping(ctx context.Context, db *sql.DB) {
 		}
 		if commits := dbwork.ChangingCommits(); !settled || commits != settledAt {
 			result := dbwork.Checkpoint(ctx, db)
-			if result.Mode == "truncate" && result.Err == nil {
-				log.Printf("Write-ahead log truncated from %d frames", result.LogFrames)
+			settled = checkpointSettled(result)
+			if result.Mode == "truncate" && settled {
+				log.Printf("Write-ahead log truncated from %d frames", result.BeforeLogFrames)
 			}
-			settled = result.Err == nil && result.Busy == 0 && result.Checkpoint == result.LogFrames
 			settledAt = commits
 		}
 		if time.Since(lastReceiptSweep) >= 15*time.Minute {
@@ -151,6 +151,17 @@ func runDatabaseHousekeeping(ctx context.Context, db *sql.DB) {
 		lastIntegrity = time.Now()
 		reportIntegrity(ctx, db)
 	}
+}
+
+// A fully copied PASSIVE log can still need a hard reset. Reader drain timeout
+// and retry backoff preserve SQLite's successful copy counts, so those counts
+// alone cannot stop housekeeping retries when no further commits arrive.
+// Only completed outcomes settle; future pressure outcomes also remain retryable.
+func checkpointSettled(result dbwork.CheckpointResult) bool {
+	if result.Err != nil || result.Busy != 0 || result.Checkpoint != result.LogFrames {
+		return false
+	}
+	return result.Outcome == "copied" || result.Outcome == "truncated"
 }
 
 // warnForeignSchema reports whether the foreign-schema warning is logged.

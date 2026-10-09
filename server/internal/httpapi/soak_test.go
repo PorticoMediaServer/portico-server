@@ -106,6 +106,7 @@ type soakSample struct {
 	heapBytes   uint64
 	walBytes    int64
 	walPeak     int64
+	walState    dbwork.WALStats
 	children    int
 }
 
@@ -125,8 +126,18 @@ func takeSoakSample(ctx context.Context, db *sql.DB) soakSample {
 		heapBytes:   memory.HeapInuse,
 		walBytes:    wal.FileBytes,
 		walPeak:     wal.PeakFileBytes,
+		walState:    wal,
 		children:    childProcesses(),
 	}
+}
+
+// soakWALFileBytes observes physical allocation without running a checkpoint.
+func soakWALFileBytes(path string) int64 {
+	info, err := os.Stat(path)
+	if err != nil {
+		return 0
+	}
+	return info.Size()
 }
 
 // openDescriptors counts this process's open files. /dev/fd is the portable-
@@ -270,6 +281,7 @@ func TestSoakUnderFaultsAndRealMediaBytes(t *testing.T) {
 
 	panicsBefore := supervise.Panics()
 	baseline := takeSoakSample(context.Background(), f.db)
+	walFile := dbwork.DatabaseFile(context.Background(), f.db) + "-wal"
 	readsBefore := dbwork.Reads()
 	cacheBefore := readsBefore.StatementCache
 	gateBefore, poolBefore := dbwork.WriteGate().Stats(), dbwork.Pool(f.db)
@@ -279,6 +291,7 @@ func TestSoakUnderFaultsAndRealMediaBytes(t *testing.T) {
 	ResetRouteCosts()
 	t.Logf("baseline: goroutines=%d fds=%d heap=%d KiB wal=%d KiB children=%d",
 		baseline.goroutines, baseline.descriptors, baseline.heapBytes>>10, baseline.walBytes>>10, baseline.children)
+	t.Logf("baseline WAL/readers/checkpoints: %s", mustSoakJSON(baseline.walState))
 	if profilePath := os.Getenv("PORTICO_SOAK_CPU_PROFILE"); profilePath != "" {
 		profile, err := os.Create(profilePath)
 		if err != nil {
@@ -306,13 +319,13 @@ func TestSoakUnderFaultsAndRealMediaBytes(t *testing.T) {
 	background.Add(2)
 	supervise.Go("soak.scan", func() {
 		defer background.Done()
-		runBulkWriter(ctx, f.db, "scan", func(tx *sql.Tx, n int) error {
+		runBulkWriter(ctx, f.db, "scan", func(ctx context.Context, tx *sql.Tx, n int) error {
 			return tl6BulkMovieTx(ctx, tx, f.bulkLibrary, fmt.Sprintf("soak-%06d", n), fmt.Sprintf("Soaked %06d", n), 2001, "")
 		}, &scanned)
 	})
 	supervise.Go("soak.metadata", func() {
 		defer background.Done()
-		runBulkWriter(ctx, f.db, "metadata", func(tx *sql.Tx, n int) error {
+		runBulkWriter(ctx, f.db, "metadata", func(ctx context.Context, tx *sql.Tx, n int) error {
 			id := 1 + n%256
 			return tl6BulkMovieTx(ctx, tx, f.bulkLibrary, fmt.Sprintf("soak-%06d", id), fmt.Sprintf("Soaked %06d", id), 2001, fmt.Sprintf("soaked %d", n))
 		}, &refreshed)
@@ -332,7 +345,12 @@ func TestSoakUnderFaultsAndRealMediaBytes(t *testing.T) {
 	work.Add(1)
 	supervise.Go("soak.capacity-observer", func() {
 		defer work.Done()
+		var samples int
 		for ctx.Err() == nil {
+			samples++
+			if samples%20 == 0 {
+				t.Logf("reader/WAL sample phase=%s physicalBytes=%d readers=%s", observed.phaseAt(), soakWALFileBytes(walFile), mustSoakJSON(dbwork.ReaderLifetimes()))
+			}
 			code, _, raw := f.callTimed(f.owner.AccessToken, "GET", "/v1/admin/diagnostics/concurrency", nil)
 			var diagnostics ConcurrencyDiagnostics
 			if code == 200 && json.Unmarshal([]byte(raw), &diagnostics) == nil {
@@ -363,7 +381,9 @@ func TestSoakUnderFaultsAndRealMediaBytes(t *testing.T) {
 				return
 			case <-time.After(15 * time.Second):
 			}
-			dbwork.Checkpoint(ctx, f.db)
+			beforeBytes := soakWALFileBytes(walFile)
+			result := dbwork.Checkpoint(ctx, f.db)
+			t.Logf("checkpoint phase=%s physicalBefore=%d physicalAfter=%d logicalBacklogBefore=%d result=%s", observed.phaseAt(), beforeBytes, soakWALFileBytes(walFile), max(0, result.BeforeLogFrames-result.BeforeCheckpointedFrames), mustSoakJSON(result))
 		}
 	})
 
@@ -530,10 +550,12 @@ func TestSoakUnderFaultsAndRealMediaBytes(t *testing.T) {
 	t.Logf("at rest: goroutines %d -> %d, fds %d -> %d, heap %d -> %d KiB, children %d -> %d",
 		baseline.goroutines, rest.goroutines, baseline.descriptors, rest.descriptors, baseline.heapBytes>>10, rest.heapBytes>>10, baseline.children, rest.children)
 	t.Logf("wal peak %d KiB, integrity quick_check=%q foreignKeyViolations=%d", rest.walPeak>>10, integrity.QuickCheck, integrity.ForeignKeyViolations)
+	t.Logf("at-rest WAL/readers/checkpoints: %s", mustSoakJSON(rest.walState))
+	t.Logf("background committed batches: scan=%d metadata=%d (10 rows each)", scanned.Load(), refreshed.Load())
 	t.Logf("gate acquired=%d queued=%d maxHeld=%dms, pool waits=%d/%dms",
 		gate.Acquired, gate.Queued, gate.MaxHeldMilli, pool.WaitCount, pool.WaitMillis)
 	t.Logf("request-phase statement cache: hits=%d misses=%d bypasses=%d evictions=%d", cache.Hits, cache.Misses, cache.Bypasses, cache.Evictions)
-	t.Logf("achieved HTTP attempts/s=%.1f; normal clean logical completions/s=%.1f", float64(report.total)/float64(settings.seconds), float64(report.logicalCleanRequests)/(float64(settings.seconds)*2/3))
+	t.Logf("achieved HTTP attempts/s=%.1f; normal clean logical calls/s=%.1f; successful clean logical calls/s=%.1f", float64(report.total)/float64(settings.seconds), float64(report.logicalCleanRequests)/(float64(settings.seconds)*2/3), float64(report.logicalCleanRequests-report.logicalCleanFailures)/(float64(settings.seconds)*2/3))
 	for _, phase := range []string{"quiet", "fault", "recovery"} {
 		if p, ok := report.phases[phase]; ok {
 			t.Logf("phase %s: rawAttempts=%d refusals=%d hardFailures=%d p95=%s p99=%s logicalRequests=%d unresolved=%d endToEndP95=%s", phase, p.attempts, p.refusals, p.failures, p.p95, p.p99, p.logicalRequests, p.logicalFailures, p.logicalP95)

@@ -86,7 +86,7 @@ func TestLaneSpecsAreCoherent(t *testing.T) {
 			t.Fatalf("lane %s queues only %s; protected classes wait longer", name, spec.queueWait)
 		}
 	}
-	for _, name := range []string{laneBrowsing, laneExpensive, laneAuth, laneAdmin, laneDefault, laneMedia} {
+	for _, name := range []string{laneExpensive, laneAuth, laneAdmin, laneDefault, laneMedia} {
 		spec := laneSpecs[name]
 		if spec.queueWait != 1500*time.Millisecond {
 			t.Fatalf("lane %s has an unexpected interactive queue wait %s", name, spec.queueWait)
@@ -94,6 +94,9 @@ func TestLaneSpecsAreCoherent(t *testing.T) {
 		if spec.budget <= 0 {
 			t.Fatalf("lane %s has no request budget", name)
 		}
+	}
+	if spec := laneSpecs[laneBrowsing]; spec.queueWait != 3*time.Second || spec.budget != 5*time.Second {
+		t.Fatalf("browsing burst queue or execution budget changed: %+v", spec)
 	}
 	for name, spec := range laneSpecs {
 		if spec.capacity < 1 {

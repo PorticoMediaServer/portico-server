@@ -389,13 +389,13 @@ func TestMixedViewerLoadUnderBackgroundWork(t *testing.T) {
 	background.Add(2)
 	go func() {
 		defer background.Done()
-		runBulkWriter(ctx, f.db, "scan", func(tx *sql.Tx, n int) error {
+		runBulkWriter(ctx, f.db, "scan", func(ctx context.Context, tx *sql.Tx, n int) error {
 			return tl6BulkMovieTx(ctx, tx, f.bulkLibrary, fmt.Sprintf("scan-%06d", n), fmt.Sprintf("Scanned %06d", n), 2001, "")
 		}, &scanned)
 	}()
 	go func() {
 		defer background.Done()
-		runBulkWriter(ctx, f.db, "metadata", func(tx *sql.Tx, n int) error {
+		runBulkWriter(ctx, f.db, "metadata", func(ctx context.Context, tx *sql.Tx, n int) error {
 			id := 1 + n%256
 			return tl6BulkMovieTx(ctx, tx, f.bulkLibrary, fmt.Sprintf("scan-%06d", id), fmt.Sprintf("Scanned %06d", id), 2001, fmt.Sprintf("refreshed %d", n))
 		}, &refreshed)
@@ -561,10 +561,11 @@ func TestMixedViewerLoadUnderBackgroundWork(t *testing.T) {
 // because the background writers and the viewers both report into it.
 var lockEscapes atomic.Int64
 
-func runBulkWriter(ctx context.Context, db *sql.DB, name string, write func(*sql.Tx, int) error, counter *atomic.Int64) {
+func runBulkWriter(ctx context.Context, db *sql.DB, name string, write func(context.Context, *sql.Tx, int) error, counter *atomic.Int64) {
 	// Ten rows per transaction: small enough that a one-core server releases the
 	// writer often enough for a playback control write to win between batches.
 	const batchSize = 10
+	ctx = dbwork.WithClass(ctx, dbwork.ClassBackgroundMedia)
 	n := 0
 	for ctx.Err() == nil {
 		if !dbwork.Yield(ctx) {
@@ -574,7 +575,7 @@ func runBulkWriter(ctx context.Context, db *sql.DB, name string, write func(*sql
 		err := dbwork.WithWriteTx(ctx, db, dbwork.ClassBackgroundMedia, func(tx *sql.Tx) error {
 			for i := 0; i < batchSize; i++ {
 				n++
-				if err := write(tx, n); err != nil {
+				if err := write(ctx, tx, n); err != nil {
 					return err
 				}
 			}

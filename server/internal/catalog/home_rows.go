@@ -12,6 +12,7 @@ import (
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/operations"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -308,8 +309,7 @@ func (s *Service) homeSource(r HomeRequest, spec homeRowSpec) (homeSource, error
 		}
 	}
 	if src.cap > 0 {
-		src.base = `SELECT id,ord FROM (` + src.base + `) ORDER BY ord DESC,id DESC LIMIT ?`
-		src.args = append(src.args, src.cap)
+		src.base = `SELECT id,ord FROM (` + src.base + `) ORDER BY ord DESC,id DESC LIMIT ` + strconv.Itoa(src.cap)
 	}
 	return src, nil
 }
@@ -478,6 +478,9 @@ func homeOrder(direction string) (string, string) {
 func (s *Service) homeRowIDs(spec homeRowSpec, src homeSource, page HomeRowPage, revision ContentRevision, viewer string, profile string) (ids []string, total, start int, next, lead string, err error) {
 	order, operator := homeOrder(spec.Direction)
 	limit := homeLimit(page.Limit)
+	// SQLite reprepares a VM whenever a bound LIMIT/OFFSET changes or is bound
+	// again. Only these validated integers become SQL literals; viewer data,
+	// cursor values and all authority predicates remain bound parameters.
 	start = page.Start
 	if start < 0 {
 		return nil, 0, 0, "", "", ErrCursor
@@ -513,8 +516,8 @@ func (s *Service) homeRowIDs(spec homeRowSpec, src homeSource, page HomeRowPage,
 		if e != nil {
 			return nil, 0, 0, "", "", e
 		}
-		args := append(append([]any{}, src.args...), cursor.Value, cursor.Value, cursor.ID, limit+1)
-		query := `SELECT id,ord FROM (` + src.base + `) WHERE (ord` + operator + `? OR (ord=? AND id` + operator + `?)) ORDER BY ord ` + order + `,id ` + order + ` LIMIT ?`
+		args := append(append([]any{}, src.args...), cursor.Value, cursor.Value, cursor.ID)
+		query := `SELECT id,ord FROM (` + src.base + `) WHERE (ord` + operator + `? OR (ord=? AND id` + operator + `?)) ORDER BY ord ` + order + `,id ` + order + ` LIMIT ` + strconv.Itoa(limit+1)
 		ids, next, _, lead, e := s.homeScanPage(query, args, base, cursor.Offset, limit)
 		return ids, total, cursor.Offset, next, lead, e
 	}
@@ -535,8 +538,8 @@ func (s *Service) homeRowIDs(spec homeRowSpec, src homeSource, page HomeRowPage,
 			start = total - 1
 		}
 	}
-	args := append(append([]any{}, src.args...), limit+1, start)
-	query := `SELECT id,ord FROM (` + src.base + `) ORDER BY ord ` + order + `,id ` + order + ` LIMIT ? OFFSET ?`
+	args := append([]any{}, src.args...)
+	query := `SELECT id,ord FROM (` + src.base + `) ORDER BY ord ` + order + `,id ` + order + ` LIMIT ` + strconv.Itoa(limit+1) + ` OFFSET ` + strconv.Itoa(start)
 	ids, next, scanned, lead, e := s.homeScanPage(query, args, base, start, limit)
 	if e != nil {
 		return nil, 0, 0, "", "", e

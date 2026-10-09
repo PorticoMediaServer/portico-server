@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/hostlimits"
 )
 
 // Reads do not queue at the write gate — in WAL a reader never blocks the
@@ -68,7 +69,7 @@ type laneSpec struct {
 var laneSpecs = map[string]laneSpec{
 	laneSecurityFence: {capacity: 16, queueWait: 9 * time.Second, budget: 10 * time.Second, class: dbwork.ClassSecurityFence, pressure: true},
 	laneAuth:          {capacity: 64, queueWait: 1500 * time.Millisecond, budget: 5 * time.Second, class: dbwork.ClassSecurityFence, pressure: true},
-	laneBrowsing:      {capacity: 24, queueWait: 1500 * time.Millisecond, budget: 5 * time.Second, class: dbwork.ClassInteractive, pressure: true},
+	laneBrowsing:      {capacity: 24, queueWait: 3 * time.Second, budget: 5 * time.Second, class: dbwork.ClassInteractive, pressure: true},
 	laneExpensive:     {capacity: 8, queueWait: 1500 * time.Millisecond, budget: 5 * time.Second, class: dbwork.ClassInteractive, pressure: true},
 	lanePlayback:      {capacity: 32, queueWait: 9 * time.Second, budget: 10 * time.Second, class: dbwork.ClassEstablishedPlayback, pressure: true},
 	laneMedia:         {capacity: 100, queueWait: 1500 * time.Millisecond, budget: 5 * time.Second, class: dbwork.ClassInteractive, pressure: true},
@@ -331,8 +332,15 @@ const (
 )
 
 func newAdmission() *admission {
+	return newAdmissionForMemory(hostlimits.EffectiveMemoryBytes())
+}
+
+func newAdmissionForMemory(memoryBytes int64) *admission {
 	a := &admission{lanes: map[string]*lane{}, searchPerKey: map[string]int{}, clients: newFairnessIdentities()}
 	for name, spec := range laneSpecs {
+		if name == laneBrowsing {
+			spec.queueCapacity = browsingQueueCapacity(memoryBytes)
+		}
 		a.lanes[name] = newLane(name, spec)
 		a.order = append(a.order, name)
 	}

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"testing"
 	"time"
@@ -10,6 +11,42 @@ import (
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/persistence"
 )
+
+func TestCheckpointHousekeepingRetriesDeferredHardResetWithoutNewCommits(t *testing.T) {
+	// Both outcomes retain genuine successful PASSIVE copy numbers. The old
+	// counts-only settled predicate would suppress the next checkpoint forever
+	// once writes stopped, leaving a failed hard reset unattempted.
+	for _, outcome := range []string{"reader-timeout", "reader-backoff", "future-deferred-reset"} {
+		result := dbwork.CheckpointResult{Mode: "passive", Outcome: outcome, LogFrames: dbwork.CheckpointHardFrames + 1, Checkpoint: dbwork.CheckpointHardFrames + 1}
+		if checkpointSettled(result) {
+			t.Fatalf("%s suppressed retry of fully copied but unreset WAL", outcome)
+		}
+		if result.Busy != 0 || result.Err != nil || result.Checkpoint != result.LogFrames {
+			t.Fatal("settlement changed SQLite's truthful result")
+		}
+	}
+}
+
+func TestCheckpointHousekeepingSettlesOnlyCompletedCheckpoint(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		result dbwork.CheckpointResult
+		want   bool
+	}{
+		{"copied", dbwork.CheckpointResult{Mode: "passive", Outcome: "copied", LogFrames: 10, Checkpoint: 10}, true},
+		{"truncated", dbwork.CheckpointResult{Mode: "truncate", Outcome: "truncated"}, true},
+		{"partial", dbwork.CheckpointResult{Mode: "passive", Outcome: "partial", LogFrames: 10, Checkpoint: 9}, false},
+		{"busy truncate", dbwork.CheckpointResult{Mode: "truncate", Outcome: "busy", Busy: 1, LogFrames: 10, Checkpoint: 10}, false},
+		{"error", dbwork.CheckpointResult{Mode: "truncate", Outcome: "error", Err: errors.New("interrupted")}, false},
+		{"unclassified", dbwork.CheckpointResult{}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := checkpointSettled(tc.result); got != tc.want {
+				t.Fatalf("settled=%t want%t: %+v", got, tc.want, tc.result)
+			}
+		})
+	}
+}
 
 func TestReceiptSweepSkipsEmptyGateAndDrainsBacklogInBatches(t *testing.T) {
 	ctx := context.Background()
