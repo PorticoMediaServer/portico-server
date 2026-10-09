@@ -804,6 +804,7 @@ func (s *Service) HomeRows(r HomeRequest) (HomeDocument, error) {
 	r.Now = s.recommendationNow(r.Now)
 	s = s.WithRecommendationRestrictions(r.Restrictions)
 	s.recSources = map[string]homeSource{}
+	s.recComposition = newRecCompositionSources(s.Context())
 	r.Libraries = homeUnique(r.Libraries)
 	out := HomeDocument{ServerID: r.ServerID, ViewerFence: r.ViewerFence, Rows: []HomeRow{},
 		Layout: HomeLayout{Revision: r.LayoutRevision, RowOrder: append([]string{}, r.RowOrder...), HiddenRowIDs: append([]string{}, r.HiddenRowIDs...)}}
@@ -925,6 +926,7 @@ func (s *Service) HomeSingleRow(r HomeRequest, id string, page HomeRowPage) (Hom
 	r.Now = s.recommendationNow(r.Now)
 	s = s.WithRecommendationRestrictions(r.Restrictions)
 	s.recSources = map[string]homeSource{}
+	s.recComposition = newRecCompositionSources(s.Context())
 	r.Libraries = homeUnique(r.Libraries)
 	specs, e := s.homeSpecs(r)
 	if e != nil {

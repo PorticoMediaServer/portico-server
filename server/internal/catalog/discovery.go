@@ -306,6 +306,7 @@ func (s *Service) DiscoverWithRestrictions(library, profile string, restrictions
 	now = s.recommendationNow(now)
 	s = s.WithRecommendationRestrictions(restrictions)
 	s.recSources = map[string]homeSource{}
+	s.recComposition = newRecCompositionSources(s.Context())
 	lib, err := s.library(library)
 	out := Discovery{Library: lib, Sections: []DiscoverySection{}}
 	if err != nil {

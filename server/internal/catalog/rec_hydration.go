@@ -1,15 +1,22 @@
 package catalog
 
-import "portico.local/server/internal/compactcatalog"
+import (
+	"database/sql"
+	"encoding/json"
+	"math"
+
+	"portico.local/server/internal/compactcatalog"
+)
 
 // recHydration retains immutable source data for this recSession's read
 // snapshot. Candidate selection, profile signals, scoring and eligibility are
 // still performed independently for each row. Nothing survives the request.
 type recHydration struct {
-	works         map[int64]*recWorkMetadata
-	postings      map[recPostingKey][]recPosting
-	similar       []recPosting
-	similarLoaded bool
+	snapshot *sql.Tx
+	works    map[int64]*recWorkMetadata
+	postings map[recPostingKey][]recPosting
+	similar  map[string][]recPosting
+	rarity   map[string]float64
 }
 
 type recWorkMetadata struct {
@@ -51,19 +58,66 @@ func (x *recSession) recPostings(facet string, library int64, limit int, each fu
 }
 
 func (x *recSession) recSimilar(each func(int64, float64)) error {
-	if !x.hydration.similarLoaded {
-		var items []recPosting
+	// Ordered seeds and exact weight bits define the source computation. A
+	// title session may replace both, while sharing other catalogue inputs.
+	type seedIdentity struct {
+		Work   int64
+		Weight uint64
+	}
+	seeds := make([]seedIdentity, len(x.taste.seeds))
+	for i, seed := range x.taste.seeds {
+		seeds[i] = seedIdentity{seed.work, math.Float64bits(seed.weight)}
+	}
+	raw, _ := json.Marshal(seeds)
+	key := string(raw)
+	if x.hydration.similar == nil {
+		x.hydration.similar = map[string][]recPosting{}
+	}
+	items, loaded := x.hydration.similar[key]
+	if !loaded {
 		if err := x.s.recSimilar(x.taste.seeds, func(work int64, weight float64) {
 			items = append(items, recPosting{work, weight})
 		}); err != nil {
 			return err
 		}
-		x.hydration.similar, x.hydration.similarLoaded = items, true
+		x.hydration.similar[key] = items
 	}
-	for _, item := range x.hydration.similar {
+	for _, item := range items {
 		each(item.work, item.value)
 	}
 	return nil
+}
+
+// Facet rarity is catalogue data, independent of viewer/title taste. Return
+// only this session's requested facets, so its IDF map remains independent.
+func (x *recSession) recRarity(facets []string) (map[string]float64, error) {
+	missing := []string{}
+	seen := map[string]bool{}
+	for _, facet := range facets {
+		if !seen[facet] {
+			seen[facet] = true
+			if _, loaded := x.hydration.rarity[facet]; !loaded {
+				missing = append(missing, facet)
+			}
+		}
+	}
+	if x.hydration.rarity == nil || len(missing) > 0 {
+		more, err := x.s.recRarity(missing)
+		if err != nil {
+			return nil, err
+		}
+		if x.hydration.rarity == nil {
+			x.hydration.rarity = map[string]float64{}
+		}
+		for facet, value := range more {
+			x.hydration.rarity[facet] = value
+		}
+	}
+	out := make(map[string]float64, len(seen))
+	for facet := range seen {
+		out[facet] = x.hydration.rarity[facet]
+	}
+	return out, nil
 }
 
 func (x *recSession) hydrateScored(scored []*recScored) error {
@@ -122,7 +176,11 @@ func (x *recSession) hydrateScored(scored []*recScored) error {
 	// Rarity depends on each candidate facet, not on how many candidates share
 	// it. The same genre appearing on 400 works is one lookup key.
 	unknown := map[string]bool{}
-	for _, data := range missing {
+	for _, candidate := range scored {
+		data := missing[candidate.work]
+		if data == nil {
+			data = x.hydration.works[candidate.work]
+		}
 		for _, facet := range data.facets {
 			if _, loaded := x.idf[facet]; !loaded {
 				unknown[facet] = true
@@ -134,7 +192,7 @@ func (x *recSession) hydrateScored(scored []*recScored) error {
 		for facet := range unknown {
 			keys = append(keys, facet)
 		}
-		more, err := x.s.recRarity(keys)
+		more, err := x.recRarity(keys)
 		if err != nil {
 			return err
 		}

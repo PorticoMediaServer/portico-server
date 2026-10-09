@@ -124,14 +124,14 @@ func TestRecTitleSessionDoesNotReuseViewerSeedEdges(t *testing.T) {
 	if _, err = base.rank(recOptions{diversify: true}); err != nil {
 		t.Fatal(err)
 	}
-	if !base.hydration.similarLoaded || len(base.hydration.works) == 0 {
+	if len(base.hydration.similar) == 0 || len(base.hydration.works) == 0 {
 		t.Fatal("test did not hydrate viewer session")
 	}
 	title, err := w.s.recTitleSession(base, w.romance[0].ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if title.hydration.similarLoaded || title.hydration.works != nil || title.hydration.postings != nil {
+	if title.hydration.similar != nil || title.hydration.works != nil || title.hydration.postings != nil {
 		t.Fatal("title taste retained viewer source hydration")
 	}
 	independent, err := w.s.recSession(r)

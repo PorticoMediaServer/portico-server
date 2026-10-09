@@ -46,6 +46,10 @@ func TestSoakReportSeparatesCleanCapacityFromFaultTraffic(t *testing.T) {
 	o.streamRead(2, 100)
 	o.record("recovery-home", 200, 10*time.Millisecond, true, false)
 	r := o.snapshot()
+	home := r.routes["home"]
+	if home.attempts != 2 || home.successes != 1 || home.rawP95 != 40*time.Millisecond || home.successP95 != 20*time.Millisecond {
+		t.Fatalf("per-route clean latency included faults or canceled-window attempts: %+v", home)
+	}
 	if r.cleanRequests != 3 || r.quietRefusals != 1 || r.faultedRefusals != 100 || r.cleanP95 != 40*time.Millisecond {
 		t.Fatalf("fault traffic hid clean-capacity results: %+v", r)
 	}

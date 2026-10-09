@@ -236,14 +236,14 @@ func normalizeArtworkFormatsContext(ctx context.Context, raw []byte, allowed map
 		return nil, nil, 0, 0, errors.New("dimension_limit")
 	}
 	// Keep bounded display representations, never the provider original.
-	original, w, h, err := encodeDisplayArtwork(decoded, artworkLargeEdge, format == "jpeg")
+	original, w, h, err := encodeDisplayArtworkContext(ctx, decoded, artworkLargeEdge, format == "jpeg")
 	if err != nil {
 		return nil, nil, 0, 0, err
 	}
 	if err = ctx.Err(); err != nil {
 		return nil, nil, 0, 0, err
 	}
-	thumb, _, _, err := encodeDisplayArtwork(decoded, artworkSmallEdge, format == "jpeg")
+	thumb, _, _, err := encodeDisplayArtworkContext(ctx, decoded, artworkSmallEdge, format == "jpeg")
 	if err == nil {
 		err = ctx.Err()
 	}
@@ -277,7 +277,7 @@ func (s *Service) installArtworkContext(ctx context.Context, raw []byte, w, h in
 	if err = ctx.Err(); err != nil {
 		return a, err
 	}
-	medium, mw, mh, err := encodeDisplayArtwork(decoded, 800, format == "jpeg")
+	medium, mw, mh, err := encodeDisplayArtworkContext(ctx, decoded, 800, format == "jpeg")
 	if err != nil {
 		return a, err
 	}

@@ -199,10 +199,9 @@ func logSetupBlock(port int, loopback bool) {
 }
 func run() error {
 	// Before anything opens a socket or a file: lift the descriptor limit to what
-	// the kernel will allow, and give the collector a ceiling to work to where the
-	// cgroup provides one. Both are invisible when healthy and both are the
-	// difference between an honest slow server and one the OOM killer removes
-	// without a log line.
+	// the kernel will allow, and derive a conservative Go soft memory limit from
+	// physical/cgroup memory unless the owner provided GOMEMLIMIT. This leaves
+	// room for SQLite and the operating system; it is not a hard RSS ceiling.
 	hostlimits.Apply()
 	// On Windows this puts the server in a job object that kills every child when
 	// the last handle closes — which is when this process ends, however it ends.

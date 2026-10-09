@@ -282,6 +282,16 @@ func TestSoakUnderFaultsAndRealMediaBytes(t *testing.T) {
 	panicsBefore := supervise.Panics()
 	baseline := takeSoakSample(context.Background(), f.db)
 	walFile := dbwork.DatabaseFile(context.Background(), f.db) + "-wal"
+	var physicalWALPeak atomic.Int64
+	samplePhysicalWAL := func() int64 {
+		size := soakWALFileBytes(walFile)
+		for previous := physicalWALPeak.Load(); size > previous; previous = physicalWALPeak.Load() {
+			if physicalWALPeak.CompareAndSwap(previous, size) {
+				break
+			}
+		}
+		return size
+	}
 	readsBefore := dbwork.Reads()
 	cacheBefore := readsBefore.StatementCache
 	gateBefore, poolBefore := dbwork.WriteGate().Stats(), dbwork.Pool(f.db)
@@ -348,8 +358,9 @@ func TestSoakUnderFaultsAndRealMediaBytes(t *testing.T) {
 		var samples int
 		for ctx.Err() == nil {
 			samples++
+			physicalBytes := samplePhysicalWAL()
 			if samples%20 == 0 {
-				t.Logf("reader/WAL sample phase=%s physicalBytes=%d readers=%s", observed.phaseAt(), soakWALFileBytes(walFile), mustSoakJSON(dbwork.ReaderLifetimes()))
+				t.Logf("reader/WAL sample phase=%s physicalBytes=%d readers=%s", observed.phaseAt(), physicalBytes, mustSoakJSON(dbwork.ReaderLifetimes()))
 			}
 			code, _, raw := f.callTimed(f.owner.AccessToken, "GET", "/v1/admin/diagnostics/concurrency", nil)
 			var diagnostics ConcurrencyDiagnostics
@@ -369,21 +380,29 @@ func TestSoakUnderFaultsAndRealMediaBytes(t *testing.T) {
 		}
 	})
 
-	// The server checkpoints the write-ahead log on a timer; the fixture has no
-	// such loop, so without this the soak would measure a configuration nobody
-	// runs and the log's growth would say nothing about the real one.
+	// Use production's shared scheduler: ordinary one-second polls only stat the
+	// file; its regular/pressure/backoff policy decides when SQL runs.
+	checkpointSchedule, scheduleErr := dbwork.NewCheckpointSchedule(ctx, f.db)
+	if scheduleErr != nil {
+		t.Logf("checkpoint native-path lookup: %v; regular/retry policy remains active", scheduleErr)
+	}
 	work.Add(1)
 	supervise.Go("soak.checkpoint", func() {
 		defer work.Done()
+		ticker := time.NewTicker(dbwork.CheckpointPollInterval)
+		defer ticker.Stop()
 		for ctx.Err() == nil {
 			select {
 			case <-ctx.Done():
 				return
-			case <-time.After(15 * time.Second):
+			case <-ticker.C:
 			}
-			beforeBytes := soakWALFileBytes(walFile)
-			result := dbwork.Checkpoint(ctx, f.db)
-			t.Logf("checkpoint phase=%s physicalBefore=%d physicalAfter=%d logicalBacklogBefore=%d result=%s", observed.phaseAt(), beforeBytes, soakWALFileBytes(walFile), max(0, result.BeforeLogFrames-result.BeforeCheckpointedFrames), mustSoakJSON(result))
+			beforeBytes := samplePhysicalWAL()
+			result, ran := checkpointSchedule.Tick(ctx)
+			if !ran {
+				continue
+			}
+			t.Logf("checkpoint phase=%s physicalBefore=%d physicalAfter=%d logicalBacklogBefore=%d result=%s", observed.phaseAt(), beforeBytes, samplePhysicalWAL(), max(0, result.BeforeLogFrames-result.BeforeCheckpointedFrames), mustSoakJSON(result))
 		}
 	})
 
@@ -549,7 +568,10 @@ func TestSoakUnderFaultsAndRealMediaBytes(t *testing.T) {
 	t.Logf("normal client retries=%d; clean logical requests=%d unresolvedFailures=%d endToEndP95=%s (raw refusals remain gated)", report.clientRetries, report.logicalCleanRequests, report.logicalCleanFailures, report.logicalCleanP95)
 	t.Logf("at rest: goroutines %d -> %d, fds %d -> %d, heap %d -> %d KiB, children %d -> %d",
 		baseline.goroutines, rest.goroutines, baseline.descriptors, rest.descriptors, baseline.heapBytes>>10, rest.heapBytes>>10, baseline.children, rest.children)
-	t.Logf("wal peak %d KiB, integrity quick_check=%q foreignKeyViolations=%d", rest.walPeak>>10, integrity.QuickCheck, integrity.ForeignKeyViolations)
+	samplePhysicalWAL()
+	observedWALPeak := max(rest.walPeak, physicalWALPeak.Load())
+	t.Logf("wal peak %d KiB, integrity quick_check=%q foreignKeyViolations=%d", observedWALPeak>>10, integrity.QuickCheck, integrity.ForeignKeyViolations)
+	t.Logf("physical WAL peak sampled=%d bytes, diagnostic remembered=%d bytes", physicalWALPeak.Load(), rest.walPeak)
 	t.Logf("at-rest WAL/readers/checkpoints: %s", mustSoakJSON(rest.walState))
 	t.Logf("background committed batches: scan=%d metadata=%d (10 rows each)", scanned.Load(), refreshed.Load())
 	t.Logf("gate acquired=%d queued=%d maxHeld=%dms, pool waits=%d/%dms",
@@ -560,6 +582,15 @@ func TestSoakUnderFaultsAndRealMediaBytes(t *testing.T) {
 		if p, ok := report.phases[phase]; ok {
 			t.Logf("phase %s: rawAttempts=%d refusals=%d hardFailures=%d p95=%s p99=%s logicalRequests=%d unresolved=%d endToEndP95=%s", phase, p.attempts, p.refusals, p.failures, p.p95, p.p99, p.logicalRequests, p.logicalFailures, p.logicalP95)
 		}
+	}
+	routeLabels := make([]string, 0, len(report.routes))
+	for label := range report.routes {
+		routeLabels = append(routeLabels, label)
+	}
+	sort.Strings(routeLabels)
+	for _, label := range routeLabels {
+		r := report.routes[label]
+		t.Logf("clean route latency %s: raw=%d p50=%s p95=%s p99=%s successful=%d p50=%s p95=%s p99=%s", label, r.attempts, r.rawP50, r.rawP95, r.rawP99, r.successes, r.successP50, r.successP95, r.successP99)
 	}
 	beforeClasses := map[string]dbwork.ClassReadStats{}
 	for _, class := range readsBefore.ByClass {
@@ -660,8 +691,8 @@ func TestSoakUnderFaultsAndRealMediaBytes(t *testing.T) {
 	if rest.children > baseline.children {
 		t.Errorf("%d child processes outlived the run (baseline %d)", rest.children, baseline.children)
 	}
-	if rest.walPeak > 256<<20 {
-		t.Errorf("the write-ahead log peaked at %d MiB", rest.walPeak>>20)
+	if observedWALPeak > 256<<20 {
+		t.Errorf("the write-ahead log peaked at %d MiB", observedWALPeak>>20)
 	}
 	// The injection has to have actually happened, or "the process survived" is a
 	// statement about a run where nothing was broken.
@@ -675,6 +706,7 @@ func TestSoakUnderFaultsAndRealMediaBytes(t *testing.T) {
 
 // soakObservations collects what every client saw.
 type soakObservations struct {
+	routes                   map[string]*soakRouteLatencyObservations
 	lanes                    map[string]soakLaneReport
 	phaseAt                  func() string
 	phases                   map[string]*soakPhaseObservations
@@ -723,7 +755,15 @@ type soakPhaseReport struct {
 	logicalP95                       time.Duration
 }
 
+type soakRouteLatencyObservations struct{ cleanRaw, cleanSuccess []time.Duration }
+type soakRouteLatencyReport struct {
+	attempts, successes                int
+	rawP50, rawP95, rawP99             time.Duration
+	successP50, successP95, successP99 time.Duration
+}
+
 type soakReport struct {
+	routes                   map[string]soakRouteLatencyReport
 	lanes                    []soakLaneReport
 	phases                   map[string]soakPhaseReport
 	total                    int
@@ -841,6 +881,17 @@ func (o *soakObservations) record(label string, code int, elapsed time.Duration,
 	}
 	if quiet && !windowClosed {
 		o.cleanLatencies = append(o.cleanLatencies, elapsed)
+		if o.routes == nil {
+			o.routes = map[string]*soakRouteLatencyObservations{}
+		}
+		if o.routes[label] == nil {
+			o.routes[label] = &soakRouteLatencyObservations{}
+		}
+		route := o.routes[label]
+		route.cleanRaw = append(route.cleanRaw, elapsed)
+		if code >= 200 && code < 300 {
+			route.cleanSuccess = append(route.cleanSuccess, elapsed)
+		}
 	}
 	if code >= 200 && code <= 299 {
 		if label == "recovery-home" {
@@ -984,6 +1035,10 @@ func (o *soakObservations) snapshot() soakReport {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	out := soakReport{total: len(o.latencies), codes: map[string]int{}, caps: map[string]int{}, quietRefusals: o.quietRefusals, faultedRefusals: o.faultedRefusals, failures: o.failures, timeouts: o.timeouts, abandoned: o.abandoned, mediaBytes: o.mediaBytes}
+	out.routes = map[string]soakRouteLatencyReport{}
+	for label, route := range o.routes {
+		out.routes[label] = soakRouteLatencyReport{attempts: len(route.cleanRaw), successes: len(route.cleanSuccess), rawP50: soakPercentile(route.cleanRaw, 50), rawP95: soakPercentile(route.cleanRaw, 95), rawP99: soakPercentile(route.cleanRaw, 99), successP50: soakPercentile(route.cleanSuccess, 50), successP95: soakPercentile(route.cleanSuccess, 95), successP99: soakPercentile(route.cleanSuccess, 99)}
+	}
 	out.phases = map[string]soakPhaseReport{}
 	for _, lane := range o.lanes {
 		out.lanes = append(out.lanes, lane)

@@ -1,8 +1,12 @@
 package hostlimits
 
 import (
+	"math"
+	"os"
+	"os/exec"
 	"runtime"
 	"runtime/debug"
+	"strings"
 	"testing"
 )
 
@@ -37,16 +41,92 @@ func TestApplyRaisesTheDescriptorLimitWithoutLoweringIt(t *testing.T) {
 	}
 }
 
-// A guessed heap limit set too low is a collection death spiral, which is worse
-// than no limit at all, so nothing is set where nothing is discoverable.
-func TestNoHeapLimitIsSetWithoutACgroupCeiling(t *testing.T) {
-	if _, ok := cgroupMemoryLimit(); ok {
-		t.Skip("this host has a cgroup memory ceiling")
+func TestAutomaticMemoryLimit(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		memory, want int64
+	}{
+		{"unknown", 0, 0},
+		{"invalid", -1, 0},
+		{"too small", 191 << 20, 0},
+		{"minimum", 192 << 20, 64 << 20},
+		{"256 MiB", 256 << 20, 128 << 20},
+		{"512 MiB", 512 << 20, 384 << 20},
+		{"1 GiB", 1 << 30, 768 << 20},
+		{"maximum integer", math.MaxInt64, math.MaxInt64 - math.MaxInt64/4},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := automaticMemoryLimit(tc.memory); got != tc.want {
+				t.Fatalf("automatic limit=%d want %d", got, tc.want)
+			}
+		})
 	}
-	previous := debug.SetMemoryLimit(-1)
-	t.Cleanup(func() { debug.SetMemoryLimit(previous) })
+}
+
+// GOMEMLIMIT is read by Go before main or tests run. Separate processes prove
+// that Apply preserves the runtime's real startup parsing, including "off".
+func TestApplyMemoryLimitStartup(t *testing.T) {
+	for _, tc := range []struct{ name, override string }{
+		{"default", ""},
+		{"numeric", "96MiB"},
+		{"high explicit", "8TiB"},
+		{"off", "off"},
+		{"programmatic", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cmd := exec.Command(os.Args[0], "-test.run=^TestApplyMemoryLimitStartupHelper$")
+			for _, env := range os.Environ() {
+				if !strings.HasPrefix(env, "GOMEMLIMIT=") && !strings.HasPrefix(env, "PORTICO_LIMIT_TEST=") {
+					cmd.Env = append(cmd.Env, env)
+				}
+			}
+			cmd.Env = append(cmd.Env, "PORTICO_LIMIT_TEST="+tc.name)
+			if tc.override != "" {
+				cmd.Env = append(cmd.Env, "GOMEMLIMIT="+tc.override)
+			}
+			if out, err := cmd.CombinedOutput(); err != nil {
+				t.Fatalf("startup test: %v\n%s", err, out)
+			}
+		})
+	}
+}
+
+func TestApplyMemoryLimitStartupHelper(t *testing.T) {
+	mode := os.Getenv("PORTICO_LIMIT_TEST")
+	if mode == "" {
+		t.Skip("subprocess helper")
+	}
+	before := debug.SetMemoryLimit(-1)
+	want := before
+	switch mode {
+	case "default":
+		if limit := automaticMemoryLimit(EffectiveMemoryBytes()); limit > 0 {
+			want = min(before, limit)
+		}
+	case "numeric":
+		if before != 96<<20 {
+			t.Fatalf("runtime parsed numeric limit=%d", before)
+		}
+	case "high explicit":
+		if before != 8<<40 {
+			t.Fatalf("runtime parsed explicit limit=%d", before)
+		}
+	case "off":
+		if before != math.MaxInt64 {
+			t.Fatalf("runtime parsed off=%d", before)
+		}
+	case "programmatic":
+		debug.SetMemoryLimit(32 << 20)
+		want = 32 << 20
+	default:
+		t.Fatalf("unknown helper mode %q", mode)
+	}
 	Apply()
-	if debug.SetMemoryLimit(-1) != previous {
-		t.Fatal("a heap limit was invented without a ceiling to derive it from")
+	if got := debug.SetMemoryLimit(-1); got != want {
+		t.Fatalf("Apply limit=%d want %d", got, want)
+	}
+	Apply()
+	if got := debug.SetMemoryLimit(-1); got != want {
+		t.Fatalf("second Apply limit=%d want %d", got, want)
 	}
 }

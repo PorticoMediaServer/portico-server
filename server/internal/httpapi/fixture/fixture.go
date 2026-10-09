@@ -58,6 +58,12 @@ type Shape struct {
 	Seed               int64
 }
 
+// Config selects representative population options without changing the
+// historical fixture used by immutable read-path equivalence checks.
+type Config struct {
+	CanonicalCreditDepartments bool
+}
+
 // Libraries is what Generate created, so a caller can address them.
 type Libraries struct {
 	Movies, Shows, Music, Books string
@@ -127,6 +133,11 @@ var genreNames = []string{"Action", "Drama", "Comedy", "Thriller", "Documentary"
 // look hung, and it yields at every batch boundary so it can run against a
 // server that is also serving.
 func Generate(ctx context.Context, db *sql.DB, shape Shape, report func(done, total int)) (Libraries, error) {
+	return GenerateWithConfig(ctx, db, shape, Config{}, report)
+}
+
+// GenerateWithConfig uses the same population APIs with explicit options.
+func GenerateWithConfig(ctx context.Context, db *sql.DB, shape Shape, config Config, report func(done, total int)) (Libraries, error) {
 	out := Libraries{}
 	random := rand.New(rand.NewSource(shape.Seed))
 	zipf := rand.NewZipf(random, 1.2, 1, 400)
@@ -298,6 +309,9 @@ func Generate(ctx context.Context, db *sql.DB, shape Shape, report func(done, to
 					person := fmt.Sprintf("person-%04d", (n*3+c*11)%(1+shape.Movies/4+64))
 					role := []string{"Actor", "Director", "Writer"}[c%3]
 					department := []string{"cast", "directing", "writing"}[c%3]
+					if config.CanonicalCreditDepartments {
+						department = []string{"Acting", "Directing", "Writing"}[c%3]
+					}
 					list = append(list, compactcatalog.Credit{
 						PersonKey: "fixture:" + person, PersonName: "Person " + person,
 						ProviderPersonID: person, CreditID: person, CreditedName: "Person " + person,
@@ -673,7 +687,16 @@ func schemaKey() string {
 // copying it afterwards. A deep fixture takes minutes to build and seconds to
 // copy, and a load test that rebuilds it every run is a load test nobody runs.
 func Build(ctx context.Context, shape Shape, destination string, report func(done, total int)) (Libraries, error) {
-	cached := filepath.Join(os.TempDir(), "portico-fixture-"+shape.Key()+"-"+schemaKey()+".sqlite")
+	return BuildWithConfig(ctx, shape, Config{}, destination, report)
+}
+
+// BuildWithConfig keeps distinct cache entries for opt-in population variants.
+func BuildWithConfig(ctx context.Context, shape Shape, config Config, destination string, report func(done, total int)) (Libraries, error) {
+	variant := ""
+	if config.CanonicalCreditDepartments {
+		variant = "-canonical-credits"
+	}
+	cached := filepath.Join(os.TempDir(), "portico-fixture-"+shape.Key()+"-"+schemaKey()+variant+".sqlite")
 	libraries := Libraries{Movies: "fixture-movies", Shows: "fixture-tv", Music: "fixture-music", Books: "fixture-books"}
 	if _, err := os.Stat(cached); err != nil {
 		staging := cached + ".building"
@@ -682,7 +705,7 @@ func Build(ctx context.Context, shape Shape, destination string, report func(don
 		if openErr != nil {
 			return libraries, openErr
 		}
-		if libraries, err = Generate(ctx, db, shape, report); err != nil {
+		if libraries, err = GenerateWithConfig(ctx, db, shape, config, report); err != nil {
 			db.Close()
 			_ = os.Remove(staging)
 			return libraries, err

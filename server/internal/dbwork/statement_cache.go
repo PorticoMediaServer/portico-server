@@ -7,14 +7,54 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+
+	"portico.local/server/internal/hostlimits"
 )
 
 // Statements cache SQLite bytecode, never rows or authorization decisions.
-// Each physical connection owns its own bounded cache. The budget estimates
-// native VM storage conservatively; it is not a measurement of SQLite memory.
-const statementCacheEntries = 64
+// Each physical connection owns its own bounded cache. Native SQLite storage is
+// measured after bindings clear; SQL copies and Go bookkeeping have a separate
+// conservative allowance. Drivers without this diagnostic use an estimate.
+const statementCacheEntries = 128
 const statementCacheBudget = 512 << 10
+const statementCacheMaxBudget = 4 << 20
 const statementCacheOverhead = 8 << 10
+const statementCacheGoOverhead = 512
+
+var statementBudget struct {
+	sync.Once
+	bytes int
+}
+
+func statementBudgetForMemory(memory int64) int {
+	if memory <= 0 {
+		return statementCacheBudget
+	}
+	return int(min(max(memory/512, int64(statementCacheBudget)), int64(statementCacheMaxBudget)))
+}
+
+func defaultStatementBudget() int {
+	statementBudget.Do(func() { statementBudget.bytes = statementBudgetForMemory(hostlimits.EffectiveMemoryBytes()) })
+	return statementBudget.bytes
+}
+
+// This optional driver diagnostic reads retained VM storage, not query values.
+type statementMemory interface{ StatementMemoryBytes() int64 }
+
+func retainedStatementSize(stmt driver.Stmt, query string) int {
+	if measured, ok := stmt.(statementMemory); ok {
+		if native := measured.StatementMemoryBytes(); native > 0 {
+			// SQLite counts its SQL copy. The driver owns another C string and
+			// the cache clones its key; 512 bytes covers their Go bookkeeping.
+			overhead := int64(2*len(query) + statementCacheGoOverhead)
+			if native > int64(^uint(0)>>1)-overhead {
+				return int(^uint(0) >> 1)
+			}
+			return int(native + overhead)
+		}
+	}
+	return statementCacheOverhead + 8*len(query)
+}
 
 // StatementCacheStats reports reuse without exposing SQL or bindings.
 type StatementCacheStats struct {
@@ -41,6 +81,7 @@ type statementCache struct {
 	entries map[string]*statementEntry
 	lru     list.List
 	bytes   int
+	budget  int
 	closed  bool
 }
 type statementEntry struct {
@@ -229,6 +270,9 @@ func (s *statementCache) lease(ctx context.Context, conn driver.Conn, query stri
 	if s.closed {
 		return nil, nil, driver.ErrBadConn
 	}
+	if s.budget == 0 {
+		s.budget = defaultStatementBudget()
+	}
 	if e := s.entries[query]; e != nil && !e.leased {
 		e.leased = true
 		s.lru.MoveToFront(e.element)
@@ -261,10 +305,10 @@ func (s *statementCache) lease(ctx context.Context, conn driver.Conn, query stri
 	if err != nil {
 		return nil, nil, err
 	}
-	e := &statementEntry{query: strings.Clone(query), stmt: stmt, size: statementCacheOverhead + 8*len(query), leased: true, retired: true}
+	e := &statementEntry{query: strings.Clone(query), stmt: stmt, size: retainedStatementSize(stmt, query), leased: true, retired: true}
 	// Do not replace an active entry of the same key or evict leased readers.
-	if cacheable && s.entries[query] == nil {
-		for s.lru.Len() >= statementCacheEntries || s.bytes+e.size > statementCacheBudget {
+	if cacheable && e.size <= s.budget && s.entries[query] == nil {
+		for s.lru.Len() >= statementCacheEntries || s.bytes+e.size > s.budget {
 			var victim *statementEntry
 			for p := s.lru.Back(); p != nil; p = p.Prev() {
 				if candidate := p.Value.(*statementEntry); !candidate.leased {
@@ -277,7 +321,7 @@ func (s *statementCache) lease(ctx context.Context, conn driver.Conn, query stri
 			}
 			s.remove(victim)
 		}
-		if s.lru.Len() < statementCacheEntries && s.bytes+e.size <= statementCacheBudget {
+		if s.lru.Len() < statementCacheEntries && s.bytes+e.size <= s.budget {
 			if s.entries == nil {
 				s.entries = make(map[string]*statementEntry)
 			}
@@ -306,6 +350,29 @@ func (s *statementCache) release(e *statementEntry) func(error) error {
 		}
 		if e.retired {
 			return e.stmt.Close()
+		}
+		// Reset/clear-binding has completed before this callback. Reprepare,
+		// result buffers and function auxiliary storage can change footprint
+		// without changing SQL. Charge current retained memory on every release.
+		size := retainedStatementSize(e.stmt, e.query)
+		if size > s.budget {
+			s.remove(e)
+			return nil
+		}
+		s.bytes += size - e.size
+		e.size = size
+		for s.bytes > s.budget {
+			var victim *statementEntry
+			for p := s.lru.Back(); p != nil; p = p.Prev() {
+				if candidate := p.Value.(*statementEntry); !candidate.leased {
+					victim = candidate
+					break
+				}
+			}
+			if victim == nil {
+				break
+			}
+			s.remove(victim)
 		}
 		return nil
 	}

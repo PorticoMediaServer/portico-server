@@ -1,6 +1,7 @@
 package dbwork
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"errors"
@@ -225,10 +226,42 @@ func TestCheckpointHardPressureDrainsOverlappingReadersAndShrinksPhysicalWAL(t *
 	}
 	t.Logf("hard checkpoint reset%d frames from%dMiB after%dms drain (%dms total)", result.BeforeLogFrames, stats.FileBytes>>20, result.DrainMs, result.DurationMs)
 	t.Run("continuous-snapshot-churn", func(t *testing.T) {
+		// Fixture generation belongs to the runner's budget, not the timed
+		// reader/checkpoint exercise. Keep its four old boundaries until the
+		// large write commits; every later request gets the unchanged10s budget.
+		fixtureCtx := ctx
+		if deadline, ok := t.Deadline(); ok {
+			var cancelFixture context.CancelFunc
+			fixtureCtx, cancelFixture = context.WithDeadline(ctx, deadline)
+			defer cancelFixture()
+		}
+		initial := make([]*sql.Tx, 4)
+		finishInitial := make([]func(), 4)
+		defer func() {
+			for _, finish := range finishInitial {
+				if finish != nil {
+					finish()
+				}
+			}
+		}()
+		for worker := range initial {
+			var err error
+			initial[worker], finishInitial[worker], err = BeginRead(fixtureCtx, db)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var count int
+			if err = initial[worker].QueryRowContext(fixtureCtx, `SELECT count(*) FROM sample`).Scan(&count); err != nil {
+				t.Fatal(err)
+			}
+		}
+		// Change every payload byte without spending the race budget on random
+		// number generation. These are real writes to every large-table page.
+		if _, err := ExecWrite(fixtureCtx, db, ClassInteractive, `UPDATE large SET body=?`, bytes.Repeat([]byte{1}, 8192)); err != nil {
+			t.Fatal(err)
+		}
 		churnCtx, stopChurn := context.WithTimeout(ctx, 10*time.Second)
 		defer stopChurn()
-		ready := make(chan struct{}, 4)
-		beginWork := make(chan struct{})
 		failures := make(chan error, 4)
 		var workers sync.WaitGroup
 		defer func() { stopChurn(); workers.Wait() }()
@@ -237,27 +270,15 @@ func TestCheckpointHardPressureDrainsOverlappingReadersAndShrinksPhysicalWAL(t *
 			workers.Add(1)
 			go func(worker int) {
 				defer workers.Done()
-				first := true
-				for churnCtx.Err() == nil {
-					tx, finish, err := BeginRead(churnCtx, db)
-					if err != nil {
-						if churnCtx.Err() == nil {
-							failures <- err
-						}
+				tx, finish := initial[worker], finishInitial[worker]
+				var err error
+				for {
+					if churnCtx.Err() != nil {
+						finish()
 						return
 					}
 					var total int64
 					err = tx.QueryRowContext(churnCtx, `SELECT count(*) FROM sample`).Scan(&total)
-					if first {
-						first = false
-						ready <- struct{}{}
-						select {
-						case <-beginWork:
-						case <-churnCtx.Done():
-							finish()
-							return
-						}
-					}
 					// Real finite SQL work staggers request completion, with no
 					// sleeps and no carried snapshot between requests. Varying
 					// bounded row ranges naturally overlap four healthy readers.
@@ -272,25 +293,16 @@ func TestCheckpointHardPressureDrainsOverlappingReadersAndShrinksPhysicalWAL(t *
 						return
 					}
 					completed.Add(1)
+					tx, finish, err = BeginRead(churnCtx, db)
+					if err != nil {
+						if churnCtx.Err() == nil {
+							failures <- err
+						}
+						return
+					}
 				}
 			}(worker)
 		}
-		for range 4 {
-			select {
-			case <-ready:
-			case <-churnCtx.Done():
-				t.Fatal("churn readers did not start")
-			}
-		}
-		// Reuse the already-large fixture. Every page really changes while
-		// readers retain the pre-write boundary; no WAL counters are forged.
-		if _, err := ExecWrite(churnCtx, db, ClassInteractive, `UPDATE large SET body=randomblob(8192)`); err != nil {
-			close(beginWork)
-			stopChurn()
-			workers.Wait()
-			t.Fatal(err)
-		}
-		close(beginWork)
 		waitReaderCondition(t, func() bool { return completed.Load() >= 12 && scope.stats().Snapshots > 0 })
 		if _, err := ExecWrite(churnCtx, db, ClassInteractive, `INSERT INTO sample VALUES(4)`); err != nil {
 			stopChurn()

@@ -82,6 +82,7 @@ type Service struct {
 	rctx            context.Context
 	recRestrictions identity.ContentRestrictions
 	recSources      map[string]homeSource
+	recComposition  *recCompositionSources
 }
 
 // serviceState is the process-lifetime state one database's catalogue keeps.

@@ -109,6 +109,28 @@ func DatabaseFile(ctx context.Context, db *sql.DB) string {
 	return ""
 }
 
+// checkpointDatabaseFile asks the connection already reserved for maintenance,
+// never another pool slot. SQLite supplies the native filename, including any
+// symlink resolution. A memory database reports an empty filename.
+func checkpointDatabaseFile(ctx context.Context, conn *sql.Conn) (file string, err error) {
+	rows, err := conn.QueryContext(ctx, `PRAGMA database_list`)
+	if err != nil {
+		return "", err
+	}
+	defer func() { err = errors.Join(err, rows.Close()) }()
+	for rows.Next() {
+		var seq int
+		var name, candidate string
+		if err = rows.Scan(&seq, &name, &candidate); err != nil {
+			return "", err
+		}
+		if name == "main" {
+			return candidate, nil
+		}
+	}
+	return "", rows.Err()
+}
+
 // One checkpoint ran in the whole life of the process: a PASSIVE pass at
 // startup. `wal_autocheckpoint=1000` covers roughly four mebibytes, and a PASSIVE
 // checkpoint cannot reset the log while a reader needs older frames. Overlapping
@@ -133,6 +155,10 @@ const (
 	// server that is never quiet is exactly the one whose log grows until the
 	// volume fills, and a stall is recoverable where a full disk is not.
 	CheckpointHardFrames = 48000
+	// CheckpointHardFileBytes covers a large retained allocation even after a
+	// writer resets and reuses it with only a handful of current logical frames.
+	// PASSIVE copying alone cannot release those bytes back to the filesystem.
+	CheckpointHardFileBytes = 192 << 20
 	// CheckpointDeadline bounds connection/gate waiting and supplies query
 	// cancellation. It is not a guaranteed wall-clock cap for SQLite's WAL
 	// copying, fsync or busy callback; the lock wait has a separate short budget.
@@ -151,6 +177,7 @@ type CheckpointResult struct {
 	Checkpoint               int                 `json:"checkpointedFrames"`
 	BeforeLogFrames          int                 `json:"beforeLogFrames"`
 	BeforeCheckpointedFrames int                 `json:"beforeCheckpointedFrames"`
+	BeforeFileBytes          int64               `json:"beforeFileBytes"`
 	DurationMs               int64               `json:"durationMs"`
 	DrainMs                  int64               `json:"drainMs"`
 	Outcome                  string              `json:"outcome"`
@@ -206,7 +233,14 @@ func observeCheckpoint(out CheckpointResult) {
 
 // Checkpoint runs one maintenance checkpoint, escalating to TRUNCATE when the
 // log has grown past the threshold and the write gate is idle.
-func Checkpoint(ctx context.Context, db *sql.DB) (out CheckpointResult) {
+func Checkpoint(ctx context.Context, db *sql.DB) CheckpointResult {
+	return checkpoint(ctx, db, "")
+}
+
+// knownWALPath is the full native main-database filename plus "-wal". The
+// recurring controller resolves it once; direct callers discover it on the
+// connection this checkpoint already holds. Paths never enter diagnostic state.
+func checkpoint(ctx context.Context, db *sql.DB, knownWALPath string) (out CheckpointResult) {
 	out = CheckpointResult{Mode: "passive"}
 	if db == nil {
 		return out
@@ -263,24 +297,43 @@ func Checkpoint(ctx context.Context, db *sql.DB) (out CheckpointResult) {
 	}
 	out.BeforeLogFrames = out.LogFrames
 	out.BeforeCheckpointedFrames = out.Checkpoint
+	if knownWALPath == "" {
+		file, pathErr := checkpointDatabaseFile(ctx, conn)
+		if pathErr != nil {
+			out.Err = pathErr
+			return out
+		}
+		if file != "" {
+			knownWALPath = file + "-wal"
+		}
+	}
+	if knownWALPath != "" {
+		if info, statErr := os.Stat(knownWALPath); statErr == nil {
+			out.BeforeFileBytes = info.Size()
+		} else if !errors.Is(statErr, os.ErrNotExist) {
+			out.Err = statErr
+			return out
+		}
+	}
+	hardPressure := out.LogFrames >= CheckpointHardFrames || out.BeforeFileBytes >= CheckpointHardFileBytes
 	scope := checkpointReaderScope(conn)
 	if scope != nil {
 		out.Readers = scope.stats()
 	} else {
 		out.Readers = ReaderLifetimes()
 	}
-	if out.LogFrames < CheckpointTruncateFrames {
+	if out.LogFrames < CheckpointTruncateFrames && !hardPressure {
 		return out
 	}
 	// TRUNCATE blocks until every reader has drained, so it only runs when
 	// nothing is writing or waiting to write and no foreground request is in
 	// flight — unless the log has grown past the point where waiting for a quiet
 	// moment that may never come is the worse risk.
-	if out.LogFrames < CheckpointHardFrames && (WriteGate().ActiveOrWaiting() || ForegroundWorkActive()) {
+	if !hardPressure && (WriteGate().ActiveOrWaiting() || ForegroundWorkActive()) {
 		return out
 	}
 	gateCtx := ctx
-	if out.LogFrames >= CheckpointHardFrames && scope != nil {
+	if hardPressure && scope != nil {
 		reopen, drained, backoff := scope.pause()
 		if reopen == nil {
 			out.Outcome, out.BackoffMs = "reader-backoff", backoff.Milliseconds()

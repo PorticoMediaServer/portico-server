@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"portico.local/server/internal/compactcatalog"
+	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/operations"
 )
 
@@ -32,9 +33,12 @@ const (
 func (s *Service) recTitleSession(base *recSession, work int64) (*recSession, error) {
 	copied := *base
 	x := &copied
-	// This session changes the taste and similar-title seeds. Its source reads
-	// must not reuse edges or facet rarity hydrated for the viewer's own taste.
-	x.hydration = recHydration{}
+	// The title replaces taste and seeds, but immutable catalogue inputs can
+	// be shared with the viewer's rows inside this same read snapshot. Edges
+	// are keyed by exact seeds/weights and each session keeps its own IDF map.
+	if base.hydration == nil || base.hydration.snapshot == nil || base.hydration.snapshot != dbwork.Snapshot(s.Context()) {
+		x.hydration = &recHydration{snapshot: dbwork.Snapshot(s.Context())}
+	}
 	x.taste.seeds = nil
 	x.idf = map[string]float64{}
 	x.strongest = nil
@@ -66,7 +70,7 @@ func (s *Service) recTitleSession(base *recSession, work int64) (*recSession, er
 			keys = append(keys, f)
 		}
 	}
-	if x.idf, err = s.recRarity(keys); err != nil {
+	if x.idf, err = x.recRarity(keys); err != nil {
 		return nil, err
 	}
 	for _, f := range facets {
@@ -117,7 +121,7 @@ func (s *Service) recMoreLike(base *recSession, work int64) ([]recCandidate, err
 // viewer, the title itself left out.
 func (s *Service) recFacetTitles(x *recSession, work int64, facet string) ([]recCandidate, error) {
 	if _, ok := x.idf[facet]; !ok {
-		more, err := s.recRarity([]string{facet})
+		more, err := x.recRarity([]string{facet})
 		if err != nil {
 			return nil, err
 		}

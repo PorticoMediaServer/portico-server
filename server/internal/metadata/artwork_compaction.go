@@ -87,7 +87,7 @@ func (s *Service) compactArtworkObject(ctx context.Context, old string) error {
 	if small {
 		edge = artworkSmallEdge
 	}
-	data, w, h, err := encodeDisplayArtwork(decoded, edge, format == "jpeg")
+	data, w, h, err := encodeDisplayArtworkContext(ctx, decoded, edge, format == "jpeg")
 	if err != nil {
 		return err
 	}

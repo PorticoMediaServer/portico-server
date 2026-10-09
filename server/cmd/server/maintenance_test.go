@@ -80,3 +80,48 @@ func TestReceiptSweepSkipsEmptyGateAndDrainsBacklogInBatches(t *testing.T) {
 		t.Fatalf("remaining receipts=%d err=%v", remaining, err)
 	}
 }
+
+func TestFastWALPollsPreserveReceiptBacklogDrainCadence(t *testing.T) {
+	ctx := context.Background()
+	db, err := persistence.Open(filepath.Join(t.TempDir(), "cadence.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err = db.ExecContext(ctx, `WITH RECURSIVE seq(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM seq WHERE x<1050)
+		INSERT INTO api_idempotency(scope,key,digest,status,body,expires_at)
+		SELECT 'test',printf('key-%04d',x),'digest',200,x'',? FROM seq`, time.Now().Add(-time.Minute).Unix()); err != nil {
+		t.Fatal(err)
+	}
+	starts := 0
+	receipts := idempotency.Store{SweepBegin: func(ctx context.Context) (idempotency.Transaction, error) {
+		starts++
+		return dbwork.Begin(ctx, db, dbwork.ClassMaintenance)
+	}}
+	epoch := time.Now()
+	cadence := ancillaryMaintenanceCadence{last: epoch}
+	for seconds := 1; seconds <= 60; seconds++ {
+		// Advance the one-second production poll clock without sleeping. The
+		// production guard must not turn a pending expiry backlog into one
+		// thousand deletes every second instead of every thirty seconds.
+		if cadence.due(epoch.Add(time.Duration(seconds) * dbwork.CheckpointPollInterval)) {
+			if _, err = sweepDueReceipts(ctx, db, receipts); err != nil {
+				t.Fatal(err)
+			}
+		}
+		want := 1050
+		if seconds >= 30 {
+			want = 50
+		}
+		if seconds == 60 {
+			want = 0
+		}
+		var remaining int
+		if err = db.QueryRowContext(ctx, `SELECT count(*) FROM api_idempotency`).Scan(&remaining); err != nil || remaining != want {
+			t.Fatalf("at %d one-second polls, pending receipts=%d want%d err%v", seconds, remaining, want, err)
+		}
+	}
+	if starts != 11 {
+		t.Fatalf("expected preserved two passes/eleven short writer transactions, got%d", starts)
+	}
+}

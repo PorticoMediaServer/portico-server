@@ -8,7 +8,7 @@ Only its handwritten top-level Go driver files are copied here. SQLite's generat
 Portico additions:
 
 - `context_progress.go`: scoped cancellation progress callbacks, including later row iteration, with reusable per-connection state and closure cleanup.
-- `stmt.go`: recheck context after binding and before initial execution; preserve the query context in returned rows.
+- `stmt.go`: recheck context after binding and before initial execution; preserve the query context in returned rows; expose retained VM allocations through SQLite's public `SQLITE_STMTSTATUS_MEMUSED` diagnostic.
 - `rows.go`: restore that context during each `Next` call.
 - `conn.go`: own and release progress callback state.
 - `tx.go`: scope transaction execution cancellation.
@@ -17,6 +17,8 @@ A canceled `sqlite3_interrupt` before VM activation can be cleared at activation
 
 The package keeps the `sqlite` database/sql registration name. Server imports must use this maintained package rather than also importing upstream's root driver (which would register the same name and introduce incompatible nominal error, backup and function-context types).
 
-When upgrading, diff these files against the exact upstream tag, preserve the small cancellation patch and rerun driver, dbwork, backup, scalar/collation, race and ARMv6 checks. Upstream v1.60.1 was inspected during this work and still had the same bind-to-step cancellation gap.
+Statement memory accounting runs before retention and after execution resets and clears bindings. SQLite's per-statement allocation diagnostic works independently of disabled global memory statistics. Portico adds an allowance for its SQL copies and Go bookkeeping; other driver implementations retain a conservative estimate.
+
+When upgrading, diff these files against the exact upstream tag, preserve the small cancellation and retained-memory patches and rerun driver, dbwork, backup, scalar/collation, race and ARMv6 checks. Include schema reprepare, variable memory growth and binding-clearance regressions. Upstream v1.60.1 was inspected during this work and still had the same bind-to-step cancellation gap.
 
 `go vet` reports inherited `unsafe.Pointer` diagnostics in the upstream driver. Compare these with the exact upstream source when reviewing an upgrade; this patch introduced no new warning expressions. `go vet -unsafeptr=false` passes for this package.

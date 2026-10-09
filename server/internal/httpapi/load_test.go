@@ -126,7 +126,7 @@ func newLoadFixture(t *testing.T, tier performanceTier) *loadFixture {
 	// that looks hung.
 	began := time.Now()
 	last := 0
-	built, err := fixture.Build(context.Background(), tier.shape, path, func(done, total int) {
+	built, err := fixture.BuildWithConfig(context.Background(), tier.shape, fixture.Config{CanonicalCreditDepartments: true}, path, func(done, total int) {
 		if done-last < 100000 && done != total {
 			return
 		}
@@ -283,6 +283,24 @@ func newLoadFixture(t *testing.T, tier performanceTier) *loadFixture {
 	rows.Close()
 	if len(f.items) == 0 {
 		t.Fatal("the fixture produced no items")
+	}
+	// Credits must exercise the same actor/starring recommendation path as
+	// provider ingestion. Merely having credit rows would miss label drift.
+	code, _, recommendationBody := f.callTimed(f.owner.AccessToken, "GET", "/v1/items/"+f.items[0]+"/recommendations", nil)
+	var recommended struct {
+		Rows []catalog.HomeRow `json:"rows"`
+	}
+	if code != http.StatusOK || json.Unmarshal([]byte(recommendationBody), &recommended) != nil {
+		t.Fatalf("fixture actor recommendations: %d %s", code, recommendationBody)
+	}
+	starring := false
+	for _, row := range recommended.Rows {
+		if row.Relation == "starring" && row.Provider != "" && row.EvidenceID != "" && len(row.Entries) != 0 {
+			starring = true
+		}
+	}
+	if !starring {
+		t.Fatal("fixture is missing provider-style actor/starring recommendations")
 	}
 	return f
 }

@@ -271,6 +271,7 @@ func TestStatementCacheOtherConnectionSchemaChangesAndReopen(t *testing.T) {
 
 func TestStatementCacheBoundsAndBypass(t *testing.T) {
 	_, conn := statementCacheDB(t)
+	conn.Raw(func(raw any) error { raw.(*observedConn).statements.budget = statementCacheBudget; return nil })
 	ctx := context.Background()
 	for i := range 200 {
 		query := fmt.Sprintf("SELECT ? AS column%d", i)
@@ -546,7 +547,7 @@ func TestStatementCacheRetirementAndEvictionCloseEachHandleOnce(t *testing.T) {
 	}
 	defer inner.Close()
 	conn := &countedCacheConn{Conn: inner}
-	var cache statementCache
+	cache := statementCache{budget: statementCacheBudget}
 	query := func(n int) string { return fmt.Sprintf("SELECT %d /*%s*/", n, strings.Repeat("x", 40000)) }
 	_, release, err := cache.lease(context.Background(), conn, query(1))
 	if err != nil {
@@ -648,5 +649,147 @@ func TestStatementCacheHomeShapedCommentsDoNotFlushHotStatements(t *testing.T) {
 	}
 	if cacheEntryFor(t, conn, home) != nil || cacheEntryFor(t, conn, hot) != nil {
 		t.Fatal("configuration failed to invalidate retained handles")
+	}
+}
+
+func TestStatementBudgetTracksPhysicalOrContainerMemory(t *testing.T) {
+	for _, tc := range []struct {
+		memory int64
+		want   int
+	}{{0, 512 << 10}, {-1, 512 << 10}, {64 << 20, 512 << 10}, {256 << 20, 512 << 10}, {512 << 20, 1 << 20}, {1 << 30, 2 << 20}, {2 << 30, 4 << 20}, {64 << 30, 4 << 20}} {
+		if got := statementBudgetForMemory(tc.memory); got != tc.want {
+			t.Fatalf("memory%d budget%d want%d", tc.memory, got, tc.want)
+		}
+	}
+}
+
+type memoryCacheStmt struct {
+	*countedCacheStmt
+	memory int64
+}
+
+func (s *memoryCacheStmt) StatementMemoryBytes() int64 { return s.memory }
+
+type memoryCacheConn struct {
+	driver.Conn
+	memory     int64
+	statements []*memoryCacheStmt
+}
+
+func (c *memoryCacheConn) PrepareContext(ctx context.Context, q string) (driver.Stmt, error) {
+	inner, err := c.Conn.(driver.ConnPrepareContext).PrepareContext(ctx, q)
+	if err != nil {
+		return nil, err
+	}
+	s := &memoryCacheStmt{countedCacheStmt: &countedCacheStmt{Stmt: inner}, memory: c.memory}
+	c.statements = append(c.statements, s)
+	return s, nil
+}
+
+func TestStatementCacheMeasuredGrowthRetiresWithoutClosingActiveRows(t *testing.T) {
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	inner, err := db.Driver().Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer inner.Close()
+	conn := &memoryCacheConn{Conn: inner, memory: 4096}
+	cache := statementCache{budget: 32 << 10}
+	_, first, err := cache.lease(context.Background(), conn, "SELECT 1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, second, err := cache.lease(context.Background(), conn, "SELECT 2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	conn.statements[1].memory = 30 << 10
+	if err := second(nil); err != nil {
+		t.Fatal(err)
+	}
+	if conn.statements[0].closes != 0 || conn.statements[1].closes != 1 || cache.bytes > cache.budget {
+		t.Fatal("growth evicted an active VM or escaped budget")
+	}
+	first(nil)
+	conn.memory = 64 << 10
+	_, large, err := cache.lease(context.Background(), conn, "SELECT 3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cache.entries["SELECT 1"] == nil || cache.entries["SELECT 3"] != nil {
+		t.Fatal("oversized preparation flushed unrelated idle VM")
+	}
+	large(nil)
+	large(nil)
+	if conn.statements[2].closes != 1 {
+		t.Fatal("oversized VM closure was not exactly once")
+	}
+	cache.close()
+	if conn.statements[0].closes != 1 {
+		t.Fatal("idle measured VM leaked")
+	}
+}
+
+func TestStatementCacheNativeAccountingClearsBindingsAndRefreshesSchema(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "native-memory.sqlite")
+	db, err := sql.Open(DriverName, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	other, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer other.Close()
+	if _, err := other.Exec("CREATE TABLE source(x INTEGER)"); err != nil {
+		t.Fatal(err)
+	}
+	conn, err := db.Conn(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	const query = "SELECT * FROM source"
+	rows, err := conn.QueryContext(context.Background(), query)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows.Close()
+	entry := cacheEntryFor(t, conn, query)
+	if entry == nil {
+		t.Fatal("native VM not retained")
+	}
+	oldSize := entry.size
+	for i := 0; i < 24; i++ {
+		if _, err := other.Exec(fmt.Sprintf("ALTER TABLE source ADD COLUMN c%d TEXT", i)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rows, err = conn.QueryContext(context.Background(), query)
+	if err != nil {
+		t.Fatal(err)
+	}
+	columns, err := rows.Columns()
+	if err != nil || len(columns) != 25 {
+		t.Fatal(columns, err)
+	}
+	rows.Close()
+	entry = cacheEntryFor(t, conn, query)
+	if entry == nil || entry.size <= oldSize || entry.size != retainedStatementSize(entry.stmt, query) {
+		t.Fatal("schema reprepare footprint was not refreshed")
+	}
+	const bound = "SELECT ?"
+	var text string
+	if err := conn.QueryRowContext(context.Background(), bound, strings.Repeat("x", 256<<10)).Scan(&text); err != nil || len(text) != 256<<10 {
+		t.Fatal("large binding", err)
+	}
+	entry = cacheEntryFor(t, conn, bound)
+	if entry == nil || entry.size > 32<<10 {
+		t.Fatal("accounting retained the cleared large binding")
 	}
 }

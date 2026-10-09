@@ -75,6 +75,17 @@ func (s *stmt) Close() (err error) {
 	return err
 }
 
+// StatementMemoryBytes reports SQLite's retained statement allocations. This
+// public SQLite diagnostic counts allocator sizes independently of the global
+// SQLITE_DEFAULT_MEMSTATUS setting. Callers serialize access with execution and
+// measure after reset/clear-bindings to exclude active query storage.
+func (s *stmt) StatementMemoryBytes() int64 {
+	if s.pstmt == 0 {
+		return 0
+	}
+	return int64(sqlite3.Xsqlite3_stmt_status(s.c.tls, s.pstmt, sqlite3.SQLITE_STMTSTATUS_MEMUSED, 0))
+}
+
 // Exec executes a query that doesn't return rows, such as an INSERT or UPDATE.
 //
 // Deprecated: Drivers should implement StmtExecContext instead (or

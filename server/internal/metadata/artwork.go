@@ -244,7 +244,7 @@ func (s *Service) ensureArtworkVariant(ctx context.Context, source string, width
 	if err = ctx.Err(); err != nil {
 		return err
 	}
-	raw, w, h, err := encodeDisplayArtwork(decoded, width, format == "jpeg")
+	raw, w, h, err := encodeDisplayArtworkContext(ctx, decoded, width, format == "jpeg")
 	if err != nil {
 		return ErrArtworkPending
 	}

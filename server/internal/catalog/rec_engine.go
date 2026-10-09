@@ -436,14 +436,14 @@ type recSession struct {
 	// discover is the library kind when the session ranks one library's
 	// Discover view (which adds kind-specific rows), "" on Home.
 	discover  string
-	hydration recHydration // immutable source reads shared only within this request snapshot
+	hydration *recHydration // immutable source reads shared only within this request snapshot
 }
 
 func (s *Service) recSession(r HomeRequest) (*recSession, error) {
 	if err := s.compactProjectionReady(18, 32); err != nil {
 		return nil, err
 	}
-	x := &recSession{s: s, r: r, now: s.recommendationNow(r.Now)}
+	x := &recSession{s: s, r: r, now: s.recommendationNow(r.Now), hydration: s.recHydrationFor(r)}
 	var err error
 	if x.taste, err = s.recLoadTaste(r.Profile, x.now); err != nil {
 		return nil, err
@@ -466,7 +466,7 @@ func (s *Service) recSession(r HomeRequest) (*recSession, error) {
 			facets = append(facets, f)
 		}
 	}
-	if x.idf, err = s.recRarity(facets); err != nil {
+	if x.idf, err = x.recRarity(facets); err != nil {
 		return nil, err
 	}
 	for _, f := range facets {

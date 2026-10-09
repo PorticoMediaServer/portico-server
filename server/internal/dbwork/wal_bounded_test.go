@@ -190,6 +190,9 @@ func (c *checkpointCleanupConn) QueryContext(ctx context.Context, query string, 
 	if query == "PRAGMA busy_timeout" {
 		return &checkpointRows{values: []driver.Value{int64(c.busy)}}, nil
 	}
+	if query == "PRAGMA database_list" {
+		return &checkpointRows{values: []driver.Value{int64(0), "main", ""}}, nil
+	}
 	if strings.Contains(query, "wal_checkpoint") {
 		if c.checkpoint != nil {
 			c.checkpoint()
