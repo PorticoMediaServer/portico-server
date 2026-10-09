@@ -14,20 +14,51 @@ package hostlimits
 
 import (
 	"log"
+	"os"
 	"runtime/debug"
 )
 
-// memoryLimitShare is how much of the cgroup's ceiling the collector is told to
-// work to. The remainder is everything the Go heap does not account for — the
-// binary, stacks, the SQLite page caches, the helper processes — and a limit set
-// at the ceiling itself would have the collector running flat out while the
-// kernel killed the process anyway.
-const memoryLimitShare = 0.9
+// automaticMemoryLimit leaves room for memory outside the Go runtime, including
+// SQLite's allocator, the binary, helper processes and the operating system.
+// The reserve is a planning allowance, not a hard RSS guarantee. Go's limit is
+// soft and can be exceeded by a working set that cannot be collected.
+func automaticMemoryLimit(memory int64) int64 {
+	if memory <= 0 {
+		return 0
+	}
+	soft := memory - max(memory/4, int64(128<<20))
+	if soft < 64<<20 {
+		// A guessed limit below the minimum working allowance would keep the
+		// collector busy without establishing that the server fits this host.
+		return 0
+	}
+	return soft
+}
 
 // OpenFiles reports the current soft and hard descriptor limits. On a platform
 // with no such limit both are zero, which is the honest answer rather than a
 // fabricated ceiling.
 func OpenFiles() (soft, hard uint64) { return openFileLimits() }
+
+// EffectiveMemoryBytes reports the smaller discoverable physical-memory and
+// process cgroup ceiling. It sizes bounded resources and the default Go runtime
+// memory limit; zero means neither source could be measured.
+func EffectiveMemoryBytes() int64 {
+	physical, _ := physicalMemoryBytes()
+	cgroup, _ := cgroupMemoryLimit()
+	return effectiveMemoryBytes(physical, cgroup)
+}
+
+func effectiveMemoryBytes(physical, cgroup uint64) int64 {
+	if physical == 0 || cgroup > 0 && cgroup < physical {
+		physical = cgroup
+	}
+	// Untrusted OS text must never wrap a signed budget negative.
+	if physical > 1<<63-1 {
+		return 0
+	}
+	return int64(physical)
+}
 
 // Apply raises the descriptor limit and, where a memory ceiling is discoverable,
 // gives the garbage collector one to work to. It logs what it did, because both
@@ -41,17 +72,18 @@ func Apply() {
 		// mysterious failures rather than an honest refusal.
 		log.Printf("Open file limit is %d, which is low for a server carrying many streams; the hard limit is %d", soft, hard)
 	}
-	limit, ok := cgroupMemoryLimit()
-	if !ok {
-		// Nothing discoverable. A guessed limit set too low is a collection death
-		// spiral, which is worse than no limit at all.
+	if os.Getenv("GOMEMLIMIT") != "" {
+		// The runtime already parsed this owner override at process startup,
+		// including "off". Do not silently replace it with our default.
 		return
 	}
-	soft := int64(float64(limit) * memoryLimitShare)
-	if soft < 64<<20 {
-		// Below this the limit would be fighting the server's own working set.
+	memory := EffectiveMemoryBytes()
+	soft := automaticMemoryLimit(memory)
+	if soft == 0 || soft >= debug.SetMemoryLimit(-1) {
+		// Unknown/tiny hosts retain the runtime default. An embedding caller's
+		// smaller programmatic limit also remains in force.
 		return
 	}
 	debug.SetMemoryLimit(soft)
-	log.Printf("Heap limit set to %d MiB, from a cgroup limit of %d MiB", soft>>20, limit>>20)
+	log.Printf("Go runtime memory limit set to %d MiB, from effective memory of %d MiB", soft>>20, memory>>20)
 }

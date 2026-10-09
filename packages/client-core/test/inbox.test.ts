@@ -113,3 +113,59 @@ test('CD-46: feedback limits count Unicode code points, trimmed as sent',async()
   assert.match(service.problem({...draft,message:'   short '}),/at least 8/);
   assert.equal(service.problem({...draft,message:' 12345678 '}),'');
 });
+
+test('badge refreshes share held requests instead of multiplying profile and owner reads',async()=>{
+ let release!:(raw:unknown)=>void;let calls=0;
+ const service=new InboxService({request:<T,>(path:string):Promise<T>=>{calls++;return new Promise(r=>{release=r as (raw:unknown)=>void;});}});
+ const first=service.refreshUnread(),second=service.refreshUnread(),third=service.refreshUnread();
+ assert.equal(first,second);assert.equal(first,third);assert.equal(calls,1);
+ release(summary(4));assert.equal(await first,4);assert.equal(await second,4);assert.equal(calls,1);service.dispose();
+});
+
+test('a changed audience during a held badge refresh reruns once and publishes profile plus owner, never a partial total',async()=>{
+ let release!:(raw:unknown)=>void;let badgeCalls=0;
+ const service=new InboxService({request:<T,>(path:string):Promise<T>=>{
+  if(path.includes('/inbox?'))return Promise.resolve(inbox([])) as Promise<T>;
+  badgeCalls++;if(badgeCalls===1)return new Promise(r=>{release=r as (raw:unknown)=>void;});
+  return Promise.resolve(summary(path.includes('account-admin')?3:2)) as Promise<T>;
+ }});
+ const badges:number[]=[];service.subscribe(()=>badges.push(service.getSnapshot().unread));
+ const first=service.refreshUnread();await service.load();
+ release(summary(100));assert.equal(await first,5);assert.equal(badgeCalls,3);
+ assert.ok(!badges.includes(100));assert.equal(service.getSnapshot().unread,5);service.dispose();
+});
+
+test('badge deadlines release a held transport and disposal cancels the next read while retaining the last good badge',async()=>{
+ let expire! :()=>void;let heldSignal:AbortSignal|undefined;let calls=0;
+ const service=new InboxService({request:<T,>(_path:string,_method?:string,_body?:unknown,signal?:AbortSignal):Promise<T>=>{
+  calls++;if(calls===1)return Promise.resolve(summary(7)) as Promise<T>;
+  heldSignal=signal;return new Promise(()=>{});
+ }},()=> 'op',{unreadTimeoutMs:100,setTimer:fn=>{expire=fn;return 1;},clearTimer:()=>{}});
+ assert.equal(await service.refreshUnread(),7);
+ const timed=service.refreshUnread();expire();assert.equal(await timed,7);assert.equal(heldSignal?.aborted,true);
+ const disposed=service.refreshUnread();service.dispose();assert.equal(await disposed,7);assert.equal(heldSignal?.aborted,true);
+ assert.equal(await service.refreshUnread(),7);assert.equal(calls,3);
+});
+
+test('an event arriving during a badge refresh causes one follow-up read rather than publishing a stale count',async()=>{
+ let release!:(raw:unknown)=>void;let calls=0;
+ const service=new InboxService({request:<T,>():Promise<T>=>{
+  if(++calls===1)return new Promise(r=>{release=r as (raw:unknown)=>void;});
+  return Promise.resolve(summary(9)) as Promise<T>;
+ }});
+ const pending=service.refreshUnread();
+ service.accept({revision:8,since:7,resync:false,items:[],counts:counts(9)});
+ service.accept({revision:9,since:8,resync:false,items:[],counts:counts(9)});
+ release(summary(1));assert.equal(await pending,9);assert.equal(calls,2);service.dispose();
+});
+
+test('a failed obsolete audience refresh still follows up for the newly discovered owner audience',async()=>{
+ let reject!:(e:Error)=>void;let calls=0;
+ const service=new InboxService({request:<T,>(path:string):Promise<T>=>{
+  if(path.includes('/inbox?'))return Promise.resolve(inbox([])) as Promise<T>;
+  if(++calls===1)return new Promise((_r,no)=>{reject=no;});
+  return Promise.resolve(summary(path.includes('account-admin')?3:2)) as Promise<T>;
+ }});
+ const pending=service.refreshUnread();await service.load();reject(new Error('offline'));
+ assert.equal(await pending,5);assert.equal(calls,3);service.dispose();
+});

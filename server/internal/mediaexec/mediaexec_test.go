@@ -263,7 +263,7 @@ func TestBurnInFindsFontsSandboxedAndBaseline(t *testing.T) {
 				t.Fatal(err)
 			}
 			frames := filepath.Join(output, "frames.gray")
-			out, err := run(t, Job{Executable: ffmpeg, Args: []string{"-nostdin", "-v", "error", "-f", "lavfi", "-i", "color=black:s=160x90:r=24:d=1", "-vf", "ass=filename=" + script, "-frames:v", "1", "-pix_fmt", "gray", "-f", "rawvideo", "-y", frames}, WriteDirs: []string{output}, Fonts: true})
+			out, err := run(t, Job{Executable: ffmpeg, Args: []string{"-nostdin", "-v", "debug", "-f", "lavfi", "-i", "color=black:s=160x90:r=24:d=1", "-vf", "ass=filename=" + script, "-frames:v", "1", "-pix_fmt", "gray", "-f", "rawvideo", "-y", frames}, WriteDirs: []string{output}, Fonts: true})
 			if err != nil {
 				t.Fatalf("burn-in failed: %v %s", err, out)
 			}
@@ -275,6 +275,12 @@ func TestBurnInFindsFontsSandboxedAndBaseline(t *testing.T) {
 			for _, v := range body {
 				if v > 100 {
 					bright++
+				}
+			}
+			t.Logf("%s subtitle drew %d bright pixels", mode, bright)
+			for _, line := range strings.Split(out, "\n") {
+				if strings.Contains(line, "fontselect:") {
+					t.Log(strings.TrimSpace(line))
 				}
 			}
 			if bright < 100 {

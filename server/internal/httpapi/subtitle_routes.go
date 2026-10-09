@@ -247,7 +247,7 @@ func (d Dependencies) subtitleRoutes(mux *http.ServeMux) {
 			subtitleFailure(w, subtitles.ErrInput)
 			return
 		}
-		_, p, item, e := d.Playback.ResolveGrant(r.PathValue("grant"))
+		_, p, item, e := d.Playback.ResolveGrantContext(r.Context(), r.PathValue("grant"))
 		if e != nil {
 			subtitleFailure(w, e)
 			return
@@ -280,7 +280,7 @@ func (d Dependencies) subtitleRoutes(mux *http.ServeMux) {
 				subtitleFailure(w, err)
 				return
 			}
-			if _, _, _, err = d.Playback.ResolveGrant(r.PathValue("grant")); err != nil {
+			if _, _, _, err = d.Playback.ResolveGrantContext(r.Context(), r.PathValue("grant")); err != nil {
 				subtitleFailure(w, err)
 				return
 			}
@@ -300,7 +300,7 @@ func (d Dependencies) subtitleRoutes(mux *http.ServeMux) {
 		}
 		defer reader.Close()
 		check := func() error {
-			_, _, _, e := d.Playback.ResolveGrant(r.PathValue("grant"))
+			_, _, _, e := d.Playback.ResolveGrantContext(r.Context(), r.PathValue("grant"))
 			if e != nil {
 				return e
 			}

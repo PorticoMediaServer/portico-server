@@ -184,6 +184,9 @@ func (d Dependencies) viewerCapabilities(r *http.Request) (CapabilitiesDocument,
 	// Playback Protocol v1 (sessions, queues, events) is a property of the server, not a
 	// permission: clients switch their playback path on it, per media kind.
 	out.Features["playback_v1"] = "enabled"
+	if d.LiveChannels != nil {
+		out.Features["guide_windowed_directory"] = "enabled"
+	}
 	// The media kinds v1 sessions and queues play (F-title S20: music included, so an
 	// artist, album or playlist plays in one request), comma-separated.
 	out.Features["playback_v1_kinds"] = "movie,episode,video,audiobook,audiobook_file,book,song,track"

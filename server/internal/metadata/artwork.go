@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/imagework"
 )
 
 var ErrArtworkVersion = errors.New("artwork version is no longer selected")
@@ -231,13 +232,25 @@ func (s *Service) ensureArtworkVariant(ctx context.Context, source string, width
 	if _, err = f.Seek(0, 0); err != nil {
 		return ErrArtworkPending
 	}
+	release, err := imagework.Acquire(ctx)
+	if err != nil {
+		return err
+	}
+	defer release()
 	decoded, format, err := image.Decode(f)
 	if err != nil {
 		return ErrArtworkPending
 	}
-	raw, w, h, err := encodeDisplayArtwork(decoded, width, format == "jpeg")
+	if err = ctx.Err(); err != nil {
+		return err
+	}
+	raw, w, h, err := encodeDisplayArtworkContext(ctx, decoded, width, format == "jpeg")
 	if err != nil {
 		return ErrArtworkPending
+	}
+	release()
+	if err = ctx.Err(); err != nil {
+		return err
 	}
 	installed, err := s.installArtworkFile(raw, w, h)
 	if err != nil {

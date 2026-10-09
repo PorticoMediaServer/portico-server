@@ -2,12 +2,13 @@ package metadata
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"image"
 	"image/jpeg"
 	"image/png"
 
-	"golang.org/x/image/draw"
+	"portico.local/server/internal/imagework"
 )
 
 const artworkDisplayBytes = 500_000
@@ -18,6 +19,10 @@ const artworkSmallEdge = 400
 // ceiling. Detail is reduced before JPEG quality would drop below 75. Alpha
 // remains lossless PNG; noisy transparent inputs reduce dimensions instead.
 func encodeDisplayArtwork(source image.Image, edge int, preferJPEG bool) ([]byte, int, int, error) {
+	return encodeDisplayArtworkContext(context.Background(), source, edge, preferJPEG)
+}
+
+func encodeDisplayArtworkContext(ctx context.Context, source image.Image, edge int, preferJPEG bool) ([]byte, int, int, error) {
 	bounds := source.Bounds()
 	w, h := bounds.Dx(), bounds.Dy()
 	if w < 1 || h < 1 {
@@ -29,7 +34,9 @@ func encodeDisplayArtwork(source image.Image, edge int, preferJPEG bool) ([]byte
 	}
 	for {
 		scaled := image.NewNRGBA(image.Rect(0, 0, w, h))
-		draw.CatmullRom.Scale(scaled, scaled.Bounds(), source, bounds, draw.Src, nil)
+		if err := imagework.CatmullRom(ctx, scaled, source); err != nil {
+			return nil, 0, 0, err
+		}
 		var b bytes.Buffer
 		opaque := scaled.Opaque()
 		if !preferJPEG || !opaque {

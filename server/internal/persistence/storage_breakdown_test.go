@@ -5,7 +5,7 @@ import (
 	"os"
 	"testing"
 
-	_ "modernc.org/sqlite"
+	_ "portico.local/server/internal/thirdparty/sqlite"
 )
 
 // TestStorageBreakdown is an opt-in measurement for ARCH-SRV-01: bytes per

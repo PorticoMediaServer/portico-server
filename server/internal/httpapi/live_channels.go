@@ -32,14 +32,18 @@ func (d Dependencies) channelPrincipal(ctx context.Context, r *http.Request, own
 	if len(headers) != 1 || !strings.HasPrefix(headers[0], "Bearer ") {
 		return identity.Principal{}, identity.ErrUnauthorized
 	}
-	p, e := d.Identity.AuthenticateContext(ctx, strings.TrimPrefix(headers[0], "Bearer "))
+	token := strings.TrimPrefix(headers[0], "Bearer ")
+	p, e := d.Identity.AuthenticateContext(ctx, token)
 	if e != nil {
 		return p, e
 	}
 	if owner {
 		return d.ownerContext(ctx, r)
 	}
-	return p, d.featureAllowed(ctx, p, requestFeature(r))
+	if e = d.featureAllowed(ctx, p, requestFeature(r)); e == nil {
+		d.admission.rememberCredential(token, p)
+	}
+	return p, e
 }
 func (d Dependencies) liveAuthority(expected identity.Principal) livechannels.Authority {
 	return func(ctx context.Context, tx *sql.Tx, owner bool) (string, func(string, string) bool, error) {
@@ -121,6 +125,10 @@ func liveFailure(w http.ResponseWriter, e error) {
 		status, code, message = 403, "forbidden", identity.ErrForbidden.Error()
 	case errors.Is(e, identity.ErrUnauthorized):
 		status, code, message = 401, "authentication_required", "Authentication is required."
+	case errors.Is(e, livechannels.ErrDirectoryAnchorNotFound):
+		status, code, message = 404, "not_found", publicErrorMessage("not_found")
+	case errors.Is(e, livechannels.ErrChannelIdentifierConflict):
+		status, code, message = 409, "channel_identifier_conflict", livechannels.ErrChannelIdentifierConflict.Error()
 	case errors.Is(e, livechannels.ErrDenied):
 		status, code, message = 403, "channel_permission_denied", livechannels.ErrDenied.Error()
 	case errors.Is(e, livechannels.ErrInvalid):
@@ -178,13 +186,17 @@ func (d Dependencies) liveChannelRoutes(mux *http.ServeMux, store *livechannels.
 				liveFailure(w, e)
 				return
 			}
-			select {
-			case slots <- struct{}{}:
-				defer func() { <-slots }()
-			default:
-				w.Header().Set("Retry-After", "1")
-				write(w, 429, map[string]any{"error": map[string]any{"code": "channel_busy", "message": "Another channel request is running. Try again shortly.", "retryable": true}})
-				return
+			// Guide/directory reads already use HTTP admission and the bounded
+			// read pool. Keep the extra two slots for expensive mutations only.
+			if r.Method != http.MethodGet {
+				select {
+				case slots <- struct{}{}:
+					defer func() { <-slots }()
+				case <-ctx.Done():
+					closeUnreadUpload(w, r)
+					failure(w, ctx.Err())
+					return
+				}
 			}
 			result, e := work(ctx, w, r, p)
 			if e != nil {
@@ -207,6 +219,7 @@ func (d Dependencies) liveChannelRoutes(mux *http.ServeMux, store *livechannels.
 			write(w, 200, result)
 		}
 	}
+	d.guideDirectoryRoutes(mux, store, handle)
 	mux.HandleFunc("GET /v1/admin/live-sources", handle(true, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
 		if r.URL.RawQuery != "" {
 			return nil, livechannels.ErrInvalid

@@ -1,10 +1,11 @@
-import React, {createContext, useCallback, useContext, useEffect, useMemo, useState} from 'react';
+import React, {createContext, useCallback, useContext, useEffect, useMemo, useState, useSyncExternalStore} from 'react';
 import type {ChannelApi} from '@core/channel-guide.ts';
 import {legacyChannelSources, legacyGuideSource, type ChannelSource, type GuideChannelRow, type GuideDataSource} from '@core/guide/index.ts';
 import {sessionIdentity, useSession} from './session';
 import {currentI18n} from './i18n';
 import {onServerChanged} from './server-changes';
 import {dedupedGuideApi, forgetGuideReads} from './guide-reads';
+import {ChannelSourcesStore} from '@core/guide/source-reads.ts';
 import {readRailCache, writeRailCache} from './rail-cache';
 export {forgetGuideReads} from './guide-reads';
 
@@ -50,35 +51,31 @@ const SourcesContext = createContext<SourcesState>({sources: [], loading: false,
 export const useChannelSources = () => useContext(SourcesContext);
 
 /** One read per signed-in viewer (and on demand). Channels is hidden while there are no sources (§2.0). */
-const SOURCES_TTL_MS = 60_000;
-let sourcesProbe: {key: string; at: number; result: Promise<readonly ChannelSource[]>} | undefined;
+const sourceStores = new WeakMap<ChannelApi, Map<string, ChannelSourcesStore>>();
+function sourcesStore(api: ChannelApi, who: string, serverId: string): ChannelSourcesStore {
+  let stores = sourceStores.get(api);
+  if (!stores) sourceStores.set(api, (stores = new Map()));
+  const key = `${who}|${serverId}`;
+  let store = stores.get(key);
+  if (!store) {
+    store = new ChannelSourcesStore(api, (current, signal) => legacyChannelSources(dedupedGuideApi(current), serverId, localTimezone(), currentI18n().t('channels.custom.name'), Date.now(), signal), Date.now, readRailCache(who)?.sources ?? []);
+    stores.set(key, store);
+    while (stores.size > 4) { const oldest = stores.keys().next().value!; stores.get(oldest)?.dispose(); stores.delete(oldest); }
+  }
+  return store;
+}
+const emptySources = Object.freeze({sources: [] as readonly ChannelSource[], loading: false, failed: false});
+const noSourcesSubscribe = () => () => {};
+const getEmptySources = () => emptySources;
 
 export function ChannelSourcesProvider({children}: {children: React.ReactNode}) {
   const {api, session} = useSession();
   const who = sessionIdentity(session);
   const serverId = session?.viewer.serverId ?? '';
-  // The viewer's last sources from this browser, so the rail's Channels group is there on first paint.
-  const [state, setState] = useState<{sources: readonly ChannelSource[]; loading: boolean; failed: boolean}>(() => ({sources: readRailCache(who)?.sources ?? [], loading: false, failed: false}));
-  const [tick, setTick] = useState(0);
-  useEffect(() => {
-    if (!who || !serverId) { setState({sources: [], loading: false, failed: false}); return; }
-    let live = true;
-    setState(s => ({...s, sources: s.sources.length ? s.sources : readRailCache(who)?.sources ?? [], loading: true}));
-    // One probe per viewer, shared by every mount and kept for a minute; only an explicit
-    // refresh (or a console change) asks again. Remounts and token rotation reuse it.
-    const key = `${who}|${tick}`;
-    if (!sourcesProbe || sourcesProbe.key !== key || Date.now() - sourcesProbe.at > SOURCES_TTL_MS) {
-      sourcesProbe = {key, at: Date.now(), result: legacyChannelSources(dedupedGuideApi(api), serverId, localTimezone(), currentI18n().t('channels.custom.name'), Date.now())};
-      const probe = sourcesProbe;
-      probe.result.catch(() => { if (sourcesProbe === probe) sourcesProbe = undefined; });
-    }
-    sourcesProbe.result.then(
-      sources => { if (live) { const sorted = [...sources].sort((a, b) => a.position - b.position); setState({sources: sorted, loading: false, failed: false}); writeRailCache(who, {sources: sorted}); } },
-      () => { if (live) setState(s => ({...s, loading: false, failed: true})); },
-    );
-    return () => { live = false; };
-  }, [api, who, serverId, tick]);
-  const refresh = useCallback(() => { sourcesProbe = undefined; setTick(t => t + 1); }, []);
+  const store = useMemo(() => who && serverId ? sourcesStore(api, who, serverId) : null, [api, who, serverId]);
+  const state = useSyncExternalStore(store?.subscribe ?? noSourcesSubscribe, store?.get ?? getEmptySources);
+  useEffect(() => { if (who && !state.loading && !state.failed) writeRailCache(who, {sources: state.sources}); }, [who, state]);
+  const refresh = useCallback(() => store?.load(), [store]);
   useEffect(() => onServerChanged(() => { forgetGuideReads(); refresh(); }), [refresh]);
   const value = useMemo(() => ({...state, refresh}), [state, refresh]);
   return <SourcesContext.Provider value={value}>{children}</SourcesContext.Provider>;

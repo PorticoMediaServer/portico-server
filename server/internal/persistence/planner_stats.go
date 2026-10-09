@@ -338,7 +338,7 @@ func plannerRowCount(ctx context.Context, db *sql.DB, table, where string, rowid
 	}
 	if rowid && where == "" {
 		var span int64
-		if err := db.QueryRowContext(ctx, `SELECT COALESCE(max(rowid)-min(rowid)+1,0) FROM `+quoteIdent(table)).Scan(&span); err != nil {
+		if err := db.QueryRowContext(ctx, `SELECT COALESCE((SELECT max(rowid) FROM `+quoteIdent(table)+`)-(SELECT min(rowid) FROM `+quoteIdent(table)+`)+1,0)`).Scan(&span); err != nil {
 			return 0, false, err
 		}
 		if span < 10*recorded && span*10 > recorded {
@@ -626,7 +626,7 @@ func samplePlannerRows(ctx context.Context, db *sql.DB, table string, index plan
 		return sampled, read(query+` LIMIT ?`, PlannerStatsSample)
 	}
 	var low, high int64
-	if err := db.QueryRowContext(ctx, `SELECT min(rowid),max(rowid) FROM `+name).Scan(&low, &high); err != nil {
+	if err := db.QueryRowContext(ctx, plannerRowidBoundsSQL(table)).Scan(&low, &high); err != nil {
 		return 0, err
 	}
 	points := make([]string, PlannerStatsSample)
@@ -638,6 +638,14 @@ func samplePlannerRows(ctx context.Context, db *sql.DB, table string, index plan
 		query += ` AND ` + filter
 	}
 	return sampled, read(query, "["+strings.Join(points, ",")+"]")
+}
+
+// SQLite only optimizes a single min/max aggregate in each SELECT. Keeping
+// the endpoints separate avoids scanning the table during each sampled index
+// and during the supposedly constant-cost freshness check.
+func plannerRowidBoundsSQL(table string) string {
+	name := quoteIdent(table)
+	return `SELECT (SELECT min(rowid) FROM ` + name + `),(SELECT max(rowid) FROM ` + name + `)`
 }
 
 func quoteIdent(name string) string {

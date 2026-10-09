@@ -197,6 +197,9 @@ func TestRecBulkBacklogIsHeldOutNotReplayed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := w.s.recLoadSignals("p", &taste, []int64{w.scifi[3].ID, 900000000}); err != nil {
+		t.Fatal(err)
+	}
 	if !taste.pending || !taste.hidden[w.scifi[3].ID] || !taste.hidden[900000000] {
 		t.Fatalf("bulk backlog: pending %v, not-interested held out %v", taste.pending, taste.hidden[w.scifi[3].ID])
 	}
@@ -497,6 +500,9 @@ func TestRecAbandonmentCountsAgainst(t *testing.T) {
 	}
 	if v := taste.values["cd:directing:other director 0"]; v >= 0 {
 		t.Fatalf("an abandoned film's director should count against it: %v", v)
+	}
+	if err := w.s.recLoadSignals("p", &taste, []int64{film.ID}); err != nil {
+		t.Fatal(err)
 	}
 	if !taste.engaged[film.ID] {
 		t.Fatal("an abandoned film is still engaged (never recommended)")

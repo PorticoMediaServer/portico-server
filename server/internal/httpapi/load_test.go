@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
 	"math/rand"
 	"net/http"
 	"net/http/httptest"
@@ -70,7 +71,8 @@ type performanceTier struct {
 	// mediaPath, when set, is a real media file the fixture's one playable item
 	// is backed by, so a test can stream actual bytes through the media routes
 	// rather than sixteen placeholder ones.
-	mediaPath string
+	mediaPath  string
+	playbackV1 bool
 	// gated turns the audit's budgets into hard gates. The smoke tier reports
 	// them; the tiers that make a capacity claim assert them.
 	gated bool
@@ -124,7 +126,7 @@ func newLoadFixture(t *testing.T, tier performanceTier) *loadFixture {
 	// that looks hung.
 	began := time.Now()
 	last := 0
-	built, err := fixture.Build(context.Background(), tier.shape, path, func(done, total int) {
+	built, err := fixture.BuildWithConfig(context.Background(), tier.shape, fixture.Config{CanonicalCreditDepartments: true}, path, func(done, total int) {
 		if done-last < 100000 && done != total {
 			return
 		}
@@ -255,6 +257,17 @@ func newLoadFixture(t *testing.T, tier performanceTier) *loadFixture {
 			t.Fatal(issueErr)
 		}
 		viewerEnvelopes = append(viewerEnvelopes, envelope)
+		if tier.playbackV1 {
+			payload, _ := json.Marshal(webCapabilities())
+			request := httptest.NewRequest("PUT", "/v1/me/devices/current/capabilities", bytes.NewReader(payload))
+			request.Header.Set("Authorization", "Bearer "+envelope.AccessToken)
+			request.Header.Set("Content-Type", "application/json")
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			if response.Code != http.StatusNoContent {
+				t.Fatalf("viewer %d capabilities: %d %s", index, response.Code, response.Body.String())
+			}
+		}
 	}
 	rows, err := db.Query(`SELECT e.id FROM catalog_entities e JOIN catalog_libraries l ON l.id=e.library_id WHERE l.library_id=? AND e.kind=? ORDER BY e.id LIMIT 512`, library.ID, compactcatalog.Movie)
 	if err != nil {
@@ -270,6 +283,24 @@ func newLoadFixture(t *testing.T, tier performanceTier) *loadFixture {
 	rows.Close()
 	if len(f.items) == 0 {
 		t.Fatal("the fixture produced no items")
+	}
+	// Credits must exercise the same actor/starring recommendation path as
+	// provider ingestion. Merely having credit rows would miss label drift.
+	code, _, recommendationBody := f.callTimed(f.owner.AccessToken, "GET", "/v1/items/"+f.items[0]+"/recommendations", nil)
+	var recommended struct {
+		Rows []catalog.HomeRow `json:"rows"`
+	}
+	if code != http.StatusOK || json.Unmarshal([]byte(recommendationBody), &recommended) != nil {
+		t.Fatalf("fixture actor recommendations: %d %s", code, recommendationBody)
+	}
+	starring := false
+	for _, row := range recommended.Rows {
+		if row.Relation == "starring" && row.Provider != "" && row.EvidenceID != "" && len(row.Entries) != 0 {
+			starring = true
+		}
+	}
+	if !starring {
+		t.Fatal("fixture is missing provider-style actor/starring recommendations")
 	}
 	return f
 }
@@ -357,7 +388,7 @@ func TestMixedViewerLoadUnderBackgroundWork(t *testing.T) {
 	// only when a tier is named (PORTICO_PERFORMANCE_TIER=smoke|release|deep). The
 	// default suite's guards for the same property are the write-gate tests
 	// (TestForegroundReadsNeverWaitForTheWriteGate and the lane tests).
-	if os.Getenv("PORTICO_PERFORMANCE_TIER") == "" {
+	if tier := os.Getenv("PORTICO_PERFORMANCE_TIER"); tier != "smoke" && tier != "release" && tier != "deep" {
 		t.Skip("load run: set PORTICO_PERFORMANCE_TIER=smoke, release or deep")
 	}
 	tier := currentPerformanceTier()
@@ -376,13 +407,13 @@ func TestMixedViewerLoadUnderBackgroundWork(t *testing.T) {
 	background.Add(2)
 	go func() {
 		defer background.Done()
-		runBulkWriter(ctx, f.db, "scan", func(tx *sql.Tx, n int) error {
+		runBulkWriter(ctx, f.db, "scan", func(ctx context.Context, tx *sql.Tx, n int) error {
 			return tl6BulkMovieTx(ctx, tx, f.bulkLibrary, fmt.Sprintf("scan-%06d", n), fmt.Sprintf("Scanned %06d", n), 2001, "")
 		}, &scanned)
 	}()
 	go func() {
 		defer background.Done()
-		runBulkWriter(ctx, f.db, "metadata", func(tx *sql.Tx, n int) error {
+		runBulkWriter(ctx, f.db, "metadata", func(ctx context.Context, tx *sql.Tx, n int) error {
 			id := 1 + n%256
 			return tl6BulkMovieTx(ctx, tx, f.bulkLibrary, fmt.Sprintf("scan-%06d", id), fmt.Sprintf("Scanned %06d", id), 2001, fmt.Sprintf("refreshed %d", n))
 		}, &refreshed)
@@ -532,16 +563,12 @@ func TestMixedViewerLoadUnderBackgroundWork(t *testing.T) {
 		// on how much of it there is, not on whether any exists. A fifth of the
 		// workload being shed means this host has run out of headroom for this
 		// number of viewers, which is a capacity finding rather than a defect.
-		refusalCeiling := CurrentRunAllowance().RefusalShare
-		t.Logf("refusal ceiling %.0f%%  [allowance: %s]", 100*refusalCeiling, CurrentRunAllowance().RefusalWhy)
-		if float64(busy) > refusalCeiling*float64(len(all)) {
+		// Historical allowances describe performance debt; they must not turn a
+		// capacity test's zero-refusal target into a passing overload run.
+		if busy != 0 {
 			t.Fatalf("%d of %d requests were refused; the host has no headroom left at this viewer count", busy, len(all))
 		}
 		ceilingP95, ceilingP99 := tier.maximumP95, tier.maximumP99
-		if allowance := CurrentRunAllowance(); allowance.P95 > 0 {
-			t.Logf("latency ceiling p95=%s p99=%s  [allowance: %s]", allowance.P95, allowance.P99, allowance.LatencyWhy)
-			ceilingP95, ceilingP99 = allowance.P95, allowance.P99
-		}
 		if p95 > ceilingP95 || p99 > ceilingP99 {
 			t.Fatalf("latency budget exceeded: p95=%s (max %s) p99=%s (max %s)", p95, ceilingP95, p99, ceilingP99)
 		}
@@ -552,19 +579,21 @@ func TestMixedViewerLoadUnderBackgroundWork(t *testing.T) {
 // because the background writers and the viewers both report into it.
 var lockEscapes atomic.Int64
 
-func runBulkWriter(ctx context.Context, db *sql.DB, name string, write func(*sql.Tx, int) error, counter *atomic.Int64) {
+func runBulkWriter(ctx context.Context, db *sql.DB, name string, write func(context.Context, *sql.Tx, int) error, counter *atomic.Int64) {
 	// Ten rows per transaction: small enough that a one-core server releases the
 	// writer often enough for a playback control write to win between batches.
 	const batchSize = 10
+	ctx = dbwork.WithClass(ctx, dbwork.ClassBackgroundMedia)
 	n := 0
 	for ctx.Err() == nil {
 		if !dbwork.Yield(ctx) {
 			return
 		}
+		batchStarted := time.Now()
 		err := dbwork.WithWriteTx(ctx, db, dbwork.ClassBackgroundMedia, func(tx *sql.Tx) error {
 			for i := 0; i < batchSize; i++ {
 				n++
-				if err := write(tx, n); err != nil {
+				if err := write(ctx, tx, n); err != nil {
 					return err
 				}
 			}
@@ -580,6 +609,11 @@ func runBulkWriter(ctx context.Context, db *sql.DB, name string, write func(*sql
 			continue
 		}
 		counter.Add(1)
+		// Use the same production pacing as catalogue/metadata workers. The
+		// pause is outside the completed transaction and foreground write gate.
+		if !dbwork.PaceBackground(ctx, batchStarted) {
+			return
+		}
 	}
 }
 
@@ -698,11 +732,21 @@ func writeFixtureMedia(path, source string) error {
 	if source == "" {
 		return os.WriteFile(path, []byte("0123456789abcdef"), 0600)
 	}
-	raw, err := os.ReadFile(source)
+	input, err := os.Open(source)
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, raw, 0600)
+	defer input.Close()
+	output, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0600)
+	if err != nil {
+		return err
+	}
+	_, copyErr := io.Copy(output, input)
+	closeErr := output.Close()
+	if copyErr != nil {
+		return copyErr
+	}
+	return closeErr
 }
 
 // routeBudgetClass maps a served route to the class whose budget governs it.

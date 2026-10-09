@@ -28,7 +28,10 @@ export function toPlaybackSession(session: Session, durationSeconds: number, res
   };
 }
 
-type Tracked = {seq: number; generation: number; positionMs: number; state: TimelineState; everyMs: number; timer?: unknown;
+type PendingReport = {seq?: number; body: Omit<TimelineReport, 'seq'>; at: number; promise: Promise<void>; resolve: () => void; reject: (error: unknown) => void};
+const MAX_PENDING_REPORT_FACTS = 64;
+
+type Tracked = {stopping?: boolean; stopPromise?: Promise<void>; ackEndGeneration?: number; retryUntil?: number; failures?: number; active?: PendingReport; pending?: PendingReport[]; reportAbort?: AbortController; seq: number; generation: number; positionMs: number; state: TimelineState; everyMs: number; timer?: unknown;
   /** The last report actually sent: when, where and in which state (the §6 cadence). */
   sentAt?: number; sentPositionMs?: number; sentState?: TimelineState; sentGeneration?: number;
   /** When `positionMs` was last set by the player. */
@@ -44,13 +47,15 @@ export class V1PlaybackApi implements PlaybackApi {
   private readonly clearTimer: (t: unknown) => void;
   private readonly key: () => string;
   private readonly now: () => number;
+  private readonly random: () => number;
   private readonly endedListeners = new Set<(sessionId: string, end: SessionEnd) => void>();
   /** Sessions a committed audio edge ended on the server (§18.3): their last reports and end
    * notices are dropped, since the audio already belongs to the next session. */
   private readonly retired = new Set<string>();
 
-  constructor(http: V1Http, options: {timers?: Timers; key?: () => string; now?: () => number} = {}) {
+  constructor(http: V1Http, options: {timers?: Timers; key?: () => string; now?: () => number; random?: () => number} = {}) {
     this.now = options.now ?? (() => Date.now());
+    this.random = options.random ?? Math.random;
     this.sessions = new SessionsClient(http, options.timers);
     this.optionsClient = new PlaybackOptionsClient(http);
     this.setTimer = options.timers?.setTimer ?? ((fn, ms) => setTimeout(fn, ms));
@@ -78,8 +83,15 @@ export class V1PlaybackApi implements PlaybackApi {
   /** Tracks a session another request started (a queue create with startPlayback, an advance). */
   adopt(session: Session, durationSeconds: number): PlaybackSession {
     const prior = this.tracked.get(session.id);
-    if (prior?.timer !== undefined) this.clearTimer(prior.timer);
-    this.tracked.set(session.id, {seq: prior?.seq ?? 0, generation: session.presentation.generation, positionMs: session.presentation.startPositionMs, state: session.state === 'paused' ? 'paused' : 'playing', everyMs: session.lease.reportEveryMs});
+    // A presentation change keeps the same session and its accepted facts.
+    // Replacing this object would cancel a queued marker or end before its ack.
+    const tracked = prior ?? {seq: 0, generation: session.presentation.generation, positionMs: session.presentation.startPositionMs, state: 'playing' as TimelineState, everyMs: session.lease.reportEveryMs};
+    tracked.generation = session.presentation.generation;
+    tracked.positionMs = session.presentation.startPositionMs;
+    tracked.positionAt = this.now();
+    tracked.state = session.state === 'paused' ? 'paused' : 'playing';
+    tracked.everyMs = session.lease.reportEveryMs;
+    this.tracked.set(session.id, tracked);
     return toPlaybackSession(session, durationSeconds);
   }
 
@@ -87,25 +99,42 @@ export class V1PlaybackApi implements PlaybackApi {
     return this.start({itemId}, {startFrom: 'resume', state: 'playing'}, requestId, undefined, signal).then(r => r.playback);
   }
 
-  async stopPlayback(id: string): Promise<void> {
+  stopPlayback(id: string, signal?: AbortSignal): Promise<void> {
     const t = this.tracked.get(id);
-    this.forget(id);
-    await this.sessions.stop(id, t?.positionMs);
+    if (!t) return this.sessions.stop(id, undefined, signal);
+    if (t.stopPromise) return t.stopPromise;
+    t.stopping = true;
+    if (t.timer !== undefined && !t.pending?.length) { this.clearTimer(t.timer); t.timer = undefined; }
+    // A normal stop must not overtake already accepted marker/end/state facts.
+    // Their retry queue survives the caller's cleanup deadline; explicit forget
+    // remains the cancellation boundary for a replaced viewer/session.
+    const facts = [t.active, ...(t.pending ?? [])].filter((p): p is PendingReport => !!p);
+    const work = Promise.all(facts.map(p => p.promise)).then(async () => {
+      if (this.tracked.get(id) !== t) return;
+      await this.sessions.stop(id, t.positionMs, signal);
+      if (this.tracked.get(id) === t) this.forget(id);
+    });
+    t.stopPromise = work.finally(() => { if (this.tracked.get(id) === t) t.stopPromise = undefined; });
+    return t.stopPromise;
   }
 
   async progressPlayback(id: string, payload: {generation: number; sequence: number; positionSeconds: number; state: 'playing' | 'paused' | 'ended'}): Promise<void> {
     if (this.retired.has(id)) return;
     const t = this.tracked.get(id) ?? {seq: 0, generation: payload.generation, positionMs: 0, state: 'playing' as TimelineState, everyMs: 10_000};
     this.tracked.set(id, t);
+    if (t.stopping) return;
     t.generation = payload.generation;
     t.positionMs = Math.max(0, Math.round(payload.positionSeconds * 1000));
     t.positionAt = this.now();
     // The end is reported once: a second "ended" for the same generation (the engine's own report,
     // then the queue's completion check) would reach a session the first one already ended (410)
     // and stall the queue on its way to the next entry.
-    const repeatEnd = payload.state === 'ended' && t.sentState === 'ended' && t.sentGeneration === payload.generation;
     t.state = payload.state;
-    if (repeatEnd) return;
+    if (payload.state === 'ended') {
+      const pendingEnd = [t.active, ...(t.pending ?? [])].find(r => r?.body.state === 'ended' && r.body.generation === payload.generation);
+      if (pendingEnd) return pendingEnd.promise;
+      if (t.ackEndGeneration === payload.generation) return;
+    }
     // PERF-24, spec §6 cadence: while playing steadily, the report timer carries the latest
     // position every `Report-Every-Ms` (10 s); a state or generation change, the first report and a
     // seek (the position no longer follows the clock) are sent at once.
@@ -123,41 +152,82 @@ export class V1PlaybackApi implements PlaybackApi {
   async markerSkipped(id: string, skipped: NonNullable<TimelineReport['skipped']>): Promise<void> {
     const t = this.tracked.get(id);
     if (!t || this.retired.has(id)) return;
+    if ((t.pending?.length ?? 0) + (t.active ? 1 : 0) >= MAX_PENDING_REPORT_FACTS) throw new PlaybackApiError(429, 'timeline_pending_full', 'same_request');
     t.skipped = skipped;
     await this.report(id, t);
   }
 
   private steady(t: Tracked): boolean {
-    if (t.sentAt === undefined || t.timer === undefined || t.state !== 'playing' || t.sentState !== 'playing' || t.sentGeneration !== t.generation) return false;
-    const elapsed = this.now() - t.sentAt;
+    const latest = t.pending?.at(-1) ?? t.active;
+    const at = latest?.at ?? t.sentAt;
+    const state = latest?.body.state ?? t.sentState;
+    const generation = latest?.body.generation ?? t.sentGeneration;
+    const position = latest?.body.positionMs ?? t.sentPositionMs ?? 0;
+    if (at === undefined || (!latest && t.timer === undefined) || state !== t.state || generation !== t.generation) return false;
+    const elapsed = this.now() - at;
     if (elapsed >= t.everyMs) return false;
-    const moved = t.positionMs - (t.sentPositionMs ?? 0);
-    return Math.abs(moved - elapsed) <= 2000;
+    return Math.abs(t.positionMs - position - (t.state === 'playing' ? elapsed : 0)) <= 2000;
   }
 
-  /** Every report carries the next seq; while nothing else reports (paused), a keepalive does. */
-  private async report(id: string, t: Tracked): Promise<void> {
+  /** Keep timeline facts ordered while a slow server has one request outstanding.
+   * Steady progress stays in the tracked position and is carried by the cadence timer;
+   * state changes, seeks, generations and marker skips retain their own reports. */
+  private report(id: string, t: Tracked): Promise<void> {
+    if (this.tracked.get(id) !== t) return Promise.resolve();
+    if ((t.pending?.length ?? 0) + (t.active ? 1 : 0) >= MAX_PENDING_REPORT_FACTS) return Promise.reject(new PlaybackApiError(429, 'timeline_pending_full', 'same_request'));
     if (t.timer !== undefined) this.clearTimer(t.timer);
     t.timer = undefined;
-    let r: {reportEveryMs?: number};
-    // Where playback is now (a timer report carries a position a few seconds old).
     const at = this.now();
     const positionMs = t.positionMs + (t.state === 'playing' && t.positionAt !== undefined ? Math.max(0, Math.min(5000, at - t.positionAt)) : 0);
-    t.sentAt = at; t.sentPositionMs = positionMs; t.sentState = t.state; t.sentGeneration = t.generation;
-    try {
-      const skipped = t.skipped;
-      t.skipped = undefined;
-      r = await this.sessions.timeline(id, {seq: ++t.seq, generation: t.generation, state: t.state, positionMs, rate: 1, ...(skipped ? {skipped} : {})});
-    } catch (e) {
-      // The session is over on the server: find out why, and say so.
-      if (e instanceof PlaybackApiError && (e.status === 404 || e.status === 410 || e.code === 'session_ended') && this.tracked.get(id) === t) void this.learnEnd(id);
-      throw e;
+    let resolve!: () => void, reject!: (error: unknown) => void;
+    const promise = new Promise<void>((yes, no) => { resolve = yes; reject = no; });
+    const body = {generation: t.generation, state: t.state, positionMs, rate: 1, ...(t.skipped ? {skipped: t.skipped} : {})};
+    t.skipped = undefined;
+    (t.pending ??= []).push({body, at, promise, resolve, reject});
+    this.drain(id, t);
+    return promise;
+  }
+
+  private drain(id: string, t: Tracked) {
+    if (t.active || this.tracked.get(id) !== t) return;
+    if (!t.pending?.length) return;
+    const wait = (t.retryUntil ?? 0) - this.now();
+    if (wait > 0) {
+      t.timer = this.setTimer(() => { t.timer = undefined; this.drain(id, t); }, Math.min(wait, 2147483647));
+      return;
     }
-    if (r.reportEveryMs) t.everyMs = r.reportEveryMs;
-    if (t.state === 'ended' || this.tracked.get(id) !== t) return;
-    t.timer = this.setTimer(() => {
-      if (this.tracked.get(id) === t) void this.report(id, t).catch(() => {});
-    }, Math.max(1000, t.everyMs));
+    const next = t.pending.shift()!;
+    t.active = next;
+    t.sentAt = next.at; t.sentPositionMs = next.body.positionMs; t.sentState = next.body.state; t.sentGeneration = next.body.generation;
+    const controller = new AbortController(); t.reportAbort = controller;
+    const deadline = this.setTimer(() => controller.abort(), 20000);
+    void this.sessions.timeline(id, {seq: next.seq ??= ++t.seq, ...next.body}, controller.signal).then(r => {
+      if (r.reportEveryMs) t.everyMs = r.reportEveryMs;
+      t.failures = 0; t.retryUntil = undefined;
+      if (next.body.state === 'ended') t.ackEndGeneration = next.body.generation;
+      next.resolve();
+    }, e => {
+      t.failures = (t.failures ?? 0) + 1;
+      const directed = e instanceof PlaybackApiError && Number.isFinite(e.retryAfterMs) && e.retryAfterMs! > 0 ? e.retryAfterMs! : 0;
+      const delay = Math.max(directed, Math.min(30000, 1000 * 2 ** Math.min(t.failures - 1, 5)));
+      t.retryUntil = this.now() + delay + Math.floor(delay * Math.max(0, Math.min(1, this.random())) * .2);
+      if (e instanceof PlaybackApiError && (e.status === 404 || e.status === 410 || e.code === 'session_ended') && this.tracked.get(id) === t) void this.learnEnd(id);
+      // A transient refusal did not acknowledge this fact. Retain the snapshot
+      // (including marker/end) ahead of newer facts until backoff permits retry.
+      if (this.tracked.get(id) === t && (!(e instanceof PlaybackApiError) || e.retry === 'same_request')) t.pending!.unshift(next);
+      else next.reject(e);
+    }).finally(() => {
+      this.clearTimer(deadline);
+      if (t.reportAbort === controller) t.reportAbort = undefined;
+      t.active = undefined;
+      if (this.tracked.get(id) !== t) return;
+      if (t.pending?.length) { this.drain(id, t); return; }
+      if (t.state === 'ended' || t.stopping) return;
+      t.timer = this.setTimer(() => {
+        t.timer = undefined;
+        if (this.tracked.get(id) === t) void this.report(id, t).catch(() => {});
+      }, Math.min(2147483647, Math.max(1000, t.everyMs, (t.retryUntil ?? 0) - this.now())));
+    });
   }
 
   /**
@@ -207,6 +277,9 @@ export class V1PlaybackApi implements PlaybackApi {
   forget(id: string) {
     const t = this.tracked.get(id);
     if (t?.timer !== undefined) this.clearTimer(t.timer);
+    t?.reportAbort?.abort();
+    for (const pending of t?.pending ?? []) pending.resolve();
+    if (t) t.pending = [];
     this.tracked.delete(id);
   }
 

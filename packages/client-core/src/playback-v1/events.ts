@@ -34,6 +34,8 @@ export type EventsClientOptions = Readonly<{
   streamFailuresBeforePoll?: number;
   setTimer?: (fn: () => void, ms: number) => unknown;
   clearTimer?: (timer: unknown) => void;
+  /** Retry jitter source; injectable for deterministic tests. */
+  random?: () => number;
 }>;
 
 export type EventsStatus = Readonly<{mode: 'stream' | 'poll' | 'stopped'; connected: boolean; cursor?: string; failures: number}>;
@@ -80,6 +82,7 @@ export class EventsClient {
   start(): void {
     if (this.running) return;
     this.running = true;
+    this.streamFailures = 0;
     this.controller = new AbortController();
     void this.loop(this.controller.signal);
   }
@@ -105,17 +108,25 @@ export class EventsClient {
     }
   }
 
-  private sleep(ms: number, signal: AbortSignal): Promise<void> {
-    return new Promise(resolve => {
-      if (signal.aborted) { resolve(); return; }
-      const timer = this.setTimer(() => { this.sleeping = undefined; resolve(); }, ms);
-      this.sleeping = {timer, resolve};
-    });
+  private async sleep(ms: number, signal: AbortSignal): Promise<void> {
+    let remaining = ms;
+    do {
+      if (signal.aborted) return;
+      // Long Retry-After values must not overflow a platform timer into an immediate retry.
+      const chunk = Math.min(remaining, 2_147_483_647);
+      await new Promise<void>(resolve => {
+        const timer = this.setTimer(() => { this.sleeping = undefined; resolve(); }, chunk);
+        this.sleeping = {timer, resolve};
+      });
+      remaining -= chunk;
+    } while (remaining > 0 && !signal.aborted);
   }
 
   private backoff(failures: number): number {
     const b = this.o.backoffMs ?? [1000, 2000, 5000, 10_000, 30_000];
-    return b[Math.min(failures - 1, b.length - 1)] ?? 30_000;
+    const base = Math.max(1, b[Math.min(failures - 1, b.length - 1)] ?? 30_000);
+    const random = Math.max(0, Math.min(1, (this.o.random ?? Math.random)()));
+    return Math.round(base * (0.75 + random * 0.5));
   }
 
   private async loop(signal: AbortSignal): Promise<void> {
@@ -126,6 +137,7 @@ export class EventsClient {
       this.setStatus({mode: streaming ? 'stream' : 'poll'});
       try {
         const reconnectAfter = streaming ? await this.streamOnce(signal) : await this.pollOnce(signal);
+        if (signal.aborted) break;
         failures = 0;
         this.setStatus({failures: 0});
         if (reconnectAfter) await this.sleep(reconnectAfter, signal);
@@ -135,21 +147,25 @@ export class EventsClient {
         if (streaming) this.streamFailures = status === 409 || status === 404 || status === 405 ? Infinity : this.streamFailures + 1;
         failures++;
         this.setStatus({connected: false, failures});
-        if (streaming && pollOnly()) continue; // switch to long-poll straight away
-        await this.sleep(this.backoff(failures), signal);
+        const directed = (e as {retryAfterMs?: unknown} | null)?.retryAfterMs;
+        const minimum = typeof directed === 'number' && Number.isFinite(directed) && directed > 0 ? directed : 0;
+        if (streaming && pollOnly() && !minimum) continue; // unsupported streams can fall back immediately
+        await this.sleep(Math.max(this.backoff(failures), minimum), signal);
       }
     }
   }
 
   /** One SSE connection. Resolves with a delay before reconnecting (`stream.closed`), or 0. */
   private async streamOnce(signal: AbortSignal): Promise<number> {
-    let reconnectAfter = 0;
+    let reconnectAfter: number | undefined;
     const inner = new AbortController();
     const abort = () => inner.abort();
     signal.addEventListener('abort', abort, {once: true});
     try {
       await this.o.openStream!(this.status.cursor, raw => {
+        if (signal.aborted || inner.signal.aborted) return;
         this.setStatus({connected: true});
+        if (signal.aborted) return;
         this.streamFailures = 0;
         let parsed: unknown;
         try { parsed = JSON.parse(raw.data); } catch { return; }
@@ -157,7 +173,7 @@ export class EventsClient {
         if (!event) return;
         if (event.type === 'stream.closed') {
           const after = (event.data as {reconnectAfterMs?: unknown} | undefined)?.reconnectAfterMs;
-          reconnectAfter = typeof after === 'number' && after >= 0 ? Math.min(after, 60_000) : 1000;
+          reconnectAfter = typeof after === 'number' && Number.isFinite(after) && after >= 0 ? Math.max(1000, after) : 1000;
           inner.abort();
           return;
         }
@@ -167,9 +183,12 @@ export class EventsClient {
       if (!inner.signal.aborted || signal.aborted) throw e;
     } finally {
       signal.removeEventListener('abort', abort);
-      this.setStatus({connected: false});
+      if (!signal.aborted) this.setStatus({connected: false});
     }
-    return reconnectAfter;
+    // A proxy/platform may close SSE without a stream.closed envelope. Treat it as a failure
+    // so repeated quiet EOFs back off and eventually fall back instead of spinning.
+    if (reconnectAfter === undefined && !signal.aborted) throw new Error('event_stream_closed');
+    return reconnectAfter ?? 0;
   }
 
   /** One long-poll round. */
@@ -177,10 +196,11 @@ export class EventsClient {
     const wait = Math.max(1, Math.min(this.o.waitSeconds ?? 25, 55));
     const cursor = this.status.cursor;
     const r = await call(this.o.http, {method: 'GET', path: `/v1/events?waitSeconds=${wait}${cursor ? `&after=${encodeURIComponent(cursor)}` : ''}`, signal});
+    if (signal.aborted) return 0;
     this.setStatus({connected: true});
     const b = r.body as {events?: unknown; nextAfter?: unknown} | undefined;
-    for (const raw of Array.isArray(b?.events) ? b!.events : []) { const e = parseEvent(raw); if (e) this.deliver(e); }
-    if (typeof b?.nextAfter === 'string' && b.nextAfter) this.setStatus({cursor: b.nextAfter});
+    for (const raw of Array.isArray(b?.events) ? b!.events : []) { if (signal.aborted) return 0; const e = parseEvent(raw); if (e) this.deliver(e); }
+    if (!signal.aborted && typeof b?.nextAfter === 'string' && b.nextAfter) this.setStatus({cursor: b.nextAfter});
     return 0;
   }
 }

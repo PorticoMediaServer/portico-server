@@ -31,11 +31,6 @@ import (
 // are opt-in and never near the startup path.
 
 const (
-	// checkpointInterval is how often the log is folded back into the database. A
-	// PASSIVE pass on a quiet database is a no-op, so this is cheap enough to be
-	// frequent, and frequent is what keeps the log from growing during a long
-	// stretch of sustained writes.
-	checkpointInterval = 30 * time.Second
 	// integrityIntervalDefault is how often the opt-in structural check runs.
 	integrityIntervalDefault = 24 * time.Hour
 )
@@ -94,12 +89,13 @@ func runDatabaseHousekeeping(ctx context.Context, db *sql.DB) {
 		}
 		integrity = false
 	}
-	ticker := time.NewTicker(checkpointInterval)
+	checkpoints, err := dbwork.NewCheckpointSchedule(ctx, db)
+	if err != nil {
+		log.Printf("Checkpoint pressure monitoring could not resolve the database file; regular checks remain active: %v", err)
+	}
+	ticker := time.NewTicker(dbwork.CheckpointPollInterval)
 	defer ticker.Stop()
-	// A checkpoint that found every frame already copied and nothing has
-	// committed since has nothing to do: an idle server skips it rather than
-	// asking the database the same question twice a minute.
-	settled, settledAt := false, uint64(0)
+	ancillary := ancillaryMaintenanceCadence{last: time.Now()}
 	for {
 		select {
 		case <-ctx.Done():
@@ -109,13 +105,15 @@ func runDatabaseHousekeeping(ctx context.Context, db *sql.DB) {
 		if !dbwork.Yield(ctx) {
 			return
 		}
-		if commits := dbwork.ChangingCommits(); !settled || commits != settledAt {
-			result := dbwork.Checkpoint(ctx, db)
-			if result.Mode == "truncate" && result.Err == nil {
-				log.Printf("Write-ahead log truncated from %d frames", result.LogFrames)
+		if result, ran := checkpoints.Tick(ctx); ran {
+			if result.Mode == "truncate" && checkpointSettled(result) {
+				log.Printf("Write-ahead log truncated from %d frames", result.BeforeLogFrames)
 			}
-			settled = result.Err == nil && result.Busy == 0 && result.Checkpoint == result.LogFrames
-			settledAt = commits
+		}
+		// Only WAL size probes become more frequent. Preserve the previous
+		// cadence for backlog draining, receipt pruning and structural checks.
+		if !ancillary.due(time.Now()) {
+			continue
 		}
 		if time.Since(lastReceiptSweep) >= 15*time.Minute {
 			// Check the indexed expiry on a read connection first. Backlog is
@@ -151,6 +149,24 @@ func runDatabaseHousekeeping(ctx context.Context, db *sql.DB) {
 		lastIntegrity = time.Now()
 		reportIntegrity(ctx, db)
 	}
+}
+
+type ancillaryMaintenanceCadence struct{ last time.Time }
+
+func (c *ancillaryMaintenanceCadence) due(now time.Time) bool {
+	if now.Sub(c.last) < dbwork.CheckpointRegularInterval {
+		return false
+	}
+	c.last = now
+	return true
+}
+
+// A fully copied PASSIVE log can still need a hard reset. Reader drain timeout
+// and retry backoff preserve SQLite's successful copy counts, so those counts
+// alone cannot stop housekeeping retries when no further commits arrive.
+// Only completed outcomes settle; future pressure outcomes also remain retryable.
+func checkpointSettled(result dbwork.CheckpointResult) bool {
+	return dbwork.CheckpointSettled(result)
 }
 
 // warnForeignSchema reports whether the foreign-schema warning is logged.

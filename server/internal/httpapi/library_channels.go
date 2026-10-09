@@ -132,13 +132,17 @@ func (d Dependencies) libraryChannelRoutes(mux *http.ServeMux) {
 				libraryFailure(w, e)
 				return
 			}
-			select {
-			case slots <- struct{}{}:
-				defer func() { <-slots }()
-			default:
-				w.Header().Set("Retry-After", "1")
-				write(w, 429, map[string]any{"error": map[string]any{"code": "channel_busy", "message": "Another channel request is running. Try again shortly.", "retryable": true}})
-				return
+			// Reads retain live authority checks and the shared bounded read
+			// pool, while expensive mutations keep their two-slot resource fence.
+			if r.Method != http.MethodGet {
+				select {
+				case slots <- struct{}{}:
+					defer func() { <-slots }()
+				case <-ctx.Done():
+					closeUnreadUpload(w, r)
+					failure(w, ctx.Err())
+					return
+				}
 			}
 			out, e := work(ctx, w, r, p)
 			if e != nil {

@@ -28,6 +28,7 @@ import (
 	"portico.local/server/internal/eventfeed"
 	"portico.local/server/internal/hosted"
 	"portico.local/server/internal/identity"
+	"portico.local/server/internal/imagework"
 	"portico.local/server/internal/ingestion"
 	"portico.local/server/internal/livechannels"
 	"portico.local/server/internal/livechannels/dvr"
@@ -514,6 +515,10 @@ func failure(w http.ResponseWriter, e error) {
 		status, code, message, retryable = 507, "storage_full", "The server has run out of disk space. Free space on the server's volume and retry.", true
 		w.Header().Set("Retry-After", "30")
 	}
+	if errors.Is(e, imagework.ErrBusy) {
+		status, code, message, retryable = 503, "server_busy", "Image processing is busy. Retry shortly.", true
+		w.Header().Set("Retry-After", "1")
+	}
 	if errors.Is(e, context.DeadlineExceeded) {
 		status, code, message, retryable = 503, "timeout", "The operation timed out. Retry shortly.", true
 	}
@@ -615,6 +620,7 @@ func (d Dependencies) resolvePrincipal(r *http.Request) (identity.Principal, err
 	if !strict && !private {
 		key = identity.Digest(token)
 		if cached, ok := d.principals.lookup(key, time.Now()); ok {
+			d.admission.rememberCredential(token, cached)
 			return cached, nil
 		}
 	}
@@ -640,6 +646,9 @@ func (d Dependencies) resolvePrincipal(r *http.Request) (identity.Principal, err
 	// refusal is the one mistake here a viewer would actually see.
 	if err == nil && key != "" {
 		d.principals.store(key, p, time.Now(), generation)
+	}
+	if err == nil {
+		d.admission.rememberCredential(token, p)
 	}
 	return p, err
 }
@@ -1113,9 +1122,12 @@ func New(d Dependencies) http.Handler {
 	d.audioDecodeRoutes(mux)
 	mux.HandleFunc("GET /v1/media/{grant}/{file}", func(w http.ResponseWriter, r *http.Request) {
 		grant := r.PathValue("grant")
-		_, p, item, e := d.Playback.ResolveGrant(grant)
+		_, p, item, e := d.Playback.ResolveGrantContext(r.Context(), grant)
 		if e == nil {
 			e = d.itemAccess(r.Context(), p, item)
+			if e == nil {
+				d.admission.rememberCredential(grant, p)
+			}
 		}
 		if e != nil {
 			failure(w, e)
@@ -1139,9 +1151,12 @@ func New(d Dependencies) http.Handler {
 			return
 		}
 		check := func() error {
-			_, p, item, e := d.Playback.ResolveGrant(grant)
+			_, p, item, e := d.Playback.ResolveGrantContext(r.Context(), grant)
 			if e == nil {
 				e = d.itemAccess(r.Context(), p, item)
+				if e == nil {
+					d.admission.rememberCredential(grant, p)
+				}
 			}
 			return e
 		}
@@ -1167,9 +1182,12 @@ func New(d Dependencies) http.Handler {
 	})
 	mux.HandleFunc("GET /v1/media/{grant}", func(w http.ResponseWriter, r *http.Request) {
 		grant := r.PathValue("grant")
-		aid, p, item, e := d.Playback.ResolveGrant(grant)
+		aid, p, item, e := d.Playback.ResolveGrantContext(r.Context(), grant)
 		if e == nil {
 			e = d.itemAccess(r.Context(), p, item)
+			if e == nil {
+				d.admission.rememberCredential(grant, p)
+			}
 		}
 		if e != nil {
 			failure(w, e)
@@ -1191,18 +1209,24 @@ func New(d Dependencies) http.Handler {
 			body := withRollingDeadline(w)
 			defer body.release()
 			http.ServeContent(body, r, "prepared.mp4", time.Time{}, &guardedReadSeeker{ReadSeeker: prepared, check: newStreamAuthority(func() error {
-				_, p, item, e := d.Playback.ResolveGrant(grant)
+				_, p, item, e := d.Playback.ResolveGrantContext(r.Context(), grant)
 				if e == nil {
 					e = d.itemAccess(r.Context(), p, item)
+					if e == nil {
+						d.admission.rememberCredential(grant, p)
+					}
 				}
 				return e
 			}).check})
 			return
 		}
 		d.serveOriginal(w, r, grant, aid, false, func() error {
-			_, p, item, e := d.Playback.ResolveGrant(grant)
+			_, p, item, e := d.Playback.ResolveGrantContext(r.Context(), grant)
 			if e == nil {
 				e = d.itemAccess(r.Context(), p, item)
+				if e == nil {
+					d.admission.rememberCredential(grant, p)
+				}
 			}
 			return e
 		})

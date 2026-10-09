@@ -5432,6 +5432,12 @@ export const schemas = {
   },
   "GetContainerPersonalStateResponse": {
     "properties": {
+      "favorite": {
+        "type": "boolean"
+      },
+      "libraryId": {
+        "type": "string"
+      },
       "revision": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
@@ -5450,14 +5456,20 @@ export const schemas = {
         "minimum": -9007199254740991,
         "type": "integer"
       },
+      "watchlisted": {
+        "type": "boolean"
+      },
       "watermark": {
         "type": "string"
       }
     },
     "required": [
+      "libraryId",
       "revision",
       "watched",
       "watermark",
+      "watchlisted",
+      "favorite",
       "watchedCount",
       "unwatchedCount"
     ],
@@ -11512,25 +11524,35 @@ export const schemas = {
         "minimum": -9007199254740991,
         "type": "integer"
       },
+      "favorite": {
+        "type": "boolean"
+      },
       "watched": {
-        "nullable": true,
+        "type": "boolean"
+      },
+      "watchlisted": {
         "type": "boolean"
       }
     },
     "required": [
-      "expectedRevision",
-      "watched"
+      "expectedRevision"
     ],
     "type": "object"
   },
   "SetContainerPersonalStateResponse": {
     "properties": {
+      "favorite": {
+        "type": "boolean"
+      },
       "revision": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
         "type": "integer"
       },
       "watched": {
+        "type": "boolean"
+      },
+      "watchlisted": {
         "type": "boolean"
       },
       "watermark": {
@@ -11540,7 +11562,9 @@ export const schemas = {
     "required": [
       "revision",
       "watched",
-      "watermark"
+      "watermark",
+      "watchlisted",
+      "favorite"
     ],
     "type": "object"
   },

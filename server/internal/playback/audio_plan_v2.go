@@ -448,7 +448,13 @@ func albumLoudness(ctx context.Context, tx *sql.Tx, item string) (float64, float
 // and a prepared (private) presentation's grant too (spec §18.2), whose bytes
 // PrefetchCharge bounds.
 func (s *Service) ResolveDecodeGrant(grant string) (string, identity.Principal, string, error) {
-	return s.resolveGrant(grant, true)
+	return s.ResolveDecodeGrantContext(context.Background(), grant)
+}
+
+// ResolveDecodeGrantContext applies the caller's cancellation to initial audio
+// grant checks, including a prepared presentation's private grant.
+func (s *Service) ResolveDecodeGrantContext(ctx context.Context, grant string) (string, identity.Principal, string, error) {
+	return s.resolveGrant(ctx, grant, true)
 }
 
 // PrivatePresentation reports whether a media session is a prepared, not yet

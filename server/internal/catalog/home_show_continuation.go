@@ -3,6 +3,7 @@ package catalog
 import (
 	"encoding/json"
 	"portico.local/server/internal/personalstate"
+	"strconv"
 )
 
 // A profile contributes at most one episode per started show. The index is
@@ -71,7 +72,7 @@ func homeShowContinuation(r HomeRequest, cutoffs, premieres string, window int, 
     AND ` + nextVisibility + `
    ORDER BY COALESCE(s2.number,0),e2.number,i2.id LIMIT 1)
 	 ) AS id,w.last_activity AS ord,w.library_id AS library_id,w.last_item_id AS last_item_id FROM
-	 (SELECT * FROM profile_show_activity WHERE profile_id=? AND library_id IN(SELECT value FROM json_each(?))` + showFilter + ` ORDER BY last_activity DESC,show_id LIMIT ?) w
+	 (SELECT * FROM profile_show_activity WHERE profile_id=? AND library_id IN(SELECT value FROM json_each(?))` + showFilter + ` ORDER BY last_activity DESC,show_id LIMIT ` + strconv.Itoa(window) + `) w
 	 WHERE w.profile_id=? AND w.library_id IN(SELECT value FROM json_each(?))
 	 AND NOT EXISTS(SELECT 1 FROM continue_show_dismissals d WHERE d.profile_id=w.profile_id AND d.show_id=w.show_id
 	  AND d.last_activity>=w.last_activity AND d.playback_id=COALESCE((SELECT p.playback_id FROM progress p WHERE p.profile_id=d.profile_id AND p.item_id=d.item_id),''))) chosen
@@ -93,6 +94,6 @@ func homeShowContinuation(r HomeRequest, cutoffs, premieres string, window int, 
 	if after != nil {
 		args = append(args, after.lastActivity, after.lastActivity, after.showID)
 	}
-	args = append(args, window, r.Profile, string(libraries), cutoffs, premieres)
+	args = append(args, r.Profile, string(libraries), cutoffs, premieres)
 	return base, args
 }

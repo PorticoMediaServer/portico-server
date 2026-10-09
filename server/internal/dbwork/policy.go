@@ -11,10 +11,10 @@ import (
 // Policy is the validated SQLite runtime preset. It is intentionally
 // conservative: SQLite serialises writers, so a large pool only multiplies lock
 // competition and each connection's private page cache. The preset keeps the
-// configured page-cache ceiling at 32 MiB (6 foreground + 2 background
-// connections x 4 MiB), retains at
-// most four idle handles after a read burst, and disables mmap so address-space
-// use is not an untracked part of the database budget.
+// configured page-cache allowance at 36 MiB (6 foreground + 2 background + 1
+// writer connections x 4 MiB), with at most four idle foreground handles after a
+// read burst. Database mmap is disabled; SQLite's allocator, retained statements
+// and temporary sorts still use memory outside the Go runtime's soft limit.
 type Policy struct {
 	MaxOpenConns      int
 	MaxIdleConns      int

@@ -12,6 +12,7 @@ import (
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/operations"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -165,6 +166,9 @@ type homeSource struct {
 	// restriction itself, so the generic item wrap must not run again.
 	selfRestricted bool
 	fingerprint    string
+	// candidates is an engine source's immutable ranking within this request.
+	// Recommended suppresses Trending's preview using this same scored list.
+	candidates []recCandidate
 }
 
 func (spec homeRowSpec) descriptor() HomeRow {
@@ -305,8 +309,7 @@ func (s *Service) homeSource(r HomeRequest, spec homeRowSpec) (homeSource, error
 		}
 	}
 	if src.cap > 0 {
-		src.base = `SELECT id,ord FROM (` + src.base + `) ORDER BY ord DESC,id DESC LIMIT ?`
-		src.args = append(src.args, src.cap)
+		src.base = `SELECT id,ord FROM (` + src.base + `) ORDER BY ord DESC,id DESC LIMIT ` + strconv.Itoa(src.cap)
 	}
 	return src, nil
 }
@@ -475,6 +478,9 @@ func homeOrder(direction string) (string, string) {
 func (s *Service) homeRowIDs(spec homeRowSpec, src homeSource, page HomeRowPage, revision ContentRevision, viewer string, profile string) (ids []string, total, start int, next, lead string, err error) {
 	order, operator := homeOrder(spec.Direction)
 	limit := homeLimit(page.Limit)
+	// SQLite reprepares a VM whenever a bound LIMIT/OFFSET changes or is bound
+	// again. Only these validated integers become SQL literals; viewer data,
+	// cursor values and all authority predicates remain bound parameters.
 	start = page.Start
 	if start < 0 {
 		return nil, 0, 0, "", "", ErrCursor
@@ -510,8 +516,8 @@ func (s *Service) homeRowIDs(spec homeRowSpec, src homeSource, page HomeRowPage,
 		if e != nil {
 			return nil, 0, 0, "", "", e
 		}
-		args := append(append([]any{}, src.args...), cursor.Value, cursor.Value, cursor.ID, limit+1)
-		query := `SELECT id,ord FROM (` + src.base + `) WHERE (ord` + operator + `? OR (ord=? AND id` + operator + `?)) ORDER BY ord ` + order + `,id ` + order + ` LIMIT ?`
+		args := append(append([]any{}, src.args...), cursor.Value, cursor.Value, cursor.ID)
+		query := `SELECT id,ord FROM (` + src.base + `) WHERE (ord` + operator + `? OR (ord=? AND id` + operator + `?)) ORDER BY ord ` + order + `,id ` + order + ` LIMIT ` + strconv.Itoa(limit+1)
 		ids, next, _, lead, e := s.homeScanPage(query, args, base, cursor.Offset, limit)
 		return ids, total, cursor.Offset, next, lead, e
 	}
@@ -532,8 +538,8 @@ func (s *Service) homeRowIDs(spec homeRowSpec, src homeSource, page HomeRowPage,
 			start = total - 1
 		}
 	}
-	args := append(append([]any{}, src.args...), limit+1, start)
-	query := `SELECT id,ord FROM (` + src.base + `) ORDER BY ord ` + order + `,id ` + order + ` LIMIT ? OFFSET ?`
+	args := append([]any{}, src.args...)
+	query := `SELECT id,ord FROM (` + src.base + `) ORDER BY ord ` + order + `,id ` + order + ` LIMIT ` + strconv.Itoa(limit+1) + ` OFFSET ` + strconv.Itoa(start)
 	ids, next, scanned, lead, e := s.homeScanPage(query, args, base, start, limit)
 	if e != nil {
 		return nil, 0, 0, "", "", e
@@ -630,7 +636,7 @@ func (r HomeRequest) now() time.Time {
 	return r.Now
 }
 
-func (s *Service) homeRowFor(r HomeRequest, spec homeRowSpec, revision ContentRevision, page HomeRowPage) (HomeRow, error) {
+func (s *Service) homeRowFor(r HomeRequest, spec homeRowSpec, revision ContentRevision, page HomeRowPage, enrich bool) (HomeRow, error) {
 	row := spec.descriptor()
 	row.Revision = revision
 	row.Limit = homeLimit(page.Limit)
@@ -646,8 +652,10 @@ func (s *Service) homeRowFor(r HomeRequest, spec homeRowSpec, revision ContentRe
 	if e != nil {
 		return row, e
 	}
-	if e = s.homeEnrich(r.Profile, entries); e != nil {
-		return row, e
+	if enrich {
+		if e = s.homeEnrich(r.Profile, entries); e != nil {
+			return row, e
+		}
 	}
 	row.Entries = entries
 	row.lead = lead
@@ -796,6 +804,7 @@ func (s *Service) HomeRows(r HomeRequest) (HomeDocument, error) {
 	r.Now = s.recommendationNow(r.Now)
 	s = s.WithRecommendationRestrictions(r.Restrictions)
 	s.recSources = map[string]homeSource{}
+	s.recComposition = newRecCompositionSources(s.Context())
 	r.Libraries = homeUnique(r.Libraries)
 	out := HomeDocument{ServerID: r.ServerID, ViewerFence: r.ViewerFence, Rows: []HomeRow{},
 		Layout: HomeLayout{Revision: r.LayoutRevision, RowOrder: append([]string{}, r.RowOrder...), HiddenRowIDs: append([]string{}, r.HiddenRowIDs...)}}
@@ -838,7 +847,7 @@ func (s *Service) HomeRows(r HomeRequest) (HomeDocument, error) {
 			}
 			continue
 		}
-		row, e := s.homeRowFor(r, spec, before, HomeRowPage{Limit: r.Limit})
+		row, e := s.homeRowFor(r, spec, before, HomeRowPage{Limit: r.Limit}, false)
 		if e != nil {
 			return out, e
 		}
@@ -856,6 +865,9 @@ func (s *Service) HomeRows(r HomeRequest) (HomeDocument, error) {
 			}
 		}
 		out.Rows = append(out.Rows, row)
+	}
+	if e = s.homeEnrichRows(r.Profile, out.Rows); e != nil {
+		return out, e
 	}
 	after, e := s.homeRevision(r.Libraries, r.Profile)
 	if e != nil {
@@ -914,6 +926,7 @@ func (s *Service) HomeSingleRow(r HomeRequest, id string, page HomeRowPage) (Hom
 	r.Now = s.recommendationNow(r.Now)
 	s = s.WithRecommendationRestrictions(r.Restrictions)
 	s.recSources = map[string]homeSource{}
+	s.recComposition = newRecCompositionSources(s.Context())
 	r.Libraries = homeUnique(r.Libraries)
 	specs, e := s.homeSpecs(r)
 	if e != nil {
@@ -943,7 +956,7 @@ func (s *Service) HomeSingleRow(r HomeRequest, id string, page HomeRowPage) (Hom
 	if page.Revision != "" && page.Revision != fmt.Sprintf("%d:%d", before.Catalog, before.Viewer) {
 		return HomeRow{}, ErrStaleContinuation
 	}
-	row, e := s.homeRowFor(r, *found, before, page)
+	row, e := s.homeRowFor(r, *found, before, page, true)
 	if e != nil {
 		return row, e
 	}
@@ -967,7 +980,7 @@ func (s *Service) recFamilyRows(r HomeRequest, revision ContentRevision) ([]Home
 	out := make([]HomeRow, 0, len(generated))
 	for _, g := range generated {
 		s.recSources[g.spec.ID+":"+idsJSON(r.Libraries)] = candidateSource(g.items)
-		row, err := s.homeRowFor(r, g.spec, revision, HomeRowPage{Limit: r.Limit})
+		row, err := s.homeRowFor(r, g.spec, revision, HomeRowPage{Limit: r.Limit}, false)
 		if err != nil {
 			return nil, err
 		}
@@ -1065,17 +1078,40 @@ func homeCanonicalLayout(ids []string) []string {
 	return out
 }
 
+// homeEnrichRows decorates the final Home previews together. The document's
+// row and page limits bound this batch; hidden, empty and displaced rows cost
+// no decoration queries. A row fetched on its own still decorates its own page.
+func (s *Service) homeEnrichRows(profile string, rows []HomeRow) error {
+	entries := []ContentEntry{}
+	for _, row := range rows {
+		entries = append(entries, row.Entries...)
+	}
+	if err := s.homeEnrich(profile, entries); err != nil {
+		return err
+	}
+	start := 0
+	for _, row := range rows {
+		copy(row.Entries, entries[start:start+len(row.Entries)])
+		start += len(row.Entries)
+	}
+	return nil
+}
+
 // homeEnrich adds what a Home card or the hero shows beyond the shared entry (M5): the year, the
 // content rating, the first two genres and the viewer's watchlist state. Four bounded reads for
-// the whole page (at most one page of ids), never one per entry. A container work (a show, an
+// the whole preview batch, never one per entry. A container work (a show, an
 // album) takes its year from the browse projection; attributes and watchlist state are items'.
 func (s *Service) homeEnrich(profile string, entries []ContentEntry) error {
 	if len(entries) == 0 {
 		return nil
 	}
 	ids := make([]string, 0, len(entries))
+	seen := map[string]bool{}
 	for _, entry := range entries {
-		ids = append(ids, entry.ID)
+		if !seen[entry.ID] {
+			ids = append(ids, entry.ID)
+			seen[entry.ID] = true
+		}
 	}
 	list := idsJSON(ids)
 	years := map[string]int{}

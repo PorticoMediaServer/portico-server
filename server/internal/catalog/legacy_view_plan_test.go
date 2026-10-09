@@ -85,7 +85,7 @@ func TestHomeStatementsNeverMaterialiseLegacyViews(t *testing.T) {
 
 		phases, phaseArgs := homeRecentPhases(r, nil)
 		for i, phase := range phases {
-			args := append(append([]any{}, phaseArgs[i]...), "tv", "\uffff", "\uffff", 256)
+			args := append(append([]any{}, phaseArgs[i]...), "tv", "\uffff", "\uffff")
 			// The walk follows its recent-order index (a SEARCH on the library
 			// prefix, windowed); nothing else may be scanned.
 			// br is a 256-row window of the index; member a work's 64 newest members.

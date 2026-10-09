@@ -38,7 +38,7 @@ func homeRecentWorkKeySQL(i string) string {
 // the walk costs the works shown, never the episodes or songs under them.
 // The second walks items with no added date, which sort last as they always
 // did. Their arguments are (library, last added, last entity id, restriction
-// arguments…, limit); each phase has its own restriction arguments.
+// arguments…); each phase has its own restriction arguments.
 //
 // A restricted viewer with a published class walks the class's own rows by
 // the same key, so it reads only works it may see (each rechecked against the
@@ -63,12 +63,12 @@ func homeRecentPhases(r HomeRequest, class *recentClass) ([]string, [][]any) {
 	// cannot see is inspected once and counted against the budget.
 	window := `SELECT entity_id,recent_text FROM catalog_browse_rows INDEXED BY catalog_browse_recent_works
 	  WHERE library_id=(SELECT id FROM catalog_libraries WHERE library_id=?) AND recent_text IS NOT NULL AND (recent_text,entity_id)<(?,?)
-	  ORDER BY recent_text DESC,entity_id DESC LIMIT ?`
+	  ORDER BY recent_text DESC,entity_id DESC LIMIT 256`
 	if class != nil {
 		window = `SELECT entity_id,recent AS recent_text FROM compact_visibility_rows INDEXED BY compact_visibility_recent
 	  WHERE class_id=` + strconv.FormatInt(class.id, 10) + ` AND generation=` + strconv.FormatInt(class.generation, 10) + `
 	  AND library_id=(SELECT id FROM catalog_libraries WHERE library_id=?) AND recent IS NOT NULL AND (recent,entity_id)<(?,?)
-	  ORDER BY recent DESC,entity_id DESC LIMIT ?`
+	  ORDER BY recent DESC,entity_id DESC LIMIT 256`
 	}
 	works := `SELECT br.recent_text,` + homeRecentWorkKeySQL("i") + `,pid(i.public_id),br.entity_id,i.retired=0 AND ` + workRestriction + `
 	 FROM (` + window + `) br CROSS JOIN catalog_entities i ON i.id=br.entity_id
@@ -84,7 +84,7 @@ func homeRecentPhases(r HomeRequest, class *recentClass) ([]string, [][]any) {
 	  AND ` + itemRestriction
 	undated := columns + ` FROM (SELECT entity_id,added_text FROM catalog_browse_rows INDEXED BY catalog_browse_recent_undated
 	  WHERE library_id=(SELECT id FROM catalog_libraries WHERE library_id=?) AND item_id IS NOT NULL AND added_text IS NULL AND ''<=? AND entity_id<?
-	  ORDER BY entity_id DESC LIMIT ?) br CROSS JOIN catalog_entities i ON i.id=br.entity_id JOIN catalog_kinds k ON k.id=i.kind ORDER BY br.entity_id DESC`
+	  ORDER BY entity_id DESC LIMIT 256) br CROSS JOIN catalog_entities i ON i.id=br.entity_id JOIN catalog_kinds k ON k.id=i.kind ORDER BY br.entity_id DESC`
 	return []string{works, undated}, [][]any{workArgs, itemArgs}
 }
 
@@ -141,7 +141,7 @@ func (s *Service) homeRecentWorks(r HomeRequest, library string) ([][2]string, e
 		restrictionArgs := phaseArgs[phase]
 		lastAdded, lastEntity := "\uffff", int64(1<<62)
 		for len(found) < homeRecentMaximum {
-			args := append(append([]any{}, restrictionArgs...), library, lastAdded, lastEntity, 256)
+			args := append(append([]any{}, restrictionArgs...), library, lastAdded, lastEntity)
 			rows, err := s.read().Query(query, args...)
 			if err != nil {
 				return nil, err

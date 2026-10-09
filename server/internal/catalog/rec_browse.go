@@ -44,6 +44,9 @@ func (s *Service) recForYouValued(p pageShape) ([]personalRow, error) {
 	if len(ranked) == 0 {
 		return nil, nil
 	}
+	if err := s.recLoadSignals(r.Profile, &x.taste, recCandidateWorks(ranked)); err != nil {
+		return nil, err
+	}
 	// What the viewer has already watched or started follows what it hasn't.
 	fresh := make([]recCandidate, 0, len(ranked))
 	var seen []recCandidate

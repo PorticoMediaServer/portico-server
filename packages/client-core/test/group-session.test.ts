@@ -204,3 +204,30 @@ test('BE-MEDIA-14: with a 300 ms round trip and slow outliers, two members keep 
  // The old rule (serverTime − receive time of the latest answer) would be 2.5 s off for A.
  a.service.dispose();b.service.dispose();
 });
+
+test('slow heartbeats stay single flight and leaving cancels the outstanding update', async () => {
+ const s=server();let heartbeats=0;let heartbeatSignal:AbortSignal|undefined;
+ const api={...s.api,request:async<T,>(path:string,method='GET',body?:unknown,signal?:AbortSignal):Promise<T>=>{
+  if(path.endsWith('/heartbeat')){heartbeats++;heartbeatSignal=signal;return new Promise<T>((_resolve,reject)=>signal!.addEventListener('abort',()=>reject(new Error('cancelled')),{once:true}));}
+  return s.api.request<T>(path,method,body);
+ }};
+ const service=new GroupSessionService({api,stream:s.stream,heartbeatMs:5});
+ try{
+  await service.open('grp_1');await new Promise(r=>setTimeout(r,40));
+  assert.equal(heartbeats,1,'several timer ticks share one outstanding request');
+  assert.equal(heartbeatSignal?.aborted,false);
+  await service.leave();await settle();
+  assert.equal(heartbeatSignal?.aborted,true,'the request stops with the room');
+  const before=heartbeats;await new Promise(r=>setTimeout(r,25));assert.equal(heartbeats,before);
+ }finally{service.dispose();}
+});
+
+test('heartbeat retry honours server overload delay while keeping the room visible', async()=>{
+ const s=server();let now=0,heartbeats=0;
+ const api={...s.api,request:async<T,>(path:string,method='GET',body?:unknown):Promise<T>=>{
+  if(path.endsWith('/heartbeat')){heartbeats++;if(heartbeats===1)throw Object.assign(new Error('busy'),{status:503,retryAfterSeconds:60});}
+  return s.api.request<T>(path,method,body);
+ }};
+ const service=new GroupSessionService({api,stream:s.stream,now:()=>now,heartbeatMs:5});
+ try{await service.open('grp_1');await new Promise(r=>setTimeout(r,25));assert.equal(heartbeats,1);assert.equal(service.getSnapshot().group?.id,'grp_1');now=59999;await settle();assert.equal(heartbeats,1);now=60000;await settle();assert.ok(heartbeats>1,'heartbeats resume after the server delay');}finally{service.dispose();}
+});

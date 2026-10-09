@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"modernc.org/sqlite"
 	sqlite3 "modernc.org/sqlite/lib"
+	"portico.local/server/internal/thirdparty/sqlite"
 )
 
 // Kind classifies a database failure by what the caller should do about it.

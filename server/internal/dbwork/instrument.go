@@ -3,6 +3,7 @@ package dbwork
 import (
 	"context"
 	"database/sql/driver"
+	"io"
 	"log"
 	"reflect"
 	"strings"
@@ -120,21 +121,23 @@ type ClassReadStats struct {
 // pool and gate statistics: those say how long callers waited, this says how
 // much work they asked for.
 type ReadStats struct {
-	Statements   uint64           `json:"statements"`
-	Transactions uint64           `json:"transactions"`
-	Acquisitions uint64           `json:"acquisitions"`
-	SlowReads    uint64           `json:"slowReads"`
-	ByClass      []ClassReadStats `json:"byClass"`
+	Statements     uint64              `json:"statements"`
+	Transactions   uint64              `json:"transactions"`
+	Acquisitions   uint64              `json:"acquisitions"`
+	SlowReads      uint64              `json:"slowReads"`
+	ByClass        []ClassReadStats    `json:"byClass"`
+	StatementCache StatementCacheStats `json:"statementCache"`
 }
 
 // Reads snapshots the process-wide statement counters.
 func Reads() ReadStats {
 	out := ReadStats{
-		Statements:   global.statements.Load(),
-		Transactions: global.transactions.Load(),
-		Acquisitions: global.acquisitions.Load(),
-		SlowReads:    global.slow.Load(),
-		ByClass:      []ClassReadStats{},
+		Statements:     global.statements.Load(),
+		Transactions:   global.transactions.Load(),
+		Acquisitions:   global.acquisitions.Load(),
+		SlowReads:      global.slow.Load(),
+		ByClass:        []ClassReadStats{},
+		StatementCache: statementCacheStats(),
 	}
 	global.mu.Lock()
 	defer global.mu.Unlock()
@@ -156,6 +159,7 @@ func Reads() ReadStats {
 // ResetReads zeroes the process-wide counters. It exists for tests and for the
 // load harness, which measures one run rather than the life of the process.
 func ResetReads() {
+	resetStatementCacheStats()
 	global.statements.Store(0)
 	global.transactions.Store(0)
 	global.acquisitions.Store(0)
@@ -269,13 +273,16 @@ func (d observedDriver) Open(name string) (driver.Conn, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &observedConn{inner: inner}, nil
+	return &observedConn{inner: inner, readers: acquireReaderScope(name)}, nil
 }
 
 type observedConn struct {
-	inner   driver.Conn
-	inTx    bool
-	changes *changeSet
+	inner      driver.Conn
+	inTx       bool
+	changes    *changeSet
+	statements statementCache
+	readers    *readerScope
+	readerTx   *readerLease
 }
 
 func (c *observedConn) Prepare(query string) (driver.Stmt, error) {
@@ -298,7 +305,13 @@ func (c *observedConn) PrepareContext(ctx context.Context, query string) (driver
 	return &observedStmt{inner: inner, conn: c, query: query}, nil
 }
 
-func (c *observedConn) Close() error { return c.inner.Close() }
+func (c *observedConn) Close() error {
+	c.statements.close()
+	err := c.inner.Close()
+	c.finishReadTransaction()
+	releaseReaderScope(c.readers)
+	return err
+}
 
 // Unwrap exposes the driver connection underneath. `sql.Conn.Raw` hands out
 // whatever connection the driver returned, and a wrapper that hid the real one
@@ -307,10 +320,16 @@ func (c *observedConn) Close() error { return c.inner.Close() }
 func (c *observedConn) Unwrap() driver.Conn { return c.inner }
 
 func (c *observedConn) Begin() (driver.Tx, error) {
-	inner, err := c.inner.Begin()
+	lease, err := c.admitReader(context.Background(), true)
 	if err != nil {
 		return nil, err
 	}
+	inner, err := c.inner.Begin()
+	if err != nil {
+		lease.close()
+		return nil, err
+	}
+	c.readerTx = lease
 	observeTransaction(context.Background())
 	c.inTx = true
 	c.changes = nil
@@ -322,10 +341,16 @@ func (c *observedConn) BeginTx(ctx context.Context, opts driver.TxOptions) (driv
 	if !ok {
 		return c.Begin()
 	}
-	inner, err := beginner.BeginTx(ctx, opts)
+	lease, err := c.admitReader(ctx, true)
 	if err != nil {
 		return nil, err
 	}
+	inner, err := beginner.BeginTx(ctx, opts)
+	if err != nil {
+		lease.close()
+		return nil, err
+	}
+	c.readerTx = lease
 	observeTransaction(ctx)
 	c.inTx = true
 	c.changes, _ = ctx.Value(changeKey{}).(*changeSet)
@@ -333,13 +358,13 @@ func (c *observedConn) BeginTx(ctx context.Context, opts driver.TxOptions) (driv
 }
 
 func (c *observedConn) ExecContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Result, error) {
-	execer, ok := c.inner.(driver.ExecerContext)
+	_, ok := c.inner.(driver.ExecerContext)
 	if !ok {
 		return nil, driver.ErrSkip
 	}
 	start := time.Now()
 	traceStatement(ctx, query)
-	out, err := execer.ExecContext(ctx, query, args)
+	out, err := c.cachedExec(ctx, query, args)
 	if err == nil {
 		noticeAuthorityWrite(query)
 		c.changes.note(query)
@@ -349,19 +374,24 @@ func (c *observedConn) ExecContext(ctx context.Context, query string, args []dri
 }
 
 func (c *observedConn) QueryContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Rows, error) {
-	queryer, ok := c.inner.(driver.QueryerContext)
+	_, ok := c.inner.(driver.QueryerContext)
 	if !ok {
 		return nil, driver.ErrSkip
 	}
+	lease, err := c.admitReader(ctx, false)
+	if err != nil {
+		return nil, err
+	}
 	start := time.Now()
 	traceStatement(ctx, query)
-	out, err := queryer.QueryContext(ctx, query, args)
+	out, release, err := c.cachedQuery(ctx, query, args)
 	if err != nil {
+		lease.close()
 		observe(ctx, query, time.Since(start), c.inTx)
 		return nil, err
 	}
 	c.changes.note(query)
-	return &observedRows{inner: out, ctx: ctx, query: query, start: start, inTx: c.inTx}, nil
+	return &observedRows{inner: out, ctx: ctx, query: query, start: start, inTx: c.inTx, release: release, reader: lease}, nil
 }
 
 func (c *observedConn) Ping(ctx context.Context) error {
@@ -372,6 +402,7 @@ func (c *observedConn) Ping(ctx context.Context) error {
 }
 
 func (c *observedConn) ResetSession(ctx context.Context) error {
+	c.finishReadTransaction()
 	c.inTx = false
 	if resetter, ok := c.inner.(driver.SessionResetter); ok {
 		return resetter.ResetSession(ctx)
@@ -393,12 +424,16 @@ type observedTx struct {
 
 func (t *observedTx) Commit() error {
 	t.conn.inTx = false
-	return t.inner.Commit()
+	err := t.inner.Commit()
+	t.conn.finishReadTransaction()
+	return err
 }
 
 func (t *observedTx) Rollback() error {
 	t.conn.inTx = false
-	return t.inner.Rollback()
+	err := t.inner.Rollback()
+	t.conn.finishReadTransaction()
+	return err
 }
 
 type observedStmt struct {
@@ -411,6 +446,9 @@ func (s *observedStmt) Close() error  { return s.inner.Close() }
 func (s *observedStmt) NumInput() int { return s.inner.NumInput() }
 
 func (s *observedStmt) Exec(args []driver.Value) (driver.Result, error) {
+	if invalidatingStatement(s.query) {
+		s.conn.statements.invalidate()
+	}
 	start := time.Now()
 	out, err := s.inner.Exec(args)
 	if err == nil {
@@ -421,17 +459,28 @@ func (s *observedStmt) Exec(args []driver.Value) (driver.Result, error) {
 }
 
 func (s *observedStmt) Query(args []driver.Value) (driver.Rows, error) {
+	if invalidatingStatement(s.query) {
+		s.conn.statements.invalidate()
+	}
+	lease, err := s.conn.admitReader(context.Background(), false)
+	if err != nil {
+		return nil, err
+	}
 	start := time.Now()
 	out, err := s.inner.Query(args)
 	if err != nil {
+		lease.close()
 		observe(context.Background(), "", time.Since(start), s.conn.inTx)
 		return nil, err
 	}
 	s.conn.changes.note(s.query)
-	return &observedRows{inner: out, ctx: context.Background(), start: start, inTx: s.conn.inTx}, nil
+	return &observedRows{inner: out, ctx: context.Background(), start: start, inTx: s.conn.inTx, reader: lease}, nil
 }
 
 func (s *observedStmt) ExecContext(ctx context.Context, args []driver.NamedValue) (driver.Result, error) {
+	if invalidatingStatement(s.query) {
+		s.conn.statements.invalidate()
+	}
 	execer, ok := s.inner.(driver.StmtExecContext)
 	if !ok {
 		return nil, driver.ErrSkip
@@ -446,18 +495,26 @@ func (s *observedStmt) ExecContext(ctx context.Context, args []driver.NamedValue
 }
 
 func (s *observedStmt) QueryContext(ctx context.Context, args []driver.NamedValue) (driver.Rows, error) {
+	if invalidatingStatement(s.query) {
+		s.conn.statements.invalidate()
+	}
 	queryer, ok := s.inner.(driver.StmtQueryContext)
 	if !ok {
 		return nil, driver.ErrSkip
 	}
+	lease, err := s.conn.admitReader(ctx, false)
+	if err != nil {
+		return nil, err
+	}
 	start := time.Now()
 	out, err := queryer.QueryContext(ctx, args)
 	if err != nil {
+		lease.close()
 		observe(ctx, "", time.Since(start), s.conn.inTx)
 		return nil, err
 	}
 	s.conn.changes.note(s.query)
-	return &observedRows{inner: out, ctx: ctx, start: start, inTx: s.conn.inTx}, nil
+	return &observedRows{inner: out, ctx: ctx, start: start, inTx: s.conn.inTx, reader: lease}, nil
 }
 
 // observedRows times a read to the end of iteration rather than to the return of
@@ -470,18 +527,47 @@ type observedRows struct {
 	start    time.Time
 	inTx     bool
 	observed bool
+	release  func(error) error
+	closed   bool
+	closeErr error
+	nextErr  error
+	reader   *readerLease
 }
 
 func (r *observedRows) Columns() []string { return r.inner.Columns() }
 
-func (r *observedRows) Next(dest []driver.Value) error { return r.inner.Next(dest) }
+func (r *observedRows) Next(dest []driver.Value) error {
+	err := r.inner.Next(dest)
+	if err != nil && err != io.EOF {
+		r.nextErr = err
+	}
+	return err
+}
 
 func (r *observedRows) Close() error {
+	if r.closed {
+		return r.closeErr
+	}
+	r.closed = true
 	if !r.observed {
 		r.observed = true
 		observe(r.ctx, r.query, time.Since(r.start), r.inTx)
 	}
-	return r.inner.Close()
+	r.closeErr = r.inner.Close()
+	if r.release != nil {
+		err := r.closeErr
+		if err == nil {
+			err = r.nextErr
+		}
+		if err == nil {
+			err = r.ctx.Err()
+		}
+		if closeErr := r.release(err); r.closeErr == nil {
+			r.closeErr = closeErr
+		}
+	}
+	r.reader.close()
+	return r.closeErr
 }
 
 func (r *observedRows) ColumnTypeDatabaseTypeName(index int) string {

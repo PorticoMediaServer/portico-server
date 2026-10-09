@@ -378,6 +378,7 @@ func (s *Service) BulkAdapter(access BulkAccess) operations.Adapter {
 			var err error
 			sliceEnd := time.Now().Add(750 * time.Millisecond)
 			for ctx.Err() == nil && time.Now().Before(sliceEnd) {
+				batchStarted := time.Now()
 				next, stepErr := s.AdvanceBulkJob(ctx, id, access)
 				err = stepErr
 				if err != nil {
@@ -403,6 +404,9 @@ func (s *Service) BulkAdapter(access BulkAccess) operations.Adapter {
 				}
 				j = next
 				if j.State != "running" && j.State != "queued" && j.State != "building" {
+					break
+				}
+				if !dbwork.PaceBackground(ctx, batchStarted) {
 					break
 				}
 			}

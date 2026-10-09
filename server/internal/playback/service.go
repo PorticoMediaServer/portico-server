@@ -563,32 +563,38 @@ func (s *Service) Get(p identity.Principal, id string) (Session, error) {
 	return out, e
 }
 func (s *Service) Progress(p identity.Principal, id string, generation int, sequence int64, position float64, state string) error {
+	return s.ProgressContext(context.Background(), p, id, generation, sequence, position, state)
+}
+
+// ProgressContext abandons report work when its request or playback timeline
+// deadline expires, without stopping the live presentation.
+func (s *Service) ProgressContext(ctx context.Context, p identity.Principal, id string, generation int, sequence int64, position float64, state string) error {
 	if math.IsNaN(position) || math.IsInf(position, 0) || position < 0 || sequence < 0 {
 		return errors.New("invalid progress")
 	}
 	if state != "playing" && state != "paused" && state != "ended" {
 		return errors.New("invalid playback state")
 	}
-	gated3, e := dbwork.Begin(context.Background(), s.db, dbwork.ClassEstablishedPlayback)
+	gated3, e := dbwork.Begin(ctx, s.db, dbwork.ClassEstablishedPlayback)
 	if e != nil {
 		return e
 	}
 	tx := gated3.Tx()
 	defer gated3.Rollback()
-	if e = s.progressTx(tx, p, id, generation, sequence, position, state); e != nil {
+	if e = s.progressTx(gated3.Context(), tx, p, id, generation, sequence, position, state); e != nil {
 		return e
 	}
 	return gated3.Commit()
 }
-func (s *Service) progressTx(tx *sql.Tx, p identity.Principal, id string, generation int, sequence int64, position float64, state string) error {
+func (s *Service) progressTx(ctx context.Context, tx *sql.Tx, p identity.Principal, id string, generation int, sequence int64, position float64, state string) error {
 	var e error
-	if e = checkSessionOccurrenceTx(context.Background(), tx, id); e != nil {
+	if e = checkSessionOccurrenceTx(ctx, tx, id); e != nil {
 		return e
 	}
 	// Fence authentication and current item policy before accepting any evidence.
 	// Live/Library occurrences are in another table and cannot enter this path.
 	var observedItem string
-	e = tx.QueryRow(`SELECT pid(e.public_id) FROM playback_sessions JOIN catalog_entities e ON e.id=playback_sessions.item_id WHERE playback_sessions.id=? AND playback_sessions.account_id=? AND playback_sessions.profile_id=? AND playback_sessions.generation=? AND `+sessionFamilyMatch, id, p.AccountID, p.ProfileID, generation, p.Hash, p.Hash).Scan(&observedItem)
+	e = tx.QueryRowContext(ctx, `SELECT pid(e.public_id) FROM playback_sessions JOIN catalog_entities e ON e.id=playback_sessions.item_id WHERE playback_sessions.id=? AND playback_sessions.account_id=? AND playback_sessions.profile_id=? AND playback_sessions.generation=? AND `+sessionFamilyMatch, id, p.AccountID, p.ProfileID, generation, p.Hash, p.Hash).Scan(&observedItem)
 	if errors.Is(e, sql.ErrNoRows) {
 		return nil // Stale/foreign occurrence; no observation or history is changed.
 	}
@@ -596,11 +602,11 @@ func (s *Service) progressTx(tx *sql.Tx, p identity.Principal, id string, genera
 		return e
 	}
 	if s.AuthorityTx != nil {
-		if p, e = s.AuthorityTx(context.Background(), tx, p, observedItem); e != nil {
+		if p, e = s.AuthorityTx(ctx, tx, p, observedItem); e != nil {
 			return e
 		}
 	}
-	r, e := tx.Exec(`UPDATE playback_sessions SET sequence=?,state=?,session_hash=? WHERE id=? AND generation=? AND sequence<? AND state NOT IN ('stopped','ended','failed')`, sequence, state, p.Hash, id, generation, sequence)
+	r, e := tx.ExecContext(ctx, `UPDATE playback_sessions SET sequence=?,state=?,session_hash=? WHERE id=? AND generation=? AND sequence<? AND state NOT IN ('stopped','ended','failed')`, sequence, state, p.Hash, id, generation, sequence)
 	if e != nil {
 		return e
 	}
@@ -608,14 +614,14 @@ func (s *Service) progressTx(tx *sql.Tx, p identity.Principal, id string, genera
 	if n == 0 {
 		return nil
 	}
-	_, e = tx.Exec(`UPDATE playback_observations SET reported_at=?,position=min(?,(SELECT duration FROM playback_sessions WHERE id=?)) WHERE session_id=?`, time.Now().UTC().Format("2006-01-02T15:04:05.000Z"), position, id, id)
+	_, e = tx.ExecContext(ctx, `UPDATE playback_observations SET reported_at=?,position=min(?,(SELECT duration FROM playback_sessions WHERE id=?)) WHERE session_id=?`, time.Now().UTC().Format("2006-01-02T15:04:05.000Z"), position, id, id)
 	if e != nil {
 		return e
 	}
 	var item string
 	var duration float64
 	var canonical bool
-	if e = tx.QueryRow(`SELECT pid(e.public_id),ps.duration,EXISTS(SELECT 1 FROM progress WHERE profile_id=? AND item_id=ps.item_id AND playback_id=ps.id) FROM playback_sessions ps JOIN catalog_entities e ON e.id=ps.item_id WHERE ps.id=?`, identity.PersonalKey(p.Viewer), id).Scan(&item, &duration, &canonical); e != nil {
+	if e = tx.QueryRowContext(ctx, `SELECT pid(e.public_id),ps.duration,EXISTS(SELECT 1 FROM progress WHERE profile_id=? AND item_id=ps.item_id AND playback_id=ps.id) FROM playback_sessions ps JOIN catalog_entities e ON e.id=ps.item_id WHERE ps.id=?`, identity.PersonalKey(p.Viewer), id).Scan(&item, &duration, &canonical); e != nil {
 		return e
 	}
 	if s.PersonalProgress != nil {
@@ -624,15 +630,15 @@ func (s *Service) progressTx(tx *sql.Tx, p identity.Principal, id string, genera
 		}
 	} else {
 		positionMS := int64(math.Round(position * 1000))
-		_, e = tx.Exec(`UPDATE progress SET position=min(?,CAST((SELECT duration FROM playback_sessions WHERE id=?)*1000 AS INTEGER)),unit=0 WHERE profile_id=? AND playback_id=?`, positionMS, id, identity.PersonalKey(p.Viewer), id)
+		_, e = tx.ExecContext(ctx, `UPDATE progress SET position=min(?,CAST((SELECT duration FROM playback_sessions WHERE id=?)*1000 AS INTEGER)),unit=0 WHERE profile_id=? AND playback_id=?`, positionMS, id, identity.PersonalKey(p.Viewer), id)
 		if e != nil {
 			return e
 		}
-		_, e = tx.Exec(`INSERT INTO progress_activity(profile_id,library_id,item_id,updated_at,state) SELECT ?,cl.library_id,p.item_id,?,? FROM playback_sessions p JOIN catalog_entities i ON i.id=p.item_id JOIN catalog_libraries cl ON cl.id=i.library_id WHERE p.id=? ON CONFLICT(profile_id,item_id) DO UPDATE SET updated_at=excluded.updated_at,state=excluded.state`, identity.PersonalKey(p.Viewer), time.Now().UTC().Format("2006-01-02T15:04:05.000Z"), state, id)
+		_, e = tx.ExecContext(ctx, `INSERT INTO progress_activity(profile_id,library_id,item_id,updated_at,state) SELECT ?,cl.library_id,p.item_id,?,? FROM playback_sessions p JOIN catalog_entities i ON i.id=p.item_id JOIN catalog_libraries cl ON cl.id=i.library_id WHERE p.id=? ON CONFLICT(profile_id,item_id) DO UPDATE SET updated_at=excluded.updated_at,state=excluded.state`, identity.PersonalKey(p.Viewer), time.Now().UTC().Format("2006-01-02T15:04:05.000Z"), state, id)
 		if e != nil {
 			return e
 		}
-		_, e = tx.Exec(`UPDATE book_resume SET position=min(?,CAST((SELECT duration FROM playback_sessions WHERE id=?)*1000 AS INTEGER)),unit=0 WHERE profile_id=? AND playback_id=?`, positionMS, id, identity.PersonalKey(p.Viewer), id)
+		_, e = tx.ExecContext(ctx, `UPDATE book_resume SET position=min(?,CAST((SELECT duration FROM playback_sessions WHERE id=?)*1000 AS INTEGER)),unit=0 WHERE profile_id=? AND playback_id=?`, positionMS, id, identity.PersonalKey(p.Viewer), id)
 		if e != nil {
 			return e
 		}
@@ -679,36 +685,51 @@ func (s *Service) stopHLS(id string) {
 	}
 }
 func (s *Service) ResolveGrant(grant string) (string, identity.Principal, string, error) {
-	return s.resolveGrant(grant, false)
+	return s.ResolveGrantContext(context.Background(), grant)
 }
-func (s *Service) resolveGrant(grant string, initialAudio bool) (string, identity.Principal, string, error) {
+
+// ResolveGrantContext keeps disconnects and request deadlines attached to the
+// grant and continuation checks. It never changes the grant's lifetime.
+func (s *Service) ResolveGrantContext(ctx context.Context, grant string) (string, identity.Principal, string, error) {
+	return s.resolveGrant(ctx, grant, false)
+}
+func (s *Service) resolveGrant(ctx context.Context, grant string, initialAudio bool) (_ string, _ identity.Principal, _ string, err error) {
 	var aid, item, expires, sessionExpires, state string
 	var revoked int
 	p := identity.Principal{}
-	gated5, e := dbwork.BeginSnapshot(context.Background(), s.db)
+	gated5, e := dbwork.BeginSnapshot(ctx, s.db)
 	if e != nil {
 		return "", p, "", e
 	}
+	ctx = gated5.Context()
 	tx := gated5.Tx()
 	defer gated5.Rollback()
+	defer func() {
+		// database/sql may finish its cancellation rollback before a query
+		// reaches the transaction. Preserve the cancellation cause instead of
+		// reporting that race as an invalid or ended presentation.
+		if err != nil && ctx.Err() != nil {
+			err = ctx.Err()
+		}
+	}()
 	var sid string
-	if e = tx.QueryRow(`SELECT id FROM playback_sessions WHERE grant_hash=?`, identity.Digest(grant)).Scan(&sid); e != nil {
+	if e = tx.QueryRowContext(ctx, `SELECT id FROM playback_sessions WHERE grant_hash=?`, identity.Digest(grant)).Scan(&sid); e != nil {
 		return "", p, "", e
 	}
-	if e = checkSessionOccurrenceModeTx(context.Background(), tx, sid, initialAudio); e != nil {
+	if e = checkSessionOccurrenceModeTx(ctx, tx, sid, initialAudio); e != nil {
 		if errors.Is(e, identity.ErrUnauthorized) {
 			e = ErrGrantEnded
 		}
 		return "", p, "", e
 	}
-	e = tx.QueryRow(`SELECT ps.asset_id,pid(e.public_id),ps.expires_at,ps.state,s.hash,s.account_id,s.profile_id,s.authority,s.role,s.epoch,s.expires_at,s.revoked FROM playback_sessions ps JOIN catalog_entities e ON e.id=ps.item_id JOIN authorization_access s ON s.hash=ps.session_hash WHERE ps.grant_hash=?`, identity.Digest(grant)).Scan(&aid, &item, &expires, &state, &p.Hash, &p.AccountID, &p.ProfileID, &p.Authority, &p.Role, &p.Epoch, &sessionExpires, &revoked)
+	e = tx.QueryRowContext(ctx, `SELECT ps.asset_id,pid(e.public_id),ps.expires_at,ps.state,s.hash,s.account_id,s.profile_id,s.authority,s.role,s.epoch,s.expires_at,s.revoked FROM playback_sessions ps JOIN catalog_entities e ON e.id=ps.item_id JOIN authorization_access s ON s.hash=ps.session_hash WHERE ps.grant_hash=?`, identity.Digest(grant)).Scan(&aid, &item, &expires, &state, &p.Hash, &p.AccountID, &p.ProfileID, &p.Authority, &p.Role, &p.Epoch, &sessionExpires, &revoked)
 	if e == nil && s.ContinueAuthorityTx != nil {
-		e = tx.QueryRow(`SELECT value FROM configuration WHERE key='id'`).Scan(&p.ServerID)
+		e = tx.QueryRowContext(ctx, `SELECT value FROM configuration WHERE key='id'`).Scan(&p.ServerID)
 	}
 	if e == nil && s.ContinueAuthorityTx != nil {
-		p, e = s.ContinueAuthorityTx(context.Background(), tx, p, item)
+		p, e = s.ContinueAuthorityTx(ctx, tx, p, item)
 		if e == nil {
-			e = tx.QueryRow(`SELECT expires_at,revoked FROM authorization_access WHERE hash=?`, p.Hash).Scan(&sessionExpires, &revoked)
+			e = tx.QueryRowContext(ctx, `SELECT expires_at,revoked FROM authorization_access WHERE hash=?`, p.Hash).Scan(&sessionExpires, &revoked)
 		}
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
@@ -719,33 +740,36 @@ func (s *Service) resolveGrant(grant string, initialAudio bool) (string, identit
 		return "", p, "", e
 	}
 	if e != nil || ended {
+		if cause := ctx.Err(); cause != nil {
+			return "", p, "", cause
+		}
 		return "", p, "", ErrGrantEnded
 	}
 	if p.Authority == "local" {
 		var epoch int
-		if tx.QueryRow(`SELECT epoch FROM accounts WHERE id=?`, p.AccountID).Scan(&epoch) != nil || epoch != p.Epoch {
+		if tx.QueryRowContext(ctx, `SELECT epoch FROM accounts WHERE id=?`, p.AccountID).Scan(&epoch) != nil || epoch != p.Epoch {
 			return "", p, "", ErrGrantEnded
 		}
 	}
 	// Existing open descriptors may finish; a new grant/media open is not proof
 	// that those readers retired and must not bypass the logical tombstone.
-	if e = recordingAdmittedTx(context.Background(), tx, item); e != nil {
+	if e = recordingAdmittedTx(ctx, tx, item); e != nil {
 		return "", p, "", e
 	}
 	var changed int
-	if e = tx.QueryRow(`SELECT count(*) FROM playback_source_pins pin JOIN playback_sessions ps ON ps.id=pin.session_id JOIN catalog_assets a ON a.token=pin.asset_id WHERE ps.grant_hash=? AND NOT EXISTS(SELECT 1 FROM prepared_media_session_pins pp WHERE pp.session_id=ps.id) AND (ps.asset_id!=pin.asset_id OR a.size!=pin.size OR a.modified_ns!=pin.modified_ns)`, identity.Digest(grant)).Scan(&changed); e != nil {
+	if e = tx.QueryRowContext(ctx, `SELECT count(*) FROM playback_source_pins pin JOIN playback_sessions ps ON ps.id=pin.session_id JOIN catalog_assets a ON a.token=pin.asset_id WHERE ps.grant_hash=? AND NOT EXISTS(SELECT 1 FROM prepared_media_session_pins pp WHERE pp.session_id=ps.id) AND (ps.asset_id!=pin.asset_id OR a.size!=pin.size OR a.modified_ns!=pin.modified_ns)`, identity.Digest(grant)).Scan(&changed); e != nil {
 		return "", p, "", e
 	}
 	if changed != 0 {
 		return "", p, "", ErrStaleChapter
 	}
 	var isPrepared bool
-	if e = tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM prepared_media_session_pins pp JOIN playback_sessions ps ON ps.id=pp.session_id WHERE ps.grant_hash=?)`, identity.Digest(grant)).Scan(&isPrepared); e != nil {
+	if e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM prepared_media_session_pins pp JOIN playback_sessions ps ON ps.id=pp.session_id WHERE ps.grant_hash=?)`, identity.Digest(grant)).Scan(&isPrepared); e != nil {
 		return "", p, "", e
 	}
 	if !isPrepared && s.StorageGuard != nil {
 		var path string
-		if e = tx.QueryRow(`SELECT path FROM catalog_assets WHERE token=?`, aid).Scan(&path); e != nil {
+		if e = tx.QueryRowContext(ctx, `SELECT path FROM catalog_assets WHERE token=?`, aid).Scan(&path); e != nil {
 			return "", p, "", e
 		}
 		if e = s.StorageGuard(path); e != nil {

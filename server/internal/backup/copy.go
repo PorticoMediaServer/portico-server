@@ -7,7 +7,7 @@ import (
 	"os"
 	"time"
 
-	sqlite "modernc.org/sqlite"
+	sqlite "portico.local/server/internal/thirdparty/sqlite"
 
 	"portico.local/server/internal/dbwork"
 )
@@ -103,6 +103,18 @@ func copyDatabase(ctx context.Context, source *sql.DB, dest string, progress fun
 		return copyErr
 	})
 	if err != nil {
+		return err
+	}
+	// Finish has made the destination independent of the source. Release its
+	// WAL boundary and pooled connection before syncing or checking the copy;
+	// target durability and integrity work must not hold back live checkpoints.
+	if err = snapshot.Rollback(); err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		return err
+	}
+	if err = conn.Close(); err != nil {
 		return err
 	}
 	info, err := file.Stat()

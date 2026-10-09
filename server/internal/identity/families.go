@@ -22,6 +22,7 @@ type FamilyState struct {
 	ID                   string
 	TokenGeneration      int64
 	AuthorizationHorizon time.Time
+	DeviceID             string `json:"-"`
 }
 type RenewalBinding struct {
 	ControllerID     string
@@ -262,8 +263,9 @@ func (s *Service) sessionFamilyRecordTx(ctx context.Context, tx *sql.Tx, p Princ
 	if r.revoked || r.retired || r.TokenGeneration != r.currentGeneration || r.principal.Viewer != p.Viewer || r.principal.Epoch != p.Epoch || !r.AuthorizationHorizon.After(time.Now()) || !r.tokenExpiry.After(time.Now()) {
 		return FamilyState{}, ErrUnauthorized
 	}
-	var approved bool
-	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM identity_device_families b JOIN identity_devices d ON d.id=b.device_id WHERE b.family_id=? AND d.approval_state='approved')`, r.ID).Scan(&approved); err != nil || !approved {
+	// The existing approval lookup also provides accounting metadata. It does
+	// not add a statement or change the approval/authority predicates.
+	if err := tx.QueryRowContext(ctx, `SELECT d.id FROM identity_device_families b JOIN identity_devices d ON d.id=b.device_id WHERE b.family_id=? AND d.approval_state='approved'`, r.ID).Scan(&r.DeviceID); err != nil {
 		return FamilyState{}, ErrUnauthorized
 	}
 	return r.FamilyState, nil

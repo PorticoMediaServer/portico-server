@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/imagework"
 
 	// The upload path accepts WebP in addition to the formats the provider
 	// acquisition path decodes. Nothing re-encodes to WebP; JPEG stays JPEG and alpha-capable input stays PNG.
@@ -54,16 +55,19 @@ func (s *Service) UploadArtwork(ctx context.Context, t RepairTarget, role, subje
 	}
 	// Decoding happens before any transaction is opened: a slow or hostile image
 	// never holds a database write lock.
-	original, thumb, w, h, err := normalizeArtworkFormats(raw, map[string]bool{"jpeg": true, "png": true, "webp": true})
+	original, thumb, w, h, err := normalizeArtworkFormatsContext(ctx, raw, map[string]bool{"jpeg": true, "png": true, "webp": true})
 	if err != nil {
+		if errors.Is(err, imagework.ErrBusy) || ctx.Err() != nil {
+			return RepairState{}, err
+		}
 		return RepairState{}, ErrArtworkUpload
 	}
-	full, err := s.installArtwork(original, w, h)
+	full, err := s.installArtworkContext(ctx, original, w, h)
 	if err != nil {
 		return RepairState{}, err
 	}
 	tc, _, _ := image.DecodeConfig(bytes.NewReader(thumb))
-	small, err := s.installArtwork(thumb, tc.Width, tc.Height)
+	small, err := s.installArtworkContext(ctx, thumb, tc.Width, tc.Height)
 	if err != nil {
 		return RepairState{}, err
 	}

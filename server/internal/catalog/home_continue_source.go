@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 )
 
 // Continue Watching has a configured maximum, so it only needs enough recent
@@ -21,8 +22,7 @@ func (s *Service) homeContinueSource(r HomeRequest, libraries, cutoffs, premiere
 		WHERE m.ord>=(SELECT value FROM json_each(?) WHERE key=(SELECT cl.library_id FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id WHERE e.public_id=pid_blob(m.id)))`
 	restriction, bound := ItemRestrictionSQL("m.entity", r.Restrictions)
 	movieArgs := append([]any{r.Profile, libraries, cutoffs}, bound...)
-	movieArgs = append(movieArgs, maximum)
-	movieRows, err := s.homeCandidates(`SELECT m.id,m.ord FROM (`+movies+`) m WHERE `+restriction+` ORDER BY m.ord DESC,m.id DESC LIMIT ?`, movieArgs...)
+	movieRows, err := s.homeCandidates(`SELECT m.id,m.ord FROM (`+movies+`) m WHERE `+restriction+` ORDER BY m.ord DESC,m.id DESC LIMIT `+strconv.Itoa(maximum), movieArgs...)
 	if err != nil {
 		return homeSource{}, err
 	}
@@ -77,8 +77,7 @@ func (s *Service) showActivityAfter(profile, libraries string, after *showActivi
 		query += ` AND (last_activity<? OR last_activity=? AND show_id>?)`
 		args = append(args, after.lastActivity, after.lastActivity, after.showID)
 	}
-	args = append(args, n-1)
 	var key showActivityKey
-	err := s.read().QueryRow(query+` ORDER BY last_activity DESC,show_id LIMIT 1 OFFSET ?`, args...).Scan(&key.lastActivity, &key.showID)
+	err := s.read().QueryRow(query+` ORDER BY last_activity DESC,show_id LIMIT 1 OFFSET `+strconv.Itoa(n-1), args...).Scan(&key.lastActivity, &key.showID)
 	return key, err
 }

@@ -644,9 +644,8 @@ func (s *Store) Guide(ctx context.Context, a Authority, q GuideQuery) (Guide, er
 	}
 	sort.Slice(out.Sources, func(i, j int) bool { return out.Sources[i].ID < out.Sources[j].ID })
 	// PERF-13: one programme query per guide page, not one per channel.
-	// A generation belongs to exactly one channel version, so filtering by
-	// the page's generations returns the same rows as N per-channel window
-	// queries; rows are grouped back by channel below.
+	// A source generation contains every channel. Select exact generation/channel
+	// pairs so a small viewport never decodes the entire source's programmes.
 	count := 0
 	if len(out.Channels) > 0 && !q.NoProgrammes {
 		gens := make([]string, 0, len(out.Channels))
@@ -662,7 +661,8 @@ func (s *Store) Guide(ctx context.Context, a Authority, q GuideQuery) (Guide, er
 			args = append(args, g)
 		}
 		args = append(args, out.End, out.Start)
-		rows, e = tx.QueryContext(ctx, `SELECT p.generation_id,p.channel_id,p.id,p.title,p.start_utc,p.end_utc,p.lineage,COALESCE(m.series_id,''),COALESCE(m.episode_id,''),COALESCE(m.new_evidence,'unknown'),COALESCE(m.description,''),COALESCE(m.facts,'{}') FROM live_programmes p LEFT JOIN live_programme_metadata m ON m.generation_id=p.generation_id AND m.id=p.id WHERE p.generation_id IN (`+marks+`) AND p.start_utc<? AND p.end_utc>? ORDER BY p.generation_id,p.start_utc,p.id`, args...)
+		programmeSQL, programmeArgs := guideProgrammeQuery(out.Channels, out.End, out.Start)
+		rows, e = tx.QueryContext(ctx, programmeSQL, programmeArgs...)
 		if e != nil {
 			return out, ErrUnavailable
 		}
@@ -760,4 +760,22 @@ func (s *Store) ContinuationKey(domain string) []byte {
 	h := hmac.New(sha256.New, s.cursorKey)
 	h.Write([]byte("portico/continuation/" + domain))
 	return h.Sum(nil)
+}
+
+// guideProgrammeQuery drives the indexed programme lookup from at most fifty
+// selected pairs. CROSS JOIN keeps SQLite from scanning a source generation
+// before applying its selected channels.
+func guideProgrammeQuery(channels []Channel, end, start string) (string, []any) {
+	pairs := make([]string, len(channels))
+	args := make([]any, 0, len(channels)*2+2)
+	for i, c := range channels {
+		pairs[i] = "(?,?)"
+		args = append(args, c.Generation, c.ID)
+	}
+	args = append(args, end, start)
+	return `WITH selected(generation_id,channel_id) AS (VALUES ` + strings.Join(pairs, ",") + `)
+ SELECT p.generation_id,p.channel_id,p.id,p.title,p.start_utc,p.end_utc,p.lineage,COALESCE(m.series_id,''),COALESCE(m.episode_id,''),COALESCE(m.new_evidence,'unknown'),COALESCE(m.description,''),COALESCE(m.facts,'{}')
+ FROM selected CROSS JOIN live_programmes p ON p.generation_id=selected.generation_id AND p.channel_id=selected.channel_id
+ LEFT JOIN live_programme_metadata m ON m.generation_id=p.generation_id AND m.id=p.id
+ WHERE p.start_utc<? AND p.end_utc>? ORDER BY p.generation_id,p.start_utc,p.id`, args
 }

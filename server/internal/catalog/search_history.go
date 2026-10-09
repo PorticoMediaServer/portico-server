@@ -1,7 +1,6 @@
 package catalog
 
 import (
-	"context"
 	"portico.local/server/internal/dbwork"
 	"strings"
 	"time"
@@ -46,10 +45,10 @@ func (s *Service) RecordSearch(v identity.Viewer, query string) error {
 	}
 	profile := identity.PersonalKey(v)
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	if _, e = dbwork.ExecWrite(context.Background(), s.db, dbwork.ClassFrom(context.Background(), dbwork.ClassInteractive), `INSERT INTO search_history VALUES(?,?,?,?) ON CONFLICT(profile_key,normalized) DO UPDATE SET query=excluded.query,updated_at=excluded.updated_at`, profile, strings.ToLower(query), query, now); e != nil {
+	if _, e = dbwork.ExecWrite(s.Context(), s.db, dbwork.ClassFrom(s.Context(), dbwork.ClassInteractive), `INSERT INTO search_history VALUES(?,?,?,?) ON CONFLICT(profile_key,normalized) DO UPDATE SET query=excluded.query,updated_at=excluded.updated_at`, profile, strings.ToLower(query), query, now); e != nil {
 		return e
 	}
-	_, e = dbwork.ExecWrite(context.Background(), s.db, dbwork.ClassFrom(context.Background(), dbwork.ClassInteractive), `DELETE FROM search_history WHERE profile_key=? AND normalized NOT IN(SELECT normalized FROM search_history WHERE profile_key=? ORDER BY updated_at DESC,normalized LIMIT ?)`, profile, profile, SearchHistoryLimit)
+	_, e = dbwork.ExecWrite(s.Context(), s.db, dbwork.ClassFrom(s.Context(), dbwork.ClassInteractive), `DELETE FROM search_history WHERE profile_key=? AND normalized NOT IN(SELECT normalized FROM search_history WHERE profile_key=? ORDER BY updated_at DESC,normalized LIMIT ?)`, profile, profile, SearchHistoryLimit)
 	return e
 }
 
@@ -82,7 +81,7 @@ func (s *Service) SearchHistory(v identity.Viewer) (SearchHistoryPage, error) {
 
 // ClearSearchHistory removes every retained query for this viewer.
 func (s *Service) ClearSearchHistory(v identity.Viewer) (SearchHistoryPage, error) {
-	if _, e := dbwork.ExecWrite(context.Background(), s.db, dbwork.ClassFrom(context.Background(), dbwork.ClassInteractive), `DELETE FROM search_history WHERE profile_key=?`, identity.PersonalKey(v)); e != nil {
+	if _, e := dbwork.ExecWrite(s.Context(), s.db, dbwork.ClassFrom(s.Context(), dbwork.ClassInteractive), `DELETE FROM search_history WHERE profile_key=?`, identity.PersonalKey(v)); e != nil {
 		return SearchHistoryPage{Entries: []SearchHistoryEntry{}}, e
 	}
 	return s.SearchHistory(v)

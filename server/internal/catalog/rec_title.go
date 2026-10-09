@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"portico.local/server/internal/compactcatalog"
+	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/operations"
 )
 
@@ -32,6 +33,12 @@ const (
 func (s *Service) recTitleSession(base *recSession, work int64) (*recSession, error) {
 	copied := *base
 	x := &copied
+	// The title replaces taste and seeds, but immutable catalogue inputs can
+	// be shared with the viewer's rows inside this same read snapshot. Edges
+	// are keyed by exact seeds/weights and each session keeps its own IDF map.
+	if base.hydration == nil || base.hydration.snapshot == nil || base.hydration.snapshot != dbwork.Snapshot(s.Context()) {
+		x.hydration = &recHydration{snapshot: dbwork.Snapshot(s.Context())}
+	}
 	x.taste.seeds = nil
 	x.idf = map[string]float64{}
 	x.strongest = nil
@@ -63,7 +70,7 @@ func (s *Service) recTitleSession(base *recSession, work int64) (*recSession, er
 			keys = append(keys, f)
 		}
 	}
-	if x.idf, err = s.recRarity(keys); err != nil {
+	if x.idf, err = x.recRarity(keys); err != nil {
 		return nil, err
 	}
 	for _, f := range facets {
@@ -91,7 +98,6 @@ func (s *Service) recMoreLike(base *recSession, work int64) ([]recCandidate, err
 	if err != nil {
 		return nil, err
 	}
-	engaged := x.taste.engaged
 	ranked, err := x.memo("more_like", func() ([]recCandidate, error) {
 		return x.rank(recOptions{head: recTitleHead, noFill: true, includeEngaged: true, diversify: true,
 			keep: func(c *recScored) bool { return c.work != work }})
@@ -99,6 +105,10 @@ func (s *Service) recMoreLike(base *recSession, work int64) ([]recCandidate, err
 	if err != nil {
 		return nil, err
 	}
+	if err := s.recLoadSignals(x.r.Profile, &x.taste, recCandidateWorks(ranked)); err != nil {
+		return nil, err
+	}
+	engaged := x.taste.engaged
 	sort.SliceStable(ranked, func(i, j int) bool {
 		a, _ := strconv.ParseInt(ranked[i].Work, 10, 64)
 		b, _ := strconv.ParseInt(ranked[j].Work, 10, 64)
@@ -111,7 +121,7 @@ func (s *Service) recMoreLike(base *recSession, work int64) ([]recCandidate, err
 // viewer, the title itself left out.
 func (s *Service) recFacetTitles(x *recSession, work int64, facet string) ([]recCandidate, error) {
 	if _, ok := x.idf[facet]; !ok {
-		more, err := s.recRarity([]string{facet})
+		more, err := x.recRarity([]string{facet})
 		if err != nil {
 			return nil, err
 		}

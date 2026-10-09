@@ -157,11 +157,15 @@ func (b *Bulk) Run(ctx context.Context) {
 	defer unregister()
 	worker.Run(ctx, "lyrics.bulk", wake, func(ctx context.Context) time.Duration {
 		for dbwork.Yield(ctx) {
+			batchStarted := time.Now()
 			more, e := b.Step(ctx)
 			if e != nil {
 				return 2 * time.Second
 			}
 			if !more || ctx.Err() != nil {
+				return 0
+			}
+			if !dbwork.PaceBackground(ctx, batchStarted) {
 				return 0
 			}
 		}

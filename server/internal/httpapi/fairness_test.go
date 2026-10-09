@@ -8,6 +8,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"portico.local/server/internal/identity"
 )
 
 // The two properties that matter are opposites, so they are asserted together:
@@ -125,28 +127,32 @@ func TestBalancedUseNeverRecordsAnImbalance(t *testing.T) {
 
 // A share is per device, not per account: a household where one television is
 // misbehaving must not slow down the phone signed in to the same account.
-func TestTheShareKeyIsThePresentedCredential(t *testing.T) {
+func TestTheShareKeyIsTheVerifiedCredential(t *testing.T) {
+	a := newAdmission()
+	for _, secret := range []string{"device-one", "device-two", "grant-abc", "grant-xyz"} {
+		a.rememberCredential(secret, identity.Principal{})
+	}
 	phone := httptest.NewRequest("GET", "/v1/home", nil)
 	phone.Header.Set("Authorization", "Bearer device-one")
 	television := httptest.NewRequest("GET", "/v1/home", nil)
 	television.Header.Set("Authorization", "Bearer device-two")
-	if fairnessKey(phone, nil) == fairnessKey(television, nil) {
+	if a.clientKey(phone) == a.clientKey(television) {
 		t.Fatal("two devices on one account share a fairness key")
 	}
 	again := httptest.NewRequest("GET", "/v1/items", nil)
 	again.Header.Set("Authorization", "Bearer device-one")
-	if fairnessKey(phone, nil) != fairnessKey(again, nil) {
+	if a.clientKey(phone) != a.clientKey(again) {
 		t.Fatal("one device got two fairness keys for two routes")
 	}
 	// The key must not be the credential itself; diagnostics show lane state and
 	// a bearer token is not something to put in a diagnostic document.
-	if key := fairnessKey(phone, nil); strings.Contains(key, "device-one") {
+	if key := a.clientKey(phone); strings.Contains(key, "device-one") {
 		t.Fatalf("the fairness key carries the credential: %q", key)
 	}
 	// A media body carries no header, so the grant in the path identifies it.
 	stream := httptest.NewRequest("GET", "/v1/media/grant-abc/segment-3.ts", nil)
 	other := httptest.NewRequest("GET", "/v1/media/grant-xyz/segment-3.ts", nil)
-	if fairnessKey(stream, nil) == fairnessKey(other, nil) {
+	if a.clientKey(stream) == a.clientKey(other) {
 		t.Fatal("two streams share a fairness key")
 	}
 	// With nothing at all, the client's own address — never its network, which
@@ -170,6 +176,8 @@ func TestTheShareKeyIsThePresentedCredential(t *testing.T) {
 // happens.
 func TestAFloodFromOneClientDoesNotRefuseAnother(t *testing.T) {
 	gate := newAdmission()
+	gate.rememberCredential("flood", identity.Principal{})
+	gate.rememberCredential("viewer", identity.Principal{})
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /v1/home", func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(2 * time.Millisecond)

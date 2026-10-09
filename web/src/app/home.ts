@@ -1,6 +1,7 @@
 import {useCallback, useEffect, useRef, useState} from 'react';
 import {fetchHome, fetchHomeLayout, fetchHomeRow, appendHomeRowPage, resetHomeLayout, saveHomeLayout, type HomeDocument, type HomeLayout, type HomeLayoutView, type HomeRow} from '@core/home.ts';
 import {sessionIdentity, useSession} from './session';
+import {homeRecovery} from './home-recovery.ts';
 import {useViewerScope} from './viewer-scope';
 import {RECOMMENDATIONS_RESET, recommendationViewer} from './not-interested';
 import {currentI18n} from './i18n';
@@ -20,30 +21,43 @@ export function useHome() {
   const viewer = recommendationViewer(useViewerScope());
   const [state, setState] = useState<HomeState>({phase: 'loading', paging: new Set()});
   const generation = useRef(0);
-  const inflight = useRef<AbortController | undefined>(undefined);
+  const recovery = useRef<ReturnType<typeof homeRecovery<HomeDocument>> | undefined>(undefined);
+  const currentApi = useRef(api);
+  currentApi.current = api;
   const pages = useRef(new Set<AbortController>());
-  const load = useCallback(async (clear = false) => {
-    const mine = ++generation.current;
-    inflight.current?.abort();
-    for (const page of pages.current) page.abort();
-    pages.current.clear();
-    const controller = new AbortController();
-    inflight.current = controller;
-    setState(prev => ({...prev, ...(clear ? {document: undefined} : {}), phase: 'loading', paging: new Set(), error: undefined}));
-    try {
-      const document = await fetchHome(api, undefined, controller.signal);
-      if (mine !== generation.current) return;
-      setState({phase: 'ready', document, paging: new Set()});
-    } catch (e) {
-      if (mine !== generation.current) return;
-      // Bind the error before the updater runs: Hermes does not keep a catch
-      // binding alive for closures created inside an async function.
-      const error: unknown = e;
-      setState(prev => ({...prev, phase: 'error', error}));
+  const load = useCallback((clear = false, invalidate = false) => {
+    if (clear) {
+      generation.current++;
+      for (const page of pages.current) page.abort();
+      pages.current.clear();
+      setState(prev => ({...prev, document: undefined, phase: 'loading', paging: new Set(), error: undefined}));
     }
-  }, [api]);
+    return recovery.current?.refresh(clear || invalidate) ?? Promise.resolve();
+  }, []);
   const who = sessionIdentity(session);
-  useEffect(() => { void load(); return () => { generation.current++; inflight.current?.abort(); for (const page of pages.current) page.abort(); pages.current.clear(); }; }, [load, who]);
+  useEffect(() => {
+    const reader = homeRecovery(signal => fetchHome(currentApi.current, undefined, signal), {
+      loading: () => {
+        generation.current++;
+        for (const page of pages.current) page.abort();
+        pages.current.clear();
+        setState(prev => ({...prev, phase: 'loading', paging: new Set(), error: undefined}));
+      },
+      success: document => setState({phase: 'ready', document, paging: new Set()}),
+      error: error => setState(prev => ({...prev, phase: 'error', error})),
+    });
+    recovery.current = reader;
+    // A new sign-in/profile must not retain another viewer's cached rows. Token rotation
+    // uses the same identity and transport, so it does not restart this read/retry lifecycle.
+    setState({phase: 'loading', paging: new Set()});
+    void reader.refresh();
+    return () => {
+      generation.current++; reader.stop();
+      if (recovery.current === reader) recovery.current = undefined;
+      for (const page of pages.current) page.abort();
+      pages.current.clear();
+    };
+  }, [who]);
   useEffect(() => {
     const onReset = (event: Event) => { if ((event as CustomEvent<{viewer: string}>).detail.viewer === viewer) void load(true); };
     window.addEventListener(RECOMMENDATIONS_RESET, onReset);
@@ -78,10 +92,10 @@ export function useHome() {
     const revision = expectedRevision ?? current?.revision;
     if (revision === undefined) throw new Error('Home is not loaded.');
     const layout = await saveHomeLayout(api, {expectedRevision: revision, rowOrder, hiddenRowIds, idempotencyKey: crypto.randomUUID()});
-    await load();
+    await load(false, true);
     return layout;
   }, [api, state.document, load]);
-  const resetLayout = useCallback(async () => { await resetHomeLayout(api, crypto.randomUUID()); await load(); }, [api, load]);
+  const resetLayout = useCallback(async () => { await resetHomeLayout(api, crypto.randomUUID()); await load(false, true); }, [api, load]);
   const loadLayout = useCallback(async (signal?: AbortSignal): Promise<HomeLayoutView> => fetchHomeLayout(api, signal), [api]);
   return {state, refresh: load, more, saveLayout, resetLayout, loadLayout};
 }

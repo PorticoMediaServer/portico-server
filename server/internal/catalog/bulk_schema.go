@@ -34,7 +34,7 @@ func jobArgumentsSchema() map[string]any {
 		return map[string]any{"type": "object", "properties": p, "required": required, "additionalProperties": false}
 	}
 	text := map[string]any{"type": "string", "minLength": 1, "maxLength": 256}
-	revision := map[string]any{"type": "integer", "minimum": 1, "maximum": 9007199254740991}
+	revision := map[string]any{"type": "integer", "minimum": 1, "maximum": int64(9007199254740991)}
 	placement := map[string]any{"oneOf": []any{map[string]any{"type": "string", "enum": []string{"end", "next"}}, object(map[string]any{"after": text}, "after")}}
 	personal := personalArgumentsSchema()
 	list := object(map[string]any{"add": map[string]any{"type": "array", "items": map[string]any{"type": "string"}}, "remove": map[string]any{"type": "array", "items": map[string]any{"type": "string"}}})

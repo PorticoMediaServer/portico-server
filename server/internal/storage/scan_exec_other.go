@@ -4,7 +4,10 @@ package storage
 
 import "errors"
 
-func inventoryCommandHelper(request) error {
+func inventoryCommandHelper(r request) error {
+	if err := validateInventoryCommand(r); err != nil {
+		return err
+	}
 	return errors.New("retained-descriptor scan execution is unsupported on this server platform")
 }
 

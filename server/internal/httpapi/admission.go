@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/hostlimits"
 )
 
 // Reads do not queue at the write gate — in WAL a reader never blocks the
@@ -41,6 +42,10 @@ const (
 type laneSpec struct {
 	// capacity is how many requests may be in flight at once.
 	capacity int
+	// queueCapacity and queuePerKey bound waiting requests, not active work.
+	// Zero selects defaults of twice capacity globally and capacity per client.
+	queueCapacity int
+	queuePerKey   int
 	// queueWait is how long a request waits for a slot before it is refused.
 	// Zero means it is refused immediately rather than queued.
 	queueWait time.Duration
@@ -64,7 +69,7 @@ type laneSpec struct {
 var laneSpecs = map[string]laneSpec{
 	laneSecurityFence: {capacity: 16, queueWait: 9 * time.Second, budget: 10 * time.Second, class: dbwork.ClassSecurityFence, pressure: true},
 	laneAuth:          {capacity: 64, queueWait: 1500 * time.Millisecond, budget: 5 * time.Second, class: dbwork.ClassSecurityFence, pressure: true},
-	laneBrowsing:      {capacity: 24, queueWait: 1500 * time.Millisecond, budget: 5 * time.Second, class: dbwork.ClassInteractive, pressure: true},
+	laneBrowsing:      {capacity: 24, queueWait: 3 * time.Second, budget: 5 * time.Second, class: dbwork.ClassInteractive, pressure: true},
 	laneExpensive:     {capacity: 8, queueWait: 1500 * time.Millisecond, budget: 5 * time.Second, class: dbwork.ClassInteractive, pressure: true},
 	lanePlayback:      {capacity: 32, queueWait: 9 * time.Second, budget: 10 * time.Second, class: dbwork.ClassEstablishedPlayback, pressure: true},
 	laneMedia:         {capacity: 100, queueWait: 1500 * time.Millisecond, budget: 5 * time.Second, class: dbwork.ClassInteractive, pressure: true},
@@ -80,15 +85,20 @@ var laneSpecs = map[string]laneSpec{
 // and a per-client ledger so that the semaphore is shared rather than raced for.
 // See fairness.go for why the ledger is there and when it engages.
 type lane struct {
-	name      string
-	spec      laneSpec
-	tokens    chan struct{}
-	active    atomic.Int64
-	admitted  atomic.Uint64
-	queued    atomic.Uint64
-	rejected  atomic.Uint64
-	throttled atomic.Uint64
-	waitNanos atomic.Uint64
+	name                    string
+	spec                    laneSpec
+	tokens                  chan struct{}
+	active                  atomic.Int64
+	admitted                atomic.Uint64
+	queued                  atomic.Uint64
+	rejected                atomic.Uint64
+	noQueueRejected         atomic.Uint64
+	queueFullRejected       atomic.Uint64
+	clientQueueFullRejected atomic.Uint64
+	queueTimeoutRejected    atomic.Uint64
+	queueCancelledRejected  atomic.Uint64
+	throttled               atomic.Uint64
+	waitNanos               atomic.Uint64
 	// imbalance counts releases that found the token channel full. That cannot
 	// happen while every acquire is paired with exactly one release, so a
 	// non-zero value is a bug in this file and nothing else: the lane would
@@ -103,13 +113,23 @@ type lane struct {
 	// client on a quiet server is never held to a share of a lane nobody else
 	// wants — which is the difference between fairness and a new limit.
 	interest map[string]int
+	waiting  map[string]int
+	waiters  int
 	// changed is closed and replaced on every release, which is how a request
 	// waiting for its share to come free learns to look again without polling.
 	changed chan struct{}
 }
 
 func newLane(name string, spec laneSpec) *lane {
-	l := &lane{name: name, spec: spec, tokens: make(chan struct{}, spec.capacity), held: map[string]int{}, interest: map[string]int{}, changed: make(chan struct{})}
+	if spec.queueWait > 0 {
+		if spec.queueCapacity <= 0 {
+			spec.queueCapacity = spec.capacity * 2
+		}
+		if spec.queuePerKey <= 0 {
+			spec.queuePerKey = spec.capacity
+		}
+	}
+	l := &lane{name: name, spec: spec, tokens: make(chan struct{}, spec.capacity), held: map[string]int{}, interest: map[string]int{}, waiting: map[string]int{}, changed: make(chan struct{})}
 	for i := 0; i < spec.capacity; i++ {
 		l.tokens <- struct{}{}
 	}
@@ -123,7 +143,11 @@ func newLane(name string, spec laneSpec) *lane {
 func (l *lane) tryAcquire(key string) (admitted, overShare bool) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if l.sharedLocked() && l.held[key] >= l.shareLimit() {
+	return l.tryAcquireLocked(key, len(l.interest) > 1)
+}
+
+func (l *lane) tryAcquireLocked(key string, multipleClients bool) (admitted, overShare bool) {
+	if multipleClients && l.active.Load()*100 >= int64(l.spec.capacity*fairnessEngagesAbove) && l.held[key] >= l.shareLimit() {
 		l.throttled.Add(1)
 		return false, true
 	}
@@ -138,12 +162,54 @@ func (l *lane) tryAcquire(key string) (admitted, overShare bool) {
 	return true, false
 }
 
+// begin admits immediately or reserves a bounded queue place atomically. A
+// refused request creates neither an interest entry nor a deadline timer.
+func (l *lane) begin(key string) (admitted, waiting bool) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	multiple := len(l.interest) > 1 || (len(l.interest) > 0 && l.interest[key] == 0)
+	if admitted, _ := l.tryAcquireLocked(key, multiple); admitted {
+		l.interest[key]++
+		return true, false
+	}
+	if l.spec.queueWait <= 0 {
+		l.noQueueRejected.Add(1)
+		return false, false
+	}
+	if l.waiters >= l.spec.queueCapacity {
+		l.queueFullRejected.Add(1)
+		return false, false
+	}
+	if l.waiting[key] >= l.spec.queuePerKey {
+		l.clientQueueFullRejected.Add(1)
+		return false, false
+	}
+	l.waiters++
+	l.waiting[key]++
+	l.interest[key]++
+	return false, true
+}
+
+func (l *lane) leaveQueue(key string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.waiters--
+	if l.waiting[key] <= 1 {
+		delete(l.waiting, key)
+	} else {
+		l.waiting[key]--
+	}
+}
+
 // acquire waits for a slot for key until ctx is done. The wait is on the lane's
 // broadcast rather than on the token channel, so a request that is over its
 // share does not sit at the head of the queue holding a slot away from the
 // clients whose share is free.
 func (l *lane) acquire(ctx context.Context, key string) bool {
 	for {
+		if ctx.Err() != nil {
+			return false
+		}
 		// Captured before the attempt, so a release between the attempt and the
 		// select cannot be missed.
 		l.mu.Lock()
@@ -211,12 +277,23 @@ func (l *lane) busy() bool { return l.active.Load() > 0 }
 
 // LaneDiagnostics is one lane's observable state.
 type LaneDiagnostics struct {
-	Lane     string `json:"lane"`
-	Active   int64  `json:"active"`
-	Capacity int    `json:"capacity"`
-	Admitted uint64 `json:"admitted"`
-	Queued   uint64 `json:"queued"`
-	Rejected uint64 `json:"rejected"`
+	Lane                   string `json:"lane"`
+	Active                 int64  `json:"active"`
+	Capacity               int    `json:"capacity"`
+	Admitted               uint64 `json:"admitted"`
+	Queued                 uint64 `json:"queued"`
+	Waiting                int    `json:"waiting"`
+	QueueCapacity          int    `json:"queueCapacity"`
+	PerClientQueueCapacity int    `json:"perClientQueueCapacity"`
+	Rejected               uint64 `json:"rejected"`
+	// Refusal reasons partition completed rejected attempts. Full-lane queue
+	// classification precedes the client bound; an expired request context is
+	// cancellation, while the lane's own queueWait expiry is a queue timeout.
+	NoQueueRefusals           uint64 `json:"noQueueRefusals"`
+	QueueFullRefusals         uint64 `json:"queueFullRefusals"`
+	ClientQueueFullRefusals   uint64 `json:"clientQueueFullRefusals"`
+	QueueTimeoutRefusals      uint64 `json:"queueTimeoutRefusals"`
+	QueueCancellationRefusals uint64 `json:"queueCancellationRefusals"`
 	// ShareLimit is how many of this lane's slots one client may hold once the
 	// lane is contended, and Throttled how many times a client was held to it.
 	// Throttled is not a refusal: almost all of them are admitted a moment later.
@@ -233,8 +310,9 @@ type LaneDiagnostics struct {
 
 // admission owns the lanes for one server. It is created once, with the router.
 type admission struct {
-	lanes map[string]*lane
-	order []string
+	lanes   map[string]*lane
+	order   []string
+	clients *fairnessIdentities
 	// trustedProxies is how a client address is resolved for the share key of an
 	// unauthenticated request; it is the router's own list, not a second one.
 	trustedProxies []netip.Prefix
@@ -254,8 +332,15 @@ const (
 )
 
 func newAdmission() *admission {
-	a := &admission{lanes: map[string]*lane{}, searchPerKey: map[string]int{}}
+	return newAdmissionForMemory(hostlimits.EffectiveMemoryBytes())
+}
+
+func newAdmissionForMemory(memoryBytes int64) *admission {
+	a := &admission{lanes: map[string]*lane{}, searchPerKey: map[string]int{}, clients: newFairnessIdentities()}
 	for name, spec := range laneSpecs {
+		if name == laneBrowsing {
+			spec.queueCapacity = browsingQueueCapacity(memoryBytes)
+		}
 		a.lanes[name] = newLane(name, spec)
 		a.order = append(a.order, name)
 	}
@@ -323,21 +408,32 @@ func (a *admission) diagnostics() []LaneDiagnostics {
 	out := []LaneDiagnostics{}
 	for _, name := range a.order {
 		l := a.lanes[name]
+		l.mu.Lock()
+		waiting := l.waiters
+		l.mu.Unlock()
 		out = append(out, LaneDiagnostics{
-			Lane:         name,
-			Active:       l.active.Load(),
-			Capacity:     l.spec.capacity,
-			Admitted:     l.admitted.Load(),
-			Queued:       l.queued.Load(),
-			Rejected:     l.rejected.Load(),
-			QueueWaitMs:  l.waitNanos.Load() / uint64(time.Millisecond),
-			ShareLimit:   l.shareLimit(),
-			Throttled:    l.throttled.Load(),
-			Imbalance:    l.imbalance.Load(),
-			BudgetMillis: l.spec.budget.Milliseconds(),
-			QueueLimitMs: l.spec.queueWait.Milliseconds(),
-			WorkClass:    l.spec.class.String(),
-			CountsAsLoad: l.spec.pressure,
+			Lane:                      name,
+			Active:                    l.active.Load(),
+			Capacity:                  l.spec.capacity,
+			Admitted:                  l.admitted.Load(),
+			Queued:                    l.queued.Load(),
+			Waiting:                   waiting,
+			QueueCapacity:             l.spec.queueCapacity,
+			PerClientQueueCapacity:    l.spec.queuePerKey,
+			Rejected:                  l.rejected.Load(),
+			NoQueueRefusals:           l.noQueueRejected.Load(),
+			QueueFullRefusals:         l.queueFullRejected.Load(),
+			ClientQueueFullRefusals:   l.clientQueueFullRejected.Load(),
+			QueueTimeoutRefusals:      l.queueTimeoutRejected.Load(),
+			QueueCancellationRefusals: l.queueCancelledRejected.Load(),
+			QueueWaitMs:               l.waitNanos.Load() / uint64(time.Millisecond),
+			ShareLimit:                l.shareLimit(),
+			Throttled:                 l.throttled.Load(),
+			Imbalance:                 l.imbalance.Load(),
+			BudgetMillis:              l.spec.budget.Milliseconds(),
+			QueueLimitMs:              l.spec.queueWait.Milliseconds(),
+			WorkClass:                 l.spec.class.String(),
+			CountsAsLoad:              l.spec.pressure,
 		})
 	}
 	return out
@@ -356,24 +452,30 @@ func (a *admission) wrap(mux *http.ServeMux, next http.Handler) http.Handler {
 		}
 		// The share key is resolved before the lane is entered, because the whole
 		// point is to decide admission without doing any work first.
-		key := fairnessKey(r, a.trustedProxies)
-		l.enter(key)
+		key := a.clientKey(r)
+		admitted, queued := l.begin(key)
+		if !admitted && !queued {
+			a.refuse(w, r, l)
+			return
+		}
 		defer l.leave(key)
-		if admitted, _ := l.tryAcquire(key); !admitted {
-			if l.spec.queueWait <= 0 {
-				// A stream or a byte range must fail fast. Holding it in a queue
-				// occupies the very slot the client is waiting to be freed.
-				a.refuse(w, l)
-				return
-			}
+		if queued {
 			start := time.Now()
 			l.queued.Add(1)
 			queueCtx, cancel := context.WithTimeout(r.Context(), l.spec.queueWait)
 			admitted := l.acquire(queueCtx, key)
+			// Observe the cause before our cleanup cancel changes queueCtx.Err.
+			queueErr := queueCtx.Err()
 			cancel()
+			l.leaveQueue(key)
 			l.waitNanos.Add(uint64(time.Since(start)))
 			if !admitted {
-				a.refuse(w, l)
+				if r.Context().Err() != nil || queueErr != context.DeadlineExceeded {
+					l.queueCancelledRejected.Add(1)
+				} else {
+					l.queueTimeoutRejected.Add(1)
+				}
+				a.refuse(w, r, l)
 				return
 			}
 		}
@@ -390,6 +492,11 @@ func (a *admission) wrap(mux *http.ServeMux, next http.Handler) http.Handler {
 		// check inside a loop.
 		ctx, cost := dbwork.Measure(ctx)
 		defer func() { recordRouteCost(pattern, l.name, cost()) }()
+		if !uncompressedLanes[l.name] {
+			response := withResponseDeadline(w)
+			defer response.finishResponse()
+			w = response
+		}
 		// Compression is decided by lane, so it stays in step with this table: a
 		// route classified as a media body is one, whatever it is called, and a
 		// realtime stream is never buffered into a compressor.
@@ -402,10 +509,25 @@ func (a *admission) wrap(mux *http.ServeMux, next http.Handler) http.Handler {
 	})
 }
 
-func (a *admission) refuse(w http.ResponseWriter, l *lane) {
+func (a *admission) refuse(w http.ResponseWriter, r *http.Request, l *lane) {
 	l.rejected.Add(1)
+	// An early HTTP/1 rejection must not drain a body the peer never sends.
+	closeUnreadUpload(w, r)
+	// A client that stops reading must not turn a fast overload refusal into
+	// an unbounded response goroutine. This deadline covers this small answer
+	// only; long-lived media and event streams keep their own rolling budgets.
+	controller := http.NewResponseController(w)
+	bounded := controller.SetWriteDeadline(time.Now().Add(2*time.Second)) == nil
+	if bounded {
+		defer controller.SetWriteDeadline(time.Time{})
+	}
 	w.Header().Set("Retry-After", "1")
 	write(w, 503, map[string]any{"error": map[string]any{"code": "server_busy", "message": "The server is busy handling other requests. Try again shortly.", "retryable": true}})
+	if bounded {
+		// Small JSON bodies are buffered. Flush while the deadline is armed,
+		// rather than leaving the server's final flush outside this budget.
+		_ = controller.Flush()
+	}
 }
 
 // classify resolves a request to the route that will actually serve it and the

@@ -12,6 +12,7 @@ import (
 	_ "image/jpeg"
 	"image/png"
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/imagework"
 	"time"
 
 	_ "golang.org/x/image/webp"
@@ -53,6 +54,29 @@ func sniffAvatar(raw []byte) string {
 		return "image/webp"
 	}
 	return ""
+}
+
+// AuthorizeProfileAvatarUpload validates account management and the target
+// profile before the HTTP layer reads bytes or the service decodes an image.
+// Upload publication revalidates inside its write transaction as well.
+func (s *Service) AuthorizeProfileAvatarUpload(ctx context.Context, bearer, profile string) error {
+	if !validFamilyID(profile) {
+		return ErrDirectInput
+	}
+	snapshot, e := dbwork.BeginSnapshot(ctx, s.db)
+	if e != nil {
+		return e
+	}
+	defer snapshot.Rollback()
+	c, e := s.directCallerTx(ctx, snapshot.Tx(), bearer, true)
+	if e != nil {
+		return e
+	}
+	var deleted int
+	if e = snapshot.Tx().QueryRowContext(ctx, `SELECT deleted FROM direct_profiles WHERE account_id=? AND id=?`, c.account.ID, profile).Scan(&deleted); e != nil || deleted != 0 {
+		return ErrNotVisible
+	}
+	return nil
 }
 
 // squareCrop takes the largest centred square of the decoded image so a portrait
@@ -139,8 +163,22 @@ func (s *Service) UploadProfileAvatar(ctx context.Context, bearer, profile strin
 	if e != nil || config.Width < 1 || config.Height < 1 || config.Width > avatarMaxDimension || config.Height > avatarMaxDimension || config.Width*config.Height > avatarMaxPixels {
 		return ProfileAvatar{}, ErrAvatarUpload
 	}
+	if e = s.AuthorizeProfileAvatarUpload(ctx, bearer, profile); e != nil {
+		return ProfileAvatar{}, e
+	}
+	release, e := imagework.Acquire(ctx)
+	if e != nil {
+		return ProfileAvatar{}, e
+	}
+	defer release()
 	decoded, _, e := image.Decode(bytes.NewReader(raw))
 	if e != nil {
+		return ProfileAvatar{}, ErrAvatarUpload
+	}
+	if e = ctx.Err(); e != nil {
+		return ProfileAvatar{}, e
+	}
+	if decoded.Bounds().Dx() != config.Width || decoded.Bounds().Dy() != config.Height {
 		return ProfileAvatar{}, ErrAvatarUpload
 	}
 	crop := squareCrop(decoded)
@@ -150,12 +188,19 @@ func (s *Service) UploadProfileAvatar(ctx context.Context, bearer, profile strin
 	renditions := map[int][]byte{}
 	digest := sha256.New()
 	for _, size := range AvatarRenditions {
+		if e = ctx.Err(); e != nil {
+			return ProfileAvatar{}, e
+		}
 		encoded, err := renderAvatar(decoded, crop, size)
 		if err != nil {
 			return ProfileAvatar{}, err
 		}
 		renditions[size] = encoded
 		digest.Write(encoded)
+	}
+	release()
+	if e = ctx.Err(); e != nil {
+		return ProfileAvatar{}, e
 	}
 	key := base64.RawURLEncoding.EncodeToString(digest.Sum(nil))
 	gated, e := dbwork.Begin(ctx, s.db, dbwork.ClassSecurityFence)

@@ -4,7 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	_ "modernc.org/sqlite"
+	_ "portico.local/server/internal/thirdparty/sqlite"
 	"testing"
 	"time"
 )

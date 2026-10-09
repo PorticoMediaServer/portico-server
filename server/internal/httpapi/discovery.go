@@ -192,7 +192,7 @@ func (d Dependencies) discoveryRoutes(mux *http.ServeMux) {
 			failure(w, err)
 			return
 		}
-		row, err := d.Catalog.CreateCollection(r.PathValue("id"), body.Name)
+		row, err := d.Catalog.WithContext(r.Context()).CreateCollection(r.PathValue("id"), body.Name)
 		if err != nil {
 			failure(w, err)
 			return
@@ -270,7 +270,7 @@ func (d Dependencies) discoveryRoutes(mux *http.ServeMux) {
 			failure(w, err)
 			return
 		}
-		row, err := d.Catalog.RenameCollection(r.PathValue("id"), body.Name)
+		row, err := d.Catalog.WithContext(r.Context()).RenameCollection(r.PathValue("id"), body.Name)
 		if err != nil {
 			failure(w, err)
 			return
@@ -282,7 +282,7 @@ func (d Dependencies) discoveryRoutes(mux *http.ServeMux) {
 			failure(w, err)
 			return
 		}
-		if err := d.Catalog.DeleteCollection(r.PathValue("id")); err != nil {
+		if err := d.Catalog.WithContext(r.Context()).DeleteCollection(r.PathValue("id")); err != nil {
 			failure(w, err)
 			return
 		}
@@ -294,7 +294,7 @@ func (d Dependencies) discoveryRoutes(mux *http.ServeMux) {
 				failure(w, err)
 				return
 			}
-			if err := d.Catalog.SetCollectionItem(r.PathValue("id"), r.PathValue("itemId"), r.Method == "PUT"); err != nil {
+			if err := d.Catalog.WithContext(r.Context()).SetCollectionItem(r.PathValue("id"), r.PathValue("itemId"), r.Method == "PUT"); err != nil {
 				failure(w, err)
 				return
 			}

@@ -4317,13 +4317,77 @@ paths:
         - { name: favorites, in: query, required: false, schema: { type: string, enum: ['true', 'false'] } }
         - { name: includeHidden, in: query, required: false, schema: { type: string, enum: ['true', 'false'] } }
         - { name: group, in: query, required: false, schema: { type: string } }
-        - { name: channels, in: query, required: false, schema: { type: string }, description: 'Comma-separated channel ids (at most 50): only these channels, for the programmes of the channels on screen. Live sources.' }
-        - { name: programmes, in: query, required: false, schema: { type: string, enum: [none] }, description: '`none` answers channel rows without programmes (the channel list is the same for every window). Live sources.' }
+        - { name: channels, in: query, required: false, schema: { type: string }, description: 'Comma-separated channel ids (at most 50): only these channels, for the programmes of the channels on screen. Live sources and Library Channels.' }
+        - { name: programmes, in: query, required: false, schema: { type: string, enum: [none] }, description: '`none` answers channel rows without programmes (the channel list is the same for every window). Live sources and Library Channels.' }
         - $ref: '#/components/parameters/Cursor'
       responses:
         '200': { description: The guide window., content: { application/json: { schema: { $ref: '#/components/schemas/GuideEnvelope' } } } }
         default: { $ref: '#/components/responses/LiveError' }
       x-error-codes: [authentication_required, channel_permission_denied, invalid_channel_input, guide_refresh_required, channel_busy, source_unavailable, guide_unavailable]
+  /v1/guide/sources:
+    get:
+      operationId: getGuideSources
+      tags: [live]
+      summary: Read authorized channel source and filter summaries without programmes
+      description: >-
+        Advertised by the `guide_windowed_directory` capability. Returns every authorized live
+        source plus one aggregate Library Channels entry, never a programme window or provider
+        connection configuration. Counts, groups and favorite counts include visible authorized
+        channels only. `includeHidden=true` is restricted to server owners. Source ordering is
+        stable and Library Channels follow live sources. Runtime tune and record availability
+        is projected without starting playback. Uses the shared two-request channel admission cap.
+      parameters:
+        - { name: timezone, in: query, required: false, schema: { type: string }, description: IANA timezone; defaults to UTC. }
+        - { name: includeHidden, in: query, required: false, schema: { type: string, enum: ['true', 'false'] } }
+      responses:
+        '200': { description: Authorized source summaries., content: { application/json: { schema: { $ref: '#/components/schemas/GuideSourcesEnvelope' } } } }
+        default: { $ref: '#/components/responses/LiveError' }
+      x-error-codes: [authentication_required, feature_restricted, channel_permission_denied, invalid_channel_input, guide_refresh_required, channel_busy, guide_unavailable]
+  /v1/guide/channels:
+    get:
+      operationId: getGuideChannels
+      tags: [live]
+      summary: Read a globally sorted page of authorized channel rows
+      description: >-
+        Advertised by the `guide_windowed_directory` capability. The server filters and sorts the
+        complete authorized directory before selecting this offset page, with an exact total.
+        Rows retain generation, preference and playback handles but contain empty programme arrays.
+        Name sorting interleaves sources and kinds using stable English Unicode collation. Number
+        sorting groups live sources in server source order, then sorts numeric number prefixes
+        before nonnumeric numbers, breaking ties by name and id; Library Channels follow live
+        sources. Server sorting preserves source/provider positions. Pass the returned revision
+        on subsequent pages; a source, preference, permission, ordering or filter change answers
+        409 guide_refresh_required instead of mixing pages. Offset and limit do not change revision.
+        A live and Library Channel sharing a channel id answer 409 channel_identifier_conflict
+        until the owner changes the conflicting Library Channel identifier; rows are never deduplicated.
+        To step within the same view, supply `direction` and all three anchor fields instead of
+        `offset`. This forces limit 1 and returns the next/previous watchable row, wrapping at
+        either end and excluding the anchor itself. The response offset is that row's actual
+        position in the complete filtered view. Missing, filtered and forbidden anchors all
+        answer the same 404. If no other row can be tuned, channels and sources are empty and
+        offset identifies the authorized anchor. A tune-unavailable anchor is still located
+        before unavailable rows are skipped. Neighbor selection does not change the revision.
+        `includeHidden=true` is restricted to server owners. Unknown or repeated parameters fail.
+      parameters:
+        - { name: kind, in: query, required: false, schema: { type: string, enum: [all, live-source, library-channel], default: all } }
+        - { name: sourceId, in: query, required: false, schema: { type: string, maxLength: 256 }, description: Empty selects all; `library` selects all Library Channels. }
+        - { name: sort, in: query, required: false, schema: { type: string, enum: [server, number, name], default: number } }
+        - { name: offset, in: query, required: false, schema: { type: integer, minimum: 0, maximum: 128064, default: 0 } }
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 50, default: 50 } }
+        - { name: search, in: query, required: false, schema: { type: string, maxLength: 120 } }
+        - { name: group, in: query, required: false, schema: { type: string, maxLength: 120 } }
+        - { name: favorites, in: query, required: false, schema: { type: string, enum: ['true', 'false'] } }
+        - { name: includeHidden, in: query, required: false, schema: { type: string, enum: ['true', 'false'] } }
+        - { name: timezone, in: query, required: false, schema: { type: string }, description: IANA timezone; channel rows are independent of programme time windows. }
+        - { name: revision, in: query, required: false, schema: { type: string, maxLength: 64 } }
+        - { name: direction, in: query, required: false, schema: { type: string, enum: [next, previous] }, description: Requires all anchor fields; excludes offset and forces limit 1. }
+        - { name: anchorChannelId, in: query, required: false, schema: { type: string, minLength: 1, maxLength: 256 } }
+        - { name: anchorSourceId, in: query, required: false, schema: { type: string, minLength: 1, maxLength: 256 } }
+        - { name: anchorProvenance, in: query, required: false, schema: { type: string, enum: [live-source, library-channel] } }
+      responses:
+        '200': { description: Channel rows and an exact authorized total., content: { application/json: { schema: { $ref: '#/components/schemas/GuideDirectoryEnvelope' } } } }
+        default: { $ref: '#/components/responses/LiveError' }
+      x-error-codes: [authentication_required, feature_restricted, channel_permission_denied, invalid_channel_input, guide_refresh_required, channel_identifier_conflict, not_found, channel_busy, guide_unavailable]
   /v1/guide/images/{digest}:
     get:
       operationId: getGuideProgrammeImage
@@ -6750,6 +6814,63 @@ components:
         nextCursor: { type: string }
         observedAt: { type: string, format: date-time }
         days: { type: integer, minimum: 0, maximum: 31, description: 'How many calendar days from now (today counts as 1) the listed sources have guide data for, so a day picker offers exactly those days; 0 when none.' }
+    GuideDirectoryEnvelope:
+      type: object
+      required: [protocolVersion, serverId, directory]
+      properties:
+        protocolVersion: { type: string, enum: ['1.0'] }
+        serverId: { type: string }
+        directory:
+          type: object
+          required: [viewerFence, revision, total, offset, limit, channels, sources]
+          properties:
+            viewerFence: { type: string }
+            revision: { type: string, pattern: '^[a-f0-9]{64}$' }
+            total: { type: integer, minimum: 0, maximum: 128064 }
+            offset: { type: integer, minimum: 0, maximum: 128064 }
+            limit: { type: integer, minimum: 1, maximum: 50 }
+            channels: { type: array, maxItems: 50, items: { $ref: '#/components/schemas/GuideChannel' } }
+            sources: { type: array, maxItems: 50, items: { $ref: '#/components/schemas/GuideSource' } }
+    GuideSource:
+      type: object
+      required: [id, name, generation, publishedAt, availableStart, availableEnd, provenance, refreshState]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        generation: { type: string }
+        publishedAt: { type: string, format: date-time }
+        availableStart: { type: string }
+        availableEnd: { type: string }
+        provenance: { type: string, enum: [live-source, library-channel] }
+        refreshState: { type: string }
+    GuideSourcesEnvelope:
+      type: object
+      required: [protocolVersion, serverId, viewerFence, revision, sources]
+      properties:
+        protocolVersion: { type: string, enum: ['1.0'] }
+        serverId: { type: string }
+        viewerFence: { type: string }
+        revision: { type: string, pattern: '^[a-f0-9]{64}$' }
+        sources:
+          type: array
+          maxItems: 65
+          items:
+            allOf:
+              - { $ref: '#/components/schemas/GuideSource' }
+              - type: object
+                required: [position, recordAvailable, guideDays, channelCount, groups, groupCounts, favoriteCount, unavailableReasons]
+                properties:
+                  position: { type: integer, minimum: 0, maximum: 64 }
+                  recordAvailable: { type: boolean }
+                  guideDays: { type: integer, minimum: 0, maximum: 31 }
+                  channelCount: { type: integer, minimum: 1, maximum: 2000 }
+                  groups: { type: array, maxItems: 2000, items: { type: string } }
+                  groupCounts:
+                    type: array
+                    maxItems: 2000
+                    items: { type: object, required: [name, count], properties: { name: { type: string }, count: { type: integer, minimum: 1 } } }
+                  favoriteCount: { type: integer, minimum: 0, maximum: 2000 }
+                  unavailableReasons: { type: object, additionalProperties: { type: integer, minimum: 1, maximum: 2000 }, description: Counts by current server-authored tune-unavailability reason. Empty when all channels are available. }
     GuideProgramme:
       type: object
       description: livechannels.Programme. The facts (subtitle, episode, categories, rating, year, starRating, flags) come from XMLTV for live sources and from the library item for Library Channel programmes (Channels spec §8.1). A programme the viewer's profile may not see (by its rating, with the same age, unrated and member-ladder rules as library items), live or Library Channel, keeps its slot and times but carries the title `Not available on this profile` and no other facts; a published recording inherits the programme's rating as its content rating.

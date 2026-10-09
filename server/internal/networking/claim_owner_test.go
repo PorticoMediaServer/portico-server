@@ -8,7 +8,7 @@ import (
 	"portico.local/server/internal/persistence"
 	"testing"
 
-	_ "modernc.org/sqlite"
+	_ "portico.local/server/internal/thirdparty/sqlite"
 )
 
 func TestClaimOwnerRealAccountConsent(t *testing.T) {

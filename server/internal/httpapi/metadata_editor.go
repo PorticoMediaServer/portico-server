@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"portico.local/server/internal/identity"
+	"portico.local/server/internal/imagework"
 	"portico.local/server/internal/metadata"
 	"time"
 )
@@ -98,19 +99,38 @@ func (d Dependencies) artworkUpload(w http.ResponseWriter, r *http.Request, rate
 	defer cancel()
 	p, err := d.manualMetadataOwner(ctx, r)
 	if err != nil {
+		closeUnreadUpload(w, r)
 		failure(w, err)
 		return
 	}
 	if d.Metadata == nil {
+		closeUnreadUpload(w, r)
 		policyError(w, "metadata_unavailable")
 		return
 	}
 	if !rate.allow(viewerScope(p)) {
+		closeUnreadUpload(w, r)
 		write(w, 429, map[string]any{"error": map[string]any{"code": "rate_limited", "message": "Too many metadata changes.", "retryable": true}})
 		return
 	}
+	release, err := imagework.AcquireUploadBody(ctx)
+	if err != nil {
+		closeUnreadUpload(w, r)
+		failure(w, err)
+		return
+	}
+	defer release()
+	if deadline, ok := ctx.Deadline(); ok {
+		_ = http.NewResponseController(w).SetReadDeadline(deadline)
+		defer func() {
+			if ctx.Err() == nil && w.Header().Get("Connection") != "close" {
+				_ = http.NewResponseController(w).SetReadDeadline(time.Time{})
+			}
+		}()
+	}
 	r.Body = http.MaxBytesReader(w, r.Body, metadata.UploadBytes+artworkUploadEnvelope)
 	if err = r.ParseMultipartForm(artworkUploadEnvelope); err != nil {
+		closeUnreadUpload(w, r)
 		uploadFailure(w, metadata.ErrArtworkUpload)
 		return
 	}

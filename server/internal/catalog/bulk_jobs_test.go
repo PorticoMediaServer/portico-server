@@ -492,6 +492,17 @@ func restartBulkService(t *testing.T, s *Service) *Service {
 }
 
 func TestBulkSchedulerRunsDurableAdapter(t *testing.T) {
+	testBulkSchedulerRunsDurableAdapter(t)
+}
+
+func TestBulkSchedulerCompletesWithForegroundPressure(t *testing.T) {
+	dbwork.RegisterForegroundProbe(t.Name(), func() bool { return true })
+	defer dbwork.RegisterForegroundProbe(t.Name(), nil)
+	testBulkSchedulerRunsDurableAdapter(t)
+}
+
+func testBulkSchedulerRunsDurableAdapter(t *testing.T) {
+	t.Helper()
 	s, scheduler, p, v, access, _, names := bulkFixture(t, 205)
 	yes := true
 	j, e := s.CreateBulkJob(context.Background(), p, v, JobRequest{OperationID: "scheduled", Command: "personal-state", Selector: JobSelector{Container: &JobContainer{Kind: "show", ID: names["show"].Public}}, Args: JobPersonalArgs{Watchlist: &yes}}, scheduler, access)
@@ -502,7 +513,14 @@ func TestBulkSchedulerRunsDurableAdapter(t *testing.T) {
 	exited := make(chan struct{})
 	go func() { defer close(exited); scheduler.Run(ctx) }()
 	defer func() { cancel(); <-exited }()
-	deadline := time.NewTimer(20 * time.Second)
+	completionBudget := 20 * time.Second
+	if raceDetector {
+		// Modernc's pure-Go SQLite VM is heavily instrumented by the race
+		// detector. Keep the ordinary completion bound and allow identical
+		// full-work assertions to finish in a detector build.
+		completionBudget = 2 * time.Minute
+	}
+	deadline := time.NewTimer(completionBudget)
 	defer deadline.Stop()
 	tick := time.NewTicker(20 * time.Millisecond)
 	defer tick.Stop()

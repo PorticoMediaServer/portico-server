@@ -1890,6 +1890,12 @@
               "application/json": {
                 "schema": {
                   "properties": {
+                    "favorite": {
+                      "type": "boolean"
+                    },
+                    "libraryId": {
+                      "type": "string"
+                    },
                     "revision": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
@@ -1908,14 +1914,20 @@
                       "minimum": -9007199254740991,
                       "type": "integer"
                     },
+                    "watchlisted": {
+                      "type": "boolean"
+                    },
                     "watermark": {
                       "type": "string"
                     }
                   },
                   "required": [
+                    "libraryId",
                     "revision",
                     "watched",
                     "watermark",
+                    "watchlisted",
+                    "favorite",
                     "watchedCount",
                     "unwatchedCount"
                   ],
@@ -1926,7 +1938,7 @@
             "description": "Success"
           }
         },
-        "summary": "Read a container watermark, revision and visible-member counts",
+        "summary": "Read a container watermark, revision, saved flags and visible-member counts",
         "x-access": "device",
         "x-cost": "page_sized",
         "x-lane": "browsing"
@@ -1943,14 +1955,18 @@
                     "minimum": -9007199254740991,
                     "type": "integer"
                   },
+                  "favorite": {
+                    "type": "boolean"
+                  },
                   "watched": {
-                    "nullable": true,
+                    "type": "boolean"
+                  },
+                  "watchlisted": {
                     "type": "boolean"
                   }
                 },
                 "required": [
-                  "expectedRevision",
-                  "watched"
+                  "expectedRevision"
                 ],
                 "type": "object"
               }
@@ -1964,12 +1980,18 @@
               "application/json": {
                 "schema": {
                   "properties": {
+                    "favorite": {
+                      "type": "boolean"
+                    },
                     "revision": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
                       "type": "integer"
                     },
                     "watched": {
+                      "type": "boolean"
+                    },
+                    "watchlisted": {
                       "type": "boolean"
                     },
                     "watermark": {
@@ -1979,7 +2001,9 @@
                   "required": [
                     "revision",
                     "watched",
-                    "watermark"
+                    "watermark",
+                    "watchlisted",
+                    "favorite"
                   ],
                   "type": "object"
                 }
@@ -1988,7 +2012,7 @@
             "description": "Success"
           }
         },
-        "summary": "Set a container watched watermark for this profile",
+        "summary": "Set a container watched watermark, or its Watchlist or Favorite flag, for this profile",
         "x-access": "device",
         "x-cost": "constant",
         "x-lane": "default",
