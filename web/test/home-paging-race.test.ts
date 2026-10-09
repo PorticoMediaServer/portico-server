@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {homeRecovery} from '../src/app/home-recovery.ts';
 import {componentModule, hooks} from './helpers/component-harness.mjs';
 
 function deferred<T>() { let resolve!: (value: T) => void; let reject!: (error: unknown) => void; const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; }); return {resolve, reject, promise}; }
@@ -17,6 +18,7 @@ async function homeHarness() {
       fetchHomeRow: () => { const next = deferred<any>(); pages.push(next); return next.promise; },
       appendHomeRowPage: (row: any, page: any) => ({...row, entries: [...row.entries, ...page.entries], nextCursor: page.nextCursor}),
     },
+    './home-recovery.ts': {homeRecovery: (read: any, handlers: any) => homeRecovery(read, handlers, {setTimer: (fn, ms) => setTimeout(fn, ms), clearTimer: timer => clearTimeout(timer as ReturnType<typeof setTimeout>), hidden: () => false, onVisibility: () => () => {}, random: () => 0, now: () => Date.now()})},
     './session': {sessionIdentity: () => 'viewer', useSession: () => ({api: {}, session: {}})},
     './viewer-scope': {useViewerScope: () => ({serverId: 'server', viewerId: 'viewer'})},
     './not-interested': {RECOMMENDATIONS_RESET: 'reset', recommendationViewer: () => 'viewer'},

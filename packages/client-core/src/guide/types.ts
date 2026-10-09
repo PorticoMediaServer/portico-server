@@ -74,6 +74,10 @@ export type ChannelPage = Readonly<{items: readonly GuideChannelRow[]; total: nu
  * `programs` returns every program overlapping [start, end) for each channel, whole (true times).
  */
 export type GuideDataSource = Readonly<{
+  /** Forget directory revisions when the store starts a fresh view. */
+  reset?(): void;
+  /** Adjacent watchable row in this filtered/sorted view; wraps without loading its full lineup. */
+  neighbor?(channel: GuideChannelRow, delta: 1 | -1, signal: AbortSignal): Promise<GuideChannelRow | undefined>;
   channels(from: number, limit: number, signal: AbortSignal): Promise<ChannelPage>;
   programs(channelIds: readonly string[], start: number, end: number, signal: AbortSignal): Promise<Readonly<Record<string, readonly GuideProgram[]>>>;
 }>;

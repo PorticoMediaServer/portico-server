@@ -146,3 +146,11 @@ test('FEAT-04: day strip lists Today plus the next days across a DST change (Ame
  assert.equal(at(dayPrimeTime(spring[1],zone)),'03/08/2026, 18:00');
  assert.equal(at(dayPrimeTime(fall[0],zone)),'10/30/2026, 18:00');
 });
+
+test('the bounded named-channel guide accepts fifty rows and rejects a larger response',()=>{
+ const value=fixture();const channel=value.guide.channels[0];
+ value.guide.channels=Array.from({length:50},(_,i)=>({...channel,id:'channel'+i,programmes:[]}));
+ assert.equal(parseChannelGuide(value,'server',route).channels.length,50);
+ value.guide.channels.push({...channel,id:'overflow',programmes:[]});
+ assert.throws(()=>parseChannelGuide(value,'server',route));
+});

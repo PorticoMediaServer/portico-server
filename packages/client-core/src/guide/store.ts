@@ -128,6 +128,7 @@ export class GuideWindowStore {
   }
 
   private plan() {
+    if (this.disposed) return;
     const v = this.viewport;
     if (!v) return;
     const ps = this.o.channelPageSize;
@@ -206,7 +207,7 @@ export class GuideWindowStore {
     this.inFlightCount++;
     const generation = this.generation;
     this.o.source.channels(p * this.o.channelPageSize, this.o.channelPageSize, controller.signal).then(answer => {
-      if (controller.signal.aborted || this.pages.get(p) !== page || generation !== this.generation) return;
+      if (controller.signal.aborted || this.pages.get(p) !== page) return;
       page.status = 'ready'; page.items = answer.items; page.controller = undefined; page.attempts = 0;
       this.rateLimitPages.delete(p);
       this.total = answer.total;
@@ -215,6 +216,7 @@ export class GuideWindowStore {
       this.plan(); // tiles for this page can go now
     }, (error) => {
       if (controller.signal.aborted || this.pages.get(p) !== page) return;
+      if ((error as {code?:string}|null)?.code==='guide_refresh_required') { this.reset(); return; }
       // M25-2: a 429 retries fast (honouring Retry-After) without marking the
       // page failed; only after a few attempts does it surface as an error.
       const seen = this.rateLimitPages.get(p) ?? 0;
@@ -305,15 +307,16 @@ export class GuideWindowStore {
     this.total = undefined; this.channelsError = false;
     this.generation++;
     if (source) this.o = {...this.o, source};
+    this.o.source.reset?.();
     this.changed();
     this.plan();
   }
 
   dispose(): void {
-    this.reset();
     this.disposed = true;
     this.listeners.clear();
     this.pageListeners.clear();
+    this.reset();
   }
 
   private changed(page?: number) {

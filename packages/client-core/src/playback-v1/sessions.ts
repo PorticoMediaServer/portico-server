@@ -98,12 +98,12 @@ export class SessionsClient {
     }
   }
 
-  async stop(id: string, positionMs?: number): Promise<void> {
-    await call(this.http, {method: 'DELETE', path: `/v1/playback/sessions/${enc(id)}`, ...(positionMs !== undefined ? {body: {positionMs: Math.max(0, Math.round(positionMs))}} : {})}, [204, 200, 404, 410]);
+  async stop(id: string, positionMs?: number, signal?: AbortSignal): Promise<void> {
+    await call(this.http, {method: 'DELETE', path: `/v1/playback/sessions/${enc(id)}`, ...(signal ? {signal} : {}), ...(positionMs !== undefined ? {body: {positionMs: Math.max(0, Math.round(positionMs))}} : {})}, [204, 200, 404, 410]);
   }
 
-  async timeline(id: string, report: TimelineReport): Promise<{reportEveryMs?: number}> {
-    const r = await call(this.http, {method: 'POST', path: `/v1/playback/sessions/${enc(id)}/timeline`, body: report});
+  async timeline(id: string, report: TimelineReport, signal?: AbortSignal): Promise<{reportEveryMs?: number}> {
+    const r = await call(this.http, {method: 'POST', path: `/v1/playback/sessions/${enc(id)}/timeline`, body: report, ...(signal ? {signal} : {})});
     const every = Number(header(r, 'Report-Every-Ms'));
     return Number.isFinite(every) && every > 0 ? {reportEveryMs: every} : {};
   }

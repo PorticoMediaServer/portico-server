@@ -53,7 +53,7 @@ export class GroupSessionService{
  private api:GroupApi;private stream:GroupStreamOpener;private key:()=>string;private now:()=>number;private heartbeatMs:number;
  private state:GroupSessionSnapshot=Object.freeze<GroupSessionSnapshot>({directory:[],directoryPhase:'idle',phase:'idle',busy:false,clockOffsetMs:0});
  private listeners=new Set<()=>void>();private disposed=false;private lastCode='';private clock:ClockSample[]=[];
- private room?:{id:string;abort:AbortController;lastEventId:string;beat?:ReturnType<typeof setInterval>;retry?:ReturnType<typeof setTimeout>;watchdog?:ReturnType<typeof setTimeout>;rereading?:Promise<void>;queueReading?:Promise<void>};
+ private room?:{id:string;abort:AbortController;lastEventId:string;beat?:ReturnType<typeof setInterval>;heartbeat?:AbortController;heartbeatRetryAt?:number;heartbeatFailures?:number;retry?:ReturnType<typeof setTimeout>;watchdog?:ReturnType<typeof setTimeout>;rereading?:Promise<void>;queueReading?:Promise<void>};
  constructor(options:Options){this.api=options.api;this.stream=options.stream;this.key=options.key??(()=>randomId());this.now=options.now??(()=>Date.now());this.heartbeatMs=options.heartbeatMs??HEARTBEAT_MS;this.ownI18n=options.i18n;}
  private ownI18n?:I18n;
  private get i18n():I18n{return this.ownI18n??serviceI18n();}
@@ -134,8 +134,26 @@ export class GroupSessionService{
  }
  /** A host's heartbeat also binds the group to the device it comes from. */
  private beat(room:NonNullable<GroupSessionService['room']>){
-  if(this.room!==room)return;const sent=this.now();
-  void this.api.request<unknown>(path(room.id,'/heartbeat'),'POST').then(raw=>{if(this.room===room)this.adopt(parseGroupSnapshot(raw),{sent,received:this.now()});},()=>{});
+  if(this.room!==room||room.heartbeat||room.abort.signal.aborted||this.now()<(room.heartbeatRetryAt??0))return;
+  const sent=this.now(),controller=new AbortController();room.heartbeat=controller;
+  const abort=()=>controller.abort();room.abort.signal.addEventListener('abort',abort,{once:true});
+  // Heartbeats are small lease updates: one outstanding request per room, bounded
+  // even when the transport stalls. Leaving cancels the request with the room.
+  const timer=setTimeout(abort,20000);
+  void this.api.request<unknown>(path(room.id,'/heartbeat'),'POST',undefined,controller.signal).then(raw=>{
+   if(this.room!==room||controller.signal.aborted)return;
+   this.adopt(parseGroupSnapshot(raw),{sent,received:this.now()});
+   room.heartbeatFailures=0;room.heartbeatRetryAt=undefined;
+  }).catch(error=>{
+   if(this.room!==room||room.abort.signal.aborted)return;
+   room.heartbeatFailures=(room.heartbeatFailures??0)+1;
+   const after=(error as {retryAfterSeconds?:unknown})?.retryAfterSeconds;
+   const directed=typeof after==='number'&&Number.isFinite(after)&&after>0?after*1000:0;
+   room.heartbeatRetryAt=this.now()+Math.max(directed,Math.min(30000,1000*2**Math.min(room.heartbeatFailures-1,5)));
+  }).finally(()=>{
+   clearTimeout(timer);room.abort.signal.removeEventListener('abort',abort);
+   if(room.heartbeat===controller)room.heartbeat=undefined;
+  });
  }
  private async connect(room:NonNullable<GroupSessionService['room']>,attempt:number){
   if(this.room!==room||room.abort.signal.aborted)return;

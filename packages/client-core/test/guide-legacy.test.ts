@@ -14,6 +14,7 @@ function legacyApi(opts: {library?: boolean; failKind?: string; refreshState?: s
   const library = [{id: 'lc-1', name: 'Sharks', number: '900', group: ''}, {id: 'lc-2', name: 'Aardvarks', number: '901', group: ''}];
   const api = {
     async request<T>(path: string): Promise<T> {
+      if (!path.startsWith('/v1/guide?')) throw Object.assign(new Error('not found'),{status:404});
       requests.push(path);
       const q = new URL(path, 'http://x').searchParams;
       const kind = q.get('kind')!, start = q.get('start')!, end = q.get('end')!;
@@ -86,14 +87,14 @@ test('stopgap adapter: All channels joins live sources and Library Channels, ord
   const signal = new AbortController().signal;
   const {api, requests} = legacyApi({library: true});
   const all = legacyGuideSource(api, SERVER, {kind: 'all', sourceId: '', timezone: 'UTC', sort: 'number', includeHidden: true, now: () => NOW});
-  const page = await all.channels(0, 100, signal);
+  const page = await all.channels(0, 50, signal);
   assert.equal(page.total, 16);
   assert.deepEqual(page.items.slice(-2).map(r => [r.name, r.kind]), [['Sharks', 'library'], ['Aardvarks', 'library']]);
   assert.ok(requests.every(r => r.includes('includeHidden=true')));
-  const byName = await legacyGuideSource(api, SERVER, {kind: 'all', sourceId: '', timezone: 'UTC', sort: 'name', now: () => NOW}).channels(0, 100, signal);
+  const byName = await legacyGuideSource(api, SERVER, {kind: 'all', sourceId: '', timezone: 'UTC', sort: 'name', now: () => NOW}).channels(0, 50, signal);
   assert.equal(byName.items[0]!.name, 'Aardvarks');
   // Library Channels unavailable: the live guide still shows.
-  const partial = await legacyGuideSource(legacyApi({library: true, failKind: 'library-channel'}).api, SERVER, {kind: 'all', sourceId: '', timezone: 'UTC', now: () => NOW}).channels(0, 100, signal);
+  const partial = await legacyGuideSource(legacyApi({library: true, failKind: 'library-channel'}).api, SERVER, {kind: 'all', sourceId: '', timezone: 'UTC', now: () => NOW}).channels(0, 50, signal);
   assert.equal(partial.total, 14);
   // Every kind failing is an error, not an empty guide.
   await assert.rejects(legacyGuideSource(legacyApi({failKind: 'live-source'}).api, SERVER, {kind: 'live-source', sourceId: '', timezone: 'UTC', now: () => NOW}).channels(0, 10, signal));
@@ -143,6 +144,7 @@ test('stopgap adapter: programme facts map behind presence, malformed facts neve
 test('stopgap adapter: channel sources carry the guide days behind presence', async () => {
   const api = {
     async request<T>(path: string): Promise<T> {
+      if (!path.startsWith('/v1/guide?')) throw Object.assign(new Error('not found'),{status:404});
       const q = new URL(path, 'http://x').searchParams;
       const kind = q.get('kind')!;
       const start = q.get('start')!, end = q.get('end')!;

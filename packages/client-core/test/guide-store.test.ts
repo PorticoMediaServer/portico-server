@@ -193,3 +193,27 @@ test('the demo fixture through the store: 14 channels, a no-guide row and gaps r
   store.dispose();
 });
 
+test('disposing a loaded guide cancels work without launching a replacement page', async () => {
+  const source = syntheticSource({channels: 100, start: START, days: 14});
+  const store = new GuideWindowStore({source});
+  store.setViewport({firstRow: 0, lastRow: 11, start: NOW, end: NOW + HOUR_MS});
+  await settle();
+  const before = {...source.calls};
+  store.dispose();
+  await settle();
+  assert.equal(source.calls.channels, before.channels);
+  assert.equal(source.calls.programs, before.programs);
+  assert.deepEqual(store.resident(), {channelPages: 0, tiles: 0, programs: 0, inFlight: 0, queued: 0});
+});
+
+test('a program invalidation while channel pages are loading does not strand the initial screen', async () => {
+  const release: (() => void)[] = [];
+  const source = syntheticSource({channels: 100, start: START, days: 14, latency: () => new Promise<void>(r => release.push(r))});
+  const store = new GuideWindowStore({source});
+  store.setViewport({firstRow: 0, lastRow: 11, start: NOW, end: NOW + HOUR_MS});
+  store.invalidate();
+  for (let n = 0; n < 10 && release.length; n++) { for (const r of release.splice(0)) r(); await settle(); }
+  assert.equal(store.channelAt(0)?.id, 'c0');
+  assert.equal(store.programsFor(0, NOW, NOW + HOUR_MS).complete, true);
+  store.dispose();
+});

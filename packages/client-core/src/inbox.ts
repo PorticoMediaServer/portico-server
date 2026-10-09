@@ -16,6 +16,7 @@ import type {MessageId} from '../../i18n/src/index.ts';
 export type InboxApi={request<T>(path:string,method?:string,body?:unknown,signal?:AbortSignal):Promise<T>};
 export type InboxView='unread'|'all'|'archived';
 export type InboxAction='read'|'unread'|'archive'|'unarchive';
+export type InboxServiceOptions={unreadTimeoutMs?:number;setTimer?:(fn:()=>void,ms:number)=>unknown;clearTimer?:(timer:unknown)=>void};
 export type InboxSnapshot=Readonly<{
  phase:'idle'|'loading'|'ready'|'error';
  audience:NotificationAudience;
@@ -43,11 +44,12 @@ export class InboxService{
  private api:InboxApi;private operationId:()=>string;
  private state:InboxSnapshot=Object.freeze<InboxSnapshot>({phase:'idle',audience:'profile',audiences:['profile'],view:'unread',items:[],counts:noCounts,unread:0,revision:0,more:false,busy:false});
  private listeners=new Set<()=>void>();private cursor='';private generation=0;private controller?:AbortController;private disposed=false;
- constructor(api:InboxApi,operationId:()=>string=()=>randomId()){this.api=api;this.operationId=operationId;}
+ private unreadFlight?:Promise<number>;private unreadController?:AbortController;private unreadDirty=false;private options:InboxServiceOptions;
+ constructor(api:InboxApi,operationId:()=>string=()=>randomId(),options:InboxServiceOptions={}){this.api=api;this.operationId=operationId;this.options=options;}
  getSnapshot=()=>this.state;
  subscribe=(fn:()=>void)=>{this.listeners.add(fn);return()=>{this.listeners.delete(fn);};};
  private publish(patch:Partial<InboxSnapshot>){if(this.disposed)return;this.state=Object.freeze({...this.state,...patch});this.listeners.forEach(f=>f());}
- dispose(){this.disposed=true;this.generation++;this.controller?.abort();this.listeners.clear();}
+ dispose(){this.disposed=true;this.generation++;this.controller?.abort();this.unreadController?.abort();this.listeners.clear();}
 
  /** Loads the first page of a view. What is on screen stays until the new page arrives. */
  async load(audience:NotificationAudience=this.state.audience,view:InboxView=this.state.view):Promise<void>{
@@ -80,7 +82,7 @@ export class InboxService{
   if(delta.resync){void this.load();return;}
   if(delta.revision<=this.state.revision)return;
   this.publish({items:this.visible(mergeNotifications(this.state.items,delta)),counts:delta.counts,revision:delta.revision});
-  void this.refreshUnread();
+  this.unreadDirty=true;void this.refreshUnread();
  }
  private visible(items:readonly Notification[]):Notification[]{
   const view=this.state.view;
@@ -103,24 +105,52 @@ export class InboxService{
   try{
    const result=parseNotificationBatchResult(data(await this.api.request<unknown>('/v1/notifications/inbox/actions','POST',{operationId:this.operationId(),expectedRevision:0,audience:before.audience,operations})));
    if(generation!==this.generation)return;
-   this.publish({counts:result.counts,revision:result.revision});void this.refreshUnread();
+   this.publish({counts:result.counts,revision:result.revision});this.unreadDirty=true;void this.refreshUnread();
   }catch(e){
    if(generation!==this.generation)return;
    this.publish({items:before.items,counts:before.counts,error:message(e,'notifications.error.change','notifications','save')});
   }
  }
  /** The badge. Failure leaves the last known number in place. */
- async refreshUnread():Promise<number>{
-  let total=0;
-  try{
-   for(const audience of this.state.audiences){
-    const summary=parseNotificationSummary(data(await this.api.request<unknown>('/v1/notifications/unread-count?audience='+encodeURIComponent(audience))));
-    total+=summary.counts.unread;
-   }
-   if(total!==this.state.unread)this.publish({unread:total});
-  }catch{return this.state.unread;}
-  return total;
+ refreshUnread():Promise<number>{
+  if(this.disposed)return Promise.resolve(this.state.unread);
+  if(this.unreadFlight)return this.unreadFlight;
+  this.unreadFlight=this.readUnread().finally(()=>{this.unreadFlight=undefined;});
+  return this.unreadFlight;
  }
+ private async readUnread():Promise<number>{
+  do{
+   this.unreadDirty=false;
+   const audiences=[...this.state.audiences],revision=this.state.revision;
+   const controller=this.unreadController=new AbortController();
+   const setTimer=this.options.setTimer??((fn:()=>void,ms:number)=>setTimeout(fn,ms));
+   const clearTimer=this.options.clearTimer??((timer:unknown)=>clearTimeout(timer as ReturnType<typeof setTimeout>));
+   // This is a small badge read, not the event long poll or a playback request. Bound only
+   // this refresh so an unresponsive transport cannot park every subsequent badge update.
+   const timer=setTimer(()=>controller.abort(),this.options.unreadTimeoutMs??10_000);
+   let abort:()=>void=()=>{};
+   const cancelled=new Promise<never>((_,reject)=>{abort=()=>reject(new Error('unread_refresh_aborted'));controller.signal.addEventListener('abort',abort,{once:true});});
+   try{
+    let total=0;
+    for(const audience of audiences){
+     const raw=await Promise.race([this.api.request<unknown>('/v1/notifications/unread-count?audience='+encodeURIComponent(audience),'GET',undefined,controller.signal),cancelled]);
+     if(controller.signal.aborted||this.disposed)return this.state.unread;
+     total+=parseNotificationSummary(data(raw)).counts.unread;
+    }
+    // An inbox load can discover the owner audience while the profile read is pending.
+    // Never publish a partial/obsolete badge; coalesce changes into one fresh round.
+    if(audiences.join(',')!==this.state.audiences.join(',')||revision!==this.state.revision)this.unreadDirty=true;
+    if(!this.unreadDirty&&total!==this.state.unread)this.publish({unread:total});
+   }catch{
+    if(controller.signal.aborted||this.disposed)return this.state.unread;
+    if(audiences.join(',')!==this.state.audiences.join(',')||revision!==this.state.revision)this.unreadDirty=true;
+    if(!this.unreadDirty)return this.state.unread;
+   }
+   finally{clearTimer(timer);controller.signal.removeEventListener('abort',abort);if(this.unreadController===controller)this.unreadController=undefined;}
+  }while(this.unreadDirty&&!this.disposed);
+  return this.state.unread;
+ }
+
 }
 
 export type FeedbackDraft={kind:string;category:string;message:string;itemId?:string;playbackSessionId?:string;attachDiagnostics:boolean};

@@ -108,32 +108,46 @@ function parseProgramme(raw: unknown, channelId: string): GuideProgramme {
  const subtitle = parseSubtitle(raw.subtitle), episode = parseEpisode(raw.episode), categories = parseCategories(raw.categories), rating = parseRating(raw.rating), year = parseYear(raw.year), starRating = parseStarRating(raw.starRating), flags = parseFlags(raw.flags), image = parseImage(raw.image);
  return {recordingId,recordingState,id: raw.id, channelId, title: raw.title, start: raw.start, end: raw.end, lineage: raw.lineage as GuideProgramme['lineage'], seriesId, episodeId, newEvidence: newEvidence as GuideProgramme['newEvidence'], description, ...(subtitle !== undefined ? {subtitle} : {}), ...(episode !== undefined ? {episode} : {}), ...(categories !== undefined ? {categories} : {}), ...(rating !== undefined ? {rating} : {}), ...(year !== undefined ? {year} : {}), ...(starRating !== undefined ? {starRating} : {}), ...(flags !== undefined ? {flags} : {}), ...(image !== undefined ? {image} : {})};
 }
-export function parseChannelGuide(raw: unknown, serverId: string, route: GuideRoute): ChannelGuide {
- if (!object(raw) || raw.protocolVersion !== GUIDE_PROTOCOL || raw.serverId !== serverId || !object(raw.guide)) invalid();
- const g = raw.guide;
- if (!['ready', 'no-sources', 'no-channels', 'no-guide-data', 'filter-empty', 'guide-stale', 'continuation-required'].includes(String(g.state)) || !id(g.viewerFence) || g.start !== route.start || g.end !== route.end || g.timezone !== route.timezone || !instant(g.observedAt) || !text(g.nextCursor, 2048) || !Array.isArray(g.channels) || g.channels.length > 30 || !Array.isArray(g.sources) || g.sources.length > 2000) invalid();
+/** Shared native row validation for time windows and the rows-only directory. */
+export function parseGuideSources(value: unknown, expectedKind?: ChannelKind): GuideSource[] {
+ if (!Array.isArray(value)||value.length>2000) invalid();
+ const values: unknown[]=value;
  const sourceIDs = new Set<string>();
- const sources: GuideSource[] = g.sources.map((v: unknown) => {
-  if (!object(v) || !id(v.id) || sourceIDs.has(v.id) || !text(v.name, 120) || !id(v.generation) || !instant(v.publishedAt) || !kind(v.provenance) || v.provenance !== route.kind || !text(v.refreshState, 64) || !(v.availableStart === '' && v.availableEnd === '' || instant(v.availableStart) && instant(v.availableEnd) && Date.parse(v.availableEnd) > Date.parse(v.availableStart))) invalid();
-  sourceIDs.add(v.id);
+ const sources: GuideSource[] = values.map((v: unknown) => {
+  if (!object(v) || !id(v.id) || sourceIDs.has(String(v.provenance)+'\0'+v.id) || !text(v.name, 120) || !id(v.generation) || !instant(v.publishedAt) || !kind(v.provenance) || expectedKind !== undefined && v.provenance !== expectedKind || !text(v.refreshState, 64) || !(v.availableStart === '' && v.availableEnd === '' || instant(v.availableStart) && instant(v.availableEnd) && Date.parse(v.availableEnd) > Date.parse(v.availableStart))) invalid();
+  sourceIDs.add(String(v.provenance)+'\0'+v.id);
   return {id: v.id, name: v.name, generation: v.generation, publishedAt: v.publishedAt, availableStart: v.availableStart, availableEnd: v.availableEnd, provenance: v.provenance, refreshState: v.refreshState} as GuideSource;
  });
+ return sources;
+}
+export function parseGuideChannels(value: unknown, sources: readonly GuideSource[], route?: GuideRoute): GuideChannel[] {
+ if (!Array.isArray(value)||value.length>50) invalid();
+ const values: unknown[]=value;
+ const sourceIDs=new Set(sources.map(s=>s.provenance+'\0'+s.id));
  const ids = new Set<string>(), programmeIDs = new Set<string>();
  let total = 0;
- const channels: GuideChannel[] = g.channels.map((v: unknown) => {
-  if (!object(v) || !id(v.id) || ids.has(v.id) || !id(v.sourceId) || !sourceIDs.has(v.sourceId) || v.provenance !== route.kind || !text(v.name, 256) || !text(v.number, 32) || !text(v.group, 120) || !id(v.generation) || typeof v.tuneAvailable !== 'boolean' || typeof v.recordAvailable !== 'boolean' || !reasons.includes(String(v.tuneUnavailableReason)) || !reasons.includes(String(v.recordUnavailableReason)) || typeof v.favorite !== 'boolean' || typeof v.hidden !== 'boolean' || !Number.isSafeInteger(v.preferenceRevision) || Number(v.preferenceRevision) < 0 || !Array.isArray(v.programmes) || v.programmes.length > 10000) invalid();
-  if (v.tuneAvailable !== (v.tuneUnavailableReason === '') || v.recordAvailable !== (v.recordUnavailableReason === '') || route.kind === 'library-channel' && v.recordAvailable) invalid();
+ const channels: GuideChannel[] = values.map((v: unknown) => {
+  if (!object(v) || !id(v.id) || ids.has(v.id) || !id(v.sourceId) || !sourceIDs.has(String(v.provenance)+'\0'+v.sourceId) || !kind(v.provenance) || route !== undefined && v.provenance !== route.kind || !text(v.name, 256) || !text(v.number, 32) || !text(v.group, 120) || !id(v.generation) || typeof v.tuneAvailable !== 'boolean' || typeof v.recordAvailable !== 'boolean' || !reasons.includes(String(v.tuneUnavailableReason)) || !reasons.includes(String(v.recordUnavailableReason)) || typeof v.favorite !== 'boolean' || typeof v.hidden !== 'boolean' || !Number.isSafeInteger(v.preferenceRevision) || Number(v.preferenceRevision) < 0 || !Array.isArray(v.programmes) || v.programmes.length > 10000) invalid();
+  if (v.tuneAvailable !== (v.tuneUnavailableReason === '') || v.recordAvailable !== (v.recordUnavailableReason === '') || v.provenance === 'library-channel' && v.recordAvailable) invalid();
   const logoPath=v.logoPath??'';if(typeof logoPath!=='string'||logoPath!==''&&!/^\/v1\/items\/[A-Za-z0-9_-]{1,128}\/art\/poster$/.test(logoPath))invalid();
   ids.add(v.id);
-  if (sources.find(s => s.id === v.sourceId)!.generation !== v.generation) invalid();
+  const source=sources.find(s=>s.id===v.sourceId&&s.provenance===v.provenance)!;
+  if (source.generation!==v.generation||source.provenance!==v.provenance||!route&&v.programmes.length!==0) invalid();
   let previousEnd = 0;
   const programmes = v.programmes.map((raw: unknown) => {
    const p = parseProgramme(raw, v.id as string);
-   if (programmeIDs.has(p.id) || Date.parse(p.start) < previousEnd || Date.parse(p.end) <= Date.parse(route.start) || Date.parse(p.start) >= Date.parse(route.end) || ++total > 10000) invalid();
+   if (programmeIDs.has(p.id) || Date.parse(p.start) < previousEnd || route !== undefined && (Date.parse(p.end) <= Date.parse(route.start) || Date.parse(p.start) >= Date.parse(route.end)) || ++total > 10000) invalid();
    previousEnd = Date.parse(p.end); programmeIDs.add(p.id); return p;
   });
   return {id: v.id, sourceId: v.sourceId, provenance: v.provenance, name: v.name, number: v.number, group: v.group, generation: v.generation, logoPath, programmes, tuneAvailable: v.tuneAvailable, recordAvailable: v.recordAvailable, tuneUnavailableReason: v.tuneUnavailableReason, recordUnavailableReason: v.recordUnavailableReason, favorite: v.favorite, hidden: v.hidden, preferenceRevision: v.preferenceRevision} as GuideChannel;
- });
+ }); return channels;
+}
+export function parseChannelGuide(raw: unknown, serverId: string, route: GuideRoute): ChannelGuide {
+ if (!object(raw) || raw.protocolVersion !== GUIDE_PROTOCOL || raw.serverId !== serverId || !object(raw.guide)) invalid();
+ const g = raw.guide;
+ if (!['ready', 'no-sources', 'no-channels', 'no-guide-data', 'filter-empty', 'guide-stale', 'continuation-required'].includes(String(g.state)) || !id(g.viewerFence) || g.start !== route.start || g.end !== route.end || g.timezone !== route.timezone || !instant(g.observedAt) || !text(g.nextCursor, 2048) || !Array.isArray(g.channels) || g.channels.length > 50 || !Array.isArray(g.sources) || g.sources.length > 2000) invalid();
+ const sources=parseGuideSources(g.sources,route.kind);
+ const channels=parseGuideChannels(g.channels,sources,route);
  return {state: g.state, viewerFence: g.viewerFence, start: g.start, end: g.end, timezone: g.timezone, sources, channels, nextCursor: g.nextCursor, observedAt: g.observedAt, ...(parseDays(g.days) !== undefined ? {days: parseDays(g.days)} : {})} as ChannelGuide;
 }
 function path(route: GuideRoute, cursor: string): string {

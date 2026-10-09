@@ -1,8 +1,8 @@
 import React, {useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
 import {useNavigate, useParams, useSearch} from '@tanstack/react-router';
-import {channelOperationId, saveChannelPreference, topChannelGroups, stripDays, dayPrimeTime} from '@core/channel-guide.ts';
+import {channelOperationId, saveChannelPreference, stripDays, dayPrimeTime} from '@core/channel-guide.ts';
 import {defaultRecordingOptions, seriesRuleConfig, type RecordingDraft} from '@core/dvr.ts';
-import {GuideWindowStore, legacyChannel, legacyProgramme, BLOCK_MS, SLOT_MS, normalizePrograms, HOUR_MS, DAY_MS, MINUTE_MS, dayStarts, focusTarget, focusTimeOf, layoutRow, localDayStart, neighbor, nowNext, nowX, pxPerMsFor, rulerTicks, spanAt, type ChannelSource, type GuideCell, type GuideChannelRow, type GuideDataSource, type GuideProgram} from '@core/guide/index.ts';
+import {GuideWindowStore, legacyGuideCatalog, legacyChannel, legacyProgramme, BLOCK_MS, SLOT_MS, normalizePrograms, HOUR_MS, DAY_MS, MINUTE_MS, dayStarts, focusTarget, focusTimeOf, layoutRow, localDayStart, neighbor, nowNext, nowX, pxPerMsFor, rulerTicks, spanAt, type ChannelSource, type GuideCell, type GuideChannelRow, type GuideDataSource, type GuideProgram} from '@core/guide/index.ts';
 import {ALL, LIBRARY, RECORDINGS, channelEntries, defaultEntry, hasReminder, readReminders, removeReminder, sourceName, setChannelSurf, forgetGuideReads, channelReason, serverWideOf, type ServerWide, subscribeReminders, toggleReminder, useChannelMemory, useChannelSources, channelGuideSource, localTimezone, type ChannelSort, type ChannelView, type GuideQuery, type Reminder} from '../../app/channels';
 import {useSession} from '../../app/session';
 import {useI18n} from '../../app/i18n';
@@ -178,8 +178,8 @@ function GuideScreen({entry, name, library, sources, picker, search}: {entry: st
   const [catalog, setCatalog] = useState<{groups: string[]; favorites: boolean}>({groups: [], favorites: false});
   useEffect(() => {
     const controller = new AbortController();
-    channelGuideSource(api, serverId, {entry, timezone: format.zone, sort: 'number'}).channels(0, 1000, controller.signal).then(page => {
-      setCatalog({groups: topChannelGroups(page.items), favorites: page.items.some(c => c.favorite)});
+    legacyGuideCatalog(api,serverId,{kind:entry===ALL?'all':entry===LIBRARY?'library-channel':'live-source',sourceId:entry===ALL||entry===LIBRARY?'':entry,timezone:format.zone,sort:'number'},controller.signal).then(summary => {
+      if(!controller.signal.aborted)setCatalog({groups:[...summary.groups],favorites:summary.favorites});
     }, () => {});
     return () => controller.abort();
   }, [api, serverId, entry, format.zone, snapshot.total === undefined]); // eslint-disable-line react-hooks/exhaustive-deps
