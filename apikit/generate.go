@@ -62,7 +62,7 @@ func schema(t reflect.Type, stack map[reflect.Type]bool) (map[string]any, error)
 	case reflect.Bool:
 		return map[string]any{"type": "boolean"}, nil
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		return map[string]any{"type": "integer", "minimum": -9007199254740991, "maximum": 9007199254740991}, nil
+		return map[string]any{"type": "integer", "minimum": int64(-9007199254740991), "maximum": int64(9007199254740991)}, nil
 	case reflect.Float32, reflect.Float64:
 		return map[string]any{"type": "number"}, nil
 	case reflect.Interface:

@@ -101,7 +101,7 @@ func registerPlaylistWindows(registry *apikit.Registry, d Dependencies) {
 func (playlistReorder) JSONSchema() map[string]any {
 	return map[string]any{"type": "object", "additionalProperties": false, "required": []string{"operationId", "expectedRevision", "entryIds"}, "properties": map[string]any{
 		"operationId":      map[string]any{"type": "string", "pattern": "^[A-Za-z0-9_-]{1,128}$"},
-		"expectedRevision": map[string]any{"type": "integer", "minimum": 1, "maximum": 9007199254740991},
+		"expectedRevision": map[string]any{"type": "integer", "minimum": 1, "maximum": int64(9007199254740991)},
 		"entryIds":         map[string]any{"type": "array", "minItems": 1, "maxItems": 200, "uniqueItems": true, "items": map[string]any{"type": "string", "minLength": 1}},
 		"afterEntryId":     map[string]any{"type": "string"},
 	}}
