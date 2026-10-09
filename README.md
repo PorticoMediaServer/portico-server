@@ -2,6 +2,8 @@
 
 Private Portico services, operations and architecture.
 
+For current Ubuntu builds, visible Android/Fire TV/Vega devices and the populated demo VPS, start with [interactive testing](deployment/testing/README.md).
+
 | Path | Contents |
 |---|---|
 | `hosted-services/hosted` | The Hosted API and Hosted web host (Go, PostgreSQL) |
