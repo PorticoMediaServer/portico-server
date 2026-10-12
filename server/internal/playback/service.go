@@ -339,6 +339,10 @@ func (s *Service) create(ctx context.Context, p identity.Principal, item, qualit
 	if e != nil {
 		return Session{}, e
 	}
+	if v1 != nil {
+		target := inputs.input.Target
+		delivery.Target = &target
+	}
 	mode = delivery.Mode
 	if mode == "hls" {
 		if s.hls == nil {
