@@ -1,6 +1,7 @@
 package playback
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -65,13 +66,14 @@ func TestConvertedAudioSampleRateIsBounded(t *testing.T) {
 		})
 	}
 	// A rate is chosen from what the output codec is encoded at and the device
-	// takes. When nothing fits, the track is not resampled: a rate the device
-	// said it cannot take is never chosen for it.
-	passthrough := func(codec string, max int) ClientProfile {
+	// takes. When the passthrough codec has none, the track is converted to AAC
+	// instead; when no codec has one, the conversion is not planned at all: a
+	// stream at a rate the device said it cannot take is never produced.
+	passthrough := func(codec string, max, aacMax int) ClientProfile {
 		p := appleTVProfile()
 		for i := range p.Audio {
 			if p.Audio[i].Codec == "aac" {
-				p.Audio[i].MaxChannels = 2
+				p.Audio[i].MaxChannels, p.Audio[i].MaxSampleRate = 2, aacMax
 			}
 			if p.Audio[i].Codec == codec {
 				p.Audio[i].Passthrough, p.Audio[i].MaxSampleRate = true, max
@@ -92,10 +94,12 @@ func TestConvertedAudioSampleRateIsBounded(t *testing.T) {
 		codec  string
 		rate   int
 	}{
-		{"a device limit below every AAC rate", audio("dts", 2, 48000), tiny, "aac", 0},
-		{"96 kHz to E-AC-3", audio("truehd", 6, 96000), passthrough("eac3", 0), "eac3", 48000},
-		{"96 kHz to E-AC-3 for a device that takes 44.1 kHz", audio("truehd", 6, 96000), passthrough("eac3", 44100), "eac3", 44100},
-		{"96 kHz to E-AC-3 for a device limit E-AC-3 has no rate under", audio("truehd", 6, 96000), passthrough("eac3", 24000), "eac3", 0},
+		{"96 kHz to E-AC-3", audio("truehd", 6, 96000), passthrough("eac3", 0, 0), "eac3", 48000},
+		{"96 kHz to E-AC-3 for a device that takes 44.1 kHz", audio("truehd", 6, 96000), passthrough("eac3", 44100, 0), "eac3", 44100},
+		{"22.05 kHz to E-AC-3, which has no such rate", audio("dts", 6, 22050), passthrough("eac3", 0, 0), "eac3", 32000},
+		{"96 kHz when E-AC-3 has no rate under the device's limit", audio("truehd", 6, 96000), passthrough("eac3", 24000, 0), "aac", 48000},
+		{"48 kHz when E-AC-3 has no rate under the device's limit", audio("dts", 6, 48000), passthrough("eac3", 24000, 0), "aac", 0},
+		{"a rate AAC is not encoded at", audio("dts", 2, 37800), chromeProfile(), "aac", 44100},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			p := decide(t, videoSource("mkv", "h264", picture, test.source), test.client, nil)
@@ -110,10 +114,61 @@ func TestConvertedAudioSampleRateIsBounded(t *testing.T) {
 			}
 		})
 	}
+	for _, test := range []struct {
+		name   string
+		source *DeliverySource
+		client ClientProfile
+	}{
+		{"a device limit below every AAC rate", videoSource("mkv", "h264", picture, audio("dts", 2, 48000)), tiny},
+		{"no codec with a rate under the device's limits", videoSource("mkv", "h264", picture, audio("truehd", 6, 96000)), passthrough("eac3", 24000, 4000)},
+		{"a picture that is converted too", videoSource("mkv", "vp9", picture, audio("dts", 2, 48000)), func() ClientProfile {
+			p := appleTVProfile()
+			for i := range p.Audio {
+				if p.Audio[i].Codec == "aac" {
+					p.Audio[i].MaxSampleRate = 4000
+				}
+			}
+			return p
+		}()},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			policy := openPolicy()
+			p, err := planDelivery(DeliveryInput{Source: test.source, Client: test.client, Policy: policy, Target: autoTarget(policy, 1080), Config: DefaultDeliveryConfiguration(), TranscodingEnabled: true})
+			var refused ErrDeliveryRefused
+			if !errors.As(err, &refused) {
+				_, args, _, _ := p.CodecArgs()
+				t.Fatalf("a conversion the device cannot take was planned: %s to %s at %d Hz, arguments %v (%v)", p.AudioAction, p.OutputAudioCodec, p.AudioSampleRate, args, err)
+			}
+			for _, route := range p.Trace.Routes {
+				if route.Admissible {
+					t.Fatalf("route %s is admissible: %+v", route.Route, route)
+				}
+			}
+			if !rejected(p, DeliveryVideoConversion, RejectAudioSampleRate) {
+				t.Fatalf("the refusal does not say why: %+v", p.Trace.Routes)
+			}
+		})
+	}
 	t.Run("alternate renditions", func(t *testing.T) {
 		p := decide(t, videoSource("mkv", "h264", picture, audio("truehd", 6, 96000), audio("dts", 2, 44100)), chromeProfile(), nil)
 		if len(p.Renditions) != 2 || p.Renditions[0].Action != "convert" || p.Renditions[0].SampleRate != 48000 || p.Renditions[1].SampleRate != 0 {
 			t.Fatalf("renditions %+v", p.Renditions)
+		}
+	})
+	t.Run("an alternate rendition the device cannot take is not offered", func(t *testing.T) {
+		limited := chromeProfile()
+		for i := range limited.Audio {
+			if limited.Audio[i].Codec == "aac" {
+				limited.Audio[i].MaxSampleRate = 4000
+			}
+		}
+		// The first track is AAC at a rate the device takes; the others would
+		// have to be converted to AAC, which has no rate under 4 kHz.
+		p := decide(t, videoSource("mkv", "h264", picture, audio("aac", 2, 4000), audio("dts", 2, 48000), audio("dts", 2, 44100)), limited, nil)
+		for _, r := range p.Renditions {
+			if r.Action == "convert" {
+				t.Fatalf("a rendition was planned for conversion: %+v", p.Renditions)
+			}
 		}
 	})
 }
