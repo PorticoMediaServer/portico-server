@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/persistence"
 )
 
@@ -387,5 +388,77 @@ func TestGuideAcceptsOnlyTheHarmlessDocumentTypeDeclaration(t *testing.T) {
 				t.Fatalf("accepted %s: %v", name, e)
 			}
 		})
+	}
+}
+
+// A guide refresh publishes a new generation and a new source revision even
+// when no channel's stream changed. What a running producer depends on is the
+// channel's own input, and that must read the same before and after, so a
+// refresh alone is no reason to retune anyone; a changed address is.
+func TestInputFenceFollowsTheStreamNotTheGuideGeneration(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	a := testAuthority("viewer", true, true)
+	fences := func(source Source) map[string]string {
+		t.Helper()
+		out := map[string]string{}
+		gated, e := dbwork.BeginSnapshot(ctx, s.db)
+		if e != nil {
+			t.Fatal(e)
+		}
+		defer gated.Rollback()
+		tx := gated.Tx()
+		rows, e := tx.QueryContext(ctx, `SELECT channel_id,provider_key FROM live_channel_versions WHERE generation_id=?`, source.Generation)
+		if e != nil {
+			t.Fatal(e)
+		}
+		keys := map[string]string{}
+		for rows.Next() {
+			var id, key string
+			if e = rows.Scan(&id, &key); e != nil {
+				t.Fatal(e)
+			}
+			keys[id] = key
+		}
+		rows.Close()
+		for id, key := range keys {
+			input, e := s.InputTx(ctx, tx, source.ID, id, source.Generation)
+			if e != nil {
+				t.Fatal(e)
+			}
+			if out[key] = input.Fence(); out[key] == "" {
+				t.Fatal("an input has no fence")
+			}
+		}
+		return out
+	}
+	in := testInput()
+	first, e := s.Save(ctx, a, in)
+	if e != nil {
+		t.Fatal(e)
+	}
+	before := fences(first)
+	if len(before) != 2 || before["one"] == before["two"] {
+		t.Fatalf("two channels with different streams share a fence: %v", before)
+	}
+	// The same line-up with a new guide: a new generation, the same streams.
+	in.RequestID, in.ExpectedRevision = strings.Repeat("ce", 24), first.Revision
+	in.Guide = strings.Replace(in.Guide, "Afternoon programme", "Evening programme", 1)
+	refreshed, e := s.Save(ctx, a, in)
+	if e != nil || refreshed.Generation == first.Generation || refreshed.Revision == first.Revision {
+		t.Fatalf("the refresh did not publish a new generation: %v", e)
+	}
+	if after := fences(refreshed); after["one"] != before["one"] || after["two"] != before["two"] {
+		t.Fatalf("a guide refresh changed the fence of an unchanged stream: %v then %v", before, after)
+	}
+	// One channel's address changes: that channel's input is different, the other's is not.
+	in.RequestID, in.ExpectedRevision = strings.Repeat("cf", 24), refreshed.Revision
+	in.Playlist = strings.Replace(in.Playlist, "https://provider.invalid/two", "https://provider.invalid/two-moved", 1)
+	moved, e := s.Save(ctx, a, in)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if after := fences(moved); after["two"] == before["two"] || after["one"] != before["one"] {
+		t.Fatalf("a changed stream address did not change exactly that channel's fence: %v then %v", before, after)
 	}
 }

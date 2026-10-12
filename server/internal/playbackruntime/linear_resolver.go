@@ -89,6 +89,21 @@ func (r *channelResolver) scope(ctx context.Context, tx *sql.Tx, p identity.Prin
 	}
 	return library.Scope{Principal: p, Fence: p.ServerID + ":" + p.Authority + ":" + p.AccountID + ":" + p.ProfileID, Owner: p.Authority == "local" && p.Role == "owner", AllowsLibrary: func(id string) bool { return allowed[id] }}, nil
 }
+
+// liveSourceFence is what a live channel's producer is fenced on: the
+// channel's own input and the source's tuner limit. Every guide refresh
+// publishes a new generation and source revision; fencing on those retuned
+// every viewer of the source each time, though nobody's stream had changed.
+// An input that cannot be read keeps the source revision as its fence, as
+// before, and the producer reports why when it tries to open it.
+func liveSourceFence(ctx context.Context, tx *sql.Tx, live *livechannels.Store, ref playback.LinearReference, revision int64, tuners int) string {
+	if live != nil {
+		if input, e := live.InputTx(ctx, tx, ref.SourceID, ref.ChannelID, ref.Generation); e == nil {
+			return "input:" + strconv.Itoa(tuners) + ":" + input.Fence()
+		}
+	}
+	return strconv.FormatInt(revision, 10)
+}
 func (r *channelResolver) liveSelection(ctx context.Context, tx *sql.Tx, p identity.Principal, ref playback.LinearReference, checkGeneration bool) (playback.LinearSelection, error) {
 	var v playback.LinearSelection
 	if e := r.policy.AllowedTxContext(ctx, p, "", tx); e != nil {
@@ -96,7 +111,8 @@ func (r *channelResolver) liveSelection(ctx context.Context, tx *sql.Tx, p ident
 	}
 	var access, gen, state, name string
 	var revision int64
-	e := tx.QueryRowContext(ctx, `SELECT s.state,s.active_generation,s.revision,c.name,COALESCE(x.viewer_access,'owner-only') FROM live_sources s JOIN live_channel_versions c ON c.generation_id=s.active_generation LEFT JOIN live_source_settings x ON x.source_id=s.id WHERE s.id=? AND c.channel_id=?`, ref.SourceID, ref.ChannelID).Scan(&state, &gen, &revision, &name, &access)
+	var tuners int
+	e := tx.QueryRowContext(ctx, `SELECT s.state,s.active_generation,s.revision,s.tuner_count,c.name,COALESCE(x.viewer_access,'owner-only') FROM live_sources s JOIN live_channel_versions c ON c.generation_id=s.active_generation LEFT JOIN live_source_settings x ON x.source_id=s.id WHERE s.id=? AND c.channel_id=?`, ref.SourceID, ref.ChannelID).Scan(&state, &gen, &revision, &tuners, &name, &access)
 	if errors.Is(e, sql.ErrNoRows) {
 		return v, channelFault("channel_removed", 410)
 	}
@@ -113,7 +129,7 @@ func (r *channelResolver) liveSelection(ctx context.Context, tx *sql.Tx, p ident
 		return v, channelFault("guide_refresh_required", 409)
 	}
 	ref.Generation = gen
-	v = playback.LinearSelection{Reference: ref, Name: name, SourceFence: strconv.FormatInt(revision, 10), Quality: playback.ControlQuality{Mode: "automatic", AllowLossy: true}}
+	v = playback.LinearSelection{Reference: ref, Name: name, SourceFence: liveSourceFence(ctx, tx, r.live, ref, revision, tuners), Quality: playback.ControlQuality{Mode: "automatic", AllowLossy: true}}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	var programme playback.LinearProgramme
 	var start, end string
