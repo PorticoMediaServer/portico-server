@@ -31,6 +31,11 @@ func (s *Service) claimScreen(ctx context.Context) (*screenClaim, error) {
 	stamp := tvdbStamp(s.publicationTime())
 	err = tx.QueryRowContext(ctx, `SELECT target_kind,target_id FROM screen_metadata_work WHERE status IN('pending','searching','pending_children') AND next_attempt<=? AND lease_until<=? ORDER BY CASE WHEN status='pending_children' THEN 0 WHEN target_kind='show' THEN 1 ELSE 2 END,next_attempt,target_id LIMIT 1`, stamp, stamp).Scan(&kind, &target)
 	if errors.Is(err, sql.ErrNoRows) {
+		// Nothing else is due, so a title parked by an outage whose cool-off
+		// has passed gets another try. A parked row with no retry time is final.
+		err = tx.QueryRowContext(ctx, `SELECT target_kind,target_id FROM screen_metadata_work WHERE status='unavailable' AND next_attempt>'' AND next_attempt<=? AND lease_until<=? ORDER BY next_attempt,target_id LIMIT 1`, stamp, stamp).Scan(&kind, &target)
+	}
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, gated.Commit()
 	}
 	if err != nil {
@@ -39,7 +44,7 @@ func (s *Service) claimScreen(ctx context.Context) (*screenClaim, error) {
 	id, err := entityid.Public(ctx, tx, target)
 	if errors.Is(err, entityid.ErrNotFound) {
 		// The entity is gone; park the row instead of claiming it forever.
-		if _, writeErr := tx.ExecContext(ctx, `UPDATE screen_metadata_work SET status='unavailable',error='metadata_scope_unavailable',revision=revision+1,lease='',lease_until='' WHERE target_kind=? AND target_id=?`, kind, target); writeErr != nil {
+		if _, writeErr := tx.ExecContext(ctx, `UPDATE screen_metadata_work SET status='unavailable',error='metadata_scope_unavailable',next_attempt='',revision=revision+1,lease='',lease_until='' WHERE target_kind=? AND target_id=?`, kind, target); writeErr != nil {
 			return nil, writeErr
 		}
 		return nil, gated.Commit()
@@ -56,7 +61,7 @@ func (s *Service) claimScreen(ctx context.Context) (*screenClaim, error) {
 				status = "needs_selection"
 				reason = "conflicting_local_metadata_budget"
 			}
-			if _, writeErr := tx.ExecContext(ctx, `UPDATE screen_metadata_work SET status=?,error=?,revision=revision+1,lease='',lease_until='' WHERE target_kind=? AND target_id=?`, status, reason, kind, target); writeErr != nil {
+			if _, writeErr := tx.ExecContext(ctx, `UPDATE screen_metadata_work SET status=?,error=?,next_attempt='',revision=revision+1,lease='',lease_until='' WHERE target_kind=? AND target_id=?`, status, reason, kind, target); writeErr != nil {
 				return nil, writeErr
 			}
 			return nil, gated.Commit()
@@ -225,12 +230,37 @@ func (s *Service) failScreen(ctx context.Context, p *screenClaim, problem error)
 	if delay > 24*time.Hour {
 		delay = 24 * time.Hour
 	}
-	_, err = tx.ExecContext(ctx, `UPDATE screen_metadata_work SET status=?,error=?,attempts=attempts+1,next_attempt=?,revision=revision+1,lease='',lease_until='' WHERE target_kind=? AND target_id=? AND lease=?`, status, reason, tvdbStamp(s.publicationTime().Add(delay)), p.Base.TargetKind, p.Base.Entity, p.Token)
+	// Waiting out a provider's cooldown is not a failure of this title: it is
+	// put off until the cooldown ends and none of its retries is used.
+	counted := 1
+	if pe != nil && pe.Code == "provider_backoff" {
+		status, counted = "pending", 0
+	}
+	next := tvdbStamp(s.publicationTime().Add(delay))
+	if status == "unavailable" {
+		// A parked title is retried only if waiting can help: an outage or a
+		// provider's own refusal to serve for now. It comes back after a
+		// cool-off that keeps doubling, and claimScreen takes it only when
+		// nothing else is due. A refusal that waiting cannot change, and a
+		// local publication failure that has used its five tries, stay parked
+		// with no retry time until the owner or a change to the title wakes them.
+		next = ""
+		if pe != nil && pe.Retryable() {
+			next = tvdbStamp(s.publicationTime().Add(max(delay, screenRecoveryCoolOff)))
+		}
+	}
+	_, err = tx.ExecContext(ctx, `UPDATE screen_metadata_work SET status=?,error=?,attempts=attempts+?,next_attempt=?,revision=revision+1,lease='',lease_until='' WHERE target_kind=? AND target_id=? AND lease=?`, status, reason, counted, next, p.Base.TargetKind, p.Base.Entity, p.Token)
 	if err != nil {
 		return err
 	}
 	return gated3.Commit()
 }
+
+// screenRecoveryCoolOff is the least a parked title waits before it is tried
+// again: long enough that a provider which is down is asked about each title
+// about once an hour at first, and far less often after that.
+const screenRecoveryCoolOff = time.Hour
+
 func screenProviderEnabled(b screenBase, provider string) bool {
 	for _, p := range b.Providers {
 		if p == provider {
