@@ -4,9 +4,11 @@
  */
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {mkdtempSync, writeFileSync} from 'node:fs';
+import {spawnSync} from 'node:child_process';
+import {mkdirSync, mkdtempSync, writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
+import {fileURLToPath} from 'node:url';
 import {extractRegistryKeys, findReaders, isExcludedFile, isExcludedLine, EXCEPTIONS} from '../scripts/check-preference-consumers.mjs';
 
 const GO = `
@@ -59,11 +61,36 @@ test('X-01: a key read only in an exclusion list has no reader; a value() read c
 });
 
 test('X-01: only the documented blocked keys may lack readers', () => {
-  assert.deepEqual(Object.keys(EXCEPTIONS).sort(), [
-    'music.repeatDefault',
-    'music.shuffleDefault',
-    'navigation.pinnedLibraryIds',
-    'navigation.sidebarCollapsed',
-    'privacy.includeInWatchTogether',
-  ]);
+  assert.deepEqual(Object.keys(EXCEPTIONS).sort(), []);
+});
+
+const script = fileURLToPath(new URL('../scripts/check-preference-consumers.mjs', import.meta.url));
+const run = (native: string | undefined) => {
+  const env = {...process.env};
+  if (native === undefined) delete env.PORTICO_REACT_NATIVE_REPO; else env.PORTICO_REACT_NATIVE_REPO = native;
+  return spawnSync(process.execPath, [script], {env, encoding: 'utf8'});
+};
+
+test('X-01: the check runs over the real registry, with or without the native checkout beside it', () => {
+  const result = run(undefined);
+  assert.doesNotMatch(result.stdout, /skipped/, 'a missing native checkout must not turn the check off');
+  assert.match(result.stdout, /PASS: \d+ keys/);
+  assert.equal(result.status, 0, result.stderr);
+  // Every registry key was looked up, not an empty list.
+  assert.ok(Number(/PASS: (\d+) keys/.exec(result.stdout)![1]) >= 40);
+});
+
+test('X-01: a native checkout that was named but is not there fails the check', () => {
+  const missing = join(mkdtempSync(join(tmpdir(), 'pref-native-')), 'nowhere');
+  const result = run(missing);
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /PORTICO_REACT_NATIVE_REPO/);
+});
+
+test('X-01: the native app’s source is read where the app lives', () => {
+  const repo = mkdtempSync(join(tmpdir(), 'pref-native-'));
+  mkdirSync(join(repo, 'apps/native/src'), {recursive: true});
+  const result = run(repo);
+  assert.equal(result.status, 0, result.stderr);
+  assert.doesNotMatch(result.stdout, /this repository’s readers only/);
 });

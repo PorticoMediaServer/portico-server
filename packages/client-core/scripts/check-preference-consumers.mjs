@@ -9,7 +9,7 @@
  * mentions preferences only in prose), so the registry source is the list.
  *
  * Readers count in client code (`web/src`,
- * the Apple app's `src` (portico-react-native), `packages/client-core/src`, `packages/i18n/src`)
+ * the native app's `apps/native/src` (portico-react-native), `packages/client-core/src`, `packages/i18n/src`)
  * and in server code (`server/internal`): a key enforced
  * server-side (delivery policy, personal activity, search history, home
  * layout) has a consumer even when no client reads it.
@@ -34,16 +34,14 @@ const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..', '..', '..');
 
 const REGISTRY = join(root, 'server/internal/operations/preferences.go');
-// The Apple app reads preferences too; it lives in the portico-react-native checkout
-// beside this one. Without it a key only the Apple app reads would look unread.
-const appleSource = resolve(process.env.PORTICO_REACT_NATIVE_REPO ?? join(root, '..', 'portico-react-native'), 'apps/apple/src');
-if (!existsSync(appleSource)) {
-  console.log(`preference consumers: skipped (no portico-react-native checkout at ${dirname(dirname(appleSource))}; set PORTICO_REACT_NATIVE_REPO)`);
-  process.exit(0);
-}
+// The native app reads preferences too; it lives in the portico-react-native checkout
+// beside this one. Its readers are counted when that checkout is there. When it is not, the
+// check still runs over this repository: a key that only the native app reads then fails
+// with a pointer to PORTICO_REACT_NATIVE_REPO, which is a visible answer, not a skipped check.
+const nativeRepo = process.env.PORTICO_REACT_NATIVE_REPO;
+const nativeSource = resolve(nativeRepo ?? join(root, '..', 'portico-react-native'), 'apps/native/src');
 const SEARCH_ROOTS = [
   'web/src',
-  relative(root, appleSource),
   'packages/client-core/src',
   'packages/i18n/src',
   'server/internal',
@@ -52,14 +50,8 @@ const SEARCH_ROOTS = [
 const QUALITY_LANES = ['local', 'wifi', 'cellular', 'unknown'];
 const QUALITY_FIELDS = ['mode', 'maxVideoBitrateMbps', 'maxAudioBitrateKbps', 'maxVideoHeight', 'allowHDR'];
 
-/** Keys with no reader that another lane must resolve (key: reason). */
-export const EXCEPTIONS = {
-  'music.shuffleDefault': 'player queue-start work (audit X-02 step 3), not M9; see Questions',
-  'music.repeatDefault': 'player queue-start work (audit X-02 step 3), not M9; see Questions',
-  'privacy.includeInWatchTogether': 'no enforcement in base; audit says enforce-or-remove (server lane); see Questions',
-  'navigation.sidebarCollapsed': 'hidden via managedElsewhere, not user-facing (audit X-01); see Questions',
-  'navigation.pinnedLibraryIds': 'pins use the library-pins endpoint; registry key unread (server lane); see Questions',
-};
+/** Keys with no reader that another lane must resolve (key: reason). None today. */
+export const EXCEPTIONS = {};
 
 /** `quality.<lane>.*` keys are read through a dynamic lane prefix, never as
  * literals. These files contain the prefix read and cover the whole group. */
@@ -144,9 +136,16 @@ export function findReaders(keys, files) {
 }
 
 function main() {
+  const native = existsSync(nativeSource);
+  if (!native && nativeRepo !== undefined) {
+    console.error(`FAIL: PORTICO_REACT_NATIVE_REPO is set, but there is no native app source at ${nativeSource}.`);
+    process.exit(1);
+  }
+  if (!native) console.log(`note: no portico-react-native checkout at ${dirname(dirname(dirname(nativeSource)))}; checking this repository’s readers only (set PORTICO_REACT_NATIVE_REPO to count the native app’s).`);
   const go = readFileSync(REGISTRY, 'utf8');
   const keys = extractRegistryKeys(go);
-  const files = SEARCH_ROOTS.flatMap(r => walk(join(root, r)));
+  const [web, ...rest] = SEARCH_ROOTS.map(r => join(root, r));
+  const files = [web, ...(native ? [nativeSource] : []), ...rest].flatMap(dir => walk(dir));
   const hits = findReaders(keys, files);
   const missing = [];
   const excused = [];
@@ -162,6 +161,7 @@ function main() {
   if (missing.length) {
     console.error(`\nFAIL: ${missing.length} preference key(s) with no reader outside the registry, label files and tests:`);
     for (const key of missing) console.error(`  - ${key}`);
+    if (!native) console.error('If only the native app reads one of these, run again with PORTICO_REACT_NATIVE_REPO set to its checkout.');
     process.exit(1);
   }
   console.log(`\nPASS: ${keys.length} keys, ${excused.length} documented exception(s).`);
