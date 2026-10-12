@@ -40,3 +40,25 @@ func TestShowFolderKeepsAYearThatBelongsToTheTitle(t *testing.T) {
 		t.Fatalf("unexpected parse %+v", got)
 	}
 }
+
+// A folder written by one tool and files written by another can spell the same
+// accented name with composed or decomposed characters.
+func TestShowFolderAndFileNameAgreeAcrossUnicodeForms(t *testing.T) {
+	composed, decomposed := "Café", "Café"
+	for _, path := range []string{
+		composed + "/Season 1/" + decomposed + " - S01E01.mkv",
+		decomposed + "/Season 1/" + composed + " - S01E01.mkv",
+		composed + " (2019)/Season 1/" + decomposed + " - S01E01.mkv",
+	} {
+		got := ParseEpisode(path, "tv")
+		if got.Issue != "" || got.Season != 1 || len(got.Numbers) != 1 {
+			t.Fatalf("%q: %+v", path, got)
+		}
+	}
+	if got := ParseEpisode(composed+" (2019)/Season 1/"+decomposed+" - S01E01.mkv", "tv"); got.Year != 2019 {
+		t.Fatalf("folder year not taken for an equal name: %+v", got)
+	}
+	if got := ParseEpisode("Cafe/Season 1/"+composed+" - S01E01.mkv", "tv"); got.Issue != "folder_and_filename_series_conflict" {
+		t.Fatalf("a different name was accepted: %+v", got)
+	}
+}

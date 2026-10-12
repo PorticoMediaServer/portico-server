@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"golang.org/x/text/unicode/norm"
 )
 
 type EpisodeNaming struct {
@@ -49,6 +51,13 @@ func episodeMarkers(name string) [][]int {
 		out = append(out, loc)
 	}
 	return out
+}
+
+// sameSeriesName compares a folder's and a file's series name. An accented
+// letter can be written composed or decomposed and looks the same either way,
+// so both are brought to one form before the case-insensitive comparison.
+func sameSeriesName(a, b string) bool {
+	return strings.EqualFold(norm.NFC.String(a), norm.NFC.String(b))
 }
 
 func cleanSeries(s string) (string, int) {
@@ -155,9 +164,9 @@ func ParseEpisode(relative, kind string) EpisodeNaming {
 	}
 	if showFolder != "" && showFolder != "." {
 		title, year := cleanSeries(showFolder)
-		if strings.EqualFold(title, out.ShowTitle) && out.Year == 0 {
+		if sameSeriesName(title, out.ShowTitle) && out.Year == 0 {
 			out.Year = year
-		} else if !strings.EqualFold(title, out.ShowTitle) {
+		} else if !sameSeriesName(title, out.ShowTitle) {
 			out.Issue = "folder_and_filename_series_conflict"
 			return out
 		}
