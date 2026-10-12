@@ -18,11 +18,15 @@ const assets = {
   linuxX64Rpm: 'portico-media-server-linux-x64.rpm',
   linuxArm64Rpm: 'portico-media-server-linux-arm64.rpm',
 };
+const channel = 'stable';
 writeFileSync('dist/portico-update-manifest.json', `${JSON.stringify({
   schemaVersion: 1,
-  channel: 'stable',
+  channel,
   version,
   tag,
+  // The shape a server's update check reads (updates.feedUrl): the builds each
+  // channel offers, with the release page as the link an owner follows.
+  channels: {[channel]: [{version, channel, url: `https://github.com/${repository}/releases/tag/${tag}`}]},
   signed: false,
   automaticInstallationAllowed: false,
   warning: 'Unsigned development release. Verify checksums and install manually.',
