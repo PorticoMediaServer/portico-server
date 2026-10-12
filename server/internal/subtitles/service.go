@@ -94,8 +94,13 @@ func validID(s string) bool {
 	}
 	return true
 }
+
+// tx waits for the write gate in the class of the work that called it: a
+// viewer's request carries its route's class, so their own subtitle action is
+// not queued behind a scan; the scan's import and cleanup name none and stay
+// background.
 func (s *Service) tx(ctx context.Context, p identity.Principal, item string) (*dbwork.Write, identity.Principal, error) {
-	gated, e := dbwork.Begin(ctx, s.db, dbwork.ClassBackgroundMedia)
+	gated, e := dbwork.Begin(ctx, s.db, dbwork.ClassFrom(ctx, dbwork.ClassBackgroundMedia))
 	if e != nil {
 		return nil, p, e
 	}
