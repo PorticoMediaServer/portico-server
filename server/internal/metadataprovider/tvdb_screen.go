@@ -10,21 +10,53 @@ import (
 	"strings"
 )
 
-type tvdbScreenCompanies []tmdbName
+// tvdbCompany is one company with the relation kind its TheTVDB type maps to:
+// "network", "studio", "production_company", or "company" for a distributor,
+// an effects house or a company the response gives no type for.
+type tvdbCompany struct {
+	ID   int64
+	Name string
+	Kind string
+}
+type tvdbScreenCompanies []tvdbCompany
 
+func tvdbCompanyKind(typeName string) string {
+	switch strings.ToLower(strings.TrimSpace(typeName)) {
+	case "network":
+		return "network"
+	case "studio":
+		return "studio"
+	case "production company", "production":
+		return "production_company"
+	}
+	return "company"
+}
+
+// A show's companies arrive as one list with a type on each; a film's arrive
+// grouped by type.
 func (c *tvdbScreenCompanies) UnmarshalJSON(raw []byte) error {
 	if string(raw) == "null" {
 		return nil
 	}
 	if len(raw) > 0 && raw[0] == '[' {
-		var rows []tmdbName
+		var rows []struct {
+			ID   int64  `json:"id"`
+			Name string `json:"name"`
+			Type struct {
+				Name string `json:"companyTypeName"`
+			} `json:"companyType"`
+		}
 		if e := json.Unmarshal(raw, &rows); e != nil {
 			return e
 		}
 		if len(rows) > 256 {
 			return &Error{Provider: "tvdb", Code: "invalid_companies"}
 		}
-		*c = rows
+		out := make(tvdbScreenCompanies, 0, len(rows))
+		for _, v := range rows {
+			out = append(out, tvdbCompany{v.ID, v.Name, tvdbCompanyKind(v.Type.Name)})
+		}
+		*c = out
 		return nil
 	}
 	var groups struct {
@@ -34,9 +66,14 @@ func (c *tvdbScreenCompanies) UnmarshalJSON(raw []byte) error {
 	if e := json.Unmarshal(raw, &groups); e != nil {
 		return e
 	}
-	rows := []tmdbName{}
-	for _, g := range [][]tmdbName{groups.Studio, groups.Network, groups.Production, groups.Distributor, groups.Special} {
-		rows = append(rows, g...)
+	rows := tvdbScreenCompanies{}
+	for _, g := range []struct {
+		kind string
+		rows []tmdbName
+	}{{"studio", groups.Studio}, {"network", groups.Network}, {"production_company", groups.Production}, {"company", groups.Distributor}, {"company", groups.Special}} {
+		for _, v := range g.rows {
+			rows = append(rows, tvdbCompany{v.ID, v.Name, g.kind})
+		}
 	}
 	if len(rows) > 256 {
 		return &Error{Provider: "tvdb", Code: "invalid_companies"}
@@ -209,7 +246,7 @@ func (s *TVDB) ScreenDetails(ctx context.Context, kind, id, locale, region strin
 	}
 	for _, c := range v.Companies {
 		if c.ID > 0 {
-			r.Relations = append(r.Relations, ScreenRelation{"company", ScreenID{"tvdb", "company", numberID(c.ID)}, c.Name})
+			r.Relations = append(r.Relations, ScreenRelation{c.Kind, ScreenID{"tvdb", "company", numberID(c.ID)}, c.Name})
 		}
 	}
 	for _, c := range v.ContentRatings {
