@@ -318,3 +318,68 @@ func TestRemoteHostedSetupKeepsRecoveryReachable(t *testing.T) {
 		t.Fatal("remote recovery off after remote setup", remote, e)
 	}
 }
+
+// A code that was approved but never collected by its device has no session to
+// revoke. Clean-up must expire it and carry on with the rest of its work.
+func TestPruneSetupExpiresApprovedCodeThatWasNeverCollected(t *testing.T) {
+	s, db, _ := familyFixture(t)
+	ctx := context.Background()
+	owner := issueFamily(t, s)
+	p, e := s.Authenticate(owner.AccessToken)
+	if e != nil {
+		t.Fatal(e)
+	}
+	a, e := s.StartQuick(ctx, QuickStart{RequestID: "33333333-3333-4333-8333-333333333333", DeviceName: "Den", Platform: "tvos", AppVersion: "1.0"}, true)
+	if e != nil {
+		t.Fatal(e)
+	}
+	preview, e := s.ReviewQuick(ctx, a.UserCode)
+	if e != nil {
+		t.Fatal(e)
+	}
+	phone, e := WithIssuingDevice(ctx, DeviceRegistration{InstallationID: Token(), Name: "Phone", Platform: "ios", App: "portico", AppVersion: "1.0"}, "127.0.0.1:1")
+	if e != nil {
+		t.Fatal(e)
+	}
+	if e = s.DecideQuick(phone, p, preview.RequestID, a.UserCode, "approve"); e != nil {
+		t.Fatal(e)
+	}
+	stale := time.Now().Add(-48 * time.Hour).Unix()
+	if _, e = db.Exec(`UPDATE quick_connect_v1 SET expires_at=? WHERE id=?`, time.Now().Add(-time.Minute).Unix(), preview.RequestID); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = db.Exec(`INSERT INTO setup_rate_limits_v1(subject_hash,kind,window_start,attempts) VALUES('stale','quick',?,1)`, stale); e != nil {
+		t.Fatal(e)
+	}
+	if e = s.PruneSetup(ctx); e != nil {
+		t.Fatalf("clean-up failed on an approved code that was never collected: %v", e)
+	}
+	var status string
+	var cipher []byte
+	var userHash sql.NullString
+	if e = db.QueryRow(`SELECT status,grant_cipher,user_hash FROM quick_connect_v1 WHERE id=?`, preview.RequestID).Scan(&status, &cipher, &userHash); e != nil {
+		t.Fatal(e)
+	}
+	if status != "expired" || cipher != nil || userHash.Valid {
+		t.Fatalf("uncollected approval was left as %q (approval kept=%v, code kept=%v)", status, cipher != nil, userHash.Valid)
+	}
+	var limits int
+	if e = db.QueryRow(`SELECT count(*) FROM setup_rate_limits_v1 WHERE subject_hash='stale'`).Scan(&limits); e != nil || limits != 0 {
+		t.Fatalf("clean-up stopped before removing old rate-limit rows: %d %v", limits, e)
+	}
+	// The approver's own session is untouched, and the expired code can no longer be collected.
+	if _, e = s.Authenticate(owner.AccessToken); e != nil {
+		t.Fatalf("expiring an uncollected code revoked the approver: %v", e)
+	}
+	// A later run removes the expired row once it is a day old.
+	if _, e = db.Exec(`UPDATE quick_connect_v1 SET expires_at=? WHERE id=?`, stale, preview.RequestID); e != nil {
+		t.Fatal(e)
+	}
+	if e = s.PruneSetup(ctx); e != nil {
+		t.Fatal(e)
+	}
+	var left int
+	if e = db.QueryRow(`SELECT count(*) FROM quick_connect_v1 WHERE id=?`, preview.RequestID).Scan(&left); e != nil || left != 0 {
+		t.Fatalf("expired code was never deleted: %d %v", left, e)
+	}
+}
