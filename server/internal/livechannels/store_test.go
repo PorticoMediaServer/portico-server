@@ -332,3 +332,60 @@ func TestSealedPreviewMigratesToPlain(t *testing.T) {
 		t.Fatal("key file left behind")
 	}
 }
+
+// The XMLTV format's own files name its DTD on the second line. That
+// declaration declares nothing, so a guide carrying it is read; any
+// declaration that could define an entity, and any reference to one, is still
+// refused, and nothing is ever fetched or expanded.
+func TestGuideAcceptsOnlyTheHarmlessDocumentTypeDeclaration(t *testing.T) {
+	base := testInput()
+	body := strings.TrimPrefix(base.Guide, `<?xml version="1.0"?>`)
+	want, e := PreviewSource(base)
+	if e != nil {
+		t.Fatal(e)
+	}
+	for name, doctype := range map[string]string{
+		"system":        `<!DOCTYPE tv SYSTEM "xmltv.dtd">`,
+		"single-quoted": `<!DOCTYPE tv SYSTEM 'xmltv.dtd'>`,
+		"public":        `<!DOCTYPE tv PUBLIC "-//XMLTV//DTD XMLTV//EN" "http://xmltv.invalid/xmltv.dtd">`,
+		"bare":          `<!DOCTYPE tv>`,
+		"spaced":        "<!DOCTYPE  tv\n SYSTEM \"xmltv.dtd\" >",
+	} {
+		t.Run("accepts-"+name, func(t *testing.T) {
+			in := base
+			in.Guide = `<?xml version="1.0" encoding="UTF-8"?>` + "\n" + doctype + "\n" + body
+			got, e := PreviewSource(in)
+			if e != nil {
+				t.Fatalf("a standard XMLTV declaration was refused: %v", e)
+			}
+			if got.Channels != want.Channels || got.Programmes != want.Programmes {
+				t.Fatalf("the declaration changed what was read: %+v, want %+v", got, want)
+			}
+		})
+	}
+	for name, guide := range map[string]string{
+		"internal-entity":      `<!DOCTYPE tv [<!ENTITY x "expanded">]>` + body,
+		"external-entity":      `<!DOCTYPE tv [<!ENTITY x SYSTEM "file:///etc/passwd">]>` + body,
+		"parameter-entity":     `<!DOCTYPE tv [<!ENTITY % x SYSTEM "http://provider.invalid/x.dtd"> %x;]>` + body,
+		"subset-after-system":  `<!DOCTYPE tv SYSTEM "xmltv.dtd" [<!ENTITY x "expanded">]>` + body,
+		"empty-subset":         `<!DOCTYPE tv SYSTEM "xmltv.dtd" []>` + body,
+		"other-root":           `<!DOCTYPE html SYSTEM "xmltv.dtd">` + body,
+		"bare-entity":          `<!ENTITY x "expanded">` + body,
+		"element-declaration":  `<!ELEMENT tv ANY>` + body,
+		"two-declarations":     `<!DOCTYPE tv SYSTEM "xmltv.dtd"><!DOCTYPE tv SYSTEM "xmltv.dtd">` + body,
+		"after-the-root":       body + `<!DOCTYPE tv SYSTEM "xmltv.dtd">`,
+		"inside-the-root":      strings.Replace(body, "<tv>", `<tv><!DOCTYPE tv SYSTEM "xmltv.dtd">`, 1),
+		"inside-a-programme":   strings.Replace(body, "<title>", `<!DOCTYPE tv SYSTEM "xmltv.dtd"><title>`, 1),
+		"unterminated-literal": `<!DOCTYPE tv SYSTEM "xmltv.dtd>` + body,
+		"trailing-content":     `<!DOCTYPE tv SYSTEM "xmltv.dtd" "extra">` + body,
+		"undeclared-reference": `<!DOCTYPE tv SYSTEM "xmltv.dtd">` + strings.Replace(body, "Afternoon programme", "&x;", 1),
+	} {
+		t.Run("refuses-"+name, func(t *testing.T) {
+			in := base
+			in.Guide = guide
+			if _, e := PreviewSource(in); !errors.Is(e, ErrInvalid) {
+				t.Fatalf("accepted %s: %v", name, e)
+			}
+		})
+	}
+}

@@ -146,6 +146,7 @@ func parse(in SourceInput) (parsedSource, error) {
 	depth := 0
 	root := false
 	closed := false
+	declared := false
 	seen := map[string]parsedProgramme{}
 	icons := map[string]bool{}
 	for {
@@ -158,7 +159,10 @@ func parse(in SourceInput) (parsedSource, error) {
 		}
 		switch t := tok.(type) {
 		case xml.Directive:
-			return out, ErrInvalid
+			if root || declared || !harmlessGuideDoctype(t) {
+				return out, ErrInvalid
+			}
+			declared = true
 		case xml.StartElement:
 			if closed {
 				return out, ErrInvalid
@@ -350,11 +354,72 @@ func PreviewSource(in SourceInput) (Preview, error) {
 	return p, nil
 }
 
+// harmlessGuideDoctype reports whether a directive is the plain document type
+// declaration standard XMLTV files carry: <!DOCTYPE tv>, optionally naming the
+// DTD with SYSTEM "…" or PUBLIC "…" "…". It declares nothing. The named DTD is
+// never fetched or read. Anything with an internal subset, which is where
+// entities are declared, and every other directive is refused; entity
+// references themselves are refused by the decoder, which expands none.
+func harmlessGuideDoctype(directive xml.Directive) bool {
+	if len(directive) > 512 {
+		return false
+	}
+	rest, ok := strings.CutPrefix(string(directive), "DOCTYPE")
+	if !ok {
+		return false
+	}
+	space := func() bool {
+		trimmed := strings.TrimLeft(rest, " \t\r\n")
+		skipped := len(trimmed) != len(rest)
+		rest = trimmed
+		return skipped
+	}
+	literal := func() bool {
+		if rest == "" || rest[0] != '"' && rest[0] != '\'' {
+			return false
+		}
+		end := strings.IndexByte(rest[1:], rest[0])
+		if end < 0 || strings.ContainsAny(rest[1:1+end], "<>[]%&") {
+			return false
+		}
+		rest = rest[end+2:]
+		return true
+	}
+	if !space() {
+		return false
+	}
+	if rest, ok = strings.CutPrefix(rest, "tv"); !ok {
+		return false
+	}
+	if !space() {
+		return rest == ""
+	}
+	switch {
+	case rest == "":
+		return true
+	case strings.HasPrefix(rest, "SYSTEM"):
+		rest = rest[len("SYSTEM"):]
+		if !space() || !literal() {
+			return false
+		}
+	case strings.HasPrefix(rest, "PUBLIC"):
+		rest = rest[len("PUBLIC"):]
+		if !space() || !literal() || !space() || !literal() {
+			return false
+		}
+	default:
+		return false
+	}
+	space()
+	return rest == ""
+}
+
 // DecodeElement can skip unfamiliar nested tags. Preflight the entire document
 // so a directive/deep tree cannot hide inside a skipped programme or channel.
 func validateGuideXML(raw string) error {
 	d := xml.NewDecoder(strings.NewReader(raw))
 	depth, nodes, roots := 0, 0, 0
+	declared := false
 	for {
 		t, e := d.Token()
 		if e == io.EOF {
@@ -369,7 +434,11 @@ func validateGuideXML(raw string) error {
 		}
 		switch v := t.(type) {
 		case xml.Directive:
-			return ErrInvalid
+			// Only before the root element, and only once.
+			if roots != 0 || declared || !harmlessGuideDoctype(v) {
+				return ErrInvalid
+			}
+			declared = true
 		case xml.StartElement:
 			if depth == 0 {
 				roots++
