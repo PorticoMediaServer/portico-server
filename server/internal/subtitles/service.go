@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/worker"
-	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -61,11 +60,6 @@ func New(o Options) (*Service, error) {
 		return nil, e
 	}
 	ffmpeg, _ := exec.LookPath(o.FFmpeg)
-	// Descriptor inheritance and /dev/fd are Unix extraction capabilities, not
-	// a test-environment gate. Windows still supports upload/provider/sidecars.
-	if runtime.GOOS == "windows" {
-		ffmpeg = ""
-	}
 	return &Service{scanTextSlot: make(chan struct{}, 1), db: o.DB, objects: objects, storage: o.Storage, authorize: o.Authorize, helper: o.HelperBinary, ffmpeg: ffmpeg, provider: o.Provider}, nil
 }
 func (s *Service) Close() error {
