@@ -1,6 +1,7 @@
 import type {HttpLocalApi,LocalSession} from '@core/index.ts';
 import {RouteConnection,sessionRoute} from '@core/route-connection';
-import {restoreNativeSession,forgetNativeSession,type RememberedServer,type ServerConnectionStorage,type HostedConnectionSource,type ConnectionEnvironment} from '@core/server-connections';
+import {RouteError} from '@core/route-identity';
+import {restoreNativeSession,forgetNativeSession,savedConnectionDamaged,type RememberedServer,type ServerConnectionStorage,type HostedConnectionSource,type ConnectionEnvironment} from '@core/server-connections';
 import {browserAccount} from './account';
 
 /** Version 1 is encrypted with a non-exportable key. Version 2 is plain JSON, used where the
@@ -20,22 +21,34 @@ export class BrowserProtectedStore<RecordType> {
  }
  private exclusive<T>(work:()=>Promise<T>):Promise<T>{return navigator.locks.request(this.databaseName+':selected',{signal:AbortSignal.timeout(15000)},work);}
  private values(){return this.transaction<{key?:CryptoKey;record?:Vault}>('readonly',(store,done)=>{const key=store.get('key'),record=store.get('selected');record.onsuccess=()=>done({key:key.result,record:record.result});});}
+ /** The record is there and can never be read again: the wrong shape, no key, failed
+  * authentication, not a record. Waiting does not mend that, unlike a database that is busy or
+  * blocked, so it is reported by its own code and `change` lets a new save take its place. */
+ private damaged(){return new RouteError('invalid_saved_connection','Saved server credentials are incomplete.');}
  private async decode(values:{key?:CryptoKey;record?:Vault}):Promise<RecordType|undefined>{
   if(!values.record)return;
-  if(values.record.version===2){if(typeof values.record.plain!=='string'||values.record.plain.length>196608)throw new Error('Saved server credentials are incomplete.');return JSON.parse(values.record.plain);}
+  if(values.record.version===2){if(typeof values.record.plain!=='string'||values.record.plain.length>196608)throw this.damaged();try{return JSON.parse(values.record.plain);}catch{throw this.damaged();}}
   // An encrypted record where nothing can decrypt it is as good as absent; the next save replaces it.
   if(!canEncrypt())return;
-  if(!values.key||values.record.version!==1||!(values.record.iv instanceof Uint8Array)||values.record.iv.length!==12||!(values.record.cipher instanceof ArrayBuffer)||values.record.cipher.byteLength>196608)throw new Error('Saved server credentials are incomplete.');
-  const clear=await crypto.subtle.decrypt({name:'AES-GCM',iv:new Uint8Array(values.record.iv),additionalData:new TextEncoder().encode(this.databaseName)},values.key,values.record.cipher);try{return JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(clear));}finally{new Uint8Array(clear).fill(0);}
+  if(!values.key||values.record.version!==1||!(values.record.iv instanceof Uint8Array)||values.record.iv.length!==12||!(values.record.cipher instanceof ArrayBuffer)||values.record.cipher.byteLength>196608)throw this.damaged();
+  let clear:ArrayBuffer;
+  // Failed authentication is the same answer every time; any other failure to decrypt is not known to be.
+  try{clear=await crypto.subtle.decrypt({name:'AES-GCM',iv:new Uint8Array(values.record.iv),additionalData:new TextEncoder().encode(this.databaseName)},values.key,values.record.cipher);}catch(e){throw (e as {name?:unknown}|null)?.name==='OperationError'?this.damaged():e;}
+  try{return JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(clear));}catch{throw this.damaged();}finally{new Uint8Array(clear).fill(0);}
  }
  read(){return this.exclusive(async()=>this.decode(await this.values()));}
  change(update:(current:RecordType|undefined)=>RecordType|undefined):Promise<void>{return this.exclusive(async()=>{
-  const values=await this.values(),current=await this.decode(values),next=update(current);
+  const values=await this.values();
+  // A damaged record is treated as absent: a save replaces it, and an update that saves nothing
+  // (a cache update, forgetting a sign-in that is not there) leaves it exactly as it is.
+  let current:RecordType|undefined,damaged=false;
+  try{current=await this.decode(values);}catch(e){if(!savedConnectionDamaged(e))throw e;damaged=true;}
+  const next=update(current);
   if(next===current)return;
   if(!next){await this.transaction<void>('readwrite',(store,done)=>{store.delete('selected');done();});return;}
   const bytes=new TextEncoder().encode(JSON.stringify(next));if(bytes.length>192000)throw new Error('Saved server routes exceeded their limit.');
   if(!canEncrypt()){const plain=new TextDecoder().decode(bytes);await this.transaction<void>('readwrite',(store,done)=>{store.put({version:2,plain} satisfies Vault,'selected');done();});return;}
-  let key=values.key;if(!key){if(values.record)throw new Error('The credential encryption key is missing.');key=await crypto.subtle.generateKey({name:'AES-GCM',length:256},false,['encrypt','decrypt']);}
+  let key=values.key;if(!key){if(values.record&&!damaged)throw new Error('The credential encryption key is missing.');key=await crypto.subtle.generateKey({name:'AES-GCM',length:256},false,['encrypt','decrypt']);}
   const iv=crypto.getRandomValues(new Uint8Array(12));let cipher:ArrayBuffer;try{cipher=await crypto.subtle.encrypt({name:'AES-GCM',iv,additionalData:new TextEncoder().encode(this.databaseName)},key,bytes);}finally{bytes.fill(0);}
   await this.transaction<void>('readwrite',(store,done)=>{if(!values.key)store.put(key,'key');store.put({version:1,iv,cipher} satisfies Vault,'selected');done();});
  });}

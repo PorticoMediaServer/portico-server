@@ -11,7 +11,9 @@
  *   connection store (web: encrypted IndexedDB; Apple: Keychain), with the request id persisted
  *   before sending so an interrupted refresh replays instead of burning the credential.
  * - Refusal (reuse, revocation, device unapproved, expired sign-in) ends the sign-in: the store
- *   is cleared and `onSignedOut` runs. Transient failures keep the credential and retry.
+ *   is cleared and `onSignedOut` runs. Transient failures keep the credential and retry: that
+ *   includes a store that cannot be read right now. A stored sign-in the store reports as damaged
+ *   for good ends the sign-in too, without touching the store.
  */
 import type {AuthRecovery, HttpLocalApi, LocalSession} from './index.ts';
 import {REFRESH_MIN_VALID_MS, SessionRefreshError, refreshStoredSession, type ConnectionEnvironment, type RefreshStoredOptions} from './server-connections.ts';
@@ -30,7 +32,9 @@ export type LocalSessionRefresherOptions = Readonly<{
   session: LocalSession;
   /** A renewed access token is in use: update the viewer snapshot (`ViewerService.rotate`) and the viewer record. */
   onRotated?: (session: LocalSession) => void;
-  /** The server refused the credential and the stored sign-in was removed. Show signed out; don't clear storage again. */
+  /** The sign-in is over on this device: the server refused the credential and the stored sign-in
+   * was removed, or the stored sign-in is replaced, gone or damaged (`saved_sign_in_damaged`, left
+   * in place for a new sign-in to replace). Show signed out; don't clear storage again. */
   onSignedOut?: (error: SessionRefreshError) => void;
   /** Refresh this long before expiry (default 2 minutes). */
   leadMs?: number;
