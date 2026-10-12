@@ -3,6 +3,7 @@ package decoder
 import (
 	"context"
 	"crypto/sha256"
+	_ "embed"
 	"encoding/hex"
 	"errors"
 	"math"
@@ -251,11 +252,11 @@ func ffmpegIdentity(executable string) (string, error) {
 // the probe fail, so the backend is reported unavailable and conversions use
 // software, instead of every hardware session failing. The probe's input is a
 // synthetic lavfi clip and its output the null muxer.
-func probeCommand(ctx context.Context, executable string, args []string, libraries []string) (*exec.Cmd, error) {
+func probeCommand(ctx context.Context, executable string, args []string, libraries, readPaths []string) (*exec.Cmd, error) {
 	if !filepath.IsAbs(executable) || filepath.Clean(executable) != executable {
 		return nil, ErrInvalidConfiguration
 	}
-	return mediaexec.CommandContext(ctx, mediaexec.Job{Executable: executable, Args: args, Hardware: true, Libraries: libraries})
+	return mediaexec.CommandContext(ctx, mediaexec.Job{Executable: executable, Args: args, Hardware: true, Libraries: libraries, ReadPaths: readPaths})
 }
 
 // ReshapesDolbyVision says whether converting this request tone maps with
@@ -281,18 +282,22 @@ func ReshapesDolbyVision(r ConversionRequest) bool {
 	return !native && spec.upload == ""
 }
 
+//go:embed probeassets/hdr10.hevc
+var hdrProbeClip []byte
+
 func probeArgs(spec backendSpec, device string, filters string) []string {
 	args := []string{"-nostdin", "-hide_banner", "-loglevel", "error", "-y"}
 	if spec.device != nil {
 		args = append(args, spec.device(device)...)
 	}
 	args = append(args, "-f", "lavfi", "-i", "testsrc2=size=160x120:rate=10:duration=0.5", "-frames:v", "5")
-	chain := filters
-	if spec.upload != "" {
+	chain := spec.upload
+	if filters != "" {
+		chain = strings.NewReplacer("format=nv12", "format=p010", "format=yuv420p", "format=p010").Replace(chain)
 		if chain != "" {
 			chain += ","
 		}
-		chain += spec.upload
+		chain += filters
 	}
 	if chain != "" {
 		args = append(args, "-vf", chain)
@@ -302,7 +307,11 @@ func probeArgs(spec backendSpec, device string, filters string) []string {
 }
 
 func (d *HardwareDetector) run(ctx context.Context, executable string, args []string) error {
-	cmd, err := probeCommand(ctx, executable, args, d.Libraries)
+	return d.runInput(ctx, executable, args, nil)
+}
+
+func (d *HardwareDetector) runInput(ctx context.Context, executable string, args, readPaths []string) error {
+	cmd, err := probeCommand(ctx, executable, args, d.Libraries, readPaths)
 	if err != nil {
 		return err
 	}
@@ -311,6 +320,30 @@ func (d *HardwareDetector) run(ctx context.Context, executable string, args []st
 		return d.Run(ctx, cmd)
 	}
 	return cmd.Run()
+}
+
+// VA-API requires mastering-display side data, which a lavfi pattern cannot
+// provide. Mount only this private fixture, with no source or output authority.
+func (d *HardwareDetector) probeVAAPIFilters(ctx context.Context, executable string, args []string) error {
+	file, err := os.CreateTemp("", "portico-hdr-probe-*.hevc")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(file.Name())
+	if _, err = file.Write(hdrProbeClip); err != nil {
+		file.Close()
+		return err
+	}
+	if err = file.Close(); err != nil {
+		return err
+	}
+	for i := 0; i+3 < len(args); i++ {
+		if args[i] == "-f" && args[i+1] == "lavfi" && args[i+2] == "-i" {
+			args[i+1], args[i+3] = "hevc", file.Name()
+			break
+		}
+	}
+	return d.runInput(ctx, executable, args, []string{file.Name()})
 }
 
 // Probe returns this host's verdict for one backend, running at most one bounded
@@ -369,7 +402,12 @@ func (d *HardwareDetector) Probe(ctx context.Context, executable string, backend
 	if out.Available && spec.toneMap != nil && spec.scale != nil {
 		chain := spec.toneMap(DefaultToneMapAlgorithm) + "," + spec.scale(120)
 		bounded, cancel = context.WithTimeout(ctx, timeout)
-		out.NativeFilters = d.run(bounded, executable, probeArgs(spec, device, chain)) == nil
+		args := probeArgs(spec, device, chain)
+		if backend == BackendVAAPI {
+			out.NativeFilters = d.probeVAAPIFilters(bounded, executable, args) == nil
+		} else {
+			out.NativeFilters = d.run(bounded, executable, args) == nil
+		}
 		cancel()
 	}
 	d.mu.Lock()

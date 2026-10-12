@@ -252,3 +252,38 @@ func TestConversionForcesHardwareIDRFrames(t *testing.T) {
 		})
 	}
 }
+
+func TestVAAPINativeProbeUsesUploadedHDRInput(t *testing.T) {
+	if !backendSpecs[BackendVAAPI].supported() {
+		t.Skip("VA-API requires Linux")
+	}
+	d := &HardwareDetector{Run: func(_ context.Context, cmd *exec.Cmd) error {
+		args := confinedArguments(t, cmd)
+		joined := strings.Join(args, " ")
+		if !strings.Contains(joined, "tonemap_vaapi") {
+			return nil
+		}
+		if strings.Contains(joined, "testsrc2") {
+			t.Fatal("tone mapper received SDR testsrc instead of HDR fixture")
+		}
+		if !strings.Contains(joined, "format=p010,hwupload,tonemap_vaapi=") {
+			t.Fatal("native tone mapper must receive uploaded ten-bit frames", joined)
+		}
+		for i, arg := range args {
+			if arg == "-i" {
+				data, err := os.ReadFile(args[i+1])
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(data) == 0 {
+					t.Fatal("empty HDR probe input")
+				}
+			}
+		}
+		return nil
+	}}
+	probe := d.Probe(context.Background(), fakeFFmpeg(t), BackendVAAPI, "")
+	if !probe.Available || !probe.NativeFilters {
+		t.Fatal(probe)
+	}
+}
