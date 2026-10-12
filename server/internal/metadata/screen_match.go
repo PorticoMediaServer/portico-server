@@ -14,6 +14,8 @@ import (
 )
 
 var screenYearPattern = regexp.MustCompile(`(?:^|[ ._\[(])((?:18|19|20)\d{2})(?:[ ._\])]|$)`)
+var screenBracketedYearPattern = regexp.MustCompile(`[\[(]((?:18|19|20)\d{2})[\])]`)
+var screenFollowingYearPattern = regexp.MustCompile(`^[ ._]((?:18|19|20)\d{2})(?:[ ._\])]|$)`)
 var screenReleasePattern = regexp.MustCompile(`(?i)(?:^|[ ._\[(])(?:480p|576p|720p|1080[pi]|2160p|4320p|4k|8k|blu[ ._-]?ray|bdrip|brrip|web[ ._-]?dl|webrip|hdtv|dvdrip|remux|x26[45]|h[ .]?26[45]|hevc|av1|aac|dts|truehd|ddp|hdr10?\+?|dolby[ .]?vision)(?:\b|_)`)
 var screenEpisodePattern = regexp.MustCompile(`(?i)(?:^|[ ._-])(?:s\d{1,2}e\d{1,4}|\d{1,2}x\d{1,4}|-\s*\d{1,4}(?:v\d)?)(?:\b|_)`)
 var screenGroupPattern = regexp.MustCompile(`^\[[^\]]{1,128}\]\s*`)
@@ -36,8 +38,47 @@ func normalizedScreenName(s string) string {
 	return strings.Join(strings.Fields(out.String()), " ")
 }
 
+// screenReleaseYear finds the release year in a name and where the title before
+// it ends. The first year is the release year unless the name says otherwise
+// without ambiguity: a year in brackets, a year written directly after
+// another, or any later year when the first one opens the name and would leave
+// no title at all. A name whose only year opens it is not guessed at.
+func screenReleaseYear(s string) (cut, year int) {
+	m := screenYearPattern.FindStringSubmatchIndex(s)
+	if len(m) == 0 {
+		return -1, 0
+	}
+	cut, start, end := m[0], m[2], m[3]
+	if b := screenBracketedYearPattern.FindStringSubmatchIndex(s); len(b) > 0 {
+		cut, start, end = b[0], b[2], b[3]
+	} else {
+		if start == 0 {
+			if later := screenYearPattern.FindStringSubmatchIndex(s[end:]); len(later) > 0 {
+				cut, start, end = end+later[0], end+later[2], end+later[3]
+			}
+		}
+		for {
+			next := screenFollowingYearPattern.FindStringSubmatchIndex(s[end:])
+			if len(next) == 0 {
+				break
+			}
+			cut, start, end = end, end+next[2], end+next[3]
+		}
+	}
+	year, _ = strconv.Atoi(s[start:end])
+	return cut, year
+}
+
 // Cleanup never writes back to the source or collapses editions/physical assets.
 func screenFilename(s string) (title string, year int, edition string) {
+	return screenName(s, 0)
+}
+
+// screenName cleans a name for search. released is the release year the
+// catalogue already holds for a title, or zero for a file name: once the
+// release year is known, a different year-like number in the title ("Blade
+// Runner 2049", "1917") is part of the title, not a second release year.
+func screenName(s string, released int) (title string, year int, edition string) {
 	ext := strings.ToLower(filepath.Ext(s))
 	switch ext {
 	case ".mkv", ".mp4", ".m4v", ".avi", ".mov", ".ts", ".m2ts", ".webm", ".strm":
@@ -52,9 +93,9 @@ func screenFilename(s string) (title string, year int, edition string) {
 	}
 	s = screenIDPattern.ReplaceAllString(s, " ")
 	s = screenGroupPattern.ReplaceAllString(s, "")
-	if m := screenYearPattern.FindStringSubmatchIndex(s); len(m) > 0 {
-		year, _ = strconv.Atoi(s[m[2]:m[3]])
-		s = s[:m[0]]
+	if cut, y := screenReleaseYear(s); cut >= 0 && (released == 0 || y == released) {
+		year = y
+		s = s[:cut]
 	}
 	if pos := screenEpisodePattern.FindStringIndex(s); len(pos) > 0 {
 		s = s[:pos[0]]
@@ -101,8 +142,12 @@ func screenQueries(b screenBase) ([]string, int, []metadataprovider.ScreenID) {
 			addID(id)
 		}
 	}
-	for _, name := range append([]string{b.Title}, b.Names...) {
-		title, y, _ := screenFilename(name)
+	for i, name := range append([]string{b.Title}, b.Names...) {
+		released := 0
+		if i == 0 {
+			released = b.Year
+		}
+		title, y, _ := screenName(name, released)
 		if year == 0 && y > 0 {
 			year = y
 		}
@@ -267,8 +312,12 @@ func screenLocalYearConflict(b screenBase) bool {
 			years[n.Year] = true
 		}
 	}
-	for _, name := range append([]string{b.Title}, b.Names...) {
-		_, y, _ := screenFilename(name)
+	for i, name := range append([]string{b.Title}, b.Names...) {
+		released := 0
+		if i == 0 {
+			released = b.Year
+		}
+		_, y, _ := screenName(name, released)
 		if y > 0 {
 			years[y] = true
 		}
