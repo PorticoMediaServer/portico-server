@@ -508,7 +508,7 @@ func (h *HLS) produce(ctx context.Context, id string, from int) {
 				if err == nil {
 					h.recordStages(ctx, id, plan, stages)
 				}
-				return subtitles.WindowCommand{Args: args, Hardware: decoder.HardwareStagesRequireDevice(stages)}, err
+				return subtitles.WindowCommand{Args: args, Hardware: conversionJobHardware(plan)}, err
 			})
 			return err, windowConverterDiagnostic(err, path, h.root)
 		}
@@ -529,7 +529,7 @@ func (h *HLS) produce(ctx context.Context, id string, from int) {
 		// The one media executor (mediaexec): sandboxed where the platform can,
 		// the input only as descriptor 3, writes only into this session's folder,
 		// and its own process group, so cancelling reaches the whole sandbox.
-		cmd, err := mediaexec.CommandContext(processCtx, mediaexec.Job{Executable: h.binary, Args: args, Files: input.ExtraFiles(), ReadPaths: input.ReadPaths(), WriteDirs: []string{dir}, Fonts: true, Hardware: plan != nil && plan.HardwareBackend != "" && plan.HardwareBackend != string(decoder.BackendSoftware)})
+		cmd, err := mediaexec.CommandContext(processCtx, mediaexec.Job{Executable: h.binary, Args: args, Files: input.ExtraFiles(), ReadPaths: input.ReadPaths(), WriteDirs: []string{dir}, Fonts: true, Hardware: conversionJobHardware(plan)})
 		if err != nil {
 			return err, ""
 		}

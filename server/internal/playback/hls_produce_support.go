@@ -87,6 +87,11 @@ func sanitizeConverterOutput(text string, secrets ...string) string {
 	return text
 }
 
+// Local and bridge jobs use the same conservative encoder-backend grants.
+func conversionJobHardware(plan *DeliveryPlan) bool {
+	return plan != nil && plan.HardwareBackend != "" && plan.HardwareBackend != string(decoder.BackendSoftware)
+}
+
 func windowConverterDiagnostic(err error, secrets ...string) string {
 	var process *storage.ProcessError
 	if errors.As(err, &process) {
