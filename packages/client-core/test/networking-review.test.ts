@@ -76,6 +76,38 @@ test('cancelling a lost create reconciles the SAME request before retiring its s
  // Cancellation loads the protected journal even before a screen is started.
  await service.cancel();assert.deepEqual(created,[requestId]);assert.deepEqual(cancelled,[requestId]);assert.equal(store.read()?.creating,undefined);assert.equal(store.read()?.retired.length,0);
 });
+// Activation retries by its own clock: the test moves that clock and lets the service's short
+// real ticks notice. `gaps` are the seconds between attempts, read to the step the clock moves in.
+function activationClock(t:import('node:test').TestContext){
+ let now=Date.UTC(2026,9,12,12);t.mock.method(Date,'now',()=>now);
+ const attempts:number[]=[];
+ return {attempts,attempt:()=>{attempts.push(now);},
+  async run(count:number){for(let i=0;i<4000&&attempts.length<count;i++){now+=250;await new Promise<void>(r=>setTimeout(r,3));}assert.ok(attempts.length>=count,'attempts did not continue');},
+  gaps:()=>attempts.slice(1).map((at,i)=>(at-attempts[i]!)/1000)};
+}
+const about=(actual:number[],expected:number[])=>{assert.equal(actual.length,expected.length);actual.forEach((gap,i)=>assert.ok(gap>=expected[i]!&&gap<=expected[i]!+1,`retry ${i+1} after ${gap} s, expected about ${expected[i]} s`));};
+const fastTicks={tickMs:1,requestTimeoutMs:50,replaceBeforeMs:60000};
+test('activation polls that cannot reach the service back off from about 5 s to a 30 s cap, with jitter',async t=>{
+ const clock=activationClock(t),store=journal<string>();
+ const service=new SetupCodeService('local:one',{create:async()=>authorization(),poll:async()=>{clock.attempt();throw new TypeError('network down');},cancel:async()=>{}},store,async()=>requestId,{...fastTicks,random:()=>0.5});
+ await service.start();await clock.run(6);service.pause();
+ // 5, 10, 20, then the cap: each below the cap stretched by the jitter (half of 20% here).
+ about(clock.gaps(),[5.5,11,22,30,30]);
+ assert.equal(service.getSnapshot().phase,'waiting','the code on screen stays valid throughout');
+});
+test('an answer from the service returns activation polling to its normal interval and first retry',async t=>{
+ const clock=activationClock(t),store=journal<string>();let calls=0;
+ const service=new SetupCodeService('local:one',{create:async()=>authorization(),poll:async()=>{clock.attempt();calls++;if(calls===3)throw new ApiError(400,'authorization_pending','Waiting for approval.',false);throw new TypeError('network down');},cancel:async()=>{}},store,async()=>requestId,{...fastTicks,random:()=>0});
+ await service.start();await clock.run(5);service.pause();
+ // Two failures (5 s, 10 s), "still pending" (the code's own 5 s interval), then failures start over at 5 s.
+ about(clock.gaps(),[5,10,5,5]);
+});
+test('creating an activation code backs off the same way',async t=>{
+ const clock=activationClock(t),store=journal<string>();
+ const service=new SetupCodeService('local:one',{create:async()=>{clock.attempt();throw new TypeError('network down');},poll:async()=>'',cancel:async()=>{}},store,async()=>requestId,{...fastTicks,random:()=>0.5});
+ await service.start();await clock.run(6);service.pause();
+ about(clock.gaps(),[5.5,11,22,30,30]);
+});
 test('unobserved authorized server remains in the chooser without fabricated routes',async()=>{
  const selection=new SessionSelectionService({account:{accountId:'account',sessionId:'session'},api:{listServers:async()=>({items:[{id:pin.serverId,name:'Not observed yet',publicKey:pin.publicKey,policyRevision:1,baseUrl:''}]}),serverProfiles:async()=>({}),attach:async()=>session(),revokeLocal:async()=>{}},onSelected:()=>{}});
  try{await selection.loadServers();assert.equal(selection.getSnapshot().phase,'servers');assert.equal(selection.getSnapshot().servers.length,1);assert.equal(selection.getSnapshot().servers[0].routes,undefined);}finally{selection.dispose();}

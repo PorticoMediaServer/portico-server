@@ -72,6 +72,7 @@ export class SetupCodeService<T> {
   private controllers = new Set<AbortController>();
   private createAfter = 0;
   private failures = 0;
+  private pollFailures = 0;
   private cleanupAfter = 0;
   private mutations:Promise<unknown> = Promise.resolve();
   private approvedRequestId?:string;
@@ -79,9 +80,15 @@ export class SetupCodeService<T> {
   private readonly api:SetupCodeApi<T>;
   private readonly storage:SetupCodeStorage<T>;
   private readonly requestId:()=>Promise<string>;
-  private readonly options:{requestTimeoutMs:number;tickMs:number;replaceBeforeMs:number};
-  constructor(authority:string,api:SetupCodeApi<T>,storage:SetupCodeStorage<T>,requestId:()=>Promise<string>=async()=>randomId(),options={requestTimeoutMs:15000,tickMs:1000,replaceBeforeMs:60000}) {
+  private readonly options:{requestTimeoutMs:number;tickMs:number;replaceBeforeMs:number;random?:()=>number};
+  constructor(authority:string,api:SetupCodeApi<T>,storage:SetupCodeStorage<T>,requestId:()=>Promise<string>=async()=>randomId(),options:{requestTimeoutMs:number;tickMs:number;replaceBeforeMs:number;random?:()=>number}={requestTimeoutMs:15000,tickMs:1000,replaceBeforeMs:60000}) {
     this.authority=authority;this.api=api;this.storage=storage;this.requestId=requestId;this.options=options;
+  }
+  /** The wait before retry number `failures` of a request that got no answer: about 5 s, doubling
+   * to a 30 s cap. Up to a fifth is added below the cap, so devices that lost the service in the
+   * same moment do not all come back in the same one. */
+  private backoff(failures: number) {
+    return Math.min(30_000, Math.round(5_000 * 2 ** Math.min(3, failures - 1) * (1 + 0.2 * (this.options.random ?? Math.random)())));
   }
   getSnapshot = () => this.state;
   subscribe = (listener: () => void) => {this.listeners.add(listener); return () => {this.listeners.delete(listener);};};
@@ -140,7 +147,7 @@ export class SetupCodeService<T> {
     const generation = this.generation;
     this.operation = this.cycle(generation).catch(error => {
       if (generation === this.generation) {
-        this.failures++; this.createAfter = Math.max(this.createAfter, Date.now() + Math.min(30_000, 5_000 * 2 ** Math.min(3, this.failures - 1)));
+        this.failures++; this.createAfter = Math.max(this.createAfter, Date.now() + this.backoff(this.failures));
         this.show(error instanceof Error ? error.message : 'Activation is offline. Retrying the saved request.');
       }
     }).finally(() => {this.operation = undefined; this.schedule();});
@@ -164,6 +171,7 @@ export class SetupCodeService<T> {
           });
         }));
         if (generation !== this.generation) return;
+        this.pollFailures = 0;
         await this.change(record => {
           if (record.current?.requestId !== current.requestId) throw new Error('Activation changed.');
           return {...record, current: {...record.current, grant}};
@@ -171,6 +179,8 @@ export class SetupCodeService<T> {
         this.show(); return;
       } catch (error) {
         if (generation !== this.generation) return;
+        // Any of the authority's own answers ends a run of unanswered polls.
+        if (error instanceof ApiError && ['access_denied', 'expired_token', 'invalid_grant', 'authorization_pending', 'slow_down'].includes(error.code)) this.pollFailures = 0;
         if (error instanceof ApiError && error.code === 'access_denied') {
           await this.retireCurrent(); this.pause(); this.emit({phase: 'denied', message: 'The request was denied or cancelled. Start a new code to try again.'}); return;
         }
@@ -180,8 +190,10 @@ export class SetupCodeService<T> {
           const interval = Math.max(current.authorization.interval, error.code === 'slow_down' ? current.authorization.interval + 5 : 5, error.retryAfterSeconds ?? 0);
           await this.change(record => ({...record, current: record.current && {...record.current, authorization: {...record.current.authorization, interval: Math.min(300, interval)}, nextPollAt: Date.now() + interval * 1000}}));
         } else {
-          const wait = Math.max(5, error instanceof ApiError ? error.retryAfterSeconds ?? 5 : 5);
-          await this.change(record => ({...record, current: record.current && {...record.current, nextPollAt: Date.now() + wait * 1000}}));
+          // No answer (offline, a timeout, a failing service): the same growing, spread wait as code
+          // creation, and never sooner than the service asked for.
+          const wait = Math.max(this.backoff(++this.pollFailures), (error instanceof ApiError ? error.retryAfterSeconds ?? 0 : 0) * 1000);
+          await this.change(record => ({...record, current: record.current && {...record.current, nextPollAt: Date.now() + wait}}));
           this.show('Activation is offline. Your saved request will resume.');
         }
       }
@@ -218,7 +230,7 @@ export class SetupCodeService<T> {
         throw new Error('Creating a new activation code.');
       }
       await this.change(record => ({...record, current: entry, creating: undefined, retired: record.current ? [...record.retired, record.current] : record.retired}));
-      this.failures = 0; this.createAfter = 0; this.show();
+      this.failures = 0; this.pollFailures = 0; this.createAfter = 0; this.show();
     } else this.show();
     if (generation === this.generation && Date.now() >= this.cleanupAfter) await this.cleanup();
   }
