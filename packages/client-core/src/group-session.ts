@@ -307,7 +307,8 @@ function timelineOf(body:unknown,previous:GroupTimeline):GroupTimeline|undefined
 /** What a follower needs from whichever player the app has. Positions are seconds. */
 export type GroupPlayer=Readonly<{
  /** The item loaded now, its position, and whether it is actually moving and able to. `seeking`
-  * is true while a seek the player was asked for has not landed yet. */
+  * is true while a seek the player was asked for has not landed yet. A player that leaves it out
+  * is watched instead: its seek has landed once its position is seen to move. */
  state():{itemId:string;positionSeconds:number;playing:boolean;buffering:boolean;ready:boolean;seeking?:boolean};
  load(itemId:string,positionSeconds:number,playing:boolean):void;
  play():void;pause():void;seek(positionSeconds:number):void;
@@ -315,11 +316,27 @@ export type GroupPlayer=Readonly<{
  setRate(rate:number):void;
 }>;
 
+/** How long the follower waits for a seek it asked for to show that it landed, when the player
+ * gives no sign either way. Longer than the player's own seek timeout. */
+const SEEK_SETTLE_MS=20000;
+/** The most a seek is aimed ahead of a moving group, in seconds. A seek slower than this fails. */
+const SEEK_LEAD_MAX_SECONDS=15;
+
 /** Keeps one local player on the group's clock, and tells the group how this member is doing.
  * It corrects gently (a small speed change) before it corrects visibly (a seek), in the bands
- * the server publishes, and it never commands the group. */
+ * the server publishes, and it never commands the group.
+ *
+ * A seek takes time, and the group keeps moving while it does. The follower lets each seek of its
+ * own land before judging where the player is, and it learns how far behind a moving group this
+ * player's seeks land: the next one is aimed that far ahead, so it lands with the group instead of
+ * behind it again. */
 export class GroupFollower{
  private timer?:ReturnType<typeof setInterval>;private correctingUntil=0;private lastReport=0;private lastReadiness='';private loadedFor='';private unsubscribe?:()=>void;
+ /** The follower's own seek that has not been seen to land: when it was asked, the group clock it
+  * was aimed at, and the last position reported since. */
+ private own?:{at:number;clock:string;last?:number};
+ /** Seconds this player's seeks have been landing behind a moving group. */
+ private lead=0;
  private service:GroupSessionService;private player:GroupPlayer;private now:()=>number;
  constructor(service:GroupSessionService,player:GroupPlayer,now:()=>number=()=>Date.now()){this.service=service;this.player=player;this.now=now;}
  start(){if(this.timer)return;this.timer=setInterval(()=>this.tick(),1000);this.unsubscribe=this.service.subscribe(()=>this.tick());this.tick();}
@@ -338,7 +355,7 @@ export class GroupFollower{
   if(local.itemId!==timeline.itemId){
    // Load once per entry; a player still starting up is not asked again every second.
    const key=timeline.itemId+'/'+timeline.currentEntryId;
-   if(this.loadedFor!==key){this.loadedFor=key;this.player.load(timeline.itemId,target,wantPlaying);}
+   if(this.loadedFor!==key){this.loadedFor=key;this.own=undefined;this.lead=0;this.player.load(timeline.itemId,target,wantPlaying);}
    this.report('buffering',local.positionSeconds);return;
   }
   this.loadedFor=timeline.itemId+'/'+timeline.currentEntryId;
@@ -348,14 +365,35 @@ export class GroupFollower{
   const driftUs=BigInt(Math.round((target-local.positionSeconds)*1e6)),targetUs=BigInt(Math.round(target*1e6));
   const correction=groupCorrection(group.sync,driftUs,targetUs);
   const at=this.now();
-  // A seek that has not landed is left to finish. The group moves on meanwhile, so the distance
-  // to it keeps growing; seeking again would restart the seek, and one slower than the seek band
-  // would then never complete. Drift is corrected once the player is somewhere.
-  if(local.seeking){/* nothing to correct until it lands */}
-  else if(correction.action==='seek'||(!wantPlaying&&correction.action==='rate')){this.player.setRate(1);this.correctingUntil=0;this.player.seek(target);}
-  else if(correction.action==='rate'&&wantPlaying){if(!this.correctingUntil){this.correctingUntil=at+(correction.holdMs??4000);this.player.setRate(correction.rate??1);}else if(at>this.correctingUntil){this.player.setRate(1);this.correctingUntil=0;this.player.seek(target);}}
+  // A seek that has not landed is left to finish: the group moves on meanwhile, so seeking again
+  // would restart it, and a seek slower than the seek band would never complete. A player that is
+  // buffering is left alone too. Either way this member is not where the group is yet, and says so;
+  // where it is gets judged once it is somewhere.
+  const clock=timeline.anchorAt+'/'+timeline.anchorPositionUs;
+  if(this.settling(local,wantPlaying,target,clock,at)||local.buffering){this.report('buffering',local.positionSeconds);return;}
+  if(correction.action==='seek'||(!wantPlaying&&correction.action==='rate'))this.seek(target,wantPlaying,clock,at);
+  else if(correction.action==='rate'&&wantPlaying){if(!this.correctingUntil){this.correctingUntil=at+(correction.holdMs??4000);this.player.setRate(correction.rate??1);}else if(at>this.correctingUntil)this.seek(target,wantPlaying,clock,at);}
   else if(this.correctingUntil){this.player.setRate(1);this.correctingUntil=0;}
-  this.report(local.buffering?'buffering':correction.action==='none'||correction.action==='rate'?'ready':'lagging',local.positionSeconds);
+  this.report(correction.action==='none'||correction.action==='rate'?'ready':'lagging',local.positionSeconds);
+ }
+ /** A corrective seek at normal speed. While the group is moving it is aimed ahead by what this player's seeks have cost. */
+ private seek(target:number,moving:boolean,clock:string,at:number){
+  this.player.setRate(1);this.correctingUntil=0;this.own={at,clock};
+  this.player.seek(moving?target+this.lead:target);
+ }
+ /** Whether a seek has yet to land. When the follower's own seek lands on a moving group, how far
+  * behind (or ahead) it landed adjusts the lead for the next one, unless the group was moved
+  * meanwhile: that distance is the host's seek, not this player's delay. */
+ private settling(local:ReturnType<GroupPlayer['state']>,moving:boolean,target:number,clock:string,at:number):boolean{
+  const own=this.own;
+  if(!own)return local.seeking===true;
+  // The player says, or (saying nothing) its position has moved since the last look. A paused group has nothing to wait for.
+  let landed=!moving||local.seeking===false;
+  if(moving&&local.seeking===undefined){landed=own.last!==undefined&&local.positionSeconds!==own.last;own.last=local.positionSeconds;}
+  if(!landed&&at-own.at<SEEK_SETTLE_MS)return true;
+  this.own=undefined;
+  if(landed&&moving&&own.clock===clock)this.lead=Math.min(SEEK_LEAD_MAX_SECONDS,Math.max(0,this.lead+target-local.positionSeconds));
+  return false;
  }
  private report(readiness:GroupReadiness,positionSeconds:number){
   const at=this.now();

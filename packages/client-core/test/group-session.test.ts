@@ -153,23 +153,82 @@ test('the follower loads, nudges, then seeks, in the bands the server publishes'
  service.dispose();
 });
 
-test('a seek that is still in flight is left to finish, however far the group moves on meanwhile', async()=>{
+/** A player whose seeks take `latencyMs` to land where they were asked to. Until then it reports
+ * the position it is seeking to; once playing it moves with the clock. `flag` decides whether it
+ * says a seek is pending, as the web player does, or leaves the follower to notice. */
+function slowPlayer(clock:()=>number,latencyMs:number,flag:boolean,start=5){
+ const log:string[]=[];let base=start,since=clock(),pending:{until:number;target:number}|undefined,buffering=false;
+ const settle=()=>{if(pending&&clock()>=pending.until){base=pending.target;since=pending.until;pending=undefined;}};
+ const position=()=>{settle();return pending?pending.target:buffering?base:base+(clock()-since)/1000;};
+ const p:GroupPlayer={
+  state:()=>({itemId:'item',positionSeconds:position(),playing:true,buffering,ready:true,...(flag?{seeking:(settle(),!!pending)}:{})}),
+  load:()=>{},play:()=>{},pause:()=>{},setRate:()=>{},
+  seek:at=>{settle();log.push('seek '+at);pending={until:clock()+latencyMs,target:at};},
+ };
+ return {p,log,position,landed:()=>(settle(),!pending),stall:(on:boolean)=>{base=position();since=clock();buffering=on;}};
+}
+for(const flag of [true,false])test('a follower whose seeks take eight seconds reaches the group and stays with it ('+(flag?'the player says when it is seeking':'the player says nothing about seeking')+')', async t=>{
  const s=server();let now=T0+20000;s.set(snap({},'2026-09-16T20:00:20Z'));const service=make(s,()=>now);
+ t.after(()=>service.dispose());
  await service.open('grp_1');
- // A player whose seeks take a while (a converted stream, a slow link): until the seek lands it
- // reports the position it is seeking to, which the moving group leaves further behind each second.
- const slow=player({itemId:'item',positionSeconds:5});let seeking=false;
- const p:GroupPlayer={...slow.p,state:()=>({...slow.state,seeking}),seek:at=>{slow.p.seek(at);seeking=true;}};
- const f=new GroupFollower(service,p,()=>now),tick=()=>{f.start();f.stop();};
- const corrections=()=>slow.log.filter(x=>x.startsWith('seek')||x!=='rate 1'&&x.startsWith('rate'));
- tick();
- assert.deepEqual(corrections(),['seek 30']);
- for(let i=0;i<8;i++){now+=1000;tick();}
- assert.deepEqual(corrections(),['seek 30'],'the pending seek is not restarted, and no speed change is measured against it');
- // The seek lands. The group is now 8 s further on, so one new correction follows.
- seeking=false;tick();
- assert.deepEqual(corrections(),['seek 30','seek 38']);
- service.dispose();
+ const slow=slowPlayer(()=>now,8000,flag),f=new GroupFollower(service,slow.p,()=>now);
+ const drift:number[]=[];let restarted=0;
+ for(let second=0;second<60;second++){
+  const landed=slow.landed(),before=slow.log.length;
+  f.start();f.stop();
+  if(!landed&&slow.log.length>before)restarted++;
+  drift.push(Math.abs(f.target()!-slow.position()));
+  now+=1000;
+ }
+ assert.equal(restarted,0,'a seek that has not landed is never restarted');
+ // The first seek lands eight seconds behind a group that kept moving. The second aims that far
+ // ahead and lands with it; nothing follows.
+ assert.equal(slow.log.length,2,slow.log.join(', '));
+ assert.ok(drift.slice(25).every(d=>d<0.75),'in step from then on: '+drift.slice(25).map(d=>d.toFixed(1)).join(' '));
+ const reports=s.calls.filter(c=>c.path.endsWith('/readiness')).map(c=>c.body.readiness);
+ assert.equal(reports[0],'lagging');assert.ok(reports.includes('buffering'),'a member whose seek is pending says so');assert.equal(reports.at(-1),'ready');
+});
+
+test('a seek the host makes while this member is still seeking is not mistaken for this player being slow', async t=>{
+ const s=server();let now=T0+20000;s.set(snap({},'2026-09-16T20:00:20Z'));const service=make(s,()=>now);
+ t.after(()=>service.dispose());
+ await service.open('grp_1');
+ const slow=slowPlayer(()=>now,8000,true),f=new GroupFollower(service,slow.p,()=>now);
+ for(let second=0;second<40;second++){
+  // Four seconds into the first seek the host jumps the group to ten minutes in.
+  if(second===4){s.set(snap({revision:'8',timeline:{...timeline,anchorPositionUs:'600000000',anchorAt:'2026-09-16T20:00:24Z'}},'2026-09-16T20:00:24Z'));s.streams[0].write(frame('group.transport',{command:'seek',state:'playing',itemId:'item',currentEntryId:'ent_1',anchorPositionUs:'600000000',anchorAt:'2026-09-16T20:00:24Z',rate:{numerator:'1',denominator:'1'},queuePosition:0,revision:'8'},'10'));await settle();}
+  f.start();f.stop();now+=1000;
+ }
+ // The jump is followed at face value (604, not 604 plus a made-up lead); that seek's own eight
+ // seconds are then learned, and the third lands with the group.
+ assert.deepEqual(slow.log,['seek 30','seek 604','seek 620']);
+ assert.ok(Math.abs(f.target()!-slow.position())<0.75);
+});
+
+test('a player that never shows its seek landing is asked again only after a long wait', async t=>{
+ const s=server();let now=T0+20000;s.set(snap({},'2026-09-16T20:00:20Z'));const service=make(s,()=>now);
+ t.after(()=>service.dispose());
+ await service.open('grp_1');
+ // Says nothing about seeking and never moves: the earlier behaviour was a new seek every tick.
+ const stuck=player({itemId:'item',positionSeconds:5}),f=new GroupFollower(service,stuck.p,()=>now);
+ const seeks=()=>stuck.log.filter(x=>x.startsWith('seek')).length;
+ for(let second=0;second<19;second++){f.start();f.stop();now+=1000;}
+ assert.equal(seeks(),1);
+ for(let second=0;second<5;second++){f.start();f.stop();now+=1000;}
+ assert.equal(seeks(),2,'bounded, so a player that lost a seek is not left behind for good');
+});
+
+test('a buffering member is not corrected until it recovers', async t=>{
+ const s=server();let now=T0+20000;s.set(snap({},'2026-09-16T20:00:20Z'));const service=make(s,()=>now);
+ t.after(()=>service.dispose());
+ await service.open('grp_1');
+ const slow=slowPlayer(()=>now,0,true,29.9),f=new GroupFollower(service,slow.p,()=>now);
+ slow.stall(true);
+ for(let second=0;second<10;second++){f.start();f.stop();now+=1000;}
+ assert.deepEqual(slow.log,[],'ten seconds behind and buffering: no seek, no speed change');
+ assert.deepEqual([...new Set(s.calls.filter(c=>c.path.endsWith('/readiness')).map(c=>c.body.readiness))],['buffering']);
+ slow.stall(false);f.start();f.stop();
+ assert.equal(slow.log.length,1,'corrected once it can play');
 });
 
 test('a paused group holds the follower at the anchor', async()=>{
