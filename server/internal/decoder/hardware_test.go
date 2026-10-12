@@ -217,3 +217,38 @@ func TestHardwareProbeAgainstRealFFmpeg(t *testing.T) {
 		t.Fatal("conversion published no stages")
 	}
 }
+
+func TestConversionForcesHardwareIDRFrames(t *testing.T) {
+	for _, backend := range append([]HardwareBackend{BackendSoftware}, HardwareBackends...) {
+		t.Run(string(backend), func(t *testing.T) {
+			spec := backendSpecs[backend]
+			if backend != BackendSoftware {
+				spec.platforms = nil
+				original := backendSpecs[backend]
+				backendSpecs[backend] = spec
+				defer func() { backendSpecs[backend] = original }()
+			}
+			graph, err := BuildConversion(ConversionRequest{ConvertVideo: true, Probe: HardwareProbe{Backend: backend, Available: true}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			args := strings.Join(graph.Video, " ")
+			if !strings.Contains(args, "-force_key_frames expr:gte(t,n_forced*6)") {
+				t.Fatal(args)
+			}
+			option := ""
+			switch backend {
+			case BackendNVENC:
+				option = "-forced-idr 1"
+			case BackendQSV, BackendAMF:
+				option = "-forced_idr 1"
+			}
+			if option != "" && !strings.Contains(args, option) {
+				t.Fatalf("missing %s: %s", option, args)
+			}
+			if option == "" && (strings.Contains(args, "-forced-idr") || strings.Contains(args, "-forced_idr")) {
+				t.Fatal(args)
+			}
+		})
+	}
+}

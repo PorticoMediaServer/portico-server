@@ -732,6 +732,12 @@ func BuildConversion(r ConversionRequest) (ConversionGraph, error) {
 		}
 		out.Video = append(out.Video, "-b:v", strconv.Itoa(rate), "-maxrate", strconv.Itoa(rate), "-bufsize", strconv.Itoa(rate*2))
 		out.Video = append(out.Video, "-force_key_frames", "expr:gte(t,n_forced*"+strconv.Itoa(keyframes)+")")
+		switch backend {
+		case BackendNVENC:
+			out.Video = append(out.Video, "-forced-idr", "1")
+		case BackendQSV, BackendAMF:
+			out.Video = append(out.Video, "-forced_idr", "1")
+		}
 		encode := ExecutionSoftware
 		if backend != BackendSoftware {
 			encode = ExecutionHardware
