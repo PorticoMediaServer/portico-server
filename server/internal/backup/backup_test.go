@@ -535,9 +535,12 @@ func TestApplyBareDatabaseKeepsStateFiles(t *testing.T) {
 	}
 }
 
-// Permissions: a loosened tree warns, the fix tightens only Portico's files,
-// and owner bits survive.
+// Permissions: a loose boundary warns; tightening it protects descendants
+// while preserving their modes and every owner bit.
 func TestStatePermissionsCheckAndFix(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX modes do not describe Windows ACLs")
+	}
 	state := t.TempDir()
 	loose := filepath.Join(state, "subtitles", "loose.srt")
 	if err := os.MkdirAll(filepath.Dir(loose), 0755); err != nil {
@@ -569,9 +572,9 @@ func TestStatePermissionsCheckAndFix(t *testing.T) {
 		want os.FileMode
 	}{
 		{state, 0700},
-		{filepath.Dir(loose), 0700},
-		{loose, 0600},
-		{execPath, 0700},
+		{filepath.Dir(loose), 0755},
+		{loose, 0644},
+		{execPath, 0755},
 	} {
 		info, err := os.Stat(tc.path)
 		if err != nil {
