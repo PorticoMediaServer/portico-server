@@ -228,8 +228,12 @@ export function refreshStoredSession(o:RefreshStoredOptions):Promise<LocalSessio
  const now=o.now??Date.now,minValid=o.minValidMs??REFRESH_MIN_VALID_MS;
  const same=(r:RememberedServer|undefined)=>!!r&&r.session.sessionFamilyId===o.family.sessionFamilyId&&r.pin.serverId===o.family.serverId;
  return credentialLock()('portico.session-refresh:'+o.family.serverId,async()=>{
-  let record:RememberedServer|undefined;
-  try{record=parseRememberedServer(await o.env.storage.read());}catch{record=undefined;}
+  let record:RememberedServer|undefined,stored:unknown;
+  // A store that cannot be read right now (locked, busy, timed out) is not a missing sign-in:
+  // nothing is known about the family, so nothing ends and the renewal is tried again.
+  try{stored=await o.env.storage.read();}
+  catch{throw new SessionRefreshError('store_unavailable','This device couldn’t read its saved sign-in right now.',false);}
+  try{record=parseRememberedServer(stored);}catch{record=undefined;}
   if(!record||!same(record))throw new SessionRefreshError('session_replaced','This sign-in was replaced or ended on this device.',true);
   const session=record.session;
   const fresh=Date.parse(session.expiresAt)-now()>minValid;

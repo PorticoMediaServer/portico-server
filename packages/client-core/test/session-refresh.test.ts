@@ -232,6 +232,41 @@ test('a renewal the server revokes for an access limit ends the sign-in', async 
   assert.equal(store.peek(), undefined, 'stored sign-in removed');
 });
 
+test('a protected store that cannot be read right now keeps the sign-in and renews once it can', async t => {
+  const {server, store, events, timers, tab} = setup(t);
+  const {api, refresher} = tab();
+  const read = store.read;
+  let unreadable = 2;
+  store.read = async () => { if (unreadable > 0) { unreadable--; throw new Error('The saved server connection could not be read or written.'); } return read(); };
+  server.expireAccess();
+  await assert.rejects(api.request('/v1/me'), (e: unknown) => e instanceof ApiError && e.status === 401);
+  assert.deepEqual(events.signedOut, [], 'an unreadable store is not a refusal');
+  assert.equal(refresher.getSnapshot().phase, 'retrying');
+  assert.equal(refresher.getSnapshot().error?.code, 'store_unavailable');
+  assert.equal(server.refreshCalls, 0, 'nothing was sent without the stored credential');
+  assert.equal(store.peek()!.session.refreshToken, 'refresh_000000000001', 'stored sign-in untouched');
+  timers.advance(5_000);
+  await settle();
+  assert.equal(refresher.getSnapshot().phase, 'retrying', 'still unreadable: still kept');
+  timers.advance(15_000);
+  await settle();
+  assert.equal(refresher.getSnapshot().phase, 'active');
+  assert.deepEqual(await api.request('/v1/me'), {viewer}, 'the refused token is renewed from the kept credential');
+  assert.equal(store.peek()!.session.accessToken, 'access_2');
+  assert.deepEqual(events.signedOut, []);
+  refresher.stop();
+});
+
+test('a store that reads but no longer holds this sign-in still ends it', async t => {
+  const {server, store, events, tab} = setup(t);
+  const {api, refresher} = tab();
+  await store.change(() => undefined);
+  server.expireAccess();
+  await assert.rejects(api.request('/v1/me'), (e: unknown) => e instanceof ApiError && e.status === 401);
+  assert.deepEqual(events.signedOut, ['session_replaced']);
+  assert.equal(refresher.getSnapshot().phase, 'ended');
+});
+
 test('reusing a retired refresh credential is refused and signs out', async t => {
   const {server, store, events, tab} = setup(t);
   const stale = store.peek()!;
