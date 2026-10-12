@@ -426,3 +426,39 @@ func TestFrameSizeAndCodecTagsAreNotEpisodeMarkers(t *testing.T) {
 		t.Fatalf("a frame size alone was filed as an episode: %+v", got)
 	}
 }
+
+func TestFrameSizeTagsInAnyCaseAndPositionLeaveTheEpisodeReadable(t *testing.T) {
+	cases := []struct {
+		path, kind, title string
+		year, season      int
+		numbers           []int
+	}{
+		// The tag's letter case does not matter.
+		{"Show.S01E02.1920X1080.mkv", "tv", "Show", 0, 1, []int{2}},
+		{"Show.S01E02.DD5.1X264.mkv", "tv", "Show", 0, 1, []int{2}},
+		// A frame size before the marker is not part of the series name or its year.
+		{"Show - 1920x1080 - S01E02.mkv", "tv", "Show", 0, 1, []int{2}},
+		{"Show/Season 1/Show - 1920x1080 - S01E02.mkv", "tv", "Show", 0, 1, []int{2}},
+		{"Show (2010) 1280x720 - S01E02.mkv", "tv", "Show", 2010, 1, []int{2}},
+		{"Show.2048x1080.2024.02.29.mkv", "tv", "Show", 0, 2024, []int{60}},
+		// Cropped and portrait frames are frames too.
+		{"Show.S01E02.1920x804.mkv", "tv", "Show", 0, 1, []int{2}},
+		{"Show.S01E02.1080x1920.mkv", "tv", "Show", 0, 1, []int{2}},
+		// A real marker beside a frame size.
+		{"Show.1x02.720p.mkv", "tv", "Show", 0, 1, []int{2}},
+		{"Show 4x12 1280x720.mkv", "tv", "Show", 0, 4, []int{12}},
+		// Long season and episode numbers written with an x are still a marker:
+		// only a pair that can be a picture size is read as one.
+		{"Show.101x102.mkv", "tv", "Show", 0, 101, []int{102}},
+		{"Show.2019x100.mkv", "tv", "Show", 0, 2019, []int{100}},
+		{"Show.720x101.mkv", "tv", "Show", 0, 720, []int{101}},
+	}
+	for _, c := range cases {
+		t.Run(c.path, func(t *testing.T) {
+			got := ParseEpisode(c.path, c.kind)
+			if got.Issue != "" || got.ShowTitle != c.title || got.Year != c.year || got.Season != c.season || len(got.Numbers) != len(c.numbers) || got.Numbers[0] != c.numbers[0] {
+				t.Fatalf("unexpected parse %+v", got)
+			}
+		})
+	}
+}

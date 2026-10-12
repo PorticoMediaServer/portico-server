@@ -35,22 +35,56 @@ var stackSuffix = regexp.MustCompile(`(?i)(?:^|[ ._-])(?:part|pt|cd|disc|disk)[ 
 // A frame size ("1920x1080") and the x264/x265 codec written straight after a
 // channel layout ("DD5.1x264") have the shape of a season-by-episode marker and
 // are neither.
-var frameSizeToken = regexp.MustCompile(`^[0-9]{3,4}x[0-9]{3,4}$`)
-var codecToken = regexp.MustCompile(`^[0-9]x26[45]$`)
+var frameSizeToken = regexp.MustCompile(`(?i)^([0-9]{3,4})x([0-9]{3,4})$`)
+var codecToken = regexp.MustCompile(`(?i)^[0-9]x26[45]$`)
 
-func episodeMarkers(name string) [][]int {
-	out := [][]int{}
+// frameWidths are the picture widths video is encoded at. A pair of long
+// numbers is a frame size only when the first is one of these and the second
+// can be its height (cropped, anamorphic or portrait); any other pair, such as
+// "101x102", is still season 101 episode 102.
+var frameWidths = map[int]bool{7680: true, 4096: true, 3840: true, 3440: true, 2560: true, 2048: true, 1920: true, 1440: true, 1280: true, 1080: true, 1024: true, 960: true, 854: true, 852: true, 848: true, 800: true, 768: true, 720: true, 704: true, 640: true, 624: true, 608: true, 576: true, 544: true, 512: true, 480: true, 426: true}
+
+func frameSize(raw string) bool {
+	m := frameSizeToken.FindStringSubmatch(raw)
+	if m == nil {
+		return false
+	}
+	width, _ := strconv.Atoi(m[1])
+	height, _ := strconv.Atoi(m[2])
+	return frameWidths[width] && height >= 240 && 3*height >= width && 5*height <= 12*width
+}
+
+// episodeMarkers splits the marker-shaped runs in a name into the ones that
+// are episode markers and the technical tags that only look like one.
+func episodeMarkers(name string) (markers, tags [][]int) {
+	markers = [][]int{}
 	for _, loc := range seasonalToken.FindAllStringIndex(name, -1) {
 		raw := name[loc[0]:loc[1]]
-		if frameSizeToken.MatchString(raw) {
+		if frameSize(raw) || codecToken.MatchString(raw) && loc[0] >= 2 && name[loc[0]-1] == '.' && name[loc[0]-2] >= '0' && name[loc[0]-2] <= '9' {
+			tags = append(tags, loc)
 			continue
 		}
-		if codecToken.MatchString(raw) && loc[0] >= 2 && name[loc[0]-1] == '.' && name[loc[0]-2] >= '0' && name[loc[0]-2] <= '9' {
-			continue
-		}
-		out = append(out, loc)
+		markers = append(markers, loc)
 	}
-	return out
+	return markers, tags
+}
+
+// seriesText is the part of a name before its episode marker, without the
+// technical tags in it: "Show - 1920x1080 - S01E02" names the series "Show",
+// and 1920 is not its year.
+func seriesText(name string, end int, tags [][]int) string {
+	var out strings.Builder
+	from := 0
+	for _, loc := range tags {
+		if loc[1] > end {
+			break
+		}
+		out.WriteString(name[from:loc[0]])
+		out.WriteByte(' ')
+		from = loc[1]
+	}
+	out.WriteString(name[from:end])
+	return out.String()
 }
 
 // sameSeriesName compares a folder's and a file's series name. An accented
@@ -67,7 +101,7 @@ func cleanSeries(s string) (string, int) {
 func ParseEpisode(relative, kind string) EpisodeNaming {
 	out := EpisodeNaming{Season: -1, Issue: "unrecognized_episode_name"}
 	name := strings.TrimSuffix(filepath.Base(relative), filepath.Ext(relative))
-	locs := episodeMarkers(name)
+	locs, tags := episodeMarkers(name)
 	folder := filepath.Base(filepath.Dir(relative))
 	expectedSeason := -1
 	showFolder := ""
@@ -130,7 +164,7 @@ func ParseEpisode(relative, kind string) EpisodeNaming {
 				return out
 			}
 		}
-		out.ShowTitle, out.Year = cleanSeries(name[:loc[0]])
+		out.ShowTitle, out.Year = cleanSeries(seriesText(name, loc[0], tags))
 	} else if loc := airDateToken.FindStringSubmatchIndex(name); loc != nil {
 		date := name[loc[2]:loc[3]] + "-" + name[loc[4]:loc[5]] + "-" + name[loc[6]:loc[7]]
 		air, err := time.Parse("2006-01-02", date)
@@ -143,7 +177,7 @@ func ParseEpisode(relative, kind string) EpisodeNaming {
 			out.Issue = "folder_and_filename_season_conflict"
 			return out
 		}
-		out.ShowTitle, out.Year = cleanSeries(name[:loc[0]])
+		out.ShowTitle, out.Year = cleanSeries(seriesText(name, loc[0], tags))
 	} else if kind == "anime" {
 		match := absoluteToken.FindStringSubmatch(groupPrefix.ReplaceAllString(name, ""))
 		if match == nil {
