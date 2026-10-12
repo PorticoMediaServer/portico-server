@@ -163,6 +163,23 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: {ref: '${{ needs.identity.outputs.tag }}'}
+      - name: Download the qualified FFmpeg toolchain for both image architectures
+        # The image build copies third_party/ffmpeg/bundle, which is generated
+        # and never committed, and no earlier job's workspace reaches this one.
+        # Each architecture gets its own bundle; the Dockerfile picks the one
+        # for the image it is building and verifies it there.
+        env: {GH_TOKEN: '${{ github.token }}', TOOLCHAIN_TAG: '${{ needs.identity.outputs.toolchain_tag }}'}
+        run: |
+          set -euo pipefail
+          for pair in x64:amd64 arm64:arm64; do
+            target="linux-${pair%%:*}"
+            bundle="third_party/ffmpeg/bundle/linux-${pair##*:}"
+            mkdir -p ".toolchain/$target" "$bundle"
+            gh release download "$TOOLCHAIN_TAG" --pattern "portico-ffmpeg-${TOOLCHAIN_TAG}-${target}.tar.xz" --dir ".toolchain/$target"
+            tar -xJf ".toolchain/$target"/*.tar.xz -C "$bundle"
+            python3 scripts/verify-ffmpeg-manifest.py "$bundle"
+            test "$(python3 -c "import json,sys;print(json.load(open(sys.argv[1]))['target'])" "$bundle/toolchain-manifest.json")" = "$target"
+          done
       - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
       - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
