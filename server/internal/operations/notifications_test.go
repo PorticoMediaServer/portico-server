@@ -6,6 +6,7 @@ import (
 	"errors"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -116,7 +117,7 @@ func TestNoticeAudienceIsolation(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	results, e := notify.NotifyScanFailure(tx, s.now(), "library-one", "source-one", "scan_root_changed")
+	results, e := notify.NotifyScanFailure(tx, s.now(), "library-one", "source-one", "scan_root_changed", "")
 	if e != nil || len(results) != 1 {
 		t.Fatal("admin fan-out", e, results)
 	}
@@ -466,5 +467,44 @@ func TestNotifyDownloadSeam(t *testing.T) {
 	}
 	if inbox.Items[0].Severity != notify.SeverityInfo || len(inbox.Items[0].Actions) != 1 {
 		t.Fatalf("success must restate the notice: %+v", inbox.Items[0])
+	}
+}
+
+// The folder a scan stopped at is shown to the administrator, but a name that
+// cannot be displayed safely is left out and never costs them the notice.
+func TestScanFailureNoticeNamesOnlyADisplayableFolder(t *testing.T) {
+	s, owner, _, auth := noticeFixture(t)
+	for _, c := range []struct {
+		where string
+		shown bool
+	}{
+		{"Films/Unreadable", true},
+		{"", false},
+		{".", false},
+		{"Films/two\nlines", false},
+		{"Films/bell\a", false},
+		{"Films/\u202eflipped", false},
+		{strings.Repeat("long/", 100), false},
+	} {
+		tx, e := s.DB.Begin()
+		if e != nil {
+			t.Fatal(e)
+		}
+		results, e := notify.NotifyScanFailure(tx, s.now(), "library-one", "source-one", "scan_inventory_incomplete", c.where)
+		if e != nil || len(results) != 1 {
+			t.Fatalf("%q: notice not raised: %v %v", c.where, e, results)
+		}
+		if e = tx.Commit(); e != nil {
+			t.Fatal(e)
+		}
+		inbox, e := s.Notices(context.Background(), owner, auth, NoticeQuery{})
+		if e != nil || len(inbox.Items) != 1 {
+			t.Fatal(e, inbox)
+		}
+		item := inbox.Items[0]
+		path, present := item.Arguments["path"]
+		if present != c.shown || c.shown && (path != c.where || !strings.Contains(item.Body, `"`+c.where+`"`)) || !c.shown && strings.Contains(item.Body, "It stopped at") {
+			t.Fatalf("%q: body=%q arguments=%v", c.where, item.Body, item.Arguments)
+		}
 	}
 }
