@@ -309,6 +309,11 @@ func (s *Service) PolicyChanged(ctx context.Context, library string) error {
 	}
 	return gated3.Commit()
 }
+
+// quantumPoll is how soon the loop looks again while a quantum is in flight
+// that has not said it advanced: a long read, a refusal, a wait on playback.
+var quantumPoll = 300 * time.Millisecond
+
 func (s *Service) Run(ctx context.Context) {
 	// Everything this loop writes is bulk catalogue work, so it queues behind
 	// playback, authentication and interactive edits at the write gate.
@@ -328,7 +333,11 @@ func (s *Service) Run(ctx context.Context) {
 	wake := workerloop.NewSignal()
 	unregister := dbwork.WakeOnTables(wake, "jobs", "inventory_*", "library_sources", "scan_policies", "maintenance_*", "console_documents")
 	defer unregister()
-	workerloop.Run(ctx, "ingestion.scan", wake, func(ctx context.Context) time.Duration {
+	// A quantum that moved its run forward asks for the next one itself. The
+	// commit wake above is shared and floored, so on its own it paced every
+	// source at one bounded step per poll however idle the machine was.
+	advanced := workerloop.NewSignal()
+	workerloop.RunWith(ctx, "ingestion.scan", advanced, wake, func(ctx context.Context) time.Duration {
 		pending := false
 		{
 			s.recoverPolicyChanges(ctx)
@@ -367,14 +376,18 @@ func (s *Service) Run(ctx context.Context) {
 					workers.Add(1)
 					supervise.Go("ingestion.quantum", func() {
 						defer workers.Done()
+						more := false
 						defer func() {
 							cancel()
 							s.mu.Lock()
 							delete(s.active, c.id)
 							delete(s.activeSources, c.source)
 							s.mu.Unlock()
+							if more {
+								advanced.Wake()
+							}
 						}()
-						s.processQuantum(work, c.id, c.library)
+						more = s.processQuantum(work, c.id, c.library)
 					})
 				}
 				s.mu.Unlock()
@@ -386,7 +399,7 @@ func (s *Service) Run(ctx context.Context) {
 		active := len(s.active)
 		s.mu.Unlock()
 		if active > 0 {
-			return 300 * time.Millisecond
+			return quantumPoll
 		}
 		if pending {
 			return time.Minute
@@ -406,11 +419,29 @@ func (s *Service) process(ctx context.Context, id, library string) {
 		}
 	}
 }
-func (s *Service) processQuantum(ctx context.Context, id, library string) {
+
+// scanPosition is where a run durably stands: its phase and cursors, its
+// counters, and the head of its pending directory and analysis queues.
+type scanPosition struct {
+	status, phase, verify, reconcile, directory, cursor, object string
+	processed, analyzed, warnings                               int64
+}
+
+func (s *Service) scanPosition(ctx context.Context, id string) (scanPosition, error) {
+	var p scanPosition
+	err := s.db.QueryRowContext(ctx, `SELECT j.status,r.phase,r.verify_cursor,r.reconcile_cursor,j.processed,r.analyzed,r.warnings,COALESCE((SELECT d.relative_path FROM inventory_directories d WHERE d.job_id=r.job_id AND d.state='pending' ORDER BY d.relative_path LIMIT 1),''),COALESCE((SELECT d.cursor FROM inventory_directories d WHERE d.job_id=r.job_id AND d.state='pending' ORDER BY d.relative_path LIMIT 1),''),COALESCE((SELECT q.object_id FROM inventory_analysis_queue q WHERE q.job_id=r.job_id AND q.state='pending' ORDER BY q.object_id LIMIT 1),'') FROM inventory_runs r JOIN jobs j ON j.id=r.job_id WHERE r.job_id=?`, id).Scan(&p.status, &p.phase, &p.verify, &p.reconcile, &p.processed, &p.analyzed, &p.warnings, &p.directory, &p.cursor, &p.object)
+	return p, err
+}
+
+// processQuantum reports whether the run durably advanced and is still
+// running, which is the only case in which the next quantum is due at once. A
+// refused, failed, preempted or waiting quantum reports false and is looked at
+// again on the loop's own schedule.
+func (s *Service) processQuantum(ctx context.Context, id, library string) bool {
 	if s.Admission != nil {
 		var phase string
 		if err := s.db.QueryRowContext(ctx, `SELECT phase FROM inventory_runs WHERE job_id=?`, id).Scan(&phase); err != nil {
-			return
+			return false
 		}
 		task := "library-scan"
 		if phase == "basic_pending" || phase == "basic_running" || phase == "analysis_enqueue" {
@@ -418,7 +449,7 @@ func (s *Service) processQuantum(ctx context.Context, id, library string) {
 		}
 		allowed, err := s.Admission(ctx, nil, task)
 		if err != nil || !allowed {
-			return
+			return false
 		}
 	}
 
@@ -426,30 +457,34 @@ func (s *Service) processQuantum(ctx context.Context, id, library string) {
 	// open, gives navigation and playback control an uncontested window and then
 	// lets exactly one unit of scan progress through: throttle, never starve.
 	if !dbwork.Yield(ctx) {
-		return
+		return false
 	}
 	// A panic-injection point for a background batch: the scan must survive one
 	// quantum failing, and the job must not be left claimed.
 	supervise.Chaos("ingestion.quantum")
 	if _, err := dbwork.ExecWrite(ctx, s.db, dbwork.ClassBackgroundMedia, `UPDATE jobs SET status='running' WHERE id=? AND status='queued'`, id); err != nil {
-		return
+		return false
 	}
 	if _, err := dbwork.ExecWrite(ctx, s.db, dbwork.ClassBackgroundMedia, `UPDATE inventory_runs SET last_turn=? WHERE job_id=?`, time.Now().UTC().Format(time.RFC3339Nano), id); err != nil {
-		return
+		return false
 	}
 	var sourceID, status, phase string
 	if s.db.QueryRowContext(ctx, `SELECT r.source_id,j.status,r.phase FROM inventory_runs r JOIN jobs j ON j.id=r.job_id WHERE r.job_id=?`, id).Scan(&sourceID, &status, &phase) != nil || status != "running" {
-		return
+		return false
 	}
 	source, err := s.catalog.LibrarySource(ctx, sourceID)
 	if err != nil {
-		return
+		return false
 	}
 	if err = s.readySource(ctx, id, &source); err != nil {
 		if ctx.Err() == nil && !errors.Is(err, storage.ErrBusy) {
 			s.fail(ctx, id, sourceID, err)
 		}
-		return
+		return false
+	}
+	before, err := s.scanPosition(ctx, id)
+	if err != nil {
+		return false
 	}
 	// One page or one analysis unit per turn; a hung mount consumes at most one
 	// source slot and cannot hold the only worker or any database transaction.
@@ -472,6 +507,11 @@ func (s *Service) processQuantum(ctx context.Context, id, library string) {
 	if err != nil && ctx.Err() == nil && !errors.Is(err, context.Canceled) && !errors.Is(err, storage.ErrBusy) {
 		s.fail(ctx, id, sourceID, err)
 	}
+	if err != nil || ctx.Err() != nil {
+		return false
+	}
+	after, err := s.scanPosition(ctx, id)
+	return err == nil && after != before && after.status == "running"
 }
 func (s *Service) enumerate(ctx context.Context, id, path string) error {
 	var sourceID string
