@@ -399,7 +399,7 @@ func observedPlaybackHelper(req request, in io.Reader, out io.Writer) (result er
 	if err != nil || !os.SameFile(registeredInfo, rootInfo) {
 		return ErrRootLease
 	}
-	rootObject, _, err := observedObjectBinding(rootInfo)
+	rootObject, _, err := observedObjectBinding(rootInfo, req.Path)
 	if err != nil {
 		return err
 	}
@@ -431,7 +431,7 @@ func observedPlaybackHelper(req request, in io.Reader, out io.Writer) (result er
 		if e != nil || !info.Mode().IsRegular() {
 			return ObservedFileObservation{}, ErrObservedSourceLost
 		}
-		object, token, e := observedObjectBinding(info)
+		object, token, e := observedObjectBinding(info, file.Name())
 		if e != nil {
 			return ObservedFileObservation{}, e
 		}
