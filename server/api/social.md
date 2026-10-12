@@ -172,12 +172,10 @@ placeholder:
 `entryId` and `position` survive, so ordering and stable identity are preserved.
 Nothing else does — no title, no artwork, no source, no owner, no provenance.
 
-The same holds once such an entry is current (a host override, below). For a
-member who cannot see it, `timeline.itemId` is the empty string in the snapshot,
-in a `group.transport` event and on a transport receipt, while
-`timeline.currentEntryId` still names the placeholder. An empty `itemId` beside
-a non-empty `currentEntryId` therefore means "something you cannot see is
-loaded", not "nothing is loaded".
+The placeholder covers the queue. Once a host override (below) makes such an
+entry current, `timeline.itemId` and the `group.transport` event still carry
+that item's opaque id to every member; it resolves to nothing for a member who
+cannot see the item, and no title, artwork or media access comes with it.
 
 The **host** additionally receives `queue.eligibility`, naming which members are
 blocked by which entries, and whether the current entry is one of them. A host is

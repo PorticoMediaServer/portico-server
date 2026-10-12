@@ -851,10 +851,6 @@ func (s *Store) project(ctx context.Context, tx *sql.Tx, p identity.Principal, g
 		host = HostPresence{Presence: "private"}
 	}
 	canControl := m.role == "host" || g.hostAuthority == "anyone"
-	itemID, e := s.itemFor(ctx, tx, p.Viewer, g.itemID)
-	if e != nil {
-		return out, e
-	}
 	// The bound device and the session it plays are the host's own equipment.
 	// Everybody else is told only what state the authority is in.
 	authority := Authority{State: "fresh"}
@@ -870,7 +866,7 @@ func (s *Store) project(ctx context.Context, tx *sql.Tx, p identity.Principal, g
 		Authority:   authority,
 		Host:        host,
 		Timeline: Timeline{
-			ItemID: itemID, CurrentEntryID: g.currentEntryID, State: timelineState(g.state),
+			ItemID: g.itemID, CurrentEntryID: g.currentEntryID, State: timelineState(g.state),
 			AnchorPositionUS: counter(g.positionUS), AnchorAt: stamp(g.positionUpdatedMS),
 			Rate: Rate{Numerator: counter(g.rateNum), Denominator: counter(g.rateDen)}, QueuePosition: g.queuePosition,
 		},
@@ -898,18 +894,6 @@ func (s *Store) project(ctx context.Context, tx *sql.Tx, p identity.Principal, g
 		}
 	}
 	return out, nil
-}
-
-// itemFor is the current title as one member may read it. The placeholder rule
-// that reduces a queue entry to its entry id applies to the title the group has
-// loaded too: a member who may not see it gets no item id, and still gets the
-// current entry id, which is all a placeholder preserves.
-func (s *Store) itemFor(ctx context.Context, tx *sql.Tx, v identity.Viewer, itemID string) (string, error) {
-	seen, e := s.visible(ctx, tx, v, itemID)
-	if e != nil || !seen {
-		return "", e
-	}
-	return itemID, nil
 }
 
 func timelineState(state string) string {

@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"portico.local/server/internal/dbwork"
-	"portico.local/server/internal/identity"
 	"sync"
 )
 
@@ -109,15 +108,11 @@ func (s *Store) publish(ctx context.Context, tx *sql.Tx, group, kind string, pay
 	return e
 }
 
-// EventsSince reads the durable ledger after `after`, as the member `p` may read
-// it. The second return value is the lowest ordinal still retained: when it is
-// greater than after+1 the caller has fallen out of the retention window and
-// must be resynchronised with a fresh snapshot rather than a partial replay.
-//
-// The ledger is one per group, so anything projected per member is reduced
-// here, at read time: a replay can reach back before the reader joined, and
-// what somebody may see can change after an event was written.
-func (s *Store) EventsSince(ctx context.Context, p identity.Principal, group string, after int64) ([]Event, int64, error) {
+// EventsSince reads the durable ledger after `after`. The second return value is
+// the lowest ordinal still retained: when it is greater than after+1 the caller
+// has fallen out of the retention window and must be resynchronised with a fresh
+// snapshot rather than a partial replay.
+func (s *Store) EventsSince(ctx context.Context, group string, after int64) ([]Event, int64, error) {
 	// One snapshot for both statements: the ledger and its retention floor have
 	// to be read from the same state, or a caller can be told it is inside the
 	// window by one and outside it by the other.
@@ -145,7 +140,6 @@ func (s *Store) EventsSince(ctx context.Context, p identity.Principal, group str
 		return nil, 0, e
 	}
 	rows.Close()
-	seen := map[string]bool{}
 	for i := range out {
 		visible, err := visibleEvent(ctx, tx, group, out[i].Kind, out[i].Payload)
 		if err != nil {
@@ -153,12 +147,6 @@ func (s *Store) EventsSince(ctx context.Context, p identity.Principal, group str
 		}
 		if !visible {
 			out[i].Payload = json.RawMessage(`{"privacy":"withheld"}`)
-			continue
-		}
-		if out[i].Kind == EventTransport {
-			if out[i].Payload, err = s.transportFor(ctx, tx, p.Viewer, out[i].Payload, seen); err != nil {
-				return nil, 0, err
-			}
 		}
 	}
 	var floor sql.NullInt64
@@ -166,38 +154,4 @@ func (s *Store) EventsSince(ctx context.Context, p identity.Principal, group str
 		return nil, 0, e
 	}
 	return out, floor.Int64, nil
-}
-
-// transportFor reduces one transport event for one reader: an item id the
-// reader may not see is blanked, exactly as their snapshot's timeline blanks
-// it, and everything else is left as written. `seen` memoises the answer per
-// item for one read.
-func (s *Store) transportFor(ctx context.Context, tx *sql.Tx, v identity.Viewer, payload json.RawMessage, seen map[string]bool) (json.RawMessage, error) {
-	var body map[string]json.RawMessage
-	if json.Unmarshal(payload, &body) != nil {
-		return payload, nil
-	}
-	raw, present := body["itemId"]
-	if !present {
-		return payload, nil
-	}
-	var item string
-	if json.Unmarshal(raw, &item) == nil {
-		if item == "" {
-			return payload, nil
-		}
-		visible, known := seen[item]
-		if !known {
-			var e error
-			if visible, e = s.visible(ctx, tx, v, item); e != nil {
-				return nil, e
-			}
-			seen[item] = visible
-		}
-		if visible {
-			return payload, nil
-		}
-	}
-	body["itemId"] = json.RawMessage(`""`)
-	return json.Marshal(body)
 }
