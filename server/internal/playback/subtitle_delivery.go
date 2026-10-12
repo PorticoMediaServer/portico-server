@@ -117,7 +117,8 @@ func replanCeilingsFrom(ctx context.Context) (ReplanCeilings, bool) {
 
 const reachLocal, reachRemote = "local", "remote"
 
-// keptTarget is what a re-planned v1 presentation stores for its next re-plan.
+// keptTarget is what a re-planned session stores for its next re-plan: a v1
+// presentation its narrowed target, and any session the reach admission saw.
 type keptTarget struct {
 	target *QualityTarget
 	reach  string
@@ -127,23 +128,28 @@ type keptTarget struct {
 // a subtitle burned in or turned off, a copied stream that has to be converted
 // after all.
 //
+// A request brings what its caller is allowed right now (current): admission's
+// view of the connection and the member's ceiling there. One that brings none
+// is refused, whatever kind of session it names. The conversion fallback has
+// no request; its current is what fallbackCeilings read for the session.
+//
 // A v1 presentation is planned under the ceilings it was last planned with
 // (the viewer's limit, the member's remote cap, the owner's), narrowed by what
 // applies now, and keeps the result: they only ever come down. The owner's
 // ceilings apply as they are now; the remote ones do when admission has called
 // this presentation's connection remote, at its start, at an earlier re-plan
-// or for this request, or when that was never recorded. A request brings the
-// member's current ceiling with it (current), and one that brings none is
-// refused; the conversion fallback has no request and plans under what is
-// stored. A v1 presentation stored before plans kept their ceilings is refused
-// too: what it started under cannot be recovered, and no ceiling is not an
-// answer. A legacy session names a published rung, as it always has, and keeps
-// nothing.
+// or for this request, or when that was never recorded. A v1 presentation
+// stored before plans kept their ceilings is refused: what it started under
+// cannot be recovered, and no ceiling is not an answer.
+//
+// A legacy session names a published rung, as it always has, and that rung's
+// target is narrowed in the same way by what applies now. It keeps no target,
+// only the reach, so that a later fallback knows admission has seen it remote.
 func replanTarget(ctx context.Context, q sourceQuery, session string, old *DeliveryPlan, rungs []QualityRung, policy ResolvedDeliveryPolicy, cfg DeliveryConfiguration, height int, current *ReplanCeilings, request bool) (QualityTarget, keptTarget, error) {
+	if request && current == nil {
+		return QualityTarget{}, keptTarget{}, ErrQualityUnavailable
+	}
 	if old.Target != nil {
-		if request && current == nil {
-			return QualityTarget{}, keptTarget{}, ErrQualityUnavailable
-		}
 		remote, member := old.TargetReach != reachLocal, 0
 		if current != nil {
 			remote, member = remote || current.Remote, current.MaxVideoBitrateBPS
@@ -162,7 +168,16 @@ func replanTarget(ctx context.Context, q sourceQuery, session string, old *Deliv
 	if v1 || !ok {
 		return QualityTarget{}, keptTarget{}, ErrQualityUnavailable
 	}
-	return rung.Target(policy, height), keptTarget{}, nil
+	target := rung.Target(policy, height)
+	if current == nil {
+		// The fallback of a legacy session no request has shown to be remote.
+		return target, keptTarget{nil, old.TargetReach}, nil
+	}
+	remote, reach := old.TargetReach == reachRemote || current.Remote, reachLocal
+	if remote {
+		reach = reachRemote
+	}
+	return narrowTarget(target, remote, current.MaxVideoBitrateBPS, cfg), keptTarget{nil, reach}, nil
 }
 
 // narrowTarget brings a stored target down to what applies now: the member's

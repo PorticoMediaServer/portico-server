@@ -144,9 +144,9 @@ type DeliveryPlan struct {
 	// id names no published rung, so a later re-plan of the same presentation
 	// (a subtitle burned in or turned off) plans under these again.
 	Target *QualityTarget `json:"-"`
-	// TargetReach is whether admission called the connection Target was
-	// planned for "remote" or "local". The owner's remote ceilings follow it on
-	// a later re-plan; a plan stored without it is treated as remote.
+	// TargetReach is whether admission called the connection this plan was
+	// made for "remote" or "local". The remote ceilings follow it on a later
+	// re-plan; a v1 plan stored without it is treated as remote.
 	TargetReach string `json:"-"`
 	// AudioSampleRate is the rate converted audio is resampled to; zero keeps
 	// the source's.
@@ -932,7 +932,7 @@ type storedPolicy struct {
 
 func persistDeliveryPlan(tx *sql.Tx, session string, p *DeliveryPlan) error {
 	policy := ""
-	if p.Policy != nil || p.Target != nil || p.AudioSampleRate != 0 {
+	if p.Policy != nil || p.Target != nil || p.TargetReach != "" || p.AudioSampleRate != 0 {
 		raw, err := json.Marshal(storedPolicy{p.Policy, p.Target, p.TargetReach, p.AudioSampleRate})
 		if err != nil {
 			return err

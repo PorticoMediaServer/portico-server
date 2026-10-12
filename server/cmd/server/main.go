@@ -666,6 +666,7 @@ func run() error {
 		hls.SourceStorage = storeIO
 		hls.WindowInputs = subtitleRenderer
 		hls.ConfigureSettings(deliverySettings)
+		hls.ConfigureMemberCeiling(memberCeilingReader())
 		hls.ConfigureProbe(ffprobeTool)
 		if env("PORTICO_FINITE_VOD", "0") == "1" {
 			if e = hls.EnableFinite(ffprobeTool); e != nil {

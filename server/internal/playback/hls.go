@@ -43,6 +43,9 @@ type HLS struct {
 	fmp4          bool
 	finite        *FiniteHLS
 	SourceStorage *storage.Client
+	// memberCeiling reads what a member is allowed now, for a re-plan that no
+	// request asked for. See ConfigureMemberCeiling.
+	memberCeiling MemberCeilingReader
 	db            *sql.DB
 	root, binary  string
 	mu            sync.Mutex
@@ -105,6 +108,18 @@ type hlsWindow struct {
 func (w *hlsWindow) coversDemand(from int) bool {
 	return !w.relocating && !w.throttled && from >= w.start && from <= max(w.start, w.produced)+2
 }
+
+// MemberCeilingReader reads, inside the caller's transaction, the remote video
+// bitrate cap an account is under right now, in bits per second; zero is none.
+// The layer that owns member limits provides it.
+type MemberCeilingReader func(ctx context.Context, tx *sql.Tx, account string) (int, error)
+
+// ConfigureMemberCeiling wires the member limits the conversion fallback has
+// to respect. It re-plans a presentation with no request to carry the member's
+// current ceiling, so it reads it here. A server with no member limits
+// configures none; a limit that cannot be read fails the fallback and is never
+// taken for no limit.
+func (h *HLS) ConfigureMemberCeiling(read MemberCeilingReader) { h.memberCeiling = read }
 
 // ConfigureSettings wires owner administration into conversion lifetimes. A nil
 // source keeps the published defaults.

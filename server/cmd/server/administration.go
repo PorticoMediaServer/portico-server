@@ -12,8 +12,19 @@ import (
 	"portico.local/server/internal/httpapi"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/operations"
+	"portico.local/server/internal/playback"
 	"portico.local/server/internal/servicelog"
 )
+
+// memberCeilingReader is how the conversion fallback reads a member's current
+// remote bitrate cap: from the member limits, inside the transaction it is
+// already in. It re-plans with no request, so nothing else can tell it.
+func memberCeilingReader() playback.MemberCeilingReader {
+	limits := &access.Enforcer{Store: &access.Store{}}
+	return func(ctx context.Context, tx *sql.Tx, account string) (int, error) {
+		return limits.RemoteBitrateCap(ctx, tx, identity.Principal{Viewer: identity.Viewer{AccountID: account}})
+	}
+}
 
 // initializeAdministration wires workstream G: the access store, the message log
 // recorder, client log uploads and LAN discovery.
