@@ -75,16 +75,38 @@ func TestPermissionRepairLeavesMediaAndLinksUntouched(t *testing.T) {
 	}
 }
 
-func TestPermissionRepairRejectsSymlinkedStateRoot(t *testing.T) {
+func TestPermissionRepairFollowsTheSelectedStateRootOnly(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("POSIX modes do not describe Windows ACLs")
 	}
-	external := t.TempDir()
-	link := filepath.Join(t.TempDir(), "state")
-	if err := os.Symlink(external, link); err != nil {
+	target := t.TempDir()
+	if err := os.Chmod(target, 0755); err != nil {
 		t.Fatal(err)
 	}
-	if err := FixPermissions(link); err == nil {
-		t.Fatal("symlink root accepted")
+	child := filepath.Join(target, "media.mkv")
+	if err := os.WriteFile(child, []byte("media"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(child, 0644); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(t.TempDir(), "state")
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatal(err)
+	}
+	if exposed, err := CheckPermissions(link); err != nil || !exposed {
+		t.Fatalf("symlinked state not assessed: %t %v", exposed, err)
+	}
+	if err := FixPermissions(link); err != nil {
+		t.Fatal(err)
+	}
+	if exposed, err := CheckPermissions(link); err != nil || exposed {
+		t.Fatalf("boundary not protected: %t %v", exposed, err)
+	}
+	if info, err := os.Stat(target); err != nil || info.Mode().Perm() != 0700 {
+		t.Fatalf("wrong state boundary: %v %v", info, err)
+	}
+	if info, err := os.Stat(child); err != nil || info.Mode().Perm() != 0644 {
+		t.Fatalf("descendant permissions changed: %v %v", info, err)
 	}
 }
