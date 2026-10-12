@@ -60,6 +60,18 @@ COPY --from=web /out/build.env /identity/build.env
 ENV CGO_ENABLED=0
 RUN ROOT_KEY=$(go run /identity/inspect-hosted-root.go /identity/root-public-key.pem) && test -n "$ROOT_KEY" && . /identity/build.env && go build -tags release -buildvcs=false -mod=readonly -trimpath -ldflags "-s -w -X portico.local/server/internal/hostedtrust.OfficialRoot=$ROOT_KEY -X portico.local/server/internal/buildinfo.Version=$VERSION -X portico.local/server/internal/buildinfo.BuildID=$BUILD_ID -X portico.local/server/internal/buildinfo.SourceDigest=$SOURCE_DIGEST -X portico.local/server/internal/buildinfo.BuiltAt=$BUILT_AT" -o /out/portico-server ./cmd/server
 
+# The qualified FFmpeg bundle for the architecture this image is being built
+# for. A multi-architecture build supplies one bundle per architecture, in
+# third_party/ffmpeg/bundle/linux-amd64 and .../linux-arm64, and each image
+# takes its own. A single-architecture build may instead place the native
+# bundle directly in third_party/ffmpeg/bundle. Either way the final stage
+# verifies what it was given before the image is finished.
+FROM debian:bookworm-slim AS ffmpeg
+ARG TARGETOS
+ARG TARGETARCH
+COPY third_party/ffmpeg/bundle/ /bundle/
+RUN if [ -d "/bundle/${TARGETOS}-${TARGETARCH}" ]; then mv "/bundle/${TARGETOS}-${TARGETARCH}" /ffmpeg; else mv /bundle /ffmpeg; fi
+
 FROM debian:bookworm-slim
 RUN apt-get update \
  && apt-get install --yes --no-install-recommends bubblewrap ca-certificates python3 tini \
@@ -72,8 +84,9 @@ RUN useradd --system --create-home --home-dir /var/lib/portico --shell /usr/sbin
 COPY --from=build /out/portico-server /usr/local/bin/portico-server
 COPY --from=web /out/web /opt/portico/web
 COPY --from=web /out/release.json /opt/portico/release.json
-# Supply the native qualified bundle from the manual toolchain workflow.
-COPY third_party/ffmpeg/bundle/ /opt/portico/third_party/ffmpeg/
+# Supply the qualified bundle from the manual toolchain workflow (see the
+# ffmpeg stage above for where it goes).
+COPY --from=ffmpeg /ffmpeg/ /opt/portico/third_party/ffmpeg/
 COPY scripts/verify-ffmpeg-manifest.py scripts/verify-ffmpeg-bundle.sh /tmp/
 RUN bash /tmp/verify-ffmpeg-bundle.sh /opt/portico/third_party/ffmpeg full
 
