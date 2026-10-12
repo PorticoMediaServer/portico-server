@@ -40,8 +40,11 @@ export function header(r: V1Response, name: string): string | undefined {
 }
 
 function retryAfter(r: V1Response, body: {retryAfterSeconds?: unknown} | undefined): number | undefined {
-  const h = header(r, 'Retry-After');
+  const h = header(r, 'Retry-After')?.trim();
   if (h && /^\d+$/.test(h)) return Number(h) * 1000;
+  // The other legal form (RFC 9110) is an HTTP-date; a proxy in front of the server may answer with one.
+  const at = h ? Date.parse(h) : NaN;
+  if (Number.isFinite(at) && at > Date.now()) return Math.ceil((at - Date.now()) / 1000) * 1000;
   return typeof body?.retryAfterSeconds === 'number' ? body.retryAfterSeconds * 1000 : undefined;
 }
 
