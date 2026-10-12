@@ -21,13 +21,26 @@ import (
 // it — and the connection is closed after the reply, so the client's next
 // request opens a fresh one. HTTP/2 streams are left alone: there a canceled
 // context means the stream itself was reset.
+//
+// The request is marked, because a lane without a budget has nothing left to
+// bound it: admission refuses it there rather than start work that neither a
+// deadline nor the client going away could end (see cancellationDetached).
 func detachCanceledConnection(w http.ResponseWriter, r *http.Request) *http.Request {
 	if r.ProtoMajor != 1 || r.Context().Err() == nil {
 		return r
 	}
 	w.Header().Set("Connection", "close")
 	noteCanceledConnection()
-	return r.WithContext(context.WithoutCancel(r.Context()))
+	return r.WithContext(context.WithValue(context.WithoutCancel(r.Context()), detachedCancellationKey{}, true))
+}
+
+type detachedCancellationKey struct{}
+
+// cancellationDetached reports whether this request is being served with its
+// connection's cancellation removed, so its client leaving cannot be observed.
+func cancellationDetached(ctx context.Context) bool {
+	detached, _ := ctx.Value(detachedCancellationKey{}).(bool)
+	return detached
 }
 
 var canceledConnectionLogged atomic.Int64

@@ -58,6 +58,10 @@ type laneSpec struct {
 	// pressure marks a lane whose activity means a person is waiting, which is
 	// what background loops yield to.
 	pressure bool
+	// endsWithClient marks a lane whose only bound on a request's duration is
+	// its client going away. A request that can no longer be cancelled is
+	// refused there instead of being started.
+	endsWithClient bool
 }
 
 // The capacities are sized against the connection pool and the target hardware:
@@ -82,9 +86,10 @@ var laneSpecs = map[string]laneSpec{
 	// Owner operations that read or copy the whole database: staging a restore,
 	// the on-demand integrity check and its repair. Their duration is the size of
 	// the database, so a request budget would fail them on exactly the servers
-	// that most need them. They are bounded by number instead, and still end
-	// when the owner's request goes away.
-	laneAdminLong: {capacity: 2, queueWait: 1500 * time.Millisecond, budget: 0, class: dbwork.ClassMaintenance, pressure: false},
+	// that most need them. They are bounded by number instead, and their
+	// database work ends when the owner's request goes away (a file copy
+	// already under way finishes first).
+	laneAdminLong: {capacity: 2, queueWait: 1500 * time.Millisecond, budget: 0, class: dbwork.ClassMaintenance, pressure: false, endsWithClient: true},
 	laneDefault:   {capacity: 100, queueWait: 1500 * time.Millisecond, budget: 5 * time.Second, class: dbwork.ClassInteractive, pressure: true},
 }
 
@@ -456,6 +461,15 @@ func (a *admission) wrap(mux *http.ServeMux, next http.Handler) http.Handler {
 		l := a.lanes[name]
 		if l == nil {
 			l = a.lanes[laneDefault]
+		}
+		// A request served on a canceled connection has had its cancellation
+		// detached, on the understanding that the lane's budget bounds it. Here
+		// there is no budget, so nothing would end the work if the owner left.
+		// The refusal is retryable and the connection closes with it, so the
+		// retry arrives on a fresh connection that can be watched.
+		if l.spec.endsWithClient && cancellationDetached(r.Context()) {
+			a.refuse(w, r, l)
+			return
 		}
 		// The share key is resolved before the lane is entered, because the whole
 		// point is to decide admission without doing any work first.
