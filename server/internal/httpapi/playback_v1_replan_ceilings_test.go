@@ -162,4 +162,26 @@ func TestSubtitleReplanRoutesHoldToTheMembersCurrentCeiling(t *testing.T) {
 	setMemberLimits(t, f, `{}`)
 	patch(lan, nil, second)
 	held("burn-in after the cap was lifted, back on the LAN", 1_000_000, true)
+
+	// A legacy session, started the old way on the LAN, is held to the same
+	// ceiling when its subtitle is burned in from outside.
+	var legacy playback.Session
+	w = f.rawFrom(lan, "POST", "/v1/playback/sessions", member, nil, map[string]any{"itemId": film, "quality": "auto", "requestId": "legacy-replan-00001"})
+	if w.Code != 201 || json.Unmarshal(w.Body.Bytes(), &legacy) != nil || legacy.ID == "" {
+		t.Fatalf("legacy LAN start: %d %s", w.Code, w.Body.String())
+	}
+	var isV1 bool
+	if err = f.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM playback_v1_sessions WHERE id=? OR media_session_id=?)`, legacy.ID, legacy.ID).Scan(&isV1); err != nil || isV1 {
+		t.Fatalf("the legacy start made a v1 session: %v %v", isV1, err)
+	}
+	setMemberLimits(t, f, `{"remoteBitrateKbps":3000}`)
+	selectBy(legacy.ID, "legacy-select-1", first)
+	var action string
+	var bitrate int
+	if err = f.db.QueryRow(`SELECT video_action,video_bitrate FROM playback_delivery_plans WHERE session_id=?`, legacy.ID).Scan(&action, &bitrate); err != nil {
+		t.Fatal(err)
+	}
+	if action != "convert" || bitrate < 1 || bitrate > 3_000_000 {
+		t.Fatalf("a legacy session's burn-in from outside the LAN: planned %s at %d bit/s under a member cap of 3000000", action, bitrate)
+	}
 }

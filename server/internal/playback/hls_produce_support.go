@@ -146,6 +146,29 @@ func (h *HLS) recordSoftwareFallback(ctx context.Context, id, backend, diagnosti
 	h.hardwareFailures.Add(1)
 }
 
+// fallbackCeilings is what the member of a presentation is allowed right now,
+// for the conversion fallback, which re-plans with no request to say. It
+// applies to a presentation admission has called remote: a v1 presentation
+// unless its stored reach is local, a legacy session once a request has shown
+// it remote. The member's cap is read as it is now, so one lowered since the
+// presentation was admitted takes effect; a cap that cannot be read is an
+// error, never no cap. Any other presentation has none to add.
+func (h *HLS) fallbackCeilings(ctx context.Context, tx *sql.Tx, plan *DeliveryPlan, account string) (*ReplanCeilings, error) {
+	if plan.TargetReach != reachRemote && (plan.Target == nil || plan.TargetReach == reachLocal) {
+		return nil, nil
+	}
+	current := &ReplanCeilings{Remote: true}
+	if h.memberCeiling == nil {
+		return current, nil
+	}
+	limit, err := h.memberCeiling(ctx, tx, account)
+	if err != nil {
+		return nil, err
+	}
+	current.MaxVideoBitrateBPS = limit
+	return current, nil
+}
+
 // downgradeCopyPlan turns a plan that copies the picture into one that converts
 // it, for a source whose keyframes could not be indexed. It is refused when the
 // owner has turned conversion off: a wrong timeline is not something to fall
@@ -181,7 +204,11 @@ func (h *HLS) downgradeCopyPlan(ctx context.Context, id string, plan *DeliveryPl
 	if source.Video != nil {
 		height = source.Video.Height
 	}
-	target, replanned, err := replanTarget(ctx, tx, id, plan, QualityOffers(height, true, true, policy), policy, cfg, height, nil, false)
+	current, err := h.fallbackCeilings(ctx, tx, plan, p.AccountID)
+	if err != nil {
+		return nil, err
+	}
+	target, replanned, err := replanTarget(ctx, tx, id, plan, QualityOffers(height, true, true, policy), policy, cfg, height, current, false)
 	if err != nil {
 		return nil, err
 	}

@@ -17,6 +17,8 @@ import (
 
 func TestOrdinaryBurnSelectionReplansRotatesGrantAndReturnsToCopy(t *testing.T) {
 	ctx, s, h, session, grant, _ := copyFixture(t, 96, 40)
+	// The selections below arrive as a LAN request with no member ceiling.
+	ctx = WithReplanCeilings(ctx, ReplanCeilings{})
 	facts, e := decoder.ProbeToolchain(ctx, h.binary)
 	if e != nil {
 		t.Fatal(e)

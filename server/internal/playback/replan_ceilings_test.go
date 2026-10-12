@@ -405,3 +405,164 @@ func TestStoredPlanExtrasSurviveReloadAndReplan(t *testing.T) {
 		t.Fatalf("re-planned plan: target %+v, audio rate %d, %d bit/s", plan.Target, plan.AudioSampleRate, plan.VideoBitrateBPS)
 	}
 }
+
+// A legacy session is not exempt: a subtitle change that makes it produce new
+// bytes is planned under what its member and the owner allow now, on the
+// connection admission sees, and is refused when the request does not say.
+func TestLegacySubtitleReplanAppliesCurrentCeilings(t *testing.T) {
+	legacy := func(t *testing.T, f *replanFixture, quality string) Session {
+		t.Helper()
+		session, err := f.s.Create(f.p, f.item, quality, "legacy-"+quality)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if plan := f.plan(session.ID); plan.Target != nil {
+			t.Fatalf("a legacy session stored a v1 target: %+v", plan.Target)
+		}
+		return session
+	}
+	for _, quality := range []string{"auto", "original"} {
+		t.Run(quality+" under the member's cap", func(t *testing.T) {
+			f := newReplanFixture(t, 40_000_000)
+			session := legacy(t, f, quality)
+			claimsLocal := WithDeliveryContext(remoteRequest(1_000_000), DeliveryContext{NetworkClass: NetworkLocal, ServerLocality: "local", TransportClass: "ethernet"})
+			for _, resource := range []*subtitles.Resource{styledSubtitle, nil} {
+				if err := f.subtitle(claimsLocal, session.ID, resource); err != nil {
+					t.Fatal(err)
+				}
+				if plan := f.plan(session.ID); plan.VideoAction != "convert" || plan.VideoBitrateBPS < 1 || plan.VideoBitrateBPS > 1_000_000 || plan.QualityID != quality || plan.Target != nil {
+					t.Fatalf("a legacy re-plan (burn-in %v) planned %s at %d bit/s (%s) above the member's 1000000", resource != nil, plan.VideoAction, plan.VideoBitrateBPS, plan.QualityID)
+				}
+			}
+		})
+	}
+	t.Run("under the owner's remote ceiling", func(t *testing.T) {
+		f := newReplanFixture(t, 40_000_000)
+		session := legacy(t, f, "original")
+		strict := DefaultDeliveryConfiguration()
+		strict.MaxVideoBitrateBPS, strict.MaxVideoHeight = 1_000_000, 480
+		f.configure(strict)
+		claimsLocal := WithDeliveryContext(remoteRequest(0), DeliveryContext{NetworkClass: NetworkLocal})
+		if err := f.subtitle(claimsLocal, session.ID, styledSubtitle); err != nil {
+			t.Fatal(err)
+		}
+		if plan := f.plan(session.ID); plan.VideoBitrateBPS < 1 || plan.VideoBitrateBPS > 1_000_000 || plan.TargetHeight > 480 || plan.TargetHeight < 1 {
+			t.Fatalf("a legacy re-plan planned %d bit/s at %dp above the owner's 1000000 at 480p", plan.VideoBitrateBPS, plan.TargetHeight)
+		}
+	})
+	t.Run("a request that carries no ceilings is refused", func(t *testing.T) {
+		f := newReplanFixture(t, 40_000_000)
+		session := legacy(t, f, "auto")
+		started := f.plan(session.ID)
+		for _, resource := range []*subtitles.Resource{styledSubtitle, nil} {
+			if err := f.bareSubtitle(context.Background(), session.ID, resource); !errors.Is(err, ErrQualityUnavailable) {
+				t.Fatalf("a legacy re-plan with no current ceilings (burn-in %v): %v", resource != nil, err)
+			}
+		}
+		if after := f.plan(session.ID); after.VideoAction != started.VideoAction || after.VideoBitrateBPS != started.VideoBitrateBPS || after.BurnIn != nil {
+			t.Fatalf("a refused re-plan changed the stored plan: %+v", after)
+		}
+	})
+	t.Run("on the LAN it is planned as it always was", func(t *testing.T) {
+		f := newReplanFixture(t, 40_000_000)
+		session := legacy(t, f, "auto")
+		if err := f.subtitle(context.Background(), session.ID, styledSubtitle); err != nil {
+			t.Fatal(err)
+		}
+		if plan := f.plan(session.ID); plan.BurnIn == nil || plan.VideoBitrateBPS <= 1_000_000 {
+			t.Fatalf("a LAN legacy re-plan was held to a remote ceiling: %d bit/s", plan.VideoBitrateBPS)
+		}
+	})
+}
+
+// The conversion fallback has no request, so it asks what the presentation's
+// member is allowed now. A cap lowered after the presentation was admitted
+// applies; a limit that cannot be read stops the fallback rather than passing
+// as no limit; and a LAN presentation is not held to a remote cap.
+func TestConversionFallbackAppliesTheMembersCurrentCap(t *testing.T) {
+	limits := func(f *replanFixture, bitrate int, failure error) *[]string {
+		asked := &[]string{}
+		f.h.ConfigureMemberCeiling(func(_ context.Context, _ *sql.Tx, account string) (int, error) {
+			*asked = append(*asked, account)
+			return bitrate, failure
+		})
+		return asked
+	}
+	t.Run("admitted at 2 Mbit/s, capped at 1 Mbit/s since", func(t *testing.T) {
+		f := newReplanFixture(t, 1_600_000)
+		session := f.start("tightened", V1Choice{Remote: true, AdminMaxVideoBitrateBPS: 2_000_000})
+		started := f.plan(session.ID)
+		if started.VideoAction != "copy" {
+			t.Fatalf("the presentation did not start as a copy: %+v", started)
+		}
+		asked := limits(f, 1_000_000, nil)
+		converted, err := f.h.downgradeCopyPlan(context.Background(), session.ID, started)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if converted.VideoAction != "convert" || converted.VideoBitrateBPS < 1 || converted.VideoBitrateBPS > 1_000_000 {
+			t.Fatalf("the fallback converts at %d bit/s above the member's current 1000000", converted.VideoBitrateBPS)
+		}
+		if len(*asked) != 1 || (*asked)[0] != f.p.AccountID {
+			t.Fatalf("the member's limit was read for %v, want the presentation's own account %q", *asked, f.p.AccountID)
+		}
+		// The lower ceiling is what the presentation keeps.
+		limits(f, 0, nil)
+		if err = f.subtitle(remoteRequest(0), session.ID, styledSubtitle); err != nil {
+			t.Fatal(err)
+		}
+		if plan := f.plan(session.ID); plan.VideoBitrateBPS > 1_000_000 {
+			t.Fatalf("a later re-plan planned %d bit/s", plan.VideoBitrateBPS)
+		}
+	})
+	t.Run("a limit that cannot be read", func(t *testing.T) {
+		f := newReplanFixture(t, 1_600_000)
+		session := f.start("unreadable", V1Choice{Remote: true, AdminMaxVideoBitrateBPS: 2_000_000})
+		started := f.plan(session.ID)
+		unreadable := errors.New("limits unreadable")
+		limits(f, 0, unreadable)
+		if _, err := f.h.downgradeCopyPlan(context.Background(), session.ID, started); !errors.Is(err, unreadable) {
+			t.Fatalf("a fallback whose member limit could not be read: %v", err)
+		}
+		if after := f.plan(session.ID); after.VideoAction != "copy" {
+			t.Fatalf("a refused fallback changed the stored plan: %+v", after)
+		}
+	})
+	t.Run("a LAN presentation", func(t *testing.T) {
+		f := newReplanFixture(t, 1_600_000)
+		session := f.start("lan-control", V1Choice{})
+		asked := limits(f, 1_000_000, nil)
+		converted, err := f.h.downgradeCopyPlan(context.Background(), session.ID, f.plan(session.ID))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if converted.VideoBitrateBPS <= 1_000_000 || len(*asked) != 0 {
+			t.Fatalf("a LAN presentation was held to the member's remote cap: %d bit/s, limit read %d times", converted.VideoBitrateBPS, len(*asked))
+		}
+	})
+	t.Run("a legacy session a request has shown to be remote", func(t *testing.T) {
+		f := newReplanFixture(t, 1_600_000)
+		session, err := f.s.Create(f.p, f.item, "auto", "legacy-remote")
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Burned in and taken out again from outside the LAN: a copy once more.
+		for _, resource := range []*subtitles.Resource{styledSubtitle, nil} {
+			if err = f.subtitle(remoteRequest(2_000_000), session.ID, resource); err != nil {
+				t.Fatal(err)
+			}
+		}
+		copied := f.plan(session.ID)
+		if copied.VideoAction != "copy" {
+			t.Fatalf("the legacy session is not a copy again: %+v", copied)
+		}
+		limits(f, 1_000_000, nil)
+		converted, err := f.h.downgradeCopyPlan(context.Background(), session.ID, copied)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if converted.VideoBitrateBPS < 1 || converted.VideoBitrateBPS > 1_000_000 {
+			t.Fatalf("the fallback converts at %d bit/s above the member's current 1000000", converted.VideoBitrateBPS)
+		}
+	})
+}
