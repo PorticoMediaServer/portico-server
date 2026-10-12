@@ -76,7 +76,7 @@ if '--force' in sys.argv:
         go.chmod(0o700)
         self.env = dict(os.environ, PATH=str(self.tools) + os.pathsep + os.environ["PATH"],
                         PORTICO_MACOS_SIGNING_IDENTITY="fixture", PORTICO_RELEASE_SIGNING_KEY_FILE=str(self.keyfile),
-                        SIGN_LOG=str(self.sign_log), GOCACHE="/tmp/gocache-codex", GOPROXY="off", GOTOOLCHAIN="local")
+                        SIGN_LOG=str(self.sign_log))
 
     def package(self):
         return subprocess.run(["bash", str(ROOT / "scripts/package-macos.sh"), "0.1.0",
@@ -97,6 +97,39 @@ if '--force' in sys.argv:
         self.assertEqual((server / "source-seal/manifest.json").read_bytes(), self.original_manifest)
         self.assertEqual((server / "source-seal/toolchain-manifest.json").read_bytes(), self.original_toolchain)
         self.key.public_key().verify((server / "source-seal/manifest.sig").read_bytes(), self.original_manifest)
+
+    def test_verification_needs_only_public_material(self):
+        result = self.package()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        public = self.root / "release-public"
+        public.write_bytes(self.key.public_key().public_bytes_raw())
+        self.keyfile.unlink()
+        server = self.root / "out/dmg-root/Portico Media Server.app/Contents/Resources/server"
+        result = subprocess.run(["python3", str(ROOT / "scripts/seal-macos-payload.py"),
+                                 str(server), "--public-key", str(public), "--verify"],
+                                env=self.env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_authenticated_provenance_must_describe_the_same_build(self):
+        result = self.package()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        server = self.root / "out/dmg-root/Portico Media Server.app/Contents/Resources/server"
+        original = server / "source-seal"
+        source = json.loads((original / "manifest.json").read_bytes())
+        source["buildId"] = "another-authenticated-build"
+        raw = json.dumps(source).encode()
+        (original / "manifest.json").write_bytes(raw)
+        (original / "manifest.sig").write_bytes(self.key.sign(raw))
+        final = json.loads((server / "manifest.json").read_bytes())
+        for name in ["manifest.json", "manifest.sig"]:
+            final["sourceSeal"][name] = digest(original / name)
+        raw = json.dumps(final).encode()
+        (server / "manifest.json").write_bytes(raw)
+        (server / "manifest.sig").write_bytes(self.key.sign(raw))
+        result = subprocess.run(["python3", str(ROOT / "scripts/seal-macos-payload.py"),
+                                 str(server), "--public-key", str(self.keyfile) + ".public", "--verify"],
+                                env=self.env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        self.assertNotEqual(result.returncode, 0, "a different signed source build was accepted")
 
     def test_tampered_source_is_rejected_before_codesigning(self):
         (self.payload / "portico-server").write_text("tampered")
@@ -122,7 +155,7 @@ if '--force' in sys.argv:
         server = self.root / "out/dmg-root/Portico Media Server.app/Contents/Resources/server"
         (server / "source-seal/toolchain-manifest.json").write_text("tampered provenance")
         result = subprocess.run(["python3", str(ROOT / "scripts/seal-macos-payload.py"),
-                                 str(server), "--key", str(self.keyfile), "--verify"],
+                                 str(server), "--public-key", str(self.keyfile) + ".public", "--verify"],
                                 env=self.env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("Original source seal changed", result.stderr)
