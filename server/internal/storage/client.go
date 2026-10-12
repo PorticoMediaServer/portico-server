@@ -28,7 +28,8 @@ type Snapshot struct {
 	Data           string `json:"data,omitempty"`
 }
 type request struct {
-	ManagedArtifact bool `json:"managedArtifact,omitempty"`
+	RootHandle      uint64 `json:"rootHandle,omitempty"`
+	ManagedArtifact bool   `json:"managedArtifact,omitempty"`
 	// Argv is a media tool invocation built by mediaexec in the server, reading
 	// its input from descriptor 3 (inventory-command).
 	Argv                   []string              `json:"argv,omitempty"`
@@ -185,7 +186,7 @@ func Helper(in io.Reader, out io.Writer) (result error) {
 		}
 		return encoder.Encode(Snapshot{Data: identity})
 	case "register-root":
-		return registerRootHelper(r, out)
+		return registerRootHelper(r, io.MultiReader(decoder.Buffered(), in), out)
 	case "playback-observed":
 		return observedPlaybackHelper(r, io.MultiReader(decoder.Buffered(), in), out)
 	case "playback-discover-version", "playback-validate-version":

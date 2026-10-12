@@ -53,8 +53,8 @@ func lockWindowsMediaInput(source *os.File) (*os.File, string, func(), error) {
 		if err := windows.GetFileInformationByHandle(handle, &info); err != nil {
 			return nil, err
 		}
-		if info.FileAttributes&windows.FILE_ATTRIBUTE_REPARSE_POINT != 0 {
-			return nil, ErrObservedSourceUnsupported
+		if err := rejectWindowsNameSurrogate(handle, info.FileAttributes); err != nil {
+			return nil, err
 		}
 		return file, nil
 	}

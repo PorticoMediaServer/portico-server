@@ -37,6 +37,7 @@ var processSpawns = map[string]string{
 	"internal/storage/playback_descriptor_unix.go:ValidatePlaybackDescriptor": "storage helper (server binary)",
 	"internal/storage/versioned_playback.go:runVersion":                       "storage helper (server binary)",
 	"internal/storage/root_registration_unix.go:RegisterRoot":                 "storage helper (server binary)",
+	"internal/storage/root_registration_windows.go:RegisterRoot":              "storage helper (server binary); transfers a retained root handle",
 	"internal/subtitles/acquisition.go:Import":                                "subtitle sidecar helper (server binary); reads text files, runs no tool",
 	// Not media.
 	"internal/mounts/service.go:reconcile":           "rclone mount guardian (server binary)",

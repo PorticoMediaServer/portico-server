@@ -154,19 +154,7 @@ func (c *Client) RegisterRoot(setup context.Context, path, mountPath, mountIdent
 	}
 }
 
-type registrationLifetime struct {
-	context.Context
-	owner context.Context
-}
-
-func (l *registrationLifetime) Err() error {
-	if err := l.owner.Err(); err != nil {
-		return err
-	}
-	return l.Context.Err()
-}
-
-func registerRootHelper(req request, out io.Writer) error {
+func registerRootHelper(req request, _ io.Reader, out io.Writer) error {
 	if !filepath.IsAbs(req.Path) {
 		return ErrRootLease
 	}

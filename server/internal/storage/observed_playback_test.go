@@ -10,7 +10,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -19,7 +18,7 @@ import (
 
 func observedStorageFixture(t *testing.T) (*Client, *RootLease, string, *atomic.Int32, context.CancelFunc) {
 	t.Helper()
-	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" {
+	if !observedPlaybackSupported {
 		t.Skip("real Unix directory adapter required")
 	}
 	root := t.TempDir()

@@ -1,4 +1,4 @@
-//go:build !darwin && !linux
+//go:build !darwin && !linux && !windows
 
 package storage
 
@@ -12,6 +12,6 @@ func duplicateRoot(*os.File) (*os.File, error) { return nil, ErrObservedSourceUn
 func (c *Client) RegisterRoot(context.Context, string, string, string, context.Context) (*RootRegistration, error) {
 	return nil, ErrObservedSourceUnsupported
 }
-func registerRootHelper(request, io.Writer) error  { return ErrObservedSourceUnsupported }
-func physicalMountIdentity(string) (string, error) { return "", ErrObservedSourceUnsupported }
-func sameMountFilesystem(*os.File, string) error   { return ErrObservedSourceUnsupported }
+func registerRootHelper(request, io.Reader, io.Writer) error { return ErrObservedSourceUnsupported }
+func physicalMountIdentity(string) (string, error)           { return "", ErrObservedSourceUnsupported }
+func sameMountFilesystem(*os.File, string) error             { return ErrObservedSourceUnsupported }
