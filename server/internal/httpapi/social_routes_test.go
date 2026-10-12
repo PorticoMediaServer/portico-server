@@ -379,6 +379,121 @@ func TestSocialQueueVisibilityPlaceholdersAndHostOverride(t *testing.T) {
 	}
 }
 
+// A member who has left is no longer in the room: the group, its queue and its
+// events stop being readable to them the moment they leave, exactly as they are
+// for somebody who never joined.
+func TestSocialDepartedMemberCannotReadTheGroup(t *testing.T) {
+	f := socialHTTP(t)
+	created := f.group("host-only")
+	id := created.Group.ID
+	f.join(f.member, f.invite(id))
+	f.decode(f.as(f.member, "GET", "/v1/groups/"+id, nil), 200, nil)
+	f.decode(f.as(f.member, "GET", "/v1/groups/"+id+"/queue", nil), 200, nil)
+	f.decode(f.as(f.member, "POST", "/v1/groups/"+id+"/leave", nil), 200, nil)
+	for _, path := range []string{"/v1/groups/" + id, "/v1/groups/" + id + "/queue", "/v1/groups/" + id + "/events"} {
+		w := f.as(f.member, "GET", path, nil)
+		if w.Code != 403 || errorCode(t, w) != "membership_revoked" {
+			t.Fatalf("a departed member read %s: %d %s", path, w.Code, w.Body.String())
+		}
+	}
+	// Joining again with a valid code is what readmits them.
+	f.join(f.member, f.invite(id))
+	f.decode(f.as(f.member, "GET", "/v1/groups/"+id, nil), 200, nil)
+}
+
+// The placeholder rule covers the title that is current, not only the queue: a
+// member who may not see what the group is playing gets no item id for it in
+// the snapshot, in the event stream or on a receipt. The entry id survives, so
+// the member can still tell that something hidden is current.
+func TestSocialHiddenCurrentTitleIsNotDisclosed(t *testing.T) {
+	f := socialHTTP(t)
+	created := f.group("anyone")
+	id := created.Group.ID
+	f.join(f.outside, f.invite(id))
+	var queue social.QueueResponse
+	f.decode(f.as(f.token, "POST", "/v1/groups/"+id+"/queue", social.QueueRequest{ProtocolVersion: social.Protocol, IdempotencyKey: "q", ExpectedRevision: "1", Operation: "append", ItemIDs: []string{f.item}}), 200, &queue)
+	entry := queue.Queue.Entries[0].EntryID
+	var snapshot social.GroupResponse
+	f.decode(f.as(f.token, "GET", "/v1/groups/"+id, nil), 200, &snapshot)
+	var receipt social.TransportReceipt
+	f.decode(f.as(f.token, "POST", "/v1/groups/"+id+"/transport", social.TransportRequest{ProtocolVersion: social.Protocol, IdempotencyKey: "override", ExpectedRevision: snapshot.Group.Revision, Command: "set-queue-position", QueuePosition: intp(0), AllowUnavailable: true}), 200, &receipt)
+	if receipt.Timeline.ItemID != f.item {
+		t.Fatalf("the host's receipt lost the item it may see: %+v", receipt.Timeline)
+	}
+
+	var mine, theirs social.GroupResponse
+	f.decode(f.as(f.token, "GET", "/v1/groups/"+id, nil), 200, &mine)
+	if mine.Group.Timeline.ItemID != f.item || mine.Group.Timeline.CurrentEntryID != entry {
+		t.Fatalf("the host lost the current title: %+v", mine.Group.Timeline)
+	}
+	w := f.as(f.outside, "GET", "/v1/groups/"+id, nil)
+	f.decode(w, 200, &theirs)
+	if theirs.Group.Timeline.ItemID != "" || theirs.Group.Timeline.CurrentEntryID != entry {
+		t.Fatalf("a hidden current title was not reduced to its entry: %+v", theirs.Group.Timeline)
+	}
+	if strings.Contains(w.Body.String(), f.item) {
+		t.Fatalf("the snapshot named a title its reader may not see: %s", w.Body.String())
+	}
+	var listed social.GroupListResponse
+	w = f.as(f.outside, "GET", "/v1/groups", nil)
+	f.decode(w, 200, &listed)
+	if len(listed.Groups) != 1 || strings.Contains(w.Body.String(), f.item) {
+		t.Fatalf("the group list named a hidden title: %s", w.Body.String())
+	}
+
+	// A command the member may issue answers with the same reduced timeline.
+	var paused social.TransportReceipt
+	w = f.as(f.outside, "POST", "/v1/groups/"+id+"/transport", social.TransportRequest{ProtocolVersion: social.Protocol, IdempotencyKey: "their-pause", ExpectedRevision: theirs.Group.Revision, Command: "pause"})
+	f.decode(w, 200, &paused)
+	if paused.Timeline.ItemID != "" || paused.Timeline.CurrentEntryID != entry || strings.Contains(w.Body.String(), f.item) {
+		t.Fatalf("a receipt named a hidden title: %s", w.Body.String())
+	}
+
+	// The ledger is shared, so the stream reduces it per reader.
+	stream := func(token string) string {
+		t.Helper()
+		ctx, cancel := context.WithTimeout(context.Background(), 1200*time.Millisecond)
+		defer cancel()
+		r := httptest.NewRequest("GET", "/v1/groups/"+id+"/events", nil).WithContext(ctx)
+		r.Header.Set("Authorization", "Bearer "+token)
+		r.Header.Set("Last-Event-ID", "0")
+		rec := httptest.NewRecorder()
+		f.h.ServeHTTP(rec, r)
+		return rec.Body.String()
+	}
+	if body := stream(f.token); !strings.Contains(body, "event: "+social.EventTransport) || !strings.Contains(body, `"itemId":"`+f.item+`"`) {
+		t.Fatalf("the host's stream lost the title it may see: %q", body)
+	}
+	if body := stream(f.outside); !strings.Contains(body, "event: "+social.EventTransport) || !strings.Contains(body, `"currentEntryId":"`+entry+`"`) || strings.Contains(body, f.item) {
+		t.Fatalf("the stream named a title its reader may not see: %q", body)
+	}
+}
+
+// The device a group is bound to, and the session that device plays, identify
+// the host's own equipment. Other members are told whether the group has a live
+// authority, not which device or session it is.
+func TestSocialAuthorityIdentifiersAreTheHostsOnly(t *testing.T) {
+	f := socialHTTP(t)
+	playing := f.play(f.token)
+	created := f.group("host-only")
+	id := created.Group.ID
+	joined := f.join(f.member, f.invite(id))
+	if a := joined.Group.Authority; a.DeviceID != "" || a.PlaybackID != nil || a.State != "bound" {
+		t.Fatalf("a member was given the host's device or session: %+v", a)
+	}
+	var theirs social.GroupResponse
+	w := f.as(f.member, "GET", "/v1/groups/"+id, nil)
+	f.decode(w, 200, &theirs)
+	if a := theirs.Group.Authority; a.DeviceID != "" || a.PlaybackID != nil || a.State != "bound" || strings.Contains(w.Body.String(), playing) || strings.Contains(w.Body.String(), created.Group.Authority.DeviceID) {
+		t.Fatalf("a member read the host's device or session: %s", w.Body.String())
+	}
+	var mine social.GroupResponse
+	f.decode(f.as(f.token, "GET", "/v1/groups/"+id, nil), 200, &mine)
+	if a := mine.Group.Authority; a.DeviceID == "" || a.PlaybackID == nil || *a.PlaybackID != playing || a.State != "bound" {
+		t.Fatalf("the host lost its own authority: %+v", a)
+	}
+}
+
 func TestSocialAnyoneAuthorityPolicy(t *testing.T) {
 	f := socialHTTP(t)
 	created := f.group("anyone")
@@ -551,8 +666,9 @@ func TestSocialHostTransfer(t *testing.T) {
 		t.Fatalf("new host did not bind its device: %+v", rebound.Group.Authority)
 	}
 	// The old host's heartbeat is a member's and moves nothing.
+	f.decode(f.as(f.token, "POST", "/v1/groups/"+id+"/heartbeat", nil), 200, nil)
 	var after social.GroupResponse
-	f.decode(f.as(f.token, "POST", "/v1/groups/"+id+"/heartbeat", nil), 200, &after)
+	f.decode(f.as(f.member, "GET", "/v1/groups/"+id, nil), 200, &after)
 	if after.Group.Authority.DeviceID != rebound.Group.Authority.DeviceID {
 		t.Fatalf("a member's heartbeat moved the binding: %+v", after.Group.Authority)
 	}

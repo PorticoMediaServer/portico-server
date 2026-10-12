@@ -18,7 +18,9 @@ bound to, never a claim in a request body. The group's playback authority,
 published as `group.authority`, is that `deviceId` and the Playback v1 session
 the device is playing (`playbackId`, `state: bound`). With nothing playing the
 device stays bound (`state: fresh`); once it is signed out the authority reports
-`state: retired`.
+`state: retired`. The two identifiers are the host's own equipment, so only the
+host reads them: every other member gets the same `state` with an empty
+`deviceId` and a null `playbackId`.
 
 Each member plays its own v1 session on its own device, with its own lease and
 its own progress writer. This is not an implementation detail you may ignore:
@@ -170,6 +172,13 @@ placeholder:
 `entryId` and `position` survive, so ordering and stable identity are preserved.
 Nothing else does — no title, no artwork, no source, no owner, no provenance.
 
+The same holds once such an entry is current (a host override, below). For a
+member who cannot see it, `timeline.itemId` is the empty string in the snapshot,
+in a `group.transport` event and on a transport receipt, while
+`timeline.currentEntryId` still names the placeholder. An empty `itemId` beside
+a non-empty `currentEntryId` therefore means "something you cannot see is
+loaded", not "nothing is loaded".
+
 The **host** additionally receives `queue.eligibility`, naming which members are
 blocked by which entries, and whether the current entry is one of them. A host is
 expected to act on it: remove the member, or replace the entry, before that entry
@@ -209,6 +218,9 @@ Group ceiling: 32 joined members. Queue ceiling: 256 entries.
 
 `GET /v1/groups/{id}/events`, `text/event-stream`. Membership is checked before
 one byte is written, so a `403` here is a real answer and not a truncated stream.
+Like every group read, it needs a member who is in the group now: after `leave`
+the group, its queue and its events answer `403 membership_revoked` until you
+join again.
 
 ```
 id: 6

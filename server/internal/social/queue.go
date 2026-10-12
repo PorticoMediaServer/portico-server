@@ -221,7 +221,7 @@ func (s *Store) ReadQueue(ctx context.Context, p identity.Principal, id string) 
 	if e != nil {
 		return out, e
 	}
-	m, e := loadMember(ctx, tx, id, p.Viewer)
+	m, e := loadJoinedMember(ctx, tx, id, p.Viewer)
 	if e != nil {
 		return out, e
 	}

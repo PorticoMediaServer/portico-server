@@ -525,7 +525,7 @@ func (d Dependencies) groupEventStream(w http.ResponseWriter, r *http.Request, s
 		return true
 	}
 	if resumed {
-		_, floor, err := store.EventsSince(r.Context(), id, after)
+		_, floor, err := store.EventsSince(r.Context(), p, id, after)
 		if err != nil {
 			return
 		}
@@ -558,7 +558,7 @@ func (d Dependencies) groupEventStream(w http.ResponseWriter, r *http.Request, s
 	// one sweep per stream per tick. See social.Store.HoldSweeper.
 	defer store.HoldSweeper()()
 	for {
-		events, _, err := store.EventsSince(r.Context(), id, after)
+		events, _, err := store.EventsSince(r.Context(), p, id, after)
 		if err != nil {
 			return
 		}
