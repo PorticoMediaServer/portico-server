@@ -18,8 +18,6 @@ cp "$resources_dir/launchd/$label.plist" "$temporary"
 /usr/libexec/PlistBuddy -c "Set :ProgramArguments:1 $resources_dir/launchd/server-launcher.sh" "$temporary"
 /usr/libexec/PlistBuddy -c "Set :EnvironmentVariables:PORTICO_STATE_DIR $state_dir" "$temporary"
 /usr/libexec/PlistBuddy -c "Set :EnvironmentVariables:PORTICO_WEB_DIR $resources_dir/server/web" "$temporary"
-/usr/libexec/PlistBuddy -c "Set :StandardOutPath $state_dir/logs/server.log" "$temporary"
-/usr/libexec/PlistBuddy -c "Set :StandardErrorPath $state_dir/logs/server-error.log" "$temporary"
 
 if [ ! -f "$destination" ] || ! cmp -s "$temporary" "$destination"; then
   launchctl bootout "$domain/$label" >/dev/null 2>&1 || true
