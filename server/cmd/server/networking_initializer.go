@@ -28,6 +28,32 @@ func syncCurrentDirectory(path string) error {
 	defer f.Close()
 	return f.Sync()
 }
+
+// readCurrentAuthority opens the authority incarnation a state folder already
+// holds. It creates nothing and repairs nothing: a missing, irregular,
+// wrong-sized, replaced or malformed file is refused.
+func readCurrentAuthority(state string) (*authoritygate.AuthorityGate, error) {
+	path := filepath.Join(state, "supervisor", "authority-incarnation.v1")
+	info, e := os.Lstat(path)
+	if e != nil || !info.Mode().IsRegular() || info.Size() != 64 {
+		return nil, errors.New("current authority incarnation is unavailable")
+	}
+	f, e := os.Open(path)
+	if e != nil {
+		return nil, e
+	}
+	actual, e := f.Stat()
+	if e != nil || !os.SameFile(info, actual) {
+		f.Close()
+		return nil, errors.New("authority incarnation changed")
+	}
+	raw, e := io.ReadAll(io.LimitReader(f, 65))
+	f.Close()
+	if e != nil {
+		return nil, e
+	}
+	return authoritygate.NewAuthorityGate(string(raw), false)
+}
 func openCurrentAuthority(state string) (*networking.AuthorityRunner, error) {
 	directory := filepath.Join(state, "supervisor")
 	if e := os.MkdirAll(directory, 0700); e != nil {
@@ -35,7 +61,7 @@ func openCurrentAuthority(state string) (*networking.AuthorityRunner, error) {
 	}
 	fail := func(e error) (*networking.AuthorityRunner, error) { return nil, e }
 	path := filepath.Join(directory, "authority-incarnation.v1")
-	info, e := os.Lstat(path)
+	_, e := os.Lstat(path)
 	if errors.Is(e, os.ErrNotExist) {
 		if _, dbErr := os.Lstat(filepath.Join(state, "server.sqlite")); !errors.Is(dbErr, os.ErrNotExist) {
 			return fail(errors.New("existing server state has no current authority incarnation"))
@@ -65,26 +91,8 @@ func openCurrentAuthority(state string) (*networking.AuthorityRunner, error) {
 		if e = syncCurrentDirectory(state); e != nil {
 			return fail(e)
 		}
-		info, e = os.Lstat(path)
 	}
-	if e != nil || !info.Mode().IsRegular() || info.Size() != 64 {
-		return fail(errors.New("current authority incarnation is unavailable"))
-	}
-	f, e := os.Open(path)
-	if e != nil {
-		return fail(e)
-	}
-	actual, e := f.Stat()
-	if e != nil || !os.SameFile(info, actual) {
-		f.Close()
-		return fail(errors.New("authority incarnation changed"))
-	}
-	raw, e := io.ReadAll(io.LimitReader(f, 65))
-	f.Close()
-	if e != nil {
-		return fail(e)
-	}
-	gate, e := authoritygate.NewAuthorityGate(string(raw), false)
+	gate, e := readCurrentAuthority(state)
 	if e != nil {
 		return fail(e)
 	}
