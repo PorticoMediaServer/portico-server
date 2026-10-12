@@ -54,7 +54,9 @@ export function useShowWorkspace(route: ShowWorkspaceRoute | null) {
     try { void service.select(route).catch(e => { if (import.meta.env.DEV) console.error('[content] select failed', e); }); } catch (e) { if (import.meta.env.DEV) console.error('[content] select rejected', e); }
   }, [service, key, route]);
   const selectSeason = useCallback((id: string) => void service.selectSeason(id).catch(() => {}), [service]);
-  const selectGroup = useCallback(() => void service.selectGroup('unassigned_absolute').catch(() => {}), [service]);
+  // The group that was chosen (a range, All, Specials). `selectGroup` validates synchronously; a
+  // throw must still end in a rejected promise, not escape the click.
+  const selectGroup = useCallback((group: string) => void Promise.resolve().then(() => service.selectGroup(group)).catch(() => {}), [service]);
   // The shared workspace serves one bounded page at a time and keeps its own
   // history, so the screen needs both directions — and the season list pages
   // the same way. Exposing only `next` is what made earlier episodes and later
