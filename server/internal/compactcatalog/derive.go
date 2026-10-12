@@ -149,20 +149,45 @@ type Worker struct {
 	mu sync.Mutex
 	// isolate names domains whose last batch failed: their batches are one id
 	// until one succeeds, so a bad id can't hold a whole batch back. poison is
-	// the ids that then still failed, one by one; they are skipped until
-	// nothing else is queued and the step workers are idle (a set: a second
-	// bad id must not stall the rest).
+	// the ids that then still failed, one by one; they are set aside (a set: a
+	// second bad id must not stall the rest). stalled names the rebuilding
+	// domains whose enumeration has reached such an id: the rebuild does not
+	// pass it, so the domain stays rebuilding until it derives.
 	isolate map[int]bool
 	poison  map[int]map[int64]bool
+	stalled map[int]bool
+	// What was set aside is tried again when everything else is idle, one id
+	// a turn (retryAfter is each domain's place in its turn), and not before
+	// retryAt: every failed try doubles retryDelay.
+	retryAfter map[int]int64
+	retryAt    time.Time
+	retryDelay time.Duration
 	// backfillTurn alternates queued ids and rebuild enumeration, so edits
 	// aren't queued behind a rebuild.
 	backfillTurn map[int]bool
 	stepTurn     int
 	ready        bool
+	now          func() time.Time
 }
 
+// A set-aside id is tried again after retryFirst, then after twice as long
+// each time it fails, up to retryMax. The loop is woken by every catalogue
+// commit, its own included, so the Worker keeps this schedule itself.
+var retryFirst, retryMax = 5 * time.Second, 5 * time.Minute
+
 func NewWorker(db *sql.DB) *Worker {
-	return &Worker{db: db, isolate: map[int]bool{}, poison: map[int]map[int64]bool{}, backfillTurn: map[int]bool{}}
+	return &Worker{db: db, isolate: map[int]bool{}, poison: map[int]map[int64]bool{}, stalled: map[int]bool{}, retryAfter: map[int]int64{}, backfillTurn: map[int]bool{}, now: time.Now}
+}
+
+// retryWait is how long until what was set aside is due to be tried again;
+// zero when nothing is waiting.
+func (w *Worker) retryWait() time.Duration {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.retryAt.IsZero() {
+		return 0
+	}
+	return max(w.retryAt.Sub(w.now()), 0)
 }
 
 // Run is supervised by the server. It is change-driven: every catalogue write
@@ -190,7 +215,7 @@ func (w *Worker) Run(ctx context.Context) {
 			}
 			return time.Millisecond
 		}
-		return 0
+		return w.retryWait()
 	})
 }
 
@@ -230,8 +255,9 @@ func (w *Worker) Rebuild(ctx context.Context, domain int) error {
 }
 
 // Step commits at most about limit units of derived work: one domain's queued
-// ids (or rebuild enumeration), else the step workers round-robin. An id that
-// keeps failing is retried only once both are idle, so it holds neither back.
+// ids (or rebuild enumeration), else the step workers round-robin. What was
+// set aside for failing is tried again only once both are idle and its next
+// try is due, so it holds neither back.
 func (w *Worker) Step(ctx context.Context, limit int) (int, error) {
 	if limit < 1 || limit > 500 {
 		return 0, fmt.Errorf("catalogue batch must contain 1..500 units")
@@ -242,34 +268,42 @@ func (w *Worker) Step(ctx context.Context, limit int) (int, error) {
 	n := 0
 	domain, failed := -1, int64(0)
 	step := -1
+	retried, backfilled := false, false
 	err := dbwork.WithWriteTx(ctx, w.db, dbwork.ClassMaintenance, func(tx *sql.Tx) error {
-		n, domain, failed, step = 0, -1, 0, -1
+		n, domain, failed, step, retried, backfilled = 0, -1, 0, -1, false, false
 		var rebuilding int
-		retry := false
-		// A domain whose queued ids are all set aside has nothing the Worker
-		// can finish; it waits behind the step workers.
-		err := tx.QueryRowContext(ctx, `SELECT domain,rebuilding FROM catalog_derivations st WHERE rebuilding=1
- OR EXISTS(SELECT 1 FROM catalog_dirty d WHERE d.domain=st.domain AND NOT EXISTS(SELECT 1 FROM json_each(?) p WHERE json_extract(p.value,'$[0]')=d.domain AND json_extract(p.value,'$[1]')=d.entity_id)) ORDER BY served_ms,domain LIMIT 1`, w.setAsideIDs()).Scan(&domain, &rebuilding)
-		if errors.Is(err, sql.ErrNoRows) {
+		var err error
+		if domain, rebuilding, err = w.workable(ctx, tx); err != nil {
 			domain = -1
+			return err
+		}
+		if domain < 0 {
 			var s int
 			n, s, err = w.runSteps(ctx, tx, limit)
 			step = s
-			if err != nil || n > 0 {
+			if err != nil || n > 0 || !w.retryDue() {
 				return err
 			}
-			// Everything else is idle: try an id that was set aside again.
-			err = tx.QueryRowContext(ctx, `SELECT domain,rebuilding FROM catalog_derivations st WHERE EXISTS(SELECT 1 FROM catalog_dirty d WHERE d.domain=st.domain) ORDER BY served_ms,domain LIMIT 1`).Scan(&domain, &rebuilding)
+			// Everything else is idle and a try is due.
+			err = tx.QueryRowContext(ctx, `SELECT domain,rebuilding FROM catalog_derivations st WHERE rebuilding=1
+ OR EXISTS(SELECT 1 FROM catalog_dirty d WHERE d.domain=st.domain) ORDER BY served_ms,domain LIMIT 1`).Scan(&domain, &rebuilding)
 			if errors.Is(err, sql.ErrNoRows) {
+				// Nothing is queued or rebuilding any more, so nothing is
+				// set aside either.
 				domain = -1
+				w.mu.Lock()
+				w.poison, w.stalled = map[int]map[int64]bool{}, map[int]bool{}
+				w.retryAt, w.retryDelay = time.Time{}, 0
+				w.mu.Unlock()
 				return nil
 			}
-			retry = true
+			if err != nil {
+				domain = -1
+				return err
+			}
+			retried = true
 		}
-		if err != nil {
-			return err
-		}
-		n, failed, err = w.drainDomain(ctx, tx, domain, rebuilding, limit, retry)
+		n, failed, backfilled, err = w.drainDomain(ctx, tx, domain, rebuilding, limit, retried)
 		if err != nil {
 			return err
 		}
@@ -277,16 +311,90 @@ func (w *Worker) Step(ctx context.Context, limit int) (int, error) {
 		return err
 	})
 	if err != nil {
-		w.setAside(ctx, domain, failed, step, err)
+		w.setAside(ctx, domain, failed, step, backfilled, retried, err)
 		return 0, err
 	}
 	if domain >= 0 {
 		w.mu.Lock()
 		delete(w.isolate, domain)
 		delete(w.poison[domain], failed)
+		if backfilled {
+			delete(w.stalled, domain)
+		}
+		if retried {
+			w.retryAt, w.retryDelay = time.Time{}, 0
+		}
 		w.mu.Unlock()
 	}
 	return n, nil
+}
+
+// retryDue reports whether what was set aside may be tried again now.
+func (w *Worker) retryDue() bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return !w.now().Before(w.retryAt)
+}
+
+// workable is the next domain with work the Worker can finish: queued ids that
+// are not set aside, or a rebuild that is not stalled behind one. A domain
+// with neither waits behind the step workers. It answers -1 when there is none.
+func (w *Worker) workable(ctx context.Context, tx *sql.Tx) (int, int, error) {
+	const next = `SELECT domain,rebuilding FROM catalog_derivations st WHERE rebuilding=1
+ OR EXISTS(SELECT 1 FROM catalog_dirty d WHERE d.domain=st.domain) ORDER BY served_ms,domain`
+	w.mu.Lock()
+	aside := map[int][]int64{}
+	for domain, ids := range w.poison {
+		for id := range ids {
+			aside[domain] = append(aside[domain], id)
+		}
+	}
+	stalled := make(map[int]bool, len(w.stalled))
+	for domain := range w.stalled {
+		stalled[domain] = true
+	}
+	w.mu.Unlock()
+	if len(aside) == 0 && len(stalled) == 0 {
+		var domain, rebuilding int
+		err := tx.QueryRowContext(ctx, next+` LIMIT 1`).Scan(&domain, &rebuilding)
+		if errors.Is(err, sql.ErrNoRows) {
+			return -1, 0, nil
+		}
+		return domain, rebuilding, err
+	}
+	// One row per derived domain at most.
+	rows, err := tx.QueryContext(ctx, next)
+	if err != nil {
+		return -1, 0, err
+	}
+	var candidates [][2]int
+	for rows.Next() {
+		var c [2]int
+		if err = rows.Scan(&c[0], &c[1]); err != nil {
+			rows.Close()
+			return -1, 0, err
+		}
+		candidates = append(candidates, c)
+	}
+	rows.Close()
+	if err = rows.Err(); err != nil {
+		return -1, 0, err
+	}
+	for _, c := range candidates {
+		domain, rebuilding := c[0], c[1]
+		if rebuilding == 1 && !stalled[domain] {
+			return domain, rebuilding, nil
+		}
+		var queued int
+		err = tx.QueryRowContext(ctx, `SELECT 1 FROM catalog_dirty WHERE domain=? AND entity_id NOT IN(SELECT value FROM json_each(?)) LIMIT 1`, domain, mustJSON(aside[domain])).Scan(&queued)
+		if err == nil {
+			return domain, rebuilding, nil
+		}
+		if !errors.Is(err, sql.ErrNoRows) {
+			return -1, 0, err
+		}
+	}
+	return -1, 0, nil
 }
 
 // Drain runs the worker to completion: every queued id and every pending step.
@@ -302,22 +410,11 @@ func Drain(ctx context.Context, db *sql.DB) error {
 	}
 }
 
-// setAsideIDs is every id set aside for failing, as [domain,id] pairs.
-func (w *Worker) setAsideIDs() string {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	pairs := [][2]int64{}
-	for domain, ids := range w.poison {
-		for id := range ids {
-			pairs = append(pairs, [2]int64{int64(domain), id})
-		}
-	}
-	return mustJSON(pairs)
-}
-
-// drainDomain runs one batch of a domain. retry is the turn of the ids set
-// aside for failing, taken one at a time when nothing else is left to do.
-func (w *Worker) drainDomain(ctx context.Context, tx *sql.Tx, domain, rebuilding, limit int, retry bool) (int, int64, error) {
+// drainDomain runs one batch of a domain. retry is the turn of what was set
+// aside for failing: one id, the next in the domain's rotation, and after the
+// last of them the rebuild that stalled behind one. It reports the id of a
+// batch of one and whether the batch came from rebuild enumeration.
+func (w *Worker) drainDomain(ctx context.Context, tx *sql.Tx, domain, rebuilding, limit int, retry bool) (int, int64, bool, error) {
 	d, ok := derivation(domain)
 	if !ok {
 		// A domain queued by an older build: nothing derives it any more.
@@ -325,7 +422,7 @@ func (w *Worker) drainDomain(ctx context.Context, tx *sql.Tx, domain, rebuilding
 		if err == nil {
 			_, err = tx.ExecContext(ctx, `UPDATE catalog_derivations SET rebuilding=0 WHERE domain=?`, domain)
 		}
-		return 1, 0, err
+		return 1, 0, false, err
 	}
 	w.mu.Lock()
 	skip := make([]int64, 0, len(w.poison[domain]))
@@ -336,56 +433,70 @@ func (w *Worker) drainDomain(ctx context.Context, tx *sql.Tx, domain, rebuilding
 	if w.isolate[domain] || retry {
 		batch = 1
 	}
-	queueTurn := rebuilding == 0 || !w.backfillTurn[domain]
-	if rebuilding == 1 {
+	stalled := w.stalled[domain]
+	after := w.retryAfter[domain]
+	// A stalled rebuild enumerates only on its retry turn; queued ids don't
+	// wait for it.
+	queueTurn := rebuilding == 0 || stalled || !w.backfillTurn[domain]
+	if rebuilding == 1 && !stalled {
 		w.backfillTurn[domain] = !w.backfillTurn[domain]
 	}
 	w.mu.Unlock()
 	var keys []Key
 	var err error
-	if queueTurn {
-		if keys, err = readKeys(tx.QueryContext(ctx, `SELECT entity_id,revision FROM catalog_dirty WHERE domain=? AND entity_id NOT IN(SELECT value FROM json_each(?)) ORDER BY entity_id LIMIT ?`, domain, mustJSON(skip), batch)); err != nil {
-			return 0, 0, err
+	switch {
+	case retry:
+		const one = `SELECT entity_id,revision FROM catalog_dirty WHERE domain=? AND entity_id>? ORDER BY entity_id LIMIT 1`
+		if keys, err = readKeys(tx.QueryContext(ctx, one, domain, after)); err != nil {
+			return 0, 0, false, err
 		}
-		if len(keys) == 0 && retry {
-			if keys, err = readKeys(tx.QueryContext(ctx, `SELECT entity_id,revision FROM catalog_dirty WHERE domain=? ORDER BY entity_id LIMIT ?`, domain, batch)); err != nil {
-				return 0, 0, err
+		if len(keys) == 0 && rebuilding == 0 && after != 0 {
+			if keys, err = readKeys(tx.QueryContext(ctx, one, domain, 0)); err != nil {
+				return 0, 0, false, err
 			}
 		}
-	}
-	if len(keys) == 0 && rebuilding == 1 {
-		var after int64
-		if err = tx.QueryRowContext(ctx, `SELECT rebuild_cursor FROM catalog_derivations WHERE domain=?`, domain).Scan(&after); err != nil {
-			return 0, 0, err
+		after = 0
+		if len(keys) == 1 {
+			after = keys[0].ID
 		}
-		ids, err := d.Backfill(ctx, tx, after, batch)
+		w.mu.Lock()
+		w.retryAfter[domain] = after
+		w.mu.Unlock()
+	case queueTurn:
+		if keys, err = readKeys(tx.QueryContext(ctx, `SELECT entity_id,revision FROM catalog_dirty WHERE domain=? AND entity_id NOT IN(SELECT value FROM json_each(?)) ORDER BY entity_id LIMIT ?`, domain, mustJSON(skip), batch)); err != nil {
+			return 0, 0, false, err
+		}
+	}
+	backfilled := false
+	if len(keys) == 0 && rebuilding == 1 && (retry || !stalled) {
+		var cursor int64
+		if err = tx.QueryRowContext(ctx, `SELECT rebuild_cursor FROM catalog_derivations WHERE domain=?`, domain).Scan(&cursor); err != nil {
+			return 0, 0, false, err
+		}
+		ids, err := d.Backfill(ctx, tx, cursor, batch)
 		if err != nil {
-			return 0, 0, err
+			return 0, 0, false, err
 		}
 		if len(ids) == 0 {
 			_, err = tx.ExecContext(ctx, `UPDATE catalog_derivations SET rebuilding=0,rebuild_cursor=0 WHERE domain=?`, domain)
-			return 1, 0, err
+			return 1, 0, true, err
 		}
 		sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
 		if _, err = tx.ExecContext(ctx, `UPDATE catalog_derivations SET rebuild_cursor=? WHERE domain=?`, ids[len(ids)-1], domain); err != nil {
-			return 0, 0, err
+			return 0, 0, false, err
 		}
 		// Enumerated ids go through the queue, so an unfinished one keeps its
 		// continuation and a failing one can be isolated like any other.
 		if err = TouchTx(ctx, tx, domain, ids...); err != nil {
-			return 0, 0, err
+			return 0, 0, false, err
 		}
-		if keys, err = readKeys(tx.QueryContext(ctx, `SELECT entity_id,revision FROM catalog_dirty WHERE domain=? AND entity_id IN(SELECT value FROM json_each(?)) AND entity_id NOT IN(SELECT value FROM json_each(?)) ORDER BY entity_id`, domain, mustJSON(ids), mustJSON(skip))); err != nil {
-			return 0, 0, err
+		if keys, err = readKeys(tx.QueryContext(ctx, `SELECT entity_id,revision FROM catalog_dirty WHERE domain=? AND entity_id IN(SELECT value FROM json_each(?)) ORDER BY entity_id`, domain, mustJSON(ids))); err != nil {
+			return 0, 0, false, err
 		}
-		if len(keys) == 0 {
-			// Only ids already set aside: they stay queued for their retry
-			// and the rebuild moves past them.
-			return len(ids), 0, nil
-		}
+		backfilled = true
 	}
 	if len(keys) == 0 {
-		return 0, 0, nil
+		return 0, 0, backfilled, nil
 	}
 	var single int64
 	if len(keys) == 1 {
@@ -393,7 +504,7 @@ func (w *Worker) drainDomain(ctx context.Context, tx *sql.Tx, domain, rebuilding
 	}
 	done, err := d.Drain(ctx, tx, keys, limit)
 	if err != nil {
-		return 0, single, fmt.Errorf("catalogue domain %d: %w", domain, err)
+		return 0, single, backfilled, fmt.Errorf("catalogue domain %d: %w", domain, err)
 	}
 	// Acknowledge exactly the revision this batch saw; an id touched again in
 	// the meantime stays queued.
@@ -409,15 +520,15 @@ func (w *Worker) drainDomain(ctx context.Context, tx *sql.Tx, domain, rebuilding
 	}
 	if len(pairs) > 0 {
 		if _, err = tx.ExecContext(ctx, `DELETE FROM catalog_dirty WHERE domain=? AND (entity_id,revision) IN(SELECT json_extract(value,'$[0]'),json_extract(value,'$[1]') FROM json_each(?))`, domain, mustJSON(pairs)); err != nil {
-			return 0, single, err
+			return 0, single, backfilled, err
 		}
 	}
-	return len(keys), single, nil
+	return len(keys), single, backfilled, nil
 }
 
 // steps are the derived workers that keep their own job tables (fed by
 // triggers on the derived tables above them). They run round-robin when no
-// domain has queued work it can finish.
+// domain has work it can finish.
 var steps = [...]func(context.Context, *sql.Tx, int) (int, error){StepCollectionVisibleCounts, StepCategoryVisibility, StepVisibilitySortBuckets, StepPersonalSortBuckets, StepBookContextEvidence, StepBookGroupVisibleCounts, StepContentEligible, StepRecProfiles}
 
 func (w *Worker) runSteps(ctx context.Context, tx *sql.Tx, limit int) (int, int, error) {
@@ -446,9 +557,11 @@ func (w *Worker) runSteps(ctx context.Context, tx *sql.Tx, limit int) (int, int,
 // setAside keeps one failing unit from stalling the Worker: the transaction
 // rolled back, so the work is retried, but a failing domain moves behind the
 // others and retries one id at a time; once isolated, the one id that still
-// fails is skipped until the rest of the queue drains and the step workers are
-// idle. A failing step worker yields its turn.
-func (w *Worker) setAside(ctx context.Context, domain int, id int64, step int, cause error) {
+// fails is set aside until the rest of the queue drains, the step workers are
+// idle and its next try is due. A rebuild whose enumeration reached that id
+// stalls with it: the domain stays rebuilding. A failing step worker yields
+// its turn.
+func (w *Worker) setAside(ctx context.Context, domain int, id int64, step int, backfilled, retried bool, cause error) {
 	if domain < 0 {
 		if step >= 0 {
 			log.Printf("Catalogue derived worker %d failed and yields its turn: %v", step, cause)
@@ -460,17 +573,32 @@ func (w *Worker) setAside(ctx context.Context, domain int, id int64, step int, c
 	}
 	w.mu.Lock()
 	single := id != 0 && (w.isolate[domain] || w.poison[domain][id])
+	stalls := single && backfilled && !w.stalled[domain]
 	if single {
 		if w.poison[domain] == nil {
 			w.poison[domain] = map[int64]bool{}
 		}
 		w.poison[domain][id] = true
+		if backfilled {
+			w.stalled[domain] = true
+		}
 	}
 	w.isolate[domain] = true
+	var again time.Duration
+	if retried {
+		w.retryDelay = min(max(2*w.retryDelay, retryFirst), retryMax)
+		w.retryAt = w.now().Add(w.retryDelay)
+		again = w.retryDelay
+	}
 	w.mu.Unlock()
-	if single {
+	switch {
+	case stalls:
+		log.Printf("Catalogue domain %d cannot finish rebuilding until id %d derives; its readers keep waiting and other work continues: %v", domain, id, cause)
+	case retried:
+		log.Printf("Catalogue id %d in domain %d failed again; it stays queued and is tried again in %s: %v", id, domain, again, cause)
+	case single:
 		log.Printf("Catalogue id %d in domain %d failed; it stays queued and the rest continues: %v", id, domain, cause)
-	} else {
+	default:
 		log.Printf("Catalogue domain %d failed and retries one id at a time: %v", domain, cause)
 	}
 	err := dbwork.WithWriteTx(ctx, w.db, dbwork.ClassMaintenance, func(tx *sql.Tx) error {
