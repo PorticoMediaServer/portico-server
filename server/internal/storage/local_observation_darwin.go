@@ -15,3 +15,5 @@ func observedObjectBinding(info os.FileInfo, _ string) (string, string, error) {
 	}
 	return fmt.Sprintf("dev:%d:ino:%d", s.Dev, s.Ino), fmt.Sprintf("%d:%d", s.Ctimespec.Sec, s.Ctimespec.Nsec), nil
 }
+
+func checkLocalRoot(string) error { return nil }
