@@ -15,6 +15,7 @@ import (
 
 	"portico.local/server/internal/decoder"
 	"portico.local/server/internal/identity"
+	"portico.local/server/internal/playback"
 	"portico.local/server/internal/subtitles"
 )
 
@@ -219,8 +220,16 @@ func (d Dependencies) subtitleRoutes(mux *http.ServeMux) {
 		if e != nil {
 			return nil, e
 		}
+		// A selection that burns a subtitle in, or takes one out, makes the
+		// presentation produce new bytes: it is planned under what this caller
+		// is allowed right now, on the connection this request arrived on.
+		ceilings, e := d.replanCeilings(r, p, presentation.session)
+		if e != nil {
+			return nil, e
+		}
+		current := playback.WithReplanCeilings(r.Context(), ceilings)
 		if !v1 {
-			out, e := d.Subtitles.Select(r.Context(), p, r.PathValue("id"), r.PathValue("session"), m)
+			out, e := d.Subtitles.Select(current, p, r.PathValue("id"), r.PathValue("session"), m)
 			return out, sessionNotVisible(e)
 		}
 		// The client fences on the generation it holds, the v1 one; the media
@@ -232,7 +241,7 @@ func (d Dependencies) subtitleRoutes(mux *http.ServeMux) {
 		if e != nil {
 			return nil, e
 		}
-		out, e := d.Subtitles.Select(r.Context(), presentation.as(p), r.PathValue("id"), presentation.media, m)
+		out, e := d.Subtitles.Select(current, presentation.as(p), r.PathValue("id"), presentation.media, m)
 		if e == nil {
 			out.SessionID, out.Generation = presentation.session, presentation.generation
 		}

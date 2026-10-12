@@ -142,8 +142,13 @@ func (s *Service) Patch(ctx context.Context, c Caller, id, ifMatch string, chang
 			next.VersionID = plan.SourceID
 		}
 	case change.Subtitles != nil || change.SubtitleOffsetMs != nil:
-		// A sidecar switch keeps the bytes and the generation.
-		result, err := s.applySubtitles(ctx, c.Principal, r.item, r.media, next.Subtitles, next.SubtitleOffsetMs, position, "v1-"+r.id+"-r"+strconv.Itoa(r.revision+1))
+		// A sidecar switch keeps the bytes and the generation. A burn-in does
+		// not: it is planned under what this caller is allowed right now.
+		current, err := c.replanContext(ctx, r.id)
+		if err != nil {
+			return SessionView{}, err
+		}
+		result, err := s.applySubtitles(current, c.Principal, r.item, r.media, next.Subtitles, next.SubtitleOffsetMs, position, "v1-"+r.id+"-r"+strconv.Itoa(r.revision+1))
 		if err != nil {
 			return SessionView{}, err
 		}

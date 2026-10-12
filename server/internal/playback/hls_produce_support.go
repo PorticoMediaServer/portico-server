@@ -181,7 +181,7 @@ func (h *HLS) downgradeCopyPlan(ctx context.Context, id string, plan *DeliveryPl
 	if source.Video != nil {
 		height = source.Video.Height
 	}
-	target, keep, err := replanTarget(ctx, tx, id, plan, QualityOffers(height, true, true, policy), policy, cfg, height)
+	target, replanned, err := replanTarget(ctx, tx, id, plan, QualityOffers(height, true, true, policy), policy, cfg, height, nil, false)
 	if err != nil {
 		return nil, err
 	}
@@ -205,7 +205,7 @@ func (h *HLS) downgradeCopyPlan(ctx context.Context, id string, plan *DeliveryPl
 	next.SourceSize, next.SourceModifiedNS, next.FactsRevision = plan.SourceSize, plan.SourceModifiedNS, plan.FactsRevision
 	next.BurnIn = plan.BurnIn
 	next.QualityID = plan.QualityID
-	next.Target = keep
+	next.Target, next.TargetReach = replanned.target, replanned.reach
 	next.ReasonCodes = append(next.ReasonCodes, ReasonCopyTimelineUnavailable)
 	if plan.Trace != nil && plan.Trace.Audio != nil && next.Trace != nil && next.Trace.Audio != nil {
 		next.Trace.Audio.ChosenBy = plan.Trace.Audio.ChosenBy

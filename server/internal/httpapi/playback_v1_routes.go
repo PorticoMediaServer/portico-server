@@ -18,6 +18,7 @@ import (
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/mediaanalysis"
 	"portico.local/server/internal/operations"
+	"portico.local/server/internal/playback"
 	"portico.local/server/internal/playbackv1"
 )
 
@@ -198,7 +199,43 @@ func (d Dependencies) v1ServiceCaller(q *http.Request, c v1Caller) playbackv1.Ca
 			return itemAdmission(err)
 		}
 		return nil
+	}, Ceiling: func(ctx context.Context, session string) (int, error) {
+		ceilings, err := d.replanCeilings(q.WithContext(ctx), c.Principal, session)
+		return ceilings.MaxVideoBitrateBPS, err
 	}}
+}
+
+// replanCeilings is what admission would allow this caller's connection right
+// now, read without admitting anything: no stream is counted, and the schedule
+// and the item policy are not applied. It is whether the connection is remote,
+// as admission decides it, and there the member's bitrate cap narrowed by the
+// upload budget. session is the v1 session being changed, whose own share of
+// the budget is not counted against it.
+func (d Dependencies) replanCeilings(q *http.Request, p identity.Principal, session string) (playback.ReplanCeilings, error) {
+	out := playback.ReplanCeilings{Remote: d.requestIsRemote(q)}
+	if !out.Remote || d.Access.Access == nil || d.DB == nil {
+		return out, nil
+	}
+	document, err := d.settingsDocument(q.Context())
+	if err != nil {
+		return out, err
+	}
+	tx, done, err := dbwork.BeginRead(q.Context(), d.DB)
+	if err != nil {
+		return out, err
+	}
+	defer done()
+	if out.MaxVideoBitrateBPS, err = d.enforcer(false).RemoteBitrateCap(q.Context(), tx, p); err != nil {
+		return out, err
+	}
+	if document.Effective.UploadCapacityKbps > 0 {
+		ceiling, _, err := uploadBudgetCeiling(q.Context(), tx, document.Effective.UploadCapacityKbps, session, time.Now())
+		if err != nil {
+			return out, err
+		}
+		out.MaxVideoBitrateBPS = narrowBitrate(out.MaxVideoBitrateBPS, ceiling)
+	}
+	return out, nil
 }
 
 // v1Remote is whether a request came from outside this server's LAN, decided by

@@ -24,8 +24,9 @@ func TestSubtitleReplanKeepsThePresentationCeilings(t *testing.T) {
 	ctx := context.Background()
 	replan := func(t *testing.T, session string, resource *subtitles.Resource) *DeliveryPlan {
 		t.Helper()
-		if err := dbwork.WithWriteTx(ctx, db, dbwork.ClassEstablishedPlayback, func(tx *sql.Tx) error {
-			return s.ChangeSubtitleDeliveryTx(ctx, tx, p, session, resource)
+		request := WithReplanCeilings(ctx, ReplanCeilings{})
+		if err := dbwork.WithWriteTx(request, db, dbwork.ClassEstablishedPlayback, func(tx *sql.Tx) error {
+			return s.ChangeSubtitleDeliveryTx(request, tx, p, session, resource)
 		}); err != nil {
 			t.Fatalf("subtitle re-plan: %v", err)
 		}
