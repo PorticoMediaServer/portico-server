@@ -428,6 +428,17 @@ func (s *Service) ArtworkStep(ctx context.Context) error {
 		}
 		return gated.Commit()
 	}
+	held, err := artworkSlotHeld(ctx, tx, j, entity)
+	if err != nil {
+		return err
+	}
+	if held {
+		// Nothing is fetched for a slot this job may not fill.
+		if _, err = tx.ExecContext(ctx, `UPDATE artwork_jobs SET status='stale',error='slot_held',lease='',lease_until='' WHERE id=?`, j.id); err != nil {
+			return err
+		}
+		return gated.Commit()
+	}
 	j.lease = identity.Token()
 	_, err = tx.ExecContext(ctx, `UPDATE artwork_jobs SET status='running',lease=?,lease_until=?,attempts=attempts+1 WHERE id=?`, j.lease, now.Add(2*time.Minute).Format(time.RFC3339Nano), j.id)
 	if err != nil {
@@ -500,6 +511,16 @@ func (s *Service) ArtworkStep(ctx context.Context) error {
 		}
 		return commit()
 	}
+	// The slot may have been taken while the image was being fetched.
+	if held, err = artworkSlotHeld(ctx, tx, j, entity); err != nil {
+		return err
+	}
+	if held {
+		if _, err = tx.ExecContext(ctx, `UPDATE artwork_jobs SET status='stale',error='slot_held',lease='',lease_until='' WHERE id=? AND lease=?`, j.id, j.lease); err != nil {
+			return err
+		}
+		return commit()
+	}
 	before, ent, err := readRepairSnapshot(ctx, tx, j.target)
 	if err != nil {
 		return err
@@ -542,6 +563,22 @@ func (s *Service) ArtworkStep(ctx context.Context) error {
 	}
 	return commit()
 }
+
+// artworkSlotHeld reports whether a job must give way to what its slot already
+// holds. Every seeder declines to queue an automatic provider image for a slot
+// whose selection is locked or is the library's own local image; this is the
+// same rule at the point of publication, for a job that was queued before the
+// slot was taken or by a seeder that did not check. A job the owner asked for,
+// a local image and a preview are not automatic provider art and are never held.
+func artworkSlotHeld(ctx context.Context, tx *sql.Tx, j artworkWork, entity int64) (bool, error) {
+	if j.actor != "" || j.provider == "local" || j.preview {
+		return false, nil
+	}
+	var held bool
+	err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM artwork_selections a JOIN artwork_candidates c ON c.id=a.candidate_id WHERE a.kind=? AND a.entity_id=? AND a.role=? AND a.subject=? AND (a.locked=1 OR c.provider='local'))`, j.target.Kind, entity, j.role, j.subject).Scan(&held)
+	return held, err
+}
+
 func (s *Service) failArtwork(ctx context.Context, j artworkWork, problem error) error {
 	code := problem.Error()
 	allowed := map[string]bool{"offline": true, "rate_limited": true, "not_found": true, "origin_rejected": true, "redirect_rejected": true, "size_limit": true, "unsupported_image": true, "dimension_limit": true, "malformed_image": true, "normalized_size_limit": true, "storage_unavailable": true, "provider_unavailable": true}
