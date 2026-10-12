@@ -1,6 +1,7 @@
 import {parseBrowserCredentialRecord} from '@core/credential-format.ts';
 import {
   ApiError,
+  retryAfterSecondsFrom,
   transportJSON,
   CredentialSessionService,
   type CredentialApi,
@@ -102,7 +103,7 @@ export class BrowserAccountApi implements CredentialApi<BrowserAuthority> {
     this.keepCsrf(response);
     if(!response.ok){
       const payload=await response.json().catch(()=>undefined);
-      throw new ApiError(response.status,payload?.error?.code??payload?.code??'request_failed',payload?.error?.message??'Could not reach your Portico Account.',payload?.error?.retryable??response.status>=500);
+      throw new ApiError(response.status,payload?.error?.code??payload?.code??'request_failed',payload?.error?.message??'Could not reach your Portico Account.',payload?.error?.retryable??response.status>=500,retryAfterSecondsFrom(response.headers.get('Retry-After')));
     }
     return response.status===204?undefined as T:response.json();
   }
