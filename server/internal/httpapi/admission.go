@@ -34,6 +34,7 @@ const (
 	laneRealtime      = "realtime"
 	laneAdmin         = "admin"
 	laneAdminHeavy    = "admin-heavy"
+	laneAdminLong     = "admin-long"
 	laneSecurityFence = "security-fence"
 	laneDefault       = "default"
 )
@@ -78,7 +79,13 @@ var laneSpecs = map[string]laneSpec{
 	laneRealtime:      {capacity: 512, queueWait: 0, budget: 0, class: dbwork.ClassInteractive, pressure: false},
 	laneAdmin:         {capacity: 100, queueWait: 1500 * time.Millisecond, budget: 5 * time.Second, class: dbwork.ClassInteractive, pressure: true},
 	laneAdminHeavy:    {capacity: 4, queueWait: 1500 * time.Millisecond, budget: 10 * time.Second, class: dbwork.ClassMaintenance, pressure: false},
-	laneDefault:       {capacity: 100, queueWait: 1500 * time.Millisecond, budget: 5 * time.Second, class: dbwork.ClassInteractive, pressure: true},
+	// Owner operations that read or copy the whole database: staging a restore,
+	// the on-demand integrity check and its repair. Their duration is the size of
+	// the database, so a request budget would fail them on exactly the servers
+	// that most need them. They are bounded by number instead, and still end
+	// when the owner's request goes away.
+	laneAdminLong: {capacity: 2, queueWait: 1500 * time.Millisecond, budget: 0, class: dbwork.ClassMaintenance, pressure: false},
+	laneDefault:   {capacity: 100, queueWait: 1500 * time.Millisecond, budget: 5 * time.Second, class: dbwork.ClassInteractive, pressure: true},
 }
 
 // A lane is a counting semaphore plus the counters that make it explainable,
