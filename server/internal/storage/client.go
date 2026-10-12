@@ -339,7 +339,7 @@ func Helper(in io.Reader, out io.Writer) (result error) {
 }
 func snapshot(path string, info os.FileInfo) Snapshot {
 	v := Snapshot{Path: path, Name: info.Name(), Size: info.Size(), ModifiedNS: info.ModTime().UnixNano(), Directory: info.IsDir()}
-	v.ObjectIdentity, v.ChangeToken, _ = observedObjectBinding(info)
+	v.ObjectIdentity, v.ChangeToken, _ = observedObjectBinding(info, path)
 	return v
 }
 

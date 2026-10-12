@@ -1,9 +1,9 @@
-//go:build !darwin && !linux
+//go:build !darwin && !linux && !windows
 
 package storage
 
 import "os"
 
-func observedObjectBinding(os.FileInfo) (string, string, error) {
+func observedObjectBinding(os.FileInfo, string) (string, string, error) {
 	return "", "", ErrObservedSourceUnsupported
 }

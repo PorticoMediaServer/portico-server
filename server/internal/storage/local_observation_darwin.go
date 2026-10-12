@@ -8,7 +8,7 @@ import (
 	"syscall"
 )
 
-func observedObjectBinding(info os.FileInfo) (string, string, error) {
+func observedObjectBinding(info os.FileInfo, _ string) (string, string, error) {
 	s, ok := info.Sys().(*syscall.Stat_t)
 	if !ok {
 		return "", "", ErrObservedSourceUnsupported
