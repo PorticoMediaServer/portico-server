@@ -30,6 +30,27 @@ var groupPrefix = regexp.MustCompile(`^\[[^\]]{1,100}\]\s*`)
 // merely contains "Part 1" (for example "Jupiter Jazz (Part 1)") is a title.
 var stackSuffix = regexp.MustCompile(`(?i)(?:^|[ ._-])(?:part|pt|cd|disc|disk)[ ._-]?[0-9]{1,2}$`)
 
+// A frame size ("1920x1080") and the x264/x265 codec written straight after a
+// channel layout ("DD5.1x264") have the shape of a season-by-episode marker and
+// are neither.
+var frameSizeToken = regexp.MustCompile(`^[0-9]{3,4}x[0-9]{3,4}$`)
+var codecToken = regexp.MustCompile(`^[0-9]x26[45]$`)
+
+func episodeMarkers(name string) [][]int {
+	out := [][]int{}
+	for _, loc := range seasonalToken.FindAllStringIndex(name, -1) {
+		raw := name[loc[0]:loc[1]]
+		if frameSizeToken.MatchString(raw) {
+			continue
+		}
+		if codecToken.MatchString(raw) && loc[0] >= 2 && name[loc[0]-1] == '.' && name[loc[0]-2] >= '0' && name[loc[0]-2] <= '9' {
+			continue
+		}
+		out = append(out, loc)
+	}
+	return out
+}
+
 func cleanSeries(s string) (string, int) {
 	s = groupPrefix.ReplaceAllString(s, "")
 	return FilenameTitle(strings.TrimSpace(strings.Trim(s, " ._-")) + ".mkv")
@@ -37,7 +58,7 @@ func cleanSeries(s string) (string, int) {
 func ParseEpisode(relative, kind string) EpisodeNaming {
 	out := EpisodeNaming{Season: -1, Issue: "unrecognized_episode_name"}
 	name := strings.TrimSuffix(filepath.Base(relative), filepath.Ext(relative))
-	locs := seasonalToken.FindAllStringIndex(name, -1)
+	locs := episodeMarkers(name)
 	folder := filepath.Base(filepath.Dir(relative))
 	expectedSeason := -1
 	showFolder := ""
