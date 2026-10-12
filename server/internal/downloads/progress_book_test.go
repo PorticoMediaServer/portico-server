@@ -208,6 +208,33 @@ func TestOfflineListeningDoesNotTakeTheBookFromASessionStillReporting(t *testing
 	}
 }
 
+// Two parts observed within the same second are still ordered by when each was
+// observed, whichever arrives first and whether they arrive together or in
+// separate batches: the later observation is where the book resumes.
+func TestOfflineListeningOrdersPartsObservedInTheSameSecond(t *testing.T) {
+	second := time.Unix(1_759_990_000, 0).UTC()
+	earlier := func(b *bookHarness) ProgressEntry {
+		return ProgressEntry{ItemID: b.parts[2].Public, PositionSeconds: 300, ObservedAt: second.Add(100 * time.Millisecond).Format(time.RFC3339Nano)}
+	}
+	later := func(b *bookHarness) ProgressEntry {
+		return ProgressEntry{ItemID: b.parts[4].Public, PositionSeconds: 900, ObservedAt: second.Add(900 * time.Millisecond).Format(time.RFC3339Nano)}
+	}
+	for name, deliver := range map[string]func(*bookHarness){
+		"one batch, in order":        func(b *bookHarness) { b.sync(t, "both", earlier(b), later(b)) },
+		"one batch, reversed":        func(b *bookHarness) { b.sync(t, "both", later(b), earlier(b)) },
+		"separate batches, in order": func(b *bookHarness) { b.sync(t, "first", earlier(b)); b.sync(t, "second", later(b)) },
+		"separate batches, reversed": func(b *bookHarness) { b.sync(t, "first", later(b)); b.sync(t, "second", earlier(b)) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			b := newBookHarness(t)
+			deliver(b)
+			if item, position := b.pointer(t); item != b.parts[4].ID || position != 900_000 {
+				t.Fatalf("the book resumes in part id %d at %d ms, want the later observation's part (%d) at 900000", item, position, b.parts[4].ID)
+			}
+		})
+	}
+}
+
 // A film is not a part of a book, and gets no pointer.
 func TestOfflineProgressOnAFilmWritesNoBookPointer(t *testing.T) {
 	b := newBookHarness(t)
