@@ -169,7 +169,7 @@ func (s *Service) SyncProgress(ctx context.Context, p identity.Principal, operat
 		if duration > 0 && entry.PositionSeconds > duration {
 			entry.PositionSeconds = duration
 		}
-		if err = applyProgress(ctx, tx, personal, entity, library, entry, observed); err != nil {
+		if err = applyProgress(ctx, tx, key, personal, entity, library, entry, observed); err != nil {
 			return out, err
 		}
 		if _, err = tx.ExecContext(ctx, `INSERT INTO download_progress_marks(profile_key,item_id,observed_ms) VALUES(?,?,?) ON CONFLICT(profile_key,item_id) DO UPDATE SET observed_ms=excluded.observed_ms`, key, entity, observedMS); err != nil {
@@ -198,7 +198,7 @@ func readCurrentProgress(ctx context.Context, tx *sql.Tx, personal string, entit
 // applyProgress writes the ordinary personal state an online client would have
 // written. Offline work is not a second kind of progress: it lands in the same
 // rows, with the same projections kept coherent.
-func applyProgress(ctx context.Context, tx *sql.Tx, personal string, entity int64, library string, entry ProgressEntry, observed time.Time) error {
+func applyProgress(ctx context.Context, tx *sql.Tx, key, personal string, entity int64, library string, entry ProgressEntry, observed time.Time) error {
 	if _, e := tx.ExecContext(ctx, `INSERT INTO progress(profile_id,item_id,position,unit,playback_id) VALUES(?,?,?,0,'') ON CONFLICT(profile_id,item_id) DO UPDATE SET position=excluded.position,unit=0`, personal, entity, int64(math.Round(entry.PositionSeconds*1000))); e != nil {
 		return e
 	}
@@ -213,7 +213,7 @@ func applyProgress(ctx context.Context, tx *sql.Tx, personal string, entity int6
 	if _, e := tx.ExecContext(ctx, `INSERT INTO progress_activity(profile_id,library_id,item_id,updated_at,state) VALUES(?,?,?,?,?) ON CONFLICT(profile_id,item_id) DO UPDATE SET updated_at=excluded.updated_at,state=excluded.state`, personal, library, entity, stampText, state); e != nil {
 		return e
 	}
-	if e := followBook(ctx, tx, personal, entity, int64(math.Round(entry.PositionSeconds*1000)), observed); e != nil {
+	if e := followBook(ctx, tx, key, personal, entity, int64(math.Round(entry.PositionSeconds*1000)), observed); e != nil {
 		return e
 	}
 	if entry.Watched == nil {
@@ -243,17 +243,21 @@ func applyProgress(ctx context.Context, tx *sql.Tx, personal string, entity int6
 //     alone would let an observation older than the start take the book back and
 //     unbind a session whose reports could then never move the pointer again;
 //   - the recorded activity of the part the pointer names, whether a server
-//     session wrote it or another observation in the same batch.
+//     session wrote it or an earlier observation did;
+//   - the last offline observation accepted for that part, which is kept to the
+//     millisecond where activity is kept to the second, so two parts observed
+//     within one second are still ordered by when each was observed.
 //
 // A pointer that is moved is bound to no session, so the next one to start
 // takes it.
-func followBook(ctx context.Context, tx *sql.Tx, personal string, entity, positionMS int64, observed time.Time) error {
-	var book, current int64
+func followBook(ctx context.Context, tx *sql.Tx, key, personal string, entity, positionMS int64, observed time.Time) error {
+	var book, current, mark int64
 	var activity, session string
 	e := tx.QueryRowContext(ctx, `SELECT f.book_id,COALESCE(r.item_id,0),
  COALESCE((SELECT a.updated_at FROM progress_activity a WHERE a.profile_id=r.profile_id AND a.item_id=r.item_id),''),
- COALESCE((SELECT max(COALESCE(o.created_at,''),COALESCE(o.reported_at,'')) FROM playback_observations o WHERE o.session_id=r.playback_id),'')
- FROM catalog_book_files f JOIN catalog_entities i ON i.id=f.entity_id AND i.kind=9 LEFT JOIN book_resume r ON r.profile_id=? AND r.book_id=f.book_id WHERE f.entity_id=?`, personal, entity).Scan(&book, &current, &activity, &session)
+ COALESCE((SELECT max(COALESCE(o.created_at,''),COALESCE(o.reported_at,'')) FROM playback_observations o WHERE o.session_id=r.playback_id),''),
+ COALESCE((SELECT m.observed_ms FROM download_progress_marks m WHERE m.profile_key=? AND m.item_id=r.item_id),0)
+ FROM catalog_book_files f JOIN catalog_entities i ON i.id=f.entity_id AND i.kind=9 LEFT JOIN book_resume r ON r.profile_id=? AND r.book_id=f.book_id WHERE f.entity_id=?`, key, personal, entity).Scan(&book, &current, &activity, &session, &mark)
 	if errors.Is(e, sql.ErrNoRows) {
 		return nil
 	}
@@ -265,6 +269,9 @@ func followBook(ctx context.Context, tx *sql.Tx, personal string, entity, positi
 		return e
 	}
 	if current != 0 {
+		if observed.UnixMilli() <= mark {
+			return nil
+		}
 		for _, evidence := range []string{activity, session} {
 			if at, err := time.Parse(time.RFC3339, evidence); err == nil && !observed.After(at) {
 				return nil
