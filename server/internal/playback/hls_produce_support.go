@@ -186,6 +186,7 @@ func (h *HLS) downgradeCopyPlan(ctx context.Context, id string, plan *DeliveryPl
 	next.SourceSize, next.SourceModifiedNS, next.FactsRevision = plan.SourceSize, plan.SourceModifiedNS, plan.FactsRevision
 	next.BurnIn = plan.BurnIn
 	next.QualityID = plan.QualityID
+	next.Target = plan.Target
 	next.ReasonCodes = append(next.ReasonCodes, ReasonCopyTimelineUnavailable)
 	if plan.Trace != nil && plan.Trace.Audio != nil && next.Trace != nil && next.Trace.Audio != nil {
 		next.Trace.Audio.ChosenBy = plan.Trace.Audio.ChosenBy

@@ -36,12 +36,20 @@ func (s *Service) ChangeSubtitleDeliveryTx(ctx context.Context, tx *sql.Tx, p id
 	if err = tx.QueryRowContext(ctx, `SELECT transcoding_enabled FROM playback_owner_policy WHERE singleton=1`).Scan(&enabled); err != nil {
 		return err
 	}
-	rungs := QualityOffers(source.Video.Height, true, enabled, policy)
-	rung, ok := SelectedRung(rungs, old.QualityID)
-	if !ok {
-		return ErrQualityUnavailable
+	var target QualityTarget
+	if old.Target != nil {
+		// A v1 presentation: the ceilings it started under (the viewer's limit,
+		// the member's remote cap, the owner's) still apply to its new stream.
+		target = *old.Target
+	} else {
+		rungs := QualityOffers(source.Video.Height, true, enabled, policy)
+		rung, ok := SelectedRung(rungs, old.QualityID)
+		if !ok {
+			return ErrQualityUnavailable
+		}
+		target = rung.Target(policy, source.Video.Height)
 	}
-	input := DeliveryInput{SourceID: source.ID, Source: &source, Container: source.Container, VideoCodec: source.Video.Codec, Duration: source.Duration, Height: source.Video.Height, Policy: policy, Target: rung.Target(policy, source.Video.Height), Config: cfg, TranscodingEnabled: enabled, Hardware: s.selectHardware(ctx, cfg), BurnIn: resource != nil, Remote: source.Container == "strm"}
+	input := DeliveryInput{SourceID: source.ID, Source: &source, Container: source.Container, VideoCodec: source.Video.Codec, Duration: source.Duration, Height: source.Video.Height, Policy: policy, Target: target, Config: cfg, TranscodingEnabled: enabled, Hardware: s.selectHardware(ctx, cfg), BurnIn: resource != nil, Remote: source.Container == "strm"}
 	var explicit *int
 	if old.AudioStream >= 0 {
 		explicit = &old.AudioStream
@@ -71,6 +79,7 @@ func (s *Service) ChangeSubtitleDeliveryTx(ctx context.Context, tx *sql.Tx, p id
 		}
 	}
 	plan.SourceSize, plan.SourceModifiedNS, plan.FactsRevision = old.SourceSize, old.SourceModifiedNS, old.FactsRevision
+	plan.Target = old.Target
 	if _, err = tx.ExecContext(ctx, `DELETE FROM playback_delivery_plans WHERE session_id=?`, session); err != nil {
 		return err
 	}

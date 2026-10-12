@@ -139,6 +139,10 @@ type DeliveryPlan struct {
 	SoftwarePreset string  `json:"-"`
 	HardwareDevice string  `json:"-"`
 	HardwareNative bool    `json:"-"`
+	// Target is the ceilings a v1 presentation was planned under. Its quality
+	// id names no published rung, so a later re-plan of the same presentation
+	// (a subtitle burned in or turned off) plans under these again.
+	Target *QualityTarget `json:"-"`
 }
 
 // DownmixITULimited names the one downmix the server performs: the ITU-R BS.775
@@ -864,9 +868,9 @@ func loadDeliveryPlan(q audioQuery, session string) (*DeliveryPlan, error) {
 		p.ReasonCodes = strings.Split(codes, ",")
 	}
 	if policy != "" {
-		var resolved ResolvedDeliveryPolicy
-		if err = json.Unmarshal([]byte(policy), &resolved); err == nil {
-			p.Policy = &resolved
+		var stored storedPolicy
+		if err = json.Unmarshal([]byte(policy), &stored); err == nil {
+			p.Policy, p.Target = stored.ResolvedDeliveryPolicy, stored.SessionTarget
 		}
 	}
 	if trace != "" {
@@ -897,10 +901,17 @@ func loadDeliveryPlan(q audioQuery, session string) (*DeliveryPlan, error) {
 	return p, nil
 }
 
+// storedPolicy is a plan's policy column: the resolved policy and, for a v1
+// presentation, the target it was planned under.
+type storedPolicy struct {
+	*ResolvedDeliveryPolicy
+	SessionTarget *QualityTarget `json:"sessionTarget,omitempty"`
+}
+
 func persistDeliveryPlan(tx *sql.Tx, session string, p *DeliveryPlan) error {
 	policy := ""
-	if p.Policy != nil {
-		raw, err := json.Marshal(p.Policy)
+	if p.Policy != nil || p.Target != nil {
+		raw, err := json.Marshal(storedPolicy{p.Policy, p.Target})
 		if err != nil {
 			return err
 		}
