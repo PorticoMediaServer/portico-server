@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sync"
 
 	"portico.local/server/internal/mediaexec"
@@ -40,8 +41,8 @@ func inventoryReadRequest(ctx context.Context, path string) (InventoryRequest, *
 	return r, &input, nil
 }
 
-// RunScanCommand runs a media tool by replacing the already-supervised helper
-// process. No unmanaged grandchild can outlive the supervisor's physical Wait.
+// RunScanCommand runs a media tool through the already-supervised helper. Unix
+// replaces the helper; Windows retains a locked input and owns a nested job.
 func RunScanCommand(ctx context.Context, binary string, args []string, path string, out io.Writer) (bool, error) {
 	r, input, err := inventoryReadRequest(ctx, path)
 	if err != nil {
@@ -171,6 +172,11 @@ func inventoryBlobHelper(r request, out io.Writer) error {
 // 3 from the helper's start, so the Go runtime's own poller (kqueue on macOS)
 // is never given 3 and then overwritten by that move: every probe failed so.
 func scanHelperCommand(binary string, request []byte) (*exec.Cmd, error) {
+	if runtime.GOOS == "windows" {
+		cmd := exec.Command(binary, "--portico-storage-helper")
+		cmd.Stdin = bytes.NewReader(request)
+		return cmd, nil
+	}
 	placeholder, err := descriptorPlaceholder()
 	if err != nil {
 		return nil, err
