@@ -32,6 +32,18 @@ export type CardProps = {
 };
 
 /**
+ * The name of a card's focus target: the title, then what the art shows about it (the watched
+ * tick, the progress bar), which are otherwise seen but never heard.
+ */
+export function cardName(title: string, state: {watched?: boolean; progress?: number}): string {
+  const i18n = uiI18n();
+  let name = title;
+  if (state.watched) name = i18n.t('card.nameWithState', {name, state: i18n.t('card.watched')});
+  if (state.progress && state.progress > 0) name = i18n.t('card.nameWithState', {name, state: i18n.t('card.progress', {progress: i18n.percent(Math.min(1, state.progress))})});
+  return name;
+}
+
+/**
  * Media card: reserved artwork geometry, title and up to two lines of
  * decision-useful copy. Hover or keyboard focus reveals Play and More; both
  * remain reachable through the context menu on touch.
@@ -88,7 +100,7 @@ export const Card = React.memo(function Card({title, caption, path, shape = 'pos
             onPointerCancel: pressEnd,
             // A link is dragged by the browser; the card is not a drag source.
             draggable: link ? false : undefined,
-            'aria-label': title,
+            'aria-label': cardName(title, {watched, progress}),
             'aria-pressed': selectable ? !!selected : undefined,
             onKeyDown: onKey,
             'aria-describedby': onMore || onPlay ? 'card-keyboard-hint' : undefined,
@@ -97,7 +109,7 @@ export const Card = React.memo(function Card({title, caption, path, shape = 'pos
         )}
         {/* One hidden hint per card is read on every card by a screen reader (sixty times on Home);
             the shortcut description lives once in the shell instead (`#card-keyboard-hint`). */}
-        <div className={s.badges}>{onSelect ? <button type="button" className={cx(s.checkbox, selected && s.checked, selectable && s.checkboxLive)} role="checkbox" tabIndex={selectable ? 0 : -1} aria-checked={!!selected} aria-label={uiI18n().t('card.select', {title})} onClick={e => { e.stopPropagation(); onSelect({range: e.shiftKey}); }}>{selected ? <Icon name="check" size={14} strokeWidth={2.4} /> : null}</button> : <span />}{watched ? <span className={s.watched} title={uiI18n().t('status.watched')}><Icon name="check" size={14} strokeWidth={2.2} /></span> : null}</div>
+        <div className={s.badges}>{onSelect ? <button type="button" className={cx(s.checkbox, selected && s.checked, selectable && s.checkboxLive)} role="checkbox" tabIndex={selectable ? 0 : -1} aria-checked={!!selected} aria-label={uiI18n().t('card.select', {title})} onClick={e => { e.stopPropagation(); onSelect({range: e.shiftKey}); }}>{selected ? <Icon name="check" size={14} strokeWidth={2.4} /> : null}</button> : <span />}{watched ? <span className={s.watched} title={uiI18n().t('status.watched')} aria-hidden><Icon name="check" size={14} strokeWidth={2.2} /></span> : null}</div>
         {(onPlay || onMore) && !selectable ? (
           <div className={s.overlay}>
             {onPlay ? <button type="button" className={s.playButton} tabIndex={-1} onClick={stop(onPlay)} aria-label={uiI18n().t('card.play', {title})}><Icon name="play" size={18} /></button> : <span />}
