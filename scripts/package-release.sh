@@ -27,6 +27,8 @@ printf '{"version":"%s","build":"%s"}\n' "$VERSION" "$BUILD_NUMBER" > "$PAYLOAD/
 
 case "$OS" in
   linux)
+    cp "$ROOT/packaging/portable/README.txt" "$ROOT/packaging/portable/start-portico.sh" "$PAYLOAD/"
+    chmod +x "$PAYLOAD/start-portico.sh"
     tar --sort=name --mtime='UTC 2020-01-01' --owner=0 --group=0 --numeric-owner -C "$PAYLOAD" -czf "$OUT/portico-media-server-linux-$FILE_ARCH.tar.gz" .
     config="$OUT/nfpm-$FILE_ARCH.yaml"
     sed -e "s|\${PORTICO_PACKAGE_VERSION}|$VERSION|g" -e "s|\${PORTICO_PACKAGE_ARCH}|$ARCH|g" -e "s|\${PORTICO_PACKAGE_ROOT}|$PAYLOAD|g" "$ROOT/packaging/linux/nfpm.yaml" > "$config"
@@ -39,6 +41,7 @@ case "$OS" in
     # from the installer script's folder, so neither may see a relative path.
     OUT="$(cd "$OUT" && pwd)"
     PAYLOAD="$OUT/payload-$OS-$FILE_ARCH"
+    cp "$ROOT/packaging/portable/README.txt" "$ROOT/packaging/portable/start-portico.cmd" "$PAYLOAD/"
     (cd "$PAYLOAD" && zip -qr "$OUT/Portico-Media-Server-Windows-$FILE_ARCH-Portable.zip" .)
     makensis -V2 "-DOUTPUT_FILE=$OUT/Portico-Media-Server-Windows-$FILE_ARCH-Setup.exe" "-DSTAGE_DIR=$PAYLOAD" "-DPRODUCT_VERSION=$VERSION" "$ROOT/packaging/windows/installer.nsi"
     ;;
