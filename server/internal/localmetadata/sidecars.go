@@ -30,7 +30,9 @@ import (
 //     is reported as album/cover for CD1/-style layouts.
 //
 // Only positive hits are cached by path (a show's hundred episodes share one
-// read); misses are re-read, so art added later is picked up on rescan.
+// read). A miss is not remembered here; instead the scan says which names it
+// saw when it listed the directory (WithListing), and a name it did not see is
+// not asked for. Art added later is picked up by a later scan.
 func (s *Service) ReadSidecars(ctx context.Context, library, kind, root, path string, season int) map[string]string {
 	out := map[string]string{}
 	if s.readSmall == nil {
@@ -124,9 +126,29 @@ func underRoot(root, dir string) bool {
 	return dir != root && strings.HasPrefix(dir, root+string(filepath.Separator))
 }
 
+type listingKey struct{}
+
+// WithListing tells sidecar lookups under ctx what the scan already saw. listed
+// reports whether a file is at path and whether the scan knows: it must answer
+// known only for a directory it listed completely. A lookup for a file known to
+// be absent is skipped; every other lookup asks storage as it always did, so a
+// listing can only save a read that would have failed.
+func WithListing(ctx context.Context, listed func(path string) (present, known bool)) context.Context {
+	return context.WithValue(ctx, listingKey{}, listed)
+}
+
+// unlisted reports that the scan listed path's directory and saw no such file.
+func unlisted(ctx context.Context, path string) bool {
+	listed, ok := ctx.Value(listingKey{}).(func(string) (bool, bool))
+	if !ok || listed == nil {
+		return false
+	}
+	present, known := listed(path)
+	return known && !present
+}
+
 // sidecarKey reads one sidecar file into the local artwork cache, returning
-// its key. Positive hits are cached by path within a bounded map; misses are
-// re-read so later-added art is picked up on rescan.
+// its key. Positive hits are cached by path within a bounded map.
 func (s *Service) sidecarKey(ctx context.Context, library, full string) (string, bool) {
 	s.mu.Lock()
 	if key, ok := s.sidecars[full]; ok {
@@ -134,6 +156,9 @@ func (s *Service) sidecarKey(ctx context.Context, library, full string) (string,
 		return key, true
 	}
 	s.mu.Unlock()
+	if unlisted(ctx, full) {
+		return "", false
+	}
 	raw, err := s.readSmall(ctx, library, full, 4<<20)
 	if err != nil {
 		return "", false

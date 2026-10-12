@@ -30,6 +30,9 @@ func (s *Service) prepareAudioEvidence(ctx context.Context, library, kind, path 
 		sides = []string{filepath.Join(filepath.Dir(path), "metadata.opf"), stem + ".opf", filepath.Join(filepath.Dir(path), "book.nfo"), stem + ".nfo", path + ".portico.json"}
 	}
 	for _, side := range sides {
+		if unlisted(ctx, side) {
+			continue
+		}
 		raw, e := s.storage.ReadSmall(ctx, library, side, 64<<10)
 		if e != nil {
 			continue

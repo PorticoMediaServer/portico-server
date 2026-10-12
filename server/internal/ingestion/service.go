@@ -44,6 +44,8 @@ type Service struct {
 	mu            sync.Mutex
 	active        map[string]context.CancelFunc
 	activeSources map[string]bool
+	listingMu     sync.Mutex
+	listings      map[string]*scanListing
 }
 
 func New(db *sql.DB, c *catalog.Service, p assets.Probe) *Service {

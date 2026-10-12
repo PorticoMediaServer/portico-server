@@ -9,6 +9,7 @@ import (
 	"portico.local/server/internal/assets"
 	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/localmetadata"
 	"portico.local/server/internal/mediaanalysis"
 	"portico.local/server/internal/mediasource"
 	"portico.local/server/internal/storage"
@@ -307,6 +308,9 @@ func (s *Service) analyzeOne(parent context.Context, job string, source catalog.
 	}
 	readContext := func(operation string) context.Context {
 		rooted := storage.WithScanInput(ctx, s.storage, source.ID, storage.InventoryRequest{Root: source.ResolvedPath, RootIdentity: source.RootIdentity, FollowSymlinks: source.FollowSymlinks})
+		// What this scan saw when it listed the directory spares a helper
+		// process for every sidecar that is not there.
+		rooted = localmetadata.WithListing(rooted, func(candidate string) (bool, bool) { return s.sidecarListed(job, source, candidate) })
 		return storage.WithScanReadGuard(rooted, func(check context.Context, candidate string) error {
 			if err := s.analysisAllowed(check, job, source.LibraryID, policy.Revision, operation); err != nil {
 				return err

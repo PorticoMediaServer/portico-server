@@ -150,3 +150,40 @@ func storedKey(t *testing.T, service *Service, raw []byte) string {
 	}
 	return key
 }
+
+// When the scan has already listed a directory, a sidecar it did not see there
+// is not asked for; a directory it has no listing of is read as before.
+func TestSidecarsNotListedByTheScanAreNotRead(t *testing.T) {
+	png := sidecarPNG(t)
+	service, e := New(t.TempDir(), "", nil)
+	if e != nil {
+		t.Fatal(e)
+	}
+	calls := map[string]int{}
+	service.readSmall = func(_ context.Context, _ string, path string, _ int64) ([]byte, error) {
+		calls[path]++
+		if path == "/root/Show/poster.jpg" {
+			return png, nil
+		}
+		return nil, errMissing
+	}
+	listed := WithListing(context.Background(), func(path string) (present, known bool) {
+		switch {
+		case strings.HasPrefix(path, "/root/Show/Season 1/"):
+			return false, true
+		case strings.HasPrefix(path, "/root/Show/"):
+			return path == "/root/Show/poster.jpg", true
+		}
+		return false, false
+	})
+	got := service.ReadSidecars(listed, "lib", "tv", "/root", "/root/Show/Season 1/ep.mkv", 1)
+	if got["show/poster"] == "" || len(calls) != 1 || calls["/root/Show/poster.jpg"] != 1 {
+		t.Fatalf("listed directories: %v after reads %v", got, calls)
+	}
+	// No listing for this show: every candidate is still asked for.
+	calls = map[string]int{}
+	service.ReadSidecars(listed, "lib", "tv", "/root", "/root/Other/Season 1/ep.mkv", 1)
+	if len(calls) < 10 {
+		t.Fatalf("an unlisted directory was not read: %v", calls)
+	}
+}

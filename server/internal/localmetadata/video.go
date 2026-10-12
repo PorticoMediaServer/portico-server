@@ -40,6 +40,9 @@ func (s *Service) VideoNFO(ctx context.Context, library, root, path, kind string
 		if e != nil || !filepath.IsLocal(rel) {
 			continue
 		}
+		if unlisted(ctx, side) {
+			continue
+		}
 		before, e := s.storage.Stat(ctx, library, side)
 		if e != nil {
 			continue
