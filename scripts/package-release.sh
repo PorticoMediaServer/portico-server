@@ -35,6 +35,10 @@ case "$OS" in
     (cd "$ROOT" && nfpm package --config "$config" --packager rpm --target "$OUT/portico-media-server-linux-$FILE_ARCH.rpm")
     ;;
   windows)
+    # The archive is written from inside the payload folder, and makensis works
+    # from the installer script's folder, so neither may see a relative path.
+    OUT="$(cd "$OUT" && pwd)"
+    PAYLOAD="$OUT/payload-$OS-$FILE_ARCH"
     (cd "$PAYLOAD" && zip -qr "$OUT/Portico-Media-Server-Windows-$FILE_ARCH-Portable.zip" .)
     makensis -V2 "-DOUTPUT_FILE=$OUT/Portico-Media-Server-Windows-$FILE_ARCH-Setup.exe" "-DSTAGE_DIR=$PAYLOAD" "-DPRODUCT_VERSION=$VERSION" "$ROOT/packaging/windows/installer.nsi"
     ;;
