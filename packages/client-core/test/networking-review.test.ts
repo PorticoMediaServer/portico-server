@@ -79,9 +79,9 @@ test('cancelling a lost create reconciles the SAME request before retiring its s
 // Activation retries by its own clock: the test moves that clock and lets the service's short
 // real ticks notice. `gaps` are the seconds between attempts, read to the step the clock moves in.
 function activationClock(t:import('node:test').TestContext){
- let now=Date.UTC(2026,9,12,12);t.mock.method(Date,'now',()=>now);
+ let now=Date.UTC(2026,9,12,12);const mocked=t.mock.method(Date,'now',()=>now);
  const attempts:number[]=[];
- return {attempts,attempt:()=>{attempts.push(now);},
+ return {attempts,attempt:()=>{attempts.push(now);},restore:()=>mocked.mock.restore(),
   async run(count:number){for(let i=0;i<4000&&attempts.length<count;i++){now+=250;await new Promise<void>(r=>setTimeout(r,3));}assert.ok(attempts.length>=count,'attempts did not continue');},
   gaps:()=>attempts.slice(1).map((at,i)=>(at-attempts[i]!)/1000)};
 }
@@ -91,8 +91,9 @@ test('activation polls that cannot reach the service back off from about 5 s to 
  const clock=activationClock(t),store=journal<string>();
  const service=new SetupCodeService('local:one',{create:async()=>authorization(),poll:async()=>{clock.attempt();throw new TypeError('network down');},cancel:async()=>{}},store,async()=>requestId,{...fastTicks,random:()=>0.5});
  await service.start();await clock.run(6);service.pause();
- // 5, 10, 20, then the cap: each below the cap stretched by the jitter (half of 20% here).
- about(clock.gaps(),[5.5,11,22,30,30]);
+ // 5, 10, 20 stretched by the jitter (half of 20% here), then the cap, where the jitter falls
+ // below 30 s instead of above it.
+ about(clock.gaps(),[5.5,11,22,27,27]);
  assert.equal(service.getSnapshot().phase,'waiting','the code on screen stays valid throughout');
 });
 test('an answer from the service returns activation polling to its normal interval and first retry',async t=>{
@@ -106,7 +107,19 @@ test('creating an activation code backs off the same way',async t=>{
  const clock=activationClock(t),store=journal<string>();
  const service=new SetupCodeService('local:one',{create:async()=>{clock.attempt();throw new TypeError('network down');},poll:async()=>'',cancel:async()=>{}},store,async()=>requestId,{...fastTicks,random:()=>0.5});
  await service.start();await clock.run(6);service.pause();
- about(clock.gaps(),[5.5,11,22,30,30]);
+ about(clock.gaps(),[5.5,11,22,27,27]);
+});
+test('activation retries stay spread out once they reach the cap, and never pass it',async t=>{
+ // Two devices that lost the service in the same moment, at opposite ends of the jitter.
+ const waits=async(random:number)=>{
+  const clock=activationClock(t),store=journal<string>();
+  const service=new SetupCodeService('local:one',{create:async()=>authorization(),poll:async()=>{clock.attempt();throw new TypeError('network down');},cancel:async()=>{}},store,async()=>requestId,{...fastTicks,random:()=>random});
+  await service.start();await clock.run(8);service.pause();clock.restore();
+  return clock.gaps().slice(3);
+ };
+ const early=await waits(0.999),late=await waits(0);
+ for(const gap of [...early,...late])assert.ok(gap>=24&&gap<=31,'at the cap: '+gap+' s');
+ assert.ok(late.every((gap,i)=>gap-early[i]!>=4),'still several seconds apart on every retry: '+early.join(',')+' against '+late.join(','));
 });
 test('unobserved authorized server remains in the chooser without fabricated routes',async()=>{
  const selection=new SessionSelectionService({account:{accountId:'account',sessionId:'session'},api:{listServers:async()=>({items:[{id:pin.serverId,name:'Not observed yet',publicKey:pin.publicKey,policyRevision:1,baseUrl:''}]}),serverProfiles:async()=>({}),attach:async()=>session(),revokeLocal:async()=>{}},onSelected:()=>{}});
