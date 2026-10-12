@@ -287,3 +287,51 @@ func developmentOnlySource(data []byte) bool {
 	line, _, _ := strings.Cut(string(data), "\n")
 	return strings.HasPrefix(line, "//go:build ") && strings.Contains(line, "devtrust") && !strings.Contains(line, "!devtrust")
 }
+
+// Staging a restore copies and checks a whole database, and the on-demand
+// integrity check and repair read all of it. Those owner operations take as
+// long as the database is large, so the short request budget that protects
+// ordinary routes must not be what ends them.
+func TestLongOwnerOperationsAreNotCutOffByTheRequestBudget(t *testing.T) {
+	a := newAdmission()
+	mux := http.NewServeMux()
+	deadlines := map[string]bool{}
+	classes := map[string]dbwork.Class{}
+	routes := []string{
+		"POST /v1/admin/backups/restore",
+		"POST /v1/admin/diagnostics/integrity",
+		"POST /v1/admin/diagnostics/integrity/repair",
+		"POST /v1/admin/backups",
+	}
+	for _, pattern := range routes {
+		mux.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
+			_, deadlines[pattern] = r.Context().Deadline()
+			classes[pattern] = dbwork.ClassFrom(r.Context(), dbwork.ClassInteractive)
+		})
+	}
+	handler := a.wrap(mux, mux)
+	for _, pattern := range routes {
+		method, path, _ := strings.Cut(pattern, " ")
+		handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(method, path, nil))
+	}
+	for _, pattern := range routes[:3] {
+		if deadlines[pattern] {
+			t.Errorf("%s runs under a request deadline; a large database cannot finish inside it", pattern)
+		}
+		if classes[pattern] != dbwork.ClassMaintenance {
+			t.Errorf("%s left the maintenance work class", pattern)
+		}
+	}
+	// Starting a backup only queues a job, so it keeps the ordinary budget.
+	if !deadlines["POST /v1/admin/backups"] {
+		t.Error("an ordinary heavy admin request lost its request budget")
+	}
+	spec := laneSpecs[laneAdminLong]
+	if spec.budget != 0 || spec.pressure || spec.class != dbwork.ClassMaintenance {
+		t.Fatalf("long owner operations must be unbudgeted maintenance work: %+v", spec)
+	}
+	// They are bounded by how many may run at once instead of by time.
+	if spec.capacity < 1 || spec.capacity > laneSpecs[laneAdminHeavy].capacity {
+		t.Fatalf("long owner operations are not tightly bounded in number: %d", spec.capacity)
+	}
+}
