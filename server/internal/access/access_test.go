@@ -649,6 +649,134 @@ func TestPorticoAcceptanceAlwaysPushes(t *testing.T) {
 	}
 }
 
+// An invitation grants access to an account that has none here. An account
+// that is already an active member keeps the tier and libraries the owner set
+// for it, whichever way the invitation would have moved them: a lower tier
+// must not demote it and a higher tier must not promote it. The owner changes
+// an active member through member management, never through a link.
+func TestPorticoAcceptanceLeavesAnActiveMemberAsItIs(t *testing.T) {
+	for _, c := range []struct {
+		name, held, heldLibraries, invited string
+		invitedLibraries                   []string
+	}{
+		{"a lower tier does not demote", identity.TierAdmin, `["lib","other"]`, identity.TierMember, []string{}},
+		{"a higher tier does not promote", identity.TierMember, `["lib"]`, identity.TierAdmin, []string{"lib", "other"}},
+		{"the same tier does not replace libraries", identity.TierMember, `["lib"]`, identity.TierMember, []string{"other"}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			store, db, _ := fixture(t)
+			ctx := context.Background()
+			signedIn := func(ctx context.Context, tx *sql.Tx) (identity.DirectSignIn, error) {
+				return identity.DirectSignIn{}, nil
+			}
+			first, err := store.Invite(ctx, nil, owner(), InvitationRequest{OperationID: "first-invite", Role: identity.TierMember})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err = store.AcceptPortico(ctx, PorticoAcceptance{Code: first.Code, AccountID: "acc_held", Username: "held", DisplayName: "Held"}, signedIn); err != nil {
+				t.Fatal(err)
+			}
+			// The owner then sets this member's standing through member management.
+			if _, err = db.Exec(`UPDATE direct_memberships SET role=?,allowed_libraries=?,revision=revision+1 WHERE account_id=(SELECT account_id FROM account_portico_links WHERE hosted_account_id='acc_held')`, c.held, c.heldLibraries); err != nil {
+				t.Fatal(err)
+			}
+			var before int64
+			if err = db.QueryRow(`SELECT m.revision FROM direct_memberships m JOIN account_portico_links l ON l.account_id=m.account_id WHERE l.hosted_account_id='acc_held'`).Scan(&before); err != nil {
+				t.Fatal(err)
+			}
+			if _, err = db.Exec(`DELETE FROM hosted_membership_journal`); err != nil {
+				t.Fatal(err)
+			}
+			other, err := store.Invite(ctx, nil, owner(), InvitationRequest{OperationID: "other-invite", Role: c.invited, AllowedLibraries: c.invitedLibraries})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err = store.AcceptPortico(ctx, PorticoAcceptance{Code: other.Code, AccountID: "acc_held", Username: "held", DisplayName: "Held"}, signedIn); err != nil {
+				t.Fatalf("an active member could not accept: %v", err)
+			}
+			var role, libraries, state string
+			var disabled bool
+			var revision int64
+			var accounts, journal int
+			if err = db.QueryRow(`SELECT m.role,m.allowed_libraries,m.disabled,m.revision,(SELECT count(*) FROM account_portico_links WHERE hosted_account_id='acc_held'),(SELECT count(*) FROM hosted_membership_journal WHERE hosted_account_id='acc_held'),(SELECT state FROM access_invitations WHERE id=?) FROM direct_memberships m JOIN account_portico_links l ON l.account_id=m.account_id WHERE l.hosted_account_id='acc_held'`, other.ID).Scan(&role, &libraries, &disabled, &revision, &accounts, &journal, &state); err != nil {
+				t.Fatal(err)
+			}
+			if role != c.held || libraries != c.heldLibraries || disabled || revision != before {
+				t.Fatalf("an invitation rewrote an active member: role=%s libraries=%s disabled=%v revision=%d (was %s %s revision %d)", role, libraries, disabled, revision, c.held, c.heldLibraries, before)
+			}
+			// It is still one membership, the invitation is spent, and the fresh
+			// consent is still pushed.
+			if accounts != 1 || state != "accepted" || journal == 0 {
+				t.Fatalf("accounts=%d invitation=%s journal=%d", accounts, state, journal)
+			}
+		})
+	}
+}
+
+// A membership that was disabled (the account left at Hosted, or the owner
+// turned it off) has no access here, so a fresh invitation is what admits it
+// again, and it comes back with exactly what that invitation grants. Its old
+// tier is never restored: a member-tier link must not bring an admin back.
+func TestPorticoAcceptanceRestoresADisabledMemberWithTheInvitationsAccess(t *testing.T) {
+	store, db, _ := fixture(t)
+	ctx := context.Background()
+	signedIn := func(ctx context.Context, tx *sql.Tx) (identity.DirectSignIn, error) {
+		return identity.DirectSignIn{}, nil
+	}
+	first, err := store.Invite(ctx, nil, owner(), InvitationRequest{OperationID: "first-invite", Role: identity.TierAdmin, AllowedLibraries: []string{"lib", "other"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = store.AcceptPortico(ctx, PorticoAcceptance{Code: first.Code, AccountID: "acc_left", Username: "left", DisplayName: "Left"}, signedIn); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Exec(`UPDATE direct_memberships SET disabled=1,revision=revision+1 WHERE account_id=(SELECT account_id FROM account_portico_links WHERE hosted_account_id='acc_left')`); err != nil {
+		t.Fatal(err)
+	}
+	again, err := store.Invite(ctx, nil, owner(), InvitationRequest{OperationID: "again-invite", Role: identity.TierMember, AllowedLibraries: []string{"lib"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = store.AcceptPortico(ctx, PorticoAcceptance{Code: again.Code, AccountID: "acc_left", Username: "left", DisplayName: "Left"}, signedIn); err != nil {
+		t.Fatal(err)
+	}
+	var role, libraries string
+	var disabled bool
+	var accounts int
+	if err = db.QueryRow(`SELECT m.role,m.allowed_libraries,m.disabled,(SELECT count(*) FROM account_portico_links WHERE hosted_account_id='acc_left') FROM direct_memberships m JOIN account_portico_links l ON l.account_id=m.account_id WHERE l.hosted_account_id='acc_left'`).Scan(&role, &libraries, &disabled, &accounts); err != nil {
+		t.Fatal(err)
+	}
+	if role != identity.TierMember || libraries != `["lib"]` || disabled || accounts != 1 {
+		t.Fatalf("role=%s libraries=%s disabled=%v accounts=%d", role, libraries, disabled, accounts)
+	}
+}
+
+// The owner is never touched by an invitation, active or not.
+func TestPorticoAcceptanceNeverChangesTheOwner(t *testing.T) {
+	store, db, _ := fixture(t)
+	ctx := context.Background()
+	if _, err := db.Exec(`INSERT INTO account_portico_links(account_id,hosted_account_id,consent) VALUES('owner','acc_owner','')`); err != nil {
+		t.Fatal(err)
+	}
+	invite, err := store.Invite(ctx, nil, owner(), InvitationRequest{OperationID: "owner-opens-it", Role: identity.TierMember, AllowedLibraries: []string{"lib"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = store.AcceptPortico(ctx, PorticoAcceptance{Code: invite.Code, AccountID: "acc_owner", Username: "owner", DisplayName: "Owner"}, func(ctx context.Context, tx *sql.Tx) (identity.DirectSignIn, error) {
+		return identity.DirectSignIn{}, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var role, libraries string
+	var disabled bool
+	if err = db.QueryRow(`SELECT role,allowed_libraries,disabled FROM direct_memberships WHERE account_id='owner'`).Scan(&role, &libraries, &disabled); err != nil {
+		t.Fatal(err)
+	}
+	if role != identity.TierOwner || libraries != `[]` || disabled {
+		t.Fatalf("an invitation changed the owner: role=%s libraries=%s disabled=%v", role, libraries, disabled)
+	}
+}
+
 // A rating change applies synchronously now: there is no publication lag for
 // a pending classification to hide behind.
 func TestMemberVisibilityDeniesChangedRating(t *testing.T) {
