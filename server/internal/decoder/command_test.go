@@ -116,3 +116,14 @@ func TestProbeAcceptsResolverLibraryBudgetWithoutWideningInputAuthority(t *testi
 		t.Fatal("unbounded dependencies accepted", err)
 	}
 }
+
+func TestBridgeHardwareJobRetainsDeviceRequirement(t *testing.T) {
+	job := decoderJob{executable: "/usr/bin/ffmpeg", endpoint: "127.0.0.1:1234", hardware: true}.mediaJob()
+	if !job.Hardware {
+		t.Fatal("bridge executor dropped the graph device requirement")
+	}
+	job = decoderJob{executable: "/usr/bin/ffmpeg", endpoint: "127.0.0.1:1234"}.mediaJob()
+	if job.Hardware {
+		t.Fatal("software bridge job gained hardware access")
+	}
+}

@@ -101,6 +101,25 @@ func sandboxArgv(job Job, posture Posture) ([]string, error) {
 	return linuxArgv(bwrap, job, posture.supportsDisableUserns)
 }
 
+// LinuxHardwareSandboxArgs is the existing hardware-job grant set, shared with
+// the decoder's isolated loopback bridge. It does not grant network or writes.
+func LinuxHardwareSandboxArgs(environment [][2]string) []string {
+	args := []string{}
+	for _, kv := range environment {
+		args = append(args, "--setenv", kv[0], kv[1])
+	}
+	for _, dir := range hardwareReadable {
+		args = append(args, "--ro-bind-try", dir, dir)
+	}
+	args = append(args, "--dev-bind-try", "/dev/dri", "/dev/dri")
+	devices, _ := filepath.Glob("/dev/nvidia*")
+	sort.Strings(devices)
+	for _, device := range devices {
+		args = append(args, "--dev-bind-try", device, device)
+	}
+	return args
+}
+
 // linuxArgv is the bubblewrap invocation for a job. The root is an empty,
 // read-only tmpfs; the process sees the tool, its exact ELF dependencies, the
 // job's declared paths, a private /tmp, a minimal /dev and its own /proc (so
@@ -125,22 +144,9 @@ func linuxArgv(bwrap string, job Job, disableUserns bool) ([]string, error) {
 		args = append(args, "--disable-userns")
 	}
 	args = append(args, "--die-with-parent", "--new-session", "--cap-drop", "ALL", "--clearenv", "--setenv", "PATH", "/usr/bin:/bin", "--setenv", "HOME", "/tmp")
-	if job.Hardware {
-		for _, kv := range hardwareEnvironment() {
-			args = append(args, "--setenv", kv[0], kv[1])
-		}
-	}
 	args = append(args, "--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp", "--chdir", "/tmp")
 	if job.Hardware {
-		for _, dir := range hardwareReadable {
-			args = append(args, "--ro-bind-try", dir, dir)
-		}
-		args = append(args, "--dev-bind-try", "/dev/dri", "/dev/dri")
-		devices, _ := filepath.Glob("/dev/nvidia*")
-		sort.Strings(devices)
-		for _, device := range devices {
-			args = append(args, "--dev-bind-try", device, device)
-		}
+		args = append(args, LinuxHardwareSandboxArgs(hardwareEnvironment())...)
 	}
 	if job.Fonts {
 		// After the /tmp tmpfs, so a pack under /tmp is visible inside it.

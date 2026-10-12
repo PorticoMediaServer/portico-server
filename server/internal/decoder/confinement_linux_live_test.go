@@ -173,7 +173,7 @@ func TestConfinedBurnInDrawsText(t *testing.T) {
 	}
 	frames := filepath.Join(output, "frames.gray")
 	args := []string{"-nostdin", "-v", "error", "-f", "lavfi", "-i", "color=black:s=160x90:r=24:d=1", "-vf", "ass=filename=" + script, "-frames:v", "1", "-pix_fmt", "gray", "-f", "rawvideo", frames}
-	cmd, err := confinedHLSCommand(ffmpeg, args, "127.0.0.1:19503", output, libraries...)
+	cmd, err := confinedHLSCommand(ffmpeg, args, "127.0.0.1:19503", output, false, libraries...)
 	if err != nil {
 		t.Fatal(err)
 	}

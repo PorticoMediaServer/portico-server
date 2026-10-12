@@ -35,8 +35,10 @@ type linuxSpec struct {
 	Endpoint             string
 	// OutputPath is the one gateway path (/output/<64 hex>/) a live HLS job may
 	// PUT its playlist and segments to; empty for every other decoder.
-	OutputPath string
-	Probe      bool
+	OutputPath          string
+	Probe               bool
+	Hardware            bool
+	HardwareEnvironment [][2]string
 	// FontConfig is the decoder's FONTCONFIG_FILE and FontDirs the read-only
 	// font directories it names (fonts.go): libass draws text subtitles.
 	FontConfig string
@@ -78,6 +80,19 @@ func decodeLinux(text string) (linuxSpec, error) {
 			return v, ErrInvalidConfiguration
 		}
 	}
+	if len(v.HardwareEnvironment) > 5 || !v.Hardware && len(v.HardwareEnvironment) > 0 {
+		return v, ErrInvalidConfiguration
+	}
+	for _, kv := range v.HardwareEnvironment {
+		switch kv[0] {
+		case "LIBVA_DRIVER_NAME", "LIBVA_DRIVERS_PATH", "CUDA_VISIBLE_DEVICES", "NVIDIA_VISIBLE_DEVICES", "NVIDIA_DRIVER_CAPABILITIES":
+		default:
+			return v, ErrInvalidConfiguration
+		}
+		if len(kv[1]) > 4096 || strings.ContainsRune(kv[1], '\x00') {
+			return v, ErrInvalidConfiguration
+		}
+	}
 	if v.OutputDirectory != "" && (!filepath.IsAbs(v.OutputDirectory) || filepath.Clean(v.OutputDirectory) != v.OutputDirectory) {
 		return v, ErrInvalidConfiguration
 	}
@@ -109,7 +124,12 @@ func (d decoderJob) command() (*exec.Cmd, error) {
 	if e != nil {
 		return nil, e
 	}
-	spec := linuxSpec{Executable: d.executable, Arguments: d.args, Endpoint: d.endpoint, Libraries: d.libraries, OutputDirectory: d.outputDir, OutputPath: d.outputPath}
+	spec := linuxSpec{Executable: d.executable, Arguments: d.args, Endpoint: d.endpoint, Libraries: d.libraries, OutputDirectory: d.outputDir, OutputPath: d.outputPath, Hardware: d.hardware}
+	if d.hardware {
+		// The storage supervisor strips the outer helper's environment. Carry
+		// only the existing driver allowlist in its validated private spec.
+		spec.HardwareEnvironment = mediaexec.HardwareEnvironment()
+	}
 	if d.outputDir != "" || d.outputPath != "" {
 		// Jobs that produce pictures may burn in text subtitles (fonts.go).
 		spec = withFonts(spec)
@@ -173,6 +193,9 @@ func sandboxArgs(v linuxSpec, socket string, n int) ([]string, error) {
 		return nil, e
 	}
 	args := []string{"--unshare-user", "--unshare-pid", "--unshare-net", "--unshare-ipc", "--unshare-uts", "--die-with-parent", "--new-session", "--cap-drop", "ALL", "--clearenv", "--setenv", "PATH", "/usr/bin:/bin", "--dev", "/dev", "--tmpfs", "/tmp", "--chdir", "/tmp", "--ro-bind", helper, "/portico-helper"}
+	if v.Hardware {
+		args = append(args, mediaexec.LinuxHardwareSandboxArgs(v.HardwareEnvironment)...)
+	}
 	// The Go server is normally static. Dynamic deployments get its exact ELF
 	// dependencies as well, never a whole /lib or /usr tree.
 	helperLibs, e := ResolveLibraries(helper, helper, nil)

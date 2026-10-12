@@ -17,6 +17,7 @@ import (
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/decoder"
 	"portico.local/server/internal/mediaexec"
+	"portico.local/server/internal/subtitles"
 	"portico.local/server/internal/supervise"
 )
 
@@ -464,7 +465,7 @@ func (h *HLS) produceRendition(ctx context.Context, id string, r AudioRenditionP
 	}
 	tail := &tailWriter{limit: 4096}
 	if remoteInput != nil {
-		err = remoteInput.Run(run, dir, func(url string) ([]string, error) {
+		err = remoteInput.Run(run, dir, func(url string) (subtitles.WindowCommand, error) {
 			copied := append([]string{}, args...)
 			for i := 0; i+1 < len(copied); i++ {
 				if copied[i] == "-i" {
@@ -475,8 +476,9 @@ func (h *HLS) produceRendition(ctx context.Context, id string, r AudioRenditionP
 					copied[i+1] = "http,tcp"
 				}
 			}
-			return copied, nil
+			return subtitles.WindowCommand{Args: copied}, nil
 		})
+		_, _ = tail.Write([]byte(windowConverterDiagnostic(err, "", h.root)))
 	} else {
 		var cmd *exec.Cmd
 		if cmd, err = mediaexec.CommandContext(run, mediaexec.Job{Executable: h.binary, Args: args, Files: input.ExtraFiles(), ReadPaths: input.ReadPaths(), WriteDirs: []string{dir}}); err == nil {

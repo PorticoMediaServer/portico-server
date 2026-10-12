@@ -90,10 +90,11 @@ type decoderJob struct {
 	// outputDir is a private output folder (an HLS window).
 	outputDir  string
 	background bool
+	hardware   bool
 }
 
 func (d decoderJob) mediaJob() mediaexec.Job {
-	job := mediaexec.Job{Executable: d.executable, Args: d.args, Loopback: d.endpoint, Libraries: d.libraries, Background: d.background}
+	job := mediaexec.Job{Executable: d.executable, Args: d.args, Loopback: d.endpoint, Libraries: d.libraries, Background: d.background, Hardware: d.hardware}
 	if d.outputDir != "" {
 		job.WriteDirs = []string{d.outputDir}
 	}
@@ -114,8 +115,8 @@ func confinedOutputCommand(executable string, args []string, endpoint, output st
 
 // confinedHLSCommand is confinedCommand for a job writing into its private
 // output folder.
-func confinedHLSCommand(executable string, args []string, endpoint, output string, libraries ...string) (*exec.Cmd, error) {
-	return decoderJob{executable: executable, args: args, endpoint: endpoint, libraries: libraries, outputDir: output}.command()
+func confinedHLSCommand(executable string, args []string, endpoint, output string, hardware bool, libraries ...string) (*exec.Cmd, error) {
+	return decoderJob{executable: executable, args: args, endpoint: endpoint, libraries: libraries, outputDir: output, hardware: hardware}.command()
 }
 
 // RequiredConfinement is why decoders may not run on this host at all: only

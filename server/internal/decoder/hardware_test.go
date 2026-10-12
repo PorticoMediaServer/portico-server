@@ -287,3 +287,23 @@ func TestVAAPINativeProbeUsesUploadedHDRInput(t *testing.T) {
 		t.Fatal(probe)
 	}
 }
+
+func TestConversionStagesCarryDeviceRequirement(t *testing.T) {
+	for _, tc := range []struct {
+		request  ConversionRequest
+		hardware bool
+	}{
+		{ConversionRequest{ConvertVideo: true}, false},
+		{ConversionRequest{CopyVideo: true, CopyAudio: true, Probe: HardwareProbe{Backend: BackendNVENC, Available: true}}, false},
+		{ConversionRequest{ConvertVideo: true, ToneMap: true, Toolchain: &ToolchainFacts{VulkanAvailable: true, Filters: map[string]bool{"libplacebo": true}}}, true},
+		{ConversionRequest{ConvertVideo: true, ToneMap: true, Toolchain: &ToolchainFacts{OpenCLAvailable: true, Filters: map[string]bool{"tonemap_opencl": true}}}, true},
+	} {
+		graph, err := BuildConversion(tc.request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if HardwareStagesRequireDevice(graph.Stages) != tc.hardware {
+			t.Fatal(graph)
+		}
+	}
+}
