@@ -302,7 +302,14 @@ func probeArgs(spec backendSpec, device string, filters string) []string {
 	if chain != "" {
 		args = append(args, "-vf", chain)
 	}
-	args = append(args, "-c:v", spec.encoder, "-b:v", "200k", "-an", "-sn", "-dn", "-f", "null", "-")
+	args = append(args, "-c:v", spec.encoder)
+	switch spec.encoder {
+	case "h264_nvenc":
+		args = append(args, "-forced-idr", "1")
+	case "h264_qsv", "h264_amf":
+		args = append(args, "-forced_idr", "1")
+	}
+	args = append(args, "-b:v", "200k", "-an", "-sn", "-dn", "-f", "null", "-")
 	return args
 }
 
