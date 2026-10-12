@@ -65,12 +65,20 @@ func (s *Store) cacheStoragePolicy(p StoragePolicy) {
 	}
 }
 func (s *Store) refreshStoragePolicy(ctx context.Context) error {
-	var p StoragePolicy
-	e := s.db.QueryRowContext(ctx, `SELECT revision,retention_days,episode_limit,floor_bytes,cap_bytes FROM dvr_storage_policy WHERE singleton=1`).Scan(&p.Revision, &p.RetentionDays, &p.EpisodeLimit, &p.FloorBytes, &p.CapBytes)
+	p, e := ReadStoragePolicy(ctx, s.db)
 	if e == nil {
 		s.cacheStoragePolicy(p)
 	}
 	return e
+}
+
+// ReadStoragePolicy reads the recording storage policy. Capture cannot be
+// configured without it, so a database that has lost the row is one the server
+// does not start on.
+func ReadStoragePolicy(ctx context.Context, db *sql.DB) (StoragePolicy, error) {
+	var p StoragePolicy
+	e := db.QueryRowContext(ctx, `SELECT revision,retention_days,episode_limit,floor_bytes,cap_bytes FROM dvr_storage_policy WHERE singleton=1`).Scan(&p.Revision, &p.RetentionDays, &p.EpisodeLimit, &p.FloorBytes, &p.CapBytes)
+	return p, e
 }
 
 // Estimate uses the source's recent measured byte rate with 25% headroom. With

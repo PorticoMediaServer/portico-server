@@ -2,9 +2,12 @@ package main
 
 import (
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,8 +15,13 @@ import (
 
 	"portico.local/server/internal/backup"
 	"portico.local/server/internal/buildinfo"
+	"portico.local/server/internal/identity"
+	"portico.local/server/internal/livechannels/dvr"
+	"portico.local/server/internal/mediaartifact"
+	"portico.local/server/internal/mounts"
 	"portico.local/server/internal/networking"
 	"portico.local/server/internal/persistence"
+	"portico.local/server/internal/storage"
 )
 
 // startedState is a state folder as a first start leaves it: an authority
@@ -177,6 +185,15 @@ func TestStateKeyVerificationIsReadOnly(t *testing.T) {
 // is marked with probe so a kept restore can be told from the previous state.
 func stageBackupFolder(t *testing.T, state, serverID, probe string, change func(folder string)) {
 	t.Helper()
+	if e := tryStageBackupFolder(t, state, serverID, probe, change); e != nil {
+		t.Fatal(e)
+	}
+}
+
+// tryStageBackupFolder is stageBackupFolder for a backup that staging itself
+// may refuse; it returns that refusal.
+func tryStageBackupFolder(t *testing.T, state, serverID, probe string, change func(folder string)) error {
+	t.Helper()
 	ctx := context.Background()
 	db, e := persistence.Open(filepath.Join(state, "server.sqlite"))
 	if e != nil {
@@ -200,9 +217,8 @@ func stageBackupFolder(t *testing.T, state, serverID, probe string, change func(
 	if change != nil {
 		change(folder)
 	}
-	if _, e = service.Stage(ctx, backup.Source{BackupID: id}); e != nil {
-		t.Fatal(e)
-	}
+	_, e = service.Stage(ctx, backup.Source{BackupID: id})
+	return e
 }
 
 // replaceBackupFile rewrites one file of a backup folder and records the new
@@ -240,10 +256,62 @@ func replaceBackupFile(t *testing.T, folder, name string, content []byte) {
 	}
 }
 
-// startable reports whether the steps that open the server's identity at
-// start-up accept the state folder as it now stands.
+// addBackupFile adds a file to a backup folder and lists it in the manifest,
+// as a backup that carried that file would.
+func addBackupFile(t *testing.T, folder, name string, content []byte) {
+	t.Helper()
+	target := filepath.Join(folder, filepath.FromSlash(name))
+	if e := os.MkdirAll(filepath.Dir(target), 0700); e != nil {
+		t.Fatal(e)
+	}
+	if e := os.WriteFile(target, content, 0600); e != nil {
+		t.Fatal(e)
+	}
+	path := filepath.Join(folder, backup.ManifestName)
+	raw, e := os.ReadFile(path)
+	if e != nil {
+		t.Fatal(e)
+	}
+	var manifest map[string]any
+	if e = json.Unmarshal(raw, &manifest); e != nil {
+		t.Fatal(e)
+	}
+	sum := sha256.Sum256(content)
+	manifest["files"] = append(manifest["files"].([]any), map[string]any{"name": name, "bytes": len(content), "sha256": hex.EncodeToString(sum[:])})
+	if raw, e = json.Marshal(manifest); e != nil {
+		t.Fatal(e)
+	}
+	if e = os.WriteFile(path, raw, 0600); e != nil {
+		t.Fatal(e)
+	}
+}
+
+// changeBackupDatabase runs statements against a backup folder's database.
+func changeBackupDatabase(t *testing.T, folder string, statements ...string) {
+	t.Helper()
+	candidate, e := persistence.Open(filepath.Join(folder, backup.DatabaseName))
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer candidate.Close()
+	// One connection, so a pragma set for the change applies to it.
+	connection, e := candidate.Conn(context.Background())
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer connection.Close()
+	for _, statement := range statements {
+		if _, e = connection.ExecContext(context.Background(), statement); e != nil {
+			t.Fatalf("%s: %v", statement, e)
+		}
+	}
+}
+
+// startable runs the loads start-up performs on a state folder, with the code
+// start-up uses, and reports the first that fails.
 func startable(t *testing.T, state string) error {
 	t.Helper()
+	ctx := context.Background()
 	runner, e := openCurrentAuthority(state)
 	if e != nil {
 		return e
@@ -253,58 +321,128 @@ func startable(t *testing.T, state string) error {
 		return e
 	}
 	defer db.Close()
-	if e = persistence.VerifyNetworkingClaims(context.Background(), db); e != nil {
+	if e = persistence.RebaseStatePaths(ctx, db, state); e != nil {
 		return e
 	}
-	keys, e := networking.OpenCurrentKeys(context.Background(), db, state, runner)
+	if e = persistence.VerifyNetworkingClaims(ctx, db); e != nil {
+		return e
+	}
+	keys, e := networking.OpenCurrentKeys(ctx, db, state, runner)
 	if e != nil {
 		return e
 	}
-	return keys.Close()
+	if e = keys.Close(); e != nil {
+		return e
+	}
+	if _, e = initializeLiveChannels(db, state); e != nil {
+		return e
+	}
+	if _, e = identity.New(db, state); e != nil {
+		return e
+	}
+	if e = mounts.InspectPrivateDirectory(state); e != nil {
+		return e
+	}
+	priority, e := storedBackgroundPriority(ctx, db)
+	if e != nil {
+		return e
+	}
+	if e = storage.CheckBackgroundTaskPriority(priority); e != nil {
+		return e
+	}
+	if _, e = mediaartifact.New(filepath.Join(state, "subtitles")); e != nil {
+		return e
+	}
+	if _, e = dvr.ReadStoragePolicy(ctx, db); e != nil {
+		return e
+	}
+	// The rest of start-up runs statements across the schema and reads the
+	// rows a fresh install has.
+	if e = persistence.VerifySchemaObjects(ctx, db); e != nil {
+		return e
+	}
+	return persistence.VerifySeededRows(ctx, db)
 }
 
-// A restore is kept only when the server can open its identity on the result.
-// Each of these backups passes the database's own checks and carries the right
-// signing keys, yet would leave a server that refuses every start: they must be
-// rolled back while the previous state can still be put back.
-func TestRestoreThatStartupWouldRefuseIsRolledBack(t *testing.T) {
-	authority := filepath.Join("supervisor", "authority-incarnation.v1")
-	for name, change := range map[string]func(t *testing.T, folder string){
-		"authority incarnation is not a valid value": func(t *testing.T, folder string) {
-			replaceBackupFile(t, folder, filepath.ToSlash(authority), []byte(strings.Repeat("z", 64)))
+// A restore is kept only when the server can start on the result. Each case
+// is a backup that passes the database's own checks and is missing, or has
+// spoiled, exactly one thing start-up needs and would not recreate. Left in
+// place, every one of them is a server that refuses each start. All must be
+// rolled back while the previous state can still be put back, and the server
+// must start on what the rollback leaves.
+func TestRestoreIsRefusedForEveryMissingStartupRequirement(t *testing.T) {
+	authority := "supervisor/authority-incarnation.v1"
+	cases := map[string]func(t *testing.T, state, folder string){
+		"authority file is not a valid value": func(t *testing.T, _, folder string) {
+			replaceBackupFile(t, folder, authority, []byte(strings.Repeat("z", 64)))
 		},
-		"authority incarnation has the wrong length": func(t *testing.T, folder string) {
-			replaceBackupFile(t, folder, filepath.ToSlash(authority), []byte(strings.Repeat("a", 63)))
+		"authority file has the wrong length": func(t *testing.T, _, folder string) {
+			replaceBackupFile(t, folder, authority, []byte(strings.Repeat("a", 63)))
 		},
-		"an identity protection is missing from the schema": func(t *testing.T, folder string) {
-			candidate, e := persistence.Open(filepath.Join(folder, backup.DatabaseName))
+		"signing key is another server's": func(t *testing.T, state, folder string) {
+			entries, e := os.ReadDir(filepath.Join(state, "networking-keys"))
+			if e != nil || len(entries) != 1 {
+				t.Fatalf("fixture keys: %d %v", len(entries), e)
+			}
+			_, other, e := ed25519.GenerateKey(rand.Reader)
 			if e != nil {
 				t.Fatal(e)
 			}
-			defer candidate.Close()
-			if _, e = candidate.Exec(`DROP TRIGGER networking_identity_no_update`); e != nil {
-				t.Fatal(e)
-			}
+			replaceBackupFile(t, folder, "networking-keys/"+entries[0].Name(), other)
 		},
-		"a claim table is missing from the schema": func(t *testing.T, folder string) {
-			candidate, e := persistence.Open(filepath.Join(folder, backup.DatabaseName))
-			if e != nil {
-				t.Fatal(e)
-			}
-			defer candidate.Close()
-			if _, e = candidate.Exec(`DROP TABLE networking_claim_schema`); e != nil {
-				t.Fatal(e)
-			}
+		"claim schema: an identity protection is missing": func(t *testing.T, _, folder string) {
+			changeBackupDatabase(t, folder, `DROP TRIGGER networking_identity_no_update`)
 		},
-	} {
+		"claim schema: the version marker is missing": func(t *testing.T, _, folder string) {
+			changeBackupDatabase(t, folder, `DROP TABLE networking_claim_schema`)
+		},
+		"schema: a table is missing": func(t *testing.T, _, folder string) {
+			changeBackupDatabase(t, folder, `DROP TABLE dvr_retention_retry`)
+		},
+		"schema: an index is missing": func(t *testing.T, _, folder string) {
+			changeBackupDatabase(t, folder, `DROP INDEX dvr_recordings_due`)
+		},
+		"schema: a view is missing": func(t *testing.T, _, folder string) {
+			changeBackupDatabase(t, folder, `DROP VIEW inventory_item_availability`)
+		},
+		"schema: a column start-up writes is missing": func(t *testing.T, _, folder string) {
+			changeBackupDatabase(t, folder, `ALTER TABLE managed_mounts RENAME COLUMN observed TO seen`)
+		},
+		"subtitles folder is a file": func(t *testing.T, _, folder string) {
+			addBackupFile(t, folder, "subtitles", []byte("not a folder"))
+		},
+		"subtitle objects folder is a file": func(t *testing.T, _, folder string) {
+			addBackupFile(t, folder, "subtitles/objects", []byte("not a folder"))
+		},
+		"mount configuration folder is a file": func(t *testing.T, _, folder string) {
+			addBackupFile(t, folder, "managed-storage", []byte("not a folder"))
+		},
+	}
+	// Every row a fresh install starts with, one at a time: the maintenance
+	// policy and the recording storage policy that start-up reads directly,
+	// and each of the others its services read.
+	seeded, e := persistence.SeededTables()
+	if e != nil || len(seeded) < 10 {
+		t.Fatalf("seeded tables: %d %v", len(seeded), e)
+	}
+	for _, table := range seeded {
+		cases["seeded row is missing: "+table] = func(t *testing.T, _, folder string) {
+			changeBackupDatabase(t, folder, `PRAGMA foreign_keys=OFF`, `DELETE FROM "`+table+`"`)
+		}
+	}
+	for name, change := range cases {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			state, serverID := startedState(t)
-			before, e := os.ReadFile(filepath.Join(state, authority))
+			before, e := os.ReadFile(filepath.Join(state, filepath.FromSlash(authority)))
 			if e != nil {
 				t.Fatal(e)
 			}
-			stageBackupFolder(t, state, serverID, "refused", func(folder string) { change(t, folder) })
-			if e = backup.ApplyStaged(context.Background(), state, verifyRestoredState(state)); e == nil {
+			// Staging already refuses some of these; the rest are refused when
+			// the restore is applied. Either way nothing may be kept.
+			staged := tryStageBackupFolder(t, state, serverID, "refused", func(folder string) { change(t, state, folder) }) == nil
+			applied := backup.ApplyStaged(context.Background(), state, verifyRestoredState(state))
+			if staged && applied == nil {
 				t.Error("a restore the server could never start on was kept")
 			}
 			if backup.RestoreUnresolved(state) {
@@ -316,8 +454,8 @@ func TestRestoreThatStartupWouldRefuseIsRolledBack(t *testing.T) {
 			if id, probe := restoredProbe(t, state); id != serverID || probe != "" {
 				t.Fatalf("the previous database was not put back: server %q probe %q", id, probe)
 			}
-			if after, e := os.ReadFile(filepath.Join(state, authority)); e != nil || string(after) != string(before) {
-				t.Fatalf("the previous authority incarnation was not put back: %v", e)
+			if after, e := os.ReadFile(filepath.Join(state, filepath.FromSlash(authority))); e != nil || string(after) != string(before) {
+				t.Fatalf("the previous authority file was not put back: %v", e)
 			}
 			db, e := persistence.Open(filepath.Join(state, "server.sqlite"))
 			if e != nil {
@@ -325,7 +463,7 @@ func TestRestoreThatStartupWouldRefuseIsRolledBack(t *testing.T) {
 			}
 			defer db.Close()
 			last, e := backup.New(state, db, serverID, buildinfo.Info()["version"], persistence.SchemaVersion()).LastRestore()
-			if e != nil || last == nil || last.Outcome != "rolled_back" || last.Reason == "" {
+			if e != nil || staged && (last == nil || last.Outcome != "rolled_back" || last.Reason == "") || last != nil && last.Outcome == "restored" {
 				t.Fatalf("the refusal was not recorded for the owner: %+v %v", last, e)
 			}
 		})
@@ -344,5 +482,52 @@ func TestRestoreOfThisServersBackupFolderIsKept(t *testing.T) {
 	}
 	if e := startable(t, state); e != nil {
 		t.Fatalf("the server cannot start on its own restored backup: %v", e)
+	}
+}
+
+// A background priority start-up would not accept never reaches a restore: the
+// column's own constraint makes the copy fail its integrity check when it is
+// staged. The start-up requirement refuses it as well, on its own, should a
+// value ever get that far.
+func TestRestoreRefusesABackgroundPriorityStartupWouldNotAccept(t *testing.T) {
+	ctx := context.Background()
+	state, serverID := startedState(t)
+	db, e := persistence.Open(filepath.Join(state, "server.sqlite"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer db.Close()
+	service := backup.New(state, db, serverID, buildinfo.Info()["version"], persistence.SchemaVersion())
+	id, e := service.Create(ctx, backup.KindManual)
+	if e != nil {
+		t.Fatal(e)
+	}
+	folder := filepath.Join(state, backup.BackupsDir, id)
+	changeBackupDatabase(t, folder, `PRAGMA ignore_check_constraints=ON`, `UPDATE maintenance_policy SET background_priority='whenever'`)
+	if _, e = service.Stage(ctx, backup.Source{BackupID: id}); !errors.Is(e, persistence.ErrCandidateIntegrity) {
+		t.Fatalf("a database with a setting outside its allowed values was staged: %v", e)
+	}
+	spoiled, e := persistence.Open(filepath.Join(folder, backup.DatabaseName))
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer spoiled.Close()
+	refused := 0
+	for _, requirement := range restoredStateRequirements {
+		if requirement.check(ctx, spoiled, state) != nil {
+			refused++
+			if !strings.Contains(requirement.reason, "background work setting") {
+				t.Fatalf("the wrong requirement refused it: %s", requirement.reason)
+			}
+		}
+	}
+	if refused != 1 {
+		t.Fatalf("%d start-up requirements refused the setting, want exactly the one that reads it", refused)
+	}
+	// And every requirement accepts the server's own, untouched state.
+	for _, requirement := range restoredStateRequirements {
+		if e = requirement.check(ctx, db, state); e != nil {
+			t.Fatalf("an untouched state fails a start-up requirement (%s): %v", requirement.reason, e)
+		}
 	}
 }

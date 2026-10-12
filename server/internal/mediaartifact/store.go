@@ -54,6 +54,45 @@ func New(root string) (*Store, error) { return newStore(root, syncDirectory) }
 // that, on a single-disk home server, also holds server.sqlite.
 func (s *Store) Root() string { return s.root }
 
+// ownedDirectories are the directories a store at root creates and owns.
+func ownedDirectories(root string) []string {
+	return []string{root, filepath.Join(root, "staging"), filepath.Join(root, "objects")}
+}
+
+// ownedDirectory reports whether path is a real directory, not a link to one.
+func ownedDirectory(path string) error {
+	info, e := os.Lstat(path)
+	if e != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return ErrPrivate
+	}
+	return nil
+}
+
+// Inspect reports whether New would accept what is already at root, without
+// creating or changing anything. A directory that does not exist yet is fine:
+// New makes it. One that exists as something else, or is reached through a
+// link, is what New refuses.
+func Inspect(root string) error {
+	if !filepath.IsAbs(root) {
+		return ErrPrivate
+	}
+	root = filepath.Clean(root)
+	for _, path := range ownedDirectories(root) {
+		if _, e := os.Lstat(path); errors.Is(e, os.ErrNotExist) {
+			continue
+		}
+		if e := ownedDirectory(path); e != nil {
+			return e
+		}
+	}
+	if _, e := os.Lstat(root); e == nil {
+		if canonical, e := filepath.EvalSymlinks(root); e != nil || canonical != root {
+			return ErrPrivate
+		}
+	}
+	return nil
+}
+
 func newStore(root string, syncDir func(string) error) (*Store, error) {
 	if !filepath.IsAbs(root) {
 		return nil, ErrPrivate
@@ -66,13 +105,12 @@ func newStore(root string, syncDir func(string) error) (*Store, error) {
 	if err != nil || canonical != root {
 		return nil, ErrPrivate
 	}
-	for _, path := range []string{root, filepath.Join(root, "staging"), filepath.Join(root, "objects")} {
+	for _, path := range ownedDirectories(root) {
 		if err = os.MkdirAll(path, 0700); err != nil {
 			return nil, err
 		}
-		info, e := os.Lstat(path)
-		if e != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-			return nil, ErrPrivate
+		if err = ownedDirectory(path); err != nil {
+			return nil, err
 		}
 	}
 	// Every owned directory and its parent entry must be durable before callers

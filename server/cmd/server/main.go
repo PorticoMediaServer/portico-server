@@ -394,8 +394,8 @@ func run() error {
 	if e != nil {
 		return e
 	}
-	var backgroundPriority string
-	if e = db.QueryRow(`SELECT background_priority FROM maintenance_policy WHERE singleton=1`).Scan(&backgroundPriority); e != nil {
+	backgroundPriority, e := storedBackgroundPriority(context.Background(), db)
+	if e != nil {
 		return e
 	}
 	e = storeIO.Supervisor.SetBackgroundTaskPriority(backgroundPriority)
