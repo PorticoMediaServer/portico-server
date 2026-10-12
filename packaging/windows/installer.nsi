@@ -40,7 +40,8 @@ Section "Install"
   FileWrite $1 'set "PORTICO_BIND=0.0.0.0:32500"$\r$\n'
   FileWrite $1 'set "PORTICO_STATE_DIR=$0"$\r$\n'
   FileWrite $1 'set "PORTICO_WEB_DIR=$INSTDIR\web"$\r$\n'
-  FileWrite $1 '"$INSTDIR\portico-server.exe" >> "$0\server.log" 2>&1$\r$\n'
+  FileWrite $1 'set "PORTICO_LOG_STDERR=off"$\r$\n'
+  FileWrite $1 '"$INSTDIR\portico-server.exe" > "$0\server.log" 2>&1$\r$\n'
   FileClose $1
   nsExec::ExecToLog 'schtasks.exe /Delete /TN "${TASK_NAME}" /F'
   nsExec::ExecToLog 'powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$INSTDIR\register-task.ps1" -Launcher "$INSTDIR\start-portico.cmd"'

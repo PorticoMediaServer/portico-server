@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"log"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -20,11 +21,11 @@ import (
 //
 // The recorder becomes the standard library log package's output, so every
 // existing log.Printf call in the server lands in the message log and the live
-// tail without a single call site changing. Output still reaches stderr too,
-// because a container's operator reads stderr and must not lose it.
+// tail without a single call site changing. Containers and interactive runs
+// keep stderr; packaged background launchers opt out once this recorder exists.
 func initializeAdministration(ctx context.Context, db *sql.DB, console *operations.Store, ident *identity.Service, state string, port int) (httpapi.AccessArea, func()) {
 	recorder := servicelog.New(servicelog.Options{Directory: filepath.Join(state, "logs")})
-	log.SetOutput(recorder.Tee(log.Writer()))
+	installMessageLogOutput(recorder)
 	advertiser := connectivity.NewAdvertiser(connectivity.AdvertiserOptions{Instance: ident.Name(), Host: ident.Name(), Port: port,
 		TXT: []string{"serverId=" + ident.ID(), "product=portico"}})
 	out := httpapi.AccessArea{Access: access.New(db), Logs: recorder, ClientLogs: servicelog.NewClientLogStore(db), Advertiser: advertiser}
@@ -46,4 +47,12 @@ func initializeAdministration(ctx context.Context, db *sql.DB, console *operatio
 		advertiser.Close()
 		_ = recorder.Close()
 	}
+}
+
+func installMessageLogOutput(recorder *servicelog.Recorder) {
+	if os.Getenv("PORTICO_LOG_STDERR") == "off" {
+		log.SetOutput(recorder)
+		return
+	}
+	log.SetOutput(recorder.Tee(log.Writer()))
 }

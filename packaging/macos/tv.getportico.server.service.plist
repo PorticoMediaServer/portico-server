@@ -2,7 +2,7 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
   <key>Label</key><string>tv.getportico.server.service</string>
-  <key>ProgramArguments</key><array><string>__PORTICO_SERVER_EXECUTABLE__</string></array>
+  <key>ProgramArguments</key><array><string>/bin/sh</string><string>__PORTICO_SERVER_LAUNCHER__</string></array>
   <key>EnvironmentVariables</key><dict>
     <key>PORTICO_BIND</key><string>0.0.0.0:32500</string>
     <key>PORTICO_STATE_DIR</key><string>__PORTICO_STATE_DIR__</string>
