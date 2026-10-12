@@ -279,7 +279,7 @@ func run() error {
 		if err := backup.CleanupPartials(state); err != nil {
 			log.Printf("Backup staging cleanup: %v", err)
 		}
-		if err := backup.ApplyStaged(context.Background(), state, nil); err != nil {
+		if err := backup.ApplyStaged(context.Background(), state, verifyRestoredState(state)); err != nil {
 			if backup.RestoreUnresolved(state) {
 				// Files may already have moved: starting now could serve a
 				// half-restored folder or a new empty database. Nothing has been
