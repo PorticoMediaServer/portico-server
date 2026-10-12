@@ -86,6 +86,73 @@ func (k *ProtectedKeys) read(incarnation string) (ed25519.PrivateKey, error) {
 	return key, nil
 }
 
+// holdsIdentityTx reports whether the registry holds the signing key of the
+// server identity the database records for applicationID.
+func (k *ProtectedKeys) holdsIdentityTx(ctx context.Context, tx *sql.Tx, applicationID string) error {
+	snapshot, e := CurrentIdentityTx(ctx, tx)
+	if e != nil || snapshot.ServerID != applicationID {
+		return ErrStale
+	}
+	key, e := k.read(snapshot.KeyIncarnation)
+	if e != nil {
+		return e
+	}
+	defer clear(key)
+	if !bytes.Equal(key.Public().(ed25519.PublicKey), snapshot.PublicKey) {
+		return ErrStale
+	}
+	return nil
+}
+
+// unmarkedStateTx refuses a database that records no application identity but
+// already holds accounts, identities or legacy key material.
+func unmarkedStateTx(ctx context.Context, tx *sql.Tx) error {
+	var count int
+	if e := tx.QueryRowContext(ctx, `SELECT (SELECT count(*) FROM accounts)+(SELECT count(*) FROM networking_server_identities)+(SELECT count(*) FROM configuration WHERE key IN('hosted_token','server_private_key'))`).Scan(&count); e != nil || count != 0 {
+		return ErrStale
+	}
+	return nil
+}
+
+// VerifyStateKeys answers, without changing anything, whether OpenCurrentKeys
+// would accept this database beside this state folder's key registry: the
+// identity the database records must have its signing key there. It never
+// creates the registry or a key, so it is safe to ask of a restored database
+// before deciding to keep it.
+func VerifyStateKeys(ctx context.Context, db *sql.DB, state string) error {
+	if db == nil {
+		return ErrInvalid
+	}
+	directory := filepath.Join(state, "networking-keys")
+	gated, e := dbwork.BeginSnapshot(ctx, db)
+	if e != nil {
+		return e
+	}
+	tx := gated.Tx()
+	defer gated.Rollback()
+	var applicationID string
+	e = tx.QueryRowContext(ctx, `SELECT value FROM configuration WHERE key='id'`).Scan(&applicationID)
+	if e != nil && !errors.Is(e, sql.ErrNoRows) {
+		return e
+	}
+	if applicationID == "" {
+		if e = unmarkedStateTx(ctx, tx); e != nil {
+			return e
+		}
+		entries, e := os.ReadDir(directory)
+		if e != nil && !errors.Is(e, os.ErrNotExist) || len(entries) != 0 {
+			return ErrUnavailable
+		}
+		return nil
+	}
+	root, e := os.OpenRoot(directory)
+	if e != nil {
+		return ErrUnavailable
+	}
+	defer root.Close()
+	return (&ProtectedKeys{db, root}).holdsIdentityTx(ctx, tx, applicationID)
+}
+
 // OpenCurrentKeys initializes one canonical application/server identity before
 // identity.New or Setup. Existing unmarked state is refused, never adopted.
 func OpenCurrentKeys(ctx context.Context, db *sql.DB, state string, runner *AuthorityRunner) (*ProtectedKeys, error) {
@@ -114,23 +181,10 @@ func OpenCurrentKeys(ctx context.Context, db *sql.DB, state string, runner *Auth
 			return e
 		}
 		if applicationID != "" {
-			snapshot, e := CurrentIdentityTx(ctx, tx)
-			if e != nil || snapshot.ServerID != applicationID {
-				return ErrStale
-			}
-			key, e := keys.read(snapshot.KeyIncarnation)
-			if e != nil {
-				return e
-			}
-			defer clear(key)
-			if !bytes.Equal(key.Public().(ed25519.PublicKey), snapshot.PublicKey) {
-				return ErrStale
-			}
-			return nil
+			return keys.holdsIdentityTx(ctx, tx, applicationID)
 		}
-		var count int
-		if e = tx.QueryRowContext(ctx, `SELECT (SELECT count(*) FROM accounts)+(SELECT count(*) FROM networking_server_identities)+(SELECT count(*) FROM configuration WHERE key IN('hosted_token','server_private_key'))`).Scan(&count); e != nil || count != 0 {
-			return ErrStale
+		if e = unmarkedStateTx(ctx, tx); e != nil {
+			return e
 		}
 		entries, e := os.ReadDir(directory)
 		if e != nil || len(entries) != 0 {
