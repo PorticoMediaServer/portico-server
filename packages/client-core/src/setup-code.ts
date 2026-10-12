@@ -85,10 +85,12 @@ export class SetupCodeService<T> {
     this.authority=authority;this.api=api;this.storage=storage;this.requestId=requestId;this.options=options;
   }
   /** The wait before retry number `failures` of a request that got no answer: about 5 s, doubling
-   * to a 30 s cap. Up to a fifth is added below the cap, so devices that lost the service in the
-   * same moment do not all come back in the same one. */
+   * to a 30 s cap, and spread by up to a fifth at every step so devices that lost the service in
+   * the same moment do not come back in the same one. Below the cap the spread is added (never
+   * sooner than the step itself); at the cap it is taken off, so the wait stays within 30 s. */
   private backoff(failures: number) {
-    return Math.min(30_000, Math.round(5_000 * 2 ** Math.min(3, failures - 1) * (1 + 0.2 * (this.options.random ?? Math.random)())));
+    const step = 5_000 * 2 ** Math.min(3, failures - 1), spread = 0.2 * (this.options.random ?? Math.random)();
+    return Math.round(step * (1 + 0.2) <= 30_000 ? step * (1 + spread) : 30_000 * (1 - spread));
   }
   getSnapshot = () => this.state;
   subscribe = (listener: () => void) => {this.listeners.add(listener); return () => {this.listeners.delete(listener);};};
