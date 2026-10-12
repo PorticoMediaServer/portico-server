@@ -307,3 +307,53 @@ func TestConversionStagesCarryDeviceRequirement(t *testing.T) {
 		}
 	}
 }
+
+func TestHardwareProbeQualifiesForcedIDROptions(t *testing.T) {
+	for backend, spec := range backendSpecs {
+		t.Run(string(backend), func(t *testing.T) {
+			for _, filters := range []string{"", "native_filters"} {
+				args := strings.Join(probeArgs(spec, "", filters), " ")
+				option := ""
+				switch backend {
+				case BackendNVENC:
+					option = "-forced-idr 1"
+				case BackendQSV, BackendAMF:
+					option = "-forced_idr 1"
+				}
+				if option != "" && !strings.Contains(args, option) {
+					t.Fatalf("probe lacks production option %s: %s", option, args)
+				}
+				if option == "" && (strings.Contains(args, "-forced-idr") || strings.Contains(args, "-forced_idr")) {
+					t.Fatal("probe uses unsupported option", args)
+				}
+			}
+		})
+	}
+}
+
+func TestHardwareProbeRejectsUnsupportedForcedIDROption(t *testing.T) {
+	var backend HardwareBackend
+	for _, candidate := range []HardwareBackend{BackendNVENC, BackendQSV, BackendAMF} {
+		if backendSpecs[candidate].supported() {
+			backend = candidate
+			break
+		}
+	}
+	if backend == "" {
+		t.Skip("no backend with a forced-IDR option on this platform")
+	}
+	d := &HardwareDetector{Run: func(_ context.Context, cmd *exec.Cmd) error {
+		args := strings.Join(confinedArguments(t, cmd), " ")
+		if strings.Contains(args, "-forced-idr") || strings.Contains(args, "-forced_idr") {
+			return errors.New("Unrecognized option: forced IDR")
+		}
+		return nil
+	}}
+	path := fakeFFmpeg(t)
+	if probe := d.Probe(context.Background(), path, backend, ""); probe.Available || probe.Reason != ProbeEncodeFailed {
+		t.Fatal("unsupported production option passed qualification", probe)
+	}
+	if selected := d.SelectCached(path, string(backend), ""); selected.Backend != BackendSoftware {
+		t.Fatal(selected)
+	}
+}
