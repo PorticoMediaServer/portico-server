@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"portico.local/server/internal/assets"
+	"portico.local/server/internal/subtitles"
 )
 
 // Rejection codes. One is recorded for every rule that closed a route, so the
@@ -273,7 +274,7 @@ func languageKey(s string) string {
 		s = s[:i]
 	}
 	if len(s) == 3 {
-		if two, ok := iso639Three[s]; ok {
+		if two, ok := subtitles.TwoLetterLanguage(s); ok {
 			return two
 		}
 	}
@@ -281,16 +282,6 @@ func languageKey(s string) string {
 		return ""
 	}
 	return s
-}
-
-var iso639Three = map[string]string{
-	"eng": "en", "fre": "fr", "fra": "fr", "ger": "de", "deu": "de", "spa": "es", "ita": "it", "jpn": "ja", "kor": "ko",
-	"chi": "zh", "zho": "zh", "por": "pt", "rus": "ru", "dut": "nl", "nld": "nl", "swe": "sv", "nor": "no", "nob": "no",
-	"dan": "da", "fin": "fi", "pol": "pl", "tur": "tr", "ara": "ar", "heb": "he", "hin": "hi", "tha": "th", "vie": "vi",
-	"cze": "cs", "ces": "cs", "gre": "el", "ell": "el", "hun": "hu", "rum": "ro", "ron": "ro", "ukr": "uk", "ind": "id",
-	"may": "ms", "msa": "ms", "cat": "ca", "hrv": "hr", "srp": "sr", "slo": "sk", "slk": "sk", "slv": "sl", "bul": "bg",
-	"est": "et", "lav": "lv", "lit": "lt", "ice": "is", "isl": "is", "per": "fa", "fas": "fa", "ben": "bn", "tam": "ta",
-	"tel": "te", "urd": "ur", "fil": "tl", "tgl": "tl",
 }
 
 // Server output limits. They describe what this server's producers can write,
