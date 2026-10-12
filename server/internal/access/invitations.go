@@ -413,8 +413,12 @@ type PorticoAcceptance struct {
 }
 
 // AcceptPortico is Accept for a Portico Account. A Hosted account that is
-// already a member keeps its account; the invitation then restores a disabled
-// membership and applies its tier and libraries (never to the owner).
+// already a member keeps its account. An invitation only grants access where
+// there is none: it sets the tier and libraries of the membership it creates,
+// and restores a disabled membership with exactly its own tier and libraries.
+// An active member (and always the owner) is returned unchanged, because a
+// link opened by the wrong account must neither demote nor promote it; the
+// owner changes an active member through member management.
 func (s *Store) AcceptPortico(ctx context.Context, q PorticoAcceptance, signIn func(context.Context, *sql.Tx) (identity.DirectSignIn, error)) (out identity.DirectSignIn, err error) {
 	code := strings.TrimSpace(q.Code)
 	if len(code) < 32 || len(code) > 128 {
@@ -446,8 +450,10 @@ func (s *Store) AcceptPortico(ctx context.Context, q PorticoAcceptance, signIn f
 			return ErrExpired
 		}
 		var account string
+		created := 0
 		e = tx.QueryRowContext(ctx, `SELECT account_id FROM account_portico_links WHERE hosted_account_id=?`, q.AccountID).Scan(&account)
 		if errors.Is(e, sql.ErrNoRows) {
+			created = 1
 			account = token()
 			profile := token()
 			var taken bool
@@ -476,7 +482,7 @@ func (s *Store) AcceptPortico(ctx context.Context, q PorticoAcceptance, signIn f
 		} else if e != nil {
 			return e
 		}
-		if _, e = tx.ExecContext(ctx, `UPDATE direct_memberships SET role=?,allowed_libraries=?,disabled=0,revision=revision+1 WHERE account_id=? AND role<>'owner'`, role, libraries, account); e != nil {
+		if _, e = tx.ExecContext(ctx, `UPDATE direct_memberships SET role=?,allowed_libraries=?,disabled=0,revision=revision+1 WHERE account_id=? AND role<>'owner' AND (?<>0 OR disabled<>0)`, role, libraries, account, created); e != nil {
 			return e
 		}
 		if _, e = tx.ExecContext(ctx, `UPDATE access_invitations SET state='accepted',accepted_ms=?,account_id=?,revision=revision+1 WHERE id=?`, now, account, id); e != nil {
