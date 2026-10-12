@@ -245,12 +245,19 @@ func checkManifestHashes(dir string, files []FileEntry) error {
 			return ErrSourceInvalid
 		}
 		path := filepath.Join(dir, filepath.FromSlash(entry.Name))
-		raw, err := os.ReadFile(path)
+		// Streamed: a pre-restore backup lists the database itself, which can be
+		// larger than memory.
+		file, err := os.Open(path)
 		if err != nil {
 			return ErrSourceInvalid
 		}
-		sum := sha256.Sum256(raw)
-		if hex.EncodeToString(sum[:]) != entry.SHA256 || int64(len(raw)) != entry.Bytes {
+		hash := sha256.New()
+		read, err := io.Copy(hash, file)
+		file.Close()
+		if err != nil {
+			return ErrSourceInvalid
+		}
+		if hex.EncodeToString(hash.Sum(nil)) != entry.SHA256 || read != entry.Bytes {
 			return ErrIntegrity
 		}
 	}

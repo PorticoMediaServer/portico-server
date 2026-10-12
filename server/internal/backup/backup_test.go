@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -725,5 +726,53 @@ func TestPreRestoreBackupCanBeStaged(t *testing.T) {
 			t.Fatalf("pre-restore backup %+v not staged: %+v %v", source, staged, err)
 		}
 		_ = os.RemoveAll(filepath.Join(state, RestoreStagedDir))
+	}
+}
+
+// A pre-restore backup lists the database itself, so verifying its manifest
+// must read each file in pieces: holding a whole database in memory to hash
+// it would fail the restore on a server whose database is larger than its RAM.
+func TestManifestVerificationDoesNotHoldWholeFilesInMemory(t *testing.T) {
+	dir := t.TempDir()
+	const size = 96 << 20
+	path := filepath.Join(dir, DatabaseName)
+	file, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = file.WriteString("first bytes"); err != nil {
+		t.Fatal(err)
+	}
+	// A sparse file: large to read, free to create.
+	if err = file.Truncate(size); err != nil {
+		t.Fatal(err)
+	}
+	if err = file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := hashTree(dir)
+	if err != nil || len(entries) != 1 || entries[0].Bytes != size {
+		t.Fatalf("fixture manifest: %+v %v", entries, err)
+	}
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	if err = checkManifestHashes(dir, entries); err != nil {
+		t.Fatalf("an intact file failed verification: %v", err)
+	}
+	runtime.ReadMemStats(&after)
+	if grew := after.TotalAlloc - before.TotalAlloc; grew > size/4 {
+		t.Fatalf("verifying a %d MiB file allocated %d MiB", size>>20, grew>>20)
+	}
+	// The streamed check still catches a changed byte and a changed length.
+	wrong := []FileEntry{{Name: entries[0].Name, Bytes: size, SHA256: strings.Repeat("0", 64)}}
+	if err = checkManifestHashes(dir, wrong); !errors.Is(err, ErrIntegrity) {
+		t.Fatalf("a wrong hash was accepted: %v", err)
+	}
+	short := []FileEntry{{Name: entries[0].Name, Bytes: size - 1, SHA256: entries[0].SHA256}}
+	if err = checkManifestHashes(dir, short); !errors.Is(err, ErrIntegrity) {
+		t.Fatalf("a wrong length was accepted: %v", err)
+	}
+	if err = checkManifestHashes(dir, []FileEntry{{Name: "absent", Bytes: 1, SHA256: entries[0].SHA256}}); !errors.Is(err, ErrSourceInvalid) {
+		t.Fatalf("a missing file was not refused as an invalid source: %v", err)
 	}
 }
