@@ -2120,8 +2120,12 @@ paths:
         principal and an item, and that principal's access to the item's library is re-checked
         before the response and again around every read, so a revoked session stops mid-transfer.
         Serves the prepared MP4, the remote proxy body or the original file, with range requests
-        supported. Content type is `video/mp4`, `audio/mp4`, `audio/mpeg` or `audio/aac` depending
-        on the container.
+        supported. The content type follows the container. An original video file is `video/mp4`
+        (MP4, M4V and QuickTime), `video/x-matroska`, `video/webm`, `video/x-msvideo`, `video/mp2t`
+        or `video/mpeg`, and `application/octet-stream` for a container the server does not
+        recognise; an audio file is `audio/mp4`, `audio/mpeg`, `audio/aac`, `audio/flac`,
+        `audio/ogg`, `audio/wav` or `audio/aiff`. A prepared version is `video/mp4` or `audio/mp4`,
+        and a relayed remote source keeps the type its origin sent.
       parameters:
         - $ref: '#/components/parameters/Grant'
       security: []
