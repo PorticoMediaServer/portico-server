@@ -235,7 +235,18 @@ func loadMember(ctx context.Context, tx *sql.Tx, group string, v identity.Viewer
 	var m membership
 	e := tx.QueryRowContext(ctx, `SELECT id,display_name,role,state,readiness,readiness_position_us,readiness_at_ms,joined_at_ms FROM social_group_members WHERE group_id=? AND authority=? AND account_id=? AND profile_id=?`, group, v.Authority, v.AccountID, v.ProfileID).Scan(&m.id, &m.displayName, &m.role, &m.state, &m.readiness, &m.positionUS, &m.readinessMS, &m.joinedMS)
 	if errors.Is(e, sql.ErrNoRows) {
-		return m, &Fault{Code: "membership_revoked", Status: 403, Message: "You are not a member of this group."}
+		return m, errNotMember
+	}
+	return m, e
+}
+
+// loadJoinedMember is loadMember for a read: a member who has left keeps a row
+// (so a rejoin keeps its member id) but is no longer in the room, and reads the
+// group no more than somebody who never joined.
+func loadJoinedMember(ctx context.Context, tx *sql.Tx, group string, v identity.Viewer) (membership, error) {
+	m, e := loadMember(ctx, tx, group, v)
+	if e == nil && m.state != "joined" {
+		return m, errNotMember
 	}
 	return m, e
 }
@@ -539,7 +550,7 @@ func (s *Store) ReadGroup(ctx context.Context, p identity.Principal, id string) 
 	if e != nil {
 		return out, e
 	}
-	m, e := loadMember(ctx, tx, id, p.Viewer)
+	m, e := loadJoinedMember(ctx, tx, id, p.Viewer)
 	if e != nil {
 		return out, e
 	}
@@ -592,7 +603,7 @@ func (s *Store) mutate(ctx context.Context, p identity.Principal, id string, app
 		return out, errGroupEnded
 	}
 	if m.state != "joined" {
-		return out, &Fault{Code: "membership_revoked", Status: 403, Message: "You are not a member of this group."}
+		return out, errNotMember
 	}
 	if e = apply(tx, &g, m); e != nil {
 		return out, e
@@ -829,16 +840,26 @@ func (s *Store) project(ctx context.Context, tx *sql.Tx, p identity.Principal, g
 		host = HostPresence{Presence: "private"}
 	}
 	canControl := m.role == "host" || g.hostAuthority == "anyone"
+	itemID, e := s.itemFor(ctx, tx, p.Viewer, g.itemID)
+	if e != nil {
+		return out, e
+	}
+	// The bound device and the session it plays are the host's own equipment.
+	// Everybody else is told only what state the authority is in.
+	authority := Authority{State: "fresh"}
+	if m.role == "host" {
+		authority.DeviceID = g.hostDevice
+	}
 	out.Group = Group{
 		ID: g.id, Name: g.name, State: g.state, HostAuthority: g.hostAuthority, HostMemberID: g.hostMemberID,
 		Revision: counter(g.revision), PlaybackRevision: counter(g.playbackRevision), QueueRevision: counter(g.queueRevision),
 		ReconnectGeneration: counter(g.reconnect), LastCommand: g.lastCommand, LastCommandID: g.lastCommandID,
 		EndedReason: g.endedReason, EventOrdinal: counter(g.eventOrdinal), CreatedAt: stamp(g.createdMS), UpdatedAt: stamp(g.updatedMS),
 		Permissions: Permissions{IsHost: m.role == "host", CanControl: canControl, CanManageQueue: canControl},
-		Authority:   Authority{DeviceID: g.hostDevice, State: "fresh"},
+		Authority:   authority,
 		Host:        host,
 		Timeline: Timeline{
-			ItemID: g.itemID, CurrentEntryID: g.currentEntryID, State: timelineState(g.state),
+			ItemID: itemID, CurrentEntryID: g.currentEntryID, State: timelineState(g.state),
 			AnchorPositionUS: counter(g.positionUS), AnchorAt: stamp(g.positionUpdatedMS),
 			Rate: Rate{Numerator: counter(g.rateNum), Denominator: counter(g.rateDen)}, QueuePosition: g.queuePosition,
 		},
@@ -858,11 +879,26 @@ func (s *Store) project(ctx context.Context, tx *sql.Tx, p identity.Principal, g
 		case !present:
 			out.Group.Authority.State = "retired"
 		case session.Live:
-			id := session.ID
-			out.Group.Authority.PlaybackID, out.Group.Authority.State = &id, "bound"
+			out.Group.Authority.State = "bound"
+			if m.role == "host" {
+				id := session.ID
+				out.Group.Authority.PlaybackID = &id
+			}
 		}
 	}
 	return out, nil
+}
+
+// itemFor is the current title as one member may read it. The placeholder rule
+// that reduces a queue entry to its entry id applies to the title the group has
+// loaded too: a member who may not see it gets no item id, and still gets the
+// current entry id, which is all a placeholder preserves.
+func (s *Store) itemFor(ctx context.Context, tx *sql.Tx, v identity.Viewer, itemID string) (string, error) {
+	seen, e := s.visible(ctx, tx, v, itemID)
+	if e != nil || !seen {
+		return "", e
+	}
+	return itemID, nil
 }
 
 func timelineState(state string) string {

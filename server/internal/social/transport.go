@@ -104,7 +104,7 @@ func (s *Store) command(ctx context.Context, p identity.Principal, id, key strin
 		return nil, e
 	}
 	if m.state != "joined" {
-		return nil, &Fault{Code: "membership_revoked", Status: 403, Message: "You are not a member of this group."}
+		return nil, errNotMember
 	}
 	want := digestJSON(body)
 	var stored, seen string
@@ -224,11 +224,18 @@ func (s *Store) Transport(ctx context.Context, p identity.Principal, id string, 
 		}); e != nil {
 			return nil, e
 		}
+		// The receipt is this member's own answer, so it is reduced like their
+		// snapshot. The event above goes on the shared ledger whole and is
+		// reduced for each reader when it is read (EventsSince).
+		itemID, e := s.itemFor(ctx, tx, p.Viewer, g.itemID)
+		if e != nil {
+			return nil, e
+		}
 		return TransportReceipt{
 			ProtocolVersion: Protocol, GroupID: g.id, IdempotencyKey: req.IdempotencyKey, Disposition: "accepted",
 			Command: req.Command, Revision: counter(g.revision + 1), QueueRevision: counter(g.queueRevision),
 			RecordedAt: stamp(s.ms()),
-			Timeline: Timeline{ItemID: g.itemID, CurrentEntryID: g.currentEntryID, State: timelineState(g.state),
+			Timeline: Timeline{ItemID: itemID, CurrentEntryID: g.currentEntryID, State: timelineState(g.state),
 				AnchorPositionUS: counter(g.positionUS), AnchorAt: stamp(g.positionUpdatedMS),
 				Rate: Rate{Numerator: counter(g.rateNum), Denominator: counter(g.rateDen)}, QueuePosition: g.queuePosition},
 			Settings: Settings{Shuffle: g.shuffle, Repeat: g.repeat},

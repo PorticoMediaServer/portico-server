@@ -85,6 +85,7 @@ var (
 	errHost       = fault("host_required", 403, "Only the group host may do that.")
 	errGroupEnded = fault("group_ended", 409, "The group has ended.")
 	errGroupFull  = fault("group_full", 409, "The group is full.")
+	errNotMember  = fault("membership_revoked", 403, "You are not a member of this group.")
 )
 
 // Store is the social playback service. Every dependency is an explicit seam so
