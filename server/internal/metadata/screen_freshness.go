@@ -140,6 +140,69 @@ func (s *Service) screenRefreshRecord(ctx context.Context, p *screenClaim, id me
 	return r, nil
 }
 
+// rememberedEpisodeRecord is the episode document this row last published, if it still answers
+// the same question: the same show, order and local coordinates, in the same language. A
+// re-identified show, a changed order, a renumbered file or a new metadata language makes it
+// somebody else's answer, and the provider is asked.
+func (s *Service) rememberedEpisodeRecord(ctx context.Context, b screenBase) (metadataprovider.ScreenRecord, bool, error) {
+	var payload string
+	e := dbwork.QueryRow(ctx, s.db, `SELECT payload FROM screen_metadata_candidates WHERE target_kind=? AND target_id=? AND provider=? AND provider_type='episode' AND language=? LIMIT 1`,
+		b.TargetKind, b.Entity, b.ParentProvider, b.Language).Scan(&payload)
+	if errors.Is(e, sql.ErrNoRows) {
+		return metadataprovider.ScreenRecord{}, false, nil
+	}
+	if e != nil {
+		return metadataprovider.ScreenRecord{}, false, e
+	}
+	var r metadataprovider.ScreenRecord
+	if json.Unmarshal([]byte(payload), &r) != nil || metadataprovider.ValidateScreenRecord(r) != nil {
+		return metadataprovider.ScreenRecord{}, false, nil
+	}
+	c := r.Coordinates
+	if c == nil || c.ShowID != b.ParentProviderID || c.Order != b.ParentOrder || c.Season == nil || *c.Season != b.Season || c.Episode != b.Number {
+		return metadataprovider.ScreenRecord{}, false, nil
+	}
+	return r, true, nil
+}
+
+// screenEpisodeRecord is screenRefreshRecord for an episode of a matched show. A show that is
+// woken fans out to every one of its episodes, so without this one new file cost a request for
+// each episode the show has. An episode whose document is held and inside its window is
+// republished from it; one past its window is refreshed only while the provider's refresh
+// allowance lasts; an episode never fetched is always asked for.
+func (s *Service) screenEpisodeRecord(ctx context.Context, p *screenClaim, provider screenEpisodeProvider) (metadataprovider.ScreenRecord, error) {
+	b := p.Base
+	now := s.publicationTime().UTC()
+	remembered, held, e := s.rememberedEpisodeRecord(ctx, b)
+	if e != nil {
+		return metadataprovider.ScreenRecord{}, e
+	}
+	if held {
+		fresh, _, err := s.documentFresh(ctx, remembered.Identity.Provider, "episode", remembered.Identity.ID, s.screenRefreshPriority(ctx, b, remembered, now), now)
+		if err != nil {
+			return metadataprovider.ScreenRecord{}, err
+		}
+		if fresh {
+			return remembered, nil
+		}
+		admitted, err := s.admitRefresh(ctx, remembered.Identity.Provider, now)
+		if err != nil {
+			return metadataprovider.ScreenRecord{}, err
+		}
+		if !admitted {
+			return remembered, nil
+		}
+	}
+	r, e := provider.ScreenEpisode(ctx, b.ParentProviderID, b.Season, b.Number, b.ParentOrder, b.Language)
+	if e != nil {
+		return r, e
+	}
+	if e = s.noteDocumentChecked(ctx, r.Identity.Provider, "episode", r.Identity.ID, documentValidators{}, true, now); e != nil {
+		return metadataprovider.ScreenRecord{}, e
+	}
+	return r, nil
+}
+
 func toConditional(v documentValidators) metadataprovider.Conditional {
 	return metadataprovider.Conditional{ETag: v.ETag, LastModified: v.LastModified}
 }

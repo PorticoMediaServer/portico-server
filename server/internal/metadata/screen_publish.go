@@ -981,7 +981,7 @@ func (s *Service) screenEpisodeStep(ctx context.Context, p *screenClaim) error {
 		if !ok {
 			return s.failScreen(ctx, p, &metadataprovider.Error{Provider: "tmdb", Code: "provider_not_configured"})
 		}
-		record, err = provider.ScreenEpisode(requestCtx, b.ParentProviderID, b.Season, b.Number, b.ParentOrder, b.Language)
+		record, err = s.screenEpisodeRecord(requestCtx, p, provider)
 	} else if b.ParentProvider == "anilist" {
 		id := b.AnimeSeasonID
 		if b.Numbering == "absolute" {
