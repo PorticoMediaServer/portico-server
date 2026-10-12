@@ -162,9 +162,9 @@ func (h *HLS) downgradeCopyPlan(ctx context.Context, id string, plan *DeliveryPl
 	if source.Video != nil {
 		height = source.Video.Height
 	}
-	rung, ok := SelectedRung(QualityOffers(height, true, true, policy), plan.QualityID)
-	if !ok {
-		return nil, ErrQualityUnavailable
+	target, keep, err := replanTarget(ctx, tx, id, plan, QualityOffers(height, true, true, policy), policy, cfg, height)
+	if err != nil {
+		return nil, err
 	}
 	excluded, err := routeFailuresTx(ctx, tx, p, plan.SourceID)
 	if err != nil {
@@ -176,7 +176,7 @@ func (h *HLS) downgradeCopyPlan(ctx context.Context, id string, plan *DeliveryPl
 	for _, route := range []DeliveryStrategy{DeliveryOriginal, DeliveryCopyRemux, DeliveryAudioConversion} {
 		excluded[route] = RouteRejection{Code: ReasonCopyTimelineUnavailable}
 	}
-	next, err := planDelivery(DeliveryInput{SourceID: source.ID, Source: &source, Client: clientProfileFor(ctx, tx, p), Server: decoder.CurrentToolchain(), Policy: policy, Target: rung.Target(policy, height), Config: cfg, TranscodingEnabled: true, AudioStream: plan.AudioStream, HasAudioChoice: plan.AudioStream >= 0, Excluded: excluded, BurnIn: plan.BurnIn != nil, Remote: source.Container == "strm"})
+	next, err := planDelivery(DeliveryInput{SourceID: source.ID, Source: &source, Client: clientProfileFor(ctx, tx, p), Server: decoder.CurrentToolchain(), Policy: policy, Target: target, Config: cfg, TranscodingEnabled: true, AudioStream: plan.AudioStream, HasAudioChoice: plan.AudioStream >= 0, Excluded: excluded, BurnIn: plan.BurnIn != nil, Remote: source.Container == "strm"})
 	if err != nil {
 		return nil, err
 	}
@@ -186,7 +186,7 @@ func (h *HLS) downgradeCopyPlan(ctx context.Context, id string, plan *DeliveryPl
 	next.SourceSize, next.SourceModifiedNS, next.FactsRevision = plan.SourceSize, plan.SourceModifiedNS, plan.FactsRevision
 	next.BurnIn = plan.BurnIn
 	next.QualityID = plan.QualityID
-	next.Target = plan.Target
+	next.Target = keep
 	next.ReasonCodes = append(next.ReasonCodes, ReasonCopyTimelineUnavailable)
 	if plan.Trace != nil && plan.Trace.Audio != nil && next.Trace != nil && next.Trace.Audio != nil {
 		next.Trace.Audio.ChosenBy = plan.Trace.Audio.ChosenBy
