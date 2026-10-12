@@ -31,6 +31,8 @@ class FakeAuthServer {
   /** Commit the rotation, then lose the response (the client sees a network error). */
   dropAfterCommit = 0;
   failNext: number[] = [];
+  /** Answers given to the next refresh requests in place of this server's own (a proxy, another layer). */
+  refreshAnswers: (() => Response)[] = [];
   headers: Record<string, string>[] = [];
   constructor() { this.access.set('access_1', {generation: 1, expires: clock + 15 * MIN}); }
   envelope(access: string, refresh: string, generation: number) {
@@ -48,6 +50,8 @@ class FakeAuthServer {
     if (fail) return json(fail, {error: {code: 'unavailable'}});
     if (url.pathname === '/v1/auth/refresh') {
       this.refreshCalls++;
+      const other = this.refreshAnswers.shift();
+      if (other) return other();
       const q = JSON.parse(String(init.body)) as {refreshToken: string; installationId: string; requestId: string};
       if (this.migrated) return json(401, {error: {code: 'session_migrated'}});
       if (this.revoked || q.installationId !== INSTALLATION || !/^[A-Za-z0-9_-]{1,128}$/.test(q.requestId)) return json(401, {error: {code: 'unauthorized'}});
@@ -197,6 +201,35 @@ test('a session migration 0120 ended keeps its code (session_migrated), so apps 
   assert.deepEqual(events.signedOut, ['session_migrated']);
   assert.equal(store.peek(), undefined, 'the migrated credential is gone either way');
   assert.equal(refresher.getSnapshot().phase, 'ended');
+});
+
+const refreshDirectly = (env: ConnectionEnvironment, server: FakeAuthServer) => refreshStoredSession({env, api: new HttpLocalApi(ORIGIN, '', server.fetch), family: {sessionFamilyId: 'family_1', serverId: 'srv'}, rejected: 'access_1'});
+const kept = (e: unknown) => (e as {signOut?: boolean}).signOut === false && (e as {code?: string}).code === 'refresh_unavailable_now';
+
+test('a 403 that is not this server ending the sign-in keeps the stored credential', async t => {
+  const {server, store, env} = setup(t);
+  const answers: (() => Response)[] = [
+    // A gateway or filter in front of the server: no Portico error at all.
+    () => new Response('<html><body>Forbidden</body></html>', {status: 403, headers: {'Content-Type': 'text/html'}}),
+    // The server itself, about something other than this sign-in.
+    () => new Response(JSON.stringify({error: {code: 'origin_not_allowed', message: 'This origin is not permitted.', retryable: false}}), {status: 403, headers: {'Content-Type': 'application/json'}}),
+  ];
+  for (const answer of answers) {
+    server.refreshAnswers.push(answer);
+    await assert.rejects(refreshDirectly(env, server), kept);
+    assert.equal(store.peek()!.session.refreshToken, 'refresh_000000000001', 'credential kept');
+    assert.ok(store.peek()!.pendingRefresh, 'the request id stays for the retry');
+  }
+  const next = await refreshDirectly(env, server);
+  assert.equal(next.accessToken, 'access_2', 'the kept credential still renews');
+  assert.equal(server.rotations, 1);
+});
+
+test('a renewal the server revokes for an access limit ends the sign-in', async t => {
+  const {server, store, env} = setup(t);
+  server.refreshAnswers.push(() => new Response(JSON.stringify({error: {code: 'access_limit', message: 'Not available right now.', retryable: false}}), {status: 403, headers: {'Content-Type': 'application/json'}}));
+  await assert.rejects(refreshDirectly(env, server), (e: unknown) => (e as {signOut?: boolean}).signOut === true && (e as {code?: string}).code === 'refresh_refused');
+  assert.equal(store.peek(), undefined, 'stored sign-in removed');
 });
 
 test('reusing a retired refresh credential is refused and signs out', async t => {
