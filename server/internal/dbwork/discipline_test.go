@@ -26,10 +26,11 @@ var allowed = map[string]bool{
 	// Upstream virtual-table Begin is SQLite's transaction callback, not sql.DB.Begin.
 	"internal/thirdparty/sqlite/vtab.go": true,
 	// OperationScope.Begin is a goroutine lease, not a transaction.
-	"internal/storage/observed_playback.go":       true,
-	"internal/storage/inventory_page_stream.go":   true,
-	"internal/storage/root_registration_unix.go":  true,
-	"internal/storage/root_registration_other.go": true,
+	"internal/storage/observed_playback.go":         true,
+	"internal/storage/inventory_page_stream.go":     true,
+	"internal/storage/root_registration_unix.go":    true,
+	"internal/storage/root_registration_windows.go": true,
+	"internal/storage/root_registration_other.go":   true,
 }
 
 func TestNoRawWriteTransactionsOutsideDBWork(t *testing.T) {
