@@ -337,32 +337,39 @@ type convertedAudio struct {
 	SampleRate int
 }
 
-// convertedAudioRates are the rates converted audio is resampled to, highest
-// first. Every AAC, AC-3 and E-AC-3 decoder takes 48 kHz; many televisions,
-// Cast devices and set-top boxes take nothing above it.
-var convertedAudioRates = []int{48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000}
+// convertedAudioRates are the rates each output codec is encoded at that
+// converted audio is resampled to, highest first. Every AAC, AC-3 and E-AC-3
+// decoder takes 48 kHz; many televisions, Cast devices and set-top boxes take
+// nothing above it.
+var convertedAudioRates = map[string][]int{
+	"aac":  {48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000},
+	"ac3":  {48000, 44100, 32000},
+	"eac3": {48000, 44100, 32000},
+}
 
-// convertedSampleRate is the rate a converted track is resampled to, or zero
-// to keep its own: a source above 48 kHz, or above what the device declares
-// for the output codec, comes down to the highest rate within both. A source
-// whose rate was never observed is left as it is.
-func convertedSampleRate(a *SourceAudio, output *ClientAudioCodec) int {
+// convertedSampleRate is the rate a track converted to codec is resampled to,
+// or zero to keep its own: a source above 48 kHz, or above what the device
+// declares for that codec, comes down to the highest rate the codec is encoded
+// at within both. A source whose rate was never observed is left as it is, and
+// so is one for which no such rate exists: a rate the device said it cannot
+// take is never chosen for it.
+func convertedSampleRate(a *SourceAudio, codec string, output *ClientAudioCodec) int {
 	if a == nil || a.SampleRate <= 0 {
 		return 0
 	}
-	limit := convertedAudioRates[0]
+	limit := 48000
 	if output != nil && output.MaxSampleRate > 0 && output.MaxSampleRate < limit {
 		limit = output.MaxSampleRate
 	}
 	if a.SampleRate <= limit {
 		return 0
 	}
-	for _, rate := range convertedAudioRates {
+	for _, rate := range convertedAudioRates[codec] {
 		if rate <= limit {
 			return rate
 		}
 	}
-	return convertedAudioRates[len(convertedAudioRates)-1]
+	return 0
 }
 
 func audioConversionTarget(a *SourceAudio, client ClientProfile, target QualityTarget) convertedAudio {
@@ -389,7 +396,7 @@ func audioConversionTarget(a *SourceAudio, client ClientProfile, target QualityT
 		}
 	}
 	out.Downmix = source > out.Channels
-	out.SampleRate = convertedSampleRate(a, client.audioCodec(out.Codec))
+	out.SampleRate = convertedSampleRate(a, out.Codec, client.audioCodec(out.Codec))
 	return out
 }
 

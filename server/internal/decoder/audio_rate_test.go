@@ -29,4 +29,14 @@ func TestConvertedAudioTakesThePlannedSampleRate(t *testing.T) {
 	if _, err = BuildConversion(ConversionRequest{ConvertAudio: true, AudioSampleRate: 96000}); !errors.Is(err, ErrInvalidConfiguration) {
 		t.Fatalf("an output rate above 48 kHz was accepted: %v", err)
 	}
+	// AC-3 and E-AC-3 are encoded at 32, 44.1 or 48 kHz and nothing else.
+	for _, codec := range []string{"ac3", "eac3"} {
+		graph, err = BuildConversion(ConversionRequest{ConvertAudio: true, AudioCodec: codec, AudioChannels: 6, AudioBitrateBPS: 640_000, AudioSampleRate: 44100})
+		if err != nil || !strings.HasSuffix(strings.Join(graph.Audio, " "), "-c:a "+codec+" -b:a 640k -ac 6 -ar 44100") {
+			t.Fatalf("%s at 44.1 kHz: %v %v", codec, graph.Audio, err)
+		}
+		if _, err = BuildConversion(ConversionRequest{ConvertAudio: true, AudioCodec: codec, AudioChannels: 6, AudioSampleRate: 24000}); !errors.Is(err, ErrInvalidConfiguration) {
+			t.Fatalf("%s was given a rate it cannot be encoded at: %v", codec, err)
+		}
+	}
 }

@@ -64,6 +64,52 @@ func TestConvertedAudioSampleRateIsBounded(t *testing.T) {
 			}
 		})
 	}
+	// A rate is chosen from what the output codec is encoded at and the device
+	// takes. When nothing fits, the track is not resampled: a rate the device
+	// said it cannot take is never chosen for it.
+	passthrough := func(codec string, max int) ClientProfile {
+		p := appleTVProfile()
+		for i := range p.Audio {
+			if p.Audio[i].Codec == "aac" {
+				p.Audio[i].MaxChannels = 2
+			}
+			if p.Audio[i].Codec == codec {
+				p.Audio[i].Passthrough, p.Audio[i].MaxSampleRate = true, max
+			}
+		}
+		return p
+	}
+	tiny := chromeProfile()
+	for i := range tiny.Audio {
+		if tiny.Audio[i].Codec == "aac" {
+			tiny.Audio[i].MaxSampleRate = 4000
+		}
+	}
+	for _, test := range []struct {
+		name   string
+		source SourceAudio
+		client ClientProfile
+		codec  string
+		rate   int
+	}{
+		{"a device limit below every AAC rate", audio("dts", 2, 48000), tiny, "aac", 0},
+		{"96 kHz to E-AC-3", audio("truehd", 6, 96000), passthrough("eac3", 0), "eac3", 48000},
+		{"96 kHz to E-AC-3 for a device that takes 44.1 kHz", audio("truehd", 6, 96000), passthrough("eac3", 44100), "eac3", 44100},
+		{"96 kHz to E-AC-3 for a device limit E-AC-3 has no rate under", audio("truehd", 6, 96000), passthrough("eac3", 24000), "eac3", 0},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			p := decide(t, videoSource("mkv", "h264", picture, test.source), test.client, nil)
+			if p.AudioAction != "convert" || p.OutputAudioCodec != test.codec {
+				t.Fatalf("audio is %s to %s, want a conversion to %s", p.AudioAction, p.OutputAudioCodec, test.codec)
+			}
+			if p.AudioSampleRate != test.rate {
+				t.Fatalf("planned %d Hz, want %d", p.AudioSampleRate, test.rate)
+			}
+			if _, _, _, err := p.CodecArgs(); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
 	t.Run("alternate renditions", func(t *testing.T) {
 		p := decide(t, videoSource("mkv", "h264", picture, audio("truehd", 6, 96000), audio("dts", 2, 44100)), chromeProfile(), nil)
 		if len(p.Renditions) != 2 || p.Renditions[0].Action != "convert" || p.Renditions[0].SampleRate != 48000 || p.Renditions[1].SampleRate != 0 {

@@ -773,6 +773,10 @@ func BuildConversion(r ConversionRequest) (ConversionGraph, error) {
 		if r.AudioSampleRate < 0 || r.AudioSampleRate > 48000 {
 			return out, ErrInvalidConfiguration
 		}
+		// AC-3 and E-AC-3 exist at three rates only.
+		if codec != "aac" && r.AudioSampleRate != 0 && r.AudioSampleRate != 48000 && r.AudioSampleRate != 44100 && r.AudioSampleRate != 32000 {
+			return out, ErrInvalidConfiguration
+		}
 		out.Audio = append(out.Audio, "-c:a", codec, "-b:a", strconv.Itoa(bitrate/1000)+"k", "-ac", strconv.Itoa(channels))
 		if r.AudioSampleRate > 0 {
 			out.Audio = append(out.Audio, "-ar", strconv.Itoa(r.AudioSampleRate))
