@@ -107,7 +107,7 @@ func (s *Service) inventoryPage(ctx context.Context, job string, source catalog.
 	if err != nil {
 		return err
 	}
-	return s.readDirectoryPage(ctx, job, source, relative)
+	return stoppedAt(relative, s.readDirectoryPage(ctx, job, source, relative))
 }
 func (s *Service) readDirectoryPage(ctx context.Context, job string, source catalog.LibrarySource, relative string) error {
 	var cursor, revision string
@@ -190,7 +190,7 @@ func (s *Service) verifyPage(ctx context.Context, job string, source catalog.Lib
 				return storage.ErrRemoteConfig
 			}
 			if err = verifier.VerifyInventoryDirectory(ctx, job, filepath.Join(source.ResolvedPath, d.path), d.revision); err != nil {
-				return err
+				return stoppedAt(d.path, err)
 			}
 			continue
 		}
@@ -202,10 +202,10 @@ func (s *Service) verifyPage(ctx context.Context, job string, source catalog.Lib
 			v, err = storage.LocalInventoryDirectory(req)
 		}
 		if err != nil {
-			return err
+			return stoppedAt(d.path, err)
 		}
 		if v.ObjectIdentity != d.identity || storage.InventoryRevision(v) != d.revision {
-			return storage.ErrInventoryChanged
+			return stoppedAt(d.path, storage.ErrInventoryChanged)
 		}
 	}
 	gated4, err := dbwork.Begin(ctx, s.db, dbwork.ClassBackgroundMedia)
@@ -277,7 +277,7 @@ func (s *Service) reconcilePage(ctx context.Context, job string, source catalog.
 		parent := filepath.Dir(v.relative)
 		if !checked[parent] {
 			if err = s.catalog.VerifyInventoryAbsence(check, source, job, v.relative); err != nil {
-				return err
+				return stoppedAt(parent, err)
 			}
 			checked[parent] = true
 		}
@@ -342,6 +342,24 @@ func (s *Service) reconcilePage(ctx context.Context, job string, source catalog.
 	}
 	return gated5.Commit()
 }
+
+// stopError says which folder, relative to the source's root, a scan step was
+// reading when it failed. It changes nothing about how the failure is
+// classified; it only lets the owner's notice say where to look.
+type stopError struct {
+	path  string
+	cause error
+}
+
+func (e *stopError) Error() string { return e.cause.Error() }
+func (e *stopError) Unwrap() error { return e.cause }
+func stoppedAt(path string, err error) error {
+	if err == nil {
+		return nil
+	}
+	return &stopError{path: path, cause: err}
+}
+
 func (s *Service) fail(ctx context.Context, job, source string, cause error) {
 	code := "scan_inventory_incomplete"
 	health := "degraded"
@@ -382,7 +400,12 @@ func (s *Service) fail(ctx context.Context, job, source string, cause error) {
 	if err = tx.QueryRowContext(ctx, `SELECT library_id FROM library_sources WHERE id=?`, source).Scan(&library); err != nil {
 		return
 	}
-	if _, err = notify.NotifyScanFailure(tx, time.Now().UnixMilli(), library, source, code); err != nil {
+	where := ""
+	var stop *stopError
+	if errors.As(cause, &stop) {
+		where = stop.path
+	}
+	if _, err = notify.NotifyScanFailure(tx, time.Now().UnixMilli(), library, source, code, where); err != nil {
 		return
 	}
 	_ = gated6.Commit()

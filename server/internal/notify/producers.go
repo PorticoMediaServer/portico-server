@@ -3,6 +3,7 @@ package notify
 import (
 	"database/sql"
 	"strconv"
+	"strings"
 )
 
 // This file is the complete producer catalogue. Every notification the server
@@ -142,9 +143,20 @@ func NotifySecurityEvent(tx *sql.Tx, now int64, authority, account, profile, kin
 // NotifyScanFailure tells the account admins that a library scan stopped. The
 // dedupe key is the source, so a source that keeps failing produces one notice
 // whose text and revision move rather than one notice per attempt.
-func NotifyScanFailure(tx *sql.Tx, now int64, libraryID, sourceID, code string) ([]Result, error) {
+//
+// where is the folder the scan stopped at, relative to the source's root, or
+// empty when it is not known. It is named only when it is plain single-line
+// text within the argument limit: a name that cannot be shown safely is left
+// out, never allowed to fail the notice.
+func NotifyScanFailure(tx *sql.Tx, now int64, libraryID, sourceID, code, where string) ([]Result, error) {
 	if sourceID == "" {
 		sourceID = libraryID
+	}
+	body := "A scan of this library did not finish (" + code + ")."
+	arguments := map[string]string{"code": code, "libraryId": libraryID, "sourceId": sourceID}
+	if where != "." && text(where, 300, true) && !strings.ContainsRune(where, '\n') {
+		body += " It stopped at \"" + where + "\"."
+		arguments["path"] = where
 	}
 	return RaiseForAdmins(tx, now, Draft{
 		Severity:  SeverityWarning,
@@ -152,8 +164,8 @@ func NotifyScanFailure(tx *sql.Tx, now int64, libraryID, sourceID, code string) 
 		Category:  "scan.failed",
 		DedupeKey: "source:" + sourceID,
 		Title:     "Library scan stopped",
-		Body:      "A scan of this library did not finish (" + code + "). New and changed files are not in the library yet.",
-		Arguments: map[string]string{"code": code, "libraryId": libraryID, "sourceId": sourceID},
+		Body:      body + " New and changed files are not in the library yet.",
+		Arguments: arguments,
 		Actions: []Action{
 			{Kind: "command", Label: "Scan again", Command: "run-scan", Arguments: map[string]string{"libraryId": libraryID}},
 			{Kind: "navigate", Label: "Open library", Target: &NavigateTarget{View: "library", EntityID: libraryID, LibraryID: libraryID}},
