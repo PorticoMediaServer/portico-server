@@ -395,7 +395,7 @@ func (l *LinearRuntime) runOccurrence(ctx context.Context, id string, entry *lin
 		entry.state = "preparing"
 		entry.code = ""
 		entry.mu.Unlock()
-		before := entry.buffer.Window()
+		before := entry.buffer.Produced()
 		e = l.produceMonitored(ctx, work, entry)
 		if ctx.Err() != nil {
 			return
@@ -414,7 +414,7 @@ func (l *LinearRuntime) runOccurrence(ctx context.Context, id string, entry *lin
 		if current.PolicyRevision != initialPolicy || current.LeaseGeneration != initialLease || current.LeaseAuthorityRevision != initialAuthority {
 			return
 		}
-		attempts = linearFailureCount(attempts, before, entry.buffer.Window())
+		attempts = linearFailureCount(attempts, entry.buffer.Produced()-before)
 		if e == nil {
 			e = channelFault("source_ended", 503)
 		}
@@ -438,25 +438,13 @@ const linearRecoveryBudget = 5
 const linearHealthyRun = time.Minute
 
 // linearFailureCount is the consecutive-failure count once a producer has
-// ended, given the buffer before it started and after it stopped. A producer
-// that added a sustained run of media was healthy, so its failure is the first
-// of a new series. Only media counts: what earlier producers left in the
-// buffer, and the gap spent waiting and reconnecting, do not.
-func linearFailureCount(attempts int, before, after linearbuffer.Window) int {
-	if !after.Ready {
-		return attempts + 1
-	}
-	from := before.EndUS
-	if !before.Ready || from < after.StartUS {
-		from = after.StartUS
-	}
-	produced := after.EndUS - from
-	for _, gap := range after.Gaps {
-		if gap.EndUS > from {
-			produced -= gap.EndUS - max(gap.StartUS, from)
-		}
-	}
-	if produced >= linearHealthyRun.Microseconds() {
+// ended, given how much media it added to the buffer. A producer that added a
+// sustained run was healthy, so its failure is the first of a new series.
+// What it added is measured as it is appended, so neither a short retention
+// nor the byte cap evicting most of a long run makes that run look short, and
+// media left by earlier producers and time spent reconnecting are not counted.
+func linearFailureCount(attempts int, produced time.Duration) int {
+	if produced >= linearHealthyRun {
 		return 1
 	}
 	return attempts + 1
