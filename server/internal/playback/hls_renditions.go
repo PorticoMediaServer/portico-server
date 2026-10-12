@@ -477,7 +477,9 @@ func (h *HLS) produceRendition(ctx context.Context, id string, r AudioRenditionP
 			}
 			return subtitles.WindowCommand{Args: copied}, nil
 		})
-		_, _ = tail.Write([]byte(windowConverterDiagnostic(err, "", h.root)))
+		if err != nil {
+			_, _ = tail.Write([]byte(windowConverterDiagnostic(err, "", h.root)))
+		}
 	} else {
 		var cmd *exec.Cmd
 		if cmd, err = mediaexec.CommandContext(run, mediaexec.Job{Executable: h.binary, Args: args, Files: input.ExtraFiles(), ReadPaths: input.ReadPaths(), WriteDirs: []string{dir}}); err == nil {
