@@ -358,8 +358,75 @@ func likeValue(value any, prefixOnly bool) string {
 	return "%" + text + "%"
 }
 
+// browseDatePeriod is the period a date operand names, as the half-open range
+// of stored text it covers: the whole UTC day for YYYY-MM-DD, the second it
+// falls in for an RFC 3339 instant of any offset. Stored dates are UTC text, a
+// date or a timestamp with any fraction, which sorts correctly against these
+// bounds and not against the operand as it was sent.
+func browseDatePeriod(value any) (from, until string, ok bool) {
+	text, _ := value.(string)
+	if day, err := time.Parse("2006-01-02", text); err == nil {
+		return day.Format("2006-01-02"), day.AddDate(0, 0, 1).Format("2006-01-02"), true
+	}
+	at, err := time.Parse(time.RFC3339, text)
+	if err != nil {
+		return "", "", false
+	}
+	at = at.UTC().Truncate(time.Second)
+	return at.Format("2006-01-02T15:04:05"), at.Add(time.Second).Format("2006-01-02T15:04:05"), true
+}
+
+// dateComparison renders an operator over a date field: equality is falling in
+// the operand's period, and an inclusive bound includes all of it.
+func (c *browseCompiler) dateComparison(expression, operator string, value any) (string, bool, error) {
+	target := "(" + expression + ")"
+	if operator == "between" {
+		values, _ := value.([]any)
+		if len(values) != 2 {
+			return "", true, browseIssue("query.value", "between requires exactly two values")
+		}
+		from, _, first := browseDatePeriod(values[0])
+		_, until, last := browseDatePeriod(values[1])
+		if !first || !last {
+			return "", true, browseIssue("query.value", "must use YYYY-MM-DD or RFC 3339")
+		}
+		c.args = append(c.args, from, until)
+		return "(" + target + ">=? AND " + target + "<?)", true, nil
+	}
+	from, until, ok := browseDatePeriod(value)
+	if !ok {
+		return "", false, nil
+	}
+	switch operator {
+	case "equals":
+		c.args = append(c.args, from, until)
+		return "(" + target + ">=? AND " + target + "<?)", true, nil
+	case "not-equals":
+		c.args = append(c.args, from, until)
+		return "(" + target + " IS NULL OR " + target + "<? OR " + target + ">=?)", true, nil
+	case "less-than":
+		c.args = append(c.args, from)
+		return target + "<?", true, nil
+	case "at-most":
+		c.args = append(c.args, until)
+		return target + "<?", true, nil
+	case "greater-than":
+		c.args = append(c.args, until)
+		return target + ">=?", true, nil
+	case "at-least":
+		c.args = append(c.args, from)
+		return target + ">=?", true, nil
+	}
+	return "", false, nil
+}
+
 // comparison renders one operator against a value expression and binds its args.
 func (c *browseCompiler) comparison(field browseField, expression, operator string, value any) (string, error) {
+	if field.Type == valueDate {
+		if clause, handled, err := c.dateComparison(expression, operator, value); handled {
+			return clause, err
+		}
+	}
 	target := collated(field, expression)
 	switch operator {
 	case "equals":
