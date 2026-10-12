@@ -92,6 +92,29 @@ type BookChapter struct {
 var discFolderPattern = regexp.MustCompile(`(?i)^(disc|disk|cd)[ ._-]*([0-9]{1,3})$`)
 var leadingNumber = regexp.MustCompile(`^([0-9]{1,3})[ ._-]`)
 
+// partWordNumber is a number that follows "part", "chapter" or "track" (or
+// their short forms) as a word of its own; trailingNumber is one that ends a
+// file's name.
+var partWordNumber = regexp.MustCompile(`(?i)(?:^|[^a-z])(?:part|pt|chapter|chap|ch|track)[ ._#-]*([0-9]+)`)
+var trailingNumber = regexp.MustCompile(`[ ._-]([0-9]{1,3})$`)
+
+// partNumberFromName reads an audiobook file's place in its book from its own
+// name, for a file that carries no track tag and does not start with a number:
+// the number after the last "part", "chapter" or "track" word ("Part 2 of 12",
+// "Chapter 01"), else a number that ends the name ("Book Title - 03"). Without
+// it such files play in the order they happened to be catalogued.
+func partNumberFromName(path string) any {
+	name := filepath.Base(path)
+	name = strings.TrimSuffix(name, filepath.Ext(name))
+	if matches := partWordNumber.FindAllStringSubmatch(name, -1); len(matches) > 0 {
+		return tagNumber(matches[len(matches)-1][1])
+	}
+	if match := trailingNumber.FindStringSubmatch(name); match != nil {
+		return tagNumber(match[1])
+	}
+	return nil
+}
+
 func tagNumber(s string) any {
 	first, _, _ := strings.Cut(s, "/")
 	n, err := strconv.Atoi(strings.TrimSpace(first))
@@ -272,6 +295,9 @@ func (s *Service) commitAudio(ctx context.Context, tx *sql.Tx, library, kind, ro
 		if match := leadingNumber.FindStringSubmatch(filepath.Base(path)); match != nil {
 			track = tagNumber(match[1])
 		}
+	}
+	if track == nil && kind == "audiobook" {
+		track = partNumberFromName(path)
 	}
 	itemKind := compactcatalog.Track
 	if kind == "audiobook" {
