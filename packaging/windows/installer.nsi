@@ -21,6 +21,7 @@ Section "Install"
   nsExec::ExecToLog 'schtasks.exe /End /TN "${TASK_NAME}"'
   SetOutPath "$INSTDIR"
   File /r "${STAGE_DIR}\*"
+  File "${__FILEDIR__}\register-task.ps1"
   WriteRegStr HKLM "Software\Portico Media Server" "InstallDir" "$INSTDIR"
   WriteUninstaller "$INSTDIR\Uninstall.exe"
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Portico Media Server" "DisplayName" "${PRODUCT_NAME}"
@@ -42,7 +43,11 @@ Section "Install"
   FileWrite $1 '"$INSTDIR\portico-server.exe" >> "$0\server.log" 2>&1$\r$\n'
   FileClose $1
   nsExec::ExecToLog 'schtasks.exe /Delete /TN "${TASK_NAME}" /F'
-  nsExec::ExecToLog 'schtasks.exe /Create /TN "${TASK_NAME}" /SC ONSTART /RU SYSTEM /RL HIGHEST /TR "\"$INSTDIR\start-portico.cmd\"" /F'
+  nsExec::ExecToLog 'powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$INSTDIR\register-task.ps1" -Launcher "$INSTDIR\start-portico.cmd"'
+  Pop $2
+  StrCmp $2 "0" +3
+  MessageBox MB_ICONSTOP "Portico could not register its startup task."
+  Abort
   nsExec::ExecToLog 'schtasks.exe /Run /TN "${TASK_NAME}"'
   CreateDirectory "$SMPROGRAMS\Portico Media Server"
   WriteINIStr "$SMPROGRAMS\Portico Media Server\Portico Media Server.url" "InternetShortcut" "URL" "http://127.0.0.1:32500/"
