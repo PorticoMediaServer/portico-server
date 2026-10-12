@@ -163,7 +163,7 @@ export function validateRepairList(spec: FieldSpec, values: readonly string[]): 
   return undefined;
 }
 
-function GeneralTab({data, busy, onSave, onClose}: {data: Data; busy: boolean; onSave: (fields: Record<string, FieldEdit>) => Promise<boolean>; onClose: () => void}) {
+export function GeneralTab({data, busy, onSave, onClose}: {data: Data; busy: boolean; onSave: (fields: Record<string, FieldEdit>) => Promise<boolean>; onClose: () => void}) {
   const t = currentI18n().t;
   const schema = data.schema ?? fallbackSchema(data);
   const [values, setValues] = useState<Record<string, string>>({});
@@ -196,7 +196,8 @@ function GeneralTab({data, busy, onSave, onClose}: {data: Data; busy: boolean; o
     const edit: FieldEdit = {};
     if (values[f] !== undefined && values[f] !== saved(f)) { if (spec.type === 'list') edit.values = splitList(values[f]); else edit.value = values[f]; }
     if (locks[f] !== undefined && locks[f] !== data.snapshot.fields[f]?.locked) edit.locked = locks[f];
-    if (edit.value !== undefined || edit.locked !== undefined) changes[f] = edit;
+    // A list's edit is carried by its entries; once the field is locked that is all that changed.
+    if (edit.value !== undefined || edit.values !== undefined || edit.locked !== undefined) changes[f] = edit;
   }
   const pending = Object.keys(changes).length;
   const validate = (): string | undefined => {

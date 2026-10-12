@@ -127,3 +127,28 @@ test('deleteOverLimit blocks 201 distinct IDs before preview and allows 200',asy
  // Duplicates do not inflate: 201 entries with 200 distinct is allowed.
  assert.equal(harness.deleteOverLimit([...Array.from({length:200},(_,i)=>`id-${i}`),'id-0']),false);
 });
+
+// Editing a field locks it, so the second edit of Tags or Labels starts from a locked field: the
+// lock no longer changes and the edit is carried by the list's entries alone.
+test('editing a list field that is already locked is a pending change and is saved',async()=>{
+ const h=hooks();
+ const app=await componentModule(new URL('../src/screens/shared/MetadataEditor.tsx',import.meta.url),{
+  react:h.react,'@core/metadata-repair.ts':{MetadataRepairService:class{}},'@core/metadata-bulk.ts':{bulkTargetLimit:200,validateBulkReceipt:()=>{throw new Error('unused');}},'./bulk-job':{runBulkRequests:async()=>({ok:0,failed:[],jobs:0})},
+  '../../app/content':{useService:()=>({})},'../../app/metadata-editor':{useMetadataEditor:()=>undefined},'../../app/session':{useSession:()=>({})},
+  '../../ui':{...ui,cx:()=>'',useCompact:()=>false},'./MetadataEditor.module.css':{default:{}},
+  '../../app/i18n':{currentI18n:()=>defaultI18n},'../../app/viewer-scope':{useViewerScope:()=>({})},
+  '../../app/errors':{errorText:()=>'error'},
+ });
+ const nodes=(tree:any):any[]=>!tree||typeof tree!=='object'?[]:Array.isArray(tree)?tree.flatMap(nodes):[tree,...nodes(tree.props?.children),...nodes(tree.props?.trailing)];
+ const saves:unknown[]=[];
+ const data={revision:3,target:{kind:'item'},schema:[{field:'tags',label:'Tags',type:'list',bulk:true},{field:'title',label:'Title',type:'text',bulk:false}],snapshot:{fields:{tags:{value:'',values:['noir'],locked:true,source:'manual'},title:{value:'Heat',locked:false}}}};
+ const render=()=>h.render(()=>app.GeneralTab({data,busy:false,onSave:async(fields:unknown)=>{saves.push(fields);return true;},onClose:()=>{}}));
+ const footer=(tree:unknown)=>nodes(tree).find(n=>typeof n.type==='function'&&n.props?.copy!==undefined)!.props;
+ assert.equal(footer(render()).primary,undefined,'nothing to save yet');
+ nodes(render()).find(n=>n.type==='Input'&&n.props.label==='Tags')!.props.onChange({target:{value:'noir, heist'}});
+ const after=footer(render());
+ assert.ok(after.primary,'the second edit of a locked list offers Save');
+ after.primary.onClick();
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.deepEqual(saves,[{tags:{values:['noir','heist']}}]);
+});
