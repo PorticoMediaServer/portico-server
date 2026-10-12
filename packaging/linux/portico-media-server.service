@@ -12,6 +12,9 @@ Group=portico
 Environment=PORTICO_BIND=0.0.0.0:32500
 Environment=PORTICO_STATE_DIR=/var/lib/portico-media-server
 Environment=PORTICO_WEB_DIR=/usr/lib/portico-media-server/web
+# Optional owner configuration; external writes also need ReadWritePaths in a
+# drop-in (see INSTALLING.md). Environment paths do not expand this sandbox.
+EnvironmentFile=-/etc/portico-media-server/environment
 # FFmpeg and FFprobe are found beside the server, in third_party/ffmpeg/bin.
 ExecStart=/usr/lib/portico-media-server/portico-server
 Restart=on-failure
@@ -20,6 +23,8 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=read-only
+# Keep the strict sandbox. Owners grant only their selected writable library
+# and recording directories with additive ReadWritePaths in systemctl edit.
 ReadWritePaths=/var/lib/portico-media-server
 
 [Install]
