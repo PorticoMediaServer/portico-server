@@ -11,7 +11,7 @@
  * - Every automatic Hosted call goes through the shared gate: exponential backoff with jitter, a
  *   Retry-After never undercut, so a recovering Hosted meets a trickle. Everything already set up
  *   keeps working while Hosted is down; nothing here signs anyone out. */
-import {ApiError} from './index.ts';
+import {ApiError,retryAfterSecondsFrom} from './index.ts';
 import {hostedGate} from './hosted-gate.ts';
 import {parseDirectSignIn,type DirectSignIn,type ProfileAPI} from './profile-management.ts';
 import {routeBase64,routeBytes,serverPin,webRouteCrypto,type RouteCrypto} from './route-identity.ts';
@@ -202,8 +202,7 @@ export class ServerListWatcher{
      const response=await this.fetcher(this.origin+'/v1/server-list/'+encodeURIComponent(record.watch)+'/'+encodeURIComponent(record.version),{method:'GET',cache:'no-store',credentials:'omit',redirect:'error',referrerPolicy:'no-referrer',signal:bound});
      if(response.status===304)return false;
      if(response.status===200||response.status===404)return true; // 404: the watch token no longer verifies; the list answer brings a new one.
-     const retry=Number(response.headers.get('Retry-After'));
-     throw new ApiError(response.status,'server_list_unavailable','Your server list could not be checked.',true,Number.isFinite(retry)&&retry>0?retry:undefined);
+     throw new ApiError(response.status,'server_list_unavailable','Your server list could not be checked.',true,retryAfterSecondsFrom(response.headers.get('Retry-After')));
     }),'server-list-check');
    }catch(e){
     return this.defer(kind,e);
