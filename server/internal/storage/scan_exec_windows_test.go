@@ -110,3 +110,23 @@ func TestWindowsScanProbeFixture(t *testing.T) {
 	fmt.Fprint(os.Stdout, string(data))
 	os.Exit(0)
 }
+
+func TestWindowsEmbeddedLyricProbeUsesAdmittedMedia(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "media.flac")
+	if err := os.WriteFile(path, []byte(`{"format":{"tags":{"lyrics":"admitted lyrics"}},"streams":[]}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	tags, err := probeLyricTags(file, []string{exe, "-test.run=^TestWindowsScanProbeFixture$", "--", descriptorInput})
+	if err != nil || len(tags) != 1 || tags[0]["lyrics"] != "admitted lyrics" {
+		t.Fatalf("embedded lyrics unavailable: %v %v", tags, err)
+	}
+}
