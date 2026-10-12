@@ -29,7 +29,10 @@ func (s *Service) claimScreen(ctx context.Context) (*screenClaim, error) {
 	var kind string
 	var target int64
 	stamp := tvdbStamp(s.publicationTime())
-	err = tx.QueryRowContext(ctx, `SELECT target_kind,target_id FROM screen_metadata_work WHERE status IN('pending','searching','pending_children') AND next_attempt<=? AND lease_until<=? ORDER BY CASE WHEN status='pending_children' THEN 0 WHEN target_kind='show' THEN 1 ELSE 2 END,next_attempt,target_id LIMIT 1`, stamp, stamp).Scan(&kind, &target)
+	// A search the owner asked for goes first: it is one deliberate request with
+	// somebody waiting on it, and a search that fails rejoins the queue as an
+	// ordinary pending row, so it cannot hold the front.
+	err = tx.QueryRowContext(ctx, `SELECT target_kind,target_id FROM screen_metadata_work WHERE status IN('pending','searching','pending_children') AND next_attempt<=? AND lease_until<=? ORDER BY CASE WHEN status='searching' THEN 0 WHEN status='pending_children' THEN 1 WHEN target_kind='show' THEN 2 ELSE 3 END,next_attempt,target_id LIMIT 1`, stamp, stamp).Scan(&kind, &target)
 	if errors.Is(err, sql.ErrNoRows) {
 		// Nothing else is due, so a title parked by an outage whose cool-off
 		// has passed gets another try. A parked row with no retry time is final.
