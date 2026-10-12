@@ -14,6 +14,7 @@ async function harness(fixture={}){
   const body=options.body?JSON.parse(options.body):undefined;calls.push({url,body,method:options.method,headers:options.headers});
   const path=url.replace(/^https?:\/\/[^/]+/,'');
   if(path.startsWith('/v2/'))throw new Error('removed v2 route '+path);
+  if(path.endsWith('/reconnect')&&fixture.revoked)return reply({error:{code:'cast_device_revoked',message:'That receiver pairing was revoked.',retryable:false}},403);
   if(path.endsWith('/redeem')||path.endsWith('/reconnect'))return reply({session:{accessToken:'bearer-'+(body?.code||'renewed')},deviceToken:'device-'+(body?.code||'renewed'),scope:{accountId:String(body?.code||'').startsWith('OTHER')?'other':'account',profileId:'profile',authority:'hosted'}});
   if(path==='/v1/playback/client-profile')return reply({version:1});
   if(path==='/v1/playback/sessions'&&options.method==='POST'){
@@ -21,7 +22,7 @@ async function harness(fixture={}){
    if(preparing){preparing=false;return reply({retryAfterMs:500},202);}
    return reply(sessionFor(body,body.startPositionMs),201);
   }
-  if(path.endsWith('/timeline')){if(fixture.expired&&!expired){expired=true;return reply({error:{code:'unauthorized'}},401)};return reply({},204);}
+  if(path.endsWith('/timeline')){if(fixture.timelineDown)throw new Error('network down');if(fixture.revoked)return reply({error:{code:'unauthorized'}},401);if(fixture.expired&&!expired){expired=true;return reply({error:{code:'unauthorized'}},401)};return reply({},204);}
   if(path==='/v1/playback/sessions/ps_1'&&options.method==='PATCH'){
    if(options.headers['If-Match']!==String(generation))return reply({error:{code:'precondition_failed',current:sessionFor({},0)}},412);
    generation++;return reply(sessionFor({},body.seek?body.seek.positionMs:0));
@@ -173,4 +174,31 @@ test('with nobody connected, Stop from the remote or a sender still ends playbac
  assert.equal(h.receiver.state().playbackId,'ps_1');
  await h.interceptors.STOP({});
  assert.equal(h.receiver.state().playbackId,null);assert(h.calls.some(c=>c.method==='DELETE'));
+});
+test('a title that ends while its last report cannot be delivered still ends on the TV',async()=>{
+ const fixture={},h=await harness(fixture);h.senders.push('phone');
+ await h.message('phone',{type:'pair',code:'ABCD',origin:''});await h.message('phone',{type:'load',itemId:'movie'});await settle();
+ h.senders.length=0;h.ctxEvents.disconnect({senderId:'phone'});await settle();
+ // Nobody is connected to press Stop, and the server cannot be told the title finished.
+ fixture.timelineDown=true;h.manager.stop();h.events.MEDIA_FINISHED();await settle();
+ assert.equal(h.receiver.state().playbackId,null,'the receiver does not go on holding a finished title');
+ assert.equal(h.uiState(),'idle');
+ assert(h.calls.some(c=>c.method==='DELETE'&&c.url.endsWith('/v1/playback/sessions/ps_1')),'the session is still closed on the server');
+ assert(![...h.timers.values()].some(t=>[1000,5000,10000,30000].includes(t.ms)),'no report is left retrying');
+});
+test('a receiver whose pairing was revoked stops playing; one that only lost the network keeps going',async()=>{
+ const fixture={},h=await harness(fixture);h.senders.push('phone');
+ await h.message('phone',{type:'pair',code:'ABCD',origin:''});await h.message('phone',{type:'load',itemId:'movie'});await settle();
+ h.senders.length=0;h.ctxEvents.disconnect({senderId:'phone'});await settle();
+ // The network drops: nothing is known about the pairing, so the film goes on and the report is retried.
+ fixture.timelineDown=true;await fireAll(h,0);await fireAll(h,10000);
+ assert.equal(h.receiver.state().playbackId,'ps_1');assert.equal(h.uiState(),'playing');
+ assert([...h.timers.values()].some(t=>t.ms===1000),'retrying soon');
+ // The network returns, and the server says this TV's pairing is over.
+ fixture.timelineDown=false;fixture.revoked=true;await fireAll(h,1000);
+ assert.equal(h.receiver.state().playbackId,null,'a revoked pairing is an answer, not something to retry');
+ assert.equal(h.uiState(),'idle');assert.equal(h.manager.getPlayerState(),'IDLE');
+ const reports=h.calls.filter(c=>c.url.endsWith('/timeline')).length;
+ await fireAll(h);await settle();
+ assert.equal(h.calls.filter(c=>c.url.endsWith('/timeline')).length,reports,'and nothing goes on reporting');
 });
