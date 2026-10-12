@@ -70,8 +70,11 @@ type Buffer struct {
 	segments                               []*segment
 	byID                                   map[int64]*segment
 	next, revision, bytes, discontinuities int64
-	readers                                int
-	closed                                 bool
+	// producedUS is the duration of every segment ever appended. Unlike the
+	// window, it never shrinks when retention or the byte cap removes media.
+	producedUS int64
+	readers    int
+	closed     bool
 }
 
 func New(o Options) (*Buffer, error) {
@@ -124,6 +127,15 @@ func (b *Buffer) windowLocked(now int64) Window {
 		}
 	}
 	return w
+}
+
+// Produced is the total duration of media producers have appended, including
+// what has since been evicted. The difference between two readings is what was
+// added in between; gaps between segments are not media and are not counted.
+func (b *Buffer) Produced() time.Duration {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return time.Duration(b.producedUS) * time.Microsecond
 }
 func (b *Buffer) Window() Window {
 	b.mu.Lock()
@@ -280,6 +292,7 @@ func (b *Buffer) append(s *segment) error {
 	b.segments = append(b.segments, s)
 	b.byID[s.sequence] = s
 	b.bytes += s.bytes
+	b.producedUS += s.endUS - s.startUS
 	b.revision++
 	threshold := s.endUS - b.options.Retention.Microseconds()
 	for len(b.segments) > 1 && (b.bytes > b.options.MaxBytes || b.segments[0].endUS < threshold) {

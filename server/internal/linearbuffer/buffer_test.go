@@ -256,3 +256,54 @@ func TestManifestCanArriveBeforeItsSegment(t *testing.T) {
 		t.Fatal(e)
 	}
 }
+
+// Produced is what producers have added, not what the window still holds: a
+// short retention or a small byte cap must not make a long healthy run look
+// like a few seconds of output.
+func TestProducedCountsMediaThatRetentionHasAlreadyRemoved(t *testing.T) {
+	second := time.Second.Microseconds()
+	for name, c := range map[string]struct {
+		retention time.Duration
+		bytes     int64
+	}{
+		"short retention": {12 * time.Second, 1 << 20},
+		"small byte cap":  {time.Hour, 16 << 20},
+	} {
+		t.Run(name, func(t *testing.T) {
+			origin := time.Now().Add(-time.Hour)
+			parent := canonicalFixtureDir(t)
+			if e := os.Chmod(parent, 0700); e != nil {
+				t.Fatal(e)
+			}
+			b, e := New(Options{Parent: parent, OriginMS: origin.UnixMilli(), Retention: c.retention, MaxBytes: 64 << 20})
+			if e != nil {
+				t.Fatal(e)
+			}
+			defer b.Close()
+			at := origin.UnixMicro()
+			run := func(producer int64, segments int) {
+				for range segments {
+					if e := b.append(&segment{producer: producer, startUS: at, endUS: at + 2*second, bytes: c.bytes, path: b.directory + "/absent"}); e != nil {
+						t.Fatal(e)
+					}
+					at += 2 * second
+				}
+			}
+			run(1, 6)
+			before := b.Produced()
+			if before != 12*time.Second {
+				t.Fatalf("an earlier producer's output: %s", before)
+			}
+			// The next producer starts after a reconnect and runs for ten minutes.
+			at += 40 * second
+			run(2, 300)
+			window := b.Window()
+			if held := time.Duration(window.EndUS-window.StartUS) * time.Microsecond; held > time.Minute {
+				t.Fatalf("the fixture kept %s; it must evict to prove anything", held)
+			}
+			if got := b.Produced() - before; got != 10*time.Minute {
+				t.Fatalf("ten minutes of output was measured as %s", got)
+			}
+		})
+	}
+}
