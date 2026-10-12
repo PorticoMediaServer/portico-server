@@ -3,6 +3,7 @@ package metadata
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"testing"
 	"time"
 
@@ -159,5 +160,101 @@ func TestWaitingOutAProviderCooldownCostsNoAttempts(t *testing.T) {
 	}
 	if status, _, _ := row(); status != "matched" {
 		t.Fatalf("title did not match once the cooldown was over: %s", status)
+	}
+}
+
+// Before a retry time meant anything, every parked title was given one,
+// whatever had parked it. Such a row is tried again only when its recorded
+// reason can only have been an outage; a reason that might have been final
+// stays parked until the owner or a change to the title wakes it.
+func TestTitlesParkedByAnEarlierBuildRecoverOnlyFromAnOutage(t *testing.T) {
+	for _, c := range []struct {
+		name, reason string
+		attempts     int
+		recovers     bool
+	}{
+		{"network failures", "unavailable", 6, true},
+		{"provider cooldown waits", "provider_backoff", 6, true},
+		{"refused once: 401, 403 or 404", "request_rejected", 1, false},
+		{"refused six times: the status was not kept", "request_rejected", 6, false},
+		{"malformed response", "invalid_response", 1, false},
+		{"oversized response", "response_too_large", 1, false},
+		{"validation or local publication failure", "publication_failed", 6, false},
+		{"identity mismatch", "identity_mismatch", 1, false},
+		{"title no longer in scope", "metadata_scope_unavailable", 0, false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			s, db, p, advance, row := outageFixture(t)
+			ctx := context.Background()
+			// The row as the earlier build left it: parked, with a retry time now past.
+			integrationExec(t, db, `UPDATE screen_metadata_work SET status='unavailable',error=?,attempts=?,next_attempt=?`, c.reason, c.attempts, tvdbStamp(s.publicationTime().Add(-time.Hour)))
+			// Even a provider that would answer is not asked about a final failure.
+			for n := 0; n < 3; n++ {
+				if err := s.ScreenStep(ctx); err != nil {
+					t.Fatal(err)
+				}
+				advance(24 * time.Hour)
+			}
+			status, attempts, _ := row()
+			if c.recovers {
+				if status != "matched" || attempts != 0 {
+					t.Fatalf("a title parked by an outage did not recover: %s %d", status, attempts)
+				}
+				return
+			}
+			if p.calls != 0 || status != "unavailable" || attempts != c.attempts {
+				t.Fatalf("a failure that may have been final was retried: %d requests, %s, %d attempts", p.calls, status, attempts)
+			}
+		})
+	}
+}
+
+// What parks a title decides whether it can come back, and the row says so:
+// only an outage, a rate limit or a provider-side error leaves a retry time.
+func TestOnlyAnOutageLeavesAParkedTitleARetryTime(t *testing.T) {
+	for _, c := range []struct {
+		name     string
+		problem  error
+		failures int
+		reason   string
+		recovers bool
+	}{
+		{"unauthorised", &metadataprovider.Error{Provider: "tmdb", Status: 401, Code: "request_rejected"}, 1, "request_rejected", false},
+		{"forbidden", &metadataprovider.Error{Provider: "tmdb", Status: 403, Code: "request_rejected"}, 1, "request_rejected", false},
+		{"not found", &metadataprovider.Error{Provider: "tmdb", Status: 404, Code: "request_rejected"}, 1, "request_rejected", false},
+		{"malformed response", &metadataprovider.Error{Provider: "tmdb", Code: "invalid_response"}, 1, "invalid_response", false},
+		{"local failure after its five retries", errors.New("record could not be published"), 6, "publication_failed", false},
+		{"network failure", &metadataprovider.Error{Provider: "tmdb", Code: "unavailable"}, 6, "unavailable", true},
+		{"provider error", &metadataprovider.Error{Provider: "tmdb", Status: 503, Code: "request_rejected"}, 6, "provider_unavailable", true},
+		{"rate limited", &metadataprovider.Error{Provider: "tmdb", Status: 429, Code: "request_rejected"}, 6, "provider_unavailable", true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			s, db, p, advance, row := outageFixture(t)
+			ctx := context.Background()
+			p.problem = c.problem
+			for n := 0; n < c.failures; n++ {
+				if err := s.ScreenStep(ctx); err != nil {
+					t.Fatal(err)
+				}
+				advance(20 * time.Minute)
+			}
+			status, _, next := row()
+			var reason string
+			if err := db.QueryRow(`SELECT error FROM screen_metadata_work`).Scan(&reason); err != nil {
+				t.Fatal(err)
+			}
+			if status != "unavailable" || reason != c.reason || (next != "") != c.recovers {
+				t.Fatalf("parked as %s, reason %q, retry time %q", status, reason, next)
+			}
+			calls := p.calls
+			p.problem = nil
+			advance(48 * time.Hour)
+			if err := s.ScreenStep(ctx); err != nil {
+				t.Fatal(err)
+			}
+			if status, _, _ = row(); c.recovers != (status == "matched") || !c.recovers && p.calls != calls {
+				t.Fatalf("after the provider came back: %s, %d further requests", status, p.calls-calls)
+			}
+		})
 	}
 }
