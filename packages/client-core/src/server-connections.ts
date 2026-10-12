@@ -191,6 +191,8 @@ export async function connectTrustedProfileServer(env:ConnectionEnvironment,scop
 
 /** Renew when less than this much access time remains. */
 export const REFRESH_MIN_VALID_MS = 60_000;
+/** The one 403 a renewal answers after revoking the family itself (the member's access schedule). */
+const REFRESH_REVOKED_403 = 'access_limit';
 
 /**
  * A refresh that could not complete. `signOut` means the server refused the credential (reused,
@@ -246,9 +248,11 @@ export function refreshStoredSession(o:RefreshStoredOptions):Promise<LocalSessio
   try{raw=await o.api.request<unknown>('/v1/auth/refresh','POST',{refreshToken:session.refreshToken,installationId:identity.installationId,requestId},bound.signal);}
   catch(e){
    const status=(e as {status?:unknown}|null)?.status;
-   // Only a refusal (401/403: revoked, unknown family, or a reused refresh token) ends the sign-in.
-   // A malformed request (400) is this client's problem and keeps the credential for a retry.
-   if(status===401||status===403){
+   // Only a refusal ends the sign-in: a 401 (revoked, unknown family, or a reused refresh token), or
+   // the 403 with which the server revokes a renewal outside the member's access limits. Any other
+   // 403 (a gateway's page, a rejected origin) says nothing about the family and keeps the credential,
+   // as does a malformed request (400), which is this client's problem.
+   if(status===401||(status===403&&(e as {code?:unknown}|null)?.code===REFRESH_REVOKED_403)){
     await o.env.storage.change(current=>same(current)&&current!.session.refreshToken===session.refreshToken?undefined:current).catch(()=>{});
     forgetSessionRoute(session.accessToken);
     // The server's move to its own membership (migration 0120) ended this family: not a sign-out.
