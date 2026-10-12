@@ -78,3 +78,48 @@ func TestScreenLocalYearsAndNFOEpisodeCoordinates(t *testing.T) {
 		t.Fatal("different local season matched")
 	}
 }
+
+func TestScreenNamesKeepAYearThatBelongsToTheTitle(t *testing.T) {
+	for _, tc := range []struct {
+		raw, title string
+		year       int
+	}{
+		{"Blade Runner 2049 (2017).mkv", "Blade Runner 2049", 2017},
+		{"1917 (2019).mkv", "1917", 2019},
+		{"2001 A Space Odyssey (1968).mkv", "2001 A Space Odyssey", 1968},
+		{"2001.A.Space.Odyssey.1968.1080p.BluRay.mkv", "2001 A Space Odyssey", 1968},
+		{"Blade.Runner.2049.2017.1080p.BluRay.mkv", "Blade Runner 2049", 2017},
+		{"1917.2019.1080p.mkv", "1917", 2019},
+		// Unchanged: one year is read as before, and a bare number is not guessed at.
+		{"Film.1999.Remastered.2019.mkv", "Film", 1999},
+		{"Blade Runner 2049.mkv", "Blade Runner", 2049},
+		{"1917.mkv", "", 1917},
+	} {
+		title, year, _ := screenFilename(tc.raw)
+		if title != tc.title || year != tc.year {
+			t.Errorf("%s: got %q %d, want %q %d", tc.raw, title, year, tc.title, tc.year)
+		}
+	}
+	// The catalogue already holds the release year, so a number in its title is
+	// part of the title: it is searched for and is not a second, conflicting year.
+	for _, b := range []screenBase{
+		{Title: "Blade Runner 2049", Year: 2017, Names: []string{"Blade Runner 2049 (2017).mkv"}},
+		{Title: "1917", Year: 2019, Names: []string{"1917 (2019).mkv"}},
+		{Title: "2001 A Space Odyssey", Year: 1968, Names: []string{"2001 A Space Odyssey (1968).mkv"}},
+	} {
+		names, year, _ := screenQueries(b)
+		if len(names) != 1 || names[0] != b.Title || year != b.Year {
+			t.Errorf("%s: queries %q year %d", b.Title, names, year)
+		}
+		if screenLocalYearConflict(b) {
+			t.Errorf("%s: a number in the title was read as a conflicting release year", b.Title)
+		}
+	}
+	// Without a catalogue year nothing is assumed about a bare number.
+	if names, year, _ := screenQueries(screenBase{Title: "1917", Names: []string{"1917.mkv"}}); len(names) != 0 || year != 1917 {
+		t.Errorf("bare numeric name changed: %q %d", names, year)
+	}
+	if !screenLocalYearConflict(screenBase{Title: "Film", Year: 2020, Names: []string{"Film (2021).mkv"}}) {
+		t.Error("a real disagreement between file names stopped being a conflict")
+	}
+}

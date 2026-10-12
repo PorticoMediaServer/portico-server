@@ -353,12 +353,41 @@ func (s *Service) Delete(id string) error {
 
 var yearPattern = regexp.MustCompile(`(?i)[ ._\[(](19\d{2}|20\d{2})[\]). _-]?`)
 
+var bracketedYear = regexp.MustCompile(`[\[(](19\d{2}|20\d{2})[\])]`)
+var followingYear = regexp.MustCompile(`^[ ._](19\d{2}|20\d{2})(?:[ ._-]|$)`)
+
+// releaseYear finds the release year in a name and where the title before it
+// ends. The first year is the release year unless the name says otherwise
+// without ambiguity: a year in brackets ("Blade Runner 2049 (2017)") or a year
+// written directly after another ("Blade.Runner.2049.2017") is the release, and
+// the earlier number belongs to the title. A name with one year, or with years
+// apart from each other, reads as it always did.
+func releaseYear(name string) (cut, year int) {
+	loc := yearPattern.FindStringSubmatchIndex(name)
+	if loc == nil {
+		return -1, 0
+	}
+	cut, start, end := loc[0], loc[2], loc[3]
+	if b := bracketedYear.FindStringSubmatchIndex(name); b != nil {
+		cut, start, end = b[0], b[2], b[3]
+	} else {
+		for {
+			next := followingYear.FindStringSubmatchIndex(name[end:])
+			if next == nil {
+				break
+			}
+			cut, start, end = end, end+next[2], end+next[3]
+		}
+	}
+	year, _ = strconv.Atoi(name[start:end])
+	return cut, year
+}
+
 func FilenameTitle(path string) (string, int) {
 	name := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
-	year := 0
-	if loc := yearPattern.FindStringSubmatchIndex(name); loc != nil {
-		year, _ = strconv.Atoi(name[loc[2]:loc[3]])
-		name = name[:loc[0]]
+	cut, year := releaseYear(name)
+	if cut >= 0 {
+		name = name[:cut]
 	}
 	name = strings.ReplaceAll(strings.ReplaceAll(name, ".", " "), "_", " ")
 	return strings.TrimSpace(name), year
