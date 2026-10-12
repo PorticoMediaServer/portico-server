@@ -164,6 +164,7 @@ func LocalInventoryPage(r InventoryRequest) (InventoryPage, error) {
 			return p, ErrInventoryChanged
 		}
 		child := filepath.Join(path, name)
+		bindingPath := child
 		info, e := os.Lstat(child)
 		if e != nil {
 			return p, e
@@ -180,6 +181,7 @@ func LocalInventoryPage(r InventoryRequest) (InventoryPage, error) {
 			if e != nil || !filepath.IsLocal(rel) {
 				return p, errors.New("inventory symlink escapes root")
 			}
+			bindingPath = resolved
 			info, e = retained.Stat(rel)
 			if e != nil {
 				return p, e
@@ -193,7 +195,8 @@ func LocalInventoryPage(r InventoryRequest) (InventoryPage, error) {
 		if !info.IsDir() && !info.Mode().IsRegular() {
 			continue
 		}
-		v := snapshot(filepath.Join(r.Root, r.RelativePath, name), info)
+		v := snapshot(bindingPath, info)
+		v.Path = filepath.Join(r.Root, r.RelativePath, name)
 		v.Name = name
 		p.Entries = append(p.Entries, v)
 	}

@@ -197,6 +197,9 @@ func Helper(in io.Reader, out io.Writer) (result error) {
 	case "playback-descriptor":
 		return playbackDescriptorHelper(r, out)
 	case "root":
+		if err := checkLocalRoot(r.Path); err != nil {
+			return err
+		}
 		path, e := filepath.EvalSymlinks(r.Path)
 		if e != nil {
 			return e
