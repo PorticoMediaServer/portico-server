@@ -283,6 +283,10 @@ func (s *Store) applyTransport(ctx context.Context, tx *sql.Tx, g *record, m mem
 	case "stop":
 		g.positionUS, g.positionUpdatedMS = 0, now
 		g.state, g.resumeState = "ready", "paused"
+		if g.itemID == "" {
+			// Nothing is loaded, so there is nothing to be ready for.
+			g.state = "lobby"
+		}
 		return nil, nil
 	case "seek":
 		target, _ := parseCounter(req.PositionUS)
@@ -334,10 +338,17 @@ func (s *Store) applyTransport(ctx context.Context, tx *sql.Tx, g *record, m mem
 	case "set-queue-position":
 		target = *req.QueuePosition
 	case "load":
+		found := false
 		for _, r := range rows {
 			if r.entryID == req.EntryID {
-				target = r.position
+				target, found = r.position, true
 			}
+		}
+		// An entry that is not in the queue is refused, like a position past
+		// its end. Falling through would reload whatever is current from the
+		// start.
+		if !found {
+			return nil, &Fault{Code: "target_unavailable", Status: 409, Message: "No such queue entry."}
 		}
 	}
 	entry, ok, e := entryAt(ctx, tx, g.id, target)
