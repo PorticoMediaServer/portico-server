@@ -190,3 +190,46 @@ func TestScreenCacheSingleFlightAndCancellation(t *testing.T) {
 		t.Fatal("singleflight", calls.Load())
 	}
 }
+
+// TheTVDB lists a show's companies with a type each and groups a film's by
+// type. The studio and the network keep their kind so they can be published.
+func TestScreenTVDBCompaniesKeepTheirKind(t *testing.T) {
+	kinds := func(body string, kind string) map[string]string {
+		p, _ := NewTVDB("key")
+		p.http = fixtureTransport(t, func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/login" {
+				fmt.Fprint(w, `{"status":"success","data":{"token":"fixture-token"}}`)
+				return
+			}
+			fmt.Fprint(w, body)
+		})
+		r, e := p.ScreenDetails(context.Background(), kind, "42", "en-US", "US")
+		if e != nil {
+			t.Fatal(e)
+		}
+		out := map[string]string{}
+		for _, relation := range r.Relations {
+			out[relation.Name] = relation.Kind
+		}
+		return out
+	}
+	show := kinds(`{"status":"success","data":{"id":42,"name":"Show","year":"2020","companies":[
+ {"id":1,"name":"Channel","companyType":{"companyTypeId":1,"companyTypeName":"Network"}},
+ {"id":2,"name":"Producer","companyType":{"companyTypeId":2,"companyTypeName":"Production Company"}},
+ {"id":3,"name":"Animator","companyType":{"companyTypeId":3,"companyTypeName":"Studio"}},
+ {"id":4,"name":"Seller","companyType":{"companyTypeId":4,"companyTypeName":"Distributor"}},
+ {"id":5,"name":"Untyped"}]}}`, "show")
+	want := map[string]string{"Channel": "network", "Producer": "production_company", "Animator": "studio", "Seller": "company", "Untyped": "company"}
+	for name, kind := range want {
+		if show[name] != kind {
+			t.Errorf("show company %s: got %q, want %q", name, show[name], kind)
+		}
+	}
+	film := kinds(`{"status":"success","data":{"id":42,"name":"Film","year":"2020","companies":{"studio":[{"id":8,"name":"Studio"}],"network":[{"id":9,"name":"Channel"}],"production":[{"id":10,"name":"Producer"}],"distributor":[{"id":11,"name":"Seller"}],"special_effects":[{"id":12,"name":"Effects"}]}}}`, "movie")
+	want = map[string]string{"Studio": "studio", "Channel": "network", "Producer": "production_company", "Seller": "company", "Effects": "company"}
+	for name, kind := range want {
+		if film[name] != kind {
+			t.Errorf("film company %s: got %q, want %q", name, film[name], kind)
+		}
+	}
+}
