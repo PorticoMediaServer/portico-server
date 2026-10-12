@@ -146,13 +146,32 @@ jobs:
   macos:
     needs: [identity, server]
     runs-on: macos-15
+    env:
+      PORTICO_MACOS_SIGNING_IDENTITY: ${{ secrets.PORTICO_MACOS_SIGNING_IDENTITY }}
+      PORTICO_RELEASE_SIGNING_KEY_FILE: ${{ github.workspace }}/runtime/release-signing/private-key
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: {ref: '${{ needs.identity.outputs.tag }}'}
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with: {name: macos-payload, path: .release/macos-payload}
-      - env: {PORTICO_MACOS_SIGNING_IDENTITY: '${{ secrets.PORTICO_MACOS_SIGNING_IDENTITY }}'}
-        run: ./scripts/package-macos.sh '${{ needs.identity.outputs.version }}' .release/macos-payload dist '${{ github.run_number }}'
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        if: env.PORTICO_MACOS_SIGNING_IDENTITY != ''
+        with: {go-version-file: server/go.mod, cache-dependency-path: server/go.sum}
+      - name: Signed package tools
+        if: env.PORTICO_MACOS_SIGNING_IDENTITY != ''
+        run: python3 -m pip install --user -r scripts/requirements-release.txt
+      - name: Restore the release signing key
+        if: env.PORTICO_MACOS_SIGNING_IDENTITY != ''
+        env: {KEY: '${{ secrets.PORTICO_RELEASE_SIGNING_KEY }}'}
+        run: |
+          install -d -m 700 runtime/release-signing
+          umask 077
+          python3 -c "import base64,os,pathlib; pathlib.Path(os.environ['PORTICO_RELEASE_SIGNING_KEY_FILE']).write_bytes(base64.b64decode(os.environ['KEY'], validate=True))"
+          test "$(wc -c < runtime/release-signing/private-key)" -eq 32
+      - run: ./scripts/package-macos.sh '${{ needs.identity.outputs.version }}' .release/macos-payload dist '${{ github.run_number }}'
+      - name: Forget the signing key
+        if: always()
+        run: rm -rf runtime/release-signing
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with: {name: assets-macos-arm64, path: dist/Portico-Media-Server-macOS-arm64.dmg, if-no-files-found: error}
 
