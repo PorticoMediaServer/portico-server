@@ -7,7 +7,7 @@ import pathlib
 import runpy
 import subprocess
 
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 artifact_identity = runpy.run_path(str(ROOT / "scripts/build-server-release.py"))["artifact_identity"]
@@ -54,6 +54,15 @@ def verify_payload(directory, public_key):
             if digest(original / name) != expected:
                 raise ValueError("Original source seal changed")
         public_key.verify((original / "manifest.sig").read_bytes(), (original / "manifest.json").read_bytes())
+        source_manifest = json.loads((original / "manifest.json").read_bytes())
+        comparable = json.loads(raw)
+        comparable.pop("sourceSeal")
+        comparable["artifact"]["sha256"] = source_manifest["artifact"]["sha256"]
+        comparable["toolchainManifestSha256"] = source_manifest["toolchainManifestSha256"]
+        if comparable != source_manifest:
+            raise ValueError("Original source seal describes a different build")
+        if digest(original / "toolchain-manifest.json") != source_manifest["toolchainManifestSha256"]:
+            raise ValueError("Original toolchain provenance does not match the source seal")
     return manifest, (embedded, settings)
 
 
@@ -97,20 +106,30 @@ def seal_payload(directory, key, identity):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("directory", type=pathlib.Path)
-    parser.add_argument("--key", required=True, type=pathlib.Path)
+    parser.add_argument("--key", type=pathlib.Path)
+    parser.add_argument("--public-key", type=pathlib.Path)
+    parser.add_argument("--public-key-output", type=pathlib.Path)
     parser.add_argument("--identity")
     parser.add_argument("--verify", action="store_true")
     args = parser.parse_args()
+    if args.verify:
+        if args.public_key is None or args.key is not None or args.public_key_output is not None:
+            parser.error("--verify requires --public-key and does not accept a private key")
+        public_key = Ed25519PublicKey.from_public_bytes(args.public_key.read_bytes())
+        verify_payload(args.directory, public_key)
+        return
+    if args.key is None or args.public_key is not None or not args.identity:
+        parser.error("sealing requires --key and --identity")
     # Never generate a replacement release key on the packaging runner.
     if args.key.is_symlink() or not args.key.is_file() or args.key.stat().st_mode & 0o077:
         raise ValueError("An existing private release signing key is required")
+    if args.public_key_output is not None:
+        if args.public_key_output.is_symlink() or args.public_key_output.resolve() == args.key.resolve():
+            raise ValueError("Public output must not replace the private signing key")
     key = Ed25519PrivateKey.from_private_bytes(args.key.read_bytes())
-    if args.verify:
-        verify_payload(args.directory, key.public_key())
-    else:
-        if not args.identity:
-            raise ValueError("An OS signing identity is required")
-        seal_payload(args.directory, key, args.identity)
+    seal_payload(args.directory, key, args.identity)
+    if args.public_key_output is not None:
+        args.public_key_output.write_bytes(key.public_key().public_bytes_raw())
 
 
 if __name__ == "__main__":

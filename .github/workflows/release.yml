@@ -146,6 +146,7 @@ jobs:
     env:
       PORTICO_MACOS_SIGNING_IDENTITY: ${{ secrets.PORTICO_MACOS_SIGNING_IDENTITY }}
       PORTICO_RELEASE_SIGNING_KEY_FILE: ${{ github.workspace }}/runtime/release-signing/private-key
+      PORTICO_RELEASE_PUBLIC_KEY_FILE: ${{ github.workspace }}/runtime/release-signing/public-key
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: {ref: '${{ needs.identity.outputs.tag }}'}
@@ -156,7 +157,10 @@ jobs:
         with: {go-version-file: server/go.mod, cache-dependency-path: server/go.sum}
       - name: Signed package tools
         if: env.PORTICO_MACOS_SIGNING_IDENTITY != ''
-        run: python3 -m pip install --user -r scripts/requirements-release.txt
+        run: |
+          python3 -m venv .release/signing-venv
+          .release/signing-venv/bin/python -m pip install -r scripts/requirements-release.txt
+          echo "$PWD/.release/signing-venv/bin" >> "$GITHUB_PATH"
       - name: Restore the release signing key
         if: env.PORTICO_MACOS_SIGNING_IDENTITY != ''
         env: {KEY: '${{ secrets.PORTICO_RELEASE_SIGNING_KEY }}'}

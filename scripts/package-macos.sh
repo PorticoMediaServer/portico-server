@@ -28,10 +28,11 @@ if [[ -n "$icon" ]]; then
 fi
 if [[ -n "${PORTICO_MACOS_SIGNING_IDENTITY:-}" ]]; then
   : "${PORTICO_RELEASE_SIGNING_KEY_FILE:?A private release key is required to seal codesigned binaries}"
-  python3 "$ROOT/scripts/seal-macos-payload.py" "$APP/Contents/Resources/server" --key "$PORTICO_RELEASE_SIGNING_KEY_FILE" --identity "$PORTICO_MACOS_SIGNING_IDENTITY"
+  PUBLIC_KEY_FILE="${PORTICO_RELEASE_PUBLIC_KEY_FILE:-$PORTICO_RELEASE_SIGNING_KEY_FILE.public}"
+  python3 "$ROOT/scripts/seal-macos-payload.py" "$APP/Contents/Resources/server" --key "$PORTICO_RELEASE_SIGNING_KEY_FILE" --identity "$PORTICO_MACOS_SIGNING_IDENTITY" --public-key-output "$PUBLIC_KEY_FILE"
   codesign --force --options runtime --timestamp=none --sign "$PORTICO_MACOS_SIGNING_IDENTITY" "$APP"
   codesign --verify --deep --strict "$APP"
-  python3 "$ROOT/scripts/seal-macos-payload.py" "$APP/Contents/Resources/server" --key "$PORTICO_RELEASE_SIGNING_KEY_FILE" --verify
+  python3 "$ROOT/scripts/seal-macos-payload.py" "$APP/Contents/Resources/server" --public-key "$PUBLIC_KEY_FILE" --verify
 fi
 ln -s /Applications "$DMG_ROOT/Applications"
 if find "$DMG_ROOT" -type f \( -name '._*' -o -name '.DS_Store' \) | grep -q .; then echo "macOS package contains Finder metadata" >&2; exit 1; fi
