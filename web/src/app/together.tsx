@@ -37,7 +37,7 @@ export function TogetherProvider({children}: {children: React.ReactNode}) {
         // PERF-21: read the live snapshot; the engine's `state` is settled to whole seconds, so
         // drift measured against it is up to a second stale and triggers needless corrections.
         const s = live.current.service.getSnapshot();
-        return {itemId: s.itemId ?? '', positionSeconds: s.pendingSeek?.positionSeconds ?? s.positionSeconds, playing: s.phase === 'ready' && s.intent === 'playing', buffering: !!s.recovering || s.phase === 'starting', ready: s.phase === 'ready', seeking: !!s.pendingSeek};
+        return {itemId: s.itemId ?? '', positionSeconds: s.pendingSeek?.positionSeconds ?? s.positionSeconds, playing: s.phase === 'ready' && s.intent === 'playing', buffering: !!s.recovering || s.phase === 'starting', ready: s.phase === 'ready', seeking: !!s.pendingSeek, durationSeconds: s.duration > 0 ? s.duration : undefined};
       },
       load: (itemId, positionSeconds) => {
         live.current.play(itemId, positionSeconds);
