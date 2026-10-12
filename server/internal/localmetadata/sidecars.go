@@ -31,8 +31,8 @@ import (
 //
 // Only positive hits are cached by path (a show's hundred episodes share one
 // read). A miss is not remembered here; instead the scan says which names it
-// saw when it listed the directory (WithListing), and a name it did not see is
-// not asked for. Art added later is picked up by a later scan.
+// saw when it listed the directory (WithListing), and while the directory is
+// unchanged a name it did not see is not asked for.
 func (s *Service) ReadSidecars(ctx context.Context, library, kind, root, path string, season int) map[string]string {
 	out := map[string]string{}
 	if s.readSmall == nil {
@@ -130,9 +130,10 @@ type listingKey struct{}
 
 // WithListing tells sidecar lookups under ctx what the scan already saw. listed
 // reports whether a file is at path and whether the scan knows: it must answer
-// known only for a directory it listed completely. A lookup for a file known to
-// be absent is skipped; every other lookup asks storage as it always did, so a
-// listing can only save a read that would have failed.
+// known only for a directory it listed completely and that has not changed
+// since. A lookup for a file known to be absent is skipped; every other lookup
+// asks storage as it always did, so a listing can only save a read that would
+// have failed.
 func WithListing(ctx context.Context, listed func(path string) (present, known bool)) context.Context {
 	return context.WithValue(ctx, listingKey{}, listed)
 }

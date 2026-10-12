@@ -391,6 +391,7 @@ func (s *Service) fail(ctx context.Context, job, source string, cause error) {
 	if n != 1 {
 		return
 	}
+	s.forgetListing(job)
 	if _, err = tx.ExecContext(ctx, `DELETE FROM inventory_source_active WHERE job_id=?`, job); err != nil {
 		return
 	}

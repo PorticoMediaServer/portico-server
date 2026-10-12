@@ -190,6 +190,9 @@ func (s *Service) Control(ctx context.Context, id, action string, authorize func
 	if action != "resume" {
 		s.stopActive(id)
 	}
+	if action == "cancel" {
+		s.forgetListing(id)
+	}
 	return nil
 }
 func controlJobTx(ctx context.Context, tx *sql.Tx, id, action string) error {
@@ -513,6 +516,9 @@ func (s *Service) processQuantum(ctx context.Context, id, library string) bool {
 		return false
 	}
 	after, err := s.scanPosition(ctx, id)
+	if err == nil && after.status != "running" && after.status != "queued" && after.status != "paused" {
+		s.forgetListing(id)
+	}
 	return err == nil && after != before && after.status == "running"
 }
 func (s *Service) enumerate(ctx context.Context, id, path string) error {
