@@ -435,33 +435,41 @@ func (s *Service) PruneSetup(ctx context.Context) error {
 	tx := gated5.Tx()
 	defer gated5.Rollback()
 	now := time.Now().Unix()
-	rows, e := tx.QueryContext(ctx, `SELECT token_hash FROM quick_connect_v1 WHERE status='approved' AND expires_at<=? LIMIT 64`, now)
+	rows, e := tx.QueryContext(ctx, `SELECT id,token_hash FROM quick_connect_v1 WHERE status='approved' AND expires_at<=? LIMIT 64`, now)
 	if e != nil {
 		return e
 	}
-	var hashes []string
+	type approved struct {
+		id   string
+		hash sql.NullString
+	}
+	var stale []approved
 	for rows.Next() {
-		var hash string
-		if e = rows.Scan(&hash); e != nil {
+		var a approved
+		if e = rows.Scan(&a.id, &a.hash); e != nil {
 			rows.Close()
 			return e
 		}
-		hashes = append(hashes, hash)
+		stale = append(stale, a)
 	}
 	e = rows.Err()
 	rows.Close()
 	if e != nil {
 		return e
 	}
-	for _, hash := range hashes {
-		r, e := s.familyTokenTx(ctx, tx, hash)
-		if e != nil {
-			return e
+	for _, a := range stale {
+		// An approval the device never collected has no session yet: the family
+		// is only issued on collection, so there is nothing to revoke.
+		if a.hash.Valid {
+			r, e := s.familyTokenTx(ctx, tx, a.hash.String)
+			if e != nil {
+				return e
+			}
+			if e = s.revokeSetupFamilyTx(ctx, tx, r); e != nil {
+				return e
+			}
 		}
-		if e = s.revokeSetupFamilyTx(ctx, tx, r); e != nil {
-			return e
-		}
-		if _, e = tx.ExecContext(ctx, `UPDATE quick_connect_v1 SET status='expired',grant_cipher=NULL,user_hash=NULL WHERE token_hash=? AND status='approved'`, hash); e != nil {
+		if _, e = tx.ExecContext(ctx, `UPDATE quick_connect_v1 SET status='expired',grant_cipher=NULL,user_hash=NULL WHERE id=? AND status='approved'`, a.id); e != nil {
 			return e
 		}
 	}
