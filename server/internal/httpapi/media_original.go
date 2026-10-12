@@ -45,14 +45,35 @@ func (d Dependencies) serveOriginal(w http.ResponseWriter, r *http.Request, gran
 	w.Header().Set("Cache-Control", "private, no-store")
 	var container, video string
 	_ = dbwork.QueryRow(r.Context(), d.DB, `SELECT container,video_codec FROM catalog_assets WHERE token=?`, aid).Scan(&container, &video)
-	contentType := "video/mp4"
-	if video == "" {
-		contentType = audioContentType(container)
-	}
-	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Content-Type", originalContentType(container, video))
 	body := withRollingDeadline(w)
 	defer body.release()
 	http.ServeContent(body, r, "media."+container, f.Modified, &guardedReadSeeker{ReadSeeker: f, check: newStreamAuthority(check).check})
+}
+
+// originalContentType names an original file's media type from its container.
+// Every response says nosniff, so the label is all a player that trusts it has.
+// QuickTime keeps the MP4 label it has always been served with: it is the same
+// box structure, and a browser that plays it refuses the QuickTime type.
+func originalContentType(container, video string) string {
+	if video == "" {
+		return audioContentType(container)
+	}
+	switch container {
+	case "mp4", "m4v", "mov":
+		return "video/mp4"
+	case "mkv":
+		return "video/x-matroska"
+	case "webm":
+		return "video/webm"
+	case "avi":
+		return "video/x-msvideo"
+	case "ts", "m2ts", "mts":
+		return "video/mp2t"
+	case "mpg", "mpeg", "vob":
+		return "video/mpeg"
+	}
+	return "application/octet-stream"
 }
 
 // audioContentType names an audio container's media type.
