@@ -3,7 +3,9 @@ package livechannels
 import (
 	"compress/gzip"
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -211,6 +213,20 @@ type Input struct {
 	Policy                          remotemedia.Policy
 	SourceID, ChannelID, Generation string
 	Revision                        int64
+}
+
+// Fence identifies what a producer reading this input depends on: the
+// channel's stream address and the network access the owner approved for the
+// source. The guide generation and the source revision are deliberately not
+// part of it, so republishing a line-up whose stream did not change yields the
+// same fence, and a changed address or approval yields a different one.
+func (in Input) Fence() string {
+	raw, _ := json.Marshal(struct {
+		Locator   string                 `json:"locator"`
+		Approvals []remotemedia.Approval `json:"approvals"`
+	}{in.Locator, in.Policy.Approvals})
+	sum := sha256.Sum256(raw)
+	return hex.EncodeToString(sum[:16])
 }
 
 func (s *Store) InputTx(ctx context.Context, tx *sql.Tx, sourceID, channelID, generation string) (Input, error) {

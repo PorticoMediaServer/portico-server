@@ -285,11 +285,26 @@ func (c *ChannelSessions) CheckLinearProducer(ctx context.Context, w LinearWork)
 		if err != nil {
 			return err
 		}
-		if selected.SourceFence != w.Selection.SourceFence || selected.Reference.Kind == "live-source" && selected.Reference.Generation != w.Selection.Reference.Generation || selected.Reference.Kind == "library-channel" && selected.EntryID != w.Selection.EntryID {
+		if linearProducerOutdated(w.Selection, selected) {
 			return controlFault("source_changed", 409)
 		}
 		return nil
 	})
+}
+
+// linearProducerOutdated reports whether a running producer no longer matches
+// what its session now resolves to. The source fence carries what the
+// producer's input depends on. A live channel's guide generation is not part
+// of that: a refresh that leaves the stream alone publishes a new generation
+// and must not stop anyone's producer.
+func linearProducerOutdated(producing, resolved LinearSelection) bool {
+	return resolved.SourceFence != producing.SourceFence || resolved.Reference.Kind == "library-channel" && resolved.EntryID != producing.EntryID
+}
+
+// linearSelectionRetunes reports whether a session's newly resolved selection
+// needs a new producer, on the same terms.
+func linearSelectionRetunes(held, resolved LinearSelection) bool {
+	return resolved.SourceFence != held.SourceFence || resolved.Reference.Kind == "library-channel" && (resolved.EntryID != held.EntryID || resolved.AssetID != held.AssetID)
 }
 func (c *ChannelSessions) RefreshLinearSelection(ctx context.Context, id string) (bool, error) {
 	return c.refreshLinearSelection(ctx, id, false)
@@ -300,8 +315,10 @@ func (c *ChannelSessions) RestartLinearSource(ctx context.Context, id string) er
 }
 
 // refreshLinearSelection follows the schedule and the source: a new programme
-// or source generation is a new source revision within the same session (a
-// retune, never a new playback).
+// on a library channel, or a changed source fence, is a new source revision
+// within the same session (a retune, never a new playback). Anything else,
+// including a live source's new guide generation, only updates what the
+// session shows.
 func (c *ChannelSessions) refreshLinearSelection(ctx context.Context, id string, force bool) (bool, error) {
 	gated, err := dbwork.Begin(ctx, c.db, dbwork.ClassEstablishedPlayback)
 	if err != nil {
@@ -317,7 +334,7 @@ func (c *ChannelSessions) refreshLinearSelection(ctx context.Context, id string,
 	if err != nil {
 		return false, err
 	}
-	different := force || selected.Reference.Kind == "library-channel" && (selected.EntryID != w.Selection.EntryID || selected.AssetID != w.Selection.AssetID) || selected.SourceFence != w.Selection.SourceFence || selected.Reference.Kind == "live-source" && selected.Reference.Generation != w.Selection.Reference.Generation
+	different := force || linearSelectionRetunes(w.Selection, selected)
 	source, err := json.Marshal(selected)
 	if err != nil {
 		return false, err
