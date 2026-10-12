@@ -52,7 +52,7 @@ func TestWatchTogetherPrivacyHidesPresenceAndActivityImmediately(t *testing.T) {
 		t.Fatal(members, summary, err)
 	}
 	publish()
-	events, _, err := s.EventsSince(ctx, p, group, 0)
+	events, _, err := s.EventsSince(ctx, group, 0)
 	if err != nil || len(events) != 1 {
 		t.Fatal(events, err)
 	}
@@ -63,7 +63,7 @@ func TestWatchTogetherPrivacyHidesPresenceAndActivityImmediately(t *testing.T) {
 		t.Fatal(err)
 	}
 	publish()
-	events, _, err = s.EventsSince(ctx, p, group, 0)
+	events, _, err = s.EventsSince(ctx, group, 0)
 	if err != nil || len(events) != 2 {
 		t.Fatal(events, err)
 	}
