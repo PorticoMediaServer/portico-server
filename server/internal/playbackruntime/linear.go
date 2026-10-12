@@ -365,7 +365,7 @@ func (l *LinearRuntime) runOccurrence(ctx context.Context, id string, entry *lin
 			}
 			continue
 		}
-		if attempts >= 5 {
+		if attempts >= linearRecoveryBudget {
 			if !waitLinear(ctx, time.Second) {
 				return
 			}
@@ -395,6 +395,7 @@ func (l *LinearRuntime) runOccurrence(ctx context.Context, id string, entry *lin
 		entry.state = "preparing"
 		entry.code = ""
 		entry.mu.Unlock()
+		before := entry.buffer.Window()
 		e = l.produceMonitored(ctx, work, entry)
 		if ctx.Err() != nil {
 			return
@@ -413,7 +414,7 @@ func (l *LinearRuntime) runOccurrence(ctx context.Context, id string, entry *lin
 		if current.PolicyRevision != initialPolicy || current.LeaseGeneration != initialLease || current.LeaseAuthorityRevision != initialAuthority {
 			return
 		}
-		attempts++
+		attempts = linearFailureCount(attempts, before, entry.buffer.Window())
 		if e == nil {
 			e = channelFault("source_ended", 503)
 		}
@@ -426,6 +427,39 @@ func (l *LinearRuntime) runOccurrence(ctx context.Context, id string, entry *lin
 		}
 		l.owner.Wake()
 	}
+}
+
+// linearRecoveryBudget is how many producer failures in a row are retried
+// before the session waits for the viewer, the schedule or the source to change.
+const linearRecoveryBudget = 5
+
+// linearHealthyRun is how much media one producer must add to the buffer for
+// its eventual failure to count as a new fault rather than the next in a row.
+const linearHealthyRun = time.Minute
+
+// linearFailureCount is the consecutive-failure count once a producer has
+// ended, given the buffer before it started and after it stopped. A producer
+// that added a sustained run of media was healthy, so its failure is the first
+// of a new series. Only media counts: what earlier producers left in the
+// buffer, and the gap spent waiting and reconnecting, do not.
+func linearFailureCount(attempts int, before, after linearbuffer.Window) int {
+	if !after.Ready {
+		return attempts + 1
+	}
+	from := before.EndUS
+	if !before.Ready || from < after.StartUS {
+		from = after.StartUS
+	}
+	produced := after.EndUS - from
+	for _, gap := range after.Gaps {
+		if gap.EndUS > from {
+			produced -= gap.EndUS - max(gap.StartUS, from)
+		}
+	}
+	if produced >= linearHealthyRun.Microseconds() {
+		return 1
+	}
+	return attempts + 1
 }
 func (l *LinearRuntime) fail(ctx context.Context, e *linearEntry, w playback.LinearWork, err error) {
 	code := "source_unavailable"
