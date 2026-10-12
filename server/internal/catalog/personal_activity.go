@@ -114,6 +114,12 @@ func (s *Service) AcceptPlaybackProgress(tx *sql.Tx, v identity.Viewer, playback
 		case completed:
 			out.Watched = true
 			out.ProgressSeconds = 0
+			// A book file is played at the threshold like anything else, but
+			// its listener is still in it: they keep their place, in the file
+			// and in the book, until the file really ends.
+			if state != "ended" && kind == int64(compactcatalog.Part) {
+				out.ProgressSeconds = position
+			}
 		case position >= threshold:
 			out.Watched = false
 			out.ProgressSeconds = position
