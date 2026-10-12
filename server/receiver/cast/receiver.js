@@ -195,14 +195,19 @@
   /** A request with the receiver's bearer. An expired bearer is renewed once through the device
    * token; a transport failure or 5xx is retried once with the identical request (the same
    * Idempotency-Key, If-Match or timeline sequence), which the server treats as the same request. */
+  var PAIRING_ENDED = ['cast_device_revoked', 'cast_device_not_found', 'cast_device_expired'];
   async function api(path, options) {
     options = options || {};
     var attempt = function () { return request(path, Object.assign({}, options, {bearer: session.accessToken})); };
     try { return await attempt(); }
     catch (e) {
       if (e.status === 401 && readToken()) {
-        var renewed = await post('/v1/cast/reconnect', {protocolVersion: PROTOCOL, deviceToken: readToken(), deviceId: deviceId()});
-        if (!renewed.scope || renewed.scope.accountId !== scope.accountId || renewed.scope.profileId !== scope.profileId) throw new Error('pairing_scope_changed');
+        var renewed;
+        // The server's own answer that this TV's pairing is over is final; anything else that
+        // stops a renewal (no network, a failing server) says nothing about the pairing.
+        try { renewed = await post('/v1/cast/reconnect', {protocolVersion: PROTOCOL, deviceToken: readToken(), deviceId: deviceId()}); }
+        catch (refused) { if (PAIRING_ENDED.indexOf(refused.code) >= 0) refused.pairingEnded = true; throw refused; }
+        if (!renewed.scope || renewed.scope.accountId !== scope.accountId || renewed.scope.profileId !== scope.profileId) { var changed = new Error('pairing_scope_changed'); changed.pairingEnded = true; throw changed; }
         session = renewed.session; scope = renewed.scope; writeToken(renewed.deviceToken);
         return attempt();
       }
@@ -435,8 +440,9 @@
       await api(sessionPath(id) + '/timeline', {body: {seq: ++reportSeq, generation: playback.generation, state: state || timelineState(), positionMs: Math.round(Math.max(0, position()) * 1000), rate: 1}});
       reportFailures = 0; notice('');
     } catch (e) {
-      // The server no longer has this session (stopped elsewhere, moved, ended by an administrator).
-      if (e.status === 404 || e.status === 410 || e.code === 'session_ended') { if (playback && playback.id === id) { playback = null; meta = null; if (manager) manager.stop(); showIdle(); broadcast(); } return; }
+      // The server no longer has this session (stopped elsewhere, moved, ended by an administrator),
+      // or no longer accepts this TV's pairing: with no sender connected, nothing else would stop it.
+      if (e.status === 404 || e.status === 410 || e.code === 'session_ended' || e.pairingEnded) { if (playback && playback.id === id) { playback = null; meta = null; if (manager) manager.stop(); showIdle(); broadcast(); } return; }
       reportFailures++; notice('Reconnecting…');
       throw e;
     }
@@ -642,7 +648,9 @@
     var events=cast.framework.events.EventType;
     manager.addEventListener(events.ERROR,function(e){var code=Number(e.detailedErrorCode);if(code>=300&&code<500)recover('decode_error');});
     manager.addEventListener(events.BUFFERING,function(e){clearTimeout(bufferingTimer);if(e.isBuffering)bufferingTimer=setTimeout(function(){recover('stalled_without_data');},20000);});
-    manager.addEventListener(events.MEDIA_FINISHED,function(){serial(async function(){await report('ended');await stopPlayback(true);}).catch(function(){});});
+    // The title is over whether or not its last report gets through: the TV must not stay on a
+    // finished title, still reporting, with nobody connected to stop it.
+    manager.addEventListener(events.MEDIA_FINISHED,function(){serial(async function(){try{await report('ended');}finally{notice('');await stopPlayback(true);}}).catch(function(){});});
     // A state change or a completed seek is reported at once.
     [events.PAUSE,events.PLAYING,events.SEEKED].filter(Boolean).forEach(function(name){manager.addEventListener(name,function(){scheduleReport(0);broadcast();});});
     context.addEventListener(cast.framework.system.EventType.SENDER_DISCONNECTED,function(e){
