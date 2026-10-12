@@ -148,3 +148,29 @@ test('a failed title shows an error card on the TV without raw codes (CAST-01)',
  assert.equal(h.uiState(),'error');assert.doesNotMatch(h.nodes['error-title'].textContent+h.nodes['error-body'].textContent,/_|unavailable_/);
  assert.equal(h.sent.find(m=>m.body.type==='load-failed').body.code,'playback_unavailable');
 });
+test('the TV keeps playing when the last sender disconnects; Stop and the end of the title still end it',async()=>{
+ const h=await harness();h.senders.push('phone');
+ await h.message('phone',{type:'pair',code:'ABCD',origin:''});await h.message('phone',{type:'load',itemId:'movie'});await settle();
+ assert.equal(h.receiver.state().playbackId,'ps_1');
+ // The phone sleeps or leaves Wi-Fi: its Cast connection drops and nobody is connected.
+ h.senders.length=0;h.ctxEvents.disconnect({senderId:'phone'});await settle();
+ assert.equal(h.receiver.state().playbackId,'ps_1','a controller going away is not Stop');
+ assert.equal(h.manager.getPlayerState(),'PLAYING');assert.equal(h.uiState(),'playing');
+ assert(!h.calls.some(c=>c.method==='DELETE'),'the playback session is kept');
+ // The receiver goes on reporting progress by itself.
+ const before=h.calls.filter(c=>c.url.endsWith('/timeline')).length;
+ await fireAll(h,0);await fireAll(h,10000);
+ assert(h.calls.filter(c=>c.url.endsWith('/timeline')).length>before,'progress is still reported');
+ // The title finishing ends the session, so the idle timeout can close the app.
+ h.events.MEDIA_FINISHED();await settle();
+ assert.equal(h.receiver.state().playbackId,null);assert.equal(h.uiState(),'idle');
+ assert(h.calls.some(c=>c.method==='DELETE'&&c.url.endsWith('/v1/playback/sessions/ps_1')));
+});
+test('with nobody connected, Stop from the remote or a sender still ends playback',async()=>{
+ const h=await harness();h.senders.push('phone');
+ await h.message('phone',{type:'pair',code:'ABCD',origin:''});await h.message('phone',{type:'load',itemId:'movie'});await settle();
+ h.senders.length=0;h.ctxEvents.disconnect({senderId:'phone'});await settle();
+ assert.equal(h.receiver.state().playbackId,'ps_1');
+ await h.interceptors.STOP({});
+ assert.equal(h.receiver.state().playbackId,null);assert(h.calls.some(c=>c.method==='DELETE'));
+});

@@ -652,7 +652,9 @@
         if (pendingPair) { clearTimeout(pendingPair.timer); askTakeover(pendingPair.requester, false); pendingPair.timer = setTimeout(allowPending, TAKEOVER_ABSENT_MS); }
       }
       if (pendingPair && e && e.senderId === pendingPair.senderId) { clearTimeout(pendingPair.timer); pendingPair = null; hideTakeover(); }
-      if(context.getSenders().length===0){controllerSender=null;controllerPresent=false;serial(stopPlayback).catch(function(){});}
+      // Nobody is connected: the TV has no controller, but it goes on playing. A phone that sleeps or
+      // leaves Wi-Fi drops its connection; only Stop, the end of the title or the server ends playback.
+      if(context.getSenders().length===0){controllerSender=null;controllerPresent=false;}
     });
     setInterval(function(){if(playback)broadcast();},2000);
     // The standard idle timeout closes the app when nothing is playing and nobody is connected (CAST-01 §5).
