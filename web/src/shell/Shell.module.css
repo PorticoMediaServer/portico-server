@@ -2,6 +2,11 @@
 .frame.collapsed { --rail-current: var(--rail-width); }
 .main { min-width: 0; position: relative; }
 .content { min-height: 100vh; }
+/* The main region takes focus from Skip to content; a ring around the whole page says nothing. */
+.content:focus-visible { outline: none; }
+/* Off screen until a keyboard reaches it, then above the rail and the top bar. */
+.skipLink { position: fixed; top: 8px; left: 8px; z-index: var(--layer-notice); padding: 10px 16px; border: 1px solid var(--line-strong); border-radius: var(--radius-control); background: var(--surface-projector); color: var(--text-primary); font-weight: 600; transform: translateY(-200%); }
+.skipLink:focus { transform: none; }
 @media (max-width: 720px) {
   .frame { grid-template-columns: 1fr; }
   .content { padding-bottom: calc(var(--bottom-bar-height) + env(safe-area-inset-bottom)); }

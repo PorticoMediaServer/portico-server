@@ -120,6 +120,14 @@ function LazyMetadataEditor() {
   return needed ? <Suspense fallback={null}><MetadataEditorDialog /></Suspense> : null;
 }
 
+/** Where Skip to content lands: the current destination's main region. */
+const MAIN_ID = 'main-content';
+/** Moves focus past the rail and top bar. Focus is set directly: following the fragment would add a history entry. */
+export function skipToContent(event: {preventDefault(): void}) {
+  event.preventDefault();
+  document.getElementById(MAIN_ID)?.focus();
+}
+
 /**
  * Authenticated frame. A left rail on wide viewports (collapsible to icons),
  * a bottom tab bar on phones. The rail switches roots; the router owns the
@@ -163,16 +171,18 @@ export function Shell() {
       <ChannelSourcesProvider>
         <PageInertUnderPlayer frame={frame} />
         <div ref={frame} className={cx(s.frame, collapsed && s.collapsed)}>
+          {/* The first stop for a keyboard: hidden until focused, it jumps past the rail to the page. */}
+          <a href={'#' + MAIN_ID} className={s.skipLink} onClick={skipToContent}>{t('web.shell.skipToContent')}</a>
           {/* The card keyboard shortcuts, described once for assistive technology (cards reference it). */}
           <span id="card-keyboard-hint" className="visually-hidden">{t('card.keyboardHint')}</span>
           {!compact ? <Rail collapsed={collapsed} onToggle={narrow ? () => setNarrowExpanded(collapsed) : () => update({railExpanded: !preferences.railExpanded})} /> : null}
           <div className={s.main}>
             {compact ? <TopBar /> : null}
-            <div className={s.content}>
+            <main id={MAIN_ID} tabIndex={-1} className={s.content}>
               <CustodyPrompt />
               <NotInterestedNotice />
               <ConnectionOverlay><Outlet /></ConnectionOverlay>
-            </div>
+            </main>
           </div>
           {compact ? <BottomBar /> : null}
         </div>
