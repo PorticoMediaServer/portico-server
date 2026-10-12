@@ -1,30 +1,54 @@
 import React, {useEffect, useRef, useState} from 'react';
 import {useRouterState} from '@tanstack/react-router';
 import {currentI18n} from './i18n';
+import {useViewerScope} from './viewer-scope';
+
+/** What names the page at this moment: the element, and the name it gives (none while it is a stand-in or still empty). */
+export type PageHeading = Readonly<{element: unknown; name: string}>;
 
 /**
  * The name of the page that is open: its heading, or the name a page gives itself with
  * `data-page-title` when its heading is something else (Home's is the featured title). Only the
- * main region counts, so the player's and a dialog's headings never name the page.
+ * main region counts, so the player's and a dialog's headings never name the page. A heading
+ * marked `data-provisional` is a stand-in shown before the real name is known, and names nothing.
  */
-export function pageName(root: {querySelector(selector: string): {getAttribute(name: string): string | null; textContent: string | null} | null}): string {
+export function pageName(root: {querySelector(selector: string): {getAttribute(name: string): string | null; textContent: string | null} | null}): PageHeading | undefined {
   const found = root.querySelector('main [data-page-title], main h1');
-  const text = found ? found.getAttribute('data-page-title') ?? found.textContent : '';
-  return (text ?? '').replace(/\s+/g, ' ').trim().slice(0, 200);
+  if (!found) return undefined;
+  const text = found.getAttribute('data-provisional') !== null ? '' : found.getAttribute('data-page-title') ?? found.textContent;
+  return {element: found, name: (text ?? '').replace(/\s+/g, ' ').trim().slice(0, 200)};
 }
 
-export type PageTitleState = Readonly<{pathname: string; announced: boolean}>;
+/**
+ * Where the announcer is: the viewer and address it is on, whether that destination is still to
+ * be announced, what the previous destination left on screen (`stale`), and what was last seen.
+ */
+export type PageTitleState = Readonly<{scope: string; pathname: string; pending: boolean; stale?: PageHeading; last?: PageHeading}>;
+const same = (a: PageHeading | undefined, b: PageHeading | undefined) => !!a && !!b && a.element === b.element && a.name === b.name;
 
 /**
- * Whether to announce the page now. A destination is announced once, when it first has a name
- * after the address moved to it. The first page is not announced (the browser reads the document
- * title on load), and neither is anything that happens while the address stays the same: a
- * refresh, a renamed item, a tab kept in the query.
+ * The address or the viewer changed; `heading` is what is on screen at that moment. A new address
+ * is a destination to announce once it has a name of its own. The first page is not announced
+ * (the browser reads the document title on load). A change of viewer on the same address is not
+ * a navigation: it announces nothing and drops anything not yet announced. What the previous
+ * destination left on screen is remembered so that it is never taken for the new one's name: the
+ * same heading the last address showed, or, when the viewer changed, whatever is showing at all.
  */
-export function pageTitleStep(previous: PageTitleState | undefined, pathname: string, name: string): {state: PageTitleState; announce: boolean} {
-  const pending = previous ? (previous.pathname === pathname ? !previous.announced : true) : false;
-  const announce = pending && name !== '';
-  return {state: {pathname, announced: !pending || announce}, announce};
+export function pageTitleMoved(previous: PageTitleState | undefined, scope: string, pathname: string, heading: PageHeading | undefined): PageTitleState {
+  if (!previous) return {scope, pathname, pending: false, last: heading};
+  const stale = heading && (previous.scope !== scope || same(heading, previous.last)) ? heading : undefined;
+  return {scope, pathname, pending: previous.pathname !== pathname, stale, last: heading};
+}
+
+/**
+ * The page was looked at again. Returns the name to announce now, if any: the destination's own
+ * name the first time it has one. Nothing that happens afterwards on the same address is
+ * announced: a refresh, a renamed item, a tab kept in the query.
+ */
+export function pageTitleRead(state: PageTitleState, heading: PageHeading | undefined): {state: PageTitleState; announce: string} {
+  const name = heading && !same(heading, state.stale) ? heading.name : '';
+  const announce = state.pending ? name : '';
+  return {state: {...state, pending: state.pending && !announce, stale: name ? undefined : state.stale, last: heading}, announce};
 }
 
 /** The browser tab's title: the page, then the product; the product alone while a page has no name yet. */
@@ -38,31 +62,38 @@ const product = typeof document === 'undefined' ? '' : document.title;
 /**
  * Keeps the document title on the page that is open and tells assistive technology when the
  * destination changes. A page's heading arrives after the address does (a split screen, then its
- * data), so the name is read from the page as it settles rather than declared per route.
+ * data), so the name is read from the page as it settles rather than declared per route; a
+ * heading is only taken for the destination's name once it is the destination's own (see
+ * `pageTitleMoved`), however long that takes.
  */
 export function PageTitle() {
   const pathname = useRouterState({select: state => (state.resolvedLocation ?? state.location).pathname});
+  const viewer = useViewerScope();
+  const scope = viewer.serverId + '/' + viewer.viewerId;
   const [announcement, setAnnouncement] = useState('');
   const state = useRef<PageTitleState | undefined>(undefined);
   useEffect(() => {
-    // Cleared first, so a destination with the same name as the last one is still spoken.
+    // Nothing from the address or viewer just left stays in the live region or waiting to enter it.
     setAnnouncement('');
+    state.current = pageTitleMoved(state.current, scope, pathname, pageName(document));
     let timer: ReturnType<typeof setTimeout> | undefined;
     const read = () => {
       timer = undefined;
-      const name = pageName(document);
-      const step = pageTitleStep(state.current, pathname, name);
+      const heading = pageName(document);
+      const step = pageTitleRead(state.current!, heading);
       state.current = step.state;
-      const title = documentTitle(name, product, currentI18n().t);
+      const title = documentTitle(heading?.name ?? '', product, currentI18n().t);
       if (document.title !== title) document.title = title;
-      if (step.announce) setAnnouncement(name);
+      if (step.announce) setAnnouncement(step.announce);
     };
-    // Read a moment after the page last changed, and at most a few times a second however busy it is.
-    const settle = () => { timer ??= setTimeout(read, 250); };
-    const observer = new MutationObserver(settle);
-    observer.observe(document.body, {childList: true, subtree: true, characterData: true});
-    settle();
+    // One look a quarter of a second after something on the page changes, so at most four a
+    // second however busy the page is. The timer belongs to this address and viewer: leaving
+    // either cancels it.
+    const look = () => { timer ??= setTimeout(read, 250); };
+    const observer = new MutationObserver(look);
+    observer.observe(document.body, {childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['data-page-title', 'data-provisional']});
+    look();
     return () => { observer.disconnect(); if (timer !== undefined) clearTimeout(timer); };
-  }, [pathname]);
+  }, [pathname, scope]);
   return <div className="visually-hidden" role="status" aria-live="polite" aria-atomic="true">{announcement}</div>;
 }

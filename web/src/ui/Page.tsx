@@ -7,8 +7,9 @@ export function Page({children, className, style}: {children: React.ReactNode; c
   return <div className={cx(s.page, className)} style={style}>{children}</div>;
 }
 
-/** Page title block. The title is the h1; eyebrow gives context; actions sit trailing and wrap on phones. */
-export function PageHeader({title, eyebrow, subtitle, actions, onBack, backLabel = 'Back', titleAdornment, className}: {title: React.ReactNode; eyebrow?: React.ReactNode; subtitle?: React.ReactNode; actions?: React.ReactNode; onBack?: () => void; backLabel?: string; titleAdornment?: React.ReactNode; className?: string}) {
+/** Page title block. The title is the h1; eyebrow gives context; actions sit trailing and wrap on phones.
+ * `provisional` marks a stand-in title shown until the real name is known, so it is not taken for the page's name. */
+export function PageHeader({title, eyebrow, subtitle, actions, onBack, backLabel = 'Back', titleAdornment, className, provisional}: {title: React.ReactNode; eyebrow?: React.ReactNode; subtitle?: React.ReactNode; actions?: React.ReactNode; onBack?: () => void; backLabel?: string; titleAdornment?: React.ReactNode; className?: string; provisional?: boolean}) {
   return (
     <header className={cx(s.header, className)}>
       <div className={s.headerCopy}>
@@ -18,7 +19,7 @@ export function PageHeader({title, eyebrow, subtitle, actions, onBack, backLabel
           {eyebrow ? <span className={s.eyebrow}>{eyebrow}</span> : null}
         </div>
         <div className={s.titleRow}>
-          <h1 className={s.title}>{title}</h1>
+          <h1 className={s.title} data-provisional={provisional || undefined}>{title}</h1>
           {titleAdornment}
         </div>
         {subtitle ? <p className={s.subtitle}>{subtitle}</p> : null}
