@@ -179,8 +179,16 @@ func (s *Store) claimNext(ctx context.Context) (*claim, bool, error) {
 		return nil, false, nil
 	}
 	var storageError error
+	// retained is whether retention has had its turn since the volume was
+	// found short. It runs here, before any recording is judged, rather than
+	// only after the claims: a pass over several due recordings on a slow
+	// volume can outlast the wait before one is looked at again.
+	retained := true
 	if s.storage != nil {
 		storageError = s.storage.CheckFloor(ctx)
+		if errors.Is(storageError, ErrStorageFloor) || errors.Is(storageError, ErrStorageCap) {
+			retained = s.RetentionOne(ctx) == nil
+		}
 	}
 	gated, e := dbwork.Begin(ctx, s.db, dbwork.ClassProtectedCapture)
 	if e != nil {
@@ -330,14 +338,15 @@ func (s *Store) claimNext(ctx context.Context) (*claim, bool, error) {
 			} else if errors.Is(storageError, ErrStorageCap) {
 				reason = "storage-cap"
 			}
-			// Retention and queued deletions run after the claims in the same
-			// pass, so a full disk is not final the first time it is seen, nor
-			// while a deletion is still queued: the recording is looked at again
-			// shortly and starts as soon as there is room. It fails once nothing
-			// more is coming, and never waits past its own window. Nothing is
-			// deleted for its sake that retention would not delete anyway.
+			// A full disk is not final while space is on its way: retention has
+			// just queued what the owner's policy lets it delete, and a queued
+			// deletion frees its bytes after a short grace. Until then the
+			// recording is looked at again shortly and starts as soon as there
+			// is room. It fails once retention has run and nothing is queued,
+			// and never waits past its own window. Nothing is deleted for its
+			// sake that retention would not delete anyway.
 			if reason != "storage-unavailable" && end.After(s.now()) {
-				reclaiming := r.Reason != reason
+				reclaiming := !retained
 				if !reclaiming {
 					if e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM dvr_delete_work)`).Scan(&reclaiming); e != nil {
 						return nil, false, e
