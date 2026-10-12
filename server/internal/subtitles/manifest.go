@@ -34,29 +34,9 @@ func (s *Service) OpenManifestDocument(ctx context.Context, p identity.Principal
 		return nil, 0, e
 	}
 	defer gate.Rollback()
-	tx := gate.Tx()
-	scope, e := sessionTx(ctx, tx, p, item, session)
+	r, offset, e := manifestDocumentTx(ctx, gate.Tx(), p, item, session, id, revision)
 	if e != nil {
 		return nil, 0, e
-	}
-	if !scope.available {
-		return nil, 0, ErrUnavailable
-	}
-	r, e := scanResource(tx.QueryRowContext(ctx, `SELECT `+resourceColumns+` FROM playback_manifest_subtitles pin JOIN subtitle_resources r ON r.id=pin.resource_id JOIN subtitle_revisions v ON v.resource_id=r.id AND v.revision=pin.resource_revision WHERE pin.session_id=? AND pin.resource_id=? AND pin.resource_revision=? AND r.item_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?))`, session, id, revision, item))
-	if e != nil || !visible(r, p) || r.Renderer != "external_text" || r.SourceID != scope.source || r.sourceSize != scope.size || r.sourceModified != scope.modified {
-		return nil, 0, identity.ErrUnauthorized
-	}
-	offset, e := strconv.ParseInt(r.OffsetUS, 10, 64)
-	if e != nil {
-		return nil, 0, ErrInput
-	}
-	// A grant generation fixes the selected track's personal timing.
-	var selectedOffset int64
-	err := tx.QueryRowContext(ctx, `SELECT offset_us FROM playback_subtitle_state WHERE session_id=? AND generation=? AND resource_id=? AND resource_revision=? AND renderer='external_text'`, session, scope.generation, id, revision).Scan(&selectedOffset)
-	if err == nil {
-		offset = selectedOffset
-	} else if err != sql.ErrNoRows {
-		return nil, 0, err
 	}
 	reader, e := s.objects.Open(ctx, mediaartifact.Object{Digest: r.digest, Size: r.size})
 	if e != nil {
@@ -138,10 +118,44 @@ func ManifestSubtitleName(title, language string, ordinal int) string {
 	return fmt.Sprintf("%s · %d", title, ordinal+1)
 }
 
-func (s *Service) CheckManifestDocument(ctx context.Context, p identity.Principal, item, session, id string, revision int64) error {
-	reader, _, err := s.OpenManifestDocument(ctx, p, item, session, id, revision)
-	if err != nil {
-		return err
+// manifestDocumentTx is what entitles a viewer to one manifest document of
+// their presentation, and the timing it is served with.
+func manifestDocumentTx(ctx context.Context, tx *sql.Tx, p identity.Principal, item, session, id string, revision int64) (Resource, int64, error) {
+	scope, e := sessionTx(ctx, tx, p, item, session)
+	if e != nil {
+		return Resource{}, 0, e
 	}
-	return reader.Close()
+	if !scope.available {
+		return Resource{}, 0, ErrUnavailable
+	}
+	r, e := scanResource(tx.QueryRowContext(ctx, `SELECT `+resourceColumns+` FROM playback_manifest_subtitles pin JOIN subtitle_resources r ON r.id=pin.resource_id JOIN subtitle_revisions v ON v.resource_id=r.id AND v.revision=pin.resource_revision WHERE pin.session_id=? AND pin.resource_id=? AND pin.resource_revision=? AND r.item_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?))`, session, id, revision, item))
+	if e != nil || !visible(r, p) || r.Renderer != "external_text" || r.SourceID != scope.source || r.sourceSize != scope.size || r.sourceModified != scope.modified {
+		return Resource{}, 0, identity.ErrUnauthorized
+	}
+	offset, e := strconv.ParseInt(r.OffsetUS, 10, 64)
+	if e != nil {
+		return Resource{}, 0, ErrInput
+	}
+	// A grant generation fixes the selected track's personal timing.
+	var selectedOffset int64
+	err := tx.QueryRowContext(ctx, `SELECT offset_us FROM playback_subtitle_state WHERE session_id=? AND generation=? AND resource_id=? AND resource_revision=? AND renderer='external_text'`, session, scope.generation, id, revision).Scan(&selectedOffset)
+	if err == nil {
+		offset = selectedOffset
+	} else if err != sql.ErrNoRows {
+		return Resource{}, 0, err
+	}
+	return r, offset, nil
+}
+
+// CheckManifestDocument re-authorizes a manifest document after it was read.
+// Like CheckDocument it only reads, in a read snapshot, with the same checks
+// that opened it.
+func (s *Service) CheckManifestDocument(ctx context.Context, p identity.Principal, item, session, id string, revision int64) error {
+	snapshot, p, e := s.readTx(ctx, p, item)
+	if e != nil {
+		return e
+	}
+	defer snapshot.Rollback()
+	_, _, e = manifestDocumentTx(ctx, snapshot.Tx(), p, item, session, id, revision)
+	return e
 }

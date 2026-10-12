@@ -372,13 +372,17 @@ func (s *Service) OpenDocument(ctx context.Context, p identity.Principal, item, 
 	}
 	return reader, nil
 }
+
+// CheckDocument re-authorizes a document that is being sent, around every
+// chunk of it. It only reads, so it runs in a read snapshot and takes no write
+// gate: it neither waits behind a scan nor stands in front of one.
 func (s *Service) CheckDocument(ctx context.Context, p identity.Principal, item, session, id string, revision int64) error {
-	gated4, p, e := s.tx(ctx, p, item)
+	snapshot, p, e := s.readTx(ctx, p, item)
 	if e != nil {
 		return e
 	}
-	tx := gated4.Tx()
-	defer gated4.Rollback()
+	tx := snapshot.Tx()
+	defer snapshot.Rollback()
 	scope, e := sessionTx(ctx, tx, p, item, session)
 	if e != nil {
 		return e
@@ -394,5 +398,5 @@ func (s *Service) CheckDocument(ctx context.Context, p identity.Principal, item,
 	if !ok {
 		return identity.ErrUnauthorized
 	}
-	return gated4.Commit()
+	return nil
 }
