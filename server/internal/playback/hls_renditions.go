@@ -72,6 +72,9 @@ func planAudioRenditions(p DeliveryPlan, source DeliverySource, client ClientPro
 				continue
 			}
 			t := audioConversionTarget(&a, client, target)
+			if t.NoRate {
+				continue
+			}
 			r.Action, r.Codec, r.Channels, r.BitrateBPS, r.SampleRate = "convert", t.Codec, t.Channels, t.Bitrate, t.SampleRate
 			if t.Downmix {
 				r.Downmix = DownmixITULimited

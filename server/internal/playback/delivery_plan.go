@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
 	"portico.local/server/internal/assets"
@@ -439,7 +440,12 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 	// Route 3: video copied, audio converted.
 	if !audioOnly {
 		rejections := excluded(DeliveryAudioConversion)
-		rejections = append(rejections, serverConversionRejections(in.Server, in.Hardware, nil, audio, audioConversionTarget(audio, client, in.Target).Codec, false)...)
+		converted := audioConversionTarget(audio, client, in.Target)
+		rejections = append(rejections, serverConversionRejections(in.Server, in.Hardware, nil, audio, converted.Codec, false)...)
+		if audio != nil && converted.NoRate {
+			// Nothing this server converts audio to is at a rate the device takes.
+			rejections = append(rejections, RouteRejection{RejectAudioSampleRate, strconv.Itoa(audio.SampleRate)})
+		}
 		rejections = append(rejections, pictureRules...)
 		if !conversionAllowed {
 			rejections = append(rejections, RouteRejection{RejectTranscodingDisabled, ""})
@@ -465,7 +471,11 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 		if in.BurnIn {
 			hardware.NativeFilters = false
 		}
-		rejections = append(rejections, serverConversionRejections(in.Server, hardware, video, audioToDecode, audioConversionTarget(audio, client, in.Target).Codec, hdr && cfg.ToneMapping)...)
+		converted := audioConversionTarget(audio, client, in.Target)
+		rejections = append(rejections, serverConversionRejections(in.Server, hardware, video, audioToDecode, converted.Codec, hdr && cfg.ToneMapping)...)
+		if audioToDecode != nil && converted.NoRate {
+			rejections = append(rejections, RouteRejection{RejectAudioSampleRate, strconv.Itoa(audioToDecode.SampleRate)})
+		}
 		if !conversionAllowed {
 			rejections = append(rejections, RouteRejection{RejectTranscodingDisabled, ""})
 		}
