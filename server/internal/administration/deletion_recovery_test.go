@@ -3,6 +3,7 @@ package administration
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -450,5 +451,89 @@ func TestHardLinkMoveFencesConcurrentSourceReplacement(t *testing.T) {
 	}
 	if raw, err := os.ReadFile(from); err != nil || string(raw) != "concurrent replacement" {
 		t.Fatalf("replacement removed: %q %v", raw, err)
+	}
+}
+
+// CheckFileOperations asks the question recovery will ask of the database,
+// without acting on the answer: it agrees with recovery on every outcome and
+// changes neither the journal nor the files the journal names.
+func TestCheckFileOperationsAgreesWithRecoveryWithoutActing(t *testing.T) {
+	const operation, digest = "interrupted-operation-1", "digest-of-the-interrupted-request"
+	for name, c := range map[string]struct {
+		receipt  string // the digest the database holds for the operation; "" for none
+		conflict bool
+	}{
+		"the same receipt":    {digest, false},
+		"no receipt":          {"", false},
+		"a different receipt": {"digest-of-another-request", true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			ctx := context.Background()
+			s, db, root := newService(t)
+			if c.receipt != "" {
+				if _, err := db.Exec(`INSERT INTO admin_receipts(scope,operation_id,digest,result,created_ms) VALUES('media-delete',?,?,'{}',1)`, operation, c.receipt); err != nil {
+					t.Fatal(err)
+				}
+			}
+			// A leftover that recovery removes once the operation is known to have
+			// committed: the check must leave it alone either way.
+			leftover := filepath.Join(root, "leftover")
+			if err := os.WriteFile(leftover, []byte("bytes"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			j := s.fileJournal("media-delete", operation, digest)
+			j.RemoveAfterCommit = []string{leftover}
+			if err := os.MkdirAll(filepath.Dir(j.path), 0700); err != nil {
+				t.Fatal(err)
+			}
+			raw, err := json.Marshal(j)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err = os.WriteFile(j.path, raw, 0600); err != nil {
+				t.Fatal(err)
+			}
+			check := s.CheckFileOperations(ctx)
+			if c.conflict != errors.Is(check, ErrConflict) || !c.conflict && check != nil {
+				t.Fatalf("check: %v", check)
+			}
+			if after, err := os.ReadFile(j.path); err != nil || string(after) != string(raw) {
+				t.Fatalf("the check changed the journal: %v", err)
+			}
+			if _, err = os.Stat(leftover); err != nil {
+				t.Fatalf("the check acted on the journal's files: %v", err)
+			}
+			recovered := s.RecoverFileOperations(ctx)
+			if c.conflict != errors.Is(recovered, ErrConflict) || !c.conflict && recovered != nil {
+				t.Fatalf("recovery disagrees with the check: check %v, recovery %v", check, recovered)
+			}
+			_, journalLeft := os.Stat(j.path)
+			if c.conflict != (journalLeft == nil) {
+				t.Fatalf("journal after recovery: %v", journalLeft)
+			}
+			// A committed operation's leftover is removed by recovery, and only then.
+			_, leftoverLeft := os.Stat(leftover)
+			if (c.receipt == digest) != os.IsNotExist(leftoverLeft) {
+				t.Fatalf("leftover after recovery: %v", leftoverLeft)
+			}
+		})
+	}
+	// With no journal folder, and with a journal that is invalid in itself, the
+	// check has nothing to say about the database.
+	s, _, root := newService(t)
+	if err := s.CheckFileOperations(context.Background()); err != nil {
+		t.Fatalf("no journals: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, "file-operations"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "file-operations", "broken.json"), []byte("{"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.CheckFileOperations(context.Background()); err != nil {
+		t.Fatalf("a journal invalid in itself was blamed on the database: %v", err)
+	}
+	if err := s.RecoverFileOperations(context.Background()); !errors.Is(err, ErrUnavailable) {
+		t.Fatalf("recovery accepted an invalid journal: %v", err)
 	}
 }
