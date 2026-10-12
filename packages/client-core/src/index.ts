@@ -401,7 +401,9 @@ export class HttpLocalApi implements PlaybackApi {
         response.status,
         data?.error?.code ?? data?.code ?? "request_failed",
         data?.error?.message ?? `Request failed (${response.status}).`,
-        data?.error?.retryable ?? response.status >= 500,
+        // Two envelopes: the older `retryable` boolean, and the registry's `retry` class, where
+        // only "send the same request again" is a retry of this request.
+        data?.error?.retryable ?? (data?.error?.retry === "same_request" || response.status >= 500),
         retryAfterSecondsFrom(response.headers.get("Retry-After")),
         data?.error?.serverTime
       );

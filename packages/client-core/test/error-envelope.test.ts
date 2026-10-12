@@ -49,3 +49,20 @@ test('428 revision_required reads as a change to refresh',()=>{
  assert.equal(withCode.messageId,conflict.messageId);
  assert.equal(presentError({status:428,message:'ignored'},'library',{operation:'save'}).category,'changed');
 });
+
+// Registry routes (devices, bulk jobs, download requests, backups) answer {error:{code,message,retry}}
+// with a retry class in place of the older boolean. "Send the same request again" is retryable.
+test('a registry error that says to send the same request again is retryable', async()=>{
+ const failure=(status:number,body:unknown,headers:Record<string,string>={})=>new HttpLocalApi('http://127.0.0.1:19447','token',async()=>new Response(JSON.stringify(body),{status,headers:{'Content-Type':'application/json',...headers}})).request('/v1/bulk-jobs','POST',{}).catch(x=>x);
+ const inProgress=await failure(409,{error:{code:'request_in_progress',message:'This request is still being processed.',retry:'same_request',requestId:'r1'}});
+ assert.ok(inProgress instanceof ApiError);
+ assert.equal(inProgress.retryable,true);
+ const limited=await failure(429,{error:{code:'rate_limited',message:'Too many requests.',retry:'same_request',retryAfterSeconds:7,requestId:'r2'}},{'Retry-After':'7'});
+ assert.equal(limited.retryable,true);assert.equal(limited.retryAfterSeconds,7);
+ // A refresh or a new sign-in is a different request, and "never" is never.
+ assert.equal((await failure(409,{error:{code:'cursor_expired',message:'Refresh the list to continue.',retry:'after_refresh',requestId:'r3'}})).retryable,false);
+ assert.equal((await failure(400,{error:{code:'invalid_request',message:'Check the request and try again.',retry:'never',requestId:'r4'}})).retryable,false);
+ // The older envelope's explicit answer still wins.
+ assert.equal((await failure(503,{error:{code:'busy',message:'Busy.',retryable:false}})).retryable,false);
+ assert.equal((await failure(409,{error:{code:'source_busy',message:'Busy.',retryable:true}})).retryable,true);
+});
