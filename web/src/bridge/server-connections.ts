@@ -25,12 +25,18 @@ export class BrowserProtectedStore<RecordType> {
   * authentication, not a record. Waiting does not mend that, unlike a database that is busy or
   * blocked, so it is reported by its own code and `change` lets a new save take its place. */
  private damaged(){return new RouteError('invalid_saved_connection','Saved server credentials are incomplete.');}
+ /** The stored key is one this vault can use: an AES-GCM secret that may encrypt and decrypt.
+  * Anything else in its place can never open the record, and is replaced with it. */
+ private usable(key:unknown):key is CryptoKey{
+  const k=key as {type?:unknown;algorithm?:{name?:unknown};usages?:unknown}|null;
+  return !!k&&typeof k==='object'&&k.type==='secret'&&k.algorithm?.name==='AES-GCM'&&Array.isArray(k.usages)&&k.usages.includes('encrypt')&&k.usages.includes('decrypt');
+ }
  private async decode(values:{key?:CryptoKey;record?:Vault}):Promise<RecordType|undefined>{
   if(!values.record)return;
   if(values.record.version===2){if(typeof values.record.plain!=='string'||values.record.plain.length>196608)throw this.damaged();try{return JSON.parse(values.record.plain);}catch{throw this.damaged();}}
   // An encrypted record where nothing can decrypt it is as good as absent; the next save replaces it.
   if(!canEncrypt())return;
-  if(!values.key||values.record.version!==1||!(values.record.iv instanceof Uint8Array)||values.record.iv.length!==12||!(values.record.cipher instanceof ArrayBuffer)||values.record.cipher.byteLength>196608)throw this.damaged();
+  if(!this.usable(values.key)||values.record.version!==1||!(values.record.iv instanceof Uint8Array)||values.record.iv.length!==12||!(values.record.cipher instanceof ArrayBuffer)||values.record.cipher.byteLength>196608)throw this.damaged();
   let clear:ArrayBuffer;
   // Failed authentication is the same answer every time; any other failure to decrypt is not known to be.
   try{clear=await crypto.subtle.decrypt({name:'AES-GCM',iv:new Uint8Array(values.record.iv),additionalData:new TextEncoder().encode(this.databaseName)},values.key,values.record.cipher);}catch(e){throw (e as {name?:unknown}|null)?.name==='OperationError'?this.damaged():e;}
@@ -48,9 +54,9 @@ export class BrowserProtectedStore<RecordType> {
   if(!next){await this.transaction<void>('readwrite',(store,done)=>{store.delete('selected');done();});return;}
   const bytes=new TextEncoder().encode(JSON.stringify(next));if(bytes.length>192000)throw new Error('Saved server routes exceeded their limit.');
   if(!canEncrypt()){const plain=new TextDecoder().decode(bytes);await this.transaction<void>('readwrite',(store,done)=>{store.put({version:2,plain} satisfies Vault,'selected');done();});return;}
-  let key=values.key;if(!key){if(values.record&&!damaged)throw new Error('The credential encryption key is missing.');key=await crypto.subtle.generateKey({name:'AES-GCM',length:256},false,['encrypt','decrypt']);}
+  let key=this.usable(values.key)?values.key:undefined;if(!key){if(values.record&&!damaged)throw new Error('The credential encryption key is missing.');key=await crypto.subtle.generateKey({name:'AES-GCM',length:256},false,['encrypt','decrypt']);}
   const iv=crypto.getRandomValues(new Uint8Array(12));let cipher:ArrayBuffer;try{cipher=await crypto.subtle.encrypt({name:'AES-GCM',iv,additionalData:new TextEncoder().encode(this.databaseName)},key,bytes);}finally{bytes.fill(0);}
-  await this.transaction<void>('readwrite',(store,done)=>{if(!values.key)store.put(key,'key');store.put({version:1,iv,cipher} satisfies Vault,'selected');done();});
+  await this.transaction<void>('readwrite',(store,done)=>{if(key!==values.key)store.put(key,'key');store.put({version:1,iv,cipher} satisfies Vault,'selected');done();});
  });}
 }
 let environment:ConnectionEnvironment|undefined,active:RouteConnection|undefined,networkRevision=0;
