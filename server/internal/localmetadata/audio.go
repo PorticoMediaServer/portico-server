@@ -53,6 +53,9 @@ func (s *Service) PrepareKind(ctx context.Context, library, kind, path string, f
 	defer cancel()
 	f = s.prepareAudioEvidence(ctx, library, kind, path, f)
 	for _, name := range []string{"cover.jpg", "folder.jpg", "cover.png", "folder.png"} {
+		if unlisted(ctx, filepath.Join(filepath.Dir(path), name)) {
+			continue
+		}
 		raw, err := s.storage.ReadSmall(ctx, library, filepath.Join(filepath.Dir(path), name), 4<<20)
 		if err != nil {
 			continue
@@ -176,6 +179,9 @@ func (s *Service) MovieArtwork(ctx context.Context, library, path string, f asse
 	defer cancel()
 	stem := strings.TrimSuffix(path, filepath.Ext(path))
 	for _, candidate := range []string{stem + "-poster.jpg", stem + "-poster.png", filepath.Join(filepath.Dir(path), "poster.jpg"), filepath.Join(filepath.Dir(path), "poster.png")} {
+		if unlisted(ctx, candidate) {
+			continue
+		}
 		raw, err := s.storage.ReadSmall(ctx, library, candidate, 4<<20)
 		if err != nil {
 			continue

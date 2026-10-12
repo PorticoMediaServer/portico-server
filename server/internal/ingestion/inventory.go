@@ -141,7 +141,11 @@ func (s *Service) readDirectoryPage(ctx context.Context, job string, source cata
 	if err != nil {
 		return err
 	}
-	return s.catalog.CommitInventoryPage(ctx, job, relative, cursor, page)
+	if err = s.catalog.CommitInventoryPage(ctx, job, relative, cursor, page); err != nil {
+		return err
+	}
+	s.noteDirectoryPage(job, relative, cursor, page)
+	return nil
 }
 func (s *Service) phase(ctx context.Context, job, phase string, reset bool) error {
 	gated3, err := dbwork.Begin(ctx, s.db, dbwork.ClassBackgroundMedia)
