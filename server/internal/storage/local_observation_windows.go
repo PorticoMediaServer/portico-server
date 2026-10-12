@@ -14,7 +14,7 @@ import (
 
 // FileInfo on Windows contains attributes, not the volume/file index. Acquire
 // those from one handle while matching the snapshot attributes. Attribute-only
-// opens do not exclude writers or replacements. Reparse points remain refused.
+// opens do not exclude writers or replacements. Name-surrogate links are refused.
 func observedObjectBinding(info os.FileInfo, path string) (string, string, error) {
 	name, err := windows.UTF16PtrFromString(path)
 	if err != nil {
@@ -44,8 +44,8 @@ func windowsFileBinding(file *os.File) (string, string, error) {
 	if err := windows.GetFileInformationByHandle(handle, &info); err != nil {
 		return "", "", err
 	}
-	if info.FileAttributes&windows.FILE_ATTRIBUTE_REPARSE_POINT != 0 {
-		return "", "", ErrObservedSourceUnsupported
+	if err := rejectWindowsNameSurrogate(handle, info.FileAttributes); err != nil {
+		return "", "", err
 	}
 	var extended struct {
 		VolumeSerialNumber uint64
@@ -87,6 +87,22 @@ func checkLocalRoot(path string) error {
 		return err
 	}
 	if attributes&windows.FILE_ATTRIBUTE_REPARSE_POINT != 0 {
+		return ErrObservedSourceUnsupported
+	}
+	return nil
+}
+
+// Non-name-surrogate tags, including Data Deduplication, retain the same object;
+// they are not junctions or links that redirect the acquired namespace.
+func rejectWindowsNameSurrogate(handle windows.Handle, attributes uint32) error {
+	if attributes&windows.FILE_ATTRIBUTE_REPARSE_POINT == 0 {
+		return nil
+	}
+	var tag struct{ FileAttributes, ReparseTag uint32 }
+	if err := windows.GetFileInformationByHandleEx(handle, windows.FileAttributeTagInfo, (*byte)(unsafe.Pointer(&tag)), uint32(unsafe.Sizeof(tag))); err != nil {
+		return err
+	}
+	if tag.ReparseTag&0x20000000 != 0 {
 		return ErrObservedSourceUnsupported
 	}
 	return nil

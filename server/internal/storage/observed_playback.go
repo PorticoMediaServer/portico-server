@@ -12,7 +12,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"portico.local/server/internal/supervise"
-	"runtime"
 	"sync"
 	"time"
 )
@@ -73,7 +72,7 @@ func (c *Client) OpenObservedPlayback(setup context.Context, lease *RootLease) (
 	if !validRootLease(lease) {
 		return nil, ErrRootLease
 	}
-	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" {
+	if !observedPlaybackSupported {
 		return nil, ErrObservedSourceUnsupported
 	}
 	if c == nil || c.Supervisor == nil || c.Binary == "" {
@@ -108,13 +107,21 @@ func (c *Client) OpenObservedPlayback(setup context.Context, lease *RootLease) (
 	}
 	cmd := exec.Command(c.Binary, "--portico-storage-helper")
 	cmd.Stdin = input
-	cmd.ExtraFiles = []*os.File{lease.Directory}
+	closeRoot, err := configureObservedRoot(cmd, lease.Directory, &req)
+	if err != nil {
+		stopLease()
+		input.Close()
+		writer.Close()
+		cancel()
+		return nil, err
+	}
 	operationDone := func() {}
 	stopScope := func() bool { return false }
 	if lease.Operations != nil {
 		operationDone, err = lease.Operations.Begin()
 		if err != nil {
 			stopLease()
+			closeRoot()
 			input.Close()
 			writer.Close()
 			cancel()
@@ -164,7 +171,7 @@ func (c *Client) OpenObservedPlayback(setup context.Context, lease *RootLease) (
 					}
 				}
 			}
-		}, func() { stopLease(); stopScope(); releaseRootLease(lease) }, operationDone)
+		}, func() { stopLease(); stopScope(); closeRoot(); releaseRootLease(lease) }, operationDone)
 		if runErr == nil {
 			runErr = ErrObservedSourceLost
 		}
@@ -373,13 +380,13 @@ func observedPlaybackHelper(req request, in io.Reader, out io.Writer) (result er
 			_ = writeObservedResponse(out, observedResponse{Failure: failure})
 		}
 	}()
-	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" {
+	if !observedPlaybackSupported {
 		return ErrObservedSourceUnsupported
 	}
 	if req.ObservedRegistrationID == "" || len(req.ObservedRegistrationID) > 4096 || !filepath.IsAbs(req.Path) || !filepath.IsLocal(req.ObservedRelativePath) || req.ObservedRelativePath == "." {
 		return ErrRootLease
 	}
-	registered := os.NewFile(3, "registered-source-root")
+	registered := inheritedObservedRoot(req)
 	if registered == nil {
 		return ErrRootLease
 	}
@@ -396,10 +403,10 @@ func observedPlaybackHelper(req request, in io.Reader, out io.Writer) (result er
 		return ErrRootLease
 	}
 	rootInfo, err := root.Stat(".")
-	if err != nil || !os.SameFile(registeredInfo, rootInfo) {
+	if err != nil || !sameObservedRoot(registered, root, registeredInfo, rootInfo) {
 		return ErrRootLease
 	}
-	rootObject, _, err := observedObjectBinding(rootInfo, req.Path)
+	rootObject, _, err := observedFileBinding(registered)
 	if err != nil {
 		return err
 	}
@@ -424,14 +431,14 @@ func observedPlaybackHelper(req request, in io.Reader, out io.Writer) (result er
 		// Check the retained root, not a mutable pathname that might now name a
 		// replacement directory. Registration/mount lifetime remains owner-fenced.
 		currentRoot, e := root.Stat(".")
-		if e != nil || !os.SameFile(registeredInfo, currentRoot) {
+		if e != nil || !sameObservedRoot(registered, root, registeredInfo, currentRoot) {
 			return ObservedFileObservation{}, ErrObservedSourceLost
 		}
 		info, e := file.Stat()
 		if e != nil || !info.Mode().IsRegular() {
 			return ObservedFileObservation{}, ErrObservedSourceLost
 		}
-		object, token, e := observedObjectBinding(info, file.Name())
+		object, token, e := observedFileBinding(file)
 		if e != nil {
 			return ObservedFileObservation{}, e
 		}

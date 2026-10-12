@@ -54,3 +54,15 @@ func (r *RootRegistration) Borrow(relative string) (*RootLease, error) {
 
 // Lifetime ends on explicit registry close or actual owner invalidation.
 func (r *RootRegistration) Lifetime() context.Context { return r.life }
+
+type registrationLifetime struct {
+	context.Context
+	owner context.Context
+}
+
+func (l *registrationLifetime) Err() error {
+	if err := l.owner.Err(); err != nil {
+		return err
+	}
+	return l.Context.Err()
+}
