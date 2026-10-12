@@ -271,7 +271,10 @@ func (s *Service) Search(ctx context.Context, r SearchRequest) (SearchEnvelope, 
 	r.Libraries = libraries
 	raw, _ := json.Marshal(libraries)
 	scopeHash := fmt.Sprintf("%x", sha256.Sum256(append([]byte(fmt.Sprint(r.AllLibraries)), raw...)))
-	rev, fingerprint, e := searchRevision(ctx, s.db, r, string(raw))
+	// Read through the request's snapshot when there is one, so the revision is
+	// the one the groups below are read at and the check after them cannot see a
+	// later publication.
+	rev, fingerprint, e := searchRevision(ctx, s.read(), r, string(raw))
 	if e != nil {
 		return out, e
 	}
@@ -347,7 +350,7 @@ func (s *Service) Search(ctx context.Context, r SearchRequest) (SearchEnvelope, 
 	if total == 0 {
 		out.Empty = &ContentHeading{Key: "search.empty", Fallback: "No matching titles"}
 	}
-	after, stamp, e := searchRevision(ctx, s.db, r, string(raw))
+	after, stamp, e := searchRevision(ctx, s.read(), r, string(raw))
 	if e != nil {
 		return out, e
 	}
