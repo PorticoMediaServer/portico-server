@@ -10,6 +10,7 @@ import {trackName} from '@core/presentation/index.ts';
 import React, {useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
 import {playbackUserMessage} from '@core/playback-messages.ts';
 import {ownerStopOf} from './owner-stop';
+import {shortcutKey} from './shortcut-key';
 import {preparedChoice, preparedReason} from '@core/prepared-media.ts';
 import {listeningRates, type SleepChoice} from '@core/listening.ts';
 import {subtitleReason} from '@core/subtitles.ts';
@@ -215,8 +216,10 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
       if (e.defaultPrevented) return;
       const target = e.target as HTMLElement;
       if (target?.closest('input,select,textarea,[contenteditable=true],[role="menu"],[role="dialog"]')) return;
+      const pressed = shortcutKey(e);
+      if (pressed === undefined) return;
       reveal();
-      switch (e.key) {
+      switch (pressed) {
         case ' ': case 'k': e.preventDefault(); engine.toggle(); break;
         case 'ArrowLeft': case 'j': if (!target?.closest('[type=range]')) { e.preventDefault(); engine.seekBy(-skipBack); } break;
         case 'ArrowRight': case 'l': if (!target?.closest('[type=range]')) { e.preventDefault(); engine.seekBy(skipForward); } break;
