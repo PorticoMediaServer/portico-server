@@ -36,7 +36,11 @@ func (s *Service) ChangeSubtitleDeliveryTx(ctx context.Context, tx *sql.Tx, p id
 	if err = tx.QueryRowContext(ctx, `SELECT transcoding_enabled FROM playback_owner_policy WHERE singleton=1`).Scan(&enabled); err != nil {
 		return err
 	}
-	target, keep, err := replanTarget(ctx, tx, session, old, QualityOffers(source.Video.Height, true, enabled, policy), policy, cfg, source.Video.Height)
+	var current *ReplanCeilings
+	if ceilings, ok := replanCeilingsFrom(ctx); ok {
+		current = &ceilings
+	}
+	target, replanned, err := replanTarget(ctx, tx, session, old, QualityOffers(source.Video.Height, true, enabled, policy), policy, cfg, source.Video.Height, current, true)
 	if err != nil {
 		return err
 	}
@@ -70,7 +74,7 @@ func (s *Service) ChangeSubtitleDeliveryTx(ctx context.Context, tx *sql.Tx, p id
 		}
 	}
 	plan.SourceSize, plan.SourceModifiedNS, plan.FactsRevision = old.SourceSize, old.SourceModifiedNS, old.FactsRevision
-	plan.Target = keep
+	plan.Target, plan.TargetReach = replanned.target, replanned.reach
 	if _, err = tx.ExecContext(ctx, `DELETE FROM playback_delivery_plans WHERE session_id=?`, session); err != nil {
 		return err
 	}
@@ -87,38 +91,89 @@ func (s *Service) ChangeSubtitleDeliveryTx(ctx context.Context, tx *sql.Tx, p id
 	return err
 }
 
+// ReplanCeilings is what the caller's admission allows right now, on the
+// connection its request arrived on, for a change that makes a presentation
+// produce new bytes without being admitted again (a subtitle burned in or
+// turned off). Remote is admission's own view of the connection, not a hint
+// the client sent. MaxVideoBitrateBPS is the tightest video bitrate the member
+// and the server's upload budget allow there; zero is none.
+type ReplanCeilings struct {
+	Remote             bool
+	MaxVideoBitrateBPS int
+}
+
+type replanCeilingsKey struct{}
+
+// WithReplanCeilings attaches them to the request that may re-plan. A v1
+// presentation is not re-planned for a request that carries none.
+func WithReplanCeilings(ctx context.Context, c ReplanCeilings) context.Context {
+	return context.WithValue(ctx, replanCeilingsKey{}, c)
+}
+
+func replanCeilingsFrom(ctx context.Context) (ReplanCeilings, bool) {
+	c, ok := ctx.Value(replanCeilingsKey{}).(ReplanCeilings)
+	return c, ok
+}
+
+const reachLocal, reachRemote = "local", "remote"
+
+// keptTarget is what a re-planned v1 presentation stores for its next re-plan.
+type keptTarget struct {
+	target *QualityTarget
+	reach  string
+}
+
 // replanTarget is the target a session's stored plan is planned under again:
 // a subtitle burned in or turned off, a copied stream that has to be converted
-// after all. A v1 presentation is planned under the ceilings it started with
-// (the viewer's limit, the member's remote cap, the owner's), narrowed by the
-// owner's ceilings as they are now, and keeps the result: they only ever come
-// down. A v1 presentation stored before plans kept those ceilings is refused,
-// because what it started under cannot be recovered and no ceiling is not an
-// answer. A legacy session names a published rung, as it always has; keep is
-// then nil.
-func replanTarget(ctx context.Context, q sourceQuery, session string, old *DeliveryPlan, rungs []QualityRung, policy ResolvedDeliveryPolicy, cfg DeliveryConfiguration, height int) (target QualityTarget, keep *QualityTarget, err error) {
+// after all.
+//
+// A v1 presentation is planned under the ceilings it was last planned with
+// (the viewer's limit, the member's remote cap, the owner's), narrowed by what
+// applies now, and keeps the result: they only ever come down. The owner's
+// ceilings apply as they are now; the remote ones do when admission has called
+// this presentation's connection remote, at its start, at an earlier re-plan
+// or for this request, or when that was never recorded. A request brings the
+// member's current ceiling with it (current), and one that brings none is
+// refused; the conversion fallback has no request and plans under what is
+// stored. A v1 presentation stored before plans kept their ceilings is refused
+// too: what it started under cannot be recovered, and no ceiling is not an
+// answer. A legacy session names a published rung, as it always has, and keeps
+// nothing.
+func replanTarget(ctx context.Context, q sourceQuery, session string, old *DeliveryPlan, rungs []QualityRung, policy ResolvedDeliveryPolicy, cfg DeliveryConfiguration, height int, current *ReplanCeilings, request bool) (QualityTarget, keptTarget, error) {
 	if old.Target != nil {
-		target = narrowTarget(*old.Target, policy, cfg)
-		return target, &target, nil
+		if request && current == nil {
+			return QualityTarget{}, keptTarget{}, ErrQualityUnavailable
+		}
+		remote, member := old.TargetReach != reachLocal, 0
+		if current != nil {
+			remote, member = remote || current.Remote, current.MaxVideoBitrateBPS
+		}
+		target, reach := narrowTarget(*old.Target, remote, member, cfg), reachLocal
+		if remote {
+			reach = reachRemote
+		}
+		return target, keptTarget{&target, reach}, nil
 	}
 	var v1 bool
-	if err = q.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM playback_v1_sessions WHERE media_session_id=?) OR EXISTS(SELECT 1 FROM playback_v1_prepared WHERE media_session_id=?)`, session, session).Scan(&v1); err != nil {
-		return target, nil, err
+	if err := q.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM playback_v1_sessions WHERE media_session_id=?) OR EXISTS(SELECT 1 FROM playback_v1_prepared WHERE media_session_id=?)`, session, session).Scan(&v1); err != nil {
+		return QualityTarget{}, keptTarget{}, err
 	}
 	rung, ok := SelectedRung(rungs, old.QualityID)
 	if v1 || !ok {
-		return target, nil, ErrQualityUnavailable
+		return QualityTarget{}, keptTarget{}, ErrQualityUnavailable
 	}
-	return rung.Target(policy, height), nil, nil
+	return rung.Target(policy, height), keptTarget{}, nil
 }
 
-// narrowTarget brings a stored target down to the owner's ceilings as they are
-// now. The server-wide video bitrate limit is a remote-connection limit, as it
-// is at the start of a presentation; nothing here raises a ceiling.
-func narrowTarget(t QualityTarget, policy ResolvedDeliveryPolicy, cfg DeliveryConfiguration) QualityTarget {
-	if policy.NetworkClass == NetworkRemote || policy.NetworkClass == NetworkCellular {
+// narrowTarget brings a stored target down to what applies now: the member's
+// current video bitrate ceiling (zero: none) and the owner's ceilings. The
+// server-wide video bitrate limit is a remote-connection limit, as it is at
+// the start of a presentation. Nothing here raises a ceiling.
+func narrowTarget(t QualityTarget, remote bool, member int, cfg DeliveryConfiguration) QualityTarget {
+	if remote {
 		t.MaxVideoBitrateBPS = narrowCeiling(t.MaxVideoBitrateBPS, cfg.MaxVideoBitrateBPS)
 	}
+	t.MaxVideoBitrateBPS = narrowCeiling(t.MaxVideoBitrateBPS, member)
 	t.MaxAudioBitrateBPS = narrowCeiling(t.MaxAudioBitrateBPS, cfg.MaxAudioBitrateBPS)
 	t.MaxVideoHeight = narrowCeiling(t.MaxVideoHeight, cfg.MaxVideoHeight)
 	return t

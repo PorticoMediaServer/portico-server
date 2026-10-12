@@ -143,6 +143,10 @@ type DeliveryPlan struct {
 	// id names no published rung, so a later re-plan of the same presentation
 	// (a subtitle burned in or turned off) plans under these again.
 	Target *QualityTarget `json:"-"`
+	// TargetReach is whether admission called the connection Target was
+	// planned for "remote" or "local". The owner's remote ceilings follow it on
+	// a later re-plan; a plan stored without it is treated as remote.
+	TargetReach string `json:"-"`
 	// AudioSampleRate is the rate converted audio is resampled to; zero keeps
 	// the source's.
 	AudioSampleRate int `json:"-"`
@@ -875,7 +879,7 @@ func loadDeliveryPlan(q audioQuery, session string) (*DeliveryPlan, error) {
 	if policy != "" {
 		var stored storedPolicy
 		if err = json.Unmarshal([]byte(policy), &stored); err == nil {
-			p.Policy, p.Target, p.AudioSampleRate = stored.ResolvedDeliveryPolicy, stored.SessionTarget, stored.AudioSampleRate
+			p.Policy, p.Target, p.TargetReach, p.AudioSampleRate = stored.ResolvedDeliveryPolicy, stored.SessionTarget, stored.SessionReach, stored.AudioSampleRate
 		}
 	}
 	if trace != "" {
@@ -907,18 +911,19 @@ func loadDeliveryPlan(q audioQuery, session string) (*DeliveryPlan, error) {
 }
 
 // storedPolicy is a plan's policy column: the resolved policy and the parts of
-// the plan that have no column of their own (a v1 presentation's target, the
-// rate converted audio is resampled to).
+// the plan that have no column of their own (a v1 presentation's target and
+// the reach it was admitted with, the rate converted audio is resampled to).
 type storedPolicy struct {
 	*ResolvedDeliveryPolicy
 	SessionTarget   *QualityTarget `json:"sessionTarget,omitempty"`
+	SessionReach    string         `json:"sessionReach,omitempty"`
 	AudioSampleRate int            `json:"audioSampleRate,omitempty"`
 }
 
 func persistDeliveryPlan(tx *sql.Tx, session string, p *DeliveryPlan) error {
 	policy := ""
 	if p.Policy != nil || p.Target != nil || p.AudioSampleRate != 0 {
-		raw, err := json.Marshal(storedPolicy{p.Policy, p.Target, p.AudioSampleRate})
+		raw, err := json.Marshal(storedPolicy{p.Policy, p.Target, p.TargetReach, p.AudioSampleRate})
 		if err != nil {
 			return err
 		}

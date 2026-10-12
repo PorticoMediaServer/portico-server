@@ -57,10 +57,24 @@ func (f *replanFixture) plan(session string) *DeliveryPlan {
 	return plan
 }
 
+// subtitle re-plans for a subtitle change the way a request does: ctx carries
+// what the caller's admission allows on the connection it arrived on. A ctx
+// without it is given a LAN request with no member ceiling.
 func (f *replanFixture) subtitle(ctx context.Context, session string, resource *subtitles.Resource) error {
+	if _, ok := replanCeilingsFrom(ctx); !ok {
+		ctx = WithReplanCeilings(ctx, ReplanCeilings{})
+	}
+	return f.bareSubtitle(ctx, session, resource)
+}
+
+func (f *replanFixture) bareSubtitle(ctx context.Context, session string, resource *subtitles.Resource) error {
 	return dbwork.WithWriteTx(ctx, f.db, dbwork.ClassEstablishedPlayback, func(tx *sql.Tx) error {
 		return f.s.ChangeSubtitleDeliveryTx(ctx, tx, f.p, session, resource)
 	})
+}
+
+func remoteRequest(memberBitrate int) context.Context {
+	return WithReplanCeilings(context.Background(), ReplanCeilings{Remote: true, MaxVideoBitrateBPS: memberBitrate})
 }
 
 // asStoredBefore rewrites a presentation's stored plan to the shape plans had
@@ -165,7 +179,7 @@ func TestConversionFallbackKeepsThePresentationCeilings(t *testing.T) {
 // A re-plan never plans above what the presentation started under, whatever
 // the owner's ceilings have become since, and never above those either.
 func TestReplanNeverRaisesACeiling(t *testing.T) {
-	remote := WithDeliveryContext(context.Background(), DeliveryContext{NetworkClass: NetworkRemote})
+	remote := remoteRequest(0)
 	t.Run("the owner's ceilings were lifted after the start", func(t *testing.T) {
 		f := newReplanFixture(t, 40_000_000)
 		strict := DefaultDeliveryConfiguration()
@@ -212,26 +226,160 @@ func TestReplanNeverRaisesACeiling(t *testing.T) {
 	})
 	t.Run("every ceiling of a stored target", func(t *testing.T) {
 		ceilings := []int{0, 96_000, 480, 2_000_000, 8_000_000}
-		for _, class := range []NetworkClass{NetworkUnknown, NetworkRemote, NetworkCellular} {
+		for _, remote := range []bool{false, true} {
 			for _, stored := range ceilings {
 				for _, owner := range ceilings {
-					cfg := DefaultDeliveryConfiguration()
-					cfg.MaxVideoBitrateBPS, cfg.MaxAudioBitrateBPS, cfg.MaxVideoHeight = owner, owner, owner
-					was := QualityTarget{RungID: "limit", MaxVideoBitrateBPS: stored, MaxAudioBitrateBPS: stored, MaxVideoHeight: stored}
-					now := narrowTarget(was, ResolvedDeliveryPolicy{NetworkClass: class}, cfg)
-					for name, pair := range map[string][2]int{"video bitrate": {was.MaxVideoBitrateBPS, now.MaxVideoBitrateBPS}, "audio bitrate": {was.MaxAudioBitrateBPS, now.MaxAudioBitrateBPS}, "height": {was.MaxVideoHeight, now.MaxVideoHeight}} {
-						if pair[0] > 0 && (pair[1] <= 0 || pair[1] > pair[0]) {
-							t.Fatalf("%s ceiling %d became %d (owner %d, %s)", name, pair[0], pair[1], owner, class)
+					for _, member := range ceilings {
+						cfg := DefaultDeliveryConfiguration()
+						cfg.MaxVideoBitrateBPS, cfg.MaxAudioBitrateBPS, cfg.MaxVideoHeight = owner, owner, owner
+						was := QualityTarget{RungID: "limit", MaxVideoBitrateBPS: stored, MaxAudioBitrateBPS: stored, MaxVideoHeight: stored}
+						now := narrowTarget(was, remote, member, cfg)
+						for name, pair := range map[string][2]int{"video bitrate": {was.MaxVideoBitrateBPS, now.MaxVideoBitrateBPS}, "audio bitrate": {was.MaxAudioBitrateBPS, now.MaxAudioBitrateBPS}, "height": {was.MaxVideoHeight, now.MaxVideoHeight}} {
+							if !within(pair[1], pair[0]) || pair[0] > 0 && pair[1] <= 0 {
+								t.Fatalf("%s ceiling %d became %d (owner %d, member %d, remote %v)", name, pair[0], pair[1], owner, member, remote)
+							}
+							if name != "video bitrate" && owner > 0 && (pair[1] <= 0 || pair[1] > owner) {
+								t.Fatalf("%s ceiling %d ignores the owner's %d", name, pair[1], owner)
+							}
 						}
-						if name != "video bitrate" && owner > 0 && (pair[1] <= 0 || pair[1] > owner) {
-							t.Fatalf("%s ceiling %d ignores the owner's %d", name, pair[1], owner)
+						if member > 0 && (now.MaxVideoBitrateBPS <= 0 || now.MaxVideoBitrateBPS > member) {
+							t.Fatalf("a video bitrate ceiling %d ignores the member's %d", now.MaxVideoBitrateBPS, member)
 						}
-					}
-					if class != NetworkUnknown && owner > 0 && (now.MaxVideoBitrateBPS <= 0 || now.MaxVideoBitrateBPS > owner) {
-						t.Fatalf("a remote video bitrate ceiling %d ignores the owner's %d", now.MaxVideoBitrateBPS, owner)
+						if remote && owner > 0 && (now.MaxVideoBitrateBPS <= 0 || now.MaxVideoBitrateBPS > owner) {
+							t.Fatalf("a remote video bitrate ceiling %d ignores the owner's %d", now.MaxVideoBitrateBPS, owner)
+						}
 					}
 				}
 			}
+		}
+	})
+}
+
+// A subtitle change that makes a presentation produce new bytes is planned
+// under what the member is allowed now, on the connection the request arrives
+// on. No request gets a stream above that: not one that says nothing about its
+// limits, not one that claims to be local, not one for another subtitle, not
+// one from a different connection than the presentation started on.
+func TestSubtitleReplanAppliesTheMembersCurrentCeilings(t *testing.T) {
+	another := &subtitles.Resource{ID: "another", Revision: 3, Format: "ass"}
+	t.Run("a request that carries no ceilings is refused", func(t *testing.T) {
+		f := newReplanFixture(t, 40_000_000)
+		session := f.start("bare", V1Choice{Remote: true, AdminMaxVideoBitrateBPS: 2_000_000})
+		started := f.plan(session.ID)
+		for _, resource := range []*subtitles.Resource{styledSubtitle, another, nil} {
+			if err := f.bareSubtitle(context.Background(), session.ID, resource); !errors.Is(err, ErrQualityUnavailable) {
+				t.Fatalf("a re-plan with no current ceilings (burn-in %v): %v", resource != nil, err)
+			}
+		}
+		if after := f.plan(session.ID); after.VideoBitrateBPS != started.VideoBitrateBPS || after.BurnIn != nil {
+			t.Fatalf("a refused re-plan changed the stored plan: %+v", after)
+		}
+	})
+	t.Run("started on the LAN, changed from outside it", func(t *testing.T) {
+		f := newReplanFixture(t, 40_000_000)
+		session := f.start("moved", V1Choice{})
+		if started := f.plan(session.ID); started.VideoAction != "copy" {
+			t.Fatalf("the LAN presentation did not start as a copy: %+v", started)
+		}
+		// A request that claims a local network is still what admission says it is.
+		claimsLocal := WithDeliveryContext(remoteRequest(2_000_000), DeliveryContext{NetworkClass: NetworkLocal, ServerLocality: "local", TransportClass: "ethernet"})
+		for _, resource := range []*subtitles.Resource{styledSubtitle, another, nil} {
+			if err := f.subtitle(claimsLocal, session.ID, resource); err != nil {
+				t.Fatal(err)
+			}
+			if plan := f.plan(session.ID); plan.VideoAction != "convert" || plan.VideoBitrateBPS > 2_000_000 {
+				t.Fatalf("from outside the LAN a re-plan (burn-in %v) planned %s at %d bit/s above the member's 2000000", resource != nil, plan.VideoAction, plan.VideoBitrateBPS)
+			}
+		}
+	})
+	t.Run("the member's cap was lowered after the start", func(t *testing.T) {
+		f := newReplanFixture(t, 40_000_000)
+		session := f.start("lowered-member", V1Choice{Remote: true, AdminMaxVideoBitrateBPS: 4_000_000})
+		if err := f.subtitle(remoteRequest(1_000_000), session.ID, styledSubtitle); err != nil {
+			t.Fatal(err)
+		}
+		if plan := f.plan(session.ID); plan.VideoBitrateBPS > 1_000_000 {
+			t.Fatalf("a re-plan planned %d bit/s above the member's lowered 1000000", plan.VideoBitrateBPS)
+		}
+		// Neither a lifted cap nor a move back to the LAN gives back more than
+		// the presentation has been planned under.
+		for _, request := range []context.Context{remoteRequest(0), remoteRequest(8_000_000), context.Background()} {
+			for _, resource := range []*subtitles.Resource{nil, another} {
+				if err := f.subtitle(request, session.ID, resource); err != nil {
+					t.Fatal(err)
+				}
+				if plan := f.plan(session.ID); plan.VideoBitrateBPS > 1_000_000 || plan.VideoAction != "convert" {
+					t.Fatalf("a later re-plan (burn-in %v) planned %s at %d bit/s", resource != nil, plan.VideoAction, plan.VideoBitrateBPS)
+				}
+			}
+		}
+	})
+	t.Run("the owner's remote ceiling follows admission's view of the connection", func(t *testing.T) {
+		f := newReplanFixture(t, 40_000_000)
+		session := f.start("owner-remote", V1Choice{})
+		strict := DefaultDeliveryConfiguration()
+		strict.MaxVideoBitrateBPS = 1_000_000
+		f.configure(strict)
+		claimsLocal := WithDeliveryContext(remoteRequest(0), DeliveryContext{NetworkClass: NetworkLocal})
+		if err := f.subtitle(claimsLocal, session.ID, styledSubtitle); err != nil {
+			t.Fatal(err)
+		}
+		if plan := f.plan(session.ID); plan.VideoBitrateBPS > 1_000_000 {
+			t.Fatalf("a remote re-plan planned %d bit/s above the owner's remote 1000000", plan.VideoBitrateBPS)
+		}
+	})
+}
+
+// The conversion fallback has no request to ask. It uses the view of the
+// connection admission took for the presentation, not the delivery hint
+// stored with the plan, so the owner's remote ceiling applies to a
+// presentation admission called remote whatever that hint says.
+func TestConversionFallbackUsesAdmissionsViewOfTheConnection(t *testing.T) {
+	hintedLocal := WithDeliveryContext(context.Background(), DeliveryContext{NetworkClass: NetworkLocal})
+	lower := func(f *replanFixture) {
+		strict := DefaultDeliveryConfiguration()
+		strict.MaxVideoBitrateBPS = 1_000_000
+		f.configure(strict)
+	}
+	t.Run("admitted as remote, hinted local", func(t *testing.T) {
+		f := newReplanFixture(t, 1_600_000)
+		session, err := f.s.CreateV1(hintedLocal, f.p, f.item, "divergent", V1Choice{Remote: true, AdminMaxVideoBitrateBPS: 2_000_000}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		lower(f)
+		started := f.plan(session.ID)
+		converted, err := f.h.downgradeCopyPlan(context.Background(), session.ID, started)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if converted.VideoBitrateBPS < 1 || converted.VideoBitrateBPS > 1_000_000 {
+			t.Fatalf("the fallback converts at %d bit/s above the owner's remote 1000000; stored network hint %s", converted.VideoBitrateBPS, started.Policy.NetworkClass)
+		}
+	})
+	t.Run("stored before plans kept admission's view", func(t *testing.T) {
+		f := newReplanFixture(t, 1_600_000)
+		session := f.start("unknown-reach", V1Choice{Remote: true, AdminMaxVideoBitrateBPS: 2_000_000})
+		mustAudioExec(t, f.db, `UPDATE playback_delivery_plans SET policy_json=json_remove(policy_json,'$.sessionReach') WHERE session_id=?`, session.ID)
+		lower(f)
+		converted, err := f.h.downgradeCopyPlan(context.Background(), session.ID, f.plan(session.ID))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if converted.VideoBitrateBPS > 1_000_000 {
+			t.Fatalf("a presentation whose reach is unknown converts at %d bit/s above the owner's remote 1000000", converted.VideoBitrateBPS)
+		}
+	})
+	t.Run("admitted on the LAN", func(t *testing.T) {
+		f := newReplanFixture(t, 1_600_000)
+		session := f.start("lan", V1Choice{})
+		lower(f)
+		converted, err := f.h.downgradeCopyPlan(context.Background(), session.ID, f.plan(session.ID))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if converted.VideoBitrateBPS <= 1_000_000 {
+			t.Fatalf("a LAN presentation was held to the owner's remote ceiling: %d bit/s", converted.VideoBitrateBPS)
 		}
 	})
 }

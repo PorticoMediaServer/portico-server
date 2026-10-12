@@ -182,6 +182,12 @@ type Caller struct {
 	// AdmitChannel applies the live channel policy (allow/deny list and
 	// schedule) to a channel start. Replays never re-admit.
 	AdmitChannel func(ctx context.Context, channel string) error
+	// Ceiling is the video bitrate ceiling this caller's connection is under
+	// right now (the member's remote cap and the upload budget; zero is none),
+	// read without admitting anything: no stream is counted and no schedule or
+	// item policy is applied. session is the v1 session being changed, whose
+	// own share of the budget is not counted against it.
+	Ceiling func(ctx context.Context, session string) (int, error)
 }
 
 type replanKey struct{}
@@ -214,6 +220,24 @@ func (c *Caller) admit(ctx context.Context, item string) error {
 		c.AdminMaxVideoBitrateBPS = limit
 	}
 	return nil
+}
+
+// replanContext is ctx carrying what this caller is allowed right now, for a
+// change that makes a presentation produce new bytes without admitting it
+// again (a subtitle burned in or turned off). A caller that cannot say carries
+// nothing, and the re-plan is refused.
+func (c *Caller) replanContext(ctx context.Context, session string) (context.Context, error) {
+	if c.Ceiling == nil {
+		return ctx, nil
+	}
+	limit, err := c.Ceiling(ctx, session)
+	if err != nil {
+		return ctx, err
+	}
+	if c.Remote {
+		c.AdminMaxVideoBitrateBPS = limit
+	}
+	return playback.WithReplanCeilings(ctx, playback.ReplanCeilings{Remote: c.Remote, MaxVideoBitrateBPS: limit}), nil
 }
 
 func (c *Caller) admitChannel(ctx context.Context, channel string) error {
@@ -481,7 +505,10 @@ func (s *Service) present(ctx context.Context, c Caller, t presentationTarget) (
 		_ = s.Playback.StopV1(ctx, media.ID)
 		return media, Presentation{}, &FieldError{Path: "audio.trackId"}
 	}
-	result, err := s.applySubtitles(ctx, c.Principal, t.item, media.ID, t.request.Subtitles, t.request.SubtitleOffsetMs, t.startMs, t.subtitleOp)
+	// A burn-in chosen with the start re-plans what was just planned, under the
+	// same admission.
+	admitted := playback.WithReplanCeilings(ctx, playback.ReplanCeilings{Remote: choice.Remote, MaxVideoBitrateBPS: choice.AdminMaxVideoBitrateBPS})
+	result, err := s.applySubtitles(admitted, c.Principal, t.item, media.ID, t.request.Subtitles, t.request.SubtitleOffsetMs, t.startMs, t.subtitleOp)
 	if err != nil {
 		_ = s.Playback.StopV1(ctx, media.ID)
 		return media, Presentation{}, err

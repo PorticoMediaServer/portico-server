@@ -68,6 +68,10 @@ func (s *Service) applySubtitles(ctx context.Context, p identity.Principal, item
 			if errors.Is(err, subtitles.ErrUnsupported) {
 				return out, playback.ErrTranscodingDisabled
 			}
+			// A re-plan that was refused is not a bad track id.
+			if errors.Is(err, playback.ErrQualityUnavailable) {
+				return out, err
+			}
 			return out, &FieldError{Path: "subtitles.trackId"}
 		}
 		out.replaced = plan.Presentation

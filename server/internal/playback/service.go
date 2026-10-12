@@ -341,7 +341,10 @@ func (s *Service) create(ctx context.Context, p identity.Principal, item, qualit
 	}
 	if v1 != nil {
 		target := inputs.input.Target
-		delivery.Target = &target
+		delivery.Target, delivery.TargetReach = &target, reachLocal
+		if v1.remote(inputs.input.Policy) {
+			delivery.TargetReach = reachRemote
+		}
 	}
 	mode = delivery.Mode
 	if mode == "hls" {
