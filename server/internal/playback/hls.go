@@ -574,6 +574,12 @@ func (h *HLS) produce(ctx context.Context, id string, from int) {
 			_ = os.RemoveAll(staging)
 			_ = os.MkdirAll(staging, 0700)
 		}
+		beforeRetry := highestProducedSegment(dir, from)
+		h.mu.Lock()
+		if w := h.windows[id]; w != nil && w.start == from {
+			beforeRetry = max(beforeRetry, w.produced)
+		}
+		h.mu.Unlock()
 		watchCtx, stopWatch = context.WithCancel(processCtx)
 		watchDone = make(chan struct{})
 		if grid {
@@ -588,15 +594,18 @@ func (h *HLS) produce(ctx context.Context, id string, from int) {
 		stopWatch()
 		<-watchDone
 		h.mu.Lock()
-		if w := h.windows[id]; w != nil {
+		softwareProduced, softwareThrottled, currentWindow := from-1, false, false
+		if w := h.windows[id]; w != nil && w.start == from {
 			publicationError = w.publicationError
+			softwareProduced, softwareThrottled, currentWindow = w.produced, w.throttled, true
 		}
 		h.mu.Unlock()
 		if publicationError != nil {
 			h.fragmentedFailure(ctx, id, delivery, position, publicationError)
 			return
 		}
-		if hardwareFailureConfirmed(e, ctx.Err() != nil || processCtx.Err() != nil, throttled()) {
+		retryCancelled := ctx.Err() != nil || !currentWindow || processCtx.Err() != nil && !softwareThrottled
+		if hardwareFailureConfirmed(e, retryCancelled, softwareThrottled, from, beforeRetry, softwareProduced) {
 			decoder.RecordHardwareFailure(decoder.HardwareBackend(failedBackend))
 		}
 	}

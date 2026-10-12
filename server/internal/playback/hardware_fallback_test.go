@@ -42,19 +42,27 @@ func TestSoftwareFallbackDoesNotDisableHardwareBeforeRetrySucceeds(t *testing.T)
 
 func TestHardwareFailureRequiresSuccessfulUninterruptedSoftwareRetry(t *testing.T) {
 	for _, tc := range []struct {
-		name                       string
-		err                        error
-		cancelled, throttled, want bool
+		name                   string
+		err                    error
+		cancelled, throttled   bool
+		from, before, produced int
+		want                   bool
 	}{
-		{"valid source", nil, false, false, true},
-		{"corrupt source", errors.New("invalid data"), false, false, false},
-		{"GPU filter also failed", errors.New("device unavailable"), false, false, false},
-		{"cancelled success", nil, true, false, false},
-		{"throttled success", nil, false, true, false},
-		{"cancelled child", context.Canceled, true, false, false},
+		{"valid source", nil, false, false, 7, 6, 7, true},
+		{"corrupt source", errors.New("invalid data"), false, false, 7, 6, 6, false},
+		{"GPU filter also failed", errors.New("device unavailable"), false, false, 7, 6, 6, false},
+		{"cancelled success", nil, true, false, 7, 6, 7, false},
+		{"throttled before output", context.Canceled, false, true, 7, 6, 6, false},
+		{"throttled after output", context.Canceled, false, true, 7, 6, 7, true},
+		{"viewer canceled after output", context.Canceled, true, true, 7, 6, 7, false},
+		{"corrupt source after output", errors.New("invalid data"), false, false, 7, 6, 7, false},
+		{"clean completion before watcher tick", nil, false, false, 7, 6, 6, true},
+		{"cancelled child", context.Canceled, true, false, 7, 6, 6, false},
+		{"throttle on old hardware output", context.Canceled, false, true, 7, 8, 8, false},
+		{"retry extends hardware output", context.Canceled, false, true, 7, 8, 9, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := hardwareFailureConfirmed(tc.err, tc.cancelled, tc.throttled); got != tc.want {
+			if got := hardwareFailureConfirmed(tc.err, tc.cancelled, tc.throttled, tc.from, tc.before, tc.produced); got != tc.want {
 				t.Fatalf("got %t, want %t", got, tc.want)
 			}
 		})

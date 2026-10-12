@@ -124,10 +124,10 @@ func (h *HLS) failedWith(ctx context.Context, id, code, diagnostic string) {
 	_, _ = dbwork.ExecWrite(write, h.db, dbwork.ClassEstablishedPlayback, `UPDATE playback_artifacts SET failure_code=?,diagnostic=? WHERE session_id=?`, code, diagnostic, id)
 }
 
-// A successful software retry establishes that this window can be converted.
-// Failed, cancelled or throttled retries leave the cause unproven.
-func hardwareFailureConfirmed(softwareErr error, cancelled, throttled bool) bool {
-	return softwareErr == nil && !cancelled && !throttled
+// A clean retry or new published output followed by throttling establishes
+// that software can convert this window. Earlier output is not retry evidence.
+func hardwareFailureConfirmed(softwareErr error, cancelled, throttled bool, from, before, produced int) bool {
+	return !cancelled && (softwareErr == nil || throttled && produced >= from && produced > before)
 }
 
 // recordSoftwareFallback rewrites the stored plan after a hardware encoder failed
