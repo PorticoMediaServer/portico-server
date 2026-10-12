@@ -596,6 +596,9 @@ func (h *HLS) produce(ctx context.Context, id string, from int) {
 			h.fragmentedFailure(ctx, id, delivery, position, publicationError)
 			return
 		}
+		if hardwareFailureConfirmed(e, ctx.Err() != nil || processCtx.Err() != nil, throttled()) {
+			decoder.RecordHardwareFailure(decoder.HardwareBackend(failedBackend))
+		}
 	}
 	if e != nil && !throttled() && ctx.Err() == nil {
 		h.failedWith(ctx, id, classifyConverterFailure(diagnostic), diagnostic)
