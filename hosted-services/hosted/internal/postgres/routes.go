@@ -172,7 +172,22 @@ func (s *Store) RouteSets(ctx context.Context, account string) (map[string]direc
 				}
 			}
 
-			set.Candidates = append(set.Candidates, directory.RouteCandidate{BaseURL: origin.String, Class: class.String, Quality: quality, Generation: candidateGen.Int64})
+			candidate := directory.RouteCandidate{BaseURL: origin.String, Class: class.String, Quality: quality, Generation: candidateGen.Int64}
+			duplicate := false
+			for i, previous := range set.Candidates {
+				if previous.BaseURL == candidate.BaseURL {
+					// Several literals or rotated labels can name one origin.
+					// Keep current evidence over history, then reachable quality.
+					if candidate.Generation > previous.Generation || candidate.Generation == previous.Generation && candidate.Quality == "reachable" {
+						set.Candidates[i] = candidate
+					}
+					duplicate = true
+					break
+				}
+			}
+			if !duplicate {
+				set.Candidates = append(set.Candidates, candidate)
+			}
 		}
 		out[id] = set
 	}
