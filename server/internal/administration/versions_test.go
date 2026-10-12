@@ -3,6 +3,9 @@ package administration
 import (
 	"context"
 	"encoding/json"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"testing"
 )
 
@@ -33,5 +36,50 @@ func TestUpdatesSelectsNewestValidPrerelease(t *testing.T) {
 	got := s.Updates(context.Background(), UpdateBuild{Version: "1.2.0-beta.1"}, "beta", "https://example.invalid")
 	if !got.UpdateAvailable || got.Latest.Version != "1.2.0-beta.10" {
 		t.Fatalf("%+v", got)
+	}
+}
+
+// The release pipeline's own writer and this server's reader must agree: the
+// manifest a release publishes is the feed an owner points the server at.
+func TestUpdatesReadTheManifestTheReleasePipelinePublishes(t *testing.T) {
+	script, err := filepath.Abs(filepath.Join("..", "..", "..", "scripts", "write-public-update-manifest.mjs"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = os.Stat(script); err != nil {
+		t.Skip("the release scripts are not part of this source tree")
+	}
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("node is not installed; the release manifest writer cannot run")
+	}
+	work := t.TempDir()
+	if err = os.Mkdir(filepath.Join(work, "dist"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	command := exec.Command(node, script, "1.4.0")
+	command.Dir = work
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("the manifest writer failed: %v\n%s", err, output)
+	}
+	published, err := os.ReadFile(filepath.Join(work, "dist", "portico-update-manifest.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, _, _ := newService(t)
+	s.Fetch = func(context.Context, string) ([]byte, error) { return published, nil }
+	got := s.Updates(context.Background(), UpdateBuild{Version: "1.3.9"}, "stable", "https://example.invalid/portico-update-manifest.json")
+	if got.State != "available" || !got.UpdateAvailable || got.Latest == nil || got.Latest.Version != "1.4.0" {
+		t.Fatalf("the published manifest was not read as a newer release: %+v", got)
+	}
+	if got.NotesURL != "https://github.com/PorticoMediaServer/portico-server/releases/tag/v1.4.0" {
+		t.Fatalf("the release page was not offered: %q", got.NotesURL)
+	}
+	if got.AutoInstall {
+		t.Fatal("a published manifest turned on automatic installation")
+	}
+	same := s.Updates(context.Background(), UpdateBuild{Version: "1.4.0"}, "stable", "https://example.invalid/portico-update-manifest.json")
+	if same.UpdateAvailable || same.State != "current" {
+		t.Fatalf("the running release was reported as out of date: %+v", same)
 	}
 }
