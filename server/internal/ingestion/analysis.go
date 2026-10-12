@@ -306,11 +306,12 @@ func (s *Service) analyzeOne(parent context.Context, job string, source catalog.
 	probe.ReadGuard = func(check context.Context, _ string) error {
 		return s.analysisAllowed(check, job, source.LibraryID, policy.Revision, "probe")
 	}
+	listed := s.scanListed(ctx, job, source)
 	readContext := func(operation string) context.Context {
 		rooted := storage.WithScanInput(ctx, s.storage, source.ID, storage.InventoryRequest{Root: source.ResolvedPath, RootIdentity: source.RootIdentity, FollowSymlinks: source.FollowSymlinks})
 		// What this scan saw when it listed the directory spares a helper
 		// process for every sidecar that is not there.
-		rooted = localmetadata.WithListing(rooted, func(candidate string) (bool, bool) { return s.sidecarListed(job, source, candidate) })
+		rooted = localmetadata.WithListing(rooted, listed)
 		return storage.WithScanReadGuard(rooted, func(check context.Context, candidate string) error {
 			if err := s.analysisAllowed(check, job, source.LibraryID, policy.Revision, operation); err != nil {
 				return err
