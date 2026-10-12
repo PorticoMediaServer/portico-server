@@ -156,3 +156,43 @@ func TestCanceledConnectionIsServedAndClosed(t *testing.T) {
 		t.Fatalf("requests used %d connections, want the first and one fresh one", n)
 	}
 }
+
+// A request served on a canceled connection has no cancellation left, and the
+// ordinary lanes bound it with their budget instead. The long owner operations
+// have no budget: there, such a request could run with nothing to end it, so
+// it is turned away, retryable, and the client's retry arrives on a fresh
+// connection whose disconnect can be seen.
+func TestLongOwnerOperationIsNotStartedOnACanceledConnection(t *testing.T) {
+	_, deps := identityProofFixture(t)
+	router := New(deps)
+	outer := http.NewServeMux()
+	outer.HandleFunc("GET /poison", func(w http.ResponseWriter, r *http.Request) {
+		_ = http.NewResponseController(w).SetReadDeadline(time.Now().Add(20 * time.Millisecond))
+		<-r.Context().Done()
+		_ = http.NewResponseController(w).SetReadDeadline(time.Time{})
+		w.WriteHeader(204)
+	})
+	outer.Handle("/", router)
+	server := httptest.NewServer(outer)
+	defer server.Close()
+	client := newKeepAliveClient(server)
+
+	for _, path := range []string{"/v1/admin/diagnostics/integrity", "/v1/admin/diagnostics/integrity/repair", "/v1/admin/backups/restore"} {
+		// On a healthy connection the request reaches the route, which asks who is calling.
+		if resp, raw, _ := client.do(t, http.MethodPost, path, []byte(`{}`)); resp.StatusCode != 401 {
+			t.Fatalf("%s on a healthy connection: %d %s", path, resp.StatusCode, raw)
+		}
+		client.do(t, http.MethodGet, "/poison", nil)
+		resp, raw, _ := client.do(t, http.MethodPost, path, []byte(`{}`))
+		if resp.StatusCode != 503 || resp.Header.Get("Retry-After") == "" || !strings.Contains(string(raw), `"retryable":true`) {
+			t.Fatalf("%s was started on a canceled connection: %d %s", path, resp.StatusCode, raw)
+		}
+		if !resp.Close && resp.Header.Get("Connection") != "close" {
+			t.Fatalf("%s: the canceled connection was kept alive", path)
+		}
+		// The retry is on a fresh connection and is served normally.
+		if resp, raw, _ := client.do(t, http.MethodPost, path, []byte(`{}`)); resp.StatusCode != 401 || resp.Close {
+			t.Fatalf("%s retried on a fresh connection: %d %s close=%v", path, resp.StatusCode, raw, resp.Close)
+		}
+	}
+}

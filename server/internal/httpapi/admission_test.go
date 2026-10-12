@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -333,5 +334,52 @@ func TestLongOwnerOperationsAreNotCutOffByTheRequestBudget(t *testing.T) {
 	// They are bounded by how many may run at once instead of by time.
 	if spec.capacity < 1 || spec.capacity > laneSpecs[laneAdminHeavy].capacity {
 		t.Fatalf("long owner operations are not tightly bounded in number: %d", spec.capacity)
+	}
+}
+
+// A long owner operation is bounded only by its client going away. When that
+// can no longer be observed the request is refused before it takes a slot,
+// while a budgeted lane still serves the same request under its deadline.
+func TestUnbudgetedOwnerLaneRefusesARequestWhoseCancellationWasDetached(t *testing.T) {
+	a := newAdmission()
+	mux := http.NewServeMux()
+	served := map[string]bool{}
+	bounded := map[string]bool{}
+	for _, pattern := range []string{"POST /v1/admin/backups/restore", "POST /v1/admin/backups"} {
+		mux.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
+			served[pattern] = true
+			_, bounded[pattern] = r.Context().Deadline()
+		})
+	}
+	handler := a.wrap(mux, mux)
+	detached := func(path string) (*httptest.ResponseRecorder, *http.Request) {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		w := httptest.NewRecorder()
+		return w, detachCanceledConnection(w, httptest.NewRequest("POST", path, nil).WithContext(ctx))
+	}
+	w, r := detached("/v1/admin/backups/restore")
+	handler.ServeHTTP(w, r)
+	long := a.lanes[laneAdminLong]
+	if served["POST /v1/admin/backups/restore"] || w.Code != 503 || w.Header().Get("Retry-After") == "" || w.Header().Get("Connection") != "close" {
+		t.Fatalf("an operation nothing could end was started: served=%v status=%d", served["POST /v1/admin/backups/restore"], w.Code)
+	}
+	if long.active.Load() != 0 || long.admitted.Load() != 0 {
+		t.Fatalf("the refused request holds a slot: active=%d admitted=%d", long.active.Load(), long.admitted.Load())
+	}
+	for range laneSpecs[laneAdminLong].capacity + 1 {
+		w, r = detached("/v1/admin/backups/restore")
+		handler.ServeHTTP(w, r)
+	}
+	// Every slot is still free for a request that can be cancelled.
+	handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("POST", "/v1/admin/backups/restore", nil))
+	if !served["POST /v1/admin/backups/restore"] {
+		t.Fatal("refused requests used up the lane")
+	}
+	// A lane with a budget keeps serving canceled connections: the budget bounds it.
+	w, r = detached("/v1/admin/backups")
+	handler.ServeHTTP(w, r)
+	if !served["POST /v1/admin/backups"] || !bounded["POST /v1/admin/backups"] {
+		t.Fatalf("a budgeted request on a canceled connection was not served under its budget: %d", w.Code)
 	}
 }
