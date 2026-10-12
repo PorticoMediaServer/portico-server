@@ -126,8 +126,8 @@ func TestOfflineListeningDoesNotPullTheBookBackFromLaterOnlineListening(t *testi
 
 // startedOnline records exactly what starting an online session leaves behind
 // before its first progress report: the session row (the schema stamps when it
-// was created), and the book's pointer moved to that part and bound to that
-// session at the part's stored resume point. It writes no activity, because a
+// was created), and the part's progress and the book's pointer both bound to
+// that session at the part's stored resume point. It writes no activity, because a
 // start does not; the part's activity is whatever an earlier session left, or
 // nothing. The creation stamp is then placed on the harness clock, which is
 // fixed, where production would have the wall clock.
@@ -143,9 +143,23 @@ func (b *bookHarness) startedOnline(t *testing.T, session string, part catalogte
 	if n, _ := stamped.RowsAffected(); n != 1 {
 		t.Fatalf("starting a session stamped %d creation rows", n)
 	}
+	if _, e = b.db.Exec(`INSERT INTO progress(profile_id,item_id,position,unit,playback_id) VALUES(?,?,?,0,?) ON CONFLICT(profile_id,item_id) DO UPDATE SET playback_id=excluded.playback_id,position=excluded.position,unit=excluded.unit`, b.personal, part.ID, resumeSeconds*1000, session); e != nil {
+		t.Fatal(e)
+	}
 	if _, e = b.db.Exec(`INSERT INTO book_resume(profile_id,book_id,item_id,playback_id,position,unit) VALUES(?,?,?,?,?,0) ON CONFLICT(profile_id,book_id) DO UPDATE SET item_id=excluded.item_id,playback_id=excluded.playback_id,position=excluded.position,unit=excluded.unit`, b.personal, b.book.ID, part.ID, session, resumeSeconds*1000); e != nil {
 		t.Fatal(e)
 	}
+}
+
+// partPosition reads one part's own stored position, which is what the next
+// online session of that part resumes from.
+func (b *bookHarness) partPosition(t *testing.T, part catalogtest.Item) int64 {
+	t.Helper()
+	var position int64
+	if e := b.db.QueryRow(`SELECT position FROM progress WHERE profile_id=? AND item_id=?`, b.personal, part.ID).Scan(&position); e != nil {
+		t.Fatal(e)
+	}
+	return position
 }
 
 func (b *bookHarness) writer(t *testing.T) string {
@@ -205,6 +219,82 @@ func TestOfflineListeningDoesNotTakeTheBookFromASessionStillReporting(t *testing
 	b.sync(t, "between", ProgressEntry{ItemID: b.parts[2].Public, PositionSeconds: 300, ObservedAt: b.now.Add(-3 * time.Hour).Format(time.RFC3339)})
 	if item, _ := b.pointer(t); item != b.parts[4].ID || b.writer(t) != "session-long" {
 		t.Fatalf("an observation older than the session's last report moved the book to part id %d (writer %q)", item, b.writer(t))
+	}
+}
+
+// The same holds inside one part. A session that has just started on the part
+// the listener is already in has put the book at its resume point; an offline
+// observation of that same part made before the start is older evidence and
+// changes nothing, neither where the book resumes nor where the next session of
+// that part would. An observation made at the very instant of the start loses
+// to it as well. One made afterwards is newer, and moves the book within the
+// part.
+func TestOfflineListeningDoesNotRewindAPartASessionHasJustStarted(t *testing.T) {
+	for _, activity := range []string{"none", "from an earlier day"} {
+		t.Run(activity, func(t *testing.T) {
+			b := newBookHarness(t)
+			part := b.parts[4]
+			if activity != "none" {
+				b.listenedOnline(t, part, 600, b.now.Add(-30*time.Hour))
+			}
+			started := b.now.Add(-time.Hour)
+			b.startedOnline(t, "session-noon", part, 900, started)
+			for name, observedAt := range map[string]time.Time{"before the start": started.Add(-time.Hour), "at the start": started} {
+				out := b.sync(t, "older-"+name[:2], ProgressEntry{ItemID: part.Public, PositionSeconds: 300, ObservedAt: observedAt.Format(time.RFC3339)})
+				if out.Applied != 0 || out.Conflicts != 1 || out.Entries[0].Outcome != ProgressSuperseded || out.Entries[0].PositionSeconds != 900 {
+					t.Fatalf("an observation %s was not superseded: %+v", name, out)
+				}
+				if item, position := b.pointer(t); item != part.ID || position != 900_000 || b.writer(t) != "session-noon" {
+					t.Fatalf("an observation %s rewound the book to %d ms in part id %d (writer %q)", name, position, item, b.writer(t))
+				}
+				if position := b.partPosition(t, part); position != 900_000 {
+					t.Fatalf("an observation %s rewound the part itself to %d ms", name, position)
+				}
+			}
+			out := b.sync(t, "newer", ProgressEntry{ItemID: part.Public, PositionSeconds: 1200, ObservedAt: started.Add(30 * time.Minute).Format(time.RFC3339)})
+			if out.Applied != 1 {
+				t.Fatalf("an observation after the start was refused: %+v", out)
+			}
+			if item, position := b.pointer(t); item != part.ID || position != 1_200_000 {
+				t.Fatalf("a later observation did not move the book within its part: %d ms in part id %d", position, item)
+			}
+		})
+	}
+}
+
+// The other arrival order: the offline listening reaches the server first and
+// is applied, then a session starts online in the same part. What was listened
+// to offline before that start, arriving late, must not rewind it either, and
+// neither must an observation older than the session's last report.
+func TestOfflineListeningArrivingAfterALaterOnlineStartInTheSamePartIsSuperseded(t *testing.T) {
+	b := newBookHarness(t)
+	part := b.parts[4]
+	if out := b.sync(t, "first", ProgressEntry{ItemID: part.Public, PositionSeconds: 300, ObservedAt: b.now.Add(-6 * time.Hour).Format(time.RFC3339)}); out.Applied != 1 {
+		t.Fatalf("%+v", out)
+	}
+	if item, position := b.pointer(t); item != part.ID || position != 300_000 {
+		t.Fatalf("the offline listening was not applied: %d ms in part id %d", position, item)
+	}
+	// Online, later: the session starts where the part was left, and listens on.
+	b.startedOnline(t, "session-later", part, 300, b.now.Add(-3*time.Hour))
+	late := b.sync(t, "late", ProgressEntry{ItemID: part.Public, PositionSeconds: 100, ObservedAt: b.now.Add(-4 * time.Hour).Format(time.RFC3339)})
+	if late.Applied != 0 || late.Entries[0].Outcome != ProgressSuperseded {
+		t.Fatalf("listening older than the later online start was applied: %+v", late)
+	}
+	if _, e := b.db.Exec(`UPDATE playback_observations SET reported_at=?,position=900 WHERE session_id='session-later'`, b.now.Add(-time.Hour).UTC().Format("2006-01-02T15:04:05.000Z")); e != nil {
+		t.Fatal(e)
+	}
+	for _, statement := range []string{`UPDATE progress SET position=900000 WHERE profile_id=? AND playback_id='session-later'`, `UPDATE book_resume SET position=900000 WHERE profile_id=? AND playback_id='session-later'`} {
+		if _, e := b.db.Exec(statement, b.personal); e != nil {
+			t.Fatal(e)
+		}
+	}
+	between := b.sync(t, "between", ProgressEntry{ItemID: part.Public, PositionSeconds: 500, ObservedAt: b.now.Add(-2 * time.Hour).Format(time.RFC3339)})
+	if between.Applied != 0 || between.Entries[0].Outcome != ProgressSuperseded || between.Entries[0].PositionSeconds != 900 {
+		t.Fatalf("listening older than the session's last report was applied: %+v", between)
+	}
+	if item, position := b.pointer(t); item != part.ID || position != 900_000 || b.writer(t) != "session-later" || b.partPosition(t, part) != 900_000 {
+		t.Fatalf("late offline listening rewound the book to %d ms in part id %d (writer %q, part at %d ms)", position, item, b.writer(t), b.partPosition(t, part))
 	}
 }
 
