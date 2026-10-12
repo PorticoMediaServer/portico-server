@@ -35,8 +35,11 @@ func (s *Service) claimScreen(ctx context.Context) (*screenClaim, error) {
 	err = tx.QueryRowContext(ctx, `SELECT target_kind,target_id FROM screen_metadata_work WHERE status IN('pending','searching','pending_children') AND next_attempt<=? AND lease_until<=? ORDER BY CASE WHEN status='searching' THEN 0 WHEN status='pending_children' THEN 1 WHEN target_kind='show' THEN 2 ELSE 3 END,next_attempt,target_id LIMIT 1`, stamp, stamp).Scan(&kind, &target)
 	if errors.Is(err, sql.ErrNoRows) {
 		// Nothing else is due, so a title parked by an outage whose cool-off
-		// has passed gets another try. A parked row with no retry time is final.
-		err = tx.QueryRowContext(ctx, `SELECT target_kind,target_id FROM screen_metadata_work WHERE status='unavailable' AND next_attempt>'' AND next_attempt<=? AND lease_until<=? ORDER BY next_attempt,target_id LIMIT 1`, stamp, stamp).Scan(&kind, &target)
+		// has passed gets another try. Both marks are required: a retry time,
+		// and one of the reasons only an outage records (screenRecoverable). A
+		// retry time alone proves nothing, because rows parked before this rule
+		// were all given one, whatever had parked them.
+		err = tx.QueryRowContext(ctx, `SELECT target_kind,target_id FROM screen_metadata_work WHERE status='unavailable' AND next_attempt>'' AND next_attempt<=? AND lease_until<=? AND error IN('unavailable','provider_unavailable','provider_backoff') ORDER BY next_attempt,target_id LIMIT 1`, stamp, stamp).Scan(&kind, &target)
 	}
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, gated.Commit()
@@ -249,6 +252,12 @@ func (s *Service) failScreen(ctx context.Context, p *screenClaim, problem error)
 		// with no retry time until the owner or a change to the title wakes them.
 		next = ""
 		if pe != nil && pe.Retryable() {
+			// A refused request is recorded as request_rejected whatever its
+			// status, so the reason is restated as one that says the provider,
+			// not the request, was at fault; claimScreen recovers on that.
+			if !screenRecoverable[reason] {
+				reason = "provider_unavailable"
+			}
 			next = tvdbStamp(s.publicationTime().Add(max(delay, screenRecoveryCoolOff)))
 		}
 	}
@@ -263,6 +272,12 @@ func (s *Service) failScreen(ctx context.Context, p *screenClaim, problem error)
 // again: long enough that a provider which is down is asked about each title
 // about once an hour at first, and far less often after that.
 const screenRecoveryCoolOff = time.Hour
+
+// screenRecoverable are the recorded reasons that can only mean the provider
+// could not be reached or would not serve for now: a network failure, a rate
+// limit or provider-side error, and a wait on the provider's own cooldown.
+// claimScreen's recovery query lists the same three.
+var screenRecoverable = map[string]bool{"unavailable": true, "provider_unavailable": true, "provider_backoff": true}
 
 func screenProviderEnabled(b screenBase, provider string) bool {
 	for _, p := range b.Providers {
