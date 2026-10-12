@@ -352,7 +352,7 @@ components:
       properties:
         id: {type: string}
         labelKey: {type: string}
-        type: {type: string, enum: [string, enum, number, date, boolean, identity-set], description: "A number field accepts a JSON number or numeric text, so the string values a facet publishes (a decade facet answers \"1990\") can be sent back as filter values (CD-02)."}
+        type: {type: string, enum: [string, enum, number, date, boolean, identity-set], description: "A number field accepts a JSON number or numeric text, so the string values a facet publishes (a decade facet answers \"1990\") can be sent back as filter values (CD-02). A date field accepts `YYYY-MM-DD` or an RFC 3339 timestamp with any offset, and the value names a period in UTC: the whole day for a date, and for a timestamp the unit it is written to (the second, or the last fraction digit given). `equals` is falling inside that period, `less-than` is before it, `at-most` is up to its end, `greater-than` is after it, `at-least` is from its start, and `between` runs from the first value's start to the second value's end."}
         operators: {type: array, items: {type: string}}
         controlHint: {type: string, enum: [toggle, select, number-range, date-range, facet-multi-select, text]}
         complexity: {type: string, enum: [quick, standard, advanced]}

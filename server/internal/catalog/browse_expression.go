@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -358,22 +359,78 @@ func likeValue(value any, prefixOnly bool) string {
 	return "%" + text + "%"
 }
 
-// browseDatePeriod is the period a date operand names, as the half-open range
-// of stored text it covers: the whole UTC day for YYYY-MM-DD, the second it
-// falls in for an RFC 3339 instant of any offset. Stored dates are UTC text, a
-// date or a timestamp with any fraction, which sorts correctly against these
-// bounds and not against the operand as it was sent.
-func browseDatePeriod(value any) (from, until string, ok bool) {
+// browseDatePeriod is the period a date operand names: the whole UTC day for
+// YYYY-MM-DD, and for an RFC 3339 instant of any offset the unit it was
+// written to, a second or the last fraction digit given.
+func browseDatePeriod(value any) (from, until time.Time, ok bool) {
 	text, _ := value.(string)
 	if day, err := time.Parse("2006-01-02", text); err == nil {
-		return day.Format("2006-01-02"), day.AddDate(0, 0, 1).Format("2006-01-02"), true
+		return day, day.AddDate(0, 0, 1), true
 	}
 	at, err := time.Parse(time.RFC3339, text)
 	if err != nil {
-		return "", "", false
+		return from, until, false
 	}
-	at = at.UTC().Truncate(time.Second)
-	return at.Format("2006-01-02T15:04:05"), at.Add(time.Second).Format("2006-01-02T15:04:05"), true
+	unit := time.Second
+	if match := browseDateFraction.FindStringSubmatch(text); match != nil {
+		for range min(len(match[1]), 9) {
+			unit /= 10
+		}
+	}
+	at = at.UTC().Truncate(unit)
+	return at, at.Add(unit), true
+}
+
+var browseDateFraction = regexp.MustCompile(`:[0-9]{2}\.([0-9]+)`)
+
+// browseDateBound is one end of a period as stored text sorts against it.
+// Stored dates are UTC text: a date, or a timestamp whose fraction has any
+// number of digits or none. Text order is time order for all of them except
+// the timestamps of the bound's own second whose fraction stops short of the
+// bound's ("…:11Z" and "…:11.5Z" against "…:11.501"): they sort after it and
+// are earlier, so they are named one by one in short.
+type browseDateBound struct {
+	text  string
+	short []any
+}
+
+func newBrowseDateBound(at time.Time) browseDateBound {
+	at = at.UTC()
+	second := at.Truncate(time.Second)
+	if at.Equal(second) {
+		// A stored date is its day's midnight.
+		if h, m, s := at.Clock(); h == 0 && m == 0 && s == 0 {
+			return browseDateBound{text: at.Format("2006-01-02")}
+		}
+		return browseDateBound{text: at.Format("2006-01-02T15:04:05")}
+	}
+	base := second.Format("2006-01-02T15:04:05")
+	fraction := strings.TrimRight(fmt.Sprintf("%09d", at.Nanosecond()), "0")
+	bound := browseDateBound{text: base + "." + fraction, short: []any{base + "Z"}}
+	for digits := 1; digits < len(fraction); digits++ {
+		bound.short = append(bound.short, base+"."+fraction[:digits]+"Z")
+	}
+	return bound
+}
+
+// before renders "the stored date is earlier than this bound"; from renders
+// "it is this bound or later". Both are unknown, so false, for a missing date.
+func (c *browseCompiler) before(target string, bound browseDateBound) string {
+	c.args = append(c.args, bound.text)
+	if len(bound.short) == 0 {
+		return target + "<?"
+	}
+	c.args = append(c.args, bound.short...)
+	return "(" + target + "<? OR " + target + " IN (" + placeholders(len(bound.short)) + "))"
+}
+
+func (c *browseCompiler) from(target string, bound browseDateBound) string {
+	c.args = append(c.args, bound.text)
+	if len(bound.short) == 0 {
+		return target + ">=?"
+	}
+	c.args = append(c.args, bound.short...)
+	return "(" + target + ">=? AND " + target + " NOT IN (" + placeholders(len(bound.short)) + "))"
 }
 
 // dateComparison renders an operator over a date field: equality is falling in
@@ -385,37 +442,31 @@ func (c *browseCompiler) dateComparison(expression, operator string, value any) 
 		if len(values) != 2 {
 			return "", true, browseIssue("query.value", "between requires exactly two values")
 		}
-		from, _, first := browseDatePeriod(values[0])
-		_, until, last := browseDatePeriod(values[1])
-		if !first || !last {
+		first, _, firstOK := browseDatePeriod(values[0])
+		_, last, lastOK := browseDatePeriod(values[1])
+		if !firstOK || !lastOK {
 			return "", true, browseIssue("query.value", "must use YYYY-MM-DD or RFC 3339")
 		}
-		c.args = append(c.args, from, until)
-		return "(" + target + ">=? AND " + target + "<?)", true, nil
+		return "(" + c.from(target, newBrowseDateBound(first)) + " AND " + c.before(target, newBrowseDateBound(last)) + ")", true, nil
 	}
-	from, until, ok := browseDatePeriod(value)
+	start, end, ok := browseDatePeriod(value)
 	if !ok {
 		return "", false, nil
 	}
+	from, until := newBrowseDateBound(start), newBrowseDateBound(end)
 	switch operator {
 	case "equals":
-		c.args = append(c.args, from, until)
-		return "(" + target + ">=? AND " + target + "<?)", true, nil
+		return "(" + c.from(target, from) + " AND " + c.before(target, until) + ")", true, nil
 	case "not-equals":
-		c.args = append(c.args, from, until)
-		return "(" + target + " IS NULL OR " + target + "<? OR " + target + ">=?)", true, nil
+		return "(" + target + " IS NULL OR " + c.before(target, from) + " OR " + c.from(target, until) + ")", true, nil
 	case "less-than":
-		c.args = append(c.args, from)
-		return target + "<?", true, nil
+		return c.before(target, from), true, nil
 	case "at-most":
-		c.args = append(c.args, until)
-		return target + "<?", true, nil
+		return c.before(target, until), true, nil
 	case "greater-than":
-		c.args = append(c.args, until)
-		return target + ">=?", true, nil
+		return c.from(target, until), true, nil
 	case "at-least":
-		c.args = append(c.args, from)
-		return target + ">=?", true, nil
+		return c.from(target, from), true, nil
 	}
 	return "", false, nil
 }

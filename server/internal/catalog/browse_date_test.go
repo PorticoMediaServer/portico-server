@@ -40,6 +40,57 @@ func TestBrowseDateFiltersCompareDaysAndInstants(t *testing.T) {
 		{"released on a day", `{"field":"releaseDate","operator":"equals","value":"2005-06-01"}`, []string{"m2"}},
 		{"released between days", `{"field":"releaseDate","operator":"between","value":["2005-01-01","2005-06-01"]}`, []string{"m2"}},
 		{"released after a day", `{"field":"releaseDate","operator":"greater-than","value":"2005-06-01"}`, []string{}},
+		{"released from midnight of its day", `{"field":"releaseDate","operator":"at-least","value":"2005-06-01T00:00:00Z"}`, []string{"m2"}},
+		{"released before midnight of its day", `{"field":"releaseDate","operator":"less-than","value":"2005-06-01T00:00:00Z"}`, []string{}},
+	}
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			got := browseIDs(t, s, names, test.query)
+			if strings.Join(got, ",") != strings.Join(test.want, ",") {
+				t.Fatalf("want %v got %v", test.want, got)
+			}
+		})
+	}
+}
+
+// A timestamp operand is compared at the precision it was written with, a
+// fraction included, against stored timestamps whose fractions have any
+// length: neither side's digits are dropped.
+func TestBrowseDateFiltersKeepFractionsOfASecond(t *testing.T) {
+	db, s, names := browseFixture(t)
+	c := catalogtest.New(t, db)
+	for name, added := range map[string]string{
+		"m1": "2026-09-01T14:23:11Z",
+		"m2": "2026-09-01T14:23:11.123Z",
+		"m3": "2026-09-01T14:23:11.5Z",
+		"m4": "2026-09-01T14:23:11.500999Z",
+		"m5": "2026-09-01T14:23:11.999Z",
+	} {
+		c.Fields(names[name].ID, map[string]any{"added_text": added})
+	}
+	c.Drain()
+	cases := []struct {
+		name, query string
+		want        []string
+	}{
+		{"before .500", `{"field":"dateAdded","operator":"less-than","value":"2026-09-01T14:23:11.500Z"}`, []string{"m1", "m2"}},
+		{"up to .500", `{"field":"dateAdded","operator":"at-most","value":"2026-09-01T14:23:11.500Z"}`, []string{"m1", "m2", "m3", "m4"}},
+		{"after .500", `{"field":"dateAdded","operator":"greater-than","value":"2026-09-01T14:23:11.500Z"}`, []string{"m5"}},
+		{"from .500", `{"field":"dateAdded","operator":"at-least","value":"2026-09-01T14:23:11.500Z"}`, []string{"m3", "m4", "m5"}},
+		{"at .500", `{"field":"dateAdded","operator":"equals","value":"2026-09-01T14:23:11.500Z"}`, []string{"m3", "m4"}},
+		{"not at .500", `{"field":"dateAdded","operator":"not-equals","value":"2026-09-01T14:23:11.500Z"}`, []string{"m1", "m2", "m5"}},
+		{"at .5", `{"field":"dateAdded","operator":"equals","value":"2026-09-01T14:23:11.5Z"}`, []string{"m3", "m4"}},
+		{"at .123", `{"field":"dateAdded","operator":"equals","value":"2026-09-01T14:23:11.123Z"}`, []string{"m2"}},
+		{"before .123", `{"field":"dateAdded","operator":"less-than","value":"2026-09-01T14:23:11.123Z"}`, []string{"m1"}},
+		{"after .123", `{"field":"dateAdded","operator":"greater-than","value":"2026-09-01T14:23:11.123Z"}`, []string{"m3", "m4", "m5"}},
+		{"after .999", `{"field":"dateAdded","operator":"greater-than","value":"2026-09-01T14:23:11.999Z"}`, []string{}},
+		{"from .999", `{"field":"dateAdded","operator":"at-least","value":"2026-09-01T14:23:11.999Z"}`, []string{"m5"}},
+		{"before a microsecond past the second", `{"field":"dateAdded","operator":"less-than","value":"2026-09-01T14:23:11.000001Z"}`, []string{"m1"}},
+		{"from .500 in another zone", `{"field":"dateAdded","operator":"at-least","value":"2026-09-01T16:23:11.500+02:00"}`, []string{"m3", "m4", "m5"}},
+		{"between .123 and .500", `{"field":"dateAdded","operator":"between","value":["2026-09-01T14:23:11.123Z","2026-09-01T14:23:11.500Z"]}`, []string{"m2", "m3", "m4"}},
+		{"in the second", `{"field":"dateAdded","operator":"equals","value":"2026-09-01T14:23:11Z"}`, []string{"m1", "m2", "m3", "m4", "m5"}},
+		{"after the second", `{"field":"dateAdded","operator":"greater-than","value":"2026-09-01T14:23:11Z"}`, []string{}},
+		{"before .5 of the last second of a minute", `{"field":"dateAdded","operator":"less-than","value":"2026-09-01T14:23:59.5Z"}`, []string{"m1", "m2", "m3", "m4", "m5"}},
 	}
 	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) {
