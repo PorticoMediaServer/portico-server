@@ -338,9 +338,10 @@ func (s *Service) Run(ctx context.Context) {
 	wake := workerloop.NewSignal()
 	unregister := dbwork.WakeOnTables(wake, "jobs", "inventory_*", "library_sources", "scan_policies", "maintenance_*", "console_documents")
 	defer unregister()
-	// A quantum that moved its run forward asks for the next one itself. The
-	// commit wake above is shared and floored, so on its own it paced every
-	// source at one bounded step per poll however idle the machine was.
+	// A quantum that moved its run forward asks for the next one itself, after
+	// giving way to any foreground work. The commit wake above is shared and
+	// floored, so on its own it paced every source at one bounded step per poll
+	// however idle the machine was.
 	advanced := workerloop.NewSignal()
 	workerloop.RunWith(ctx, "ingestion.scan", advanced, wake, func(ctx context.Context) time.Duration {
 		pending := false
@@ -392,7 +393,17 @@ func (s *Service) Run(ctx context.Context) {
 								advanced.Wake()
 							}
 						}()
+						started := time.Now()
 						more = s.processQuantum(work, c.id, c.library)
+						// The next step follows at once only when nothing in the
+						// foreground is in flight. Otherwise the scan first gives
+						// way, for the bounded pause every continuous bulk loop
+						// takes between batches: deprioritised, never stopped. The
+						// step's transactions are closed by now, and the source
+						// stays claimed, so nothing else runs it meanwhile.
+						if more {
+							more = dbwork.PaceBackground(work, started)
+						}
 					})
 				}
 				s.mu.Unlock()
