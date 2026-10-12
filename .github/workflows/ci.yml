@@ -9,6 +9,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Check out canonical API toolkit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: PorticoMediaServer/portico-server
+          ref: 82aaa54f89efdc2e029b635746627cd8c8b71960
+          path: .scratch/portico-server
+          sparse-checkout: apikit
+          persist-credentials: false
+      - name: Check shared API toolkit
+        run: PORTICO_SERVER_REPO="$PWD/.scratch/portico-server" scripts/shared-apikit.sh
       - name: No built binaries or large files in Git
         run: scripts/check-repo-binaries.sh
   go:
