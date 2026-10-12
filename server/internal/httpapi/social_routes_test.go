@@ -615,6 +615,84 @@ func TestSocialHostReconnectTimeline(t *testing.T) {
 	}
 }
 
+// A group with nothing loaded is a lobby, and stays one: neither a host who
+// drops out and comes back nor a Stop turns it into a pause or a ready room of
+// nothing, so the first title it loads still goes through preparing.
+func TestSocialEmptyLobbyStaysALobby(t *testing.T) {
+	f := socialHTTP(t)
+	created := f.group("host-only")
+	id := created.Group.ID
+	var receipt social.TransportReceipt
+	f.decode(f.as(f.token, "POST", "/v1/groups/"+id+"/transport", social.TransportRequest{ProtocolVersion: social.Protocol, IdempotencyKey: "stop-nothing", ExpectedRevision: created.Group.Revision, Command: "stop"}), 200, &receipt)
+	var snapshot social.GroupResponse
+	f.decode(f.as(f.token, "GET", "/v1/groups/"+id, nil), 200, &snapshot)
+	if snapshot.Group.State != "lobby" || snapshot.Group.Timeline.State != "idle" {
+		t.Fatalf("stopping an empty lobby left it %q (timeline %q)", snapshot.Group.State, snapshot.Group.Timeline.State)
+	}
+
+	now := time.Now()
+	store, principal := f.socialStore(&now)
+	ctx := context.Background()
+	for _, silence := range []time.Duration{(social.HostGraceSeconds + 10) * time.Second, (social.HostPauseSeconds + 10) * time.Second} {
+		now = now.Add(silence)
+		if e := store.Sweep(ctx); e != nil {
+			t.Fatal(e)
+		}
+		state, e := store.ReadGroup(ctx, principal, id)
+		if e != nil {
+			t.Fatal(e)
+		}
+		if state.Group.State != "host-reconnecting-paused" {
+			t.Fatalf("a silent host did not put the lobby in reconnecting: %q", state.Group.State)
+		}
+		if _, e = store.Heartbeat(ctx, principal, "", id); e != nil {
+			t.Fatal(e)
+		}
+		if state, e = store.ReadGroup(ctx, principal, id); e != nil {
+			t.Fatal(e)
+		}
+		if state.Group.State != "lobby" || state.Group.Timeline.State != "idle" {
+			t.Fatalf("a host returning after %s left the empty lobby %q (timeline %q)", silence, state.Group.State, state.Group.Timeline.State)
+		}
+	}
+	// The first title therefore still prepares.
+	f.decode(f.as(f.token, "GET", "/v1/groups/"+id, nil), 200, &snapshot)
+	var queue social.QueueResponse
+	f.decode(f.as(f.token, "POST", "/v1/groups/"+id+"/queue", social.QueueRequest{ProtocolVersion: social.Protocol, IdempotencyKey: "q", ExpectedRevision: snapshot.Group.QueueRevision, Operation: "append", ItemIDs: []string{f.item}}), 200, &queue)
+	f.decode(f.as(f.token, "GET", "/v1/groups/"+id, nil), 200, &snapshot)
+	f.decode(f.as(f.token, "POST", "/v1/groups/"+id+"/transport", social.TransportRequest{ProtocolVersion: social.Protocol, IdempotencyKey: "first-load", ExpectedRevision: snapshot.Group.Revision, Command: "load", EntryID: queue.Queue.Entries[0].EntryID}), 200, &receipt)
+	f.decode(f.as(f.token, "GET", "/v1/groups/"+id, nil), 200, &snapshot)
+	if snapshot.Group.State != "preparing" {
+		t.Fatalf("the first title did not prepare: %q", snapshot.Group.State)
+	}
+}
+
+// Load names one queue entry. An id that is not in the queue is refused; it
+// must never be answered by reloading whatever is current from the start.
+func TestSocialLoadRefusesAnUnknownEntry(t *testing.T) {
+	f := socialHTTP(t)
+	created := f.group("host-only")
+	id := created.Group.ID
+	var queue social.QueueResponse
+	f.decode(f.as(f.token, "POST", "/v1/groups/"+id+"/queue", social.QueueRequest{ProtocolVersion: social.Protocol, IdempotencyKey: "q", ExpectedRevision: "1", Operation: "append", ItemIDs: []string{f.item}}), 200, &queue)
+	var snapshot social.GroupResponse
+	f.decode(f.as(f.token, "GET", "/v1/groups/"+id, nil), 200, &snapshot)
+	var receipt social.TransportReceipt
+	f.decode(f.as(f.token, "POST", "/v1/groups/"+id+"/transport", social.TransportRequest{ProtocolVersion: social.Protocol, IdempotencyKey: "load", ExpectedRevision: snapshot.Group.Revision, Command: "load", EntryID: queue.Queue.Entries[0].EntryID, PositionUS: "90000000"}), 200, &receipt)
+	f.decode(f.as(f.token, "GET", "/v1/groups/"+id, nil), 200, &snapshot)
+	f.decode(f.as(f.token, "POST", "/v1/groups/"+id+"/transport", social.TransportRequest{ProtocolVersion: social.Protocol, IdempotencyKey: "seek", ExpectedRevision: snapshot.Group.Revision, Command: "seek", PositionUS: "120000000"}), 200, &receipt)
+	f.decode(f.as(f.token, "GET", "/v1/groups/"+id, nil), 200, &snapshot)
+	w := f.as(f.token, "POST", "/v1/groups/"+id+"/transport", social.TransportRequest{ProtocolVersion: social.Protocol, IdempotencyKey: "load-missing", ExpectedRevision: snapshot.Group.Revision, Command: "load", EntryID: "ent_not_in_this_queue"})
+	if w.Code != 409 || errorCode(t, w) != "target_unavailable" {
+		t.Fatalf("an unknown entry was loaded: %d %s", w.Code, w.Body.String())
+	}
+	var after social.GroupResponse
+	f.decode(f.as(f.token, "GET", "/v1/groups/"+id, nil), 200, &after)
+	if after.Group.Timeline.AnchorPositionUS != "120000000" || after.Group.Revision != snapshot.Group.Revision {
+		t.Fatalf("a refused load moved the group: %+v", after.Group.Timeline)
+	}
+}
+
 func TestSocialHostTransfer(t *testing.T) {
 	f := socialHTTP(t)
 	created := f.group("host-only")

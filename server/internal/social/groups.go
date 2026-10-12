@@ -336,7 +336,7 @@ func (s *Store) hostReturned(ctx context.Context, tx *sql.Tx, g *record) error {
 	if !isReconnecting(g.state) {
 		return nil
 	}
-	g.state = g.resumeState
+	g.state = resumed(*g)
 	g.reconnect++
 	if g.state == "playing" {
 		// The anchor kept extrapolating through the outage, so it is still true.
@@ -349,6 +349,17 @@ func (s *Store) hostReturned(ctx context.Context, tx *sql.Tx, g *record) error {
 
 func isReconnecting(state string) bool {
 	return state == "host-reconnecting-playing" || state == "host-reconnecting-paused"
+}
+
+// resumed is the state a reconnecting group returns to. resume_state records
+// only playing or paused, so a group with nothing loaded, which can only have
+// been a lobby, returns to the lobby rather than to a pause of nothing: its
+// first title then still goes through preparing.
+func resumed(g record) string {
+	if g.resumeState != "playing" && g.itemID == "" {
+		return "lobby"
+	}
+	return g.resumeState
 }
 
 // extrapolate returns the position the group's clock has reached now.
@@ -474,7 +485,7 @@ func (s *Store) TransferHost(ctx context.Context, p identity.Principal, device, 
 		g.hostSeenMS = s.ms()
 		g.reconnect++
 		if isReconnecting(g.state) {
-			g.state = g.resumeState
+			g.state = resumed(*g)
 			if g.state != "playing" {
 				g.positionUS = s.extrapolate(*g)
 				g.positionUpdatedMS = s.ms()
