@@ -231,15 +231,29 @@ func applyProgress(ctx context.Context, tx *sql.Tx, personal string, entity int6
 // followBook keeps a book's pointer on the part the listener was last in. An
 // online session moves the pointer to its part when it starts; an offline
 // observation is the same evidence arriving late, so it moves the pointer too,
-// or gives a book its first one. It is ordered the way the part's own progress
-// is: it does not take the book from a part with later recorded activity,
-// whether that came from a server session or from another observation in the
-// same batch. An item that is not a part of a book has no pointer.
+// or gives a book its first one. An item that is not a part of a book has no
+// pointer.
+//
+// A move is ordered against everything that dates the pointer as it stands, and
+// the observation has to be newer than all of it:
+//
+//   - the session the pointer is bound to: when it was created, and when it
+//     last reported. A session owns the pointer from the moment it starts, before
+//     its first report, and a start writes no activity, so the part's activity
+//     alone would let an observation older than the start take the book back and
+//     unbind a session whose reports could then never move the pointer again;
+//   - the recorded activity of the part the pointer names, whether a server
+//     session wrote it or another observation in the same batch.
+//
+// A pointer that is moved is bound to no session, so the next one to start
+// takes it.
 func followBook(ctx context.Context, tx *sql.Tx, personal string, entity, positionMS int64, observed time.Time) error {
 	var book, current int64
-	var activity sql.NullString
-	e := tx.QueryRowContext(ctx, `SELECT f.book_id,COALESCE(r.item_id,0),(SELECT a.updated_at FROM progress_activity a WHERE a.profile_id=r.profile_id AND a.item_id=r.item_id)
- FROM catalog_book_files f JOIN catalog_entities i ON i.id=f.entity_id AND i.kind=9 LEFT JOIN book_resume r ON r.profile_id=? AND r.book_id=f.book_id WHERE f.entity_id=?`, personal, entity).Scan(&book, &current, &activity)
+	var activity, session string
+	e := tx.QueryRowContext(ctx, `SELECT f.book_id,COALESCE(r.item_id,0),
+ COALESCE((SELECT a.updated_at FROM progress_activity a WHERE a.profile_id=r.profile_id AND a.item_id=r.item_id),''),
+ COALESCE((SELECT max(COALESCE(o.created_at,''),COALESCE(o.reported_at,'')) FROM playback_observations o WHERE o.session_id=r.playback_id),'')
+ FROM catalog_book_files f JOIN catalog_entities i ON i.id=f.entity_id AND i.kind=9 LEFT JOIN book_resume r ON r.profile_id=? AND r.book_id=f.book_id WHERE f.entity_id=?`, personal, entity).Scan(&book, &current, &activity, &session)
 	if errors.Is(e, sql.ErrNoRows) {
 		return nil
 	}
@@ -250,12 +264,13 @@ func followBook(ctx context.Context, tx *sql.Tx, personal string, entity, positi
 		_, e = tx.ExecContext(ctx, `UPDATE book_resume SET position=?,unit=0 WHERE profile_id=? AND book_id=?`, positionMS, personal, book)
 		return e
 	}
-	if current != 0 && activity.Valid {
-		if last, err := time.Parse(time.RFC3339, activity.String); err == nil && !observed.After(last) {
-			return nil
+	if current != 0 {
+		for _, evidence := range []string{activity, session} {
+			if at, err := time.Parse(time.RFC3339, evidence); err == nil && !observed.After(at) {
+				return nil
+			}
 		}
 	}
-	// No session owns the pointer now, so the next one to start takes it.
 	_, e = tx.ExecContext(ctx, `INSERT INTO book_resume(profile_id,book_id,item_id,playback_id,position,unit) VALUES(?,?,?,'',?,0)
  ON CONFLICT(profile_id,book_id) DO UPDATE SET item_id=excluded.item_id,playback_id=excluded.playback_id,position=excluded.position,unit=excluded.unit`, personal, book, entity, positionMS)
 	return e
