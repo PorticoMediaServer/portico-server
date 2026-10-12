@@ -49,3 +49,25 @@ test('comment lines between frames never count toward a frame',async()=>{
  await readEventStream(stream([(': keepalive '+'k'.repeat(100)+'\n').repeat(4000),'data: after\n\n']),e=>seen.push(e.data));
  assert.deepEqual(seen,['after']);
 });
+
+test('the cap counts everything kept for a frame together: its event name, its data and the last id',async()=>{
+ // Each field is under the cap by itself; together they are nearly three times it.
+ const big='x'.repeat(100000);
+ await assert.rejects(readEventStream(stream(['event: '+big+'\nid: '+big+'\ndata: '+big+'\n\n']),()=>{}),/oversized/);
+ // The id outlives its frame, so it still counts against the next one.
+ const seen:number[]=[];
+ await assert.rejects(readEventStream(stream(['id: '+'i'.repeat(200000)+'\ndata: a\n\n','data: '+big+'\n\n']),e=>seen.push(e.data.length)),/oversized/);
+ assert.deepEqual(seen,[1]);
+});
+
+test('a field that is sent again replaces what was kept, so repeating it does not add up',async()=>{
+ const seen:ServerEvent[]=[];
+ await readEventStream(stream([('event: '+'e'.repeat(100000)+'\n').repeat(8)+('id: '+'i'.repeat(100000)+'\n').repeat(8)+'data: kept\n\n']),e=>seen.push(e));
+ assert.equal(seen.length,1);assert.equal(seen[0]!.data,'kept');assert.equal(seen[0]!.event.length,100000);
+});
+
+test('a CRLF line ending split between two reads is one line ending',async()=>{
+ const seen:ServerEvent[]=[];
+ await readEventStream(stream(['data: first\r','\ndata: second\r','\n\r','\n','event: next\r','data: third\r\r']),e=>seen.push(e));
+ assert.deepEqual(seen.map(e=>[e.event,e.data]),[['message','first\nsecond'],['next','third']],'a lone CR still ends a line; only the LF completing a CRLF is dropped');
+});
