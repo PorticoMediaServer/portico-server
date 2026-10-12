@@ -41,8 +41,11 @@ case "$OS" in
     # from the installer script's folder, so neither may see a relative path.
     OUT="$(cd "$OUT" && pwd)"
     PAYLOAD="$OUT/payload-$OS-$FILE_ARCH"
-    cp "$ROOT/packaging/portable/README.txt" "$ROOT/packaging/portable/start-portico.cmd" "$PAYLOAD/"
-    (cd "$PAYLOAD" && zip -qr "$OUT/Portico-Media-Server-Windows-$FILE_ARCH-Portable.zip" .)
+    PORTABLE_PAYLOAD="$OUT/portable-windows-$FILE_ARCH"
+    rm -rf "${PORTABLE_PAYLOAD:?}"
+    cp -R "$PAYLOAD" "$PORTABLE_PAYLOAD"
+    cp "$ROOT/packaging/portable/README.txt" "$ROOT/packaging/portable/start-portico.cmd" "$PORTABLE_PAYLOAD/"
+    (cd "$PORTABLE_PAYLOAD" && zip -qr "$OUT/Portico-Media-Server-Windows-$FILE_ARCH-Portable.zip" .)
     makensis -V2 "-DOUTPUT_FILE=$OUT/Portico-Media-Server-Windows-$FILE_ARCH-Setup.exe" "-DSTAGE_DIR=$PAYLOAD" "-DPRODUCT_VERSION=$VERSION" "$ROOT/packaging/windows/installer.nsi"
     ;;
   darwin)

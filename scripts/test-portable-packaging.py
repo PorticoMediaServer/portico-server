@@ -32,7 +32,10 @@ class PortablePackagingTests(unittest.TestCase):
         (self.stage / "portico-server.exe").write_text("fixture executable")
         for name in ["nfpm", "makensis"]:
             tool = tools / name
-            tool.write_text("#!/bin/sh\nexit 0\n")
+            if name == "makensis":
+                tool.write_text("#!/usr/bin/env python3\nimport pathlib,sys\nstage=pathlib.Path(next(a.split('=',1)[1] for a in sys.argv if a.startswith('-DSTAGE_DIR=')))\nassert not (stage/'README.txt').exists(), 'portable README reached installer'\nassert not (stage/'start-portico.cmd').exists(), 'portable launcher reached installer'\n")
+            else:
+                tool.write_text("#!/bin/sh\nexit 0\n")
             tool.chmod(0o700)
         self.env = dict(os.environ, PATH=str(tools) + os.pathsep + os.environ["PATH"])
         self.env.pop("PORTICO_WEB_DIR", None)
