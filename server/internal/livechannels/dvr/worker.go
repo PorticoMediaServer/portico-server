@@ -324,13 +324,30 @@ func (s *Store) claimNext(ctx context.Context) (*claim, bool, error) {
 		// Reconcile the exact current guide occurrence before judging its end
 		// or consuming storage. An extension may have moved the old window.
 		if storageError != nil {
+			reason := "storage-unavailable"
 			if errors.Is(storageError, ErrStorageFloor) {
-				return fail("storage-floor")
+				reason = "storage-floor"
+			} else if errors.Is(storageError, ErrStorageCap) {
+				reason = "storage-cap"
 			}
-			if errors.Is(storageError, ErrStorageCap) {
-				return fail("storage-cap")
+			// Retention and queued deletions run after the claims in the same
+			// pass, so a full disk is not final the first time it is seen, nor
+			// while a deletion is still queued: the recording is looked at again
+			// shortly and starts as soon as there is room. It fails once nothing
+			// more is coming, and never waits past its own window. Nothing is
+			// deleted for its sake that retention would not delete anyway.
+			if reason != "storage-unavailable" && end.After(s.now()) {
+				reclaiming := r.Reason != reason
+				if !reclaiming {
+					if e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM dvr_delete_work)`).Scan(&reclaiming); e != nil {
+						return nil, false, e
+					}
+				}
+				if reclaiming {
+					return later(reason)
+				}
 			}
-			return fail("storage-unavailable")
+			return fail(reason)
 		}
 		if !end.After(s.now()) {
 			if r.State == "conflicted" || r.Reason == "tuner-conflict" {
