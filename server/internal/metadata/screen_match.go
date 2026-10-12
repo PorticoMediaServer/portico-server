@@ -14,8 +14,7 @@ import (
 )
 
 var screenYearPattern = regexp.MustCompile(`(?:^|[ ._\[(])((?:18|19|20)\d{2})(?:[ ._\])]|$)`)
-var screenBracketedYearPattern = regexp.MustCompile(`[\[(]((?:18|19|20)\d{2})[\])]`)
-var screenFollowingYearPattern = regexp.MustCompile(`^[ ._]((?:18|19|20)\d{2})(?:[ ._\])]|$)`)
+var screenFollowingYearPattern = regexp.MustCompile(`^(?:[ ._]|[ ._]?[\[(])((?:18|19|20)\d{2})(?:[ ._\])]|$)`)
 var screenReleasePattern = regexp.MustCompile(`(?i)(?:^|[ ._\[(])(?:480p|576p|720p|1080[pi]|2160p|4320p|4k|8k|blu[ ._-]?ray|bdrip|brrip|web[ ._-]?dl|webrip|hdtv|dvdrip|remux|x26[45]|h[ .]?26[45]|hevc|av1|aac|dts|truehd|ddp|hdr10?\+?|dolby[ .]?vision)(?:\b|_)`)
 var screenEpisodePattern = regexp.MustCompile(`(?i)(?:^|[ ._-])(?:s\d{1,2}e\d{1,4}|\d{1,2}x\d{1,4}|-\s*\d{1,4}(?:v\d)?)(?:\b|_)`)
 var screenGroupPattern = regexp.MustCompile(`^\[[^\]]{1,128}\]\s*`)
@@ -40,30 +39,29 @@ func normalizedScreenName(s string) string {
 
 // screenReleaseYear finds the release year in a name and where the title before
 // it ends. The first year is the release year unless the name says otherwise
-// without ambiguity: a year in brackets, a year written directly after
-// another, or any later year when the first one opens the name and would leave
-// no title at all. A name whose only year opens it is not guessed at.
+// without ambiguity: a year that opens the name would leave no title at all,
+// so the next year is taken; and a year written directly after another, bare
+// or in brackets, is the release while the earlier number belongs to the
+// title. A year further along, after release tags or other words, changes
+// nothing, a year in brackets is never displaced, and a name whose only year
+// opens it is not guessed at.
 func screenReleaseYear(s string) (cut, year int) {
 	m := screenYearPattern.FindStringSubmatchIndex(s)
 	if len(m) == 0 {
 		return -1, 0
 	}
 	cut, start, end := m[0], m[2], m[3]
-	if b := screenBracketedYearPattern.FindStringSubmatchIndex(s); len(b) > 0 {
-		cut, start, end = b[0], b[2], b[3]
-	} else {
-		if start == 0 {
-			if later := screenYearPattern.FindStringSubmatchIndex(s[end:]); len(later) > 0 {
-				cut, start, end = end+later[0], end+later[2], end+later[3]
-			}
+	if start == 0 {
+		if later := screenYearPattern.FindStringSubmatchIndex(s[end:]); len(later) > 0 {
+			cut, start, end = end+later[0], end+later[2], end+later[3]
 		}
-		for {
-			next := screenFollowingYearPattern.FindStringSubmatchIndex(s[end:])
-			if len(next) == 0 {
-				break
-			}
-			cut, start, end = end, end+next[2], end+next[3]
+	}
+	for !(start > 0 && strings.ContainsRune("([", rune(s[start-1])) && end < len(s) && strings.ContainsRune(")]", rune(s[end]))) {
+		next := screenFollowingYearPattern.FindStringSubmatchIndex(s[end:])
+		if len(next) == 0 {
+			break
 		}
+		cut, start, end = end, end+next[2], end+next[3]
 	}
 	year, _ = strconv.Atoi(s[start:end])
 	return cut, year
