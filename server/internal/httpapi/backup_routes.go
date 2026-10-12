@@ -165,6 +165,9 @@ func registerBackups(registry *apikit.Registry, d Dependencies) error {
 			return StatePermissionsDocument{}, &apierror.Error{Code: "administration_unavailable"}
 		}
 		if err := backup.FixPermissions(d.Administration.StateDirectory()); err != nil {
+			if errors.Is(err, backup.ErrStatePermissionsUnsupported) {
+				return StatePermissionsDocument{}, &apierror.Error{Code: "administration_unavailable"}
+			}
 			return StatePermissionsDocument{}, backupRouteError(err)
 		}
 		exposed, err := backup.CheckPermissions(d.Administration.StateDirectory())

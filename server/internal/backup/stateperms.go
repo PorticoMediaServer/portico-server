@@ -2,65 +2,71 @@ package backup
 
 import (
 	"errors"
-	"io/fs"
 	"os"
-	"path/filepath"
+	"runtime"
 )
 
-// errExposedEntry aborts the permissions walk at the first exposed entry.
-var errExposedEntry = errors.New("backup: state entry is accessible by other users")
+// ErrStatePermissionsUnsupported prevents a POSIX chmod repair from claiming
+// to tighten Windows ACLs.
+var ErrStatePermissionsUnsupported = errors.New("state permission repair is unavailable on this platform")
 
-// CheckPermissions reports whether the state folder or any file under it is
-// accessible by other users. Symlinks are never followed. A loose tree never
-// refuses to start: the console warns and offers FixPermissions instead.
+// CheckPermissions checks the POSIX traversal boundary of the state folder.
+// A private boundary protects even loose descendants, without walking caches,
+// mounted libraries or recordings. Windows synthetic modes cannot assess ACLs.
 func CheckPermissions(state string) (bool, error) {
-	err := filepath.WalkDir(state, func(path string, entry fs.DirEntry, err error) error {
-		if err != nil {
-			if entry != nil && entry.IsDir() {
-				return fs.SkipDir
-			}
-			return nil
-		}
-		info, err := entry.Info()
-		if err != nil {
-			return nil
-		}
-		if !info.Mode().IsDir() && !info.Mode().IsRegular() {
-			return nil
-		}
-		if info.Mode().Perm()&0077 != 0 {
-			return errExposedEntry
-		}
-		return nil
-	})
-	if errors.Is(err, errExposedEntry) {
-		return true, nil
+	if runtime.GOOS == "windows" {
+		return false, nil
 	}
-	return false, err
+	file, err := openStatePermissionBoundary(state)
+	if err != nil {
+		return false, err
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		return false, err
+	}
+	return info.Mode().Perm()&0077 != 0, nil
 }
 
-// FixPermissions removes group and other permission bits from the state
-// folder and its files, keeping every owner bit: a 0755 helper keeps its
-// owner execute bit, a 0644 file becomes 0600. Only Portico's own state
-// folder is ever touched, and only on the owner's explicit action.
+// FixPermissions tightens only the acquired state directory, preserving owner
+// bits. This blocks other accounts from traversing any of its contents without
+// chmodding media, mount points, symlinks or hard-linked files beneath it.
 func FixPermissions(state string) error {
-	return filepath.WalkDir(state, func(path string, entry fs.DirEntry, err error) error {
+	if runtime.GOOS == "windows" {
+		return ErrStatePermissionsUnsupported
+	}
+	file, err := openStatePermissionBoundary(state)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		return err
+	}
+	return file.Chmod(info.Mode().Perm() &^ 0077)
+}
+
+func openStatePermissionBoundary(state string) (*os.File, error) {
+	before, err := os.Lstat(state)
+	if err != nil {
+		return nil, err
+	}
+	if !before.IsDir() {
+		return nil, errors.New("state permission boundary is not a directory")
+	}
+	file, err := os.Open(state)
+	if err != nil {
+		return nil, err
+	}
+	current, err := file.Stat()
+	if err != nil || !os.SameFile(before, current) {
+		file.Close()
 		if err != nil {
-			if entry != nil && entry.IsDir() {
-				return fs.SkipDir
-			}
-			return nil
+			return nil, err
 		}
-		info, err := entry.Info()
-		if err != nil {
-			return nil
-		}
-		if !info.Mode().IsDir() && !info.Mode().IsRegular() {
-			return nil
-		}
-		if info.Mode().Perm()&0077 == 0 {
-			return nil
-		}
-		return os.Chmod(path, info.Mode().Perm()&^0077)
-	})
+		return nil, errors.New("state permission boundary changed")
+	}
+	return file, nil
 }
