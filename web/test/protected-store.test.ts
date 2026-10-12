@@ -57,7 +57,10 @@ test('the vault keeps a record across reads and replaces or removes it on reques
 });
 
 // Each of these records is there and can never be read again, however long the app waits.
-const damage: Record<string, (data: Map<string, unknown>) => void> = {
+const damage: Record<string, (data: Map<string, unknown>) => void | Promise<void>> = {
+  'a key for another algorithm': async data => { data.set('key', await crypto.subtle.generateKey({name: 'HMAC', hash: 'SHA-256'}, false, ['sign', 'verify'])); },
+  'a key that may not decrypt': async data => { data.set('key', await crypto.subtle.generateKey({name: 'AES-GCM', length: 256}, false, ['encrypt'])); },
+  'something that is not a key': data => { data.set('key', {type: 'secret'}); },
   'text that is not a record': data => { data.set('selected', {version: 2, plain: '{broken'}); },
   'a missing encryption key': data => { data.delete('key'); },
   'contents that fail authentication': data => { const kept = data.get('selected') as {version: 1; iv: Uint8Array; cipher: ArrayBuffer}; const cipher = kept.cipher.slice(0); new Uint8Array(cipher)[0]! ^= 1; data.set('selected', {...kept, cipher}); },
@@ -66,7 +69,7 @@ const damage: Record<string, (data: Map<string, unknown>) => void> = {
 for (const [name, break_] of Object.entries(damage)) test('a saved record with ' + name + ' is reported as damaged, ends the sign-in at once, and is replaced by the next sign-in', async t => {
   const {db, store} = await vault(t);
   await store.change(() => record('one'));
-  break_(db.data);
+  await break_(db.data);
   await assert.rejects(store.read(), savedConnectionDamaged);
   // Renewal gets a definite answer instead of retrying for ever, and never asks the server.
   assert.deepEqual(await refresh(store), {code: 'saved_sign_in_damaged', signOut: true, asked: 0});
