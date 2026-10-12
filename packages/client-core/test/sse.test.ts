@@ -21,3 +21,31 @@ test('a refused stream is an error with its status, and an abort ends the read q
 test('an oversized frame is refused rather than buffered without bound',async()=>{
  await assert.rejects(readEventStream(stream(['data: '+'x'.repeat(300000)]),()=>{}),/oversized/);
 });
+
+test('a frame of many small data lines that never ends is refused once it passes the cap',async()=>{
+ // Each chunk is far below the cap and ends its line, so nothing waits unparsed between reads.
+ const line='data: '+'x'.repeat(1000)+'\n';let sent=0,events=0;
+ const endless=new Response(new ReadableStream({pull(c){if(sent++>1000){c.close();return;}c.enqueue(new TextEncoder().encode(line));}}));
+ await assert.rejects(readEventStream(endless,()=>{events++;}),/oversized/);
+ assert.ok(sent<300,'refused near the cap, not after everything arrived: '+sent);
+ assert.equal(events,0);
+});
+
+test('one chunk carrying many complete small frames is read, however large the chunk',async()=>{
+ const frames=4000,chunk=Array.from({length:frames},(_,i)=>'event: tick\ndata: '+String(i).padStart(90,'0')+'\n\n').join('');
+ assert.ok(chunk.length>262144);
+ const seen:string[]=[];
+ await readEventStream(stream([chunk]),e=>seen.push(e.data));
+ assert.equal(seen.length,frames);assert.equal(Number(seen[frames-1]),frames-1);
+});
+
+test('a single oversized line is refused even when it arrives whole with its line ending',async()=>{
+ await assert.rejects(readEventStream(stream(['data: '+'x'.repeat(300000)+'\n\n']),()=>{}),/oversized/);
+ await assert.rejects(readEventStream(stream(['event: '+'x'.repeat(300000)+'\ndata: 1\n\n']),()=>{}),/oversized/);
+});
+
+test('comment lines between frames never count toward a frame',async()=>{
+ const seen:string[]=[];
+ await readEventStream(stream([(': keepalive '+'k'.repeat(100)+'\n').repeat(4000),'data: after\n\n']),e=>seen.push(e.data));
+ assert.deepEqual(seen,['after']);
+});
