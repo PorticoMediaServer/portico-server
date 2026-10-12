@@ -3,19 +3,21 @@ package backup
 import (
 	"errors"
 	"os"
+	"path/filepath"
 	"runtime"
 )
 
 // ErrStatePermissionsUnsupported prevents a POSIX chmod repair from claiming
 // to tighten Windows ACLs.
-var ErrStatePermissionsUnsupported = errors.New("state permission repair is unavailable on this platform")
+var ErrStatePermissionsUnsupported = errors.New("state-folder access was not checked on this platform")
 
 // CheckPermissions checks the POSIX traversal boundary of the state folder.
+// A symlinked state path selects its resolved directory as the boundary.
 // A private boundary protects even loose descendants, without walking caches,
 // mounted libraries or recordings. Windows synthetic modes cannot assess ACLs.
 func CheckPermissions(state string) (bool, error) {
 	if runtime.GOOS == "windows" {
-		return false, nil
+		return false, ErrStatePermissionsUnsupported
 	}
 	file, err := openStatePermissionBoundary(state)
 	if err != nil {
@@ -49,14 +51,18 @@ func FixPermissions(state string) error {
 }
 
 func openStatePermissionBoundary(state string) (*os.File, error) {
-	before, err := os.Lstat(state)
+	resolved, err := filepath.EvalSymlinks(state)
+	if err != nil {
+		return nil, err
+	}
+	before, err := os.Lstat(resolved)
 	if err != nil {
 		return nil, err
 	}
 	if !before.IsDir() {
 		return nil, errors.New("state permission boundary is not a directory")
 	}
-	file, err := os.Open(state)
+	file, err := os.Open(resolved)
 	if err != nil {
 		return nil, err
 	}
