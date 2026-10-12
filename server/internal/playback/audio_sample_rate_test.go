@@ -40,7 +40,11 @@ func TestConvertedAudioSampleRateIsBounded(t *testing.T) {
 		{"192 kHz lossless", audio("truehd", 2, 192000), chromeProfile(), 48000},
 		{"48 kHz", audio("dts", 6, 48000), chromeProfile(), 0},
 		{"44.1 kHz", audio("dts", 2, 44100), chromeProfile(), 0},
-		{"unknown rate", audio("dts", 2, 0), chromeProfile(), 0},
+		// A rate that was never observed cannot be kept on trust: the output is
+		// given one the codec and the device both take.
+		{"unknown rate", audio("dts", 2, 0), chromeProfile(), 48000},
+		{"unknown rate for a device that takes up to 48 kHz", audio("dts", 2, 0), capped, 48000},
+		{"unknown rate for a device that takes 44.1 kHz", audio("dts", 2, 0), limited, 44100},
 		{"96 kHz in a codec the device plays to 48 kHz", audio("aac", 2, 96000), capped, 48000},
 		{"48 kHz for a device that takes 44.1 kHz", audio("dts", 2, 48000), limited, 44100},
 	} {
@@ -100,6 +104,8 @@ func TestConvertedAudioSampleRateIsBounded(t *testing.T) {
 		{"96 kHz when E-AC-3 has no rate under the device's limit", audio("truehd", 6, 96000), passthrough("eac3", 24000, 0), "aac", 48000},
 		{"48 kHz when E-AC-3 has no rate under the device's limit", audio("dts", 6, 48000), passthrough("eac3", 24000, 0), "aac", 0},
 		{"a rate AAC is not encoded at", audio("dts", 2, 37800), chromeProfile(), "aac", 44100},
+		{"unknown rate to E-AC-3", audio("truehd", 6, 0), passthrough("eac3", 0, 0), "eac3", 48000},
+		{"unknown rate when E-AC-3 has no rate under the device's limit", audio("truehd", 6, 0), passthrough("eac3", 24000, 0), "aac", 48000},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			p := decide(t, videoSource("mkv", "h264", picture, test.source), test.client, nil)
@@ -120,6 +126,8 @@ func TestConvertedAudioSampleRateIsBounded(t *testing.T) {
 		client ClientProfile
 	}{
 		{"a device limit below every AAC rate", videoSource("mkv", "h264", picture, audio("dts", 2, 48000)), tiny},
+		{"a device limit below every AAC rate, source rate unknown", videoSource("mkv", "h264", picture, audio("dts", 2, 0)), tiny},
+		{"no codec with a rate under the device's limits, source rate unknown", videoSource("mkv", "h264", picture, audio("truehd", 6, 0)), passthrough("eac3", 24000, 4000)},
 		{"no codec with a rate under the device's limits", videoSource("mkv", "h264", picture, audio("truehd", 6, 96000)), passthrough("eac3", 24000, 4000)},
 		{"a picture that is converted too", videoSource("mkv", "vp9", picture, audio("dts", 2, 48000)), func() ClientProfile {
 			p := appleTVProfile()

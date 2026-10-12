@@ -6209,7 +6209,7 @@ components:
         codec: {type: string}
         channels: {type: integer}
         bitrateBps: {type: integer}
-        sampleRate: {type: integer, description: 'Present only on a converted rendition that is resampled: the output rate in hertz. A source above 48 kHz, or above the device''s declared limit for the output codec, is brought down to it.'}
+        sampleRate: {type: integer, description: 'Present only on a converted rendition whose conversion names an output rate, in hertz: the source''s own rate is above 48 kHz or the device''s declared limit for the output codec, is not a rate that codec is encoded at, or was never observed. A track with no rate the device takes is not offered as a converted rendition.'}
         language: {type: string}
         label: {type: string, description: 'Exact HLS EXT-X-MEDIA NAME identity. Quotes, backslashes, C0 controls and DEL are removed before publication, including from track titles.'}
         default: {type: boolean}
