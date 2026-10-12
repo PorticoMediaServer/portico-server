@@ -213,7 +213,7 @@ func applyProgress(ctx context.Context, tx *sql.Tx, personal string, entity int6
 	if _, e := tx.ExecContext(ctx, `INSERT INTO progress_activity(profile_id,library_id,item_id,updated_at,state) VALUES(?,?,?,?,?) ON CONFLICT(profile_id,item_id) DO UPDATE SET updated_at=excluded.updated_at,state=excluded.state`, personal, library, entity, stampText, state); e != nil {
 		return e
 	}
-	if _, e := tx.ExecContext(ctx, `UPDATE book_resume SET position=?,unit=0 WHERE profile_id=? AND item_id=?`, int64(math.Round(entry.PositionSeconds*1000)), personal, entity); e != nil {
+	if e := followBook(ctx, tx, personal, entity, int64(math.Round(entry.PositionSeconds*1000)), observed); e != nil {
 		return e
 	}
 	if entry.Watched == nil {
@@ -225,5 +225,38 @@ func applyProgress(ctx context.Context, tx *sql.Tx, personal string, entity int6
 		return e
 	}
 	_, e := tx.ExecContext(ctx, `INSERT INTO personal_items(profile_id,item_id,watchlisted,favorite,rating,revision,watched,last_played_at) VALUES(?,?,0,0,NULL,1,?,?) ON CONFLICT(profile_id,item_id) DO UPDATE SET watched=excluded.watched,revision=personal_items.revision+1,last_played_at=excluded.last_played_at`, personal, entity, *entry.Watched, stampText)
+	return e
+}
+
+// followBook keeps a book's pointer on the part the listener was last in. An
+// online session moves the pointer to its part when it starts; an offline
+// observation is the same evidence arriving late, so it moves the pointer too,
+// or gives a book its first one. It is ordered the way the part's own progress
+// is: it does not take the book from a part with later recorded activity,
+// whether that came from a server session or from another observation in the
+// same batch. An item that is not a part of a book has no pointer.
+func followBook(ctx context.Context, tx *sql.Tx, personal string, entity, positionMS int64, observed time.Time) error {
+	var book, current int64
+	var activity sql.NullString
+	e := tx.QueryRowContext(ctx, `SELECT f.book_id,COALESCE(r.item_id,0),(SELECT a.updated_at FROM progress_activity a WHERE a.profile_id=r.profile_id AND a.item_id=r.item_id)
+ FROM catalog_book_files f JOIN catalog_entities i ON i.id=f.entity_id AND i.kind=9 LEFT JOIN book_resume r ON r.profile_id=? AND r.book_id=f.book_id WHERE f.entity_id=?`, personal, entity).Scan(&book, &current, &activity)
+	if errors.Is(e, sql.ErrNoRows) {
+		return nil
+	}
+	if e != nil {
+		return e
+	}
+	if current == entity {
+		_, e = tx.ExecContext(ctx, `UPDATE book_resume SET position=?,unit=0 WHERE profile_id=? AND book_id=?`, positionMS, personal, book)
+		return e
+	}
+	if current != 0 && activity.Valid {
+		if last, err := time.Parse(time.RFC3339, activity.String); err == nil && !observed.After(last) {
+			return nil
+		}
+	}
+	// No session owns the pointer now, so the next one to start takes it.
+	_, e = tx.ExecContext(ctx, `INSERT INTO book_resume(profile_id,book_id,item_id,playback_id,position,unit) VALUES(?,?,?,'',?,0)
+ ON CONFLICT(profile_id,book_id) DO UPDATE SET item_id=excluded.item_id,playback_id=excluded.playback_id,position=excluded.position,unit=excluded.unit`, personal, book, entity, positionMS)
 	return e
 }
