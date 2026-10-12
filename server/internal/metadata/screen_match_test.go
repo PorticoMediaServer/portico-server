@@ -94,6 +94,12 @@ func TestScreenNamesKeepAYearThatBelongsToTheTitle(t *testing.T) {
 		{"Film.1999.Remastered.2019.mkv", "Film", 1999},
 		{"Blade Runner 2049.mkv", "Blade Runner", 2049},
 		{"1917.mkv", "", 1917},
+		// A bracketed year after release tags is an encode or group date.
+		{"Movie.2019.1080p.[2020].mkv", "Movie", 2019},
+		{"Movie (2019) 1080p [2020].mkv", "Movie", 2019},
+		{"Movie (1999) (2019).mkv", "Movie", 1999},
+		{"2001 A Space Odyssey (1968) 1080p [2020].mkv", "2001 A Space Odyssey", 1968},
+		{"Blade Runner 2049 [2017] 1080p.mkv", "Blade Runner 2049", 2017},
 	} {
 		title, year, _ := screenFilename(tc.raw)
 		if title != tc.title || year != tc.year {

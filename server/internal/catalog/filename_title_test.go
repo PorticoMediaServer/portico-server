@@ -26,6 +26,13 @@ func TestFilenameTitleKeepsAYearThatBelongsToTheTitle(t *testing.T) {
 		{"Blade Runner 2049.mkv", "Blade Runner", 2049},
 		{"1917.mkv", "1917", 0},
 		{"Plain Title.mkv", "Plain Title", 0},
+		// A bracketed year further along, after release tags or other words, is
+		// an encode or group date: it does not displace the release year.
+		{"Movie.2019.1080p.[2020].mkv", "Movie", 2019},
+		{"Movie (2019) 1080p [2020].mkv", "Movie", 2019},
+		{"Movie (1999) (2019).mkv", "Movie", 1999},
+		{"Blade Runner 2049 Directors Cut (2017).mkv", "Blade Runner", 2049},
+		{"Blade Runner 2049 [2017] 1080p.mkv", "Blade Runner 2049", 2017},
 	} {
 		title, year := FilenameTitle(c.path)
 		if title != c.title || year != c.year {
