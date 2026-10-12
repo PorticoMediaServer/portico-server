@@ -1125,6 +1125,8 @@ export const enUS = {
   'card.more': 'More for {title}',
   'card.details': 'Details for {title}',
   'card.watched': 'Watched',
+  'card.nameWithState': '{name}, {state}',
+  'card.progress': '{progress} played',
   'card.episodesAired': '{count, plural, one {# episode} other {# episodes}}',
   'card.minutesLeft': '{count} min left',
   'card.hoursLeft': '{hours} h {minutes} min left',
