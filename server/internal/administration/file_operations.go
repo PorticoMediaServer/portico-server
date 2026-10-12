@@ -218,6 +218,33 @@ func reverseMove(ctx context.Context, move fileMove) error {
 	}
 	return moveFileContext(ctx, move.To, move.From)
 }
+
+// fileOperationCommitted reads the database's evidence for a journalled
+// operation: whether it committed, so its leftovers are removed, or did not, so
+// its moves are undone. A receipt for the same operation with another digest is
+// neither, and is refused. It reads only.
+func fileOperationCommitted(ctx context.Context, tx *sql.Tx, j *fileOperation) (bool, error) {
+	var committed bool
+	var err error
+	if j.Scope == "job-trash" {
+		if j.TrashEntryID == "" {
+			return false, ErrUnavailable
+		}
+		err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM admin_trash WHERE id=? AND operation_id=?)`, j.TrashEntryID, j.OperationID).Scan(&committed)
+	} else {
+		var digest string
+		err = tx.QueryRowContext(ctx, `SELECT digest FROM admin_receipts WHERE scope=? AND operation_id=?`, j.Scope, j.OperationID).Scan(&digest)
+		committed = err == nil && digest == j.Digest
+		if err == nil && !committed {
+			return false, ErrConflict
+		}
+	}
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return false, err
+	}
+	return committed, nil
+}
+
 func (s *Service) finishFileOperation(ctx context.Context, j *fileOperation) error {
 	if _, err := os.Stat(j.path); errors.Is(err, os.ErrNotExist) {
 		return nil
@@ -229,21 +256,8 @@ func (s *Service) finishFileOperation(ctx context.Context, j *fileOperation) err
 		return err
 	}
 	defer gated.Rollback()
-	var committed bool
-	if j.Scope == "job-trash" {
-		if j.TrashEntryID == "" {
-			return ErrUnavailable
-		}
-		err = gated.Tx().QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM admin_trash WHERE id=? AND operation_id=?)`, j.TrashEntryID, j.OperationID).Scan(&committed)
-	} else {
-		var digest string
-		err = gated.Tx().QueryRowContext(ctx, `SELECT digest FROM admin_receipts WHERE scope=? AND operation_id=?`, j.Scope, j.OperationID).Scan(&digest)
-		committed = err == nil && digest == j.Digest
-		if err == nil && !committed {
-			return ErrConflict
-		}
-	}
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+	committed, err := fileOperationCommitted(ctx, gated.Tx(), j)
+	if err != nil {
 		return err
 	}
 	// Commit evidence is immutable while the caller holds s.files. Release the
@@ -292,22 +306,72 @@ func (s *Service) recoverFileOperations(ctx context.Context) error {
 		return err
 	}
 	for _, entry := range entries {
-		if !strings.HasSuffix(entry.Name(), ".json") {
-			continue
-		}
-		if !entry.Type().IsRegular() {
-			return ErrUnavailable
-		}
-		raw, err := os.ReadFile(filepath.Join(root, entry.Name()))
+		j, err := readFileOperation(root, entry)
 		if err != nil {
 			return err
 		}
-		var j fileOperation
-		if len(raw) > 16<<20 || json.Unmarshal(raw, &j) != nil || j.Version != 1 || !oneOf(j.Scope, "media-delete", "trash-restore", "trash-empty", "job-trash") || j.OperationID == "" || !validOperationID(j.OperationID) {
-			return ErrUnavailable
+		if j == nil {
+			continue
 		}
-		j.path = filepath.Join(root, entry.Name())
-		if err = s.finishFileOperation(ctx, &j); err != nil {
+		if err = s.finishFileOperation(ctx, j); err != nil {
+			return fmt.Errorf("recover %s: %w", entry.Name(), err)
+		}
+	}
+	return nil
+}
+
+// readFileOperation reads one journal from the journal folder. Anything that
+// is not a journal answers nil; a journal that cannot be read or is not valid
+// is an error.
+func readFileOperation(root string, entry os.DirEntry) (*fileOperation, error) {
+	if !strings.HasSuffix(entry.Name(), ".json") {
+		return nil, nil
+	}
+	if !entry.Type().IsRegular() {
+		return nil, ErrUnavailable
+	}
+	raw, err := os.ReadFile(filepath.Join(root, entry.Name()))
+	if err != nil {
+		return nil, err
+	}
+	var j fileOperation
+	if len(raw) > 16<<20 || json.Unmarshal(raw, &j) != nil || j.Version != 1 || !oneOf(j.Scope, "media-delete", "trash-restore", "trash-empty", "job-trash") || j.OperationID == "" || !validOperationID(j.OperationID) {
+		return nil, ErrUnavailable
+	}
+	j.path = filepath.Join(root, entry.Name())
+	return &j, nil
+}
+
+// CheckFileOperations reports whether the interrupted file operations waiting
+// in the state folder can be decided from this database, as
+// RecoverFileOperations will have to decide them at start-up. It reads the
+// journals and the database's evidence with the code recovery uses, and does
+// nothing else: no file is moved, removed or restored, and no journal changes.
+// It exists so a database about to replace this one (a restore) can be judged
+// before it is kept. A journal that is unreadable or invalid in itself stops
+// recovery whichever database is in place, so it is not reported here.
+func (s *Service) CheckFileOperations(ctx context.Context) error {
+	if s.StateDirectory() == "" {
+		return ErrUnavailable
+	}
+	s.files.Lock()
+	defer s.files.Unlock()
+	root := filepath.Join(s.StateDirectory(), "file-operations")
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return nil
+	}
+	gated, err := dbwork.BeginSnapshot(ctx, s.db)
+	if err != nil {
+		return err
+	}
+	defer gated.Rollback()
+	for _, entry := range entries {
+		j, err := readFileOperation(root, entry)
+		if err != nil || j == nil || j.Scope == "job-trash" && j.TrashEntryID == "" {
+			continue
+		}
+		if _, err = fileOperationCommitted(ctx, gated.Tx(), j); err != nil {
 			return fmt.Errorf("recover %s: %w", entry.Name(), err)
 		}
 	}
