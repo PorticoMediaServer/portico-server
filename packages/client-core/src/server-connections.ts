@@ -12,7 +12,12 @@ export type RememberedServer = {
  pendingRefresh?:string;
 };
 /** Implementations protect and atomically replace credentials + raw key + route
- * evidence together. A cache update cannot overwrite another selected family. */
+ * evidence together. A cache update cannot overwrite another selected family.
+ *
+ * A read can fail in two ways, and the store must say which. A record that is there but can never
+ * be read again (not valid, missing its key, failing authentication) is reported with the code
+ * `invalid_saved_connection`; `change` then treats it as absent, so a new sign-in replaces it.
+ * Anything else (locked, busy, timed out) is thrown as it is and means "not now". */
 export interface ServerConnectionStorage {
  read():Promise<RememberedServer|undefined>;
  change(update:(current:RememberedServer|undefined)=>RememberedServer|undefined):Promise<void>;
@@ -20,6 +25,9 @@ export interface ServerConnectionStorage {
 export type ConnectionEnvironment={storage:ServerConnectionStorage;fetcher?:typeof fetch;crypto?:RouteCrypto;discover?:(signal:AbortSignal)=>Promise<readonly DiscoveryRoute[]>};
 export type HostedConnectionSource={origin:string;accountId:string;request:<T>(path:string,signal:AbortSignal)=>Promise<T>};
 const object=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!Array.isArray(v);
+/** A store's (or this module's) report that the saved record is there but can never be read. Told
+ * by its code, so a platform store's own error object can carry it across a native bridge. */
+export const savedConnectionDamaged=(e:unknown):boolean=>(e as {code?:unknown}|null)?.code==='invalid_saved_connection';
 export function parseRememberedServer(value:unknown):RememberedServer|undefined {
  if(value===null||value===undefined)return;
  if(!object(value)||value.version!=='1'||typeof value.logicalOrigin!=='string'||!object(value.pin)||!object(value.routes)||!Array.isArray(value.routes.paired)||value.routes.paired.length>8)throw new RouteError('invalid_saved_connection','Saved server connection is incomplete. Sign in again to establish its identity.');
@@ -195,9 +203,12 @@ export const REFRESH_MIN_VALID_MS = 60_000;
 const REFRESH_REVOKED_403 = 'access_limit';
 
 /**
- * A refresh that could not complete. `signOut` means the server refused the credential (reused,
- * revoked, expired, device no longer approved): the sign-in is over and the stored record has
- * been removed. Otherwise the credential is kept and the refresh can be retried (same request id).
+ * A refresh that could not complete. `signOut` means the sign-in is over on this device. Either
+ * the server refused the credential (reused, revoked, expired, device no longer approved) and the
+ * stored record has been removed, or the stored record is replaced, gone or damaged
+ * (`saved_sign_in_damaged`, status 0: the server was not asked, and the record is left for a new
+ * sign-in to replace). Otherwise the credential is kept and the refresh can be retried (same
+ * request id).
  */
 export class SessionRefreshError extends ApiError {
  readonly signOut:boolean;
@@ -229,11 +240,16 @@ export function refreshStoredSession(o:RefreshStoredOptions):Promise<LocalSessio
  const same=(r:RememberedServer|undefined)=>!!r&&r.session.sessionFamilyId===o.family.sessionFamilyId&&r.pin.serverId===o.family.serverId;
  return credentialLock()('portico.session-refresh:'+o.family.serverId,async()=>{
   let record:RememberedServer|undefined,stored:unknown;
-  // A store that cannot be read right now (locked, busy, timed out) is not a missing sign-in:
-  // nothing is known about the family, so nothing ends and the renewal is tried again.
+  // Three different things can be wrong with the saved sign-in, and only the store can tell the
+  // first two apart. It cannot be read right now (locked, busy, timed out): nothing is known about
+  // the family, so nothing ends and the renewal is tried again. It is there but damaged for good:
+  // waiting will not mend it, so the sign-in ends on this device, by this device's account and not
+  // the server's, and the record stays where it is for a new sign-in to replace.
+  const damaged=()=>new SessionRefreshError('saved_sign_in_damaged','The sign-in saved on this device can’t be read. Sign in again.',true,0);
   try{stored=await o.env.storage.read();}
-  catch{throw new SessionRefreshError('store_unavailable','This device couldn’t read its saved sign-in right now.',false);}
-  try{record=parseRememberedServer(stored);}catch{record=undefined;}
+  catch(e){throw savedConnectionDamaged(e)?damaged():new SessionRefreshError('store_unavailable','This device couldn’t read its saved sign-in right now.',false);}
+  try{record=parseRememberedServer(stored);}catch{throw damaged();}
+  // Or it reads, and is no longer this sign-in.
   if(!record||!same(record))throw new SessionRefreshError('session_replaced','This sign-in was replaced or ended on this device.',true);
   const session=record.session;
   const fresh=Date.parse(session.expiresAt)-now()>minValid;

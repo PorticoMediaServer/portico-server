@@ -44,7 +44,7 @@ export async function componentModule(file, given) {
       return `const ${bind.slice(0, comma)} = modules[${JSON.stringify(source)}].default; const ${bind.slice(comma + 1)} = modules[${JSON.stringify(source)}];`;
     }
     return `const ${bind} = modules[${JSON.stringify(source)}];`;
-  }).replace(/export (const|function|class) (\w+)/g, (_, kind, name) => { exported.push(name); return `${kind} ${name}`; })
+  }).replace(/export (const|function|async function|class) (\w+)/g, (_, kind, name) => { exported.push(name); return `${kind} ${name}`; })
     .replaceAll('import.meta.env', '({DEV:false,VITE_SERVER_URL:"https://server.example"})');
   return new Function('modules', (/const React\s*=/.test(code) ? '' : 'const React = modules.react.default;\n') + code + '\nreturn {' + exported.join(',') + '};')(inertWhereUnstubbed(modules));
 }

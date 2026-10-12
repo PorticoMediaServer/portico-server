@@ -257,6 +257,31 @@ test('a protected store that cannot be read right now keeps the sign-in and rene
   refresher.stop();
 });
 
+test('a saved sign-in the store reports as damaged ends here, without asking the server or waiting for it to mend', async t => {
+  const {server, store, events, timers, tab} = setup(t);
+  const {api, refresher} = tab();
+  // What a platform store reports when the record is there but can never be read again.
+  store.read = async () => { throw Object.assign(new Error('Saved server credentials are incomplete.'), {code: 'invalid_saved_connection'}); };
+  server.expireAccess();
+  await assert.rejects(api.request('/v1/me'), (e: unknown) => e instanceof ApiError && e.status === 401);
+  assert.deepEqual(events.signedOut, ['saved_sign_in_damaged']);
+  assert.equal(refresher.getSnapshot().phase, 'ended', 'a definite end, so the app can offer sign-in');
+  assert.equal(refresher.getSnapshot().error?.status, 0, 'not presented as the server’s refusal');
+  assert.equal(server.refreshCalls, 0);
+  assert.equal(timers.pending(), 0, 'nothing is retried');
+  assert.ok(store.peek(), 'the record itself is left for a new sign-in to replace');
+});
+
+test('a saved sign-in that reads but is not a valid record ends the same way', async t => {
+  const {store, events, tab} = setup(t);
+  const {api, refresher} = tab();
+  await store.change(() => ({version: '1', nonsense: true}) as unknown as RememberedServer);
+  await refresher.recover('access_1');
+  assert.deepEqual(events.signedOut, ['saved_sign_in_damaged']);
+  assert.equal(refresher.getSnapshot().phase, 'ended');
+  void api;
+});
+
 test('a store that reads but no longer holds this sign-in still ends it', async t => {
   const {server, store, events, tab} = setup(t);
   const {api, refresher} = tab();

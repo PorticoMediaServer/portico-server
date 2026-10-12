@@ -37,3 +37,12 @@ test('a network error is retried, and an unreachable server is never judged repl
   assert.equal(await serverReplaced(saved.serverUrl, saved.serverId, unreachable), false);
   assert.equal(await serverReplaced(saved.serverUrl, saved.serverId, async () => new Response('down', {status: 503})), false);
 });
+
+test('a saved connection that is damaged for good is a reset; one that cannot be read right now is retried', async () => {
+  // What the vault (or the record parser) reports for a record that is there but can never be read.
+  const damaged = Object.assign(new Error('Saved server credentials are incomplete.'), {name: 'RouteError', code: 'invalid_saved_connection'});
+  assert.equal(await restoreOutcome(damaged, saved, system('srv_saved')), 'reset', 'waiting would never end: go to sign-in, which replaces the record');
+  assert.equal(await restoreOutcome(new SessionRefreshError('saved_sign_in_damaged', 'Sign in again.', true, 0), saved, system('srv_saved')), 'reset');
+  assert.equal(await restoreOutcome(new Error('The saved server connection could not be read or written.'), saved, system('srv_saved')), 'retry');
+  assert.equal(await restoreOutcome(new SessionRefreshError('store_unavailable', 'Not right now.', false), saved, system('srv_saved')), 'retry');
+});
