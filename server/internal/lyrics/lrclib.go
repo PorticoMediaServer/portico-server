@@ -70,6 +70,13 @@ func (p *LRCLIB) pace(ctx context.Context) error {
 	}
 }
 
+// resumesIn is how long until the provider's pause, if it asked for one, ends.
+func (p *LRCLIB) resumesIn() time.Duration {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return time.Until(p.next)
+}
+
 // refused records a rate-limit or overload answer so nothing is sent until the
 // provider's own deadline has passed.
 func (p *LRCLIB) refused(response *http.Response) {

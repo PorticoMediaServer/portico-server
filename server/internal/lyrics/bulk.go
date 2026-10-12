@@ -29,6 +29,32 @@ type Bulk struct {
 	// provider substitutes the acquisition client in tests. Production always
 	// uses the configured LRCLIB client, with its own origin and dial policy.
 	provider func(context.Context, string) ([]acquired, error)
+	// pausedUntil is when the provider's pause ends, kept here so that the
+	// wakes that arrive meanwhile ask it nothing and write nothing.
+	pausedUntil time.Time
+}
+
+// waitingPhase is a run's phase while the provider's pause lasts.
+const waitingPhase = "waiting for the lyrics provider to accept requests again"
+
+func (b *Bulk) clock() time.Time {
+	if b.Now != nil {
+		return b.Now()
+	}
+	return time.Now()
+}
+
+// pauseLeft is how much of the provider's pause remains.
+func (b *Bulk) pauseLeft() time.Duration { return max(b.pausedUntil.Sub(b.clock()), 0) }
+
+// pause records the pause the provider just asked for: until its own deadline
+// when the client knows it, else for as long as the client would wait.
+func (b *Bulk) pause() {
+	wait := lrclibMaxWait
+	if b.provider == nil && b.Service.Provider != nil {
+		wait = max(b.Service.Provider.resumesIn(), time.Second)
+	}
+	b.pausedUntil = b.clock().Add(wait)
 }
 
 func (b *Bulk) search(ctx context.Context, query string) ([]acquired, error) {
@@ -160,9 +186,9 @@ func (b *Bulk) Run(ctx context.Context) {
 			batchStarted := time.Now()
 			more, e := b.Step(ctx)
 			if errors.Is(e, errProviderPaused) {
-				// Nothing is sent while the provider's pause lasts; look again
-				// when the client would be willing to wait it out.
-				return lrclibMaxWait
+				// Nothing is sent or written while the provider's pause lasts.
+				// A cancellation or a settings change still wakes the loop.
+				return max(b.pauseLeft(), time.Second)
 			}
 			if e != nil {
 				return 2 * time.Second
@@ -181,7 +207,8 @@ func (b *Bulk) Run(ctx context.Context) {
 // Step advances at most one run by one batch. It reports whether more work of
 // the same kind is immediately available. While the provider has asked for a
 // pause it answers errProviderPaused: the song it was about to ask for stays
-// pending and the run stays where it is.
+// pending, the run stays where it is, and until the pause has passed nothing
+// is asked of the provider and nothing is written.
 func (b *Bulk) Step(ctx context.Context) (bool, error) {
 	if b == nil || b.Service == nil {
 		return false, nil
@@ -209,6 +236,9 @@ func (b *Bulk) Step(ctx context.Context) (bool, error) {
 	if !settings.LRCLIB || settings.Revision != providerRevision {
 		return true, b.finish(ctx, run.ID, "failed", "provider disabled or reconfigured", "lyrics_provider_unavailable")
 	}
+	if b.pauseLeft() > 0 {
+		return false, errProviderPaused
+	}
 	items, e := b.pending(ctx, run.LibraryID, cursor, b.batch())
 	if e != nil {
 		return false, e
@@ -216,8 +246,13 @@ func (b *Bulk) Step(ctx context.Context) (bool, error) {
 	if len(items) == 0 {
 		return true, b.finish(ctx, run.ID, "succeeded", fmt.Sprintf("%d published, %d without a provider match, %d skipped", run.Published, run.Missing, run.Skipped), "")
 	}
-	if _, e = dbwork.ExecWrite(ctx, b.Service.DB, dbwork.ClassBackgroundMedia, `UPDATE lyric_fetch_runs SET state='running',phase=?,updated_ms=? WHERE id=? AND state IN('queued','running')`, fmt.Sprintf("fetching %d of %d", run.Processed+1, run.Candidates), b.now(), run.ID); e != nil {
-		return false, e
+	// A run that was waiting keeps saying so until a song is fetched again.
+	phase := fmt.Sprintf("fetching %d of %d", run.Processed+1, run.Candidates)
+	waiting := run.State == "running" && run.Phase == waitingPhase
+	if !waiting {
+		if _, e = dbwork.ExecWrite(ctx, b.Service.DB, dbwork.ClassBackgroundMedia, `UPDATE lyric_fetch_runs SET state='running',phase=?,updated_ms=? WHERE id=? AND state IN('queued','running')`, phase, b.now(), run.ID); e != nil {
+			return false, e
+		}
 	}
 	for _, item := range items {
 		if ctx.Err() != nil {
@@ -225,8 +260,11 @@ func (b *Bulk) Step(ctx context.Context) (bool, error) {
 		}
 		outcome, e := b.fetchOne(ctx, run.ID, item, settings.Revision)
 		if errors.Is(e, errProviderPaused) {
-			if _, e = dbwork.ExecWrite(ctx, b.Service.DB, dbwork.ClassBackgroundMedia, `UPDATE lyric_fetch_runs SET phase=?,updated_ms=? WHERE id=? AND state='running'`, "waiting for the lyrics provider to accept requests again", b.now(), run.ID); e != nil {
-				return false, e
+			b.pause()
+			if !waiting {
+				if _, e = dbwork.ExecWrite(ctx, b.Service.DB, dbwork.ClassBackgroundMedia, `UPDATE lyric_fetch_runs SET phase=?,updated_ms=? WHERE id=? AND state='running'`, waitingPhase, b.now(), run.ID); e != nil {
+					return false, e
+				}
 			}
 			return false, errProviderPaused
 		}
@@ -245,9 +283,10 @@ func (b *Bulk) Step(ctx context.Context) (bool, error) {
 		default:
 			return false, ErrInput
 		}
-		if _, e = dbwork.ExecWrite(ctx, b.Service.DB, dbwork.ClassBackgroundMedia, `UPDATE lyric_fetch_runs SET cursor=?,processed=processed+1,`+counter+`,updated_ms=? WHERE id=?`, item, b.now(), run.ID); e != nil {
+		if _, e = dbwork.ExecWrite(ctx, b.Service.DB, dbwork.ClassBackgroundMedia, `UPDATE lyric_fetch_runs SET cursor=?,processed=processed+1,`+counter+`,phase=?,updated_ms=? WHERE id=?`, item, phase, b.now(), run.ID); e != nil {
 			return false, e
 		}
+		waiting = false
 	}
 	return true, nil
 }
