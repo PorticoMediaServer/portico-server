@@ -141,6 +141,9 @@ type Clock={now:()=>number;random:()=>number};
 /** At most one automatic check per this interval, on foreground only, spread by ±SPREAD so a
  * population of devices opened at the same hour does not check in step. */
 export const SERVER_LIST_INTERVAL_MS=6*3600000,SERVER_LIST_SPREAD_MS=3600000;
+/** A check or list request with no answer after this long is abandoned. Longer than the transports'
+ * own deadlines, so it only acts where one has none (a browser's bare fetch) or does not answer. */
+export const SERVER_LIST_TIMEOUT_MS=30000;
 
 /** Keeps a device's server list current without polling. `adopt` records the version and watch
  * token of every `GET /v1/servers` answer; `foreground` checks when due; `refresh` is the
@@ -150,8 +153,9 @@ export class ServerListWatcher{
  private record:ServerListRecord|null;private flight:Promise<ServerListOutcome>|null=null;
  private readonly origin:string;private readonly fetcher:typeof fetch;private readonly storage?:ServerListStorage;
  private readonly listServers:(signal?:AbortSignal)=>Promise<ServerListAnswer>;private readonly onServers:(answer:ServerListAnswer)=>void;
- private readonly clock:Clock;
- constructor(options:{hostedOrigin:string;listServers:(signal?:AbortSignal)=>Promise<ServerListAnswer>;onServers:(answer:ServerListAnswer)=>void;storage?:ServerListStorage;fetcher?:typeof fetch;clock?:Clock}){
+ private readonly clock:Clock;private readonly timeoutMs:number;
+ constructor(options:{hostedOrigin:string;listServers:(signal?:AbortSignal)=>Promise<ServerListAnswer>;onServers:(answer:ServerListAnswer)=>void;storage?:ServerListStorage;fetcher?:typeof fetch;clock?:Clock;timeoutMs?:number}){
+  this.timeoutMs=options.timeoutMs??SERVER_LIST_TIMEOUT_MS;
   this.origin=new URL(options.hostedOrigin).origin;this.fetcher=options.fetcher??((input,init)=>globalThis.fetch(input,init));
   this.storage=options.storage;this.listServers=options.listServers;this.onServers=options.onServers;
   this.clock=options.clock??{now:()=>Date.now(),random:()=>Math.random()};
@@ -159,6 +163,16 @@ export class ServerListWatcher{
   this.record=stored&&text(stored.version,32)&&text(stored.watch,400)?stored:null;
  }
  getRecord():ServerListRecord|null{return this.record;}
+ /** Runs one request under the watcher's own deadline, so a stalled transport cannot hold the
+  * shared check forever. React Native lacks AbortSignal.any/timeout: a plain controller carries
+  * the caller's cancellation, and the race releases the check even if the transport ignores it. */
+ private bounded<T>(caller:AbortSignal|undefined,request:(signal:AbortSignal)=>Promise<T>):Promise<T>{
+  const bound=new AbortController(),abort=()=>bound.abort();let timer:ReturnType<typeof setTimeout>|undefined;
+  caller?.addEventListener('abort',abort,{once:true});if(caller?.aborted)abort();
+  // Rejected before aborting: the outcome is "no answer" (a failure the gate counts), not a cancellation.
+  const deadline=new Promise<never>((_,reject)=>{timer=setTimeout(()=>{reject(new ApiError(504,'server_list_unavailable','Your server list could not be checked.',true));abort();},this.timeoutMs);});
+  return Promise.race([(async()=>request(bound.signal))(),deadline]).finally(()=>{clearTimeout(timer);caller?.removeEventListener('abort',abort);});
+ }
  private nextCheck(now:number){return now+SERVER_LIST_INTERVAL_MS+Math.floor((this.clock.random()*2-1)*SERVER_LIST_SPREAD_MS);}
  private save(record:ServerListRecord|null){this.record=record;try{this.storage?.save(record);}catch{}}
  /** Records a `GET /v1/servers` answer made anywhere in the app (sign-in, a chooser). */
@@ -184,13 +198,13 @@ export class ServerListWatcher{
    if(!record)return this.fetchList(kind,signal);
    let moved:boolean;
    try{
-    moved=await gate.run(kind,async()=>{
-     const response=await this.fetcher(this.origin+'/v1/server-list/'+encodeURIComponent(record.watch)+'/'+encodeURIComponent(record.version),{method:'GET',cache:'no-store',credentials:'omit',redirect:'error',referrerPolicy:'no-referrer',signal});
+    moved=await gate.run(kind,()=>this.bounded(signal,async bound=>{
+     const response=await this.fetcher(this.origin+'/v1/server-list/'+encodeURIComponent(record.watch)+'/'+encodeURIComponent(record.version),{method:'GET',cache:'no-store',credentials:'omit',redirect:'error',referrerPolicy:'no-referrer',signal:bound});
      if(response.status===304)return false;
      if(response.status===200||response.status===404)return true; // 404: the watch token no longer verifies; the list answer brings a new one.
      const retry=Number(response.headers.get('Retry-After'));
      throw new ApiError(response.status,'server_list_unavailable','Your server list could not be checked.',true,Number.isFinite(retry)&&retry>0?retry:undefined);
-    },'server-list-check');
+    }),'server-list-check');
    }catch(e){
     return this.defer(kind,e);
    }
@@ -210,7 +224,7 @@ export class ServerListWatcher{
  }
  private async fetchList(kind:'interactive'|'automatic',signal?:AbortSignal):Promise<ServerListOutcome>{
   let answer:ServerListAnswer;
-  try{answer=await hostedGate(this.origin).run(kind,()=>this.listServers(signal),'server-list');}catch(e){return this.defer(kind,e);}
+  try{answer=await hostedGate(this.origin).run(kind,()=>this.bounded(signal,bound=>this.listServers(bound)),'server-list');}catch(e){return this.defer(kind,e);}
   if(!obj(answer)||!Array.isArray(answer.items))invalid();
   this.adopt(answer);this.onServers(answer);return 'changed';
  }

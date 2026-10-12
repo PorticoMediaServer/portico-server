@@ -55,6 +55,31 @@ test('a watch token that no longer verifies is replaced by the list answer',asyn
  assert.equal(lists,1);assert.equal(w.getRecord()?.watch,'bmV3.mac');
 });
 
+test('a check that never answers is abandoned, so later checks are not left waiting on it',{timeout:5000},async()=>{
+ const c=clock(),o=origin();let hits=0,aborted=0;
+ const w=new ServerListWatcher({hostedOrigin:o,clock:c,timeoutMs:20,listServers:async()=>answer('1'),onServers:()=>{},fetcher:(_input,init)=>{
+  // The first request stalls in the transport and does not even honour its signal.
+  if(++hits===1){init?.signal?.addEventListener('abort',()=>{aborted++;});return new Promise<Response>(()=>{});}
+  return Promise.resolve(new Response(null,{status:304}));
+ }});
+ w.adopt(answer('1'));c.advance(SERVER_LIST_INTERVAL_MS+SERVER_LIST_SPREAD_MS);
+ const first=w.foreground(),joined=w.refresh();
+ assert.equal(await first,'deferred');
+ assert.equal(await joined,'deferred','a caller who joined the stalled check is released with it');
+ assert.equal(aborted,1,'the stalled request is cancelled');
+ assert.ok(hostedGate(o).blockedFor()>0,'the stall counts as a failure for automatic work');
+ assert.equal(await w.refresh(),'unchanged','the next check makes its own request');
+ assert.equal(hits,2);
+});
+
+test('a list fetch that never answers is abandoned too',{timeout:5000},async()=>{
+ const c=clock(),o=origin();let lists=0;
+ const w=new ServerListWatcher({hostedOrigin:o,clock:c,timeoutMs:20,listServers:()=>++lists===1?new Promise(()=>{}):Promise.resolve(answer('2')),onServers:()=>{},fetcher:async()=>new Response(null,{status:304})});
+ await assert.rejects(w.refresh(),(e:unknown)=>e instanceof ApiError&&e.retryable);
+ assert.equal(await w.refresh(),'changed');
+ assert.equal(w.getRecord()?.version,'2');
+});
+
 const assertionBody={payload:'eyJraW5kIjoicG9ydGljby5pZGVudGl0eS52MSJ9',signature:'c2ln',keyId:'key'};
 
 // A server identity: the id is the digest of the public key, and the server
