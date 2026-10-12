@@ -11,7 +11,7 @@ import (
 // RunHLSWindow executes a server-built ordinary playback graph against one
 // reserved observed-source endpoint. The only writable mount is this session's
 // private output directory, which also holds its sealed subtitle input.
-func RunHLSWindow(ctx context.Context, supervisor *storage.Supervisor, key, executable, input, output string, res *EndpointReservation, args []string, libraries ...string) error {
+func RunHLSWindow(ctx context.Context, supervisor *storage.Supervisor, key, executable, input, output string, res *EndpointReservation, args []string, hardware bool, libraries ...string) error {
 	defer res.Close()
 	endpoint, e := bridgeEndpoint(input)
 	if e != nil || supervisor == nil || key == "" || !filepath.IsAbs(output) || filepath.Clean(output) != output || !filepath.IsAbs(executable) || !res.matches(endpoint) {
@@ -25,7 +25,7 @@ func RunHLSWindow(ctx context.Context, supervisor *storage.Supervisor, key, exec
 	if e != nil || !stat.IsDir() || stat.Mode()&os.ModeSymlink != 0 {
 		return ErrInvalidConfiguration
 	}
-	cmd, e := confinedHLSCommand(executable, args, endpoint, output, libraries...)
+	cmd, e := confinedHLSCommand(executable, args, endpoint, output, hardware, libraries...)
 	if e != nil {
 		return e
 	}

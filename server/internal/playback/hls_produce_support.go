@@ -14,6 +14,7 @@ import (
 	"portico.local/server/internal/assets"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/decoder"
+	"portico.local/server/internal/storage"
 )
 
 // Conversion failure codes. The viewer sees the class; the owner also sees the
@@ -84,6 +85,14 @@ func sanitizeConverterOutput(text string, secrets ...string) string {
 		text = text[len(text)-2000:]
 	}
 	return text
+}
+
+func windowConverterDiagnostic(err error, secrets ...string) string {
+	var process *storage.ProcessError
+	if errors.As(err, &process) {
+		return sanitizeConverterOutput(process.Stderr, secrets...)
+	}
+	return ""
 }
 
 // classifyConverterFailure reads the converter's diagnostics for the causes an

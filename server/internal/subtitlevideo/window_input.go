@@ -31,16 +31,16 @@ func (r *Runtime) OpenPlaybackWindow(ctx context.Context, session string) (subti
 	return &playbackWindow{r, input, NewMediaBridge(input), session}, nil
 }
 func (w *playbackWindow) Close() error { return w.input.Close() }
-func (w *playbackWindow) Run(ctx context.Context, dir string, build func(string) ([]string, error)) error {
+func (w *playbackWindow) Run(ctx context.Context, dir string, build func(string) (subtitles.WindowCommand, error)) error {
 	return w.bridge.With(ctx, func(url string, res *decoder.EndpointReservation) error {
 		if e := w.input.Validate(ctx); e != nil {
 			return e
 		}
-		args, e := build(url)
+		command, e := build(url)
 		if e != nil {
 			return e
 		}
-		e = decoder.RunHLSWindow(ctx, w.runtime.storage.Supervisor, identity.Token(), w.runtime.ffmpeg, url, dir, res, args, w.runtime.libraries...)
+		e = decoder.RunHLSWindow(ctx, w.runtime.storage.Supervisor, identity.Token(), w.runtime.ffmpeg, url, dir, res, command.Args, command.Hardware, w.runtime.libraries...)
 		if e == nil {
 			e = w.input.Validate(ctx)
 		}

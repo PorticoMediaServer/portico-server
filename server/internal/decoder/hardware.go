@@ -579,6 +579,17 @@ type ConversionGraph struct {
 	Backend    HardwareBackend `json:"backend"`
 }
 
+// HardwareStagesRequireDevice carries the graph's device requirement to a
+// bridge executor, including GPU filters paired with a software encoder.
+func HardwareStagesRequireDevice(stages []HardwareStage) bool {
+	for _, stage := range stages {
+		if stage.Execution == ExecutionHardware {
+			return true
+		}
+	}
+	return false
+}
+
 // SoftwarePresets are the x264 presets an owner may choose.
 var SoftwarePresets = []string{"ultrafast", "superfast", "veryfast", "faster", "fast", "medium", "slow", "slower"}
 

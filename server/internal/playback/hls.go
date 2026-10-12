@@ -502,15 +502,15 @@ func (h *HLS) produce(ctx context.Context, id string, from int) {
 	}
 	run := func(plan *DeliveryPlan) (error, string) {
 		if remoteInput != nil {
-			err := remoteInput.Run(processCtx, dir, func(url string) ([]string, error) {
+			err := remoteInput.Run(processCtx, dir, func(url string) (subtitles.WindowCommand, error) {
 				path = url
 				args, stages, err := build(plan)
 				if err == nil {
 					h.recordStages(ctx, id, plan, stages)
 				}
-				return args, err
+				return subtitles.WindowCommand{Args: args, Hardware: decoder.HardwareStagesRequireDevice(stages)}, err
 			})
-			return err, ""
+			return err, windowConverterDiagnostic(err, path, h.root)
 		}
 
 		args, stages, err := build(plan)

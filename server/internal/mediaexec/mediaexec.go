@@ -303,6 +303,10 @@ func environment() []string {
 	return out
 }
 
+// HardwareEnvironment carries only the existing driver allowlist to a private
+// bridge specification; the supervisor need not inherit server environment.
+func HardwareEnvironment() [][2]string { return hardwareEnvironment() }
+
 // hardwareEnvironment is what a GPU driver inside the Linux sandbox needs.
 func hardwareEnvironment() [][2]string {
 	out := [][2]string{}
