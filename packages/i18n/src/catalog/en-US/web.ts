@@ -1068,6 +1068,7 @@ export const webMessages = {
   'web.account.export.help': 'A copy of your Portico Account data, as a JSON file.',
   'web.account.export.working': 'Preparing your data',
   'web.shell.primary': 'Primary',
+  'web.shell.skipToContent': 'Skip to content',
   'web.shell.home': 'Home',
   'web.shell.homeLabel': 'Portico home',
   'web.shell.search': 'Search',
