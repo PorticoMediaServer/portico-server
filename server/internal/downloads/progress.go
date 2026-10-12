@@ -166,10 +166,28 @@ func (s *Service) SyncProgress(ctx context.Context, p identity.Principal, operat
 				continue
 			}
 		}
+		// A part of a book answers to the book's pointer as well. When the
+		// pointer already names this part, whatever online evidence dates it
+		// (see bookPointer) decides before anything is written: the part's own
+		// position is what the next session of it resumes from, so it must not
+		// be rewound either.
+		book, err := readBookPointer(ctx, tx, key, personal, entity)
+		if err != nil {
+			return out, err
+		}
+		if book.current == entity && book.datedAtOrAfter(observed) {
+			current, watched, e := readCurrentProgress(ctx, tx, personal, entity)
+			if e != nil {
+				return out, e
+			}
+			result.Outcome, result.PositionSeconds, result.Watched = ProgressSuperseded, current, watched
+			out.Entries, out.Conflicts = append(out.Entries, result), out.Conflicts+1
+			continue
+		}
 		if duration > 0 && entry.PositionSeconds > duration {
 			entry.PositionSeconds = duration
 		}
-		if err = applyProgress(ctx, tx, key, personal, entity, library, entry, observed); err != nil {
+		if err = applyProgress(ctx, tx, book, personal, entity, library, entry, observed); err != nil {
 			return out, err
 		}
 		if _, err = tx.ExecContext(ctx, `INSERT INTO download_progress_marks(profile_key,item_id,observed_ms) VALUES(?,?,?) ON CONFLICT(profile_key,item_id) DO UPDATE SET observed_ms=excluded.observed_ms`, key, entity, observedMS); err != nil {
@@ -198,7 +216,7 @@ func readCurrentProgress(ctx context.Context, tx *sql.Tx, personal string, entit
 // applyProgress writes the ordinary personal state an online client would have
 // written. Offline work is not a second kind of progress: it lands in the same
 // rows, with the same projections kept coherent.
-func applyProgress(ctx context.Context, tx *sql.Tx, key, personal string, entity int64, library string, entry ProgressEntry, observed time.Time) error {
+func applyProgress(ctx context.Context, tx *sql.Tx, book bookPointer, personal string, entity int64, library string, entry ProgressEntry, observed time.Time) error {
 	if _, e := tx.ExecContext(ctx, `INSERT INTO progress(profile_id,item_id,position,unit,playback_id) VALUES(?,?,?,0,'') ON CONFLICT(profile_id,item_id) DO UPDATE SET position=excluded.position,unit=0`, personal, entity, int64(math.Round(entry.PositionSeconds*1000))); e != nil {
 		return e
 	}
@@ -213,7 +231,7 @@ func applyProgress(ctx context.Context, tx *sql.Tx, key, personal string, entity
 	if _, e := tx.ExecContext(ctx, `INSERT INTO progress_activity(profile_id,library_id,item_id,updated_at,state) VALUES(?,?,?,?,?) ON CONFLICT(profile_id,item_id) DO UPDATE SET updated_at=excluded.updated_at,state=excluded.state`, personal, library, entity, stampText, state); e != nil {
 		return e
 	}
-	if e := followBook(ctx, tx, key, personal, entity, int64(math.Round(entry.PositionSeconds*1000)), observed); e != nil {
+	if e := followBook(ctx, tx, book, personal, entity, int64(math.Round(entry.PositionSeconds*1000)), observed); e != nil {
 		return e
 	}
 	if entry.Watched == nil {
@@ -228,57 +246,84 @@ func applyProgress(ctx context.Context, tx *sql.Tx, key, personal string, entity
 	return e
 }
 
+// bookPointer is where a book's pointer stands when an observation of one of
+// its parts arrives, read before that observation writes anything, with the
+// evidence that dates it:
+//
+//   - the session the pointer is bound to: when it was created, and when it
+//     last reported. A session owns the pointer from the moment it starts, before
+//     its first report, and a start writes no activity, so activity alone would
+//     let an observation older than the start rewind the book, or take it to
+//     another part and unbind a session whose reports could then never move the
+//     pointer again;
+//   - the recorded activity of the part the pointer names, which is the time of
+//     the stored position, whether a server session wrote it or an earlier
+//     observation did;
+//   - the last offline observation accepted for that part, which is kept to the
+//     millisecond where activity is kept to the second, so two parts observed
+//     within one second are still ordered by when each was observed.
+//
+// An observation changes the pointer, and the position of the part it names,
+// only when it is strictly newer than all of that: a tie leaves what a server
+// session wrote.
+type bookPointer struct {
+	// book is the book the observed item is a part of; zero when the item is
+	// not a part of a book. current is the part the pointer names; zero when the
+	// book has no pointer yet.
+	book, current int64
+	activity      string
+	session       string
+	mark          int64
+}
+
+func readBookPointer(ctx context.Context, tx *sql.Tx, key, personal string, entity int64) (bookPointer, error) {
+	var b bookPointer
+	e := tx.QueryRowContext(ctx, `SELECT f.book_id,COALESCE(r.item_id,0),
+ COALESCE((SELECT a.updated_at FROM progress_activity a WHERE a.profile_id=r.profile_id AND a.item_id=r.item_id),''),
+ COALESCE((SELECT max(COALESCE(o.created_at,''),COALESCE(o.reported_at,'')) FROM playback_observations o WHERE o.session_id=r.playback_id),''),
+ COALESCE((SELECT m.observed_ms FROM download_progress_marks m WHERE m.profile_key=? AND m.item_id=r.item_id),0)
+ FROM catalog_book_files f JOIN catalog_entities i ON i.id=f.entity_id AND i.kind=9 LEFT JOIN book_resume r ON r.profile_id=? AND r.book_id=f.book_id WHERE f.entity_id=?`, key, personal, entity).Scan(&b.book, &b.current, &b.activity, &b.session, &b.mark)
+	if errors.Is(e, sql.ErrNoRows) {
+		return bookPointer{}, nil
+	}
+	return b, e
+}
+
+// datedAtOrAfter reports whether the pointer's part has recorded activity, or
+// its bound session a start or a report, at or after the observation.
+func (b bookPointer) datedAtOrAfter(observed time.Time) bool {
+	for _, evidence := range []string{b.activity, b.session} {
+		if at, err := time.Parse(time.RFC3339, evidence); err == nil && !observed.After(at) {
+			return true
+		}
+	}
+	return false
+}
+
 // followBook keeps a book's pointer on the part the listener was last in. An
 // online session moves the pointer to its part when it starts; an offline
 // observation is the same evidence arriving late, so it moves the pointer too,
 // or gives a book its first one. An item that is not a part of a book has no
 // pointer.
 //
-// A move is ordered against everything that dates the pointer as it stands, and
-// the observation has to be newer than all of it:
-//
-//   - the session the pointer is bound to: when it was created, and when it
-//     last reported. A session owns the pointer from the moment it starts, before
-//     its first report, and a start writes no activity, so the part's activity
-//     alone would let an observation older than the start take the book back and
-//     unbind a session whose reports could then never move the pointer again;
-//   - the recorded activity of the part the pointer names, whether a server
-//     session wrote it or an earlier observation did;
-//   - the last offline observation accepted for that part, which is kept to the
-//     millisecond where activity is kept to the second, so two parts observed
-//     within one second are still ordered by when each was observed.
-//
-// A pointer that is moved is bound to no session, so the next one to start
-// takes it.
-func followBook(ctx context.Context, tx *sql.Tx, key, personal string, entity, positionMS int64, observed time.Time) error {
-	var book, current, mark int64
-	var activity, session string
-	e := tx.QueryRowContext(ctx, `SELECT f.book_id,COALESCE(r.item_id,0),
- COALESCE((SELECT a.updated_at FROM progress_activity a WHERE a.profile_id=r.profile_id AND a.item_id=r.item_id),''),
- COALESCE((SELECT max(COALESCE(o.created_at,''),COALESCE(o.reported_at,'')) FROM playback_observations o WHERE o.session_id=r.playback_id),''),
- COALESCE((SELECT m.observed_ms FROM download_progress_marks m WHERE m.profile_key=? AND m.item_id=r.item_id),0)
- FROM catalog_book_files f JOIN catalog_entities i ON i.id=f.entity_id AND i.kind=9 LEFT JOIN book_resume r ON r.profile_id=? AND r.book_id=f.book_id WHERE f.entity_id=?`, key, personal, entity).Scan(&book, &current, &activity, &session, &mark)
-	if errors.Is(e, sql.ErrNoRows) {
+// The caller has already refused an observation of the part the pointer names
+// that is not newer than what dates the pointer, so that case only moves the
+// position within the part. A move to another part is ordered here, against
+// the same evidence and the current part's last accepted observation. A
+// pointer that is moved is bound to no session, so the next one to start takes
+// it.
+func followBook(ctx context.Context, tx *sql.Tx, b bookPointer, personal string, entity, positionMS int64, observed time.Time) error {
+	if b.book == 0 {
 		return nil
 	}
-	if e != nil {
+	if b.current == entity {
+		_, e := tx.ExecContext(ctx, `UPDATE book_resume SET position=?,unit=0 WHERE profile_id=? AND book_id=?`, positionMS, personal, b.book)
 		return e
 	}
-	if current == entity {
-		_, e = tx.ExecContext(ctx, `UPDATE book_resume SET position=?,unit=0 WHERE profile_id=? AND book_id=?`, positionMS, personal, book)
-		return e
+	if b.current != 0 && (observed.UnixMilli() <= b.mark || b.datedAtOrAfter(observed)) {
+		return nil
 	}
-	if current != 0 {
-		if observed.UnixMilli() <= mark {
-			return nil
-		}
-		for _, evidence := range []string{activity, session} {
-			if at, err := time.Parse(time.RFC3339, evidence); err == nil && !observed.After(at) {
-				return nil
-			}
-		}
-	}
-	_, e = tx.ExecContext(ctx, `INSERT INTO book_resume(profile_id,book_id,item_id,playback_id,position,unit) VALUES(?,?,?,'',?,0)
- ON CONFLICT(profile_id,book_id) DO UPDATE SET item_id=excluded.item_id,playback_id=excluded.playback_id,position=excluded.position,unit=excluded.unit`, personal, book, entity, positionMS)
+	_, e := tx.ExecContext(ctx, `INSERT INTO book_resume(profile_id,book_id,item_id,playback_id,position,unit) VALUES(?,?,?,'',?,0)
+ ON CONFLICT(profile_id,book_id) DO UPDATE SET item_id=excluded.item_id,playback_id=excluded.playback_id,position=excluded.position,unit=excluded.unit`, personal, b.book, entity, positionMS)
 	return e
 }
