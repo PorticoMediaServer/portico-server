@@ -3,6 +3,8 @@ package lyrics
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -34,6 +36,11 @@ const (
 	lrclibMaxWait      = 5 * time.Second
 )
 
+// errProviderPaused is ErrUnavailable with its reason: the provider answered a
+// request with a rate limit or an overload, and the pause it asked for has not
+// passed. The request was not judged, so it is worth sending again afterwards.
+var errProviderPaused = fmt.Errorf("%w", ErrUnavailable)
+
 // pace waits for this caller's turn. When the provider has asked for a longer
 // pause than a caller should sit through, it reports unavailable at once so the
 // work is rescheduled rather than parked on a goroutine.
@@ -43,7 +50,7 @@ func (p *LRCLIB) pace(ctx context.Context) error {
 	wait := p.next.Sub(now)
 	if wait > lrclibMaxWait {
 		p.mu.Unlock()
-		return ErrUnavailable
+		return errProviderPaused
 	}
 	if wait < 0 {
 		wait = 0
@@ -134,6 +141,9 @@ func (p *LRCLIB) Search(ctx context.Context, query string) ([]acquired, error) {
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", "Portico/1.0 (lyrics)")
 	if e = p.pace(ctx); e != nil {
+		if errors.Is(e, errProviderPaused) {
+			return nil, errProviderPaused
+		}
 		return nil, ErrUnavailable
 	}
 	response, e := p.client.Do(req)
@@ -143,7 +153,7 @@ func (p *LRCLIB) Search(ctx context.Context, query string) ([]acquired, error) {
 	defer response.Body.Close()
 	if response.StatusCode == 429 || response.StatusCode == 503 {
 		p.refused(response)
-		return nil, ErrUnavailable
+		return nil, errProviderPaused
 	}
 	if response.StatusCode != 200 {
 		return nil, ErrUnavailable

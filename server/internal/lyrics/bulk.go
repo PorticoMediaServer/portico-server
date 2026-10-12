@@ -159,6 +159,11 @@ func (b *Bulk) Run(ctx context.Context) {
 		for dbwork.Yield(ctx) {
 			batchStarted := time.Now()
 			more, e := b.Step(ctx)
+			if errors.Is(e, errProviderPaused) {
+				// Nothing is sent while the provider's pause lasts; look again
+				// when the client would be willing to wait it out.
+				return lrclibMaxWait
+			}
 			if e != nil {
 				return 2 * time.Second
 			}
@@ -174,7 +179,9 @@ func (b *Bulk) Run(ctx context.Context) {
 }
 
 // Step advances at most one run by one batch. It reports whether more work of
-// the same kind is immediately available.
+// the same kind is immediately available. While the provider has asked for a
+// pause it answers errProviderPaused: the song it was about to ask for stays
+// pending and the run stays where it is.
 func (b *Bulk) Step(ctx context.Context) (bool, error) {
 	if b == nil || b.Service == nil {
 		return false, nil
@@ -217,6 +224,12 @@ func (b *Bulk) Step(ctx context.Context) (bool, error) {
 			return false, ctx.Err()
 		}
 		outcome, e := b.fetchOne(ctx, run.ID, item, settings.Revision)
+		if errors.Is(e, errProviderPaused) {
+			if _, e = dbwork.ExecWrite(ctx, b.Service.DB, dbwork.ClassBackgroundMedia, `UPDATE lyric_fetch_runs SET phase=?,updated_ms=? WHERE id=? AND state='running'`, "waiting for the lyrics provider to accept requests again", b.now(), run.ID); e != nil {
+				return false, e
+			}
+			return false, errProviderPaused
+		}
 		if e != nil {
 			return false, e
 		}
@@ -305,6 +318,11 @@ func (b *Bulk) fetchOne(ctx context.Context, run, item string, providerRevision 
 		return "skipped", nil
 	}
 	found, e := b.search(ctx, query)
+	if errors.Is(e, errProviderPaused) {
+		// The provider did not look at this song. It is not missing: the run
+		// waits and asks again.
+		return "", errProviderPaused
+	}
 	if e != nil {
 		// A provider outage is not a publication failure for this song.
 		return "missing", nil
