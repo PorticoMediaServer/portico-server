@@ -77,3 +77,76 @@ func TestReadSidecarsShowSeasonAndRootGuard(t *testing.T) {
 		t.Fatalf("root files leaked into a show: %v", flat)
 	}
 }
+
+// An image inside a season folder belongs to that season. It is never the
+// show's, whichever episode happens to be scanned last.
+func TestSeasonFolderImagesAreNotTheShows(t *testing.T) {
+	images := map[string][]byte{}
+	sized := func(n int) []byte {
+		var raw bytes.Buffer
+		if e := png.Encode(&raw, image.NewRGBA(image.Rect(0, 0, n, n))); e != nil {
+			t.Fatal(e)
+		}
+		return raw.Bytes()
+	}
+	service, e := New(t.TempDir(), "", nil)
+	if e != nil {
+		t.Fatal(e)
+	}
+	service.readSmall = func(_ context.Context, _ string, path string, _ int64) ([]byte, error) {
+		if raw, ok := images[path]; ok {
+			return raw, nil
+		}
+		return nil, errMissing
+	}
+	read := func(path string, season int) map[string]string {
+		service.sidecars = nil
+		return service.ReadSidecars(context.Background(), "lib", "tv", "/root", path, season)
+	}
+
+	images["/root/Show/Season 1/poster.jpg"] = sized(8)
+	images["/root/Show/Season 1/fanart.jpg"] = sized(9)
+	images["/root/Show/Season 1/logo.png"] = sized(10)
+	got := read("/root/Show/Season 1/ep.mkv", 1)
+	if got["show/poster"] != "" || got["show/backdrop"] != "" || got["show/logo"] != "" {
+		t.Fatalf("season folder images were given to the show: %v", got)
+	}
+	season := got["season/1/poster"]
+	if season == "" {
+		t.Fatalf("season folder poster was not the season's: %v", got)
+	}
+
+	images["/root/Show/poster.jpg"] = sized(11)
+	got = read("/root/Show/Season 1/ep.mkv", 1)
+	if got["show/poster"] == "" || got["show/poster"] == season || got["season/1/poster"] != season {
+		t.Fatalf("show and season posters were not kept apart: %v", got)
+	}
+
+	// The season-poster names in the show folder, including seasonNN-poster.
+	delete(images, "/root/Show/Season 1/poster.jpg")
+	images["/root/Show/season01-poster.jpg"] = sized(12)
+	got = read("/root/Show/Season 1/ep.mkv", 1)
+	if got["season/1/poster"] == "" || got["season/1/poster"] == got["show/poster"] {
+		t.Fatalf("season01-poster.jpg not recognised: %v", got)
+	}
+	images["/root/Show/Specials/folder.jpg"] = sized(13)
+	got = read("/root/Show/Specials/special.mkv", 0)
+	if got["season/0/poster"] == "" || got["show/poster"] != storedKey(t, service, images["/root/Show/poster.jpg"]) {
+		t.Fatalf("specials folder image misattributed: %v", got)
+	}
+
+	// A show whose episodes sit directly in its folder still uses that folder.
+	images["/root/Flat/poster.jpg"] = sized(14)
+	if got = read("/root/Flat/Flat - S01E01.mkv", 1); got["show/poster"] == "" || got["season/1/poster"] != "" {
+		t.Fatalf("flat show folder poster lost: %v", got)
+	}
+}
+
+func storedKey(t *testing.T, service *Service, raw []byte) string {
+	t.Helper()
+	key, e := service.store(raw)
+	if e != nil {
+		t.Fatal(e)
+	}
+	return key
+}

@@ -3,6 +3,7 @@ package localmetadata
 import (
 	"context"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -19,8 +20,11 @@ import (
 //   - movie: logo.png beside the file.
 //   - tv/anime: poster.jpg/folder.jpg (.png too), fanart.jpg/backdrop.jpg and
 //     logo.png in the file's directory, then its parent (never above the
-//     library root); season posters seasonNN.jpg and season-specials-poster.jpg
-//     for the episode's own season number.
+//     library root); season posters seasonNN.jpg, seasonNN-poster.jpg and
+//     season-specials-poster.jpg for the episode's own season number. When the
+//     file's directory is a season folder ("Season 01", "Specials") the show's
+//     images come from the parent only, and the season folder's own
+//     poster.jpg/folder.jpg is that season's poster.
 //   - music: artist.jpg and fanart.jpg/backdrop.jpg in the file's directory,
 //     then its parent (never above the root); the album's parent-folder cover
 //     is reported as album/cover for CD1/-style layouts.
@@ -55,21 +59,31 @@ func (s *Service) ReadSidecars(ctx context.Context, library, kind, root, path st
 			out["item/logo"] = key
 		}
 	case "tv", "anime":
-		if key := first(dirs, "poster.jpg", "poster.png", "folder.jpg", "folder.png"); key != "" {
+		// A season folder's own images are that season's, as Kodi and Jellyfin
+		// lay them out; the show's are in the folder above it.
+		show, inSeason := dirs, seasonFolderName.MatchString(filepath.Base(dir))
+		if inSeason {
+			show = dirs[1:]
+		}
+		if key := first(show, "poster.jpg", "poster.png", "folder.jpg", "folder.png"); key != "" {
 			out["show/poster"] = key
 		}
-		if key := first(dirs, "fanart.jpg", "fanart.png", "backdrop.jpg", "backdrop.png"); key != "" {
+		if key := first(show, "fanart.jpg", "fanart.png", "backdrop.jpg", "backdrop.png"); key != "" {
 			out["show/backdrop"] = key
 		}
-		if key := first(dirs, "logo.png"); key != "" {
+		if key := first(show, "logo.png"); key != "" {
 			out["show/logo"] = key
 		}
 		if season >= 0 && season <= 9999 {
-			names := []string{"season" + strconv.Itoa(season) + ".jpg", "season" + strconv.Itoa(season) + ".png", "season" + twoDigits(season) + ".jpg", "season" + twoDigits(season) + ".png"}
+			names := []string{"season" + strconv.Itoa(season) + ".jpg", "season" + strconv.Itoa(season) + ".png", "season" + twoDigits(season) + ".jpg", "season" + twoDigits(season) + ".png", "season" + twoDigits(season) + "-poster.jpg", "season" + twoDigits(season) + "-poster.png"}
 			if season == 0 {
 				names = append(names, "season-specials-poster.jpg")
 			}
-			if key := first(dirs, names...); key != "" {
+			key := first(dirs, names...)
+			if key == "" && inSeason {
+				key = first(dirs[:1], "poster.jpg", "poster.png", "folder.jpg", "folder.png")
+			}
+			if key != "" {
 				out["season/"+strconv.Itoa(season)+"/poster"] = key
 			}
 		}
@@ -90,6 +104,10 @@ func (s *Service) ReadSidecars(ctx context.Context, library, kind, root, path st
 	}
 	return out
 }
+
+// seasonFolderName is the catalogue's own rule for a season folder (see
+// catalog.ParseEpisode): "Season 1", "season_02", "Specials".
+var seasonFolderName = regexp.MustCompile(`(?i)^(?:season[ ._-]*[0-9]{1,4}|specials)$`)
 
 func twoDigits(n int) string {
 	if n < 10 {
