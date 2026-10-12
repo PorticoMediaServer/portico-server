@@ -13,6 +13,15 @@ import (
 
 var apiNamespace = regexp.MustCompile(`^/(?:v[0-9]+|health)(?:/|$)`)
 
+// hashedWebAsset is the name the web build gives a file whose content it
+// hashed: assets/<name>-<eight characters>.<extension>, and that file's source
+// map. Such a file never changes under its name, so it can be cached for good.
+// A file copied from the build's public folder keeps the name it was given,
+// may change under it, and must not match.
+var hashedWebAsset = regexp.MustCompile(`^assets/[^/]+-[A-Za-z0-9_-]{8}\.[A-Za-z0-9]+(?:\.map)?$`)
+
+func contentHashedWebAsset(name string) bool { return hashedWebAsset.MatchString(name) }
+
 func (d Dependencies) installationRoutes(mux *http.ServeMux) {
 	// Readiness is exposed only after root composition has completed. These public
 	// endpoints contain no account, build, route or dependency details.
@@ -82,7 +91,7 @@ func (d Dependencies) installationRoutes(mux *http.ServeMux) {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Referrer-Policy", "no-referrer")
 		w.Header().Set("Cache-Control", "no-cache")
-		if strings.HasPrefix(name, "assets/index-") {
+		if contentHashedWebAsset(name) {
 			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 		}
 		http.ServeContent(w, r, path.Base(name), info.ModTime(), f)
