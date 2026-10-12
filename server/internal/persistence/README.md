@@ -16,7 +16,7 @@ plain message:
 
 Until the first release, a schema change edits `0001_baseline.sql` directly;
 then `python3 scripts/schema-sync.py` (from the repository root) refreshes the
-recorded digest and the known-object list. From the first release on, the
+recorded digest, the known-object list and the known-column list. From the first release on, the
 baseline is immutable like every applied migration (its digest is checked on
 every open), and each change is a new migration that follows the rules below.
 

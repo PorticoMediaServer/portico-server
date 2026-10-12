@@ -606,3 +606,18 @@ func TestRestoreIsRefusedWhenAnInterruptedFileOperationDisagreesWithIt(t *testin
 		})
 	}
 }
+
+// Judging a restore reads the restored state and nothing else. A healthy
+// backup is kept even when the system's temporary folder cannot be used:
+// nothing about the check is built there.
+func TestRestoreOfAHealthyBackupDoesNotNeedTheTemporaryFolder(t *testing.T) {
+	state, serverID := startedState(t)
+	stageBackupFolder(t, state, serverID, "healthy", nil)
+	t.Setenv("TMPDIR", filepath.Join(state, "no-such-folder"))
+	if e := backup.ApplyStaged(context.Background(), state, verifyRestoredState(state)); e != nil {
+		t.Fatalf("a healthy backup was refused because the temporary folder is unusable: %v", e)
+	}
+	if _, probe := restoredProbe(t, state); probe != "healthy" {
+		t.Fatalf("the healthy backup was not restored: probe %q", probe)
+	}
+}

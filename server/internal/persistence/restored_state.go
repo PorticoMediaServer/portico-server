@@ -5,8 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 	"regexp"
 	"sort"
 	"sync"
@@ -30,10 +28,12 @@ var (
 )
 
 // VerifySchemaObjects reports whether the database holds every schema object a
-// fresh install of this build creates (the generated list a test keeps equal
-// to a fresh install), and whether each of its tables still has every column a
-// fresh install gives it. An extra object or column is not an error here; a
-// missing one is. Trigger and view bodies are not compared.
+// fresh install of this build creates, and whether each of its tables still
+// has every column a fresh install gives it. Both lists are generated and
+// compiled in, and a test keeps each equal to a fresh install, so the check
+// needs nothing but the database it is asked about. An extra object or column
+// is not an error here; a missing one is. Trigger and view bodies are not
+// compared.
 func VerifySchemaObjects(ctx context.Context, db *sql.DB) error {
 	rows, err := dbwork.Query(ctx, db, `SELECT type,name FROM sqlite_schema WHERE name NOT LIKE 'sqlite_%'`)
 	if err != nil {
@@ -62,15 +62,16 @@ func VerifySchemaObjects(ctx context.Context, db *sql.DB) error {
 			return fmt.Errorf("%w: %s", ErrSchemaIncomplete, object)
 		}
 	}
-	fresh, err := freshInstallColumns()
-	if err != nil {
-		return err
-	}
 	held, err := tableColumns(ctx, db)
 	if err != nil {
 		return err
 	}
-	for _, column := range fresh {
+	columns := make([]string, 0, len(held))
+	for column := range parseSchemaObjects(knownSchemaColumns) {
+		columns = append(columns, column)
+	}
+	sort.Strings(columns)
+	for _, column := range columns {
 		if !held[column] {
 			return fmt.Errorf("%w: column %s", ErrSchemaIncomplete, column)
 		}
@@ -94,43 +95,6 @@ func tableColumns(ctx context.Context, db *sql.DB) (map[string]bool, error) {
 		out[table+"."+column] = true
 	}
 	return out, rows.Err()
-}
-
-var (
-	freshColumnsOnce sync.Once
-	freshColumns     []string
-	freshColumnsErr  error
-)
-
-// freshInstallColumns answers every "table.column" of a fresh install. A
-// column list cannot be read off the migrations' text, so the schema is
-// installed once, into a throwaway file, and asked; later calls in the same
-// process reuse the answer. It costs about what a first start does.
-func freshInstallColumns() ([]string, error) {
-	freshColumnsOnce.Do(func() {
-		directory, err := os.MkdirTemp("", "portico-schema-reference-")
-		if err != nil {
-			freshColumnsErr = err
-			return
-		}
-		defer os.RemoveAll(directory)
-		db, err := OpenFresh(filepath.Join(directory, "reference.sqlite"))
-		if err != nil {
-			freshColumnsErr = err
-			return
-		}
-		defer db.Close()
-		columns, err := tableColumns(context.Background(), db)
-		if err != nil {
-			freshColumnsErr = err
-			return
-		}
-		for column := range columns {
-			freshColumns = append(freshColumns, column)
-		}
-		sort.Strings(freshColumns)
-	})
-	return freshColumns, freshColumnsErr
 }
 
 var (

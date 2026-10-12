@@ -133,7 +133,9 @@ func verifyRestoredState(state string) backup.VerifyFunc {
 		defer db.Close()
 		for _, requirement := range restoredStateRequirements {
 			if err = requirement.check(ctx, db, state); err != nil {
-				return errors.New("backup: " + requirement.reason)
+				// The cause travels with the reason, so a check that could not
+				// be made is not mistaken for one that found something missing.
+				return errors.New("backup: " + requirement.reason + " (" + err.Error() + ")")
 			}
 		}
 		return nil
