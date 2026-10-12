@@ -1,0 +1,142 @@
+package metadata
+
+import (
+	"context"
+	"database/sql"
+	"fmt"
+	"strconv"
+	"testing"
+	"time"
+
+	"portico.local/server/internal/catalogtest"
+	"portico.local/server/internal/metadataprovider"
+)
+
+// episodeFixtureProvider answers for one show and counts how often each kind
+// of document is asked for.
+type episodeFixtureProvider struct {
+	show         metadataprovider.ScreenRecord
+	showCalls    int
+	episodeCalls map[string]int
+}
+
+func (p *episodeFixtureProvider) SearchScreen(context.Context, string, string, int, string, string) ([]metadataprovider.ScreenRecord, error) {
+	p.showCalls++
+	return []metadataprovider.ScreenRecord{p.show}, nil
+}
+func (p *episodeFixtureProvider) ScreenDetails(context.Context, string, string, string, string) (metadataprovider.ScreenRecord, error) {
+	p.showCalls++
+	return p.show, nil
+}
+func (p *episodeFixtureProvider) ScreenEpisode(_ context.Context, show string, season, episode int, order, language string) (metadataprovider.ScreenRecord, error) {
+	p.episodeCalls[fmt.Sprintf("%s/%d/%d/%s/%s", show, season, episode, order, language)]++
+	r := metadataprovider.ScreenRecord{Identity: metadataprovider.ScreenID{Provider: "tmdb", Type: "episode", ID: strconv.Itoa(9000 + season*100 + episode)}, Title: "Provider episode " + strconv.Itoa(episode)}
+	r.Coordinates = &metadataprovider.ScreenCoordinates{ShowID: show, Season: &season, Episode: episode, Order: order}
+	r.Relations = []metadataprovider.ScreenRelation{{Kind: "show", Target: metadataprovider.ScreenID{Provider: "tmdb", Type: "show", ID: show}}}
+	return r, nil
+}
+func (p *episodeFixtureProvider) total() int {
+	n := 0
+	for _, v := range p.episodeCalls {
+		n += v
+	}
+	return n
+}
+
+func episodeFreshnessFixture(t *testing.T) (*Service, *sql.DB, *episodeFixtureProvider, *time.Time, func(number int), func()) {
+	t.Helper()
+	s, db, now := publicationFixture(t)
+	c := catalogtest.New(t, db)
+	library := c.Library("tv", "TV", "tv", "/tv")
+	show := c.Show(library, "Series", 2020)
+	season := c.Season(show, 1)
+	c.Exec(`INSERT OR IGNORE INTO library_sources(id,library_id,configured_root,root) VALUES('tv-source','tv','/tv','/tv')`)
+	add := func(number int) {
+		c.Episode(show, season, number, "/tv/"+strconv.Itoa(number)+".mp4")
+		c.Drain()
+	}
+	for n := 1; n <= 4; n++ {
+		add(n)
+	}
+	discoveryConfirmLibrary(t, s, "tv", []string{"tmdb"}, "US")
+	p := &episodeFixtureProvider{show: metadataprovider.ScreenRecord{Identity: metadataprovider.ScreenID{Provider: "tmdb", Type: "show", ID: "500"}, Title: "Series", Year: 2020, Overview: "A series."}, episodeCalls: map[string]int{}}
+	s.screenProviders = map[string]ScreenProvider{"tmdb": p}
+	settle := func() {
+		t.Helper()
+		for n := 0; n < 200; n++ {
+			var due int
+			if err := db.QueryRow(`SELECT count(*) FROM screen_metadata_work WHERE library_id='tv' AND status IN('pending','searching','pending_children')`).Scan(&due); err != nil {
+				t.Fatal(err)
+			}
+			if due == 0 {
+				return
+			}
+			if err := s.ScreenStep(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+		}
+		t.Fatal("the show's metadata work never settled")
+	}
+	return s, db, p, now, add, settle
+}
+
+// Adding an episode wakes its show, and the show fans out to every episode.
+// An episode whose provider document is still inside its freshness window is
+// republished from what is already held; only the new episode is asked for.
+func TestAddingAnEpisodeDoesNotRefetchTheOthers(t *testing.T) {
+	_, db, p, now, add, settle := episodeFreshnessFixture(t)
+	settle()
+	if p.total() != 4 {
+		t.Fatalf("first match asked for %d episode documents, want 4: %v", p.total(), p.episodeCalls)
+	}
+	var matched int
+	if err := db.QueryRow(`SELECT count(*) FROM screen_metadata_work w JOIN catalog_episodes e ON e.entity_id=w.target_id WHERE w.target_kind='item' AND w.status='matched'`).Scan(&matched); err != nil || matched != 4 {
+		t.Fatal("fixture episodes did not match", matched, err)
+	}
+	*now = now.Add(48 * time.Hour)
+	add(5)
+	settle()
+	if p.total() != 5 || p.episodeCalls["500/1/5/official/en-US"] != 1 {
+		t.Fatalf("one new episode cost %d episode requests: %v", p.total()-4, p.episodeCalls)
+	}
+	var title string
+	if err := db.QueryRow(`SELECT e.title FROM catalog_entities e JOIN catalog_episodes c ON c.entity_id=e.id WHERE c.number=1`).Scan(&title); err != nil || title != "Provider episode 1" {
+		t.Fatalf("a held episode lost its published title: %q %v", title, err)
+	}
+	if err := db.QueryRow(`SELECT count(*) FROM screen_metadata_work w JOIN catalog_episodes e ON e.entity_id=w.target_id WHERE w.target_kind='item' AND w.status='matched'`).Scan(&matched); err != nil || matched != 5 {
+		t.Fatal("episodes were not all matched after the fan-out", matched, err)
+	}
+}
+
+// What is held stands in only for the same question. A document past its
+// window, a change of language or a re-identified show is asked for again.
+func TestHeldEpisodeDocumentIsRefetchedWhenItNoLongerAnswers(t *testing.T) {
+	s, db, p, now, _, settle := episodeFreshnessFixture(t)
+	settle()
+	wake := func() {
+		publicationExec(t, db, `UPDATE screen_metadata_work SET status='pending',generation=generation+1,revision=revision+1,lease='',lease_until='',next_attempt='',error='' WHERE library_id='tv' AND target_kind='show'`)
+		settle()
+	}
+	*now = now.Add(48 * time.Hour)
+	wake()
+	if p.total() != 4 {
+		t.Fatalf("a wake inside the window asked for %d episode documents", p.total()-4)
+	}
+	*now = now.Add(freshnessEpisode + time.Hour)
+	wake()
+	if p.total() != 8 {
+		t.Fatalf("documents past their window were not refreshed: %d requests in all", p.total())
+	}
+	policy, err := s.ScreenPolicy(context.Background(), "tv")
+	if err != nil {
+		t.Fatal(err)
+	}
+	yes := true
+	if err = s.UpdateScreenPolicy(context.Background(), "tv", ScreenPolicyUpdate{ExpectedRevision: policy.Revision, ExpectedConsentRevision: policy.ConsentRevision, ConfirmRemote: &yes, DisclosureVersion: ScreenDisclosureVersion, Enabled: true, Providers: []string{"tmdb"}, Language: "fr-FR", Region: "FR", RefreshMode: "replace_unlocked"}, nil); err != nil {
+		t.Fatal(err)
+	}
+	settle()
+	if p.total() != 12 || p.episodeCalls["500/1/1/official/fr-FR"] != 1 {
+		t.Fatalf("a language change reused documents in the old language: %v", p.episodeCalls)
+	}
+}
