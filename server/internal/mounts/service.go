@@ -83,6 +83,30 @@ type Service struct {
 	observeIdentity                 func(context.Context, string) (string, error)
 }
 
+// canonicalDirectory reports whether path is reached without any link.
+func canonicalDirectory(path string) error {
+	canonical, e := filepath.EvalSymlinks(path)
+	if e != nil || canonical != path {
+		return errors.New("managed storage directories must have canonical paths")
+	}
+	return nil
+}
+
+// InspectPrivateDirectory reports whether New would accept the mount
+// configuration folder already in a state folder, without creating anything.
+// A folder that is not there yet is fine: New makes it.
+func InspectPrivateDirectory(state string) error {
+	path := filepath.Join(state, "managed-storage")
+	info, e := os.Lstat(path)
+	if errors.Is(e, os.ErrNotExist) {
+		return nil
+	}
+	if e != nil || !info.IsDir() {
+		return errors.New("managed storage directories must be directories")
+	}
+	return canonicalDirectory(path)
+}
+
 func New(db *sql.DB, state, root, helper string, store *storage.Client) (*Service, error) {
 	if root == "" {
 		root = filepath.Join(state, "mounts")
@@ -98,9 +122,8 @@ func New(db *sql.DB, state, root, helper string, store *storage.Client) (*Servic
 		if err = os.MkdirAll(path, 0700); err != nil {
 			return nil, err
 		}
-		canonical, e := filepath.EvalSymlinks(path)
-		if e != nil || canonical != path {
-			return nil, errors.New("managed storage directories must have canonical paths")
+		if e := canonicalDirectory(path); e != nil {
+			return nil, e
 		}
 		if path == root {
 			marker := filepath.Join(root, ".portico-managed-root")

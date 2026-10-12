@@ -275,3 +275,35 @@ func TestSealedConfigsMigrateToPlain(t *testing.T) {
 		t.Fatal("key file left behind")
 	}
 }
+
+// InspectPrivateDirectory answers what New would say about a mount
+// configuration folder that is already in a state folder, creating nothing.
+func TestInspectPrivateDirectoryRefusesWhatNewWould(t *testing.T) {
+	state := canonicalFixtureDir(t)
+	if err := InspectPrivateDirectory(state); err != nil {
+		t.Fatalf("a state folder with no mount configuration yet was refused: %v", err)
+	}
+	if _, err := os.Lstat(filepath.Join(state, "managed-storage")); !os.IsNotExist(err) {
+		t.Fatalf("inspecting created the folder: %v", err)
+	}
+	if err := os.Mkdir(filepath.Join(state, "managed-storage"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := InspectPrivateDirectory(state); err != nil {
+		t.Fatalf("an ordinary folder was refused: %v", err)
+	}
+	asFile := canonicalFixtureDir(t)
+	if err := os.WriteFile(filepath.Join(asFile, "managed-storage"), []byte("x"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := InspectPrivateDirectory(asFile); err == nil {
+		t.Fatal("a file in place of the folder was accepted")
+	}
+	asLink := canonicalFixtureDir(t)
+	if err := os.Symlink(state, filepath.Join(asLink, "managed-storage")); err != nil {
+		t.Fatal(err)
+	}
+	if err := InspectPrivateDirectory(asLink); err == nil {
+		t.Fatal("a link in place of the folder was accepted")
+	}
+}

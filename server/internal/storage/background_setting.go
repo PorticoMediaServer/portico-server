@@ -8,12 +8,17 @@ func (s *Supervisor) SetBackgroundTaskPriority(value string) error {
 	if s == nil {
 		return errors.New("missing background supervisor")
 	}
-	switch value {
-	case "lower":
-		s.backgroundNormal.Store(false)
-	case "normal":
-		s.backgroundNormal.Store(true)
-	default:
+	if e := CheckBackgroundTaskPriority(value); e != nil {
+		return e
+	}
+	s.backgroundNormal.Store(value == "normal")
+	return nil
+}
+
+// CheckBackgroundTaskPriority reports whether value is a priority
+// SetBackgroundTaskPriority accepts, without applying it.
+func CheckBackgroundTaskPriority(value string) error {
+	if value != "lower" && value != "normal" {
 		return errors.New("invalid background task priority")
 	}
 	return nil

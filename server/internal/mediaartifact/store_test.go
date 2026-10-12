@@ -187,3 +187,54 @@ func TestClosedArtifactDirectoryDurabilityFailureRetry(t *testing.T) {
 	}
 	read.Close()
 }
+
+// Inspect answers what New would say about a folder that is already there,
+// and leaves it exactly as it found it.
+func TestInspectAgreesWithNewWithoutCreatingAnything(t *testing.T) {
+	parent, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := filepath.Join(parent, "store")
+	if err = Inspect(root); err != nil {
+		t.Fatalf("a store that does not exist yet was refused: %v", err)
+	}
+	if _, err = os.Lstat(root); !os.IsNotExist(err) {
+		t.Fatalf("inspecting created the store: %v", err)
+	}
+	if _, err = New(root); err != nil {
+		t.Fatal(err)
+	}
+	if err = Inspect(root); err != nil {
+		t.Fatalf("a store New made was refused: %v", err)
+	}
+	for name, spoil := range map[string]func(root string) error{
+		"the store is a file": func(root string) error { return os.WriteFile(root, []byte("x"), 0600) },
+		"its objects folder is a file": func(root string) error {
+			if err := os.Mkdir(root, 0700); err != nil {
+				return err
+			}
+			return os.WriteFile(filepath.Join(root, "objects"), []byte("x"), 0600)
+		},
+		"its staging folder is a link": func(root string) error {
+			if err := os.Mkdir(root, 0700); err != nil {
+				return err
+			}
+			return os.Symlink(parent, filepath.Join(root, "staging"))
+		},
+		"the store is a link": func(root string) error { return os.Symlink(filepath.Join(parent, "store"), root) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			root := filepath.Join(parent, "spoiled-"+filepath.Base(t.Name()))
+			if err := spoil(root); err != nil {
+				t.Fatal(err)
+			}
+			if err := Inspect(root); !errors.Is(err, ErrPrivate) {
+				t.Fatalf("inspection accepted it: %v", err)
+			}
+			if _, err := New(root); err == nil {
+				t.Fatal("the fixture is one New accepts; it proves nothing")
+			}
+		})
+	}
+}
