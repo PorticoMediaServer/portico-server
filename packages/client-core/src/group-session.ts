@@ -306,8 +306,9 @@ function timelineOf(body:unknown,previous:GroupTimeline):GroupTimeline|undefined
 
 /** What a follower needs from whichever player the app has. Positions are seconds. */
 export type GroupPlayer=Readonly<{
- /** The item loaded now, its position, and whether it is actually moving and able to. */
- state():{itemId:string;positionSeconds:number;playing:boolean;buffering:boolean;ready:boolean};
+ /** The item loaded now, its position, and whether it is actually moving and able to. `seeking`
+  * is true while a seek the player was asked for has not landed yet. */
+ state():{itemId:string;positionSeconds:number;playing:boolean;buffering:boolean;ready:boolean;seeking?:boolean};
  load(itemId:string,positionSeconds:number,playing:boolean):void;
  play():void;pause():void;seek(positionSeconds:number):void;
  /** 1 restores normal speed. A player that cannot change speed may ignore it; drift then resolves by seeking. */
@@ -347,7 +348,11 @@ export class GroupFollower{
   const driftUs=BigInt(Math.round((target-local.positionSeconds)*1e6)),targetUs=BigInt(Math.round(target*1e6));
   const correction=groupCorrection(group.sync,driftUs,targetUs);
   const at=this.now();
-  if(correction.action==='seek'||(!wantPlaying&&correction.action==='rate')){this.player.setRate(1);this.correctingUntil=0;this.player.seek(target);}
+  // A seek that has not landed is left to finish. The group moves on meanwhile, so the distance
+  // to it keeps growing; seeking again would restart the seek, and one slower than the seek band
+  // would then never complete. Drift is corrected once the player is somewhere.
+  if(local.seeking){/* nothing to correct until it lands */}
+  else if(correction.action==='seek'||(!wantPlaying&&correction.action==='rate')){this.player.setRate(1);this.correctingUntil=0;this.player.seek(target);}
   else if(correction.action==='rate'&&wantPlaying){if(!this.correctingUntil){this.correctingUntil=at+(correction.holdMs??4000);this.player.setRate(correction.rate??1);}else if(at>this.correctingUntil){this.player.setRate(1);this.correctingUntil=0;this.player.seek(target);}}
   else if(this.correctingUntil){this.player.setRate(1);this.correctingUntil=0;}
   this.report(local.buffering?'buffering':correction.action==='none'||correction.action==='rate'?'ready':'lagging',local.positionSeconds);

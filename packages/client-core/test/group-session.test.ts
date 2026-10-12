@@ -153,6 +153,25 @@ test('the follower loads, nudges, then seeks, in the bands the server publishes'
  service.dispose();
 });
 
+test('a seek that is still in flight is left to finish, however far the group moves on meanwhile', async()=>{
+ const s=server();let now=T0+20000;s.set(snap({},'2026-09-16T20:00:20Z'));const service=make(s,()=>now);
+ await service.open('grp_1');
+ // A player whose seeks take a while (a converted stream, a slow link): until the seek lands it
+ // reports the position it is seeking to, which the moving group leaves further behind each second.
+ const slow=player({itemId:'item',positionSeconds:5});let seeking=false;
+ const p:GroupPlayer={...slow.p,state:()=>({...slow.state,seeking}),seek:at=>{slow.p.seek(at);seeking=true;}};
+ const f=new GroupFollower(service,p,()=>now),tick=()=>{f.start();f.stop();};
+ const corrections=()=>slow.log.filter(x=>x.startsWith('seek')||x!=='rate 1'&&x.startsWith('rate'));
+ tick();
+ assert.deepEqual(corrections(),['seek 30']);
+ for(let i=0;i<8;i++){now+=1000;tick();}
+ assert.deepEqual(corrections(),['seek 30'],'the pending seek is not restarted, and no speed change is measured against it');
+ // The seek lands. The group is now 8 s further on, so one new correction follows.
+ seeking=false;tick();
+ assert.deepEqual(corrections(),['seek 30','seek 38']);
+ service.dispose();
+});
+
 test('a paused group holds the follower at the anchor', async()=>{
  const s=server();s.set(snap({state:'paused',timeline:{...timeline,state:'paused'}}));
  const service=make(s,()=>T0+60000);await service.open('grp_1');
