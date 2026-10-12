@@ -27,11 +27,11 @@ if [[ -n "$icon" ]]; then
   rm -rf "${iconset:?}"
 fi
 if [[ -n "${PORTICO_MACOS_SIGNING_IDENTITY:-}" ]]; then
-  for binary in "$APP/Contents/Resources/server/portico-server" "$APP/Contents/Resources/server/third_party/ffmpeg/bin/"*; do
-    codesign --force --options runtime --timestamp=none --sign "$PORTICO_MACOS_SIGNING_IDENTITY" "$binary"
-  done
+  : "${PORTICO_RELEASE_SIGNING_KEY_FILE:?A private release key is required to seal codesigned binaries}"
+  python3 "$ROOT/scripts/seal-macos-payload.py" "$APP/Contents/Resources/server" --key "$PORTICO_RELEASE_SIGNING_KEY_FILE" --identity "$PORTICO_MACOS_SIGNING_IDENTITY"
   codesign --force --options runtime --timestamp=none --sign "$PORTICO_MACOS_SIGNING_IDENTITY" "$APP"
   codesign --verify --deep --strict "$APP"
+  python3 "$ROOT/scripts/seal-macos-payload.py" "$APP/Contents/Resources/server" --key "$PORTICO_RELEASE_SIGNING_KEY_FILE" --verify
 fi
 ln -s /Applications "$DMG_ROOT/Applications"
 if find "$DMG_ROOT" -type f \( -name '._*' -o -name '.DS_Store' \) | grep -q .; then echo "macOS package contains Finder metadata" >&2; exit 1; fi
