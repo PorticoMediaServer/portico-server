@@ -8,8 +8,12 @@ import (
 	"path/filepath"
 	"portico.local/server/internal/assets"
 	"portico.local/server/internal/catalog"
+	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/persistence"
 	workerloop "portico.local/server/internal/worker"
+	"runtime"
+	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -131,5 +135,116 @@ func TestQuantumReportsWhetherTheRunAdvanced(t *testing.T) {
 	}
 	if s.processQuantum(context.Background(), job.ID, lib.ID) {
 		t.Fatal("a paused job was reported as progress")
+	}
+}
+
+// While a foreground request is in flight the scan does not continue at once:
+// after every step that advanced it gives way for the bounded pause every bulk
+// loop uses, and it still finishes. With nothing in the foreground it is not
+// held back at all.
+func TestScanLoopGivesWayToForegroundWorkBetweenSteps(t *testing.T) {
+	withoutTimers(t)
+	const directories = 24
+	scan := func(t *testing.T) (elapsed time.Duration) {
+		t.Helper()
+		root := t.TempDir()
+		for i := 0; i < directories; i++ {
+			if err := os.Mkdir(filepath.Join(root, fmt.Sprint(i)), 0700); err != nil {
+				t.Fatal(err)
+			}
+		}
+		db, err := persistence.Open(filepath.Join(t.TempDir(), "db"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer db.Close()
+		cat := catalog.New(db)
+		lib, err := cat.Create("Movies", "movie", root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		s := New(db, cat, assets.Probe{})
+		job, err := s.Queue(lib.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ctx, cancel := context.WithCancel(context.Background())
+		done := make(chan struct{})
+		started := time.Now()
+		go func() { s.Run(ctx); close(done) }()
+		defer func() { cancel(); <-done }()
+		deadline := time.After(60 * time.Second)
+		for {
+			current, err := s.Get(job.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if current.Status == "complete" {
+				return time.Since(started)
+			}
+			if current.Status == "failed" {
+				t.Fatalf("scan failed: %+v", current)
+			}
+			select {
+			case <-deadline:
+				t.Fatalf("scan made no progress under foreground pressure: %+v", current)
+			case <-time.After(5 * time.Millisecond):
+			}
+		}
+	}
+
+	// The probe is what the HTTP layer registers. It also notes when the scan
+	// asks it from the pacing step, and when the scan next asks at all.
+	var mu sync.Mutex
+	var paced, followed, hurried int
+	var gaveWayAt time.Time
+	pressure := false
+	dbwork.RegisterForegroundProbe("scan-pressure-test", func() bool {
+		pcs := make([]uintptr, 16)
+		frames := runtime.CallersFrames(pcs[:runtime.Callers(2, pcs)])
+		pacing, step := false, false
+		for {
+			frame, more := frames.Next()
+			pacing = pacing || strings.HasSuffix(frame.Function, "dbwork.PaceBackground")
+			step = step || strings.HasSuffix(frame.Function, "ingestion.(*Service).processQuantum")
+			if !more {
+				break
+			}
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		now := time.Now()
+		if pressure {
+			if pacing {
+				paced++
+				gaveWayAt = now
+			} else if step && !gaveWayAt.IsZero() {
+				// The next step's own look at the foreground, after a pause.
+				followed++
+				if now.Sub(gaveWayAt) < 2*time.Millisecond {
+					hurried++
+				}
+				gaveWayAt = time.Time{}
+			}
+		}
+		return pressure
+	})
+	t.Cleanup(func() { dbwork.RegisterForegroundProbe("scan-pressure-test", nil) })
+
+	idle := scan(t)
+	mu.Lock()
+	pressure = true
+	mu.Unlock()
+	busy := scan(t)
+	mu.Lock()
+	defer mu.Unlock()
+	if paced < directories {
+		t.Fatalf("the scan continued without giving way to foreground work: %d pauses for %d folders", paced, directories)
+	}
+	if followed < directories || hurried != 0 {
+		t.Fatalf("of %d steps that followed a pause, %d began before it had passed", followed, hurried)
+	}
+	if busy < idle {
+		t.Logf("scan under pressure (%s) was not slower than idle (%s)", busy, idle)
 	}
 }
