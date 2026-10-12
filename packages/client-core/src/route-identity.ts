@@ -45,6 +45,13 @@ export function privateRouteHost(host:string):boolean {
  if(!/^(?:0|[1-9]\d{0,2})(?:\.(?:0|[1-9]\d{0,2})){3}$/.test(h))return false;
  const p=h.split('.').map(Number);return p.every(n=>n<=255)&&(p[0]===10||p[0]===127||p[0]===192&&p[1]===168||p[0]===172&&p[1]>=16&&p[1]<=31||p[0]===169&&p[1]===254);
 }
+// Hosted's dedicated LAN alias resolves to private addresses and is covered by
+// the server's wildcard certificate. Accept it only in signed HTTPS candidates;
+// it never grants plaintext permission or substitutes for the pinned route proof.
+function signedLANOrigin(origin:string):boolean {
+ const u=new URL(origin);
+ return privateRouteHost(u.hostname)||(u.protocol==='https:'&&/^l-[0-9a-f]{32}\.ptc-[a-z2-7]{19}[aq]\.direct\.getportico\.tv$/.test(u.hostname));
+}
 /** Origin only. No userinfo, path trick, query, IDNA ambiguity, or public HTTP. */
 export function routeOrigin(raw:string):string {
  if(typeof raw!=='string'||raw.length>300||/[\\\s\x00-\x1f\x7f]/.test(raw)||!/^https?:\/\//i.test(raw))throw new RouteError('invalid_address','Enter an HTTPS server address or a private LAN address.');
@@ -79,7 +86,7 @@ export async function verifyRoutes(value:unknown,key:RouteKey,expected:{accountI
  if(v.kind!=='portico.routes'||v.version!=='1'||v.algorithm!=='Ed25519'||v.audience!==expected.accountId||v.serverId!==expected.serverId||!text(v.name,2048)||typeof v.publicKey!=='string'||typeof v.fingerprint!=='string'||!generation(v.generation)||!generation(v.claimGeneration)||!generation(v.credentialGeneration)||!Number.isSafeInteger(v.policyRevision)||Number(v.policyRevision)<0||!Array.isArray(v.candidates)||v.candidates.length>24)throw new RouteError('invalid_routes','The account service returned incompatible connection information.');
  const pin=await serverPin(v.serverId as string,v.publicKey,v.fingerprint,crypto);if(expected.pin&&!sameServerPin(pin,expected.pin))throw new RouteError('identity_mismatch','The selected server identity changed.');
  times(v,45*60000,expected.now??Date.now(),expected.allowExpiredHint===true);
- const candidates=v.candidates.map(c=>{if(!object(c)||!['lan','public','manual'].includes(String(c.class))||!['reachable','probe_required'].includes(String(c.quality))||!generation(c.generation)||BigInt(c.generation)>BigInt(v.generation as string)||typeof c.baseUrl!=='string'||routeOrigin(c.baseUrl)!==c.baseUrl||(c.class!=='lan'&&!c.baseUrl.startsWith('https://'))||(c.class==='lan'&&!privateRouteHost(new URL(c.baseUrl).hostname)))throw new RouteError('invalid_routes','Invalid signed route candidate.');return Object.freeze({baseUrl:c.baseUrl,class:c.class as RouteCandidate['class'],quality:c.quality as RouteCandidate['quality'],generation:c.generation});});
+ const candidates=v.candidates.map(c=>{if(!object(c)||!['lan','public','manual'].includes(String(c.class))||!['reachable','probe_required'].includes(String(c.quality))||!generation(c.generation)||BigInt(c.generation)>BigInt(v.generation as string)||typeof c.baseUrl!=='string'||routeOrigin(c.baseUrl)!==c.baseUrl||(c.class!=='lan'&&!c.baseUrl.startsWith('https://'))||(c.class==='lan'&&!signedLANOrigin(c.baseUrl)))throw new RouteError('invalid_routes','Invalid signed route candidate.');return Object.freeze({baseUrl:c.baseUrl,class:c.class as RouteCandidate['class'],quality:c.quality as RouteCandidate['quality'],generation:c.generation});});
  if(new Set(candidates.map(c=>c.baseUrl)).size!==candidates.length)throw new RouteError('invalid_routes','Duplicate signed route candidates.');
  return Object.freeze({envelope:signed,document:Object.freeze({...v,...pin,candidates:Object.freeze(candidates)}) as RouteDocument});
 }
