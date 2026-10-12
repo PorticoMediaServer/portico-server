@@ -31,6 +31,7 @@ type AudioRenditionPlan struct {
 	Channels    int    `json:"channels"`
 	BitrateBPS  int    `json:"bitrateBps"`
 	Downmix     string `json:"downmix,omitempty"`
+	SampleRate  int    `json:"sampleRate,omitempty"`
 	Language    string `json:"language"`
 	Label       string `json:"label"`
 	Default     bool   `json:"default"`
@@ -70,7 +71,7 @@ func planAudioRenditions(p DeliveryPlan, source DeliverySource, client ClientPro
 				continue
 			}
 			t := audioConversionTarget(&a, client, target)
-			r.Action, r.Codec, r.Channels, r.BitrateBPS = "convert", t.Codec, t.Channels, t.Bitrate
+			r.Action, r.Codec, r.Channels, r.BitrateBPS, r.SampleRate = "convert", t.Codec, t.Channels, t.Bitrate, t.SampleRate
 			if t.Downmix {
 				r.Downmix = DownmixITULimited
 			}
@@ -417,7 +418,7 @@ func (h *HLS) produceRendition(ctx context.Context, id string, r AudioRenditionP
 	}
 	offset := strconv.Itoa(from * HLSSegmentSeconds)
 	args := []string{"-nostdin", "-hide_banner", "-loglevel", "error", "-y", "-protocol_whitelist", "file,pipe", "-ss", offset, "-i", input.Argument, "-ss", "0", "-map", "0:" + strconv.Itoa(r.StreamIndex), "-vn", "-sn", "-dn"}
-	graph, err := decoder.BuildConversion(decoder.ConversionRequest{CopyAudio: r.Action == "copy", ConvertAudio: r.Action == "convert", AudioCodec: r.Codec, AudioChannels: r.Channels, AudioBitrateBPS: r.BitrateBPS, Downmix: r.Downmix == DownmixITULimited})
+	graph, err := decoder.BuildConversion(decoder.ConversionRequest{CopyAudio: r.Action == "copy", ConvertAudio: r.Action == "convert", AudioCodec: r.Codec, AudioChannels: r.Channels, AudioBitrateBPS: r.BitrateBPS, Downmix: r.Downmix == DownmixITULimited, AudioSampleRate: r.SampleRate})
 	if err != nil {
 		failed(FailureConverter)
 		return

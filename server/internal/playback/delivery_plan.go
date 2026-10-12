@@ -143,6 +143,9 @@ type DeliveryPlan struct {
 	// id names no published rung, so a later re-plan of the same presentation
 	// (a subtitle burned in or turned off) plans under these again.
 	Target *QualityTarget `json:"-"`
+	// AudioSampleRate is the rate converted audio is resampled to; zero keeps
+	// the source's.
+	AudioSampleRate int `json:"-"`
 }
 
 // DownmixITULimited names the one downmix the server performs: the ITU-R BS.775
@@ -597,6 +600,7 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 	convertAudio := func() {
 		target := audioConversionTarget(audio, client, in.Target)
 		p.AudioAction, p.OutputAudioCodec, p.AudioChannels, p.AudioBitrateBPS = "convert", target.Codec, target.Channels, target.Bitrate
+		p.AudioSampleRate = target.SampleRate
 		if target.Downmix {
 			p.Downmix = DownmixITULimited
 		}
@@ -816,6 +820,7 @@ func (p DeliveryPlan) conversionGraph(burn *decoder.BurnIn) (decoder.ConversionG
 		Deinterlace:      p.Deinterlace,
 		MaxFrameRate:     p.MaxFrameRate,
 		Downmix:          p.Downmix == DownmixITULimited,
+		AudioSampleRate:  p.AudioSampleRate,
 	}
 	switch p.VideoAction {
 	case "copy":
@@ -870,7 +875,7 @@ func loadDeliveryPlan(q audioQuery, session string) (*DeliveryPlan, error) {
 	if policy != "" {
 		var stored storedPolicy
 		if err = json.Unmarshal([]byte(policy), &stored); err == nil {
-			p.Policy, p.Target = stored.ResolvedDeliveryPolicy, stored.SessionTarget
+			p.Policy, p.Target, p.AudioSampleRate = stored.ResolvedDeliveryPolicy, stored.SessionTarget, stored.AudioSampleRate
 		}
 	}
 	if trace != "" {
@@ -901,17 +906,19 @@ func loadDeliveryPlan(q audioQuery, session string) (*DeliveryPlan, error) {
 	return p, nil
 }
 
-// storedPolicy is a plan's policy column: the resolved policy and, for a v1
-// presentation, the target it was planned under.
+// storedPolicy is a plan's policy column: the resolved policy and the parts of
+// the plan that have no column of their own (a v1 presentation's target, the
+// rate converted audio is resampled to).
 type storedPolicy struct {
 	*ResolvedDeliveryPolicy
-	SessionTarget *QualityTarget `json:"sessionTarget,omitempty"`
+	SessionTarget   *QualityTarget `json:"sessionTarget,omitempty"`
+	AudioSampleRate int            `json:"audioSampleRate,omitempty"`
 }
 
 func persistDeliveryPlan(tx *sql.Tx, session string, p *DeliveryPlan) error {
 	policy := ""
-	if p.Policy != nil || p.Target != nil {
-		raw, err := json.Marshal(storedPolicy{p.Policy, p.Target})
+	if p.Policy != nil || p.Target != nil || p.AudioSampleRate != 0 {
+		raw, err := json.Marshal(storedPolicy{p.Policy, p.Target, p.AudioSampleRate})
 		if err != nil {
 			return err
 		}

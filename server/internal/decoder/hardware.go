@@ -527,6 +527,9 @@ type ConversionRequest struct {
 	// make-up gain and a limiter, so the result does not depend on which sample
 	// format the source decoder happened to produce.
 	Downmix bool
+	// AudioSampleRate is the rate converted audio is resampled to; zero keeps
+	// the source's. No conversion produces more than 48 kHz.
+	AudioSampleRate int
 }
 
 // ConversionGraph is the argument contribution of one conversion. Input arguments
@@ -767,7 +770,13 @@ func BuildConversion(r ConversionRequest) (ConversionGraph, error) {
 		if codec != "aac" && codec != "ac3" && codec != "eac3" {
 			return out, ErrInvalidConfiguration
 		}
+		if r.AudioSampleRate < 0 || r.AudioSampleRate > 48000 {
+			return out, ErrInvalidConfiguration
+		}
 		out.Audio = append(out.Audio, "-c:a", codec, "-b:a", strconv.Itoa(bitrate/1000)+"k", "-ac", strconv.Itoa(channels))
+		if r.AudioSampleRate > 0 {
+			out.Audio = append(out.Audio, "-ar", strconv.Itoa(r.AudioSampleRate))
+		}
 	}
 	return out, nil
 }
