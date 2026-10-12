@@ -398,3 +398,31 @@ func TestDailyAndYearSeasonEpisodesPersistAndRescan(t *testing.T) {
 		t.Fatal(count, err)
 	}
 }
+
+func TestFrameSizeAndCodecTagsAreNotEpisodeMarkers(t *testing.T) {
+	cases := []struct {
+		path, kind, title, numbering string
+		season                       int
+		numbers                      []int
+	}{
+		{"[Group] Show - 05 [1920x1080].mkv", "anime", "Show", "absolute", -1, []int{5}},
+		{"Show - S01E01 - 1920x1080.mkv", "tv", "Show", "seasonal", 1, []int{1}},
+		{"Show.S01E02.720x480.mkv", "tv", "Show", "seasonal", 1, []int{2}},
+		{"Show.S01E01.1080p.DD5.1x264-GRP.mkv", "tv", "Show", "seasonal", 1, []int{1}},
+		{"Show.S01E01.1080p.DDP5.1x265-GRP.mkv", "tv", "Show", "seasonal", 1, []int{1}},
+		// A real season-by-episode marker still reads, including long-running numbers.
+		{"Show.1x264.mkv", "tv", "Show", "seasonal", 1, []int{264}},
+		{"Show.12x103.mkv", "tv", "Show", "seasonal", 12, []int{103}},
+	}
+	for _, c := range cases {
+		t.Run(c.path, func(t *testing.T) {
+			got := ParseEpisode(c.path, c.kind)
+			if got.Issue != "" || got.ShowTitle != c.title || got.Numbering != c.numbering || got.Season != c.season || len(got.Numbers) != len(c.numbers) || got.Numbers[0] != c.numbers[0] {
+				t.Fatalf("unexpected parse %+v", got)
+			}
+		})
+	}
+	if got := ParseEpisode("Show [1920x1080].mkv", "tv"); got.Issue != "unrecognized_episode_name" {
+		t.Fatalf("a frame size alone was filed as an episode: %+v", got)
+	}
+}
