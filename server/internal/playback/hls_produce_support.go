@@ -124,6 +124,12 @@ func (h *HLS) failedWith(ctx context.Context, id, code, diagnostic string) {
 	_, _ = dbwork.ExecWrite(write, h.db, dbwork.ClassEstablishedPlayback, `UPDATE playback_artifacts SET failure_code=?,diagnostic=? WHERE session_id=?`, code, diagnostic, id)
 }
 
+// A successful software retry establishes that this window can be converted.
+// Failed, cancelled or throttled retries leave the cause unproven.
+func hardwareFailureConfirmed(softwareErr error, cancelled, throttled bool) bool {
+	return softwareErr == nil && !cancelled && !throttled
+}
+
 // recordSoftwareFallback rewrites the stored plan after a hardware encoder failed
 // on a real source, so every later window of this session starts in software and
 // the technical details say what happened.
@@ -133,7 +139,6 @@ func (h *HLS) recordSoftwareFallback(ctx context.Context, id, backend, diagnosti
 	_, _ = dbwork.ExecWrite(write, h.db, dbwork.ClassEstablishedPlayback, `UPDATE playback_delivery_plans SET hardware_backend='software',hardware_native=0,hardware_device='',reason_codes=CASE WHEN instr(reason_codes,?)>0 THEN reason_codes ELSE reason_codes||','||? END WHERE session_id=?`, ReasonHardwareFailedSoftware, ReasonHardwareFailedSoftware, id)
 	_, _ = dbwork.ExecWrite(write, h.db, dbwork.ClassEstablishedPlayback, `UPDATE playback_artifacts SET failure_code=?,diagnostic=? WHERE session_id=?`, "hardware_encoder_failed:"+backend, diagnostic, id)
 	h.hardwareFailures.Add(1)
-	decoder.RecordHardwareFailure(decoder.HardwareBackend(backend))
 }
 
 // downgradeCopyPlan turns a plan that copies the picture into one that converts
