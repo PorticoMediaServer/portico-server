@@ -2,6 +2,7 @@ import {serverSettingsAddress} from './server-pages';
 import React, {Suspense, lazy} from 'react';
 import {createRootRoute, createRoute, createRouter, Outlet, redirect} from '@tanstack/react-router';
 import {PreferencesProvider} from './preferences';
+import {PageTitle} from './page-title';
 import {SessionProvider} from './session';
 import {Gate} from '../screens/auth/Gate';
 import {Shell} from '../shell/Shell';
@@ -56,6 +57,7 @@ const root = createRootRoute({
       <SessionProvider>
         <div className="atmosphere" aria-hidden />
         <Outlet />
+        <PageTitle />
       </SessionProvider>
     </PreferencesProvider>
   ),

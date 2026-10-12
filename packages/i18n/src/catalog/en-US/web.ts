@@ -1069,6 +1069,7 @@ export const webMessages = {
   'web.account.export.working': 'Preparing your data',
   'web.shell.primary': 'Primary',
   'web.shell.skipToContent': 'Skip to content',
+  'web.shell.pageTitle': '{page} · {product}',
   'web.shell.home': 'Home',
   'web.shell.homeLabel': 'Portico home',
   'web.shell.search': 'Search',

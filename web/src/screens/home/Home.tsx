@@ -74,7 +74,8 @@ export function HomeScreen() {
   const heroEyebrow = hero ? homeRowTitle(hero.row.id, hero.row.title, libraryName, hero.row.titleText) : undefined;
   const rows = useMemo(() => (document?.rows ?? []).map(r => (hidden.size && r.id === 'continue' ? {...r, entries: r.entries.filter(e => !hidden.has(e.id))} : isRecommendationRow(r) ? withoutHidden(r, notInterested.hidden) : r)).filter(r => r.entries.length), [document, hidden, notInterested.hidden]);
   return (
-    <div style={{position: 'relative'}}>
+    // Home's heading is the featured title, so the page names itself for the document title.
+    <div style={{position: 'relative'}} data-page-title={currentI18n().t('web.shell.home')}>
       {hero ? <Backdrop path={hero.entry.backdropUrl ?? hero.entry.posterUrl} height="min(72vh, 760px)" opacity={hero.art === 'backdrop' ? 0.8 : 0.45} className={hero.art === 'cover' ? s.soft : undefined} /> : null}
       <Page>
         {hero ? (
