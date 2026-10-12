@@ -73,7 +73,8 @@ func TestDeliveryRouteSelectionAndExecutableCodecPolicy(t *testing.T) {
 			if tt.strategy == "copy_remux" && !reflect.DeepEqual(args, []string{"-c:v", "copy", "-c:a", "copy"}) {
 				t.Fatal(args)
 			}
-			if tt.videoAction == "copy" && tt.audioAction == "convert" && !reflect.DeepEqual(args, []string{"-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-ac", "2"}) {
+			// These sources have no observed sample rate, so the conversion names one.
+			if tt.videoAction == "copy" && tt.audioAction == "convert" && !reflect.DeepEqual(args, []string{"-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-ac", "2", "-ar", "48000"}) {
 				t.Fatal(args)
 			}
 			if tt.videoAction == "none" && strings.Contains(joined, "-c:v") {

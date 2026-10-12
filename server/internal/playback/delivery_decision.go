@@ -353,13 +353,14 @@ var convertedAudioRates = map[string][]int{
 // convertedSampleRate is the rate a track converted to codec is resampled to,
 // zero to keep its own, and whether there is such a rate at all. The output
 // may not exceed 48 kHz or what the device declares for that codec, and must
-// be a rate the codec is encoded at: a source that is both keeps its rate, and
-// any other takes the lowest such rate at or above its own, else the highest
-// below it. When the codec has no rate within the device's limit the answer
-// is false, never a rate the device said it cannot take. A source whose rate
-// was never observed is left as it is.
+// be a rate the codec is encoded at. Whether any such rate exists is decided
+// first, whatever is known of the source: when none does the answer is false,
+// never a rate the device said it cannot take. A source at one of those rates
+// keeps it; any other takes the lowest of them at or above its own, else the
+// highest below it; and a source whose rate was never observed is given the
+// highest of them outright, because a rate nobody saw cannot be kept on trust.
 func convertedSampleRate(a *SourceAudio, codec string, output *ClientAudioCodec) (int, bool) {
-	if a == nil || a.SampleRate <= 0 {
+	if a == nil {
 		return 0, true
 	}
 	limit := 48000
@@ -371,10 +372,10 @@ func convertedSampleRate(a *SourceAudio, codec string, output *ClientAudioCodec)
 		if rate > limit {
 			continue
 		}
-		if rate == a.SampleRate {
+		if a.SampleRate > 0 && rate == a.SampleRate {
 			return 0, true
 		}
-		if chosen == 0 || rate > a.SampleRate {
+		if chosen == 0 || a.SampleRate > 0 && rate > a.SampleRate {
 			chosen = rate
 		}
 	}
