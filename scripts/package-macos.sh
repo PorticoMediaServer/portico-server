@@ -12,7 +12,7 @@ APP="$DMG_ROOT/Portico Media Server.app"
 rm -rf "${DMG_ROOT:?}"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/server" "$APP/Contents/Resources/launchd"
 cp -R "$PAYLOAD/." "$APP/Contents/Resources/server/"
-cp "$ROOT/packaging/macos/tv.getportico.server.service.plist" "$APP/Contents/Resources/launchd/"
+cp "$ROOT/packaging/macos/tv.getportico.server.service.plist" "$ROOT/packaging/macos/server-launcher.sh" "$APP/Contents/Resources/launchd/"
 sed -e "s/__PORTICO_VERSION__/$VERSION/g" -e "s/__PORTICO_BUILD__/$BUILD_NUMBER/g" "$ROOT/packaging/macos/Info.plist" > "$APP/Contents/Info.plist"
 cp "$ROOT/packaging/macos/launcher.sh" "$APP/Contents/MacOS/Portico Media Server"
 chmod +x "$APP/Contents/MacOS/Portico Media Server" "$APP/Contents/Resources/server/portico-server" "$APP/Contents/Resources/server/third_party/ffmpeg/bin/"*
