@@ -3,8 +3,17 @@ on:
   push:
     branches: [main]
   pull_request:
-  # The release workflow runs this whole suite against the tag it publishes.
+  # The release workflow runs this whole suite against the tag it publishes. A
+  # called workflow otherwise checks out the caller's own ref, which for a
+  # manually dispatched release is the branch it was dispatched from, so the
+  # caller names the ref. Empty (a push or a pull request) means the event's own.
   workflow_call:
+    inputs:
+      ref:
+        description: Git ref to check out and test
+        type: string
+        required: false
+        default: ''
 permissions:
   contents: read
 jobs:
@@ -12,6 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with: {ref: '${{ inputs.ref }}'}
       - name: No built binaries or large files in Git (A77)
         run: scripts/check-repo-binaries.sh
   go:
@@ -30,6 +40,7 @@ jobs:
         options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with: {ref: '${{ inputs.ref }}'}
       - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
         with:
           go-version-file: ${{ matrix.module }}/go.mod
@@ -71,6 +82,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with: {ref: '${{ inputs.ref }}'}
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '22.22.2'

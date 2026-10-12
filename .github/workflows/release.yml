@@ -57,6 +57,9 @@ jobs:
   tests:
     needs: identity
     uses: ./.github/workflows/ci.yml
+    # The suite must run on the tag being published, not on the ref a manual
+    # dispatch happened to start from.
+    with: {ref: '${{ needs.identity.outputs.tag }}'}
 
   web:
     needs: [identity, tests]
