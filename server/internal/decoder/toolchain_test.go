@@ -46,3 +46,15 @@ func TestHardwareRuntimeCircuit(t *testing.T) {
 		t.Fatal("did not reset")
 	}
 }
+
+func TestSoftwareToneMapProbeUsesSoftwarePermissions(t *testing.T) {
+	for _, device := range []string{"vulkan=tone", "opencl=tone"} {
+		job := toneMapProbeJob("/usr/bin/ffmpeg", device, "hwupload,hwdownload")
+		if job.Hardware {
+			t.Fatalf("%s probe gets permissions denied to software conversion", device)
+		}
+		if job.Loopback != "" || len(job.ReadPaths) > 0 || len(job.WriteDirs) > 0 {
+			t.Fatal("probe must not gain source, network or output access", job)
+		}
+	}
+}

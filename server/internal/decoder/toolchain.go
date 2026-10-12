@@ -89,6 +89,13 @@ func parseToolList(raw, kind string) map[string]bool {
 	return out
 }
 
+// Software encoders may select these filters, so qualify them without the
+// device and driver grants reserved for hardware jobs. A host-only GPU filter
+// must not displace the CPU tone mapper inside the software sandbox.
+func toneMapProbeJob(path, device, graph string) mediaexec.Job {
+	return mediaexec.Job{Executable: path, Args: []string{"-v", "error", "-nostdin", "-init_hw_device", device, "-filter_hw_device", "tone", "-f", "lavfi", "-i", "testsrc2=size=64x64:rate=1", "-vf", graph, "-frames:v", "1", "-f", "null", "-"}}
+}
+
 // ProbeToolchain runs bounded trusted introspection at startup, never on requests.
 func ProbeToolchain(ctx context.Context, ffmpeg string) (ToolchainFacts, error) {
 	path, err := exec.LookPath(ffmpeg)
@@ -148,8 +155,8 @@ func ProbeToolchain(ctx context.Context, ffmpeg string) (ToolchainFacts, error) 
 	probeDevice := func(device, graph string) bool {
 		bounded, cancel := context.WithTimeout(ctx, 5*time.Second)
 		defer cancel()
-		// The same devices and sandbox a hardware conversion gets (mediaexec).
-		cmd, err := mediaexec.CommandContext(bounded, mediaexec.Job{Executable: path, Args: []string{"-v", "error", "-nostdin", "-init_hw_device", device, "-filter_hw_device", "tone", "-f", "lavfi", "-i", "testsrc2=size=64x64:rate=1", "-vf", graph, "-frames:v", "1", "-f", "null", "-"}, Hardware: true})
+		// Use the same permissions as a software conversion, including fallback.
+		cmd, err := mediaexec.CommandContext(bounded, toneMapProbeJob(path, device, graph))
 		if err != nil {
 			return false
 		}
