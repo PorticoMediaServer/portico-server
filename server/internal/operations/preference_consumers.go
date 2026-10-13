@@ -45,10 +45,8 @@ var preferenceConsumers = func() map[string]string {
 		"appearance.reduceMotion":             "client.appearance",
 		"notifications.badges":                "client.notifications",
 	}
-	for _, network := range []string{"local", "wifi", "cellular", "unknown"} {
-		for _, field := range []string{"mode", "maxVideoBitrateMbps", "maxAudioBitrateKbps", "maxVideoHeight", "allowHDR"} {
-			m["quality."+network+"."+field] = "server.playback.delivery_policy"
-		}
+	for _, network := range []string{"home", "remote"} {
+		m["quality."+network] = "server.playback.delivery_policy"
 	}
 	return m
 }()

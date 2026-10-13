@@ -316,7 +316,6 @@ func restrictionRoutes() map[string]restrictionRoute {
 		"GET /v1/networking/certificate":                exempt(reasonNoTitles),
 		"GET /v1/networking/claim":                      exempt(reasonNoTitles),
 		"GET /v1/networking/remote":                     exempt(reasonNoTitles),
-		"GET /v1/playback/client-profile":               exempt(reasonNoTitles),
 		"GET /v1/playback/delivery-policy":              exempt(reasonNoTitles),
 		"GET /v1/listening/preferences":                 exempt(reasonNoTitles),
 		"GET /v1/downloads/settings":                    exempt(reasonNoTitles),

@@ -16,7 +16,7 @@ async function harness(fixture={}){
   if(path.startsWith('/v2/'))throw new Error('removed v2 route '+path);
   if(path.endsWith('/reconnect')&&fixture.revoked)return reply({error:{code:'cast_device_revoked',message:'That receiver pairing was revoked.',retryable:false}},403);
   if(path.endsWith('/redeem')||path.endsWith('/reconnect'))return reply({device:{id:'cdv_'+(body?.code||'renewed'),generation:'1'},session:{accessToken:'bearer-'+(body?.code||'renewed')},deviceToken:'device-'+(body?.code||'renewed'),scope:{accountId:String(body?.code||'').startsWith('OTHER')?'other':'account',profileId:'profile',authority:'hosted'}});
-  if(path==='/v1/playback/client-profile')return reply({version:1});
+  if(path==='/v1/me/devices/current/capabilities')return reply({},204);
   if(path==='/v1/playback/sessions'&&options.method==='POST'){
    if(fixture.ambiguous&&!failed){failed=true;throw new Error('lost response')}
    if(preparing){preparing=false;return reply({retryAfterMs:500},202);}
@@ -29,7 +29,6 @@ async function harness(fixture={}){
   }
   if(path==='/v1/playback/sessions/ps_1'&&options.method==='DELETE')return reply({},204);
   if(path.startsWith('/v1/cast/devices/')&&options.method==='DELETE')return reply({},204);
-  if(path==='/v1/playback/route-failures')return reply({escalates:true});
   throw new Error('unexpected path '+path);
  }};
  context.window={cast,crypto:crypto.webcrypto,location:{origin:'https://cast.getportico.tv'},localStorage:{getItem:k=>storage.get(k),setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)}};
@@ -39,7 +38,7 @@ async function harness(fixture={}){
 for(const [name,fixture,want]of[
  ['Chromecast 3',{supports:()=>false},['h264','vp8']],
  ['Ultra',{caps:{is_hdr_supported:true},supports:(_,codec)=>codec.startsWith('hev1')||codec.startsWith('vp09')},['h264','vp8','hevc','vp9']],
- ['Google TV 4K',{caps:{is_hdr_supported:true,is_dv_supported:true},supports:()=>true},['h264','vp8','hevc','vp9','av1']]])test('probes '+name,async()=>{const h=await harness(fixture),p=h.receiver.buildProfile(h.castContext);assert.deepEqual(Array.from(p.video,x=>x.codec),want);assert.equal(p.display.height,name==='Chromecast 3'?1080:2160);assert.equal(p.audioOutput.maxChannels,name==='Google TV 4K'?6:2);});
+ ['Google TV 4K',{caps:{is_hdr_supported:true,is_dv_supported:true},supports:()=>true},['h264','vp8','hevc','vp9','av1']]])test('probes '+name,async()=>{const h=await harness(fixture),p=h.receiver.buildProfile(h.castContext);assert.equal(p.version,2);assert.deepEqual(Array.from(p.engines.native.video,x=>x.codec),want);assert.deepEqual(Array.from(p.engines.native.audioPassthrough,x=>x.codec),name==='Google TV 4K'?['ac3','eac3']:[]);assert(!p.engines.native.audio.some(x=>x.codec==='ac3'));assert.equal(p.display.height,name==='Chromecast 3'?1080:2160);assert.equal(p.audioOutput.maxChannels,name==='Google TV 4K'?6:2);});
 const settle0=async()=>{for(let i=0;i<30;i++)await new Promise(setImmediate);};
 const fireAll=async(h,ms)=>{for(const [id,t] of [...h.timers])if(ms===undefined||t.ms===ms){h.fire(id);await settle0();}};
 test('a load starts a Playback v1 session and plays its presentation; a lost start is repeated exactly (SV-012)',async()=>{
@@ -49,7 +48,7 @@ test('a load starts a Playback v1 session and plays its presentation; a lost sta
  const starts=h.calls.filter(c=>c.url.endsWith('/v1/playback/sessions'));assert.equal(starts.length,2);
  assert.deepEqual(starts[0].body,starts[1].body);assert.equal(starts[0].headers['Idempotency-Key'],starts[1].headers['Idempotency-Key']);
  assert.equal(starts[0].body.itemId,'movie');assert.equal(starts[0].body.startPositionMs,37000);assert.equal(starts[0].headers.Authorization,'Bearer bearer-ABCD');
- assert(h.calls.some(c=>c.url.endsWith('/v1/playback/client-profile')&&c.method==='PUT'));
+ assert(h.calls.some(c=>c.url.endsWith('/v1/me/devices/current/capabilities')&&c.method==='PUT'&&c.body.version===2));
  assert.equal(h.receiver.state().playbackId,'ps_1');
 });
 test('a direct file gets its container’s type; a preparing session is asked again with the same key',async()=>{
@@ -89,14 +88,15 @@ test('loading another title replaces the session in the same request',async()=>{
 test('every request the receiver makes is a current route (no Playback v2)',()=>{
  const paths=[...source.matchAll(/'(\/v\d\/[^'?]*)/g)].map(m=>m[1]);
  assert(paths.length>5);assert(paths.every(x=>x.startsWith('/v1/')),paths.join(' '));
- for(const want of ['/v1/playback/sessions','/v1/playback/client-profile','/v1/cast/reconnect','/v1/cast/redeem','/v1/playback/route-failures'])assert(paths.includes(want),want);
+ for(const want of ['/v1/playback/sessions','/v1/me/devices/current/capabilities','/v1/cast/reconnect','/v1/cast/redeem'])assert(paths.includes(want),want);
+ for(const gone of ['/v1/playback/client-profile','/v1/playback/route-failures'])assert(!paths.includes(gone),gone);
 });
 
 const j=x=>JSON.parse(JSON.stringify(x));
 const settle=async()=>{for(let i=0;i<30;i++)await new Promise(setImmediate);};
 test('probes H.264 1080p60 instead of assuming 30 fps (CAST-08)',async()=>{
  const h=await harness({supports:(_,codec)=>codec==='avc1.64002A'}),p=h.receiver.buildProfile(h.castContext);
- assert.equal(p.video[0].maxFrameRate,60);assert.equal(p.video[0].maxLevel,42);assert.equal(p.display.maxFrameRate,60);
+ assert.equal(p.engines.native.video[0].maxFrameRate,60);assert.equal(p.engines.native.video[0].maxLevel,42);assert.equal(p.display.maxFrameRate,60);
 });
 test('only the sender that paired can load, and status goes only to it (SEC-14)',async()=>{
  const h=await harness();

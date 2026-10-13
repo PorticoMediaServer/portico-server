@@ -113,16 +113,11 @@ func (s *Service) channelReference(ctx context.Context, channelID, generation st
 	return ref, kind, nil
 }
 
-// deviceProfile is the device's planner profile (its v1 capabilities), which
-// the linear plan follows; the baseline when it has none.
+// deviceProfile is the native engine of the device's capability document,
+// which the linear plan follows: live channels always play in the platform's
+// own player.
 func (s *Service) deviceProfile(ctx context.Context, device string) playback.ClientProfile {
-	var raw string
-	if s.DB.QueryRowContext(ctx, `SELECT planner_profile FROM playback_device_capabilities WHERE device_id=?`, device).Scan(&raw) == nil && raw != "" {
-		if p, err := playback.ParseClientProfile([]byte(raw)); err == nil {
-			return p
-		}
-	}
-	return playback.BaselineClientProfile()
+	return s.deviceDocument(ctx, device).Profile(playback.EngineNative)
 }
 
 func (s *Service) startChannel(ctx context.Context, c Caller, key, startDigest string, req StartRequest) (SessionView, bool, error) {

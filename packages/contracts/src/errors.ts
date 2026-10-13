@@ -115,6 +115,12 @@ export const errors = [
     "retry": "never"
   },
   {
+    "code": "connection_too_slow",
+    "status": 422,
+    "message": "Your connection to this server is too slow for this quality. Choose a lower quality or Automatic.",
+    "retry": "never"
+  },
+  {
     "code": "credential_busy",
     "status": 429,
     "message": "This API key or access token has too many requests running. Try again shortly.",

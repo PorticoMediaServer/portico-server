@@ -88,7 +88,9 @@ func TestHLSManifestRepresentationRangeReloadAndGrantRevocation(t *testing.T) {
 		t.Fatal(err)
 	}
 	w := httptest.NewRecorder()
-	handler.ServeHTTP(w, httptest.NewRequest("POST", "/v1/setup", bytes.NewReader(body)))
+	setup := httptest.NewRequest("POST", "/v1/setup", bytes.NewReader(body))
+	setup.Header.Set("Content-Type", "application/json")
+	handler.ServeHTTP(w, setup)
 	if w.Code != 201 {
 		t.Fatal("setup", w.Code)
 	}

@@ -91,7 +91,8 @@ func New(db *sql.DB) *Service { return &Service{db: db} }
 // immutable decision, so first play, a rung change and an audio change read it
 // through this one function.
 func (s *Service) completeDeliveryInputTx(ctx context.Context, tx *sql.Tx, p identity.Principal, input *DeliveryInput, values DeliveryPreferenceReader, catalogued bool, explicitAudio *int) error {
-	input.Client = clientProfileFor(ctx, tx, p)
+	device := capabilityDocumentFor(ctx, tx, p)
+	input.Device = &device
 	input.PreferredAudioLanguages = preferredAudioLanguages(values)
 	input.Server = decoder.CurrentToolchain()
 	input.FMP4Output = s.hls.fragmentedOutput()
@@ -107,31 +108,48 @@ func (s *Service) completeDeliveryInputTx(ctx context.Context, tx *sql.Tx, p ide
 		return err
 	}
 	input.Source = &source
-	input.Excluded, err = routeFailuresTx(ctx, tx, p, input.SourceID)
+	input.ExcludedByEngine, err = routeFailuresTx(ctx, tx, p, input.SourceID)
 	return err
 }
+
+// Create starts one presentation of an item at a named quality ("auto" and
+// "original" are the original; a ladder id such as "720p" is that quality's
+// ceilings). It is the presentation half of a Playback Protocol v1 start with
+// no session resource around it, which is how fixtures and internal callers
+// that only need a stream reach the same planning every viewer gets.
 func (s *Service) Create(p identity.Principal, item, quality, request string) (Session, error) {
 	return s.CreateContext(context.Background(), p, item, quality, request)
 }
 func (s *Service) CreateContext(ctx context.Context, p identity.Principal, item, quality, request string) (Session, error) {
-	return s.createContext(ctx, p, item, quality, request)
+	return s.CreateReplacingContext(ctx, p, item, quality, request, nil)
 }
 
-// SessionReplacement is an explicit legacy transfer, never inferred from a bearer.
-// Canonical occurrences must use their controller-owned queue/control routes.
+// SessionReplacement names the presentation a new one takes the place of. It
+// is always explicit, never inferred from a bearer.
 type SessionReplacement struct {
 	ID         string `json:"id"`
 	Generation int    `json:"generation"`
 }
 
 func (s *Service) CreateReplacingContext(ctx context.Context, p identity.Principal, item, quality, request string, replacement *SessionReplacement) (Session, error) {
-	return s.createWithReplacement(ctx, p, item, quality, request, replacement)
+	choice, ok := namedQualityChoice(quality)
+	if !ok {
+		return Session{}, errors.New("requestId and a published quality are required")
+	}
+	return s.create(ctx, p, item, request, replacement, &choice)
 }
-func (s *Service) createContext(ctx context.Context, p identity.Principal, item, quality, request string) (Session, error) {
-	return s.createWithReplacement(ctx, p, item, quality, request, nil)
-}
-func (s *Service) createWithReplacement(ctx context.Context, p identity.Principal, item, quality, request string, replacement *SessionReplacement) (Session, error) {
-	return s.create(ctx, p, item, quality, request, replacement, nil)
+
+// namedQualityChoice is the choice a quality id stands for.
+func namedQualityChoice(id string) (V1Choice, bool) {
+	switch id {
+	case "", "auto", "original":
+		return V1Choice{QualityID: "original"}, true
+	}
+	preset, ok := LadderPreset(id)
+	if !ok {
+		return V1Choice{}, false
+	}
+	return V1Choice{Limit: true, QualityID: preset.ID, MaxVideoBitrateBPS: preset.VideoBitrateBPS, MaxAudioBitrateBPS: preset.MaxAudioBitrateBPS, MaxVideoHeight: preset.Height}, true
 }
 
 // planInputs is everything one immutable delivery decision is made from.
@@ -147,7 +165,7 @@ type planInputs struct {
 // records every input. Sessions (legacy and v1) and the v1 plan preview share it,
 // which is what makes "the same request and profile always produce the same plan"
 // true across them.
-func (s *Service) planInputsTx(ctx context.Context, tx *sql.Tx, p identity.Principal, aid, container, video, audio string, duration float64, remote, catalogued bool, quality string, explicitAudio *int, v1 *V1Choice) (planInputs, error) {
+func (s *Service) planInputsTx(ctx context.Context, tx *sql.Tx, p identity.Principal, aid, container, video, audio string, duration float64, remote, catalogued bool, explicitAudio *int, v1 *V1Choice) (planInputs, error) {
 	cfg := deliveryConfiguration(s.deliverySettings)
 	edge := DeliveryContextFrom(ctx)
 	values := s.viewerPreferences(tx, p, edge)
@@ -161,30 +179,28 @@ func (s *Service) planInputsTx(ctx context.Context, tx *sql.Tx, p identity.Princ
 	if e := tx.QueryRow(`SELECT COALESCE(a.height,0),COALESCE((SELECT f.color_transfer FROM asset_streams f WHERE f.asset_id=a.token AND f.type='video' ORDER BY f.stream_index LIMIT 1),''),COALESCE((SELECT f.color_primaries FROM asset_streams f WHERE f.asset_id=a.token AND f.type='video' ORDER BY f.stream_index LIMIT 1),'') FROM catalog_assets a WHERE a.token=?`, aid).Scan(&sourceHeight, &transfer, &primaries); e != nil {
 		return planInputs{}, e
 	}
-	rungs := QualityOffers(sourceHeight, true, ownerTranscoding, policy)
-	rung, ok := SelectedRung(rungs, quality)
-	if !ok {
-		return planInputs{}, ErrQualityUnavailable
-	}
 	hardware := s.selectHardware(ctx, cfg)
-	target := rung.Target(policy, sourceHeight)
-	if v1 != nil {
-		target = v1.target(policy, cfg)
+	if v1 == nil {
+		v1 = &V1Choice{}
 	}
+	target := v1.target(policy, cfg)
 	input := DeliveryInput{SourceID: aid, Container: container, VideoCodec: video, AudioCodec: audio, Duration: duration, Height: sourceHeight, ColorTransfer: transfer, ColorPrimaries: primaries, Remote: remote, Policy: policy, Target: target, Config: cfg, TranscodingEnabled: ownerTranscoding, Hardware: hardware}
+	input.Engine, input.SubtitleKind, input.SubtitleBesideStream, input.RememberedAudioLanguage = v1.Engine, v1.SubtitleKind, v1.SubtitleBesideStream, v1.RememberedAudioLanguage
 	if e := s.completeDeliveryInputTx(ctx, tx, p, &input, values, catalogued, explicitAudio); e != nil {
 		return planInputs{}, e
 	}
 	return planInputs{input: input, cfg: cfg, values: values, ownerTranscoding: ownerTranscoding}, nil
 }
 
-func (s *Service) create(ctx context.Context, p identity.Principal, item, quality, request string, replacement *SessionReplacement, v1 *V1Choice) (Session, error) {
+func (s *Service) create(ctx context.Context, p identity.Principal, item, request string, replacement *SessionReplacement, v1 *V1Choice) (Session, error) {
 	if replacement != nil && (!validControlID(replacement.ID) || replacement.Generation < 1) {
 		return Session{}, errControlJSON
 	}
-
-	if request == "" || len(request) > 128 || !validQualitySelection(quality) {
-		return Session{}, errors.New("requestId and a published quality rung are required")
+	if v1 == nil {
+		v1 = &V1Choice{}
+	}
+	if request == "" || len(request) > 128 {
+		return Session{}, errors.New("requestId is required")
 	}
 	legacyRequest := request
 	request = sessionRequestKey(p, request)
@@ -327,11 +343,8 @@ func (s *Service) create(ctx context.Context, p identity.Principal, item, qualit
 			return Session{}, e
 		}
 	}
-	var explicitAudio *int
-	if v1 != nil && v1.AudioStream != nil {
-		explicitAudio = v1.AudioStream
-	}
-	inputs, e := s.planInputsTx(ctx, tx, p, aid, container, video, audio, duration, mode == "remote", derivative == nil && mode != "remote", quality, explicitAudio, v1)
+	explicitAudio := v1.AudioStream
+	inputs, e := s.planInputsTx(ctx, tx, p, aid, container, video, audio, duration, mode == "remote", derivative == nil && mode != "remote", explicitAudio, v1)
 	if e != nil {
 		return Session{}, e
 	}
@@ -340,7 +353,7 @@ func (s *Service) create(ctx context.Context, p identity.Principal, item, qualit
 	if e != nil {
 		return Session{}, e
 	}
-	if v1 != nil {
+	{
 		target := inputs.input.Target
 		delivery.Target, delivery.TargetReach = &target, reachLocal
 		if v1.remote(inputs.input.Policy) {
@@ -357,7 +370,7 @@ func (s *Service) create(ctx context.Context, p identity.Principal, item, qualit
 	}
 
 	replacing := ""
-	private := v1 != nil && v1.PrivateFor != ""
+	private := v1.PrivateFor != ""
 	if private {
 		// A private presentation shares its owner's slot, and the owner plays on.
 		var valid int
@@ -379,7 +392,7 @@ func (s *Service) create(ctx context.Context, p identity.Principal, item, qualit
 		replacing = replacement.ID
 	}
 
-	if e = checkSessionPolicy(ctx, tx, p, mode, replacing); e != nil {
+	if e = checkSessionPolicy(ctx, tx, p, replacing); e != nil {
 		return Session{}, e
 	}
 
@@ -492,7 +505,7 @@ func (s *Service) create(ctx context.Context, p identity.Principal, item, qualit
 		}
 	}
 	if itemKind == "song" || itemKind == "audiobook_file" {
-		if v1 != nil && v1.AudioPlanV2 {
+		if v1.AudioPlanV2 {
 			if result.AudioPlan, e = s.pinAudioPlan(ctx, tx, result, item, aid, grant, v1, ownerTranscoding); e != nil {
 				return Session{}, e
 			}
@@ -789,9 +802,6 @@ func (s *Service) resolveGrant(ctx context.Context, grant string, initialAudio b
 	return aid, p, item, nil
 }
 func (s *Service) Cleanup() error {
-	if _, e := dbwork.ExecWrite(context.Background(), s.db, dbwork.ClassBackgroundMedia, `DELETE FROM playback_client_profiles WHERE session_hash IN (SELECT session_hash FROM playback_client_profiles WHERE updated_at_ms<? LIMIT 256)`, time.Now().Add(-90*24*time.Hour).UnixMilli()); e != nil {
-		return e
-	}
 	_, e := dbwork.ExecWrite(context.Background(), s.db, dbwork.ClassEstablishedPlayback, `DELETE FROM playback_sessions WHERE expires_at<?`, time.Now().UTC().Format(time.RFC3339))
 	return e
 }

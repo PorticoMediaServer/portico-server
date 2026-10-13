@@ -3050,13 +3050,6 @@ playback_channel_sessions.source_revision
 playback_channel_sessions.stage
 playback_channel_sessions.status
 playback_channel_sessions.transport_json
-playback_client_profiles.account_id
-playback_client_profiles.document
-playback_client_profiles.family
-playback_client_profiles.profile_id
-playback_client_profiles.revision
-playback_client_profiles.session_hash
-playback_client_profiles.updated_at_ms
 playback_conversion_failures.audio
 playback_conversion_failures.backend
 playback_conversion_failures.diagnostic
@@ -3117,7 +3110,6 @@ playback_delivery_plans.video_bitrate
 playback_device_capabilities.account_id
 playback_device_capabilities.device_id
 playback_device_capabilities.document
-playback_device_capabilities.planner_profile
 playback_device_capabilities.profile_id
 playback_device_capabilities.revision
 playback_device_capabilities.updated_at_ms
@@ -3245,6 +3237,7 @@ playback_requests.response
 playback_route_failures.asset_id
 playback_route_failures.code
 playback_route_failures.detail
+playback_route_failures.engine
 playback_route_failures.reported_at_ms
 playback_route_failures.route
 playback_route_failures.session_hash
@@ -3297,6 +3290,12 @@ playback_subtitle_state.resource_id
 playback_subtitle_state.resource_revision
 playback_subtitle_state.revision
 playback_subtitle_state.session_id
+playback_track_memory.audio_language
+playback_track_memory.item_id
+playback_track_memory.profile_id
+playback_track_memory.subtitle_language
+playback_track_memory.subtitle_mode
+playback_track_memory.updated_ms
 playback_v1_prepared.cancel_reason
 playback_v1_prepared.create_key
 playback_v1_prepared.created_ms

@@ -160,14 +160,14 @@ func memberDeviceID(t *testing.T, f *v1Fixture, token string) string {
 	return device
 }
 
-// devicePlannerProfile is the planner profile a channel start plans from for
-// this device: its published document's translation, or the baseline.
+// devicePlannerProfile is the engine a channel start plans from for this
+// device: the native engine of its published document, or the baseline.
 func devicePlannerProfile(t *testing.T, f *v1Fixture, device string) playback.ClientProfile {
 	t.Helper()
-	var planner string
-	if err := f.db.QueryRow(`SELECT planner_profile FROM playback_device_capabilities WHERE device_id=?`, device).Scan(&planner); err == nil && planner != "" {
-		if p, err := playback.ParseClientProfile([]byte(planner)); err == nil {
-			return p
+	var document string
+	if err := f.db.QueryRow(`SELECT document FROM playback_device_capabilities WHERE device_id=?`, device).Scan(&document); err == nil && document != "" {
+		if d, err := playback.ParseCapabilityDocument([]byte(document)); err == nil {
+			return d.Profile(playback.EngineNative)
 		}
 	}
 	return playback.BaselineClientProfile()
