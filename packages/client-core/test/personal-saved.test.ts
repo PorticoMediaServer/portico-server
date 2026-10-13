@@ -41,7 +41,7 @@ test('one member, history row or resource this app cannot read is left out and t
  await history.select({view:'history'});assert.equal(history.getSnapshot().error,null);assert.deepEqual(history.getSnapshot().entries.map(e=>[e.id,e.completed]),[['one',false],['two',false]]);assert.equal(history.getSnapshot().revision,4);history.dispose();
  const listed=setup(async()=>directory([resource(),resource({id:'smart',kind:'smart-shelf'}),resource({id:'review',status:'archived'}),resource({id:'other',actions:['pin','teleport'],shares:[{authority:'local',accountId:'a',profileId:'p',role:'viewer',displayName:'Second'},{authority:'local',accountId:'a',profileId:'q',role:'curator',displayName:'Third'}]}),resource()]));
  await listed.select({view:'collections'});assert.equal(listed.getSnapshot().error,null);assert.deepEqual(listed.getSnapshot().resources.map(r=>r.id),['collection','other']);
- assert.deepEqual(listed.getSnapshot().resources[1].actions,['pin']);assert.deepEqual(listed.getSnapshot().resources[1].shares.map(s=>s.profileId),['p']);listed.dispose();
+ assert.deepEqual(listed.getSnapshot().resources[1].actions,['pin']);assert.deepEqual(listed.getSnapshot().resources[1].shares.map(s=>[s.profileId,s.role]),[['p','viewer'],['q','viewer']]);listed.dispose();
 });
 test('sizes, scope, fences, revisions, roles and cursors still refuse the whole document',async()=>{
  for(const page of [directory(Array.from({length:101},(_,i)=>resource({id:'c'+i}))),directory([resource(),resource({id:'two',viewerFence:'other'})]),directory([resource({serverId:'other'})]),{...directory(),serverId:'other'},{...directory(),revision:-1},{...directory(),nextCursor:7},{...directory(),resources:{}}]){

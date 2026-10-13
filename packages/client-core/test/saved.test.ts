@@ -57,10 +57,10 @@ test('sizes, cursors, scope and revisions still refuse the whole page',async()=>
  const notAList={...projection('watchlist'),sections:{}};
  for(const page of [tooMany,tooManySections,badCursor,otherServer,noFence,badRevision,notAList]){const s=setup(async()=>page);await s.select({view:'watchlist'});assert.equal(s.getSnapshot().error?.code,'invalid_saved');assert.equal(s.getSnapshot().projection,null);}
 });
-test('a playlist drops an action or a share it cannot read but never guesses a role or a limit',async()=>{
+test('a playlist drops an action it cannot read, lists a share of an unknown role as a viewer, and never guesses its own role or a limit',async()=>{
  const share={authority:'local',accountId:'account2',profileId:'profile2',role:'viewer',displayName:'Second'};
  const s=setup(async p=>isContent(p)?projection():{...resource(),actions:[...resource().actions,'teleport'],shares:[share,{...share,profileId:'profile3',role:'curator'},share],futureField:1});await s.select({view:'playlist',playlistId:'playlist'});
- assert.equal(s.getSnapshot().phase,'ready');assert.deepEqual(s.getSnapshot().playlist!.actions,resource().actions);assert.deepEqual(s.getSnapshot().playlist!.shares,[share]);
+ assert.equal(s.getSnapshot().phase,'ready');assert.deepEqual(s.getSnapshot().playlist!.actions,resource().actions);assert.deepEqual(s.getSnapshot().playlist!.shares,[share,{...share,profileId:'profile3',role:'viewer'}],'someone the playlist is shared with is never hidden');
  for(const patch of [{role:'curator'},{role:'viewer',shares:undefined},{limits:{maxShares:100}},{limits:{maxShares:101,maxReorderEntries:200}},{revision:'1'},{viewerFence:''},{actions:new Array(17).fill('add')}]){const denied=setup(async p=>isContent(p)?projection():{...resource(),...patch});await denied.select({view:'playlist',playlistId:'playlist'});assert.equal(denied.getSnapshot().error?.code,'invalid_saved',JSON.stringify(patch));assert.equal(denied.getSnapshot().playlist,null);}
 });
 test('global requests consume server order and declared query without local ranking',async()=>{

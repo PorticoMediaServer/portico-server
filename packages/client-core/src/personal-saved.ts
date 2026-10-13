@@ -1,5 +1,5 @@
 import {unreadableServerResponse} from './server-messages.ts';
-import {firstOfEach,keepReadable,noteSkipped} from './tolerant.ts';
+import {firstOfEach,keepReadable,noteSkipped,oneOfOr} from './tolerant.ts';
 /** Online personal resources. The server owns membership, query evaluation and permissions.
  * Existing library navigation owns destinations/Back; this module owns no queue or device store. */
 import {validateContentEntry,type ContentEntry} from './library-content.ts';
@@ -46,7 +46,7 @@ function resource(v:unknown,scope:SavedScope):PersonalResource{
  const offered=rows(v.actions,8),actions=[...new Set(offered.filter((a):a is string=>typeof a==='string'&&['pin','update','delete','entries','share'].includes(a)))];
  if(actions.length!==offered.length)noteSkipped('personal-saved','resource.actions',offered.length-actions.length);
  if(v.role==='viewer'&&actions.some(a=>a!=='pin')||v.role==='editor'&&actions.some(a=>a!=='pin'&&a!=='entries'))bad();
- const shares=keepReadable('personal-saved','resource.shares',rows(v.shares??[],100),s=>{if(!obj(s)||!['viewer','editor'].includes(s.role as string)||!str(s.displayName,512))bad();return {...actor(s),role:s.role as 'viewer'|'editor',displayName:s.displayName};});
+ const shares=keepReadable('personal-saved','resource.shares',rows(v.shares??[],100),s=>{if(!obj(s)||typeof s.role!=='string'||!str(s.displayName,512))bad();/* Someone a collection or view is shared with is never hidden for holding a role this app does not know: they are listed, as a viewer, and can still be removed. */return {...actor(s),role:oneOfOr('personal-saved','share.role',s.role,['viewer','editor'] as const,'viewer'),displayName:s.displayName};});
  const invalidComponents=keepReadable('personal-saved','resource.invalidComponents',rows(v.invalidComponents,32),x=>{if(!str(x,256))bad();return x;});
  // Needs-review definitions are deliberately not executed or silently normalized.
  const d=v.kind==='view'&&v.status==='ready'?definition(v.definition):undefined;
