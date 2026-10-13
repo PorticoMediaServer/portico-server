@@ -411,6 +411,7 @@ index social_group_receipts_age
 index social_groups_owner
 index social_handoffs_open
 index subtitle_candidates_expiry
+index subtitle_inventory_entries_association
 index subtitle_provider_candidates_item_id_fk
 index subtitle_resources_item
 index subtitle_resources_source_id_fk
@@ -915,12 +916,9 @@ table playback_sessions
 table playback_source_observations
 table playback_source_pins
 table playback_source_versions
-table playback_subtitle_files
 table playback_subtitle_pins
-table playback_subtitle_plans
 table playback_subtitle_presentations
 table playback_subtitle_state
-table playback_subtitle_tracks
 table playback_track_memory
 table playback_v1_prepared
 table playback_v1_sessions
@@ -1016,6 +1014,8 @@ table subtitle_collections
 table subtitle_inventory_entries
 table subtitle_inventory_evidence
 table subtitle_operations
+table subtitle_original_files
+table subtitle_original_revisions
 table subtitle_provider_candidates
 table subtitle_remote_sessions
 table subtitle_render_revisions

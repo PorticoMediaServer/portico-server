@@ -10,7 +10,10 @@ import (
 // server-private, rooted scan policy is checked before acquisition and after the
 // bounded read, and native sources never fall through to their empty mount path.
 func (c *Client) readRemoteSmall(ctx context.Context, path string, limit int64) ([]byte, error) {
-	if limit <= 0 || limit > 8<<20 {
+	return c.readRemoteBlob(ctx, path, limit, 8<<20)
+}
+func (c *Client) readRemoteBlob(ctx context.Context, path string, limit, maximum int64) ([]byte, error) {
+	if limit <= 0 || limit > maximum {
 		return nil, ErrRemoteLimit
 	}
 	if err := CheckScanRead(ctx, path); err != nil {

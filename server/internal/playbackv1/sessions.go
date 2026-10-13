@@ -193,9 +193,11 @@ type Presentation struct {
 	Linear *LinearView `json:"linear,omitempty"`
 }
 type SubtitleFile struct {
-	TrackID string `json:"trackId"`
-	Format  string `json:"format"`
-	URL     string `json:"url"`
+	CompanionURL string `json:"companionUrl,omitempty"`
+	FontsURL     string `json:"fontsUrl,omitempty"`
+	TrackID      string `json:"trackId"`
+	Format       string `json:"format"`
+	URL          string `json:"url"`
 }
 
 // PresentationSubtitle is the subtitle track a presentation shows.

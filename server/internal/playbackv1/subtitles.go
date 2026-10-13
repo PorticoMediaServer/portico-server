@@ -34,7 +34,8 @@ type subtitleResult struct {
 //   - an image or styled track: drawn by the device when the engine playing
 //     the presentation draws that kind itself (draws, decided from the
 //     capability document) or the client insists (delivery embeddedClient):
-//     nothing is selected on the server then. Otherwise it is burned into the
+//     the device is handed the original file beside the stream (or reads the
+//     track from the file it is playing). Otherwise it is burned into the
 //     video (a conversion, and a new presentation); delivery "sidecar" for
 //     such a track is refused. Burn-in needs converting allowed.
 func (s *Service) applySubtitles(ctx context.Context, p identity.Principal, item, media string, req *SubtitleRequest, offsetMs, positionMs int64, operation string, draws bool) (subtitleResult, error) {
@@ -63,10 +64,21 @@ func (s *Service) applySubtitles(ctx context.Context, p identity.Principal, item
 			switch {
 			case req.Delivery == "burn" && !burns, req.Delivery == "sidecar" && burns:
 				return out, &FieldError{Path: "subtitles.delivery"}
-			case burns && req.Delivery != "burn" && (req.Delivery == "embeddedClient" || draws):
-				// The device draws the track from the file itself. A track that
-				// was burned in or drawn as text before is turned off on the
-				// server first, so the picture carries no second copy.
+			case req.Delivery == "embeddedClient":
+				// The client draws the track itself: it is handed the original
+				// file beside the stream instead of a burned-in picture.
+				m.Rendering = subtitles.RenderingFormat(chosen.Format)
+			case burns && draws && req.Delivery != "burn":
+				// The engine playing this presentation draws this kind itself
+				// (the capability document says so). It gets the original file
+				// where the server can deliver one; otherwise it reads the track
+				// from the file it is playing, and a track that was burned in or
+				// drawn as text before is turned off on the server first, so the
+				// picture carries no second copy.
+				if rendering := subtitles.RenderingFormat(chosen.Format); rendering != "text" {
+					m.Rendering = rendering
+					break
+				}
 				if plan.Mode != "off" && plan.Selected != nil {
 					if off, offErr := s.Subtitles.Select(ctx, p, item, media, m); offErr == nil {
 						out.replaced = off.Presentation
@@ -78,6 +90,7 @@ func (s *Service) applySubtitles(ctx context.Context, p identity.Principal, item
 			m.Mode, m.ResourceID, m.ResourceRevision = "track", chosen.ID, chosen.Revision
 			m.OffsetUS = strconv.FormatInt(offsetMs*1000, 10)
 		}
+		priorGeneration := plan.Generation
 		if plan, err = s.Subtitles.Select(ctx, p, item, media, m); err != nil {
 			if errors.Is(err, subtitles.ErrUnsupported) {
 				return out, playback.ErrTranscodingDisabled
@@ -88,14 +101,24 @@ func (s *Service) applySubtitles(ctx context.Context, p identity.Principal, item
 			}
 			return out, &FieldError{Path: "subtitles.trackId"}
 		}
-		out.replaced = plan.Presentation
+		if plan.Generation != priorGeneration {
+			out.replaced = plan.Presentation
+		}
 	}
 	if plan.Selected != nil {
 		out.language = plan.Selected.Language
 		switch {
 		case plan.DocumentURL != "" && plan.Renderer == "external_text":
-			out.files = append(out.files, SubtitleFile{TrackID: plan.Selected.ID, Format: "webvtt", URL: plan.DocumentURL})
+			out.files = append(out.files, SubtitleFile{TrackID: plan.Selected.ID, Format: "webvtt", URL: plan.DocumentURL + ".vtt"})
 			out.shown = &PresentationSubtitle{TrackID: plan.Selected.ID, Kind: playback.SubtitleText, Delivery: "sidecar"}
+		case plan.Renderer == "client":
+			// The original file, for a device that draws styled or image subtitles itself.
+			for _, d := range plan.Selected.Deliveries {
+				if d.Format != "text" {
+					out.files = append(out.files, SubtitleFile{TrackID: plan.Selected.ID, Format: d.Format, URL: d.URL, CompanionURL: d.CompanionURL, FontsURL: d.FontsURL})
+				}
+			}
+			out.shown = &PresentationSubtitle{TrackID: plan.Selected.ID, Kind: subtitleKindOf(plan.Selected.Format), Delivery: "device"}
 		case plan.Renderer == "burn_in":
 			out.shown = &PresentationSubtitle{TrackID: plan.Selected.ID, Kind: subtitleKindOf(plan.Selected.Format), Delivery: "burn"}
 		}

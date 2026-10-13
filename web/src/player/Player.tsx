@@ -744,7 +744,7 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
                           subtitles.snapshot.busy && !subtitles.snapshot.candidates.length ? <Text variant="caption" tone="tertiary">{i18n.t('player.opt.lookingForSubtitles')}</Text>
                             : subtitles.snapshot.candidates.length ? subtitles.snapshot.candidates.map(c => optionRow(`${c.title} · ${c.language}`, false, () => { void subtitles.service!.apply(c, 'personal', 'Downloaded by the viewer for personal viewing').then(() => setSubtitleSearch(false), () => {}); }, c.attribution, subtitles.snapshot.busy))
                             : <Text variant="caption" tone="tertiary">{i18n.t('player.opt.noSubtitlesFound')}</Text>
-                        ) : optionRow(i18n.t('player.opt.findSubtitles'), false, () => { setSubtitleSearch(true); void subtitles.service!.search(i18n.locale.split('-')[0] ?? 'en').catch(() => {}); })
+                        ) : optionRow(i18n.t('player.opt.findSubtitles'), false, () => { setSubtitleSearch(true); void subtitles.service!.search().catch(() => {}); })
                       ) : null}
                       {subtitlePlan.selected ? <div style={{display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap'}} title={i18n.t('player.opt.timingHelp')}><Text variant="caption" tone="tertiary">{i18n.t('player.opt.timing')} {i18n.t('player.opt.offsetSeconds', {seconds: subtitles.offsetSeconds.toFixed(1)})}</Text>{[-0.5, -0.1, 0.1, 0.5].map(step => <Button key={step} size="sm" variant="ghost" label={(step > 0 ? '+' : '−') + Math.abs(step)} onClick={() => { subtitles.nudge(step); }} />)}</div> : null}
                     </>

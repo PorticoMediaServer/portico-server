@@ -22,6 +22,7 @@ func policyCatalogue() *apierror.Registry {
 	definitions = append(definitions, connectionErrorDefinitions()...)
 	definitions = append(definitions, credentialErrorDefinitions()...)
 	definitions = append(definitions, webhookErrorDefinitions()...)
+	definitions = append(definitions, subtitleErrorDefinitions()...)
 	known := map[string]bool{}
 	for _, d := range append(apierror.Defaults(), definitions...) {
 		known[d.Code] = true

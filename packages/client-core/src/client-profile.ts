@@ -35,7 +35,7 @@ export type EngineId='native'|'mpv';
 /** The viewer's player setting on this device. */
 export type EngineSetting='automatic'|'native'|'mpv';
 /** Subtitle kinds an engine draws itself. */
-export type SubtitleRendering='text'|'ass'|'pgs'|'vobsub'|'dvb';
+import type {SubtitleRendering} from './subtitles.ts';
 export const subtitleRenderingKinds:readonly SubtitleRendering[]=['text','ass','pgs','vobsub','dvb'];
 
 export type ClientIdentity={family:string;form?:'tv'|'phone'|'tablet'|'desktop'|'browser'|'cast'|'speaker';platform?:string;platformVersion?:string;os?:string;osVersion?:string;model?:string;app?:string;appVersion?:string};

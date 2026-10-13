@@ -1630,10 +1630,7 @@ CREATE TABLE asset_streams(asset_id TEXT NOT NULL REFERENCES asset_stream_facts(
 CREATE TABLE playback_hls_reservations(session_id TEXT PRIMARY KEY,bytes INTEGER NOT NULL CHECK(bytes=4294967296)) STRICT;
 CREATE TABLE asset_subtitle_facts(asset_id TEXT PRIMARY KEY REFERENCES catalog_assets(token) ON DELETE CASCADE,revision INTEGER NOT NULL,size INTEGER NOT NULL,modified_ns INTEGER NOT NULL,origin_us INTEGER NOT NULL,timing_known INTEGER NOT NULL,status TEXT NOT NULL,fingerprint TEXT NOT NULL) STRICT;
 CREATE TABLE subtitle_sidecars(id TEXT PRIMARY KEY,path TEXT NOT NULL UNIQUE,size INTEGER NOT NULL,modified_ns INTEGER NOT NULL,digest TEXT NOT NULL) STRICT;
-CREATE TABLE asset_subtitles(id TEXT PRIMARY KEY,asset_id TEXT NOT NULL REFERENCES asset_subtitle_facts(asset_id) ON DELETE CASCADE,origin TEXT NOT NULL CHECK(origin IN ('embedded','sidecar')),locator TEXT NOT NULL,stream_index INTEGER NOT NULL,sidecar_id TEXT REFERENCES subtitle_sidecars(id),format TEXT NOT NULL,language TEXT NOT NULL,title TEXT NOT NULL,is_default INTEGER NOT NULL,is_forced INTEGER NOT NULL,reason TEXT NOT NULL,UNIQUE(asset_id,origin,locator),CHECK((origin='embedded' AND sidecar_id IS NULL AND stream_index>=0) OR (origin='sidecar' AND sidecar_id IS NOT NULL AND stream_index=-1))) STRICT;
-CREATE TABLE playback_subtitle_plans(session_id TEXT PRIMARY KEY REFERENCES playback_sessions(id) ON DELETE CASCADE,revision TEXT NOT NULL UNIQUE,policy_version INTEGER NOT NULL CHECK(policy_version=1),facts_revision INTEGER NOT NULL,association_revision INTEGER NOT NULL,origin_us INTEGER NOT NULL,status TEXT NOT NULL,reason TEXT NOT NULL,clock INTEGER,chunk_ms INTEGER NOT NULL CHECK(chunk_ms=240000)) STRICT;
-CREATE TABLE playback_subtitle_tracks(session_id TEXT NOT NULL REFERENCES playback_subtitle_plans(session_id) ON DELETE CASCADE,ordinal INTEGER NOT NULL CHECK(ordinal>=0 AND ordinal<8),id TEXT NOT NULL,origin TEXT NOT NULL,locator TEXT NOT NULL,stream_index INTEGER NOT NULL,sidecar_id TEXT,source_size INTEGER NOT NULL,source_modified_ns INTEGER NOT NULL,source_digest TEXT NOT NULL,format TEXT NOT NULL,label TEXT NOT NULL,language TEXT NOT NULL,is_default INTEGER NOT NULL,is_forced INTEGER NOT NULL,group_id TEXT NOT NULL,manifest_name TEXT NOT NULL,playlist_file TEXT NOT NULL,PRIMARY KEY(session_id,ordinal),UNIQUE(session_id,id),UNIQUE(session_id,playlist_file)) STRICT;
-CREATE TABLE playback_subtitle_files(session_id TEXT NOT NULL REFERENCES playback_subtitle_plans(session_id) ON DELETE CASCADE,name TEXT NOT NULL,track_ordinal INTEGER NOT NULL,size INTEGER NOT NULL,digest TEXT NOT NULL,PRIMARY KEY(session_id,name),FOREIGN KEY(session_id,track_ordinal) REFERENCES playback_subtitle_tracks(session_id,ordinal) ON DELETE CASCADE) STRICT;
+CREATE TABLE asset_subtitles(id TEXT PRIMARY KEY,asset_id TEXT NOT NULL REFERENCES asset_subtitle_facts(asset_id) ON DELETE CASCADE,origin TEXT NOT NULL CHECK(origin IN ('embedded','sidecar')),locator TEXT NOT NULL,stream_index INTEGER NOT NULL,sidecar_id TEXT REFERENCES subtitle_sidecars(id),format TEXT NOT NULL,language TEXT NOT NULL,title TEXT NOT NULL,is_default INTEGER NOT NULL,is_forced INTEGER NOT NULL,reason TEXT NOT NULL,hearing_impaired INTEGER NOT NULL DEFAULT 0,UNIQUE(asset_id,origin,locator),CHECK((origin='embedded' AND sidecar_id IS NULL AND stream_index>=0) OR (origin='sidecar' AND sidecar_id IS NOT NULL AND stream_index=-1))) STRICT;
 CREATE TABLE subtitle_collections(
   item_id INTEGER PRIMARY KEY REFERENCES catalog_entities(id) ON DELETE CASCADE,
   revision INTEGER NOT NULL DEFAULT 1 CHECK(revision>0)) STRICT;
@@ -1642,11 +1639,12 @@ CREATE TABLE subtitle_resources(
   source_id TEXT NOT NULL REFERENCES catalog_assets(token), scope TEXT NOT NULL CHECK(scope IN ('shared','personal')),
   owner TEXT NOT NULL, current_revision INTEGER NOT NULL CHECK(current_revision>0),
   deleted INTEGER NOT NULL DEFAULT 0 CHECK(deleted IN (0,1)),
+  discovered INTEGER NOT NULL DEFAULT 0 CHECK(discovered IN (0,1)),
   discovery_id TEXT NOT NULL DEFAULT '', discovery_revision INTEGER NOT NULL DEFAULT 0,
   CHECK((scope='shared' AND owner='') OR (scope='personal' AND owner!=''))) STRICT;
 CREATE TABLE subtitle_revisions(
   resource_id TEXT NOT NULL REFERENCES subtitle_resources(id) ON DELETE CASCADE,
-  revision INTEGER NOT NULL CHECK(revision>0), digest TEXT NOT NULL, size INTEGER NOT NULL CHECK(size>0),
+  revision INTEGER NOT NULL CHECK(revision>0), digest TEXT NOT NULL, size INTEGER NOT NULL CHECK(size>=0),
   format TEXT NOT NULL, language TEXT NOT NULL, title TEXT NOT NULL,
   origin TEXT NOT NULL CHECK(origin IN ('upload','sidecar','embedded','provider')),
   provider TEXT NOT NULL DEFAULT '', attribution TEXT NOT NULL DEFAULT '', rights TEXT NOT NULL,
@@ -1659,8 +1657,16 @@ CREATE TABLE subtitle_render_revisions(
  renderer TEXT NOT NULL CHECK(renderer IN ('external_text','burn_in')),
  is_default INTEGER NOT NULL DEFAULT 0, is_forced INTEGER NOT NULL DEFAULT 0,
  source_evidence TEXT NOT NULL DEFAULT '',
+ hearing_impaired INTEGER NOT NULL DEFAULT 0,
  PRIMARY KEY(resource_id,revision),
  FOREIGN KEY(resource_id,revision) REFERENCES subtitle_revisions(resource_id,revision) ON DELETE CASCADE) STRICT;
+CREATE TABLE subtitle_original_revisions(
+ resource_id TEXT NOT NULL,revision INTEGER NOT NULL,digest TEXT NOT NULL,size INTEGER NOT NULL CHECK(size>0),skipped_fonts INTEGER NOT NULL DEFAULT 0,
+ PRIMARY KEY(resource_id,revision),FOREIGN KEY(resource_id,revision) REFERENCES subtitle_revisions(resource_id,revision) ON DELETE CASCADE) STRICT;
+CREATE TABLE subtitle_original_files(
+ resource_id TEXT NOT NULL,revision INTEGER NOT NULL,part TEXT NOT NULL,name TEXT NOT NULL,
+ format TEXT NOT NULL,encoding TEXT NOT NULL,digest TEXT NOT NULL,size INTEGER NOT NULL CHECK(size>0),
+ PRIMARY KEY(resource_id,revision,part),FOREIGN KEY(resource_id,revision) REFERENCES subtitle_revisions(resource_id,revision) ON DELETE CASCADE) STRICT;
 CREATE TABLE subtitle_inventory_evidence(
  asset_id TEXT PRIMARY KEY REFERENCES catalog_assets(token) ON DELETE CASCADE,
  revision INTEGER NOT NULL, evidence TEXT NOT NULL) STRICT;
@@ -2058,7 +2064,8 @@ CREATE TABLE saved_pins(owner_key TEXT NOT NULL,kind TEXT NOT NULL,resource_id T
 CREATE TABLE saved_resource_generation(id INTEGER PRIMARY KEY CHECK(id=1),revision INTEGER NOT NULL DEFAULT 0) STRICT;
 CREATE TABLE playback_legacy_replacement_requests(account_id TEXT NOT NULL,profile_id TEXT NOT NULL,request_id TEXT NOT NULL,old_session_id TEXT NOT NULL,old_generation INTEGER NOT NULL,PRIMARY KEY(account_id,profile_id,request_id)) STRICT;
 CREATE TABLE playback_physical_source_pins(session_id TEXT PRIMARY KEY REFERENCES playback_sessions(id) ON DELETE CASCADE,source_id TEXT NOT NULL,incarnation TEXT NOT NULL,configuration_generation INTEGER NOT NULL) STRICT;
-CREATE TABLE subtitle_inventory_entries(source_id TEXT NOT NULL,incarnation TEXT NOT NULL,job_id TEXT NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,directory TEXT NOT NULL,path TEXT NOT NULL,snapshot TEXT NOT NULL,PRIMARY KEY(source_id,job_id,path)) STRICT;
+CREATE TABLE subtitle_inventory_entries(source_id TEXT NOT NULL,incarnation TEXT NOT NULL,job_id TEXT NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,directory TEXT NOT NULL,directory_key TEXT NOT NULL,path TEXT NOT NULL,name TEXT NOT NULL,snapshot TEXT NOT NULL,PRIMARY KEY(source_id,job_id,path)) STRICT;
+CREATE INDEX subtitle_inventory_entries_association ON subtitle_inventory_entries(source_id,incarnation,job_id,directory_key,name COLLATE NOCASE);
 CREATE TABLE playback_vod_retries(playback_id TEXT PRIMARY KEY REFERENCES playback_occurrences(id),request_id TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'pending') STRICT;
 CREATE TABLE playback_vod_subtitle_intents(playback_id TEXT PRIMARY KEY REFERENCES playback_occurrences(id),request_id TEXT NOT NULL,ownership_revision INTEGER NOT NULL,command_sequence INTEGER NOT NULL) STRICT;
 CREATE TABLE playback_vod_observations(playback_id TEXT PRIMARY KEY REFERENCES playback_occurrences(id),acknowledged_seek_id TEXT) STRICT;

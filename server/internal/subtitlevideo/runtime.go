@@ -187,9 +187,10 @@ type probeStream struct {
 	ColorTransfer string            `json:"color_transfer"`
 	Tags          map[string]string `json:"tags"`
 	Disposition   struct {
-		Default  int `json:"default"`
-		Forced   int `json:"forced"`
-		Attached int `json:"attached_pic"`
+		Default         int `json:"default"`
+		Forced          int `json:"forced"`
+		Attached        int `json:"attached_pic"`
+		HearingImpaired int `json:"hearing_impaired"`
 	} `json:"disposition"`
 }
 
@@ -210,8 +211,10 @@ func (r *Runtime) Extract(ctx context.Context, item, source string, index int, f
 		return nil, "", e
 	}
 	defer input.Close()
+	ctx, progress, finish := extractionProgress(ctx, input)
+	defer finish()
 	ledger := &extentLedger{}
-	bridge, e := openBridge(ctx, input, ledger)
+	bridge, e := openBridge(ctx, progress, ledger)
 	if e != nil {
 		return nil, "", e
 	}
@@ -223,10 +226,26 @@ func (r *Runtime) Extract(ctx context.Context, item, source string, index int, f
 	if e = input.Validate(ctx); e != nil {
 		return nil, "", e
 	}
-	if format == "pgs" || format == "vobsub" || format == "dvb" {
+	if format == "vobsub" {
+		idx, sub, err := subtitles.VobSubOriginal(data)
+		if err != nil {
+			return nil, "", err
+		}
+		data, e = subtitles.CanonicalAsset(idx, sub, "vobsub", 0)
+	} else if format == "dvb" {
 		data, e = json.Marshal(subtitles.RenderAsset{Version: 2, TimeDomain: "source-relative", Renderer: "burn_in", Format: "mks", Data: data})
 	} else {
 		data, e = subtitles.Canonical(data, format, 0)
+	}
+	if e == nil && (format == "ass" || format == "ssa") {
+		var asset subtitles.RenderAsset
+		if json.Unmarshal(data, &asset) == nil && asset.Version == 2 {
+			asset.Fonts, asset.SkippedFonts, e = r.extractFonts(ctx, progress)
+			if e != nil {
+				return nil, "", e
+			}
+			data, e = json.Marshal(asset)
+		}
 	}
 	return data, persistentEvidence(input), e
 }
@@ -251,7 +270,7 @@ func (r *Runtime) Probe(ctx context.Context, item, source string) (*subtitles.In
 			format = s.Codec
 			reason = "unsupported_format"
 		}
-		inventory.Tracks = append(inventory.Tracks, subtitles.Track{Origin: "embedded", Format: format, StreamIndex: s.Index, Title: s.Tags["title"], Language: s.Tags["language"], Default: s.Disposition.Default != 0, Forced: s.Disposition.Forced != 0, Reason: reason})
+		inventory.Tracks = append(inventory.Tracks, subtitles.Track{Origin: "embedded", Format: format, StreamIndex: s.Index, Title: s.Tags["title"], Language: s.Tags["language"], Default: s.Disposition.Default != 0, Forced: s.Disposition.Forced != 0, HearingImpaired: s.Disposition.HearingImpaired != 0, Reason: reason})
 	}
 	return inventory, persistentEvidence(input), nil
 }
