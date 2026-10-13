@@ -5,10 +5,10 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"portico.local/hosted/trust"
 	"time"
 
 	"portico.local/hosted/internal/directory"
+	"portico.local/hosted/trust"
 )
 
 // ServerHeartbeat is the check-in: weekly when Hosted can wake the server, daily

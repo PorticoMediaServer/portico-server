@@ -71,6 +71,8 @@ func Options() apikit.Options {
 
 type entry apikit.Definition
 
+// Hosted keeps its own account/server/provider credential checks. Scope is
+// contract metadata; it never makes a local-server API key a Hosted credential.
 func route[Request, Response any](method, path, id, summary string, a apikit.Access, scope apikit.Scope, status int) entry {
 	limit := int64(JSONBody)
 	if reflect.TypeFor[Request]() == reflect.TypeFor[NoBody]() {

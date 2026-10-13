@@ -78,12 +78,20 @@ func TestOlderReplicaRefusesRevokedConsentForDiscoveryAndCustody(t *testing.T) {
 			if err = f.store.RecordSigningCertificate(ctx, first); err != nil {
 				t.Fatal(err)
 			}
-			second := rolloutKey(t, root, 2, []string{first.KeyID})
-			if err = f.store.RecordSigningCertificate(ctx, second); err != nil {
-				t.Fatal(err)
-			}
 			authority, err := old.CaptureServerAuthority(ctx, f.token)
 			if err != nil {
+				t.Fatal(err)
+			}
+			if kind == "custody" {
+				// Existing discovery standing needs no new consent for a role
+				// change, but moving custody still needs an unrevoked signer.
+				out, err := old.PushMembers(ctx, authority, directory.MemberPush{Through: 1, Full: true, Members: []directory.MemberStanding{{AccountID: f.owner.Account.ID, Role: "owner", Active: true}, {AccountID: f.member.Account.ID, Role: "member", Active: true, Consent: raw}}})
+				if err != nil || len(out.Skipped) != 0 {
+					t.Fatal(out, err)
+				}
+			}
+			second := rolloutKey(t, root, 2, []string{first.KeyID})
+			if err = f.store.RecordSigningCertificate(ctx, second); err != nil {
 				t.Fatal(err)
 			}
 			role := "member"
@@ -91,11 +99,15 @@ func TestOlderReplicaRefusesRevokedConsentForDiscoveryAndCustody(t *testing.T) {
 				role = "owner"
 			}
 			push := directory.MemberPush{Through: 1, Full: true, Members: []directory.MemberStanding{{AccountID: f.owner.Account.ID, Role: "owner", Active: true}, {AccountID: f.member.Account.ID, Role: role, Active: true, Consent: raw}}}
+			if kind == "custody" {
+				push.Through = 2
+				push.Members[0].Role = "member"
+			}
 			out, err := old.PushMembers(ctx, authority, push)
-			if err != nil || !out.Applied || len(out.Skipped) != 1 || f.listed(t, f.member.Account.ID)[f.server] {
+			if err != nil || !out.Applied || (kind == "" && (len(out.Skipped) != 1 || f.listed(t, f.member.Account.ID)[f.server])) {
 				t.Fatal("revoked consent used by older replica", out, err)
 			}
-			if out.Custodian != f.owner.Account.ID {
+			if (kind == "" && out.Custodian != f.owner.Account.ID) || (kind == "custody" && out.Custodian != "") {
 				t.Fatal("revoked custody accepted", out.Custodian)
 			}
 			current := directory.New(f.store, second)
@@ -104,7 +116,7 @@ func TestOlderReplicaRefusesRevokedConsentForDiscoveryAndCustody(t *testing.T) {
 				t.Fatal(err)
 			}
 			raw, _ = json.Marshal(consent)
-			push.Through = 2
+			push.Through++
 			push.Members[1].Consent = raw
 			out, err = current.PushMembers(ctx, authority, push)
 			if err != nil || len(out.Skipped) != 0 || !f.listed(t, f.member.Account.ID)[f.server] {
@@ -114,5 +126,93 @@ func TestOlderReplicaRefusesRevokedConsentForDiscoveryAndCustody(t *testing.T) {
 				t.Fatal("current custody refused", out.Custodian)
 			}
 		})
+	}
+}
+
+func TestHostedRejectsThePreviousSigningDeliverySchema(t *testing.T) {
+	f := setup(t)
+	if _, err := f.store.DB.Exec(`DELETE FROM hosted_schema_migrations WHERE version=21;UPDATE hosted_schema_contract SET version=20 WHERE singleton`); err != nil {
+		t.Fatal(err)
+	}
+	before := catalogue(t, f.store)
+	if err := f.store.Migrate(context.Background()); err == nil {
+		t.Fatal("adopted previous pre-release format")
+	}
+	if after := catalogue(t, f.store); after != before {
+		t.Fatal("modified previous format during refusal")
+	}
+}
+
+// A consent verified by an old process before it waits for a rollout must
+// still meet the terminal revocation set that commits ahead of its mutation.
+func TestMemberConsentRechecksRevocationAfterWaitingForRollout(t *testing.T) {
+	f := setup(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_, root, _ := ed25519.GenerateKey(rand.Reader)
+	first := rolloutKey(t, root, 1, nil)
+	old := directory.New(f.store, first)
+	if err := f.store.RecordSigningCertificate(ctx, first); err != nil {
+		t.Fatal(err)
+	}
+	consent, err := old.IssueIdentity(f.member.Account.ID, "member", "Member", f.server, testChallenge, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := json.Marshal(consent)
+	authority, err := old.CaptureServerAuthority(ctx, f.token)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rollout, err := f.store.DB.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rollout.Rollback()
+	var revision string
+	if err = rollout.QueryRowContext(ctx, `SELECT revision::text FROM hosted_signing_state WHERE singleton FOR UPDATE`).Scan(&revision); err != nil {
+		t.Fatal(err)
+	}
+	second := rolloutKey(t, root, 2, []string{first.KeyID})
+	cert, _ := json.Marshal(second.Certificate)
+	if _, err = rollout.ExecContext(ctx, `UPDATE hosted_signing_state SET revision=2,certificate_hash=$1,certificate=$2 WHERE singleton`, security.Hash(string(cert)), cert); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = rollout.ExecContext(ctx, `INSERT INTO hosted_signing_revocations(key_id) VALUES($1)`, first.KeyID); err != nil {
+		t.Fatal(err)
+	}
+	type answer struct {
+		result directory.MemberPushResult
+		err    error
+	}
+	done := make(chan answer, 1)
+	go func() {
+		out, err := old.PushMembers(ctx, authority, directory.MemberPush{Through: 1, Full: true, Members: []directory.MemberStanding{{AccountID: f.member.Account.ID, Role: "member", Active: true, Consent: raw}}})
+		done <- answer{out, err}
+	}()
+	// Observe the actual PostgreSQL lock wait, rather than guessing a delay.
+	waiting := false
+	for deadline := time.Now().Add(time.Second); time.Now().Before(deadline); {
+		if err = f.store.DB.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND query LIKE 'SELECT revision::text FROM hosted_signing_state%')`).Scan(&waiting); err != nil {
+			t.Fatal(err)
+		}
+		if waiting {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if !waiting {
+		t.Fatal("member consent did not serialize with signing rollout")
+	}
+	if err = rollout.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case out := <-done:
+		if out.err != nil || !out.result.Applied || len(out.result.Skipped) != 1 || f.listed(t, f.member.Account.ID)[f.server] {
+			t.Fatal("consent survived an earlier committed revocation", out)
+		}
+	case <-ctx.Done():
+		t.Fatal("consent mutation did not finish after rollout", ctx.Err())
 	}
 }

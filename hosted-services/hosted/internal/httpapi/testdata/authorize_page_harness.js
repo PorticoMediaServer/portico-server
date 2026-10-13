@@ -3,7 +3,7 @@
 // what a person would have been shown and what the page sent. Arguments: the
 // script, the string catalogue, and the review answer (JSON).
 const fs = require('fs');
-const [script, catalogue, reviewJSON] = process.argv.slice(2);
+const [script, catalogue, reviewJSON, scenario = 'allow'] = process.argv.slice(2);
 const review = JSON.parse(reviewJSON);
 
 let now = 1000000;
@@ -47,7 +47,8 @@ globalThis.location = { protocol: 'https:', assign: url => assigned.push(url) };
 const calls = [];
 globalThis.fetch = async (path, init) => {
   calls.push(path);
-  const answer = path === '/v1/app-authorizations' ? review : { location: 'my-player://done?code=one' };
+  if (scenario === 'outage' && calls.length === 1) return {ok:false,status:503,headers:{get:()=>new Date(now+10000).toUTCString()},json:async()=>{throw new SyntaxError('HTML proxy error');}};
+  const answer = path === '/v1/app-authorizations' ? review : { location: JSON.parse(init.body).approve ? 'my-player://done?code=one' : 'my-player://done?error=access_denied' };
   return { ok: true, status: 200, headers: { get: () => null }, json: async () => answer };
 };
 
@@ -56,18 +57,25 @@ globalThis.fetch = async (path, init) => {
 (async () => {
   const out = {};
   // The person presses Continue, and the same key or click arrives again at once.
+  if(scenario==='outage'){
+    await el('review').click();
+    out.proxyFailureStatus=el('status').textContent;
+    await el('review').click();
+    out.callsBeforeRetryFloor=[...calls];
+    advance(10000);
+  }
   el('review').focus();
   await el('review').click();
   out.focusAfterReview = document.activeElement && document.activeElement.id;
   out.consentText = el('consent-line').textContent;
-  out.consentParts = el('consent-line').children.map(c => ({ tag: c.tag, text: c.textContent }));
+  out.consentParts = el('consent-line').children.map(c => ({ tag: c.tag, text: c.textContent, dir: c.dir }));
   out.allowDisabledAtFirst = el('approve').disabled;
   if (document.activeElement) await document.activeElement.click();
   await el('approve').click();
   out.callsAfterRepeat = [...calls];
   advance(5000);
   out.allowDisabledLater = el('approve').disabled;
-  await el('approve').click();
+  await el(scenario==='deny'?'deny':'approve').click();
   out.callsAfterDeliberateAllow = [...calls];
   out.assigned = assigned;
   console.log(JSON.stringify(out));

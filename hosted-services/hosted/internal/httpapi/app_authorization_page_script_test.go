@@ -11,13 +11,18 @@ import (
 // Skipped where Node is not installed.
 func runConsentPage(t *testing.T, review map[string]any) map[string]any {
 	t.Helper()
+	return runConsentPageCase(t, review, "allow")
+}
+
+func runConsentPageCase(t *testing.T, review map[string]any, scenario string) map[string]any {
+	t.Helper()
 	node, e := exec.LookPath("node")
 	if e != nil {
 		t.Skip("node is not installed")
 	}
 	answer, _ := json.Marshal(review)
 	catalogue, _ := filepath.Abs("../../packages/i18n/app-sign-in.en.json")
-	raw, e := exec.Command(node, "testdata/authorize_page_harness.js", "appauthassets/authorize.js", catalogue, string(answer)).CombinedOutput()
+	raw, e := exec.Command(node, "testdata/authorize_page_harness.js", "appauthassets/authorize.js", catalogue, string(answer), scenario).CombinedOutput()
 	if e != nil {
 		t.Fatal(e, string(raw))
 	}
@@ -62,10 +67,34 @@ func TestConsentSentenceKeepsNamesApart(t *testing.T) {
 	for _, part := range out["consentParts"].([]any) {
 		p := part.(map[string]any)
 		if p["tag"] == "strong" {
+			if p["dir"] != "auto" {
+				t.Fatal("name direction is not isolated", p)
+			}
 			names = append(names, p["text"].(string))
 		}
 	}
 	if len(names) != 2 || names[0] != "Player {serverName}" || names[1] != "Den {appName}" {
 		t.Fatalf("names are not set apart: %v", out["consentParts"])
+	}
+}
+
+func TestConsentCancelReturnsNoAuthorizationCode(t *testing.T) {
+	out := runConsentPageCase(t, map[string]any{"id": "app_review", "accountId": "acct", "accountName": "Sam", "serverName": "Den", "appName": "Outside Player", "redirectUri": "my-player://done"}, "deny")
+	assigned := out["assigned"].([]any)
+	if len(assigned) != 1 || assigned[0] != "my-player://done?error=access_denied" {
+		t.Fatal("Cancel did not return denial", assigned)
+	}
+}
+
+func TestConsentHonoursRetryAfterOnAnHTMLProxyFailure(t *testing.T) {
+	out := runConsentPageCase(t, map[string]any{"id": "app_review", "accountId": "acct", "accountName": "Sam", "serverName": "Den", "appName": "Outside Player", "redirectUri": "my-player://done"}, "outage")
+	if out["proxyFailureStatus"] != "Sign-in could not complete. Try again." {
+		t.Fatal("proxy error was not explained", out)
+	}
+	if calls := out["callsBeforeRetryFloor"].([]any); len(calls) != 1 {
+		t.Fatal("HTML error bypassed retry floor", calls)
+	}
+	if calls := out["callsAfterDeliberateAllow"].([]any); len(calls) != 3 {
+		t.Fatal("could not continue after retry floor", calls)
 	}
 }

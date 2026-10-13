@@ -162,3 +162,37 @@ func TestAppExchangeRefusesEveryAmbientCredential(t *testing.T) {
 		}
 	}
 }
+
+// The page, review, decision and exchange consume one address budget before
+// any database call, even as an anonymous caller varies routes and request IDs.
+func TestAppAuthorizationAdmissionIsSharedByEveryEntryPoint(t *testing.T) {
+	handler := (&Handler{AppAuthorizations: &AppAuthorizations{}, Origins: map[string]bool{"https://web.getportico.tv": true}}).Routes()
+	for n := 0; n < 61; n++ {
+		method, path := "POST", "/v1/app-authorizations/token"
+		switch n % 3 {
+		case 1:
+			path = "/v1/app-authorizations"
+		case 2:
+			path = "/v1/app-authorizations/app_unused_review/decision"
+		}
+		request := httptest.NewRequest(method, path, strings.NewReader(`{`))
+		request.Header.Set("Content-Type", "application/json")
+		request.Header.Set("Origin", "https://web.getportico.tv")
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		if n < 60 && response.Code == 429 {
+			t.Fatal("budget refused early", n)
+		}
+		if n == 60 && (response.Code != 429 || response.Header().Get("Retry-After") != "60") {
+			t.Fatal("routes reset anonymous budget", response.Code, response.Header())
+		}
+	}
+	// A page GET from the same address is refused too, even with valid input.
+	b64 := base64.RawURLEncoding.EncodeToString(make([]byte, 32))
+	q := url.Values{"serverId": {"srv_" + b64}, "challenge": {base64.RawURLEncoding.EncodeToString(make([]byte, 24))}, "redirectUri": {"https://client.example/finish"}, "state": {strings.Repeat("s", 32)}, "appName": {"Outside Player"}, "codeChallenge": {b64}}
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest("GET", "/auth/apps/authorize?"+q.Encode(), nil))
+	if response.Code != 429 {
+		t.Fatal("page bypassed shared admission", response.Code)
+	}
+}

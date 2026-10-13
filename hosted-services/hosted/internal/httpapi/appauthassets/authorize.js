@@ -19,26 +19,27 @@
  const sentence=(id,template,names)=>document.getElementById(id).replaceChildren(...template.split(/(\{[A-Za-z]+\})/).filter(Boolean).map(part=>{
   const key=part.slice(1,-1);
   if(!part.startsWith('{')||!Object.hasOwn(names,key))return document.createTextNode(part);
-  const name=document.createElement('strong');name.textContent=names[key];return name;
+  const name=document.createElement('strong');name.textContent=names[key];name.dir='auto';return name;
  }));
  async function call(path,body){
   if(Date.now()<notBefore)throw new Error(strings.wait);
   const name=location.protocol==='https:'?'__Host-portico_refresh_csrf':'portico_refresh_dev_csrf';
   const csrf=document.cookie.split('; ').find(c=>c.startsWith(name+'='))?.slice(name.length+1)??'';
   const response=await fetch(path,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf},body:JSON.stringify(body),signal:AbortSignal.timeout(15000),redirect:'error'});
-  const value=await response.json();
   if(!response.ok){
    const retry=response.headers.get('Retry-After');
-   const seconds=retry&&/^\d+$/.test(retry)?Number(retry):retry?Math.max(0,(Date.parse(retry)-Date.now())/1000):0;
+   const parsed=retry&&/^\d+$/.test(retry)?Number(retry):retry?(Date.parse(retry)-Date.now())/1000:0;
+   const seconds=Number.isFinite(parsed)?Math.max(0,parsed):0;
    if(response.status===429||response.status>=500)notBefore=Date.now()+Math.max(5000,seconds*1000);
    if(response.status===401)throw new Error(strings.signIn);
-   throw new Error(value.error?.message??strings.failed);
+   const value=await response.json().catch(()=>null);
+   throw new Error(value?.error?.message??strings.failed);
   }
-  return value;
+  return response.json();
  }
  async function work(action){
   buttons.forEach(b=>b.disabled=true);status.textContent='';
-  try{await action();}catch(e){status.textContent=e.name==='TimeoutError'?strings.failed:e.message;}
+  try{await action();}catch(e){status.textContent=['TimeoutError','TypeError','SyntaxError'].includes(e.name)?strings.failed:e.message;}
   finally{
    buttons.forEach(b=>b.disabled=false);
    const wait=decideAfter-Date.now();

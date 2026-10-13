@@ -105,6 +105,7 @@ func (s *Store) PushMembers(ctx context.Context, authority directory.ServerAutho
 			push.Members[i].ConsentKind = ""
 		}
 	}
+	candidate = custodyCandidate(authority.AccountID, push.Members)
 	var stored int64
 	var storedDigest []byte
 	var fullThrough sql.NullInt64
