@@ -13,7 +13,7 @@ import {useSession} from '../../app/session';
 import {repairTargetFor, useMetadataEditor} from '../../app/metadata-editor';
 import {useDetail, requestId} from '../../app/detail';
 import {useService} from '../../app/content';
-import {captionFor, entryActions, type EntryActionId} from '@core/presentation/index.ts';
+import {canRefreshMetadata, captionFor, entryActions, type EntryActionId} from '@core/presentation/index.ts';
 import {useOpenEntry} from '../../app/open';
 import {useMoreHandOff, usePlayer} from '../../player/engine';
 import {AnchoredMenu, Button, Input, ListRow, Loading, MenuHeading, MenuRow, MenuSeparator, Notice, Text} from '../../ui';
@@ -123,7 +123,7 @@ function Body({entry, origin, onDone}: {entry: ContentEntry; origin?: EntryOrigi
     // No Details for the page already open (an album's own More menu).
     details: !!entry.navigation && !(entry.navigation.entityId && location.pathname.endsWith(`/${entry.navigation.view}/${entry.navigation.entityId}`)),
     editMetadata: !!(local && repair),
-    refreshMetadata: !!local,
+    refreshMetadata: !!local && canRefreshMetadata(entry.kind),
     delete: !!(owner && entry.playback),
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [entry, origin, queue, together.inRoom, together.canQueue, data, downloadable, downloads.state.unavailable, local, repair, owner, loadingDetail, containerWatched.state, containerWatched.carries]);
