@@ -5,7 +5,6 @@ import (
 	"strings"
 	"testing"
 
-	"portico.local/server/internal/access"
 	"portico.local/server/internal/identity"
 )
 
@@ -17,7 +16,7 @@ func TestRestrictionWritersHideMemberCeilingRefusals(t *testing.T) {
 		{"common", func(w *httptest.ResponseRecorder, err error) { failure(w, err) }},
 		{"access", func(w *httptest.ResponseRecorder, err error) { accessFailure(w, err) }},
 	} {
-		for _, refusal := range []error{identity.ErrContentRestricted, access.ErrContentRating, access.ErrLabelDenied} {
+		for _, refusal := range []error{identity.ErrContentRestricted} {
 			w := httptest.NewRecorder()
 			writer.call(w, refusal)
 			if w.Code != 404 || !strings.Contains(w.Body.String(), `"not_found"`) {

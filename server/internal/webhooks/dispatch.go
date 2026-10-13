@@ -126,24 +126,59 @@ func (d *Dispatcher) Step(ctx context.Context) time.Duration {
 		return 0
 	}
 	now := store.now()
-	rows, err := dbwork.Query(ctx, store.DB, `SELECT d.id,d.webhook_id,d.type,d.data,d.attempts,d.created_ms,w.url,w.secret FROM webhook_deliveries d JOIN webhooks w ON w.id=d.webhook_id
- WHERE d.state='pending' AND d.next_attempt_ms<=? AND (w.enabled=1 OR d.type=?) ORDER BY d.next_attempt_ms,d.created_ms,d.id LIMIT ?`, now, Test, perStep)
+	// Select destinations before deliveries: one destination's backlog must
+	// never occupy the whole pass while another has something ready to send.
+	rows, err := dbwork.Query(ctx, store.DB, `SELECT w.id FROM webhooks w
+ WHERE EXISTS(SELECT 1 FROM webhook_deliveries d WHERE d.webhook_id=w.id AND d.state='pending' AND (w.enabled=1 OR d.type=?)) ORDER BY w.id LIMIT ?`, Test, MaxWebhooks)
 	if err != nil {
 		return idlePoll
 	}
 	order := []string{}
-	byWebhook := map[string][]queued{}
 	for rows.Next() {
-		var q queued
-		if rows.Scan(&q.id, &q.webhook, &q.event, &q.data, &q.attempts, &q.created, &q.url, &q.secret) != nil {
-			continue
+		var id string
+		if err = rows.Scan(&id); err != nil {
+			break
 		}
-		if _, seen := byWebhook[q.webhook]; !seen {
-			order = append(order, q.webhook)
+		if !d.isPaused(id, store.Now()) {
+			order = append(order, id)
 		}
-		byWebhook[q.webhook] = append(byWebhook[q.webhook], q)
+	}
+	if err == nil {
+		err = rows.Err()
 	}
 	rows.Close()
+	if err != nil {
+		return idlePoll
+	}
+	byWebhook := map[string][]queued{}
+	share := min(perWebhookStep, perStep/max(1, len(order)))
+	for _, id := range order {
+		rows, err = dbwork.Query(ctx, store.DB, `SELECT d.id,d.webhook_id,d.type,d.data,d.attempts,d.created_ms,w.url,w.secret,d.next_attempt_ms FROM webhook_deliveries d JOIN webhooks w ON w.id=d.webhook_id
+ WHERE d.webhook_id=? AND d.state='pending' AND (w.enabled=1 OR d.type=?) ORDER BY d.created_ms,d.rowid LIMIT ?`, id, Test, share)
+		if err != nil {
+			return idlePoll
+		}
+		for rows.Next() {
+			var q queued
+			var due int64
+			if err = rows.Scan(&q.id, &q.webhook, &q.event, &q.data, &q.attempts, &q.created, &q.url, &q.secret, &due); err != nil {
+				break
+			}
+			// A head waiting for its retry or initial delay holds back everything
+			// after it. rowid keeps insertion order for events in the same millisecond.
+			if due > now {
+				break
+			}
+			byWebhook[id] = append(byWebhook[id], q)
+		}
+		if err == nil {
+			err = rows.Err()
+		}
+		rows.Close()
+		if err != nil {
+			return idlePoll
+		}
+	}
 	slots := make(chan struct{}, parallelWebhooks)
 	var group sync.WaitGroup
 	for _, webhook := range order {
@@ -171,7 +206,7 @@ func (d *Dispatcher) Step(ctx context.Context) time.Duration {
 	// there is nothing to wake for but a new row.
 	var next sql.NullInt64
 	var enabled int
-	if err = dbwork.QueryRow(ctx, store.DB, `SELECT (SELECT min(d.next_attempt_ms) FROM webhook_deliveries d JOIN webhooks w ON w.id=d.webhook_id WHERE d.state='pending' AND (w.enabled=1 OR d.type=?)),(SELECT count(*) FROM webhooks WHERE enabled=1)`, Test).Scan(&next, &enabled); err != nil {
+	if err = dbwork.QueryRow(ctx, store.DB, `SELECT (SELECT min(d.next_attempt_ms) FROM webhooks w JOIN webhook_deliveries d ON d.id=(SELECT h.id FROM webhook_deliveries h WHERE h.webhook_id=w.id AND h.state='pending' AND (w.enabled=1 OR h.type=?) ORDER BY h.created_ms,h.rowid LIMIT 1)),(SELECT count(*) FROM webhooks WHERE enabled=1)`, Test).Scan(&next, &enabled); err != nil {
 		return idlePoll
 	}
 	if !next.Valid {

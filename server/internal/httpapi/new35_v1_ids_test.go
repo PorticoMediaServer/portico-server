@@ -13,7 +13,6 @@ import (
 	"portico.local/server/internal/decoder"
 	"portico.local/server/internal/lyrics"
 	"portico.local/server/internal/mediaanalysis"
-	"portico.local/server/internal/playback"
 	"portico.local/server/internal/playbackv1"
 )
 
@@ -50,16 +49,6 @@ func TestNew35V1SessionIDsReachLyricsRouteFailuresAndAnalysis(t *testing.T) {
 		t.Fatalf("lyrics scope %s gen %d, want %s gen %d", view.Scope.SessionID, view.Scope.SessionGeneration, s.ID, gen)
 	}
 
-	// Route failures: a v1 id is this device's session; an unknown one is hidden.
-	var reported playback.RouteFailureResult
-	f.call("POST", "/v1/playback/route-failures", nil, map[string]any{"sessionId": s.ID, "code": "decode_error", "detail": "MEDIA_ERR_DECODE"}, 200, &reported)
-	if reported.Route == "" {
-		t.Fatalf("route failure on the v1 session recorded no route: %+v", reported)
-	}
-	if w := f.raw("POST", "/v1/playback/route-failures", f.owner.AccessToken, nil, map[string]any{"sessionId": "ps_unknownsession00000", "code": "decode_error"}); w.Code != 404 {
-		t.Fatalf("an unknown session: %d %s (want a hidden 404, never 401)", w.Code, w.Body.String())
-	}
-
 	// Analysis: the v1 id with its v1 generation answers exactly what the media
 	// session's own id and generation answer (this fixture has no inventory,
 	// so both reach the same "no source" outcome past the session check), and
@@ -91,7 +80,7 @@ func TestNew35V1SessionIDsReachLyricsRouteFailuresAndAnalysis(t *testing.T) {
 		body         any
 	}{
 		{"GET", "/v1/items/" + item + "/lyrics?sessionId=" + url.QueryEscape(s.ID), nil},
-		{"POST", "/v1/playback/route-failures", map[string]any{"sessionId": s.ID, "code": "decode_error"}},
+		{"PATCH", "/v1/playback/sessions/" + s.ID, map[string]any{"failure": map[string]any{"code": "decode_error"}}},
 	} {
 		if w := f.raw(probe.method, probe.path, member, nil, probe.body); w.Code != 404 {
 			t.Errorf("another profile %s %s: %d %s", probe.method, probe.path, w.Code, w.Body.String())

@@ -5,18 +5,18 @@
   "auth": "device",
   "status": 200,
   "response": {
-    "itemId": "8tuuO7q001UpbtFA-9BZO67b2__8ewInS-MbZa47_DE",
+    "itemId": "N0AfeetlQ23lEjcxkLSl1w",
     "kind": "movie",
     "versions": [
       {
-        "id": "5nJh_cGVeI4cvzxXhO6qU8jx0k0j1_38xHZ48t3LI7E",
+        "id": "teBUakQ-1zlO_JJsKRtyLkixUX3v4XsTdhqozSP-Q9c",
         "label": "1080p · MP4",
         "container": "mp4",
         "sizeBytes": 10,
         "durationMs": 600000,
         "parts": [
           {
-            "id": "5nJh_cGVeI4cvzxXhO6qU8jx0k0j1_38xHZ48t3LI7E",
+            "id": "teBUakQ-1zlO_JJsKRtyLkixUX3v4XsTdhqozSP-Q9c",
             "index": 0,
             "durationMs": 600000,
             "sizeBytes": 10
@@ -29,13 +29,22 @@
     ],
     "chapters": [],
     "markers": [],
+    "qualities": [
+      {
+        "mode": "original"
+      }
+    ],
     "preferred": {
-      "versionId": "5nJh_cGVeI4cvzxXhO6qU8jx0k0j1_38xHZ48t3LI7E",
-      "reason": "default"
+      "versionId": "teBUakQ-1zlO_JJsKRtyLkixUX3v4XsTdhqozSP-Q9c",
+      "reason": "default",
+      "quality": {
+        "mode": "original"
+      }
     },
     "plan": {
-      "versionId": "5nJh_cGVeI4cvzxXhO6qU8jx0k0j1_38xHZ48t3LI7E",
+      "versionId": "teBUakQ-1zlO_JJsKRtyLkixUX3v4XsTdhqozSP-Q9c",
       "mode": "direct",
+      "engine": "native",
       "streams": [],
       "quality": {
         "mode": "original"

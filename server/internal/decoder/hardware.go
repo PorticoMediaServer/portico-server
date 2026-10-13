@@ -88,14 +88,18 @@ const (
 // HardwareProbe is the cached result of one bounded encode. NativeFilters says
 // whether the backend's own tone-map/scale filters ran, not merely its encoder.
 type HardwareProbe struct {
-	Backend       HardwareBackend `json:"backend"`
-	Available     bool            `json:"available"`
-	Reason        string          `json:"reason"`
-	Encoder       string          `json:"encoder,omitempty"`
-	NativeFilters bool            `json:"nativeFilters"`
-	Device        string          `json:"device,omitempty"`
-	Identity      string          `json:"identity"`
-	DurationMS    int64           `json:"durationMs"`
+	Backend        HardwareBackend `json:"backend"`
+	Available      bool            `json:"available"`
+	Reason         string          `json:"reason"`
+	Encoder        string          `json:"encoder,omitempty"`
+	NativeFilters  bool            `json:"nativeFilters"`
+	ScaleFilters   bool            `json:"scaleFilters"`
+	ToneMapFilters bool            `json:"toneMapFilters"`
+	OutputEncoders map[string]bool `json:"outputEncoders,omitempty"`
+	OutputQuality  map[string]bool `json:"outputQuality,omitempty"`
+	Device         string          `json:"device,omitempty"`
+	Identity       string          `json:"identity"`
+	DurationMS     int64           `json:"durationMs"`
 }
 
 type backendSpec struct {
@@ -267,19 +271,11 @@ func probeCommand(ctx context.Context, executable string, args []string, librari
 // cast (COMPAT-04). It mirrors BuildConversion's choice of tone mapper; a test
 // holds the two together.
 func ReshapesDolbyVision(r ConversionRequest) bool {
-	if !r.ConvertVideo || !r.ToneMap || r.Toolchain == nil || !r.Toolchain.VulkanAvailable {
+	if !r.ConvertVideo || !r.ToneMap && (r.Target == nil || !r.Target.ToneMap) {
 		return false
 	}
-	backend, spec := BackendSoftware, backendSpec{}
-	if r.Probe.Available && r.Probe.Backend != BackendSoftware {
-		if s, ok := backendSpecs[r.Probe.Backend]; ok && s.supported() {
-			backend, spec = r.Probe.Backend, s
-		}
-	}
-	native := r.BurnIn == nil && backend != BackendSoftware && r.Probe.NativeFilters && spec.toneMap != nil && spec.scale != nil
-	filter := map[HardwareBackend]string{BackendNVENC: "tonemap_cuda", BackendVAAPI: "tonemap_vaapi", BackendQSV: "vpp_qsv"}[backend]
-	native = native && r.Toolchain.Filters[filter]
-	return !native && spec.upload == ""
+	graph, err := BuildConversion(r)
+	return err == nil && strings.Contains(strings.Join(graph.Video, " "), "libplacebo=")
 }
 
 //go:embed probeassets/hdr10.hevc
@@ -304,9 +300,9 @@ func probeArgs(spec backendSpec, device string, filters string) []string {
 	}
 	args = append(args, "-c:v", spec.encoder)
 	switch spec.encoder {
-	case "h264_nvenc":
+	case "h264_nvenc", "hevc_nvenc", "av1_nvenc":
 		args = append(args, "-forced-idr", "1")
-	case "h264_qsv", "h264_amf":
+	case "h264_qsv", "h264_amf", "hevc_qsv", "hevc_amf":
 		args = append(args, "-forced_idr", "1")
 	}
 	args = append(args, "-b:v", "200k", "-an", "-sn", "-dn", "-f", "null", "-")
@@ -407,15 +403,52 @@ func (d *HardwareDetector) Probe(ctx context.Context, executable string, backend
 	// A backend whose encoder works may still lack its own filters in this
 	// build. Confirm them with the real production chain rather than assume.
 	if out.Available && spec.toneMap != nil && spec.scale != nil {
+		bounded, cancel = context.WithTimeout(ctx, timeout)
+		scaleArgs := probeArgs(spec, device, "")
+		for i := 0; i+1 < len(scaleArgs); i++ {
+			if scaleArgs[i] == "-vf" {
+				scaleArgs[i+1] += "," + spec.scale(120)
+			}
+		}
+		out.ScaleFilters = d.run(bounded, executable, scaleArgs) == nil
+		cancel()
 		chain := spec.toneMap(DefaultToneMapAlgorithm) + "," + spec.scale(120)
 		bounded, cancel = context.WithTimeout(ctx, timeout)
 		args := probeArgs(spec, device, chain)
-		if backend == BackendVAAPI {
-			out.NativeFilters = d.probeVAAPIFilters(bounded, executable, args) == nil
-		} else {
-			out.NativeFilters = d.run(bounded, executable, args) == nil
-		}
+		out.NativeFilters = d.probeVAAPIFilters(bounded, executable, args) == nil
+		out.ToneMapFilters = out.NativeFilters
 		cancel()
+	}
+	if out.Available {
+		out.OutputEncoders = map[string]bool{"h264:8": true}
+		out.OutputQuality = map[string]bool{}
+		qualityArgs := probeQualityArgs(spec, device, 8)
+		bounded, cancel = context.WithTimeout(ctx, timeout)
+		out.OutputQuality["h264:8"] = d.run(bounded, executable, qualityArgs) == nil
+		cancel()
+		for _, depth := range []int{8, 10} {
+			hevcSpec := spec
+			hevcSpec.encoder = "hevc_" + string(backend)
+			args := probeArgs(hevcSpec, device, "")
+			if depth == 10 {
+				for i := 0; i+1 < len(args); i++ {
+					if args[i] == "-vf" {
+						args[i+1] = strings.NewReplacer("format=nv12", "format=p010le", "format=yuv420p", "format=p010le").Replace(args[i+1])
+					}
+				}
+				if spec.upload == "" {
+					args = append(args[:len(args)-4], append([]string{"-pix_fmt", "yuv420p10le"}, args[len(args)-4:]...)...)
+				}
+			}
+			bounded, cancel = context.WithTimeout(ctx, timeout)
+			out.OutputEncoders["hevc:"+strconv.Itoa(depth)] = d.run(bounded, executable, args) == nil
+			cancel()
+			if out.OutputEncoders["hevc:"+strconv.Itoa(depth)] {
+				bounded, cancel = context.WithTimeout(ctx, timeout)
+				out.OutputQuality["hevc:"+strconv.Itoa(depth)] = d.run(bounded, executable, probeQualityArgs(hevcSpec, device, depth)) == nil
+				cancel()
+			}
+		}
 	}
 	d.mu.Lock()
 	if d.cache == nil {
@@ -547,23 +580,25 @@ func (d *HardwareDetector) Report(ctx context.Context, executable, device string
 // ConversionRequest describes one video output rung. It is deliberately free of
 // session identity: the same request always produces the same argument graph.
 type ConversionRequest struct {
-	BurnIn           *BurnIn
-	Toolchain        *ToolchainFacts
-	AudioCodec       string
-	Probe            HardwareProbe
-	ConvertVideo     bool
-	CopyVideo        bool
-	ToneMap          bool
-	ToneMapAlgorithm string
-	MaxHeight        int
-	MaxWidth         int
-	VideoBitrateBPS  int
-	AudioBitrateBPS  int
-	AudioChannels    int
-	ConvertAudio     bool
-	CopyAudio        bool
-	SoftwarePreset   string
-	KeyframeSeconds  int
+	DisableHardwareDecode bool
+	Target                *ConversionTarget
+	BurnIn                *BurnIn
+	Toolchain             *ToolchainFacts
+	AudioCodec            string
+	Probe                 HardwareProbe
+	ConvertVideo          bool
+	CopyVideo             bool
+	ToneMap               bool
+	ToneMapAlgorithm      string
+	MaxHeight             int
+	MaxWidth              int
+	VideoBitrateBPS       int
+	AudioBitrateBPS       int
+	AudioChannels         int
+	ConvertAudio          bool
+	CopyAudio             bool
+	SoftwarePreset        string
+	KeyframeSeconds       int
 	// Deinterlace inserts a deinterlacer ahead of every other picture filter.
 	Deinterlace bool
 	// MaxFrameRate caps the output rate; zero leaves the source rate alone.
@@ -572,8 +607,8 @@ type ConversionRequest struct {
 	// make-up gain and a limiter, so the result does not depend on which sample
 	// format the source decoder happened to produce.
 	Downmix bool
-	// AudioSampleRate is the rate converted audio is resampled to; zero keeps
-	// the source's. No conversion produces more than 48 kHz.
+	// AudioSampleRate is explicit when known; zero selects 48 kHz. Lossless
+	// targets may select higher rates through ConversionTarget.
 	AudioSampleRate int
 }
 
@@ -619,6 +654,24 @@ func ValidSoftwarePreset(p string) bool {
 // downloading frames only where the graph actually needs it.
 func BuildConversion(r ConversionRequest) (ConversionGraph, error) {
 	out := ConversionGraph{Backend: BackendSoftware, Stages: []HardwareStage{}}
+	target := ConversionTarget{VideoCodec: "h264", BitDepth: 8, DynamicRange: "sdr", ToneMap: r.ToneMap, Width: r.MaxWidth, Height: r.MaxHeight, FrameRate: r.MaxFrameRate, VideoBitrateBPS: r.VideoBitrateBPS, AudioCodec: r.AudioCodec, AudioChannels: r.AudioChannels, AudioBitrateBPS: r.AudioBitrateBPS, AudioSampleRate: r.AudioSampleRate}
+	var err error
+	if r.Target != nil {
+		target = *r.Target
+	}
+	target, err = target.Normalized()
+	if err != nil {
+		return out, err
+	}
+	if r.Target != nil {
+		r.ToneMap, r.MaxWidth, r.MaxHeight, r.MaxFrameRate, r.VideoBitrateBPS = target.ToneMap, target.Width, target.Height, target.FrameRate, target.VideoBitrateBPS
+		r.AudioCodec, r.AudioChannels, r.AudioBitrateBPS, r.AudioSampleRate = target.AudioCodec, target.AudioChannels, target.AudioBitrateBPS, target.AudioSampleRate
+	}
+	pixel, surface := "yuv420p", "nv12"
+	if target.BitDepth == 10 {
+		pixel, surface = "yuv420p10le", "p010le"
+	}
+
 	if r.CopyVideo && r.ConvertVideo || r.CopyAudio && r.ConvertAudio {
 		return out, ErrInvalidConfiguration
 	}
@@ -656,13 +709,64 @@ func BuildConversion(r ConversionRequest) (ConversionGraph, error) {
 			backend, spec = r.Probe.Backend, s
 		}
 	}
+	encoder := ""
+	if r.ConvertVideo {
+		encoder = encoderFor(backend, spec)
+		if target.VideoCodec != "h264" {
+			hardwareEncoder := target.VideoCodec + "_" + string(backend)
+			if backend != BackendSoftware && r.Probe.OutputEncoders[target.VideoCodec+":"+strconv.Itoa(target.BitDepth)] {
+				encoder = hardwareEncoder
+			} else {
+				backend, spec = BackendSoftware, backendSpec{}
+			}
+		}
+		if backend == BackendSoftware {
+			encoderFacts := r.Toolchain
+			if r.Target == nil {
+				encoderFacts = nil
+			}
+			encoder, err = softwareVideoEncoder(target.VideoCodec, encoderFacts)
+			if err != nil {
+				return out, err
+			}
+		}
+		// Every hardware quality mode must pass its own encode probe. Capped
+		// quality uses software rather than ignoring a requested bitrate ceiling.
+		if target.RateControl == "quality" && backend != BackendSoftware && (target.VideoBitrateBPS > 0 || !r.Probe.OutputQuality[target.VideoCodec+":"+strconv.Itoa(target.BitDepth)]) {
+			backend, spec = BackendSoftware, backendSpec{}
+			encoder, err = softwareVideoEncoder(target.VideoCodec, r.Toolchain)
+			if err != nil {
+				return out, err
+			}
+		}
+	}
 	out.Backend = backend
 	if r.CopyVideo {
+		if target.DolbyVisionProfile > 0 && r.Target != nil {
+			base := DolbyVisionBaseRange(target.DolbyVisionProfile, target.DolbyVisionCompatibility)
+			if base == "" || base != target.DynamicRange {
+				return out, errors.New("dolby_vision_base_layer_unavailable")
+			}
+			if r.Toolchain == nil || !r.Toolchain.BitstreamFilters["dovi_rpu"] || target.DolbyVisionProfile == 7 && !r.Toolchain.BitstreamFilters["filter_units"] {
+				return out, errors.New("dolby_vision_strip_filter_unavailable")
+			}
+			filter := "dovi_rpu=strip=1"
+			if target.DolbyVisionProfile == 7 {
+				filter += ",filter_units=remove_types=63"
+			}
+			out.Video = append(out.Video, "-bsf:v", filter)
+		}
 		out.Video = append(out.Video, "-c:v", "copy")
 		out.Stages = append(out.Stages, HardwareStage{StageDecode, ExecutionSoftware}, HardwareStage{StageEncode, ExecutionSoftware})
 	}
 	if r.ConvertVideo {
-		native := r.BurnIn == nil && backend != BackendSoftware && r.Probe.NativeFilters && spec.toneMap != nil && spec.scale != nil
+		native := r.BurnIn == nil && backend != BackendSoftware && spec.scale != nil && (r.ToneMap && r.Probe.NativeFilters && spec.toneMap != nil || !r.ToneMap && (r.Probe.ScaleFilters || r.Probe.NativeFilters))
+		if r.DisableHardwareDecode {
+			native = false
+		}
+		if r.ToneMap && target.SourceRange == "hlg" && backend == BackendVAAPI && target.MasterDisplay == "" {
+			native = false
+		}
 		if r.Toolchain != nil && r.ToneMap {
 			filter := map[HardwareBackend]string{BackendNVENC: "tonemap_cuda", BackendVAAPI: "tonemap_vaapi", BackendQSV: "vpp_qsv"}[backend]
 			native = native && r.Toolchain.Filters[filter]
@@ -670,11 +774,20 @@ func BuildConversion(r ConversionRequest) (ConversionGraph, error) {
 		if r.ToneMap && !native && r.Toolchain != nil && (!r.Toolchain.Filters["zscale"] || !r.Toolchain.Filters["tonemap"]) && ((!r.Toolchain.VulkanAvailable && !r.Toolchain.OpenCLAvailable) || spec.upload != "") {
 			return out, errors.New("hdr_tone_mapping_filter_unavailable")
 		}
+		if target.DolbyVisionProfile > 0 {
+			compatible := DolbyVisionBaseRange(target.DolbyVisionProfile, target.DolbyVisionCompatibility) != ""
+			if !compatible {
+				if !r.ToneMap || r.Toolchain == nil || !r.Toolchain.VulkanAvailable || spec.upload != "" {
+					return out, errors.New("dolby_vision_reshaping_unavailable")
+				}
+				native = false
+			}
+		}
 		decode := ExecutionSoftware
 		if backend != BackendSoftware && spec.device != nil {
 			out.Input = append(out.Input, spec.device(r.Probe.Device)...)
 			// Device initialization alone is software decode.
-		} else if backend == BackendVideoToolbox && r.BurnIn == nil && !r.ToneMap && !r.Deinterlace && r.MaxFrameRate == 0 && r.MaxHeight == 0 && r.MaxWidth == 0 {
+		} else if backend == BackendVideoToolbox && !r.DisableHardwareDecode && r.BurnIn == nil && !r.ToneMap && !r.Deinterlace && r.MaxFrameRate == 0 && r.MaxHeight == 0 && r.MaxWidth == 0 {
 			out.Input = append(out.Input, "-hwaccel", "videotoolbox")
 			decode = ExecutionHardware
 		}
@@ -707,7 +820,7 @@ func BuildConversion(r ConversionRequest) (ConversionGraph, error) {
 			filters = append(filters, filter+"=mode=send_frame:parity=auto:deint=interlaced")
 		}
 		if r.MaxFrameRate > 0 {
-			filters = append(filters, "fps=fps="+strconv.FormatFloat(r.MaxFrameRate, 'f', -1, 64))
+			filters = append(filters, "fps=fps='min(source_fps,"+strconv.FormatFloat(r.MaxFrameRate, 'f', -1, 64)+")'")
 		}
 		pre := len(filters)
 		toneExecution, scaleExecution := ExecutionSoftware, ExecutionSoftware
@@ -716,7 +829,7 @@ func BuildConversion(r ConversionRequest) (ConversionGraph, error) {
 				filters = append(filters, spec.toneMap(algorithm))
 				toneExecution = ExecutionHardware
 			}
-			if r.MaxHeight > 0 || r.MaxWidth > 0 {
+			{
 				filters = append(filters, boundedScaleFilter(backend, r.MaxWidth, r.MaxHeight))
 				scaleExecution = ExecutionHardware
 			}
@@ -724,27 +837,27 @@ func BuildConversion(r ConversionRequest) (ConversionGraph, error) {
 				// The upload sits between the system-frame filters and the
 				// backend's own, wherever either list happens to be empty.
 				upload := spec.upload
-				if r.ToneMap {
-					upload = strings.NewReplacer("format=nv12", "format=p010", "format=yuv420p", "format=p010").Replace(upload)
+				if r.ToneMap || target.BitDepth == 10 {
+					upload = strings.NewReplacer("format=nv12", "format=p010", "format=yuv420p", "format=p010le").Replace(upload)
 				}
 				hardware := append([]string{upload}, filters[pre:]...)
 				filters = append(filters[:pre:pre], hardware...)
 			}
 			switch backend {
 			case BackendNVENC:
-				filters = append(filters, "scale_cuda=format=nv12")
+				filters = append(filters, "scale_cuda=format="+surface)
 			case BackendVAAPI:
-				filters = append(filters, "scale_vaapi=format=nv12")
+				filters = append(filters, "scale_vaapi=format="+surface)
 			case BackendQSV:
-				filters = append(filters, "vpp_qsv=format=nv12")
+				filters = append(filters, "vpp_qsv=format="+surface)
 			}
 		} else {
 			if r.ToneMap {
-				if r.Toolchain != nil && r.Toolchain.VulkanAvailable && spec.upload == "" {
+				if r.Toolchain != nil && r.Toolchain.VulkanAvailable && spec.upload == "" && (target.DolbyVisionProfile > 0 && DolbyVisionBaseRange(target.DolbyVisionProfile, target.DolbyVisionCompatibility) == "" || !r.Toolchain.Filters["zscale"] || !r.Toolchain.Filters["tonemap"]) {
 					out.Input = append(out.Input, "-init_hw_device", "vulkan=tone", "-filter_hw_device", "tone")
 					filters = append(filters, "format=yuv420p10le,hwupload,libplacebo=tonemapping=bt.2390:colorspace=bt709:color_primaries=bt709:color_trc=bt709:format=yuv420p,hwdownload,format=yuv420p")
 					toneExecution = ExecutionHardware
-				} else if r.Toolchain != nil && r.Toolchain.OpenCLAvailable && spec.upload == "" {
+				} else if r.Toolchain != nil && r.Toolchain.OpenCLAvailable && spec.upload == "" && (!r.Toolchain.Filters["zscale"] || !r.Toolchain.Filters["tonemap"]) {
 					out.Input = append(out.Input, "-init_hw_device", "opencl=tone", "-filter_hw_device", "tone")
 					filters = append(filters, "format=p010,hwupload,tonemap_opencl=tonemap=hable:desat=0:format=nv12,hwdownload,format=nv12")
 					toneExecution = ExecutionHardware
@@ -753,22 +866,25 @@ func BuildConversion(r ConversionRequest) (ConversionGraph, error) {
 				}
 			}
 			if r.BurnIn != nil {
-				burn, extra, err := burnFilter(*r.BurnIn, r.Toolchain)
+				burnInput := *r.BurnIn
+				burnInput.DynamicRange = target.DynamicRange
+				burn, extra, err := burnFilter(burnInput, r.Toolchain)
 				if err != nil {
 					return out, err
 				}
 				filters = append(filters, burn)
 				out.ExtraInput = extra
-				if len(extra) > 0 {
+				if len(extra) > 0 || target.DynamicRange != "sdr" {
 					out.VideoMap = "[burn_output]"
 				}
 				out.Stages = append(out.Stages, HardwareStage{"subtitle_burn_in", ExecutionSoftware})
 			}
-			if r.MaxHeight > 0 || r.MaxWidth > 0 {
-				filters = append(filters, boundedScaleFilter(BackendSoftware, r.MaxWidth, r.MaxHeight))
+			filters = append(filters, boundedScaleFilter(BackendSoftware, r.MaxWidth, r.MaxHeight))
+			if target.DynamicRange != "sdr" {
+				filters = append(filters, "format="+pixel)
 			}
 			if spec.upload != "" {
-				filters = append(filters, "format=nv12", spec.upload)
+				filters = append(filters, "format="+surface, strings.NewReplacer("format=nv12", "format="+surface, "format=yuv420p", "format="+pixel).Replace(spec.upload))
 			}
 		}
 		if len(filters) > 0 {
@@ -778,15 +894,52 @@ func BuildConversion(r ConversionRequest) (ConversionGraph, error) {
 				out.Video = append(out.Video, "-vf", strings.Join(filters, ","))
 			}
 		}
-		out.Video = append(out.Video, "-c:v", encoderFor(backend, spec))
+		out.Video = append(out.Video, "-c:v", encoder)
 		if backend == BackendSoftware {
-			out.Video = append(out.Video, "-preset", preset, "-pix_fmt", "yuv420p")
+			out.Video = append(out.Video, "-threads", "2")
 		}
-		rate := r.VideoBitrateBPS
-		if rate == 0 {
-			rate = 8_000_000
+		if backend == BackendSoftware || backend == BackendAMF || backend == BackendVideoToolbox {
+			out.Video = append(out.Video, "-pix_fmt", pixel)
 		}
-		out.Video = append(out.Video, "-b:v", strconv.Itoa(rate), "-maxrate", strconv.Itoa(rate), "-bufsize", strconv.Itoa(rate*2))
+		out.Video = append(out.Video, videoRateArgs(target, encoder, preset)...)
+		out.Video = append(out.Video, videoColorArgs(target)...)
+		if target.VideoCodec == "h264" {
+			level := target.VideoLevel
+			if level == 0 {
+				level = H264OutputLevel(target.Width, target.Height, target.FrameRate)
+			}
+			if encoder == "libx264" {
+				out.Video = append(out.Video, "-x264-params", "cabac=1:8x8dct=1:open-gop=0")
+			}
+			out.Video = append(out.Video, "-profile:v", "high", "-level:v", strconv.FormatFloat(float64(level)/10, 'f', 1, 64))
+		}
+		if target.VideoCodec == "hevc" {
+			profile := "main"
+			if target.BitDepth == 10 {
+				profile = "main10"
+			}
+			level := target.VideoLevel
+			if level == 0 {
+				level = HEVCOutputLevel(target.Width, target.Height, target.FrameRate)
+			}
+			out.Video = append(out.Video, "-profile:v", profile, "-tag:v", "hvc1", "-level:v", strconv.FormatFloat(float64(level)/30, 'f', 1, 64))
+			if encoder == "libx265" {
+				params := "pools=2:frame-threads=2:open-gop=0:repeat-headers=1"
+				if target.DynamicRange == "hdr10" {
+					params += ":hdr10=1"
+					if target.MasterDisplay != "" {
+						params += ":master-display=" + target.MasterDisplay
+					}
+					if target.MaxCLL != "" {
+						params += ":max-cll=" + target.MaxCLL
+					}
+				}
+				out.Video = append(out.Video, "-x265-params", params)
+			}
+		}
+		if target.VideoCodec == "hevc" && target.DolbyVisionProfile > 0 {
+			out.Video = append(out.Video, "-bsf:v", "filter_units=remove_types=62|63")
+		}
 		out.Video = append(out.Video, "-force_key_frames", "expr:gte(t,n_forced*"+strconv.Itoa(keyframes)+")")
 		switch backend {
 		case BackendNVENC:
@@ -814,36 +967,13 @@ func BuildConversion(r ConversionRequest) (ConversionGraph, error) {
 		out.Audio = append(out.Audio, "-c:a", "copy")
 	}
 	if r.ConvertAudio {
-		bitrate := r.AudioBitrateBPS
-		if bitrate == 0 {
-			bitrate = 192_000
+		audio, err := buildAudioTarget(target, r.Downmix, r.Toolchain)
+		if err != nil {
+			return out, err
 		}
-		channels := r.AudioChannels
-		if channels == 0 {
-			channels = 2
-		}
-		if r.Downmix {
-			out.Audio = append(out.Audio, "-af", DownmixFilter(channels))
-		}
-		codec := r.AudioCodec
-		if codec == "" {
-			codec = "aac"
-		}
-		if codec != "aac" && codec != "ac3" && codec != "eac3" {
-			return out, ErrInvalidConfiguration
-		}
-		if r.AudioSampleRate < 0 || r.AudioSampleRate > 48000 {
-			return out, ErrInvalidConfiguration
-		}
-		// AC-3 and E-AC-3 exist at three rates only.
-		if codec != "aac" && r.AudioSampleRate != 0 && r.AudioSampleRate != 48000 && r.AudioSampleRate != 44100 && r.AudioSampleRate != 32000 {
-			return out, ErrInvalidConfiguration
-		}
-		out.Audio = append(out.Audio, "-c:a", codec, "-b:a", strconv.Itoa(bitrate/1000)+"k", "-ac", strconv.Itoa(channels))
-		if r.AudioSampleRate > 0 {
-			out.Audio = append(out.Audio, "-ar", strconv.Itoa(r.AudioSampleRate))
-		}
+		out.Audio = append(out.Audio, audio...)
 	}
+
 	return out, nil
 }
 
@@ -907,6 +1037,17 @@ func boundedScaleFilter(backend HardwareBackend, width, height int) string {
 		filter = "scale_vaapi"
 	case BackendQSV:
 		filter = "vpp_qsv"
+	}
+	if backend == BackendSoftware {
+		display := "min(iw*sar,ih*dar)"
+		ratio = "1"
+		if width > 0 {
+			ratio = "min(" + ratio + "," + strconv.Itoa(width) + "/(iw*sar))"
+		}
+		if height > 0 {
+			ratio = "min(" + ratio + "," + strconv.Itoa(height) + "/ih)"
+		}
+		return "scale=w='max(2,trunc(" + display + "*" + ratio + "/2)*2)':h='max(2,trunc(ih*" + ratio + "/2)*2)',setsar=1"
 	}
 	return filter + "=w='max(2,trunc(iw*" + ratio + "/2)*2)':h='max(2,trunc(ih*" + ratio + "/2)*2)'"
 }

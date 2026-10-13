@@ -23,7 +23,7 @@ func TestSubtitleDocumentRevalidation(t *testing.T) {
 	}
 	serve := func(match string) *httptest.ResponseRecorder {
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("GET", "/v1/media/grant/subtitles/res/3", nil)
+		r := httptest.NewRequest("GET", "/v1/media/subtitles/grant/res/3", nil)
 		if match != "" {
 			r.Header.Set("If-None-Match", match)
 		}

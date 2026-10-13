@@ -8,21 +8,22 @@
   },
   "status": 200,
   "response": {
-    "id": "ps_ATxHOe-9b-HeHiFirwx6",
+    "id": "ps_Tjqh94zOfO7-zEATOfJo",
     "revision": "2",
     "kind": "vod",
     "role": "local",
     "state": "paused",
-    "itemId": "8tuuO7q001UpbtFA-9BZO67b2__8ewInS-MbZa47_DE",
-    "versionId": "5nJh_cGVeI4cvzxXhO6qU8jx0k0j1_38xHZ48t3LI7E",
+    "itemId": "N0AfeetlQ23lEjcxkLSl1w",
+    "versionId": "teBUakQ-1zlO_JJsKRtyLkixUX3v4XsTdhqozSP-Q9c",
     "lease": {
-      "expiresAt": "2026-09-23T04:57:50.904Z",
+      "expiresAt": "2026-10-13T04:49:32.497Z",
       "reportEveryMs": 30000
     },
     "presentation": {
       "generation": 1,
       "mode": "direct",
-      "url": "/v1/media/oA6n_-3T9qiya9wv-x1akqiMBoRJj69l1ZGdY-lsKzI",
+      "url": "/v1/media/-10C98IMySUd9WC4bzOXmZhv1xSCS6I8efIzlGh-sWY",
+      "engine": "native",
       "startPositionMs": 0,
       "subtitles": [],
       "decision": {
@@ -34,7 +35,11 @@
           "action": "direct",
           "reasons": []
         }
-      }
+      },
+      "quality": {
+        "mode": "original"
+      },
+      "container": "mp4"
     }
   }
 }

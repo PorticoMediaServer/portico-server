@@ -46,17 +46,18 @@ func isChannel(r row) bool { return r.kind == "live" || r.kind == "channel" }
 // LinearView is a channel presentation's linear clock (spec §11): positions are
 // milliseconds on the channel's timeline, whose origin is originMs.
 type LinearView struct {
-	Name                string               `json:"name"`
-	Programme           *LinearProgrammeView `json:"programme,omitempty"`
-	Next                *LinearProgrammeView `json:"next,omitempty"`
-	OriginMs            int64                `json:"originMs"`
-	WindowStartMs       int64                `json:"windowStartMs"`
-	WindowEndMs         int64                `json:"windowEndMs"`
-	LiveEdgeMs          int64                `json:"liveEdgeMs"`
-	State               string               `json:"state"`
-	ErrorCode           string               `json:"errorCode,omitempty"`
-	Seek                *LinearSeekView      `json:"seek,omitempty"`
-	ConfirmedPositionMs *int64               `json:"confirmedPositionMs,omitempty"`
+	ReservationRequiredAtMS *int64               `json:"reservationRequiredAtMs,omitempty"`
+	Name                    string               `json:"name"`
+	Programme               *LinearProgrammeView `json:"programme,omitempty"`
+	Next                    *LinearProgrammeView `json:"next,omitempty"`
+	OriginMs                int64                `json:"originMs"`
+	WindowStartMs           int64                `json:"windowStartMs"`
+	WindowEndMs             int64                `json:"windowEndMs"`
+	LiveEdgeMs              int64                `json:"liveEdgeMs"`
+	State                   string               `json:"state"`
+	ErrorCode               string               `json:"errorCode,omitempty"`
+	Seek                    *LinearSeekView      `json:"seek,omitempty"`
+	ConfirmedPositionMs     *int64               `json:"confirmedPositionMs,omitempty"`
 }
 type LinearProgrammeView struct {
 	ID      string `json:"id"`
@@ -112,16 +113,11 @@ func (s *Service) channelReference(ctx context.Context, channelID, generation st
 	return ref, kind, nil
 }
 
-// deviceProfile is the device's planner profile (its v1 capabilities), which
-// the linear plan follows; the baseline when it has none.
+// deviceProfile is the native engine of the device's capability document,
+// which the linear plan follows: live channels always play in the platform's
+// own player.
 func (s *Service) deviceProfile(ctx context.Context, device string) playback.ClientProfile {
-	var raw string
-	if s.DB.QueryRowContext(ctx, `SELECT planner_profile FROM playback_device_capabilities WHERE device_id=?`, device).Scan(&raw) == nil && raw != "" {
-		if p, err := playback.ParseClientProfile([]byte(raw)); err == nil {
-			return p
-		}
-	}
-	return playback.BaselineClientProfile()
+	return s.deviceDocument(ctx, device).Profile(playback.EngineNative)
 }
 
 func (s *Service) startChannel(ctx context.Context, c Caller, key, startDigest string, req StartRequest) (SessionView, bool, error) {
@@ -190,7 +186,7 @@ func (s *Service) startChannel(ctx context.Context, c Caller, key, startDigest s
 	}
 	err = dbwork.WithWriteTxContext(ctx, s.DB, dbwork.ClassPlaybackStart, func(ctx context.Context, tx *sql.Tx) error {
 		if ref.Kind == "live-source" && s.TunerAvailable != nil {
-			ok, err := s.TunerAvailable(ctx, tx, ref.SourceID, old.id)
+			ok, err := s.TunerAvailable(ctx, tx, ref.SourceID, ref.ChannelID, old.id)
 			if err != nil {
 				return err
 			}
@@ -263,7 +259,7 @@ func (s *Service) channelPresentation(r row) Presentation {
 	gen, _ := strconv.Atoi(st.Media.BufferGeneration)
 	p.Generation, p.URL = gen, st.Media.StreamURL
 	ms := func(us string) int64 { n, _ := strconv.ParseInt(us, 10, 64); return n / 1000 }
-	l := &LinearView{Name: st.Name, OriginMs: st.Media.OriginMS, WindowStartMs: ms(st.Media.WindowStartUS), WindowEndMs: ms(st.Media.WindowEndUS), LiveEdgeMs: ms(st.Media.LiveEdgeUS), State: st.Media.State, ErrorCode: st.Media.ErrorCode}
+	l := &LinearView{ReservationRequiredAtMS: st.Media.ReservationRequiredAtMS, Name: st.Name, OriginMs: st.Media.OriginMS, WindowStartMs: ms(st.Media.WindowStartUS), WindowEndMs: ms(st.Media.WindowEndUS), LiveEdgeMs: ms(st.Media.LiveEdgeUS), State: st.Media.State, ErrorCode: st.Media.ErrorCode}
 	if l.State == "" {
 		l.State = "preparing"
 	}

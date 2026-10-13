@@ -21,9 +21,17 @@ func TestV1ChoiceAppliesRemoteCapsOnlyRemotely(t *testing.T) {
 	if got := server.target(ResolvedDeliveryPolicy{}, cfg); got.MaxVideoBitrateBPS != 4_000_000 {
 		t.Fatalf("server-wide remote limit: %d", got.MaxVideoBitrateBPS)
 	}
-	cellular := V1Choice{}
-	if got := cellular.target(ResolvedDeliveryPolicy{NetworkClass: NetworkCellular}, cfg); got.MaxVideoBitrateBPS != 4_000_000 {
-		t.Fatalf("cellular is remote: %d", got.MaxVideoBitrateBPS)
+	away := V1Choice{}
+	if got := away.target(ResolvedDeliveryPolicy{NetworkClass: NetworkRemote}, cfg); got.MaxVideoBitrateBPS != 4_000_000 {
+		t.Fatalf("a policy the edge called remote is remote: %d", got.MaxVideoBitrateBPS)
+	}
+	// A named quality is its ceilings, and the plan keeps its name.
+	fixed, ok := namedQualityChoice("720p")
+	if got := fixed.target(ResolvedDeliveryPolicy{NetworkClass: NetworkLocal}, cfg); !ok || got.RungID != "720p" || got.MaxVideoHeight != 720 || got.MaxVideoBitrateBPS != 4_000_000 || got.Kind != QualityAutomatic {
+		t.Fatalf("fixed quality %+v", got)
+	}
+	if _, ok = namedQualityChoice("900p"); ok {
+		t.Fatal("an unpublished quality was accepted")
 	}
 	limited := V1Choice{Limit: true, MaxVideoBitrateBPS: 1_000_000, MaxVideoHeight: 720}
 	if got := limited.target(ResolvedDeliveryPolicy{NetworkClass: NetworkLocal}, cfg); got.MaxVideoBitrateBPS != 1_000_000 || got.MaxVideoHeight != 720 || got.Kind != QualityAutomatic {

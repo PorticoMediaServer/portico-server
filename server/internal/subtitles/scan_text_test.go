@@ -24,7 +24,7 @@ func (b *blockedScanExtractor) Extract(ctx context.Context, item, source string,
 	body, err := CanonicalAsset([]byte(plainSubtitle), nil, "srt", 60_000_000)
 	return body, "scan-evidence", err
 }
-func TestScanTextExtractionReleasesWriteGate(t *testing.T) {
+func TestScanTextDiscoveryDoesNotExtractOrHoldWriteGate(t *testing.T) {
 	f := newSubtitleFixture(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -61,12 +61,19 @@ func TestScanTextExtractionReleasesWriteGate(t *testing.T) {
 		}
 	}()
 	select {
-	case <-extractor.entered:
 	case err := <-done:
-		t.Fatalf("import never extracted: %v", err)
+		if err != nil {
+			t.Fatal(err)
+		}
 	case <-ctx.Done():
 		t.Fatal(ctx.Err())
 	}
+	select {
+	case <-extractor.entered:
+		t.Fatal("scan extracted a track")
+	default:
+	}
+
 	gate := dbwork.WriteGate()
 	before := gate.Stats()
 	if before.Active {
@@ -99,15 +106,6 @@ func TestScanTextExtractionReleasesWriteGate(t *testing.T) {
 	stalled := gate.Stats()
 	if stalled.Active || stalled.HeldMilli != afterWrite.HeldMilli || stalled.MaxHeldMilli != afterWrite.MaxHeldMilli {
 		t.Fatalf("extractor accumulated write hold: %+v -> %+v", afterWrite, stalled)
-	}
-	close(extractor.release)
-	select {
-	case err := <-done:
-		if err != nil {
-			t.Fatal(err)
-		}
-	case <-ctx.Done():
-		t.Fatal(ctx.Err())
 	}
 	var count int
 	if err = f.db.QueryRowContext(ctx, "SELECT count(*) FROM subtitle_resources WHERE scope='shared'").Scan(&count); err != nil || count != 1 {

@@ -3,7 +3,7 @@ import {certificateDate, certificateSummary, retryCertificate, type CertificateA
 import type {ConnectivityStatus} from '@core/server-administration.ts';
 import type {ConnectivityDraft} from '@core/server-admin/server-forms.ts';
 import type {HttpLocalApi} from '@core/index.ts';
-import {addressKind, certificateBadge, connectivityWarning, listedAddresses, mappingProblem, remoteStatusLine} from '@core/server-admin/status-words.ts';
+import {addressKind, certificateBadge, connectionLine, connectivityWarning, listedAddresses, mappingProblem, ownCertificateLine, remoteStatusLine} from '@core/server-admin/status-words.ts';
 import {sentence, useAction} from '../../admin/console';
 import {useSession} from '../../app/session';
 import {useI18n} from '../../app/i18n';
@@ -70,4 +70,27 @@ export function AddressesRow() {
       {remote?.mappings.length ? <SettingsRow label={t('web.network.mappings')} stack start control={<KeyValue rows={remote.mappings.map(m => [m.protocol.toUpperCase(), `${sentence(m.state)} · ${t('server.address.port', {port: m.externalPort})}${m.errorCode ? ` · ${mappingProblem(t, m.errorCode)}` : ''}`])} />} /> : null}
     </>
   );
+}
+
+/**
+ * Home network › where the owner is connected from right now and whether that counts as home:
+ * the quickest check that the list below says what was meant. It reads the saved list, so an
+ * edit shows here after Save.
+ */
+export function ConnectionRow() {
+  const {t} = useI18n();
+  const status = useServerForm<ConnectivityDraft, ConnectivityStatus>('connectivity').state.status;
+  const line = connectionLine(t, status?.connection);
+  if (!line || !status) return null;
+  return <SettingsRow label={t('settings.server.yourConnection')} help={status.connection.plainHttpOutsideHome ? t('web.connectivity.httpOutsideHome') : undefined} state={line.text} control={<Badge tone={status.connection.remote ? 'neutral' : 'healthy'}>{t(status.connection.remote ? 'server.connection.badgeAway' : 'server.connection.badgeHome')}</Badge>} />;
+}
+
+/** Your own certificate › whether the server is using the files named below, and until when. */
+export function OwnCertificateStatusRow() {
+  const i18n = useI18n();
+  const {t} = i18n;
+  const status = useServerForm<ConnectivityDraft, ConnectivityStatus>('connectivity').state.status;
+  const line = ownCertificateLine(t, status?.tls.customCertificate, iso => i18n.date(iso));
+  if (!line) return null;
+  return <SettingsRow label={t('web.general.status')} control={<Status tone={line.tone}>{line.text}</Status>} />;
 }

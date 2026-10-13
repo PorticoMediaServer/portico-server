@@ -34,13 +34,7 @@ func adoptTree() error {
 		return err
 	}
 	limits := windows.JOBOBJECT_EXTENDED_LIMIT_INFORMATION{}
-	limits.BasicLimitInformation.LimitFlags = windows.JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE |
-		// Some CI and container runtimes already run the server inside a job of
-		// their own. Silent breakaway lets a child leave this one rather than
-		// failing to start at all, which is the right way round: a child that is
-		// not tracked is worse than nothing, a child that cannot start is worse
-		// than that.
-		windows.JOB_OBJECT_LIMIT_SILENT_BREAKAWAY_OK
+	limits.BasicLimitInformation.LimitFlags = windows.JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
 	if _, err = windows.SetInformationJobObject(job,
 		windows.JobObjectExtendedLimitInformation,
 		uintptr(unsafe.Pointer(&limits)),

@@ -1,6 +1,7 @@
 import {unreadableServerResponse} from './server-messages.ts';
 /** One server-owned show workspace; episode details and playback have separate scoped owners. */
 import {validateContentEntry,validateContentProjection,type ContentEntry,type ContentProjection,type ContentScope,type LibraryContentApi} from './library-content.ts';
+import {firstOfEach,keepReadable,noteSkipped,oneOfOr} from './tolerant.ts';
 export type ShowWorkspaceRoute=Readonly<{libraryId:string;showId?:string;seasonId?:string;episodeId?:string;selectedSeasonId?:string;group?:string}>;
 /** How the owner asked a show to be presented (Spec — Title Pages §4). A flat show (seasons hidden, or ranges) lists its episodes under groups, not seasons. */
 export type ShowSettings=Readonly<{hideSeasons:boolean;absoluteNumbering:boolean;ranges:boolean;newestFirst:boolean;revision:number}>;
@@ -24,7 +25,8 @@ const count=(v:unknown):v is number=>typeof v==='number'&&Number.isSafeInteger(v
 class Failure extends Error{code:string;retryable:boolean;constructor(code:string,message:string,retryable=false){super(message);this.code=code;this.retryable=retryable;}}
 function invalid():never{throw new Failure('invalid_show_workspace',unreadableServerResponse);}
 function arr(v:unknown,max:number):unknown[]{if(!Array.isArray(v)||v.length>max)invalid();return v;}
-function unique<T>(v:T[],key:(v:T)=>string):T[]{if(new Set(v.map(key)).size!==v.length)invalid();return v;}
+/** An optional fact of the show that could not be read was left out; an absent value is not counted. */
+function left(part:string,value:unknown):void{if(value!==undefined&&value!==null)noteSkipped('show-workspace',part);}
 const blankAnchor=():ShowWorkspaceAnchor=>Object.freeze({expandedEpisodeId:null,focusedEpisodeId:null,scrollOffset:0});
 function bound(v:ContentScope):ContentScope{if(!record(v)||!id(v.serverId)||!str(v.viewerId,1024)||!v.viewerId)throw new Error('A server and composed authority/account/profile scope is required.');return Object.freeze({serverId:v.serverId,viewerId:v.viewerId});}
 export function validateShowWorkspaceRoute(v:ShowWorkspaceRoute):ShowWorkspaceRoute{if(!record(v)||!id(v.libraryId)||!v.showId&&!v.seasonId&&!v.episodeId||v.group!==undefined&&!group(v.group)||v.group!==undefined&&v.selectedSeasonId!==undefined)throw new Error('Invalid show workspace target.');for(const k of Object.keys(v))if(!['libraryId','showId','seasonId','episodeId','selectedSeasonId','group'].includes(k))throw new Error('Unknown show workspace route field.');const result:{-readonly[K in keyof ShowWorkspaceRoute]:ShowWorkspaceRoute[K]}={libraryId:v.libraryId};for(const k of ['showId','seasonId','episodeId','selectedSeasonId'] as const)if(v[k]!==undefined){if(!id(v[k]))throw new Error('Invalid show workspace identifier.');result[k]=v[k];}if(v.group)result.group=v.group;return Object.freeze(result);}
@@ -32,9 +34,10 @@ function anchor(v:ShowWorkspaceAnchor):ShowWorkspaceAnchor{if(!record(v)||v.expa
 function cursor(v:unknown):string|null{if(v===null)return null;if(!str(v,4096)||!v)throw new Error('Invalid show workspace continuation.');return v;}
 function parse(raw:unknown,r:ShowWorkspaceRoute,s:ContentScope,pageSize:number,seasonSize:number,page:string|null):ShowWorkspaceData{
  if(!record(raw)||!record(raw.scope)||!record(raw.revision)||!record(raw.show)||!record(raw.selected))invalid();const x=raw.scope,rev=raw.revision,show=raw.show,selected=raw.selected;
- if(x.serverId!==s.serverId||x.libraryId!==r.libraryId||!id(x.viewerFence)||!count(rev.catalog)||!count(rev.viewer)||!id(show.id)||show.libraryId!==r.libraryId||r.showId!==undefined&&show.id!==r.showId||!str(show.title,2048)||!['tv','anime'].includes(show.libraryKind as string)||!str(show.providerMatchStatus,128))invalid();
- const parsedShow:{-readonly[K in keyof WorkspaceShow]:WorkspaceShow[K]}={id:show.id,libraryId:r.libraryId,title:show.title,libraryKind:show.libraryKind as 'tv'|'anime',providerMatchStatus:show.providerMatchStatus};
-  for(const k of ['posterUrl','backdropUrl'] as const)if(show[k]!==undefined){if(!str(show[k],4096)||!show[k].startsWith('/v1/metadata/show/'+encodeURIComponent(show.id)+'/art/'+(k==='posterUrl'?'poster':'backdrop')+'?'))invalid();parsedShow[k]=show[k];}
+ if(x.serverId!==s.serverId||x.libraryId!==r.libraryId||!id(x.viewerFence)||!count(rev.catalog)||!count(rev.viewer)||!id(show.id)||show.libraryId!==r.libraryId||r.showId!==undefined&&show.id!==r.showId||!str(show.title??'',2048)||!id(show.libraryKind)||!str(show.providerMatchStatus??'',128))invalid();
+ // The show, its library and its scope are exact. What the page is only drawn with is not: a kind of library this app does not know is drawn as TV, and an optional fact that cannot be read is left out.
+ const parsedShow:{-readonly[K in keyof WorkspaceShow]:WorkspaceShow[K]}={id:show.id,libraryId:r.libraryId,title:(show.title??'') as string,libraryKind:oneOfOr('show-workspace','show.libraryKind',show.libraryKind,['tv','anime'] as const,'tv'),providerMatchStatus:(show.providerMatchStatus??'') as string};
+  for(const k of ['posterUrl','backdropUrl'] as const){const v=show[k];if(str(v,4096)&&v.startsWith('/v1/metadata/show/'+encodeURIComponent(show.id)+'/art/'+(k==='posterUrl'?'poster':'backdrop')+'?'))parsedShow[k]=v;else left('show.'+k,v);}
   // M32: hero facts the server already sends (network, studio, content
   // rating, genres, country, original title, logo). Additive: older servers
   // omit them and the show still parses. A present-but-malformed value is
@@ -42,29 +45,34 @@ function parse(raw:unknown,r:ShowWorkspaceRoute,s:ContentScope,pageSize:number,s
   if(show.logoUrl!==undefined&&str(show.logoUrl,4096)&&show.logoUrl.startsWith('/v1/metadata/show/'+encodeURIComponent(show.id)+'/art/logo?'))parsedShow.logoUrl=show.logoUrl;
   for(const k of ['network','studio','contentRating','originalTitle','country'] as const)if(show[k]!==undefined&&str(show[k],256)&&show[k])parsedShow[k]=show[k];
   if(Array.isArray(show.genres)){const genres=(show.genres as unknown[]).filter(g=>str(g,128)&&g) as string[];if(genres.length)parsedShow.genres=Object.freeze(genres);}
- if(show.year!==undefined){if(!count(show.year))invalid();parsedShow.year=show.year;}
+ if(count(show.year))parsedShow.year=show.year;else left('show.year',show.year);
  // Show credits (cast, creators, writers): additive, read from the workspace's own list. A malformed row is dropped, never fatal.
  if(Array.isArray(raw.showCredits)){const credits:WorkspaceShowCredit[]=[];for(const c of (raw.showCredits as unknown[]).slice(0,500)){if(!record(c)||!str(c.name,512)||!c.name)continue;const credit:{-readonly[K in keyof WorkspaceShowCredit]:WorkspaceShowCredit[K]}={name:c.name,ordinal:count(c.ordinal)?c.ordinal as number:credits.length};if(str(c.id,256)&&c.id)credit.id=c.id;if(str(c.role,512)&&c.role)credit.role=c.role;if(str(c.department,128)&&c.department)credit.department=c.department;if(str(c.portraitUrl,4096)&&c.portraitUrl)credit.portraitUrl=c.portraitUrl;credits.push(Object.freeze(credit));}if(credits.length)parsedShow.credits=Object.freeze(credits);}
- if(show.overview!==undefined){if(typeof show.overview!=='string'||show.overview.length>65536||/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(show.overview))invalid();parsedShow.overview=show.overview;}
- for(const k of ['providerSourceUrl','providerObservedAt'] as const)if(show[k]!==undefined){if(!str(show[k],4096))invalid();if(k==='providerSourceUrl'&&show[k]){try{const u=new URL(show[k] as string);if(u.protocol!=='https:'||u.username||u.password||!['www.themoviedb.org','thetvdb.com','anilist.co'].includes(u.hostname))invalid();}catch{invalid();}}parsedShow[k]=show[k];}
+ if(typeof show.overview==='string'&&show.overview.length<=65536&&!/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(show.overview))parsedShow.overview=show.overview;else left('show.overview',show.overview);
+ for(const k of ['providerSourceUrl','providerObservedAt'] as const){const v=show[k];let ok=str(v,4096);if(ok&&k==='providerSourceUrl'&&v){try{const u=new URL(v as string);ok=u.protocol==='https:'&&!u.username&&!u.password&&['www.themoviedb.org','thetvdb.com','anilist.co'].includes(u.hostname);}catch{ok=false;}}if(ok)parsedShow[k]=v as string;else left('show.'+k,v);}
  if(selected.seasonId!==null&&!id(selected.seasonId)||selected.group!==undefined&&!group(selected.group)||selected.seasonId!==null&&selected.group!==undefined||selected.episodeId!==undefined&&!id(selected.episodeId))invalid();
  // Additive: a server without per-show settings sends none, and the show has the defaults.
  const st=record(raw.settings)?raw.settings:{};const settings:ShowSettings=Object.freeze({hideSeasons:st.hideSeasons===true,absoluteNumbering:st.absoluteNumbering===true,ranges:st.ranges===true,newestFirst:st.newestFirst===true,revision:count(st.revision)?st.revision:0});const flat=settings.hideSeasons||settings.ranges;
  // A flat show answers a link to one of its seasons with its own list.
  if(!flat&&(r.seasonId!==undefined&&selected.seasonId!==r.seasonId||r.selectedSeasonId!==undefined&&selected.seasonId!==r.selectedSeasonId)||r.group!==undefined&&selected.group!==r.group||r.episodeId!==selected.episodeId)invalid();
- const seasons=unique(arr(raw.seasons,seasonSize).map(v=>{if(!record(v)||!id(v.id)||v.showId!==show.id||!count(v.number)||!str(v.title,2048))invalid();return Object.freeze({id:v.id,showId:show.id as string,number:v.number,title:v.title});}),v=>v.id);
- if(!count(raw.seasonTotalCount)||raw.seasonTotalCount<seasons.length||!str(raw.nextSeasonCursor,4096)||raw.nextSeasonCursor!==''&&seasons.length===0)invalid();
- const groups=unique(arr(raw.groups,20000).map(v=>{if(!record(v)||!group(v.id)||!str(v.title,2048)||!count(v.count))invalid();return Object.freeze({id:v.id as string,title:v.title,count:v.count});}),v=>v.id);
+ // A season or group that cannot be read (or belongs to another show) is left out alone; a repeated one keeps its first appearance.
+ const seasons=firstOfEach('show-workspace','seasons',keepReadable('show-workspace','seasons',arr(raw.seasons,seasonSize),v=>{if(!record(v)||!id(v.id)||v.showId!==show.id||!count(v.number)||!str(v.title??'',2048))invalid();return Object.freeze({id:v.id,showId:show.id as string,number:v.number,title:(v.title??'') as string});}),v=>v.id);
+ if(!str(raw.nextSeasonCursor,4096)||raw.nextSeasonCursor!==''&&(raw.seasons as unknown[]).length===0)invalid();
+ // The season count is at least the seasons kept.
+ const seasonTotalCount=Math.max(count(raw.seasonTotalCount)?raw.seasonTotalCount:0,seasons.length);
+ const groups=firstOfEach('show-workspace','groups',keepReadable('show-workspace','groups',arr(raw.groups??[],20000),v=>{if(!record(v)||!group(v.id)||!str(v.title??'',2048))invalid();return Object.freeze({id:v.id as string,title:(v.title??'') as string,count:count(v.count)?v.count:0});}),v=>v.id);
  if(selected.group&&!groups.some(g=>g.id===selected.group))invalid();
- const episodes=validateContentProjection(raw.episodes,{libraryId:r.libraryId,view:selected.seasonId===null?'show':'season',entityId:selected.seasonId===null?show.id:selected.seasonId as string,sort:'episode',direction:'asc',category:'',q:''},s,pageSize);
+ let episodes=validateContentProjection(raw.episodes,{libraryId:r.libraryId,view:selected.seasonId===null?'show':'season',entityId:selected.seasonId===null?show.id:selected.seasonId as string,sort:'episode',direction:'asc',category:'',q:''},s,pageSize);
  if(episodes.scope.viewerFence!==x.viewerFence||episodes.scope.libraryKind!==show.libraryKind||episodes.revision.catalog!==rev.catalog||episodes.revision.viewer!==rev.viewer||episodes.sections.length>1||episodes.query.searchMode!=='none')invalid();
- const section=episodes.sections[0];if(section&&(section.type!=='list'||section.id!==(selected.seasonId===null?selected.group:'episodes')||section.entries.length>pageSize||section.entries.some(e=>e.kind!=='episode'||e.navigation?.view!=='item'||e.navigation.entityId!==e.id||e.playback!==undefined&&(e.available!==true||e.playback.itemId!==e.id))))invalid();
-  if(r.episodeId&&!page&&section?.entries[0]?.id!==r.episodeId)invalid();if(selected.seasonId===null&&!selected.group&&(section||raw.seasonTotalCount!==0))invalid();
+ let section=episodes.sections[0];if(section&&(section.id!==(selected.seasonId===null?selected.group:'episodes')||section.entries.length>pageSize))invalid();
+ // A row that is not an episode of this page, or whose playback is not its own, is left out alone. The list is drawn as a list whatever layout the server names.
+ if(section){const kept=section.entries.filter(e=>e.kind==='episode'&&e.navigation?.view==='item'&&e.navigation.entityId===e.id&&(e.playback===undefined||e.available===true&&e.playback.itemId===e.id));if(kept.length!==section.entries.length||section.type!=='list'){noteSkipped('show-workspace','episodes',section.entries.length-kept.length);section=Object.freeze({...section,type:'list' as const,entries:Object.freeze(kept)});episodes=Object.freeze({...episodes,sections:Object.freeze([section])});}}
+  if(r.episodeId&&!page&&section?.entries[0]?.id!==r.episodeId)invalid();if(selected.seasonId===null&&!selected.group&&(section||seasonTotalCount!==0))invalid();
   // M32: the server's primary action (Resume SxEy / Play next episode /
   // Play S1E1). Additive: older servers omit it and screens fall back to
   // their bounded client rule. A malformed value is dropped, never fatal.
   let nextUp:ContentEntry|undefined;if(raw.nextUp!==undefined&&raw.nextUp!==null){try{const entry=validateContentEntry(raw.nextUp);if(entry.kind==='episode')nextUp=entry;}catch{nextUp=undefined;}}
-  return Object.freeze({scope:Object.freeze({serverId:s.serverId,libraryId:r.libraryId,viewerFence:x.viewerFence}),revision:Object.freeze({catalog:rev.catalog,viewer:rev.viewer}),show:Object.freeze(parsedShow),seasons:Object.freeze(seasons),seasonTotalCount:raw.seasonTotalCount,nextSeasonCursor:raw.nextSeasonCursor,groups:Object.freeze(groups),selected:Object.freeze({seasonId:selected.seasonId as string|null,...(selected.group?{group:selected.group as string}:{}),...(selected.episodeId?{episodeId:selected.episodeId as string}:{})}),episodes,...(nextUp?{nextUp}:{}),settings});
+  return Object.freeze({scope:Object.freeze({serverId:s.serverId,libraryId:r.libraryId,viewerFence:x.viewerFence}),revision:Object.freeze({catalog:rev.catalog,viewer:rev.viewer}),show:Object.freeze(parsedShow),seasons:Object.freeze(seasons),seasonTotalCount,nextSeasonCursor:raw.nextSeasonCursor,groups:Object.freeze(groups),selected:Object.freeze({seasonId:selected.seasonId as string|null,...(selected.group?{group:selected.group as string}:{}),...(selected.episodeId?{episodeId:selected.episodeId as string}:{})}),episodes,...(nextUp?{nextUp}:{}),settings});
 }
 type Operation={route:ShowWorkspaceRoute;cursor:string|null;history:(string|null)[];seasonCursor:string|null;seasonHistory:(string|null)[];anchor:ShowWorkspaceAnchor;pageAnchors:string[];fence:{revision:ShowWorkspaceData['revision'];viewerFence:string;allowViewerAdvance?:boolean;allowCatalogAdvance?:boolean}|null};
 export class ShowWorkspaceService{

@@ -40,11 +40,11 @@ func (s *Service) ChangeSubtitleDeliveryTx(ctx context.Context, tx *sql.Tx, p id
 	if ceilings, ok := replanCeilingsFrom(ctx); ok {
 		current = &ceilings
 	}
-	target, replanned, err := replanTarget(ctx, tx, session, old, QualityOffers(source.Video.Height, true, enabled, policy), policy, cfg, source.Video.Height, current, true)
+	target, replanned, err := replanTarget(old, cfg, current, true)
 	if err != nil {
 		return err
 	}
-	input := DeliveryInput{SourceID: source.ID, Source: &source, Container: source.Container, VideoCodec: source.Video.Codec, Duration: source.Duration, Height: source.Video.Height, Policy: policy, Target: target, Config: cfg, TranscodingEnabled: enabled, Hardware: s.selectHardware(ctx, cfg), BurnIn: resource != nil, Remote: source.Container == "strm"}
+	input := DeliveryInput{SourceID: source.ID, Source: &source, Container: source.Container, VideoCodec: source.Video.Codec, Duration: source.Duration, Height: source.Video.Height, Policy: policy, Target: target, Config: cfg, TranscodingEnabled: enabled, Hardware: s.selectHardware(ctx, cfg), BurnIn: resource != nil, Remote: source.Container == "strm", Engine: old.Engine}
 	var explicit *int
 	if old.AudioStream >= 0 {
 		explicit = &old.AudioStream
@@ -117,67 +117,43 @@ func replanCeilingsFrom(ctx context.Context) (ReplanCeilings, bool) {
 
 const reachLocal, reachRemote = "local", "remote"
 
-// keptTarget is what a re-planned session stores for its next re-plan: a v1
-// presentation its narrowed target, and any session the reach admission saw.
+// keptTarget is what a re-planned presentation stores for its next re-plan:
+// its narrowed target and the reach admission saw.
 type keptTarget struct {
 	target *QualityTarget
 	reach  string
 }
 
-// replanTarget is the target a session's stored plan is planned under again:
-// a subtitle burned in or turned off, a copied stream that has to be converted
-// after all.
+// replanTarget is the target a presentation's stored plan is planned under
+// again: a subtitle burned in or turned off, a copied stream that has to be
+// converted after all.
 //
 // A request brings what its caller is allowed right now (current): admission's
 // view of the connection and the member's ceiling there. One that brings none
-// is refused, whatever kind of session it names. The conversion fallback has
-// no request; its current is what fallbackCeilings read for the session.
+// is refused. The conversion fallback has no request; its current is what
+// fallbackCeilings read for the presentation.
 //
-// A v1 presentation is planned under the ceilings it was last planned with
-// (the viewer's limit, the member's remote cap, the owner's), narrowed by what
-// applies now, and keeps the result: they only ever come down. The owner's
-// ceilings apply as they are now; the remote ones do when admission has called
-// this presentation's connection remote, at its start, at an earlier re-plan
-// or for this request, or when that was never recorded. A v1 presentation
-// stored before plans kept their ceilings is refused: what it started under
-// cannot be recovered, and no ceiling is not an answer.
-//
-// A legacy session names a published rung, as it always has, and that rung's
-// target is narrowed in the same way by what applies now. It keeps no target,
-// only the reach, so that a later fallback knows admission has seen it remote.
-func replanTarget(ctx context.Context, q sourceQuery, session string, old *DeliveryPlan, rungs []QualityRung, policy ResolvedDeliveryPolicy, cfg DeliveryConfiguration, height int, current *ReplanCeilings, request bool) (QualityTarget, keptTarget, error) {
-	if request && current == nil {
+// A presentation is planned under the ceilings it was last planned with (the
+// quality the viewer chose, the member's remote cap, the owner's), narrowed by
+// what applies now, and keeps the result: they only ever come down. The
+// owner's ceilings apply as they are now; the remote ones do when admission
+// has called this presentation's connection remote, at its start, at an
+// earlier re-plan or for this request, or when that was never recorded. A plan
+// stored without its ceilings is refused: what it started under cannot be
+// recovered, and no ceiling is not an answer.
+func replanTarget(old *DeliveryPlan, cfg DeliveryConfiguration, current *ReplanCeilings, request bool) (QualityTarget, keptTarget, error) {
+	if request && current == nil || old.Target == nil {
 		return QualityTarget{}, keptTarget{}, ErrQualityUnavailable
 	}
-	if old.Target != nil {
-		remote, member := old.TargetReach != reachLocal, 0
-		if current != nil {
-			remote, member = remote || current.Remote, current.MaxVideoBitrateBPS
-		}
-		target, reach := narrowTarget(*old.Target, remote, member, cfg), reachLocal
-		if remote {
-			reach = reachRemote
-		}
-		return target, keptTarget{&target, reach}, nil
+	remote, member := old.TargetReach != reachLocal, 0
+	if current != nil {
+		remote, member = remote || current.Remote, current.MaxVideoBitrateBPS
 	}
-	var v1 bool
-	if err := q.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM playback_v1_sessions WHERE media_session_id=?) OR EXISTS(SELECT 1 FROM playback_v1_prepared WHERE media_session_id=?)`, session, session).Scan(&v1); err != nil {
-		return QualityTarget{}, keptTarget{}, err
-	}
-	rung, ok := SelectedRung(rungs, old.QualityID)
-	if v1 || !ok {
-		return QualityTarget{}, keptTarget{}, ErrQualityUnavailable
-	}
-	target := rung.Target(policy, height)
-	if current == nil {
-		// The fallback of a legacy session no request has shown to be remote.
-		return target, keptTarget{nil, old.TargetReach}, nil
-	}
-	remote, reach := old.TargetReach == reachRemote || current.Remote, reachLocal
+	target, reach := narrowTarget(*old.Target, remote, member, cfg), reachLocal
 	if remote {
 		reach = reachRemote
 	}
-	return narrowTarget(target, remote, current.MaxVideoBitrateBPS, cfg), keptTarget{nil, reach}, nil
+	return target, keptTarget{&target, reach}, nil
 }
 
 // narrowTarget brings a stored target down to what applies now: the member's

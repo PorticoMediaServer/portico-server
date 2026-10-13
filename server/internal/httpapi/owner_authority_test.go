@@ -61,6 +61,7 @@ func TestHostedOwnerCanReadAdministrationButMemberCannot(t *testing.T) {
 		t.Run(role, func(t *testing.T) {
 			d, session, p := hostedAdministrationFixture(t, role)
 			mux := http.NewServeMux()
+			d.foundationRoutes(mux)
 			d.consoleRoutes(mux)
 			d.operationsRoutes(mux)
 			for _, path := range []string{"/v1/admin/console/settings", "/v1/admin/operations/database"} {
@@ -147,6 +148,7 @@ func TestHostedOwnerLateRevocationDropsReadResponse(t *testing.T) {
 func TestHostedOwnerSettingsChangePersistsAndDowngradeBlocksFurtherWrites(t *testing.T) {
 	d, session, _ := hostedAdministrationFixture(t, "owner")
 	mux := http.NewServeMux()
+	d.foundationRoutes(mux)
 	d.consoleRoutes(mux)
 	var read struct {
 		Data operations.SettingsDocument `json:"data"`
@@ -162,6 +164,7 @@ func TestHostedOwnerSettingsChangePersistsAndDowngradeBlocksFurtherWrites(t *tes
 		body, _ := json.Marshal(change)
 		r := httptest.NewRequest("PATCH", "/v1/admin/console/settings", strings.NewReader(string(body)))
 		r.Header.Set("Authorization", "Bearer "+session.AccessToken)
+		r.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
 		mux.ServeHTTP(w, r)
 		return w
@@ -176,7 +179,7 @@ func TestHostedOwnerSettingsChangePersistsAndDowngradeBlocksFurtherWrites(t *tes
 	if _, err := d.DB.Exec(`UPDATE policy SET payload=json_set(payload,'$.members[0].role','member')`); err != nil {
 		t.Fatal(err)
 	}
-	if w = apply(); w.Code != 401 {
+	if w = apply(); w.Code != 403 {
 		t.Fatal("downgraded owner wrote settings", w.Code, w.Body.String())
 	}
 }

@@ -135,3 +135,30 @@ func TestResolvePairSharesVerifiedBundleAndHonorsProbeOverride(t *testing.T) {
 		t.Fatal("invalid bundle fell through to executable paths", ffmpeg, probe)
 	}
 }
+
+func TestConfiguredOwnerToolsReachLazyConsumers(t *testing.T) {
+	before := activePair.Load()
+	defer activePair.Store(before)
+	root := t.TempDir()
+	ffmpeg, ffprobe := filepath.Join(root, Name("ffmpeg")), filepath.Join(root, Name("ffprobe"))
+	for _, path := range []string{ffmpeg, ffprobe} {
+		if err := os.WriteFile(path, []byte("owner fixture"), 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := ConfigurePair(ffmpeg, ffprobe); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PORTICO_FFMPEG", "/unused/override")
+	got, probe := ResolvePair()
+	if got != ffmpeg || probe != ffprobe {
+		t.Fatal(got, probe)
+	}
+	if err := ConfigurePair(root, ffprobe); err == nil {
+		t.Fatal("accepted directory as executable")
+	}
+	got, probe = ResolvePair()
+	if got != ffmpeg || probe != ffprobe {
+		t.Fatal("invalid candidate replaced qualified pair")
+	}
+}

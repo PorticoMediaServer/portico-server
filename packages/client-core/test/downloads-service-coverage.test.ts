@@ -5,6 +5,7 @@ import {DownloadsService} from '../src/downloads-service.ts';
 const sha = 'a'.repeat(64);
 const preparation = (over: Record<string, unknown> = {}): any => ({
   id: 'prep', itemId: 'item', libraryId: 'lib', profileId: 'profile', quality: '1080p', origin: 'item',
+  title: {kind: 'movie', title: 'Film', onServer: true},
   batchId: 'batch', state: 'ready', reason: '',
   artifact: {kind: 'prepared', ref: 'version', sha256: sha, bytes: 4096, estimated: false, container: 'mp4', contentType: 'video/mp4', fileName: 'prep.mp4'},
   progress: {bytesDone: 4096, bytesTotal: 4096, bytesTotalEstimated: false, percent: 100, etaSeconds: null},
@@ -23,7 +24,7 @@ const optionsDoc = {
 };
 const grantDoc = {
   preparationId: 'prep', itemId: 'item', url: '/v1/downloads/artifacts/tok-1', token: 'tok-1',
-  issuedAt: '2026-09-17T00:00:00Z', expiresAt: '2026-09-17T00:10:00Z', replayWindowSeconds: 600,
+  issuedAt: '2026-09-17T00:00:00Z', expiresAt: '2026-09-17T00:10:00Z', renewAfterSeconds: 600, renewed: false,
   artifact: {kind: 'prepared', ref: 'version', sha256: sha, bytes: 4096, estimated: false, container: 'mp4', contentType: 'video/mp4', fileName: 'prep.mp4'},
 };
 const usageDoc = {profileId: 'profile', profileBytes: 0, profileCount: 0, serverBytes: 0, serverCount: 0, distinctArtifactBytes: 0, maxPreparedBytes: 0, remainingBytes: null, retentionDays: 7, profiles: []};
@@ -83,8 +84,9 @@ test('a grant is asked for at the moment of saving; reasons read as sentences', 
   const s = server(), service = new DownloadsService(s.api, () => 'op-g', 10000);
   const grant = await service.grant(preparation());
   assert.equal(grant.token, 'tok-1');
+  assert.equal(grant.renewAfterSeconds, 600);
   const sent = s.calls.find((c) => c.path.endsWith('/grant'))!;
-  assert.equal(sent.body, (sent.body as {operationId: string}).operationId ? sent.body : sent.body);
+  assert.deepEqual(sent.body, {operationId: 'op-g'});
   assert.equal(service.reason(preparation()), '');
   assert.match(service.reason(preparation({reason: 'storage_full'})), /./);
   service.dispose();

@@ -138,7 +138,7 @@ func (s *Service) SubmitContainer(ctx context.Context, p identity.Principal, r C
 		if !errors.Is(e, sql.ErrNoRows) {
 			return e
 		}
-		fence, e := requestFence(ctx, tx, p, r.Target, visible, bound)
+		fence, e := requestFence(ctx, tx, p, r.Target, r.Policy.Episodes, visible, bound)
 		if e != nil {
 			return e
 		}
@@ -214,8 +214,17 @@ func requestTargetPublic(ctx context.Context, tx *sql.Tx, kind string, id int64)
 	return public, e
 }
 
+// captureRestarts is how many times a selection that changed while it was being
+// read is read again from the start before the request carries on regardless.
+const captureRestarts = 3
+
 // Fence only revisions and resource authority, never a materialized member list.
-func requestFence(ctx context.Context, tx *sql.Tx, p identity.Principal, t ContainerTarget, visible string, args []any) (string, error) {
+//
+// The viewer's own state belongs in the fence only when the selection depends
+// on it. "Everything in this show" is the same list whatever the viewer has
+// watched, so a request for all of it is not disturbed by the viewer watching
+// something while it is read.
+func requestFence(ctx context.Context, tx *sql.Tx, p identity.Principal, t ContainerTarget, policy, visible string, args []any) (string, error) {
 	parts := []any{visible, args}
 	libraryWhere := ""
 	libraries := []any{}
@@ -255,6 +264,9 @@ func requestFence(ctx context.Context, tx *sql.Tx, p identity.Principal, t Conta
 		var cat, personal int64
 		if e = rows.Scan(&lib, &cat, &personal); e != nil {
 			return "", e
+		}
+		if policy == "all" {
+			personal = 0
 		}
 		parts = append(parts, []any{lib, cat, personal})
 	}
@@ -312,8 +324,8 @@ func (s *Service) advanceRequest(ctx context.Context, id string) error {
 		var raw, device, quality, state, fence, key, after, policy string
 		var target ContainerTarget
 		var targetEntity int64
-		var total, admitted, keep int
-		e := tx.QueryRowContext(ctx, `SELECT principal,device_id,target_kind,target_id,quality,episodes,keep_next,state,selection_fence,cursor_key,cursor_id,total,admitted FROM download_requests WHERE id=?`, id).Scan(&raw, &device, &target.Kind, &targetEntity, &quality, &policy, &keep, &state, &fence, &key, &after, &total, &admitted)
+		var total, admitted, keep, restarts int
+		e := tx.QueryRowContext(ctx, `SELECT principal,device_id,target_kind,target_id,quality,episodes,keep_next,state,selection_fence,cursor_key,cursor_id,total,admitted,restarts FROM download_requests WHERE id=?`, id).Scan(&raw, &device, &target.Kind, &targetEntity, &quality, &policy, &keep, &state, &fence, &key, &after, &total, &admitted, &restarts)
 		if e != nil {
 			return e
 		}
@@ -342,7 +354,7 @@ func (s *Service) advanceRequest(ctx context.Context, id string) error {
 		if e != nil {
 			return e
 		}
-		current, e := requestFence(ctx, tx, p, target, visible, args)
+		current, e := requestFence(ctx, tx, p, target, policy, visible, args)
 		if errors.Is(e, ErrNotFound) {
 			return fail("target_not_found")
 		}
@@ -351,7 +363,25 @@ func (s *Service) advanceRequest(ctx context.Context, id string) error {
 		}
 		if state == "capturing" {
 			if current != fence {
-				return fail("selection_changed")
+				// The library, or the viewer's state in it, moved while the
+				// selection was being read: a scan added a file somewhere, the
+				// viewer finished an episode. Nothing has been admitted yet, so
+				// the reading simply starts again against the library as it is
+				// now. A library that will not hold still (a long scan) is read
+				// through anyway after a few tries: the walk is in a stable
+				// order, every member is checked again when it is admitted, and
+				// a download that never starts is worse than one that misses a
+				// file added a second ago.
+				if restarts < captureRestarts {
+					if _, e = tx.ExecContext(ctx, `DELETE FROM download_request_items WHERE request_id=?`, id); e != nil {
+						return e
+					}
+					_, e = tx.ExecContext(ctx, `UPDATE download_requests SET selection_fence=?,cursor_key='',cursor_id='',total=0,restarts=restarts+1,updated_ms=? WHERE id=?`, current, s.millis(), id)
+					return e
+				}
+				if _, e = tx.ExecContext(ctx, `UPDATE download_requests SET selection_fence=? WHERE id=?`, current, id); e != nil {
+					return e
+				}
 			}
 			query, bound := requestSelection(target)
 			query += ` AND (` + visible + `) AND NOT EXISTS(SELECT 1 FROM dvr_catalog_retirements d WHERE d.item_id=i.id)`
@@ -393,8 +423,14 @@ func (s *Service) advanceRequest(ctx context.Context, id string) error {
 				if e != nil {
 					return e
 				}
-				if _, e = tx.ExecContext(ctx, `INSERT INTO download_request_items(request_id,ordinal,item_id) VALUES(?,?,?)`, id, total, entity); e != nil {
+				// A member the walk meets twice (the list shifted under it) is
+				// kept once.
+				result, e := tx.ExecContext(ctx, `INSERT OR IGNORE INTO download_request_items(request_id,ordinal,item_id) VALUES(?,?,?)`, id, total, entity)
+				if e != nil {
 					return e
+				}
+				if added, _ := result.RowsAffected(); added == 0 {
+					total--
 				}
 				key, after = m.key, m.id
 			}
@@ -461,10 +497,23 @@ func (s *Service) admitRequestItem(ctx context.Context, tx *sql.Tx, p identity.P
 	if e != nil {
 		return "", "", e
 	}
-	var id string
-	e = tx.QueryRowContext(ctx, `SELECT id FROM download_preparations WHERE profile_key=? AND item_id=? AND quality=? AND state IN('queued','running','ready','paused','failed')`, operations.ViewerKey(p), entity, quality).Scan(&id)
+	key := operations.ViewerKey(p)
+	now := s.millis()
+	if e = retireStrays(ctx, tx, key, entity, item, now); e != nil {
+		return "", "", e
+	}
+	existing, e := readPreparation(tx.QueryRowContext(ctx, `SELECT `+preparationColumns+` FROM download_preparations WHERE profile_key=? AND item_id=? AND quality=? AND state IN('queued','running','ready','paused','failed')`, key, entity, quality))
 	if e == nil {
-		return id, "", nil
+		// Asking for the whole season again is asking for the episode that
+		// failed last time to be tried again.
+		if existing.State == StateFailed {
+			if e = s.restart(ctx, tx, p, existing, now); errors.Is(e, ErrStorageFull) {
+				return "", ReasonStorageFull, nil
+			} else if e != nil {
+				return "", "", e
+			}
+		}
+		return existing.ID, "", nil
 	}
 	if !errors.Is(e, sql.ErrNoRows) {
 		return "", "", e
@@ -476,21 +525,112 @@ func (s *Service) admitRequestItem(ctx context.Context, tx *sql.Tx, p identity.P
 		}
 		return "", reason, nil
 	}
+	if reason := qualityReason(ctx, tx, quality, source); reason != "" {
+		return "", reason, nil
+	}
 	estimate, estimated := estimateBytes(quality, source)
-	if e = storageRoom(tx, estimate); errors.Is(e, ErrStorageFull) {
+	if e = storageRoom(tx, quality, estimate); errors.Is(e, ErrStorageFull) {
 		return "", ReasonStorageFull, nil
 	}
 	if e != nil {
 		return "", "", e
 	}
-	id = identity.Token()
-	_, e = tx.ExecContext(ctx, `INSERT INTO download_preparations(id,profile_key,authority,account_id,profile_id,item_id,library_id,quality,origin,batch_id,state,bytes_total,estimated,created_ms,updated_ms) VALUES(?,?,?,?,?,?,?,?,'container',?,'queued',?,?,?,?)`, id, operations.ViewerKey(p), p.Authority, p.AccountID, p.ProfileID, entity, source.Library, quality, batch, estimate, estimated, s.millis(), s.millis())
+	title, e := readTitle(ctx, tx, entity)
+	if e != nil {
+		return "", "", e
+	}
+	id := identity.Token()
+	_, e = tx.ExecContext(ctx, `INSERT INTO download_preparations(id,profile_key,authority,account_id,profile_id,item_id,item_public,library_id,title_json,quality,origin,batch_id,state,bytes_total,estimated,created_ms,updated_ms) VALUES(?,?,?,?,?,?,?,?,?,?,'container',?,'queued',?,?,?,?)`, id, key, p.Authority, p.AccountID, p.ProfileID, entity, item, source.Library, titleSnapshot(title), quality, batch, estimate, estimated, now, now)
 	if e != nil {
 		return "", "", e
 	}
 	raw, _ := json.Marshal(p)
 	_, e = tx.ExecContext(ctx, `INSERT INTO download_preparation_authority(preparation_id,principal,device_id) VALUES(?,?,?)`, id, string(raw), device)
 	return id, "", e
+}
+
+// RequestSummary is one whole-container request as a device lists it to find
+// the ones it started: after the app was closed, or signed in again, the
+// request is still running on the server and its members still have to be
+// brought to the device that asked for them.
+type RequestSummary struct {
+	RequestID string          `json:"requestId"`
+	State     string          `json:"state"`
+	Target    ContainerTarget `json:"target"`
+	Title     string          `json:"title"`
+	Quality   string          `json:"quality"`
+	CreatedAt string          `json:"createdAt"`
+}
+
+// Requests lists the viewer's whole-container requests made from one device,
+// newest first: every one still at work, and those that finished in the last
+// day (their last members may not have reached the device yet).
+func (s *Service) Requests(ctx context.Context, p identity.Principal, device string) ([]RequestSummary, error) {
+	out := []RequestSummary{}
+	if !validID.MatchString(device) {
+		return out, ErrInput
+	}
+	snap, e := dbwork.BeginSnapshot(ctx, s.db)
+	if e != nil {
+		return out, e
+	}
+	defer snap.Rollback()
+	tx := snap.Tx()
+	// The same check a new request passes: the device is one of this session's.
+	if _, _, e = s.requestAccess(ctx, tx, p, device); e != nil {
+		return out, e
+	}
+	recent := s.millis() - int64(24*60*60*1000)
+	rows, e := tx.QueryContext(ctx, `SELECT r.id,r.state,r.target_kind,r.target_id,r.quality,r.created_ms,
+ (r.state='complete' AND EXISTS(SELECT 1 FROM download_request_items m JOIN download_preparations d ON d.id=m.preparation_id WHERE m.request_id=r.id AND d.state IN('queued','running','paused')))
+ FROM download_requests r WHERE r.profile_key=? AND r.device_id=? AND (r.state IN('capturing','admitting') OR r.updated_ms>?) ORDER BY r.created_ms DESC,r.id DESC LIMIT 20`, operations.ViewerKey(p), device, recent)
+	if e != nil {
+		return out, e
+	}
+	type found struct {
+		RequestSummary
+		target    int64
+		preparing bool
+		created   int64
+	}
+	list := []found{}
+	for rows.Next() {
+		var f found
+		if e = rows.Scan(&f.RequestID, &f.State, &f.Target.Kind, &f.target, &f.Quality, &f.created, &f.preparing); e != nil {
+			rows.Close()
+			return out, e
+		}
+		list = append(list, f)
+	}
+	e = rows.Err()
+	rows.Close()
+	if e != nil {
+		return out, e
+	}
+	for _, f := range list {
+		// A container that has since been removed is not listed: there is
+		// nothing left of it to bring to the device.
+		public, err := requestTargetPublic(ctx, tx, f.Target.Kind, f.target)
+		if errors.Is(err, ErrNotFound) {
+			continue
+		}
+		if err != nil {
+			return out, err
+		}
+		f.Target.ID, f.CreatedAt = public, stamp(f.created)
+		if f.preparing {
+			f.State = "preparing"
+		}
+		query := `SELECT title FROM catalog_entities WHERE id=?`
+		if f.Target.Kind == "playlist" {
+			query = `SELECT name FROM catalog_playlists WHERE id=?`
+		}
+		if err = tx.QueryRowContext(ctx, query, f.target).Scan(&f.Title); err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return out, err
+		}
+		out = append(out, f.RequestSummary)
+	}
+	return out, snap.Commit()
 }
 
 // Counts and members are filtered by today's visibility, not a stored unrestricted total.

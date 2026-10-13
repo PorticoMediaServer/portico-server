@@ -45,7 +45,7 @@ func Restarts() uint64 { return restarts.Load() }
 // note records one contained panic.
 func note(name string, value any, stack []byte) {
 	panics.Add(1)
-	log.Printf("panic contained in %s: %v\n%s", name, value, stack)
+	log.Printf("error: [server] panic contained in %s: %v\n%s", name, value, stack)
 }
 
 // Recover is the deferred half of containment, for a goroutine that spells its

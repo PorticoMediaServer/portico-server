@@ -14,6 +14,7 @@ import (
 	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/persistence"
+	"runtime"
 )
 
 func newService(t *testing.T) (*Service, *sql.DB, string) {
@@ -395,9 +396,9 @@ func TestDVRTemplatesAndTunerConflicts(t *testing.T) {
 	}
 	// Three overlapping recordings against two tuners is one conflict.
 	list := []TunerAssignment{
-		{StartsAt: "2026-09-16T20:00:00Z", EndsAt: "2026-09-16T21:00:00Z"},
-		{StartsAt: "2026-09-16T20:30:00Z", EndsAt: "2026-09-16T21:30:00Z"},
-		{StartsAt: "2026-09-16T20:45:00Z", EndsAt: "2026-09-16T21:15:00Z"},
+		{ChannelID: "one", StartsAt: "2026-09-16T20:00:00Z", EndsAt: "2026-09-16T21:00:00Z"},
+		{ChannelID: "two", StartsAt: "2026-09-16T20:30:00Z", EndsAt: "2026-09-16T21:30:00Z"},
+		{ChannelID: "three", StartsAt: "2026-09-16T20:45:00Z", EndsAt: "2026-09-16T21:15:00Z"},
 	}
 	if excess := overlapExcess(list, 2); excess != 1 {
 		t.Fatalf("overlap excess %d, want 1", excess)
@@ -557,4 +558,50 @@ func base64Raw(value []byte) string {
 		out = append(out, alphabet[(bits<<(6-count))&63])
 	}
 	return string(out)
+}
+
+// A link inside a permitted folder that points outside it is not a way to list
+// what is outside: the folder that would actually be listed is checked, not
+// only the name that was asked for.
+func TestFolderPickerDoesNotFollowALinkOutOfThePermittedFolders(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("creating a symbolic link needs a privilege on Windows")
+	}
+	ctx := context.Background()
+	service, _, _ := newService(t)
+	base, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	media := filepath.Join(base, "media")
+	private := filepath.Join(base, "private")
+	for _, dir := range []string{filepath.Join(media, "Films"), filepath.Join(private, "Secrets")} {
+		if err := os.MkdirAll(dir, 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Symlink(private, filepath.Join(media, "escape")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(media, "Films"), filepath.Join(media, "inside")); err != nil {
+		t.Fatal(err)
+	}
+	service.PickerRoots = []string{media}
+	if _, err := service.Browse(ctx, media, "", 0, false); err != nil {
+		t.Fatalf("the permitted folder: %v", err)
+	}
+	// A link that stays inside is followed.
+	if page, err := service.Browse(ctx, filepath.Join(media, "inside"), "", 0, false); err != nil || page.Path != filepath.Join(media, "Films") {
+		t.Fatalf("a link that stays inside the permitted folder: %+v %v", page.Path, err)
+	}
+	// A link that leaves is refused, and so is anything under it.
+	for _, path := range []string{filepath.Join(media, "escape"), filepath.Join(media, "escape", "Secrets")} {
+		if page, err := service.Browse(ctx, path, "", 0, false); !errors.Is(err, ErrDenied) {
+			t.Fatalf("%s was listed through a link out of the permitted folder: %+v %v", path, page, err)
+		}
+	}
+	// The outside folder asked for directly is refused as before.
+	if _, err := service.Browse(ctx, private, "", 0, false); !errors.Is(err, ErrDenied) {
+		t.Fatalf("a folder outside the permitted ones: %v", err)
+	}
 }

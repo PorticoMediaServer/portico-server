@@ -96,12 +96,20 @@ func RatingSystems() []RatingSystem {
 	return out
 }
 
+// RatingTableVersion names the table below. It changes whenever an entry is
+// added, removed or given a different age, so a catalogue that classified its
+// rating spellings under an older table knows to classify them again.
+const RatingTableVersion = "2"
+
 // ratingKey folds a raw rating to its comparison key: upper case, with only
-// letters, digits and the +/- the bodies use, and without a leading "RATED".
+// letters, digits and "+", and without a leading "RATED". Punctuation and
+// spacing carry no meaning in any system the table knows ("PG-13", "PG 13" and
+// "PG13" are one rating, as are "TV-Y7-FV" and "TVY7FV", "MA 15+" and "MA15+",
+// "U/A" and "UA"), so they are dropped rather than matched spelling by spelling.
 func ratingKey(raw string) string {
 	var b strings.Builder
 	for _, r := range strings.ToUpper(raw) {
-		if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '+' || r == '-' {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '+' {
 			b.WriteRune(r)
 		}
 	}
@@ -123,6 +131,38 @@ func ratingKeys(raw string) []string {
 	return keys
 }
 
+// otherSpellings are ratings providers and NFO files carry that are not a code
+// of one of the pickable systems above: the same bodies written differently,
+// and the common ratings of bodies the pickers do not list. The country a
+// rating came from is not stored, so where two bodies use the same letters
+// for different ages the higher age is the one recorded: a title is hidden
+// from a child sooner than it is shown wrongly. A spelling whose meanings are
+// too far apart to choose between ("S" is all ages in Finland and specialist
+// audiences only in India) is left out and stays unrated.
+var otherSpellings = map[string]int{
+	// Explicitly not rated.
+	"NR": -1, "UNRATED": -1, "NOT RATED": -1, "UR": -1, "N/A": -1, "NONE": -1, "TBD": -1, "PENDING": -1,
+	// United States, older or alternative spellings.
+	"TV-Y7-FV": 7, "APPROVED": 0, "PASSED": 0, "ALL AGES": 0, "ALL": 0, "E": 0, "EC": 0, "K-A": 0, "GP": 8, "M/PG": 8,
+	"E10+": 10, "T": 13, "MA-17": 17, "AO": 18, "X": 18, "XXX": 18, "A": 18,
+	// Canada.
+	"14A": 14, "18A": 18,
+	// United Kingdom and Ireland.
+	"UC": 0, "R18": 18,
+	// Germany, written with the body's name.
+	"FSK 0": 0, "FSK 6": 6, "FSK 12": 12, "FSK 16": 16, "FSK 18": 18,
+	// Australia and New Zealand.
+	"M15+": 15, "R13": 13, "R15": 15, "R16": 16, "RP13": 13, "RP16": 16, "RP18": 18,
+	// Japan and Singapore.
+	"PG12": 12, "R15+": 15, "NC16": 16, "M18": 18, "R21": 21,
+	// India.
+	"UA": 12, "UA 7+": 7, "UA 13+": 13, "UA 16+": 16,
+	// Brazil, the Netherlands, Spain, Sweden.
+	"L": 0, "AL": 0, "APTA": 0, "BTL": 0,
+	// Italy and Mexico.
+	"VM14": 14, "VM18": 18, "AA": 0, "B15": 15,
+}
+
 var ratingIndex = func() map[string]int {
 	index := map[string]int{}
 	for _, system := range ratingSystems {
@@ -133,13 +173,13 @@ var ratingIndex = func() map[string]int {
 			}
 		}
 	}
-	// Spellings providers emit that are not a body's own code.
-	for key, age := range map[string]int{
-		"NR": -1, "UNRATED": -1, "NOTRATED": -1, "UR": -1, "NA": -1, "NONE": -1,
-		"TVY": 0, "TVY7FV": 7, "ALLAGES": 0, "E": 0, "EC": 0, "KA": 0, "A": 18, "AO": 18,
-		"FSK0": 0, "FSK6": 6, "FSK12": 12, "FSK16": 16, "FSK18": 18,
-		"M/PG": 8, "GP": 8, "M15+": 15, "R21": 18, "X": 18, "XXX": 18,
-	} {
+	for spelling, age := range otherSpellings {
+		key := ratingKey(spelling)
+		// A pickable system's own code keeps its age, unless the other
+		// spelling is the stricter of the two.
+		if known, seen := index[key]; seen && known >= age {
+			continue
+		}
 		index[key] = age
 	}
 	return index
@@ -169,7 +209,7 @@ func RatingAge(raw string) (int, bool) {
 }
 
 func bareAge(key string) (int, bool) {
-	digits := strings.TrimSuffix(strings.TrimPrefix(key, "-"), "+")
+	digits := strings.TrimSuffix(key, "+")
 	if digits == "" {
 		return 0, false
 	}
@@ -204,20 +244,4 @@ func RatingCeiling(system, code string) (int, bool) {
 		return 0, false
 	}
 	return 0, false
-}
-
-// KnownRatingKeys returns every normalised key whose admission age exceeds the
-// ceiling. The catalog predicate uses it rather than evaluating Go in SQL: the
-// vocabulary is small, fixed at build time and already indexed by value_key.
-func KnownRatingKeys(ceiling int) []string {
-	if ceiling < 0 {
-		return nil
-	}
-	out := []string{}
-	for key, age := range ratingIndex {
-		if age > ceiling {
-			out = append(out, key)
-		}
-	}
-	return out
 }

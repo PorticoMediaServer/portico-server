@@ -41,6 +41,7 @@ func New(db *sql.DB) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
+	cleanupGuideFiles()
 	return &Store{db: db, cursorKey: cursor}, nil
 }
 
@@ -168,6 +169,9 @@ func operationSource(ctx context.Context, tx *sql.Tx, requestID string) (Source,
 	if e != nil {
 		return v, ErrUnavailable
 	}
+	if e := readDiagnosticsTx(ctx, tx, &v); e != nil {
+		return v, e
+	}
 	return sourceProjection(v), nil
 }
 
@@ -206,10 +210,15 @@ func (s *Store) save(ctx context.Context, a Authority, in SourceInput, refresh b
 	if !opaque(in.ID) || !opaque(in.RequestID) {
 		return Source{}, ErrInvalid
 	}
+	if e := s.configureInput(ctx, &in); e != nil {
+		return Source{}, e
+	}
+	in.parseContext = ctx
 	data, e := parse(in)
 	if e != nil {
 		return Source{}, e
 	}
+	defer data.close()
 	hash := id(sourceHash(in), fmt.Sprint(refresh))
 	generation := ""
 	status := ""
@@ -256,7 +265,11 @@ func (s *Store) save(ctx context.Context, a Authority, in SourceInput, refresh b
 		if _, e = tx.ExecContext(ctx, `INSERT INTO live_source_identities VALUES(?) ON CONFLICT DO NOTHING`, in.ID); e != nil {
 			return ErrUnavailable
 		}
-		if _, e = tx.ExecContext(ctx, `INSERT INTO live_generations VALUES(?,?,?,?,?,?,?)`, generation, in.ID, in.Name, in.TunerCount, len(data.channels), len(data.programmes), time.Now().UTC().Format(time.RFC3339)); e != nil {
+		if _, e = tx.ExecContext(ctx, `INSERT INTO live_generations VALUES(?,?,?,?,?,?,?)`, generation, in.ID, in.Name, in.TunerCount, len(data.channels), data.programmeCount(), time.Now().UTC().Format(time.RFC3339)); e != nil {
+			return ErrUnavailable
+		}
+		examples, _ := json.Marshal(data.diagnostics.Examples)
+		if _, e = tx.ExecContext(ctx, `INSERT INTO live_import_diagnostics VALUES(?,?,?,?,?)`, generation, data.diagnostics.SkippedChannels, data.diagnostics.SkippedProgrammes, data.diagnostics.AdjustedProgrammes, string(examples)); e != nil {
 			return ErrUnavailable
 		}
 		if _, e = tx.ExecContext(ctx, `INSERT INTO live_operations(request_id,input_hash,source_id,generation_id,expected_revision,status) VALUES(?,?,?,?,?,'staging')`, in.RequestID, hash, in.ID, generation, in.ExpectedRevision); e != nil {
@@ -267,17 +280,9 @@ func (s *Store) save(ctx context.Context, a Authority, in SourceInput, refresh b
 	if e != nil || status == "published" {
 		return result, e
 	}
-	ranges := map[string][2]string{}
-	for _, p := range data.programmes {
-		v := ranges[p.channel]
-		start, end := p.start.Format(time.RFC3339), p.end.Format(time.RFC3339)
-		if v[0] == "" || start < v[0] {
-			v[0] = start
-		}
-		if end > v[1] {
-			v[1] = end
-		}
-		ranges[p.channel] = v
+	ranges, e := data.ranges()
+	if e != nil {
+		return Source{}, e
 	}
 	for begin := 0; begin < len(data.channels); begin += StageBatch {
 		end := min(begin+StageBatch, len(data.channels))
@@ -298,6 +303,18 @@ func (s *Store) save(ctx context.Context, a Authority, in SourceInput, refresh b
 				if _, e := tx.ExecContext(ctx, `INSERT INTO live_channel_versions VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(generation_id,channel_id) DO NOTHING`, generation, id(in.ID, c.key), c.key, c.name, c.number, c.group, i, sealed[i-begin], r[0], r[1]); e != nil {
 					return ErrUnavailable
 				}
+				if _, e := tx.ExecContext(ctx, `INSERT INTO live_channel_attributes VALUES(?,?,?,?,?,?) ON CONFLICT DO NOTHING`, generation, id(in.ID, c.key), c.country, c.catchup, c.catchupSource, c.catchupDays); e != nil {
+					return ErrUnavailable
+				}
+				if in.configuration != nil && !in.configuration.Logos.OverwriteExisting {
+					var previous string
+					e := tx.QueryRowContext(ctx, `SELECT l.url FROM live_sources s JOIN live_channel_logos l ON l.generation_id=s.active_generation WHERE s.id=? AND l.channel_id=?`, in.ID, id(in.ID, c.key)).Scan(&previous)
+					if e == nil {
+						c.logo = previous
+					} else if !errors.Is(e, sql.ErrNoRows) {
+						return e
+					}
+				}
 				if c.logo != "" {
 					if _, e := tx.ExecContext(ctx, `INSERT INTO live_channel_logos(generation_id,channel_id,url) VALUES(?,?,?) ON CONFLICT DO NOTHING`, generation, id(in.ID, c.key), c.logo); e != nil {
 						return ErrUnavailable
@@ -310,34 +327,33 @@ func (s *Store) save(ctx context.Context, a Authority, in SourceInput, refresh b
 			return Source{}, e
 		}
 	}
-	for begin := 0; begin < len(data.programmes); begin += StageBatch {
-		end := min(begin+StageBatch, len(data.programmes))
-		e = s.transaction(ctx, a, true, func(tx *sql.Tx) error {
+	e = data.batches(ctx, StageBatch, func(batch []parsedProgramme) error {
+		return s.transaction(ctx, a, true, func(tx *sql.Tx) error {
 			if e := staging(ctx, tx, in.RequestID); e != nil {
 				return e
 			}
-			for _, p := range data.programmes[begin:end] {
-				pid, err := programmeIdentityTx(ctx, tx, in.ID, generation, p)
-				if err != nil {
-					return err
+			for _, p := range batch {
+				pid, e := programmeIdentityTx(ctx, tx, in.ID, generation, p)
+				if e != nil {
+					return e
 				}
-				if _, e := tx.ExecContext(ctx, `INSERT INTO live_programmes VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(generation_id,id) DO NOTHING`, generation, pid, id(in.ID, p.channel), p.key, p.title, p.start.Format(time.RFC3339), p.end.Format(time.RFC3339), p.lineage); e != nil {
+				if _, e = tx.ExecContext(ctx, `INSERT INTO live_programmes VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(generation_id,id) DO NOTHING`, generation, pid, id(in.ID, p.channel), p.key, p.title, p.start.Format(time.RFC3339), p.end.Format(time.RFC3339), p.lineage); e != nil {
 					return ErrUnavailable
 				}
-				if _, e := tx.ExecContext(ctx, `INSERT INTO live_programme_metadata(generation_id,id,series_id,episode_id,new_evidence,description,facts) VALUES(?,?,?,?,?,?,?) ON CONFLICT DO NOTHING`, generation, pid, p.series, p.episode, p.newEvidence, p.description, factsOrEmpty(p.facts)); e != nil {
+				if _, e = tx.ExecContext(ctx, `INSERT INTO live_programme_metadata(generation_id,id,series_id,episode_id,new_evidence,description,facts) VALUES(?,?,?,?,?,?,?) ON CONFLICT DO NOTHING`, generation, pid, p.series, p.episode, p.newEvidence, p.description, factsOrEmpty(p.facts)); e != nil {
 					return ErrUnavailable
 				}
 				if p.icon != "" {
-					if _, e := tx.ExecContext(ctx, `INSERT INTO live_programme_icons(generation_id,programme_id,url) VALUES(?,?,?) ON CONFLICT DO NOTHING`, generation, pid, p.icon); e != nil {
+					if _, e = tx.ExecContext(ctx, `INSERT INTO live_programme_icons(generation_id,programme_id,url) VALUES(?,?,?) ON CONFLICT DO NOTHING`, generation, pid, p.icon); e != nil {
 						return ErrUnavailable
 					}
 				}
 			}
 			return nil
 		})
-		if e != nil {
-			return Source{}, e
-		}
+	})
+	if e != nil {
+		return Source{}, e
 	}
 	conflict := false
 	e = s.transaction(ctx, a, true, func(tx *sql.Tx) error {
@@ -354,7 +370,7 @@ func (s *Store) save(ctx context.Context, a Authority, in SourceInput, refresh b
 			return ErrConflict
 		}
 		var channels, programmes int
-		if e := tx.QueryRowContext(ctx, `SELECT (SELECT count(*) FROM live_channel_versions WHERE generation_id=?),(SELECT count(*) FROM live_programmes WHERE generation_id=?)`, generation, generation).Scan(&channels, &programmes); e != nil || channels != len(data.channels) || programmes != len(data.programmes) {
+		if e := tx.QueryRowContext(ctx, `SELECT (SELECT count(*) FROM live_channel_versions WHERE generation_id=?),(SELECT count(*) FROM live_programmes WHERE generation_id=?)`, generation, generation).Scan(&channels, &programmes); e != nil || channels != len(data.channels) || programmes != data.programmeCount() {
 			return ErrUnavailable
 		}
 		var rev int64
@@ -445,6 +461,12 @@ func (s *Store) Sources(ctx context.Context, a Authority) ([]Source, error) {
 		}
 		if rows.Err() != nil {
 			return ErrUnavailable
+		}
+		rows.Close()
+		for i := range out {
+			if e = readDiagnosticsTx(ctx, tx, &out[i]); e != nil {
+				return e
+			}
 		}
 		return nil
 	})
@@ -580,7 +602,11 @@ func (s *Store) Guide(ctx context.Context, a Authority, q GuideQuery) (Guide, er
 		}
 		channelFilter = string(raw)
 	}
-	binding := id(f, q.Viewer.Key(), fmt.Sprint(preferenceRevision), fmt.Sprint(q.FavoritesOnly), fmt.Sprint(q.IncludeHidden), q.Group, out.Start, out.End, q.Timezone, q.Search, q.SourceID, string(q.Kind), fmt.Sprint(q.Limit), strings.Join(keys, ","), channelFilter, fmt.Sprint(q.NoProgrammes))
+	var ownerRevision int64
+	if e = tx.QueryRowContext(ctx, `SELECT COALESCE(max(updated_ms),0) FROM admin_channel_numbers`).Scan(&ownerRevision); e != nil {
+		return out, ErrUnavailable
+	}
+	binding := id(fmt.Sprint(ownerRevision), f, q.Viewer.Key(), fmt.Sprint(preferenceRevision), fmt.Sprint(q.FavoritesOnly), fmt.Sprint(q.IncludeHidden), q.Group, out.Start, out.End, q.Timezone, q.Search, q.SourceID, string(q.Kind), fmt.Sprint(q.Limit), strings.Join(keys, ","), channelFilter, fmt.Sprint(q.NoProgrammes))
 	offset := 0
 	if q.Cursor != "" {
 		c, e := s.readCursor(q.Cursor)
@@ -589,7 +615,7 @@ func (s *Store) Guide(ctx context.Context, a Authority, q GuideQuery) (Guide, er
 		}
 		offset = c.Offset
 	}
-	rows, e = tx.QueryContext(ctx, `SELECT c.channel_id,s.id,c.name,c.number,c.group_name,s.active_generation,s.name,s.published_at,c.available_start,c.available_end,COALESCE(p.favorite,0),COALESCE(p.hidden,0),COALESCE(p.revision,0),COALESCE(r.state,'manual') FROM live_sources s JOIN live_channel_versions c ON c.generation_id=s.active_generation LEFT JOIN live_channel_preferences p ON p.authority=? AND p.account_id=? AND p.profile_id=? AND p.source_id=s.id AND p.channel_id=c.channel_id LEFT JOIN live_remote_configs r ON r.source_id=s.id WHERE s.state='active' AND (?='' OR s.id=?) AND (?='' OR instr(lower(c.name||' '||c.group_name),lower(?))>0) AND (?='' OR c.group_name=?) AND (?=0 OR COALESCE(p.favorite,0)=1) AND (?=1 OR COALESCE(p.hidden,0)=0) AND (?='' OR c.channel_id IN (SELECT value FROM json_each(?))) ORDER BY s.name,s.id,c.position,c.channel_id LIMIT ? OFFSET ?`, q.Viewer.Authority, q.Viewer.AccountID, q.Viewer.ProfileID, q.SourceID, q.SourceID, q.Search, q.Search, q.Group, q.Group, q.FavoritesOnly, q.IncludeHidden, channelFilter, channelFilter, GuideCandidateBatch+1, offset)
+	rows, e = tx.QueryContext(ctx, `SELECT c.channel_id,s.id,c.name,COALESCE(NULLIF(n.number,''),c.number),c.group_name,s.active_generation,s.name,s.published_at,c.available_start,c.available_end,COALESCE(p.favorite,0),COALESCE(p.hidden,0),COALESCE(p.revision,0),COALESCE(r.state,'manual') FROM live_sources s JOIN live_channel_versions c ON c.generation_id=s.active_generation LEFT JOIN admin_channel_numbers n ON n.source_id=s.id AND n.channel_id=c.channel_id LEFT JOIN live_channel_preferences p ON p.authority=? AND p.account_id=? AND p.profile_id=? AND p.source_id=s.id AND p.channel_id=c.channel_id LEFT JOIN live_remote_configs r ON r.source_id=s.id WHERE s.state='active' AND COALESCE(n.hidden,0)=0 AND (?='' OR s.id=?) AND (?='' OR instr(lower(c.name||' '||c.group_name),lower(?))>0) AND (?='' OR c.group_name=?) AND (?=0 OR COALESCE(p.favorite,0)=1) AND (?=1 OR COALESCE(p.hidden,0)=0) AND (?='' OR c.channel_id IN (SELECT value FROM json_each(?))) ORDER BY s.name,s.id,c.position,c.channel_id LIMIT ? OFFSET ?`, q.Viewer.Authority, q.Viewer.AccountID, q.Viewer.ProfileID, q.SourceID, q.SourceID, q.Search, q.Search, q.Group, q.Group, q.FavoritesOnly, q.IncludeHidden, channelFilter, channelFilter, GuideCandidateBatch+1, offset)
 	if e != nil {
 		return out, ErrUnavailable
 	}
@@ -778,4 +804,23 @@ func guideProgrammeQuery(channels []Channel, end, start string) (string, []any) 
  FROM selected CROSS JOIN live_programmes p ON p.generation_id=selected.generation_id AND p.channel_id=selected.channel_id
  LEFT JOIN live_programme_metadata m ON m.generation_id=p.generation_id AND m.id=p.id
  WHERE p.start_utc<? AND p.end_utc>? ORDER BY p.generation_id,p.start_utc,p.id`, args
+}
+
+func readDiagnosticsTx(ctx context.Context, tx *sql.Tx, v *Source) error {
+	var examples string
+	e := tx.QueryRowContext(ctx, `SELECT skipped_channels,skipped_programmes,adjusted_programmes,examples FROM live_import_diagnostics WHERE generation_id=?`, v.Generation).Scan(&v.Diagnostics.SkippedChannels, &v.Diagnostics.SkippedProgrammes, &v.Diagnostics.AdjustedProgrammes, &examples)
+	if errors.Is(e, sql.ErrNoRows) {
+		v.Diagnostics.Examples = []string{}
+		return nil
+	}
+	if e != nil {
+		return e
+	}
+	if json.Unmarshal([]byte(examples), &v.Diagnostics.Examples) != nil {
+		return ErrUnavailable
+	}
+	if v.Diagnostics.Examples == nil {
+		v.Diagnostics.Examples = []string{}
+	}
+	return nil
 }

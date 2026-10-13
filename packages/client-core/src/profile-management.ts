@@ -1,6 +1,7 @@
 import {CodedError,unreadableServerResponse} from './server-messages.ts';
 import {parseLocalSession,currentUTCTimestamp} from './local-session.ts';
 import type {LocalSession} from './index.ts';
+import {keepReadable,oneOfOr} from './tolerant.ts';
 
 /** Account credentials administer profiles; a selected profile is only a viewer. */
 export interface ProfileAPI {request<T>(path:string,method?:string,body?:unknown,signal?:AbortSignal):Promise<T>}
@@ -41,17 +42,25 @@ const natural=(v:unknown):v is number=>typeof v==='number'&&Number.isSafeInteger
 const revision=(v:unknown):v is number=>natural(v)&&v>0;
 function invalid():never{throw new CodedError('invalid_response',unreadableServerResponse);}
 function ids(v:unknown):readonly string[]{if(!Array.isArray(v)||v.length>1000||v.some(x=>!text(x,128))||new Set(v).size!==v.length)invalid();return Object.freeze([...v] as string[]);}
-export function parseManagedProfiles(raw:unknown):readonly ManagedProfile[]{
+/**
+ * A picture colour this app does not know reads as `blue`, the colour a new profile starts with; the name sent is never kept.
+ * Everything else about a profile is exact, its PIN requirement and allowed libraries above all. Where the whole list is relied
+ * on (sign-in, the account snapshot) one unreadable profile refuses the list. With `readable`, a list read for display leaves
+ * that profile out instead: it is never shown with part of it missing. Either way there is exactly one primary profile, no id
+ * appears twice and the list is no longer than an account may hold.
+ */
+export function parseManagedProfiles(raw:unknown,readable=false):readonly ManagedProfile[]{
  if(!Array.isArray(raw)||raw.length<1||raw.length>8)invalid();
- const result=raw.map(v=>{if(!obj(v)||!text(v.id,128)||!text(v.name,120)||typeof v.primary!=='boolean'||!natural(v.position)||!PROFILE_ART.includes(v.art as ProfileArt)||!revision(v.revision)||!revision(v.pinRevision)||typeof v.pinRequired!=='boolean'||(v.trustRevision!==undefined&&!revision(v.trustRevision)))invalid();
-  return Object.freeze({id:v.id,name:v.name,primary:v.primary,position:v.position,art:v.art as ProfileArt,revision:v.revision,pinRevision:v.pinRevision,pinRequired:v.pinRequired,...(v.trustRevision===undefined?{}:{trustRevision:v.trustRevision as number}),...(v.allowedLibraries===undefined?{}:{allowedLibraries:v.allowedLibraries===null?null:ids(v.allowedLibraries)})});});
+ const row=(v:unknown)=>{if(!obj(v)||!text(v.id,128)||!text(v.name,120)||typeof v.primary!=='boolean'||!natural(v.position)||!text(v.art,64)||!revision(v.revision)||!revision(v.pinRevision)||typeof v.pinRequired!=='boolean'||(v.trustRevision!==undefined&&!revision(v.trustRevision)))invalid();
+  return Object.freeze({id:v.id,name:v.name,primary:v.primary,position:v.position,art:oneOfOr('profiles','profile.art',v.art,PROFILE_ART,'blue'),revision:v.revision,pinRevision:v.pinRevision,pinRequired:v.pinRequired,...(v.trustRevision===undefined?{}:{trustRevision:v.trustRevision as number}),...(v.allowedLibraries===undefined?{}:{allowedLibraries:v.allowedLibraries===null?null:ids(v.allowedLibraries)})});};
+ const result:ManagedProfile[]=readable?keepReadable('profiles','rows',raw,row):raw.map(row);
  if(new Set(result.map(v=>v.id)).size!==result.length||result.filter(v=>v.primary).length!==1)invalid();
  return Object.freeze(result.sort((a,b)=>a.position-b.position||a.id.localeCompare(b.id)));
 }
-export function parseDirectSnapshot(raw:unknown,expected:Partial<ProfileScope>={}):DirectSnapshot{
+export function parseDirectSnapshot(raw:unknown,expected:Partial<ProfileScope>={},readableProfiles=false):DirectSnapshot{
  if(!obj(raw)||raw.authority!=='local'||!text(raw.serverId,128)||!obj(raw.account)||typeof raw.canManage!=='boolean'||(raw.custodyPending!==undefined&&typeof raw.custodyPending!=='boolean'))invalid();const a=raw.account;
  if(!text(a.id,128)||!text(a.username,64)||!text(a.primaryProfileId,128)||!['owner','admin','member'].includes(a.role as string)||(a.hostedAccountId!==undefined&&!text(a.hostedAccountId,128))||!revision(a.revision)||typeof a.disabled!=='boolean'||(expected.accountId&&a.id!==expected.accountId)||(expected.serverId&&raw.serverId!==expected.serverId)||(expected.authority&&expected.authority!=='local'))invalid();
- const profiles=parseManagedProfiles(raw.profiles);if(!profiles.some(p=>p.primary&&p.id===a.primaryProfileId))invalid();
+ const profiles=parseManagedProfiles(raw.profiles,readableProfiles);if(!profiles.some(p=>p.primary&&p.id===a.primaryProfileId))invalid();
  return Object.freeze({authority:'local',serverId:raw.serverId,account:Object.freeze({id:a.id,username:a.username,primaryProfileId:a.primaryProfileId,role:a.role as DirectAccount['role'],revision:a.revision,disabled:a.disabled,allowedLibraries:ids(a.allowedLibraries),...(a.hostedAccountId===undefined?{}:{hostedAccountId:a.hostedAccountId as string})}),profiles,canManage:raw.canManage,...(raw.custodyPending===true?{custodyPending:true}:{})});
 }
 export function parseDirectSignIn(raw:unknown):DirectSignIn{
@@ -121,7 +130,7 @@ export class ManagedProfilesClient {
  readonly api:ProfileAPI;readonly scope:ProfileScope;
  constructor(api:ProfileAPI,scope:ProfileScope){if(!text(scope.accountId,128)||!['local','hosted'].includes(scope.authority)||(scope.authority==='local'&&!text(scope.serverId,128)))throw new Error('An account profile scope is required.');this.api=api;this.scope=Object.freeze({...scope});}
  private path(profileId?:string):string{return(this.scope.authority==='local'?'/v1/direct':'/v1/account')+'/profiles'+(profileId?'/'+encodeURIComponent(profileId):'');}
- async list(signal?:AbortSignal):Promise<readonly ManagedProfile[]>{const raw=await this.api.request<unknown>(this.scope.authority==='local'?'/v1/direct':this.path(),'GET',undefined,signal);if(this.scope.authority==='local')return parseDirectSnapshot(raw,this.scope).profiles;if(!obj(raw)||raw.accountId!==this.scope.accountId||raw.maxProfiles!==8)invalid();return parseManagedProfiles(raw.profiles);}
+ async list(signal?:AbortSignal):Promise<readonly ManagedProfile[]>{const raw=await this.api.request<unknown>(this.scope.authority==='local'?'/v1/direct':this.path(),'GET',undefined,signal);if(this.scope.authority==='local')return parseDirectSnapshot(raw,this.scope,true).profiles;if(!obj(raw)||raw.accountId!==this.scope.accountId||raw.maxProfiles!==8)invalid();return parseManagedProfiles(raw.profiles,true);}
  async create(name:string,art:ProfileArt='blue',signal?:AbortSignal):Promise<void>{if(!text(name.trim(),120)||!PROFILE_ART.includes(art))throw new Error('Enter a profile name.');await this.api.request(this.path(),'POST',{name:name.trim(),art},signal);}
  async edit(profile:ManagedProfile,change:{name?:string;art?:ProfileArt;pin?:string;policy?:ProfilePolicy},signal?:AbortSignal):Promise<void>{
   if(change.pin!==undefined&&change.pin!==''&&!/^\d{4}$/.test(change.pin))throw new Error('Use exactly four numeric digits for the profile PIN.');

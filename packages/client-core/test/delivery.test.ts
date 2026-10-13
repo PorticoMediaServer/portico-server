@@ -2,20 +2,23 @@ import test from 'node:test';import assert from 'node:assert/strict';
 import {parseResolvedDeliveryPolicy,parseSessionDelivery,parseQualityRungs,parseDeliveryPolicyDocument,normalizeTransportClass,transportClassHeader,deviceClassHeader,networkClasses,transportClasses} from '../src/delivery.ts';
 import {HttpLocalApi} from '../src/index.ts';
 
-function policy(overrides:Record<string,unknown>={}){return {networkClass:'cellular',serverLocality:'remote',transportClass:'cellular',preferenceLane:'cellular',directPlay:'prefer',directStream:'allow',transcode:'allow',qualityMode:'data-saver',maxVideoBitrateBps:8000000,maxAudioBitrateBps:256000,maxVideoHeight:720,allowHDR:false,planningPolicy:'maximum_fidelity',clamps:[{field:'maxVideoBitrateBps',source:'server_clamp',requested:8000000,applied:4000000}],...overrides};}
+function policy(overrides:Record<string,unknown>={}){return {networkClass:'remote',serverLocality:'remote',transportClass:'cellular',preferenceLane:'remote',directPlay:'prefer',directStream:'allow',transcode:'allow',qualityMode:'720p',maxVideoBitrateBps:8000000,maxAudioBitrateBps:256000,maxVideoHeight:720,allowHDR:false,planningPolicy:'maximum_fidelity',clamps:[{field:'maxVideoBitrateBps',source:'server_clamp',requested:8000000,applied:4000000}],...overrides};}
 
 test('a resolved policy is accepted only in the shape the server publishes',()=>{
  const parsed=parseResolvedDeliveryPolicy(policy());
- assert.equal(parsed.networkClass,'cellular');
+ assert.equal(parsed.networkClass,'remote');
+ assert.equal(parsed.qualityMode,'720p');
  assert.equal(parsed.allowHDR,false);
  assert.equal(parsed.clamps[0].applied,4000000);
  assert(Object.isFrozen(parsed)&&Object.isFrozen(parsed.clamps));
- // A remote class always lands in the unknown preference lane.
- assert.equal(parseResolvedDeliveryPolicy(policy({networkClass:'remote',preferenceLane:'unknown'})).preferenceLane,'unknown');
+ // Home reads the home default; everything else, and a class the server could not tell, the remote one.
+ assert.equal(parseResolvedDeliveryPolicy(policy({networkClass:'local',preferenceLane:'home'})).preferenceLane,'home');
+ assert.equal(parseResolvedDeliveryPolicy(policy({networkClass:'unknown'})).preferenceLane,'remote');
  for(const broken of [
   policy({networkClass:'satellite'}),
-  policy({preferenceLane:'remote'}),                                  // remote is not a lane
-  policy({networkClass:'remote'}),                                    // lane must follow the class
+  policy({networkClass:'cellular'}),                                  // the transport is a hint, never a class
+  policy({preferenceLane:'cellular'}),                                // there are two saved defaults, home and remote
+  policy({networkClass:'local'}),                                     // the default must follow the class
   policy({directPlay:'maybe'}),
   policy({planningPolicy:'fastest'}),
   policy({transportClass:'satellite'}),
@@ -28,7 +31,7 @@ test('a resolved policy is accepted only in the shape the server publishes',()=>
  ])assert.throws(()=>parseResolvedDeliveryPolicy(broken),{code:'invalid_delivery_payload'});
  // Every published class and transport is accepted.
  for(const networkClass of networkClasses)for(const transportClass of transportClasses){
-  const lane=networkClass==='remote'?'unknown':networkClass;
+  const lane=networkClass==='local'?'home':'remote';
   assert.doesNotThrow(()=>parseResolvedDeliveryPolicy(policy({networkClass,transportClass,preferenceLane:lane})));
  }
 });
@@ -67,7 +70,7 @@ test('session delivery diagnostics publish the route, the stages and the progres
  assert.equal(parsed.streams[2].action,'burn_in');
  assert.equal(parsed.throttled,true);
  assert.equal(parsed.convertedThroughSeconds,126);
- assert.equal(parsed.policy!.networkClass,'cellular');
+ assert.equal(parsed.policy!.networkClass,'remote');
  assert(Object.isFrozen(parsed.streams));
  // Reason codes are server vocabulary, not free text.
  assert.throws(()=>parseSessionDelivery({...raw,reasonCodes:['Video Codec Requires Conversion']}),{code:'invalid_delivery_payload'});
@@ -88,7 +91,7 @@ test('session delivery diagnostics publish the route, the stages and the progres
 test('the delivery policy document carries the ladder the client renders',()=>{
  const document=parseDeliveryPolicyDocument({serverId:'server',policy:policy(),ladder:[{id:'1080p',label:'1080p',targetDisplayHeight:1080,maxVideoBitrateBps:8000000,maxAudioBitrateBps:192000}]});
  assert.equal(document.ladder[0].id,'1080p');
- assert.equal(document.policy.networkClass,'cellular');
+ assert.equal(document.policy.networkClass,'remote');
  assert.throws(()=>parseDeliveryPolicyDocument({serverId:'server',policy:policy(),ladder:[{id:'1080p',label:'1080p',targetDisplayHeight:8640,maxVideoBitrateBps:1,maxAudioBitrateBps:1}]}),{code:'invalid_delivery_payload'});
 });
 

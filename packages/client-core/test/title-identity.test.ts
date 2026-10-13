@@ -13,9 +13,15 @@ test('a missing titles page carries the rule and when each title goes', () => {
   assert.equal(page.items[1]!.removedAt, undefined);
   assert.equal(page.nextCursor, '1.2');
   assert.equal(page.rule, 'after_days');
-  assert.throws(() => parseMissingTitlesPage({items: [title], total: 1, rule: 'soon', days: 30}));
-  assert.throws(() => parseMissingTitlesPage({items: [{...title, missingSince: ''}], total: 1, rule: 'never', days: 30}));
-  assert.throws(() => parseMissingTitlesPage({items: [{...title, id: ''}], total: 1, rule: 'never', days: 30}));
+  // A rule this app does not know reads as never; a title it cannot read is left out alone and a repeat keeps its first row.
+  const mixed = parseMissingTitlesPage({items: [{...title, missingSince: ''}, {...title, id: ''}, title, {...title, title: 'Again'}, null], total: 5, rule: 'soon', days: 30, futureField: 1});
+  assert.equal(mixed.rule, 'never');
+  assert.deepEqual(mixed.items.map(entry => [entry.id, entry.title]), [[title.id, title.title]]);
+  assert.equal(mixed.total, 5);
+  // The total, the cursor and the page size stay exact.
+  assert.throws(() => parseMissingTitlesPage({items: [title], total: -1, rule: 'never', days: 30}));
+  assert.throws(() => parseMissingTitlesPage({items: [title], nextCursor: 7, total: 1, rule: 'never', days: 30}));
+  assert.throws(() => parseMissingTitlesPage({items: Array(201).fill(title), total: 201, rule: 'never', days: 30}));
 });
 
 test('listing sends only the filters that were given', async () => {

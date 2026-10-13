@@ -229,6 +229,11 @@ func (s *Service) Submit(ctx context.Context, p identity.Principal, r Request) (
 	if _, e := profile(r.ProfileID); e != nil {
 		return out, e
 	}
+	// A recipe the conversion code cannot build is refused here, before a job
+	// that could only fail is queued.
+	if !Producible(r.ProfileID) {
+		return out, ErrUnsupported
+	}
 	gated2, e := dbwork.Begin(ctx, s.db, dbwork.ClassBackgroundMedia)
 	if e != nil {
 		return out, e

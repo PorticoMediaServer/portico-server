@@ -8,24 +8,9 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"portico.local/server/internal/identity"
 )
-
-// ContentRatings is the published ladder the maximum-content-rating limit
-// compares against, from least to most restricted. A rating a library carries
-// that is not on this ladder is treated as unrated: it is allowed unless the
-// limit also sets allowUnrated to false, because silently hiding a title whose
-// rating the server does not recognise is worse than showing it.
-var ContentRatings = []string{"TV-Y", "TV-Y7", "G", "TV-G", "PG", "TV-PG", "PG-13", "TV-14", "R", "TV-MA", "NC-17"}
-
-func ratingRank(v string) int {
-	v = strings.ToUpper(strings.TrimSpace(v))
-	for i, r := range ContentRatings {
-		if r == v {
-			return i + 1
-		}
-	}
-	return 0
-}
 
 // isCanonicalChannelID reports whether id is a canonical v1 channel id
 // ("live:<source>:<channel>" or "library:<channel>", with no empty parts and
@@ -84,28 +69,37 @@ type TagPolicy struct {
 //	RemoteBitrateKbps    — Enforcer.AdmitPlayback returns it as a clamp, and the
 //	                       delivery policy applies it as MaxVideoBitrateBPS for a
 //	                       remote transport class.
-//	MaxContentRating     — Enforcer.AdmitPlayback (item rating vs the ladder), and
-//	                       Enforcer.VisibleItem / VisibilityClause for catalog
-//	                       visibility.
-//	TagPolicy            — the same three.
+//	MaxContentRating     — folded into the viewer's content restrictions
+//	                       (Limits.Narrow) and applied by the one catalogue
+//	                       predicate, for lists, detail and playback alike.
+//	TagPolicy            — the same.
 //	Schedule             — Enforcer.AdmitSession, Enforcer.AdmitPlayback and
 //	                       Enforcer.AdmitChannel.
 //	ChannelPolicy        — Enforcer.AdmitChannel, called by the v1 channel
 //	                       start path with canonical v1 ids only.
 type Limits struct {
-	MaxStreams        int            `json:"maxStreams"`
-	RemoteBitrateKbps int            `json:"remoteBitrateKbps"`
-	MaxContentRating  string         `json:"maxContentRating"`
-	AllowUnrated      bool           `json:"allowUnrated"`
-	Schedule          AccessSchedule `json:"schedule"`
-	Channels          ChannelPolicy  `json:"channelPolicy"`
-	Tags              TagPolicy      `json:"tagPolicy"`
+	MaxStreams        int `json:"maxStreams"`
+	RemoteBitrateKbps int `json:"remoteBitrateKbps"`
+	// RatingSystem and MaxContentRating name the highest rating the account
+	// may see, exactly as a profile's restriction does: one value of one of
+	// the published rating systems (GET /v1/rating-systems). With no system
+	// named, the rating is read as any spelling the rating table knows.
+	// MaximumAge is what that resolves to, the minimum admission age the
+	// rating carries, or -1 for no ceiling; it is the number every title is
+	// compared against, whatever system its own rating was issued in.
+	RatingSystem     string         `json:"ratingSystem"`
+	MaxContentRating string         `json:"maxContentRating"`
+	MaximumAge       int            `json:"maximumAge"`
+	AllowUnrated     bool           `json:"allowUnrated"`
+	Schedule         AccessSchedule `json:"schedule"`
+	Channels         ChannelPolicy  `json:"channelPolicy"`
+	Tags             TagPolicy      `json:"tagPolicy"`
 }
 
 // DefaultLimits is an unrestricted member: zero means unlimited everywhere, an
 // empty rating means no ceiling, and unrated content is allowed.
 func DefaultLimits() Limits {
-	return Limits{AllowUnrated: true, Schedule: AccessSchedule{Windows: []ScheduleWindow{}}, Channels: ChannelPolicy{Mode: "all", Channels: []string{}}, Tags: TagPolicy{DeniedLabels: []string{}}}
+	return Limits{MaximumAge: -1, AllowUnrated: true, Schedule: AccessSchedule{Windows: []ScheduleWindow{}}, Channels: ChannelPolicy{Mode: "all", Channels: []string{}}, Tags: TagPolicy{DeniedLabels: []string{}}}
 }
 
 // LimitsDocument is the wire shape every limits read and write returns.
@@ -124,7 +118,17 @@ func normalizeLimits(v *Limits) error {
 	if v.RemoteBitrateKbps < 0 || v.RemoteBitrateKbps > 200000 {
 		fields = append(fields, "limits.remoteBitrateKbps")
 	}
-	if v.MaxContentRating != "" && ratingRank(v.MaxContentRating) == 0 {
+	v.RatingSystem, v.MaxContentRating = strings.TrimSpace(v.RatingSystem), strings.TrimSpace(v.MaxContentRating)
+	if v.MaxContentRating == "" {
+		v.RatingSystem = ""
+	}
+	if v.RatingSystem == "" {
+		// A rating given without its system is stored in one spelling.
+		v.MaxContentRating = strings.ToUpper(v.MaxContentRating)
+	}
+	if age, ok := ratingCeiling(v.RatingSystem, v.MaxContentRating); ok {
+		v.MaximumAge = age
+	} else {
 		fields = append(fields, "limits.maxContentRating")
 	}
 	if v.Schedule.Timezone != "" {
@@ -186,11 +190,64 @@ func normalizeLimits(v *Limits) error {
 	if v.Schedule.Windows == nil {
 		v.Schedule.Windows = []ScheduleWindow{}
 	}
-	v.MaxContentRating = strings.ToUpper(strings.TrimSpace(v.MaxContentRating))
 	if len(fields) > 0 {
 		return &ValidationError{fields}
 	}
 	return nil
+}
+
+// ratingCeiling resolves a limit's rating to the admission age it stands for
+// on the one scale every restriction uses (identity's rating table): -1 for no
+// rating, false for a rating the table does not know.
+func ratingCeiling(system, code string) (int, bool) {
+	if code == "" {
+		return -1, true
+	}
+	if system != "" {
+		return identity.RatingCeiling(system, code)
+	}
+	return identity.RatingAge(code)
+}
+
+// Ceiling is the admission age the account's rating limit resolves to, or -1
+// for none. It is resolved from the stored rating each time, so a limit saved
+// under an older rating table is judged by the current one; a stored rating
+// the table no longer knows admits only all-ages titles rather than everything.
+func (v Limits) Ceiling() int {
+	age, ok := ratingCeiling(v.RatingSystem, v.MaxContentRating)
+	if !ok {
+		return 0
+	}
+	return age
+}
+
+// Narrow applies this account's content limits on top of a profile's own
+// restrictions: the lower rating ceiling holds, on one age scale.
+func (v Limits) Narrow(r identity.ContentRestrictions, revision int64) identity.ContentRestrictions {
+	return r.Narrow(v.Ceiling(), !v.AllowUnrated, v.Tags.DeniedLabels, revision)
+}
+
+// ContentLimitsTx reads the account's limits and applies them to a profile's
+// restrictions inside the caller's transaction. An account with no stored
+// limits narrows nothing.
+func ContentLimitsTx(ctx context.Context, tx *sql.Tx, account string, r identity.ContentRestrictions) (identity.ContentRestrictions, error) {
+	if account == "" {
+		return r, nil
+	}
+	var revision int64
+	var body string
+	err := tx.QueryRowContext(ctx, `SELECT revision,body FROM access_limits WHERE account_id=?`, account).Scan(&revision, &body)
+	if errors.Is(err, sql.ErrNoRows) {
+		return r, nil
+	}
+	if err != nil {
+		return r, err
+	}
+	limits := DefaultLimits()
+	if err = json.Unmarshal([]byte(body), &limits); err != nil {
+		return r, err
+	}
+	return limits.Narrow(r, revision), nil
 }
 
 func readLimits(tx *sql.Tx, account string) (LimitsDocument, error) {
@@ -210,6 +267,7 @@ func readLimits(tx *sql.Tx, account string) (LimitsDocument, error) {
 	if err = json.Unmarshal([]byte(body), &out.Limits); err != nil {
 		return out, err
 	}
+	out.Limits.MaximumAge = out.Limits.Ceiling()
 	out.UpdatedAt = time.UnixMilli(updated).UTC().Format(time.RFC3339)
 	return out, nil
 }

@@ -19,6 +19,7 @@ type DeliveryConfiguration struct {
 	// PlanningPolicy biases the plan when more than one route is admissible.
 	PlanningPolicy string `json:"planningPolicy"`
 
+	SessionStorageMiB      int  `json:"sessionStorageMiB"`
 	ThrottleBufferSeconds  int  `json:"throttleBufferSeconds"`
 	PlayedRetentionSeconds int  `json:"playedRetentionSeconds"`
 	RemuxEnabled           bool `json:"remuxEnabled"`
@@ -65,6 +66,7 @@ func validPlanningPolicy(p string) bool {
 func DefaultDeliveryConfiguration() DeliveryConfiguration {
 	return DeliveryConfiguration{
 		HardwareBackend:        "auto",
+		SessionStorageMiB:      4096,
 		ToneMapping:            true,
 		ToneMapAlgorithm:       decoder.DefaultToneMapAlgorithm,
 		SoftwarePreset:         decoder.DefaultSoftwarePreset,
@@ -81,6 +83,9 @@ func DefaultDeliveryConfiguration() DeliveryConfiguration {
 // default for that field alone.
 func (c DeliveryConfiguration) Normalized() DeliveryConfiguration {
 	d := DefaultDeliveryConfiguration()
+	if c.SessionStorageMiB < 64 || c.SessionStorageMiB > 1048576 {
+		c.SessionStorageMiB = d.SessionStorageMiB
+	}
 	if c.HardwareBackend != "auto" && !decoder.ValidBackend(c.HardwareBackend) {
 		c.HardwareBackend = d.HardwareBackend
 	}

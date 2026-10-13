@@ -45,3 +45,9 @@ test('X-12: Remove from Continue Watching sits after Mark watched, only when off
   assert.equal(action.label, 'entry.removeFromContinueWatching');
   assert.equal(action.destructive, undefined, 'undoable, so not shown as destructive');
 });
+
+test('Refresh metadata is offered only where the server can do it: one playable title, never a whole show, album or book', async () => {
+  const {canRefreshMetadata} = await import('../src/presentation/index.ts');
+  for (const kind of ['movie', 'episode', 'song', 'audiobook_file', 'extra']) assert.equal(canRefreshMetadata(kind), true, kind);
+  for (const kind of ['show', 'season', 'album', 'artist', 'book', 'collection', 'author', undefined]) assert.equal(canRefreshMetadata(kind), false, String(kind));
+});

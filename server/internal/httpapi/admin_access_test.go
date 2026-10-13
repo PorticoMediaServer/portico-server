@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -81,7 +82,15 @@ func administrationFixtureNew(t *testing.T) administrationFixture {
 	deps.credentials = newCredentialGate()
 	deps.Webhooks = webhooks.New(db)
 	deps.self = &selfHandler{}
-	return administrationFixture{handler: New(deps), owner: ownerToken.AccessToken, admin: adminToken.AccessToken, member: memberToken.AccessToken, memberDevice: memberToken.DeviceID, recorder: recorder, deps: deps}
+	handler := New(deps)
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := FlushCredentialUse(ctx, handler); err != nil {
+			t.Errorf("flush credential use: %v", err)
+		}
+	})
+	return administrationFixture{handler: handler, owner: ownerToken.AccessToken, admin: adminToken.AccessToken, member: memberToken.AccessToken, memberDevice: memberToken.DeviceID, recorder: recorder, deps: deps}
 }
 
 func (f administrationFixture) call(method, path, token, body string) *httptest.ResponseRecorder {
@@ -107,6 +116,11 @@ func TestMemberLimitsScopeCatalogueProjectionAndFence(t *testing.T) {
 	c.Attributes(family.ID, "contentRating", "G")
 	c.Attributes(adult.ID, "contentRating", "R")
 	c.Drain()
+	// The account limit is judged by the same classified ages a profile's is;
+	// a spelling the background worker has not classified yet is withheld.
+	if _, err := f.deps.Catalog.ClassifyPendingRatings(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 	limits := access.DefaultLimits()
 	limits.MaxContentRating = "PG"
 	limits.AllowUnrated = false
@@ -209,8 +223,9 @@ func TestMemberLimitsAndRoleRoutesCarryRevisionsAndRefuseAdminPeers(t *testing.T
 	if w.Code != 409 || !strings.Contains(w.Body.String(), `"currentRevision":2`) {
 		t.Fatalf("conflict: %d %s", w.Code, w.Body)
 	}
-	// An admin may promote nobody to admin.
-	if w = f.call("PUT", "/v1/admin/access/members/member/role", f.admin, `{"expectedRevision":1,"operationId":"role-route-1","role":"admin"}`); w.Code != 401 {
+	// An admin may promote nobody to admin. The admin's own session is fine,
+	// so the answer is a refusal (403), never "sign in again" (401).
+	if w = f.call("PUT", "/v1/admin/access/members/member/role", f.admin, `{"expectedRevision":1,"operationId":"role-route-1","role":"admin"}`); w.Code != 403 {
 		t.Fatalf("an admin promoted an account to admin: %d %s", w.Code, w.Body)
 	}
 	if w = f.call("PUT", "/v1/admin/access/members/member/role", f.owner, `{"expectedRevision":1,"operationId":"role-route-2","role":"admin"}`); w.Code != 200 {
@@ -404,7 +419,7 @@ func TestClientLogUploadsAreBoundedStoredPerDeviceAndListedForAdmins(t *testing.
 	if w = f.call("POST", "/v1/diagnostics/client-logs", "", `{"body":"anonymous"}`); w.Code != 401 {
 		t.Fatalf("an unauthenticated upload was accepted: %d", w.Code)
 	}
-	w = f.call("GET", "/v1/admin/diagnostics/client-logs", f.admin, "")
+	w = f.call("GET", "/v1/admin/diagnostics/client-logs", f.owner, "")
 	if w.Code != 200 || !strings.Contains(w.Body.String(), `"deviceId":"`+f.memberDevice+`"`) || strings.Contains(w.Body.String(), "a client trace") {
 		t.Fatalf("a list must carry metadata but not bodies: %d %s", w.Code, w.Body)
 	}
@@ -412,7 +427,7 @@ func TestClientLogUploadsAreBoundedStoredPerDeviceAndListedForAdmins(t *testing.
 	if e := json.Unmarshal(w.Body.Bytes(), &page); e != nil || len(page.Items) != 1 {
 		t.Fatalf("page: %v %+v", e, page)
 	}
-	w = f.call("GET", "/v1/admin/diagnostics/client-logs/"+page.Items[0].ID, f.admin, "")
+	w = f.call("GET", "/v1/admin/diagnostics/client-logs/"+page.Items[0].ID, f.owner, "")
 	if w.Code != 200 || !strings.Contains(w.Body.String(), "a client trace") {
 		t.Fatalf("single read: %d %s", w.Code, w.Body)
 	}
@@ -433,7 +448,7 @@ func TestClientLogUploadsRedactAndEnforceAccountBudget(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &uploaded); err != nil {
 		t.Fatal(err)
 	}
-	w = f.call("GET", "/v1/admin/diagnostics/client-logs/"+uploaded.ID, f.admin, "")
+	w = f.call("GET", "/v1/admin/diagnostics/client-logs/"+uploaded.ID, f.owner, "")
 	if w.Code != 200 || strings.Contains(w.Body.String(), secret) || !strings.Contains(w.Body.String(), "[REDACTED]") {
 		t.Fatalf("unredacted body: %d %s", w.Code, w.Body)
 	}
@@ -457,7 +472,7 @@ func TestClientLogRetentionIsPerAuthenticatedDevice(t *testing.T) {
 			t.Fatalf("upload %d: %d %s", i, w.Code, w.Body)
 		}
 	}
-	w := f.call("GET", "/v1/admin/diagnostics/client-logs", f.admin, "")
+	w := f.call("GET", "/v1/admin/diagnostics/client-logs", f.owner, "")
 	var page servicelog.ClientUploadPage
 	if err := json.Unmarshal(w.Body.Bytes(), &page); err != nil || w.Code != 200 || len(page.Items) != servicelog.ClientUploadsPerDevice {
 		t.Fatalf("device retention: %d %v %+v", w.Code, err, page)
@@ -533,39 +548,6 @@ func TestConnectivityPolicyRoundTripsAndStatusReportsTheHost(t *testing.T) {
 	}
 }
 
-func TestDeviceInventoryRecordsSightingsAtPlaybackAdmission(t *testing.T) {
-	f := administrationFixtureNew(t)
-	p := identity.Principal{Viewer: identity.Viewer{AccountID: "member", ProfileID: "member-profile", Authority: "local", Role: "member"}}
-	r := httptest.NewRequest("POST", "/v1/playback/sessions", nil)
-	r.Header.Set("X-Portico-Device-Id", "living-room")
-	r.Header.Set("X-Portico-Device-Name", "Living Room")
-	r.Header.Set("X-Portico-Device-Platform", "tvos")
-	if _, e := f.deps.admitPlayback(r, p, ""); e != nil {
-		t.Fatal(e)
-	}
-	w := f.call("GET", "/v1/admin/access/devices", f.admin, "")
-	if w.Code != 200 || !strings.Contains(w.Body.String(), `"name":"Living Room"`) || !strings.Contains(w.Body.String(), `"trust":"pending"`) {
-		t.Fatalf("inventory: %d %s", w.Code, w.Body)
-	}
-	var page access.DevicePage
-	if e := json.Unmarshal(w.Body.Bytes(), &page); e != nil || len(page.Items) != 1 || page.ApprovalRequired {
-		t.Fatalf("page: %v %+v", e, page)
-	}
-	body := `{"expectedRevision":1,"operationId":"device-trust-1","trust":"approved"}`
-	if w = f.call("PUT", "/v1/admin/access/devices/living-room/trust", f.admin, body); w.Code != 200 {
-		t.Fatalf("approve: %d %s", w.Code, w.Body)
-	}
-	// The same operation replays its receipt rather than applying twice.
-	if w = f.call("PUT", "/v1/admin/access/devices/living-room/trust", f.admin, body); w.Code != 200 || !strings.Contains(w.Body.String(), `"revision":2`) {
-		t.Fatalf("replay: %d %s", w.Code, w.Body)
-	}
-	// A new operation against the old revision is a conflict.
-	stale := strings.Replace(body, "device-trust-1", "device-trust-2", 1)
-	if w = f.call("PUT", "/v1/admin/access/devices/living-room/trust", f.admin, stale); w.Code != 409 {
-		t.Fatalf("a stale trust write was accepted: %d %s", w.Code, w.Body)
-	}
-}
-
 func TestLiveLogTailStreamsEvents(t *testing.T) {
 	f := administrationFixtureNew(t)
 	r := httptest.NewRequest("GET", "/v1/admin/logs/events?level=info", nil)
@@ -633,4 +615,93 @@ func (s *streamRecorder) body() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.ResponseRecorder.Body.String()
+}
+
+func TestOwnerCanDownloadAndDeleteClientReport(t *testing.T) {
+	f := administrationFixtureNew(t)
+	uploaded := f.call("POST", "/v1/diagnostics/client-logs", f.member, `{"platform":"android","deviceClass":"phone","appVersion":"1.2.3","body":"Bearer private-secret"}`)
+	if uploaded.Code != 201 {
+		t.Fatal(uploaded.Code, uploaded.Body.String())
+	}
+	var report servicelog.ClientUpload
+	if err := json.Unmarshal(uploaded.Body.Bytes(), &report); err != nil {
+		t.Fatal(err)
+	}
+	if report.DeviceClass != "phone" {
+		t.Fatal(report)
+	}
+	path := "/v1/admin/diagnostics/client-logs/" + report.ID
+	if response := f.call("GET", path+"/download", f.admin, ""); response.Code != 403 {
+		t.Fatal("admin read owner report", response.Code)
+	}
+	downloaded := f.call("GET", path+"/download", f.owner, "")
+	if downloaded.Code != 200 || !strings.Contains(downloaded.Body.String(), "REDACTED") || downloaded.Header().Get("Content-Disposition") == "" || downloaded.Header().Get("Content-Type") != "application/json" {
+		t.Fatal(downloaded.Code, downloaded.Body.String())
+	}
+	if removed := f.call("DELETE", path, f.owner, ""); removed.Code != 200 {
+		t.Fatal(removed.Code, removed.Body.String())
+	}
+	if response := f.call("GET", path, f.owner, ""); response.Code != 404 {
+		t.Fatal("deleted report remained", response.Code)
+	}
+}
+
+func TestClientReportsPageKeepsTimestampTiesAndGlobalBound(t *testing.T) {
+	f := administrationFixtureNew(t)
+	ctx := context.Background()
+	for n := 0; n < 105; n++ {
+		id := fmt.Sprintf("%022d", n)
+		if _, err := f.deps.DB.Exec(`INSERT INTO client_log_uploads(id,account_id,profile_id,device_id,platform,app_version,device_class,received_ms,bytes,body) VALUES(?,?,?,?,?,?,?,1000,1,'x')`, id, "other", "other", id, "test", "1", "phone"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// One signed-in upload enforces the global cap, independently of device retention.
+	response := f.call("POST", "/v1/diagnostics/client-logs", f.member, `{"platform":"test","body":"new"}`)
+	if response.Code != 201 {
+		t.Fatal(response.Code, response.Body.String())
+	}
+	var count int
+	f.deps.DB.QueryRow(`SELECT count(*) FROM client_log_uploads`).Scan(&count)
+	if count != 100 {
+		t.Fatal("global bound", count)
+	}
+	store := f.deps.Access.ClientLogs
+	cursor := ""
+	seen := map[string]bool{}
+	for {
+		page, err := store.List(ctx, cursor, 25)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, item := range page.Items {
+			if seen[item.ID] {
+				t.Fatal("duplicate", item.ID)
+			}
+			seen[item.ID] = true
+		}
+		if page.NextCursor == "" {
+			break
+		}
+		cursor = page.NextCursor
+	}
+	if len(seen) != 100 {
+		t.Fatal("timestamp ties lost", len(seen))
+	}
+}
+
+func TestClientReportRedactionCannotExpandPastStorageLimit(t *testing.T) {
+	f := administrationFixtureNew(t)
+	body, _ := json.Marshal(servicelog.ClientUploadRequest{Body: strings.Repeat("Bearer x ", servicelog.MaxClientUploadBytes/9), DeviceClass: "phone"})
+	response := f.call("POST", "/v1/diagnostics/client-logs", f.member, string(body))
+	if response.Code != 201 {
+		t.Fatal(response.Code, response.Body.String())
+	}
+	var report servicelog.ClientUpload
+	if err := json.Unmarshal(response.Body.Bytes(), &report); err != nil {
+		t.Fatal(err)
+	}
+	stored, err := f.deps.Access.ClientLogs.Read(context.Background(), report.ID)
+	if err != nil || len(stored.Body) > servicelog.MaxClientUploadBytes || stored.Bytes != int64(len(stored.Body)) || strings.Contains(stored.Body, "Bearer x") {
+		t.Fatal(stored.Bytes, len(stored.Body), err)
+	}
 }

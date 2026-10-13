@@ -3,11 +3,15 @@
  * exist for tools outside Portico (the bounded title query and the "these paths
  * changed" report).
  *
- * This module is transport and parsing only. A parser refuses a document it
- * does not recognise, so a screen never renders a half-typed object; nothing
- * here decides policy. Secrets pass through exactly once, on the answer to a
+ * This module is transport and parsing only; nothing here decides policy.
+ * What grants access is read whole: a list of keys, tokens or webhooks with a
+ * row this app cannot read is refused, so a credential or a destination is
+ * never missing from what the owner sees and no scope or state is guessed.
+ * Receipts are exact too. The delivery log, the title query and the scopes on
+ * offer leave out only the row or the value this app cannot read. Secrets pass through exactly once, on the answer to a
  * create or a rotation, and are never kept by this module.
  */
+import {firstOfEach,keepReadable} from './tolerant.ts';
 export type ApiAccessTransport={request<T>(path:string,method?:string,body?:unknown,signal?:AbortSignal):Promise<T>};
 
 const unreadable='The server sent something this app could not read.';
@@ -98,7 +102,8 @@ export function parseApiCredentialPage(raw:unknown):ApiCredentialPage{
 }
 export function parseApiAccessOptions(raw:unknown):ApiAccessOptions{
  if(!object(raw))return invalid('api access options');
- const scopes=list(raw.scopes,16,v=>object(v)?oneOf(v.id,apiScopes,'scope id'):invalid('scope'),'scopes');
+ // A scope this app does not know is not offered; the ones it knows still are.
+ const scopes=Object.freeze(firstOfEach('api-access','options.scopes',keepReadable('api-access','options.scopes',list(raw.scopes,16,v=>v,'scopes'),v=>object(v)?oneOf(v.id,apiScopes,'scope id'):invalid('scope')),scope=>scope));
  return Object.freeze({scopes,maximumKeys:whole(raw.maximumKeys,'maximumKeys'),maximumTokens:whole(raw.maximumTokens,'maximumTokens'),tokensAllowed:flag(raw.tokensAllowed,'tokensAllowed'),requestsPerMinute:whole(raw.requestsPerMinute,'requestsPerMinute')});
 }
 
@@ -159,7 +164,7 @@ export function parseWebhookDelivery(raw:unknown):WebhookDelivery{
 }
 export function parseWebhookDeliveryPage(raw:unknown):WebhookDeliveryPage{
  if(!object(raw))return invalid('webhook delivery page');
- return Object.freeze({items:list(raw.items,100,parseWebhookDelivery,'delivery page items'),limit:whole(raw.limit,'delivery page limit'),nextCursor:optional(raw.nextCursor,512,'delivery page cursor')});
+ return Object.freeze({items:Object.freeze(firstOfEach('api-access','deliveries',keepReadable('api-access','deliveries',list(raw.items,100,v=>v,'delivery page items'),parseWebhookDelivery),row=>row.id)),limit:whole(raw.limit,'delivery page limit'),nextCursor:optional(raw.nextCursor,512,'delivery page cursor')});
 }
 
 const WEBHOOKS='/v1/admin/webhooks';
@@ -194,7 +199,7 @@ export function parseTitleRow(raw:unknown):TitleRow{
 }
 export function parseTitlePage(raw:unknown):TitlePage{
  if(!object(raw))return invalid('title page');
- return Object.freeze({items:list(raw.items,100,parseTitleRow,'title page items'),limit:whole(raw.limit,'title page limit'),nextCursor:optional(raw.nextCursor,4096,'title page cursor')});
+ return Object.freeze({items:Object.freeze(firstOfEach('api-access','titles',keepReadable('api-access','titles',list(raw.items,100,v=>v,'title page items'),parseTitleRow),row=>row.id)),limit:whole(raw.limit,'title page limit'),nextCursor:optional(raw.nextCursor,4096,'title page cursor')});
 }
 export const queryTitles=async(t:ApiAccessTransport,q:TitleQuery,signal?:AbortSignal):Promise<TitlePage>=>parseTitlePage(await t.request<unknown>('/v1/titles'+query({...q}),'GET',undefined,signal));
 

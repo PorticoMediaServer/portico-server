@@ -2,13 +2,14 @@ package storage
 
 import "testing"
 
-func TestSameRootIgnoresOnlyTheDeviceNumber(t *testing.T) {
+func TestSameRootRequiresFilesystemEvidenceForDeviceChanges(t *testing.T) {
 	for _, c := range []struct {
 		recorded, observed string
 		same               bool
 	}{
 		{"dev:64:ino:2", "dev:64:ino:2", true},
-		{"dev:64:ino:2", "dev:71:ino:2", true},    // remounted under another device number
+		{"dev:64:ino:2", "dev:71:ino:2", false}, // no filesystem proof
+		{"dev:64:ino:2:fsid:a", "dev:71:ino:2:fsid:a", true},
 		{"dev:64:ino:2", "dev:64:ino:919", false}, // the empty mount point underneath
 		{"dev:64:ino:2", "dev:71:ino:919", false},
 		{"volume:7:file:0a", "volume:7:file:0a", true},

@@ -3,6 +3,8 @@
 /* WEB-SYS-05: hover is a quiet lift and hairline; only keyboard focus draws the focus ring, so two cards never look focused at once. */
 .card:hover .art { box-shadow: 0 0 0 1px var(--line-strong); }
 .card:has(:focus-visible) .art { box-shadow: 0 0 0 2px var(--line-focus); }
+/* A browser without :has() would show no focus ring at all (the card's own outline is off above): there, focus anywhere in the card draws it. */
+@supports not selector(:has(*)) { .card:focus-within .art { box-shadow: 0 0 0 2px var(--line-focus); } }
 .card:hover { transform: translateY(-2px); }
 .art { position: relative; border-radius: var(--radius-artwork); transition: box-shadow var(--motion-standard) var(--ease-out); }
 .artButton { display: block; width: 100%; padding: 0; border-radius: var(--radius-artwork); color: inherit; text-decoration: none; -webkit-touch-callout: none; }
@@ -21,7 +23,8 @@
 /* Two lines at most (a long audiobook title would run to four); the full title is the element's tooltip. */
 .title { font-size: 14px; font-weight: 600; line-height: 1.3; color: var(--text-primary); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
 .caption { font-size: 12.5px; line-height: 1.35; color: var(--text-tertiary); }
-.unavailable .art { opacity: 0.55; }
+.unavailable .artButton { opacity: 0.55; }
+.unavailableMark { position: absolute; left: 8px; bottom: 8px; max-width: calc(100% - 16px); padding: 2px 8px; border-radius: 999px; background: color-mix(in srgb, var(--color-ink) 78%, transparent); color: var(--text-primary); font-size: 11.5px; font-weight: 600; line-height: 1.5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
 .person { align-items: center; text-align: center; }
 .person .art { width: 76%; }
 .banner { border-radius: var(--radius-surface); overflow: hidden; }

@@ -46,7 +46,7 @@ export class IdentityClient{
  }
 
  async devices(installationId:string,signal?:AbortSignal):Promise<readonly Device[]>{
-  return parseDevices(await this.api.request<unknown>('/v1/devices?installationId='+id(installationId),'GET',undefined,signal));
+  return parseDevices(await this.api.request<unknown>('/v1/devices','GET',undefined,signal));
  }
  /** Tells the server which device this is, at sign-in. It refreshes the record when the
   * installation is already known and never overwrites a name a person gave the device. Under an
@@ -55,9 +55,10 @@ export class IdentityClient{
  /** Ties this viewing session to the device, so "sign this device out" knows what to end. */
  async bindDevice(deviceId:string,installationId:string,sessionFamilyId:string):Promise<void>{await this.api.request(`/v1/devices/${id(deviceId)}/sessions/bind`,'POST',{installationId,sessionFamilyId});}
  /** Who has used this installation. Asked before anyone is signed in; nothing in it is a credential. */
- async rememberedAccounts(installationId:string,signal?:AbortSignal):Promise<readonly RememberedAccount[]>{return parseRememberedAccounts(await this.api.request<unknown>('/v1/auth/remembered-accounts?installationId='+id(installationId),'GET',undefined,signal));}
+ /** The installation id goes in the body, never the address: addresses end up in proxy and access logs. */
+ async rememberedAccounts(installationId:string,signal?:AbortSignal):Promise<readonly RememberedAccount[]>{return parseRememberedAccounts(await this.api.request<unknown>('/v1/auth/remembered-accounts','POST',{installationId},signal));}
  async rememberAccount(installationId:string,automaticSignIn:boolean):Promise<readonly RememberedAccount[]>{return parseRememberedAccounts(await this.api.request<unknown>('/v1/direct/remembered-accounts','POST',{installationId,automaticSignIn}));}
- async forgetAccount(accountId:string,installationId:string):Promise<void>{await this.api.request(`/v1/direct/remembered-accounts/${id(accountId)}?installationId=${id(installationId)}`,'DELETE');}
+ async forgetAccount(accountId:string,installationId:string):Promise<void>{await this.api.request(`/v1/direct/remembered-accounts/${id(accountId)}`,'DELETE',{installationId});}
  async editDevice(deviceId:string,edit:{name?:string;trusted?:boolean;rememberAccount?:boolean}):Promise<Device>{return parseDevice(await this.api.request<unknown>(`/v1/devices/${id(deviceId)}`,'PATCH',edit));}
  async approveDevice(deviceId:string,approved:boolean):Promise<Device>{return parseDevice(await this.api.request<unknown>(`/v1/devices/${id(deviceId)}/approval`,'POST',{approved}));}
  async signOutDevice(deviceId:string):Promise<void>{await this.api.request(`/v1/devices/${id(deviceId)}/sessions`,'DELETE');}

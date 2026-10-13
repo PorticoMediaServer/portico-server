@@ -7,22 +7,21 @@ import {PersonalSavedService, type PersonalSavedSnapshot} from '@core/personal-s
 import {SavedService, historyPeriods, savedListFilters, type HistoryPeriod, type PlaylistCard, type PlaylistOccurrence, type SavedEntry, type SavedListFilter, type SavedRoute, type SavedSnapshot} from '@core/saved.ts';
 import {useService} from '../../app/content';
 import {captionFor, iconFor, progressFor, shapeFor} from '@core/presentation/index.ts';
-import {useOpenEntry} from '../../app/open';
+import {useEntryHref, useOpenEntry} from '../../app/open';
 import {useSession} from '../../app/session';
-import {defaultI18n} from '@i18n';
 import {Button, Card, Chip, Chips, ConfirmDialog, Dialog, Grid, Input, Inset, ListRow, Menu, Notice, Page, PageHeader, Row, StateView, Surface, Switch, Tabs, Text, TextArea, type IconName} from '../../ui';
 import {LoadingGrid} from '../shared/Sections';
 import {ErrorNotice, ErrorState, changedError} from '../../app/errors';
 import {errorText} from '../../app/errors';
 import {useViewerScope} from '../../app/viewer-scope';
+import {useI18n, type I18n} from '../../app/i18n';
 
 type SavedTab = 'watchlist' | 'favorites' | 'playlists' | 'collections' | 'views' | 'history';
-const t = defaultI18n.t;
 const tabIds: readonly SavedTab[] = ['watchlist', 'favorites', 'playlists', 'collections', 'views', 'history'];
-const tabs = (): {id: SavedTab; label: string}[] => [{id: 'watchlist', label: t('saved.tab.watchlist')}, {id: 'favorites', label: t('saved.tab.favorites')}, {id: 'playlists', label: t('saved.tab.playlists')}, {id: 'collections', label: t('saved.tab.collections')}, {id: 'views', label: t('saved.tab.savedViews')}, {id: 'history', label: t('saved.tab.history')}];
-const filterLabel = (f: string) => f === 'unwatched' ? t('web.saved.unwatched') : f === 'inProgress' ? t('web.saved.inProgress') : t('web.search.all');
-const periodLabel = (p: HistoryPeriod) => p === '24h' ? t('web.live.today') : p === '7d' ? t('web.saved.thisWeek') : p === '30d' ? t('web.saved.days', {count: 30}) : p === '90d' ? t('web.saved.days', {count: 90}) : t('web.saved.allTime');
-const emptyCopy = (tab: SavedTab): {icon: IconName; title: string; body: string} => {
+const tabs = (t: I18n['t']): {id: SavedTab; label: string}[] => [{id: 'watchlist', label: t('saved.tab.watchlist')}, {id: 'favorites', label: t('saved.tab.favorites')}, {id: 'playlists', label: t('saved.tab.playlists')}, {id: 'collections', label: t('saved.tab.collections')}, {id: 'views', label: t('saved.tab.savedViews')}, {id: 'history', label: t('saved.tab.history')}];
+const filterLabel = (t: I18n['t'], f: string) => f === 'unwatched' ? t('web.saved.unwatched') : f === 'inProgress' ? t('web.saved.inProgress') : t('web.search.all');
+const periodLabel = (t: I18n['t'], p: HistoryPeriod) => p === '24h' ? t('web.live.today') : p === '7d' ? t('web.saved.thisWeek') : p === '30d' ? t('web.saved.days', {count: 30}) : p === '90d' ? t('web.saved.days', {count: 90}) : t('web.saved.allTime');
+const emptyCopy = (t: I18n['t'], tab: SavedTab): {icon: IconName; title: string; body: string} => {
   switch (tab) {
     case 'watchlist': return {icon: 'bookmark', title: t('web.saved.empty.watchlist'), body: t('web.saved.empty.watchlistBody')};
     case 'favorites': return {icon: 'heart', title: t('web.saved.empty.favorites'), body: t('web.saved.empty.favoritesBody')};
@@ -33,7 +32,7 @@ const emptyCopy = (tab: SavedTab): {icon: IconName; title: string; body: string}
   }
 };
 /** WEB-SAVED-05: consumer names for the server's sort keys ("Updated" means last watched). */
-function sortLabel(key: string): string {
+function sortLabel(t: I18n['t'], key: string): string {
   switch (key.replace(/^sort\./, '')) {
     case 'title': return t('web.saved.sort.title');
     case 'added': return t('web.saved.sort.added');
@@ -92,6 +91,7 @@ function usePersonal(route: SavedRoute | null) {
  * the peer view, a sort where offered, and pages.
  */
 export function SavedScreen() {
+  const {t} = useI18n();
   const search = useSearch({from: '/app/saved'});
   const navigate = useNavigate();
   const tab = (tabIds.some(id => id === search.view) ? search.view : 'watchlist') as SavedTab;
@@ -126,12 +126,12 @@ export function SavedScreen() {
   return (
     <Page>
       <PageHeader title={t('web.saved.title')} actions={<Button variant="ghost" icon="refresh" aria-label={t('action.refresh')} onClick={refresh} />} />
-      <Tabs items={tabs()} value={tab} onChange={id => setSearch({view: id, sort: undefined, direction: undefined, filter: undefined, period: undefined})} size="large" label={t('web.saved.sections')} />
+      <Tabs items={tabs(t)} value={tab} onChange={id => setSearch({view: id, sort: undefined, direction: undefined, filter: undefined, period: undefined})} size="large" label={t('web.saved.sections')} />
       {tab === 'watchlist' || tab === 'favorites' ? (
-        <Inset><Row><Text variant="label" tone="tertiary">{t('web.notifications.show')}</Text><Chips>{savedListFilters.map(f => <Chip key={f} label={filterLabel(f)} count={countFor(f)} pressed={(filter ?? 'all') === f} onClick={() => setSearch({filter: f === 'all' ? undefined : f})} />)}</Chips></Row></Inset>
+        <Inset><Row><Text variant="label" tone="tertiary">{t('web.notifications.show')}</Text><Chips>{savedListFilters.map(f => <Chip key={f} label={filterLabel(t, f)} count={countFor(f)} pressed={(filter ?? 'all') === f} onClick={() => setSearch({filter: f === 'all' ? undefined : f})} />)}</Chips></Row></Inset>
       ) : null}
       {tab === 'history' ? (
-        <Inset><Row style={{justifyContent: 'space-between', flexWrap: 'wrap'}}><Row><Text variant="label" tone="tertiary">{t('web.saved.period')}</Text><Chips>{historyPeriods.map(x => <Chip key={x} label={periodLabel(x)} pressed={(period ?? 'all') === x} onClick={() => setSearch({period: x === 'all' ? undefined : x})} />)}</Chips></Row>{personal.snapshot.entries.length ? <Button variant="ghost" size="sm" icon="trash" label={t('web.saved.clearHistory')} onClick={() => { setClearError(''); setClearing(true); }} /> : null}</Row></Inset>
+        <Inset><Row style={{justifyContent: 'space-between', flexWrap: 'wrap'}}><Row><Text variant="label" tone="tertiary">{t('web.saved.period')}</Text><Chips>{historyPeriods.map(x => <Chip key={x} label={periodLabel(t, x)} pressed={(period ?? 'all') === x} onClick={() => setSearch({period: x === 'all' ? undefined : x})} />)}</Chips></Row>{personal.snapshot.entries.length ? <Button variant="ghost" size="sm" icon="trash" label={t('web.saved.clearHistory')} onClick={() => { setClearError(''); setClearing(true); }} /> : null}</Row></Inset>
       ) : null}
       {tab === 'collections' ? <Inset><Row><Button variant="secondary" size="sm" icon="plus" label={t('web.saved.newCollection')} onClick={() => setCreating(true)} /></Row></Inset> : null}
       {canCreatePlaylist ? <Inset><Row><Button variant="secondary" size="sm" icon="plus" label={t('web.saved.newPlaylist')} onClick={() => setCreatingPlaylist(true)} /></Row></Inset> : null}
@@ -140,7 +140,7 @@ export function SavedScreen() {
       <NewCollectionDialog open={creating} onClose={() => setCreating(false)} onCreate={async (name, summary, visibility) => { if (!await personal.service.mutate({action: 'create', kind: 'collection', name, summary, visibility})) throw personal.service.getSnapshot().mutationError ?? new Error('not created'); }} />
       {sorts.length ? (
         <Inset><Row><Text variant="label" tone="tertiary">{t('sort.title')}</Text><Chips>
-          <Menu label={t('sort.title')} trigger={<Chip label={sortLabel(sorts.find(x => x.id === activeSort)?.labelKey ?? '')} icon="chevronDown" />} items={sorts.map(x => ({id: x.id, label: sortLabel(x.labelKey), selected: x.id === activeSort}))} onSelect={id => setSearch({sort: id, direction: activeDirection})} />
+          <Menu label={t('sort.title')} trigger={<Chip label={sortLabel(t, sorts.find(x => x.id === activeSort)?.labelKey ?? '')} icon="chevronDown" />} items={sorts.map(x => ({id: x.id, label: sortLabel(t, x.labelKey), selected: x.id === activeSort}))} onSelect={id => setSearch({sort: id, direction: activeDirection})} />
           <Chip label={activeDirection === 'desc' ? t('sort.descending') : t('sort.ascending')} icon={activeDirection === 'desc' ? 'chevronDown' : 'chevronUp'} onClick={() => setSearch({sort: activeSort, direction: activeDirection === 'desc' ? 'asc' : 'desc'})} />
         </Chips></Row></Inset>
       ) : null}
@@ -150,11 +150,12 @@ export function SavedScreen() {
 }
 
 function SavedView({tab, filter, onShowAll, snapshot, onRetry, onRefresh, onNext, onPrevious}: {tab: Exclude<SavedTab, 'history' | 'collections'>; filter?: string; onShowAll: () => void; snapshot: SavedSnapshot; onRetry: () => void; onRefresh: () => void; onNext: (id: string) => void; onPrevious: () => void}) {
+  const {t} = useI18n();
   const navigate = useNavigate();
   const sections = snapshot.projection?.sections ?? [];
   const entries = useMemo(() => sections.flatMap(x => x.entries), [sections]);
   const pageable = sections.find(x => x.nextCursor);
-  const copy = emptyCopy(tab);
+  const copy = emptyCopy(t, tab);
   // WEB-SAVED-05: a filter that matches nothing says so and offers the way back.
   const filtered = !!filter && filter !== 'all' && (tab === 'watchlist' || tab === 'favorites');
   const list = tab === 'favorites' ? t('saved.tab.favorites') : t('saved.tab.watchlist');
@@ -174,10 +175,13 @@ function SavedView({tab, filter, onShowAll, snapshot, onRetry, onRefresh, onNext
 }
 
 function PersonalView({tab, snapshot, onRefresh, onNext, onPrevious}: {tab: SavedTab; snapshot: PersonalSavedSnapshot; onRefresh: () => void; onNext: () => void; onPrevious: () => void}) {
+  const i18n = useI18n();
+  const {t} = i18n;
   const navigate = useNavigate();
   const open = useOpenEntry();
+  const hrefOf = useEntryHref();
   const loadingFresh = snapshot.loading && !snapshot.entries.length && !snapshot.resources.length;
-  const copy = emptyCopy(tab);
+  const copy = emptyCopy(t, tab);
   const collections = tab === 'collections' || tab === 'views';
   const empty = !snapshot.loading && !snapshot.error && (collections ? !snapshot.resources.length : !snapshot.entries.length) && snapshot.route !== null;
   return (
@@ -191,8 +195,8 @@ function PersonalView({tab, snapshot, onRefresh, onNext, onPrevious}: {tab: Save
         <Grid density="poster">
           {snapshot.entries.filter(e => e.media).map(e => {
             const m = e.media!;
-            const when = e.updatedAt ? defaultI18n.relativeTime(Date.parse(e.updatedAt)) : undefined;
-            return <Card key={e.id} title={m.title} caption={[e.completed ? t('web.saved.finished') : cardCaptionOf(m), when].filter(Boolean).join(' · ')} path={m.posterUrl ?? m.backdropUrl} shape="poster" fit={shapeFor(m.kind) === 'square' ? 'contain' : undefined} icon={iconFor(m.kind)} progress={e.completed ? 0 : e.positionSeconds && m.duration ? Math.min(1, e.positionSeconds / m.duration) : progressFor(m)} watched={e.completed} onOpen={() => open(m)} onPlay={m.playback ? () => open(m, 'play') : undefined} onMore={anchor => open(m, 'more', undefined, anchor)} />;
+            const when = e.updatedAt ? i18n.relativeTime(Date.parse(e.updatedAt)) : undefined;
+            return <Card key={e.id} title={m.title} caption={[e.completed ? t('web.saved.finished') : cardCaptionOf(m), when].filter(Boolean).join(' · ')} path={m.posterUrl ?? m.backdropUrl} shape="poster" fit={shapeFor(m.kind) === 'square' ? 'contain' : undefined} icon={iconFor(m.kind)} href={hrefOf(m)} progress={e.completed ? 0 : e.positionSeconds && m.duration ? Math.min(1, e.positionSeconds / m.duration) : progressFor(m)} watched={e.completed} onOpen={() => open(m)} onPlay={m.playback ? () => open(m, 'play') : undefined} onMore={anchor => open(m, 'more', undefined, anchor)} />;
           })}
         </Grid>
       )}
@@ -203,18 +207,21 @@ function PersonalView({tab, snapshot, onRefresh, onNext, onPrevious}: {tab: Save
 
 function MediaGrid({entries}: {entries: readonly ContentEntry[]}) {
   const open = useOpenEntry();
+  const hrefOf = useEntryHref();
   if (!entries.length) return null;
   const shapes = new Set(entries.map(e => shapeFor(e.kind)));
   const density = shapes.size === 1 && shapeFor(entries[0]!.kind) === 'square' ? 'square' : 'poster';
-  return <Grid density={density}>{entries.map(e => <Card key={e.id} title={e.title} caption={cardCaptionOf(e)} path={e.posterUrl ?? e.backdropUrl} shape={shapeFor(e.kind)} icon={iconFor(e.kind)} progress={progressFor(e)} watched={e.watched} onOpen={() => open(e)} onPlay={e.playback ? () => open(e, 'play') : undefined} onMore={anchor => open(e, 'more', undefined, anchor)} />)}</Grid>;
+  return <Grid density={density}>{entries.map(e => <Card key={e.id} title={e.title} caption={cardCaptionOf(e)} path={e.posterUrl ?? e.backdropUrl} shape={shapeFor(e.kind)} icon={iconFor(e.kind)} progress={progressFor(e)} watched={e.watched} href={hrefOf(e)} onOpen={() => open(e)} onPlay={e.playback ? () => open(e, 'play') : undefined} onMore={anchor => open(e, 'more', undefined, anchor)} />)}</Grid>;
 }
 function Pager({canPrevious, canNext, busy, onPrevious, onNext}: {canPrevious: boolean; canNext: boolean; busy: boolean; onPrevious: () => void; onNext: () => void}) {
+  const {t} = useI18n();
   if (!canPrevious && !canNext) return null;
   return <Inset><Row style={{justifyContent: 'center'}}><Button variant="secondary" icon="back" label={t('web.live.previous')} disabled={!canPrevious || busy} onClick={onPrevious} /><Button variant="secondary" iconAfter="forward" label={t('web.search.next')} disabled={!canNext || busy} loading={busy && canNext} onClick={onNext} /></Row></Inset>;
 }
 
 /** Collections are private unless the owner publishes them to every member of the server. */
 function NewCollectionDialog({open, onClose, onCreate}: {open: boolean; onClose: () => void; onCreate: (name: string, summary: string, visibility: 'private' | 'server') => Promise<void>}) {
+  const {t} = useI18n();
   const [name, setName] = useState('');
   const [summary, setSummary] = useState('');
   const [shared, setShared] = useState(false);
@@ -243,6 +250,7 @@ function NewCollectionDialog({open, onClose, onCreate}: {open: boolean; onClose:
 
 /** A name and optional description, for a new playlist or renaming one. */
 export function NameDialog({open, title, action, context, initialName = '', initialSummary = '', onClose, onSave}: {open: boolean; title: string; action: string; context: 'playlist' | 'collection'; initialName?: string; initialSummary?: string; onClose: () => void; onSave: (name: string, summary: string) => Promise<void>}) {
+  const {t} = useI18n();
   const [name, setName] = useState(initialName);
   const [summary, setSummary] = useState(initialSummary);
   const [busy, setBusy] = useState(false);

@@ -73,9 +73,6 @@ func detectSegments(frames []sceneSignal, step, duration int64) []Marker {
 	for _, gap := range gaps {
 		if gap.start >= 10000000 && gap.start <= 180000000 && gap.end < duration/3 {
 			out = append(out, candidate("intro", 0, gap.start, .3, "luminance_opening_boundary:v1"))
-			if gap.start <= 90000000 {
-				out = append(out, candidate("recap", 0, gap.start, .2, "luminance_opening_boundary_semantic_ambiguous:v1"))
-			}
 			break
 		}
 	}

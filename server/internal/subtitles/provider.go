@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/url"
@@ -11,10 +12,12 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/localonly"
+	"portico.local/server/internal/operations"
 
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/remotemedia"
@@ -39,17 +42,22 @@ func (s *Service) ProviderStatus() ProviderStatus {
 	if s.provider == nil {
 		return ProviderStatus{ID: "opensubtitles", Reason: "provider_not_configured"}
 	}
+	if status, ok := s.provider.(interface{ Status() ProviderStatus }); ok {
+		return status.Status()
+	}
 	return ProviderStatus{ID: s.provider.ID(), Enabled: true}
 }
 
 // OpenSubtitles credentials stay in the server process. No provider URL, token,
 // filename, HTML, or download capability is included in public search results.
 type OpenSubtitles struct {
-	key, token, agent string
-	client            *http.Client
-	mu                sync.Mutex
-	next              time.Time
-	gate              chan struct{}
+	key, token, agent        string
+	username, password, host string
+	loginRejected            atomic.Bool
+	client                   *http.Client
+	mu                       sync.Mutex
+	next                     time.Time
+	gate                     chan struct{}
 }
 
 func ProviderFromEnvironment() Provider {
@@ -66,7 +74,7 @@ func ProviderFromEnvironment() Provider {
 	if agent == "" {
 		agent = "Portico v1"
 	}
-	return &OpenSubtitles{key: key, token: strings.TrimSpace(os.Getenv("PORTICO_OPENSUBTITLES_TOKEN")), agent: agent, gate: make(chan struct{}, 1), client: &http.Client{Transport: tr, Timeout: 20 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
+	return &OpenSubtitles{key: key, username: os.Getenv("PORTICO_OPENSUBTITLES_USERNAME"), password: os.Getenv("PORTICO_OPENSUBTITLES_PASSWORD"), host: "api.opensubtitles.com", agent: agent, gate: make(chan struct{}, 1), client: &http.Client{Transport: tr, Timeout: 20 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
 }
 func (p *OpenSubtitles) ID() string { return "opensubtitles" }
 func (p *OpenSubtitles) request(ctx context.Context, method, path string, body, out any) error {
@@ -76,6 +84,48 @@ func (p *OpenSubtitles) request(ctx context.Context, method, path string, body, 
 	case <-ctx.Done():
 		return ctx.Err()
 	}
+
+	if p.token == "" && p.username != "" {
+		if e := p.login(ctx); e != nil {
+			return e
+		}
+	}
+	e := p.requestOnce(ctx, method, path, body, out)
+	if e == errProviderAuthorization && p.username != "" && !p.loginRejected.Load() {
+		p.token = ""
+		if e = p.login(ctx); e != nil {
+			return e
+		}
+		return p.requestOnce(ctx, method, path, body, out)
+	}
+	return e
+}
+
+var errProviderAuthorization = errors.New("subtitle provider authorization expired")
+
+func (p *OpenSubtitles) login(ctx context.Context) error {
+	if p.loginRejected.Load() || p.username == "" || p.password == "" {
+		return ErrUnavailable
+	}
+	p.host = "api.opensubtitles.com"
+	var response struct {
+		Token string `json:"token"`
+		Host  string `json:"base_url"`
+	}
+	e := p.requestOnce(ctx, "POST", "/login", map[string]string{"username": p.username, "password": p.password}, &response)
+	if e == errProviderAuthorization {
+		p.loginRejected.Store(true)
+	}
+	if e != nil {
+		return e
+	}
+	if response.Token == "" || len(response.Token) > 16384 || (response.Host != "api.opensubtitles.com" && response.Host != "vip-api.opensubtitles.com") {
+		return ErrUnavailable
+	}
+	p.token, p.host = response.Token, response.Host
+	return nil
+}
+func (p *OpenSubtitles) requestOnce(ctx context.Context, method, path string, body, out any) error {
 	p.mu.Lock()
 	delay := time.Until(p.next)
 	p.mu.Unlock()
@@ -95,7 +145,7 @@ func (p *OpenSubtitles) request(ctx context.Context, method, path string, body, 
 	if body != nil {
 		raw, _ = json.Marshal(body)
 	}
-	req, e := http.NewRequestWithContext(ctx, method, "https://api.opensubtitles.com/api/v1"+path, bytes.NewReader(raw))
+	req, e := http.NewRequestWithContext(ctx, method, "https://"+p.providerHost()+"/api/v1"+path, bytes.NewReader(raw))
 	if e != nil {
 		return ErrUnavailable
 	}
@@ -105,7 +155,7 @@ func (p *OpenSubtitles) request(ctx context.Context, method, path string, body, 
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	if p.token != "" {
+	if p.token != "" && path != "/login" {
 		req.Header.Set("Authorization", "Bearer "+p.token)
 	}
 	response, e := p.client.Do(req)
@@ -122,6 +172,9 @@ func (p *OpenSubtitles) request(ctx context.Context, method, path string, body, 
 		p.next = time.Now().Add(delay)
 		p.mu.Unlock()
 	}
+	if response.StatusCode == http.StatusUnauthorized {
+		return errProviderAuthorization
+	}
 	if response.StatusCode != http.StatusOK {
 		return ErrUnavailable
 	}
@@ -134,8 +187,43 @@ func (p *OpenSubtitles) request(ctx context.Context, method, path string, body, 
 	}
 	return nil
 }
+func (p *OpenSubtitles) providerHost() string {
+	if p.host == "vip-api.opensubtitles.com" {
+		return p.host
+	}
+	return "api.opensubtitles.com"
+}
 func (p *OpenSubtitles) Search(ctx context.Context, title, language string, page int) ([]ProviderCandidate, error) {
-	q := url.Values{"query": {title}, "languages": {strings.ToLower(strings.Split(language, "-")[0])}, "page": {strconv.Itoa(page)}}
+	return p.SearchMedia(ctx, ProviderQuery{Title: title, Language: language, Page: page, Season: -1, Episode: -1})
+}
+func (p *OpenSubtitles) SearchMedia(ctx context.Context, media ProviderQuery) ([]ProviderCandidate, error) {
+	q := url.Values{"languages": {providerLanguage(media.Language)}}
+	if media.Page > 1 {
+		q.Set("page", strconv.Itoa(media.Page))
+	}
+	switch {
+	case media.IMDbID != "":
+		q.Set("imdb_id", media.IMDbID)
+	case media.TMDBID != "":
+		q.Set("tmdb_id", media.TMDBID)
+	default:
+		if media.ParentIMDbID != "" {
+			q.Set("parent_imdb_id", media.ParentIMDbID)
+		} else if media.ParentTMDBID != "" {
+			q.Set("parent_tmdb_id", media.ParentTMDBID)
+		} else {
+			q.Set("query", strings.ToLower(media.Title))
+			if media.Year > 0 && media.Episode < 0 {
+				q.Set("year", strconv.Itoa(media.Year))
+			}
+		}
+		if media.Episode >= 0 && media.Season >= 0 {
+			q.Set("season_number", strconv.Itoa(media.Season))
+			q.Set("episode_number", strconv.Itoa(media.Episode))
+			q.Set("type", "episode")
+		}
+	}
+
 	var response struct {
 		Data []struct {
 			Attributes struct {
@@ -227,18 +315,32 @@ func (s *Service) Search(ctx context.Context, p identity.Principal, item string,
 	defer cancel()
 	out := SearchResult{Version: 1, Candidates: []SearchCandidate{}, Page: m.Page}
 	language, e := Language(m.Language)
-	if e != nil || language == "und" || m.Page < 1 || m.Page > 20 || !textField(m.Query, 160) {
+	if e != nil || language == "und" && m.Language != "" || m.Page < 1 || m.Page > 20 || !textField(m.Query, 160) {
 		return out, ErrInput
 	}
 	if s.provider == nil {
 		return out, ErrUnavailable
 	}
-	gated, p, e := s.tx(ctx, p, item)
+	gated, p, e := s.readTx(ctx, p, item)
 	if e != nil {
 		return out, e
 	}
 	tx := gated.Tx()
 	defer gated.Rollback()
+	if m.Language == "" {
+		values, _, _, err := operations.EffectivePreferences(tx, p.Viewer, "")
+		if err != nil {
+			return out, err
+		}
+		language = "en"
+		for _, want := range values.List("playback.preferredSubtitleLanguages") {
+			if normalized, err := Language(want); err == nil && normalized != "und" {
+				language = normalized
+				break
+			}
+		}
+	}
+
 	src, e := sourceQuery(ctx, tx, item, m.SourceID)
 	if e != nil {
 		return out, e
@@ -252,16 +354,20 @@ func (s *Service) Search(ctx context.Context, p identity.Principal, item string,
 	if !src.Available {
 		return out, ErrUnavailable
 	}
-	title := strings.TrimSpace(m.Query)
-	if title == "" {
-		if e = tx.QueryRowContext(ctx, `SELECT title FROM catalog_entities WHERE public_id=pid_blob(?)`, item).Scan(&title); e != nil {
-			return out, e
-		}
+	media, e := providerQuery(ctx, tx, item, strings.TrimSpace(m.Query), language, m.Page)
+	if e != nil {
+		return out, e
 	}
+
 	if e = gated.Commit(); e != nil {
 		return out, e
 	}
-	candidates, e := s.provider.Search(ctx, safeTitle(title), language, m.Page)
+	var candidates []ProviderCandidate
+	if advanced, ok := s.provider.(MediaSearchProvider); ok {
+		candidates, e = advanced.SearchMedia(ctx, media)
+	} else {
+		candidates, e = s.provider.Search(ctx, safeTitle(media.Title), language, m.Page)
+	}
 	if e != nil {
 		return out, e
 	}
@@ -357,4 +463,11 @@ func (s *Service) Apply(ctx context.Context, p identity.Principal, item string, 
 	}
 	mutation := Mutation{OperationID: m.OperationID, SourceID: srcID, Scope: m.Scope, Format: "srt", Language: language, Title: title, Rights: m.Rights, OffsetUS: "0"}
 	return s.publish(ctx, p, item, mutation, digest, publication{source: src, origin: "provider", provider: provider, attribution: attribution, originalDigest: digestBytes(raw)}, canonical)
+}
+
+func (p *OpenSubtitles) Status() ProviderStatus {
+	if p.loginRejected.Load() {
+		return ProviderStatus{ID: p.ID(), Reason: "provider_sign_in_failed"}
+	}
+	return ProviderStatus{ID: p.ID(), Enabled: true}
 }

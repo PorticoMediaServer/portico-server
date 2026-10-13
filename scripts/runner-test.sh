@@ -216,7 +216,7 @@ defaults() {
 	[ "$have_p" = 1 ] || printf '%s\n' "-p" "$(cat "$HOME/.runner-p" 2>/dev/null || echo 3)"
 	[ "$have_count" = 1 ] || printf '%s\n' "-count=1"
 	# Stopgap until persistence's migration-order test stops replaying the chain.
-	[ "$have_timeout" = 1 ] || printf '%s\n' "-timeout" "30m"
+	[ "$have_timeout" = 1 ] || { if [ "$module" = full ]; then printf '%s\n' "-timeout" "60m"; else printf '%s\n' "-timeout" "30m"; fi; }
 }
 gotest() {
 	local mod="$1"; shift

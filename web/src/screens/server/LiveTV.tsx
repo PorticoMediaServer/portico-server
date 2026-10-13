@@ -1,4 +1,5 @@
-import {currentI18n, useI18n} from '../../app/i18n';
+import {importSkipped} from '@core/server-admin/live-words.ts';
+import {useI18n} from '../../app/i18n';
 import {useEffect, useState} from 'react';
 import {lanConfirmationRoots, linearError, previewRemoteSource, remoteSourceDraft, withConfirmedLanRoots, type RemoteSourceDraft, type RemoteSourcePreview, type RefreshStatus, type SourceKind} from '@core/linear-api.ts';
 import {channelRequestID, newLiveSourceInput, type LiveSourceInput} from '@core/live-source-draft.ts';
@@ -9,7 +10,6 @@ import {problem, sentence, useAction, useRead} from '../../admin/console';
 import {useInlineForm} from '../settings/ServerForms';
 import {createOperationIds} from './operation-ids';
 import {usePollWhile} from '../../admin/poll-while';
-import {formatBytes} from '@core/presentation/index.ts';
 import {useSession} from '../../app/session';
 import {Badge, Button, ConfirmDialog, Dialog, Freshness, Input, KeyValue, Menu, Notice, PasswordInput, Segmented, Select, SettingsGroup, SettingsRow, StateView, Text, TextArea, type MenuItem} from '../../ui';
 import {ChannelMapDialog, DiscoverTunersDialog, RecordingRulesGroup, SourceSettingsDialog} from './LiveSourceExtras';
@@ -24,7 +24,8 @@ const kindLabel: Record<SourceKind, string> = {m3u: 'M3U playlist URL', xtream: 
  */
 export function LiveSourcesPanel() {
   const {api} = useSession();
-  const {t} = useI18n();
+  const i18n = useI18n();
+  const {t} = i18n;
   const read = useRead<SourceList>(() => api.request<SourceList>('/v1/admin/live-sources'), [api]);
   const action = useAction();
   // BE-API-10: one ID per logical write; retries reuse it.
@@ -52,11 +53,12 @@ export function LiveSourcesPanel() {
       {action.error ? <Notice tone="error">{action.error}</Notice> : null}
         <SettingsGroup title={t('web.liveTv.sources')} action={<div style={{display: 'flex', gap: 12, alignItems: 'center'}}><Freshness at={read.at} onRefresh={read.reload} refreshing={read.loading} />{<Menu label={t('web.liveTv.addSource')} trigger={<Button variant="primary" icon="plus" label={t('web.liveTv.addSource')} iconAfter="chevronDown" />} items={[{id: 'remote', label: t('web.liveTv.remoteSource'), icon: 'live', meta: t('web.liveTv.remoteSourceMeta')}, {id: 'discover', label: t('web.liveTv.discover'), icon: 'search', meta: t('web.liveTv.discoverMeta')}, {id: 'upload', label: t('web.liveTv.upload'), icon: 'upload', meta: t('web.liveTv.uploadMeta')}]} onSelect={id => { if (id === 'discover') setDiscover(true); else { setFound(undefined); setAdd(id as 'remote' | 'upload'); } }} />}</div>}>
           {read.data && !sources.length ? <SettingsRow label={t('live.noSources')} help={t('web.liveTv.noSourcesHelp')} /> : null}
+          {sources.map(src => <ImportSkippedNotice key={'skipped:' + src.id} name={src.name} diagnostics={(src as {diagnostics?: unknown}).diagnostics} />)}
           {sources.map(src => {
             const r = status(src.id);
             const refreshable = canRefreshSource(src, read.data?.refresh);
             const items: MenuItem[] = [{id: 'settings', label: t('web.liveTv.sourceSettings'), icon: 'settings'}, {id: 'channels', label: t('web.liveTv.channelsAndNumbers'), icon: 'list'}, ...(refreshable ? [{id: 'refresh', label: t('web.liveTv.refreshGuideNow'), icon: 'refresh', separatorBefore: true} as MenuItem] : []), {id: 'toggle', label: src.state === 'disabled' ? t('web.liveTv.enableSource') : t('web.liveTv.pauseSource'), icon: src.state === 'disabled' ? 'play' : 'pause'}, {id: 'remove', label: t('web.liveTv.removeSource'), icon: 'trash', destructive: true, separatorBefore: true}];
-            return <SettingsRow key={src.id} icon="live" label={src.name} help={`${src.channels} channels · ${src.programmes.toLocaleString()} programs${src.tunerCount ? ` · ${src.tunerCount} tuners${src.tunerCountMode === 'discovered' ? ' (detected)' : ''}` : ''}${src.publishedAt ? ` · guide updated ${new Date(src.publishedAt).toLocaleString()}` : ''}${r?.errorCode ? ` · ${currentI18n().t('web.console.refreshFailed')}` : ''}`} meta={<Badge tone={tone(src)} dot live={r?.state === 'refreshing'}>{src.state === 'disabled' ? t('web.liveTv.pausedBadge') : r ? sentence(r.state) : sentence(src.state)}</Badge>} control={<Menu label={src.name} trigger={<Button size="sm" variant="ghost" icon="more" aria-label={t('web.storage.actions')} />} items={items} onSelect={id => {
+            return <SettingsRow key={src.id} icon="live" label={src.name} help={[t('server.live.channelCount', {count: src.channels}), t('server.live.programCount', {count: src.programmes}), src.tunerCount ? t(src.tunerCountMode === 'discovered' ? 'web.liveTv.tunersDetected' : 'server.live.tunerCount', {count: src.tunerCount}) : '', src.publishedAt ? t('server.live.guideUpdated', {when: i18n.dateTime(src.publishedAt)}) : '', r?.errorCode ? t('web.console.refreshFailed') : ''].filter(Boolean).join(' · ')} meta={<Badge tone={tone(src)} dot live={r?.state === 'refreshing'}>{src.state === 'disabled' ? t('web.liveTv.pausedBadge') : r ? sentence(r.state) : sentence(src.state)}</Badge>} control={<Menu label={src.name} trigger={<Button size="sm" variant="ghost" icon="more" aria-label={t('web.storage.actions')} />} items={items} onSelect={id => {
               if (id === 'settings') setConfigure(src);
               else if (id === 'channels') setMapping(src);
               else if (id === 'refresh') { if (!canRefreshSource(src, read.data?.refresh)) return; void action.run(() => api.request(`/v1/admin/live-sources/${encodeURIComponent(src.id)}/refresh`, 'POST', {expectedRevision: src.revision}), t('web.liveTv.refreshStarted')).then(ok => ok && read.reload()); }
@@ -118,7 +120,8 @@ function RemoteSourceDialog({open, tuner, onClose, onSaved}: {open: boolean; tun
       {draft.kind === 'xtream' ? <><Input label={i18n.t('web.direct.username')} value={draft.username} onChange={e => setDraft({...draft, username: e.target.value})} autoCapitalize="off" spellCheck={false} /><PasswordInput label={i18n.t('web.account.password')} value={draft.password} onChange={e => setDraft({...draft, password: e.target.value})} /></> : null}
       <Select label={i18n.t('web.liveTv.whoCanWatch')} value={draft.viewerAccess} options={[{value: 'server-members', label: i18n.t('web.liveTv.everyoneOnServer')}, {value: 'owner-only', label: i18n.t('web.together.onlyMe')}]} onChange={e => setDraft({...draft, viewerAccess: e.target.value as RemoteSourceDraft['viewerAccess']})} />
       <Select label={i18n.t('web.liveTv.refreshGuide')} value={String(draft.refreshSeconds)} options={[{value: '3600', label: i18n.t('web.libraries.everyHour')}, {value: '21600', label: i18n.t('web.libraries.every6h')}, {value: '43200', label: i18n.t('web.liveTv.every12h')}, {value: '86400', label: i18n.t('web.libraries.daily')}]} onChange={e => setDraft({...draft, refreshSeconds: Number(e.target.value)})} />
-      {preview ? <Notice tone="success" title={i18n.t('web.liveTv.previewMeta', {channels: preview.preview.channels, programs: preview.preview.programmes.toLocaleString()})}>{preview.preview.names.slice(0, 6).join(', ')}{preview.preview.names.length > 6 ? '…' : ''}{preview.discoveredCapacity ? ` · ${i18n.t('web.liveTv.capacityTuners', {count: preview.discoveredCapacity})}` : ''}</Notice> : null}
+      {preview ? <Notice tone="success" title={[i18n.t('server.live.channelCount', {count: preview.preview.channels}), i18n.t('server.live.programCount', {count: preview.preview.programmes})].join(' · ')}>{preview.preview.names.slice(0, 6).join(', ')}{preview.preview.names.length > 6 ? '…' : ''}{preview.discoveredCapacity ? ` · ${i18n.t('web.liveTv.capacityTuners', {count: preview.discoveredCapacity})}` : ''}</Notice> : null}
+      {preview ? <ImportSkippedNotice diagnostics={preview.preview.diagnostics} /> : null}
       {confirm ? (
         <Notice tone="warning" title={i18n.t('web.liveTv.lanTitle')}>
           <span>{i18n.t('web.liveTv.lanBody')}</span>
@@ -151,7 +154,7 @@ function UploadSourceDialog({open, onClose, onSaved}: {open: boolean; onClose: (
       <Input label={t('web.liveTv.playlistFile')} type="file" accept=".m3u,.m3u8,text/plain" onChange={e => readFile(e.target.files?.[0], 'playlist')} />
       <Input label={t('web.liveTv.guideFile')} optional type="file" accept=".xml,text/xml,application/xml" onChange={e => readFile(e.target.files?.[0], 'guide')} />
       <Input label={t('web.dvrSettings.tuners')} type="number" min={0} max={64} inputMode="numeric" value={draft.tunerCount} onChange={e => setDraft({...draft, tunerCount: Number(e.target.value) || 0})} help={t('web.liveTv.tunersHelp')} style={{width: 120}} />
-      {preview ? <Notice tone="success" title={t('web.liveTv.previewMeta', {channels: preview.channels, programs: preview.programmes.toLocaleString()})}>{preview.names?.slice(0, 6).join(', ')}</Notice> : null}
+      {preview ? <Notice tone="success" title={[t('server.live.channelCount', {count: preview.channels}), t('server.live.programCount', {count: preview.programmes})].join(' · ')}>{preview.names?.slice(0, 6).join(', ')}</Notice> : null}
       {action.error ? <Notice tone="error" compact>{linearError(action.error)}</Notice> : null}
     </Dialog>
   );
@@ -167,7 +170,8 @@ export function RecordingRulesPanel() {
 /** Recording › space: what recordings use, and the limits that keep the disk from filling. Saved with the page. */
 export function RecordingStoragePanel() {
   const {api} = useSession();
-  const {t} = useI18n();
+  const i18n = useI18n();
+  const {t} = i18n;
   const read = useRead<{result?: RecordingStorage} & Partial<RecordingStorage>>(() => api.request('/v1/dvr/storage'), [api]);
   const action = useAction();
   // BE-API-10: one ID per logical save; retries reuse it.
@@ -189,7 +193,7 @@ export function RecordingStoragePanel() {
   const gb = (b: number) => Math.round(b / 1e9);
   return (
     <SettingsGroup title={t('channels.recordings')} description={t('web.liveTv.recordingsLede')} action={<Freshness at={data.measurement?.measuredAt} onRefresh={read.reload} refreshing={read.loading} verb="Measured" />}>
-      <SettingsRow label={t('web.liveTv.space')} stack control={<KeyValue rows={[['Used by recordings', formatBytes(data.measurement.usedBytes)], ['Free on the volume', formatBytes(data.measurement.freeBytes)], ['Reserved', formatBytes(data.measurement.reservedBytes)], ['Waiting for deletion', formatBytes(data.pendingDeleteBytes)], ['Forecast', data.forecastDescription || `${formatBytes(data.forecastBytes)} over ${data.forecastHours} hours`]]} />} start />
+      <SettingsRow label={t('web.liveTv.space')} stack control={<KeyValue rows={[[t('server.live.usedByRecordings'), i18n.bytes(data.measurement.usedBytes)], [t('server.live.freeOnVolume'), i18n.bytes(data.measurement.freeBytes)], [t('web.liveTv.space.reserved'), i18n.bytes(data.measurement.reservedBytes)], [t('web.liveTv.space.waitingDelete'), i18n.bytes(data.pendingDeleteBytes)], [t('web.liveTv.space.forecast'), data.forecastDescription || t('web.liveTv.space.forecastOver', {size: i18n.bytes(data.forecastBytes), hours: data.forecastHours})]]} />} start />
       {!data.measurement.writeHealthy ? <div style={{padding: '0 16px 12px'}}><Notice tone="warning" compact>{t('web.liveTv.notWritable')}</Notice></div> : null}
       <SettingsRow label={t('web.liveTv.keepRecordings')} help={t('web.liveTv.keepRecordingsHelp')} control={<Input hideLabel label={t('web.liveTv.keepRecordings')} type="number" min={0} max={3650} inputMode="numeric" value={draft.retentionDays} onChange={e => setDraft({...draft, retentionDays: Number(e.target.value) || 0})} style={{width: 110}} />} meta={t('settings.unit.days')} />
       <SettingsRow label={t('web.liveTv.episodesPerSeries')} help={t('web.liveTv.episodesPerSeriesHelp')} control={<Input hideLabel label={t('web.liveTv.episodesPerSeriesLabel')} type="number" min={0} max={100000} inputMode="numeric" value={draft.episodeLimit} onChange={e => setDraft({...draft, episodeLimit: Number(e.target.value) || 0})} style={{width: 110}} />} />
@@ -198,4 +202,13 @@ export function RecordingStoragePanel() {
       {inline.error ? <div style={{padding: '0 16px 12px'}}><Notice tone="error" compact>{problem(inline.error, 'action')}</Notice></div> : null}
     </SettingsGroup>
   );
+}
+
+/** What a guide or playlist import left out and why; nothing when it left nothing out. The rest of the import is in use either way. */
+function ImportSkippedNotice({name, diagnostics}: {name?: string; diagnostics: unknown}) {
+  const i18n = useI18n();
+  const skipped = importSkipped(i18n.t, id => i18n.has(id), diagnostics);
+  if (!skipped) return null;
+  const notice = <Notice tone="warning" compact title={name}>{[skipped.summary, ...skipped.reasons].join(' ')}</Notice>;
+  return name ? <div style={{padding: 12}}>{notice}</div> : notice;
 }

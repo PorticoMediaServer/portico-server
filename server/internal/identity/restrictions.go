@@ -51,10 +51,12 @@ type ContentRestrictions struct {
 	BlockUnrated  bool
 	BlockedLabels []string
 	Revision      int64
-	// Member limits are an independent, narrowing authority. They use the
-	// access rating ladder, whose unknown values follow AllowUnrated.
-	MemberMaxRating    string
-	MemberAllowUnrated bool
+	// The account's limits (set by the owner or an administrator) narrow the
+	// profile's own: Narrow folds the account's rating ceiling and unrated rule
+	// into MaximumAge and BlockUnrated above, on the same age scale, so there
+	// is one rating rule and it cannot disagree with itself. What stays
+	// separate is the account's denied list, which matches a title's tags as
+	// well as its labels, and the revision that fences open pages.
 	MemberDeniedLabels []string
 	MemberRevision     int64
 	// BlockRecordings is the profile's Recordings switch turned off (P8).
@@ -70,7 +72,25 @@ type ContentRestrictions struct {
 // restriction must compile to no SQL at all so unrestricted reads keep their
 // existing plans.
 func (r ContentRestrictions) Active() bool {
-	return r.MaximumAge != nil || r.BlockUnrated || len(r.BlockedLabels) > 0 || r.MemberMaxRating != "" || len(r.MemberDeniedLabels) > 0
+	return r.MaximumAge != nil || r.BlockUnrated || len(r.BlockedLabels) > 0 || len(r.MemberDeniedLabels) > 0
+}
+
+// Narrow applies an account-level limit on top of these restrictions. It can
+// only tighten: the lower of the two rating ceilings holds, unrated titles are
+// blocked when either side blocks them, and the denied list is added. A
+// negative ceiling means the account has none.
+func (r ContentRestrictions) Narrow(ceiling int, blockUnrated bool, denied []string, revision int64) ContentRestrictions {
+	if ceiling >= 0 && (r.MaximumAge == nil || ceiling < *r.MaximumAge) {
+		age := ceiling
+		r.MaximumAge = &age
+	} else if r.MaximumAge != nil {
+		age := *r.MaximumAge
+		r.MaximumAge = &age
+	}
+	r.BlockUnrated = r.BlockUnrated || blockUnrated
+	r.MemberDeniedLabels = append([]string{}, denied...)
+	r.MemberRevision = revision
+	return r
 }
 
 // Content projects the catalog-visible subset.
@@ -252,8 +272,8 @@ func (s *Service) ProfileRestrictions(ctx context.Context, bearer, profile strin
 // management authority is carried by the ordinary session; a child profile's
 // viewing session cannot manage the account.
 //
-// Tightening or loosening both revoke the profile's viewing families, so an open
-// page, cursor or playback grant cannot outlive the change.
+// The change applies live. The profile's devices stay signed in; what they may
+// see changes on their next request.
 func (s *Service) SetProfileRestrictions(ctx context.Context, bearer, profile string, edit ProfileRestrictionEdit) (ProfileRestrictions, error) {
 	if !validFamilyID(profile) || edit.ExpectedRevision < 1 {
 		return ProfileRestrictions{}, ErrRestrictionInput
@@ -298,15 +318,10 @@ func (s *Service) SetProfileRestrictions(ctx context.Context, bearer, profile st
 		profile, system, code, ceiling, edit.AllowUnrated, string(raw), edit.AllowDownloads, edit.AllowLiveTV, edit.AllowDVR, edit.AllowWatchTogether, current.Revision+1); e != nil {
 		return ProfileRestrictions{}, e
 	}
-	// A restriction change ends the profile's live sessions. The family hook is the
-	// same one a PIN change uses, so playback occurrences, queues and physical
-	// readers retire through the v2 controller model rather than being orphaned.
-	if _, e = tx.ExecContext(ctx, `DELETE FROM direct_profile_trust WHERE profile_id=?`, profile); e != nil {
-		return ProfileRestrictions{}, e
-	}
-	if e = s.revokeDirectTx(ctx, tx, c.account.ID, profile, ""); e != nil {
-		return ProfileRestrictions{}, e
-	}
+	// Nobody is signed out. The new restrictions apply to the profile's next
+	// request: every catalogue read and every playback start reads this row,
+	// and its revision is part of the fence that expires open pages, cursors
+	// and cached counts (catalog.RestrictionFence).
 	out, e := RestrictionsTx(ctx, tx, profile)
 	if e != nil {
 		return out, e

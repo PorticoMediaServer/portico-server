@@ -66,3 +66,24 @@ test('remote settings round-trip ipv6Open and lanSharing (a save sends them back
   assert.equal(older.config.ipv6Open, undefined);
   assert.throws(() => parseRemoteAccess({...status, config: {...status.config, ipv6Open: 'yes'}}));
 });
+
+test('a remembered server follows the address it was last proven at, keeping its place and profile', async () => {
+  let now = Date.parse('2026-10-13T10:00:00Z');
+  const store = memory();
+  let writes = 0;
+  const counting = {getItem: store.getItem, setItem: (k: string, v: string) => { writes++; store.setItem(k, v); }};
+  const known = new KnownDirectServers(keyValueKnownServerStorage(counting), () => now);
+  await known.remember({serverId: 'srv-a', name: 'Home', address: 'http://192.168.1.10:32500', lastProfileId: 'p1', lastProfileName: 'Ana'});
+  now += 1000;
+  await known.remember({serverId: 'srv-b', name: 'Cabin', address: 'https://cabin.example.com'});
+  await known.setAddress('srv-a', 'http://192.168.1.44:32500');
+  const list = await known.list();
+  assert.deepEqual(list.map(s => s.serverId), ['srv-b', 'srv-a'], 'order is by last sign-in, not by this update');
+  assert.equal(list[1]!.address, 'http://192.168.1.44:32500');
+  assert.equal(list[1]!.lastProfileName, 'Ana');
+  const before = store.map.get('portico.knownServers');
+  await known.setAddress('srv-a', 'http://192.168.1.44:32500');
+  await known.setAddress('srv-unknown', 'http://192.168.1.50:32500');
+  await known.setAddress('srv-a', 'http://user:pw@192.168.1.60/path');
+  assert.equal(store.map.get('portico.knownServers'), before, 'unchanged, unknown or unusable addresses change nothing');
+});

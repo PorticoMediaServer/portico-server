@@ -121,6 +121,8 @@ test("media URLs stay on the selected server's origin", async () => {
     "token",
     fake as typeof fetch
   );
+  // Playback is started, reported and stopped only through Playback Protocol v1 (V1PlaybackApi).
+  for (const gone of ["createPlayback", "progressPlayback", "stopPlayback", "reportRouteFailure"]) assert.equal(gone in client, false, gone);
   assert.equal(
     client.mediaUrl("/v1/media/opaque"),
     "http://127.0.0.1:19411/v1/media/opaque"

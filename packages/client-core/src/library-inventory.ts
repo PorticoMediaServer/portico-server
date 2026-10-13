@@ -1,6 +1,7 @@
 /** Local/mounted inventory administration. No provider credentials, persistent
  * path cache, automatic command replay, or client-side identity heuristics. */
 import type {ContentScope, LibraryContentApi} from './library-content.ts';
+import {firstOfEach,keepReadable,noteSkipped} from './tolerant.ts';
 import type {ServerEvent} from './playback-v1/types.ts';
 
 export type ScanTier='file_list_only'|'basic'|'complete'|'custom';
@@ -26,13 +27,16 @@ function errorOf(e:unknown):InventoryError {return Object.freeze({code:record(e)
 function parseConfig(raw:unknown,bound:ContentScope,libraryId:string):InventoryConfig {
  assert(record(raw)&&raw.libraryId===libraryId&&integer(raw.revision)&&raw.revision>0&&record(raw.policy));
  const policy=raw.policy;assert(['file_list_only','basic','complete','custom'].includes(String(policy.tier))&&integer(policy.revision));
- const operations=list(policy.operations,scanOperations.length);assert(operations.every(v=>scanOperations.includes(v as ScanOperation))&&new Set(operations).size===operations.length);
- const sources=list(raw.sources,64).map(v=>{assert(record(v)&&id(v.id)&&v.libraryId===libraryId&&text(v.kind,64)&&text(v.name,512)&&text(v.path)&&text(v.resolvedPath)&&['local','network'].includes(String(v.classification))&&integer(v.generation)&&text(v.health,128)&&typeof v.enabled==='boolean'&&typeof v.followSymlinks==='boolean'&&typeof v.identityConfirmed==='boolean'&&integer(v.intervalSeconds)&&text(v.nextScanAt,128)&&text(v.lastCompleteAt,128)&&text(v.lastProgressAt,128));return Object.freeze({...v}) as InventorySource;});assert(new Set(sources.map(s=>s.id)).size===sources.length);
+ // The scan policy is sent back when the owner changes it, so its tier stays exact; a step this app does not know is left out of what it shows, each known step once.
+ const given=list(policy.operations,64),operations=[...new Set(given.filter(v=>scanOperations.includes(v as ScanOperation)))];if(operations.length!==given.length)noteSkipped('library-inventory','policy.operations',given.length-operations.length);
+ // A folder that cannot be read is left out alone, and a repeated one keeps its first row.
+ const sources=firstOfEach('library-inventory','sources',keepReadable('library-inventory','sources',list(raw.sources,64),v=>{assert(record(v)&&id(v.id)&&v.libraryId===libraryId&&text(v.kind,64)&&text(v.name,512)&&text(v.path)&&text(v.resolvedPath)&&['local','network'].includes(String(v.classification))&&integer(v.generation)&&text(v.health,128)&&typeof v.enabled==='boolean'&&typeof v.followSymlinks==='boolean'&&typeof v.identityConfirmed==='boolean'&&integer(v.intervalSeconds)&&text(v.nextScanAt,128)&&text(v.lastCompleteAt,128)&&text(v.lastProgressAt,128));return Object.freeze({...v}) as InventorySource;}),s=>s.id);
  return Object.freeze({scope:scope(raw.scope,bound),libraryId,revision:raw.revision,sources:Object.freeze(sources),policy:Object.freeze({tier:policy.tier as ScanTier,revision:policy.revision,operations:Object.freeze(operations as ScanOperation[])})});
 }
 function parseObjects(raw:unknown,bound:ContentScope,libraryId:string,filter:InventoryFilter):InventoryObjects {
  assert(record(raw)&&raw.libraryId===libraryId&&raw.sourceId===(filter.sourceId??'')&&integer(raw.revision)&&text(raw.nextCursor,4096));
- const items=list(raw.items,40).map(v=>{assert(record(v)&&id(v.id)&&id(v.sourceId)&&id(v.assetId)&&text(v.itemId,256)&&text(v.title,4096)&&text(v.relativePath)&&id(v.revision)&&text(v.state,128)&&integer(v.size)&&typeof v.modifiedNs==='number'&&Number.isFinite(v.modifiedNs)&&text(v.missingSince,128)&&text(v.analysisState,128)&&text(v.analysisError,512)&&text(v.unsupportedReason,512));if(filter.sourceId)assert(v.sourceId===filter.sourceId);return Object.freeze({...v}) as InventoryObject;});assert(new Set(items.map(i=>i.id)).size===items.length);
+ // A file that cannot be read is left out alone, and a repeated one keeps its first row.
+ const items=firstOfEach('library-inventory','items',keepReadable('library-inventory','items',list(raw.items,40),v=>{assert(record(v)&&id(v.id)&&id(v.sourceId)&&id(v.assetId)&&text(v.itemId,256)&&text(v.title,4096)&&text(v.relativePath)&&id(v.revision)&&text(v.state,128)&&integer(v.size)&&typeof v.modifiedNs==='number'&&Number.isFinite(v.modifiedNs)&&text(v.missingSince,128)&&text(v.analysisState,128)&&text(v.analysisError,512)&&text(v.unsupportedReason,512));if(filter.sourceId)assert(v.sourceId===filter.sourceId);return Object.freeze({...v}) as InventoryObject;}),i=>i.id);
  return Object.freeze({scope:scope(raw.scope,bound),libraryId,sourceId:raw.sourceId as string,revision:raw.revision,items:Object.freeze(items),nextCursor:raw.nextCursor});
 }
 

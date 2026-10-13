@@ -43,12 +43,6 @@ func init() {
 				failure(w, e)
 				return
 			}
-			if out.Session != nil {
-				if e = d.admitSession(r, *out.Session); e != nil {
-					accessFailure(w, e)
-					return
-				}
-			}
 			writeAuth(w, r, 200, out)
 		})
 	})

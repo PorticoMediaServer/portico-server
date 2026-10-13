@@ -220,39 +220,7 @@ func (d Dependencies) liveChannelRoutes(mux *http.ServeMux, store *livechannels.
 		}
 	}
 	d.guideDirectoryRoutes(mux, store, handle)
-	mux.HandleFunc("GET /v1/admin/live-sources", handle(true, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
-		if r.URL.RawQuery != "" {
-			return nil, livechannels.ErrInvalid
-		}
-		sources, e := store.Sources(ctx, d.liveAuthority(p))
-		if e != nil {
-			return nil, e
-		}
-		statuses, e := store.RemoteStatuses(ctx, d.liveAuthority(p))
-		return map[string]any{"protocolVersion": "1.0", "serverId": d.Identity.ID(), "sources": sources, "refresh": statuses}, e
-	}))
-	mux.HandleFunc("POST /v1/admin/live-sources/preview", handle(true, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
-		if r.URL.RawQuery != "" {
-			return nil, livechannels.ErrInvalid
-		}
-		var in livechannels.SourceInput
-		if e := liveDecode(w, r, &in, 2*livechannels.MaxUploadBytes+16384); e != nil {
-			return nil, e
-		}
-		preview, e := livechannels.PreviewSource(in)
-		return map[string]any{"protocolVersion": "1.0", "serverId": d.Identity.ID(), "preview": preview}, e
-	}))
-	mux.HandleFunc("POST /v1/admin/live-sources", handle(true, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
-		if r.URL.RawQuery != "" {
-			return nil, livechannels.ErrInvalid
-		}
-		var in livechannels.SourceInput
-		if e := liveDecode(w, r, &in, 2*livechannels.MaxUploadBytes+16384); e != nil {
-			return nil, e
-		}
-		source, e := store.Save(ctx, d.liveAuthority(p), in)
-		return map[string]any{"protocolVersion": "1.0", "serverId": d.Identity.ID(), "source": source}, e
-	}))
+
 	mux.HandleFunc("POST /v1/admin/live-sources/{id}/enabled", handle(true, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
 		if r.URL.RawQuery != "" {
 			return nil, livechannels.ErrInvalid
@@ -271,31 +239,7 @@ func (d Dependencies) liveChannelRoutes(mux *http.ServeMux, store *livechannels.
 		e := store.SetEnabled(ctx, d.liveAuthority(p), r.PathValue("id"), in.ExpectedRevision, *in.Enabled, in.RequestID)
 		return map[string]any{"protocolVersion": "1.0", "serverId": d.Identity.ID(), "saved": e == nil}, e
 	}))
-	mux.HandleFunc("POST /v1/admin/live-sources/remote/preview", handle(true, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
-		if r.URL.RawQuery != "" {
-			return nil, livechannels.ErrInvalid
-		}
-		var in livechannels.RemoteDraft
-		if e := liveDecode(w, r, &in, 1<<20); e != nil {
-			return nil, e
-		}
-		preview, e := store.PreviewRemote(ctx, d.liveAuthority(p), livechannels.SourceFetcher{}, in)
-		return map[string]any{"protocolVersion": "1.0", "serverId": d.Identity.ID(), "remotePreview": preview}, e
-	}))
-	mux.HandleFunc("POST /v1/admin/live-sources/remote/save", handle(true, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
-		if r.URL.RawQuery != "" {
-			return nil, livechannels.ErrInvalid
-		}
-		var in struct {
-			PreviewID string `json:"previewId"`
-			RequestID string `json:"requestId"`
-		}
-		if e := liveDecode(w, r, &in, 4096); e != nil {
-			return nil, e
-		}
-		source, e := store.SaveRemote(ctx, d.liveAuthority(p), in.PreviewID, in.RequestID)
-		return map[string]any{"protocolVersion": "1.0", "serverId": d.Identity.ID(), "source": source}, e
-	}))
+
 	mux.HandleFunc("POST /v1/admin/live-sources/{id}/refresh", handle(true, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
 		if r.URL.RawQuery != "" {
 			return nil, livechannels.ErrInvalid

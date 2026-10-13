@@ -10,6 +10,24 @@ import {watchedWords} from './card-caption.ts';
 import type {IconId} from '../../../design/src/icons.ts';
 import type {MessageId} from '../../../i18n/src/index.ts';
 
+/**
+ * Whether Refresh metadata can be offered on an entry. The server refreshes one playable title at
+ * a time (a movie, an episode, a song, a book's file); it refuses a show, a season, an album, an
+ * artist or a book as a whole, so the action is not offered there rather than offered and refused.
+ */
+export function canRefreshMetadata(kind: string | undefined): boolean {
+  return kind === 'movie' || kind === 'episode' || kind === 'song' || kind === 'audiobook_file' || kind === 'extra';
+}
+
+/**
+ * Where a refresh of this entry's metadata is asked for, or nothing when the server cannot
+ * refresh that kind. A show has a route of its own; a playable title uses the item route. A
+ * client offers Refresh metadata exactly where this answers.
+ */
+export function refreshMetadataPath(kind: string | undefined, id: string): string | undefined {
+  if (kind === 'show') return '/v1/shows/' + encodeURIComponent(id) + '/metadata/refresh';
+  return canRefreshMetadata(kind) ? '/v1/items/' + encodeURIComponent(id) + '/metadata/refresh' : undefined;
+}
 export type EntryActionId =
   | 'play' | 'resume' | 'playFromStart' | 'playNext' | 'addToQueue'
   | 'watchWithGroup' | 'addToGroupQueue'

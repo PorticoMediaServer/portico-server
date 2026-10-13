@@ -17,9 +17,9 @@ var (
 	ErrCursor      = errors.New("The guide changed. Reload this time window.")
 )
 
-const MaxUploadBytes = 16 << 20
-const MaxChannels = 2000
-const MaxProgrammes = 100000
+const MaxUploadBytes = 512 << 20
+const MaxChannels = 50000
+const MaxProgrammes = 5000000
 
 type Provenance string
 
@@ -27,36 +27,78 @@ const LiveSource Provenance = "live-source"
 const LibraryChannel Provenance = "library-channel"
 
 type SourceInput struct {
-	RequestID        string           `json:"requestId"`
-	ID               string           `json:"id"`
-	ExpectedRevision int64            `json:"expectedRevision"`
-	Name             string           `json:"name"`
-	Playlist         string           `json:"playlist"`
-	Guide            string           `json:"guide"`
-	TunerCount       int              `json:"tunerCount"`
-	Mappings         []ChannelMapping `json:"mappings,omitempty"`
+	guideFile, guideDigest string
+	parseContext           context.Context
+	configuration          *LiveSourceSettings
+	remote                 bool
+	guideDays              int
+	RequestID              string           `json:"requestId"`
+	ID                     string           `json:"id"`
+	ExpectedRevision       int64            `json:"expectedRevision"`
+	Name                   string           `json:"name"`
+	Playlist               string           `json:"playlist"`
+	Guide                  string           `json:"guide"`
+	TunerCount             int              `json:"tunerCount"`
+	Limits                 ImportLimits     `json:"limits,omitempty"`
+	EnabledGroups          []string         `json:"enabledGroups,omitempty"`
+	EnabledChannels        []string         `json:"enabledChannels,omitempty"`
+	Mappings               []ChannelMapping `json:"mappings,omitempty"`
 }
 type Source struct {
-	DeliveryValidation string `json:"deliveryValidation"`
-	CapacityKnown      bool   `json:"capacityKnown"`
-	PlanningEstimate   int    `json:"planningEstimate"`
-	ID                 string `json:"id"`
-	Name               string `json:"name"`
-	Revision           int64  `json:"revision"`
-	State              string `json:"state"`
-	TunerCount         int    `json:"tunerCount"`
-	TunerCountMode     string `json:"tunerCountMode"`
-	Generation         string `json:"generation"`
-	PublishedAt        string `json:"publishedAt"`
-	Channels           int    `json:"channels"`
-	Programmes         int    `json:"programmes"`
+	Diagnostics        ImportDiagnostics `json:"diagnostics"`
+	DeliveryValidation string            `json:"deliveryValidation"`
+	CapacityKnown      bool              `json:"capacityKnown"`
+	PlanningEstimate   int               `json:"planningEstimate"`
+	ID                 string            `json:"id"`
+	Name               string            `json:"name"`
+	Revision           int64             `json:"revision"`
+	State              string            `json:"state"`
+	TunerCount         int               `json:"tunerCount"`
+	TunerCountMode     string            `json:"tunerCountMode"`
+	Generation         string            `json:"generation"`
+	PublishedAt        string            `json:"publishedAt"`
+	Channels           int               `json:"channels"`
+	Programmes         int               `json:"programmes"`
 }
+type ImportLimits struct {
+	Bytes      int `json:"bytes"`
+	Channels   int `json:"channels"`
+	Programmes int `json:"programmes"`
+}
+
+func (v ImportLimits) effective() ImportLimits {
+	if v.Bytes <= 0 {
+		v.Bytes = MaxUploadBytes
+	}
+	if v.Channels <= 0 {
+		v.Channels = MaxChannels
+	}
+	if v.Programmes <= 0 {
+		v.Programmes = MaxProgrammes
+	}
+	return v
+}
+
+type ImportDiagnostics struct {
+	SkippedChannels    int      `json:"skippedChannels"`
+	SkippedProgrammes  int      `json:"skippedProgrammes"`
+	AdjustedProgrammes int      `json:"adjustedProgrammes"`
+	Examples           []string `json:"examples"`
+}
+
+func (d *ImportDiagnostics) note(message string) {
+	if len(d.Examples) < 10 {
+		d.Examples = append(d.Examples, message)
+	}
+}
+
 type Preview struct {
-	Channels       int      `json:"channels"`
-	Programmes     int      `json:"programmes"`
-	AvailableStart string   `json:"availableStart"`
-	AvailableEnd   string   `json:"availableEnd"`
-	Names          []string `json:"names"`
+	Diagnostics    ImportDiagnostics `json:"diagnostics"`
+	Channels       int               `json:"channels"`
+	Programmes     int               `json:"programmes"`
+	AvailableStart string            `json:"availableStart"`
+	AvailableEnd   string            `json:"availableEnd"`
+	Names          []string          `json:"names"`
 }
 type Channel struct {
 	LogoPath                string      `json:"logoPath,omitempty"`
@@ -84,7 +126,7 @@ type Programme struct {
 	Title          string `json:"title"`
 	Start          string `json:"start"`
 	End            string `json:"end"`
-	// A future recording adapter must not infer correction lineage from title/time.
+	// Lineage retains provider correction identity when one is supplied.
 	Lineage     string `json:"lineage"`
 	SeriesID    string `json:"seriesId,omitempty"`
 	EpisodeID   string `json:"episodeId,omitempty"`
@@ -161,7 +203,7 @@ type Guide struct {
 // predicate denies every channel. Generated media needs a stronger per-item adapter.
 type Authority func(context.Context, *sql.Tx, bool) (fence string, allowed func(sourceID, channelID string) bool, err error)
 
-type parsedChannel struct{ key, name, number, group, locator, logo string }
+type parsedChannel struct{ key, guideKey, name, number, group, country, locator, logo, catchup, catchupSource, catchupDays string }
 type parsedProgramme struct {
 	key, channel, title, lineage              string
 	series, episode, newEvidence, description string
@@ -170,6 +212,8 @@ type parsedProgramme struct {
 	start, end                                time.Time
 }
 type parsedSource struct {
-	channels   []parsedChannel
-	programmes []parsedProgramme
+	spool       *programmeSpool
+	diagnostics ImportDiagnostics
+	channels    []parsedChannel
+	programmes  []parsedProgramme
 }

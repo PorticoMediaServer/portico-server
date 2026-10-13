@@ -5,10 +5,10 @@
  */
 export {shapeFor, shapeAspect, personShape, type CardShape, type ShapeContext, type ShapeFamily} from './card-shape.ts';
 export {presentError, errorMessage, type ErrorContext, type ErrorOperation, type ErrorCategory, type ErrorAction, type PresentedError, type PresentOptions} from './errors.ts';
-export {preferenceGroupTitle, preferenceLabel, preferenceValueLabel, qualityNetworkLabels, managedElsewhere, deviceNoun, type CopyPlatform} from './preference-copy.ts';
+export {preferenceGroupTitle, preferenceLabel, preferenceValueLabel, managedElsewhere, deviceNoun, type CopyPlatform} from './preference-copy.ts';
 export {viewerScope, iconFor, captionFor, progressFor, formatDuration, formatClock, formatBytes, friendlyHost, sentence} from './content.ts';
 export {compatContentApi, sanitizeContentProjection, knownContentViews, type ContentRequestApi} from './content-compat.ts';
-export {entryActions, entryActionList, type EntryAction, type EntryActionGroup, type EntryActionGroupId, type EntryActionId, type EntryCapabilities} from './entry-actions.ts';
+export {canRefreshMetadata, refreshMetadataPath, entryActions, entryActionList, type EntryAction, type EntryActionGroup, type EntryActionGroupId, type EntryActionId, type EntryCapabilities} from './entry-actions.ts';
 export {detailActions, type DetailActions, type DetailPrimary, type DetailQuick, type DetailViewer} from './detail-actions.ts';
 export {profileActions, type ProfileAction, type ProfileActionId, type ProfileRef, type ProfileViewer} from './profile-actions.ts';
 export {localeChoices, type RegionChoice} from './region-choices.ts';
@@ -24,7 +24,7 @@ export {toolbarModel, nextToolbarSort, fieldSelectionSummary, decadePresets, too
 export {relatedRowsForPage, dedupeNames, showPeople, showCreditLines, activeYearsLabel, titleTintHue, seasonProgress, nextUpPin, networkName, originalTitleLine, SHOW_SETTING_ROWS, type ShowPeople} from './title-page.ts';
 export {languageKey, sameLanguage, trackName} from './language.ts';
 export {titleFileLines, resolutionLabel, codecLabel, dynamicRangeLabel, channelsLabel, formatBitRate, type TitleFileLines} from './title-files.ts';
-export {settingsStructure, findSettingsPage, settingsPageId, settingsRowId, searchSettings, readComposite, compositePatch, registryComposite, serverFormsOf, serverRowShown, serverChoices, type SettingsStructure, type SettingsHeading, type SettingsHeadingId, type SettingsPage, type SettingsSection, type SettingsRow, type ServerSettingRow, type ServerControl, type SettingsTab, type SettingsControl, type SettingsChoice, type SettingsContext, type SettingsCapabilities, type SettingsPlatform, type SettingsScope, type SettingsMatch, type CompositeId, type SettingsActionId, type SettingsCustomId} from './settings-structure.ts';
+export {settingsStructure, findSettingsPage, settingsPageId, settingsRowId, searchSettings, readComposite, compositePatch, registryComposite, serverFormsOf, serverRowShown, serverChoices, settingsScopeLabel, PLAYER_ENGINES, type PlayerEngineSetting, type SettingsStructure, type SettingsHeading, type SettingsHeadingId, type SettingsPage, type SettingsSection, type SettingsRow, type ServerSettingRow, type ServerControl, type SettingsTab, type SettingsControl, type SettingsChoice, type SettingsContext, type SettingsCapabilities, type SettingsPlatform, type SettingsScope, type SettingsMatch, type CompositeId, type SettingsActionId, type SettingsCustomId} from './settings-structure.ts';
 export {MAX_LANGUAGES, COMMON_LANGUAGES, languageName, availableLanguages, addLanguage, removeLanguage, moveLanguage} from './language-list.ts';
 export * from './library-tabs.ts';
 export * from './card-caption.ts';

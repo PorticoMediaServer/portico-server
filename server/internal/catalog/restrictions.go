@@ -4,8 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"portico.local/server/internal/access"
 	"portico.local/server/internal/compactcatalog"
+	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/persistence"
 	"strings"
 	"sync"
 
@@ -31,7 +32,13 @@ import (
 //     contentRating this server recognises. Content whose rating is missing,
 //     empty or spelled in a way the rating table does not know is unrated: it is
 //     never silently treated as suitable.
-//  3. Labels. The entity carries none of the profile's blocked labels.
+//  3. Labels. The entity carries none of the profile's blocked labels, and none
+//     of the labels or tags its account is denied.
+//
+// The ceiling and the unrated rule arrive already combined: the profile's own
+// and its account's limit are folded into one admission age and one unrated
+// answer before they reach this file (identity.ContentRestrictions.Narrow), so
+// there is a single rating rule and a single scale.
 //
 // A container entity (a show, season, artist, album, book, author or collection)
 // has no rating of its own, so it is visible when it holds at least one item the
@@ -79,7 +86,66 @@ type restrictionProjection struct {
 func (s *Service) ClassifyPendingRatings(ctx context.Context) (bool, error) {
 	s.state.ratings.mu.Lock()
 	defer s.state.ratings.mu.Unlock()
+	// The first drain of a process also checks which rating table the stored
+	// classifications were made with. A build that knows more spellings, or
+	// reads one differently, corrects them here, once.
+	if !s.state.ratings.loaded {
+		if persistence.Get(s.db, ratingTableKey) != identity.RatingTableVersion {
+			if err := reclassifyRatings(ctx, s.db); err != nil {
+				return false, err
+			}
+			if _, err := dbwork.ExecWrite(ctx, s.db, dbwork.ClassBackgroundMedia, `INSERT INTO configuration VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, ratingTableKey, identity.RatingTableVersion); err != nil {
+				return false, err
+			}
+		}
+		s.state.ratings.loaded = true
+	}
 	return compactcatalog.ClassifyPendingRatings(ctx, s.db, identity.RatingAge)
+}
+
+const ratingTableKey = "rating_table_version"
+
+// reclassifyRatings judges every spelling already classified against the
+// current rating table and corrects the ones whose age changed. It runs once
+// after the table changes, so a title rated in a spelling the table has since
+// learned stops counting as unrated without a rescan. It reads the whole table
+// of spellings on purpose: that table has one row per distinct rating in the
+// library, not per title, and this is not a per-item step.
+func reclassifyRatings(ctx context.Context, db *sql.DB) error {
+	ctx = dbwork.WithClass(ctx, dbwork.ClassBackgroundMedia)
+	rows, err := dbwork.ReadHandle(ctx, db).QueryContext(ctx, `SELECT value_key,minimum_age FROM content_rating_ages`)
+	if err != nil {
+		return err
+	}
+	changed := map[string]int{}
+	for rows.Next() {
+		var key string
+		var stored int
+		if err = rows.Scan(&key, &stored); err != nil {
+			rows.Close()
+			return err
+		}
+		minimum := -1
+		if resolved, ok := identity.RatingAge(key); ok {
+			minimum = resolved
+		}
+		if minimum != stored {
+			changed[key] = minimum
+		}
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil || len(changed) == 0 {
+		return err
+	}
+	return dbwork.WithWriteTx(ctx, db, dbwork.ClassBackgroundMedia, func(tx *sql.Tx) error {
+		for key, minimum := range changed {
+			if _, err := tx.ExecContext(ctx, `UPDATE content_rating_ages SET minimum_age=? WHERE value_key=?`, minimum, key); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 // itemRestrictionClause compiles the three clauses for one item-id expression.
@@ -102,30 +168,6 @@ func itemRestrictionClause(item string, r identity.ContentRestrictions) (string,
 			args = append(args, strings.ToLower(label))
 		}
 		clauses = append(clauses, `NOT EXISTS(SELECT 1 FROM catalog_item_attribute_edges ae JOIN catalog_attribute_terms term ON term.id=ae.term_id WHERE ae.item_id=`+item+` AND term.field_id=2 AND term.value_key IN(`+strings.Join(marks, ",")+`))`)
-	}
-	if r.MemberMaxRating != "" {
-		max := strings.ToUpper(strings.TrimSpace(r.MemberMaxRating))
-		rating := `COALESCE(upper(trim((SELECT ae.source_value FROM catalog_item_attribute_edges ae JOIN catalog_attribute_terms term ON term.id=ae.term_id WHERE ae.item_id=` + item + ` AND term.field_id=1 ORDER BY ae.source_rowid LIMIT 1))),'')`
-		all, allowed := []any{}, []any{}
-		for _, value := range access.ContentRatings {
-			all = append(all, value)
-			if len(allowed) == 0 || allowed[len(allowed)-1] != max {
-				allowed = append(allowed, value)
-			}
-			if value == max {
-				// Keep collecting the full ladder for unknown-value handling.
-				continue
-			}
-		}
-		marks := func(n int) string { return strings.TrimSuffix(strings.Repeat("?,", n), ",") }
-		if r.MemberAllowUnrated {
-			clauses = append(clauses, `(`+rating+` NOT IN(`+marks(len(all))+`) OR `+rating+` IN(`+marks(len(allowed))+`))`)
-			args = append(args, all...)
-			args = append(args, allowed...)
-		} else {
-			clauses = append(clauses, rating+` IN(`+marks(len(allowed))+`)`)
-			args = append(args, allowed...)
-		}
 	}
 	for _, label := range r.MemberDeniedLabels {
 		clauses = append(clauses, `NOT EXISTS(SELECT 1 FROM catalog_item_attribute_edges ae JOIN catalog_attribute_terms term ON term.id=ae.term_id WHERE ae.item_id=`+item+` AND term.field_id IN(2,3) AND lower(ae.source_value)=?)`)
@@ -187,12 +229,6 @@ func RestrictionFence(r identity.ContentRestrictions) string {
 	b.WriteString(itoa(r.Revision))
 	b.WriteByte(':')
 	b.WriteString(strings.ToLower(strings.Join(r.BlockedLabels, ",")))
-	b.WriteByte(':')
-	b.WriteString(strings.ToUpper(r.MemberMaxRating))
-	b.WriteByte(':')
-	if r.MemberAllowUnrated {
-		b.WriteByte('u')
-	}
 	b.WriteByte(':')
 	b.WriteString(strings.ToLower(strings.Join(r.MemberDeniedLabels, ",")))
 	b.WriteByte(':')

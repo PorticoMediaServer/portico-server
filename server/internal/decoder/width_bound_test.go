@@ -45,12 +45,14 @@ func TestConversionFitsBothClientBoundsWithRealFFmpeg(t *testing.T) {
 	}
 }
 
-func TestHardwareScaleUsesSameAspectFitAsSoftware(t *testing.T) {
-	want := strings.TrimPrefix(boundedScaleFilter(BackendSoftware, 1920, 1080), "scale")
-	for _, backend := range []HardwareBackend{BackendNVENC, BackendVAAPI, BackendQSV} {
+func TestEveryScaleRoundsInsideBothBounds(t *testing.T) {
+	for _, backend := range []HardwareBackend{BackendSoftware, BackendNVENC, BackendVAAPI, BackendQSV} {
 		got := boundedScaleFilter(backend, 1920, 1080)
-		if !strings.HasSuffix(got, want) {
-			t.Fatalf("%s geometry differs: %s", backend, got)
+		if !strings.Contains(got, "1920/") || !strings.Contains(got, "1080/ih") || !strings.Contains(got, "/2)*2") {
+			t.Fatal(backend, got)
+		}
+		if backend == BackendSoftware && !strings.HasSuffix(got, "setsar=1") {
+			t.Fatal(got)
 		}
 	}
 }

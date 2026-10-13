@@ -1,4 +1,3 @@
-import {currentI18n} from '../../app/i18n';
 import {useEffect, useRef, useState} from 'react';
 import {readEventStream} from '@core/index.ts';
 import {retryAfterSeconds} from '../../bridge/protectedArtwork';
@@ -9,6 +8,7 @@ import {useAction, useRead} from '../../admin/console';
 import {CAPABILITY_BEHIND_PRESENCE, CAPABILITY_ROWS, capabilityReasonId, parseCapabilities, type ServerCapability} from '../../admin/capabilities';
 import {useSession} from '../../app/session';
 import {Badge, Button, Freshness, Notice, Select, SettingsGroup, SettingsRow, Status, Switch, Text} from '../../ui';
+import {useI18n, type I18n} from '../../app/i18n';
 
 const levelTone: Record<LogLevel, string> = {error: 'var(--status-danger)', warn: 'var(--status-warning)', info: 'var(--text-secondary)', debug: 'var(--text-tertiary)'};
 const KEEP = 500;
@@ -42,8 +42,9 @@ export function logTailShouldReconnect(aborted: boolean): boolean {
 /** The server's own message log, with a live tail. The tail is a convenience: if it drops the
  * lines already shown stay, and it reconnects with a growing delay. */
 export function MessageLogGroup() {
+  const i18n = useI18n();
+  const {t} = i18n;
   const {api, session} = useSession();
-  const t = currentI18n().t;
   const token = session?.accessToken ?? '';
   // Read the newest token at each (re)connect: rotation must not tear down a healthy tail.
   const tokenRef = useRef(token);
@@ -122,7 +123,7 @@ export function MessageLogGroup() {
       <div ref={box} role="log" aria-live="off" style={{margin: '0 16px 12px', maxHeight: 360, overflow: 'auto', background: 'var(--surface-recess, var(--surface-diagnostics))', borderRadius: 10, padding: '8px 12px', fontFamily: 'var(--font-mono, ui-monospace, monospace)', fontSize: 12, lineHeight: 1.55}}>
         {lines.length ? lines.map(l => (
           <div key={l.sequence} style={{display: 'flex', gap: 12, whiteSpace: 'pre-wrap', wordBreak: 'break-word'}}>
-            <span style={{color: 'var(--text-tertiary)', flexShrink: 0}}>{logTime(l.at)}</span>
+            <span style={{color: 'var(--text-tertiary)', flexShrink: 0}}>{logTime(i18n, l.at)}</span>
             <span style={{color: levelTone[l.level], flexShrink: 0, width: 42}}>{l.level.toUpperCase()}</span>
             <span style={{color: 'var(--text-tertiary)', flexShrink: 0, width: 64}}>{l.category}</span>
             <span style={{color: l.level === 'error' ? 'var(--text-primary)' : 'var(--text-secondary)'}}>{l.message}</span>
@@ -134,9 +135,8 @@ export function MessageLogGroup() {
 }
 
 /** A log line's time with its date: entries days apart must not read as the same afternoon. */
-export function logTime(at: string): string {
-  const d = new Date(at);
-  return d.toLocaleString(undefined, {month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit'});
+export function logTime(i18n: I18n, at: string): string {
+  return i18n.formatDate(at, {month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit'});
 }
 
 /**
@@ -144,7 +144,8 @@ export function logTime(at: string): string {
  * (it replaced a level menu, a debug window button and a component capture).
  */
 export function DetailWindowRow() {
-  const t = currentI18n().t;
+  const i18n = useI18n();
+  const {t} = i18n;
   const deps = useServerDeps();
   const {form, state} = useServerForm<LogsDraft, LogSettings>('logs');
   const action = useAction();
@@ -152,7 +153,7 @@ export function DetailWindowRow() {
   const on = !!until && Date.parse(until) > Date.now();
   if (!state.status) return null;
   return (
-    <SettingsRow label={t('settings.server.detailWindow')} help={on ? t('settings.server.detailWindow.until', {time: new Date(until!).toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'})}) : t('settings.server.detailWindow.help')} state={action.error || undefined}
+    <SettingsRow label={t('settings.server.detailWindow')} help={on ? t('settings.server.detailWindow.until', {time: i18n.time(until!)}) : t('settings.server.detailWindow.help')} state={action.error || undefined}
       control={<Button size="sm" variant={on ? 'outline' : 'secondary'} label={on ? t('settings.server.detailWindow.stop') : t('settings.server.detailWindow.start')} loading={action.busy} onClick={() => void action.run(async () => { await setDetailWindow(deps, !on); await form.load(); })} />} />
   );
 }
@@ -164,8 +165,8 @@ export function DetailWindowRow() {
  * route (404). New rows stay hidden until the server sends them (behind presence).
  */
 export function CapabilitiesGroup() {
+  const {t} = useI18n();
   const {api} = useSession();
-  const t = currentI18n().t;
   const [state, setState] = useState<{items?: readonly ServerCapability[]; missing?: boolean; error?: boolean}>({});
   const [tick, setTick] = useState(0);
   useEffect(() => {

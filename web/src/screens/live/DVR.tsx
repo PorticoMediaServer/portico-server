@@ -1,9 +1,7 @@
 import {useCallback, useEffect, useMemo, useState} from 'react';
 import {useNavigate} from '@tanstack/react-router';
-import {defaultI18n} from '@i18n';
 import {useChannelGuide} from './guide';
 import {activeRecording, countUnwatched, mutableRecording, playableRecording, type DeletePreview, type DVRPage, type DVRView as View, type Recording, type RecordingDetail, type RecordingRule, type RecordingStorage, type RuleConfig} from '@core/dvr.ts';
-import {formatBytes} from '@core/presentation/index.ts';
 import {usePlayerActions} from '../../player/PlayerContext';
 import {useSession} from '../../app/session';
 import {errorText} from '../../app/errors';
@@ -11,13 +9,14 @@ import {Badge, Button, ConfirmDialog, Dialog, Inset, ListRow, Loading, Menu, Not
 import {useDVRClient, useGuideFormat, localTimezone} from './guide';
 import {groupRecordings, isExceptionBadge, dvrPaddings, dvrLimits} from './dvr-groups';
 import {ListPager} from '../server/ListPager';
+import {currentI18n, useI18n, type I18n} from '../../app/i18n';
 
-const t = defaultI18n.t;
-const views = (): {id: View; label: string}[] => [{id: 'upcoming', label: t('web.dvr.upcoming')}, {id: 'recorded', label: t('web.dvr.recorded')}, {id: 'rules', label: t('web.dvr.rules')}, {id: 'history', label: t('web.dvr.history')}, {id: 'storage', label: t('web.dvr.storage')}];
+const views = (t: I18n['t']): {id: View; label: string}[] => [{id: 'upcoming', label: t('web.dvr.upcoming')}, {id: 'recorded', label: t('web.dvr.recorded')}, {id: 'rules', label: t('web.dvr.rules')}, {id: 'history', label: t('web.dvr.history')}, {id: 'storage', label: t('web.dvr.storage')}];
 const statusOf = (e: unknown) => (e && typeof e === 'object' && typeof (e as {status?: unknown}).status === 'number' ? (e as {status: number}).status : 0);
 
-/** DVR failures in viewer language: a changed recording, an unsupported choice, or the shared presenter. */
+/** DVR failures in viewer language: a changed recording, an unsupported choice, or the shared presenter. Called when a request fails, not while drawing. */
 export function dvrError(e: unknown): string {
+  const {t} = currentI18n();
   const status = statusOf(e);
   if (status === 401 || status === 403) return t('web.dvr.error.access');
   if (status === 409) return t('web.dvr.error.changed');
@@ -25,7 +24,7 @@ export function dvrError(e: unknown): string {
   return errorText(e, 'live', 'action');
 }
 
-function stateLabel(state: Recording['state']): string {
+function stateLabel(t: I18n['t'], state: Recording['state']): string {
   switch (state) {
     case 'scheduled': return t('web.dvr.state.scheduled');
     case 'conflicted': return t('web.dvr.state.conflicted');
@@ -45,7 +44,7 @@ function stateLabel(state: Recording['state']): string {
   }
 }
 
-function reasonLabel(reason: string): string {
+function reasonLabel(t: I18n['t'], reason: string): string {
   switch (reason) {
     case '': return '';
     case 'capture-window-missed': return t('web.dvr.reason.missed');
@@ -71,6 +70,8 @@ type Confirm = {kind: 'cancel'; recording: Recording} | {kind: 'delete'; recordi
  * with its impact.
  */
 export function DVRView() {
+  const i18n = useI18n();
+  const {t} = i18n;
   const dvr = useDVRClient();
   const {owner} = useSession();
   const player = usePlayerActions();
@@ -126,7 +127,7 @@ export function DVRView() {
   const episodeSubtitle = (r: Recording) => {
     const start = Date.parse(r.start), end = Date.parse(r.end);
     const duration = Number.isFinite(start) && Number.isFinite(end) && end > start ? t('web.dvr.minutes', {count: Math.max(1, Math.round((end - start) / 60000))}) : '';
-    return [r.channel?.name || '', start && end ? `${format.dayLabel(start)}, ${format.clock(start)}` : '', duration, r.bytes > 0 && !activeRecording(r) ? formatBytes(r.bytes) : '', reasonLabel(r.reason)].filter(Boolean).join(' · ');
+    return [r.channel?.name || '', start && end ? `${format.dayLabel(start)}, ${format.clock(start)}` : '', duration, r.bytes > 0 && !activeRecording(r) ? i18n.bytes(r.bytes) : '', reasonLabel(t, r.reason)].filter(Boolean).join(' · ');
   };
   // Part 2.2: grouped show rows count only watched===false as unwatched; null is neither.
   const groupSubtitle = (items: readonly Recording[]) => {
@@ -154,12 +155,12 @@ export function DVRView() {
   const recordingBadges = (r: Recording) => {
     // FEAT-08: Recorded shows badges only for exceptions (Failed, Incomplete, Kept).
     if (view === 'recorded' && !exceptionBadge(r) && !r.keep) return null;
-    return <span style={{display: 'inline-flex', gap: 8}}>{r.keep ? <Badge tone="neutral">{t('web.dvr.kept')}</Badge> : null}<Badge tone={stateTone(r)} dot={r.state === 'recording'} live={r.state === 'recording'}>{stateLabel(r.state)}</Badge></span>;
+    return <span style={{display: 'inline-flex', gap: 8}}>{r.keep ? <Badge tone="neutral">{t('web.dvr.kept')}</Badge> : null}<Badge tone={stateTone(r)} dot={r.state === 'recording'} live={r.state === 'recording'}>{stateLabel(t, r.state)}</Badge></span>;
   };
   const recordingSubtitle = (r: Recording) => {
     if (view === 'recorded') return episodeSubtitle(r);
-    const reason = reasonLabel(r.reason);
-    return [r.channel?.name || '', format.dayLabel(Date.parse(r.start)), format.range(Date.parse(r.start), Date.parse(r.end)), r.bytes > 0 && !activeRecording(r) ? formatBytes(r.bytes) : '', reason].filter(Boolean).join(' · ');
+    const reason = reasonLabel(t, r.reason);
+    return [r.channel?.name || '', format.dayLabel(Date.parse(r.start)), format.range(Date.parse(r.start), Date.parse(r.end)), r.bytes > 0 && !activeRecording(r) ? i18n.bytes(r.bytes) : '', reason].filter(Boolean).join(' · ');
   };
   const RecordingRow = ({r, nested}: {r: Recording; nested?: boolean}) => {
     const items = recordingItems(r);
@@ -192,8 +193,8 @@ export function DVRView() {
   return (
     <>
       <Inset><div style={{display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center', justifyContent: 'space-between'}}>
-        <Segmented label={t('web.dvr.view')} options={views()} value={view} onChange={setView} />
-        {page && view !== 'storage' && page.usage.recordings > 0 ? <Text variant="caption" tone="tertiary">{t('web.dvr.usage', {count: page.usage.recordings, size: formatBytes(page.usage.bytes)})}</Text> : null}
+        <Segmented label={t('web.dvr.view')} options={views(t)} value={view} onChange={setView} />
+        {page && view !== 'storage' && page.usage.recordings > 0 ? <Text variant="caption" tone="tertiary">{t('web.dvr.usage', {count: page.usage.recordings, size: i18n.bytes(page.usage.bytes)})}</Text> : null}
       </div></Inset>
       {page && !page.captureAvailable && view === 'upcoming' ? <Inset><Notice tone="info">{t('web.dvr.captureOff')}</Notice></Inset> : null}
       {error ? <Inset><Notice tone="error" action={{label: t('action.tryAgain'), onClick: () => load(view, cursor)}}>{error}</Notice></Inset> : null}
@@ -242,6 +243,8 @@ export function DVRView() {
 }
 
 function RecordingConfirm({confirm, busy, onClose, onConfirm}: {confirm: Confirm | null; busy: boolean; onClose: () => void; onConfirm: (future?: 'keep' | 'cancel') => void}) {
+  const i18n = useI18n();
+  const {t} = i18n;
   const [future, setFuture] = useState<'keep' | 'cancel'>('keep');
   useEffect(() => setFuture('keep'), [confirm]);
   if (!confirm) return null;
@@ -258,14 +261,15 @@ function RecordingConfirm({confirm, busy, onClose, onConfirm}: {confirm: Confirm
   }
   const title = confirm.recording.programme.title;
   const body = confirm.kind === 'cancel' ? t('web.dvr.cancelBody')
-    : confirm.preview.activeReaders ? t('web.dvr.deleteBodyInUse', {size: formatBytes(confirm.preview.bytes)})
-    : confirm.preview.keep ? t('web.dvr.deleteBodyKept', {size: formatBytes(confirm.preview.bytes)})
-    : t('web.dvr.deleteBody', {size: formatBytes(confirm.preview.bytes)});
+    : confirm.preview.activeReaders ? t('web.dvr.deleteBodyInUse', {size: i18n.bytes(confirm.preview.bytes)})
+    : confirm.preview.keep ? t('web.dvr.deleteBodyKept', {size: i18n.bytes(confirm.preview.bytes)})
+    : t('web.dvr.deleteBody', {size: i18n.bytes(confirm.preview.bytes)});
   return <ConfirmDialog open onOpenChange={o => !o && onClose()} title={confirm.kind === 'delete' ? t('web.dvr.deleteTitle', {title}) : t('web.dvr.cancelTitle', {title})} body={body} confirmLabel={confirm.kind === 'delete' ? t('web.dvr.deleteRecording') : t('web.dvr.cancelRecording')} cancelLabel={confirm.kind === 'cancel' ? t('web.dvr.keepIt') : undefined} destructive busy={busy} onConfirm={() => onConfirm()} />;
 }
 
 /** FEAT-02: a series rule's episodes, how many to keep and its padding, edited in one place. */
 function RuleDialog({rule, onClose, onSaved}: {rule: RecordingRule; onClose: () => void; onSaved: () => void}) {
+  const {t} = useI18n();
   const dvr = useDVRClient();
   const [config, setConfig] = useState<RuleConfig>(rule.config);
   const [busy, setBusy] = useState(false);
@@ -300,6 +304,7 @@ function RuleDialog({rule, onClose, onSaved}: {rule: RecordingRule; onClose: () 
 
 /** FEAT-02: a tuner conflict names what overlaps and lets the viewer pick which one records. */
 function ConflictDialog({recording, onClose, onChanged}: {recording: Recording; onClose: () => void; onChanged: () => void}) {
+  const {t} = useI18n();
   const dvr = useDVRClient();
   const format = useGuideFormat(localTimezone());
   const [detail, setDetail] = useState<RecordingDetail>();
@@ -337,13 +342,15 @@ function ConflictDialog({recording, onClose, onChanged}: {recording: Recording; 
 
 /** FEAT-02: how much recording space is used and roughly how much is left. */
 function StorageView({storage, owner}: {storage: RecordingStorage; owner: boolean}) {
+  const i18n = useI18n();
+  const {t} = i18n;
   const {usedBytes, freeBytes} = storage.measurement;
   const total = usedBytes + freeBytes;
   return (
     <Inset>
       <SettingsGroup title={t('web.dvr.storage')}>
-        <SettingsRow icon="storage" label={t('web.dvr.used', {used: formatBytes(usedBytes), free: formatBytes(freeBytes)})} help={storage.forecastHours > 0 ? t('web.dvr.hoursLeft', {count: Math.floor(storage.forecastHours)}) : undefined} full control={total > 0 ? <div style={{width: '100%', maxWidth: 360}}><ProgressBar value={usedBytes / total} /></div> : undefined} />
-        {storage.pendingDeleteBytes > 0 ? <SettingsRow icon="trash" label={t('web.dvr.pendingDelete', {size: formatBytes(storage.pendingDeleteBytes)})} /> : null}
+        <SettingsRow icon="storage" label={t('web.dvr.used', {used: i18n.bytes(usedBytes), free: i18n.bytes(freeBytes)})} help={storage.forecastHours > 0 ? t('web.dvr.hoursLeft', {count: Math.floor(storage.forecastHours)}) : undefined} full control={total > 0 ? <div style={{width: '100%', maxWidth: 360}}><ProgressBar value={usedBytes / total} /></div> : undefined} />
+        {storage.pendingDeleteBytes > 0 ? <SettingsRow icon="trash" label={t('web.dvr.pendingDelete', {size: i18n.bytes(storage.pendingDeleteBytes)})} /> : null}
         {!storage.measurement.writeHealthy ? <SettingsRow icon="warning" label={t('web.dvr.writeUnhealthy')} help={owner ? t('web.dvr.writeUnhealthyOwner') : undefined} /> : null}
         {owner && storage.policy.retentionDays ? <SettingsRow icon="clock" label={t('web.dvr.retention', {count: storage.policy.retentionDays})} /> : null}
       </SettingsGroup>
@@ -356,6 +363,7 @@ function StorageView({storage, owner}: {storage: RecordingStorage; owner: boolea
  * sending people to a guide that has nothing in it (visual pass, 22 Sep).
  */
 function NothingRecorded({view, children}: {view: View; children: React.ReactNode}) {
+  const {t} = useI18n();
   const guide = useChannelGuide('live-source');
   const {owner} = useSession();
   const navigate = useNavigate();

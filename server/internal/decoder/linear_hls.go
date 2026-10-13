@@ -50,7 +50,7 @@ func LinearProbe(ctx context.Context, supervisor *storage.Supervisor, key, execu
 	if hls {
 		protocols, formats = "http,tcp,crypto", "hls,mpegts,mov,aac,mp3"
 	}
-	args := []string{"-v", "error", "-threads", "1", "-protocol_whitelist", protocols, "-format_whitelist", formats, "-rw_timeout", "15000000", "-probesize", "8388608", "-analyzeduration", "5000000", "-show_format", "-show_streams", "-of", "json"}
+	args := []string{"-v", "error", "-threads", "2", "-protocol_whitelist", protocols, "-format_whitelist", formats, "-rw_timeout", "15000000", "-probesize", "8388608", "-analyzeduration", "5000000", "-show_format", "-show_streams", "-of", "json"}
 	if hls {
 		args = append(args, "-allowed_extensions", "ALL")
 	}
@@ -79,7 +79,7 @@ func linearHLSArgs(input, output string, p LinearEncoding) ([]string, error) {
 	} else if p.Finite {
 		formats = "mov,matroska,mp3,flac,ogg,wav,aac,mpegts,avi"
 	}
-	args := []string{"-nostdin", "-hide_banner", "-loglevel", "error", "-threads", "1", "-protocol_whitelist", protocols, "-format_whitelist", formats, "-rw_timeout", "15000000", "-probesize", "8388608", "-analyzeduration", "5000000", "-copyts", "-start_at_zero"}
+	args := []string{"-nostdin", "-hide_banner", "-loglevel", "error", "-threads", "2", "-protocol_whitelist", protocols, "-format_whitelist", formats, "-rw_timeout", "15000000", "-probesize", "8388608", "-analyzeduration", "5000000", "-copyts", "-start_at_zero"}
 	if p.HLSInput {
 		args = append(args, "-allowed_extensions", "ALL")
 	}
@@ -109,8 +109,8 @@ func linearHLSArgs(input, output string, p LinearEncoding) ([]string, error) {
 		args = append(args, "-map", "0:a:0", "-c:a", "copy")
 	}
 	if p.ConvertVideo {
-		args = append(args, "-c:v", "libx264", "-preset", "veryfast", "-threads:v", "2", "-pix_fmt", "yuv420p", "-force_key_frames", "expr:if(isnan(prev_forced_t),1,gte(t,prev_forced_t+4))", "-sc_threshold", "0")
 		args = append(args, graph.Video...)
+		args = append(args, "-force_key_frames", "expr:if(isnan(prev_forced_t),1,gte(t,prev_forced_t+4))")
 		if p.Profile != "" {
 			args = append(args, "-profile:v", p.Profile)
 		}
