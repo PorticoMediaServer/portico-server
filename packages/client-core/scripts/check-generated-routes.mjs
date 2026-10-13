@@ -2,16 +2,6 @@ import {readFileSync, readdirSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {join, relative} from 'node:path';
 
-// These dormant clients target endpoints absent from the production registries.
-// A new occurrence, changed path, or occurrence in another file fails the check.
-// Their public interfaces stay intact until the owning server work is merged.
-const pending = new Map([
- ['playback-v1/commands.ts\0/v1/me/devices?controllable=true', 1],
- ['playback-v1/commands.ts\0/v1/devices/${enc(deviceId)}/commands', 1],
- ['playback-v1/commands.ts\0/v1/playback/sessions/${enc(sessionId)}/transfers', 1],
- ['profile-management.ts\0/v1/account/profile-deletions/', 1],
-]);
-
 /** Find code string literals, ignoring comments; templates retain their expressions. */
 export function pathLiterals(source) {
  const paths=[];
@@ -27,15 +17,15 @@ export function pathLiterals(source) {
 }
 
 export function checkGeneratedRoutes(root=fileURLToPath(new URL('../src/',import.meta.url))) {
- const found=new Map(), errors=[];
+ const errors=[];
  function visit(dir) {for(const entry of readdirSync(dir,{withFileTypes:true})){
   const file=join(dir,entry.name);if(entry.isDirectory()){visit(file);continue;}if(!entry.name.endsWith('.ts'))continue;
   const name=relative(root,file).replaceAll('\\','/');
-  for(const {value,line}of pathLiterals(readFileSync(file,'utf8'))){const key=name+'\0'+value;found.set(key,(found.get(key)??0)+1);if(found.get(key)>(pending.get(key)??0))errors.push(`${name}:${line}: use a generated API route builder`);}
+  for(const {value,line}of pathLiterals(readFileSync(file,'utf8'))){errors.push(`${name}:${line}: use a generated API route builder`);}
  }}
  visit(root);return errors;
 }
 if(process.argv[1]===fileURLToPath(import.meta.url)){
  const errors=checkGeneratedRoutes();if(errors.length){process.stderr.write(errors.join('\n')+'\n');process.exitCode=1;}
- else process.stdout.write('Generated-route check passed; four existing dormant calls remain recorded.\n');
+ else process.stdout.write('Generated-route check passed; every client API path uses a registered contract.\n');
 }

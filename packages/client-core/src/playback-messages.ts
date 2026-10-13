@@ -5,6 +5,7 @@ export {sessionEndMessage};
 export function playbackUserMessage(error:unknown):string {
  const value=error&&typeof error==='object'?error as {code?:unknown;message?:unknown;status?:unknown}:undefined;
  const code=typeof value?.code==='string'?value.code:typeof error==='string'?error:'';
+ if(code==='no_admissible_delivery_route')return serviceText('player.cannotPlay.serverConversionUnavailable');
  const messages:Record<string,string>={
   unauthorized:'Sign in again to continue playback.',access_revoked:'Your access to this media has changed.',forbidden:'Your profile does not have access to this media.',
   source_unavailable:'This media source is unavailable. Try again when it reconnects.',source_changed:'The media file changed. Open the title again to continue.',not_found:'This media is no longer available.',
@@ -44,6 +45,6 @@ export function playbackUserMessage(error:unknown):string {
 export function playbackFailurePermanent(error:unknown):boolean {
  const value=error&&typeof error==='object'?error as {code?:unknown;message?:unknown}:undefined;
  const text=typeof error==='string'?error:typeof value?.code==='string'?value.code:typeof value?.message==='string'?value.message:'';
- return ['cannot_play_here','streaming_unsupported','unsupported_media','unsupported_tuple','unknown_source_facts','transcoding_disabled','transcode_not_allowed','not_found','forbidden','access_revoked','unsupported_version',
+ return ['no_admissible_delivery_route','cannot_play_here','streaming_unsupported','unsupported_media','unsupported_tuple','unknown_source_facts','transcoding_disabled','transcode_not_allowed','not_found','forbidden','access_revoked','unsupported_version',
   'This title can’t be played on this device.','This title needs converting, and converting is turned off for this account.','This item isn’t available.'].includes(text);
 }

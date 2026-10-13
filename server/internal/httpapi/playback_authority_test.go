@@ -134,6 +134,11 @@ func TestPlaybackAuthorityFailsClosedWithoutDependenciesAndOnCancellation(t *tes
 			t.Fatalf("missing dependency: %v", err)
 		}
 	}
+	// A local session needs no Hosted service or second DB handle: its caller
+	// owns this transaction. Identity must still validate it inside that snapshot.
+	if _, err = (Dependencies{Identity: d.Identity}).playbackAuthorityTx(context.Background(), tx, principal, ""); err != nil {
+		t.Fatalf("local transaction without Hosted: %v", err)
+	}
 	var absent *sql.Tx
 	if _, err = d.playbackAuthorityTx(context.Background(), absent, principal, ""); !errors.Is(err, identity.ErrUnauthorized) {
 		t.Fatalf("nil tx: %v", err)

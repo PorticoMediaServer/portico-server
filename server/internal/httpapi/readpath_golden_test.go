@@ -54,6 +54,10 @@ import (
 // the direction asked. What did not change, and was checked case by case: the
 // members and counts of every grouping, every total a restricted viewer is
 // given, and every status code.
+// The second combined-base pass records the grouping-sort capability document
+// and its two newly supported year-sort requests (books and songs, 400 to 200).
+// Apart from those responses and deterministic catalogue revision advances,
+// all existing result membership, ordering and restricted totals are unchanged.
 
 // volatileKeys are the JSON keys whose values cannot be stable across two runs
 // of the same catalogue: they carry a session hash, an HMAC signature, a wall

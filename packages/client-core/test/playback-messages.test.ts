@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {playbackUserMessage} from '../src/playback-messages.ts';
+import {playbackUserMessage,playbackFailurePermanent} from '../src/playback-messages.ts';
 test('playback messages preserve actionable categories without exposing arbitrary server text',()=>{
  assert.match(playbackUserMessage({code:'owner_server_cap',message:'secret session 123'}),/simultaneous stream limit/);
  assert.match(playbackUserMessage({status:403}),/does not have access/);
@@ -12,4 +12,9 @@ test('playback messages preserve actionable categories without exposing arbitrar
 
 test('trusted control outage message describes the automatic recovery',()=>{
  assert.equal(playbackUserMessage('Playback control disconnected. Retrying…'),'Reconnecting playback controls…');
+});
+
+test('a missing conversion route explains device support without suggesting permission or a retry',()=>{
+ assert.equal(playbackUserMessage({code:'no_admissible_delivery_route',message:'private converter detail'}),'This server cannot prepare a version of this title that this device can play.');
+ assert.equal(playbackFailurePermanent('no_admissible_delivery_route'),true);
 });

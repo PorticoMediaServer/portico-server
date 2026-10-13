@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"portico.local/server/internal/requestinput"
 	"strings"
 	"sync"
 	"testing"
@@ -280,5 +281,24 @@ func TestCommandReceiptCapacityAndRetentionCleanup(t *testing.T) {
 	s.db.QueryRow(`SELECT count(*) FROM mount_operations`).Scan(&n)
 	if n != 0 {
 		t.Fatal("old receipts retained", n)
+	}
+}
+
+func TestMountCommandRefusesUnsupportedHostWithoutInternalError(t *testing.T) {
+	s, input := fixture(t)
+	created, err := s.Command(context.Background(), "owner", "", Command{OperationID: operation(800), Action: "create", Name: input.Name, Executable: input.Executable, Remote: input.Remote, Config: input.Config}, allowCommand)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.mountSupported = func() bool { return false }
+	for i, action := range []string{"start", "restart"} {
+		_, err = s.Command(context.Background(), "owner", created.MountID, Command{OperationID: operation(801 + i), Action: action, ExpectedRevision: 1}, allowCommand)
+		if !requestinput.Is(err) {
+			t.Fatalf("unsupported %s returned an internal error: %v", action, err)
+		}
+	}
+	row, err := s.get(created.MountID)
+	if err != nil || row.ControlRevision != 1 || row.DesiredState != "stopped" {
+		t.Fatalf("unsupported command changed intent: %+v %v", row, err)
 	}
 }

@@ -44,9 +44,15 @@ func TestShowWorkspaceHTTPPermissionAndParentResolution(t *testing.T) {
 	}
 	policy := hosted.Policy{ServerID: ident.ID(), Revision: 1, IssuedAt: time.Now().UTC().Format(time.RFC3339), ExpiresAt: time.Now().Add(time.Hour).UTC().Format(time.RFC3339), Members: []hosted.Member{{AccountID: "account", ProfileID: "profile", Role: "member", AllowedLibraries: []string{"a"}}}}
 	apply := func() {
-		encoded, _ := json.Marshal(policy.Members[0].AllowedLibraries)
-		if _, e = db.Exec(`UPDATE direct_memberships SET allowed_libraries=?,revision=revision+1 WHERE account_id='account'`, string(encoded)); e != nil {
-			t.Fatal(e)
+		if len(policy.Members) == 0 {
+			if _, e = db.Exec(`UPDATE direct_memberships SET disabled=1 WHERE account_id='account'`); e != nil {
+				t.Fatal(e)
+			}
+		} else {
+			encoded, _ := json.Marshal(policy.Members[0].AllowedLibraries)
+			if _, e = db.Exec(`UPDATE direct_memberships SET allowed_libraries=?,revision=revision+1 WHERE account_id='account'`, string(encoded)); e != nil {
+				t.Fatal(e)
+			}
 		}
 		raw, _ := json.Marshal(policy)
 		if e = control.Apply(tl6CertifiedHostedPolicy(t, priv, "fixture", raw)); e != nil {

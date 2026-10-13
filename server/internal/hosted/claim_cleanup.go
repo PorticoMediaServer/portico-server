@@ -122,38 +122,8 @@ func (s *Service) applyCleanupJob(ctx context.Context, tx *sql.Tx, v networking.
 	if !errors.Is(e, sql.ErrNoRows) {
 		return e
 	}
-	// This is an account-erasure job: remove account-wide recording inheritance
-	// as well as exact profile grants. Claim retirement alone is not this authority.
-	var grants bool
-	if e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='dvr_recording_grants')`).Scan(&grants); e != nil {
-		return e
-	}
-	if grants {
-		if _, e = tx.ExecContext(ctx, `DELETE FROM dvr_recording_grants WHERE authority='hosted' AND account_id=?`, j.AccountID); e != nil {
-			return e
-		}
-	}
-	for _, profile := range j.ProfileIDs {
-		viewer := identity.Viewer{Authority: "hosted", AccountID: j.AccountID, ProfileID: profile}
-		if e = s.revokeRestrictedFamilies(tx, j.AccountID, profile); e != nil {
-			return e
-		}
-		if _, e = tx.ExecContext(ctx, `UPDATE playback_sessions SET state='stopped' WHERE session_hash IN(SELECT hash FROM authorization_access WHERE authority='hosted' AND account_id=? AND profile_id=?)`, j.AccountID, profile); e != nil {
-			return e
-		}
-		if e = identity.EraseProfileSavedDataTx(ctx, tx, viewer); e != nil {
-			return e
-		}
-		key := identity.PersonalKey(viewer)
-		for _, q := range []string{`DELETE FROM download_grants WHERE profile_key=?`, `DELETE FROM download_progress_marks WHERE profile_key=?`, `DELETE FROM download_receipts WHERE profile_key=?`, `DELETE FROM download_preparations WHERE profile_key=?`} {
-			if _, e = tx.ExecContext(ctx, q, key); e != nil {
-				return e
-			}
-		}
-		if _, e = tx.ExecContext(ctx, `DELETE FROM hosted_profile_revisions WHERE account_id=? AND profile_id=?`, j.AccountID, profile); e != nil {
-			return e
-		}
-	}
+	// Signed jobs name the Portico Account. Resolve that identity to its
+	// server-local membership and use the same erasure as deleting a member.
 	if e = s.eraseLinkedAccountTx(ctx, tx, j.AccountID); e != nil {
 		return e
 	}
