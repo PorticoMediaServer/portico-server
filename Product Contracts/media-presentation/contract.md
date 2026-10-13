@@ -3,9 +3,9 @@
 > Current Portico product contract. October decisions supersede the September reconciliation where noted.
 
 
-**Contract ID:** `PC-MEDIA-PRESENTATION`  
-**Contract revision:** `portico.reconciled.1`  
-**Approval state:** Approved  
+**Contract ID:** `PC-MEDIA-PRESENTATION`
+**Contract revision:** `portico.reconciled.1`
+**Approval state:** Approved
 **Applies to:** Home, libraries, search, Saved, media detail, people, Live TV/DVR, audio Now Playing, downloads, and equivalent first-party surfaces
 
 This contract defines the content elements, artwork roles, action hierarchy, metadata, rows, and state treatments that make the same media item recognizable across Portico clients. It is intentionally platform-agnostic. Layout mechanics may adapt to screen and input; content meaning may not.
@@ -230,7 +230,7 @@ The machine-readable companion is `presentation-matrix.json`. The following tabl
 | track | square in grids; compact square in lists | Play | artist, album, disc/track number, duration | queue/context, credits, lyrics when available |
 | author | poster | no fabricated play action; play/resume next book only when contracted | author identity | books, series, related authors |
 | audiobook series | poster | Play/Resume next book only when contracted | author, book count, series status | books ordered by series index |
-| book / audiobook | poster | Play or Resume | author, series/index, year, duration | ordered chapters, description, related books |
+| book / audiobook | square | Play or Resume | author, series/index, year, duration | ordered chapters, description, related books |
 | chapter | inherited book poster outside book detail; contained inherited cover or no-art list treatment inside book detail | Play or Resume | chapter number/title, duration | parent book context |
 | recording | inherited show/programme poster; accepted programme poster or server-generated focal-safe poster derivative for a one-off; deterministic poster fallback last | Play or Resume | programme time/date, channel, duration, recording state | programme/show context, playback/recording facts, related recordings/episodes, failure evidence when applicable |
 | live channel | contained logo | Watch Live | channel number/name, current programme, time remaining | now/next programme list and guide link |
@@ -328,7 +328,7 @@ The machine-readable companion is `presentation-matrix.json`. The following tabl
 ### 15.1 Playback choice presentation
 
 1. Quality selection MUST always expose the current choice and include `Automatic` plus the explicit quality choices supplied by the playback contract.
-2. `Automatic` communicates that Portico may choose the compatible delivery needed to keep playback working.
+2. `Automatic` quality communicates that Portico begins at Original and may step down and back up with connection conditions. It is an explicit viewer choice, distinct from Automatic engine selection.
 3. An explicit choice such as a bitrate/resolution cap communicates literal user intent. The UI MUST NOT imply that Portico may silently replace it with another quality.
 4. Audio, subtitle, version, and quality selections remain distinct controls with their current value visible before commit.
 5. If an explicit choice cannot be honored, the player presents the contracted unavailable/failure explanation and lets the user choose again; it MUST NOT display the requested choice while playing an undisclosed substitute.

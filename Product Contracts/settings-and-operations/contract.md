@@ -3,12 +3,12 @@
 > Current Portico product contract. October decisions supersede the September reconciliation where noted.
 
 
-Contract ID: `PC-SETTINGS-OPERATIONS`  
-Revision: `portico.october.1`  
-Status: **approved**  
-Owners: Product, Security, Server Operations, Hosted Operations, Client Foundations  
-Imports: `PC-FOUNDATION` viewer scope, permissions, and resource lanes  
-Coordinates with: `PC-IDENTITY`, `PC-NETWORKING`, `PC-LIBRARY-SCANNING`, `PC-METADATA`, `PC-PLAYBACK`, `PC-LIVE-DVR`, `PC-ACCESSIBILITY-LANGUAGE`  
+Contract ID: `PC-SETTINGS-OPERATIONS`
+Revision: `portico.october.1`
+Status: **approved**
+Owners: Product, Security, Server Operations, Hosted Operations, Client Foundations
+Imports: `PC-FOUNDATION` viewer scope, permissions, and resource lanes
+Coordinates with: `PC-IDENTITY`, `PC-NETWORKING`, `PC-LIBRARY-SCANNING`, `PC-METADATA`, `PC-PLAYBACK`, `PC-LIVE-DVR`, `PC-ACCESSIBILITY-LANGUAGE`
 Applies to: Hosted Services operator tooling, Portico Server, bundled and Hosted Web, Client Core, and every first-party client
 
 ## Scope and non-goals
@@ -228,7 +228,7 @@ The active generation remains usable until the candidate passes validation and a
 Secrets are write-only values represented as `absent`, `present`, `replace-pending`, or `clear-pending`. APIs and UIs never return placeholder text that could be resubmitted as a real secret. Clear and replace are explicit operations. Secret material:
 
 - is accepted only over an authenticated protected channel;
-- is encrypted or stored through the platform secret facility at rest;
+- is stored as plain server state protected by filesystem permissions; native authentication storage follows its platform facility;
 - is excluded from query strings, client persistence, logs, traces, analytics, audit diffs, error bodies, diagnostics, screenshots, and clipboard actions;
 - is never sent to a third party until the user starts a bounded test or activation for that provider;
 - is revoked or rendered unreachable when its configuration is removed.

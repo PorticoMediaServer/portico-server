@@ -3,12 +3,12 @@
 > Current Portico product contract. October decisions supersede the September reconciliation where noted.
 
 
-Contract ID: `PC-LIBRARY-SCANNING`  
-Revision: `portico.october.1`  
-Status: **approved**  
-Owners: Product, Server Storage, Scanner, Media Analysis, Security, Client Foundations  
-Imports: `PC-FOUNDATION` permissions and resource lanes; `PC-GOVERNANCE` lifecycle/exception law; `PC-GLOSSARY` vocabulary  
-Coordinates with: `PC-NETWORKING`, `PC-METADATA`, `PC-PLAYBACK`, `PC-SETTINGS-OPERATIONS`  
+Contract ID: `PC-LIBRARY-SCANNING`
+Revision: `portico.october.1`
+Status: **approved**
+Owners: Product, Server Storage, Scanner, Media Analysis, Security, Client Foundations
+Imports: `PC-FOUNDATION` permissions and resource lanes; `PC-GOVERNANCE` lifecycle/exception law; `PC-GLOSSARY` vocabulary
+Coordinates with: `PC-NETWORKING`, `PC-METADATA`, `PC-PLAYBACK`, `PC-SETTINGS-OPERATIONS`
 Applies to: Portico Server, bundled Server Web, Client Core management projections, and every first-party management client
 
 ## Scope and non-goals
@@ -397,3 +397,5 @@ A bad file/probe, NFO row, ignore line or unreadable subfolder leaves usable nei
 The later scan-loop report covers naming/ignore/sidecar wiring left open in earlier reports. Native watchers/network shares and large-merge/reference correctness still need acceptance or fixes.
 
 Sources: [identity](../../../_program/reports/identity.md), [scan-loop](../../../_program/reports/scan-loop.md), [naming](../../../_program/reports/naming.md). [Owner decisions](../decisions.md) govern. Each existing conformance matrix is required coverage, not proof of execution. Release parity is required for applicable first-party features; truly unsupported platform capabilities are hidden. Roku, CarPlay, Android Auto and light theme are outside this programme. No consumer push or email. No stable API or old-database compatibility is promised before release.
+
+The current [scan review](../../../_program/reports/review-scan.md) remains in progress; appended fixes address ambiguous monitor/fallback empty-root evidence and later stale-page revival. Final review/integration qualification is still required. The healthy-coverage rule above remains required.

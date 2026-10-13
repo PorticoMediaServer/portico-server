@@ -31,3 +31,9 @@ Downloads carry a local title/artwork/subtitle bundle and signed permission rece
 ## Live and social
 
 Live viewers and DVR share one upstream channel acquisition with private readers/conversions. Recordings stay profile-private; completed same-airing payloads use shared storage ownership. Active leader cancellation is not seamless. Watch Together has distinct command/presence fences and a brief readiness hold; casting/handoff retains independent receiver playback. Paused-first-frame, receiver control delivery and physical acceptance remain gaps. See [Live TV](../../_program/reports/livetv.md) and [social](../../_program/reports/social.md).
+
+## Current independent review
+
+The independent [pipeline review](../../_program/reports/review-playback-pipeline.md) is in progress with reproduced defects. Rich-path implementation reports do not waive those review findings.
+
+Latest [native follow-ups](../../_program/reports/leftovers-native.md) contain Vega credential redirects by refusing sensitive exchanges before dispatch. Vega sign-in, saved-session restore and authenticated control/streams are unavailable until a redirect-refusing native transport exists. This is an unfinished release feature, even though the earlier Vega player source is implemented. The same follow-up supplies Apple scene/reinstall/admission and inactive-page source fixes; earlier native reports' gap lists must be read with it.

@@ -1,99 +1,155 @@
 # Backlog
 
-Known open work, as of 2 October 2026. Update this file when an item lands or a new one is found. Commits and branches named "(archive)" are in the pre-split repository bundle, `___BACKUP COPIES/Portico pre-split 2026-09-25/portico-monorepo-all-branches.bundle` (`git clone <bundle>`, then check out the branch).
+October implementation reconciliation. Report inventory read at 2026-10-13 12:56 UTC. Reports are live: later appended outcomes supersede initial handoffs. Items below are remaining implementation or acceptance work, not a new feature proposal. Each item links its source report. Delivered work is removed from the old 2 October list. No deployment state is inferred.
 
-## Before the next demo deploy
+## Catalogue, intake and metadata
 
-- **Demo:** runs portico-server 9cfe7fa (branch `frontend-rework`, deployed 3 Oct; `a13c11d` is the rollback; schema 10; its anime library moved to TMDB with that deploy, its play history starts with the first 2 Oct deploy) on the state set up 27 Sep (direct sign-in), with Movies, TV Shows, Anime, Music and Audiobooks from `/srv/portico-demo-20260919` and the "Demo IPTV" playlist source (14 channels). The pre-baseline state is `/var/lib/portico-demo-20260923.pre-e84c27f9`.
-- **Browser and simulator pass of the recommendations UI.** The personal rows on Home ("More recommendations" in Customize Home), Discover personal rows, See all, title-page rows, Not interested with Undo, Reset recommendations, the For you sort, and saved views on Home. Covered so far only by component tests and type checks.
-- **tvOS: Not interested reachability.** Recommendation cards expose it only through long-press. Check it with the Siri Remote and with VoiceOver/Switch Control; add a focusable More action if needed.
-- **Library add form:** adding a library with local metadata only and `en` fails in the web form (seen during a browser test on 25 Sep).
-- **Frontend rework (branch `frontend-rework`, 2 Oct):** not merged. Justin's open questions are numbered in `Audits/2026-10-02-frontend-rework-log.md`. Answered on 2 Oct and built: the hero (no Featured row), a linked TV's role, regional English, play history and play counts. All of the log's numbered questions were answered on 2 Oct (last section of the log: My List, one provider per library, the owner always sees plays, NFO cast with online crew); nothing is waiting on Justin except the merge.
+- **identity:** Clean hidden removed-library derived rows; bound large show merges; resolve untagged replacement identity, album/artist/book identity merge and retained per-play/playlist state. Absorbed IDs have no redirect. Edition/name/ignore wiring is now supplied by scan-loop; do not reopen that old handoff. Source: [identity](../../_program/reports/identity.md).
 
-## Recommendations
+- **review-identity:** Resolve R1–R10 source findings and retain regressions; qualify best-playable version selection, multipart edition grouping and all absorbed playback/social references. Later server-followups moves download references, but does not certify all references or large staged merges. Source: [review-identity](../../_program/reports/review-identity.md).
 
-- **Title dataset release:** when the dataset's first release is published, set `enrichment.PublishedManifest` and `PublishedPublicKey` (portico-server `server/internal/enrichment`).
-- **Apple:** confirm the order of a pending Not interested around a Reset (both completion orders), and whether old cards flash while a stale row restarts (the web clears them).
-- Later: award rows from Wikidata; an "ask" box that maps mood words to dataset tags; music radio and mixes (a listening-similarity source is still to be chosen).
+- **naming:** Pure name reader is complete; native/filesystem runtime qualification remains. End-to-end naming/ignore/sidecar wiring from its original gap list is supplied by scan-loop. Source: [naming](../../_program/reports/naming.md).
 
-## Catalogue and metadata
+- **scan-loop:** Qualify Windows/macOS watchers (including cgo FSEvents), network/FUSE remounts, provider first-import performance and hostile-input setup fixture; integrate diagnostics/message provenance and change-feed reset consumers. Later console supplies monitoring/skip UI, so that screen handoff is no longer listed as absent. Source: [scan-loop](../../_program/reports/scan-loop.md).
 
-- **Similar artists, More by, similar albums:** rebuild on a bounded candidate set: the seed's genres, capped candidates per genre, and collaborators from the seed's songs, then visibility and order. The earlier version walked the library per page view (archive: commit 658a6bd4, reverted).
-- **Two background steps re-walk the library each step:** `metadata/music_artist.go` (`musicArtistStep` groups every album on every step) and `metadata/tvdb_episode_credits.go` (re-walks finished episodes). Make both incremental with a cursor or a pending-work row.
-- **Missing sidecars aren't cached:** `localmetadata/sidecars.go` caches only hits, so each file re-reads every missing sidecar name. Add a per-scan negative cache per directory.
-- **Audiobooks agent and per-type agent names** were built but never reviewed or merged (archive: branch `be/pages`, commits f4fee417 and d17535ea). Review on top of the current code: one agent, no new keys, no provider calls in requests, local-only honored, incremental background steps.
-- **Container grids** (`catalog/content_entities.go`): TV show and collection lists sort a library's shows or collections per page with `OFFSET`. Walk the title index with a keyed cursor and take totals from maintained counts.
-- **Visible counts on head changes:** collection retire/restore and book group moves may leave book-, group- and collection-visible counts stale (`compactcatalog/collection_visible_counts.go`). Queue the head's count keys in the same transaction.
-- **Container personal flags:** Watchlist (shows) and Favorite (shows, albums, books, artists) now work end to end on the container personal-state route, in Saved lists and Home's Watchlist/Favorites rows (frontend rework, 2 Oct). Still open: a star **rating** on a show, album or artist, and Watchlist for an audiobook ("Want to listen").
-- **A local NFO that names only actors hides the online crew (review B13).** `movie.nfo` owns the whole `credits` field (`screenField`: a non-NFO source never replaces an NFO-owned field), so a title whose NFO lists ten actors and no director never publishes the provider's director, writers or producers, and the TMDB rows written before the NFO took the field stay in `catalog_credits` as stale leftovers (the same actors twice in "See all"). Dune and Barbie on the demo data. Decide the rule: the NFO owns the cast and online crew fills what it does not name, or the NFO owns everything and the other provider's rows are removed. Either way the stale rows must go.
-- **A second file of the same title becomes a second title.** `Movie (2021) - 720p.mkv` beside `Movie (2021).mp4` is catalogued as its own movie rather than a second version, so the Version control on a title page has nothing to list. Merge same-folder, same-identity files into one title's sources.
-- **A replaced file is not re-read by an incremental scan.** Overwriting a media file in place (new size and modified time) left its stored facts unchanged after two incremental scans.
-- **Show facts the page has room for but the catalogue lacks:** end year (for "2008–2013"), status (Continuing / Ended), a community rating and the first-aired date. The show workspace would carry them; the web hero and Details print them when present.
-- **A title's dominant colour** for placeholders and the no-backdrop gradient. Clients use a stable tint from the title's id until the server publishes one (`titleTintHue`).
-- **Show libraries cannot be filtered by genre, and Anime not by year** (found 2 Oct). Genres are stored for movies, songs and audiobook files only (`catalog_term_sources`), and the maintained facet counts are per episode: TV Shows has decade, year, network and studio counts (of episodes, not shows) and no genre; Anime has studio only. The clients promote Genre and Year on a show library and the picker then says "Nothing to filter by yet", on web, iPhone and tvOS. Needs: show-level genres and years in the browse index, and facet counts of shows for a show pivot.
-- **Known costs, correct but worth watching:** a sparse filter over a huge pivot pages by offset after one exact count per revision; a very broad search prefix on a huge library costs its matches within the three-second budget; shuffle is linear in container size.
-- Wikipedia text is English-only. Movie `logo.png` sidecars are stored but not exposed. Some entity fields (`label`, `albumType`, `overviewSource`, `country`, active years) aren't rendered by the clients yet.
-- **Recently aired has no counted ordering.** The `aired` sort on episodes is an expression sort (offset paging, no blocks). Give it a counted ordering in `compactcatalog` before a multi-million-episode library uses the tab (frontend rework pass 7).
-- **Sort Songs by plays.** Songs carry the viewer's play count (2 Oct) but the Plays header does not sort: a sort by plays needs the played songs first by count, then the rest by title, as one keyset. iPhone song rows do not show the count (the web hides it under 860 px too).
-- **The session-based history route is unused.** The Dashboard's Viewing panel reads totals of the permanent play history since 2 Oct (`GET /v1/admin/play-history/summary`; each play records `converted`). `GET /v1/admin/playback/history` and its CSV export are no longer called by the web or Apple apps; move a CSV export onto the play history, then drop the route and `client-core` `playbackHistory`.
-- **Credit cap (backend audit).** A provider record keeps at most 128 credits, cast first with key crew ranked in; raise or page it with the backend audit rather than alone (frontend-rework question 2).
-- **NFO cast has no photos.** People named by a local NFO are name-only (`name:<folded name>`), so their circles show initials and their pages list only local titles. When the library's provider names the same person on the same title, link the NFO credit to the provider's person (portraits are selected per title by `provider:person id`, so the artwork step needs the link too).
-- **TheTVDB libraries have no Trending feed.** Trending rows come from TMDB's and AniList's feeds; TheTVDB has none, so a library on it contributes no trend rows. (Its cast comes from TheTVDB's own record; the TMDB fallback removed on 2 Oct only covered a show whose TheTVDB record lists no characters.)
-- **A title the new provider cannot find keeps its old details.** After a library's provider changes, a title with no match on the new provider stays unmatched and shows what it last had until the owner uses Fix Match. Consider saying so on the title's Matching tab.
-- **Ports in flight (3 Oct):** Android/Android TV/Fire OS (`Audits/2026-10-03-android-port-handoff.md`, branch `android-port`), Vega OS (`…-vega-port-handoff.md`, `vega-port`) and Roku (`…-roku-port-handoff.md`, `roku-port`), each by its own agent in its own worktree; logs in `Audits/2026-10-03-*-port-log.md`. The lead merges the lanes and reviews against the Apple TV app. A Roku test environment is still to come.
-- **Hostile-input test rotation.** `TestEveryRouteSurvivesHostileInput` gives each route one hostile path value by route index, so adding a route moves every later route to a different value (on 2 Oct that exposed three lookups that passed an integer-looking id to `pid_blob`; fixed). Try every hostile path value on every route.
-- **Play history has no title search, no per-row delete and no "who watched this" on a title page.** The table has no index by title; add one with the search. Hosted-account viewers are named by their account id (as on Now Playing).
-- **The old Home projection (`GET /v1/content?view=home`) is unused by the web and Apple apps** since Home moved to `/v1/home`. It lost its `featured` title on 2 Oct; remove the projection and its client-core route when no third party needs it.
-- **Untagged albums in the main Albums grid.** Albums under "Unknown artist" are listed in the owner's Unmatched tab but still appear in Albums; leaving them out needs a counted ordering that excludes them (pass 7).
-- **Two metadata providers under one media kind** are allowed by library settings validation (pass 6, open question 9).
+- **providers-matching:** Real-provider and physical-client acceptance; wider person portrait identity and local-artwork selected-original retention policy. Scanner sidecar reobservation is supplied by scan-loop. No remote audiobook provider or source-write export is implied. Source: [providers-matching](../../_program/reports/providers-matching.md).
 
-## Server
+- **music-audiobooks:** Full background decode remains; no general packets-first measurement. No generic manual album merge, ambiguous compilation detection, acoustic lyric identity or online audiobook enrichment. Real tag/lyric/less-common-codec/gapless and suspended playback acceptance is required. WEBP/gain/seek follow-ups now exist in audio-engines. Source: [music-audiobooks](../../_program/reports/music-audiobooks.md).
 
-- **Prepared-statement cache:** a per-connection LRU in `dbwork` cut a 10,000-movie settle from 185 s to 99 s (archive: branch `o2/stmt-cache`). Optional; long first imports are acceptable.
-- **Test timing fixes** not merged (archive: branch `int/runner-timing`): show workspace cursors read the service clock; Hosted instants truncated to PostgreSQL precision; a directory revision read only after the directory settles. Check whether each still applies.
-- **Native item cutover tests** (archive: branch `muse/cp2-item-tests`, test files only).
-- **Planner statistics: sampling is still a query per index of up to 20,000 probes.** Fixed 2 Oct (portico-server `407cb50`): the pass stored "0 rows" for a table that was empty at the time, SQLite then planned every lookup on the filled table as a scan, and the pass's own sampling of the guide table ran for over 20 minutes on the demo after each start. Empty tables now get no entry (as ANALYZE does) and old zero entries are cleared at open; the whole pass takes 1.2 s on the demo database. Left for the backend audit: a restart in the middle still repeats the tables not yet written, and pooled read connections keep the statistics they loaded at open until they are recycled.
-- **Two Apple sign-ins to the demo ended without an obvious cause** (2 Oct). Both simulator apps, signed in directly, showed "Your sign-in has ended" when they were next opened after the demo was restarted; the server logged `authorization family revoked … reason=explicit_signout` for two families at those moments and no `refresh_reuse`. A plain restart of a local server does not reproduce it. Worth a look in the backend audit: what the renewal answered while the server was busy, and why the client then signed out.
-- **`runner-test.sh --full` cannot finish httpapi.** At tier all the package takes about 35 minutes alone (2,082 s, measured 2 Oct at the rollback tag and on `frontend-rework`), and the preset's `-timeout 30m` kills it. Six `TestPlaybackV1Queue…` scale tests of about 204 s each are most of the time. Either raise the preset's timeout for tier all or move those tests to the nightly scale tier.
-- **`web/test/integration/setup-flow.mjs` fails** at "the checklist shows until setup is finished": `state.ready` is true as soon as the owner exists with `authMode: local`. Script and setup code are unchanged since before the rework; decide which is right.
-- **Default test tier under 5 minutes.** The full server preset takes 461 s on the runner now. The remaining cost is fixture settling in `httpapi` and `catalog`, and real installs in `persistence`.
+- **search-sort:** Complete specialised telemetry/subtitle/social/prepared time fields, Saved-resource collection search, explicit/article sort-head reanchoring and client Genres/Series windowing. Ratings and basic aggregate paging have landed; do not reopen them. Source: [search-sort](../../_program/reports/search-sort.md).
 
-## Clients
+- **grouping-sorts:** - Focused verification, generated contracts and snapshots pending. - Arbitrary filtered/restricted group count sorts calculate exact counts in SQL rather than from a query-specific maintained order; unrestricted groups use maintained indexes. - Direct ranges on keys without position blocks walk bounded keyset chunks; cursor pages seek directly. - Dedicated detail/list/search envelope routes retain their existing default/curated orders. New controls must query their advertised common browse surface. This is part of the client handoff, not a claim of screen completion. Source: [grouping-sorts](../../_program/reports/grouping-sorts.md).
 
-- Apple: card size (Small · Medium · Large) is a web setting only; the Apple poster-size preference is stored but not applied; playlist editing, history clearing and recording actions not exposed; `src/app/compat.ts` can go once client-core covers the newer fields.
-- Client-core: move onto the generated `packages/contracts` types.
-- Apple: the Saved History tab still renders its whole list; the media tabs use `WindowedGrid`.
-- Web: `web/src/bridge/profile-vault-crypto.ts` is unused; remove it.
-- Web audio: MP4 seeks through its sample table, but MP3 and FLAC still decode from the start to reach a position. Add seek tables (Xing/VBRI for MP3, SEEKTABLE or a bounded bisection for FLAC).
-- Cast receiver: sidecar subtitles from the presentation (`presentation.subtitles`) aren't offered as CAF text tracks yet, so Cast shows only subtitles carried in the stream.
-- **iPad two-pane Settings** is still the phone layout (pass 5).
-- **Apple Customize Home** reorders with arrows, not drag (pass 7).
-- **Playback info on Apple has no dropped frames or buffer**: the native player does not report them to JavaScript (frontend rework pass 8).
-- **Right-click on a web card opens Portico's More menu**, so the browser's own "Copy link address" is not offered there; consider a Copy link item in the More menu (pass 8).
-- **Per-show settings not built**: library-level defaults, DVD ordering, grouping by years, Keep, Delete after watching (Spec — Title Pages §4; pass 7 built the four switches).
+- **review-scan:** Review and fixes are in progress. Source: [review-scan](../../_program/reports/review-scan.md).
 
-## Integrations never exercised end to end
+## Playback, conversion and subtitles
 
-As of the 22 September Hosted rollout; each needs one real run.
+- **playback-core:** Owner route-failure inspection/reset and forget-track choice; complete per-engine display/rate facts. Native/web session integration, Automatic and rich ordinary targets are supplied by later lanes; real device/codec/HDR/receiver qualification remains. Source: [playback-core](../../_program/reports/playback-core.md).
 
-- **Google and Apple web SSO:** both provider pages load with the web.getportico.tv callbacks, but no complete sign-in has been done: callback, token exchange and onboarding, including Apple's Hide My Email.
-- **Native Sign in with Apple:** align the live `oidc.json` `appleNativeClientIds` and the Apple Developer capabilities with the app's bundle ids (`tv.getportico.portico.ios`, `.tv`), then verify native sign-in on iPhone and Apple TV. Apple account-change notifications are wired (`https://web.getportico.tv/v1/identity/apple/notifications`), but no real Apple delivery has been seen.
-- **Account email:** the SMTP relay (`smtp-relay.gmail.com`, sender `accounts@getportico.tv`) accepts mail, but no message has been sent to a real inbox.
-- **Certificates:** no fresh claimed-server certificate issuance or renewal through Google Public CA and the DNS nodes has been run since the move to systemd.
-- **Google Cast:** the receiver now plays through Playback v1 and Hosted's content security policy allows the sender SDK (25 Sep audit). Still to do: register the real application id and test pairing, load, seek, takeover and reconnect on a physical Chromecast and a Google TV.
-- **Legacy domains:** `api.getportico.tv` and `cloud.getportico.tv` still route to Hosted. Check older server registrations, stored client origins and scripts before retiring them.
+- **review-playback-core:** No independent seven-finding fix remains. Qualify physical playback/throughput; original owner failure controls remain open. Failure memory follows a sign-in family, not a proved device-wide record. Source: [review-playback-core](../../_program/reports/review-playback-core.md).
 
-## Operations
+- **conversion-outputs:** GPU/confinement/native OS/HDR/font/receiver qualification; qualified DV reshaping/base limits and E-AC-3 7.1 constraints. Rich ordinary target wiring is supplied by planner-wiring; rich prepared/experimental finite paths remain separate. Source: [conversion-outputs](../../_program/reports/conversion-outputs.md).
 
-- **Rename the live infrastructure identifiers** that still carry an earlier project name: on core-us-1, the units `portico-astra-hosted` and `portico-astra-web`, the user `portico-astra-hosted`, `/opt/portico-astra-hosted` and `/etc/portico-astra-hosted`; on the demo, the nginx status log name. Do it in one deploy window: rename units, user, directories and config paths, then update `deploy-hosted-release.py`, the backup units and TOPOLOGY.md.
-- **Hosted backups aren't running:** BACKUPS.md describes `portico-hosted-backup.service` (pgBackRest) and the key-bundle unit, but neither unit is installed on core-us-1 (checked 26 Sep; the audit deploy fell back to a `pg_dump` in `/var/backups/portico-hosted/`). Install and enable them, then run one restore drill.
-- **GitHub:** the new repositories replace the contents of the PorticoMediaServer repos (force-push) when publishing starts. `portico-roku` and `portico-temp` are retired.
-- After release: revisit high availability and the broader hosting architecture.
+- **planner-wiring:** Live fMP4 init/media publisher and full Automatic/mpv presentation; rich HEVC/HDR/multichannel prepared recipe identity/storage/packaging; source mastering-display/MaxCLL capture, audio-depth declarations, obsolete web approximate-DV prompt removal and offline original integration. Source: [planner-wiring](../../_program/reports/planner-wiring.md).
 
-## Planned features
+- **native-playback:** Apple/Android SDK/device builds; native start-throughput and reason parsing; same-session Player-setting capability replan; fallback-font mixed-script coverage, Settings caption rows and chapter thumbnails. Recheck stale mirror failures after native-sync; no React-hook coverage or runtime proof is claimed. Source: [native-playback](../../_program/reports/native-playback.md).
 
-- DLNA (off by default; exposes the whole server when on).
-- Desktop companion app for macOS and Windows (per-user, like Plex).
-- Fix Match UI (the server side exists in `internal/metadata`).
-- Ports of the tvOS app: Android and Android TV, Fire TV, Vega OS, Roku.
-- A paid relay for remote access without port forwarding (the only paid feature).
+- **apple-mpv:** Real MPVKit/SDK/linkage, display/HDR/receiver, subtitle, seek and lifecycle qualification; software limits and early EOF. PiP/live/music mpv remain unavailable. Read later apple-mpv-review fixes before reopening corrected source defects. Source: [apple-mpv](../../_program/reports/apple-mpv.md).
+
+- **apple-mpv-review:** Apple framework compilation, pinned MPVKit ABI/symbols, physical teardown/seek/relay/track/display acceptance. Source review fixes do not prove HDR output, audio routing or all glyphs. Source: [apple-mpv-review](../../_program/reports/apple-mpv-review.md).
+
+- **android-mpv:** Build Gradle/JNI/libmpv and test physical Android/Fire devices. No mpv passthrough, interlace or DV5; no mpv PiP/live/music. HDR with drawn subtitles uses SDR; HDR output, software ceilings/fonts and Fire receiver reporting remain unqualified. Android 11 frame-rate API excludes older Fire OS. Add release notices/source custody. Source: [android-mpv](../../_program/reports/android-mpv.md).
+
+- **web-player:** Real hls.js/element/live/native-HLS behaviour, automatic direct-file measurement, live session close, Safari converted AirPlay, output latency/media keys, localisation and obsolete DV pre-play read. Later server/web subtitle/audio work supersedes old Original/default-ceiling/3×/FLAC gaps; unindexed lossy deep seeks use ordinary fallback. Source: [web-player](../../_program/reports/web-player.md).
+
+- **web-subtitles:** Real browser/libass canvas/WASM worker/policy and real bitmap fixtures; broader fonts (including Korean), DVB character/progressive forms and VobSub CHG_COLCON; forced-only control and PiP/Cast subtitle fallback; Safari converted AirPlay, up-next artwork/countdown and remaining literals. Original parser/device-beside-stream merges must be qualified. Source: [web-subtitles](../../_program/reports/web-subtitles.md).
+
+- **subtitles-text:** Real DVD/DVB/timing/glyph/HDR/confined/native/provider acceptance; complete offline originals/companions/fonts and consistent font/geometry handling. Existing 32 MiB bitmap/32-track bounds remain. No cross-episode intro detector is implemented. Source: [subtitles-text](../../_program/reports/subtitles-text.md).
+
+- **audio-engines:** Apple SDK and actual LC/HE-AAC/priming/gapless/deep-seek/output qualification; Android full controller/app/device build, Chrome/Firefox/Safari decoder/Media Session/background-key acceptance and real HE-AAC/multi-hour fixtures. Unindexed lossy web seeks deliberately lose optional effects in ordinary fallback. Source: [audio-engines](../../_program/reports/audio-engines.md).
+
+- **review-playback-pipeline:** Review, fixes and verification are ongoing. No snapshots yet. Source: [review-playback-pipeline](../../_program/reports/review-playback-pipeline.md).
+
+## Personal state and downloads
+
+- **personal-state:** All-client container Undo and native typed See all/Next Up integration; premature EOF terminal evidence, physical offline journal upload and 5,000-member latency qualification. Web title-page Undo is later supplied by console; card-menu Undo remains absent. Source: [personal-state](../../_program/reports/personal-state.md).
+
+- **downloads:** Carry styled/image originals, companions/fonts, chapter/trickplay images; consume offline subtitles/chapters/markers/audio labels and next-episode queue. iOS partials restart after changed address; Android dead-process restart and clock rollback remain open. Device settings are device-wide; transfer tend/recover paths need acceptance. Source: [downloads](../../_program/reports/downloads.md).
+
+- **review-downloads:** Propagate canonical shared changes to native and qualify real receipt/access/transfer behaviour. Six independent server findings are fixed; original local player, iOS partial, next-episode/images and device gaps remain. Source: [review-downloads](../../_program/reports/review-downloads.md).
+
+## Identity, API and networking
+
+- **accounts-security:** Restricted profiles still manage devices/approve TV; prune failed-attempt ledger; remove residual Hosted authority branches; investigate historical Apple sign-outs; country/per-library unrated policy and label/tag parity; device-approval records without installation IDs. Client permission/hours/device handling needs acceptance. Keys restored from backup are an explicit disclosed exception, not an assumed scrub task. Source: [accounts-security](../../_program/reports/accounts-security.md).
+
+- **review-accounts-security:** Independent five findings fixed. Reconcile all new route restriction/visibility matrices and client propagation/real proxy/Hosted/crash acceptance. Later base-health reports matrix fixes; verify against the final integrated revision rather than reopen that older count blindly. Source: [review-accounts-security](../../_program/reports/review-accounts-security.md).
+
+- **api-platform:** Credential lookup admission, fair ordered webhook scheduling, title-query plans, MCP API-contract/default coverage and owner activity/other-member controls need review/follow-up. Generic legacy error mapping/304 composition and whole registry migration remain separate. Later console supplies credential/webhook screens; later server-followups supplies attention tools. Source: [api-platform](../../_program/reports/api-platform.md).
+
+- **review-api-platform:** Six findings remained unfixed in this findings-only checkout: pre-admission lookup, title query, webhook scheduling/order, MCP defaults and last-used path. Later base-health repairs title sort seeks and server-followups supplies attention tools; reconcile remaining findings against final code. MCP mutation tools need contract-level tests. Source: [review-api-platform](../../_program/reports/review-api-platform.md).
+
+- **registry:** Registry migration, generated-document guards, client service migration and inventory remain in progress. Source: [registry](../../_program/reports/registry.md).
+
+- **networking:** Real Windows/macOS listening, scoped IPv6 URLs, discovery, DNS-rebinding/PNA, proxy/container/certificate behaviour and load/reserve acceptance. Follow-up review fixes supersede ten initial source findings. Deliberately open setup is not DNS-rebinding protected. Source: [networking](../../_program/reports/networking.md).
+
+- **review-networking:** No F1–F10 source fixes remain. Qualify real OS/zone/multicast/proxy/container/capacity boundaries; retain deliberate open HTTP/setup policy. Connection-limit restart/effective/proxy replay/HTTP2/TLS publication now have regressions. Source: [review-networking](../../_program/reports/review-networking.md).
+
+## Freshness, presentation and client parity
+
+- **freshness-server:** Large-library/weak-hardware checkpoint latency, full failure-ledger paging/export and complete special-screen/event adoption. Generic 304 cost and other domains remain separate. Later console supplies the latest-failure screen. Source: [freshness-server](../../_program/reports/freshness-server.md).
+
+- **freshness-clients:** Special Live TV/DVR/Downloads/social/owner panels need hub dependencies; recommendation/trending/popularity self-freshness and title-specific personal hints need server vocabulary. Deep appended rows/paged Saved views, HTTP cross-machine per-tab poll, native fade, Back caches, restart persistence and TV/browser handover/focus acceptance remain limited. Source: [freshness-clients](../../_program/reports/freshness-clients.md).
+
+- **review-freshness:** No confirmed finding from this lane is left unfixed. External SQL guards and inherited client/operations/API boundaries above remain. Real-device, weak-hardware, large-library and physical crash/power-loss acceptance remain unverified; the reopen test is deterministic database/worker recovery, not a power-cut test. Snapshots 001 and 002 are cumulative compiling milestones. Final snapshot 003 follows final report/checks and captures the complete tree; no worktree edits follow it. Source: [review-freshness](../../_program/reports/review-freshness.md).
+
+- **web-app:** Guide/linear tolerant parsers, neutral unknown owner activity, exact listening preference handling, reactive locale helper calls, skipped-part diagnostic presentation and unused-string review. Retain source-listed unresolved browser/navigation/input bugs; later Home fields/missing/disc/console follow-ups supersede their old absent-field notes. Real layout/CSP/reconnect/accessibility checks remain. Source: [web-app](../../_program/reports/web-app.md).
+
+- **native-app:** Apple scene launch/build, platform input/accessibility and remaining B-19.* gaps, localisation, playlist occurrence anchors, subtitle pending choices, request classes, remembered secure hints, artwork retry, Saved view playback beyond 500 and mini-player error wording. Later native-sync supplies initial staged strings/address/library-memory work; verify remaining shared seams on final mirror. Source: [native-app](../../_program/reports/native-app.md).
+
+- **native-sync:** Connect pending version before Play, player queue/title delete actions, paused first-frame Watch Together and destination session events; Play on skip/scrub, stable duplicate-name Cast proof and Android Cast module; running-session hours refusal. Staged report/download/activation strings/literals and actual TV/platform layouts remain. Owner tools remain web-first. Source: [native-sync](../../_program/reports/native-sync.md).
+
+- **vega:** Physical Vega build/runtime/probes/live MSE/layout/focus; HTTP redirects are refused after follow; no qualified HDR/surround/display matching/caption OS style, gapless/crossfade/level/speed/discovery/downloads/Cast/home rows. Direct HTTPS throughput only reacts to stalls; non-sequence programme transitions can hitch. Hide unsupported capabilities. Source: [vega](../../_program/reports/vega.md).
+
+## Live TV and social
+
+- **livetv:** Capture-leader cancellation transfer, active guide extensions, standalone XMLTV-only setup/manual guide reuse/catch-up; large playlist streaming beyond bounded strings; full guide load/tuner recovery, Windows locks/retirement and real codec acceptance. Client reservation event/countdown, private recorded identity attach and per-source readback remain handoffs. Source: [livetv](../../_program/reports/livetv.md).
+
+- **review-livetv:** Phase 1 reproductions, Phase 2 fixes, verification and snapshots remain. Source: [review-livetv](../../_program/reports/review-livetv.md).
+
+- **social:** Paused/unpresented initial load, actual destination session-event control, native stable controller identity/storage, duplicate TV names, configured Cast application ID and narrow cleanup admission. B-13.14/.21/.22 follow-ups, SSE generator and physical sync/Cast/load acceptance remain. Source: [social](../../_program/reports/social.md).
+
+## Operations, settings, Hosted and integration
+
+- **ops-packaging:** Full recovery console, wider source logging, real SCM/launchd/Linux service lifecycle/Docker/GPU and release-runner/signing qualification. Independently approved public signing pin, macOS installer identity and final source/notice custody must be configured without inventing keys. Large backup WAL/restore/reclamation acceptance remains. Source: [ops-packaging](../../_program/reports/ops-packaging.md).
+
+- **limits-settings:** Complete remaining deep-analysis progress-bound and visibility-worker pause boundary; real scan/conversion/connection/slow-NAS/tuner/GPU capacity. Later console supplies pause/usage controls; native effective-policy/device acceptance remains. Source: [limits-settings](../../_program/reports/limits-settings.md).
+
+- **console:** Third pass still lacks Genres/Series windowing, owner Now Playing pause/resume/seek, remote scrub/seek, event freshness for special panels, card-menu Undo, per-source import limits, tuner person names, subtitle-provider credentials and web DV prompt removal. All three screen passes need actual browser click-through; broad native owner tools remain web-first. Source: [console](../../_program/reports/console.md).
+
+- **hosted:** No-email/mailoutbox/onboarding reconciliation and deployment/restore notes; real provider/cookie/OS consent callback/Cast/ACME/DNS/proxy/fleet acceptance. Later review fixes the original ten Hosted defects; current server signingCertificate consumer is present, but full fleet revocation needs qualification. Current apikit sync follows the later follow-up, not the original claim. Source: [hosted](../../_program/reports/hosted.md).
+
+- **review-hosted:** All ten independent findings are fixed. Real consent keyboard/double-click/browser/cookie/provider/app-scheme acceptance, replica revocation and actual release/restore qualification remain; source apikit drift reported later needs hosted-followups. Source: [review-hosted](../../_program/reports/review-hosted.md).
+
+- **hosted-followups:** No known Hosted source implementation item remains from this lane. Local-server handling of externally root-issued revisions beyond its persistence range is the exact residual contract hardening noted above, outside this writable lane. External client shared-outage wiring, canonical toolkit publication, documentation reconciliation and real browser/provider/device/fleet/deploy/rollback acceptance remain. The consent label remains a non-unique display name by the recorded decision. Multi-replica address admission remains process-local; the account quota is database-wide. No full test suites, packaging pipelines or deployment were run. Source alignment and repository tests do not establish production fleet revocation latency. Source: [hosted-followups](../../_program/reports/hosted-followups.md).
+
+- **integrator:** Physical Android controller resolution and real long-file FLAC seek; recheck stale client fixtures/restriction matrices/hand-written schema after later base-health. Integration test passes are not native/browser/device acceptance. Source: [integrator](../../_program/reports/integrator.md).
+
+- **base-health:** Final source tests are reported, but actual native builds, browser/device/GPU/tuner/proxy/capacity acceptance and retirement of duplicate hand-written OpenAPI remain. Use this later report when judging stale fixture/matrix failures from earlier reports. Source: [base-health](../../_program/reports/base-health.md).
+
+- **leftovers-server-a:** Current-code review, fixes, tests and snapshots remain in progress. Progress checkpoint: TMDB absolute anime now maps official and show-owned alternate groups, with an explicit signed numbering offset in the existing order field. Local absolute numbers remain unchanged; original seasonal coordinates remain provider provenance. Client-core supplies tmdbAbsoluteOrder. Episode cache reads now include region; expired held episodes use conditional requests where supported. Provider tests passed; the server compiled. Existing new-episode/freshness regression passed; additional publication-count/region regressions are being run. Progress checkpoint: primary-profile admission now guards account Devices, EditDevice, RememberBrowserAccount and ForgetBrowserAccount. Quick Connect keeps approver-role semantics. Retired hosted session issuance/restriction bypasses and viewer_only Further exact findings and acceptance steps remain in the report. Source: [leftovers-server-a](../../_program/reports/leftovers-server-a.md).
+
+- **leftovers-server-b:** - Native first-frame pause, signed-out-file cleanup policy/integration, Android process-dead recovery and persisted monotonic receipt expiry (B-13.18, B-14.14, B-14.20 and device portion of B-14.21). - Native Apple/Vega CI/physical acceptance and cross-repository revision locks (B-25.10, B-25.21) cannot be edited in either writable worktree. - External architecture/product-contract wording and component-specific Apple licence decision (B-25.12 explicitly skipped). - OS signed-installer acceptance and the newly observed unfixed npm advisory (B-15.19). - Physical media/tuner/disk/installer acceptance listed above. None is implied by passing source/unit checks. Source: [leftovers-server-b](../../_program/reports/leftovers-server-b.md).
+
+- **review-ops:** Review and fixes are in progress. Source: [review-ops](../../_program/reports/review-ops.md).
+
+- **server-docs:** Public document review, edits, example checks, licence inventory and snapshots are in progress. Source: [server-docs](../../_program/reports/server-docs.md).
+
+- **server-followups:** Generic TV/anime separate still requires explicit placement; multipart downloads still refuse several files; no merged-ID redirect or disconnected-receipt rewriting; music attention queue, aggregate vocabulary, per-source limit readback, tuner names and subtitle credentials remain. Actual remote playback/FFmpeg/tuner/native acceptance is open. Source: [server-followups](../../_program/reports/server-followups.md).
+
+## Additional active reports
+
+- **android-native-review:** Review in progress; no completion claim. Source: [android-native-review](../../_program/reports/android-native-review.md).
+
+- **apple-native-review:** Source review and limited validation in progress. Source: [apple-native-review](../../_program/reports/apple-native-review.md).
+
+- **leftovers-native:** - **A redirect-controllable native Vega HTTP/stream transport is not implemented. The safety containment leaves Vega authenticated operation unavailable.** - Occurrence/revision playlist anchor, exact pre-play subtitle identity/materialisation, complete saved-view queue selector and the frontend/packaging handoffs above. - Android rotation density and unadvertised generic-box layout policy; retained-history memory is not bounded; React-internal hook harness and Vega SDK CI gaps. - Apple archive/store/scene launch, first-unlock/reinstall/background, native admission under actual socket load, TV focus and all physical device acceptance remain unrun. The installation-storage test source exists, but only macOS CI/device execution can validate the native environment. - No promise that all 116 findings are Source: [leftovers-native](../../_program/reports/leftovers-native.md).
+
+## Historical work needing revalidation
+
+These old backlog items are not verified complete by the programme reports. They are retained as revalidation work, not assertions that a defect remains. The original 2 October Backlog is preserved in Git history; source below is the later report relevant to the area.
+
+- Recommendation dataset manifest/public key publication, award/mood/music-radio extensions, pending Not interested versus Reset ordering and TV accessibility: [personal-state](../../_program/reports/personal-state.md), [freshness-clients](../../_program/reports/freshness-clients.md). No current dataset-release evidence was available.
+
+- Local NFO person-to-provider portrait links, Wikipedia language, selected client fact fields, credit cap, unknown-artist album visibility, play-count song ordering and advanced per-show settings: [providers-matching](../../_program/reports/providers-matching.md), [search-sort](../../_program/reports/search-sort.md), [console](../../_program/reports/console.md). Do not reopen old strict naming, provider-chain, NFO crew, version or file-rescan defects merely from the historical list.
+
+- Actual Hosted backup units/restore drill, live infrastructure identifier rename, real Google/Apple onboarding and native Apple capability registration, fresh certificate issuance/renewal and real Cast application registration: [ops-packaging](../../_program/reports/ops-packaging.md), [hosted](../../_program/reports/hosted.md). No production access was performed. Historic email-delivery checks, force-publishing plans and Roku ports are removed from this programme.
+
+## Outside this programme
+
+Relay remains future work. Roku, CarPlay, Android Auto, light theme, plugins, themes, custom CSS and watch-state import/export are excluded. DLNA/desktop companion and other unapproved historical feature plans are not release completion gates. Existing design documents do not grant new scope.
+
+## Documentation evidence still needed
+
+- Revalidate specialised Library Channels builder/schedule/logo and channel-guide UI examples against the final registry/client revision. The specifications are retained as requirements and explicitly do not claim all-client implementation. Source: [docs-internal](../../_program/reports/docs-internal.md), [livetv](../../_program/reports/livetv.md), [native-sync](../../_program/reports/native-sync.md).
+- Latest native follow-ups supersede earlier Apple scene/reinstall, request-class/privacy and Vega redirect descriptions. Vega authenticated operation is deliberately unavailable until a redirect-refusing transport is supplied. Source: [leftovers-native](../../_program/reports/leftovers-native.md).
+- Latest Hosted format is 21, fresh-only; toolkit/check-in/replica consent fixes are supplied by the final follow-up. Earlier format-20 and copied-toolkit drift notes are historical. Source: [hosted-followups](../../_program/reports/hosted-followups.md).

@@ -3,12 +3,12 @@
 > Current Portico product contract. October decisions supersede the September reconciliation where noted.
 
 
-Contract ID: `PC-IDENTITY`  
-Revision: `portico.october.1`  
-Status: **approved**  
-Owners: Product, Security, Hosted Identity, Server Identity, Client Foundations  
-Imports: `PC-FOUNDATION` viewer scope and permissions; `PC-GOVERNANCE` lifecycle/exception law; `PC-GLOSSARY` vocabulary  
-Coordinates with: `PC-ONBOARDING`, `PC-NETWORKING`, `PC-ACCESSIBILITY-LANGUAGE`  
+Contract ID: `PC-IDENTITY`
+Revision: `portico.october.1`
+Status: **approved**
+Owners: Product, Security, Hosted Identity, Server Identity, Client Foundations
+Imports: `PC-FOUNDATION` viewer scope and permissions; `PC-GOVERNANCE` lifecycle/exception law; `PC-GLOSSARY` vocabulary
+Coordinates with: `PC-ONBOARDING`, `PC-NETWORKING`, `PC-ACCESSIBILITY-LANGUAGE`
 Applies to: Hosted Services, Portico Server, Web, Client Core, and every first-party client
 
 ## Scope and non-goals
@@ -32,7 +32,7 @@ The authority split is absolute:
 | Profile viewing identity | Hosted Services for Hosted profiles; Portico Server for Local profiles | Profile identifiers from different authorities are unrelated even if their strings match. |
 | Client installation identifier | Client/server device binding | Random stable installation ID; accompanies server refresh and device approval, but is not a secret possession key. |
 
-No identifier may change meaning across boundaries. Every viewer scope follows current `PC-FOUNDATION` ownership and fencing rules; the original [`ViewerScope`](../../../References/Contract%20Baseline%202026-09-05/foundation/viewer-scope.schema.json) is a reference shape to port, not the rebuilt wire authority. `account-only` is Hosted and omits `serverId` before server selection; `server-bound` includes it. `authorizationRevision` fences requests, grants and cached projections. Durable viewer data is owned by the stable authority/account/profile/server key defined in PC-FOUNDATION; a revision change does not create a different owner or erase history.
+No identifier may change meaning across boundaries. Every viewer scope follows current `PC-FOUNDATION` ownership and fencing rules; the original `ViewerScope` (historical baseline) is a reference shape to port, not the rebuilt wire authority. `account-only` is Hosted and omits `serverId` before server selection; `server-bound` includes it. `authorizationRevision` fences requests, grants and cached projections. Durable viewer data is owned by the stable authority/account/profile/server key defined in PC-FOUNDATION; a revision change does not create a different owner or erase history.
 
 ## 2. Product identities
 
@@ -110,7 +110,7 @@ No Portico email is sent under the October decision. Earlier mail verification, 
 
 ### 4.1 Password
 
-Retain the owner's light password policy and no lockout. Paste, password managers and show/hide remain supported. Request/admission bounds and MFA checks remain. Do not replace the deliberate policy with composition rules or email challenges. Current shared creation validation uses its implementation-defined character/byte bounds; inspect that validator rather than the superseded eight-character mixed-case prescription.
+Retain the owner's light password policy and no lockout. Paste, password managers and show/hide remain supported. Request/admission bounds and MFA checks remain. Do not replace the deliberate policy with composition rules or email challenges. Current direct-server creation accepts valid UTF-8 with at least eight Unicode characters and at most 72 bytes (`identity/direct_accounts.go`); it requires no mixed-case composition.
 
 Sign-in refusals preserve privacy where possible. The accounts report records that under remote “owner only”, a member's correct password is distinguishable from a wrong one; this is not an indistinguishability guarantee.
 

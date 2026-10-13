@@ -41,6 +41,10 @@ This glossary owns cross-contract meanings. A family contract may narrow a term 
 | Authorization revision | Versioned permission evidence; changes request/grant/cache eligibility without creating a new durable owner. |
 | Operation receipt | Immutable evidence of a past committed intent; not a statement that its result is still current or authorized. |
 
+## October vocabulary
+
+| Term | Canonical meaning |
+|---|---|
 | Title | Logical catalogue identity and its history/state, separate from the files that currently supply it. |
 | File | Physical source bytes with observed revision/custody; may disappear or be replaced without changing a recognised title. |
 | Version | An available file or file grouping for a title, carrying technical quality/edition/part evidence. Persistent multipart edition grouping remains incomplete. |

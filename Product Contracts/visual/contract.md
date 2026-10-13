@@ -3,10 +3,10 @@
 > Current Portico product contract. October decisions supersede the September reconciliation where noted.
 
 
-**Contract ID:** `PC-VISUAL`  
-**Contract revision:** `portico.reconciled.1`  
-**Approval state:** Approved  
-**Applies to:** every first-party Portico consumer surface, including Web, bundled Server Web, iOS, Android, tvOS, Android TV, Fire TV, Roku, Cast, and future clients  
+**Contract ID:** `PC-VISUAL`
+**Contract revision:** `portico.reconciled.1`
+**Approval state:** Approved
+**Applies to:** every first-party Portico consumer surface, including Web, bundled Server Web, iOS, Android, tvOS, Android TV, Fire TV, Roku, Cast, and future clients
 **Does not apply to:** the public marketing site except where it deliberately consumes a Portico product component
 
 This contract defines Portico's platform-agnostic visual and interaction law. It describes the product meaning that every client must preserve; it does not require every rendering engine to produce byte-identical pixels.

@@ -3,12 +3,12 @@
 > Current Portico product contract. October decisions supersede the September reconciliation where noted.
 
 
-Contract ID: `PC-NAVIGATION-INPUT`  
-Revision: `portico.october.1`  
-Status: **approved**  
-Owners: Product, Client Foundations, Client Core, Accessibility  
-Imports: `PC-FOUNDATION` viewer scope; `PC-GOVERNANCE` lifecycle/exception law; `PC-GLOSSARY` vocabulary  
-Coordinates with: `PC-VISUAL`, `PC-MEDIA-PRESENTATION`, `PC-IDENTITY`, `PC-NETWORKING`, `PC-PLAYBACK`, `PC-ACCESSIBILITY-LANGUAGE`  
+Contract ID: `PC-NAVIGATION-INPUT`
+Revision: `portico.october.1`
+Status: **approved**
+Owners: Product, Client Foundations, Client Core, Accessibility
+Imports: `PC-FOUNDATION` viewer scope; `PC-GOVERNANCE` lifecycle/exception law; `PC-GLOSSARY` vocabulary
+Coordinates with: `PC-VISUAL`, `PC-MEDIA-PRESENTATION`, `PC-IDENTITY`, `PC-NETWORKING`, `PC-PLAYBACK`, `PC-ACCESSIBILITY-LANGUAGE`
 Applies to: Web, bundled Server Web, Client Core, iOS, Android, tvOS, Android TV, Fire TV, Roku, Cast controller surfaces, and future first-party clients
 
 ## NAV-1. Purpose and scope
@@ -364,7 +364,7 @@ When a defect applies to more than one client, change this contract and align al
 
 ## NAV-20. Comparative precedent
 
-Plex and Jellyfin were reviewed as evidence, not authority. The adopted lessons and rejected precedents are recorded in [`precedent-review.md`](../../../References/Contract%20Baseline%202026-09-05/navigation-and-input/precedent-review.md). The central conclusion is that recognizable cross-platform roots and platform-native mechanics are useful, while focus and Back behavior become fragile when they are implicit, index-based, or split across old and new UI stacks.
+Plex and Jellyfin were reviewed as evidence, not authority. The adopted lessons and rejected precedents are recorded in `precedent-review.md` (historical baseline). The central conclusion is that recognizable cross-platform roots and platform-native mechanics are useful, while focus and Back behavior become fragile when they are implicit, index-based, or split across old and new UI stacks.
 
 
 ## Reconciled architecture boundary

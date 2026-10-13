@@ -3,12 +3,12 @@
 > Current Portico product contract. October decisions supersede the September reconciliation where noted.
 
 
-Contract ID: `PC-SHARING-SOCIAL`  
-Revision: `portico.october.1`  
-Status: **approved**  
-Owners: Product, Server Social Playback, Server Authorization, Hosted Memberships, Playback, Client Foundations  
-Imports: `PC-FOUNDATION` viewer scope, permissions, and resource lanes  
-Coordinates with: `PC-IDENTITY`, `PC-ONBOARDING`, `PC-NETWORKING`, `PC-PLAYBACK`, `PC-SAVED-DOWNLOADS`, `PC-ACCESSIBILITY-LANGUAGE`  
+Contract ID: `PC-SHARING-SOCIAL`
+Revision: `portico.october.1`
+Status: **approved**
+Owners: Product, Server Social Playback, Server Authorization, Hosted Memberships, Playback, Client Foundations
+Imports: `PC-FOUNDATION` viewer scope, permissions, and resource lanes
+Coordinates with: `PC-IDENTITY`, `PC-ONBOARDING`, `PC-NETWORKING`, `PC-PLAYBACK`, `PC-SAVED-DOWNLOADS`, `PC-ACCESSIBILITY-LANGUAGE`
 Applies to: Portico Server, Web, Client Core, Apple, Android, television clients, Roku, and the Google Cast receiver; Hosted Services only for global-account identity, server-membership policy, and optional opaque invitation delivery
 
 ## 1. Purpose and scope

@@ -37,3 +37,9 @@ Read documents use consistent snapshots, restrictions in queries and bounded ind
 The 14 October decision requires the main sort/filter vocabulary in every subgroup. This is a requirement, not a delivered claim: [grouping-sorts](../../_program/reports/grouping-sorts.md) is in progress. [Search/sort](../../_program/reports/search-sort.md) records remaining Saved-collection search, reanchoring and specialised time-field gaps.
 
 Separate ordering, directory, personal and progress counters avoid conflicts caused by unrelated position ticks. The event stream sends scoped hints; the [client hub](../../_program/reports/freshness-clients.md) quietly rereads visible dependencies. Appended lists, some special screens and device focus still need acceptance or further integration.
+
+## Current independent review
+
+The independent [scan review](../../_program/reports/review-scan.md) remains in progress. Its appended fixes address ambiguous monitor/fallback empty-root evidence, unbounded removal calls, distinct-release track identity, extra ownership, Unicode grouping and stale-page revival. Final review/integration/native acceptance remains required; the original finding text alone is not current fix status.
+
+The completed [freshness review](../../_program/reports/review-freshness.md) reports eight fixes for active-search/History/dismissal hints, quiet resync after ring pruning, observation-keyed Continue counts, Unicode filters and failure dates. Two unchanged SQL guards and real load/crash/device acceptance remain open.

@@ -1,6 +1,6 @@
 # Library Channels
 
-Contract ID: PC-LIBRARY-CHANNELS. Revision: portico.reconciled.1. Covers CAP-047, with presentation/playback/metadata/operations imports. This fills the original corpus's missing domain contract using existing product behavior as reference; no original code is imported into the build.
+Contract ID: PC-LIBRARY-CHANNELS. Revision: portico.october.1. Covers CAP-047, with presentation/playback/metadata/operations imports. This fills the original corpus's missing domain contract using existing product behavior as reference; no original code is imported into the build.
 
 ## Product and ownership
 
@@ -43,3 +43,9 @@ Owner state distinguishes disabled, generating, healthy, stale guide, no eligibl
 ## Required evidence
 
 Deterministic repeat generation; paged large candidate set; interrupted tail extension; concurrent config edit; empty/zero-duration rule; DST/overnight/overrun; template idempotency and customization preservation; tune exactly at an entry boundary; permission change on next programme; source replacement mid-programme; incompatible media transitions; regeneration during playback; disable/delete with active use; logo/transcoding policy; server-restart continuity; web/iOS/tvOS guide/tune and honest capability states.
+
+## October scope and implementation evidence
+
+Library Channels remain server-composed schedules distinct from shared tuner inputs and profile-private DVR. Original quality is the default; any viewer Automatic choice follows the current playback contract. One device capability document and ordinary session authority apply; historic document 32 references do not define a second API.
+
+The configuration/schedule/outcome descriptions above are requirements, not a claim that every editor, logo policy, seven-day generation or lifecycle fixture has been qualified. Sources: [Live TV](../../_program/reports/livetv.md), [planner wiring](../../_program/reports/planner-wiring.md), [native sync](../../_program/reports/native-sync.md). Real channel transition, codec, input/focus and all-client acceptance remain unverified. No mail/push, plugin/theme or Roku release work is introduced.

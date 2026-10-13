@@ -3,12 +3,12 @@
 > Current Portico product contract. October decisions supersede the September reconciliation where noted.
 
 
-Contract ID: `PC-ACCESSIBILITY-LANGUAGE`  
-Revision: `portico.october.1`  
-Status: **approved**  
-Owners: Product, Accessibility, Product Language, Client Foundations  
-Imports: `PC-FOUNDATION` viewer scope and canonical semantics; `PC-GOVERNANCE` lifecycle/exception law; `PC-GLOSSARY` vocabulary  
-Coordinates with: `PC-VISUAL`, `PC-MEDIA-PRESENTATION`, `PC-NAVIGATION-INPUT`, `PC-IDENTITY`, `PC-PLAYBACK`  
+Contract ID: `PC-ACCESSIBILITY-LANGUAGE`
+Revision: `portico.october.1`
+Status: **approved**
+Owners: Product, Accessibility, Product Language, Client Foundations
+Imports: `PC-FOUNDATION` viewer scope and canonical semantics; `PC-GOVERNANCE` lifecycle/exception law; `PC-GLOSSARY` vocabulary
+Coordinates with: `PC-VISUAL`, `PC-MEDIA-PRESENTATION`, `PC-NAVIGATION-INPUT`, `PC-IDENTITY`, `PC-PLAYBACK`
 Applies to: Hosted and Server user-facing responses, Product Language, Web, bundled Server Web, Client Core, iOS, Android, tvOS, Android TV, Fire TV, Roku, Cast, notifications, email, and future first-party clients
 
 ## A11Y-1. Purpose and baseline
@@ -295,7 +295,7 @@ An accessibility exception cannot be justified only by schedule, implementation 
 
 ## A11Y-21. Comparative precedent and standards
 
-Plex and Jellyfin lessons and rejected precedents are recorded in [`precedent-review.md`](../../../References/Contract%20Baseline%202026-09-05/accessibility-and-language/precedent-review.md). Normative external baselines are WCAG 2.2, platform accessibility guidance, WAI semantic patterns, and Unicode CLDR/LDML. External guidance does not override a stronger Portico guarantee.
+Plex and Jellyfin lessons and rejected precedents are recorded in `precedent-review.md` (historical baseline). Normative external baselines are WCAG 2.2, platform accessibility guidance, WAI semantic patterns, and Unicode CLDR/LDML. External guidance does not override a stronger Portico guarantee.
 
 
 ## Reconciled architecture boundary

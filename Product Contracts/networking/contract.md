@@ -3,12 +3,12 @@
 > Current Portico product contract. October decisions supersede the September reconciliation where noted.
 
 
-Contract ID: `PC-NETWORKING`  
-Revision: `portico.october.1`  
-Status: **approved**  
-Owners: Product, Security, Hosted Infrastructure, Server Networking, Client Foundations  
-Imports: `PC-FOUNDATION` viewer scope, permissions, and resource lanes; `PC-GOVERNANCE` lifecycle/exception law  
-Coordinates with: `PC-IDENTITY`, `PC-ONBOARDING`, `PC-PLAYBACK`, `PC-ACCESSIBILITY-LANGUAGE`  
+Contract ID: `PC-NETWORKING`
+Revision: `portico.october.1`
+Status: **approved**
+Owners: Product, Security, Hosted Infrastructure, Server Networking, Client Foundations
+Imports: `PC-FOUNDATION` viewer scope, permissions, and resource lanes; `PC-GOVERNANCE` lifecycle/exception law
+Coordinates with: `PC-IDENTITY`, `PC-ONBOARDING`, `PC-PLAYBACK`, `PC-ACCESSIBILITY-LANGUAGE`
 Applies to: Hosted Services, Direct DNS, Portico Server, Web, Client Core, and every first-party client
 
 ## Scope and non-goals

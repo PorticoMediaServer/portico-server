@@ -3,12 +3,12 @@
 > Current Portico product contract. October decisions supersede the September reconciliation where noted.
 
 
-Contract ID: `PC-LIVE-DVR`  
-Revision: `portico.october.1`  
-Status: **approved**  
-Owners: Product, Server Live Sources, DVR Scheduler, Playback, Client Foundations  
-Imports: `PC-FOUNDATION` viewer scope, permissions, and resource lanes  
-Coordinates with: `PC-IDENTITY`, `PC-NETWORKING`, `PC-PLAYBACK`, `PC-LIBRARY-SCANNING`, `PC-METADATA`, `PC-SAVED-DOWNLOADS`, `PC-SETTINGS-OPERATIONS`, `PC-ACCESSIBILITY-LANGUAGE`  
+Contract ID: `PC-LIVE-DVR`
+Revision: `portico.october.1`
+Status: **approved**
+Owners: Product, Server Live Sources, DVR Scheduler, Playback, Client Foundations
+Imports: `PC-FOUNDATION` viewer scope, permissions, and resource lanes
+Coordinates with: `PC-IDENTITY`, `PC-NETWORKING`, `PC-PLAYBACK`, `PC-LIBRARY-SCANNING`, `PC-METADATA`, `PC-SAVED-DOWNLOADS`, `PC-SETTINGS-OPERATIONS`, `PC-ACCESSIBILITY-LANGUAGE`
 Applies to: Portico Server, Web, Client Core, and every first-party client that advertises Live TV or DVR capability
 
 ## 1. Purpose and scope
@@ -45,7 +45,7 @@ Side states are `refreshing`, `degraded`, `disabled`, `credentials-required`, an
 
 1. Source creation validates type, locator, credentials, response bounds, supported playlist/guide shape, and safe network policy before publication.
 2. Test/preview MUST NOT publish a source, channels, guide, or credentials. Save is an explicit second action.
-3. Secrets are encrypted at rest, write-only after creation, redacted from responses, and never copied into viewer DTOs, URLs, logs, or diagnostics exports.
+3. Secrets are plain at rest under server filesystem permissions, write-only after creation, redacted from responses, and never copied into viewer DTOs, URLs, logs, or diagnostics exports.
 4. HDHomeRun discovery is advisory. The owner confirms the exact device/route and discovered tuner count before save. Discovery cannot overwrite an existing source.
 5. A source has `tunerCountMode`: `discovered`, `configured`, or `defaulted`. The effective count and its provenance are visible to the owner. Zero MUST NOT mean unlimited. Unknown capacity is displayed as unknown with a conservative planning estimate of one; the estimate alone is not an admission cap. Confirmed physical limits or explicit owner caps govern allocation; see the Live/DVR architecture amendment.
 6. Disabling stops new sessions and future rule reconciliation while preserving channel identity, guide history needed by existing recordings, rules, and recordings.

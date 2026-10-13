@@ -12,7 +12,7 @@ These paths cross-compile and have packaging fixture checks. Actual SCM/launchd/
 
 State remains plain SQLite/files. Optional cache and backup destinations are wired. Manual backups stay until deleted; scheduled retention uses the owner's keep count. Backup timing uses the configured local window, including DST handling. New databases reclaim pages incrementally. Pending migrations make retained online copies; three pre-migration copies are kept beside the database.
 
-Restore validation/staging is detached and pollable, with phase/byte progress. Safety copies, staged files and result markers support install/rollback. Session scrubbing is replayable and backed by completion evidence; restore ends ordinary sign-ins. API credentials can reappear from the backup and need owner review. Current pre-release schema/baseline checks apply; no older-database upgrade path is promised. See [Backups](Specs/Spec%20%E2%80%94%20Backups%20(Plex%20model).md) and [accounts review](../../_program/reports/review-accounts-security.md).
+Restore validation/staging is detached and pollable, with phase/byte progress. Safety copies, staged files and result markers support install/rollback. Session scrubbing is replayable and backed by completion evidence; restore ends ordinary sign-ins. API credentials can reappear from the backup and need owner review. Current pre-release schema/baseline checks apply; no older-database upgrade path is promised. See [Backups](Specs/Spec%20%E2%80%94%20Backups%20%28Plex%20model%29.md) and [accounts review](../../_program/reports/review-accounts-security.md).
 
 A minimal startup recovery page is reported by [limits/settings](../../_program/reports/limits-settings.md). The complete recovery console and broad failure instrumentation remain open in ops-packaging. Large online-backup WAL growth and restore behaviour on actual OS filesystems still need acceptance.
 
@@ -27,3 +27,7 @@ Background speed is Gentle/Normal/Fast. An explicit temporary pause lasts one ho
 Manual signed updates remain the policy. The default feed reports available releases with opt-out; no automatic install is inferred. Official artifacts need an independently pinned public signing key and authenticated final inventory, including web payloads. macOS installer signing needs its real installer identity. Native mpv/libass/FFmpeg notices and corresponding source distribution remain release tasks.
 
 Normal development and test work runs on personal Ubuntu; Apple SDK/device work runs on the Mac. Use the reports' focused checks and cold procedures. Builds do not establish hardware codecs, tuners, proxy/IPv6 discovery, millions of titles or sustained client capacity. Private testing guidance remains in `deployment/testing/README.md`. No full builds or suites are needed for this documentation update.
+
+## Current independent review
+
+The independent [operations review](../../_program/reports/review-ops.md) is in progress, including filesystem-failure recovery checks. Existing successful fixtures do not certify every rollback boundary.

@@ -3,12 +3,12 @@
 > Current Portico product contract. October decisions supersede the September reconciliation where noted.
 
 
-Contract ID: `PC-ONBOARDING`  
-Revision: `portico.october.1`  
-Status: **approved**  
-Owners: Product, Hosted Identity, Server Setup, Client Foundations  
-Imports: `PC-FOUNDATION` viewer scope and permissions; `PC-GOVERNANCE` lifecycle/exception law  
-Coordinates with: `PC-IDENTITY`, `PC-NETWORKING`, `PC-VISUAL`, `PC-ACCESSIBILITY-LANGUAGE`  
+Contract ID: `PC-ONBOARDING`
+Revision: `portico.october.1`
+Status: **approved**
+Owners: Product, Hosted Identity, Server Setup, Client Foundations
+Imports: `PC-FOUNDATION` viewer scope and permissions; `PC-GOVERNANCE` lifecycle/exception law
+Coordinates with: `PC-IDENTITY`, `PC-NETWORKING`, `PC-VISUAL`, `PC-ACCESSIBILITY-LANGUAGE`
 Applies to: Hosted Services, Portico Server, Web, Client Core, and every first-party client
 
 ## 1. Purpose
@@ -115,7 +115,7 @@ Raw transport strings such as `Load failed`, `Failed to fetch`, `502 Bad Gateway
 Every server initialized with a Portico Account creates a separate Local recovery-owner authority before setup becomes `ready`. It is not another Portico Account and is not used during ordinary Hosted sign-in.
 
 - Setup generates a high-entropy one-time recovery code or accepts a strong recovery password, confirms durable hashed storage, and requires the owner to save/confirm it before completion.
-- Recovery sign-in is accepted only from localhost or a verified private-LAN route by default. Enabling remote recovery requires a separate warned owner setting and does not weaken rate limits or TLS/identity checks.
+- Recovery/sign-in locality uses the owner home-network list, never an independent private-address test. Enabling remote recovery requires a separate warned owner setting and does not weaken rate limits or TLS/identity checks.
 - Successful recovery opens a clearly labeled **This Server · Recovery Owner** session with `server.manage`; it cannot manage the Hosted account, other servers, Hosted profiles, invitations, or Hosted memberships.
 - Recovery can repair networking/certificates, export diagnostics/backups, restore service, transfer/unclaim the server when Hosted returns, or deliberately convert the server to Local authority through a separately confirmed destructive operation.
 - Hosted account deletion may unclaim into this authority only after the owner proves both fresh Hosted account control and the Local recovery credential.
@@ -192,7 +192,7 @@ Nearby TV approval produces two outputs atomically:
 
 The server bootstrap is not required for account authorization. If no server is selected, no server exists, or the chosen server is offline, the TV still becomes account-authenticated and shows the appropriate server chooser/empty state. A bootstrap is exchanged once with the verified server for a server-native family.
 
-The encrypted grant is stored before commit and remains recoverable to the authenticated poller. Credential collision or state conflict rolls back Device, credentials, bootstrap, and grant transition together.
+The grant is stored in plain server state before commit and remains recoverable to the authenticated poller. Credential collision or state conflict rolls back Device, credentials, bootstrap, and grant transition together.
 
 The TV page contains the QR, code, `web.getportico.tv/device`, **Sign in with a Portico Account**, and **Sign in directly to a server**. Legal URLs are printed rather than rendered as misleading focusable links. Tiny hyperlink-style TV actions are prohibited.
 

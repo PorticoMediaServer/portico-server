@@ -3,12 +3,12 @@
 > Current Portico product contract. October decisions supersede the September reconciliation where noted.
 
 
-Contract ID: `PC-SAVED-DOWNLOADS`  
-Revision: `portico.october.1`  
-Status: **approved**  
-Owners: Product, Server Personal State, Client Foundations, Offline Media  
-Imports: `PC-FOUNDATION` viewer scope, permissions, and resource lanes  
-Coordinates with: `PC-IDENTITY`, `PC-NETWORKING`, `PC-PLAYBACK`, `PC-METADATA`, `PC-SETTINGS-OPERATIONS`, `PC-ACCESSIBILITY-LANGUAGE`  
+Contract ID: `PC-SAVED-DOWNLOADS`
+Revision: `portico.october.1`
+Status: **approved**
+Owners: Product, Server Personal State, Client Foundations, Offline Media
+Imports: `PC-FOUNDATION` viewer scope, permissions, and resource lanes
+Coordinates with: `PC-IDENTITY`, `PC-NETWORKING`, `PC-PLAYBACK`, `PC-METADATA`, `PC-SETTINGS-OPERATIONS`, `PC-ACCESSIBILITY-LANGUAGE`
 Applies to: Portico Server, Web, Client Core, and every first-party client; Hosted Services only where a later contract explicitly enables privacy-preserving account sync
 
 ## 1. Purpose and scope
@@ -54,7 +54,7 @@ The client is a cache and command issuer, not an independent durable authority. 
 3. A late response from the previous scope MUST be ignored even if its timestamp or revision is numerically newer.
 4. A downloaded artifact MUST appear only for the profile that acquired it, unless a future approved contract explicitly allows household sharing. Storage deduplication MAY reuse encrypted bytes internally but cannot broaden catalogue visibility or authorization.
 5. Server removal, membership revocation, profile disablement, or permission loss immediately prevents new online use and new download grants. Existing offline bytes become `authorization-unverified`; the client follows section 10 rather than silently granting indefinite access.
-6. Sign-out removes local credentials, scoped caches, offline index keys, pending personal mutations, and protected download material for that signed-out account. A product-owner-approved keep-downloads feature would require a new contract; it is not implied.
+6. Sign-out clears active credentials/presentation. Protected downloads remain unless the person explicitly removes them; learned access revocation is a separate deletion cause.
 
 ## 4. Personal media state
 
@@ -64,9 +64,9 @@ Watchlisted, favorite, reaction, watched, resume progress, personal rating, and 
 
 - `watchlisted` and `favorite` are booleans.
 - `reaction` is `none`, `like`, or `dislike`.
-- `rating` is an integer `0..10`; `0` means no rating.
+- `rating` is an integer `0..10`; `null` means no rating and is distinct from zero.
 - `watched` is the current explicit completion state.
-- `progressSeconds` is a resumable position, not a playback telemetry percentage.
+- General personal-state wire progress is `progressMs`; client models may convert to seconds. Specialised offline receipt/progress shapes retain reported seconds fields pending time-field reconciliation.
 - `lastPlayedAt` records accepted playback activity, not a card view or manual rating.
 
 Marking watched MUST set `watched=true` and clear the resume point. Marking unwatched MUST set `watched=false` and clear the resume point unless the same explicit operation includes a new resume position. Adding to Watchlist or Favorites MUST NOT change watched state. Clearing watch history MUST preserve Watchlist, Favorites, reaction, rating, playlists, collections, and downloads.
@@ -165,107 +165,41 @@ Before commit the client shows, when known:
 
 The server rechecks `media.download`, viewer/library/media access, server identity, profile identity, and current authorization revision when creating preparation and again when issuing a transfer grant.
 
-## 8. Server preparation state machine
+## 8. Server preparation and transfer
 
-Canonical states:
+Current server claim states are `queued`, `running`, `ready`, `paused`, `failed`, `unavailable`, `cancelled` and `expired`. The generated registry and `downloads/types.go` own exact actions/fields. Preparation binds owner, title/version/quality and verified bytes. A ready claim must still refer to available pinned source or published prepared output before transfer.
 
-`requested -> queued -> preparing -> ready -> transferring-observed -> retained`
+Transfer grants retain their address while the same artifact is used or renewed, with 24-hour idle lifetime and advertised renewal time. There is no separate first-use replay window. Resume revalidates exact artifact/size/digest; incompatible partials are not spliced. An offline source waits; changed/gone bytes end the claim but do not revoke existing device receipts.
 
-Side/terminal states:
+Server claim retention and device offline authorisation remain independent. Unfetched claims have retention; completed local bytes do not depend on retaining the server artifact. Cancel/remove claim actions do not silently withdraw device receipts. Explicit receipt revocation is separate.
 
-- `paused` may resume to `queued` or `preparing`;
-- `failed-retryable` may retry using the same preparation ID and incremented attempt;
-- `failed-terminal` requires a changed source, quality, permission, or new request;
-- `cancelled` stops work and schedules unreferenced artifact cleanup;
-- `removed` is terminal and hidden from ordinary lists;
-- `authorization-changed` is terminal for that preparation, never automatically rebound to a new viewer.
+## 9. Client transfer and local state
 
-Rules:
+Current native offline states are `downloading`, `paused`, `failed` and `ready`, with separate Wi-Fi/network waiting and explicit hold intent. The protected registry binds each transfer, local file, receipt and bundle to its stable owner. A receipt is acquired before transfer and persisted with the entry. Completion requires verified bytes; stale completion cannot publish after cancellation or owner change.
 
-1. Create is idempotent by `(idempotencyKey, serverId, accountId, profileId, request body)`.
-2. The preparation binds exact media/version, requested quality, server identity, authorization revision, and resulting artifact digest.
-3. Cancellation is cooperative but durable: once accepted, late workers cannot publish `ready` without a newer lease generation.
-4. A server restart reconciles queued/running work from durable job and artifact state. It never declares success from a path string alone.
-5. `ready` requires a stable file or stream, measured byte length where possible, cryptographic digest, and compatibility facts.
-6. Transfer grants are short-lived, single scope, clean-URL credentials. Account authentication alone does not bypass them.
-7. Server artifact retention and client offline retention are separate. Removing local bytes does not automatically delete a reusable optimized server artifact; server policy owns that lifecycle.
-
-## 9. Client transfer and local state machine
-
-Canonical client states:
-
-`not-downloaded -> waiting-for-server -> queued -> transferring -> verifying -> available-offline`
-
-Additional states are `paused`, `waiting-for-wifi`, `waiting-for-storage`, `server-unreachable`, `failed-retryable`, `failed-terminal`, `authorization-unverified`, and `deleting`.
-
-1. Transfer writes to an installation-private temporary location. `available-offline` is published only after expected length/digest validation and atomic rename/publication.
-2. Resume uses validated byte ranges and an unchanged artifact identity. An ETag/digest/version change discards incompatible partial bytes rather than splicing artifacts.
-3. The local catalogue and bytes commit atomically from the product's perspective. Catalogue-without-bytes becomes `repair-required`; bytes-without-catalogue are quarantined then deleted.
-4. Playback uses the downloaded artifact without contacting the server when it is `available-offline` and its local authorization is still valid.
-5. The download catalogue includes only minimal presentation metadata needed offline, the selected streams/quality, source server label/ID, viewer label/ID, digest, size, acquired/last-verified timestamps, and local progress outbox. It MUST NOT include server credentials or hidden library metadata.
-6. Download progress and watched changes created offline enter a per-viewer outbox with stable operation IDs. They never write into another signed-in profile.
-7. Local storage pressure pauses new work before evicting completed downloads. Automatic eviction is permitted only under a user-approved policy and follows deterministic priority; pinned downloads are never automatically evicted.
+The local bundle provides titles, grouping, artwork, chapters, markers, audio labels and text subtitles. Complete offline subtitle/player/next-episode behaviour is not yet implemented. iOS cannot reuse its partial after an address change; Android dead-process restart and native transfer tend/recover need qualification. Completed downloads are hidden outside their owner; ordinary sign-out retains them unless removal is selected.
 
 ## 10. Offline authorization, expiry, and reconciliation
 
 Portico does not implement commercial DRM, but offline access still follows the server owner's sharing and download permissions.
 
-### 10.1 Immutable offline authorization receipt
+### 10.1 Signed receipt and exact bytes
 
-Every completed download has exactly one current locally protected receipt preserving the semantic bindings below. The original [`offline-download-authorization-receipt.schema.json`](../../../References/Contract%20Baseline%202026-09-05/saved-state-and-downloads/offline-download-authorization-receipt.schema.json) is a reference to port under the current ownership and revision rules, not the rebuilt wire authority. The selected Portico Server issues it only after it has rechecked download authorization and bound the exact verified bytes. The receipt is immutable after signature and contains only:
+The current envelope is defined in `downloads/receipts.go` and generated contracts. It carries `receiptId`, `algorithm`, `keyId`, base64url `payload`, `signature`, decoded `claims` and revision. Ed25519 verifies the exact decoded payload bytes; do not reserialise with an invented JSON canonicalisation rule.
 
-- `version`, the fixed receipt format version `1`; `purpose`, fixed to `offline-download-authorization`; and an opaque `receiptId`;
-- the complete server-bound `ViewerScope`, including `authorizationRevision`;
-- the issuer Server ID and the established Server identity fingerprint: the literal lowercase prefix `sha256:` followed by the canonical unpadded base64url encoding of the SHA-256 digest of the raw 32-byte Ed25519 public key already pinned for that Server;
-- the exact preparation ID, media ID, media-version ID, and quality ID;
-- the exact artifact SHA-256 digest and byte length;
-- `lastVerifiedAt`, the Server's successful authorization-verification instant, and `verifyBy`, published by that Server at exactly `lastVerifiedAt + 2,592,000 seconds` (30 consecutive 24-hour days);
-- one Ed25519 signature.
+Claims identify `kind: portico.download-receipt`, string version `1`, receipt/key, stable viewer authority/account/profile/server, item/preparation, quality/label, artifact SHA-256/bytes and `issuedAt`/`expiresAt`. Current receipts do not use the historic `verifyBy`, metadata-version or server-fingerprint/JCS schema. A receipt has a dedicated server-held signing key; obtain/pin verification keys through the authenticated selected-server receipt-key service, not from an untrusted receipt. Compare all signed/decoded owner and artifact evidence exactly.
 
-The issuer Server ID MUST exactly equal `ViewerScope.serverId` and the originating Server stored with the local download. The signing-key fingerprint MUST be byte-for-byte equal to the established fingerprint exposed and pinned through that Server's authenticated identity; Portico does not transcode it or introduce a second key-identity representation. Validators MUST base64url-decode the suffix after `sha256:` and require exactly 32 digest bytes. Padded base64, standard base64, hexadecimal, a differently cased prefix, or any other alternate representation is invalid even if it purports to name the same key. A key supplied with the receipt or an unpinned replacement key is never trusted. The receipt's preparation, media, version, quality, digest, and size MUST exactly equal both the completed preparation and the locally verified artifact. The receipt's stable owner tuple MUST equal the protected local catalogue owner; its authorization revision must equal the issuance evidence stored with that receipt, not necessarily the currently refreshed online revision. These equalities are semantic validation rules in addition to JSON Schema validation.
+The deadline is thirty consecutive 24-hour days. Expiry blocks playback and retains bytes for renewal. A timeout or unreachable server is not revocation. Wrong-owner attempts disclose no other scope and cannot delete a coherent inactive-profile download merely because it is not selected. Signature/digest/size disagreement is intrinsic invalidity and fails closed.
 
-The connection credential and protected download catalogue MUST retain the originating Server's already verified raw 32-byte Ed25519 public key across restart together with the Server ID and fingerprint. Hosted connections obtain it from the signed route/verified attachment identity; direct local authentication obtains it from the successful native-session credential response. In both cases the client computes the canonical fingerprint from the raw key before pinning it. Persisting only the fingerprint is insufficient and cannot be repaired by derivation. If the raw key is absent or cannot be proven to match the pin, the client reports `authorization-unverified`, preserves protected bytes, and reacquires the identity through an authenticated Server connection; it MUST NOT accept the receipt's fingerprint as a key source or delete otherwise coherent bytes merely because older development state omitted the raw key.
+### 10.2 Revalidation and revocation
 
-To sign or verify, remove the root `signature` member, serialize the remaining receipt using RFC 8785 JSON Canonicalization Scheme, encode that canonical payload as UTF-8, and sign or verify those bytes with Ed25519. No field is excluded from the canonical payload other than `signature`. Adding, removing, or changing any signed value invalidates the receipt; JSON object member order alone does not.
+Current outcomes are `issued`, `renewed` or `refused` with a closed reason code. Issued/renewed carry a receipt; `titleOnServer` can be false without invalidating local bytes. Current renewal may also return viewing position/watched state. `unknown_receipt`/`unknown_preparation` alone preserves the copy and triggers scoped recovery; other refusal/revocation reasons follow current access policy. Replay cannot restore a withdrawn receipt.
 
-### 10.2 Local validity and deletion boundary
+Receipt renewal is daily and bounded, independent of server claim retirement. Current account/profile/library/content permissions and explicit receipt withdrawal still apply. Source/title/prepared-cache tidying is not access revocation. At expiry, no implicit grace extends playback. Clock rollback protection is unfinished and must be qualified rather than described as implemented.
 
-An artifact is playable offline only when the receipt passes schema, equality, pinned-key, signature, artifact-digest, and artifact-size validation and the current instant is strictly before `verifyBy`. At `verifyBy` and afterward, it becomes `authorization-unverified`: playback is blocked, but the receipt and protected bytes are retained for revalidation. Clients MUST NOT add clock skew, a grace period, a calendar-month interpretation, or a platform-local verification interval.
+### 10.3 Offline journal
 
-Opening Portico online revalidates receipts opportunistically without blocking already-valid local playback. Temporary Server or Hosted unavailability before `verifyBy` does not remove access. Temporary unavailability at or after `verifyBy` blocks playback but does not delete the receipt, catalogue entry, or protected bytes. A transport failure, timeout, or absence of a revalidation response is never evidence of revocation.
-
-When the client explicitly learns membership revocation, profile deletion, download-permission removal, explicit receipt/media-access revocation, or remote wipe, local playback fails closed and the associated protected bytes, receipt, and catalogue entry are deleted. An identity mismatch authorizes the same deletion only when the client independently establishes an intrinsic disagreement between the signed receipt and its protected catalogue scope, pinned originating Server/key, or artifact. A schema-invalid receipt, failed signature, unpinned or wrong key, or artifact digest/size mismatch is integrity-invalid and follows the same deletion path. Deletion is resumable and MUST be confirmed by the filesystem under section 11.
-
-A correctly scoped download belonging to another inactive profile is not an identity mismatch merely because that profile is not selected. It remains protected and invisible until that exact viewer scope is active. Clients revalidate a receipt only under its own stable authenticated server-bound owner tuple, permitting a newer current authorization revision; they never probe it under the currently selected but different viewer.
-
-### 10.3 Privacy-safe revalidation outcomes
-
-Receipt revalidation has exactly four application outcomes. This is an outcome vocabulary, not a requirement for a particular transport or endpoint shape.
-
-| Outcome | Meaning | Client result |
-| --- | --- | --- |
-| `valid-replacement` | The originating Server verified the exact receipt binding and current authorization for the same account, profile, Server, preparation, media version, quality, and artifact. | Atomically store the returned newly signed receipt, then discard the superseded receipt. Playback may continue. |
-| `revoked` | The exact authenticated scope is known to have lost the relevant membership, profile, permission, media, or remote-wipe authorization. | Fail closed and delete the associated protected bytes, receipt, and catalogue entry. |
-| `invalid` | The request is malformed or the receipt, issuer, pinned key, signature, preparation binding, or artifact binding fails validation within the exact authenticated scope. | Fail closed and delete the associated protected bytes, receipt, and catalogue entry. |
-| `out-of-scope` | The receipt's Server, authority, account or profile is not the authenticated stable owner tuple. A revision difference alone is not out-of-scope; it requires current authorization evaluation. | Fail closed for this attempt and reveal no receipt or media facts. Preserve the protected local record and retry only under its own exact scope; this outcome alone is not deletion authority. |
-
-`valid-replacement` returns a complete new immutable receipt with a new `receiptId`, a current server-bound `ViewerScope` and `authorizationRevision`, a new `lastVerifiedAt`, and `verifyBy` exactly 30 days later. It retains the same issuer Server, preparation, media, version, quality, artifact digest, and artifact size. Revalidation MUST NOT edit, extend, countersign, or reuse the old receipt in place. The old receipt remains unchanged until the replacement has been durably committed; a crash cannot leave a partially rewritten receipt.
-
-`revoked`, `invalid`, and `out-of-scope` disclose only the stable outcome and generic recovery semantics. They MUST NOT return media titles, paths, library facts, profile labels, digests, byte sizes, whether a receipt exists in another scope, or whether a differently scoped receipt would be valid. For an authenticated request outside the signed stable owner tuple, the Server returns the same `out-of-scope` outcome without looking up or confirming the receipt. An accidental revalidation attempt under the currently selected different profile or account is therefore not evidence that the stored receipt is corrupt and MUST NOT delete it. Deletion requires an intrinsic mismatch independently established between the receipt, protected catalogue, pinned originating Server/key, or artifact, or a `revoked`/`invalid` result from the properly scoped originating authority. A timeout, unreachable Server, or transport failure produces no application outcome and therefore cannot be converted into `revoked`, `invalid`, or `out-of-scope`.
-
-A Server cannot remotely enumerate unrelated files on the device and can revoke only receipts it issued. The client submits only the one receipt it is revalidating; no API in this contract accepts arbitrary media IDs, file paths, or digest searches as receipt-enumeration keys.
-
-Reconciliation order after connectivity returns:
-
-1. verify account/profile/server identity and authorization receipt;
-2. fetch preparation/artifact status if transfer was incomplete;
-3. upload offline explicit mutations and playback events using original operation IDs;
-4. accept server conflicts/current revisions;
-5. refresh minimal catalogue metadata without changing artifact identity;
-6. apply deletion/revocation outcomes;
-7. publish reconciled UI state.
-
-Offline observations have monotonic device event sequence, not necessarily increasing position: deliberate seeks and replay may move position backward. Reconciliation must preserve that intent without allowing stale evidence to overwrite a later canonical writer. Explicit offline Mark Watched/Unwatched and rating actions are verbatim user intent and may move state in either direction. If two devices make incompatible explicit changes from a shared ancestor, section 4.4's `needs-resolution` flow applies; request arrival order does not choose a winner and devices do not oscillate.
+Revalidate under the exact stable owner, reconcile incomplete transfers only against the same artifact, then upload original operation/event identities. Observation time mapped to intent order and monotonic event sequence preserve backward seeks and historical plays without replacing newer resume or explicit watched state. Do not infer newest intent from request arrival or maximum position. Pause-history policy remains applied by the shared writer. Native/real-network reconciliation still needs acceptance.
 
 ## 11. Deletion and destructive behavior
 

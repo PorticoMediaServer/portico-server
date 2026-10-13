@@ -3,12 +3,12 @@
 > Current Portico product contract. October decisions supersede the September reconciliation where noted.
 
 
-Contract ID: `PC-METADATA`  
-Revision: `portico.october.1`  
-Status: **approved**  
-Owners: Product, Server Metadata, Catalog, Security, Client Foundations  
-Imports: `PC-FOUNDATION` permissions and resource lanes; `PC-GOVERNANCE` lifecycle/exception law; `PC-GLOSSARY` vocabulary  
-Coordinates with: `PC-LIBRARY-SCANNING`, `PC-MEDIA-PRESENTATION`, `PC-ACCESSIBILITY-LANGUAGE`, `PC-SETTINGS-OPERATIONS`  
+Contract ID: `PC-METADATA`
+Revision: `portico.october.1`
+Status: **approved**
+Owners: Product, Server Metadata, Catalog, Security, Client Foundations
+Imports: `PC-FOUNDATION` permissions and resource lanes; `PC-GOVERNANCE` lifecycle/exception law; `PC-GLOSSARY` vocabulary
+Coordinates with: `PC-LIBRARY-SCANNING`, `PC-MEDIA-PRESENTATION`, `PC-ACCESSIBILITY-LANGUAGE`, `PC-SETTINGS-OPERATIONS`
 Applies to: Portico Server, bundled Server Web, Client Core, and every first-party client that displays or manages metadata
 
 ## Scope and non-goals
@@ -329,7 +329,7 @@ Serialized metadata decisions validate against `metadata-decision.schema.json`. 
 
 A conformant implementation proves:
 
-- built-in TMDB primary and TheTVDB fallback/selectable behavior without ordinary owner keys;
+- one selected provider per library, TMDB default and TheTVDB/AniList alternatives where supported, without ordinary owner key setup;
 - an exact provider ID wins over name popularity while invalid/mismatched IDs fail closed;
 - auto-match threshold, independent-signal, contradiction, and margin rules;
 - manual Identify cannot be overwritten by another provider’s name search;

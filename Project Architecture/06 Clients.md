@@ -31,3 +31,5 @@ Personal preferences and applicable consumer actions belong on all clients. Broa
 ## Acceptance
 
 Type-checks and unit stand-ins do not establish browser layout, Apple scene lifecycle, native SDK linkage, media clocks, Cast, HDR, accessibility or television focus. Follow each source report's cold procedure. No Gradle/Xcode/full build was run by this documentation lane.
+
+Latest [native follow-ups](../../_program/reports/leftovers-native.md) contain Vega credential redirects by refusing sensitive exchanges before dispatch. Vega sign-in, saved-session restore and authenticated control/streams are unavailable until a redirect-refusing native transport exists. This is an unfinished release feature, even though the earlier Vega player source is implemented. The same follow-up supplies Apple scene/reinstall/admission and inactive-page source fixes; earlier native reports' gap lists must be read with it.
