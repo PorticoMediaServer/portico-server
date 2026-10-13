@@ -61,6 +61,9 @@ func TestSubtitleReplanRoutesHoldToTheMembersCurrentCeiling(t *testing.T) {
 		t.Skipf("no HLS producer here: %v", err)
 	}
 	player := playback.New(f.db)
+	cfg := playback.DefaultDeliveryConfiguration()
+	cfg.MaxConversions = 1
+	player.ConfigureDelivery(playbackReviewSettings{cfg}, nil, nil, "")
 	player.ConfigureSubtitleDelivery(subs)
 	player.ConfigureHLS(hls)
 	f.v1.Subtitles = subs

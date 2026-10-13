@@ -47,7 +47,7 @@ func reserveHLS(tx *sql.Tx, id, replacing string, plan *DeliveryPlan, cfg Delive
 	if converting && (cfg.MaxConversions > 0 || cfg.MaxHardwareConversions > 0 || cfg.MaxSoftwareConversions > 0) {
 		var total, hardware, software int
 		now := time.Now().UTC().Format(time.RFC3339)
-		err := tx.QueryRow(`SELECT count(*),COALESCE(sum(CASE WHEN d.video_action='convert' AND d.hardware_backend NOT IN('','software') THEN 1 ELSE 0 END),0),COALESCE(sum(CASE WHEN d.video_action='convert' AND d.hardware_backend IN('','software') THEN 1 ELSE 0 END),0) FROM playback_sessions ps JOIN playback_delivery_plans d ON d.session_id=ps.id WHERE ps.mode='hls' AND ps.state NOT IN('stopped','ended','failed') AND ps.expires_at>? AND ps.id<>? AND d.video_action='convert'`, now, replacing).Scan(&total, &hardware, &software)
+		err := tx.QueryRow(`SELECT count(*),COALESCE(sum(CASE WHEN d.video_action='convert' AND d.hardware_backend NOT IN('','software') THEN 1 ELSE 0 END),0),COALESCE(sum(CASE WHEN d.video_action='convert' AND d.hardware_backend IN('','software') THEN 1 ELSE 0 END),0) FROM playback_sessions ps JOIN playback_delivery_plans d ON d.session_id=ps.id WHERE ps.mode='hls' AND ps.state NOT IN('stopped','ended','failed') AND ps.expires_at>? AND ps.id<>? AND ps.id<>COALESCE((SELECT owner_session_id FROM playback_private_presentations WHERE session_id=?),'') AND d.video_action='convert'`, now, replacing, id).Scan(&total, &hardware, &software)
 		if err != nil {
 			return err
 		}

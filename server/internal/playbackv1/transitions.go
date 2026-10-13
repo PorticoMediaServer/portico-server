@@ -332,7 +332,7 @@ func (s *Service) CommitNext(ctx context.Context, c Caller, id string, req Commi
 		if entry, _, found := l.entryAt(pos); !found || entry != p.entry {
 			return fail("queue_changed")
 		}
-		switch err := s.Playback.ReleasePrivateTx(ctx, tx, p.media); {
+		switch err := s.Playback.ReleasePrivateTx(ctx, tx, c.Principal, p.media); {
 		case errors.Is(err, playback.ErrPreparationExpired):
 			fence = ErrPreparedExpired
 			_, err = tx.ExecContext(ctx, `UPDATE playback_v1_prepared SET state='canceled',cancel_reason='expired' WHERE token=?`, p.token)

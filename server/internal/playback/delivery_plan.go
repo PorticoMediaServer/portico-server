@@ -464,9 +464,15 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 		return nil
 	}
 
+	var audioRules []RouteRejection
+	if audio != nil && bitrateOver(max(audio.BitRate, audio.MaxBitRate), in.Target.MaxAudioBitrateBPS) {
+		audioRules = append(audioRules, RouteRejection{ReasonBitrateExceedsPolicy, fmt.Sprintf("audio %d>%d", max(audio.BitRate, audio.MaxBitRate), in.Target.MaxAudioBitrateBPS)})
+	}
+
 	// Route 1: the original file.
 	{
 		rejections := excluded(DeliveryOriginal)
+		rejections = append(rejections, audioRules...)
 		rejections = append(rejections, pictureRules...)
 		if policy.DirectPlay == "never" {
 			rejections = append(rejections, RouteRejection{ReasonDirectPlayRefused, ""})
@@ -523,6 +529,7 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 	remuxable := false
 	if !audioOnly {
 		rejections := excluded(DeliveryCopyRemux)
+		rejections = append(rejections, audioRules...)
 		rejections = append(rejections, pictureRules...)
 		switch {
 		case policy.DirectStream == "never" && !cfg.RemuxEnabled:
@@ -537,7 +544,7 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 		rejections = append(rejections, r...)
 		// remuxable describes the source and the device, not the preferences:
 		// it is what decides which refusal a closed policy is reported as.
-		remuxable = len(r) == 0 && len(pictureRules) == 0
+		remuxable = len(r) == 0 && len(pictureRules) == 0 && len(audioRules) == 0
 		if evaluate(DeliveryCopyRemux, transport, rejections) {
 			candidates = append(candidates, candidate{DeliveryCopyRemux, costRemux, "hls", transport, []string{ReasonContainerRequiresRemux}, 0})
 		} else if policy.DirectStream == "require" && len(candidates) == 0 {
