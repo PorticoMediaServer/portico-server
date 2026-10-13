@@ -33,7 +33,7 @@ func TestInventoryWatcherSeesAddsInPlaceWritesAndRemovals(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(events) == 0 || events[0].SourceID != "source" || events[0].RelativePath != "." {
+		if len(events) == 0 || events[0].SourceID != "source" || events[0].RelativePath != "film.mkv" {
 			t.Fatalf("event: %+v", events)
 		}
 	}
@@ -81,7 +81,7 @@ func TestInventoryWatcherRunsInSupervisedHelperAndCancels(t *testing.T) {
 	}
 	select {
 	case event := <-events:
-		if event.SourceID != "source" || event.RelativePath != "." {
+		if event.SourceID != "source" || event.RelativePath != "movie.nfo" {
 			t.Fatal(event)
 		}
 	case <-ctx.Done():

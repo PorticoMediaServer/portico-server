@@ -196,6 +196,11 @@ func Helper(in io.Reader, out io.Writer) (result error) {
 			return inventoryFailure(e, out)
 		}
 		return encoder.Encode(v)
+	case "inventory-absence":
+		if r.Inventory == nil {
+			return errors.New("missing inventory request")
+		}
+		return inventoryAbsenceHelper(*r.Inventory, out)
 	case "inventory-directory":
 		if r.Inventory == nil {
 			return errors.New("missing inventory request")

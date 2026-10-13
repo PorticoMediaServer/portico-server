@@ -65,7 +65,7 @@ func TestWave2PhysicalAlbumEnrichesMissingEditionWithoutMergingConflicts(t *test
 			add("three", "Album", "22222222-2222-2222-2222-222222222222")
 			add("four", "Other", release)
 			if err = db.QueryRow(`SELECT count(*) FROM catalog_albums`).Scan(&n); err != nil || n != 2 {
-				t.Fatal("a conflicting edition merged, or one release in two folders split", n, err)
+				t.Fatal("conflicting release IDs merged or the same release split across folders", n, err)
 			}
 			var largest, smallest int
 			if err = db.QueryRow(`SELECT max(n),min(n) FROM (SELECT count(*) n FROM catalog_songs GROUP BY album_id)`).Scan(&largest, &smallest); err != nil || largest != 3 || smallest != 1 {

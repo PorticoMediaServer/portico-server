@@ -6,13 +6,22 @@ import (
 	"path/filepath"
 	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/naming"
+	"strings"
 )
 
 // ResolveExtraOwnerTx attaches an extra only when its owning folder or filename
 // identifies one title. Loose films sharing a folder do not inherit each
 // other's trailers. Provider matching never supplies an extra's ownership.
 func ResolveExtraOwnerTx(ctx context.Context, tx *sql.Tx, library, path, parent string) (int64, error) {
-	rows, err := tx.QueryContext(ctx, `SELECT DISTINCT CASE WHEN e.kind=? THEN ep.show_id ELSE e.id END,COALESCE(sh.title,e.title),a.path,e.kind FROM catalog_assets a JOIN catalog_asset_links l ON l.asset_id=a.id JOIN catalog_entities e ON e.id=l.entity_id JOIN catalog_libraries cl ON cl.id=e.library_id LEFT JOIN catalog_episodes ep ON ep.entity_id=e.id LEFT JOIN catalog_entities sh ON sh.id=ep.show_id WHERE cl.library_id=? AND e.kind IN(?,?) AND (substr(a.path,1,length(?)+1)=?||?) ORDER BY e.id LIMIT 512`, compactcatalog.Episode, library, compactcatalog.Movie, compactcatalog.Episode, parent, parent, string(filepath.Separator))
+	prefix := filepath.Clean(parent)
+	separator := string(filepath.Separator)
+	if !strings.HasSuffix(prefix, separator) {
+		prefix += separator
+	}
+	// A path prefix ends with an ASCII separator on every supported platform.
+	// The next byte supplies an indexed half-open range, including literal %/_ names.
+	end := prefix[:len(prefix)-1] + string(prefix[len(prefix)-1]+1)
+	rows, err := tx.QueryContext(ctx, `SELECT CASE WHEN e.kind=? THEN ep.show_id ELSE e.id END,COALESCE(sh.title,e.title),a.path,e.kind FROM catalog_assets a CROSS JOIN catalog_asset_links l INDEXED BY catalog_asset_links_asset ON l.asset_id=a.id JOIN catalog_entities e ON e.id=l.entity_id JOIN catalog_libraries cl ON cl.id=e.library_id LEFT JOIN catalog_episodes ep ON ep.entity_id=e.id LEFT JOIN catalog_entities sh ON sh.id=ep.show_id WHERE cl.library_id=? AND e.kind IN(?,?) AND a.path>=? AND a.path<? LIMIT 513`, compactcatalog.Episode, library, compactcatalog.Movie, compactcatalog.Episode, prefix, end)
 	if err != nil {
 		return 0, err
 	}
@@ -20,7 +29,13 @@ func ResolveExtraOwnerTx(ctx context.Context, tx *sql.Tx, library, path, parent 
 	owners := map[int64]bool{}
 	named := map[int64]bool{}
 	title, _ := naming.Read(filepath.Base(path), "movie").PreferredTitle()
+	count := 0
 	for rows.Next() {
+		count++
+		if count > 512 {
+			// A bounded prefix cannot prove either a unique name or a sole owner.
+			return 0, nil
+		}
 		var owner int64
 		var name, asset string
 		var kind int
