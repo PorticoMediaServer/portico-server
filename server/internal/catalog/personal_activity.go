@@ -38,6 +38,11 @@ func (s *Service) AcceptPlaybackProgressAt(tx *sql.Tx, v identity.Viewer, playba
 }
 
 func (s *Service) acceptPlaybackProgress(tx *sql.Tx, v identity.Viewer, playbackID, item string, sequence int64, position, duration float64, state string, canonical bool, clock time.Time) error {
+	// Match the timeline's millisecond bound even when no runtime is known.
+	const maximumSeconds = float64(int64(1)<<40) / 1000
+	if math.IsNaN(position) || math.IsInf(position, 0) || position < 0 || position > maximumSeconds || math.IsNaN(duration) || math.IsInf(duration, 0) || duration < 0 || duration > maximumSeconds || sequence < 0 || sequence > 9007199254740991 || (state != "playing" && state != "paused" && state != "ended") {
+		return jobInvalid("invalid playback evidence")
+	}
 	preferences, preferenceSources, _, e := operations.EffectivePreferences(tx, v, "")
 	if e != nil {
 		return e

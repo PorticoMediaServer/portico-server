@@ -165,6 +165,11 @@ func (s *Service) SetContainerPersonal(ctx context.Context, p identity.Principal
 		if _, e = tx.ExecContext(ctx, `INSERT INTO container_personal_state(profile_id,kind,container_id,watched,watermark,revision,cleared_through) VALUES(?,?,?,?,?,?,?) ON CONFLICT(profile_id,kind,container_id) DO UPDATE SET watched=excluded.watched,watermark=excluded.watermark,revision=excluded.revision,cleared_through=excluded.cleared_through`, profile, kind, containerID, out.Watched, out.Watermark, out.Revision, out.Watermark); e != nil {
 			return e
 		}
+		intentTime, e := time.Parse(time.RFC3339Nano, out.Watermark)
+		if e != nil {
+			return e
+		}
+		intentTime = intentTime.Add(time.Nanosecond)
 		for _, item := range ids {
 			before, e := readPersonalByID(tx, profile, item, personalstate.SQL("?", "?"))
 			if e != nil {
@@ -174,7 +179,11 @@ func (s *Service) SetContainerPersonal(ctx context.Context, p identity.Principal
 			if e = fenceEvidenceByID(tx, profile, item); e != nil {
 				return e
 			}
-			// Older intents stay available for Undo; the new default supersedes them.
+			// The captured membership proves these titles already exist, even if
+			// their added-at metadata is unknown. The journal restores older intent.
+			if e = personalstate.WriteAt(tx, profile, item, out.Watched, intentTime); e != nil {
+				return e
+			}
 			before.Watched = out.Watched
 			before.ProgressSeconds = 0
 			before.Revision++

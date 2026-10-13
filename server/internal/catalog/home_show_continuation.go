@@ -30,6 +30,7 @@ func homeShowContinuation(r HomeRequest, cutoffs, premieres string, window int, 
 	}
 	partialVisibility, partialArgs := ItemRestrictionSQL("i2.id", r.Restrictions)
 	nextVisibility, nextArgs := ItemRestrictionSQL("i2.id", r.Restrictions)
+	premiereVisibility, premiereArgs := ItemRestrictionSQL("early_item.id", r.Restrictions)
 	libraries, _ := json.Marshal(r.Libraries)
 	showFilter := ""
 	if showID != "" {
@@ -89,7 +90,7 @@ func homeShowContinuation(r HomeRequest, cutoffs, premieres string, window int, 
 	 AND EXISTS(SELECT 1 FROM catalog_entities ce JOIN catalog_episodes e ON e.entity_id=ce.id JOIN catalog_seasons se ON se.entity_id=e.season_id AND (SELECT retired FROM catalog_entities WHERE id=e.season_id)=0
 	  JOIN catalog_entities pe ON pe.id=CAST(chosen.last_item_id AS INTEGER) JOIN catalog_episodes prior ON prior.entity_id=pe.id
 	  LEFT JOIN catalog_seasons sp ON sp.entity_id=prior.season_id AND (SELECT retired FROM catalog_entities WHERE id=prior.season_id)=0
-	  WHERE ce.public_id=pid_blob(chosen.id) AND julianday(ce.added_ms/1000.0,'unixepoch')>=julianday((SELECT value FROM json_each(?) WHERE key=chosen.library_id)) AND NOT EXISTS(SELECT 1 FROM catalog_episodes earlier JOIN catalog_entities early_item ON early_item.id=earlier.entity_id WHERE earlier.season_id=e.season_id AND earlier.number<e.number AND ` + homeVisible("early_item.id") + `) AND se.number>COALESCE(sp.number,0))))`
+	  WHERE ce.public_id=pid_blob(chosen.id) AND julianday(ce.added_ms/1000.0,'unixepoch')>=julianday((SELECT value FROM json_each(?) WHERE key=chosen.library_id)) AND NOT EXISTS(SELECT 1 FROM catalog_episodes earlier JOIN catalog_entities early_item ON early_item.id=earlier.entity_id WHERE earlier.season_id=e.season_id AND earlier.number<e.number AND ` + homeVisible("early_item.id") + ` AND ` + premiereVisibility + `) AND se.number>COALESCE(sp.number,0))))`
 	args := append([]any{}, partialArgs...)
 	args = append(args, cutoffs)
 	args = append(args, partialArgs...)
@@ -103,5 +104,6 @@ func homeShowContinuation(r HomeRequest, cutoffs, premieres string, window int, 
 		args = append(args, after.lastActivity, after.lastActivity, after.showID)
 	}
 	args = append(args, r.Profile, string(libraries), cutoffs, premieres, cutoffs)
+	args = append(args, premiereArgs...)
 	return base, args
 }

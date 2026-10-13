@@ -56,6 +56,11 @@ func captureContainerUndo(ctx context.Context, tx *sql.Tx, profile, kind string,
 	if _, e := tx.ExecContext(ctx, `INSERT INTO container_personal_undo(token,profile_id,kind,container_id,revision,previous_watched,previous_watermark,previous_clear,watermark,expires_ms,member_count) VALUES(?,?,?,?,?,?,?,?,?,?,?)`, out.UndoToken, profile, kind, container, out.Revision, previous.Watched, previous.Watermark, clear, out.Watermark, until.UnixMilli(), len(ids)); e != nil {
 		return e
 	}
+	intentTime, e := time.Parse(time.RFC3339Nano, out.Watermark)
+	if e != nil {
+		return e
+	}
+	intentAt := intentTime.Add(time.Nanosecond).Format("2006-01-02T15:04:05.000000000Z")
 	for _, id := range ids {
 		before, e := readPersonalByID(tx, profile, id, personalstate.SQL("?", "?"))
 		if e != nil {
@@ -64,12 +69,15 @@ func captureContainerUndo(ctx context.Context, tx *sql.Tx, profile, kind string,
 		if e = snapshotPersonalByID(tx, profile, id, before); e != nil {
 			return e
 		}
-		if _, e := tx.ExecContext(ctx, `INSERT INTO container_personal_undo_items(token,item_id,previous_watched,after_revision,position,unit,playback_id,activity_at,activity_state,book_position)
+		if _, e := tx.ExecContext(ctx, `INSERT INTO container_personal_undo_items(token,item_id,previous_watched,after_revision,position,unit,playback_id,activity_at,activity_state,book_position,previous_intent,previous_authored_at,intent_at,added_ms,show_id,season_id,album_id,book_id)
  SELECT ?,e.id,COALESCE(`+personalstate.SQL("?", "e.id")+`,0),COALESCE(pi.revision,0)+1,p.position,p.unit,p.playback_id,a.updated_at,a.state,
- (SELECT b.position FROM book_resume b WHERE b.profile_id=? AND b.item_id=e.id)
+ (SELECT b.position FROM book_resume b WHERE b.profile_id=? AND b.item_id=e.id),
+ wi.watched,wi.authored_at,?,e.added_ms,
+ (SELECT show_id FROM catalog_episodes WHERE entity_id=e.id),(SELECT season_id FROM catalog_episodes WHERE entity_id=e.id),
+ (SELECT album_id FROM catalog_songs WHERE entity_id=e.id),(SELECT book_id FROM catalog_book_files WHERE entity_id=e.id)
  FROM catalog_entities e LEFT JOIN personal_items pi ON pi.profile_id=? AND pi.item_id=e.id
  LEFT JOIN progress p ON p.profile_id=? AND p.item_id=e.id
- LEFT JOIN progress_activity a ON a.profile_id=? AND a.item_id=e.id WHERE e.id=?`, out.UndoToken, profile, profile, profile, profile, profile, id); e != nil {
+ LEFT JOIN progress_activity a ON a.profile_id=? AND a.item_id=e.id LEFT JOIN personal_watched_intents wi ON wi.profile_id=? AND wi.item_id=e.id WHERE e.id=?`, out.UndoToken, profile, profile, intentAt, profile, profile, profile, profile, id); e != nil {
 			return e
 		}
 	}
@@ -129,7 +137,11 @@ func (s *Service) UndoContainerPersonal(ctx context.Context, p identity.Principa
 		// Refuse to overwrite later item actions, playback, nested container marks,
 		// or changed membership. Restoring only some members would not be a true Undo.
 		var changed int
-		if e = tx.QueryRowContext(ctx, `SELECT count(*) FROM container_personal_undo_items u LEFT JOIN personal_items pi ON pi.profile_id=? AND pi.item_id=u.item_id LEFT JOIN progress p ON p.profile_id=? AND p.item_id=u.item_id LEFT JOIN progress_activity a ON a.profile_id=? AND a.item_id=u.item_id WHERE u.token=? AND (pi.revision IS NOT u.after_revision OR p.position IS NOT CASE WHEN u.position IS NULL THEN NULL ELSE 0 END OR p.unit IS NOT u.unit OR p.playback_id IS NOT u.playback_id OR a.updated_at IS NOT u.activity_at OR a.state IS NOT CASE WHEN u.activity_state IS NULL THEN NULL ELSE 'ended' END OR EXISTS(SELECT 1 FROM personal_watched_intents wi WHERE wi.profile_id=? AND wi.item_id=u.item_id AND wi.authored_at>?))`, profile, profile, profile, m.UndoToken, profile, mark).Scan(&changed); e != nil {
+		if e = tx.QueryRowContext(ctx, `SELECT count(*) FROM container_personal_undo_items u LEFT JOIN personal_items pi ON pi.profile_id=? AND pi.item_id=u.item_id LEFT JOIN progress p ON p.profile_id=? AND p.item_id=u.item_id LEFT JOIN progress_activity a ON a.profile_id=? AND a.item_id=u.item_id LEFT JOIN personal_watched_intents wi ON wi.profile_id=? AND wi.item_id=u.item_id JOIN catalog_entities current ON current.id=u.item_id WHERE u.token=? AND (pi.revision IS NOT u.after_revision OR p.position IS NOT CASE WHEN u.position IS NULL THEN NULL ELSE 0 END OR p.unit IS NOT u.unit OR p.playback_id IS NOT u.playback_id OR a.updated_at IS NOT u.activity_at OR a.state IS NOT CASE WHEN u.activity_state IS NULL THEN NULL ELSE 'ended' END OR wi.authored_at IS NOT u.intent_at OR current.added_ms IS NOT u.added_ms
+ OR (SELECT show_id FROM catalog_episodes WHERE entity_id=u.item_id) IS NOT u.show_id
+ OR (SELECT season_id FROM catalog_episodes WHERE entity_id=u.item_id) IS NOT u.season_id
+ OR (SELECT album_id FROM catalog_songs WHERE entity_id=u.item_id) IS NOT u.album_id
+ OR (SELECT book_id FROM catalog_book_files WHERE entity_id=u.item_id) IS NOT u.book_id)`, profile, profile, profile, profile, m.UndoToken).Scan(&changed); e != nil {
 			return e
 		}
 		var count int
@@ -171,6 +183,12 @@ func (s *Service) UndoContainerPersonal(ctx context.Context, p identity.Principa
 			return e
 		}
 		for _, item := range ids {
+			if _, e = tx.ExecContext(ctx, `DELETE FROM personal_watched_intents WHERE profile_id=? AND item_id=?`, profile, item); e != nil {
+				return e
+			}
+			if _, e = tx.ExecContext(ctx, `INSERT INTO personal_watched_intents(profile_id,item_id,watched,authored_at) SELECT ?,item_id,previous_intent,previous_authored_at FROM container_personal_undo_items WHERE token=? AND item_id=? AND previous_authored_at IS NOT NULL`, profile, m.UndoToken, item); e != nil {
+				return e
+			}
 			if _, e = tx.ExecContext(ctx, `UPDATE personal_items SET watched=(SELECT previous_watched FROM container_personal_undo_items WHERE token=? AND item_id=?),revision=revision+1 WHERE profile_id=? AND item_id=?`, m.UndoToken, item, profile, item); e != nil {
 				return e
 			}

@@ -431,3 +431,68 @@ func TestExplicitResumeStartsContinueWithoutCreatingHistory(t *testing.T) {
 		t.Fatal(count, e)
 	}
 }
+
+func TestUnknownDurationEvidenceKeepsTimelineBounds(t *testing.T) {
+	s, db, v := savedFixture(t)
+	item := phase34SavedFixtureItem(t, db)
+	tx, e := db.Begin()
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer tx.Rollback()
+	if e = s.AcceptPlaybackProgress(tx, v, "invalid", item.Public, 1, float64(int64(1)<<40), 0, "playing", true); !errors.Is(e, ErrJobRequest) {
+		t.Fatal(e)
+	}
+	var rows int
+	if e = tx.QueryRow(`SELECT count(*) FROM play_history`).Scan(&rows); e != nil || rows != 0 {
+		t.Fatal(rows, e)
+	}
+}
+
+func TestContainerMarksUnknownAddedMembersAndUndoPreservesIntent(t *testing.T) {
+	s, scheduler, p, v, access, _, names := bulkFixture(t, 2)
+	yes := true
+	no := false
+	item := names["ep000000"]
+	if _, e := s.SetPersonal("a", v.Profile, item.Public, PersonalMutation{OperationID: "old-intent", Watched: &no}, nil); e != nil {
+		t.Fatal(e)
+	}
+	var prior string
+	if e := s.db.QueryRow(`SELECT authored_at FROM personal_watched_intents WHERE profile_id=? AND item_id=?`, v.Profile, item.ID).Scan(&prior); e != nil {
+		t.Fatal(e)
+	}
+	homeExec(t, s.db, `UPDATE catalog_entities SET added_ms=NULL WHERE id=?`, item.ID)
+	mark, e := s.SetContainerPersonal(context.Background(), p, "show", names["show"].Public, ContainerPersonalMutation{Watched: &yes}, scheduler, access)
+	if e != nil {
+		t.Fatal(e)
+	}
+	got, e := s.Personal(v.Profile, item.Public)
+	if e != nil || !got.Watched {
+		t.Fatal(got, e)
+	}
+	if _, e = s.UndoContainerPersonal(context.Background(), p, "show", names["show"].Public, ContainerUndoMutation{ExpectedRevision: mark.Revision, UndoToken: mark.UndoToken}, access); e != nil {
+		t.Fatal(e)
+	}
+	var restored string
+	if e = s.db.QueryRow(`SELECT authored_at FROM personal_watched_intents WHERE profile_id=? AND item_id=?`, v.Profile, item.ID).Scan(&restored); e != nil || restored != prior {
+		t.Fatal(restored, prior, e)
+	}
+	got, e = s.Personal(v.Profile, item.Public)
+	if e != nil || got.Watched {
+		t.Fatal(got, e)
+	}
+}
+
+func TestContainerUndoDeclinesChangedSeasonAssignment(t *testing.T) {
+	s, scheduler, p, _, access, c, names := bulkFixture(t, 2)
+	yes := true
+	mark, e := s.SetContainerPersonal(context.Background(), p, "show", names["show"].Public, ContainerPersonalMutation{Watched: &yes}, scheduler, access)
+	if e != nil {
+		t.Fatal(e)
+	}
+	season := c.Season(names["show"], 2)
+	homeExec(t, s.db, `UPDATE catalog_episodes SET season_id=? WHERE entity_id=?`, season.ID, names["ep000000"].ID)
+	if _, e = s.UndoContainerPersonal(context.Background(), p, "show", names["show"].Public, ContainerUndoMutation{ExpectedRevision: mark.Revision, UndoToken: mark.UndoToken}, access); !errors.Is(e, ErrPersonalConflict) {
+		t.Fatal(e)
+	}
+}

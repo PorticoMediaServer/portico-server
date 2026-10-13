@@ -3639,6 +3639,8 @@ CREATE TABLE container_personal_undo_items(
  item_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,
  previous_watched INTEGER NOT NULL,after_revision INTEGER NOT NULL,
  position INTEGER,unit INTEGER,playback_id TEXT,activity_at TEXT,activity_state TEXT,book_position INTEGER,
+ previous_intent INTEGER,previous_authored_at TEXT,intent_at TEXT NOT NULL,
+ added_ms INTEGER,show_id INTEGER,season_id INTEGER,album_id INTEGER,book_id INTEGER,
  PRIMARY KEY(token,item_id)
 ) STRICT;
 CREATE INDEX container_personal_undo_items_item ON container_personal_undo_items(item_id,token);

@@ -165,11 +165,17 @@ func TestContainerWatermarkAndReset(t *testing.T) {
 	})
 	c.Drain()
 	got, e := s.Personal(v.Profile, names["ep000002"].Public)
-	if e != nil || got.Watched {
+	if e != nil || !got.Watched {
 		t.Fatal(got, e)
 	}
+	newEpisode := c.Episode(names["show"], names["season-001"], 4, "/media/new-after-mark.mkv")
+	c.Fields(newEpisode.ID, map[string]any{"added_text": future})
+	c.Drain()
+	if got, e := s.Personal(v.Profile, newEpisode.Public); e != nil || got.Watched {
+		t.Fatal("a later arrival inherited the mark", got, e)
+	}
 	count, e := s.ContainerPersonalCounts(v, "show", names["show"].Public)
-	if e != nil || count.WatchedCount != 2 || count.UnwatchedCount != 1 {
+	if e != nil || count.WatchedCount != 3 || count.UnwatchedCount != 1 {
 		t.Fatal(count, e)
 	}
 	state, e = s.SetContainerPersonal(context.Background(), p, "show", names["show"].Public, ContainerPersonalMutation{ExpectedRevision: state.Revision, Watched: &no}, scheduler, access)
@@ -182,8 +188,8 @@ func TestContainerWatermarkAndReset(t *testing.T) {
 	}
 	var intents int
 	s.db.QueryRow(`SELECT count(*) FROM personal_watched_intents`).Scan(&intents)
-	if intents != 1 {
-		t.Fatal("previous intents must remain available for Undo", intents)
+	if intents != 4 {
+		t.Fatal("every captured member needs the explicit mark", intents)
 	}
 
 }

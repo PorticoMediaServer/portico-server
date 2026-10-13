@@ -239,6 +239,7 @@ test('invalid requests fail before transport and disposal fences late results', 
 test('Home is read through the composed Home API, not the library content service',()=>{
  const nav=service(async path=>projection(path));
  assert.throws(()=>nav.select({view:'home'} as any),/Invalid library content route/);
+ assert.throws(()=>nav.select({libraryId:'movies',view:'home'} as any),/Invalid library content route/);
 });
 
 test('same-destination refresh retains bounded content until replacement; destination and permission changes clear it', async () => {
