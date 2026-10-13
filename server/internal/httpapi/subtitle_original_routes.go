@@ -100,7 +100,7 @@ func (d Dependencies) originalSubtitleRoute(w http.ResponseWriter, r *http.Reque
 		subtitleFailure(w, e)
 		return
 	}
-	base := "/v1/media/" + r.PathValue("grant") + "/subtitles/" + id + "/" + strconv.FormatInt(revision, 10)
+	base := subtitles.MediaBaseURL(r.PathValue("grant"), id, revision)
 	if strings.HasSuffix(r.URL.Path, "/fonts") {
 		fonts, e := d.Subtitles.OriginalFonts(r.Context(), p, item, session, id, revision, base)
 		if e != nil {

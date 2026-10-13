@@ -25,9 +25,9 @@
  * element is idle then, and the controller is told the position from the service's readings.
  */
 import type {PlaybackAdapter, PlaybackApi, PlaybackService, PlaybackSession, PlaybackSnapshot, SessionEndInfo} from '@core/index.ts';
-import {reportRouteFailure, type RouteFailureCode, type RouteFailureResult} from '@core/client-profile.ts';
+import type {PlayerFailureCode} from '@core/client-profile.ts';
 import {AutomaticQuality, qualityRequest, type FixedQuality} from '@core/playback-v1/choices.ts';
-import {PlaybackApiError, call, idempotencyKey, type V1Http} from '@core/playback-v1/http.ts';
+import {PlaybackApiError, idempotencyKey, type V1Http} from '@core/playback-v1/http.ts';
 import {PlaybackOptionsClient} from '@core/playback-v1/options.ts';
 import type {MediaPlayer, PlayerEvent, PlayerObservation, PlayerSource} from '@core/playback-v1/port.ts';
 import {PlaybackSessionController, SessionsClient, type SessionChange, type StartOptions, type StartTarget, type Timers} from '@core/playback-v1/sessions.ts';
@@ -65,6 +65,8 @@ export type WebPlaybackHost = Readonly<{
   /** A request that outlives the page (`HttpLocalApi.farewell`). */
   farewell?(path: string, method: string, body?: unknown): void;
   deviceMemory?: number;
+  /** When the browser's own HLS player is used instead of hls.js (`native-hls.ts`). */
+  nativeHls?: 'first' | 'fallback' | 'never';
   timers?: Timers;
   /** The media element port's clock and timers (tests drive them by hand). */
   playerTimers?: WebPlayerTimers;
@@ -176,6 +178,7 @@ export class WebPlayback implements PlaybackAdapter {
   private readonly client: SessionsClient;
   private readonly options: PlaybackOptionsClient;
   private readonly known = new Map<string, Session>();
+  private readonly changedListeners = new Set<(session: Session) => void>();
   private readonly positions = new Map<string, number>();
   private readonly retired = new Set<string>();
   private readonly endedListeners = new Set<(sessionId: string, end: SessionEndInfo) => void>();
@@ -236,7 +239,7 @@ export class WebPlayback implements PlaybackAdapter {
   /** The player screen's element is in the page. Returns the undo for when it leaves. */
   mount(video: VideoLike, subtitles?: SubtitleTimeline, externalRoute?: () => PlayerObservation['externalRoute']): () => void {
     const player = new WebMediaPlayer(video, {
-      loadHls: this.host.loadHls, resolveUrl: path => this.host.mediaUrl(path), subtitles, deviceMemory: this.host.deviceMemory, externalRoute, timers: this.host.playerTimers,
+      loadHls: this.host.loadHls, resolveUrl: path => this.host.mediaUrl(path), subtitles, deviceMemory: this.host.deviceMemory, nativeHls: this.host.nativeHls, externalRoute, timers: this.host.playerTimers,
     });
     this.video = video;
     this.slot.mount(player);
@@ -419,7 +422,7 @@ export class WebPlayback implements PlaybackAdapter {
       // The engine cannot play what it was given. That is not yet the viewer's problem: the
       // server is told which route failed, and the title comes back through the next one up.
       case 'decode_error': case 'source_not_supported': case 'engine_error':
-        service.engineFailed(intent, code as RouteFailureCode, detail, failure.cannotPlay); return;
+        service.engineFailed(intent, code as PlayerFailureCode, detail, failure.cannotPlay); return;
       default: service.engineFailed(intent, 'engine_error', detail, failure.cannotPlay);
     }
   }
@@ -689,8 +692,26 @@ export class WebPlayback implements PlaybackAdapter {
       async markerSkipped(id: string, skipped: Readonly<{markerId: string; mode: 'automatic' | 'manual'; positionMs: number}>) {
         if (self.controller.getSnapshot().session?.id === id) self.controller.noteSkip(skipped);
       },
-      reportRouteFailure: (sessionId: string, code: RouteFailureCode, detail: string): Promise<RouteFailureResult | null> =>
-        reportRouteFailure((path, method, body) => call(self.host.http, {method: method as 'POST', path, body}).then(r => r.body), sessionId, code, detail),
+      // The engine could not play the presentation: the server is told, and re-plans the same
+      // session another way where the picture was. The queue and its place are untouched.
+      async reportPlayerFailure(sessionId: string, code: PlayerFailureCode, detail: string, positionSeconds: number) {
+        if (self.controller.getSnapshot().session?.id !== sessionId) return {escalates: false};
+        try {
+          const updated = await self.controller.change({failure: {code, detail: detail.replace(/[\x00-\x1f\x7f]/g, ' ').slice(0, 500)}, positionMs: Math.max(0, Math.round(positionSeconds * 1000))});
+          if (!updated) return {escalates: false};
+          const session = self.remember(updated);
+          for (const listener of self.changedListeners) listener(session);
+          return {escalates: true, session: toPlaybackSession(session, 0)};
+        } catch (e) {
+          // unsupported_media: that was the last way to deliver the file.
+          if (e instanceof PlaybackApiError && (e.code === 'unsupported_media' || e.status === 404 || e.status === 410)) return {escalates: false};
+          return null;
+        }
+      },
+      onSessionChanged(listener: (session: Session) => void) {
+        self.changedListeners.add(listener);
+        return () => { self.changedListeners.delete(listener); };
+      },
       onServerEnded(listener: (sessionId: string, end: SessionEndInfo) => void) {
         self.endedListeners.add(listener);
         return () => { self.endedListeners.delete(listener); };

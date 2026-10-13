@@ -115,6 +115,12 @@ export const errors = [
     "retry": "never"
   },
   {
+    "code": "connection_too_slow",
+    "status": 422,
+    "message": "Your connection to this server is too slow for this quality. Choose a lower quality or Automatic.",
+    "retry": "never"
+  },
+  {
     "code": "credential_busy",
     "status": 429,
     "message": "This API key or access token has too many requests running. Try again shortly.",
@@ -167,6 +173,42 @@ export const errors = [
     "status": 403,
     "message": "Sign in on this device to upload logs.",
     "retry": "never"
+  },
+  {
+    "code": "download_conflict",
+    "status": 409,
+    "message": "This information changed. Refresh and try again.",
+    "retry": "after_refresh"
+  },
+  {
+    "code": "download_not_ready",
+    "status": 409,
+    "message": "This request is still being processed.",
+    "retry": "same_request"
+  },
+  {
+    "code": "download_source_offline",
+    "status": 503,
+    "message": "The file for this download can't be reached right now.",
+    "retry": "same_request"
+  },
+  {
+    "code": "download_unavailable",
+    "status": 410,
+    "message": "This download can no longer be fetched. Ask for it again.",
+    "retry": "after_refresh"
+  },
+  {
+    "code": "downloads_not_allowed",
+    "status": 403,
+    "message": "This action is not permitted.",
+    "retry": "never"
+  },
+  {
+    "code": "downloads_unavailable",
+    "status": 503,
+    "message": "Downloads are not set up on this server.",
+    "retry": "same_request"
   },
   {
     "code": "entry_not_found",
@@ -293,6 +335,12 @@ export const errors = [
     "status": 400,
     "message": "This page link is not valid.",
     "retry": "never"
+  },
+  {
+    "code": "invalid_download_grant",
+    "status": 401,
+    "message": "Request a new download link.",
+    "retry": "after_refresh"
   },
   {
     "code": "invalid_request",
@@ -587,6 +635,12 @@ export const errors = [
     "status": 503,
     "message": "The file for this title can't be reached right now.",
     "retry": "same_request"
+  },
+  {
+    "code": "storage_full",
+    "status": 409,
+    "message": "There is not enough storage for this download.",
+    "retry": "never"
   },
   {
     "code": "stream_exists",

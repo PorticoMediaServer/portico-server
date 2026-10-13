@@ -55,8 +55,12 @@ export type SettingsCapabilities = Readonly<{
   playbackSpeed?: boolean;
   /** This device renders audio itself: gapless, crossfade and volume leveling. Absent: it does (a Roku's player cannot). */
   audioEffects?: boolean;
-  /** This build has mpv as a second player beside the device's own, so there is a player to choose. Absent or false: there is not (the web never has). */
+  /** This build has mpv as a second player beside the device's own, so there is a player to choose (the capability document then has an `mpv` engine). Absent or false: there is not (the web never has). */
   playerEngines?: boolean;
+  /** This device can hand sound to a receiver undecoded (the capability document lists `audioPassthrough`). */
+  audioPassthrough?: boolean;
+  /** This device or its display can show HDR. Absent: it can. */
+  hdr?: boolean;
   /** This member makes personal access tokens for their own scripts. Absent or false: not offered (the owner makes API keys on the Server pages instead). */
   accessTokens?: boolean;
 }>;
@@ -73,25 +77,27 @@ export type SettingsControl =
   | Readonly<{type: 'locale'}>;
 
 export type CompositeId =
-  | 'quality.home' | 'quality.away' | 'quality.cellular' | 'playbackMethod' | 'hdr' | 'cardSize'
-  | 'libraryView' | 'reduceMotion' | 'textSize' | 'receiveFromDevices' | 'playerEngine';
+  | 'playbackMethod' | 'cardSize'
+  // Kept by the device and published in its capability document (`withViewerSettings`).
+  | 'playerEngine' | 'forceStereo' | 'disablePassthrough' | 'disableHdr'
+  | 'libraryView' | 'reduceMotion' | 'textSize' | 'receiveFromDevices';
 export type SettingsActionId = 'signOut' | 'resetRecommendations' | 'linkTV';
 export type SettingsCustomId =
   | 'identity' | 'profiles' | 'password' | 'twoStep' | 'devices' | 'porticoAccount' | 'servers'
-  | 'subtitlePreview' | 'deviceName' | 'downloadsStorage' | 'about' | 'accessTokens'
+  | 'subtitlePreview' | 'deviceName' | 'downloadsStorage' | 'about' | 'accessTokens' | 'privacyNote'
   // The Server heading's panels: each is drawn natively by the client.
   | 'server.nowPlaying' | 'server.alerts' | 'server.health' | 'server.activity' | 'server.statistics'
   | 'server.playHistory'
   | 'server.libraries'
   | 'server.liveSources' | 'server.tuners' | 'server.recordingRules' | 'server.recordingStorage' | 'server.channels'
-  | 'server.accounts' | 'server.invitations' | 'server.apiKeys' | 'server.memberTokens' | 'server.webhooks' | 'server.assistants'
+  | 'server.accounts' | 'server.invitations' | 'server.devices' | 'server.apiKeys' | 'server.memberTokens' | 'server.webhooks' | 'server.assistants'
   | 'server.metadataSettings'
   | 'server.transcodeStatus'
   | 'server.remoteStatus' | 'server.accountConnection' | 'server.certificateStatus' | 'server.addresses' | 'server.connection' | 'server.ownCertificateStatus'
   | 'server.diskUsage' | 'server.retention' | 'server.remoteSources' | 'server.backups' | 'server.missingTitles'
   | 'server.windows' | 'server.jobs'
   | 'server.logs' | 'server.detailWindow' | 'server.records' | 'server.capabilities' | 'server.supportExport' | 'server.feedback' | 'server.stateFolder'
-  | 'server.identity' | 'server.updates';
+  | 'server.identity' | 'server.updates' | 'server.restart' | 'server.clientReports';
 
 type RowCopy = Readonly<{
   label: MessageId;
@@ -153,17 +159,16 @@ type AuthoredSection = Readonly<{id: string; title?: MessageId; description?: Me
 type AuthoredPage = Readonly<{id: string; title: MessageId; icon: IconId; tabs?: readonly SettingsTab[]; sections: readonly AuthoredSection[]}> & Only;
 
 const seconds = (...values: number[]): SettingsChoice[] => values.map(value => ({value, label: 'pref.unit.seconds', labelValues: {count: value}}));
-const speeds: SettingsChoice[] = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2].map(value => (value === 1 ? {value, label: 'pref.unit.speedNormal'} : {value, label: 'pref.unit.speed', labelValues: {value}}));
+const speedChoice = (value: number): SettingsChoice => (value === 1 ? {value, label: 'pref.unit.speedNormal'} : {value, label: 'pref.unit.speed', labelValues: {value}});
+const speeds: SettingsChoice[] = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2].map(speedChoice);
+const audiobookSpeeds: SettingsChoice[] = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3].map(speedChoice);
 const skipChoices = (key: string): SettingsChoice[] => (['ask', 'auto', 'off'] as const).map(value => ({value, label: `pref.value.${key}.${value}` as MessageId}));
-// The saved default for each network, in the player's own order: Original (the default), Automatic
-// (starts at Original and adjusts to the connection), then the fixed qualities.
-const limitChoices: SettingsChoice[] = [
+/** The saved default qualities (`quality.home`, `quality.remote`): the original, automatic, then the server's ladder. */
+const qualityChoices: SettingsChoice[] = [
   {value: 'original', label: 'settings.quality.limit.original'},
   {value: 'automatic', label: 'settings.quality.limit.automatic'},
-  {value: '2160', label: 'pref.unit.4k'},
-  {value: '1080', label: 'pref.unit.height', labelValues: {value: '1080'}},
-  {value: '720', label: 'pref.unit.height', labelValues: {value: '720'}},
-  {value: '480', label: 'pref.unit.height', labelValues: {value: '480'}},
+  {value: '2160p', label: 'pref.unit.4k'},
+  ...(['1440', '1080', '720', '480', '360'] as const).map(value => ({value: value + 'p', label: 'pref.unit.height' as MessageId, labelValues: {value}})),
 ];
 const pref = (key: string, label: MessageId, control: SettingsControl, more: Partial<RowCopy> & Only = {}): Authored<SettingsRow> => ({kind: 'preference', key, label, control, ...more});
 const toggle = (key: string, label: MessageId, more: Partial<RowCopy> & Only = {}) => pref(key, label, {type: 'switch'}, more);
@@ -205,7 +210,7 @@ const accountPages: readonly AuthoredPage[] = [
       // No music speed: a song plays at the speed it was recorded.
       {id: 'speed', title: 'settings.section.speed', needs: c => c.playbackSpeed !== false, rows: [
         pref('playback.defaultSpeed', 'settings.row.videoSpeed', {type: 'choice', choices: speeds}),
-        pref('audiobooks.defaultSpeed', 'settings.row.audiobookSpeed', {type: 'choice', choices: speeds}),
+        pref('audiobooks.defaultSpeed', 'settings.row.audiobookSpeed', {type: 'choice', choices: audiobookSpeeds}),
       ]},
       {id: 'advanced', title: 'settings.section.advanced', advanced: true, rows: [
         pref('playback.playedThresholdPercent', 'settings.row.watchedThreshold', {type: 'choice', choices: [80, 85, 90, 95, 100].map(value => ({value, label: 'pref.unit.percent' as MessageId, labelValues: {value}}))}, {help: 'pref.help.playback.playedThresholdPercent'}),
@@ -233,23 +238,27 @@ const accountPages: readonly AuthoredPage[] = [
   },
   {
     id: 'quality', title: 'settings.page.quality', icon: 'quality', sections: [
-      // One limit per network. The registry's mode and ceiling pairs stay there for API clients.
+      // Two saved defaults: at home and away. The player can still choose another quality for one title.
       {id: 'limits', title: 'settings.section.qualityLimits', rows: [
-        {kind: 'composite', id: 'quality.home', storage: 'registry', label: 'settings.row.qualityHome', help: 'settings.help.qualityHome', scope: 'deviceClass', control: {type: 'choice', choices: limitChoices}},
-        {kind: 'composite', id: 'quality.away', storage: 'registry', label: 'settings.row.qualityAway', help: 'settings.help.qualityAway', scope: 'deviceClass', control: {type: 'choice', choices: limitChoices}},
-        {kind: 'composite', id: 'quality.cellular', storage: 'registry', label: 'settings.row.qualityCellular', scope: 'deviceClass', control: {type: 'choice', choices: limitChoices}, platforms: ['phone']},
+        pref('quality.home', 'settings.row.qualityHome', {type: 'choice', choices: qualityChoices}, {scope: 'deviceClass', help: 'settings.help.qualityHome'}),
+        pref('quality.remote', 'settings.row.qualityAway', {type: 'choice', choices: qualityChoices}, {scope: 'deviceClass', help: 'settings.help.qualityAway'}),
       ]},
       {id: 'method', rows: [
         // One choice in place of three four-way policies; it writes a combination that makes sense.
         {kind: 'composite', id: 'playbackMethod', storage: 'registry', label: 'settings.row.playbackMethod', help: 'settings.help.playbackMethod', scope: 'deviceClass', control: {type: 'choice', choices: [
           {value: 'automatic', label: 'settings.playbackMethod.automatic'}, {value: 'original', label: 'settings.playbackMethod.original'}, {value: 'convert', label: 'settings.playbackMethod.convert'},
         ]}},
-        {kind: 'composite', id: 'hdr', storage: 'registry', label: 'settings.row.hdr', help: 'settings.help.hdr', scope: 'deviceClass', control: {type: 'choice', choices: [{value: 'automatic', label: 'settings.hdr.automatic'}, {value: 'off', label: 'settings.hdr.off'}]}},
         // Which player plays: Automatic (the default) uses the device's own when it can play the
         // title as it is or with a plain repackaging, and mpv only when the alternative is
         // converting the picture, lossy sound or burned-in subtitles. Kept by the device itself,
         // and shown only where there is a second player to choose.
         {kind: 'composite', id: 'playerEngine', storage: 'device', label: 'settings.row.player', help: 'settings.help.player', scope: 'device', platforms: ['phone', 'tv'], needs: c => !!c.playerEngines, control: {type: 'choice', choices: PLAYER_ENGINE_CHOICES}},
+      ]},
+      // The short list for when detection is wrong. Each narrows what the server plans this device as.
+      {id: 'fixes', title: 'settings.section.playbackFixes', description: 'settings.section.playbackFixesHelp', rows: [
+        {kind: 'composite', id: 'forceStereo', storage: 'device', label: 'settings.row.forceStereo', help: 'settings.help.forceStereo', scope: 'device', control: {type: 'switch'}},
+        {kind: 'composite', id: 'disablePassthrough', storage: 'device', label: 'settings.row.disablePassthrough', help: 'settings.help.disablePassthrough', scope: 'device', needs: c => c.audioPassthrough === true, control: {type: 'switch'}},
+        {kind: 'composite', id: 'disableHdr', storage: 'device', label: 'settings.row.disableHdr', help: 'settings.help.disableHdr', scope: 'device', needs: c => c.hdr !== false, control: {type: 'switch'}},
       ]},
     ],
   },
@@ -288,6 +297,8 @@ const accountPages: readonly AuthoredPage[] = [
   },
   {
     id: 'privacy', title: 'settings.page.privacy', icon: 'shield', sections: [
+      // What pausing and clearing do not change, said before the switches that might suggest otherwise.
+      {id: 'note', rows: [custom('privacyNote')]},
       {id: 'history', rows: [
         toggle('privacy.pauseWatchHistory', 'pref.label.privacy.pauseWatchHistory', {help: 'pref.help.privacy.pauseWatchHistory'}),
         toggle('privacy.showActivityToMembers', 'settings.row.showActivity', {help: 'settings.help.showActivity'}),
@@ -351,6 +362,12 @@ const serverPages: readonly AuthoredPage[] = [
         on('liveDefaults', 'logoImport', 'web.dvrSettings.logoImport'),
         on('liveDefaults', 'discoveryEnabled', 'web.dvrSettings.discovery', 'web.dvrSettings.discoveryHelp'),
       ]},
+      // The most one playlist or guide may bring in: plain numbers the owner can raise or lower.
+      {id: 'liveLimits', tab: 'sources', title: 'server.live.limits', description: 'server.live.limitsLede', rows: [
+        setting('liveDefaults', 'importLimits.channels', 'server.live.limitChannels', {type: 'number', min: 1, max: 100000}),
+        setting('liveDefaults', 'importLimits.programmes', 'server.live.limitProgrammes', {type: 'number', min: 1, max: 10000000}),
+        setting('liveDefaults', 'importLimits.bytes', 'server.live.limitSize', {type: 'number', min: 1, max: 1024, unit: 'settings.unit.mb', scale: 1048576}),
+      ]},
       panel('tuners', 'server.tuners', undefined, {tab: 'recording'}),
       // Who may record, and the standing rules.
       panel('recordingRules', 'server.recordingRules', undefined, {tab: 'recording'}),
@@ -370,10 +387,13 @@ const serverPages: readonly AuthoredPage[] = [
       panel('channels', 'server.channels', undefined, {tab: 'channels'}),
     ]},
   {id: 'people', title: 'settings.server.people', icon: 'people',
-    tabs: [{id: 'accounts', title: 'settings.server.accounts'}, {id: 'invitations', title: 'settings.server.invitations'}, {id: 'keys', title: 'settings.server.apiKeys'}],
+    tabs: [{id: 'accounts', title: 'settings.server.accounts'}, {id: 'invitations', title: 'settings.server.invitations'}, {id: 'devices', title: 'settings.section.devices'}, {id: 'keys', title: 'settings.server.apiKeys'}],
     sections: [
       panel('accounts', 'server.accounts', undefined, {tab: 'accounts'}),
       panel('invitations', 'server.invitations', undefined, {tab: 'invitations'}),
+      // Holding new devices until the owner approves them, and every device that has signed in, newest first.
+      {id: 'deviceApproval', tab: 'devices', rows: [on('runtime', 'deviceApprovalRequired', 'server.people.deviceApproval', 'server.people.deviceApprovalHelp')]},
+      panel('devices', 'server.devices', 'settings.section.devices', {tab: 'devices', platforms: ['web']}),
       // The web has a page for keys, tokens, webhooks and assistants; the phone keeps its keys list here.
       panel('apiKeys', 'server.apiKeys', undefined, {tab: 'keys', platforms: ['phone']}),
     ]},
@@ -406,6 +426,9 @@ const serverPages: readonly AuthoredPage[] = [
       on('runtime', 'directStreamRemux', 'settings.server.repackage', 'settings.server.repackageHelp'),
       setting('runtime', 'planningPolicy', 'settings.server.planning', {type: 'choice', choices: choices('settings.server.planning', ['maximum_fidelity', 'maximum_compatibility', 'minimize_server_work'])}, {help: 'settings.server.planningHelp'}),
       setting('runtime', 'temporaryDirectory', 'settings.server.tempFolder', {type: 'text', mono: true}, {help: 'settings.server.tempFolderHelp'}),
+      // Shown in GB; stored in MiB.
+      setting('runtime', 'sessionStorageMiB', 'settings.server.sessionSpace', {type: 'number', min: 1, max: 1024, unit: 'settings.unit.gb', scale: 1024}, {help: 'settings.server.sessionSpaceHelp'}),
+      setting('runtime', 'ffmpegPath', 'settings.server.ffmpegPath', {type: 'text', mono: true, example: '/usr/local/bin/ffmpeg'}, {help: 'settings.server.ffmpegOwnHelp'}),
     ]},
     {id: 'capacity', title: 'web.transcoding.capacity', description: 'web.transcoding.capacityLede', rows: [
       setting('runtime', 'serverCap', 'web.transcoding.serverCap', {type: 'number', min: 1, max: 1000000, empty: unlimited}, {help: 'web.transcoding.serverCapHelp'}),
@@ -506,6 +529,8 @@ const serverPages: readonly AuthoredPage[] = [
     panel('logs', 'server.logs', 'settings.server.logs'),
     panel('records', 'server.records', 'settings.server.records'),
     panel('capabilities', 'server.capabilities', 'settings.server.capabilities'),
+    // Logs an app sent after something went wrong: to read, download and delete.
+    panel('clientReports', 'server.clientReports', 'web.diagnostics.clientReports', {platforms: ['web']}),
     panel('export', 'server.supportExport', 'settings.server.supportExport'),
     panel('feedback', 'server.feedback', 'settings.server.feedback'),
     panel('state', 'server.stateFolder'),
@@ -516,6 +541,7 @@ const serverPages: readonly AuthoredPage[] = [
       custom('server.identity'),
     ]},
     panel('updates', 'server.updates', 'settings.server.updates'),
+    panel('restart', 'server.restart', 'web.maintenance.serverRestart', {platforms: ['web']}),
     {id: 'alerts', title: 'settings.server.alertThresholds', description: 'web.alerts.lede', rows: [
       setting('alerts', 'storageWarningPercent', 'web.alerts.storageWarning', {type: 'number', min: 1, max: 50, unit: 'settings.unit.percent'}, {help: 'web.alerts.storageWarningHelp'}),
       setting('alerts', 'storageCriticalPercent', 'web.alerts.storageCritical', {type: 'number', min: 1, max: 50, unit: 'settings.unit.percent'}, {help: 'web.alerts.storageCriticalHelp'}),
@@ -649,9 +675,6 @@ export function searchSettings(structure: SettingsStructure, query: string, t: (
 // ── Composite rows: one decision, several keys ───────────────────────────────
 
 type Read = (key: string) => PreferenceValue | undefined;
-const NETWORKS = ['local', 'wifi', 'cellular', 'unknown'] as const;
-/** The registry networks behind each limit row: "Away from home" is Wi-Fi elsewhere and any network the device cannot name. */
-const LIMIT_NETWORKS: Readonly<Record<string, readonly string[]>> = {'quality.home': ['local'], 'quality.away': ['wifi', 'unknown'], 'quality.cellular': ['cellular']};
 const CARD_SIZE: Readonly<Record<string, number>> = {small: 85, medium: 100, large: 125};
 const METHODS: Readonly<Record<string, Readonly<Record<string, string>>>> = {
   automatic: {'delivery.directPlay': 'prefer', 'delivery.directStream': 'allow', 'delivery.transcode': 'allow'},
@@ -659,19 +682,9 @@ const METHODS: Readonly<Record<string, Readonly<Record<string, string>>>> = {
   convert: {'delivery.directPlay': 'never', 'delivery.directStream': 'never', 'delivery.transcode': 'require'},
 };
 
-/** The tallest picture one network lane allows as the server reads it (`delivery_policy.go`): Infinity for original files. */
-function laneLimit(read: Read, network: string): number {
-  const mode = read(`quality.${network}.mode`);
-  if (mode === 'original') return Infinity;
-  const mbps = Number(read(`quality.${network}.maxVideoBitrateMbps`) ?? 0);
-  const preset = mbps >= 20 ? 2160 : mbps >= 8 ? 1080 : mbps >= 2 ? 720 : mbps >= 1 ? 480 : 4320;
-  const byMode = mode === 'standard' ? 1080 : mode === 'data-saver' || mode === 'off' ? 480 : 4320;
-  return Math.min(Number(read(`quality.${network}.maxVideoHeight`) || 4320), preset, byMode);
-}
-
 /** Composites whose value lives in the registry (the rest are the device's own). */
 export function registryComposite(id: CompositeId): boolean {
-  return id === 'playbackMethod' || id === 'hdr' || id === 'cardSize' || id in LIMIT_NETWORKS;
+  return id === 'playbackMethod' || id === 'cardSize';
 }
 
 /**
@@ -679,21 +692,12 @@ export function registryComposite(id: CompositeId): boolean {
  * could have written reads as the nearest choice a person can make, never as a fourth option.
  */
 export function readComposite(id: CompositeId, read: Read): string | boolean {
-  const networks = LIMIT_NETWORKS[id];
-  if (networks) {
-    // Several networks behind one row read as the strictest of them, so the row never overstates.
-    const limit = Math.min(...networks.map(network => laneLimit(read, network)));
-    if (limit === Infinity) return 'original';
-    if (limit >= 4320) return 'automatic';
-    return limit >= 2160 ? '2160' : limit >= 1080 ? '1080' : limit >= 720 ? '720' : '480';
-  }
   switch (id) {
     case 'playbackMethod': {
       if (read('delivery.directPlay') === 'never') return 'convert';
       if (read('delivery.transcode') === 'never') return 'original';
       return 'automatic';
     }
-    case 'hdr': return NETWORKS.some(n => read(`quality.${n}.allowHDR`) !== false) ? 'automatic' : 'off';
     case 'cardSize': {
       const percent = Number(read('appearance.cardSizePercent') ?? 100);
       return percent < 90 ? 'small' : percent > 115 ? 'large' : 'medium';
@@ -704,21 +708,8 @@ export function readComposite(id: CompositeId, read: Read): string | boolean {
 
 /** The keys a choice writes: one consistent combination, never a contradictory one. */
 export function compositePatch(id: CompositeId, choice: string | boolean): PreferencePatch {
-  const networks = LIMIT_NETWORKS[id];
-  if (networks) {
-    const patch: Record<string, PreferenceValue> = {};
-    for (const network of networks) {
-      patch[`quality.${network}.mode`] = choice === 'original' ? 'original' : 'automatic';
-      patch[`quality.${network}.maxVideoHeight`] = choice === 'automatic' || choice === 'original' ? 4320 : Number(choice);
-      // The height is the limit; a bit rate ceiling left behind would quietly lower it again.
-      patch[`quality.${network}.maxVideoBitrateMbps`] = 0;
-      patch[`quality.${network}.maxAudioBitrateKbps`] = 0;
-    }
-    return patch;
-  }
   switch (id) {
     case 'playbackMethod': return {...(METHODS[String(choice)] ?? METHODS.automatic!)};
-    case 'hdr': return Object.fromEntries(NETWORKS.map(n => [`quality.${n}.allowHDR`, choice !== 'off']));
     case 'cardSize': return {'appearance.cardSizePercent': CARD_SIZE[String(choice)] ?? 100};
     default: return {};
   }

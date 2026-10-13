@@ -177,6 +177,9 @@ func TestPlaybackV1SubtitleOriginalUsesGrantRangesAndRevocation(t *testing.T) {
 		t.Fatal(session.Presentation.Subtitles)
 	}
 	file := session.Presentation.Subtitles[0]
+	if !strings.HasPrefix(file.URL, "/v1/media/subtitles/") || file.FontsURL != strings.TrimSuffix(file.URL, "/original.ass")+"/fonts" {
+		t.Fatal("original or font list escaped the subtitle namespace", file)
+	}
 	full := f.raw("GET", file.URL, "", nil, nil)
 	if full.Code != 200 || full.Body.String() != body {
 		t.Fatalf("original %d %s", full.Code, full.Body.String())
@@ -185,11 +188,23 @@ func TestPlaybackV1SubtitleOriginalUsesGrantRangesAndRevocation(t *testing.T) {
 	if partial.Code != 206 || partial.Body.String() != body[:8] || partial.Header().Get("Accept-Ranges") != "bytes" {
 		t.Fatalf("range %d %s", partial.Code, partial.Body.String())
 	}
+	head := f.raw("HEAD", file.URL, "", nil, nil)
+	if head.Code != 200 || head.Body.Len() != 0 {
+		t.Fatalf("original HEAD %d %s", head.Code, head.Body.String())
+	}
 	var fonts subtitles.FontFiles
 	f.call("GET", file.FontsURL, nil, nil, 200, &fonts)
 	// The media grant is tied to the session generation, not the bearer credential.
-	if _, e = f.db.Exec(`UPDATE playback_sessions SET state='stopped' WHERE grant_token=?`, strings.Split(file.URL, "/")[3]); e != nil {
+	grant, _, ok := strings.Cut(strings.TrimPrefix(file.URL, "/v1/media/subtitles/"), "/")
+	if !ok {
+		t.Fatal("original URL has no grant")
+	}
+	result, e := f.db.Exec(`UPDATE playback_sessions SET state='stopped' WHERE grant_token=?`, grant)
+	if e != nil {
 		t.Fatal(e)
+	}
+	if n, e := result.RowsAffected(); e != nil || n != 1 {
+		t.Fatal("grant did not address the playback session", n, e)
 	}
 	revoked := f.raw("GET", file.URL, "", nil, nil)
 	if revoked.Code == 200 || revoked.Code == 206 {

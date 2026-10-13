@@ -123,6 +123,8 @@ export type WebMediaPlayerOptions = Readonly<{
   /** Makes a presentation URL absolute (`/v1/media/…` against the selected server's origin). */
   resolveUrl?: (url: string) => string;
   subtitles?: SubtitleTimeline;
+  /** When the browser's own HLS player is used instead of hls.js (`native-hls.ts`); absent means never, except where hls.js cannot run at all. */
+  nativeHls?: 'first' | 'fallback' | 'never';
   /** Device memory in GB when the browser says (smaller buffers on small devices). */
   deviceMemory?: number;
   /** Where the picture is shown, when not in the page. */
@@ -182,6 +184,8 @@ export class WebMediaPlayer implements MediaPlayer {
   private started = false;
   private rate = 1;
   private mediaRecoveries = 0;
+  /** This load has been handed to the browser's own HLS player. */
+  private handedToNative = false;
   private recoveredAtMs = 0;
   private recovery?: Recovery;
   private starved = false;
@@ -234,6 +238,7 @@ export class WebMediaPlayer implements MediaPlayer {
     this.suspended = false;
     this.subtitle = null;
     this.mediaRecoveries = 0;
+    this.handedToNative = false;
     this.started = false;
     this.settledMs = Math.max(0, source.startPositionMs);
     this.state = 'loading';
@@ -381,7 +386,7 @@ export class WebMediaPlayer implements MediaPlayer {
       return;
     }
     const load = this.options.loadHls;
-    if (!load) { this.native(url, startMs); return; }
+    if (!load || this.handedToNative || (this.options.nativeHls === 'first' && this.video.canPlayType('application/vnd.apple.mpegurl'))) { this.native(url, startMs); return; }
     void load().then(Hls => {
       if (this.disposed || serial !== this.loadSerial) return;
       if (!Hls.isSupported()) { this.native(url, startMs); return; }
@@ -777,6 +782,9 @@ export class WebMediaPlayer implements MediaPlayer {
       this.recover(() => { if (this.hls !== engine) return; if (manifest) this.reopen(); else engine.startLoad(this.resumeSeconds()); }, 'network_error');
       return;
     }
+    // Codecs MediaSource will not take, or a decoding error two recoveries did not cure: the
+    // browser's own HLS player may still play the stream, and is tried before anything is reported.
+    if (data.type === Hls.ErrorTypes.MEDIA_ERROR && (this.mediaRecoveries >= 2 || /incompatiblecodecs/i.test(String(data.details ?? ''))) && this.handToNative()) return;
     if (data.type === Hls.ErrorTypes.MEDIA_ERROR && this.mediaRecoveries < 2) {
       // The second attempt also swaps the audio codec hint, which rescues a stream whose AAC
       // profile the browser's demuxer guessed wrong.
@@ -786,6 +794,16 @@ export class WebMediaPlayer implements MediaPlayer {
       return;
     }
     this.fail(data.type === Hls.ErrorTypes.MEDIA_ERROR ? 'decode_error' : 'engine_error', String(data.details ?? '').slice(0, 120));
+  }
+
+  /** Loads the same stream in the browser's own HLS player at the same position, once per load, where the host allows it. */
+  private handToNative(): boolean {
+    const policy = this.options.nativeHls ?? 'never';
+    if (policy === 'never' || this.handedToNative || !this.active() || this.suspended || !this.video.canPlayType('application/vnd.apple.mpegurl')) return false;
+    this.handedToNative = true;
+    this.loading = undefined;
+    this.reopen();
+    return true;
   }
 
   private nativeError() {

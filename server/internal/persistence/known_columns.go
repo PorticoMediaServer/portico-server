@@ -8,18 +8,10 @@ package persistence
 // build's statements name, without anything to compare it against but the
 // build itself.
 const knownSchemaColumns = `
-access_devices.account_id
-access_devices.first_seen_ms
-access_devices.id
-access_devices.last_seen_ms
-access_devices.name
-access_devices.platform
-access_devices.profile_id
-access_devices.revision
-access_devices.trust
 access_invitations.accepted_ms
 access_invitations.account_id
 access_invitations.allowed_libraries
+access_invitations.bound_username
 access_invitations.code_hash
 access_invitations.created_by
 access_invitations.created_ms
@@ -1283,6 +1275,8 @@ diagnostics_debug_window.singleton
 direct_memberships.account_id
 direct_memberships.allowed_libraries
 direct_memberships.disabled
+direct_memberships.disabled_ms
+direct_memberships.disabled_reason
 direct_memberships.revision
 direct_memberships.role
 direct_profile_pin_attempts.device_id
@@ -1311,6 +1305,7 @@ direct_profiles.pin_locked_until
 direct_profiles.pin_revision
 direct_profiles.position
 direct_profiles.revision
+download_grants.artifact_digest
 download_grants.expires_ms
 download_grants.first_use_ms
 download_grants.hash
@@ -1339,6 +1334,7 @@ download_preparations.estimated
 download_preparations.hash_state
 download_preparations.id
 download_preparations.item_id
+download_preparations.item_public
 download_preparations.library_id
 download_preparations.origin
 download_preparations.profile_id
@@ -1347,9 +1343,10 @@ download_preparations.quality
 download_preparations.ready_ms
 download_preparations.reason
 download_preparations.revision
-download_preparations.source_version_json
+download_preparations.source_modified_ns
 download_preparations.started_ms
 download_preparations.state
+download_preparations.title_json
 download_preparations.updated_ms
 download_preparations.used_ms
 download_progress_marks.item_id
@@ -1371,7 +1368,9 @@ download_receipts.expires_ms
 download_receipts.id
 download_receipts.issued_ms
 download_receipts.item_id
+download_receipts.item_public
 download_receipts.key_id
+download_receipts.library_id
 download_receipts.preparation_id
 download_receipts.profile_id
 download_receipts.profile_key
@@ -1399,6 +1398,7 @@ download_requests.principal
 download_requests.profile_key
 download_requests.quality
 download_requests.request_hash
+download_requests.restarts
 download_requests.selection_fence
 download_requests.state
 download_requests.target_id
@@ -1409,6 +1409,11 @@ download_settings.max_prepared_bytes
 download_settings.retention_days
 download_settings.revision
 download_settings.singleton
+download_source_digests.asset_id
+download_source_digests.hashed_ms
+download_source_digests.modified_ns
+download_source_digests.sha256
+download_source_digests.size
 dvr_catalog_provenance.artifact_digest
 dvr_catalog_provenance.asset_id
 dvr_catalog_provenance.captured_end_ms
@@ -1640,6 +1645,7 @@ identity_devices.last_seen
 identity_devices.name
 identity_devices.platform
 identity_devices.remember_account
+identity_devices.revision
 identity_devices.trusted
 identity_factor_challenges.account_id
 identity_factor_challenges.attempts
@@ -3056,13 +3062,6 @@ playback_channel_sessions.source_revision
 playback_channel_sessions.stage
 playback_channel_sessions.status
 playback_channel_sessions.transport_json
-playback_client_profiles.account_id
-playback_client_profiles.document
-playback_client_profiles.family
-playback_client_profiles.profile_id
-playback_client_profiles.revision
-playback_client_profiles.session_hash
-playback_client_profiles.updated_at_ms
 playback_conversion_failures.audio
 playback_conversion_failures.backend
 playback_conversion_failures.diagnostic
@@ -3123,7 +3122,6 @@ playback_delivery_plans.video_bitrate
 playback_device_capabilities.account_id
 playback_device_capabilities.device_id
 playback_device_capabilities.document
-playback_device_capabilities.planner_profile
 playback_device_capabilities.profile_id
 playback_device_capabilities.revision
 playback_device_capabilities.updated_at_ms
@@ -3251,6 +3249,7 @@ playback_requests.response
 playback_route_failures.asset_id
 playback_route_failures.code
 playback_route_failures.detail
+playback_route_failures.engine
 playback_route_failures.reported_at_ms
 playback_route_failures.route
 playback_route_failures.session_hash
@@ -3303,6 +3302,12 @@ playback_subtitle_state.resource_id
 playback_subtitle_state.resource_revision
 playback_subtitle_state.revision
 playback_subtitle_state.session_id
+playback_track_memory.audio_language
+playback_track_memory.item_id
+playback_track_memory.profile_id
+playback_track_memory.subtitle_language
+playback_track_memory.subtitle_mode
+playback_track_memory.updated_ms
 playback_v1_prepared.cancel_reason
 playback_v1_prepared.create_key
 playback_v1_prepared.created_ms
@@ -3423,6 +3428,8 @@ policy.payload
 policy.revision
 policy.server_id
 portico_admitted_families.family_id
+portico_admitted_families.signer_key_id
+portico_factor_challenges.signer_key_id
 portico_factor_challenges.token_hash
 prepared_media_jobs.asset_id
 prepared_media_jobs.bytes
@@ -3710,6 +3717,8 @@ retained_title_state.title
 retained_title_state.unit
 retained_title_state.watched
 retained_title_state.watchlisted
+retained_title_state_counts.profile_id
+retained_title_state_counts.title_count
 saved_operation_fences.created_at
 saved_operation_fences.domain
 saved_operation_fences.operation_id
@@ -3888,6 +3897,7 @@ social_cast_bootstraps.device_id
 social_cast_bootstraps.display_name
 social_cast_bootstraps.expires_at_ms
 social_cast_bootstraps.id
+social_cast_bootstraps.pairing_family_id
 social_cast_bootstraps.profile_id
 social_cast_bootstraps.redeemed_at_ms
 social_cast_bootstraps.role

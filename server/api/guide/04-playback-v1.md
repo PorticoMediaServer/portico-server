@@ -170,12 +170,16 @@ playback grant:
 | `vobsub` | `{base}/original.idx` | `companionUrl` supplies `original.sub`; preserve the matching basename locally |
 | `dvb` | `{base}/original.mks`, a single-track Matroska DVB packet capsule | None |
 
-Here `{base}` is `/v1/media/{grant}/subtitles/{resource}/{revision}`. Original and
+Here `{base}` is `/v1/media/subtitles/{grant}/{resource}/{revision}`. Original and
 font files accept GET, HEAD, byte ranges, and conditional reads. WebVTT also
 supports byte ranges. ASS/SSA originals preserve their source encoding; the
 response content type declares its detected charset. Decode that encoding before
 passing script text to a renderer that requires Unicode. Font filenames are
 labels; download through each returned URL, not a filename-derived path.
+
+The `subtitles` namespace is separate from Live TV's `linear` namespace. Use the
+URLs returned by the presentation or subtitle plan; do not derive them from the
+video URL. Every subtitle payload, including JSON and WebVTT, uses this base.
 
 The separate `{base}` route returns a version 1 JSON cue document:
 `{version:1,timeDomain:"source-relative",cues:[{startUs,endUs,text,italic?,top?}],skippedCues?}`.

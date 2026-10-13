@@ -446,6 +446,12 @@ func run() (runErr error) {
 		return e
 	}
 	wireNativeServerIdentity(ident)
+	// A restore that has just been applied signs everyone out, before anything
+	// can be served from the restored sessions. The copy of the previous
+	// database the restore set aside is scrubbed of its sessions too.
+	if e = signOutAfterRestore(context.Background(), ident, state); e != nil {
+		return e
+	}
 	// A devtrust build on a throwaway e2e state directory seeds its test owner
 	// (identity.SeedDevE2EOwner); every other build and state does nothing.
 	if e = ident.SeedDevE2EOwner(context.Background()); e != nil {
@@ -623,12 +629,12 @@ func run() (runErr error) {
 	defer preparedVersions.Close()
 	donePrepared(nil)
 	player.Prepared = preparedVersions
-	// Offline downloads read original bytes through the same isolated media
-	// process playback uses, and prepared bytes through the producer that owns
-	// them. It produces nothing itself.
-	offlineDownloads, e := downloads.New(downloads.Options{DB: db, SourceSnapshotRoot: filepath.Join(state, "downloads", "source-snapshots"), OpenSource: func(ctx context.Context, path string, size, modified int64) (io.ReadSeekCloser, error) {
+	// Offline downloads read original bytes, in place, through the same isolated
+	// media process playback uses, and prepared bytes through the producer that
+	// owns them. It produces nothing itself and copies nothing.
+	offlineDownloads, e := downloads.New(downloads.Options{DB: db, OpenSource: func(ctx context.Context, path string, size, modified int64) (io.ReadSeekCloser, error) {
 		return storeIO.OpenPlayback(ctx, path, size, modified)
-	}, Artifacts: preparedVersions, Optimizer: preparedVersions})
+	}, Artifacts: preparedVersions, Optimizer: preparedVersions, Plays: cat.AcceptPlaybackProgressAt})
 	if e != nil {
 		return e
 	}
@@ -1020,6 +1026,8 @@ func run() (runErr error) {
 	adminOperations.DVR = recordingStore
 	events := eventfeed.New(db)
 	backupService := backup.New(state, db, ident.ID(), buildinfo.Info()["version"], persistence.SchemaVersion())
+	// A backup holds no sessions: each database copy is scrubbed as it is written.
+	backupService.SetCopyScrubber(identity.ScrubBackupCopy)
 	requestRestart := func() {
 		restartRequested.Store(true)
 		// The staged reply must flush before leaving the way SIGTERM does.
@@ -1145,6 +1153,11 @@ func run() (runErr error) {
 		notified := make(chan struct{})
 		supervise.Go("hosted.shutdown-notice", func() { defer close(notified); _ = control.NotifyShutdown(stop) })
 		_ = server.Shutdown(stop)
+		flush, finishFlush := context.WithTimeout(context.Background(), 10*time.Second)
+		if err := httpapi.FlushCredentialUse(flush, handler); err != nil {
+			log.Printf("Credential usage could not be saved before shutdown: %v", err)
+		}
+		finishFlush()
 		<-notified
 	})
 	certificates := claimHandler.Certificates()

@@ -22,5 +22,9 @@ func observedFileBinding(file *os.File) (string, string, error) {
 	if err != nil {
 		return "", "", err
 	}
-	return observedObjectBinding(info, file.Name())
+	object, token, err := nativeObjectBinding(info)
+	if err == nil && info.IsDir() {
+		object, err = directoryFilesystemIdentityFromFile(file, object)
+	}
+	return object, token, err
 }

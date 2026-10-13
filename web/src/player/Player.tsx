@@ -11,13 +11,12 @@ import React, {useCallback, useEffect, useMemo, useRef, useState, useSyncExterna
 import {playbackUserMessage} from '@core/playback-messages.ts';
 import {playbackFailure} from './failure';
 import {SubtitleSurface} from './subtitle-surface';
+import {SubtitleOverlay} from './subtitles/overlay';
 import {webPlaybackResourceKey} from '../playback-v1/web-playback';
-import {fixedQuality, isQualityChoice, offeredQualities, qualityRequest, type FixedQuality, type QualityChoice} from '@core/playback-v1/choices.ts';
-import {readComposite, type CompositeId} from '@core/presentation/index.ts';
-import type {PreferenceValue} from '@core/preferences.ts';
+import {fixedQuality, offeredQualities, qualityChoiceOf, qualityRequest, type FixedQuality, type QualityChoice} from '@core/playback-v1/choices.ts';
 import {ownerStopOf} from './owner-stop';
 import {shortcutKey} from './shortcut-key';
-import {listeningRates, type SleepChoice} from '@core/listening.ts';
+import {audiobookRates, type SleepChoice} from '@core/listening.ts';
 import {subtitleReason} from '@core/subtitles.ts';
 import {useSystemListening} from '../bridge/useSystemListening';
 import {formatClock} from '@core/presentation/index.ts';
@@ -35,6 +34,7 @@ import {MiniGuide} from './MiniGuide';
 import {usePlayer, type PlayerEngine} from './engine';
 import {usePlayerAudioPlan, usePlayerChapters, usePlayerOffers, usePlayerSubtitles, useTrickplay} from './options';
 import {SkipPrompt, type SkipMode} from './SkipPrompt';
+import {UpNextCredits, useUpNextDuringCredits} from './UpNextCredits';
 import {useServerPreferences} from '../app/server-preferences';
 import {LiveTimeline} from './Timeline';
 import {PostPlay, ShortcutLegend} from './PostPlay';
@@ -149,13 +149,19 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
   const [fill, setFill] = useState(() => { try { return localStorage.getItem('portico.player.fill.v1') === '1'; } catch { return false; } });
   const toggleFill = () => setFill(now => { try { localStorage.setItem('portico.player.fill.v1', now ? '0' : '1'); } catch { /* private mode */ } return !now; });
   const [surface, setSurface] = useState<SubtitleSurface | null>(null);
+  /* Styled and image subtitles are drawn on a canvas over the picture; the surface passes the
+     stream's place on the element's clock on to it. */
+  const subtitleCanvas = useRef<HTMLCanvasElement>(null);
+  const [overlay, setOverlay] = useState<SubtitleOverlay | null>(null);
   useEffect(() => {
     const el = video.current;
     if (!el) return;
-    const made = SubtitleSurface.supported(el) ? new SubtitleSurface(el) : null;
+    const drawn = subtitleCanvas.current && SubtitleOverlay.supported() ? new SubtitleOverlay(el, subtitleCanvas.current) : null;
+    const made = SubtitleSurface.supported(el) ? new SubtitleSurface(el, {companion: drawn ?? undefined}) : null;
     setSurface(made);
-    const unmount = engine.playback.mount(el, made ?? undefined, () => (document.pictureInPictureElement === el ? 'pip' : undefined));
-    return () => { unmount(); made?.dispose(); setSurface(null); };
+    setOverlay(drawn);
+    const unmount = engine.playback.mount(el, made ?? drawn ?? undefined, () => (document.pictureInPictureElement === el ? 'pip' : undefined));
+    return () => { unmount(); made?.dispose(); drawn?.dispose(); setSurface(null); setOverlay(null); };
   }, [engine.playback]);
   const stage = useRef<HTMLDivElement>(null);
   const resourceKey = webPlaybackResourceKey(state);
@@ -186,13 +192,28 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
   const defaultSpeed = prefs.value<number>('playback.defaultSpeed', 1);
   const skipModes: Record<string, SkipMode> = {intro: prefs.value('playback.introSkip', 'ask'), credits: prefs.value('playback.creditsSkip', 'ask'), recap: prefs.value('playback.recapSkip', 'ask'), outro: prefs.value('playback.creditsSkip', 'ask'), commercial: 'ask'};
   const trickplay = useTrickplay(api, scope, item, offers.data?.current?.sourceId, !isAudio && !state.channel);
-  const subtitles = usePlayerSubtitles(api, scope, service, surface, resourceKey, isAudio);
+  const subtitles = usePlayerSubtitles(api, scope, service, surface, resourceKey, isAudio, overlay);
+  /* Drawn subtitles keep the look they were made with. The viewer's caption size nudges their
+     overall size, and they can be moved up or down the picture (kept on this device). */
+  const [subtitleRaise, setSubtitleRaise] = useState(() => { try { const saved = Number(localStorage.getItem('portico.player.subtitle-raise.v1')); return Number.isFinite(saved) ? Math.max(-10, Math.min(30, saved)) : 0; } catch { return 0; } });
+  const moveSubtitles = (step: number | null) => {
+    const next = step === null ? 0 : Math.max(-10, Math.min(30, subtitleRaise + step));
+    setSubtitleRaise(next);
+    try { localStorage.setItem('portico.player.subtitle-raise.v1', String(next)); } catch { /* private mode */ }
+    setNotice(step === null ? i18n.t('player.subtitles.positionBack') : i18n.t('player.subtitles.positionNotice', {direction: i18n.t(step > 0 ? 'player.subtitles.positionUp' : 'player.subtitles.positionDown')}));
+  };
+  useEffect(() => { overlay?.adjust({scale: ({small: 0.9, medium: 1, large: 1.12, 'extra-large': 1.25} as Record<string, number>)[subtitleSize] ?? 1, raise: subtitleRaise / 100}); }, [overlay, subtitleSize, subtitleRaise]);
+  const drawFallbacks = subtitles.drawFallbacks;
+  useEffect(() => { if (drawFallbacks) setNotice(i18n.t('player.subtitles.drawFailed')); }, [drawFallbacks]); // eslint-disable-line react-hooks/exhaustive-deps
   // Fetched with the session (one small read) so Chapters only appears when the title has them.
   const chapters = usePlayerChapters(api, scope, item, service, !isAudio);
   // FEAT-11: chapter starts and intro/credits on the seek bar.
   const chapterList = chapters.data?.status === 'available' ? chapters.data.chapters : undefined;
   const chapterMarks = useMemo(() => chapterList?.map(c => ({start: c.startSeconds, title: c.title})), [chapterList]);
   const markerList = offers.data?.markers?.markers;
+  /* While the closing credits run, the next title is offered in a corner; its card stands in for the "Skip credits" button. */
+  const upNext = useUpNextDuringCredits(engine, markerList, skipModes.credits ?? 'ask', !isAudio && !state.channel);
+  const promptModes = upNext.offer?.marker ? {...skipModes, credits: 'off' as SkipMode, outro: 'off' as SkipMode} : skipModes;
   const segmentMarks = useMemo(() => markerList?.filter(m => m.kind === 'intro' || m.kind === 'credits' || m.kind === 'outro' || m.kind === 'recap').map(m => ({start: m.startSeconds, end: m.endSeconds})), [markerList]);
   const listening = useSyncExternalStore(queue?.listening.subscribe ?? (() => () => {}), () => queue?.listening.getSnapshot() ?? null);
   useSystemListening(service, state, video, identity.item ?? {id: identity.itemId ?? '', libraryId: identity.libraryId ?? '', title: identity.title, kind: identity.kind ?? '', duration: state.duration, progressSeconds: state.positionSeconds, available: true, posterUrl: identity.posterUrl}, queue, api, currentAccessToken, identity.subtitle);
@@ -259,7 +280,7 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
     flash(i18n.t('web.player.volume.changed', {percent: Math.round(next * 100)}));
   };
   const stepSpeed = (direction: 1 | -1) => {
-    const list: readonly number[] = isAudio ? listeningRates : rates;
+    const list: readonly number[] = isAudio ? audiobookRates : rates;
     const at = list.indexOf(rate) < 0 ? list.indexOf(1) : list.indexOf(rate);
     const next = list[Math.max(0, Math.min(list.length - 1, at + direction))]!;
     if (next === rate) return;
@@ -285,8 +306,8 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
   const toggleSubtitles = () => {
     const plan = subtitles.snapshot.plan;
     if (!subtitles.service || !plan || subtitles.snapshot.busy) return;
-    if (plan.mode === 'track' && !subtitles.snapshot.suppressed) { lastSubtitle.current = plan.selected?.id; void subtitles.service.choose(null).catch(() => {}); return; }
-    const pick = plan.resources.find(r => r.id === lastSubtitle.current && r.enabled) ?? plan.resources.find(r => r.enabled && !isBitmapResource(r)) ?? plan.resources.find(r => r.enabled);
+    if (plan.mode === 'track' && !subtitles.snapshot.suppressed) { lastSubtitle.current = plan.selected?.id; void subtitles.turnOff().catch(() => {}); return; }
+    const pick = plan.resources.find(r => r.id === lastSubtitle.current && r.enabled) ?? plan.resources.find(r => r.enabled && !burnsIn(r)) ?? plan.resources.find(r => r.enabled);
     if (pick) chooseSubtitle(pick); else flash(i18n.t('web.player.subtitles.none'));
   };
   const nudgeSubtitles = (delta: number) => {
@@ -423,15 +444,19 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
   const sourceFacts = {is4k: !!cachedFacts?.is4k || (originalHeight ?? 0) >= 2100, isHdr: !!cachedFacts?.isHdr};
   // ARCH-API-08: the owner's transcoding switch (from this play's offers) also turns off burned-in subtitles.
   const owner = ownerPlaybackSwitches(offersData);
-  const ownerBlocks = (r: NonNullable<typeof subtitlePlan>['resources'][number]) => !owner.subtitleBurnIn && isBitmapResource(r);
+  /* An image track this browser draws itself is like any text track: nothing is converted, so
+     there is nothing to warn about, nothing for the owner's switch to forbid, and no reason to
+     prefer another track over the one the viewer picked. */
+  const burnsIn = (r: NonNullable<typeof subtitlePlan>['resources'][number]) => isBitmapResource(r) && !subtitles.draws(r);
+  const ownerBlocks = (r: NonNullable<typeof subtitlePlan>['resources'][number]) => !owner.subtitleBurnIn && burnsIn(r);
   const chooseSubtitle = (resource: NonNullable<typeof subtitlePlan>['resources'][number]) => {
     const service = subtitles.service;
     if (!service || subtitles.snapshot.busy || !resource.enabled || ownerBlocks(resource)) return;
-    // A language with both a text and a bitmap track plays the text track.
-    if (isBitmapResource(resource)) {
+    // A language with both a text and a bitmap track plays the text track, when the bitmap one would be burned in.
+    if (burnsIn(resource)) {
       const text = textTrackForLanguage(subtitlePlan?.resources ?? [], resource.language);
       if (text && text.id !== resource.id) {
-        void service.choose(text).catch(() => {});
+        void subtitles.choose(text).catch(() => {});
         setNotice(i18n.t('player.subtitles.preferredText'));
         setOpenBox(null);
         return;
@@ -441,7 +466,7 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
         return;
       }
     }
-    void service.choose(resource).catch(() => {});
+    void subtitles.choose(resource).catch(() => {});
     setOpenBox(null);
   };
   const confirmBitmap = () => {
@@ -449,7 +474,7 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
     setBitmapPending(null);
     if (!pending || !subtitles.service) return;
     bitmapAcknowledged.current.add(pending.id);
-    void subtitles.service.choose(pending).catch(() => {});
+    void subtitles.choose(pending).catch(() => {});
     setOpenBox(null);
   };
   /* Pick before play: the title page's audio/subtitle choice, applied by the shared rule
@@ -466,7 +491,7 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
     }, {
       selectRendition: id => { service.selectAudio(id); },
       selectTrack: stream => { void service.selectAudioTrack(stream); },
-      chooseSubtitle: id => { const resource = id ? subtitlePlan?.resources.find(r => r.id === id) : null; if (resource !== undefined) void subtitles.service?.choose(resource).catch(() => {}); },
+      chooseSubtitle: id => { const resource = id ? subtitlePlan?.resources.find(r => r.id === id) : null; if (resource === null) void subtitles.turnOff().catch(() => {}); else if (resource) void subtitles.choose(resource).catch(() => {}); },
     });
   }, [state.session?.id, state.itemId, audioPlan.plan, audioPlan.availability, state.audioTracks, subtitlePlan, subtitles.service, subtitles.snapshot.busy, service]);
   /* Quality. Original is the default; Automatic starts at Original and moves down, and back up,
@@ -482,14 +507,13 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
   const originalKbps = originalRate.current.kbps;
   const offeredSteps = useMemo(() => offeredQualities({height: originalHeight, bitrateKbps: originalKbps}), [originalHeight, originalKbps]);
   const qualityFooter = qualityNetworkFooter(offersData?.deliveryPolicy);
-  const qualityFooterLine = qualityFooter.network && qualityFooter.height ? i18n.t('quality.networkLimit', {network: i18n.t(qualityFooter.network === 'home' ? 'network.home' : qualityFooter.network === 'away' ? 'network.away' : qualityFooter.network === 'wifi' ? 'network.wifi' : 'network.cellular'), height: qualityFooter.height}) : '';
-  const savedRow: CompositeId = qualityFooter.network === 'home' ? 'quality.home' : qualityFooter.network === 'cellular' ? 'quality.cellular' : 'quality.away';
-  const savedValue = String(readComposite(savedRow, key => prefs.value<PreferenceValue>(key, '')));
-  // Until the session says which network it is on, nothing is assumed about the saved default.
-  // A saved limit at or above this source does not limit it: that is Original for this title.
-  // Preferences that have not arrived yet say nothing either: Original until they do.
-  const savedKnown = !!qualityFooter.network && prefs.value<string>('quality.local.mode', '') !== '';
-  const savedQuality: QualityChoice = savedKnown && isQualityChoice(savedValue) && (!fixedQuality(savedValue) || offeredSteps.some(q => q.id === savedValue)) ? savedValue : 'original';
+  const qualityFooterLine = qualityFooter.network && qualityFooter.height ? i18n.t('quality.networkLimit', {network: i18n.t(qualityFooter.network === 'home' ? 'network.home' : 'network.away'), height: qualityFooter.height}) : '';
+  // A viewing that named no quality was started by the server with the viewer's saved default for
+  // where this device is (Settings › Quality: one for home, one for away): the quality in force on
+  // the session says which. A saved limit at or above this source does not limit it: that is
+  // Original for this title. Until there is a session, nothing is assumed.
+  const inForce = qualityChoiceOf(presentation?.quality);
+  const savedQuality: QualityChoice = inForce && (!fixedQuality(inForce) || offeredSteps.some(q => q.id === inForce)) ? inForce : 'original';
   const qualityChoice: QualityChoice = engine.qualityChoice ?? savedQuality;
   const automaticStep = useSyncExternalStore(engine.playback.subscribeAutomatic, () => engine.playback.automaticAt);
   const stepLabel = (q: FixedQuality) => (q.id === '2160' ? i18n.t('quality.4k') : i18n.t('quality.height', {height: q.height}));
@@ -635,10 +659,13 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
         onEmptied={() => { setBuffering(false); setMediaPlaying(false); }}
         onPause={() => { setBuffering(false); setMediaPlaying(false); }}
       />
+      {/* Always in the page, like the video element: the overlay is made once for the player's life. Hidden unless a drawn subtitle is on. */}
+      <canvas ref={subtitleCanvas} className={s.subtitleCanvas} aria-hidden />
       {!isAudio ? <div className={s.tap} onClick={tap} onDoubleClick={() => { if (pointerKind.current === 'mouse') { clearTimeout(clickTimer.current); void toggleFullscreen(); } }} onWheel={e => { if (!openBox && e.deltaY !== 0) changeVolume(e.deltaY < 0 ? 0.05 : -0.05); }} aria-hidden /> : null}
       {(buffering || state.recovering) && state.intent === 'playing' && !state.error ? <div className={s.spinner} aria-hidden /> : null}
       {!isAudio ? <PostPlay engine={engine} onClose={close} /> : null}
-      {!isAudio && !linear && state.phase === 'ready' ? <SkipPrompt markers={offers.data?.markers ?? null} position={state.positionSeconds} sessionId={state.session?.id} modes={skipModes} onSeek={engine.seekTo} onSkipped={(id, mode, at) => engine.service.markerSkipped(id, mode, at)} /> : null}
+      {!isAudio && !linear && state.phase === 'ready' ? <SkipPrompt markers={offers.data?.markers ?? null} position={state.positionSeconds} sessionId={state.session?.id} modes={promptModes} onSeek={engine.seekTo} onSkipped={(id, mode, at) => engine.service.markerSkipped(id, mode, at)} /> : null}
+      {upNext.offer && upNext.next ? <UpNextCredits engine={engine} offer={upNext.offer} next={upNext.next} onDismiss={upNext.dismiss} /> : null}
       {linear && state.linearStalled && state.phase !== 'error' ? (
         // A channel start that can't proceed says why, instead of "Preparing playback…" forever.
         <div className={s.errorState}>
@@ -739,8 +766,8 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
                 <>
                   {subtitles.service && subtitlePlan ? (
                     <>
-                      {optionRow('Off', subtitlePlan.mode === 'off', () => { void subtitles.service!.choose(null); setOpenBox(null); })}
-                      {(subtitlePlan.resources ?? []).map(r => optionRow(trackName(r, i18n.locale) || r.title, !subtitles.snapshot.suppressed && subtitlePlan.selected?.id === r.id, () => chooseSubtitle(r), !r.enabled ? subtitleReason(r.reason) : ownerBlocks(r) ? i18n.t('player.ownerOff') : isBitmapResource(r) ? i18n.t('player.subtitles.bitmapNote') : r.origin === 'embedded' ? 'In file' : r.origin === 'sidecar' ? 'File' : r.origin === 'upload' ? 'Uploaded' : 'Provider', subtitles.snapshot.busy || !r.enabled || ownerBlocks(r)))}
+                      {optionRow('Off', subtitlePlan.mode === 'off', () => { void subtitles.turnOff().catch(() => {}); setOpenBox(null); })}
+                      {(subtitlePlan.resources ?? []).map(r => optionRow(trackName(r, i18n.locale) || r.title, !subtitles.snapshot.suppressed && subtitlePlan.selected?.id === r.id, () => chooseSubtitle(r), !r.enabled ? subtitleReason(r.reason) : ownerBlocks(r) ? i18n.t('player.ownerOff') : burnsIn(r) ? i18n.t('player.subtitles.bitmapNote') : r.origin === 'embedded' ? 'In file' : r.origin === 'sidecar' ? 'File' : r.origin === 'upload' ? 'Uploaded' : 'Provider', subtitles.snapshot.busy || !r.enabled || ownerBlocks(r)))}
                       {(subtitlePlan.discovered ?? []).filter(d => !(subtitlePlan.resources ?? []).some(r => r.discoveryId === d.id && r.enabled)).map(d => optionRow(trackName(d, i18n.locale) || d.title, false, () => { void subtitles.service!.import(d); setOpenBox(null); }, d.enabled ? 'Import' : subtitleReason(d.reason), subtitles.snapshot.busy || !d.enabled))}
                       {subtitles.snapshot.catalog?.provider.enabled ? (
                         subtitleSearch ? (
@@ -750,12 +777,13 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
                         ) : optionRow(i18n.t('player.opt.findSubtitles'), false, () => { setSubtitleSearch(true); void subtitles.service!.search().catch(() => {}); })
                       ) : null}
                       {subtitlePlan.selected ? <div style={{display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap'}} title={i18n.t('player.opt.timingHelp')}><Text variant="caption" tone="tertiary">{i18n.t('player.opt.timing')} {i18n.t('player.opt.offsetSeconds', {seconds: subtitles.offsetSeconds.toFixed(1)})}</Text>{[-0.5, -0.1, 0.1, 0.5].map(step => <Button key={step} size="sm" variant="ghost" label={(step > 0 ? '+' : '−') + Math.abs(step)} onClick={() => { subtitles.nudge(step); }} />)}</div> : null}
+                      {subtitles.drawnKind ? <div style={{display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap'}} title={i18n.t('player.subtitles.positionHelp')}><Text variant="caption" tone="tertiary">{subtitles.drawing ? i18n.t('player.subtitles.loadingDrawn') : i18n.t('player.subtitles.position')}</Text><Button size="sm" variant="ghost" label={i18n.t('player.subtitles.moveUp')} onClick={() => moveSubtitles(2)} /><Button size="sm" variant="ghost" label={i18n.t('player.subtitles.moveDown')} onClick={() => moveSubtitles(-2)} />{subtitleRaise !== 0 ? <Button size="sm" variant="ghost" label={i18n.t('player.subtitles.positionReset')} onClick={() => moveSubtitles(null)} /> : null}</div> : null}
                     </>
                   ) : <Text variant="caption" tone="tertiary">{subtitles.snapshot.loading ? 'Loading subtitle choices…' : subtitles.snapshot.error ?? subtitles.rendererError ?? 'Subtitles are available once playback starts.'}</Text>}
                 </>
               )) : null}
               {!isAudio ? box('quality', 'quality', i18n.t('player.opt.quality'), qualityLabelNow, qualityContent()) : null}
-              {isMusic ? null : box('speed', 'speed', 'Speed', rate === 1 ? 'Normal' : `${rate}×`, <div className={s.speedGrid}>{(isAudio ? [...listeningRates] : rates).map(v => optionRow(v === 1 ? 'Normal' : `${v}×`, v === rate, () => setSpeed(v)))}</div>)}
+              {isMusic ? null : box('speed', 'speed', 'Speed', rate === 1 ? 'Normal' : `${rate}×`, <div className={s.speedGrid}>{(isAudio ? [...audiobookRates] : rates).map(v => optionRow(v === 1 ? 'Normal' : `${v}×`, v === rate, () => setSpeed(v)))}</div>)}
               {box('sleep', 'sleep', i18n.t('player.opt.sleep'), sleepLabel, (
                 <>
                   {sleepChoices.map(c => optionRow(sleepChoiceLabel(c), (isAudio ? listening?.timer?.choice ?? 'off' : sleepAt ? videoSleep : 'off') === c, () => setSleep(c)))}
@@ -787,12 +815,12 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
               ))}
               {!isAudio ? box('subtitles', 'subtitles', 'Subtitles', currentSubtitle, subtitles.service && subtitlePlan ? (
                 <>
-                  {optionRow('Off', subtitlePlan.mode === 'off', () => { void subtitles.service!.choose(null); })}
-                  {(subtitlePlan.resources ?? []).map(r => optionRow(trackName(r, i18n.locale) || r.title, !subtitles.snapshot.suppressed && subtitlePlan.selected?.id === r.id, () => chooseSubtitle(r), !r.enabled ? subtitleReason(r.reason) : ownerBlocks(r) ? i18n.t('player.ownerOff') : isBitmapResource(r) ? i18n.t('player.subtitles.bitmapNote') : undefined, subtitles.snapshot.busy || !r.enabled || ownerBlocks(r)))}
+                  {optionRow('Off', subtitlePlan.mode === 'off', () => { void subtitles.turnOff().catch(() => {}); })}
+                  {(subtitlePlan.resources ?? []).map(r => optionRow(trackName(r, i18n.locale) || r.title, !subtitles.snapshot.suppressed && subtitlePlan.selected?.id === r.id, () => chooseSubtitle(r), !r.enabled ? subtitleReason(r.reason) : ownerBlocks(r) ? i18n.t('player.ownerOff') : burnsIn(r) ? i18n.t('player.subtitles.bitmapNote') : undefined, subtitles.snapshot.busy || !r.enabled || ownerBlocks(r)))}
                 </>
               ) : <Text variant="caption" tone="tertiary">Subtitles are available once playback starts.</Text>) : null}
               {!isAudio ? box('quality', 'quality', i18n.t('player.opt.quality'), qualityLabelNow, qualityContent()) : null}
-              {isMusic ? null : box('speed', 'speed', 'Speed', rate === 1 ? 'Normal' : `${rate}×`, <div className={s.speedGrid}>{(isAudio ? [...listeningRates] : rates).map(v => optionRow(v === 1 ? 'Normal' : `${v}×`, v === rate, () => setSpeed(v)))}</div>)}
+              {isMusic ? null : box('speed', 'speed', 'Speed', rate === 1 ? 'Normal' : `${rate}×`, <div className={s.speedGrid}>{(isAudio ? [...audiobookRates] : rates).map(v => optionRow(v === 1 ? 'Normal' : `${v}×`, v === rate, () => setSpeed(v)))}</div>)}
               {box('sleep', 'sleep', i18n.t('player.opt.sleep'), sleepLabel, sleepChoices.map(c => optionRow(sleepChoiceLabel(c), (isAudio ? listening?.timer?.choice ?? 'off' : sleepAt ? videoSleep : 'off') === c, () => setSleep(c))))}
               {queueCount > 1 && queue ? box('queue', 'queue', i18n.t('player.queue'), String(queueCount - 1), <QueueList queue={queue} />) : null}
             </div>

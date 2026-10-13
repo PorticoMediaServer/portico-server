@@ -232,10 +232,7 @@ func (s *Service) PrepareNext(ctx context.Context, c Caller, id, ifMatch, key st
 	// The next session inherits the quality request (spec §18.3); tracks are per item.
 	var prior storedRequest
 	_ = json.Unmarshal([]byte(r.request), &prior)
-	stored := storedRequest{Quality: prior.Quality, Network: prior.Network}
-	if stored.Quality.Mode == "" {
-		stored.Quality.Mode = "original"
-	}
+	stored := storedRequest{Quality: prior.Quality, Network: prior.Network}.normalized()
 	token := newID("pn_")
 	expires := now.Add(preparationLifetime)
 	media, view, err := s.present(ctx, c, presentationTarget{item: item, request: stored, requestID: "v1." + token, subtitleOp: "v1-" + token, privateFor: r.media, privateUntilMs: expires.UnixMilli()})

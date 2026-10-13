@@ -142,8 +142,7 @@ func (s *Service) storedVisibilityRequests(ctx context.Context) ([]visibilityReq
 		}
 		out = append(out, visibilityRequest{library: library, restrictions: identity.ContentRestrictions{
 			MaximumAge: policy.MaximumAge, BlockUnrated: policy.BlockUnrated,
-			BlockedLabels: policy.BlockedLabels, MemberMaxRating: policy.MemberMaxRating,
-			MemberAllowUnrated: policy.MemberAllowUnrated, MemberDeniedLabels: policy.MemberDeniedLabels,
+			BlockedLabels: policy.BlockedLabels, MemberDeniedLabels: policy.MemberDeniedLabels,
 		}})
 	}
 	return out, rows.Err()
@@ -157,8 +156,6 @@ type visibilityPolicy struct {
 	MaximumAge         *int     `json:"maximumAge,omitempty"`
 	BlockUnrated       bool     `json:"blockUnrated"`
 	BlockedLabels      []string `json:"blockedLabels"`
-	MemberMaxRating    string   `json:"memberMaxRating"`
-	MemberAllowUnrated bool     `json:"memberAllowUnrated"`
 	MemberDeniedLabels []string `json:"memberDeniedLabels"`
 }
 
@@ -180,8 +177,6 @@ func visibilityClassKey(library string, r identity.ContentRestrictions) (string,
 	p := visibilityPolicy{
 		MaximumAge: r.MaximumAge, BlockUnrated: r.BlockUnrated,
 		BlockedLabels:      canonicalLabels(r.BlockedLabels),
-		MemberMaxRating:    strings.ToUpper(strings.TrimSpace(r.MemberMaxRating)),
-		MemberAllowUnrated: r.MemberMaxRating != "" && r.MemberAllowUnrated,
 		MemberDeniedLabels: canonicalLabels(r.MemberDeniedLabels),
 	}
 	raw, _ := json.Marshal(p)

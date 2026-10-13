@@ -46,45 +46,33 @@ func TestDeliveryPolicyRouteResolvesTheViewersLane(t *testing.T) {
 		return policy
 	}
 
-	// A LAN peer with no declared transport is local; the client said nothing,
-	// and the address is all the server needs.
+	// A peer inside the owner's home networks is local, whatever it says it is
+	// on; the address is all the server needs, and one rule decides it.
 	local := read("192.168.4.10:51000", "")
 	if local["networkClass"] != string(playback.NetworkLocal) || local["serverLocality"] != playback.LocalityLocal {
-		t.Fatal("loopback request was not resolved as local", local)
+		t.Fatal("a home-network request was not resolved as local", local)
 	}
-	if local["preferenceLane"] != "local" {
-		t.Fatal(local["preferenceLane"])
+	if local["preferenceLane"] != playback.QualityHome || local["qualityMode"] != playback.QualityOriginal {
+		t.Fatal(local["preferenceLane"], local["qualityMode"])
 	}
-
-	// A declared transport narrows the lane within that locality.
-	if wifi := read("192.168.4.10:51000", "wifi"); wifi["networkClass"] != string(playback.NetworkWiFi) {
-		t.Fatal("declared wifi was not honoured", wifi)
+	// A declared transport is kept for diagnostics and changes no decision.
+	for _, transport := range []string{"wifi", "cellular"} {
+		if hinted := read("192.168.4.10:51000", transport); hinted["networkClass"] != string(playback.NetworkLocal) || hinted["transportClass"] != transport || hinted["allowHDR"] != true {
+			t.Fatal("a transport hint changed a home-network decision", hinted)
+		}
 	}
-	cellular := read("192.168.4.10:51000", "cellular")
-	if cellular["networkClass"] != string(playback.NetworkCellular) || cellular["preferenceLane"] != "cellular" {
-		t.Fatal("declared cellular was not honoured", cellular)
-	}
-	// The cellular lane's registry defaults are conservative by design.
-	if cellular["allowHDR"] != false {
-		t.Fatal("cellular lane allowed HDR", cellular)
-	}
-
 	// An unrecognised declaration is not an error and is not believed.
 	if nonsense := read("192.168.4.10:51000", "satellite"); nonsense["transportClass"] != "unknown" || nonsense["networkClass"] != string(playback.NetworkLocal) {
 		t.Fatal("unknown transport was believed", nonsense)
 	}
 
-	// A routable peer is remote however it declares itself, unless it says
-	// cellular, which only it can know and which only narrows.
+	// A routable peer is remote however it declares itself.
 	remote := read("93.184.216.34:51000", "ethernet")
-	if remote["networkClass"] != string(playback.NetworkRemote) || remote["serverLocality"] != playback.LocalityRemote {
+	if remote["networkClass"] != string(playback.NetworkRemote) || remote["serverLocality"] != playback.LocalityRemote || remote["preferenceLane"] != playback.QualityRemote {
 		t.Fatal("public peer was not resolved as remote", remote)
 	}
 	if lying := read("93.184.216.34:51000", "wifi"); lying["networkClass"] != string(playback.NetworkRemote) {
-		t.Fatal("a remote client claimed the wifi lane", lying)
-	}
-	if roaming := read("93.184.216.34:51000", "cellular"); roaming["networkClass"] != string(playback.NetworkCellular) {
-		t.Fatal("remote cellular was not honoured", roaming)
+		t.Fatal("a remote client talked itself home", lying)
 	}
 
 	// Every published policy names its three delivery decisions.

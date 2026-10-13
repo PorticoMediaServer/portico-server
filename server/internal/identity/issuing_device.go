@@ -8,6 +8,17 @@ import (
 
 type issuingDeviceKey struct{}
 
+// vouchedDeviceKey marks an issuance for a device that a signed-in, approved
+// device has vouched for (a Cast target it paired). Such a device does not
+// wait for the owner's approval; what it is issued is narrow by construction.
+type vouchedDeviceKey struct{}
+
+// WithVouchedDevice marks ctx so the device registered by the next issuance
+// is approved on the word of the session that paired it.
+func WithVouchedDevice(ctx context.Context) context.Context {
+	return context.WithValue(ctx, vouchedDeviceKey{}, true)
+}
+
 type issuingDevice struct {
 	registration DeviceRegistration
 	peer         string

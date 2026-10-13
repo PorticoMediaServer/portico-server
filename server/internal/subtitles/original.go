@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"strconv"
 
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/mediaartifact"
@@ -26,6 +27,12 @@ type FontFile struct {
 type FontFiles struct {
 	SkippedCount int        `json:"skippedCount,omitempty"`
 	Fonts        []FontFile `json:"fonts"`
+}
+
+// MediaBaseURL keeps subtitle payloads in a namespace distinct from linear
+// playback, regardless of the grant or file format.
+func MediaBaseURL(grant, resource string, revision int64) string {
+	return "/v1/media/subtitles/" + grant + "/" + resource + "/" + strconv.FormatInt(revision, 10)
 }
 
 func deliveryFormats(format string) []Delivery {

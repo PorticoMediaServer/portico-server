@@ -14,11 +14,20 @@
       "dvr": "unavailable",
       "feedback": "enabled",
       "live_tv": "unavailable",
+      "playback_v1": "enabled",
+      "playback_v1_kinds": "movie,episode,video,audiobook,audiobook_file,book,song,track",
+      "queueTransitions": "enabled",
+      "subtitle_burn_in": "enabled",
+      "transcoding": "enabled",
       "watch_together": "enabled"
     },
     "limits": {
-      "longPollSecondsMax": 55,
+      "bulkJobsActiveMax": 32,
+      "downloadBatchMax": 100,
+      "longPollSecondsMax": 25,
       "pageSizeMax": 100,
+      "playlistWriteMax": 200,
+      "queueKeysMax": 10000000,
       "selectorIdsMax": 500
     }
   }

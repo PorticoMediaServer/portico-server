@@ -32,6 +32,14 @@ func TestRatingsNormaliseAcrossBodiesAndSpellings(t *testing.T) {
 		"MA15+": 15, "R18+": 18,
 		"US:PG-13": 13, "de/FSK 12": 12, "  Rated R  ": 17,
 		"-12": 12, "16+": 16,
+		// Spellings that used to read as unrated: punctuation and spacing do
+		// not change which rating it is.
+		"TV-Y7-FV": 7, "TVY7FV": 7, "tv y7": 7, "PG13": 13, "PG 13": 13, "TVMA": 17, "MA 15+": 15, "M/PG": 8, "NC17": 18,
+		// Ratings of bodies the pickers do not list.
+		"14A": 14, "18A": 18, "R13": 13, "R16": 16, "RP16": 16, "PG12": 12, "R15+": 15, "NC16": 16, "M18": 18, "R21": 21,
+		"U/A": 12, "UA 13+": 13, "AL": 0, "L": 0, "APTA": 0, "Btl": 0, "VM14": 14, "E10+": 10, "Approved": 0,
+		// Where bodies disagree about a letter, the higher age is kept.
+		"A": 18, "M": 15,
 	} {
 		age, ok := RatingAge(raw)
 		if !ok || age != want {
@@ -40,7 +48,7 @@ func TestRatingsNormaliseAcrossBodiesAndSpellings(t *testing.T) {
 	}
 	// Anything the table does not know, and every spelling of "not rated", is
 	// unrated. It must never resolve to age 0, which would read as "all ages".
-	for _, raw := range []string{"", "   ", "NR", "Unrated", "not rated", "UR", "N/A", "None", "Banana", "99"} {
+	for _, raw := range []string{"", "   ", "NR", "Unrated", "not rated", "UR", "N/A", "None", "Banana", "99", "S", "TBD", "-", "+"} {
 		if age, ok := RatingAge(raw); ok {
 			t.Errorf("%q resolved to age %d; an unknown rating must be unrated, never all-ages", raw, age)
 		}
@@ -189,22 +197,36 @@ func TestAPIKeyInheritsItsLocalOwnersProfileRestrictions(t *testing.T) {
 	}
 }
 
-func TestRestrictionChangeEndsTheProfilesSessions(t *testing.T) {
+// A restriction change applies live: the profile's devices stay signed in and
+// the next read of its restrictions is the new document.
+func TestRestrictionChangeAppliesWithoutSigningTheProfileOut(t *testing.T) {
 	ctx := context.Background()
 	s, login, child := restrictionFixture(t)
 	selected, e := s.SelectDirectProfile(ctx, login.AccountToken, child.ID, DirectSelection{})
 	if e != nil {
 		t.Fatal(e)
 	}
+	p, e := s.Authenticate(selected.Session.AccessToken)
+	if e != nil {
+		t.Fatal(e)
+	}
+	before, e := s.ViewerRestrictions(ctx, p)
+	if e != nil || before.Active() {
+		t.Fatalf("restrictions before the change: %+v %v", before, e)
+	}
+	if _, e = s.SetProfileRestrictions(ctx, login.AccountToken, child.ID, ProfileRestrictionEdit{ExpectedRevision: 1, RatingSystem: "mpaa", MaximumAgeRating: "PG", AllowUnrated: true}); e != nil {
+		t.Fatal(e)
+	}
 	if _, e = s.Authenticate(selected.Session.AccessToken); e != nil {
-		t.Fatal(e)
+		t.Fatalf("a restriction change signed the profile out: %v", e)
 	}
-	if _, e = s.SetProfileRestrictions(ctx, login.AccountToken, child.ID, ProfileRestrictionEdit{ExpectedRevision: 1, RatingSystem: "mpaa", MaximumAgeRating: "PG"}); e != nil {
-		t.Fatal(e)
+	after, e := s.ViewerRestrictions(ctx, p)
+	if e != nil || after.MaximumAge == nil || *after.MaximumAge != 8 || after.Revision == before.Revision {
+		t.Fatalf("the new restriction is not what the next request reads: %+v %v", after, e)
 	}
-	// An open page, cursor or playback grant must not outlive the change.
-	if _, e = s.Authenticate(selected.Session.AccessToken); !errors.Is(e, ErrUnauthorized) {
-		t.Fatalf("the profile's session survived a restriction change: %v", e)
+	// The restricted profile still cannot change its own restrictions.
+	if _, e = s.SetProfileRestrictions(ctx, selected.Session.AccessToken, child.ID, ProfileRestrictionEdit{ExpectedRevision: 2, AllowUnrated: true}); !errors.Is(e, ErrForbidden) {
+		t.Fatalf("a child profile loosened its own restrictions: %v", e)
 	}
 }
 
@@ -295,3 +317,35 @@ func TestPINRecoveryOptionsAfterFactorEnrolment(t *testing.T) {
 }
 
 func pointer[T any](v T) *T { return &v }
+
+// A profile's ceiling and an account's ceiling are one number once combined:
+// the lower one, with unrated titles blocked if either side blocks them.
+func TestNarrowOnlyEverTightens(t *testing.T) {
+	age := func(v int) *int { return &v }
+	profile := ContentRestrictions{MaximumAge: age(13), BlockedLabels: []string{"Scary"}, Revision: 4}
+	lower := profile.Narrow(8, false, []string{"Gore"}, 7)
+	if lower.MaximumAge == nil || *lower.MaximumAge != 8 || lower.BlockUnrated || lower.MemberRevision != 7 || len(lower.MemberDeniedLabels) != 1 || len(lower.BlockedLabels) != 1 {
+		t.Fatalf("a lower account ceiling: %+v", lower)
+	}
+	higher := profile.Narrow(17, true, nil, 1)
+	if higher.MaximumAge == nil || *higher.MaximumAge != 13 || !higher.BlockUnrated {
+		t.Fatalf("a higher account ceiling loosened the profile's: %+v", higher)
+	}
+	none := profile.Narrow(-1, false, nil, 1)
+	if none.MaximumAge == nil || *none.MaximumAge != 13 || none.BlockUnrated {
+		t.Fatalf("an account with no ceiling changed the profile's: %+v", none)
+	}
+	open := ContentRestrictions{}.Narrow(-1, false, nil, 1)
+	if open.Active() {
+		t.Fatalf("nothing set on either side restricts something: %+v", open)
+	}
+	only := ContentRestrictions{}.Narrow(0, false, nil, 1)
+	if only.MaximumAge == nil || *only.MaximumAge != 0 {
+		t.Fatalf("an all-ages account ceiling was lost: %+v", only)
+	}
+	// The original is not changed through a shared pointer.
+	*lower.MaximumAge = 99
+	if *profile.MaximumAge != 13 {
+		t.Fatal("narrowing changed the profile's own restriction")
+	}
+}

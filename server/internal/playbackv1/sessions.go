@@ -11,6 +11,7 @@ import (
 	"errors"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"portico.local/server/internal/dbwork"
@@ -85,6 +86,11 @@ type StartRequest struct {
 	Subtitles         *SubtitleRequest `json:"subtitles,omitempty"`
 	Network           string           `json:"network,omitempty"`
 	ReplacesSessionID string           `json:"replacesSessionId,omitempty"`
+	// ThroughputKbps is the client's own estimate of what its connection to
+	// this server carries. With automatic quality the start lands on the
+	// widest quality that fits it; with any other quality a start that the
+	// connection plainly cannot carry is refused (connection_too_slow).
+	ThroughputKbps int `json:"throughputKbps,omitempty"`
 }
 
 // Change is PATCH /v1/playback/sessions/{id} (spec §5.7).
@@ -97,6 +103,19 @@ type Change struct {
 	Quality          *Quality         `json:"quality,omitempty"`
 	Seek             *SeekRequest     `json:"seek,omitempty"`
 	SubtitleOffsetMs *int64           `json:"subtitleOffsetMs,omitempty"`
+	// PositionMs is where the player is now. A change that starts a new
+	// presentation starts it there; without it the last reported position is
+	// used, which can be a report interval old.
+	PositionMs *int64 `json:"positionMs,omitempty"`
+	// ThroughputKbps is the client's current connection estimate (see
+	// StartRequest.ThroughputKbps). It is checked against a quality asked for
+	// in the same change.
+	ThroughputKbps *int `json:"throughputKbps,omitempty"`
+	// Failure says the device's player could not play the current
+	// presentation. The server remembers that this way of delivering the file
+	// failed on this device and re-plans the same session, at the current
+	// position, the next way up. unsupported_media: there is no other way.
+	Failure *ReportedError `json:"failure,omitempty"`
 }
 type SeekRequest struct {
 	PositionMs int64  `json:"positionMs"`
@@ -144,13 +163,25 @@ type Lease struct {
 	ReportEveryMs int    `json:"reportEveryMs"`
 }
 type Presentation struct {
-	Generation      int            `json:"generation"`
-	Mode            string         `json:"mode"`
-	URL             string         `json:"url"`
+	Generation int    `json:"generation"`
+	Mode       string `json:"mode"`
+	URL        string `json:"url"`
+	// Engine is the player engine the device must play this presentation with:
+	// "native" (the platform's own player) or "mpv". The server chose it from
+	// the device's capability document and the viewer's player setting.
+	Engine          string         `json:"engine"`
 	StartPositionMs int64          `json:"startPositionMs"`
 	Subtitles       []SubtitleFile `json:"subtitles"`
 	Decision        Decisions      `json:"decision"`
 	BitrateKbps     int            `json:"bitrateKbps,omitempty"`
+	// Quality is the quality in force: what was asked for, or the viewer's
+	// saved default for this network, with automatic's current step in id.
+	Quality *Quality `json:"quality,omitempty"`
+	// AudioTrackID is the audio track being played ("a1").
+	AudioTrackID string `json:"audioTrackId,omitempty"`
+	// Subtitle is the subtitle track in force and how it reaches the screen;
+	// absent when subtitles are off.
+	Subtitle *PresentationSubtitle `json:"subtitle,omitempty"`
 	// Container is what the URL delivers: the file's own container for direct
 	// play ("mp4", "mkv", "flac"…), or "fmp4_hls" / "mpegts_hls" for a stream. A
 	// player that must be told the segment format up front (Cast) reads it here.
@@ -167,6 +198,18 @@ type SubtitleFile struct {
 	TrackID      string `json:"trackId"`
 	Format       string `json:"format"`
 	URL          string `json:"url"`
+}
+
+// PresentationSubtitle is the subtitle track a presentation shows.
+type PresentationSubtitle struct {
+	TrackID string `json:"trackId"`
+	// Kind is the capability name of the track's format: text, ass, pgs,
+	// vobsub or dvb.
+	Kind string `json:"kind"`
+	// Delivery is how it reaches the screen: "sidecar" (a WebVTT file in
+	// subtitles[], drawn by the app), "device" (the engine draws the track
+	// itself from the file it is playing), or "burn" (in the picture).
+	Delivery string `json:"delivery"`
 }
 
 // Caller is who is asking: the admitted principal, its device, and admission's
@@ -190,6 +233,23 @@ type Caller struct {
 	// item policy is applied. session is the v1 session being changed, whose
 	// own share of the budget is not counted against it.
 	Ceiling func(ctx context.Context, session string) (int, error)
+	// SavedQuality reads the viewer's saved default quality for this
+	// connection (quality.home or quality.remote): "original", "automatic" or
+	// a ladder id. Nil, or an error: the original.
+	SavedQuality func(ctx context.Context) (string, error)
+}
+
+// defaultQuality is the quality of a start that names none: the viewer's
+// saved default for where the request comes from.
+func (c *Caller) defaultQuality(ctx context.Context) Quality {
+	if c.SavedQuality == nil {
+		return Quality{Mode: QualityOriginal}
+	}
+	name, err := c.SavedQuality(ctx)
+	if err != nil {
+		return Quality{Mode: QualityOriginal}
+	}
+	return savedQuality(name)
 }
 
 type replanKey struct{}
@@ -257,6 +317,19 @@ type storedRequest struct {
 	Subtitles        *SubtitleRequest `json:"subtitles,omitempty"`
 	SubtitleOffsetMs int64            `json:"subtitleOffsetMs,omitempty"`
 	Network          string           `json:"network,omitempty"`
+}
+
+// normalized is a stored request with a quality mode: one stored before
+// qualities had a mode, or with none, is the original.
+func (r storedRequest) normalized() storedRequest {
+	if r.Quality.Mode == "" {
+		r.Quality.Mode = QualityOriginal
+	}
+	r.Quality.Step = ""
+	if r.Quality.Mode == QualityAutomatic && r.Quality.ID == QualityOriginal {
+		r.Quality.ID = ""
+	}
+	return r
 }
 
 // row is one playback_v1_sessions row.
@@ -411,6 +484,13 @@ func (r StartRequest) validate() error {
 	if r.PartIndex < 0 || r.PartIndex > 1000 {
 		return &FieldError{Path: "partIndex"}
 	}
+	if r.ThroughputKbps < 0 || r.ThroughputKbps > 10_000_000 {
+		return &FieldError{Path: "throughputKbps"}
+	}
+	if r.Quality != nil && r.Quality.Step != "" {
+		// A step moves a session that exists; a start has nothing to step from.
+		return &FieldError{Path: "quality.step"}
+	}
 	if r.Quality != nil {
 		if err := r.Quality.Validate("quality"); err != nil {
 			return err
@@ -451,35 +531,182 @@ type presentationTarget struct {
 	// session's prepared next item, until privateUntilMs.
 	privateFor     string
 	privateUntilMs int64
+	// throughputKbps is the connection estimate the request carried (0: none).
+	// fitThroughput lets an automatic quality land on the step that fits it
+	// (a start); otherwise automatic stays where the request put it.
+	throughputKbps int
+	fitThroughput  bool
+	// rememberAudio and rememberSubtitle say the request's audio or subtitle
+	// track is the viewer's own choice made now, to be remembered for the show
+	// or film.
+	rememberAudio, rememberSubtitle bool
+}
+
+// ThroughputError refuses a presentation the client's measured connection
+// cannot carry. Suggested is the widest fixed quality that fits ("" none).
+type ThroughputError struct{ Suggested string }
+
+func (e *ThroughputError) Error() string { return "the connection is too slow for this quality" }
+
+// subtitleKindOf is the capability name of a subtitle format.
+func subtitleKindOf(format string) string {
+	switch strings.ToLower(format) {
+	case "ass", "ssa":
+		return playback.SubtitleASS
+	case "pgs", "hdmv_pgs_subtitle", "sup", "pgssub":
+		return playback.SubtitlePGS
+	case "vobsub", "dvd_subtitle", "dvdsub", "idx":
+		return playback.SubtitleVobSub
+	case "dvb_subtitle", "dvbsub", "dvb":
+		return playback.SubtitleDVB
+	}
+	return playback.SubtitleText
+}
+
+// subtitleWeight is how a chosen subtitle track weighs in planning: the kind
+// an engine must draw for it not to be burned in, playback.SubtitleBurnAlways
+// when it is burned in whatever the engine, and "" when it costs nothing
+// (off, no track, text delivered beside the stream, or a track the client
+// insists on drawing itself).
+func subtitleWeight(chosen *subtitles.Resource, req *SubtitleRequest) string {
+	if chosen == nil || req == nil || chosen.Renderer != "burn_in" || req.Delivery == "embeddedClient" {
+		return ""
+	}
+	kind := subtitleKindOf(chosen.Format)
+	if req.Delivery == "burn" || kind == playback.SubtitleText {
+		return playback.SubtitleBurnAlways
+	}
+	return kind
+}
+
+// subtitleResources lists one file's selectable subtitle tracks.
+func (s *Service) subtitleResources(ctx context.Context, p identity.Principal, item, asset string) []subtitles.Resource {
+	if s.Subtitles == nil {
+		return nil
+	}
+	tx, done, err := dbwork.BeginRead(ctx, s.DB)
+	if err != nil {
+		return nil
+	}
+	defer done()
+	catalog, err := s.Subtitles.ListTx(ctx, tx, p, item, "")
+	if err != nil {
+		return nil
+	}
+	out := []subtitles.Resource{}
+	for _, r := range catalog.Resources {
+		if r.SourceID == asset && r.Enabled {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+func resourceByID(resources []subtitles.Resource, id string) *subtitles.Resource {
+	for i := range resources {
+		if resources[i].ID == id {
+			return &resources[i]
+		}
+	}
+	return nil
+}
+
+// assetFacts reads a file's picture height and whole bitrate.
+func (s *Service) assetFacts(ctx context.Context, asset string) SourceFacts {
+	var out SourceFacts
+	var size int64
+	var duration float64
+	if dbwork.QueryRow(ctx, s.DB, `SELECT COALESCE(height,0),size,duration FROM catalog_assets WHERE token=?`, asset).Scan(&out.Height, &size, &duration) == nil && duration > 0 && size > 0 {
+		out.BitrateKbps = int(float64(size) * 8 / duration / 1000)
+	}
+	return out
 }
 
 // present creates a presentation (a playback_sessions row with its own grant)
 // and returns it with its view. It does not wait for production.
+//
+// It is where everything a viewer can choose meets the device: the version
+// (the best one for this device when none is named), the quality (the saved
+// default when none is named), the audio and subtitle tracks (what this
+// profile last chose for the show or film when none is named), and the engine
+// the plan names.
 func (s *Service) present(ctx context.Context, c Caller, t presentationTarget) (playback.Session, Presentation, error) {
 	if s.Playback == nil {
 		return playback.Session{}, Presentation{}, playback.ErrIncompatible
 	}
-	asset, err := s.partAsset(ctx, t.item, t.version, t.part)
+	kind, err := readItemKind(ctx, s.DB, t.item)
 	if err != nil {
 		return playback.Session{}, Presentation{}, err
 	}
-	choice := playback.V1Choice{AssetID: asset, AdminMaxVideoBitrateBPS: c.AdminMaxVideoBitrateBPS, Remote: c.Remote, PrivateFor: t.privateFor, PrivateUntilMs: t.privateUntilMs}
-	if err = s.audioChoice(ctx, c, t.item, &choice); err != nil {
+	video := kind != "song" && kind != "track" && kind != "audiobook_file"
+	request := t.request.normalized()
+	base := playback.V1Choice{AdminMaxVideoBitrateBPS: c.AdminMaxVideoBitrateBPS, Remote: c.Remote, PrivateFor: t.privateFor, PrivateUntilMs: t.privateUntilMs}
+	request.Quality.apply(&base)
+	version := t.version
+	if version == "" && video && t.part == 0 {
+		version = s.bestVersion(ctx, c.Principal, t.item, base)
+	}
+	asset, err := s.partAsset(ctx, t.item, version, t.part)
+	if err != nil {
 		return playback.Session{}, Presentation{}, err
 	}
-	if t.request.Quality.Mode == "limit" {
-		choice.Limit = true
-		choice.MaxVideoBitrateBPS = t.request.Quality.MaxVideoBitrateKbps * 1000
-		choice.MaxAudioBitrateBPS = t.request.Quality.MaxAudioBitrateKbps * 1000
-		choice.MaxVideoHeight = t.request.Quality.MaxHeight
+	if asset == "" {
+		// No version named and only one to choose from: the file a start plays.
+		asset, _ = s.Playback.SelectedAsset(ctx, t.item, &base)
 	}
-	if a := t.request.Audio; a != nil {
+	choice := base
+	choice.AssetID = asset
+	if err = s.audioChoice(ctx, c, t.item, kind, &choice); err != nil {
+		return playback.Session{}, Presentation{}, err
+	}
+	var memory TrackMemory
+	if video {
+		memory = s.trackMemory(ctx, c.Principal, t.item)
+	}
+	if a := request.Audio; a != nil {
 		index, ok := ParseStreamID("a", a.TrackID)
 		if !ok {
 			return playback.Session{}, Presentation{}, &FieldError{Path: "audio.trackId"}
 		}
 		choice.AudioStream = &index
+	} else {
+		choice.RememberedAudioLanguage = memory.AudioLanguage
 	}
+	// The subtitle track, known before planning: a styled or image track an
+	// engine cannot draw itself costs a converted picture, which decides the
+	// engine.
+	subtitle := request.Subtitles
+	var resources []subtitles.Resource
+	if video && asset != "" && (subtitle != nil && subtitle.TrackID != TrackOff && subtitle.TrackID != "" || subtitle == nil && memory.SubtitleMode == "on") {
+		resources = s.subtitleResources(ctx, c.Principal, t.item, asset)
+	}
+	if subtitle == nil {
+		subtitle = rememberedSubtitle(memory, subtitles.PlaybackPlan{Resources: resources})
+	}
+	var chosen *subtitles.Resource
+	if subtitle != nil && subtitle.TrackID != TrackOff && subtitle.TrackID != "" {
+		chosen = resourceByID(resources, string(subtitle.TrackID))
+	}
+	choice.SubtitleKind = subtitleWeight(chosen, subtitle)
+	// A styled or image track has an original the server hands over as it is
+	// (the .ass with its fonts, the .sup, the .idx and .sub, the DVB packets),
+	// so an engine that draws the kind needs no burn-in beside a stream either.
+	choice.SubtitleBesideStream = chosen != nil && subtitles.RenderingFormat(chosen.Format) != "text"
+
+	// Quality against the connection the client measured.
+	if t.throughputKbps > 0 && video && asset != "" {
+		if request.Quality.Mode == QualityAutomatic {
+			if t.fitThroughput && request.Quality.ID == "" {
+				request.Quality = fitAutomatic(t.throughputKbps, s.assetFacts(ctx, asset))
+				request.Quality.apply(&choice)
+			}
+		} else if plan, planErr := s.Playback.PlanV1(ctx, c.Principal, t.item, choice); planErr == nil {
+			if need := planKbps(plan); need > 0 && t.throughputKbps*5 < need*4 {
+				return playback.Session{}, Presentation{}, &ThroughputError{Suggested: suggestedQuality(t.throughputKbps, sourceFactsOf(&plan))}
+			}
+		}
+	}
+
 	media, err := s.Playback.CreateV1(ctx, c.Principal, t.item, t.requestID, choice, t.replacing)
 	if errors.Is(err, sql.ErrNoRows) && t.version != "" {
 		return media, Presentation{}, &FieldError{Path: "versionId"}
@@ -487,7 +714,8 @@ func (s *Service) present(ctx context.Context, c Caller, t presentationTarget) (
 	if err != nil {
 		return media, Presentation{}, err
 	}
-	view := Presentation{Mode: "stream", URL: media.StreamURL, StartPositionMs: t.startMs, Subtitles: []SubtitleFile{}}
+	quality := request.Quality
+	view := Presentation{Mode: "stream", URL: media.StreamURL, Engine: playback.EngineNative, StartPositionMs: t.startMs, Subtitles: []SubtitleFile{}, Quality: &quality}
 	if media.Mode == "direct" {
 		view.Mode = "direct"
 	}
@@ -498,31 +726,71 @@ func (s *Service) present(ctx context.Context, c Caller, t presentationTarget) (
 		return media, Presentation{}, err
 	}
 	if plan != nil {
-		view.Decision = decisions(*plan, choice, plan.SourceVideoCodec != "")
-		view.BitrateKbps = (plan.VideoBitrateBPS + plan.AudioBitrateBPS) / 1000
-		view.Container = plan.OutputContainer
+		s.describe(&view, *plan, choice)
 	}
-	if a := t.request.Audio; a != nil && plan != nil && plan.AudioStream >= 0 && streamID("a", plan.AudioStream) != a.TrackID {
+	if a := request.Audio; a != nil && plan != nil && plan.AudioStream >= 0 && streamID("a", plan.AudioStream) != a.TrackID {
 		// The chosen track doesn't exist in this version.
 		_ = s.Playback.StopV1(ctx, media.ID)
 		return media, Presentation{}, &FieldError{Path: "audio.trackId"}
 	}
+	// Whether the engine the plan named draws the chosen track itself.
+	draws := false
+	if chosen != nil && plan != nil && choice.SubtitleKind != "" {
+		profile := s.deviceDocument(ctx, c.DeviceID).Profile(plan.Engine)
+		draws = !playback.SubtitleNeedsBurnIn(profile, choice.SubtitleKind, plan.Mode, choice.SubtitleBesideStream)
+	}
 	// A burn-in chosen with the start re-plans what was just planned, under the
 	// same admission.
 	admitted := playback.WithReplanCeilings(ctx, playback.ReplanCeilings{Remote: choice.Remote, MaxVideoBitrateBPS: choice.AdminMaxVideoBitrateBPS})
-	result, err := s.applySubtitles(admitted, c.Principal, t.item, media.ID, t.request.Subtitles, t.request.SubtitleOffsetMs, t.startMs, t.subtitleOp)
+	result, err := s.applySubtitles(admitted, c.Principal, t.item, media.ID, subtitle, request.SubtitleOffsetMs, t.startMs, t.subtitleOp, draws)
+	if err != nil && request.Subtitles == nil {
+		// A remembered choice that cannot be applied to this file is not the
+		// viewer's request: the title plays without it.
+		result, err = s.applySubtitles(admitted, c.Principal, t.item, media.ID, nil, request.SubtitleOffsetMs, t.startMs, t.subtitleOp+"-n", false)
+	}
 	if err != nil {
 		_ = s.Playback.StopV1(ctx, media.ID)
 		return media, Presentation{}, err
 	}
-	view.Subtitles = result.files
+	view.Subtitles, view.Subtitle = result.files, result.shown
 	if result.replaced != nil {
 		// Burn-in: the same playback session, re-planned with the subtitle in the
 		// video, under a new grant and generation.
 		media.StreamURL, media.Generation = result.replaced.StreamURL, result.replaced.Generation
 		s.adoptReplaced(ctx, &view, media.ID, result.replaced, choice)
 	}
+	if video {
+		var audioLanguage *string
+		if t.rememberAudio && plan != nil && plan.Trace != nil && plan.Trace.Audio != nil {
+			audioLanguage = &plan.Trace.Audio.Language
+		}
+		mode, language := "", ""
+		if t.rememberSubtitle && request.Subtitles != nil {
+			mode = "off"
+			if chosen != nil {
+				mode, language = "on", chosen.Language
+			} else if request.Subtitles.TrackID != TrackOff && request.Subtitles.TrackID != "" && result.shown != nil {
+				mode, language = "on", result.language
+			}
+		}
+		s.rememberTracks(ctx, c.Principal, t.item, audioLanguage, mode, language)
+	}
 	return media, view, nil
+}
+
+// describe fills a presentation view from its plan: the engine, the delivery
+// decision, the bitrate, the container and the audio track.
+func (s *Service) describe(view *Presentation, plan playback.DeliveryPlan, choice playback.V1Choice) {
+	view.Engine = plan.Engine
+	if view.Engine == "" {
+		view.Engine = playback.EngineNative
+	}
+	view.Decision = decisions(plan, choice, plan.SourceVideoCodec != "")
+	view.BitrateKbps = (plan.VideoBitrateBPS + plan.AudioBitrateBPS) / 1000
+	view.Container = plan.OutputContainer
+	if plan.AudioStream >= 0 {
+		view.AudioTrackID = streamID("a", plan.AudioStream)
+	}
 }
 
 // adoptReplaced points a presentation view at a stream a subtitle selection
@@ -534,11 +802,63 @@ func (s *Service) adoptReplaced(ctx context.Context, view *Presentation, media s
 		view.Mode = "direct"
 	}
 	if plan, err := s.Playback.SessionPlan(ctx, media); err == nil && plan != nil {
-		view.Decision = decisions(*plan, choice, plan.SourceVideoCodec != "")
-		view.BitrateKbps = (plan.VideoBitrateBPS + plan.AudioBitrateBPS) / 1000
-		view.Container = plan.OutputContainer
+		s.describe(view, *plan, choice)
 	}
 }
+
+// bestVersion picks the version a start that names none plays: the one this
+// device plays with the least done to it (as it is, then repackaged, then with
+// its sound converted, then fully converted) under the quality asked for, and
+// among equals the catalogue's best version (compactcatalog.BestVersionOrder:
+// the taller picture, then the larger file), which is the order the versions
+// are listed in. A title with one version, or one whose versions cannot be
+// compared, returns "", and the catalogue's best version is played.
+func (s *Service) bestVersion(ctx context.Context, p identity.Principal, item string, choice playback.V1Choice) string {
+	tx, done, err := dbwork.BeginRead(ctx, s.DB)
+	if err != nil {
+		return ""
+	}
+	assets, err := readAssets(ctx, tx, item)
+	done()
+	if err != nil {
+		return ""
+	}
+	groups := versionsOf(assets)
+	if len(groups) < 2 {
+		return ""
+	}
+	if len(groups) > maxComparedVersions {
+		groups = groups[:maxComparedVersions]
+	}
+	best, bestCost := "", 1<<30
+	for _, group := range groups {
+		head := group[0]
+		candidate := choice
+		candidate.AssetID = head.id
+		candidate.PrivateFor = ""
+		plan, err := s.Playback.PlanV1(ctx, p, item, candidate)
+		if err != nil {
+			continue
+		}
+		cost := 3
+		switch plan.Strategy {
+		case playback.DeliveryOriginal:
+			cost = 0
+		case playback.DeliveryCopyRemux:
+			cost = 1
+		case playback.DeliveryAudioConversion:
+			cost = 2
+		}
+		if cost < bestCost {
+			best, bestCost = head.id, cost
+		}
+	}
+	return best
+}
+
+// maxComparedVersions bounds how many versions of one title are planned to
+// choose between them.
+const maxComparedVersions = 8
 
 func (s *Service) readyWait() time.Duration {
 	if s.ReadyWait > 0 {
@@ -673,7 +993,7 @@ func (s *Service) startItem(ctx context.Context, c Caller, key, startDigest stri
 	if kind == "song" || kind == "audiobook_file" || kind == "track" {
 		sessionKind = "audio"
 	}
-	stored := storedRequest{VersionID: req.VersionID, Quality: Quality{Mode: "original"}, Audio: req.Audio, Subtitles: req.Subtitles, Network: req.Network}
+	stored := storedRequest{VersionID: req.VersionID, Quality: c.defaultQuality(ctx), Audio: req.Audio, Subtitles: req.Subtitles, Network: req.Network}
 	if req.Quality != nil {
 		stored.Quality = *req.Quality
 	}
@@ -710,7 +1030,8 @@ func (s *Service) startPresentation(ctx context.Context, c Caller, key, startDig
 	if req.StartPositionMs != nil {
 		startMs = *req.StartPositionMs
 	}
-	target := presentationTarget{item: base.item, version: base.version, part: base.partIndex, request: stored, startMs: startMs, replacing: replacing, requestID: "v1." + id + ".1", subtitleOp: "v1-" + id + "-1"}
+	target := presentationTarget{item: base.item, version: base.version, part: base.partIndex, request: stored, startMs: startMs, replacing: replacing, requestID: "v1." + id + ".1", subtitleOp: "v1-" + id + "-1",
+		throughputKbps: req.ThroughputKbps, fitThroughput: true, rememberAudio: req.Audio != nil, rememberSubtitle: req.Subtitles != nil}
 	media, view, err := s.present(ctx, c, target)
 	if errors.Is(err, identity.ErrUnauthorized) && replacing != nil {
 		// The session being replaced belongs to an earlier sign-in of this device:
@@ -737,6 +1058,11 @@ func (s *Service) startPresentation(ctx context.Context, c Caller, key, startDig
 	if !ready {
 		state = "preparing"
 	}
+	if view.Quality != nil {
+		// The quality in force (automatic's landing step included) is what a
+		// later step or re-plan continues from.
+		stored.Quality = *view.Quality
+	}
 	requestJSON, _ := json.Marshal(struct {
 		storedRequest
 		State string `json:"state,omitempty"`
@@ -748,6 +1074,7 @@ func (s *Service) startPresentation(ctx context.Context, c Caller, key, startDig
 	r.startKey, r.startDigest, r.state, r.request, r.revision, r.generation = key, startDigest, state, string(requestJSON), 1, 1
 	r.media, r.mediaGeneration, r.presentation, r.startPosition, r.position = media.ID, media.Generation, string(presentationJSON), view.StartPositionMs, view.StartPositionMs
 	r.lease, r.created, r.updated = now.Add(s.lease()).UnixMilli(), now.UnixMilli(), now.UnixMilli()
+	r.bandwidth = int64(req.ThroughputKbps)
 	if state == "paused" {
 		r.pausedSince = now.UnixMilli()
 	}

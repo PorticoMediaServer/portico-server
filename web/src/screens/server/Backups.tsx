@@ -5,6 +5,7 @@ import {problem, useAction, useRead} from '../../admin/console';
 import {filesystemPath, mergeFilesystemPages} from './LibrarySettings';
 import {createOperationIds} from './operation-ids';
 import {useSession} from '../../app/session';
+import {usePollWhile} from '../../admin/poll-while';
 import {useI18n, type MessageId} from '../../app/i18n';
 import {Button, ConfirmDialog, Dialog, Freshness, IconButton, Input, ListRow, Loading, Notice, ProgressBar, SettingsGroup, SettingsRow, Surface, Text} from '../../ui';
 
@@ -171,6 +172,8 @@ export function BackupsGroup() {
   };
 
   const lastRestore = doc?.lastRestore;
+  // While the restore is being made ready the server reports its phase and bytes: follow it.
+  usePollWhile(staging, read.reload);
   return (
     <SettingsGroup title={t('web.maintenance.backups')} description={t('web.maintenance.backupsLedePlain')}>
       {read.error ? <div style={{padding: 12}}><Notice tone={doc ? 'warning' : 'error'} compact action={{label: t('action.tryAgain'), onClick: read.reload}}>{read.error}</Notice></div> : null}
@@ -184,6 +187,13 @@ export function BackupsGroup() {
         <div style={{padding: '12px 16px 0', display: 'flex', flexDirection: 'column', gap: 8}}>
           <ProgressBar value={progress?.fraction} indeterminate={progress?.fraction === undefined} label={t('web.maintenance.backingUp')} />
           <Text variant="caption" tone="tertiary">{progress?.phase || t('web.maintenance.backingUp')}</Text>
+        </div>
+      ) : null}
+      {/* Getting a restore ready can take minutes on a large library: say what it is doing and how far it is. */}
+      {staging ? (
+        <div style={{padding: '12px 16px 0', display: 'flex', flexDirection: 'column', gap: 8}}>
+          <ProgressBar value={doc?.restore && doc.restore.bytesTotal > 0 ? backupProgressFraction(doc.restore) : undefined} indeterminate={!doc?.restore || doc.restore.bytesTotal <= 0} label={t('server.restore.preparing')} />
+          <Text variant="caption" tone="tertiary">{t(doc?.restore?.phase === 'copy' ? 'web.maintenance.restoreCopy' : doc?.restore?.phase === 'integrity' || doc?.restore?.phase === 'verify-files' ? 'web.maintenance.restoreIntegrity' : 'server.restore.preparing')}</Text>
         </div>
       ) : null}
       {restarting ? (

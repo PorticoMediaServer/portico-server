@@ -668,3 +668,29 @@ test('the server still-watching policy holds completion and a manual Continue re
   assert.equal((log.find(r => r.path.endsWith(':advance'))?.body as {reason: string}).reason, 'next');
   stop();
 });
+
+test('a subtitle choice is a change of the live session: the track, how it is delivered and its timing', async () => {
+  const {player, playback, log, stop} = setup();
+  assert.equal(playback.changesInPlace(), false, 'nothing is playing yet');
+  await player.playEntries(['a', 'b'].map(queueItemInput));
+  const session = playback.getSnapshot().session!;
+  assert.equal(playback.changesInPlace(), true);
+  const patches = () => log.filter(r => r.method === 'PATCH' && r.path === `/v1/playback/sessions/${session.id}`).map(r => { const body = r.body as Record<string, unknown>; return {subtitles: body.subtitles, subtitleOffsetMs: body.subtitleOffsetMs}; });
+  // A styled or image track this device draws itself: the original is asked for, with the track's saved timing.
+  await playback.changePlayback({subtitleTrackId: 'sub-1', subtitleDelivery: 'embeddedClient', subtitleOffsetMs: -300.4});
+  // A text track: no delivery named, the server decides.
+  await playback.changePlayback({subtitleTrackId: 'sub-2', subtitleOffsetMs: 0});
+  // An image track that could not be drawn here: in the picture.
+  await playback.changePlayback({subtitleTrackId: 'sub-1', subtitleDelivery: 'burn'});
+  // Off: no delivery and no timing travel with it.
+  await playback.changePlayback({subtitleTrackId: null, subtitleDelivery: 'embeddedClient', subtitleOffsetMs: 500});
+  assert.deepEqual(patches(), [
+    {subtitles: {trackId: 'sub-1', delivery: 'embeddedClient'}, subtitleOffsetMs: -300},
+    {subtitles: {trackId: 'sub-2'}, subtitleOffsetMs: 0},
+    {subtitles: {trackId: 'sub-1', delivery: 'burn'}, subtitleOffsetMs: undefined},
+    {subtitles: {trackId: null}, subtitleOffsetMs: undefined},
+  ]);
+  assert.equal(playback.getSnapshot().session!.id, session.id, 'the same session throughout');
+  assert.equal(log.filter(r => r.method === 'POST' && r.path === '/v1/queues').length, 1, 'and the same queue');
+  stop();
+});

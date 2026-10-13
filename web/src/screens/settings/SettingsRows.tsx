@@ -8,6 +8,7 @@ import {usePreferences} from '../../app/preferences';
 import {useServerPreferences} from '../../app/server-preferences';
 import {Badge, Button, IconButton, Select, SettingsRow, Switch} from '../../ui';
 import {ResetRecommendationsRow} from './ResetRecommendations';
+import {currentPlaybackFixes, writePlaybackFixes} from '../../bridge/playback-fixes';
 import s from './Settings.module.css';
 
 /** The rows of the Account pages; server settings have their own renderer (`ServerForms.tsx`). */
@@ -24,6 +25,7 @@ export function RowView({row, anchor, save}: {row: Row; anchor: string; save: (p
   const device = usePreferences();
   const session = useSession();
   const navigate = useNavigate();
+  const [fixes, setFixes] = React.useState(currentPlaybackFixes);
   const text = t(row.label);
   const scopeLabel = settingsScopeLabel(row.scope, 'web');
   const label = scopeLabel ? <>{text}<Badge>{t(scopeLabel)}</Badge></> : text;
@@ -45,8 +47,13 @@ export function RowView({row, anchor, save}: {row: Row; anchor: string; save: (p
     write = next => save(compositePatch(row.id, next as string | boolean));
   } else {
     // The device's own values: this browser keeps them (`portico.preferences.v1`).
-    value = row.id === 'libraryView' ? device.preferences.libraryView : undefined;
-    write = next => { if (row.id === 'libraryView') device.update({libraryView: next === 'list' ? 'list' : 'grid'}); };
+    const fix = row.id === 'forceStereo' || row.id === 'disablePassthrough' || row.id === 'disableHdr' ? row.id : undefined;
+    value = row.id === 'libraryView' ? device.preferences.libraryView : fix ? fixes[fix] : undefined;
+    write = next => {
+      if (row.id === 'libraryView') device.update({libraryView: next === 'list' ? 'list' : 'grid'});
+      // Kept by this browser and published with what it can play, so the next thing played is planned with it.
+      else if (fix) setFixes(writePlaybackFixes({[fix]: next === true}));
+    };
   }
   if (value === undefined) return null;
   const control = row.control;

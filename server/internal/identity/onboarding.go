@@ -87,12 +87,10 @@ func (s *Service) SetupWithOptions(ctx context.Context, q SetupOptions, private 
 	if e != nil || subtle.ConstantTimeCompare(token, []byte(q.SetupToken)) != 1 {
 		return Envelope{}, ErrUnauthorized
 	}
-	select {
-	case s.hashSlots <- struct{}{}:
-		defer func() { <-s.hashSlots }()
-	default:
-		return Envelope{}, ErrBusy
+	if slotErr := s.takeHashSlot(ctx); slotErr != nil {
+		return Envelope{}, slotErr
 	}
+	defer func() { <-s.hashSlots }()
 	hash, e := bcrypt.GenerateFromPassword([]byte(q.Password), PasswordCost)
 	if e != nil {
 		return Envelope{}, e
@@ -239,9 +237,6 @@ func (s *Service) CheckRecoveryRoute(ctx context.Context, p Principal, private b
 	tx := gated3.Tx()
 	defer gated3.Rollback()
 	return s.recoveryAllowedTx(ctx, tx, p.AccountID, familyForTokenTx(ctx, tx, p.Hash), private)
-}
-func (s *Service) LoginFrom(ctx context.Context, user, password string, private bool) (Envelope, error) {
-	return s.loginFrom(ctx, user, password, private)
 }
 
 func (s *Service) Onboarding(ctx context.Context, p Principal) (OnboardingState, error) {

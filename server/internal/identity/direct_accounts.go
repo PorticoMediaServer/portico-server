@@ -34,6 +34,11 @@ type DirectAccount struct {
 	Revision         int64    `json:"revision"`
 	Disabled         bool     `json:"disabled"`
 	AllowedLibraries []string `json:"allowedLibraries"`
+	// DisabledAt and DisabledReason are set while the account is off: when it
+	// was turned off, and whether an owner or administrator did it ("owner")
+	// or the person left at their Portico Account ("left").
+	DisabledAt     string `json:"disabledAt,omitempty"`
+	DisabledReason string `json:"disabledReason,omitempty"`
 	// HostedAccountID is set for a Portico Account member: its password, email
 	// and second factor are managed at Hosted, everything else here.
 	HostedAccountID string `json:"hostedAccountId,omitempty"`
@@ -118,10 +123,8 @@ func (s *Service) passwordAccount(ctx context.Context, user, password string) (d
 	} else if err := s.credentialCooloff(ctx, c.account.ID); err != nil {
 		return directCaller{}, nil, err
 	}
-	select {
-	case s.hashSlots <- struct{}{}:
-	default:
-		return directCaller{}, nil, ErrBusy
+	if slotErr := s.takeHashSlot(ctx); slotErr != nil {
+		return directCaller{}, nil, slotErr
 	}
 	// A Portico Account member has no password here. It pays the same bcrypt
 	// cost as any other account, so the answer's timing does not tell a prober
@@ -193,6 +196,9 @@ func (s *Service) DirectLogin(ctx context.Context, user, password string) (Direc
 	return s.DirectLoginFrom(ctx, user, password, true)
 }
 func (s *Service) DirectLoginFrom(ctx context.Context, user, password string, private bool) (DirectSignIn, error) {
+	if RemoteSignInClosed(ctx) {
+		return DirectSignIn{}, ErrRemoteSignIn
+	}
 	for attempt := 0; attempt < 2; attempt++ {
 		out, stale, err := s.directLoginOnce(ctx, user, password, private)
 		if !stale {
@@ -318,6 +324,11 @@ func (s *Service) directCallerTx(ctx context.Context, tx *sql.Tx, bearer string,
 	if _, err = s.SessionFamilyTx(ctx, tx, record.principal); err != nil {
 		return c, err
 	}
+	// A screen paired as a Cast target plays and does nothing else: no account
+	// route is open to it, whichever profile paired it.
+	if record.principal.Grant == GrantCastTarget {
+		return c, ErrForbidden
+	}
 	c.account.ID = record.principal.AccountID
 	c.familyID = record.ID
 	c.profileID = record.principal.ProfileID
@@ -331,11 +342,7 @@ func (s *Service) directCallerTx(ctx context.Context, tx *sql.Tx, bearer string,
 	}
 	c.manage = primary == 1
 	sessionRole = record.principal.Role
-	var viewerOnly bool
-	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM authorization_family_grants WHERE family_id=? AND grant_kind='viewer_only')`, record.ID).Scan(&viewerOnly); err != nil {
-		return c, err
-	}
-	if viewerOnly {
+	if record.principal.Grant == GrantViewerOnly {
 		c.manage = false
 		c.viewerOnly = true
 	}
@@ -460,6 +467,10 @@ func sessionRevocationText(reason string) string {
 		return "Signed out: device was not approved"
 	case RevokedPasswordChange:
 		return "Signed out: account security changed"
+	case RevokedSigningKeyRevoked:
+		return "Signed out: the Portico Account sign-in was withdrawn"
+	case RevokedRestored:
+		return "Signed out: the server was restored from a backup"
 	default:
 		return "Signed out"
 	}
@@ -527,13 +538,11 @@ func (s *Service) ChangeDirectPassword(ctx context.Context, bearer, current, nex
 		return e
 	}
 	var hash []byte
-	select {
-	case s.hashSlots <- struct{}{}:
-		hash, e = bcrypt.GenerateFromPassword([]byte(next), PasswordCost)
-		<-s.hashSlots
-	default:
-		return ErrBusy
+	if slotErr := s.takeHashSlot(ctx); slotErr != nil {
+		return slotErr
 	}
+	hash, e = bcrypt.GenerateFromPassword([]byte(next), PasswordCost)
+	<-s.hashSlots
 	if e != nil {
 		return e
 	}
@@ -594,7 +603,7 @@ func (s *Service) DirectMembers(ctx context.Context, bearer string) ([]DirectAcc
 	if c.account.Role != "owner" {
 		return nil, ErrForbidden
 	}
-	rows, e := tx.QueryContext(ctx, `SELECT a.id,a.username,a.profile_id,m.role,m.revision,m.disabled,m.allowed_libraries,COALESCE(l.hosted_account_id,'') FROM accounts a JOIN direct_memberships m ON m.account_id=a.id LEFT JOIN account_portico_links l ON l.account_id=a.id ORDER BY a.username`)
+	rows, e := tx.QueryContext(ctx, `SELECT a.id,a.username,a.profile_id,m.role,m.revision,m.disabled,m.allowed_libraries,COALESCE(l.hosted_account_id,''),m.disabled_ms,m.disabled_reason FROM accounts a JOIN direct_memberships m ON m.account_id=a.id LEFT JOIN account_portico_links l ON l.account_id=a.id ORDER BY a.username`)
 	if e != nil {
 		return nil, e
 	}
@@ -603,8 +612,12 @@ func (s *Service) DirectMembers(ctx context.Context, bearer string) ([]DirectAcc
 	for rows.Next() {
 		var a DirectAccount
 		var raw string
-		if e = rows.Scan(&a.ID, &a.Username, &a.PrimaryProfileID, &a.Role, &a.Revision, &a.Disabled, &raw, &a.HostedAccountID); e != nil {
+		var disabledMs int64
+		if e = rows.Scan(&a.ID, &a.Username, &a.PrimaryProfileID, &a.Role, &a.Revision, &a.Disabled, &raw, &a.HostedAccountID, &disabledMs, &a.DisabledReason); e != nil {
 			return nil, e
+		}
+		if disabledMs > 0 {
+			a.DisabledAt = time.UnixMilli(disabledMs).UTC().Format(time.RFC3339)
 		}
 		if e = json.Unmarshal([]byte(raw), &a.AllowedLibraries); e != nil {
 			return nil, e
@@ -619,12 +632,10 @@ func (s *Service) CreateDirectMember(ctx context.Context, bearer string, q Direc
 	if len(q.Username) < 3 || len(q.Username) > 64 || strings.ContainsAny(q.Username, " \t\r\n@") || !directPassword(q.Password) || !directName(q.Name) || !directLibraries(q.AllowedLibraries) {
 		return DirectAccount{}, ErrDirectInput
 	}
-	select {
-	case s.hashSlots <- struct{}{}:
-		defer func() { <-s.hashSlots }()
-	default:
-		return DirectAccount{}, ErrBusy
+	if slotErr := s.takeHashSlot(ctx); slotErr != nil {
+		return DirectAccount{}, slotErr
 	}
+	defer func() { <-s.hashSlots }()
 	hash, e := bcrypt.GenerateFromPassword([]byte(q.Password), PasswordCost)
 	if e != nil {
 		return DirectAccount{}, e
@@ -671,12 +682,10 @@ func (s *Service) UpdateDirectMember(ctx context.Context, bearer, id string, q D
 	}
 	var passwordHash []byte
 	if q.Password != "" {
-		select {
-		case s.hashSlots <- struct{}{}:
-			defer func() { <-s.hashSlots }()
-		default:
-			return ErrBusy
+		if slotErr := s.takeHashSlot(ctx); slotErr != nil {
+			return slotErr
 		}
+		defer func() { <-s.hashSlots }()
 		var err error
 		passwordHash, err = bcrypt.GenerateFromPassword([]byte(q.Password), PasswordCost)
 		if err != nil {
@@ -693,8 +702,10 @@ func (s *Service) UpdateDirectMember(ctx context.Context, bearer, id string, q D
 	if e != nil {
 		return e
 	}
+	// A signed-in person who may not do this is refused (403), never told to
+	// authenticate (401): clients end a sign-in on a 401.
 	if !Administrative(c.account.Role) {
-		return ErrUnauthorized
+		return ErrForbidden
 	}
 	var role string
 	var revision int64
@@ -702,7 +713,7 @@ func (s *Service) UpdateDirectMember(ctx context.Context, bearer, id string, q D
 		return e
 	}
 	if !ManagesTier(c.account.Role, role) {
-		return ErrUnauthorized
+		return ErrForbidden
 	}
 	if revision != q.ExpectedRevision {
 		return ErrProfileChanged
@@ -717,20 +728,23 @@ func (s *Service) UpdateDirectMember(ctx context.Context, bearer, id string, q D
 		q.AllowedLibraries = []string{}
 	}
 	raw, _ := json.Marshal(q.AllowedLibraries)
-	reason := RevokedAdminRevoke
-	if q.Password != "" {
-		reason = RevokedPasswordChange
-	}
-	if q.Disabled {
-		reason = RevokedMembershipRemoved
-	}
-	if e = s.revokeCredentialsWithReasonTx(ctx, tx, id, reason); e != nil {
-		return e
+	// The member is signed out only when they lose access altogether (the
+	// account is turned off) or their password is replaced. Giving or taking a
+	// library applies to their next request and signs nobody out: every request
+	// reads the live library list.
+	if q.Disabled || q.Password != "" {
+		reason := RevokedPasswordChange
+		if q.Disabled {
+			reason = RevokedMembershipRemoved
+		}
+		if e = s.revokeCredentialsWithReasonTx(ctx, tx, id, reason); e != nil {
+			return e
+		}
+		if _, e = tx.ExecContext(ctx, `UPDATE accounts SET epoch=epoch+1 WHERE id=?`, id); e != nil {
+			return e
+		}
 	}
 	if _, e = tx.ExecContext(ctx, `UPDATE direct_memberships SET disabled=?,allowed_libraries=?,revision=revision+1 WHERE account_id=?`, q.Disabled, string(raw), id); e != nil {
-		return e
-	}
-	if _, e = tx.ExecContext(ctx, `UPDATE accounts SET epoch=epoch+1 WHERE id=?`, id); e != nil {
 		return e
 	}
 	if passwordHash != nil {
@@ -810,20 +824,18 @@ func (s *Service) transferOwnershipTx(ctx context.Context, tx *sql.Tx, c directC
 	if c.account.Role != "owner" {
 		return ErrForbidden
 	}
-	if target == c.account.ID || expected != c.account.Revision {
-		return ErrUnauthorized
+	if expected != c.account.Revision {
+		return ErrProfileChanged
+	}
+	if target == c.account.ID {
+		return ErrForbidden
 	}
 	var active bool
 	if e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM direct_memberships WHERE account_id=? AND role='member' AND disabled=0)`, target).Scan(&active); e != nil {
 		return e
 	}
 	if !active {
-		return ErrUnauthorized
-	}
-	for _, id := range []string{c.account.ID, target} {
-		if e = s.revokeDirectTx(ctx, tx, id, "", ""); e != nil {
-			return e
-		}
+		return ErrForbidden
 	}
 	if _, e = tx.ExecContext(ctx, `UPDATE direct_memberships SET role='member',allowed_libraries='[]',revision=revision+1 WHERE account_id=?`, c.account.ID); e != nil {
 		return e
@@ -831,6 +843,11 @@ func (s *Service) transferOwnershipTx(ctx context.Context, tx *sql.Tx, c directC
 	if _, e = tx.ExecContext(ctx, `UPDATE direct_memberships SET role='owner',revision=revision+1 WHERE account_id=?`, target); e != nil {
 		return e
 	}
-	_, e = tx.ExecContext(ctx, `UPDATE accounts SET epoch=epoch+1 WHERE id IN(?,?)`, c.account.ID, target)
-	return e
+	// Both people stay signed in. Their sessions take their new tiers in this
+	// same transaction, so the former owner's devices stop being an owner's at
+	// once and the new owner's become one without signing in again.
+	if e = RetierFamiliesTx(ctx, tx, c.account.ID, TierMember); e != nil {
+		return e
+	}
+	return RetierFamiliesTx(ctx, tx, target, TierOwner)
 }

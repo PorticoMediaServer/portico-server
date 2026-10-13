@@ -6,6 +6,7 @@ import (
 	"errors"
 	"strings"
 
+	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/entityid"
@@ -139,6 +140,9 @@ func (s *Service) mbPublishSong(ctx context.Context, j mbJob, result metadatapro
 		return e
 	}
 	if e = compactcatalog.SetFieldsTx(ctx, tx, entity, compactcatalog.Automatic, fields); e != nil {
+		return e
+	}
+	if e = catalog.RestoreTitleStateTx(ctx, tx, entity); e != nil {
 		return e
 	}
 	if _, e = tx.ExecContext(ctx, `INSERT INTO metadata_details VALUES(?,'musicbrainz',?,?,?) ON CONFLICT(item_id,provider) DO UPDATE SET provider_id=excluded.provider_id,source_url=excluded.source_url,observed_at=excluded.observed_at`, entity, r.ID, "https://musicbrainz.org/recording/"+r.ID, observed); e != nil {

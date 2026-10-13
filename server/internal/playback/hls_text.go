@@ -41,7 +41,7 @@ func publishTextManifests(dir string, p *DeliveryPlan) error {
 		var b strings.Builder
 		b.WriteString("#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:60\n#EXT-X-MEDIA-SEQUENCE:0\n#EXT-X-PLAYLIST-TYPE:VOD\n")
 		for i := 0; i < count; i++ {
-			fmt.Fprintf(&b, "#EXTINF:%.6f,\n/v1/media/%s/subtitles/%s/%d.vtt?segment=%d\n", math.Min(60, p.Duration-float64(i*60)), r.Grant, r.Resource, r.Revision, i)
+			fmt.Fprintf(&b, "#EXTINF:%.6f,\n%s.vtt?segment=%d\n", math.Min(60, p.Duration-float64(i*60)), subtitles.MediaBaseURL(r.Grant, r.Resource, r.Revision), i)
 		}
 		b.WriteString("#EXT-X-ENDLIST\n")
 		if e := writeNamedManifest(dir, fmt.Sprintf("text-%d.m3u8", ordinal), []byte(b.String())); e != nil {

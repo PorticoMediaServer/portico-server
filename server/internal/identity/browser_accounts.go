@@ -145,7 +145,7 @@ func (s *Service) ForgetBrowserAccount(ctx context.Context, bearer, installation
 			return e
 		}
 		if !owns {
-			return ErrUnauthorized
+			return ErrForbidden
 		}
 	}
 	if _, e = tx.ExecContext(ctx, `DELETE FROM identity_browser_accounts WHERE installation_id=? AND account_id=?`, installation, account); e != nil {

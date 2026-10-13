@@ -31,7 +31,7 @@ a process that cannot hold the app's session. It reads one feed and its artwork
 and nothing else, lives thirty days and is renewed whenever the app is opened, and cannot be exchanged for a session.
 
 Unauthenticated routes are `GET /v1/auth/capabilities`,
-`GET /v1/auth/remembered-accounts`, `POST /v1/auth/register` and
+`POST /v1/auth/remembered-accounts`, `POST /v1/auth/register` and
 `POST /v1/auth/two-factor/challenge`. Each is unauthenticated because the caller
 that needs it has nothing yet; each is rate limited per peer.
 
@@ -116,10 +116,9 @@ is not offered: a document read, shown and re-submitted whole cannot lose a fiel
 a newer server added. Parse the document, change fields on the parsed value, and
 send the whole thing back.
 
-Two things happen on success. The revision advances, and the profile's viewing
-families are revoked — so an open page, an open cursor and a live playback grant
-all end rather than outliving the change. Clients should expect a signed-in
-profile to be signed out when its restrictions change.
+On success the revision advances and the new restrictions apply to the
+profile's next request. Nobody is signed out: every catalogue read and every
+playback start reads the live document.
 
 The restriction identity is also folded into the viewer fence, so a cursor or a
 cached page presented across a restriction change fails with
@@ -195,8 +194,12 @@ rather than creating a second one, and it does **not** overwrite a name a person
 gave the device.
 
 **Approval.** When the owner sets `deviceApproval` to
-`owner-approves-new-devices`, a newly seen device is stored `pending` and
-registration answers `403 device_approval_pending`. The record is still written —
+`owner-approves-new-devices` (the same value as the settings switch
+`deviceApprovalRequired`), a member's newly seen device is stored `pending` and
+registration answers `403 device_approval_pending`. The owner's own devices are
+never held, and a screen paired as a Cast target is vouched for by the session
+that paired it. The owner and administrators see every member's devices at
+`GET /v1/admin/access/devices`. The record is still written —
 the owner cannot approve an arrival that was rolled back. A pending device cannot
 bind a viewing family. Denying a device also signs it out, so turning the policy
 on does not leave the very device the owner objects to signed in.
@@ -207,7 +210,7 @@ exactly what to revoke. Signing a device out revokes only its families and keeps
 the record, so the person keeps seeing the device and signing back in on it does
 not look like a new arrival.
 
-**Sign out everywhere** requires the account password. It revokes every viewing
+**Sign out everywhere** needs no password: the session is the authority. It revokes every viewing
 family, forgets every remembered browser entry, and bumps the account epoch, which
 sweeps account sessions and remembered profile trust.
 
@@ -218,10 +221,15 @@ the server keeps the *descriptors* — who has used this installation, what to c
 them, which picture to draw — while the browser keeps the credentials.
 
 ```
-GET    /v1/auth/remembered-accounts?installationId=   (unauthenticated)
-POST   /v1/direct/remembered-accounts
-DELETE /v1/direct/remembered-accounts/{accountId}?installationId=
+POST   /v1/auth/remembered-accounts              {installationId}   (unauthenticated; lists)
+POST   /v1/direct/remembered-accounts            {installationId, automaticSignIn}
+DELETE /v1/direct/remembered-accounts/{accountId} {installationId}
 ```
+
+The installation id always travels in the body, never in the address: it is
+what a device renews its sign-in with, and addresses end up in proxy and access
+logs. For the same reason `GET /v1/devices` marks the caller's own device from
+its session and shows an installation id for that device only.
 
 Nothing in the list is a credential, and choosing an entry signs nobody in: it
 tells the client which stored token to present, and that token is verified

@@ -42,7 +42,7 @@ func (s *Service) RefreshSession(ctx context.Context, secret, installation, requ
 			// A known predecessor outside its exact replay is evidence that the
 			// refresh credential escaped. Commit the revocation before returning
 			// an error; the deferred rollback would otherwise undo it.
-			if err = RevokeFamilyTx(ctx, tx, reused, RevokedRefreshReuse); err != nil {
+			if _, err = s.revokeWhereTx(ctx, tx, RevokedRefreshReuse, `id=?`, reused); err != nil {
 				return Envelope{}, err
 			}
 			if err = gated.Commit(); err != nil {
@@ -75,6 +75,11 @@ func (s *Service) RefreshSession(ctx context.Context, secret, installation, requ
 		return Envelope{}, ErrUnauthorized
 	}
 	if err = s.checkFamilyPrincipalTx(ctx, tx, p); err != nil {
+		return Envelope{}, err
+	}
+	// Outside the member's allowed hours the renewal is refused before anything
+	// rotates: the refresh credential stays valid and works again later.
+	if err = admitAccountTx(ctx, tx, p.AccountID); err != nil {
 		return Envelope{}, err
 	}
 	horizon := now.Add(LocalSignInWindow)
@@ -180,6 +185,9 @@ func (s *Service) replayRefreshTx(ctx context.Context, tx *sql.Tx, predecessor, 
 		return Envelope{}, "", ErrUnauthorized
 	}
 	if err = s.checkFamilyPrincipalTx(ctx, tx, p); err != nil {
+		return Envelope{}, "", err
+	}
+	if err = admitAccountTx(ctx, tx, p.AccountID); err != nil {
 		return Envelope{}, "", err
 	}
 	if p.Authority == "hosted" {

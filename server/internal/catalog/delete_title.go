@@ -2,7 +2,10 @@ package catalog
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 
 	"portico.local/server/internal/compactcatalog"
@@ -14,6 +17,71 @@ import (
 // hold (a show's episodes, an artist's tracks). A larger one is deleted a
 // season or an album at a time.
 const MaxDeleteMembers = 5000
+
+// TitleDeletePlan captures the public identity and exact file associations
+// approved for removal. It is internal server state, never a client contract.
+type TitleDeletePlan struct {
+	ItemID string
+	Files  string
+}
+
+func CaptureTitleDeleteTx(ctx context.Context, tx *sql.Tx, entity int64) (TitleDeletePlan, error) {
+	var plan TitleDeletePlan
+	var library, kind int64
+	var parent sql.NullInt64
+	if err := tx.QueryRowContext(ctx, `SELECT pid(public_id),library_id,kind,parent_id FROM catalog_entities WHERE id=?`, entity).Scan(&plan.ItemID, &library, &kind, &parent); err != nil {
+		return plan, err
+	}
+	rows, err := tx.QueryContext(ctx, `SELECT a.token,a.path,a.size,a.modified_ns,l.part_index,l.start_seconds,l.end_seconds,l.edition
+ FROM catalog_asset_links l JOIN catalog_assets a ON a.id=l.asset_id WHERE l.entity_id=? ORDER BY a.token`, entity)
+	if err != nil {
+		return plan, err
+	}
+	defer rows.Close()
+	h := sha256.New()
+	enc := json.NewEncoder(h)
+	if err := enc.Encode([]any{library, kind, parent}); err != nil {
+		return plan, err
+	}
+	for rows.Next() {
+		var token, path, edition string
+		var size, modified int64
+		var part int
+		var start float64
+		var end sql.NullFloat64
+		if err := rows.Scan(&token, &path, &size, &modified, &part, &start, &end, &edition); err != nil {
+			return plan, err
+		}
+		if err := enc.Encode([]any{token, path, size, modified, part, start, end, edition}); err != nil {
+			return plan, err
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return plan, err
+	}
+	plan.Files = hex.EncodeToString(h.Sum(nil))
+	return plan, nil
+}
+
+// DeleteApprovedTitleTx never expands an approved delete to newly attached
+// files, and resolves a public ID again so reused integer IDs are harmless.
+func DeleteApprovedTitleTx(ctx context.Context, tx *sql.Tx, plan TitleDeletePlan) (bool, error) {
+	entity, err := entityid.Resolve(ctx, tx, plan.ItemID)
+	if errors.Is(err, entityid.ErrNotFound) {
+		return true, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	current, err := CaptureTitleDeleteTx(ctx, tx, entity)
+	if err != nil {
+		return false, err
+	}
+	if current != plan {
+		return false, nil
+	}
+	return true, RemoveTitleTx(ctx, tx, entity)
+}
 
 // ErrTooManyMembers: the container holds more titles than one delete takes.
 var ErrTooManyMembers = errors.New("too many titles for one delete")

@@ -24,6 +24,12 @@ func TestGuideSourceIDFilterAndLogoJobs(t *testing.T) {
 		t.Fatal(e)
 	}
 	mux := http.NewServeMux()
+	d.LiveChannels = store
+	registry, err := FoundationRegistry(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d.mountRegistry(mux, registry)
 	d.liveChannelRoutes(mux, store)
 	call := func(method, path, token string, body any) *httptest.ResponseRecorder {
 		var payload []byte
@@ -31,6 +37,9 @@ func TestGuideSourceIDFilterAndLogoJobs(t *testing.T) {
 			payload, _ = json.Marshal(body)
 		}
 		r := httptest.NewRequest(method, path, bytes.NewReader(payload))
+		if body != nil {
+			r.Header.Set("Content-Type", "application/json")
+		}
 		if token != "" {
 			r.Header.Set("Authorization", "Bearer "+token)
 		}

@@ -1886,66 +1886,6 @@ paths:
         '200': { description: The receipt., content: { application/json: { schema: { type: object, required: [serverId, viewerFence, operationId, clearedNotInterested, receiptLifetimeSeconds], properties: { serverId: { type: string }, viewerFence: { type: string }, operationId: { type: string }, clearedNotInterested: { type: integer, format: int64, description: 'How many titles were marked "Not interested".' }, receiptLifetimeSeconds: { type: integer, format: int64 } } } } } }
         default: { $ref: '#/components/responses/Error' }
       x-error-codes: [unauthorized, invalid_request, operation_conflict, operation_expired, stale_continuation, persistence_error]
-  /v1/playback/sessions:
-    post:
-      operationId: createPlaybackSession
-      tags: [playback]
-      summary: Open a single playback session for an item
-      description: >-
-        Any authenticated viewer with access to the item's library. This is the simple, single-owner
-        playback path: the server picks a delivery mode, prepares it until it is ready, and returns
-        a session whose `streamUrl` is a grant-bound media URL. `requestId` makes the call
-        idempotent. Anything that needs multi-client control, hand-off or survival across
-        reconnects should use the `/v2` control plane and queues instead.
-      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [itemId], properties: { itemId: { type: string }, quality: { type: string, description: Requested quality ladder rung; the server may choose another. }, requestId: { type: string, description: Idempotency key. } }, additionalProperties: false } } } }
-      responses:
-        '201': { description: The ready playback session., content: { application/json: { schema: { $ref: '#/components/schemas/PlaybackSession' } } } }
-        default: { $ref: '#/components/responses/Error' }
-      x-error-codes: [unauthorized, invalid_request, not_found, unsupported_source, unsupported_timing, transcoding_disabled, owner_account_cap, owner_server_cap, conversion_capacity, playback_source_unavailable, playback_source_busy, playback_source_timeout, segment_preparing, remote_unavailable, remote_denied, mount_unavailable, timeout, persistence_error]
-  /v1/playback/sessions/{id}:
-    parameters:
-      - { name: id, in: path, required: true, schema: { type: string }, description: Playback session id. }
-    get:
-      operationId: getPlaybackSession
-      tags: [playback]
-      summary: Read a playback session
-      description: >-
-        The viewer that owns the session. Returns the current generation, stream URL, mode,
-        duration, resume position and, when the session is under `/v2` control, its control state.
-        The generation increments on renewal, and a client holding an old generation must re-read
-        before sending progress.
-      responses:
-        '200': { description: The session., content: { application/json: { schema: { $ref: '#/components/schemas/PlaybackSession' } } } }
-        default: { $ref: '#/components/responses/Error' }
-      x-error-codes: [unauthorized, not_found, playback_source_unavailable, persistence_error]
-    delete:
-      operationId: stopPlaybackSession
-      tags: [playback]
-      summary: Stop a playback session
-      description: >-
-        The viewer that owns the session. Releases the delivery resources and invalidates the media
-        grant immediately — an in-flight byte transfer on that grant stops mid-stream. Responds 204.
-      responses:
-        '204': { description: The session was stopped. }
-        default: { $ref: '#/components/responses/Error' }
-      x-error-codes: [unauthorized, not_found, persistence_error]
-  /v1/playback/sessions/{id}/progress:
-    post:
-      operationId: reportPlaybackProgress
-      tags: [playback]
-      summary: Report position and transport state for a session
-      description: >-
-        The viewer that owns the session. `generation` must match the session's current generation
-        and `sequence` must increase monotonically, so a delayed or duplicated report is discarded
-        rather than rewinding the viewer's resume point. This is what advances watched state,
-        resume positions and history. Responds 204.
-      parameters:
-        - { name: id, in: path, required: true, schema: { type: string }, description: Playback session id. }
-      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/PlaybackProgress' } } } }
-      responses:
-        '204': { description: The report was accepted. }
-        default: { $ref: '#/components/responses/Error' }
-      x-error-codes: [unauthorized, invalid_request, not_found, personal_state_conflict, personal_capacity, persistence_error]
   /v1/playback/sessions/{id}/chapters:
     get:
       operationId: getSessionChapters
@@ -2360,7 +2300,7 @@ paths:
         '200': { description: The plan after the selection., content: { application/json: { schema: { $ref: '#/components/schemas/SubtitlePlaybackPlan' } } } }
         default: { $ref: '#/components/responses/SubtitleError' }
       x-error-codes: [unauthorized, subtitle_not_found, subtitle_invalid_input, subtitle_conflict, subtitle_operation_conflict, subtitle_renderer_configuration, subtitle_renderer_platform_unsupported, subtitle_unsupported, subtitle_unavailable]
-  /v1/media/{grant}/subtitles/{resource}/{revision}:
+  /v1/media/subtitles/{grant}/{resource}/{revision}:
     get:
       operationId: getSubtitleDocument
       tags: [media]
@@ -6191,7 +6131,7 @@ components:
         offAvailable: { type: boolean }
         offsetUs: { type: string }
         selected: { type: [object, 'null'], additionalProperties: true }
-        documentUrl: { type: string, description: 'Grant-bound URL under `/v1/media/{grant}/subtitles/...`.' }
+        documentUrl: { type: string, description: 'Grant-bound URL under `/v1/media/subtitles/{grant}/...`.' }
         resources: { type: array, items: { type: object, additionalProperties: true } }
         discovered: { type: array, items: { type: object, additionalProperties: true } }
         presentation: { type: [object, 'null'], additionalProperties: true }

@@ -151,6 +151,19 @@ CREATE TABLE retained_title_state(
  progress_at TEXT NOT NULL DEFAULT '',
  retained_ms INTEGER NOT NULL) STRICT;
 CREATE INDEX retained_title_state_profile ON retained_title_state(profile_id,retained_ms,id);
+-- Counts make enforcement proportional to newly retained/evicted titles,
+-- rather than recounting a profile's entire retained history on each delete.
+CREATE TABLE retained_title_state_counts(
+ profile_id TEXT PRIMARY KEY,
+ title_count INTEGER NOT NULL CHECK(title_count>=0)) WITHOUT ROWID, STRICT;
+CREATE TRIGGER retained_title_state_count_insert AFTER INSERT ON retained_title_state BEGIN
+ INSERT INTO retained_title_state_counts(profile_id,title_count) VALUES(NEW.profile_id,1)
+ ON CONFLICT(profile_id) DO UPDATE SET title_count=title_count+1;
+END;
+CREATE TRIGGER retained_title_state_count_delete AFTER DELETE ON retained_title_state BEGIN
+ UPDATE retained_title_state_counts SET title_count=title_count-1 WHERE profile_id=OLD.profile_id;
+ DELETE FROM retained_title_state_counts WHERE profile_id=OLD.profile_id AND title_count=0;
+END;
 CREATE TABLE retained_title_identities(
  identity TEXT NOT NULL,
  profile_id TEXT NOT NULL,
@@ -1781,7 +1794,7 @@ CREATE TABLE authorization_session_families(
  current_generation INTEGER NOT NULL CHECK(current_generation>0),
  revoked INTEGER NOT NULL DEFAULT 0 CHECK(revoked IN (0,1))
 , revoked_reason TEXT NOT NULL DEFAULT ''
- CHECK(revoked_reason IN ('','refresh_reuse','explicit_signout','admin_revoke','membership_removed','device_disapproved','password_change')), revoked_at TEXT NOT NULL DEFAULT '') STRICT;
+ CHECK(revoked_reason IN ('','refresh_reuse','explicit_signout','admin_revoke','membership_removed','device_disapproved','password_change','signing_key_revoked','restored')), revoked_at TEXT NOT NULL DEFAULT '') STRICT;
 CREATE TABLE authorization_family_tokens(
  token_hash TEXT PRIMARY KEY,
  family_id TEXT NOT NULL REFERENCES authorization_session_families(id),
@@ -2333,6 +2346,7 @@ CREATE TABLE identity_devices(
  approval_state TEXT NOT NULL DEFAULT 'approved' CHECK(approval_state IN('approved','pending','denied')),
  last_profile_id TEXT NOT NULL DEFAULT '',
  remember_account INTEGER NOT NULL DEFAULT 1 CHECK(remember_account IN(0,1)),
+ revision INTEGER NOT NULL DEFAULT 1 CHECK(revision>0),
  UNIQUE(authority,account_id,installation_id)
 ) STRICT;
 CREATE TABLE identity_device_families(
@@ -2552,7 +2566,11 @@ CREATE TABLE social_cast_bootstraps(
   device_id TEXT NOT NULL DEFAULT '',
   created_at_ms INTEGER NOT NULL,
   expires_at_ms INTEGER NOT NULL,
-  redeemed_at_ms INTEGER) STRICT;
+  redeemed_at_ms INTEGER,
+  -- The session that asked for the pairing code. The target's session is
+  -- derived from it: it ends if the signing key that admitted that session is
+  -- revoked.
+  pairing_family_id TEXT NOT NULL DEFAULT '') STRICT;
 CREATE TABLE social_cast_devices(
   id TEXT PRIMARY KEY,
   token_digest TEXT NOT NULL UNIQUE,
@@ -2630,7 +2648,8 @@ CREATE TABLE download_receipt_keys(
 CREATE TABLE download_preparations(
  id TEXT PRIMARY KEY,
  profile_key TEXT NOT NULL, authority TEXT NOT NULL, account_id TEXT NOT NULL, profile_id TEXT NOT NULL,
- item_id INTEGER NOT NULL, library_id TEXT NOT NULL,
+ item_id INTEGER NOT NULL, item_public TEXT NOT NULL DEFAULT '', library_id TEXT NOT NULL,
+ title_json TEXT NOT NULL DEFAULT '',
  quality TEXT NOT NULL, origin TEXT NOT NULL CHECK(origin IN('item','items','container','next')),
  batch_id TEXT NOT NULL DEFAULT '',
  state TEXT NOT NULL CHECK(state IN('queued','running','ready','paused','failed','unavailable','cancelled','expired')),
@@ -2638,7 +2657,7 @@ CREATE TABLE download_preparations(
  artifact_kind TEXT NOT NULL DEFAULT '' CHECK(artifact_kind IN('','source','prepared')),
  artifact_ref TEXT NOT NULL DEFAULT '', artifact_digest TEXT NOT NULL DEFAULT '',
  artifact_container TEXT NOT NULL DEFAULT '',
- source_version_json TEXT NOT NULL DEFAULT '',
+ source_modified_ns INTEGER NOT NULL DEFAULT 0,
  hash_state BLOB,
  bytes_done INTEGER NOT NULL DEFAULT 0 CHECK(bytes_done>=0),
  bytes_total INTEGER NOT NULL DEFAULT 0 CHECK(bytes_total>=0),
@@ -2650,13 +2669,15 @@ CREATE TABLE download_grants(
  hash TEXT PRIMARY KEY,
  preparation_id TEXT NOT NULL REFERENCES download_preparations(id) ON DELETE CASCADE,
  profile_key TEXT NOT NULL, item_id INTEGER NOT NULL,
+ artifact_digest TEXT NOT NULL DEFAULT '',
  issued_ms INTEGER NOT NULL, expires_ms INTEGER NOT NULL,
  first_use_ms INTEGER NOT NULL DEFAULT 0, uses INTEGER NOT NULL DEFAULT 0,
  revoked INTEGER NOT NULL DEFAULT 0) STRICT;
 CREATE TABLE download_receipts(
  id TEXT PRIMARY KEY,
  profile_key TEXT NOT NULL, authority TEXT NOT NULL, account_id TEXT NOT NULL, profile_id TEXT NOT NULL,
- item_id INTEGER NOT NULL, preparation_id TEXT NOT NULL, quality TEXT NOT NULL,
+ item_id INTEGER NOT NULL, item_public TEXT NOT NULL DEFAULT '', library_id TEXT NOT NULL DEFAULT '',
+ preparation_id TEXT NOT NULL, quality TEXT NOT NULL,
  artifact_digest TEXT NOT NULL, artifact_bytes INTEGER NOT NULL CHECK(artifact_bytes>0),
  key_id TEXT NOT NULL REFERENCES download_receipt_keys(id),
  issued_ms INTEGER NOT NULL, expires_ms INTEGER NOT NULL,
@@ -2666,6 +2687,12 @@ CREATE TABLE download_receipt_sequence(singleton INTEGER PRIMARY KEY CHECK(singl
 CREATE TABLE download_progress_marks(
  profile_key TEXT NOT NULL, item_id INTEGER NOT NULL, observed_ms INTEGER NOT NULL,
  PRIMARY KEY(profile_key,item_id)) STRICT;
+-- The SHA-256 of a library file, remembered for as long as the file keeps the
+-- size and modified time it was read at. Every viewer's original download of
+-- that file shares it, so the file is read once, in place, and never copied.
+CREATE TABLE download_source_digests(
+ asset_id TEXT PRIMARY KEY, size INTEGER NOT NULL CHECK(size>0), modified_ns INTEGER NOT NULL,
+ sha256 TEXT NOT NULL, hashed_ms INTEGER NOT NULL) STRICT;
 CREATE TABLE admin_documents(scope TEXT PRIMARY KEY,revision INTEGER NOT NULL CHECK(revision>0),body TEXT NOT NULL,updated_ms INTEGER NOT NULL) STRICT;
 CREATE TABLE admin_receipts(scope TEXT NOT NULL,operation_id TEXT NOT NULL,digest TEXT NOT NULL,result TEXT NOT NULL,created_ms INTEGER NOT NULL,PRIMARY KEY(scope,operation_id)) STRICT;
 CREATE TABLE admin_dvr_groups(
@@ -2695,7 +2722,13 @@ CREATE TABLE direct_memberships(
  account_id TEXT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
  role TEXT NOT NULL CHECK(role IN('owner','admin','member')),
  allowed_libraries TEXT NOT NULL DEFAULT '[]' CHECK(json_valid(allowed_libraries)),
- revision INTEGER NOT NULL DEFAULT 1 CHECK(revision>0), disabled INTEGER NOT NULL DEFAULT 0 CHECK(disabled IN(0,1))
+ revision INTEGER NOT NULL DEFAULT 1 CHECK(revision>0), disabled INTEGER NOT NULL DEFAULT 0 CHECK(disabled IN(0,1)),
+ -- When and why the account was turned off: 'owner' (an owner or administrator
+ -- did it) or 'left' (the person left at the Portico Account service). Both are
+ -- empty while the account is on; the direct_membership_disabled trigger keeps
+ -- them so whichever statement flips "disabled".
+ disabled_ms INTEGER NOT NULL DEFAULT 0 CHECK(disabled_ms>=0),
+ disabled_reason TEXT NOT NULL DEFAULT '' CHECK(disabled_reason IN('','owner','left'))
 ) STRICT;
 CREATE TABLE access_invitations(
  id TEXT PRIMARY KEY, email TEXT NOT NULL, code_hash TEXT NOT NULL UNIQUE,
@@ -2703,17 +2736,13 @@ CREATE TABLE access_invitations(
  allowed_libraries TEXT NOT NULL DEFAULT '[]' CHECK(json_valid(allowed_libraries)),
  state TEXT NOT NULL DEFAULT 'pending' CHECK(state IN('pending','accepted','revoked')),
  created_ms INTEGER NOT NULL, expires_ms INTEGER NOT NULL, accepted_ms INTEGER,
- created_by TEXT NOT NULL, account_id TEXT, revision INTEGER NOT NULL DEFAULT 1 CHECK(revision>0)) STRICT;
+ created_by TEXT NOT NULL, account_id TEXT, revision INTEGER NOT NULL DEFAULT 1 CHECK(revision>0),
+ -- A Portico Account username this invitation is for. Empty means whoever holds the code.
+ bound_username TEXT NOT NULL DEFAULT '') STRICT;
 CREATE TABLE access_limits(
  account_id TEXT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
  revision INTEGER NOT NULL DEFAULT 1 CHECK(revision>0), updated_ms INTEGER NOT NULL,
  body TEXT NOT NULL CHECK(json_valid(body))) STRICT;
-CREATE TABLE access_devices(
- id TEXT PRIMARY KEY, account_id TEXT NOT NULL, profile_id TEXT NOT NULL DEFAULT '',
- name TEXT NOT NULL DEFAULT '', platform TEXT NOT NULL DEFAULT '',
- trust TEXT NOT NULL DEFAULT 'pending' CHECK(trust IN('pending','approved','blocked')),
- first_seen_ms INTEGER NOT NULL, last_seen_ms INTEGER NOT NULL,
- revision INTEGER NOT NULL DEFAULT 1 CHECK(revision>0)) STRICT;
 CREATE TABLE access_receipts(
  scope TEXT NOT NULL, operation_id TEXT NOT NULL, digest TEXT NOT NULL,
  body TEXT NOT NULL, created_ms INTEGER NOT NULL, PRIMARY KEY(scope,operation_id)) STRICT;
@@ -2730,21 +2759,30 @@ CREATE TABLE inventory_directory_cache(
  incarnation TEXT NOT NULL,relative_path TEXT NOT NULL,parent_path TEXT NOT NULL,
  parent_revision TEXT NOT NULL DEFAULT '',identity TEXT NOT NULL DEFAULT '',revision TEXT NOT NULL DEFAULT '',
  PRIMARY KEY(source_id,incarnation,relative_path)) STRICT;
-CREATE TABLE playback_client_profiles(
- session_hash TEXT PRIMARY KEY REFERENCES authorization_family_tokens(token_hash) ON DELETE CASCADE,
- account_id TEXT NOT NULL,profile_id TEXT NOT NULL,
- revision TEXT NOT NULL,family TEXT NOT NULL,
- document TEXT NOT NULL CHECK(length(document)<=65536),
- updated_at_ms INTEGER NOT NULL
- ) STRICT;
+-- A route a device's player could not play, per file and per player engine
+-- (native or mpv): the next plan for that engine skips it.
 CREATE TABLE playback_route_failures(
  session_hash TEXT NOT NULL REFERENCES authorization_family_tokens(token_hash) ON DELETE CASCADE,
  asset_id TEXT NOT NULL,
+ engine TEXT NOT NULL DEFAULT 'native' CHECK(engine IN ('native','mpv')),
  route TEXT NOT NULL CHECK(route IN ('original','copy_remux','audio_conversion')),
  code TEXT NOT NULL,detail TEXT NOT NULL DEFAULT '',
  reported_at_ms INTEGER NOT NULL,
- PRIMARY KEY(session_hash,asset_id,route)
+ PRIMARY KEY(session_hash,asset_id,engine,route)
  ) STRICT;
+-- The audio and subtitle choice a profile last made for a show (item_id is the
+-- show, for every episode of it) or a film, kept as languages so it carries
+-- from one file to the next. subtitle_mode: '' nothing remembered, 'off'
+-- subtitles were turned off, 'on' a track in subtitle_language was chosen.
+CREATE TABLE playback_track_memory(
+ profile_id TEXT NOT NULL,
+ item_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,
+ audio_language TEXT NOT NULL DEFAULT '',
+ subtitle_mode TEXT NOT NULL DEFAULT '' CHECK(subtitle_mode IN ('','off','on')),
+ subtitle_language TEXT NOT NULL DEFAULT '',
+ updated_ms INTEGER NOT NULL,
+ PRIMARY KEY(profile_id,item_id)
+ ) WITHOUT ROWID, STRICT;
 CREATE TABLE identity_refresh_credentials(
  family_id TEXT PRIMARY KEY REFERENCES authorization_session_families(id) ON DELETE CASCADE,
  device_id TEXT NOT NULL REFERENCES identity_devices(id),
@@ -2815,7 +2853,7 @@ CREATE TABLE identity_credential_attempts(
 ) STRICT;
 CREATE TABLE authorization_family_grants(
  family_id TEXT PRIMARY KEY REFERENCES authorization_session_families(id) ON DELETE CASCADE,
- grant_kind TEXT NOT NULL CHECK(grant_kind IN ('viewer_only'))
+ grant_kind TEXT NOT NULL CHECK(grant_kind IN ('viewer_only','cast_target'))
 ) STRICT;
 CREATE TABLE direct_profile_pin_attempts(
  profile_id TEXT NOT NULL REFERENCES direct_profiles(id) ON DELETE CASCADE,
@@ -2973,14 +3011,16 @@ CREATE TABLE "artwork_variants"(
  digest TEXT NOT NULL REFERENCES artwork_objects(digest),
  PRIMARY KEY(source_digest,width)
 ) STRICT;
+-- A device's capability document (playback.CapabilityDocument), as published:
+-- the one description of what its player engines can play.
 CREATE TABLE playback_device_capabilities(
  device_id TEXT PRIMARY KEY REFERENCES identity_devices(id) ON DELETE CASCADE,
  account_id TEXT NOT NULL,
  profile_id TEXT NOT NULL,
  revision INTEGER NOT NULL,
- document TEXT NOT NULL,
+ document TEXT NOT NULL CHECK(length(document)<=131072),
  updated_at_ms INTEGER NOT NULL
-, planner_profile TEXT NOT NULL DEFAULT '') STRICT;
+ ) STRICT;
 CREATE TABLE playback_v1_sessions(
  id TEXT PRIMARY KEY,
  device_id TEXT NOT NULL,
@@ -3325,9 +3365,15 @@ CREATE TABLE hosted_identity_challenges(
  installation_id TEXT NOT NULL,
  expires_ms INTEGER NOT NULL) STRICT;
 CREATE TABLE portico_admitted_families(
- family_id TEXT PRIMARY KEY REFERENCES authorization_session_families(id) ON DELETE CASCADE) STRICT;
+ family_id TEXT PRIMARY KEY REFERENCES authorization_session_families(id) ON DELETE CASCADE,
+ -- The Hosted signing key whose identity assertion admitted this session (or
+ -- the session it was derived from). When that key is learned to be revoked,
+ -- the session ends.
+ signer_key_id TEXT NOT NULL DEFAULT '') STRICT;
+CREATE INDEX portico_admitted_signer ON portico_admitted_families(signer_key_id) WHERE signer_key_id<>'';
 CREATE TABLE portico_factor_challenges(
- token_hash TEXT PRIMARY KEY REFERENCES identity_factor_challenges(token_hash) ON DELETE CASCADE) STRICT;
+ token_hash TEXT PRIMARY KEY REFERENCES identity_factor_challenges(token_hash) ON DELETE CASCADE,
+ signer_key_id TEXT NOT NULL DEFAULT '') STRICT;
 CREATE TABLE hosted_migrated_families(family_id TEXT PRIMARY KEY, refresh_hash TEXT UNIQUE) STRICT;
 CREATE TABLE live_programme_icons(
  generation_id TEXT NOT NULL,
@@ -3669,6 +3715,7 @@ CREATE TABLE download_requests(
  state TEXT NOT NULL DEFAULT 'capturing',error_code TEXT NOT NULL DEFAULT '',
  selection_fence TEXT NOT NULL,cursor_key TEXT NOT NULL DEFAULT '',cursor_id TEXT NOT NULL DEFAULT '',
  total INTEGER NOT NULL DEFAULT 0,admitted INTEGER NOT NULL DEFAULT 0,
+ restarts INTEGER NOT NULL DEFAULT 0,
  created_ms INTEGER NOT NULL,updated_ms INTEGER NOT NULL,
  UNIQUE(profile_key,operation_id)
 ) STRICT;
@@ -3909,9 +3956,8 @@ CREATE INDEX admin_receipts_age ON admin_receipts(created_ms);
 CREATE INDEX admin_dvr_groups_page ON admin_dvr_groups(created_ms DESC,id DESC);
 CREATE INDEX admin_channel_presets_page ON admin_channel_presets(name_key,id);
 CREATE UNIQUE INDEX direct_one_owner ON direct_memberships(role) WHERE role='owner';
+CREATE INDEX identity_devices_recent ON identity_devices(last_seen DESC,id DESC);
 CREATE INDEX access_invitation_page ON access_invitations(created_ms DESC,id DESC);
-CREATE INDEX access_devices_page ON access_devices(last_seen_ms DESC,id DESC);
-CREATE INDEX access_devices_account ON access_devices(account_id,id);
 CREATE INDEX client_log_uploads_page ON client_log_uploads(received_ms DESC,id DESC);
 CREATE INDEX audio_tag_evidence_asset ON audio_tag_evidence(asset_id,field,value);
 CREATE INDEX inventory_objects_directory ON inventory_objects(source_id,root_incarnation,directory_path,retired,id);
@@ -3923,7 +3969,6 @@ CREATE INDEX artwork_previews_digest ON artwork_previews(digest);
 CREATE INDEX artwork_objects_created ON artwork_objects(created_at);
 CREATE INDEX artwork_uploads_digest ON artwork_uploads(digest);
 CREATE INDEX artwork_uploads_thumbnail ON artwork_uploads(thumbnail_digest);
-CREATE INDEX playback_client_profiles_age ON playback_client_profiles(updated_at_ms);
 CREATE INDEX identity_refresh_device ON identity_refresh_credentials(device_id);
 CREATE INDEX identity_refresh_receipts_expiry ON identity_refresh_receipts(expires_at);
 CREATE INDEX mount_operations_retention ON mount_operations(created_at);
@@ -4411,6 +4456,12 @@ WHEN NEW.hosted_account_id IS NOT OLD.hosted_account_id OR (OLD.unindexed=1 AND 
 END;
 CREATE TRIGGER hosted_member_link_delete AFTER DELETE ON account_portico_links BEGIN
  INSERT INTO hosted_membership_journal(hosted_account_id) VALUES(OLD.hosted_account_id);
+END;
+CREATE TRIGGER direct_membership_disabled AFTER UPDATE OF disabled ON direct_memberships WHEN OLD.disabled IS NOT NEW.disabled BEGIN
+ UPDATE direct_memberships SET
+  disabled_ms=CASE WHEN NEW.disabled=0 THEN 0 WHEN NEW.disabled_ms>0 THEN NEW.disabled_ms ELSE CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) END,
+  disabled_reason=CASE WHEN NEW.disabled=0 THEN '' WHEN NEW.disabled_reason<>'' THEN NEW.disabled_reason ELSE 'owner' END
+  WHERE account_id=NEW.account_id;
 END;
 CREATE TRIGGER hosted_member_standing AFTER UPDATE OF role,disabled ON direct_memberships WHEN OLD.role IS NOT NEW.role OR OLD.disabled IS NOT NEW.disabled BEGIN
  INSERT INTO hosted_membership_journal(hosted_account_id) SELECT hosted_account_id FROM account_portico_links WHERE account_id=NEW.account_id;
