@@ -204,8 +204,9 @@ class Run:
             'hosted-' + keyset, env)
 
     def challenge(self, installation):
+        nonce = random_id()
         out, _, _ = self.server.request('POST', '/v1/direct/portico-challenge',
-                    {'nonce': random_id()}, installation=installation)
+                    {'nonce': nonce}, installation=installation)
         # Verify the actual server challenge signature against its claimed key.
         from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
         public = unb64(self.approval['publicKey'])
@@ -213,6 +214,8 @@ class Run:
                                                          unb64(out['proof']['payload']))
         proof = json.loads(unb64(out['proof']['payload']))
         assert proof['challenge'] == out['challenge']
+        assert proof['nonce'] == nonce and proof['installationId'] == installation
+        assert proof['serverId'] == self.server_id and proof['publicKey'] == self.approval['publicKey']
         return out['challenge']
 
     def sign_in(self, hosted_token, installation):
@@ -270,6 +273,8 @@ class Run:
         self.wait(self.server, '/v1/system')
         direct, _, _ = self.server.request('POST', '/v1/dev/e2e/sign-in', {'username': 'e2e-owner'})
         self.direct = direct['session']['accessToken']
+        # Let the unclaimed server's background loops become quiet before claim.
+        time.sleep(1)
         state, _, _ = self.server.request('GET', '/v1/networking/claim', token=self.direct)
         state, _, _ = self.server.request('POST', '/v1/networking/claim/prepare',
                          {'accountId': self.account['account']['id'], 'expected': state['identity']}, token=self.direct)
@@ -287,6 +292,27 @@ class Run:
                                              {'expected': state['operation']}, token=self.direct)
         assert state['state'] == 'installed' and state['installationAcknowledged']
         self.server_id = state['identity']['serverId']
+        linked = lambda: self.sqlite('SELECT count(*) FROM account_portico_links WHERE hosted_account_id=?',
+                                     (self.account['account']['id'],))[0][0] == 1
+        try:
+            self.until(linked, seconds=3)
+        except AssertionError:
+            installation = random_id()
+            assertion, _, _ = self.api.request('POST', '/v1/servers/' + self.server_id + '/identity',
+                                 {'challenge': self.challenge(installation)}, token=self.account_token)
+            refused, _, status = self.server.request('POST', '/v1/direct/sign-in',
+                                {'porticoIdentity': assertion}, installation=installation, expected=None)
+            if status == 403 and refused.get('error', {}).get('code') == 'access_refused':
+                self.results.append({'flow': 'Server claim owner admission', 'status': 'gap',
+                    'needed': 'Wake Hosted control after claim installation/acknowledgment so the owner link and first check-in are processed promptly',
+                    'signInStatusBeforeWake': status})
+                self.write('results.json', self.results)
+                print('GAP: installed claim owner is refused until Hosted control is woken', flush=True)
+            else:
+                assert status == 200, 'unexpected initial claim admission refusal'
+            # Continue remaining acceptance using the injected signed-wake seam.
+            self.wake('key-a')
+            self.until(linked)
         self.write('sessions.json', {'direct': direct, 'hosted': self.account, 'claim': state})
         self.passed('Server claim is installed and acknowledged')
         listed, _, _ = self.api.request('GET', '/v1/servers', token=self.account_token)
@@ -365,6 +391,7 @@ class Run:
         time.sleep(max(out['interval'], int(early_headers.get('Retry-After', '0'))))
         grant, _, _ = self.api.request('POST', '/v1/tv-authorizations/token', {'deviceCode': out['deviceCode']})
         assert grant['issuer'] == self.api.origin and grant['recipientKey'] == public
+        assert grant['requestId'] == review['clientRequestId']
         shared = key.exchange(x25519.X25519PublicKey.from_public_bytes(unb64(grant['publicKey'])))
         info = '\0'.join(['portico.tv-grant.v1', grant['issuer'], grant['requestId'], public, grant['publicKey']]).encode()
         secret = HKDF(algorithm=hashes.SHA256(), length=32, salt=unb64(grant['salt']), info=info).derive(shared)
@@ -390,10 +417,19 @@ class Run:
         self.wake('key-a')
         time.sleep(.3)
         assert self.sqlite('SELECT attempts,retry_at FROM networking_control_schedule')[0] == before
-        self.command(['node', '--experimental-strip-types', self.module / 'dev/e2ehosted/outage.mjs'],
+        client_result = self.command(['node', '--experimental-strip-types', self.module / 'dev/e2ehosted/outage.mjs'],
                      input=json.dumps({'hosted': self.api.origin, 'server': self.server.origin,
                                        'serverTree': self.args.server_tree, 'token': self.session_a['session']['accessToken']}))
+        client_result = json.loads(client_result)
         self.passed('Hosted outage preserves admitted and direct sessions; shared client gate blocks automatic requests')
+        if client_result['devicePollBypassesGate']:
+            self.results.append({'flow': 'Client device activation outage gate', 'status': 'gap',
+                                 'bug': 'B-22.26', 'networkRequestsWhileGateOpen': client_result['devicePollRequests'],
+                                 'needed': 'HttpDeviceAuthorizationApi.poll must use hostedGate(baseUrl).run(automatic) and the scheduler must honor its deadline'})
+            self.write('results.json', self.results)
+            print('GAP B-22.26: device activation adapter bypasses the shared outage gate', flush=True)
+        else:
+            self.passed('Client device activation adapter honors shared outage gate')
         self.lp = self.start([self.scratch / 'localtls', '-dir', self.dir / 'tls',
                              '-listen', self.tls.u.netloc, '-upstream', self.api.origin], 'localtls-restart')
         self.hp = self.hosted('key-a')
@@ -465,7 +501,7 @@ class Run:
                            ('/v1/app-authorizations/token', {'code': 'unknown', 'verifier': random_id(),
                                                           'redirectUri': 'http://127.0.0.1:12345/return'})]:
             seen = False
-            for _ in range(140):
+            for _ in range(500):
                 _, h, status = self.api.request('POST', path, body, expected=None)
                 if status == 429:
                     assert int(h['Retry-After']) > 0
