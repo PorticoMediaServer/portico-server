@@ -36,6 +36,7 @@ import {MiniGuide} from './MiniGuide';
 import {usePlayer, type PlayerEngine} from './engine';
 import {usePlayerAudioPlan, usePlayerChapters, usePlayerOffers, usePlayerSubtitles, useTrickplay} from './options';
 import {SkipPrompt, type SkipMode} from './SkipPrompt';
+import {UpNextCredits, useUpNextDuringCredits} from './UpNextCredits';
 import {useServerPreferences} from '../app/server-preferences';
 import {LiveTimeline} from './Timeline';
 import {PostPlay, ShortcutLegend} from './PostPlay';
@@ -212,6 +213,9 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
   const chapterList = chapters.data?.status === 'available' ? chapters.data.chapters : undefined;
   const chapterMarks = useMemo(() => chapterList?.map(c => ({start: c.startSeconds, title: c.title})), [chapterList]);
   const markerList = offers.data?.markers?.markers;
+  /* While the closing credits run, the next title is offered in a corner; its card stands in for the "Skip credits" button. */
+  const upNext = useUpNextDuringCredits(engine, markerList, skipModes.credits ?? 'ask', !isAudio && !state.channel);
+  const promptModes = upNext.offer?.marker ? {...skipModes, credits: 'off' as SkipMode, outro: 'off' as SkipMode} : skipModes;
   const segmentMarks = useMemo(() => markerList?.filter(m => m.kind === 'intro' || m.kind === 'credits' || m.kind === 'outro' || m.kind === 'recap').map(m => ({start: m.startSeconds, end: m.endSeconds})), [markerList]);
   const listening = useSyncExternalStore(queue?.listening.subscribe ?? (() => () => {}), () => queue?.listening.getSnapshot() ?? null);
   useSystemListening(service, state, video, identity.item ?? {id: identity.itemId ?? '', libraryId: identity.libraryId ?? '', title: identity.title, kind: identity.kind ?? '', duration: state.duration, progressSeconds: state.positionSeconds, available: true, posterUrl: identity.posterUrl}, queue, api, currentAccessToken, identity.subtitle);
@@ -662,7 +666,8 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
       {!isAudio ? <div className={s.tap} onClick={tap} onDoubleClick={() => { if (pointerKind.current === 'mouse') { clearTimeout(clickTimer.current); void toggleFullscreen(); } }} onWheel={e => { if (!openBox && e.deltaY !== 0) changeVolume(e.deltaY < 0 ? 0.05 : -0.05); }} aria-hidden /> : null}
       {(buffering || state.recovering) && state.intent === 'playing' && !state.error ? <div className={s.spinner} aria-hidden /> : null}
       {!isAudio ? <PostPlay engine={engine} onClose={close} /> : null}
-      {!isAudio && !linear && state.phase === 'ready' ? <SkipPrompt markers={offers.data?.markers ?? null} position={state.positionSeconds} sessionId={state.session?.id} modes={skipModes} onSeek={engine.seekTo} onSkipped={(id, mode, at) => engine.service.markerSkipped(id, mode, at)} /> : null}
+      {!isAudio && !linear && state.phase === 'ready' ? <SkipPrompt markers={offers.data?.markers ?? null} position={state.positionSeconds} sessionId={state.session?.id} modes={promptModes} onSeek={engine.seekTo} onSkipped={(id, mode, at) => engine.service.markerSkipped(id, mode, at)} /> : null}
+      {upNext.offer && upNext.next ? <UpNextCredits engine={engine} offer={upNext.offer} next={upNext.next} onDismiss={upNext.dismiss} /> : null}
       {linear && state.linearStalled && state.phase !== 'error' ? (
         // A channel start that can't proceed says why, instead of "Preparing playback…" forever.
         <div className={s.errorState}>

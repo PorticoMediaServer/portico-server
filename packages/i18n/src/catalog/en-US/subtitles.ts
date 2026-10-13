@@ -18,4 +18,5 @@ export const drawnSubtitleMessages = {
   'player.upNext.duringCredits': 'Up next',
   'player.upNext.playNow': 'Play now',
   'player.upNext.watchCredits': 'Watch credits',
+  'player.upNext.notNow': 'Not now',
 } as const satisfies Record<string, string>;
