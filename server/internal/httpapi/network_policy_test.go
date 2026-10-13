@@ -10,7 +10,6 @@ import (
 	"portico.local/server/internal/operations"
 	"strconv"
 	"testing"
-	"time"
 )
 
 func TestSetupOriginAndContentType(t *testing.T) {

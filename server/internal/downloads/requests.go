@@ -619,15 +619,17 @@ func (s *Service) Requests(ctx context.Context, p identity.Principal, device str
 			return out, err
 		}
 		f.Target.ID, f.CreatedAt = public, stamp(f.created)
-		query, values := requestSelection(f.Target)
+		// A container none of whose members this viewer may see today is not
+		// listed: its name would otherwise still reach a profile that has
+		// since been restricted from it.
+		members, values := requestSelection(f.Target)
 		var anyVisible bool
-		if err = tx.QueryRowContext(ctx, `SELECT EXISTS(`+query+` AND (`+visible+`))`, append(values, bound...)...).Scan(&anyVisible); err != nil {
+		if err = tx.QueryRowContext(ctx, `SELECT EXISTS(`+members+` AND (`+visible+`))`, append(values, bound...)...).Scan(&anyVisible); err != nil {
 			return out, err
 		}
 		if !anyVisible {
 			continue
 		}
-
 		if f.preparing {
 			f.State = "preparing"
 		}

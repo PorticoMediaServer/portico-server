@@ -2,7 +2,6 @@ package catalog
 
 import (
 	"database/sql"
-	"errors"
 	"fmt"
 	"strconv"
 	"strings"

@@ -419,7 +419,7 @@ func TestClientLogUploadsAreBoundedStoredPerDeviceAndListedForAdmins(t *testing.
 	if w = f.call("POST", "/v1/diagnostics/client-logs", "", `{"body":"anonymous"}`); w.Code != 401 {
 		t.Fatalf("an unauthenticated upload was accepted: %d", w.Code)
 	}
-	w = f.call("GET", f.owner, "")
+	w = f.call("GET", "/v1/admin/diagnostics/client-logs", f.owner, "")
 	if w.Code != 200 || !strings.Contains(w.Body.String(), `"deviceId":"`+f.memberDevice+`"`) || strings.Contains(w.Body.String(), "a client trace") {
 		t.Fatalf("a list must carry metadata but not bodies: %d %s", w.Code, w.Body)
 	}
@@ -472,7 +472,7 @@ func TestClientLogRetentionIsPerAuthenticatedDevice(t *testing.T) {
 			t.Fatalf("upload %d: %d %s", i, w.Code, w.Body)
 		}
 	}
-	w := f.call("GET", f.owner, "")
+	w := f.call("GET", "/v1/admin/diagnostics/client-logs", f.owner, "")
 	var page servicelog.ClientUploadPage
 	if err := json.Unmarshal(w.Body.Bytes(), &page); err != nil || w.Code != 200 || len(page.Items) != servicelog.ClientUploadsPerDevice {
 		t.Fatalf("device retention: %d %v %+v", w.Code, err, page)

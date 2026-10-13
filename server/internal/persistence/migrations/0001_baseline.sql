@@ -25,7 +25,9 @@ INSERT INTO catalog_kinds VALUES
 -- its life, so entity identity keys survive a later change of its source path
 -- and a library re-added from the same folder finds its old public ids.
 CREATE TABLE catalog_libraries(
- id INTEGER PRIMARY KEY,
+ -- AUTOINCREMENT: a removed library's handle is never given to a later one,
+ -- so rows still naming it can never be read as another library's.
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
  library_id TEXT NOT NULL UNIQUE REFERENCES libraries(id) ON DELETE CASCADE,
  root TEXT NOT NULL,
  name TEXT NOT NULL,
@@ -725,6 +727,8 @@ CREATE TABLE catalog_book_groups(
  retired INTEGER NOT NULL DEFAULT 0 CHECK(retired IN(0,1))) STRICT;
 CREATE UNIQUE INDEX catalog_book_groups_key ON catalog_book_groups(library_id,kind,name_key) WHERE retired=0;
 CREATE INDEX catalog_book_groups_library ON catalog_book_groups(library_id,kind,name COLLATE NOCASE,id) WHERE retired=0;
+-- Every group of a library, retired or not: removing the library clears them by this.
+CREATE INDEX catalog_book_groups_every ON catalog_book_groups(library_id,id);
 
 CREATE TABLE catalog_personal_sort_state(
  id INTEGER PRIMARY KEY CHECK(id=1),turn INTEGER NOT NULL DEFAULT 0,
@@ -2822,6 +2826,8 @@ CREATE TABLE playback_track_memory(
  updated_ms INTEGER NOT NULL,
  PRIMARY KEY(profile_id,item_id)
  ) WITHOUT ROWID, STRICT;
+-- Removing a title finds its remembered tracks by this, not by reading the table.
+CREATE INDEX playback_track_memory_item ON playback_track_memory(item_id);
 CREATE TABLE identity_refresh_credentials(
  family_id TEXT PRIMARY KEY REFERENCES authorization_session_families(id) ON DELETE CASCADE,
  device_id TEXT NOT NULL REFERENCES identity_devices(id),
@@ -3626,6 +3632,8 @@ CREATE TABLE catalog_personal_visibility_sort_buckets(
  profile_id TEXT NOT NULL,class_id INTEGER NOT NULL,generation INTEGER NOT NULL,library_id INTEGER NOT NULL,
  kind INTEGER NOT NULL,axis INTEGER NOT NULL CHECK(axis BETWEEN 7 AND 9),value TEXT NOT NULL,total INTEGER NOT NULL CHECK(total>=0),
  PRIMARY KEY(profile_id,class_id,generation,library_id,kind,axis,value)) WITHOUT ROWID, STRICT;
+-- A class's totals for every profile: removing the class's library clears them by this.
+CREATE INDEX catalog_personal_visibility_sort_bucket_class ON catalog_personal_visibility_sort_buckets(class_id,generation);
 CREATE TABLE catalog_personal_visibility_sort_profile_jobs(
  profile_id TEXT NOT NULL,entity_id INTEGER NOT NULL,sequence INTEGER NOT NULL DEFAULT 1,cursor_sequence INTEGER NOT NULL DEFAULT 0,
  class_cursor INTEGER NOT NULL DEFAULT 0,generation_cursor INTEGER NOT NULL DEFAULT 0,
@@ -3855,6 +3863,8 @@ CREATE TABLE inventory_artwork_sources (
  PRIMARY KEY(asset_id,kind,entity_id,role)
 ) STRICT;
 CREATE INDEX inventory_artwork_sources_role ON inventory_artwork_sources(kind,entity_id,role,art_key);
+-- Removing a title finds its artwork sources by this, not by reading the table.
+CREATE INDEX inventory_artwork_sources_entity ON inventory_artwork_sources(entity_id);
 CREATE VIEW inventory_asset_availability AS
  SELECT asset_id,MAX(CASE WHEN o.retired=0 AND o.state='available' AND o.unsupported_reason='' AND s.enabled=1 AND s.health NOT IN('offline','removing','root_changed') AND o.root_incarnation=s.incarnation THEN 1 ELSE 0 END) AS available
  FROM inventory_objects o JOIN library_sources s ON s.id=o.source_id GROUP BY asset_id;
