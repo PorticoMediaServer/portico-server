@@ -125,3 +125,16 @@ test('console words come from the catalogue, and a code with no word is never sh
   assert.equal(sourceStateText(t, has, {state: 'ready'}), 'Connected');
   assert.equal(sourceStateText(t, has, {state: 'ready', errorCode: 'tls_handshake'}), 'Needs attention');
 });
+
+test('a viewing window\'s days are one choice, and a set saved elsewhere is kept as it is', async () => {
+  const {dayChoiceOf, daysOfChoice, newViewingHours} = await import('../src/server-admin/people-words.ts');
+  assert.equal(dayChoiceOf([0, 1, 2, 3, 4, 5, 6]), 'all');
+  assert.equal(dayChoiceOf([5, 4, 3, 2, 1]), 'weekdays');
+  assert.equal(dayChoiceOf([6, 0]), 'weekends');
+  assert.equal(dayChoiceOf([3]), '3');
+  assert.equal(dayChoiceOf([1, 3, 5]), 'several');
+  assert.deepEqual(daysOfChoice('several', [1, 3, 5]), [1, 3, 5]);
+  assert.deepEqual(daysOfChoice('weekends', [1]), [0, 6]);
+  assert.deepEqual(daysOfChoice('2', [1]), [2]);
+  assert.deepEqual(newViewingHours(), {days: [0, 1, 2, 3, 4, 5, 6], startMinute: 480, endMinute: 1200});
+});

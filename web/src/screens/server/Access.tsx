@@ -3,13 +3,14 @@ import {parseRatingSystems, type RatingSystem} from '@core/identity-restrictions
 import {contentRatings, parseAccessDevicePage, parseInvitation, type AccessDevice, type AccessTier, type Invitation, type MemberLimits} from '@core/server-administration.ts';
 import {accessListPath} from '@core/server-admin/panel-logic.ts';
 export {accessListPath, accessLists} from '@core/server-admin/panel-logic.ts';
-import {deviceFacts, roleLabel, trustApplies} from '@core/server-admin/people-words.ts';
+import {VIEWING_HOURS_MAX, dayChoiceOf, daysOfChoice, deviceFacts, newViewingHours, roleLabel, trustApplies, type DayChoice} from '@core/server-admin/people-words.ts';
+import {clockMinutes, clockText} from '@core/server-admin/panel-logic.ts';
 import {QUIET_READ_EVERY_MS, sendFresh, useAction} from '../../admin/console';
 import {createOperationIds} from './operation-ids';
 import {findInPages, nextCursorOf, useCursorList} from '../../admin/cursor-read';
 import {ListPager} from './ListPager';
 import {useSession} from '../../app/session';
-import {Button, ConfirmDialog, Dialog, Input, Notice, Select, SettingsEmpty, SettingsGroup, SettingsLoading, SettingsNote, SettingsRow, Status, Switch, Text, TextArea} from '../../ui';
+import {Button, ConfirmDialog, Dialog, Input, Notice, Select, SettingsEmpty, SettingsFooter, SettingsGroup, SettingsLoading, SettingsNote, SettingsRow, Status, Switch, Text, TextArea} from '../../ui';
 import {useI18n} from '../../app/i18n';
 
 const items = <T,>(raw: unknown, each: (x: unknown) => T): T[] => {
@@ -48,8 +49,45 @@ export function LimitsFields({limits, onChange}: {limits: MemberLimits; onChange
         <SettingsRow label={t('web.limits.unrated')} control={<Switch checked={limits.allowUnrated} onCheckedChange={v => onChange({...limits, allowUnrated: v})} label={t('limits.allowUnrated')} />} />
         <SettingsRow label={t('web.limits.hiddenLabels')} help={t('web.access.hiddenLabelsHelp')} stack control={<Input hideLabel label={t('web.limits.hiddenLabels')} value={limits.tagPolicy.deniedLabels.join(', ')} onChange={e => onChange({...limits, tagPolicy: {deniedLabels: e.target.value.split(',').map(x => x.trim()).filter(Boolean)}})} style={{width: '100%'}} />} />
       </SettingsGroup>
-      {limits.schedule.windows.length ? <Text variant="caption" tone="tertiary">{t('server.people.scheduleKept', {count: limits.schedule.windows.length, zone: limits.schedule.timezone || t('server.people.serverTime')})}</Text> : null}
+      <ViewingHours limits={limits} onChange={onChange} />
     </>
+  );
+}
+
+/**
+ * An account's viewing hours: when this person can sign in and watch. Each set of hours is a
+ * row: which days, from when, until when (an end at or before the start runs into the next
+ * day). With none, any time. Saved with the rest of the account's limits by the page's Save.
+ */
+function ViewingHours({limits, onChange}: {limits: MemberLimits; onChange: (next: MemberLimits) => void}) {
+  const i18n = useI18n();
+  const {t} = i18n;
+  const windows = limits.schedule.windows;
+  const set = (next: MemberLimits['schedule']['windows']) => onChange({...limits, schedule: {...limits.schedule, windows: next}});
+  const change = (index: number, patch: Partial<MemberLimits['schedule']['windows'][number]>) => set(windows.map((w, i) => (i === index ? {...w, ...patch} : w)));
+  // 4 January 1970 was a Sunday: day 0 of the server's week.
+  const dayName = (day: number) => i18n.formatDate(new Date(Date.UTC(1970, 0, 4 + day, 12)), {weekday: 'long', timeZone: 'UTC'});
+  const dayOptions = (current: readonly number[]) => [
+    ...(['all', 'weekdays', 'weekends'] as const).map(value => ({value, label: t(`server.people.days.${value}`)})),
+    ...[1, 2, 3, 4, 5, 6, 0].map(day => ({value: String(day), label: dayName(day)})),
+    ...(dayChoiceOf(current) === 'several' ? [{value: 'several', label: `${t('server.people.days.several')}: ${i18n.list([1, 2, 3, 4, 5, 6, 0].filter(d => current.includes(d)).map(dayName))}`}] : []),
+  ];
+  return (
+    <SettingsGroup title={t('server.people.hours')} description={t('server.people.hoursLede')} action={<Button size="sm" variant="secondary" icon="plus" label={t('server.people.hoursAdd')} disabled={windows.length >= VIEWING_HOURS_MAX} onClick={() => set([...windows, newViewingHours()])} />}>
+      {windows.map((w, i) => (
+        <SettingsRow key={i} stack label={<Select hideLabel label={t('server.people.hoursDays')} value={dayChoiceOf(w.days)} options={dayOptions(w.days)} onChange={e => change(i, {days: daysOfChoice(e.target.value as DayChoice, w.days)})} />}
+          control={<div style={{display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center'}}>
+            <Text variant="caption" tone="tertiary">{t('server.windows.from')}</Text>
+            <Input hideLabel label={t('server.people.hoursFrom')} type="time" value={clockText(w.startMinute)} onChange={e => change(i, {startMinute: clockMinutes(e.target.value)})} style={{width: 120}} />
+            <Text variant="caption" tone="tertiary">{t('server.people.hoursUntilWord')}</Text>
+            <Input hideLabel label={t('server.people.hoursUntil')} type="time" value={clockText(w.endMinute)} onChange={e => change(i, {endMinute: clockMinutes(e.target.value)})} style={{width: 120}} />
+            {w.endMinute <= w.startMinute ? <Text variant="caption" tone="tertiary">{t('server.people.hoursNextDay')}</Text> : null}
+            <Button size="sm" variant="ghost" icon="trash" aria-label={t('server.people.hoursRemove')} onClick={() => set(windows.filter((_, n) => n !== i))} />
+          </div>} />
+      ))}
+      {!windows.length ? <SettingsEmpty title={t('server.people.hoursNone')} /> : null}
+      {windows.length ? <SettingsFooter><Text variant="caption" tone="tertiary">{limits.schedule.timezone ? t('server.people.hoursZone', {zone: limits.schedule.timezone}) : t('server.people.hoursServerZone')}</Text></SettingsFooter> : null}
+    </SettingsGroup>
   );
 }
 

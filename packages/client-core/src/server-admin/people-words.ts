@@ -29,3 +29,25 @@ export function deviceFacts(t: Translate, device: Pick<AccessDevice, 'username' 
 
 /** Whether approving or blocking still means anything for a device as it is now. */
 export const trustApplies = (now: Pick<AccessDevice, 'trust'>, next: 'approved' | 'blocked'): boolean | 'done' => (now.trust === next ? 'done' : true);
+
+// ── Viewing hours: the days of one window, as a choice an owner makes in one control ───────
+
+export type DayChoice = 'all' | 'weekdays' | 'weekends' | 'several' | '0' | '1' | '2' | '3' | '4' | '5' | '6';
+const DAY_SETS: Readonly<Record<'all' | 'weekdays' | 'weekends', readonly number[]>> = {all: [0, 1, 2, 3, 4, 5, 6], weekdays: [1, 2, 3, 4, 5], weekends: [0, 6]};
+const sameDays = (a: readonly number[], b: readonly number[]) => a.length === b.length && [...a].sort().join() === [...b].sort().join();
+
+/** Which choice a window's days are: every day, weekdays, weekends, one day, or a set saved elsewhere that the control keeps as it is. */
+export function dayChoiceOf(days: readonly number[]): DayChoice {
+  const unique = [...new Set(days)].filter(d => Number.isInteger(d) && d >= 0 && d <= 6);
+  for (const key of ['all', 'weekdays', 'weekends'] as const) if (sameDays(unique, DAY_SETS[key])) return key;
+  return unique.length === 1 ? (String(unique[0]) as DayChoice) : 'several';
+}
+/** The days a choice stands for; `several` keeps the days it was given. */
+export function daysOfChoice(choice: DayChoice, current: readonly number[]): readonly number[] {
+  if (choice === 'several') return current;
+  return choice === 'all' || choice === 'weekdays' || choice === 'weekends' ? DAY_SETS[choice] : [Number(choice)];
+}
+/** The hours a new window starts with: every day, eight in the morning until eight in the evening. */
+export const newViewingHours = (): Readonly<{days: readonly number[]; startMinute: number; endMinute: number}> => ({days: DAY_SETS.all, startMinute: 8 * 60, endMinute: 20 * 60});
+/** The server keeps at most this many windows for one account. */
+export const VIEWING_HOURS_MAX = 64;
