@@ -59,6 +59,52 @@ func registerMemberRoutes(registry *apikit.Registry, d Dependencies) error {
 	}})
 }
 
+// RememberedAccountsRequest names the installation whose remembered accounts
+// are wanted or changed. The installation id travels in the body: it is what a
+// device renews its sign-in with, and an address ends up in proxy and access
+// logs.
+type RememberedAccountsRequest struct {
+	InstallationID string `json:"installationId"`
+}
+
+type RememberedAccountsDocument struct {
+	Items []identity.BrowserAccount `json:"items"`
+}
+
+// registerRememberedAccountRoutes: the account switcher a browser shows before
+// anyone has signed in, and forgetting one entry of it.
+func registerRememberedAccountRoutes(registry *apikit.Registry, d Dependencies) error {
+	if err := apikit.Register(registry, apikit.Route[RememberedAccountsRequest, RememberedAccountsDocument]{Metadata: apikit.Metadata{
+		// Unauthenticated by design: a browser that has not signed in is exactly
+		// the caller that needs the account switcher, and no entry is a credential.
+		ID: "post_auth_remembered_accounts", Method: "POST", Path: "/v1/auth/remembered-accounts", Summary: "List the accounts remembered on this installation", Access: apikit.Public, Lane: apikit.Security, Cost: apikit.Constant, BodyLimit: 4096, Status: 200, Errors: []string{"invalid_request", "internal"},
+	}, Handler: func(ctx context.Context, _ *http.Request, body RememberedAccountsRequest) (RememberedAccountsDocument, error) {
+		items, err := d.Identity.BrowserAccounts(ctx, body.InstallationID)
+		if err != nil {
+			return RememberedAccountsDocument{}, rememberedAccountError(err)
+		}
+		return RememberedAccountsDocument{Items: items}, nil
+	}}); err != nil {
+		return err
+	}
+	return apikit.Register(registry, apikit.Route[RememberedAccountsRequest, struct{}]{Metadata: apikit.Metadata{
+		ID: "delete_direct_remembered_account", Method: "DELETE", Path: "/v1/direct/remembered-accounts/{accountId}", Summary: "Forget one account remembered on this installation", Access: apikit.Device, Lane: apikit.Security, Cost: apikit.Constant, BodyLimit: 4096, Status: 204, Errors: []string{"unauthorized", "not_permitted", "invalid_request", "internal"},
+	}, Handler: func(ctx context.Context, r *http.Request, body RememberedAccountsRequest) (struct{}, error) {
+		err := d.Identity.ForgetBrowserAccount(ctx, directBearer(r), body.InstallationID, r.PathValue("accountId"))
+		return struct{}{}, rememberedAccountError(err)
+	}})
+}
+
+func rememberedAccountError(err error) error {
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, identity.ErrBrowserAccountInput) {
+		return &apierror.Error{Code: "invalid_request"}
+	}
+	return foundationAuthError(err)
+}
+
 func memberDeviceError(err error) error {
 	if err == nil {
 		return nil

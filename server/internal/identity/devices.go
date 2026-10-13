@@ -303,8 +303,13 @@ func (s *Service) bindDeviceFamily(ctx context.Context, bearer, installation, fa
 	return gated2.Commit()
 }
 
-// Devices lists the account's devices, newest activity first.
-func (s *Service) Devices(ctx context.Context, bearer, currentInstallation string) ([]Device, error) {
+// Devices lists the account's devices, newest activity first. The device the
+// calling session is bound to is marked current; the session says which that
+// is, so the caller sends no installation id to find out (it used to travel in
+// the address, where proxies and logs keep it). An installation id is what a
+// device renews its sign-in with, so only the caller's own is shown: every
+// other device's is left out.
+func (s *Service) Devices(ctx context.Context, bearer, _ string) ([]Device, error) {
 	gated3, e := dbwork.BeginSnapshot(ctx, s.db)
 	if e != nil {
 		return nil, e
@@ -313,6 +318,10 @@ func (s *Service) Devices(ctx context.Context, bearer, currentInstallation strin
 	defer gated3.Rollback()
 	c, e := s.deviceCallerTx(ctx, tx, bearer, false)
 	if e != nil {
+		return nil, e
+	}
+	var currentDevice string
+	if e = tx.QueryRowContext(ctx, `SELECT b.device_id FROM authorization_family_tokens t JOIN identity_device_families b ON b.family_id=t.family_id WHERE t.token_hash=?`, Digest(bearer)).Scan(&currentDevice); e != nil && !errors.Is(e, sql.ErrNoRows) {
 		return nil, e
 	}
 	rows, e := tx.QueryContext(ctx, `SELECT `+deviceColumns+`,(SELECT count(*) FROM identity_device_families f JOIN authorization_session_families a ON a.id=f.family_id AND a.revoked=0 AND a.authorization_horizon>? WHERE f.device_id=identity_devices.id) FROM identity_devices WHERE authority=? AND account_id=? ORDER BY last_seen DESC,id`, time.Now().UTC().Format(time.RFC3339), c.authority, c.account)
@@ -326,7 +335,10 @@ func (s *Service) Devices(ctx context.Context, bearer, currentInstallation strin
 		if e = rows.Scan(&d.ID, &d.Authority, &d.InstallationID, &d.Name, &d.Platform, &d.App, &d.AppVersion, &d.IP, &d.FirstSeen, &d.LastSeen, &d.Trusted, &d.ApprovalState, &d.LastProfileID, &d.RememberAccount, &d.Sessions); e != nil {
 			return nil, e
 		}
-		d.Current = d.InstallationID == currentInstallation && currentInstallation != ""
+		d.Current = d.ID == currentDevice && currentDevice != ""
+		if !d.Current {
+			d.InstallationID = ""
+		}
 		out = append(out, d)
 	}
 	return out, rows.Err()

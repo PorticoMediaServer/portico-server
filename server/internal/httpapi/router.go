@@ -830,8 +830,13 @@ func New(d Dependencies) http.Handler {
 	// build can); hostedAttached says this server actually signs people in with Portico Accounts,
 	// which is whether its claim is installed. A sign-in page decides by the second: a server set
 	// up for direct sign-in and never claimed must never be shown the Portico Account hand-off.
+	// This answers anyone, before sign-in, so it says only what a client needs
+	// to decide how to sign in and whether it is new enough. The exact build
+	// (id, source digest, build time) is for the owner, who reads it from the
+	// maintenance document; published here it tells a scanner which servers
+	// carry a known flaw.
 	mux.HandleFunc("GET /v1/system", func(w http.ResponseWriter, r *http.Request) {
-		write(w, 200, map[string]any{"id": d.Identity.ID(), "name": d.Identity.Name(), "setupRequired": d.Identity.SetupRequired(), "hostedConfigured": d.Hosted.Configured(), "hostedAttached": d.Identity.Hosted(), "version": buildinfo.Info()["version"], "buildId": buildinfo.Info()["buildId"], "sourceDigest": buildinfo.Info()["sourceDigest"], "builtAt": buildinfo.Info()["builtAt"]})
+		write(w, 200, map[string]any{"id": d.Identity.ID(), "name": d.Identity.Name(), "setupRequired": d.Identity.SetupRequired(), "hostedConfigured": d.Hosted.Configured(), "hostedAttached": d.Identity.Hosted(), "version": buildinfo.Info()["version"]})
 	})
 	mux.HandleFunc("POST /v1/setup", func(w http.ResponseWriter, r *http.Request) {
 		var body identity.SetupOptions
@@ -871,14 +876,6 @@ func New(d Dependencies) http.Handler {
 		}
 		w.WriteHeader(202)
 	})
-	// Membership is this server's own (migration 0120): Hosted tickets, policy
-	// restrictions and offline profile proofs are gone. A Portico Account signs
-	// in with an identity assertion at POST /v1/direct/sign-in.
-	for _, route := range []string{"POST /v1/hosted/attach", "POST /v1/hosted/restrictions", "POST /v1/hosted/profiles/offline-select"} {
-		mux.HandleFunc(route, func(w http.ResponseWriter, r *http.Request) {
-			write(w, 410, map[string]any{"error": map[string]any{"code": "moved", "message": "Sign in with the Portico Account at /v1/direct/sign-in.", "retryable": false}})
-		})
-	}
 	mux.HandleFunc("GET /v1/libraries", func(w http.ResponseWriter, r *http.Request) {
 		p, e := d.principal(r)
 		if e != nil {
@@ -1226,7 +1223,7 @@ func New(d Dependencies) http.Handler {
 		r = detachCanceledConnection(w, r)
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("X-Frame-Options", "DENY")
-		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' https://www.gstatic.com; style-src 'self'; connect-src 'self' https://*.direct.getportico.tv https://web.getportico.tv; img-src 'self' blob: data: https://*.direct.getportico.tv; media-src 'self' blob:; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'none'; object-src 'none'")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' https://www.gstatic.com/cv/js/sender/ https://www.gstatic.com/eureka/clank/ https://www.gstatic.com/cast/sdk/libs/sender/; style-src 'self'; connect-src 'self' https://*.direct.getportico.tv https://web.getportico.tv; img-src 'self' blob: data: https://*.direct.getportico.tv; media-src 'self' blob:; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'none'; object-src 'none'; form-action 'self'")
 		if r.TLS != nil {
 			w.Header().Set("Strict-Transport-Security", "max-age=31536000")
 		}
@@ -1286,7 +1283,12 @@ func New(d Dependencies) http.Handler {
 			}
 			r = r.WithContext(ctx)
 		}
-		if r.Method == "POST" && (strings.HasPrefix(r.URL.Path, "/v1/direct/") || strings.HasPrefix(r.URL.Path, "/v1/auth/") || r.URL.Path == "/v1/setup" || r.URL.Path == "/v1/cast/redeem" || r.URL.Path == "/v1/cast/reconnect") {
+		if r.Method == "POST" && (strings.HasPrefix(r.URL.Path, "/v1/direct/") || strings.HasPrefix(r.URL.Path, "/v1/auth/") || r.URL.Path == "/v1/setup" || r.URL.Path == "/v1/cast/redeem" || r.URL.Path == "/v1/cast/reconnect" ||
+			// Asking for a television code and using an invitation are open to
+			// anyone and cost a write each, so they are counted here first. A
+			// television polling for its answer is not: that is paced by the
+			// code itself, and several televisions share one home address.
+			r.URL.Path == "/v1/quick-connect" || r.URL.Path == "/v1/access/invitations/accept" || r.URL.Path == "/v1/access/invitations/preview") {
 			if !authRate.allow(r) {
 				w.Header().Set("Retry-After", "60")
 				write(w, 429, map[string]any{"error": map[string]any{"code": "rate_limited", "message": "Too many authentication attempts. Try again shortly.", "retryable": true}})

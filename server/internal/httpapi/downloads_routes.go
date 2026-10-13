@@ -4,7 +4,9 @@ import (
 	"database/sql"
 	"errors"
 	"net/http"
+	"net/url"
 	"strconv"
+	"strings"
 
 	"portico.local/server/internal/downloads"
 	"portico.local/server/internal/identity"
@@ -220,7 +222,7 @@ func (d Dependencies) downloadRoutes(mux *http.ServeMux) {
 		w.Header().Set("Accept-Ranges", "bytes")
 		w.Header().Set("Cache-Control", "private, no-store")
 		w.Header().Set("Content-Type", out.Artifact.ContentType)
-		w.Header().Set("Content-Disposition", "attachment; filename=\""+out.Artifact.FileName+"\"")
+		w.Header().Set("Content-Disposition", attachmentDisposition(out.Artifact.FileName))
 		w.Header().Set("ETag", "\"sha256-"+out.Artifact.SHA256+"\"")
 		w.Header().Set("X-Portico-Artifact-Sha256", out.Artifact.SHA256)
 		body := withRollingDeadline(w)
@@ -411,4 +413,21 @@ func (d Dependencies) downloadRoutes(mux *http.ServeMux) {
 		}
 		write(w, 200, out)
 	})
+}
+
+// attachmentDisposition names a download. A file name is title text, so it may
+// hold a quote, a backslash or characters outside ASCII: the quoted form
+// carries a safe ASCII rendering and the extended form (RFC 6266) carries the
+// name exactly, percent-encoded.
+func attachmentDisposition(name string) string {
+	ascii := strings.Map(func(r rune) rune {
+		if r < 0x20 || r > 0x7e || r == '"' || r == '\\' || r == '/' {
+			return '_'
+		}
+		return r
+	}, name)
+	if ascii == "" {
+		ascii = "download"
+	}
+	return `attachment; filename="` + ascii + `"; filename*=UTF-8''` + url.PathEscape(name)
 }

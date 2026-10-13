@@ -231,6 +231,23 @@ export const routes = [
     "status": 204
   },
   {
+    "id": "delete_direct_remembered_account",
+    "method": "DELETE",
+    "path": "/v1/direct/remembered-accounts/{accountId}",
+    "summary": "Forget one account remembered on this installation",
+    "access": "device",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 4096,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "invalid_request",
+      "internal"
+    ],
+    "status": 204
+  },
+  {
     "id": "delete_direct_session",
     "method": "DELETE",
     "path": "/v1/direct/sessions/{id}",
@@ -945,6 +962,21 @@ export const routes = [
     ],
     "status": 200,
     "optionalBody": true
+  },
+  {
+    "id": "post_auth_remembered_accounts",
+    "method": "POST",
+    "path": "/v1/auth/remembered-accounts",
+    "summary": "List the accounts remembered on this installation",
+    "access": "public",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 4096,
+    "errors": [
+      "invalid_request",
+      "internal"
+    ],
+    "status": 200
   },
   {
     "id": "post_device",

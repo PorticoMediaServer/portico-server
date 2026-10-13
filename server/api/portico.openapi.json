@@ -38,6 +38,9 @@
                     "expiresAt": {
                       "type": "string"
                     },
+                    "forPorticoAccount": {
+                      "type": "boolean"
+                    },
                     "libraryCount": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
@@ -1651,6 +1654,90 @@
         "x-lane": "default"
       }
     },
+    "/v1/auth/remembered-accounts": {
+      "post": {
+        "operationId": "post_auth_remembered_accounts",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "installationId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "installationId"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "items": {
+                      "items": {
+                        "properties": {
+                          "accountId": {
+                            "type": "string"
+                          },
+                          "automaticSignIn": {
+                            "type": "boolean"
+                          },
+                          "avatarUrl": {
+                            "type": "string"
+                          },
+                          "avatarVersion": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "displayName": {
+                            "type": "string"
+                          },
+                          "lastUsed": {
+                            "type": "string"
+                          },
+                          "username": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "accountId",
+                          "username",
+                          "displayName",
+                          "avatarVersion",
+                          "automaticSignIn",
+                          "lastUsed"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "items"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "List the accounts remembered on this installation",
+        "x-access": "public",
+        "x-cost": "constant",
+        "x-lane": "security",
+        "x-max-body-bytes": 4096
+      }
+    },
     "/v1/bootstrap": {
       "get": {
         "operationId": "get_bootstrap",
@@ -2779,6 +2866,12 @@
                         "disabled": {
                           "type": "boolean"
                         },
+                        "disabledAt": {
+                          "type": "string"
+                        },
+                        "disabledReason": {
+                          "type": "string"
+                        },
                         "hostedAccountId": {
                           "type": "string"
                         },
@@ -3152,6 +3245,12 @@
                         },
                         "disabled": {
                           "type": "boolean"
+                        },
+                        "disabledAt": {
+                          "type": "string"
+                        },
+                        "disabledReason": {
+                          "type": "string"
                         },
                         "hostedAccountId": {
                           "type": "string"
@@ -3562,6 +3661,48 @@
         },
         "summary": "Save owner sign-up and device-approval policy",
         "x-access": "owner",
+        "x-cost": "constant",
+        "x-lane": "security",
+        "x-max-body-bytes": 4096
+      }
+    },
+    "/v1/direct/remembered-accounts/{accountId}": {
+      "delete": {
+        "operationId": "delete_direct_remembered_account",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "installationId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "installationId"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {},
+                  "required": [],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Forget one account remembered on this installation",
+        "x-access": "device",
         "x-cost": "constant",
         "x-lane": "security",
         "x-max-body-bytes": 4096

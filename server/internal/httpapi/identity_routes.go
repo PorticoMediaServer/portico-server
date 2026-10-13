@@ -167,18 +167,6 @@ func (d Dependencies) identityDeviceRoutes(mux *http.ServeMux) {
 		}
 		w.WriteHeader(204)
 	})
-	mux.HandleFunc("GET /v1/auth/remembered-accounts", func(w http.ResponseWriter, r *http.Request) {
-		// Unauthenticated by design: a browser that has not signed in is exactly
-		// the caller that needs the account switcher, and no entry is a credential.
-		installation := r.URL.Query().Get("installationId")
-		out, e := d.Identity.BrowserAccounts(r.Context(), installation)
-		if e != nil {
-			failure(w, e)
-			return
-		}
-		w.Header().Set("Cache-Control", "no-store")
-		write(w, 200, map[string]any{"items": out})
-	})
 	mux.HandleFunc("POST /v1/direct/remembered-accounts", func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
 			InstallationID  string `json:"installationId"`
@@ -194,14 +182,6 @@ func (d Dependencies) identityDeviceRoutes(mux *http.ServeMux) {
 			return
 		}
 		write(w, 200, map[string]any{"items": out})
-	})
-	mux.HandleFunc("DELETE /v1/direct/remembered-accounts/{accountId}", func(w http.ResponseWriter, r *http.Request) {
-		installation := r.URL.Query().Get("installationId")
-		if e := d.Identity.ForgetBrowserAccount(r.Context(), directBearer(r), installation, r.PathValue("accountId")); e != nil {
-			failure(w, e)
-			return
-		}
-		w.WriteHeader(204)
 	})
 }
 

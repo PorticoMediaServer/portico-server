@@ -12,6 +12,7 @@ export function decodeDeleteAdminBackupResponse(input: unknown): types.DeleteAdm
 export function decodeDeleteDeviceResponse(input: unknown): types.DeleteDeviceResponse { return decode("DeleteDeviceResponse", input) as types.DeleteDeviceResponse; }
 export function decodeDeleteDeviceSessionsResponse(input: unknown): types.DeleteDeviceSessionsResponse { return decode("DeleteDeviceSessionsResponse", input) as types.DeleteDeviceSessionsResponse; }
 export function decodeDeleteDirectMemberResponse(input: unknown): types.DeleteDirectMemberResponse { return decode("DeleteDirectMemberResponse", input) as types.DeleteDirectMemberResponse; }
+export function decodeDeleteDirectRememberedAccountResponse(input: unknown): types.DeleteDirectRememberedAccountResponse { return decode("DeleteDirectRememberedAccountResponse", input) as types.DeleteDirectRememberedAccountResponse; }
 export function decodeDeleteDirectSessionResponse(input: unknown): types.DeleteDirectSessionResponse { return decode("DeleteDirectSessionResponse", input) as types.DeleteDirectSessionResponse; }
 export function decodeDeleteQueueResponse(input: unknown): types.DeleteQueueResponse { return decode("DeleteQueueResponse", input) as types.DeleteQueueResponse; }
 export function decodeGetAdminAccessDevicesResponse(input: unknown): types.GetAdminAccessDevicesResponse { return decode("GetAdminAccessDevicesResponse", input) as types.GetAdminAccessDevicesResponse; }
@@ -50,6 +51,7 @@ export function decodePatchDeviceResponse(input: unknown): types.PatchDeviceResp
 export function decodePostAdminBackupsResponse(input: unknown): types.PostAdminBackupsResponse { return decode("PostAdminBackupsResponse", input) as types.PostAdminBackupsResponse; }
 export function decodePostAdminBackupsRestoreResponse(input: unknown): types.PostAdminBackupsRestoreResponse { return decode("PostAdminBackupsRestoreResponse", input) as types.PostAdminBackupsRestoreResponse; }
 export function decodePostAdminStatePermissionsFixResponse(input: unknown): types.PostAdminStatePermissionsFixResponse { return decode("PostAdminStatePermissionsFixResponse", input) as types.PostAdminStatePermissionsFixResponse; }
+export function decodePostAuthRememberedAccountsResponse(input: unknown): types.PostAuthRememberedAccountsResponse { return decode("PostAuthRememberedAccountsResponse", input) as types.PostAuthRememberedAccountsResponse; }
 export function decodePostDeviceResponse(input: unknown): types.PostDeviceResponse { return decode("PostDeviceResponse", input) as types.PostDeviceResponse; }
 export function decodePostDeviceApprovalResponse(input: unknown): types.PostDeviceApprovalResponse { return decode("PostDeviceApprovalResponse", input) as types.PostDeviceApprovalResponse; }
 export function decodePostDeviceSessionBindingResponse(input: unknown): types.PostDeviceSessionBindingResponse { return decode("PostDeviceSessionBindingResponse", input) as types.PostDeviceSessionBindingResponse; }

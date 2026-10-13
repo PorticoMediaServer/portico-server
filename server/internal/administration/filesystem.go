@@ -142,6 +142,12 @@ func (s *Service) Browse(ctx context.Context, path, token string, limit int, inc
 	if err != nil {
 		return out, ErrNotFound
 	}
+	// The checks above were made on the name that was asked for. A link inside
+	// a permitted folder can point outside it, so the folder that will actually
+	// be listed is checked again.
+	if systemPath(clean) || policy.CheckBrowse(clean) != nil {
+		return out, ErrDenied
+	}
 	info, err := os.Stat(clean)
 	if err != nil || !info.IsDir() {
 		return out, ErrNotFound

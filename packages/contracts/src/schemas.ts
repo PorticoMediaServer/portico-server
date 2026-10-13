@@ -4516,6 +4516,22 @@ export const schemas = {
     "required": [],
     "type": "object"
   },
+  "DeleteDirectRememberedAccountRequest": {
+    "properties": {
+      "installationId": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "installationId"
+    ],
+    "type": "object"
+  },
+  "DeleteDirectRememberedAccountResponse": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
   "DeleteDirectSessionRequest": {
     "properties": {},
     "required": [],
@@ -5973,6 +5989,12 @@ export const schemas = {
           },
           "disabled": {
             "type": "boolean"
+          },
+          "disabledAt": {
+            "type": "string"
+          },
+          "disabledReason": {
+            "type": "string"
           },
           "hostedAccountId": {
             "type": "string"
@@ -9248,6 +9270,64 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "PostAuthRememberedAccountsRequest": {
+    "properties": {
+      "installationId": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "installationId"
+    ],
+    "type": "object"
+  },
+  "PostAuthRememberedAccountsResponse": {
+    "properties": {
+      "items": {
+        "items": {
+          "properties": {
+            "accountId": {
+              "type": "string"
+            },
+            "automaticSignIn": {
+              "type": "boolean"
+            },
+            "avatarUrl": {
+              "type": "string"
+            },
+            "avatarVersion": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "displayName": {
+              "type": "string"
+            },
+            "lastUsed": {
+              "type": "string"
+            },
+            "username": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "accountId",
+            "username",
+            "displayName",
+            "avatarVersion",
+            "automaticSignIn",
+            "lastUsed"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "items"
+    ],
+    "type": "object"
+  },
   "PostDeviceApprovalRequest": {
     "properties": {
       "approved": {
@@ -9473,6 +9553,12 @@ export const schemas = {
           },
           "disabled": {
             "type": "boolean"
+          },
+          "disabledAt": {
+            "type": "string"
+          },
+          "disabledReason": {
+            "type": "string"
           },
           "hostedAccountId": {
             "type": "string"
@@ -10043,6 +10129,9 @@ export const schemas = {
       },
       "expiresAt": {
         "type": "string"
+      },
+      "forPorticoAccount": {
+        "type": "boolean"
       },
       "libraryCount": {
         "maximum": 9007199254740991,
