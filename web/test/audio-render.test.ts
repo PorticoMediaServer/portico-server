@@ -22,7 +22,8 @@ function setup() {
   (globalThis as any).fetch = async (url: string, init: RequestInit) => {
     requests.push(url);
     const bytes = files[url]!, [a, b] = String((init.headers as Record<string, string>).Range).replace('bytes=', '').split('-').map(Number);
-    return new Response(bytes.slice(a!, Math.min(bytes.length, b! + 1)), {status: 206});
+    const last = Math.min(bytes.length - 1, b!);
+    return new Response(bytes.slice(a!, last + 1), {status: 206, headers: {'Content-Range': `bytes ${a}-${last}/${bytes.length}`}});
   };
   const plan = (id: string, s: any) => ({version: 2, mode: 'direct', id, url: '/' + id, container: 'flac', codec: 'flac', sampleRate: 44100, channels: 2, bytes: files['/' + id]!.length, prefetchBytes: 1 << 20, durationFrames: s.durationFrames, trim: s.trim});
   const a = plan('a', sidecar('album-flac-01.json')), b = plan('b', sidecar('album-flac-02.json'));
@@ -33,10 +34,11 @@ function setup() {
 }
 const settle = async () => { for (let i = 0; i < 20; i++) await new Promise(r => setTimeout(r, 0)); };
 
-test('(e) pause, seek or a rate change drops a prepared edge: nothing is committed, the next track never plays', async () => {
+test('(e) pause, seek or a rate change drops a prepared edge: nothing is committed, the next track never plays', async ctx => {
   const {DecodeAudioRender} = await import('../src/bridge/DecodeAudioRender.ts');
   const t = setup();
   const render = new DecodeAudioRender(t.service, (p: string) => p, {addEventListener() {}, removeEventListener() {}, volume: 1, muted: false} as any);
+  ctx.after(() => render.dispose());
   render.apply(t.get()); await settle();
   assert.ok(t.calls.some(c => c[0] === 'ready'), 'the first track started');
   render.apply(t.set({audioEffects: {prepared: {token: 'pn_1', expiresAtMs: Date.now() + 60000, audio: t.b}}})); await settle();
@@ -47,13 +49,13 @@ test('(e) pause, seek or a rate change drops a prepared edge: nothing is committ
   (render as any).tick();
   assert.equal(t.calls.filter(c => c[0] === 'audioCommit').length, 0, 'no commit after the edge was dropped');
   assert.equal((render as any).candidate, undefined);
-  render.dispose();
 });
 
-test('(f) a commit that fails falls back: the track ends and says so, for :advance', async () => {
+test('(f) a commit that fails falls back: the track ends and says so, for :advance', async ctx => {
   const {DecodeAudioRender} = await import('../src/bridge/DecodeAudioRender.ts');
   const t = setup();
   const render = new DecodeAudioRender(t.service, (p: string) => p, {addEventListener() {}, removeEventListener() {}, volume: 1, muted: false} as any);
+  ctx.after(() => render.dispose());
   render.apply(t.get()); await settle();
   render.apply(t.set({audioEffects: {prepared: {token: 'pn_1', expiresAtMs: Date.now() + 60000, audio: t.b}}})); await settle();
   // Near the end: the engine commits.
@@ -63,13 +65,13 @@ test('(f) a commit that fails falls back: the track ends and says so, for :advan
   render.apply(t.set({audioEffects: {prepared: undefined}})); await settle();
   for (let i = 0; i < 60 && !t.calls.some(c => c[0] === 'fact' && c[3] === 'ended'); i++) { t.f.advance(0.1); (render as any).tick(); await settle(); }
   assert.ok(t.calls.some(c => c[0] === 'fact' && c[3] === 'ended'), 'the track ends, so the queue advances with reason completion');
-  render.dispose();
 });
 
-test('(b)(i) a committed edge promotes at the boundary; the engine keeps a constant number of decks however many edges pass', async () => {
+test('(b)(i) a committed edge promotes at the boundary; the engine keeps a constant number of decks however many edges pass', async ctx => {
   const {DecodeAudioRender} = await import('../src/bridge/DecodeAudioRender.ts');
   const t = setup();
   const render = new DecodeAudioRender(t.service, (p: string) => p, {addEventListener() {}, removeEventListener() {}, volume: 1, muted: false} as any);
+  ctx.after(() => render.dispose());
   render.apply(t.get()); await settle();
   let current = t.a, next = t.b, n = 1;
   for (let edge = 0; edge < 6; edge++, n++) {
@@ -88,7 +90,6 @@ test('(b)(i) a committed edge promotes at the boundary; the engine keeps a const
     [current, next] = [next, current];
   }
   assert.equal(t.calls.filter(c => c[0] === 'ready').length, 1, 'no restart at any edge');
-  render.dispose();
 });
 
 test('(h) an unavailable plan plays ordinarily and says why, quietly', async () => {

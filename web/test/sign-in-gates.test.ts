@@ -176,7 +176,7 @@ async function deviceModule(announce: () => Promise<string>, session: object) {
     react: h.react, './i18n': {useI18n: () => ({t: (id: string, v?: Record<string, string>) => (v ? `${id}:${JSON.stringify(v)}` : id)})},
     '@core/index.ts': {IdentityClient: class { rememberAccount() { return Promise.resolve(); } }, announceDevice: announce},
     '../bridge/client-profile': {keepBrowserProfilePublished: () => undefined}, '../bridge/profile-trust': {browserInstallation: () => 'i'.repeat(36)},
-    '../ui': {StateView: 'StateView'}, '@core/presentation/index.ts': {friendlyHost: () => 'den.local'}, './session': {useSession: () => session},
+    '../ui': {StateView: 'StateView'}, '@core/presentation/index.ts': {friendlyHost: () => 'den.local'}, './session': {useSession: () => session, currentAccessToken: () => 'test-access-token'},
   }) as any;
   return {m, h, effects};
 }

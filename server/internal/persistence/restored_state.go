@@ -98,7 +98,7 @@ func tableColumns(ctx context.Context, db *sql.DB) (map[string]bool, error) {
 }
 
 var (
-	seededTable = regexp.MustCompile(`(?m)^INSERT INTO "?([A-Za-z0-9_]+)"?\s*(?:\([^)]*\))?\s*VALUES\b`)
+	seededTable = regexp.MustCompile(`(?m)^INSERT INTO "?([A-Za-z0-9_]+)"?\s*(?:\([^)]*\))?\s*(?:VALUES|SELECT)\b`)
 
 	seededOnce   sync.Once
 	seededTables []string

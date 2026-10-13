@@ -21,11 +21,10 @@ func (s *Service) ReauthorizeTx(ctx context.Context, tx *sql.Tx, expected Princi
 	// Preserve already verified accounting metadata. No authority guard uses
 	// DeviceID; identity is still checked against the live token and account.
 	current := Principal{Hash: expected.Hash, DeviceID: expected.DeviceID}
-	current.ServerID = s.serverID
-	var expiry string
+	var expiry, horizon string
 	var revoked int
-	err := tx.QueryRowContext(ctx, `SELECT account_id,profile_id,authority,role,epoch,expires_at,revoked FROM authorization_access WHERE hash=?`, expected.Hash).
-		Scan(&current.AccountID, &current.ProfileID, &current.Authority, &current.Role, &current.Epoch, &expiry, &revoked)
+	err := tx.QueryRowContext(ctx, `SELECT a.account_id,a.profile_id,a.authority,a.role,a.epoch,a.expires_at,a.revoked,f.server_id,f.authorization_horizon,COALESCE(g.grant_kind,'') FROM authorization_access a JOIN authorization_family_tokens t ON t.token_hash=a.hash JOIN authorization_session_families f ON f.id=t.family_id LEFT JOIN authorization_family_grants g ON g.family_id=f.id WHERE a.hash=?`, expected.Hash).
+		Scan(&current.AccountID, &current.ProfileID, &current.Authority, &current.Role, &current.Epoch, &expiry, &revoked, &current.ServerID, &horizon, &current.Grant)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return Principal{}, ErrUnauthorized
@@ -33,7 +32,18 @@ func (s *Service) ReauthorizeTx(ctx context.Context, tx *sql.Tx, expected Princi
 		return Principal{}, err
 	}
 	expires, err := time.Parse(time.RFC3339, expiry)
-	if err != nil || revoked != 0 || !expires.After(time.Now()) || current.Viewer != expected.Viewer || current.Epoch != expected.Epoch {
+	if err != nil {
+		return Principal{}, ErrUnauthorized
+	}
+	authorizedUntil, err := time.Parse(time.RFC3339, horizon)
+	if err != nil {
+		return Principal{}, ErrUnauthorized
+	}
+	current.ExpiresAt = expires
+	if authorizedUntil.Before(current.ExpiresAt) {
+		current.ExpiresAt = authorizedUntil
+	}
+	if revoked != 0 || !current.ExpiresAt.After(time.Now()) || current.ServerID != s.serverID || current.Viewer != expected.Viewer || current.Epoch != expected.Epoch || current.Grant != expected.Grant {
 		return Principal{}, ErrUnauthorized
 	}
 	switch current.Authority {
