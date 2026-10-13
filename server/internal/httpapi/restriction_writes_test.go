@@ -116,6 +116,9 @@ func TestRestrictedProfileWriteRouteMatrix(t *testing.T) {
 		}
 	}
 
+	// 2d. The tool endpoint, as the restricted profile's own token.
+	t.Run("tools", func(t *testing.T) { m.toolSecurity(t) })
+
 	// 3. No effect.
 	if after := hiddenReferenceDigest(t, m); after != before {
 		t.Errorf("refused writes changed rows that reference hidden ids:\nbefore %s\nafter  %s", before, after)
@@ -393,6 +396,37 @@ const (
 // administration (/v1/admin/…), which is probed by rule.
 func restrictionWriteRoutes() map[string]writeRoute {
 	return map[string]writeRoute{
+		"HEAD /v1/media/subtitles/{grant}/{resource}/{revision}/fonts/{font}": writeExempt("read-only asset headers; originalSubtitleRoute rechecks grant and subtitle visibility"),
+		"HEAD /v1/media/subtitles/{grant}/{resource}/{revision}/original.mks": writeExempt("read-only asset headers; originalSubtitleRoute rechecks grant and subtitle visibility"),
+		"HEAD /v1/media/subtitles/{grant}/{resource}/{revision}/original.sub": writeExempt("read-only asset headers; originalSubtitleRoute rechecks grant and subtitle visibility"),
+		"HEAD /v1/media/subtitles/{grant}/{resource}/{revision}/original.idx": writeExempt("read-only asset headers; originalSubtitleRoute rechecks grant and subtitle visibility"),
+		"HEAD /v1/media/subtitles/{grant}/{resource}/{revision}/original.ssa": writeExempt("read-only asset headers; originalSubtitleRoute rechecks grant and subtitle visibility"),
+		"HEAD /v1/media/subtitles/{grant}/{resource}/{revision}/original.ass": writeExempt("read-only asset headers; originalSubtitleRoute rechecks grant and subtitle visibility"),
+		"HEAD /v1/media/subtitles/{grant}/{resource}/{revision}/original.sup": writeExempt("read-only asset headers; originalSubtitleRoute rechecks grant and subtitle visibility"),
+		"PUT /v1/items/{itemId}/playback/{session}/subtitles":                 perHidden("PUT", "/v1/items/ID/playback/unknown/subtitles", `{}`, "item"),
+		"DELETE /v1/items/{itemId}/subtitles/{resource}":                      perHidden("DELETE", "/v1/items/ID/subtitles/matrix-resource", `{}`, "item"),
+		"PUT /v1/items/{itemId}/subtitles/{resource}":                         perHidden("PUT", "/v1/items/ID/subtitles/matrix-resource", `{}`, "item"),
+		"POST /v1/items/{itemId}/subtitles/remote":                            perHidden("POST", "/v1/items/ID/subtitles/remote", `{}`, "item"),
+		"POST /v1/items/{itemId}/subtitles/search":                            perHidden("POST", "/v1/items/ID/subtitles/search", `{}`, "item"),
+		"POST /v1/items/{itemId}/subtitles/refresh":                           perHidden("POST", "/v1/items/ID/subtitles/refresh", `{}`, "item"),
+		"POST /v1/items/{itemId}/subtitles/import":                            perHidden("POST", "/v1/items/ID/subtitles/import", `{}`, "item"),
+		"POST /v1/items/{itemId}/subtitles/apply":                             perHidden("POST", "/v1/items/ID/subtitles/apply", `{}`, "item"),
+		"POST /v1/items/{itemId}/subtitles":                                   perHidden("POST", "/v1/items/ID/subtitles", `{}`, "item"),
+		"POST /v1/libraries/{id}/metadata/attention":                          perHidden("POST", "/v1/libraries/ID/metadata/attention", `{}`, "library"),
+		"POST /v1/shows/{id}/metadata/refresh":                                perHidden("POST", "/v1/shows/ID/metadata/refresh", `{}`, "show"),
+		"POST /v1/libraries/paths-changed":                                    perHidden("POST", "/v1/libraries/paths-changed", `{"libraryId":"ID","paths":["film.mkv"]}`, "library"),
+		"POST /v1/me/access-tokens":                                           writeExempt("the caller's credential creation; names scopes, no catalogue ids"),
+		"DELETE /v1/me/access-tokens/{id}":                                    writeExempt("the caller's credential revocation; names no catalogue id"),
+		// The tool endpoint takes a personal access token or an API key, never a
+		// session, and each tool is one of this server's own routes called as
+		// that credential's profile. It is probed with the restricted profile's
+		// own token in the tools subtest: hidden ≡ absent for the tools that name
+		// a title, and no hidden identifier in what the listing tools say.
+		"POST /v1/mcp": writeExempt("probed with the restricted profile's personal access token by the tools subtest of this test"),
+		// A report names the title it is about.
+		"POST /v1/feedback":         perHidden("POST", "/v1/feedback", `{"idempotencyKey":"OP","category":"metadata","message":"The details on this one are wrong.","itemId":"ID"}`, "item"),
+		"POST /v1/feedback/reports": perHidden("POST", "/v1/feedback/reports", `{"operationId":"OP","kind":"library","category":"wrong-details","message":"The details on this one are wrong.","itemId":"ID","playbackSessionId":"","attachDiagnostics":false}`, "item"),
+
 		// Catalogue content named by id.
 		"PUT /v1/items/{id}/personal-state": perHidden("PUT", "/v1/items/ID/personal-state", `{"operationId":"OP","expectedRevision":0,"favorite":true}`, "item"),
 		// Not interested also names a show, album or book: those are probed too.
@@ -591,5 +625,135 @@ func restrictionWriteRoutes() map[string]writeRoute {
 		"POST /v1/networking/claim/web-approval":   writeExempt(reasonNetworking),
 		"POST /v1/networking/endpoint-proof":       writeExempt(reasonNetworking),
 		"POST /v1/networking/identity-proof":       writeExempt(reasonNetworking),
+	}
+}
+
+// toolSecurity calls the tool endpoint with a personal access token the
+// restricted profile made for itself. A token acts as its profile, so the
+// tools must refuse and omit exactly what that profile's session is refused.
+func (m *restrictionEnv) toolSecurity(t *testing.T) {
+	status, body := m.call("POST", "/v1/me/access-tokens", `{"operationId":"matrix-token","name":"Matrix script","scopes":["read","playback","library"]}`, "restricted")
+	var issued struct {
+		Secret string `json:"secret"`
+	}
+	if status != 201 || json.Unmarshal([]byte(body), &issued) != nil || issued.Secret == "" {
+		t.Fatalf("personal access token: %d %s", status, body)
+	}
+	tool := func(name string, arguments map[string]any) (int, string) {
+		raw, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": map[string]any{"name": name, "arguments": arguments}})
+		return m.callAs(issued.Secret, "POST", "/v1/mcp", string(raw))
+	}
+	// A tool's answer carries the route's own answer as text: compare that,
+	// with the probed id and the per-request fields taken out.
+	said := func(body, id string) string {
+		var answer struct {
+			Result struct {
+				Content []struct {
+					Text string `json:"text"`
+				} `json:"content"`
+				IsError bool `json:"isError"`
+			} `json:"result"`
+			Error any `json:"error"`
+		}
+		if json.Unmarshal([]byte(body), &answer) != nil {
+			return normalizedAnswer(body, id)
+		}
+		out := fmt.Sprint(answer.Result.IsError, answer.Error != nil)
+		for _, part := range answer.Result.Content {
+			out += "\n" + normalizedAnswer(part.Text, id)
+		}
+		return out
+	}
+	// Controls: the token works, and reaches the catalogue as its profile.
+	if status, body = tool("get_title", map[string]any{"itemId": m.visibleMovie}); status != 200 || !strings.Contains(body, m.visibleMovie) || strings.Contains(body, `"isError":true`) {
+		t.Fatalf("control: the token cannot read a title its profile may see: %d %s", status, clip(body))
+	}
+	answered := 0
+	// Listings and searches say nothing about what is hidden.
+	listings := []struct {
+		name      string
+		arguments map[string]any
+	}{{"list_libraries", map[string]any{}}, {"list_notifications", map[string]any{}}}
+	for _, term := range []string{"Word001", "Volume", "Release", "Person", "movie", "episode"} {
+		listings = append(listings, struct {
+			name      string
+			arguments map[string]any
+		}{"search", map[string]any{"query": term}})
+	}
+	for _, library := range m.libraries {
+		for _, kind := range []string{"movie", "show", "album", "book"} {
+			listings = append(listings, struct {
+				name      string
+				arguments map[string]any
+			}{"list_titles", map[string]any{"libraryId": library, "kind": kind, "limit": 100}})
+		}
+	}
+	for _, show := range m.visibleEntities["show"] {
+		listings = append(listings, struct {
+			name      string
+			arguments map[string]any
+		}{"list_seasons", map[string]any{"showId": show}})
+	}
+	for _, call := range listings {
+		status, body := tool(call.name, call.arguments)
+		if status != 200 {
+			t.Errorf("%s %v answered %d: %s", call.name, call.arguments, status, clip(body))
+			continue
+		}
+		if !strings.Contains(body, `"isError":true`) {
+			answered++
+		}
+		if found := m.marker.FindString(body); found != "" {
+			t.Errorf("%s %v tells the restricted profile's token a hidden identifier %q: %s", call.name, call.arguments, strings.Trim(found, "\"/?&=,: "), clip(body))
+		}
+	}
+	if answered < 8 {
+		t.Errorf("only %d listing tools answered the token; the probes are wrong", answered)
+	}
+	// A tool that names a title, a show or a season answers a hidden one
+	// exactly as it answers one that does not exist.
+	named := []struct {
+		name, argument string
+		ids            []string
+		rest           map[string]any
+	}{
+		{"get_title", "itemId", m.hiddenItemSamples(), nil},
+		{"list_seasons", "showId", m.hiddenEntities["show"], nil},
+		{"list_episodes", "seasonId", m.hiddenEntities["season"], nil},
+		{"get_match", "itemId", m.hiddenItemSamples(), nil},
+	}
+	compared := 0
+	for _, call := range named {
+		for _, id := range call.ids {
+			arguments := func(value string) map[string]any {
+				out := map[string]any{call.argument: value}
+				for k, v := range call.rest {
+					out[k] = v
+				}
+				return out
+			}
+			hiddenStatus, hiddenBody := tool(call.name, arguments(id))
+			absentStatus, absentBody := tool(call.name, arguments(absentTwin(id)))
+			compared++
+			if found := m.marker.FindString(strings.ReplaceAll(hiddenBody, id, "")); found != "" {
+				t.Errorf("%s on a hidden id answers with another hidden identifier %q", call.name, found)
+			}
+			if hiddenStatus != absentStatus || said(hiddenBody, id) != said(absentBody, absentTwin(id)) {
+				t.Errorf("%s: a hidden id is distinguishable from an absent one:\nhidden %d %s\nabsent %d %s", call.name, hiddenStatus, clip(hiddenBody), absentStatus, clip(absentBody))
+			}
+		}
+	}
+	// Marking watched takes a list: a hidden title in it is skipped as an
+	// absent one is, and nothing is written for it (the no-effect check).
+	for _, id := range m.hiddenItemSamples() {
+		hiddenStatus, hiddenBody := tool("mark_watched", map[string]any{"itemIds": []string{id}, "watched": true})
+		absentStatus, absentBody := tool("mark_watched", map[string]any{"itemIds": []string{absentTwin(id)}, "watched": true})
+		compared++
+		if hiddenStatus != absentStatus || said(hiddenBody, id) != said(absentBody, absentTwin(id)) {
+			t.Errorf("mark_watched: a hidden id is distinguishable from an absent one:\nhidden %d %s\nabsent %d %s", hiddenStatus, said(hiddenBody, id), absentStatus, said(absentBody, absentTwin(id)))
+		}
+	}
+	if compared < 6 {
+		t.Errorf("only %d tool comparisons ran; the fixture has too few hidden things", compared)
 	}
 }

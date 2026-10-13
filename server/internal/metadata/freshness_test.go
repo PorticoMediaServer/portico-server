@@ -214,7 +214,7 @@ func TestTheRefreshBudgetBoundsRefetchingAndSurvivesRestart(t *testing.T) {
 		t.Fatal(untouched, err)
 	}
 	// A stale document with no allowance republishes what is held rather than asking.
-	if e = s.noteDocumentChecked(ctx, "tmdb", "movie", "42", documentValidators{}, true, now.Add(-90*24*time.Hour)); e != nil {
+	if e = s.noteDocumentChecked(ctx, "tmdb", "movie", screenDocumentResource("42", "en-US", "CA"), documentValidators{}, true, now.Add(-90*24*time.Hour)); e != nil {
 		t.Fatal(e)
 	}
 	before := p.fetches()
@@ -325,15 +325,15 @@ func TestValidatorsArePersistedAndNotLostOnANotModified(t *testing.T) {
 	if e := s.noteDocumentChecked(ctx, "tmdb", "movie", screenDocumentResource("42", "en-US", "CA"), documentValidators{ETag: `W/"v1"`, LastModified: "Wed, 17 Sep 2026 00:00:00 GMT"}, true, now); e != nil {
 		t.Fatal(e)
 	}
-	state, e := s.documentState(ctx, "tmdb", "movie", "42")
+	state, e := s.documentState(ctx, "tmdb", "movie", screenDocumentResource("42", "en-US", "CA"))
 	if e != nil || !state.Found || state.ETag != `W/"v1"` || state.LastModified != "Wed, 17 Sep 2026 00:00:00 GMT" {
 		t.Fatal(state, e)
 	}
-	fresh, _, e := s.documentFresh(ctx, "tmdb", "movie", "42", RefreshOrdinary, now.Add(time.Hour))
+	fresh, _, e := s.documentFresh(ctx, "tmdb", "movie", screenDocumentResource("42", "en-US", "CA"), RefreshOrdinary, now.Add(time.Hour))
 	if e != nil || !fresh {
 		t.Fatal("an hour-old movie document was called stale", e)
 	}
-	if fresh, _, e = s.documentFresh(ctx, "tmdb", "movie", "42", RefreshOrdinary, now.Add(freshnessMovie+time.Minute)); e != nil || fresh {
+	if fresh, _, e = s.documentFresh(ctx, "tmdb", "movie", screenDocumentResource("42", "en-US", "CA"), RefreshOrdinary, now.Add(freshnessMovie+time.Minute)); e != nil || fresh {
 		t.Fatal("a document past its window was called fresh", e)
 	}
 	// A document nothing has fetched is never fresh, which is what makes a first fetch
@@ -341,10 +341,10 @@ func TestValidatorsArePersistedAndNotLostOnANotModified(t *testing.T) {
 	if fresh, state, e = s.documentFresh(ctx, "tmdb", "movie", "99", RefreshOrdinary, now); e != nil || fresh || state.Found {
 		t.Fatal("an unknown document was called fresh", e)
 	}
-	if e = s.ForgetDocumentFreshness(ctx, "tmdb", "movie", "42"); e != nil {
+	if e = s.ForgetDocumentFreshness(ctx, "tmdb", "movie", screenDocumentResource("42", "en-US", "CA")); e != nil {
 		t.Fatal(e)
 	}
-	if state, e = s.documentState(ctx, "tmdb", "movie", "42"); e != nil || state.Found {
+	if state, e = s.documentState(ctx, "tmdb", "movie", screenDocumentResource("42", "en-US", "CA")); e != nil || state.Found {
 		t.Fatal("the document was not forgotten", state, e)
 	}
 }
@@ -364,7 +364,7 @@ func TestAFailedConditionalRefreshDoesNotRenewTheWindow(t *testing.T) {
 	if e := s.ScreenStep(ctx); e != nil {
 		t.Fatal(e)
 	}
-	state, e := s.documentState(ctx, "tmdb", "movie", "42")
+	state, e := s.documentState(ctx, "tmdb", "movie", screenDocumentResource("42", "en-US", "CA"))
 	if e != nil || !state.Found {
 		t.Fatal(state, e)
 	}

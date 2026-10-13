@@ -1,13 +1,25 @@
 package catalog
 
-// Exact counts are cached only against both durable revisions. Progress and
-// source changes invalidate them; the FIFO cap bounds memory across viewers.
+import "strconv"
+
+// Exact counts are cached only against both durable revisions and the
+// viewer's progress counter. Progress and source changes invalidate them; the
+// FIFO cap bounds memory across viewers.
+//
+// The progress counter is part of the key because the viewer revision no
+// longer moves on every progress write: a position that crosses the end, or a
+// dismissed title played again, changes this count without changing which
+// titles the viewer has in progress.
 func (s *Service) continueCount(library, profile string) (int, error) {
 	revision, e := s.ContentRevision(library, profile)
 	if e != nil {
 		return 0, e
 	}
-	key := countKey{library, profile, revision, "movie"}
+	observed, e := s.progressObservation(library, profile)
+	if e != nil {
+		return 0, e
+	}
+	key := countKey{library, profile, revision, "movie:" + strconv.FormatInt(observed, 10)}
 	if cached, ok := s.cachedCount(key); ok {
 		return cached, nil
 	}
@@ -23,6 +35,20 @@ func (s *Service) continueCount(library, profile string) (int, error) {
 	if after != revision {
 		return 0, ErrStaleContinuation
 	}
-	s.storeCount(key, count)
+	// Progress written while counting is not a conflict: the count is right
+	// as read, and is simply not kept for the counter it no longer matches.
+	if now, e := s.progressObservation(library, profile); e != nil {
+		return 0, e
+	} else if now == observed {
+		s.storeCount(key, count)
+	}
 	return count, nil
+}
+
+// progressObservation is the counter every progress write of this viewer in
+// this library moves.
+func (s *Service) progressObservation(library, profile string) (int64, error) {
+	var n int64
+	e := s.read().QueryRow(`SELECT COALESCE((SELECT observation_revision FROM viewer_revisions WHERE profile_id=? AND library_id=?),0)`, profile, library).Scan(&n)
+	return n, e
 }

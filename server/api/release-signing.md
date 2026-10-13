@@ -6,4 +6,4 @@ Publish the Ed25519 public key with each release and through an independently co
 
 Key rotation requires an overlap release signed by the existing key that authenticates the next public key, a documented activation date, and a revocation procedure. Keep a recovery copy outside the build environment under separate access control. Signing authorization must be restricted to reviewed release commits and auditable release jobs.
 
-The existing release script and update-feed integration still need enforcement of this procedure before release. This document does not claim that an offline production signer or installer verification has been provisioned.
+The build scripts now require a configured signer and matching pinned public key, and seal final artifacts. Production custody, operating-system signing and installer trust provisioning still need operational verification. This document does not claim that an offline production signer or installer verification has been provisioned.

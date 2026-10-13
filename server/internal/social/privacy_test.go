@@ -51,8 +51,10 @@ func TestJoinedParticipantsRemainVisibleInsideTheirRoom(t *testing.T) {
 	if err != nil || len(members) != 1 || summary.MemberCount != 1 {
 		t.Fatal(members, summary, err)
 	}
-	if !members[0].Private||members[0].DisplayName!="Viewer"{t.Fatal("private member was not anonymized",members)}
- publish()
+	if !members[0].Private || members[0].DisplayName != "Viewer" {
+		t.Fatal("private member was not anonymized", members)
+	}
+	publish()
 	events, _, err := s.EventsSince(ctx, p, group, 0)
 	if err != nil || len(events) != 2 {
 		t.Fatal(events, err)

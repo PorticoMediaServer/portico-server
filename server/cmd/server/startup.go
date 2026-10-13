@@ -217,7 +217,7 @@ func (s *startupRecovery) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func serveStartupRecovery(ctx context.Context, listener net.Listener, reporter *startupReporter) {
 	server := &http.Server{Handler: reporter, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 5 * time.Second, MaxHeaderBytes: 32 << 10}
 	done := make(chan struct{})
-	supervise.Go("cmd.recovery-stop", func() {
+	supervise.Go("startup.recovery", func() {
 		select {
 		case <-ctx.Done():
 			_ = server.Close()

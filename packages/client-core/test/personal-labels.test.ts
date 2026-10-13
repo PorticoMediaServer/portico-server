@@ -14,7 +14,9 @@ test('field labels use US spelling and fall back for unknown fields', () => {
 
 test('choice labels describe ratings and booleans', () => {
   assert.equal(personalChoiceLabel('rating', null), 'Not rated');
-  assert.equal(personalChoiceLabel('rating', 4), '4 / 5');
+  // Ratings are kept from 0 to 10 and shown as stars out of five.
+  assert.equal(personalChoiceLabel('rating', 8), '4 / 5');
+  assert.equal(personalChoiceLabel('rating', 9), '4.5 / 5');
   assert.equal(personalChoiceLabel('rating', Number.NaN), 'Saved rating');
   assert.equal(personalChoiceLabel('watchlisted', true), 'In My List');
   assert.equal(personalChoiceLabel('watchlisted', false), 'Not in My List');

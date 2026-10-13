@@ -111,7 +111,7 @@ func TestPlaylistHTTPShareNeverGrantsMedia(t *testing.T) {
 	if e = json.Unmarshal(secondWindow.Body.Bytes(), &next); e != nil || secondWindow.Code != 200 || len(next.EntryIDs) != 1 || next.EntryIDs[0] == window.EntryIDs[0] || next.NextCursor != "" {
 		t.Fatal(secondWindow.Code, secondWindow.Body.String(), e)
 	}
-	if invalid := request("PUT", "/v1/playlists/"+id+"/order", member.AccessToken, map[string]any{"operationId": "missing-revision", "entryIds": window.EntryIDs}); invalid.Code != 400 {
+	if invalid := request("PUT", "/v1/playlists/"+id+"/order", member.AccessToken, map[string]any{"operationId": "missing-revision", "entryIds": window.EntryIDs}); invalid.Code != 428 {
 		t.Fatal("missing revision accepted", invalid.Code)
 	}
 	if invalid := request("GET", "/v1/playlists/"+id+"/order?limit=101", owner.AccessToken, nil); invalid.Code != 400 {

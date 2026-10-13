@@ -113,10 +113,9 @@ export async function libraryFolders(api:TitleIdentityApi,libraryId:string,signa
 }
 
 /**
- * Finds the library's record of one of a title's files. The server lists a library's files a
- * page at a time and cannot yet be asked for one file, so this reads the list (one folder's when
- * the folder is known) until the file turns up. `onProgress` says how many files have been
- * looked at; `signal` stops it. Nothing found returns undefined.
+ * Finds the library's record of one of a title's files by asking the server for that file
+ * (within one folder when the folder is known). `onProgress` says how many rows came back;
+ * `signal` stops it. Nothing found returns undefined.
  */
 export async function findLibraryFile(api:TitleIdentityApi,libraryId:string,fileId:string,options:Readonly<{folderId?:string;signal?:AbortSignal;onProgress?:(looked:number)=>void}>={}):Promise<LibraryFileRecord|undefined>{
  if(!id(libraryId)||!id(fileId))invalid('file to find');

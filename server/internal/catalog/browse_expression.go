@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"portico.local/server/internal/sorttext"
 	"time"
 )
 
@@ -498,6 +499,25 @@ func (c *browseCompiler) comparison(field browseField, expression, operator stri
 		}
 	}
 	target := collated(field, expression)
+	// Text filters use the same Unicode/diacritic folding as catalogue search.
+	// Collection selectors carry opaque public ids rather than display text.
+	if field.Type == valueString || field.Type == valueSet && field.ID != "collection" {
+		target = "portico_fold_text(" + expression + ")"
+		switch v := value.(type) {
+		case string:
+			value = sorttext.Fold(v)
+		case []any:
+			values := make([]any, len(v))
+			for i, element := range v {
+				if text, ok := element.(string); ok {
+					values[i] = sorttext.Fold(text)
+				} else {
+					values[i] = element
+				}
+			}
+			value = values
+		}
+	}
 	switch operator {
 	case "equals":
 		c.args = append(c.args, value)
