@@ -405,6 +405,15 @@ func validate(m Metadata) error {
 	default:
 		return errors.New("access rule required")
 	}
+	// An access label is a promise the authorizer keeps from the path. A route
+	// labelled for one title or one library must name it where the authorizer
+	// looks, or the label would say a check runs that does not.
+	if m.Access == ViewerItem && !strings.Contains(m.Path, "/{itemId}") {
+		return errors.New("a viewer_item route names its title as {itemId}")
+	}
+	if m.Access == ViewerLibrary && !strings.Contains(m.Path, "/{libraryId}") {
+		return errors.New("a viewer_library route names its library as {libraryId}")
+	}
 	if !ValidScope(m.Requires) {
 		return errors.New("credential scope required")
 	}

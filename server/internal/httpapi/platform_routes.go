@@ -52,7 +52,9 @@ func titleQueryError(err error) error {
 func registerPlatformRoutes(registry *apikit.Registry, d Dependencies) error {
 	err := apikit.Register(registry, apikit.Route[struct{}, catalog.TitlePage]{Metadata: apikit.Metadata{
 		ID: "query_titles", Method: "GET", Path: "/v1/titles", Summary: "List titles of one kind in one library, or find a title by its provider id",
-		Access: apikit.ViewerLibrary, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Cost: apikit.PageSized, Status: 200,
+		// The library is a query parameter here, so the handler makes the
+		// library and restriction checks itself, inside the query.
+		Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Cost: apikit.PageSized, Status: 200,
 		Query:  []string{"library", "kind", "sort", "order", "yearFrom", "yearTo", "addedAfter", "addedBefore", "provider", "providerId", "cursor", "limit"},
 		Errors: []string{"unauthorized", "invalid_request", "invalid_cursor", "cursor_expired", "not_found", "internal"},
 	}, Handler: func(_ context.Context, r *http.Request, _ struct{}) (catalog.TitlePage, error) {

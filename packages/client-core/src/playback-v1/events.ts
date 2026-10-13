@@ -193,7 +193,7 @@ export class EventsClient {
 
   /** One long-poll round. */
   private async pollOnce(signal: AbortSignal): Promise<number> {
-    const wait = Math.max(1, Math.min(this.o.waitSeconds ?? 25, 55));
+    const wait = Math.max(1, Math.min(this.o.waitSeconds ?? 25, 25));
     const cursor = this.status.cursor;
     const r = await call(this.o.http, {method: 'GET', path: `/v1/events?waitSeconds=${wait}${cursor ? `&after=${encodeURIComponent(cursor)}` : ''}`, signal});
     if (signal.aborted) return 0;

@@ -830,8 +830,11 @@ func New(d Dependencies) http.Handler {
 	// build can); hostedAttached says this server actually signs people in with Portico Accounts
 	// (it holds Hosted policy). A sign-in page decides by the second: a server set up for direct
 	// sign-in must never be shown the Portico Account hand-off.
+	// Anyone can read this, so it says what a sign-in page needs and no more:
+	// the exact build (its id, source digest and build time) is the owner's to
+	// see, on the administration pages.
 	mux.HandleFunc("GET /v1/system", func(w http.ResponseWriter, r *http.Request) {
-		write(w, 200, map[string]any{"id": d.Identity.ID(), "name": d.Identity.Name(), "setupRequired": d.Identity.SetupRequired(), "hostedConfigured": d.Hosted.Configured(), "hostedAttached": d.Identity.Hosted(), "version": buildinfo.Info()["version"], "buildId": buildinfo.Info()["buildId"], "sourceDigest": buildinfo.Info()["sourceDigest"], "builtAt": buildinfo.Info()["builtAt"]})
+		write(w, 200, map[string]any{"id": d.Identity.ID(), "name": d.Identity.Name(), "setupRequired": d.Identity.SetupRequired(), "hostedConfigured": d.Hosted.Configured(), "hostedAttached": d.Identity.Hosted(), "version": buildinfo.Info()["version"]})
 	})
 	mux.HandleFunc("POST /v1/setup", func(w http.ResponseWriter, r *http.Request) {
 		var body identity.SetupOptions
@@ -1312,7 +1315,12 @@ func New(d Dependencies) http.Handler {
 			}
 			r = r.WithContext(ctx)
 		}
-		if r.Method == "POST" && (strings.HasPrefix(r.URL.Path, "/v1/direct/") || strings.HasPrefix(r.URL.Path, "/v1/auth/") || r.URL.Path == "/v1/sessions" || r.URL.Path == "/v1/setup" || r.URL.Path == "/v1/cast/redeem" || r.URL.Path == "/v1/cast/reconnect") {
+		if r.Method == "POST" && (strings.HasPrefix(r.URL.Path, "/v1/direct/") || strings.HasPrefix(r.URL.Path, "/v1/auth/") || r.URL.Path == "/v1/sessions" || r.URL.Path == "/v1/setup" || r.URL.Path == "/v1/cast/redeem" || r.URL.Path == "/v1/cast/reconnect" ||
+			// Starting, looking up and deciding a TV code, and using an invitation:
+			// refused cheaply here before the database-backed limits are asked.
+			// The TV's own poll for its code is not here: a household of TVs
+			// behind one address polls legitimately.
+			r.URL.Path == "/v1/quick-connect" || r.URL.Path == "/v1/quick-connect/review" || r.URL.Path == "/v1/quick-connect/decision" || strings.HasPrefix(r.URL.Path, "/v1/access/invitations/")) {
 			if !authRate.allow(r) {
 				w.Header().Set("Retry-After", "60")
 				write(w, 429, map[string]any{"error": map[string]any{"code": "rate_limited", "message": "Too many authentication attempts. Try again shortly.", "retryable": true}})

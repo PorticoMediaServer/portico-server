@@ -261,3 +261,20 @@ func TestEveryRouteMustDeclareACredentialScopeAndTheGateRunsFirst(t *testing.T) 
 		t.Fatal("lookup matched another method")
 	}
 }
+
+func TestAccessLabelsMustNameWhatTheAuthorizerChecks(t *testing.T) {
+	r := New(func(context.Context, *http.Request, Metadata) error { return nil }, nil)
+	handler := func(context.Context, *http.Request, struct{}) (testResponse, error) { return testResponse{"ok", []string{}}, nil }
+	for path, access := range map[string]Access{"/v1/items/{id}/thing": ViewerItem, "/v1/things": ViewerItem, "/v1/libraries/{id}/thing": ViewerLibrary, "/v1/list": ViewerLibrary} {
+		m := Metadata{ID: "labelled", Method: "GET", Path: path, Summary: "Labelled", Access: access, Requires: ScopeRead, Lane: Default, Cost: Constant, Status: 200}
+		if err := Register(r, Route[struct{}, testResponse]{Metadata: m, Handler: handler}); err == nil {
+			t.Fatalf("%s was registered as %s without naming what is checked", path, access)
+		}
+	}
+	for path, access := range map[string]Access{"/v1/items/{itemId}/thing": ViewerItem, "/v1/libraries/{libraryId}/thing": ViewerLibrary} {
+		m := Metadata{ID: "ok_" + string(access), Method: "GET", Path: path, Summary: "Labelled", Access: access, Requires: ScopeRead, Lane: Default, Cost: Constant, Status: 200}
+		if err := Register(r, Route[struct{}, testResponse]{Metadata: m, Handler: handler}); err != nil {
+			t.Fatalf("%s as %s: %v", path, access, err)
+		}
+	}
+}

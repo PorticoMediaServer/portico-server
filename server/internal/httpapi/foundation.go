@@ -152,7 +152,7 @@ func (d Dependencies) viewerCapabilities(r *http.Request) (CapabilitiesDocument,
 		return CapabilitiesDocument{}, foundationAuthError(err)
 	}
 	out := CapabilitiesDocument{API: APIVersion{Major: 1, Level: 1}, Features: map[string]string{}, Limits: map[string]int{
-		"pageSizeMax": catalog.BrowseMaximumLimit, "selectorIdsMax": 500, "longPollSecondsMax": 55,
+		"pageSizeMax": catalog.BrowseMaximumLimit, "selectorIdsMax": 500, "longPollSecondsMax": 25,
 		"queueKeysMax": playbackv1.MaxQueueKeys, "playlistWriteMax": catalog.MaxPlaylistEntries,
 		"bulkJobsActiveMax": catalog.MaxActiveBulkJobs, "downloadBatchMax": downloads.MaxBatchTargets,
 	}}

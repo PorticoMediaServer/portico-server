@@ -1422,7 +1422,7 @@ export const routes = [
     "method": "GET",
     "path": "/v1/titles",
     "summary": "List titles of one kind in one library, or find a title by its provider id",
-    "access": "viewer_library",
+    "access": "device",
     "requires": "read",
     "lane": "browsing",
     "cost": "page_sized",

@@ -16009,7 +16009,7 @@
           }
         },
         "summary": "List titles of one kind in one library, or find a title by its provider id",
-        "x-access": "viewer_library",
+        "x-access": "device",
         "x-cost": "page_sized",
         "x-lane": "browsing",
         "x-scope": "read"

@@ -261,6 +261,17 @@ func (d Dependencies) v1Authorize(ctx context.Context, r *http.Request, m apikit
 			}
 		}
 	}
+	if m.Access == apikit.ViewerLibrary {
+		// The registry refuses to register this label without {libraryId}, so
+		// the check below always has a library to make.
+		library := r.PathValue("libraryId")
+		if library == "" {
+			return nil, &apierror.Error{Code: "not_found"}
+		}
+		if err = d.allowedLibrary(ctx, p, library); err != nil {
+			return nil, itemAdmission(err)
+		}
+	}
 	ctx = context.WithValue(ctx, foundationPrincipalKey{}, p)
 	return context.WithValue(ctx, v1CallerKey{}, v1Caller{Principal: p, DeviceID: device}), nil
 }
