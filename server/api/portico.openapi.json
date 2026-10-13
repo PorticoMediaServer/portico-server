@@ -148359,7 +148359,7 @@
           "not_permitted"
         ],
         "x-lane": "default",
-        "x-scope": "playback"
+        "x-scope": "admin"
       }
     },
     "/v1/admin/sessions/{id}/controls": {
@@ -148461,7 +148461,7 @@
           "internal"
         ],
         "x-lane": "media",
-        "x-scope": "playback"
+        "x-scope": "admin"
       },
       "post": {
         "operationId": "control_admin_session",
@@ -148589,7 +148589,7 @@
         ],
         "x-lane": "media",
         "x-max-body-bytes": 4096,
-        "x-scope": "playback"
+        "x-scope": "admin"
       }
     },
     "/v1/admin/sessions/{id}:terminate": {
@@ -148668,7 +148668,7 @@
         ],
         "x-lane": "default",
         "x-max-body-bytes": 4096,
-        "x-scope": "playback"
+        "x-scope": "admin"
       }
     },
     "/v1/admin/state-permissions:fix": {

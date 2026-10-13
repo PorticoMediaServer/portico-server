@@ -159,7 +159,7 @@ type AdminTerminateRequest struct {
 func registerPlaybackV1Admin(r *apikit.Registry, d Dependencies) {
 	registerRouteFailureMemory(r, d)
 	v1Route(r, apikit.Metadata{Admission: laneAdmin, ID: "list_admin_sessions", Method: "GET", Path: "/v1/admin/sessions", Summary: "Active playback sessions: who, what, how it's delivered and from where",
-		Access: apikit.Admin, Requires: apikit.ScopePlayback, AdminScope: "playback", Lane: apikit.Default, Cost: apikit.PageSized, Query: []string{"limit", "cursor"}, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted"}},
+		Access: apikit.Admin, Requires: apikit.ScopeAdmin, AdminScope: "playback", Lane: apikit.Default, Cost: apikit.PageSized, Query: []string{"limit", "cursor"}, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted"}},
 		func(ctx context.Context, q *http.Request, _ noBody) (playbackv1.AdminSessionPage, error) {
 			limit := 0
 			if text := q.URL.Query().Get("limit"); text != "" {
@@ -172,7 +172,7 @@ func registerPlaybackV1Admin(r *apikit.Registry, d Dependencies) {
 			return d.playbackV1().AdminSessions(ctx, limit, q.URL.Query().Get("cursor"))
 		})
 	v1Route(r, apikit.Metadata{Admission: laneAdmin, ID: "terminate_admin_session", Method: "POST", Path: "/v1/admin/sessions/{id}:terminate", Summary: "End a viewer's playback, showing them an optional message; idempotent",
-		Access: apikit.Admin, Requires: apikit.ScopePlayback, AdminScope: "playback", Lane: apikit.Default, Cost: apikit.Constant, BodyLimit: 4 << 10, OptionalBody: true, Status: 204, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found"}},
+		Access: apikit.Admin, Requires: apikit.ScopeAdmin, AdminScope: "playback", Lane: apikit.Default, Cost: apikit.Constant, BodyLimit: 4 << 10, OptionalBody: true, Status: 204, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found"}},
 		func(ctx context.Context, q *http.Request, in AdminTerminateRequest) (noBody, error) {
 			return noBody{}, d.playbackV1().Terminate(ctx, q.PathValue("id"), in.Message)
 		})
