@@ -192,6 +192,7 @@ export function presentError(error: unknown, context: ErrorContext = 'generic', 
   const category = categorize(f, options.deviceOnline);
   const label = (action: ErrorAction) => (actionLabelIds[action] ? i18n.t(actionLabelIds[action]!) : undefined);
   if (category === 'cancelled') return Object.freeze({category, title, body: '', action: 'none', messageId: 'error.cancelled', silent: true, code: f.code || undefined});
+  if (f.code === 'transport_unavailable') return Object.freeze({category: 'unavailable', title, body: i18n.t('error.transportUnavailable'), action: 'none', messageId: 'error.transportUnavailable', silent: false, code: f.code});
   if (context === 'playback') {
     // Playback keeps its own reviewed mapping (codes → copy, allowlisted safe server strings).
     const body = playbackUserMessage(error);

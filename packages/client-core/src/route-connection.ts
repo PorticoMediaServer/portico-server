@@ -49,6 +49,8 @@ export class RouteConnection {
  private foreground=true;
  private lastForegroundRetry=0;
  private freshNotBefore=0;
+ private promotion?:AbortController;
+ private promotionNotBefore=0;
  private recent=new Set<string>();
  private persistTail:Promise<void>=Promise.resolve();
  private rejected=new Map<string,{retryAt:number;attempts:number}>();
@@ -71,6 +73,7 @@ export class RouteConnection {
  rememberPaired(origin:string){const value=routeOrigin(origin);this.memory={...this.memory,paired:[value,...this.memory.paired.filter(v=>v!==value)].slice(0,8)};this.save();}
  install(document:VerifiedRoutes){
   if(!sameServerPin(document.document,this.pin)||this.memory.current&&!newer(document,this.memory.current))throw new RouteError('identity_mismatch','Connection evidence moved backwards or changed identity.');
+  this.promotion?.abort();this.promotion=undefined;
   const old=this.memory.current,allowed=new Set(document.document.candidates.map(c=>c.baseUrl));
   // Hosted includes its one eligible previous-verified set in the new signed
   // response. An omitted old candidate must not be resurrected by local cache.
@@ -79,13 +82,44 @@ export class RouteConnection {
   if(!old||old.document.generation!==document.document.generation||old.document.credentialGeneration!==document.document.credentialGeneration||old.document.claimGeneration!==document.document.claimGeneration)this.rejected.clear();this.save();
  }
  setForeground(value:boolean){
-  if(this.disposed)return;this.foreground=value;
+  if(this.disposed)return;this.foreground=value;if(!value){this.promotion?.abort();this.promotion=undefined;}
   if(value)this.foregroundActivity();
   else if(this.retry){clearTimeout(this.retry);this.scheduleRecovery();}
  }
  foregroundActivity(){
-  if(this.disposed||!this.foreground||this.state.phase==='ready'||this.run||Date.now()-this.lastForegroundRetry<5000)return;
+  if(this.state.phase==='ready'){this.promoteLocal();return;}
+  if(this.disposed||!this.foreground||this.run||Date.now()-this.lastForegroundRetry<5000)return;
   this.lastForegroundRetry=Date.now();this.attempts=0;if(this.retry)clearTimeout(this.retry);this.retry=undefined;void this.resolve().catch(()=>{});
+ }
+ /** Ordinary foreground activity may prefer a recovered LAN route, without disturbing the
+  * working route or asking Hosted for anything. At most one bounded check per minute. */
+ private promoteLocal(){
+  const origin=this.state.origin;
+  if(this.disposed||!this.foreground||this.state.phase!=='ready'||!origin||this.promotion||Date.now()<this.promotionNotBefore)return;
+  const known=[...(this.memory.current?.document.candidates??[]),...(this.memory.previous?.document.candidates??[])];
+  if(known.some(c=>c.baseUrl===origin&&c.class==='lan')||privateRouteHost(new URL(origin).hostname))return;
+  this.promotionNotBefore=Date.now()+60000;
+  const controller=new AbortController(),generation=this.serial;
+  this.promotion=controller;
+  const timer=setTimeout(()=>controller.abort(),5000);
+  const promote=async()=>{
+   const discovered=this.options.discover?await this.options.discover(controller.signal).catch(()=>[]):[];
+   const candidates=[...known.filter(c=>c.class==='lan'),...discoveredRoutes(discovered,this.pin)];
+   const seen=new Set<string>();
+   for(const candidate of candidates){
+    if(controller.signal.aborted||this.disposed||generation!==this.serial||this.state.origin!==origin)return;
+    if(seen.has(candidate.baseUrl)||candidate.baseUrl===origin)continue;
+    seen.add(candidate.baseUrl);if(seen.size>4)break;
+    try{
+     await (this.options.probe??probeRoute)(candidate.baseUrl,this.pin,{fetcher:this.options.fetcher,crypto:this.options.crypto??webRouteCrypto,signal:controller.signal});
+     if(controller.signal.aborted||this.disposed||generation!==this.serial||this.state.origin!==origin)return;
+     this.serial++;this.recent.add(candidate.baseUrl);while(this.recent.size>8)this.recent.delete(this.recent.values().next().value!);
+     this.memory={...this.memory,lastGood:candidate.baseUrl};this.save();
+     this.publish({origin:candidate.baseUrl,message:''});return;
+    }catch{ /* Keep using the verified working route. */ }
+   }
+  };
+  void Promise.race([promote(),new Promise<void>(resolve=>controller.signal.addEventListener('abort',()=>resolve(),{once:true}))]).finally(()=>{clearTimeout(timer);controller.abort();if(this.promotion===controller)this.promotion=undefined;});
  }
  private scheduleRecovery(){
   if(this.retry)clearTimeout(this.retry);
@@ -93,7 +127,7 @@ export class RouteConnection {
   this.retry=setTimeout(()=>{this.retry=undefined;void this.resolve().catch(()=>{});},delay);
  }
  networkChanged(network:string){if(this.disposed||network===this.state.network)return;this.rejected.clear();this.invalidate(network);void this.resolve().catch(()=>{});}
- private invalidate(network=this.state.network){this.serial++;this.run?.controller.abort();this.run=undefined;if(this.retry)clearTimeout(this.retry);this.retry=undefined;this.publish({phase:'probing',origin:null,network,message:'The network changed. Verifying the same server before reconnecting.'});}
+ private invalidate(network=this.state.network){this.promotion?.abort();this.promotion=undefined;this.serial++;this.run?.controller.abort();this.run=undefined;if(this.retry)clearTimeout(this.retry);this.retry=undefined;this.publish({phase:'probing',origin:null,network,message:'The network changed. Verifying the same server before reconnecting.'});}
  recover():Promise<string>{if(this.run)return this.run.promise;this.invalidate();return this.resolve();}
  async resolve(signal?:AbortSignal):Promise<string>{
   if(this.disposed)throw new RouteError('cancelled','This server connection is closed.');if(signal?.aborted)throw new RouteError('cancelled','Connection request cancelled.');
@@ -137,6 +171,7 @@ export class RouteConnection {
  fetch:typeof fetch=async(input,init={})=>{
   if(typeof input!=='string')throw new RouteError('invalid_address','Only selected-server URLs may be routed.');
   const requested=new URL(input);if(requested.username||requested.password||requested.hash||!this.acceptsOrigin(requested.origin))throw new RouteError('invalid_address','Cross-server request rejected.');
+  this.promoteLocal();
   const method=(init.method??'GET').toUpperCase(),read=method==='GET'||method==='HEAD';
   let sentGeneration:number|undefined;
   const perform=async()=>{
@@ -161,7 +196,7 @@ export class RouteConnection {
  };
  acceptsOrigin(origin:string):boolean{return origin===this.logicalOrigin||this.recent.has(origin)||origin===this.state.origin;}
  mediaURL(path:string):string{const url=new URL(path,this.logicalOrigin);if(!this.acceptsOrigin(url.origin)||url.username||url.password)throw new RouteError('invalid_address','Cross-server media capability rejected.');if(this.state.phase!=='ready'||!this.state.origin)return '';return this.state.origin+url.pathname+url.search+url.hash;}
- dispose(){this.disposed=true;this.serial++;this.run?.controller.abort();if(this.retry)clearTimeout(this.retry);this.listeners.clear();}
+ dispose(){this.promotion?.abort();this.promotion=undefined;this.disposed=true;this.serial++;this.run?.controller.abort();if(this.retry)clearTimeout(this.retry);this.listeners.clear();}
 }
 /** A proxy's answer for an unavailable upstream. Portico's own 502, 503 and 504 are plain
  * `application/json`; anything else with those statuses came from something in front of it: an

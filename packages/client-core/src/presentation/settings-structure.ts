@@ -283,7 +283,7 @@ const accountPages: readonly AuthoredPage[] = [
         {kind: 'composite', id: 'reduceMotion', storage: 'device', label: 'pref.label.appearance.reduceMotion', help: 'settings.help.reduceMotionDevice', scope: 'device', platforms: ['phone', 'tv'], control: {type: 'switch'}},
         {kind: 'composite', id: 'textSize', storage: 'device', label: 'settings.row.textSize', scope: 'device', platforms: ['tv'], control: {type: 'choice', choices: [{value: 'standard', label: 'settings.textSize.standard'}, {value: 'large', label: 'settings.textSize.large'}]}},
         {kind: 'composite', id: 'libraryView', storage: 'device', label: 'settings.row.libraryView', help: 'settings.help.libraryView', scope: 'device', platforms: ['web'], control: {type: 'choice', choices: [{value: 'grid', label: 'settings.libraryView.grid'}, {value: 'list', label: 'settings.libraryView.list'}]}},
-        toggle('notifications.badges', 'settings.row.unreadBadge', {help: 'settings.help.unreadBadge', platforms: ['web']}),
+        toggle('notifications.badges', 'settings.row.unreadBadge', {help: 'settings.help.unreadBadge'}),
       ]},
     ],
   },
@@ -303,7 +303,7 @@ const accountPages: readonly AuthoredPage[] = [
       {id: 'history', rows: [
         toggle('privacy.pauseWatchHistory', 'pref.label.privacy.pauseWatchHistory', {help: 'pref.help.privacy.pauseWatchHistory'}),
         toggle('privacy.showActivityToMembers', 'settings.row.showActivity', {help: 'settings.help.showActivity'}),
-        toggle('search.rememberHistory', 'pref.label.search.rememberHistory', {platforms: ['web']}),
+        toggle('search.rememberHistory', 'pref.label.search.rememberHistory'),
       ]},
       {id: 'recommendations', rows: [{kind: 'action', id: 'resetRecommendations', label: 'settings.resetRecommendations', help: 'settings.resetRecommendations.help', icon: 'refresh'}]},
     ],

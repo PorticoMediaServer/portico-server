@@ -80,3 +80,75 @@ test('a proxy error page for a down server is a lost route; Portico answers are 
   assert.equal(gatewayFailure(res(404, 'text/html')), false);
   assert.equal(gatewayFailure(res(200, 'application/json')), false);
 });
+
+import {RouteConnection} from '../src/route-connection.ts';
+const tick = () => new Promise<void>(resolve => setImmediate(resolve));
+
+test('foreground activity promotes recovered LAN without blanking the ready remote route or asking Hosted', async () => {
+  let local = false, hosted = 0, release!: () => void;
+  const probes: string[] = [];
+  const remote = 'https://remote.example';
+  const connection = new RouteConnection({pin, logicalOrigin: remote, memory: {paired: [remote]},
+    fresh: async () => { hosted++; throw new Error('unexpected Hosted lookup'); },
+    discover: async () => local ? [{...good, expiresAt: Date.now() + 60000}] : [],
+    probe: async origin => { probes.push(origin); if (origin === good.baseUrl) await new Promise<void>(resolve => { release = resolve; }); return pin; },
+  });
+  try {
+    assert.equal(await connection.resolve(), remote);
+    local = true;
+    connection.foregroundActivity(); await tick();
+    assert.equal(connection.getSnapshot().phase, 'ready');
+    assert.equal(connection.getSnapshot().origin, remote);
+    release(); await tick();
+    assert.equal(connection.getSnapshot().origin, good.baseUrl);
+    assert.equal(connection.getMemory().lastGood, good.baseUrl);
+    assert.equal(hosted, 0);
+    assert.deepEqual(probes, [remote, good.baseUrl]);
+  } finally { connection.dispose(); }
+});
+
+test('failed local promotion keeps the remote route and throttles repeated activity', async () => {
+  let local = false, attempts = 0;
+  const remote = 'https://remote.example';
+  const connection = new RouteConnection({pin, logicalOrigin: remote, memory: {paired: [remote]},
+    discover: async () => local ? [{...good, expiresAt: Date.now() + 60000}] : [],
+    probe: async origin => { if (origin !== remote) { attempts++; throw new Error('LAN still down'); } return pin; },
+  });
+  try {
+    await connection.resolve(); local = true;
+    connection.foregroundActivity(); await tick();
+    connection.foregroundActivity(); await tick();
+    assert.equal(attempts, 1);
+    assert.equal(connection.getSnapshot().origin, remote);
+    assert.equal(connection.getSnapshot().phase, 'ready');
+  } finally { connection.dispose(); }
+});
+
+test('a local proof arriving after disposal cannot promote the route', async () => {
+  let local = false, release!: () => void;
+  const remote = 'https://remote.example';
+  const connection = new RouteConnection({pin, logicalOrigin: remote, memory: {paired: [remote]},
+    discover: async () => local ? [{...good, expiresAt: Date.now() + 60000}] : [],
+    probe: async origin => { if (origin !== remote) await new Promise<void>(resolve => { release = resolve; }); return pin; },
+  });
+  await connection.resolve(); local = true;
+  connection.foregroundActivity(); await tick();
+  connection.dispose(); release(); await tick();
+  assert.equal(connection.getSnapshot().origin, remote);
+});
+
+test('leaving the foreground cancels a held LAN promotion and keeps the working route', async () => {
+  let local = false, release!: () => void;
+  const remote = 'https://remote.example';
+  const connection = new RouteConnection({pin, logicalOrigin: remote, memory: {paired: [remote]},
+    discover: async () => local ? [{...good, expiresAt: Date.now() + 60000}] : [],
+    probe: async origin => { if (origin !== remote) await new Promise<void>(resolve => { release = resolve; }); return pin; },
+  });
+  try {
+    await connection.resolve(); local = true;
+    connection.foregroundActivity(); await tick();
+    connection.setForeground(false); release(); await tick();
+    assert.equal(connection.getSnapshot().origin, remote);
+    assert.equal(connection.getSnapshot().phase, 'ready');
+  } finally { connection.dispose(); }
+});
