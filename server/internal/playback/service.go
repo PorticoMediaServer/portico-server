@@ -373,8 +373,8 @@ func (s *Service) create(ctx context.Context, p identity.Principal, item, reques
 
 	replacing := ""
 	deferred := replacement != nil && replacement.Deferred
-	private := v1.PrivateFor != "" || deferred
-	if private && !deferred {
+	private := v1.PrivateFor != "" || deferred || v1.PendingActivation
+	if private && !deferred && !v1.PendingActivation {
 		// A private presentation shares its owner's slot, and the owner plays on.
 		var valid int
 		if e = tx.QueryRowContext(ctx, `SELECT count(*) FROM playback_sessions WHERE id=? AND account_id=? AND profile_id=? AND state NOT IN('stopped','ended','failed')`, v1.PrivateFor, p.AccountID, p.ProfileID).Scan(&valid); e != nil {
@@ -512,6 +512,9 @@ func (s *Service) create(ctx context.Context, p identity.Principal, item, reques
 	result := Session{ID: id, Generation: generation, StreamURL: streamURL, Mode: responseMode, Duration: duration, ResumeSeconds: resume, State: "starting"}
 	if private {
 		owner, until := v1.PrivateFor, v1.PrivateUntilMs
+		if v1.PendingActivation {
+			until = time.Now().Add(time.Minute).UnixMilli()
+		}
 		if deferred {
 			owner, until = replacement.ID, time.Now().Add(time.Minute).UnixMilli()
 		}

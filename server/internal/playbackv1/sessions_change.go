@@ -303,7 +303,7 @@ func (s *Service) Patch(ctx context.Context, c Caller, id, ifMatch string, chang
 			return ErrRevision
 		}
 		if bytes {
-			if err := s.Playback.CommitReplacementTx(ctx, tx, c.Principal, playback.SessionReplacement{ID: r.media, Generation: oldMediaGeneration}, media, position); err != nil {
+			if err := s.Playback.PublishPresentationTx(ctx, tx, c.Principal, media, position, &playback.SessionReplacement{ID: r.media, Generation: oldMediaGeneration}, true); err != nil {
 				return err
 			}
 		}

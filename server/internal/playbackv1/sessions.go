@@ -528,7 +528,8 @@ func validateTracks(a *AudioRequest, sub *SubtitleRequest) error {
 
 // presentationTarget is one media start: what to play and how.
 type presentationTarget struct {
-	item, version string
+	pendingActivation bool
+	item, version     string
 	// part is the version's part to play (its part index; 0 is the first).
 	part      int
 	request   storedRequest
@@ -650,7 +651,7 @@ func (s *Service) present(ctx context.Context, c Caller, t presentationTarget) (
 	}
 	video := kind != "song" && kind != "track" && kind != "audiobook_file"
 	request := t.request.normalized()
-	base := playback.V1Choice{AdminMaxVideoBitrateBPS: c.AdminMaxVideoBitrateBPS, Remote: c.Remote, PrivateFor: t.privateFor, PrivateUntilMs: t.privateUntilMs}
+	base := playback.V1Choice{AdminMaxVideoBitrateBPS: c.AdminMaxVideoBitrateBPS, Remote: c.Remote, PrivateFor: t.privateFor, PrivateUntilMs: t.privateUntilMs, PendingActivation: t.pendingActivation}
 	request.Quality.apply(&base)
 	version := t.version
 	if version == "" && video && t.part == 0 {
@@ -769,7 +770,7 @@ func (s *Service) present(ctx context.Context, c Caller, t presentationTarget) (
 		media.StreamURL, media.Generation = result.replaced.StreamURL, result.replaced.Generation
 		s.adoptReplaced(ctx, &view, media.ID, result.replaced, choice)
 	}
-	if video && (t.replacing == nil || !t.replacing.Deferred) {
+	if video && !t.pendingActivation && (t.replacing == nil || !t.replacing.Deferred) {
 		s.rememberPresentationTracks(ctx, c.Principal, t.item, media.ID, view, t.rememberAudio, t.rememberSubtitle)
 	}
 	return media, view, nil
@@ -1035,7 +1036,7 @@ func (s *Service) startPresentation(ctx context.Context, c Caller, key, startDig
 	if req.StartPositionMs != nil {
 		startMs = *req.StartPositionMs
 	}
-	target := presentationTarget{item: base.item, version: base.version, part: base.partIndex, request: stored, startMs: startMs, replacing: replacing, requestID: "v1." + id + ".1", subtitleOp: "v1-" + id + "-1",
+	target := presentationTarget{pendingActivation: true, item: base.item, version: base.version, part: base.partIndex, request: stored, startMs: startMs, replacing: replacing, requestID: "v1." + id + ".1", subtitleOp: "v1-" + id + "-1",
 		throughputKbps: req.ThroughputKbps, fitThroughput: true, rememberAudio: req.Audio != nil, rememberSubtitle: req.Subtitles != nil}
 	media, view, err := s.present(ctx, c, target)
 
@@ -1094,10 +1095,8 @@ func (s *Service) startPresentation(ctx context.Context, c Caller, key, startDig
 			r.id, r.device, r.account, r.profile, r.authority, r.startKey, r.startDigest, r.kind, r.role, r.state, r.item, r.version, r.channel, r.queueID, r.entryID, r.transfer, r.group, r.request, r.media, r.presentation, r.audioTrack, r.subtitleTrack, r.location, r.endReason, r.message, r.partIndex, r.revision, r.generation, r.mediaGeneration, r.startPosition, r.position, r.lastSeq, r.bandwidth, r.lease, r.created, r.updated, r.ended, r.pausedSince); err != nil {
 			return err
 		}
-		if replacing != nil {
-			if err := s.Playback.CommitReplacementTx(ctx, tx, c.Principal, *replacing, media.ID, view.StartPositionMs); err != nil {
-				return err
-			}
+		if err := s.Playback.PublishPresentationTx(ctx, tx, c.Principal, media.ID, view.StartPositionMs, replacing, false); err != nil {
+			return err
 		}
 		if old.id != "" && old.ended == 0 {
 			if err := s.endTx(ctx, tx, old, now, "replaced", ""); err != nil {
@@ -1119,8 +1118,8 @@ func (s *Service) startPresentation(ctx context.Context, c Caller, key, startDig
 	}
 	if replacing != nil {
 		_ = s.Playback.StopV1(context.WithoutCancel(ctx), old.media)
-		s.rememberPresentationTracks(ctx, c.Principal, base.item, media.ID, view, req.Audio != nil, req.Subtitles != nil)
 	}
+	s.rememberPresentationTracks(ctx, c.Principal, base.item, media.ID, view, req.Audio != nil, req.Subtitles != nil)
 	s.hub.wake()
 	s.sweep.kick(s)
 	v := s.view(r)

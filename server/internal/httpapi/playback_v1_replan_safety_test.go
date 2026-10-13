@@ -215,3 +215,57 @@ type playbackReviewSettings struct {
 }
 
 func (s playbackReviewSettings) Delivery() playback.DeliveryConfiguration { return s.cfg }
+
+func TestPlaybackV1RejectedNewStartKeepsExistingProgressWriter(t *testing.T) {
+	f := replanFixtureV1(t, 1)
+	filmStreams(t, f, 0, 6_000_000)
+	var initial playbackv1.SessionView
+	f.call("POST", "/v1/playback/sessions", map[string]string{"Idempotency-Key": "progress-writer-001"}, startBody(f.items[0], nil), 201, &initial)
+	var media string
+	if err := f.db.QueryRow(`SELECT media_session_id FROM playback_v1_sessions WHERE id=?`, initial.ID).Scan(&media); err != nil {
+		t.Fatal(err)
+	}
+	w := f.raw("POST", "/v1/playback/sessions", f.owner.AccessToken, map[string]string{"Idempotency-Key": "progress-writer-002"}, startBody(f.items[0], map[string]any{"audio": map[string]any{"trackId": "a99"}}))
+	if w.Code != 400 {
+		t.Fatalf("invalid audio start: %d %s", w.Code, w.Body.String())
+	}
+	var writer string
+	if err := f.db.QueryRow(`SELECT playback_id FROM progress WHERE item_id=?`, f.records[0].ID).Scan(&writer); err != nil {
+		t.Fatal(err)
+	}
+	if writer != media {
+		t.Fatalf("rejected start took progress authority: %s want %s", writer, media)
+	}
+}
+
+func TestPlaybackV1PreparedProgressActivatesOnlyAtCommit(t *testing.T) {
+	f, _ := renderingFixture(t, 2)
+	q := playingQueue(t, f, "prepared-writer-001")
+	prepared := prepareNext(t, f, q, "prepared-writer-002")
+	var count int
+	if err := f.db.QueryRow(`SELECT count(*) FROM progress WHERE item_id=?`, f.records[1].ID).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatal("preparation claimed personal progress")
+	}
+	var committed playbackv1.QueueReply
+	f.call("POST", "/v1/queues/"+q.Queue.ID+":commit-next", nil, map[string]any{"token": prepared.Token}, 200, &committed)
+	var media, writer string
+	if err := f.db.QueryRow(`SELECT media_session_id FROM playback_v1_sessions WHERE id=?`, committed.Session.ID).Scan(&media); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.db.QueryRow(`SELECT playback_id FROM progress WHERE item_id=?`, f.records[1].ID).Scan(&writer); err != nil || writer != media {
+		t.Fatalf("committed audio has no progress authority: writer=%s media=%s error=%v", writer, media, err)
+	}
+	var firstOrdinal, nextOrdinal int64
+	if err := f.db.QueryRow(`SELECT accepted_ordinal FROM playback_personal_claims WHERE playback_id=(SELECT media_session_id FROM playback_v1_sessions WHERE id=?)`, q.Session.ID).Scan(&firstOrdinal); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.db.QueryRow(`SELECT accepted_ordinal FROM playback_personal_claims WHERE playback_id=?`, media).Scan(&nextOrdinal); err != nil {
+		t.Fatal(err)
+	}
+	if nextOrdinal != firstOrdinal {
+		t.Fatalf("automatic next got a new personal intent: %d want %d", nextOrdinal, firstOrdinal)
+	}
+}
