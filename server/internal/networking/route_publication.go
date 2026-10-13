@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"strings"
 )
 
 type PublishedCandidate struct {
@@ -55,4 +56,25 @@ func (h *ClaimHandler) proveRoute(ctx context.Context, v Intent, generation int6
 		return out, ErrInvalid
 	}
 	return out, h.store.Current(ctx, v)
+}
+
+const maxPublishedCandidates = 12
+
+// The directory is TLS-only. Local discovery remains available over HTTP.
+// Manual routes arrive first, in the owner's chosen order, ahead of automatic
+// public and LAN candidates. Deduplicate before consuming the shared budget.
+func boundedRouteCandidates(candidates []RemoteCandidate) []RemoteCandidate {
+	out := make([]RemoteCandidate, 0, min(len(candidates), maxPublishedCandidates))
+	seen := map[string]bool{}
+	for _, c := range candidates {
+		if !strings.HasPrefix(c.BaseURL, "https://") || seen[c.BaseURL] {
+			continue
+		}
+		seen[c.BaseURL] = true
+		out = append(out, c)
+		if len(out) == maxPublishedCandidates {
+			break
+		}
+	}
+	return out
 }

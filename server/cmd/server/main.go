@@ -1093,7 +1093,7 @@ func run() (runErr error) {
 		return httpapi.ConnectionUsage{Ordinary: len(transport.ordinary), Total: held, OrdinaryLimit: cap(transport.ordinary), ConsoleReserve: consoleConnectionReserve}
 	}, Restart: requestRestart, ListeningPort: listener.Addr().(*net.TCPAddr).Port, Events: events, Administration: adminOperations, Backups: backupService, Access: administration, Webhooks: outboundWebhooks, SettingsApplied: func(ctx context.Context) {
 		control.NotifySettingsChanged(ctx)
-		supervise.Go("delivery-settings.refresh", func() { deliverySettings.Refresh(ctx) })
+		deliverySettings.Refresh(ctx)
 		claimHandler.Remote().Wake()
 		invalidateCustomSource()
 	}, WebDirectory: os.Getenv("PORTICO_WEB_DIR"), Analysis: analysisService, Prepared: preparedVersions, Downloads: offlineDownloads, DVR: recordingStore, Subtitles: subtitleService, Lyrics: lyricService, LyricsBulk: lyricFetch, LyricsProbe: ffprobeTool, LibraryChannels: generatedChannels, Console: console, Scheduler: scheduler, Measurements: measurements, Networking: claimHandler, CustomCertificate: customCertificate, RouteIdentity: networking.NewRouteIdentityHandler(claimKeys, claimRunner), LiveChannels: liveSources, PlaybackRuntime: currentPlayback, AudioMedia: subtitleRenderer, Storage: storeIO, Mounts: managed, RemoteSources: sources, DB: db, Watchdog: watchdog, Identity: ident, Catalog: cat, Ingestion: scanner, Playback: player, Hosted: control, Metadata: meta, Origins: origins})
@@ -1114,9 +1114,14 @@ func run() (runErr error) {
 	server := &http.Server{Addr: bind, Handler: handlerSwitch, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 32 << 10, HTTP2: serverHTTP2Policy()}
 	connectionLimit := connectionBudget(hostlimits.EffectiveMemoryBytes())
 	if console != nil {
-		if document, err := console.Settings(ctx, operations.AllowServerScope); err == nil && document.Effective.ConnectionLimit > 0 {
-			connectionLimit = document.Effective.ConnectionLimit
+		appliedConnectionLimit := 0
+		if document, err := console.Settings(ctx, operations.AllowServerScope); err == nil {
+			appliedConnectionLimit = document.Requested.ConnectionLimit
+			if appliedConnectionLimit > 0 {
+				connectionLimit = appliedConnectionLimit
+			}
 		}
+		console.AppliedConnectionLimit = &appliedConnectionLimit
 	}
 	transport = consoleConnections(listener, connectionLimit)
 	listener = transport

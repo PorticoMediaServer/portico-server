@@ -61,6 +61,12 @@ func contactFixture(t *testing.T) (*sqlFixture, *RemoteManager, *Topology, *cont
 // publication and a Hosted dial-back proof for facts Hosted already had.
 func TestATopologyChangeThatChangesNoRouteDoesNotCallHosted(t *testing.T) {
 	f, m, topo, counts, ctx := contactFixture(t)
+	// Only addresses served over a trusted certificate are published, so the
+	// fixture needs one for its LAN address to be part of the published set.
+	counting := m.h.certificates.transport.client.Transport
+	installSyntheticCertificate(t, m.h.certificates, ctx)
+	m.h.certificates.SetListening(32500, true)
+	m.h.certificates.transport.client.Transport = counting
 	if _, _, _, _, _, e := m.snapshot(ctx); e != nil {
 		t.Fatal(e)
 	}

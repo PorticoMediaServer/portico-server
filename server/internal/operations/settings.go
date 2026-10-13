@@ -296,20 +296,27 @@ func (s *Store) Settings(ctx context.Context, auth Authorize) (out SettingsDocum
 // projectAppliedSettings uses the startup value held by the running consumer.
 // The stored requested document remains the single settings authority.
 func (s *Store) projectAppliedSettings(document *SettingsDocument) {
-	if s.AppliedTemporaryDirectory == nil {
-		return
-	}
-	applied := *s.AppliedTemporaryDirectory
-	document.Effective.TemporaryDirectory = applied
 	fields := document.RestartFields[:0]
 	for _, field := range document.RestartFields {
-		if field != "temporaryDirectory" {
-			fields = append(fields, field)
+		if field == "temporaryDirectory" && s.AppliedTemporaryDirectory != nil || field == "connectionLimit" && s.AppliedConnectionLimit != nil {
+			continue
 		}
+		fields = append(fields, field)
 	}
 	document.RestartFields = fields
-	if document.Requested.TemporaryDirectory != applied {
-		document.RestartFields = append(document.RestartFields, "temporaryDirectory")
+	if s.AppliedTemporaryDirectory != nil {
+		applied := *s.AppliedTemporaryDirectory
+		document.Effective.TemporaryDirectory = applied
+		if document.Requested.TemporaryDirectory != applied {
+			document.RestartFields = append(document.RestartFields, "temporaryDirectory")
+		}
+	}
+	if s.AppliedConnectionLimit != nil {
+		applied := *s.AppliedConnectionLimit
+		document.Effective.ConnectionLimit = applied
+		if document.Requested.ConnectionLimit != applied {
+			document.RestartFields = append(document.RestartFields, "connectionLimit")
+		}
 	}
 }
 
