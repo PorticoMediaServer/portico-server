@@ -381,6 +381,11 @@ func (s *Service) CompleteSignInChallenge(ctx context.Context, token, code strin
 	case !errors.Is(e, sql.ErrNoRows):
 		return DirectSignIn{}, e
 	}
+	if portico {
+		if err := admitPorticoSignerTx(ctx, tx, signer); err != nil {
+			return DirectSignIn{}, err
+		}
+	}
 	at, err := time.Parse(time.RFC3339, expiry)
 	if err != nil || !at.After(time.Now().UTC()) || attempts >= signInChallengeAttempts {
 		return DirectSignIn{}, ErrUnauthorized

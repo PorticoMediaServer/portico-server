@@ -22,7 +22,7 @@ const (
 )
 
 func ownerPrincipal(owner DirectSignIn) Principal {
-	return Principal{Viewer: Viewer{AccountID: owner.Account.ID, ProfileID: owner.Account.PrimaryProfileID, Authority: "local", Role: TierOwner}}
+	return Principal{Viewer: owner.Session.Viewer, Hash: Digest(owner.Session.AccessToken), Epoch: 1}
 }
 
 // With "require approval" on, a member's new device waits, the owner sees it
@@ -157,13 +157,17 @@ func TestAnAdministratorDecidesOnlyAboutMembersDevices(t *testing.T) {
 	if _, err = s.db.Exec(`UPDATE direct_memberships SET role='admin' WHERE account_id=?`, admin.ID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = s.DirectLogin(onDevice(t, "installation-admin-phone-00000000000000001", "Admin's phone"), "admin", "Testing6!"); err != nil {
+	adminLogin, err := s.DirectLogin(onDevice(t, "installation-admin-phone-00000000000000001", "Admin's phone"), "admin", "Testing6!")
+	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err = s.DirectLogin(onDevice(t, ownerPhone, "Owner's phone"), "owner", "Testing1!"); err != nil {
 		t.Fatal(err)
 	}
-	actor := Principal{Viewer: Viewer{AccountID: admin.ID, ProfileID: admin.PrimaryProfileID, Authority: "local", Role: TierAdmin}}
+	actor, err := s.Authenticate(adminLogin.Session.AccessToken)
+	if err != nil {
+		t.Fatal(err)
+	}
 	page, err := s.MemberDevices(ctx, actor, MemberDeviceQuery{})
 	if err != nil || len(page.Items) == 0 {
 		t.Fatalf("an administrator's list: %+v %v", page, err)

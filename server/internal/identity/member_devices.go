@@ -103,6 +103,32 @@ func managesDevicesOf(actor Principal, account, role string) bool {
 	return ManagesTier(actor.Role, role) && account != actor.AccountID
 }
 
+// memberDeviceAuthorityTx checks both the session and its account in the same
+// snapshot or transaction that reads or changes another person's devices.
+func (s *Service) memberDeviceAuthorityTx(ctx context.Context, tx *sql.Tx, actor Principal) (Principal, error) {
+	if _, err := s.SessionFamilyTx(ctx, tx, actor); err != nil {
+		return Principal{}, err
+	}
+	if err := actor.PermitsRequest(ctx); err != nil {
+		return Principal{}, err
+	}
+	if actor.Authority != "local" || !Administrative(actor.Role) {
+		return Principal{}, ErrForbidden
+	}
+	var role string
+	if err := tx.QueryRowContext(ctx, `SELECT role FROM direct_memberships WHERE account_id=? AND disabled=0`, actor.AccountID).Scan(&role); err != nil {
+		return Principal{}, err
+	}
+	if !Administrative(role) {
+		return Principal{}, ErrForbidden
+	}
+	// A narrower session never borrows its account's tier.
+	if Grants(actor.Role, role) {
+		actor.Role = role
+	}
+	return actor, nil
+}
+
 // MemberDevices lists devices across accounts, newest activity first. The
 // caller has already been resolved as an administrator against the live
 // membership row; an administrator who is not the owner sees the devices it
@@ -144,6 +170,10 @@ func (s *Service) MemberDevices(ctx context.Context, actor Principal, q MemberDe
 	}
 	tx := gated.Tx()
 	defer gated.Rollback()
+	actor, e = s.memberDeviceAuthorityTx(ctx, tx, actor)
+	if e != nil {
+		return out, e
+	}
 	policy, e := deviceApprovalPolicyTx(ctx, tx)
 	if e != nil {
 		return out, e
@@ -199,6 +229,10 @@ func (s *Service) SetMemberDeviceTrust(ctx context.Context, actor Principal, id 
 	}
 	tx := gated.Tx()
 	defer gated.Rollback()
+	actor, e = s.memberDeviceAuthorityTx(ctx, tx, actor)
+	if e != nil {
+		return MemberDevice{}, e
+	}
 	read := func() (MemberDevice, string, error) {
 		var role string
 		row := tx.QueryRowContext(ctx, `SELECT `+memberDeviceColumns+`,m.role FROM identity_devices d JOIN accounts a ON a.id=d.account_id JOIN direct_memberships m ON m.account_id=d.account_id WHERE d.authority='local' AND d.id=?`, id)
