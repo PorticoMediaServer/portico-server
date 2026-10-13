@@ -18,7 +18,8 @@ import {MetadataSettingsPanel} from '../server/MetadataSettings';
 import {TranscodeStatusPanel} from '../server/Transcoding';
 import {AddressesRow, CertificateStatusRow, ConnectionRow, OwnCertificateStatusRow, RemoteStatusPanel} from '../server/Network';
 import {AccountConnectionPanel, IdentityRows} from '../server/General';
-import {DiskUsagePanel, MissingTitlesPanel, UpdatesPanel} from '../server/Maintenance';
+import {DiskUsagePanel, MissingTitlesPanel, RestartPanel, UpdatesPanel} from '../server/Maintenance';
+import {ClientReportsPanel} from '../server/ClientReports';
 import {RemoteSourcesPanel} from '../server/Storage';
 import {BackupsGroup} from '../server/Backups';
 import {RetentionRows, ScheduledJobsPanel, WindowsPanel} from '../server/MaintenanceWindows';
@@ -78,6 +79,8 @@ export function ServerPanel({id}: {id: SettingsCustomId}) {
     case 'server.stateFolder': return <StateFolder />;
     case 'server.identity': return <IdentityRows />;
     case 'server.updates': return <UpdatesPanel />;
+    case 'server.restart': return <RestartPanel />;
+    case 'server.clientReports': return <ClientReportsPanel />;
     default: return null;
   }
 }

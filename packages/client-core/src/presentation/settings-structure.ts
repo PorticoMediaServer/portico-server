@@ -97,7 +97,7 @@ export type SettingsCustomId =
   | 'server.diskUsage' | 'server.retention' | 'server.remoteSources' | 'server.backups' | 'server.missingTitles'
   | 'server.windows' | 'server.jobs'
   | 'server.logs' | 'server.detailWindow' | 'server.records' | 'server.capabilities' | 'server.supportExport' | 'server.feedback' | 'server.stateFolder'
-  | 'server.identity' | 'server.updates';
+  | 'server.identity' | 'server.updates' | 'server.restart' | 'server.clientReports';
 
 type RowCopy = Readonly<{
   label: MessageId;
@@ -515,6 +515,8 @@ const serverPages: readonly AuthoredPage[] = [
     panel('logs', 'server.logs', 'settings.server.logs'),
     panel('records', 'server.records', 'settings.server.records'),
     panel('capabilities', 'server.capabilities', 'settings.server.capabilities'),
+    // Logs an app sent after something went wrong: to read, download and delete.
+    panel('clientReports', 'server.clientReports', 'web.diagnostics.clientReports', {platforms: ['web']}),
     panel('export', 'server.supportExport', 'settings.server.supportExport'),
     panel('feedback', 'server.feedback', 'settings.server.feedback'),
     panel('state', 'server.stateFolder'),
@@ -525,6 +527,7 @@ const serverPages: readonly AuthoredPage[] = [
       custom('server.identity'),
     ]},
     panel('updates', 'server.updates', 'settings.server.updates'),
+    panel('restart', 'server.restart', 'web.maintenance.serverRestart', {platforms: ['web']}),
     {id: 'alerts', title: 'settings.server.alertThresholds', description: 'web.alerts.lede', rows: [
       setting('alerts', 'storageWarningPercent', 'web.alerts.storageWarning', {type: 'number', min: 1, max: 50, unit: 'settings.unit.percent'}, {help: 'web.alerts.storageWarningHelp'}),
       setting('alerts', 'storageCriticalPercent', 'web.alerts.storageCritical', {type: 'number', min: 1, max: 50, unit: 'settings.unit.percent'}, {help: 'web.alerts.storageCriticalHelp'}),
