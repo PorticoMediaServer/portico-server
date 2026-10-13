@@ -70,7 +70,7 @@ func TestPlaybackV1QualityDefaultsAndAutomaticSteps(t *testing.T) {
 	const home, away = "192.168.1.20:51000", "93.184.216.34:51000"
 	start := func(peer, key string) playbackv1.SessionView {
 		t.Helper()
-		w := f.rawFrom(peer, "POST", "/v1/playback/sessions", f.owner.AccessToken, map[string]string{"Idempotency-Key": key, "X-Portico-Device-Class": "web"}, startBody(f.items[0], nil))
+		w := f.rawFrom(peer, "POST", "/v1/playback/sessions", f.owner.AccessToken, map[string]string{"Idempotency-Key": key, "X-Portico-Device-Class": "web"}, startBody(f.items[0], map[string]any{"throughputKbps": 5000}))
 		var out playbackv1.SessionView
 		if w.Code != 201 || json.Unmarshal(w.Body.Bytes(), &out) != nil {
 			t.Fatalf("start from %s: %d %s", peer, w.Code, w.Body.String())
@@ -154,7 +154,8 @@ func TestPlaybackV1QualityDefaultsAndAutomaticSteps(t *testing.T) {
 }
 
 // A start the measured connection plainly cannot carry is refused with the
-// quality that would fit; automatic lands on that quality instead.
+// quality that would fit. Automatic starts at Original, then follows the
+// client's explicit requests as the connection requires.
 func TestPlaybackV1ThroughputEstimate(t *testing.T) {
 	f := replanFixtureV1(t, 1)
 	filmStreams(t, f, 0, 20_000_000)
@@ -177,14 +178,21 @@ func TestPlaybackV1ThroughputEstimate(t *testing.T) {
 	var s playbackv1.SessionView
 	f.call("POST", "/v1/playback/sessions", map[string]string{"Idempotency-Key": "throughput-start-002"}, startBody(f.items[0], map[string]any{"throughputKbps": 17_000}), 201, &s)
 	f.call("DELETE", "/v1/playback/sessions/"+s.ID, nil, nil, 204, nil)
-	// Automatic with the same estimate starts on the step that fits.
+	// Automatic with the same estimate still starts at Original.
 	f.call("POST", "/v1/playback/sessions", map[string]string{"Idempotency-Key": "throughput-start-003"}, startBody(f.items[0], map[string]any{"throughputKbps": 5000, "quality": map[string]any{"mode": "automatic"}}), 201, &s)
-	if q := s.Presentation.Quality; q.Mode != "automatic" || q.ID != "480p" || s.Presentation.Mode != "stream" {
+	if q := s.Presentation.Quality; q.Mode != "automatic" || q.ID != "" || s.Presentation.Mode != "direct" {
 		t.Fatalf("automatic on a 5 Mb/s connection: %+v", q)
 	}
+	// The client can then move down using its measured connection.
+	path := "/v1/playback/sessions/" + s.ID
+	var down playbackv1.SessionView
+	f.call("PATCH", path, map[string]string{"If-Match": s.Revision}, map[string]any{"quality": map[string]any{"mode": "automatic", "id": "480p"}, "throughputKbps": 5000, "positionMs": 61_000}, 200, &down)
+	if q := down.Presentation.Quality; q.Mode != "automatic" || q.ID != "480p" || down.Presentation.Mode != "stream" || down.ID != s.ID || down.Presentation.StartPositionMs != 61_000 {
+		t.Fatalf("automatic change on a 5 Mb/s connection: %+v", down)
+	}
+	s = down
 	// Asking for the original on that connection mid-play is refused, and the
 	// session plays on as it was.
-	path := "/v1/playback/sessions/" + s.ID
 	w = f.raw("PATCH", path, f.owner.AccessToken, map[string]string{"If-Match": s.Revision}, map[string]any{"quality": map[string]any{"mode": "original"}, "throughputKbps": 5000})
 	if w.Code != 422 || v1Code(w) != "connection_too_slow" {
 		t.Fatalf("original over a slow connection mid-play: %d %s", w.Code, w.Body.String())

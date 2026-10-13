@@ -87,9 +87,10 @@ type StartRequest struct {
 	Network           string           `json:"network,omitempty"`
 	ReplacesSessionID string           `json:"replacesSessionId,omitempty"`
 	// ThroughputKbps is the client's own estimate of what its connection to
-	// this server carries. With automatic quality the start lands on the
-	// widest quality that fits it; with any other quality a start that the
-	// connection plainly cannot carry is refused (connection_too_slow).
+	// this server carries. Automatic starts at Original regardless of this
+	// estimate; the client asks for later quality changes. With any other
+	// quality a start the connection plainly cannot carry is refused
+	// (connection_too_slow).
 	ThroughputKbps int `json:"throughputKbps,omitempty"`
 }
 
@@ -544,10 +545,8 @@ type presentationTarget struct {
 	privateFor     string
 	privateUntilMs int64
 	// throughputKbps is the connection estimate the request carried (0: none).
-	// fitThroughput lets an automatic quality land on the step that fits it
-	// (a start); otherwise automatic stays where the request put it.
+	// Automatic changes only when the client asks for a step.
 	throughputKbps int
-	fitThroughput  bool
 	// rememberAudio and rememberSubtitle say the request's audio or subtitle
 	// track is the viewer's own choice made now, to be remembered for the show
 	// or film.
@@ -706,13 +705,8 @@ func (s *Service) present(ctx context.Context, c Caller, t presentationTarget) (
 	choice.SubtitleBesideStream = chosen != nil && subtitles.RenderingFormat(chosen.Format) != "text"
 
 	// Quality against the connection the client measured.
-	if t.throughputKbps > 0 && video && asset != "" {
-		if request.Quality.Mode == QualityAutomatic {
-			if t.fitThroughput && request.Quality.ID == "" {
-				request.Quality = fitAutomatic(t.throughputKbps, s.assetFacts(ctx, asset))
-				request.Quality.apply(&choice)
-			}
-		} else if plan, planErr := s.Playback.PlanV1(ctx, c.Principal, t.item, choice); planErr == nil {
+	if t.throughputKbps > 0 && video && asset != "" && request.Quality.Mode != QualityAutomatic {
+		if plan, planErr := s.Playback.PlanV1(ctx, c.Principal, t.item, choice); planErr == nil {
 			if need := planKbps(plan); need > 0 && t.throughputKbps*5 < need*4 {
 				return playback.Session{}, Presentation{}, &ThroughputError{Suggested: suggestedQuality(t.throughputKbps, sourceFactsOf(&plan))}
 			}
@@ -1038,7 +1032,7 @@ func (s *Service) startPresentation(ctx context.Context, c Caller, key, startDig
 		startMs = *req.StartPositionMs
 	}
 	target := presentationTarget{pendingActivation: true, item: base.item, version: base.version, part: base.partIndex, request: stored, startMs: startMs, replacing: replacing, requestID: "v1." + id + ".1", subtitleOp: "v1-" + id + "-1",
-		throughputKbps: req.ThroughputKbps, fitThroughput: true, rememberAudio: req.Audio != nil, rememberSubtitle: req.Subtitles != nil}
+		throughputKbps: req.ThroughputKbps, rememberAudio: req.Audio != nil, rememberSubtitle: req.Subtitles != nil}
 	media, view, err := s.present(ctx, c, target)
 
 	if err != nil {
@@ -1063,7 +1057,7 @@ func (s *Service) startPresentation(ctx context.Context, c Caller, key, startDig
 		state = "preparing"
 	}
 	if view.Quality != nil {
-		// The quality in force (automatic's landing step included) is what a
+		// The quality in force (automatic's current step included) is what a
 		// later step or re-plan continues from.
 		stored.Quality = *view.Quality
 	}
