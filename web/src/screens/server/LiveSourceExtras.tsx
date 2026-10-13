@@ -5,7 +5,7 @@ import {parseRecordingGrants, parseRecordingOwners, recordingAllowed, recordingO
 import {RecordingPermissionsGroup} from './DVRSettings';
 import {guideOnlyPatch} from '@core/server-admin/panel-logic.ts';
 export {guideOnlyPatch} from '@core/server-admin/panel-logic.ts';
-import {QUIET_READ_EVERY_MS, problem, useAction, useRead} from '../../admin/console';
+import {QUIET_READ_EVERY_MS, problem, sendFresh, useAction, useRead} from '../../admin/console';
 import {isStaleAnswer, rebaseDraft} from '@core/freshness-actions.ts';
 import {createOperationIds} from './operation-ids';
 import {useSession} from '../../app/session';
@@ -299,6 +299,8 @@ export function RecordingRulesGroup({sources}: {sources: readonly {id: string; n
   const [edit, setEdit] = useState<(Omit<Group, 'id' | 'revision'> & {id?: string; revision?: number}) | null>(null);
   const [remove, setRemove] = useState<Group | null>(null);
   const groups = read.data?.items ?? [];
+  // A rule as the server has it now: read before pausing, resuming or removing it is sent again.
+  const again = (id: string) => async () => (await admin.get<{items: Group[]}>('/v1/admin/dvr/recording-groups?limit=100')).items.find(x => x.id === id);
   const [guideDate, setGuideDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [guideSource, setGuideSource] = useState('');
   const [guideCursor, setGuideCursor] = useState('');
@@ -335,7 +337,7 @@ export function RecordingRulesGroup({sources}: {sources: readonly {id: string; n
       {read.data && !groups.length ? <SettingsEmpty title={t('web.recordingRules.noRules')} body={t('web.recordingRules.noRulesHelp')} /> : null}
       {groups.map(g => <SettingsRow key={g.id} icon="dvr" label={g.name} help={[g.kind === 'series' ? t('web.recordingRules.seriesKind') : t('web.recordingRules.matchTitles', {match: g.match}), g.options.newEpisodesOnly ? t('web.recordingRules.newOnly') : '', g.sourceId ? sources.find(s => s.id === g.sourceId)?.name ?? '' : t('web.recordingRules.anySource')].filter(Boolean).join(' · ')} meta={legacy(g) ? t('web.recordingRules.chooseOwner') : g.enabled ? undefined : t('web.recordingRules.pausedRule')} control={<Menu label={t('web.liveSource.ruleOptions', {name: g.name})} trigger={<Button size="sm" variant="ghost" icon="more" aria-label={t('web.liveSource.ruleOptions', {name: g.name})} />} items={items(g)} onSelect={id => {
         if (id === 'edit') openEdit(g);
-        else if (id === 'toggle' && !legacy(g) && recordingAllowed(g.owner, grants)) void action.run(async () => { await admin.send(`/v1/admin/dvr/recording-groups/${encodeURIComponent(g.id)}`, 'PUT', body({...g, enabled: !g.enabled})); ruleOpIds.release(); read.reload(); });
+        else if (id === 'toggle' && !legacy(g) && recordingAllowed(g.owner, grants)) { const enabled = !g.enabled; void action.run(async () => { await sendFresh(g, x => admin.send(`/v1/admin/dvr/recording-groups/${encodeURIComponent(x.id)}`, 'PUT', body({...x, enabled})), again(g.id), now => (now.enabled === enabled ? 'done' : true)); ruleOpIds.release(); read.reload(); }); }
         else setRemove(g);
       }} />} />)}
       <Dialog open={!!edit} onOpenChange={o => !o && setEdit(null)} title={edit?.id ? t('web.recordingRules.editTitle') : t('web.recordingRules.newTitle')} width={520} actions={<><Button variant="ghost" label={t('action.cancel')} onClick={() => setEdit(null)} /><Button variant="primary" label={t('action.save')} loading={action.busy} disabled={!valid} onClick={save} /></>}>
@@ -368,7 +370,7 @@ export function RecordingRulesGroup({sources}: {sources: readonly {id: string; n
           </div>
         ) : null}
       </Dialog>
-      <ConfirmDialog open={!!remove} onOpenChange={o => !o && setRemove(null)} title={t('web.recordingRules.removeTitle', {name: remove?.name ?? ''})} body={t('web.recordingRules.removeBody')} confirmLabel={t('web.recordingRules.remove')} busy={action.busy} error={action.error || undefined} onConfirm={() => { const g = remove; if (g) { const key = JSON.stringify({id: g.id, revision: g.revision}); void action.run(async () => { await admin.send(`/v1/admin/dvr/recording-groups/${encodeURIComponent(g.id)}?expectedRevision=${g.revision}&operationId=${ruleOpIds.forPayload(key)}`, 'DELETE'); ruleOpIds.release(); setRemove(null); read.reload(); }); } }} />
+      <ConfirmDialog open={!!remove} onOpenChange={o => !o && setRemove(null)} title={t('web.recordingRules.removeTitle', {name: remove?.name ?? ''})} body={t('web.recordingRules.removeBody')} confirmLabel={t('web.recordingRules.remove')} busy={action.busy} error={action.error || undefined} onConfirm={() => { const g = remove; if (g) { const key = JSON.stringify({id: g.id, revision: g.revision}); void action.run(async () => { await sendFresh(g, x => admin.send(`/v1/admin/dvr/recording-groups/${encodeURIComponent(x.id)}?expectedRevision=${x.revision}&operationId=${ruleOpIds.forPayload(JSON.stringify({id: x.id, revision: x.revision}))}`, 'DELETE'), again(g.id)); ruleOpIds.release(); setRemove(null); read.reload(); }); } }} />
     </SettingsGroup>
     </>
   );

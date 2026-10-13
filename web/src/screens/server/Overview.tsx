@@ -4,7 +4,7 @@ import type {Alert, Measurement} from '@core/console.ts';
 import {STATE_PERMISSIONS_CODE} from '@core/administration.ts';
 import {healthFacts} from '@core/server-admin/dashboard.ts';
 import {StatePermissionsCard} from './StatePermissions';
-import {alertTone, duration, sentence, useAction, useConsole, useRead, when} from '../../admin/console';
+import {alertTone, duration, sendFresh, sentence, useAction, useConsole, useRead, when} from '../../admin/console';
 import {Badge, Button, Freshness, Notice, Status, Text} from '../../ui';
 import {useI18n} from '../../app/i18n';
 import s from './Server.module.css';
@@ -64,7 +64,7 @@ export function AlertsPanel() {
             <Text variant="caption" tone="tertiary">{[a.occurrences > 1 ? t('server.alert.seen', {count: a.occurrences, when: when(i18n, a.lastAt)}) : t('server.alert.firstSeen', {when: when(i18n, a.firstAt)}), a.status === 'acknowledged' ? t('server.alert.acknowledged') : ''].filter(Boolean).join(' · ')}</Text>
             <details className={s.details}><summary>{t('server.technicalDetails')}</summary><dl><dt>Code</dt><dd>{a.code}</dd><dt>Alert</dt><dd>{a.id}</dd></dl></details> {/* lint-strings-allow: technical console readout (alert code/id field labels) */}
           </div>
-          {a.status === 'open' ? <Button size="sm" variant="outline" label={t('web.overview.acknowledge')} loading={action.busy} onClick={() => void action.run(() => client.acknowledge(a)).then(ok => ok && read.reload())} /> : null}
+          {a.status === 'open' ? <Button size="sm" variant="outline" label={t('web.overview.acknowledge')} loading={action.busy} onClick={() => void action.run(() => sendFresh(a, x => client.acknowledge(x), async () => (await client.alerts()).find(x => x.id === a.id), now => (now.status === 'open' ? true : 'done'))).then(ok => ok && read.reload())} /> : null}
         </div>
       ))}
       {action.error ? <Notice tone="error" compact>{action.error}</Notice> : null}

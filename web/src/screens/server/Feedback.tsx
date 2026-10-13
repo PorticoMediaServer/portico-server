@@ -3,7 +3,7 @@ import {feedbackCategoryName, feedbackStatusName} from '@core/server-admin/conso
 import {useState} from 'react';
 import type {FeedbackReport, FeedbackStatus} from '@core/console.ts';
 export {feedbackCategoryLabel} from '@core/server-admin/panel-logic.ts';
-import {QUIET_READ_EVERY_MS, useAction, useConsole, useRead, when} from '../../admin/console';
+import {QUIET_READ_EVERY_MS, sendFresh, useAction, useConsole, useRead, when} from '../../admin/console';
 import {devicePlatform} from '@core/server-admin/people-words.ts';
 import {Badge, Button, Dialog, Freshness, ListRow, Notice, Select, StateView, Surface, Text, TextArea} from '../../ui';
 import {SectionHeader} from './Server';
@@ -42,7 +42,7 @@ function TriageDialog({report, onClose, onChanged}: {report: FeedbackReport | nu
   const has = (id: string) => i18n.has(id);
   if (!report) return null;
   return (
-    <Dialog open onOpenChange={o => !o && onClose()} title={feedbackCategoryName(t, has, report.category)} description={t('web.feedback.reportedMeta', {when: when(i18n, report.createdAt), status: feedbackStatusName(t, has, report.status)})} width={560} actions={<><Button variant="ghost" label={t('action.close')} onClick={onClose} /><Button variant="primary" label={t('web.feedback.updateReport')} loading={action.busy} onClick={() => void action.run(() => client.triage(report.id, report.revision, status, reply), t('server.feedback.updated')).then(ok => ok && onChanged())} /></>}>
+    <Dialog open onOpenChange={o => !o && onClose()} title={feedbackCategoryName(t, has, report.category)} description={t('web.feedback.reportedMeta', {when: when(i18n, report.createdAt), status: feedbackStatusName(t, has, report.status)})} width={560} actions={<><Button variant="ghost" label={t('action.close')} onClick={onClose} /><Button variant="primary" label={t('web.feedback.updateReport')} loading={action.busy} onClick={() => void action.run(() => sendFresh(report, r => client.triage(r.id, r.revision, status, reply), () => client.report(report.id, true)), t('server.feedback.updated')).then(ok => ok && onChanged())} /></>}>
       <Text as="p" variant="body" style={{whiteSpace: 'pre-wrap'}}>{report.message}</Text>
       {report.diagnostic ? <Text as="p" variant="caption" tone="tertiary">{t('server.feedback.sentFrom', {platform: devicePlatform(t, report.diagnostic.platform) || report.diagnostic.platform, state: report.diagnostic.state, online: report.diagnostic.online ? 'yes' : 'no'})}</Text> : null}
       <Select label={t('web.feedback.status')} value={status} options={(['open', 'in-progress', 'resolved', 'closed'] as FeedbackStatus[]).map(v => ({value: v, label: feedbackStatusName(t, has, v)}))} onChange={e => setStatus(e.target.value as FeedbackStatus)} />

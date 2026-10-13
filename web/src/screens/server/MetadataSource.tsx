@@ -1,8 +1,9 @@
 import {useState} from 'react';
 import {isMetadataConflict, metadataAgentPath, parseMetadataAgent, saveMetadataAgent, type LibraryMetadataAgent, type MetadataAgentId} from '../../admin/metadata-agent';
-import {problem, unconfigured, useRead, type Read} from '../../admin/console';
+import {problem, sendFresh, unconfigured, useRead, type Read} from '../../admin/console';
 import {lookupStatus, saveLookup, type ScreenLookupPolicy} from '../../admin/metadata-screen';
 import {useSession} from '../../app/session';
+import {isStaleAnswer} from '@core/freshness-actions.ts';
 import {useI18n} from '../../app/i18n';
 import {Checkbox, ConfirmDialog, Notice, SettingsGroup, Text} from '../../ui';
 
@@ -52,13 +53,16 @@ export function MetadataSourceGroup({libraryId, agent, screen, onSaved}: {librar
     if (!pending) return;
     setBusy(true); setError('');
     try {
-      await saveMetadataAgent(request, current, libraryId, pending);
+      // The library moved since this was read (a scan, another setting): the choice is sent again against it, unless the source itself was changed elsewhere.
+      await sendFresh(current, c => saveMetadataAgent(request, c, libraryId, pending),
+        async () => parseMetadataAgent(await api.request<unknown>(metadataAgentPath(libraryId))),
+        now => (now.agent === pending ? 'done' : now.agent === current.agent));
       setPending(null);
       setNotice(t('web.metadataSource.saved'));
       agent.reload();
       onSaved();
     } catch (e) {
-      if (isMetadataConflict(e)) { setPending(null); setNotice(t('web.metadataSource.changed')); agent.reload(); }
+      if (isMetadataConflict(e) || isStaleAnswer(e)) { setPending(null); setNotice(t('web.metadataSource.changed')); agent.reload(); }
       else setError(problem(e, 'action'));
     } finally { setBusy(false); }
   };

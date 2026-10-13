@@ -5,7 +5,8 @@ import type {LogSettings} from '@core/server-administration.ts';
 import {scheduledJobs, type LogsDraft, type MaintenanceDocument, type MaintenanceSettings, type MaintenanceWindow} from '@core/server-admin/server-forms.ts';
 import {TASK_LABELS, broadcastBody, broadcastProblem, clockMinutes, clockText, retentionRows, utf8Length} from '@core/server-admin/panel-logic.ts';
 export {broadcastBody, broadcastBodyBytes, broadcastProblem, broadcastTitleBytes, maintenanceSaveSettings, utf8Length, type BroadcastProblem} from '@core/server-admin/panel-logic.ts';
-import {useAction, useConsole, useRead, when} from '../../admin/console';
+import {sendFresh, useAction, useConsole, useRead, when} from '../../admin/console';
+import {rebaseDraft} from '@core/freshness-actions.ts';
 import {useSession} from '../../app/session';
 import {useI18n, type MessageId} from '../../app/i18n';
 import {Button, Dialog, Input, Notice, Select, SettingsGroup, SettingsRow, Status, Switch, Text, TextArea} from '../../ui';
@@ -102,7 +103,7 @@ function ScheduleRow({schedule, onSaved}: {schedule: Schedule; onSaved: () => vo
       <SettingsRow icon="jobs" label={task(schedule.kind)} help={[schedule.resource, schedule.enabled ? t('server.schedule.daily', {time: clock(schedule.startMinute)}) : t('server.schedule.off'), schedule.lastSlot ? t('settings.server.jobs.last', {when: schedule.lastSlot}) : ''].filter(Boolean).join(' · ')}
         control={<Button size="sm" variant="ghost" label={t('web.selection.edit')} onClick={() => { action.clear(); setDraft(schedule); }} />} />
       <Dialog open={!!draft} onOpenChange={o => !o && setDraft(undefined)} title={task(schedule.kind)} width={480}
-        actions={<><Button variant="ghost" label={t('action.cancel')} onClick={() => setDraft(undefined)} /><Button variant="primary" label={t('action.save')} loading={action.busy} disabled={!draft || JSON.stringify(draft) === JSON.stringify(schedule)} onClick={() => draft && void action.run(() => client.saveSchedule(draft, schedule.revision)).then(ok => { if (ok) { setDraft(undefined); onSaved(); } })} /></>}>
+        actions={<><Button variant="ghost" label={t('action.cancel')} onClick={() => setDraft(undefined)} /><Button variant="primary" label={t('action.save')} loading={action.busy} disabled={!draft || JSON.stringify(draft) === JSON.stringify(schedule)} onClick={() => draft && void action.run(() => sendFresh(schedule, now => client.saveSchedule(rebaseDraft(schedule, draft, now).merged, now.revision), async () => (await client.schedules()).find(x => x.kind === schedule.kind && x.resource === schedule.resource), now => !rebaseDraft(schedule, draft, now).conflict)).then(ok => { if (ok) { setDraft(undefined); onSaved(); } })} /></>}>
         {draft ? (
           <div style={{display: 'flex', flexDirection: 'column', gap: 12}}>
             {action.error ? <Notice tone="error" compact>{action.error}</Notice> : null}
