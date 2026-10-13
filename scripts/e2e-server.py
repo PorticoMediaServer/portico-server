@@ -98,6 +98,8 @@ def generate(folder):
     video('Movies/Embedded (2021).mkv', ['-i', str(Path(str(movie)+'.en.srt')), '-map', '0', '-map', '1', '-c', 'copy', '-c:s', 'srt', '-metadata:s:s:0', 'language=eng'])
     video('Movies/Styled (2022).mkv', ['-i', str(ass), '-map', '0', '-map', '1', '-c', 'copy', '-c:s', 'ass'])
     video('Movies/Ten Bit (2023).mkv', ['-c:v', 'libx265', '-threads', '1', '-x265-params', 'pools=1:frame-threads=1:log-level=error', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p10le', '-c:a', 'aac', '-ac', '6'])
+    load=folder/'Movies/Load (2025).mp4'
+    run_command([ffmpeg,'-hide_banner','-loglevel','error','-stream_loop','-1','-i',str(base),'-t','180','-vf','scale=1280:720','-c:v','libx264','-threads','1','-preset','ultrafast','-g','48','-c:a','copy',str(load)])
     for disc, track, title in [(1,1,'First'), (2,1,'Second')]:
         target = folder / f'Music/Example Artist/Example Album/Disc {disc}/{track:02d} {title}.flac'
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -138,7 +140,7 @@ class API:
         req = urllib.request.Request(url, data, hs, method=method)
         start = time.monotonic()
         try:
-            r = urllib.request.urlopen(req, timeout=30)
+            r = urllib.request.build_opener(urllib.request.ProxyHandler({})).open(req, timeout=30)
         except urllib.error.HTTPError as e:
             r = e
         with r:
@@ -170,6 +172,7 @@ class Exercise:
     def __init__(self, directory, binary):
         self.directory, self.binary = directory, binary
         self.results = []
+        self.limitations=['PGS generation: installed FFmpeg has a decoder but no PGS encoder; no source subtitle sample was supplied.', 'Canonical people grouping: local NFO supplies name-only credits; those do not establish a provider-backed person identity.']
         self.api = None
     def check(self, name, fn):
         start = time.monotonic()
@@ -179,7 +182,7 @@ class Exercise:
         self.save()
         return result
     def save(self):
-        (self.directory/'results.json').write_text(json.dumps({'checks':self.results,'requests':self.api.timings if self.api else []}, indent=2))
+        (self.directory/'results.json').write_text(json.dumps({'checks':self.results,'limitations':self.limitations,'requests':self.api.timings if self.api else []}, indent=2))
     def start(self):
         env = {k:v for k,v in os.environ.items() if not k.startswith('PORTICO_')}
         self.base = f'http://127.0.0.1:{port()}'
@@ -198,7 +201,8 @@ class Exercise:
         wait(ready, 120)
     def stop(self):
         if hasattr(self,'process'):
-            os.killpg(self.process.pid,signal.SIGTERM)
+            with contextlib.suppress(ProcessLookupError):
+                os.killpg(self.process.pid,signal.SIGTERM)
             try:
                 self.process.wait(timeout=45)
             except subprocess.TimeoutExpired:
@@ -230,6 +234,20 @@ class Exercise:
         a=self.api
         self.libs={}
         self.scan_timings={}
+        scan_stop=threading.Event()
+        scan_errors=queue.Queue()
+        scan_reader=API(self.base,a.token,a.installation)
+        def read_during_scan():
+            try:
+                while not scan_stop.wait(.1):
+                    scan_reader.get('/v1/search?q=Arrival')
+                    library=self.libs.get('Movies')
+                    if library:
+                        scan_reader.post('/v1/libraries/'+library+'/browse',{'pivot':'movies','limit':10})
+            except Exception as error:
+                scan_errors.put(error)
+        scan_thread=threading.Thread(target=read_during_scan,daemon=True)
+        scan_thread.start()
         for name,kind in [('Movies','movie'),('Shows','tv'),('Anime','anime'),('Music','music'),('Books','audiobook')]:
             started=time.monotonic()
             l=a.post('/v1/libraries',{'name':name,'kind':kind,'path':str(self.directory/'media'/name),'metadataAgent':'local'},(201,))
@@ -245,19 +263,28 @@ class Exercise:
             issues=a.get('/v1/admin/libraries/'+l['id']+'/scans/'+j['id']+'/issues')
             (self.directory/(name+'-issues.json')).write_text(json.dumps(issues,indent=2))
             (self.directory/(name+'-scan.json')).write_text(json.dumps(result,indent=2))
+        scan_stop.set()
+        scan_thread.join(timeout=30)
+        if not scan_errors.empty():
+            raise scan_errors.get()
+        a.timings.extend(scan_reader.timings)
+        assert scan_reader.timings, 'No browse/search reads overlapped scanning'
         pages={}
         for name,l in self.libs.items():
             def published():
                 page=a.post('/v1/libraries/'+l+'/browse',{'pivot':{'Movies':'movies','Shows':'shows','Anime':'shows','Music':'albums','Books':'books'}[name],'limit':100})
-                return page if len(page['entries'])=={'Movies':11,'Shows':2,'Anime':1,'Music':2,'Books':1}[name] else False
+                return page if len(page['entries'])=={'Movies':12,'Shows':2,'Anime':1,'Music':2,'Books':1}[name] else False
             pages[name]=wait(published)
         (self.directory/'browse.json').write_text(json.dumps(pages,indent=2))
         return {'titles':{n:len(p.get('entries',[])) for n,p in pages.items()},'secondsByLibrary':self.scan_timings}
     def recognition(self):
         a=self.api
         pages=json.loads((self.directory/'browse.json').read_text())
+        issues=json.loads((self.directory/'Movies-issues.json').read_text())
+        assert any(i['path']=='sample.mp4' and i['reason']=='ignored_name' for i in issues['items'])
+        assert any(i['path']=='Broken (2024).mkv' for i in issues['items'])
         self.movies={e['title']:e['id'] for e in pages['Movies']['entries']}
-        assert set(self.movies)=={'Arrival','Blade Runner','Broken','Embedded','Hostile','Kingdom of Heaven','The Matrxi','Moon','Multipart','Styled','Ten Bit'}, self.movies
+        assert set(self.movies)=={'Arrival','Blade Runner','Broken','Embedded','Hostile','Kingdom of Heaven','The Matrxi','Moon','Multipart','Styled','Ten Bit','Load'}, self.movies
         details={title:a.get('/v1/items/'+id+'/detail') for title,id in self.movies.items()}
         (self.directory/'details.json').write_text(json.dumps(details,indent=2))
         assert len(details['Arrival']['files'])==2
@@ -392,6 +419,9 @@ class Exercise:
         sidecar=next(t for t in direct['subtitles'] if t['language']=='en')
         scenarios.append(('original styled subtitles',self.movies['Styled'],{'subtitles':{'trackId':styled['subtitles'][0]['id'],'delivery':'embeddedClient'}}))
         scenarios.append(('delivered subtitles',self.movies['Arrival'],{'versionId':direct['id'],'subtitles':{'trackId':sidecar['id'],'delivery':'sidecar'}}))
+        for language,encoding in [('fr','UTF-16'),('de','Windows-1252')]:
+            track=next(t for t in direct['subtitles'] if t['language']==language)
+            scenarios.append(('delivered subtitles '+encoding,self.movies['Arrival'],{'versionId':direct['id'],'subtitles':{'trackId':track['id'],'delivery':'sidecar'}}))
         for name,item,extra in scenarios:
             session=self.start_session(item,extra)
             try:
@@ -399,6 +429,10 @@ class Exercise:
                 for sub in session['presentation'].get('subtitles',[]):
                     data,_=a.call('GET',sub['url'],raw=True)
                     assert len(data)>20
+                    if name.startswith('delivered subtitles'):
+                        assert 'café' in data.decode('utf-8'), 'Subtitle encoding changed the text'
+                    if name=='original styled subtitles':
+                        assert b'[V4+ Styles]' in data and b'Styled subtitle' in data
                 results.append({'scenario':name,'mode':session['presentation']['mode'],'bytes':size,'video':session['presentation']['decision'].get('video')})
                 if name=='direct':
                     path='/v1/playback/sessions/'+session['id']
@@ -579,6 +613,11 @@ class Exercise:
             digest=hmac.new(secret.encode(),parts['t'].encode()+b'.'+body,hashlib.sha256).hexdigest()
             assert hmac.compare_digest(digest,parts['v1'])
             assert abs(time.time()-int(parts['t']))<60
+            self.scan_again(self.libs['Shows'])
+            real_headers,real_body=messages.get(timeout=30)
+            parts=dict(v.split('=',1) for v in real_headers['Portico-Signature'].split(','))
+            digest=hmac.new(secret.encode(),parts['t'].encode()+b'.'+real_body,hashlib.sha256).hexdigest()
+            assert real_headers['Portico-Event']=='scan.finished' and hmac.compare_digest(digest,parts['v1'])
             def delivered():
                 page=a.get('/v1/admin/webhooks/'+id+'/deliveries')
                 return page if any(d['state']=='delivered' for d in page['items']) else False
@@ -681,6 +720,26 @@ class Exercise:
         (self.directory/'file-lifecycle.json').write_text(json.dumps({'delete':result,'pathReport':report,'missingId':missing,'restored':restored['item']['id']},indent=2))
         return 'Version deleted on disk; missing title and state restored with same identity'
 
+    def unreachable_root(self):
+        a=self.api
+        root=self.directory/'media/Movies'
+        away=self.directory/'media/Movies-away'
+        root.rename(away)
+        try:
+            job=a.post('/v1/libraries/'+self.libs['Movies']+'/scans?mode=full',expected=(202,))
+            def done():
+                current=a.get('/v1/admin/ingestion/jobs/'+job['id'])
+                return current if current['status'] in ['failed','complete','complete_with_warnings'] else False
+            result=wait(done,30)
+            assert result['status']=='failed' or result['warnings']>0, result
+            assert not a.get('/v1/admin/missing-titles?libraryId='+self.libs['Movies'])['items']
+            for item in self.movies.values():
+                assert not a.get('/v1/items/'+item+'/detail').get('missingSince')
+            (self.directory/'unreachable-root.json').write_text(json.dumps(result,indent=2))
+            return 'Unavailable root reports failure without marking titles missing'
+        finally:
+            away.rename(root)
+
     def reserve(self):
         a=self.api
         doc=a.get('/v1/admin/console/settings')['data']
@@ -690,7 +749,7 @@ class Exercise:
         a.call('PATCH','/v1/admin/console/settings',{'expectedRevision':doc['revision'],'idempotencyKey':str(uuid.uuid4()),'values':values})
         first=None
         try:
-            first=self.start_session(self.movies['Ten Bit'])
+            first=self.start_session(self.movies['Load'],{'quality':{'mode':'limit','maxHeight':480,'maxVideoBitrateKbps':1000}})
             self.fetch_presentation(first)
             second=API(self.base)
             auth=second.post('/v1/direct/sign-in',{'username':'owner','password':self.password})
@@ -698,6 +757,21 @@ class Exercise:
             second.call('PUT','/v1/me/devices/current/capabilities',capabilities(),(204,))
             limited=second.post('/v1/playback/sessions',{'itemId':self.movies['Ten Bit'],'quality':{'mode':'original'}},(429,),{'Idempotency-Key':str(uuid.uuid4())})
             assert limited['error']['code']=='conversion_capacity'
+            def conversion_running():
+                # Read only our supervised process tree, never other lanes.
+                pending=[self.process.pid]
+                while pending:
+                    pid=pending.pop()
+                    try:
+                        cmd=Path(f'/proc/{pid}/comm').read_text().strip()
+                        if cmd=='ffmpeg':
+                            return True
+                        for children in Path(f'/proc/{pid}/task').glob('*/children'):
+                            pending.extend(int(p) for p in children.read_text().split())
+                    except (OSError,ValueError):
+                        pass
+                return False
+            assert conversion_running(), 'Reserve probe needs a live FFmpeg conversion'
             def owner_read(_):
                 client=API(self.base,a.token,a.installation)
                 start=time.monotonic()
@@ -707,7 +781,7 @@ class Exercise:
                 timings=list(pool.map(owner_read,range(16)))
             assert max(timings)<2, timings
             a.timings.extend(second.timings)
-            return {'conversionSlots':1,'extraConversion':'refused','ownerMaxMs':round(max(timings)*1000,2)}
+            return {'conversionSlots':1,'liveFFmpeg':True,'extraConversion':'refused','ownerMaxMs':round(max(timings)*1000,2)}
         finally:
             if first:
                 a.call('DELETE','/v1/playback/sessions/'+first['id'],expected=(204,))
@@ -778,9 +852,16 @@ class Exercise:
         self.check('signed webhook delivery',self.webhook)
         self.check('event stream change',self.events)
         self.check('file deletion, missing titles and paths changed',self.files_and_missing)
+        self.check('unreachable root retains titles',self.unreachable_root)
         self.check('owner reserve at conversion capacity',self.reserve)
         self.check('backup restore with automatic restart',self.backup_restore)
         self.check('library removal',self.remove_library)
+        for name,suffix in [('browse','/browse'),('search','/v1/search')]:
+            values=sorted(r['ms'] for r in self.api.timings if r['status']==200 and r['path'].endswith(suffix))
+            print(f'TIMING {name}: n={len(values)} median={values[len(values)//2]:.2f}ms max={max(values):.2f}ms',flush=True)
+        print(f'PASS all {len(self.results)} scenario groups',flush=True)
+        for limitation in self.limitations:
+            print('NOT EXERCISED '+limitation,flush=True)
 
 
 def main():
