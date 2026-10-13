@@ -18,7 +18,7 @@ import {readComposite, type CompositeId} from '@core/presentation/index.ts';
 import type {PreferenceValue} from '@core/preferences.ts';
 import {ownerStopOf} from './owner-stop';
 import {shortcutKey} from './shortcut-key';
-import {listeningRates, type SleepChoice} from '@core/listening.ts';
+import {audiobookRates, type SleepChoice} from '@core/listening.ts';
 import {subtitleReason} from '@core/subtitles.ts';
 import {useSystemListening} from '../bridge/useSystemListening';
 import {formatClock} from '@core/presentation/index.ts';
@@ -278,7 +278,7 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
     flash(i18n.t('web.player.volume.changed', {percent: Math.round(next * 100)}));
   };
   const stepSpeed = (direction: 1 | -1) => {
-    const list: readonly number[] = isAudio ? listeningRates : rates;
+    const list: readonly number[] = isAudio ? audiobookRates : rates;
     const at = list.indexOf(rate) < 0 ? list.indexOf(1) : list.indexOf(rate);
     const next = list[Math.max(0, Math.min(list.length - 1, at + direction))]!;
     if (next === rate) return;
@@ -780,7 +780,7 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
                 </>
               )) : null}
               {!isAudio ? box('quality', 'quality', i18n.t('player.opt.quality'), qualityLabelNow, qualityContent()) : null}
-              {isMusic ? null : box('speed', 'speed', 'Speed', rate === 1 ? 'Normal' : `${rate}×`, <div className={s.speedGrid}>{(isAudio ? [...listeningRates] : rates).map(v => optionRow(v === 1 ? 'Normal' : `${v}×`, v === rate, () => setSpeed(v)))}</div>)}
+              {isMusic ? null : box('speed', 'speed', 'Speed', rate === 1 ? 'Normal' : `${rate}×`, <div className={s.speedGrid}>{(isAudio ? [...audiobookRates] : rates).map(v => optionRow(v === 1 ? 'Normal' : `${v}×`, v === rate, () => setSpeed(v)))}</div>)}
               {box('sleep', 'sleep', i18n.t('player.opt.sleep'), sleepLabel, (
                 <>
                   {sleepChoices.map(c => optionRow(sleepChoiceLabel(c), (isAudio ? listening?.timer?.choice ?? 'off' : sleepAt ? videoSleep : 'off') === c, () => setSleep(c)))}
@@ -817,7 +817,7 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
                 </>
               ) : <Text variant="caption" tone="tertiary">Subtitles are available once playback starts.</Text>) : null}
               {!isAudio ? box('quality', 'quality', i18n.t('player.opt.quality'), qualityLabelNow, qualityContent()) : null}
-              {isMusic ? null : box('speed', 'speed', 'Speed', rate === 1 ? 'Normal' : `${rate}×`, <div className={s.speedGrid}>{(isAudio ? [...listeningRates] : rates).map(v => optionRow(v === 1 ? 'Normal' : `${v}×`, v === rate, () => setSpeed(v)))}</div>)}
+              {isMusic ? null : box('speed', 'speed', 'Speed', rate === 1 ? 'Normal' : `${rate}×`, <div className={s.speedGrid}>{(isAudio ? [...audiobookRates] : rates).map(v => optionRow(v === 1 ? 'Normal' : `${v}×`, v === rate, () => setSpeed(v)))}</div>)}
               {box('sleep', 'sleep', i18n.t('player.opt.sleep'), sleepLabel, sleepChoices.map(c => optionRow(sleepChoiceLabel(c), (isAudio ? listening?.timer?.choice ?? 'off' : sleepAt ? videoSleep : 'off') === c, () => setSleep(c))))}
               {queueCount > 1 && queue ? box('queue', 'queue', i18n.t('player.queue'), String(queueCount - 1), <QueueList queue={queue} />) : null}
             </div>
