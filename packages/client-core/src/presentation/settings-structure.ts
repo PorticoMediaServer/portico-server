@@ -138,9 +138,11 @@ type AuthoredPage = Readonly<{id: string; title: MessageId; icon: IconId; tabs?:
 const seconds = (...values: number[]): SettingsChoice[] => values.map(value => ({value, label: 'pref.unit.seconds', labelValues: {count: value}}));
 const speeds: SettingsChoice[] = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2].map(value => (value === 1 ? {value, label: 'pref.unit.speedNormal'} : {value, label: 'pref.unit.speed', labelValues: {value}}));
 const skipChoices = (key: string): SettingsChoice[] => (['ask', 'auto', 'off'] as const).map(value => ({value, label: `pref.value.${key}.${value}` as MessageId}));
+// The saved default for each network, in the player's own order: Original (the default), Automatic
+// (starts at Original and adjusts to the connection), then the fixed qualities.
 const limitChoices: SettingsChoice[] = [
-  {value: 'automatic', label: 'settings.quality.limit.automatic'},
   {value: 'original', label: 'settings.quality.limit.original'},
+  {value: 'automatic', label: 'settings.quality.limit.automatic'},
   {value: '2160', label: 'pref.unit.4k'},
   {value: '1080', label: 'pref.unit.height', labelValues: {value: '1080'}},
   {value: '720', label: 'pref.unit.height', labelValues: {value: '720'}},

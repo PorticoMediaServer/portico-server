@@ -8,6 +8,8 @@ import s from './Player.module.css';
 /**
  * Seek bar. Position comes from the playback service; a drag shows the
  * target and commits once on release. Buffered ranges are advisory.
+ * The hidden range input serves the keyboard and assistive technology; it takes
+ * no pointer events, so a click or a drag is exactly one seek.
  */
 export type TimelineMark = {start: number; end?: number; title?: string};
 

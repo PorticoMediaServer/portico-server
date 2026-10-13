@@ -543,4 +543,103 @@ test('sameAlbum: the next entry follows the current one on its album', async () 
 
 test('a failed optional audio renderer hands the same session and position to ordinary playback',async t=>{
  const f=transitionsSetup();t.after(()=>f.stop());await f.player.playEntries([queueItemInput('song-a','song')]);const p=f.playback.getSnapshot();f.playback.ready(p.intentId);if(p.pendingSeek)f.playback.seekApplied(p.intentId,p.pendingSeek.revision,p.pendingSeek.positionSeconds,'playing');f.playback.fact(p.intentId,30,'playing');const before=f.playback.getSnapshot();f.player.audioRenderFailed('Decoder failed');const after=f.playback.getSnapshot();assert.equal(after.session?.id,before.session?.id);assert.equal(after.audioEffects.rendering,false);assert.notEqual(after.phase,'error');assert.equal(after.pendingSeek?.positionSeconds,30);
+
+// ── Choices, restarts in place and overtaken sessions ───────────────────────────────────────
+
+test('changing quality re-plans the live session through the bridge and keeps the queue', async () => {
+  const {player, playback, log, stop} = setup();
+  await player.playEntries(['a', 'b', 'c'].map(queueItemInput));
+  const before = playback.getSnapshot().session!;
+  const s = playback.getSnapshot();
+  playback.ready(s.intentId);
+  playback.seekApplied(s.intentId, s.pendingSeek!.revision, s.pendingSeek!.positionSeconds, 'playing');
+  playback.fact(s.intentId, 77, 'playing');
+  await settle();
+  await playback.changePlayback({quality: {mode: 'limit', maxHeight: 720, maxVideoBitrateKbps: 4000}});
+  const patch = log.find(r => r.method === 'PATCH' && r.path === `/v1/playback/sessions/${before.id}`)!;
+  assert.deepEqual((patch.body as {quality: unknown}).quality, {mode: 'limit', maxHeight: 720, maxVideoBitrateKbps: 4000});
+  const after = playback.getSnapshot();
+  assert.equal(after.session!.id, before.id);
+  assert.equal(after.session!.generation, before.generation + 1);
+  assert.equal(after.pendingSeek?.positionSeconds, 77, 'the engine loads the new stream where the picture was');
+  assert.equal(log.filter(r => r.method === 'POST' && r.path === '/v1/queues').length, 1);
+  assert.equal(player.getSnapshot().view!.queue.entries.length, 3);
+  // The quality chosen for this viewing travels with the next start in the same queue…
+  await player.check();
+  const again = log.filter(r => r.method === 'POST' && r.path === '/v1/playback/sessions').at(-1)!;
+  assert.deepEqual((again.body as {quality?: unknown}).quality, {mode: 'limit', maxHeight: 720, maxVideoBitrateKbps: 4000});
+  // …and a new play starts from the default again.
+  await player.playItem('z', 5);
+  const fresh = log.filter(r => r.method === 'POST' && r.path === '/v1/playback/sessions').at(-1)!;
+  assert.equal((fresh.body as {quality?: unknown}).quality, undefined);
+  stop();
+});
+
+test('playing the current entry’s title again restarts that entry in place, with the choices given', async () => {
+  const {player, playback, log, stop} = setup();
+  await player.playEntries(['a', 'b'].map(queueItemInput));
+  const queue = player.getSnapshot().view!.queue.id, first = playback.getSnapshot().session!.id;
+  await playback.play('a', 12, undefined, undefined, 3, {versionId: 'v2'});
+  assert.equal(log.filter(r => r.method === 'POST' && r.path === '/v1/queues').length, 1, 'the queue is kept');
+  const start = log.filter(r => r.method === 'POST' && r.path === '/v1/playback/sessions').at(-1)!.body as Record<string, unknown>;
+  assert.deepEqual(start.queue, {queueId: queue, entryId: player.getSnapshot().view!.queue.currentEntryId});
+  assert.equal(start.startPositionMs, 12_000);
+  assert.equal(start.versionId, 'v2');
+  assert.deepEqual(start.audio, {trackId: 'a3'});
+  assert.equal(start.replacesSessionId, first);
+  assert.notEqual(playback.getSnapshot().session!.id, first);
+  assert.equal(player.getSnapshot().view!.next.available, true);
+  // A different title is a new queue, and a version or track picked for it goes with its start.
+  await playback.play('other', undefined, undefined, undefined, undefined, {audioTrackId: 'a2', quality: {mode: 'original'}});
+  assert.equal(log.filter(r => r.method === 'POST' && r.path === '/v1/queues').length, 2);
+  const other = log.filter(r => r.method === 'POST' && r.path === '/v1/playback/sessions').at(-1)!.body as Record<string, unknown>;
+  assert.deepEqual(other.audio, {trackId: 'a2'});
+  assert.deepEqual(other.quality, {mode: 'original'});
+  stop();
+});
+
+test('a session whose answer arrives after the viewer left is stopped, not left to its lease', async () => {
+  const {player, playback, server, stop} = setup();
+  await player.playEntries(['a', 'b', 'c'].map(queueItemInput));
+  const q = player.getSnapshot().view!.queue;
+  const moving = player.next(q.id, q.revision);
+  playback.leave(); // the viewer closed the player while Next was in flight
+  await moving;
+  await settle();
+  const live = [...(server as unknown as {sessions: Map<string, {ended: boolean}>}).sessions.values()].filter(s => !s.ended);
+  assert.equal(live.length, 0, 'nothing is left holding a stream');
+  assert.equal(playback.getSnapshot().phase, 'idle');
+  stop();
+  // The same once the request is already with the server when the viewer leaves.
+  const second = setup();
+  await second.player.playEntries(['a', 'b', 'c'].map(queueItemInput));
+  const q2 = second.player.getSnapshot().view!.queue;
+  const inFlight = second.player.next(q2.id, q2.revision);
+  for (let i = 0; i < 4; i++) await Promise.resolve();
+  assert.equal(second.log.filter(r => r.path.endsWith(':advance')).length, 1, 'the move reached the server');
+  second.playback.leave();
+  await inFlight;
+  await settle();
+  assert.equal([...(second.server as unknown as {sessions: Map<string, {ended: boolean}>}).sessions.values()].filter(s => !s.ended).length, 0);
+  assert.equal(second.playback.getSnapshot().phase, 'idle');
+  second.stop();
+});
+
+test('a retry after the queue moved on does not start the new entry at the old title’s position', async () => {
+  const {player, playback, log, stop} = setup();
+  await player.playEntries(['a', 'b'].map(queueItemInput));
+  const s = playback.getSnapshot();
+  playback.ready(s.intentId);
+  playback.seekApplied(s.intentId, s.pendingSeek!.revision, s.pendingSeek!.positionSeconds, 'playing');
+  playback.fact(s.intentId, 150, 'playing');
+  // The queue is moved by another device; this one then fails and retries.
+  const header = player.getSnapshot().view!.queue;
+  await new QueueClient((player as unknown as {http: V1Http}).http, () => 'other-device-key-0001').advance(header.id, header.revision, 'next');
+  await player.refresh();
+  playback.fail(playback.getSnapshot().intentId, 'Playback stopped.');
+  await player.check();
+  const start = log.filter(r => r.method === 'POST' && r.path === '/v1/playback/sessions').at(-1)!.body as Record<string, unknown>;
+  assert.equal(start.startPositionMs, undefined, 'entry b starts where its own progress says');
+  assert.equal(start.startFrom, 'resume');
+  stop();
 });

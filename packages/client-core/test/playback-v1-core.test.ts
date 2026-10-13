@@ -446,3 +446,114 @@ test('controller: an administrator’s terminate ends it with the reason and mes
     ctl.dispose();
   }
 });
+
+// ── The controller handed sessions it did not start (queues), and a lapsed lease ──────────────
+
+test('attach: a session another request made is taken over, loads at the viewer’s position, and is reported', async () => {
+  const c = clockwork();
+  const server = new FakePlaybackServer({now: c.now});
+  const player = new FakePlayer();
+  const sessions = new SessionsClient(fakeHttp(server));
+  const ctl = new PlaybackSessionController({http: fakeHttp(server), player, timers: c, key, wantsPlaying: () => false});
+  const first = await sessions.start({itemId: 'movie'}, {state: 'playing'}, key());
+  ctl.attach(first, {startPositionMs: 42_000});
+  assert.equal(player.loads.length, 1);
+  assert.equal(player.loads[0]!.startPositionMs, 42_000, 'an explicit position wins over the presentation’s');
+  assert.equal(player.loads[0]!.autoplay, false, 'the viewer’s intent decides, not the server’s default');
+  player.state = 'playing'; player.positionMs = 43_000; player.emit('state');
+  await settle();
+  assert.equal(server.session(first.id)!.reports.at(-1)!.positionMs, 43_000);
+  // The same session again loads nothing; another session replaces it without stopping it here.
+  ctl.attach(first);
+  assert.equal(player.loads.length, 1);
+  const second = await sessions.start({itemId: 'other'}, {state: 'playing', replacesSessionId: first.id}, key());
+  ctl.attach(second, {autoplay: true});
+  assert.equal(player.loads.length, 2);
+  assert.equal(ctl.getSnapshot().session!.id, second.id);
+  const before = server.session(first.id)!.reports.length;
+  player.emit('time');
+  await c.advance(11_000);
+  assert.equal(server.session(first.id)!.reports.length, before, 'nothing more is reported for the session let go');
+  // detach lets go without ending it on the server.
+  ctl.detach();
+  assert.equal(ctl.getSnapshot().phase, 'idle');
+  assert.equal(server.session(second.id)!.ended, false);
+  ctl.dispose();
+});
+
+test('a lapsed lease is given back to the owner with the last position; an administrator’s stop is not', async () => {
+  const c = clockwork();
+  const server = new FakePlaybackServer({now: c.now, leaseMs: 120_000});
+  const player = new FakePlayer();
+  const lapsed: {id: string; at: number}[] = [], ended: string[] = [];
+  const ctl = new PlaybackSessionController({http: fakeHttp(server), player, timers: c, key, onLeaseExpired: (s, at) => lapsed.push({id: s.id, at}), onServerEnded: (s, end) => ended.push(`${s.id}:${end.reason}`)});
+  const s = await ctl.start({itemId: 'movie'}, {});
+  player.positionMs = 600_000; player.emit('time');
+  await settle();
+  // The laptop slept: no report failed, so nothing here knew the lease was at risk. The server says it lapsed.
+  await ctl.sessionUpdated(s!.id, 'later', {state: 'ended', reason: 'lease_expired'});
+  await settle();
+  assert.deepEqual(lapsed, [{id: s!.id, at: 600_000}]);
+  assert.deepEqual(ended, [], 'the viewer is not shown an end');
+  assert.notEqual(ctl.getSnapshot().phase, 'ended');
+  // An administrator's stop is final.
+  const d = clockwork();
+  const server2 = new FakePlaybackServer({now: d.now});
+  const ctl2 = new PlaybackSessionController({http: fakeHttp(server2), player: new FakePlayer(), timers: d, key, onLeaseExpired: (x, at) => lapsed.push({id: x.id, at}), onServerEnded: (x, end) => ended.push(`${x.id}:${end.reason}`)});
+  const t = await ctl2.start({itemId: 'movie'}, {});
+  await ctl2.sessionUpdated(t!.id, 'later', {state: 'ended', reason: 'terminated', message: 'Maintenance'});
+  await settle();
+  assert.equal(lapsed.length, 1);
+  assert.deepEqual(ended, [`${t!.id}:terminated`]);
+  assert.equal(ctl2.getSnapshot().phase, 'ended');
+  ctl.dispose(); ctl2.dispose();
+});
+
+test('readings from an engine outside the port are reported, and the end is confirmed before anything moves on', async () => {
+  const c = clockwork();
+  const server = new FakePlaybackServer({now: c.now});
+  const player = new FakePlayer();
+  const ctl = new PlaybackSessionController({http: fakeHttp(server), player, timers: c, key});
+  const s = await new SessionsClient(fakeHttp(server)).start({itemId: 'song-1'}, {state: 'playing'}, key());
+  ctl.attach(s, {autoplay: false});
+  ctl.observe({state: 'playing', positionMs: 12_345, rate: 1.25}, 'state');
+  await settle();
+  const report = server.session(s.id)!.reports.at(-1)!;
+  assert.deepEqual({state: report.state, positionMs: report.positionMs, rate: report.rate, generation: report.generation}, {state: 'playing', positionMs: 12_345, rate: 1.25, generation: s.presentation.generation});
+  ctl.noteSkip({markerId: 'm1', mode: 'manual', positionMs: 13_000});
+  await settle();
+  assert.deepEqual(server.session(s.id)!.reports.at(-1)!.skipped, {markerId: 'm1', mode: 'manual', positionMs: 13_000});
+  // The end cannot be confirmed while the server cannot be reached…
+  server.failNext('offline');
+  ctl.observe({state: 'ended', positionMs: 180_000}, 'state');
+  await assert.rejects(ctl.confirmEnded(), /timeline_unconfirmed/);
+  // …and is once the report is through.
+  await c.advance(1500);
+  await ctl.confirmEnded();
+  assert.equal(server.session(s.id)!.reports.at(-1)!.state, 'ended');
+  ctl.dispose();
+});
+
+test('a re-plan starts the new presentation where the picture is now, and a local seek stays local when the platform says so', async () => {
+  const c = clockwork();
+  const server = new FakePlaybackServer({now: c.now});
+  const player = new FakePlayer();
+  const requests: string[] = [];
+  const inner = fakeHttp(server);
+  const ctl = new PlaybackSessionController({http: {send: r => { requests.push(`${r.method} ${r.path}`); return inner.send(r as never) as never; }}, player, timers: c, key, serverSeek: () => false});
+  const s = await ctl.start({itemId: 'movie'}, {});
+  player.positionMs = 50_000; player.emit('time');
+  await settle();
+  const changing = ctl.setQuality({mode: 'limit', maxHeight: 720});
+  // The old stream keeps playing while the server prepares the new one.
+  player.positionMs = 53_000;
+  await changing;
+  assert.equal(player.loads.at(-1)!.generation, s!.presentation.generation + 1);
+  assert.equal(player.loads.at(-1)!.startPositionMs, 53_000);
+  // The session is now converted; this platform still seeks locally (the server follows segment requests).
+  const patches = requests.filter(r => r.startsWith('PATCH')).length;
+  ctl.seek(90_000);
+  assert.deepEqual(player.seeks, [90_000]);
+  assert.equal(requests.filter(r => r.startsWith('PATCH')).length, patches);
+  ctl.dispose();
+});

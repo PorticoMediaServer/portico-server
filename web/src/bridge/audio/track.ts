@@ -148,7 +148,10 @@ export class TrackStream {
  */
 async function startAt(demuxer: Demuxer, target: number, preroll: number, signal?: AbortSignal): Promise<{packets: AsyncGenerator<Packet>; rawStart: number}> {
   if (target <= 0) return {packets: demuxer.packets(signal), rawStart: 0};
-  if (demuxer.seek) return demuxer.seek(target, preroll, signal);
+  if (demuxer.seek) {
+    const found = await demuxer.seek(target, preroll, signal);
+    if (found) return found;
+  }
   const all = demuxer.packets(signal);
   const recent: {packet: Packet; raw: number}[] = [];
   let raw = 0;

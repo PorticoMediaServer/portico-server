@@ -63,8 +63,9 @@ export class RangeReader implements ByteReader {
   private requested = 0;
   private waiting: (() => void)[] = [];
   private readonly abort = new AbortController();
-  constructor(o: {url: string; key: string; size?: number; cache: ByteCache; fetch?: RangeFetch; limit?: number}) {
-    this.url = o.url; this.key = o.key; this.size = o.size; this.cache = o.cache;
+  private readonly onBytes?: (count: number) => void;
+  constructor(o: {url: string; key: string; size?: number; cache: ByteCache; fetch?: RangeFetch; limit?: number; /** Bytes arrived from the server (not from the cache). */ onBytes?: (count: number) => void}) {
+    this.url = o.url; this.key = o.key; this.size = o.size; this.cache = o.cache; this.onBytes = o.onBytes;
     this.fetcher = o.fetch ?? ((u, i) => fetch(u, i));
     this.limit = o.limit ?? Infinity;
   }
@@ -89,6 +90,7 @@ export class RangeReader implements ByteReader {
       if (response.status === 403) throw new MediaReadError('prepared_limit', 'The prepared track can’t be read further before it is committed.', 403);
       if (!response.ok) throw new MediaReadError('media_unavailable', 'The audio file could not be read.', response.status);
       const bytes = new Uint8Array(await response.arrayBuffer());
+      try { this.onBytes?.(bytes.length); } catch { /* a listener is not the reader's problem */ }
       // A server that ignored Range sends the whole file: take this block from it.
       const data = response.status === 200 ? bytes.slice(start, end) : bytes;
       this.cache.put(key, data);

@@ -1,11 +1,12 @@
 import {audioTrackLabel} from '@core/index.ts';
 import {parseTrickplay, preferredTrickplaySet, type TrickplayView} from '@core/trickplay.ts';
-import {useEffect, useMemo, useState, useSyncExternalStore, type RefObject} from 'react';
+import {useEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
 import type {HttpLocalApi, PlaybackService} from '@core/index.ts';
 import {PlayerOffersService, type PlayerOffersSnapshot} from '@core/player-offers.ts';
 import {SubtitleService, fetchSubtitleDocument, type SubtitleDocument, type SubtitleSnapshot} from '@core/subtitles.ts';
 import {PlayerChaptersService, type PlayerChaptersSnapshot} from '@core/player-chapters.ts';
 import type {ContentScope} from '@core/library-content.ts';
+import type {SubtitleSurface} from './subtitle-surface';
 
 /*
  * Option services for the active playback session: audio plan installation,
@@ -65,8 +66,6 @@ export function usePlayerAudioPlan(offers: {service: PlayerOffersService; state:
   return () => { try { void offers.service.refresh().catch(() => {}); } catch { /* disposed */ } };
 }
 
-const tracks = new WeakMap<HTMLVideoElement, TextTrack>();
-
 type SessionFacts = {itemId?: string; intentId: number; sessionId?: string; generation?: number; channel: boolean; phase: string};
 /** PERF-20: the fields the option hooks read, as one string key, so the position ticks
  *  (≈ 4 Hz, 20 Hz with audio effects) don't re-render the player through these hooks. */
@@ -79,8 +78,11 @@ function useSessionFacts(playback: PlaybackService): SessionFacts {
   return useMemo(() => { const s = playback.getSnapshot(); return {itemId: s.itemId ?? undefined, intentId: s.intentId, sessionId: s.session?.id, generation: s.session?.generation, channel: !!s.channel, phase: s.phase}; }, [playback, key]);
 }
 
-/** Subtitle catalogue for the session and a WebVTT text-track renderer bound to the video element. */
-export function usePlayerSubtitles(api: HttpLocalApi, scope: ContentScope, playback: PlaybackService, video: RefObject<HTMLVideoElement | null>, resourceKey: string, audio: boolean) {
+/**
+ * Subtitle catalogue for the session, and the cue document of the chosen track shown on the
+ * player's subtitle surface (the one place a subtitle meets the video element).
+ */
+export function usePlayerSubtitles(api: HttpLocalApi, scope: ContentScope, playback: PlaybackService, surface: SubtitleSurface | null, resourceKey: string, audio: boolean) {
   const state = useSessionFacts(playback);
   const available = !audio && !!state.sessionId && state.generation !== undefined && !!state.itemId && !state.channel && !['error', 'ended', 'idle'].includes(state.phase);
   const service = useMemo(() => available ? new SubtitleService(api, {itemId: state.itemId!, sessionId: state.sessionId!, generation: state.generation!}, () => crypto.randomUUID(), {positionUs: () => String(Math.max(0, Math.round((playback.getSnapshot().pendingSeek?.positionSeconds ?? playback.getSnapshot().positionSeconds) * 1e6))), install: p => playback.getSnapshot().intentId === state.intentId && playback.installSubtitlePresentation(p)}) : null, [api, scope.serverId, scope.viewerId, available, state.itemId, state.intentId, state.sessionId, state.generation]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -99,62 +101,43 @@ export function usePlayerSubtitles(api: HttpLocalApi, scope: ContentScope, playb
   const [rendererError, setRendererError] = useState<string | null>(null);
   const [retry, setRetry] = useState(0);
   const plan = subtitles.plan;
+  /* Timing: a nudge moves the lines at once on this device; it is saved to the profile once the
+     viewer stops adjusting, so a fine correction is not a round trip per step. */
+  const [nudged, setNudged] = useState<number | null>(null);
+  const savedOffset = Number(plan?.offsetUs ?? 0) / 1e6;
+  const offsetSeconds = nudged ?? savedOffset;
+  const shown = useRef<{doc: SubtitleDocument; url: string} | null>(null);
+  useEffect(() => { setNudged(null); }, [plan?.selected?.id, plan?.offsetUs]);
+  useEffect(() => { if (surface && shown.current && nudged !== null) surface.show(shown.current.doc.cues, nudged); }, [surface, nudged]);
+  const selectedId = plan?.selected?.id;
   useEffect(() => {
-    const el = video.current;
-    if (!el || !service) return;
-    if (typeof el.addTextTrack !== 'function' || typeof VTTCue !== 'function') {
+    const selected = plan?.selected;
+    if (nudged === null || !service || !selected) return;
+    const timer = setTimeout(() => { void service.choose(selected, String(Math.round(nudged * 1e6))).catch(() => {}); }, 900);
+    return () => clearTimeout(timer);
+  }, [nudged, service, selectedId]); // eslint-disable-line react-hooks/exhaustive-deps
+  const nudge = (delta: number): number | undefined => {
+    if (!plan?.selected || plan.mode !== 'track' || subtitles.suppressed) return undefined;
+    const next = Math.max(-600, Math.min(600, Math.round((offsetSeconds + delta) * 10) / 10));
+    setNudged(next);
+    return next;
+  };
+  useEffect(() => {
+    if (!service) { surface?.clear(); shown.current = null; return; }
+    if (!surface) {
       setRendererError(plan?.renderer === 'burn_in' || plan?.mode === 'off' ? null : 'This browser cannot render text subtitles.');
       return;
     }
-    let active = true, doc: SubtitleDocument | null = null, authorizedUntil = 0, controller: AbortController | undefined, etag = '', etagUrl = '';
-    let retry: ReturnType<typeof setTimeout> | undefined;
-    let track = tracks.get(el);
-    if (!track) {
-      track = el.addTextTrack('subtitles', 'Portico subtitles', 'und');
-      tracks.set(el, track);
-    }
-    const owned = track;
-    const clear = () => {
-      // A disabled track lists no cues (`cues` is null), so they are removed while it can still
-      // name them; otherwise every re-render stacks another copy of each line.
-      if (owned.mode === 'disabled') owned.mode = 'hidden';
-      if (owned.cues) for (const cue of Array.from(owned.cues)) owned.removeCue(cue);
-      owned.mode = 'disabled';
-    };
-    const exclusive = () => {
-      for (const t of Array.from(el.textTracks)) if (t !== owned && (t.kind === 'subtitles' || t.kind === 'captions') && t.mode !== 'disabled') t.mode = 'disabled';
-    };
-    const render = () => {
-      clear();
-      exclusive();
-      if (!active || !doc || Date.now() > authorizedUntil || subtitles.suppressed || plan?.mode !== 'track') return;
-      const mapping = Number(el.dataset.porticoSubtitleOffset ?? '0');
-      if (!Number.isFinite(mapping)) return;
-      const offset = Number(plan.offsetUs) / 1e6 + mapping;
-      for (const cue of doc.cues) {
-        const start = Number(cue.startUs) / 1e6 + offset, end = Number(cue.endUs) / 1e6 + offset;
-        if (end <= 0) continue;
-        const words = cue.text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-        const vtt = new VTTCue(Math.max(0, start), end, cue.italic ? '<i>' + words + '</i>' : words);
-        vtt.align = 'center';
-        // A cue authored at the top of the picture (a sign, a second speaker) stays there.
-        if (cue.top) { vtt.snapToLines = true; vtt.line = 0; }
-        owned.addCue(vtt);
-      }
-      owned.mode = 'showing';
-    };
-    const clock = () => {
-      if (Date.now() > authorizedUntil && owned.mode !== 'disabled') {
-        clear();
-        setRendererError('Subtitle access expired. Refreshing…');
-      }
-    };
+    let active = true, doc: SubtitleDocument | null = null, controller: AbortController | undefined, etag = '', etagUrl = '';
+    let again: ReturnType<typeof setTimeout> | undefined;
     async function load() {
-      if (!active || !plan?.documentUrl || subtitles.suppressed || plan.mode !== 'track') {
-        clear();
+      if (!active || !surface) return;
+      if (!plan?.documentUrl || subtitles.suppressed || plan.mode !== 'track') {
+        surface.clear();
+        shown.current = null;
         return;
       }
-      clearTimeout(retry);
+      clearTimeout(again);
       controller?.abort();
       const c = new AbortController();
       controller = c;
@@ -167,45 +150,43 @@ export function usePlayerSubtitles(api: HttpLocalApi, scope: ContentScope, playb
         // costs a header rather than the whole document every 25 seconds.
         const read = await fetchSubtitleDocument(fetch, url, doc && etagUrl === url ? etag : '', c.signal);
         if (!active || c.signal.aborted) return;
-        if (read.unchanged) {
-          authorizedUntil = Date.now() + 75000;
-          setRendererError(null);
-          return;
-        }
+        setRendererError(null);
+        if (read.unchanged) return;
         const result = read.document;
         etag = read.etag;
         etagUrl = url;
-        // Long enough to ride out two failed reloads (25 s apart, retried at 5 s) before cues lapse.
-        authorizedUntil = Date.now() + 75000;
-        setRendererError(null);
-        // The periodic reload only extends authorisation; rebuilding every cue
-        // for an unchanged document is a main-thread hitch every 25 seconds.
+        // The periodic reload only confirms access; rebuilding every cue for an unchanged
+        // document is a main-thread hitch every 25 seconds.
         if (doc && sameDocument(doc, result)) return;
         doc = result;
-        render();
-      } catch {
-        if (active && !c.signal.aborted) {
-          // A failed reload is not a reason to take subtitles off the screen: the cues already
-          // loaded stay until the authorisation window really does lapse, and the next attempt
-          // comes soon rather than a full interval later. Only a first load has nothing to show.
-          if (doc && Date.now() <= authorizedUntil) retry = setTimeout(() => void load(), 5000);
-          else {
-            doc = null;
-            clear();
-            setRendererError('Subtitles could not be loaded.');
-          }
+        shown.current = {doc: result, url};
+        surface.show(result.cues, Number(plan.offsetUs) / 1e6);
+      } catch (error) {
+        if (!active || c.signal.aborted) return;
+        // The server saying no ends the subtitle at once. A server that cannot be reached does
+        // not: the lines already loaded stay for as long as the picture itself plays on from its
+        // buffer, and the next attempt comes soon rather than a full interval later.
+        const status = (error as {status?: unknown} | null)?.status;
+        const refused = typeof status === 'number' && [401, 403, 404, 410].includes(status);
+        if (doc && !refused) again = setTimeout(() => void load(), 5000);
+        else {
+          doc = null;
+          shown.current = null;
+          surface.clear();
+          setRendererError('Subtitles could not be loaded.');
         }
       } finally {
         clearTimeout(timeout);
       }
     }
-    clear();
-    exclusive();
+    // The same track with a new timing keeps its lines on screen while it is read again.
+    const kept = shown.current;
+    let same = false;
+    try { same = !!kept && !!plan?.documentUrl && plan.mode === 'track' && !subtitles.suppressed && kept.url === api.mediaUrl(plan.documentUrl); } catch { same = false; }
+    if (same && kept && plan) surface.show(kept.doc.cues, Number(plan.offsetUs) / 1e6);
+    else { surface.clear(); shown.current = null; }
+    surface.guard(true);
     setRendererError(null);
-    el.textTracks.addEventListener('change', exclusive);
-    el.textTracks.addEventListener('addtrack', exclusive);
-    el.addEventListener('portico-subtitle-timeline', render);
-    el.addEventListener('timeupdate', clock);
     const focus = () => {
       if (document.visibilityState === 'visible') void load();
     };
@@ -216,16 +197,12 @@ export function usePlayerSubtitles(api: HttpLocalApi, scope: ContentScope, playb
       active = false;
       controller?.abort();
       clearInterval(timer);
-      clearTimeout(retry);
-      el.textTracks.removeEventListener('change', exclusive);
-      el.textTracks.removeEventListener('addtrack', exclusive);
-      el.removeEventListener('portico-subtitle-timeline', render);
-      el.removeEventListener('timeupdate', clock);
+      clearTimeout(again);
       document.removeEventListener('visibilitychange', focus);
-      clear();
+      surface.guard(false);
     };
-  }, [api, service, video, resourceKey, plan?.documentUrl, plan?.offsetUs, plan?.revision, subtitles.suppressed, retry]); // eslint-disable-line react-hooks/exhaustive-deps
-  return {service, snapshot: subtitles, rendererError, retryRenderer: () => setRetry(v => v + 1)};
+  }, [api, service, surface, resourceKey, plan?.documentUrl, plan?.offsetUs, plan?.revision, plan?.mode, subtitles.suppressed, retry]); // eslint-disable-line react-hooks/exhaustive-deps
+  return {service, snapshot: subtitles, rendererError, retryRenderer: () => setRetry(v => v + 1), offsetSeconds, nudge};
 }
 
 /** Chapter list for the active session; seeking stays with the playback service. */
