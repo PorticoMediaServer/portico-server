@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"portico.local/server/internal/naming"
 	"runtime"
 	"strconv"
 	"strings"
@@ -163,6 +164,9 @@ func LocalInventoryPage(r InventoryRequest) (InventoryPage, error) {
 		if name == "." || name == ".." || filepath.Base(name) != name || strings.ContainsAny(name, "/\\\x00") {
 			return p, ErrInventoryChanged
 		}
+		if naming.IgnoreName(name, false) {
+			continue
+		}
 		child := filepath.Join(path, name)
 		bindingPath := child
 		info, e := os.Lstat(child)
@@ -191,6 +195,9 @@ func LocalInventoryPage(r InventoryRequest) (InventoryPage, error) {
 			if e != nil {
 				return p, e
 			}
+		}
+		if naming.IgnoreName(name, info.IsDir()) {
+			continue
 		}
 		if !info.IsDir() && !info.Mode().IsRegular() {
 			continue
