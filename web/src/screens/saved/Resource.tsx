@@ -2,7 +2,6 @@ import {cardCaptionOf} from '../../app/content';
 import {useEffect, useMemo, useRef, useState} from 'react';
 import React from 'react';
 import {useNavigate, useParams, useSearch} from '@tanstack/react-router';
-import {defaultI18n} from '@i18n';
 import {SavedService, type SavedRoute, type SavedSnapshot, type PlaylistOccurrence} from '@core/saved.ts';
 import {PersonalSavedService, type PersonalSavedSnapshot} from '@core/personal-saved.ts';
 import {useService} from '../../app/content';
@@ -17,14 +16,15 @@ import {LoadingGrid, SECTION_WINDOW_AT, useAppendedPages} from '../shared/Sectio
 import {ErrorNotice, errorText} from '../../app/errors';
 import {NameDialog} from './Saved';
 import {useViewerScope} from '../../app/viewer-scope';
+import {useI18n} from '../../app/i18n';
 
-const t = defaultI18n.t;
 const requestId = () => Promise.resolve(crypto.randomUUID());
 type Visible = Extract<PlaylistOccurrence, {hidden: false}>;
 
 /** One playlist or personal collection: identity, Play, then its ordered entries, and (WEB-SAVED-02)
  * the management the server offers for it: rename, reorder, remove and delete. */
 export function SavedResourceScreen() {
+  const {t} = useI18n();
   const {kind, resourceId} = useParams({from: '/app/saved/$kind/$resourceId'});
   const {title} = useSearch({from: '/app/saved/$kind/$resourceId'});
   const navigate = useNavigate();

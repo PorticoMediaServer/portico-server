@@ -10,17 +10,17 @@ import {PERSON_CREDIT_PAGE, PERSON_CREDIT_RESIDENT_PAGES, personCreditsSource} f
 import {captionFor, iconFor, progressFor, shapeFor} from '@core/presentation/index.ts';
 import {useEntryHref, useOpenEntry} from '../../app/open';
 import {useSession} from '../../app/session';
-import {defaultI18n} from '@i18n';
 import {Artwork, Button, Card, Chip, Chips, Grid, Inset, Page, PageHeader, Row, Shelf, Skeleton, StateView, Text, WindowedGrid, gridColumnMin} from '../../ui';
 
-const t = defaultI18n.t;
 /** Life dates in words ("March 4, 1956"), falling back to what the server sent. */
-function lifeDate(value: string): string {
+function lifeDate(i18n: I18n, value: string): string {
   const ms = Date.parse(value);
-  return Number.isFinite(ms) && /^\d{4}-\d{2}-\d{2}/.test(value) ? new Date(ms).toLocaleDateString(undefined, {year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC'}) : value;
+  // A calendar date, not a moment: read in UTC so it is the same day in every zone.
+  return Number.isFinite(ms) && /^\d{4}-\d{2}-\d{2}/.test(value) ? i18n.formatDate(ms, {year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC'}) : value;
 }
 import {ErrorNotice, ErrorState} from '../../app/errors';
 import {useViewerScope} from '../../app/viewer-scope';
+import {useI18n, type I18n} from '../../app/i18n';
 
 type State = {phase: 'loading' | 'ready' | 'error'; page?: PersonPage; error?: unknown};
 
@@ -32,6 +32,8 @@ type State = {phase: 'loading' | 'ready' | 'error'; page?: PersonPage; error?: u
  * ~300 cards (PERF-S17).
  */
 export function PersonScreen() {
+  const i18n = useI18n();
+  const {t} = i18n;
   const {personId} = useParams({from: '/app/person/$personId'});
   const {api} = useSession();
   const scope = useViewerScope();
@@ -56,7 +58,7 @@ export function PersonScreen() {
   const creditsSnapshot = useSyncExternalStore(credits.subscribe, credits.getSnapshot);
   const open = useOpenEntry();
   const person = state.page?.person;
-  const dates = person ? (person.deathDate ? t('web.person.lived', {born: lifeDate(person.birthDate) || '?', died: lifeDate(person.deathDate)}) : person.birthDate ? t('web.person.born', {date: lifeDate(person.birthDate)}) : '') : '';
+  const dates = person ? (person.deathDate ? t('web.person.lived', {born: lifeDate(i18n, person.birthDate) || '?', died: lifeDate(i18n, person.deathDate)}) : person.birthDate ? t('web.person.born', {date: lifeDate(i18n, person.birthDate)}) : '') : '';
   const total = state.page?.pageInfo.total ?? 0;
   // WEB-PERSON-01: "Known for" only when it adds something the credits below
   // don't already show. With a moving window the loaded set is unstable, so the
@@ -93,6 +95,7 @@ export function PersonScreen() {
 }
 
 function CreditsGrid({collection, status, error, retry}: {collection: WindowedCollection<PersonCredit>; status: CollectionStatus; error: unknown; retry: () => void}) {
+  const {t} = useI18n();
   const open = useOpenEntry();
   return (
     <>
@@ -110,6 +113,7 @@ function CreditsGrid({collection, status, error, retry}: {collection: WindowedCo
 }
 
 function Biography({text}: {text: string}) {
+  const {t} = useI18n();
   const [expanded, setExpanded] = useState(false);
   const long = text.length > 480;
   return (

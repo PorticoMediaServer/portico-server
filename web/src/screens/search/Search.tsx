@@ -1,6 +1,5 @@
 import {cardCaptionOf} from '../../app/content';
 import React, {useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
-import {defaultI18n} from '@i18n';
 import type {ContentEntry} from '@core/library-content.ts';
 import {SearchService, searchQueryProblem, type SearchEntry, type SearchGroup, type SearchGroupResult, type SearchSnapshot} from '@core/search.ts';
 import {useNavigate, useRouter, useSearch} from '@tanstack/react-router';
@@ -14,11 +13,11 @@ import {LoadingShelves} from '../shared/Sections';
 import s from './Search.module.css';
 import {ErrorNotice, ErrorState, changedError} from '../../app/errors';
 import {useViewerScope} from '../../app/viewer-scope';
+import {useI18n, type I18n} from '../../app/i18n';
 
-const t = defaultI18n.t;
 type ChipId = SearchGroup | 'all';
 /** The type chips, in the one authored order (client-core `search-model.ts`); result sections follow it. */
-const chips = (): readonly {id: ChipId; label: string}[] => SEARCH_CHIPS.map(chip => ({id: chip.id, label: t(chip.label)}));
+const chips = (t: I18n['t']): readonly {id: ChipId; label: string}[] => SEARCH_CHIPS.map(chip => ({id: chip.id, label: t(chip.label)}));
 const DEBOUNCE_MS = 260;
 const RECENT_LIMIT = 8;
 
@@ -50,6 +49,8 @@ function useSearchSession(api: ConstructorParameters<typeof SearchService>[0]['a
  * owns matching and ranking.
  */
 export function SearchScreen() {
+  const i18n = useI18n();
+  const {t} = i18n;
   const {api} = useSession();
   const libraries = useLibrariesContext();
   const scope = useViewerScope();
@@ -143,7 +144,7 @@ export function SearchScreen() {
         </Inset>
         <Inset>
           <Chips>
-            {chips().map(item => {
+            {chips(t).map(item => {
               const count = item.id === 'all' ? undefined : counts.get(item.id);
               return <Chip key={item.id} label={item.label} count={count && count > 0 ? count : undefined} pressed={chip === item.id} onClick={() => setChip(item.id)} />;
             })}
@@ -162,8 +163,8 @@ export function SearchScreen() {
       {snapshot.phase === 'error' ? <Inset><ErrorNotice error={snapshot.error} context="search" retry={() => void service.retry().catch(() => {})} refresh={() => void service.refresh().catch(() => {})} /></Inset> : null}
       {snapshot.phase === 'refresh-required' ? <Inset><ErrorNotice error={snapshot.error ?? changedError} context="search" refresh={() => void service.refresh().catch(() => {})} /></Inset> : null}
       {snapshot.phase === 'loading' && !snapshot.groups.length ? <LoadingShelves /> : null}
-      {failed.length && snapshot.phase === 'ready' ? <Inset><Notice tone="warning" action={{label: t('action.tryAgain'), onClick: () => void service.refresh().catch(() => {})}}>{t('web.search.partial', {groups: new Intl.ListFormat(undefined, {type: 'conjunction'}).format(failed.map(g => t(searchGroupLabel(g.id))))})}</Notice></Inset> : null}
-      {snapshot.phase === 'ready' && !sections.length && hasQuery ? <StateView icon="search" title={t('web.search.noMatches', {query})} body={group ? t('web.search.nothingIn', {group: chips().find(c => c.id === group)?.label ?? group}) : t('web.search.noMatchesBody')} action={group ? {label: t('web.search.everything'), onClick: () => setChip('all')} : undefined} /> : null}
+      {failed.length && snapshot.phase === 'ready' ? <Inset><Notice tone="warning" action={{label: t('action.tryAgain'), onClick: () => void service.refresh().catch(() => {})}}>{t('web.search.partial', {groups: i18n.list(failed.map(g => t(searchGroupLabel(g.id))))})}</Notice></Inset> : null}
+      {snapshot.phase === 'ready' && !sections.length && hasQuery ? <StateView icon="search" title={t('web.search.noMatches', {query})} body={group ? t('web.search.nothingIn', {group: chips(t).find(c => c.id === group)?.label ?? group}) : t('web.search.noMatchesBody')} action={group ? {label: t('web.search.everything'), onClick: () => setChip('all')} : undefined} /> : null}
       <div ref={results} style={{display: 'contents'}}>
       {group ? (
         focused && focused.items.length ? <GroupResults section={focused} canPrevious={snapshot.pagination.canPrevious} busy={snapshot.phase === 'loading'} onNext={focused.nextCursor ? () => void service.next(focused.id).catch(() => {}) : undefined} onPrevious={snapshot.pagination.canPrevious ? () => void service.previous().catch(() => {}) : undefined} /> : null
@@ -205,6 +206,7 @@ const densityFor = (section: SearchGroupResult) => {
 };
 
 function GroupShelf({section, onSeeAll}: {section: SearchGroupResult; onSeeAll?: () => void}) {
+  const {t} = useI18n();
   return (
     <Shelf title={t(searchGroupLabel(section.id))} count={section.totalCount} density={densityFor(section)} action={onSeeAll ? {label: t('web.search.seeAll'), onClick: onSeeAll} : undefined}>
       {section.items.map(e => <ResultCard key={e.id} entry={e} />)}
@@ -212,6 +214,7 @@ function GroupShelf({section, onSeeAll}: {section: SearchGroupResult; onSeeAll?:
   );
 }
 function GroupResults({section, canPrevious, onNext, onPrevious, busy}: {section: SearchGroupResult; canPrevious: boolean; onNext?: () => void; onPrevious?: () => void; busy: boolean}) {
+  const {t} = useI18n();
   return (
     <div style={{display: 'flex', flexDirection: 'column', gap: 12}}>
       <Inset><Row style={{justifyContent: 'space-between'}}><Text variant="heading">{t(searchGroupLabel(section.id))}</Text><Text variant="caption" tone="tertiary">{section.totalCount > section.items.length ? t('web.search.someOf', {shown: section.items.length, total: section.totalCount}) : t('web.search.results', {count: section.totalCount})}</Text></Row></Inset>
@@ -223,6 +226,7 @@ function GroupResults({section, canPrevious, onNext, onPrevious, busy}: {section
 
 /** One title that matches the words strongly, above the sections: its artwork, what it is, and Play or Open. */
 function TopResult({top}: {top: TopSearchResult}) {
+  const {t} = useI18n();
   const open = useOpenEntry();
   const navigate = useNavigate();
   const entry = top.entry;
