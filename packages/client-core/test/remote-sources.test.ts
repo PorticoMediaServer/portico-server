@@ -69,3 +69,13 @@ test('STRM requested opt-in remains distinct from effective File List Only polic
  const newer=new RemoteSourceService(api(async()=>({scope:wire,policy:{...policy,scanTier:'unbounded'}})),scope,async()=>op);
  assert.deepEqual(await newer.policy('lib'),{libraryId:'lib',enabled:true,revision:3,effective:false});newer.dispose();
 });
+
+test('a quiet re-read keeps the sources on screen, and a failed one leaves them as they were',async()=>{
+ let state='ready',fail=false;const seen:string[]=[];
+ const service=new RemoteSourceService(api(async()=>{if(fail)throw new TypeError('Failed to fetch');return list([source({state})]);}),scope,async()=>op);
+ await service.load();service.subscribe(()=>{const x=service.getSnapshot();seen.push((x.loading?'loading':'idle')+':'+(x.sources[0]?.state??'-'));});
+ state='unreachable';await service.revalidate();
+ assert.equal(seen.every(x=>x.startsWith('idle:')),true,'never loading');assert.equal(service.getSnapshot().sources[0]!.state,'unreachable');
+ fail=true;await assert.rejects(service.revalidate());
+ assert.equal(service.getSnapshot().sources.length,1);assert.equal(service.getSnapshot().error,'');service.dispose();
+});

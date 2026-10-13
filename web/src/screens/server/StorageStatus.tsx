@@ -2,13 +2,13 @@ import {useMemo, useState} from 'react';
 import {storageStatusService, type UpgradeCopy} from '@core/storage-status.ts';
 import {loadResourceUsage, pauseBackgroundWork, type MaintenanceDocument, type MaintenanceSettings, type RuntimeStatus} from '@core/server-admin/server-forms.ts';
 import type {RuntimeSettings} from '@core/console.ts';
-import {useAction, useRead} from '../../admin/console';
+import {QUIET_READ_EVERY_MS, useAction, useRead} from '../../admin/console';
 import {operationId} from './operation-ids';
 import {useServerForm} from '../settings/ServerForms';
 import {useDownloads} from '../../app/downloads';
 import {useSession} from '../../app/session';
 import {useI18n, type MessageId} from '../../app/i18n';
-import {Button, ConfirmDialog, KeyValue, Notice, SettingsGroup, SettingsRow, Status, Text} from '../../ui';
+import {Button, ConfirmDialog, KeyValue, Notice, SettingsEmpty, SettingsFooter, SettingsGroup, SettingsLoading, SettingsNote, SettingsRow, Status, Text} from '../../ui';
 
 /** Schedule › pause background work for an hour, or resume it. The pause ends by itself; work already running finishes its step. */
 export function BackgroundPauseRow() {
@@ -42,12 +42,13 @@ export function ResourceUsagePanel() {
   const i18n = useI18n();
   const {t} = i18n;
   const {api} = useSession();
-  const read = useRead(() => loadResourceUsage(api), [api], {every: 30000});
+  const read = useRead(() => loadResourceUsage(api), [api], {every: QUIET_READ_EVERY_MS});
   const u = read.data;
   const used = (part: {trackedBytes: number; limitBytes: number; measured: boolean}) => (part.measured ? t('server.usage.ofLimit', {used: i18n.bytes(part.trackedBytes), limit: i18n.bytes(part.limitBytes)}) : t('server.usage.notMeasuredYet'));
   return (
     <SettingsGroup title={t('server.usage.title')} description={t('server.usage.lede')}>
-      {read.error ? <div style={{padding: 12}}><Notice tone={u ? 'warning' : 'error'} compact action={{label: t('action.tryAgain'), onClick: read.reload}}>{read.error}</Notice></div> : null}
+      {read.error ? <SettingsNote><Notice tone={u ? 'warning' : 'error'} compact action={{label: t('action.tryAgain'), onClick: read.reload}}>{read.error}</Notice></SettingsNote> : null}
+      {!u && read.loading ? <SettingsLoading thing={t('server.thing.usage')} /> : null}
       {u ? <SettingsRow label={t('server.usage.streams')} meta={u.streamLimit ? t('server.usage.countOf', {used: u.streams, limit: u.streamLimit}) : i18n.number(u.streams)} /> : null}
       {u?.connections ? <SettingsRow label={t('server.usage.connections')} help={t('server.usage.connectionsHelp', {reserve: u.connections.consoleReserve})} meta={t('server.usage.countOf', {used: u.connections.ordinary, limit: u.connections.ordinaryLimit})} /> : null}
       {u ? <SettingsRow label={t('server.usage.analysis')} meta={used(u.analysis)} /> : null}
@@ -66,15 +67,17 @@ export function StorageStatusPanel() {
   const {t} = i18n;
   const {api} = useSession();
   const service = useMemo(() => storageStatusService(<T,>(path: string, method?: string, body?: unknown) => api.request<T>(path, method, body)), [api]);
-  const read = useRead(() => service.read(), [service]);
+  // Space the database gives back, and a copy made by an upgrade, appear by themselves.
+  const read = useRead(() => service.read(), [service], {every: QUIET_READ_EVERY_MS});
   const action = useAction();
   const [removing, setRemoving] = useState<UpgradeCopy>();
   const s = read.data;
   const path = (value: string) => <Text variant="mono" tone="secondary" style={{fontSize: 12, overflowWrap: 'anywhere'}}>{value}</Text>;
   return (
     <SettingsGroup title={t('server.places.title')} description={t('server.places.lede')}>
-      {read.error ? <div style={{padding: 12}}><Notice tone={s ? 'warning' : 'error'} compact action={{label: t('action.tryAgain'), onClick: read.reload}}>{read.error}</Notice></div> : null}
-      {action.error && !removing ? <div style={{padding: 12}}><Notice tone="error" compact>{action.error}</Notice></div> : null}
+      {read.error ? <SettingsNote><Notice tone={s ? 'warning' : 'error'} compact action={{label: t('action.tryAgain'), onClick: read.reload}}>{read.error}</Notice></SettingsNote> : null}
+      {action.error && !removing ? <SettingsNote><Notice tone="error" compact>{action.error}</Notice></SettingsNote> : null}
+      {!s && read.loading ? <SettingsLoading thing={t('server.thing.storagePlaces')} /> : null}
       {s ? <SettingsRow label={t('server.places.folders')} stack start control={<KeyValue rows={[[t('server.places.database'), path(s.databasePath)], [t('server.places.cache'), path(s.cacheDirectory)], [t('server.places.backups'), path(s.backupDirectory)]]} />} /> : null}
       {s ? <SettingsRow label={t('server.places.reclaim')} help={s.lastReclaimedAt ? t('server.places.reclaimedLast', {when: i18n.dateTime(s.lastReclaimedAt), size: i18n.bytes(s.lastReclaimedBytes)}) : t('server.places.reclaimHelp')} meta={i18n.bytes(s.reclaimableBytes)} /> : null}
       {s?.upgradeCopies.map(copy => (
@@ -82,7 +85,7 @@ export function StorageStatusPanel() {
           control={<Button size="sm" variant="ghost" icon="trash" label={t('action.delete')} onClick={() => { action.clear(); setRemoving(copy); }} />} />
       ))}
       {s && !s.upgradeCopies.length ? <SettingsRow label={t('server.places.upgradeCopies')} help={t('server.places.upgradeCopiesNone')} /> : null}
-      <ConfirmDialog open={!!removing} onOpenChange={o => !o && setRemoving(undefined)} title={t('server.places.deleteCopyTitle')} body={t('server.places.deleteCopyBody')} confirmLabel={t('action.delete')} cancelLabel={t('action.cancel')} busy={action.busy} error={action.error}
+      <ConfirmDialog open={!!removing} onOpenChange={o => !o && setRemoving(undefined)} title={t('server.places.deleteCopyTitle')} body={t('server.places.deleteCopyBody')} confirmLabel={t('action.delete')} cancelLabel={t('action.cancel')} busy={action.busy} error={action.error || undefined}
         onConfirm={() => void action.run(async () => { if (!removing) return; await service.removeUpgradeCopy(removing); setRemoving(undefined); read.reload(); })} />
     </SettingsGroup>
   );
@@ -93,7 +96,8 @@ export function DownloadUsagePanel() {
   const i18n = useI18n();
   const {t} = i18n;
   const {service} = useDownloads();
-  const read = useRead(async () => (service ? service.serverUsage() : null), [service]);
+  // What people have downloaded grows and shrinks as their devices come and go.
+  const read = useRead(async () => (service ? service.serverUsage() : null), [service], {every: QUIET_READ_EVERY_MS});
   const action = useAction();
   const [revoking, setRevoking] = useState<{key: string; name: string}>();
   const usage = read.data;
@@ -101,17 +105,18 @@ export function DownloadUsagePanel() {
   const name = (p: {accountName?: string; profileName?: string}) => (p.accountName && p.profileName && p.accountName !== p.profileName ? `${p.accountName} · ${p.profileName}` : p.profileName || p.accountName || t('server.people.removedPerson'));
   return (
     <SettingsGroup title={t('server.downloadUsage.title')} description={t('server.downloadUsage.lede')}>
-      {read.error ? <div style={{padding: 12}}><Notice tone={usage ? 'warning' : 'error'} compact action={{label: t('action.tryAgain'), onClick: read.reload}}>{read.error}</Notice></div> : null}
-      {action.error && !revoking ? <div style={{padding: 12}}><Notice tone="error" compact>{action.error}</Notice></div> : null}
-      {action.notice ? <div style={{padding: 12}}><Notice tone="success" compact>{action.notice}</Notice></div> : null}
+      {read.error ? <SettingsNote><Notice tone={usage ? 'warning' : 'error'} compact action={{label: t('action.tryAgain'), onClick: read.reload}}>{read.error}</Notice></SettingsNote> : null}
+      {action.error && !revoking ? <SettingsNote><Notice tone="error" compact>{action.error}</Notice></SettingsNote> : null}
+      {action.notice ? <SettingsNote><Notice tone="success" compact>{action.notice}</Notice></SettingsNote> : null}
+      {!usage && read.loading ? <SettingsLoading thing={t('server.thing.downloads')} /> : null}
       {usage ? <SettingsRow label={t('server.downloadUsage.total')} help={usage.remainingBytes !== null ? t('server.downloadUsage.remaining', {size: i18n.bytes(usage.remainingBytes)}) : undefined} meta={t('server.downloadUsage.totalLine', {size: i18n.bytes(usage.distinctArtifactBytes), count: usage.serverCount})} /> : null}
       {usage?.profiles.map(p => (
         <SettingsRow key={p.profileKey ?? p.profileId} icon="profile" label={name(p)} meta={t('server.downloadUsage.totalLine', {size: i18n.bytes(p.storedBytes ?? p.bytes), count: p.count})}
           control={p.profileKey && p.count ? <Button size="sm" variant="ghost" label={t('server.downloadUsage.remove')} onClick={() => { action.clear(); setRevoking({key: p.profileKey!, name: name(p)}); }} /> : undefined} />
       ))}
-      {usage && !usage.profiles.length ? <div style={{padding: 16}}><Text variant="caption" tone="tertiary">{t('server.downloadUsage.none')}</Text></div> : null}
-      {usage?.profilesNextCursor ? <div style={{padding: '0 16px 16px'}}><Text variant="caption" tone="tertiary">{t('server.downloadUsage.more')}</Text></div> : null}
-      <ConfirmDialog open={!!revoking} onOpenChange={o => !o && setRevoking(undefined)} title={t('server.downloadUsage.removeTitle', {name: revoking?.name ?? ''})} body={t('server.downloadUsage.removeBody')} confirmLabel={t('server.downloadUsage.remove')} cancelLabel={t('action.cancel')} busy={action.busy} error={action.error}
+      {usage && !usage.profiles.length ? <SettingsEmpty title={t('server.downloadUsage.none')} /> : null}
+      {usage?.profilesNextCursor ? <SettingsFooter><Text variant="caption" tone="tertiary">{t('server.downloadUsage.more')}</Text></SettingsFooter> : null}
+      <ConfirmDialog open={!!revoking} onOpenChange={o => !o && setRevoking(undefined)} title={t('server.downloadUsage.removeTitle', {name: revoking?.name ?? ''})} body={t('server.downloadUsage.removeBody')} confirmLabel={t('server.downloadUsage.remove')} busy={action.busy} error={action.error || undefined}
         onConfirm={() => void action.run(async () => {
           if (!revoking) return;
           // The server works in passes; keep going until nothing is left for this person.

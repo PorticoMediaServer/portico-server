@@ -62,6 +62,26 @@ export function useRead<T>(fn: () => Promise<T>, deps: readonly unknown[], optio
   return {data: state.data, error, loading: state.loading || (auto && state.data === undefined && state.error === undefined), at: state.at, reload};
 }
 
+/**
+ * The same quiet currency for a panel that reads through its own service: `revalidate` (which
+ * must leave what is shown as it is when it fails, and reject) is asked for when one of `on`
+ * moves, when the feed could not say everything that happened, and every `every` milliseconds
+ * while the page is in front. Failures are retried by the hub and never shown by this.
+ */
+export function useQuietly(revalidate: () => Promise<unknown>, hasContent: () => boolean, options: Pick<ReadOptions, 'every' | 'on'> = {}): void {
+  const {hub} = useFreshness();
+  const latest = useRef({revalidate, hasContent});
+  latest.current = {revalidate, hasContent};
+  const on = options.on?.join('\n') ?? '';
+  const every = options.every ?? 0;
+  useEffect(() => {
+    const document = hub.document({dependencies: on ? on.split('\n') : [], revalidate: async () => { await latest.current.revalidate(); }, hasContent: () => latest.current.hasContent()});
+    document.setOpen(true);
+    const timer = every > 0 ? setInterval(() => { if (hub.isActive()) document.invalidate(); }, every) : undefined;
+    return () => { if (timer !== undefined) clearInterval(timer); document.dispose(); };
+  }, [hub, on, every]);
+}
+
 /** Serialised mutation runner with one error and one notice at a time. */
 export function useAction() {
   const [busy, setBusy] = useState(false);

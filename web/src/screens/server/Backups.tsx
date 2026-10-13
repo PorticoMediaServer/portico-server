@@ -1,13 +1,13 @@
 import {useEffect, useRef, useState} from 'react';
 import {backupProgressFraction, isRestoreRefusalCode, parseEnvelope, parseFilesystemPage, type BackupKind, type BackupSummary, type FilesystemPage, type LastRestore, type RestoreRefusalCode} from '@core/administration.ts';
 import {deleteBackup, getBackups, isAuthenticationFailure, restoreBackup, startBackup, waitForBackupCompletion, waitForServerAnswer} from '@core/backups.ts';
-import {problem, useAction, useRead} from '../../admin/console';
+import {QUIET_READ_EVERY_MS, problem, useAction, useRead} from '../../admin/console';
 import {filesystemPath, mergeFilesystemPages} from './LibrarySettings';
 import {createOperationIds} from './operation-ids';
 import {useSession} from '../../app/session';
 import {usePollWhile} from '../../admin/poll-while';
 import {useI18n, type MessageId} from '../../app/i18n';
-import {Button, ConfirmDialog, Dialog, Freshness, IconButton, Input, ListRow, Loading, Notice, ProgressBar, SettingsGroup, SettingsRow, Surface, Text} from '../../ui';
+import {Button, ConfirmDialog, Dialog, Freshness, IconButton, Input, ListRow, Loading, Notice, ProgressBar, SettingsEmpty, SettingsFooter, SettingsGroup, SettingsLoading, SettingsNote, SettingsRow, Surface, Text} from '../../ui';
 
 /** Catalogue copy for every restore/backup refusal code (spec §4). Anything else falls back
  * to the shared presenter. Tested in test/backups.test.ts. */
@@ -45,7 +45,8 @@ export function BackupsGroup() {
   const serverId = system?.id ?? session?.viewer.serverId ?? '';
   const i18n = useI18n();
   const {t} = i18n;
-  const read = useRead(() => getBackups(api, serverId), [api, serverId]);
+  // A scheduled backup that starts or finishes, and a copy kept before a restore, show without a reload.
+  const read = useRead(() => getBackups(api, serverId), [api, serverId], {every: QUIET_READ_EVERY_MS});
   const action = useAction();
   // M19: one ID per logical write; retries reuse it.
   const [opIds] = useState(createOperationIds);
@@ -117,6 +118,8 @@ export function BackupsGroup() {
       })
       .catch(e => {
         opIds.release();
+        // A scheduled backup is already running: there is nothing to refuse, its progress is shown instead.
+        if ((e as {code?: string})?.code === 'request_in_progress') { read.reload(); return; }
         if (!isAuthenticationFailure(e)) setBackupError((e as {code?: string})?.code === 'insufficient_disk' ? t('web.maintenance.backupNoSpace') : problem(e, 'action'));
       })
       .finally(() => setStarting(false));
@@ -175,14 +178,15 @@ export function BackupsGroup() {
   // While the restore is being made ready the server reports its phase and bytes: follow it.
   usePollWhile(staging, read.reload);
   return (
-    <SettingsGroup title={t('web.maintenance.backups')} description={t('web.maintenance.backupsLedePlain')}>
-      {read.error ? <div style={{padding: 12}}><Notice tone={doc ? 'warning' : 'error'} compact action={{label: t('action.tryAgain'), onClick: read.reload}}>{read.error}</Notice></div> : null}
-      {action.error ? <div style={{padding: 12}}><Notice tone="error" compact>{action.error}</Notice></div> : null}
-      {backupError ? <div style={{padding: 12}}><Notice tone="error" compact>{backupError}</Notice></div> : null}
-      {backupDone && !doc?.running ? <div style={{padding: 12}}><Notice tone="success" compact>{t('web.maintenance.backupComplete')}</Notice></div> : null}
-      {restoreError ? <div style={{padding: 12}}><Notice tone="error" compact>{restoreError}</Notice></div> : null}
-      {lastRestore ? <div style={{padding: 12}}><RestoreResultNotice result={lastRestore} /></div> : null}
-      <div style={{padding: '4px 16px 0'}}><Text variant="caption" tone="tertiary">{t('web.maintenance.backupsOpenFiles')}</Text></div>
+    <SettingsGroup title={t('web.maintenance.backups')} description={t('web.maintenance.backupsLedePlain')} action={<div style={{display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap'}}><Freshness at={read.at} refreshing={read.loading} onRefresh={read.reload} /><Button size="sm" variant="secondary" icon="plus" label={t('web.maintenance.backUpNow')} loading={starting} disabled={starting || !!doc?.running || staging || restarting} onClick={beginBackup} /></div>}>
+      {read.error ? <SettingsNote><Notice tone={doc ? 'warning' : 'error'} compact action={{label: t('action.tryAgain'), onClick: read.reload}}>{read.error}</Notice></SettingsNote> : null}
+      {action.error && !deleting ? <SettingsNote><Notice tone="error" compact>{action.error}</Notice></SettingsNote> : null}
+      {action.notice ? <SettingsNote><Notice tone="success" compact>{action.notice}</Notice></SettingsNote> : null}
+      {backupError ? <SettingsNote><Notice tone="error" compact>{backupError}</Notice></SettingsNote> : null}
+      {backupDone && !doc?.running ? <SettingsNote><Notice tone="success" compact>{t('web.maintenance.backupComplete')}</Notice></SettingsNote> : null}
+      {restoreError && !confirming ? <SettingsNote><Notice tone="error" compact>{restoreError}</Notice></SettingsNote> : null}
+      {lastRestore ? <SettingsNote><RestoreResultNotice result={lastRestore} /></SettingsNote> : null}
+      {!doc && read.loading ? <SettingsLoading thing={t('server.thing.backups')} /> : null}
       {(starting || progress) && !read.error ? (
         <div style={{padding: '12px 16px 0', display: 'flex', flexDirection: 'column', gap: 8}}>
           <ProgressBar value={progress?.fraction} indeterminate={progress?.fraction === undefined} label={t('web.maintenance.backingUp')} />
@@ -208,18 +212,24 @@ export function BackupsGroup() {
           meta={<span style={{display: 'inline-flex', alignItems: 'center', gap: 4, minWidth: 0}}><Text variant="mono" tone="tertiary" style={{fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis'}}>{b.path}</Text><IconButton name="copy" label={t('web.twoStep.copy')} size="sm" variant="ghost" onClick={() => void navigator.clipboard?.writeText(b.path)} /></span>}
           control={<div style={{display: 'flex', gap: 8}}><Button size="sm" variant="secondary" label={t('web.maintenance.restoreBackup')} disabled={starting || !!progress || staging || restarting} onClick={() => { setRestoreError(''); action.clear(); setConfirming({kind: 'backup', backup: b}); }} /><Button size="sm" variant="ghost" icon="trash" label={t('action.delete')} disabled={starting || !!progress || staging || restarting} onClick={() => confirmDelete(b)} /></div>} />
       ))}
-      {doc && !doc.backups.length ? <div style={{padding: 16}}><Text variant="caption" tone="tertiary">{t('web.maintenance.noBackups')}</Text></div> : null}
-      <div style={{padding: '8px 16px 16px', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center'}}>
-        <Button size="sm" variant="secondary" icon="plus" label={t('web.maintenance.backUpNow')} loading={starting} disabled={starting || !!doc?.running || staging || restarting} onClick={beginBackup} />
+      {doc && !doc.backups.length ? <SettingsEmpty title={t('web.maintenance.noBackups')} /> : null}
+      <SettingsFooter>
         <Button size="sm" variant="ghost" icon="folder" label={t('web.maintenance.restoreFromFile')} disabled={starting || staging || restarting} onClick={() => { setRestoreError(''); action.clear(); setPicking(true); }} />
-        <Freshness at={read.at} refreshing={read.loading} onRefresh={read.reload} />
-      </div>
+        <Text variant="caption" tone="tertiary">{t('web.maintenance.backupsOpenFiles')}</Text>
+      </SettingsFooter>
 
-      <Dialog open={!!confirming} onOpenChange={o => !o && !staging && setConfirming(undefined)} title={t(confirming?.kind === 'path' ? 'web.maintenance.restoreFileTitle' : 'web.maintenance.restoreTitle')} description={confirming?.kind === 'backup' ? (confirming.backup.createdAt ? i18n.dateTime(confirming.backup.createdAt) : '—') : confirming?.path} width={480}
-        actions={<><Button variant="ghost" label={t('action.cancel')} disabled={staging} onClick={() => setConfirming(undefined)} /><Button variant="primary" label={t('web.maintenance.restoreConfirm')} loading={staging} onClick={doRestore} /></>}>
-        <Text variant="body">{t('web.maintenance.restoreBody')}</Text>
-      </Dialog>
-      <ConfirmDialog open={!!deleting} onOpenChange={o => !o && setDeleting(undefined)} title={t('web.maintenance.deleteBackupTitle')} body={t('web.maintenance.deleteBackupBody', {id: deleting?.id ?? ''})} confirmLabel={t('web.maintenance.deleteBackupConfirm')} typedConfirmation={deleting?.id} busy={action.busy} error={action.error}
+      {/* Restore replaces what the server has now (a copy of it is kept first): asked like every other change that takes something away. */}
+      <ConfirmDialog open={!!confirming} onOpenChange={o => !o && !staging && setConfirming(undefined)} title={t(confirming?.kind === 'path' ? 'web.maintenance.restoreFileTitle' : 'web.maintenance.restoreTitle')} busy={staging} error={restoreError || undefined} confirmLabel={t('web.maintenance.restoreConfirm')} onConfirm={doRestore}
+        body={<div style={{display: 'flex', flexDirection: 'column', gap: 8}}>
+          {confirming?.kind === 'backup' ? (confirming.backup.createdAt ? <Text variant="bodyStrong">{t('server.backups.restoreWhich', {when: i18n.dateTime(confirming.backup.createdAt)})}</Text> : null) : confirming ? <Text variant="mono" style={{fontSize: 12.5, overflowWrap: 'anywhere'}}>{confirming.path}</Text> : null}
+          <span>{t('web.maintenance.restoreBody')}</span>
+        </div>} />
+      {/* Tier 2: a file goes for good. One short word to type, never the backup's id. */}
+      <ConfirmDialog open={!!deleting} onOpenChange={o => !o && setDeleting(undefined)} title={t('web.maintenance.deleteBackupTitle')} confirmLabel={t('web.maintenance.deleteBackupConfirm')} typedConfirmation={t('server.confirm.word.delete')} busy={action.busy} error={action.error || undefined}
+        body={<div style={{display: 'flex', flexDirection: 'column', gap: 8}}>
+          {deleting?.createdAt ? <Text variant="bodyStrong">{t('server.backups.restoreWhich', {when: i18n.dateTime(deleting.createdAt)})}</Text> : null}
+          <span>{t('server.backups.deleteBody')}</span>
+        </div>}
         onConfirm={() => void action.run(async () => { if (!deleting) return; await deleteBackup(api, serverId, deleting.id); setDeleting(undefined); read.reload(); }, t('web.maintenance.backupDeleted'))} />
       <BackupSourcePicker open={picking} onOpenChange={setPicking} onPick={path => { setRestoreError(''); action.clear(); setConfirming({kind: 'path', path}); }} />
     </SettingsGroup>

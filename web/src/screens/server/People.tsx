@@ -48,7 +48,7 @@ export function AccountsPanel() {
       <SettingsGroup title={t('web.people.accountsTitle')} description={t('web.people.accountsLede')} action={<Button size="sm" variant="secondary" icon="plus" label={t('web.people.addAccount')} onClick={() => { action.clear(); setAdding(true); }} />}>
         {read.error ? <SettingsNote><Notice tone={read.data ? 'warning' : 'error'} compact action={{label: t('action.tryAgain'), onClick: read.reload}}>{read.error}</Notice></SettingsNote> : null}
         {action.notice ? <SettingsNote><Notice tone="success" compact>{action.notice}</Notice></SettingsNote> : null}
-        {!read.data && read.loading ? <SettingsLoading label={t('web.people.accountsTitle')} /> : null}
+        {!read.data && read.loading ? <SettingsLoading thing={t('server.thing.accounts')} /> : null}
         {members.map(m => {
           const limits = access.data?.find(a => a.accountId === m.id)?.limits;
           const facts = [memberOffLine(m, t, iso => i18n.date(iso)), m.hostedAccountId ? t('server.people.porticoAccount') : '', m.role === 'owner' ? t('server.people.allLibraries') : m.allowedLibraries.length ? m.allowedLibraries.map(libName).join(', ') : t('server.people.allLibraries'), limits?.maxStreams ? t('server.people.streams', {count: limits.maxStreams}) : '', limits?.maxContentRating ? t('server.people.upTo', {rating: limits.maxContentRating}) : ''];

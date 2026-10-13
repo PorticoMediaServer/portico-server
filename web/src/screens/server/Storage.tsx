@@ -1,14 +1,14 @@
-import {useEffect, useMemo, useState} from 'react';
+import React, {useEffect, useState} from 'react';
 import {StorageManagementService, type StorageManagementSnapshot, type StorageMount} from '@core/storage-management.ts';
 import {RemoteSourceService, type DAVConfiguration, type RemoteSource} from '@core/remote-sources.ts';
 import {davCommandSucceeded, davConfiguration, mountCommandSucceeded, stableStorageOperationId, type WebDavDraft} from '@core/server-admin/panel-logic.ts';
 export {davCommandSucceeded, davConfiguration, mountCommandSucceeded, stableStorageOperationId, storageOperationId, type WebDavDraft} from '@core/server-admin/panel-logic.ts';
-import {problem, sentence, useAction} from '../../admin/console';
+import {QUIET_READ_EVERY_MS, problem, useAction, useQuietly} from '../../admin/console';
+import {mountStateId, sourceStateText} from '@core/server-admin/storage-words.ts';
 import {useService} from '../../app/content';
 import {useSession} from '../../app/session';
 import {useViewerScope} from '../../app/viewer-scope';
-import {Badge, Button, Checkbox, ConfirmDialog, Dialog, Input, Loading, Menu, Notice, PasswordInput, SettingsGroup, SettingsRow, Text, TextArea, type MenuItem} from '../../ui';
-import {SectionHeader} from './Server';
+import {Badge, Button, Checkbox, ConfirmDialog, Dialog, Input, Menu, Notice, PasswordInput, SettingsEmpty, SettingsFooter, SettingsGroup, SettingsLoading, SettingsNote, SettingsRow, Text, TextArea, type MenuItem} from '../../ui';
 import {useI18n} from '../../app/i18n';
 
 const mountTone = (m: StorageMount): 'healthy' | 'warning' | 'danger' | 'neutral' => (m.observedState === 'mounted' ? 'healthy' : m.observedState === 'failed' || m.observedState === 'quarantined' ? 'danger' : m.observedState === 'starting' || m.observedState === 'stopping' ? 'warning' : 'neutral');
@@ -61,47 +61,44 @@ export function RemoteSourcesPanel() {
   }, done);
   const m = mounts.snapshot;
   const d = dav.snapshot;
+  // A mount that starts, stops or fails by itself, and a share that stops answering, show without a reload.
+  useQuietly(() => Promise.all([mounts.service.revalidate(), dav.service.revalidate()]), () => !!mounts.service.getSnapshot().data, {every: QUIET_READ_EVERY_MS});
   const list = m.data?.mounts ?? [];
   const davs = d.sources.filter(x => x.kind === 'webdav');
+  const loading = (m.phase === 'loading' && !m.data) || (d.loading && !d.sources.length);
+  const mono = (text: string) => <span style={{fontFamily: 'var(--font-mono)', fontSize: 12, overflowWrap: 'anywhere'}}>{text}</span>;
+  const facts = (parts: readonly React.ReactNode[]) => parts.filter(Boolean).map((part, i) => <React.Fragment key={i}>{i ? ' · ' : null}{part}</React.Fragment>);
   return (
     <>
-      <SectionHeader title={t('settings.server.remoteSources')} lede={t('web.console.nav.storageLede')} actions={<Menu label={t('web.storage.addSource')} trigger={<Button variant="primary" icon="plus" label={t('web.storage.addSource')} iconAfter="chevronDown" />} items={[{id: 'webdav', label: t('web.storage.webdavShare'), icon: 'globe', meta: t('web.storage.webdavMeta')}, {id: 'rclone', label: t('web.storage.rcloneRemote'), icon: 'storage', meta: t('web.storage.rcloneMeta'), disabled: m.data ? false : undefined}]} onSelect={id => setAdd(id as 'rclone' | 'webdav')} />} />
-      {m.error ? <Notice tone="error" action={{label: t('action.tryAgain'), onClick: () => void mounts.service.load()}}>{problem(m.error)}</Notice> : null}
-      {d.error ? <Notice tone="error" action={{label: t('action.tryAgain'), onClick: () => void dav.service.load()}}>{d.error}</Notice> : null}
-      {m.mutation.phase === 'ambiguous' ? <Notice tone="warning" action={{label: t('web.storage.checkResult'), onClick: () => void mounts.service.recover().catch(() => {})}}>{t('web.storage.mountAmbiguous')}</Notice> : null}
-      {d.ambiguous ? <Notice tone="warning" action={{label: t('web.storage.checkResult'), onClick: () => void dav.service.recover().catch(() => {})}}>{t('web.storage.davAmbiguous')}</Notice> : null}
-      {m.mutation.phase === 'error' || m.mutation.phase === 'conflict' ? <Notice tone="error">{m.mutation.error ? problem(m.mutation.error) : null}</Notice> : null}
-      {action.error ? <Notice tone="error">{action.error}</Notice> : null}
-      <div style={{display: 'flex', flexDirection: 'column', gap: 28}}>
-        {(m.phase === 'loading' && !m.data) || (d.loading && !d.sources.length) ? <Loading label={t('web.storage.loading')} /> : null}
-        {m.data && !list.length && !davs.length && !d.loading ? <SettingsGroup><SettingsRow label={t('web.storage.empty')} help={t('web.storage.emptyHelp')} /></SettingsGroup> : null}
-        {davs.length ? (
-          <SettingsGroup title={t('web.storage.webdavShares')}>
-            {davs.map(x => <SettingsRow key={x.id} icon="globe" label={x.name} help={<>{x.origin ? <span style={{fontFamily: 'var(--font-mono)', fontSize: 12}}>{x.origin}</span> : null}{x.rootPath ? ` · ${x.rootPath}` : ''}{x.insecureLocal ? ' · Unencrypted (local only)' : ''}{x.credentialPresent ? ' · Password saved' : ''}</>} meta={<Badge tone={x.state === 'ready' || x.state === 'healthy' ? 'healthy' : x.errorCode ? 'danger' : 'neutral'} dot>{sentence(x.errorCode || x.state)}</Badge>} control={<Menu label={x.name} trigger={<Button size="sm" variant="ghost" icon="more" aria-label={t('web.storage.actions')} />} items={[{id: 'edit', label: t('web.storage.editConnection'), icon: 'edit'}, {id: 'remove', label: t('action.removeShort'), icon: 'trash', destructive: true, separatorBefore: true}]} onSelect={id => (id === 'edit' ? setEditDav(x) : setRemove({kind: 'webdav', source: x}))} />} />)}
-          </SettingsGroup>
-        ) : null}
-        {list.length ? (
-          <SettingsGroup title={t('web.storage.rcloneRemotes')} description={m.data ? t('web.storage.rcloneLimits', {active: m.data.limits.active, definitions: m.data.limits.definitions}) : undefined}>
-            {list.map(x => {
-              const items: MenuItem[] = [];
-              if (x.actions.includes('start')) items.push({id: 'start', label: t('web.storage.mount'), icon: 'play'});
-              if (x.actions.includes('stop')) items.push({id: 'stop', label: t('web.storage.unmount'), icon: 'stop'});
-              if (x.actions.includes('restart')) items.push({id: 'restart', label: t('web.storage.restart'), icon: 'refresh'});
-              if (x.actions.includes('delete')) items.push({id: 'delete', label: t('action.removeShort'), icon: 'trash', destructive: true, separatorBefore: true});
-              return <SettingsRow key={x.id} icon="storage" label={x.name} help={<><span style={{fontFamily: 'var(--font-mono)', fontSize: 12}}>{x.mountPath}</span>{x.cacheBytes ? ` · ${t('web.storage.cacheSize', {size: i18n.bytes(x.cacheBytes)})}` : ''}{x.error ? ` · ${x.error}` : ''}{x.removalPending ? ` · ${t('server.storage.removalPending')}` : ''}</>} meta={<Badge tone={mountTone(x)} dot live={x.observedState === 'starting'}>{sentence(x.observedState)}</Badge>} control={items.length ? <Menu label={x.name} trigger={<Button size="sm" variant="ghost" icon="more" aria-label={t('web.storage.actions')} />} items={items} onSelect={id => (id === 'delete' ? setRemove({kind: 'mount', mount: x}) : void runMount(() => mounts.service.act(x.id, id as 'start' | 'stop' | 'restart', x.controlRevision)))} /> : undefined} />;
-            })}
-          </SettingsGroup>
-        ) : null}
-        <Text as="p" variant="caption" tone="tertiary">{t('web.storage.libraryFolders')}</Text>
-      </div>
-      <WebDavDialog open={add === 'webdav' || !!editDav} source={editDav} onClose={() => { setAdd(null); setEditDav(null); }} onSave={(id, input) => void runDav(() => dav.service.configure(id, input), 'Saved.').then(ok => { if (ok) { setAdd(null); setEditDav(null); } })} busy={d.busy || action.busy} />
-      <RcloneDialog open={add === 'rclone'} onClose={() => setAdd(null)} onSave={input => void runMount(() => mounts.service.create(input), 'Added.').then(ok => ok && setAdd(null))} busy={action.busy} />
-      <ConfirmDialog open={!!remove} onOpenChange={o => !o && setRemove(null)} title={t('web.storage.removeMountTitle', {name: remove?.kind === 'mount' ? remove.mount.name : remove?.source.name ?? ''})} body={remove?.kind === 'mount' ? t('web.storage.removeMountBody') : t('web.storage.removeSourceBody')} confirmLabel={t('action.removeShort')} busy={action.busy} onConfirm={() => { if (!remove) return; void (remove.kind === 'mount' ? runMount(() => mounts.service.remove(remove.mount.id, remove.mount.controlRevision)) : runDav(() => dav.service.remove(remove.source))).then(ok => ok && setRemove(null)); }} />
+      <SettingsGroup title={t('settings.server.remoteSources')} description={t('web.console.nav.storageLede')} action={<Menu label={t('web.storage.addSource')} trigger={<Button size="sm" variant="secondary" icon="plus" label={t('web.storage.addSource')} iconAfter="chevronDown" />} items={[{id: 'webdav', label: t('web.storage.webdavShare'), icon: 'globe', meta: t('web.storage.webdavMeta')}, {id: 'rclone', label: t('web.storage.rcloneRemote'), icon: 'storage', meta: t('web.storage.rcloneMeta'), disabled: m.data ? false : undefined}]} onSelect={id => { action.clear(); setAdd(id as 'rclone' | 'webdav'); }} />}>
+        {m.error ? <SettingsNote><Notice tone="error" compact action={{label: t('action.tryAgain'), onClick: () => void mounts.service.load()}}>{problem(m.error)}</Notice></SettingsNote> : null}
+        {d.error ? <SettingsNote><Notice tone="error" compact action={{label: t('action.tryAgain'), onClick: () => void dav.service.load()}}>{d.error}</Notice></SettingsNote> : null}
+        {m.mutation.phase === 'ambiguous' ? <SettingsNote><Notice tone="warning" compact action={{label: t('web.storage.checkResult'), onClick: () => void mounts.service.recover().catch(() => {})}}>{t('web.storage.mountAmbiguous')}</Notice></SettingsNote> : null}
+        {d.ambiguous ? <SettingsNote><Notice tone="warning" compact action={{label: t('web.storage.checkResult'), onClick: () => void dav.service.recover().catch(() => {})}}>{t('web.storage.davAmbiguous')}</Notice></SettingsNote> : null}
+        {(m.mutation.phase === 'error' || m.mutation.phase === 'conflict') && m.mutation.error && !add && !remove ? <SettingsNote><Notice tone="error" compact>{problem(m.mutation.error, 'action')}</Notice></SettingsNote> : null}
+        {action.error && !add && !editDav && !remove ? <SettingsNote><Notice tone="error" compact>{action.error}</Notice></SettingsNote> : null}
+        {action.notice ? <SettingsNote><Notice tone="success" compact>{action.notice}</Notice></SettingsNote> : null}
+        {loading ? <SettingsLoading thing={t('server.thing.remoteStorage')} /> : null}
+        {davs.map(x => <SettingsRow key={x.id} icon="globe" label={x.name} help={facts([t('web.storage.webdavShare'), x.origin ? mono(x.origin) : null, x.insecureLocal ? t('server.storage.unencrypted') : null, x.credentialPresent ? t('server.storage.passwordSaved') : null])} meta={<Badge tone={x.state === 'ready' || x.state === 'healthy' ? 'healthy' : x.errorCode ? 'danger' : 'neutral'} dot>{sourceStateText(t, id => i18n.has(id), x)}</Badge>} control={<Menu label={x.name} trigger={<Button size="sm" variant="ghost" icon="more" aria-label={t('server.row.actions', {name: x.name})} />} items={[{id: 'edit', label: t('web.storage.editConnection'), icon: 'edit'}, {id: 'remove', label: t('action.removeShort'), icon: 'trash', destructive: true, separatorBefore: true}]} onSelect={id => { action.clear(); if (id === 'edit') setEditDav(x); else setRemove({kind: 'webdav', source: x}); }} />} />)}
+        {list.map(x => {
+          const items: MenuItem[] = [];
+          if (x.actions.includes('start')) items.push({id: 'start', label: t('web.storage.mount'), icon: 'play'});
+          if (x.actions.includes('stop')) items.push({id: 'stop', label: t('web.storage.unmount'), icon: 'stop'});
+          if (x.actions.includes('restart')) items.push({id: 'restart', label: t('web.storage.restart'), icon: 'refresh'});
+          if (x.actions.includes('delete')) items.push({id: 'delete', label: t('action.removeShort'), icon: 'trash', destructive: true, separatorBefore: true});
+          return <SettingsRow key={x.id} icon="storage" label={x.name} help={facts([t('web.storage.rcloneRemote'), mono(x.mountPath), x.cacheBytes ? t('web.storage.cacheSize', {size: i18n.bytes(x.cacheBytes)}) : null, x.removalPending ? t('server.storage.removalPending') : null])} state={x.error ? x.error : undefined} meta={<Badge tone={mountTone(x)} dot live={x.observedState === 'starting'}>{t(mountStateId(x.observedState))}</Badge>} control={items.length ? <Menu label={x.name} trigger={<Button size="sm" variant="ghost" icon="more" aria-label={t('server.row.actions', {name: x.name})} />} items={items} onSelect={id => { action.clear(); if (id === 'delete') setRemove({kind: 'mount', mount: x}); else void runMount(() => mounts.service.act(x.id, id as 'start' | 'stop' | 'restart', x.controlRevision)); }} /> : undefined} />;
+        })}
+        {m.data && !list.length && !davs.length && !d.loading ? <SettingsEmpty title={t('web.storage.empty')} body={t('web.storage.emptyHelp')} /> : null}
+        <SettingsFooter><Text as="p" variant="caption" tone="tertiary">{list.length && m.data ? `${t('web.storage.rcloneRemotes')}: ${t('web.storage.rcloneLimits', {active: m.data.limits.active, definitions: m.data.limits.definitions})}. ` : ''}{t('web.storage.libraryFolders')}</Text></SettingsFooter>
+      </SettingsGroup>
+      <WebDavDialog open={add === 'webdav' || !!editDav} source={editDav} onClose={() => { setAdd(null); setEditDav(null); }} onSave={(id, input) => void runDav(() => dav.service.configure(id, input), t(id ? 'server.storage.saved' : 'server.storage.added')).then(ok => { if (ok) { setAdd(null); setEditDav(null); } })} busy={d.busy || action.busy} error={action.error} />
+      <RcloneDialog open={add === 'rclone'} onClose={() => setAdd(null)} onSave={input => void runMount(() => mounts.service.create(input), t('server.storage.added')).then(ok => ok && setAdd(null))} busy={action.busy} error={action.error} />
+      <ConfirmDialog open={!!remove} onOpenChange={o => !o && setRemove(null)} title={t('web.storage.removeMountTitle', {name: remove?.kind === 'mount' ? remove.mount.name : remove?.source.name ?? ''})} body={remove?.kind === 'mount' ? t('web.storage.removeMountBody') : t('web.storage.removeSourceBody')} confirmLabel={t('action.removeShort')} busy={action.busy} error={action.error || undefined} onConfirm={() => { if (!remove) return; void (remove.kind === 'mount' ? runMount(() => mounts.service.remove(remove.mount.id, remove.mount.controlRevision)) : runDav(() => dav.service.remove(remove.source))).then(ok => ok && setRemove(null)); }} />
     </>
   );
 }
 
-function WebDavDialog({open, source, onClose, onSave, busy}: {open: boolean; source: RemoteSource | null; onClose: () => void; onSave: (id: string | null, input: DAVConfiguration) => void; busy: boolean}) {
+function WebDavDialog({open, source, onClose, onSave, busy, error}: {open: boolean; source: RemoteSource | null; onClose: () => void; onSave: (id: string | null, input: DAVConfiguration) => void; busy: boolean; error?: string}) {
   const {t} = useI18n();
   const [draft, setDraft] = useState<WebDavDraft>({name: '', root: '', username: '', password: '', insecureLocal: false});
   useEffect(() => {
@@ -116,11 +113,12 @@ function WebDavDialog({open, source, onClose, onSave, busy}: {open: boolean; sou
       <Input label={t('web.direct.username')} optional value={draft.username} onChange={e => setDraft({...draft, username: e.target.value})} autoCapitalize="off" spellCheck={false} />
       <PasswordInput label={t('web.account.password')} optional value={draft.password} onChange={e => setDraft({...draft, password: e.target.value})} help={source?.credentialPresent ? t('web.storage.keepSavedPassword') : undefined} />
       <Checkbox checked={draft.insecureLocal} onCheckedChange={v => setDraft({...draft, insecureLocal: v})} label={t('web.storage.insecureLocal')} help={t('web.storage.insecureLocalHelp')} />
+      {error ? <Notice tone="error" compact>{error}</Notice> : null}
     </Dialog>
   );
 }
 
-function RcloneDialog({open, onClose, onSave, busy}: {open: boolean; onClose: () => void; onSave: (input: {name: string; executable: string; remote: string; config: string}) => void; busy: boolean}) {
+function RcloneDialog({open, onClose, onSave, busy, error}: {open: boolean; onClose: () => void; onSave: (input: {name: string; executable: string; remote: string; config: string}) => void; busy: boolean; error?: string}) {
   const {t} = useI18n();
   const [draft, setDraft] = useState({name: '', executable: '/opt/homebrew/bin/rclone', remote: '', config: ''});
   useEffect(() => {
@@ -132,6 +130,7 @@ function RcloneDialog({open, onClose, onSave, busy}: {open: boolean; onClose: ()
       <Input label={t('web.storage.rcloneBinary')} value={draft.executable} onChange={e => setDraft({...draft, executable: e.target.value})} mono />
       <Input label={t('web.storage.rcloneRemoteName')} value={draft.remote} onChange={e => setDraft({...draft, remote: e.target.value})} placeholder="drive:Media" mono help={t('web.storage.rcloneRemoteHelp')} />
       <TextArea label={t('web.storage.rcloneConfig')} value={draft.config} onChange={e => setDraft({...draft, config: e.target.value})} placeholder={t('web.storage.rcloneConfigExample')} rows={6} style={{fontFamily: 'var(--font-mono)', fontSize: 12}} help={t('web.storage.rcloneConfigHelp')} />
+      {error ? <Notice tone="error" compact>{error}</Notice> : null}
     </Dialog>
   );
 }

@@ -70,9 +70,9 @@ export function SettingsEmpty({title, body}: {title: React.ReactNode; body?: Rea
   );
 }
 
-/** A group's first read, before there is anything to show: "Loading {thing}" where its rows will be. */
-export function SettingsLoading({label}: {label: string}) {
-  return <div className={s.empty}><Loading label={label} /></div>;
+/** A group's first read, before there is anything to show: "Loading {thing}" where its rows will be. `thing` is the lower-case noun ("webhooks", "API keys"). */
+export function SettingsLoading({thing}: {thing: string}) {
+  return <div className={s.empty}><Loading label={uiI18n().t('status.loadingThing', {thing})} /></div>;
 }
 
 /** A notice inside a group (a failed read, the result of an action), inset like the rows around it. */

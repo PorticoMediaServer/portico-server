@@ -92,7 +92,7 @@ export function InvitationsPanel() {
     <SettingsGroup title={t('web.access.invitations')} description={t('web.access.invitationsLede')} action={<Button size="sm" variant="secondary" icon="plus" label={t('web.access.inviteSomeone')} onClick={() => { setOpen(true); setIssued(undefined); action.clear(); }} />}>
       {read.error ? <SettingsNote><Notice tone={read.data ? 'warning' : 'error'} compact action={{label: t('action.tryAgain'), onClick: read.reload}}>{read.error}</Notice></SettingsNote> : null}
       {action.notice ? <SettingsNote><Notice tone="success" compact>{action.notice}</Notice></SettingsNote> : null}
-      {!read.data && read.loading ? <SettingsLoading label={t('web.access.invitations')} /> : null}
+      {!read.data && read.loading ? <SettingsLoading thing={t('server.thing.invitations')} /> : null}
       {pending.map(i => (
         <SettingsRow key={i.id} icon="mail" label={name(i)} help={[t('web.access.inviteMeta', {role: roleLabel(t, i.role), date: i18n.date(i.expiresAt)}), i.porticoUsername ? t('server.people.inviteOnlyFor', {username: i.porticoUsername}) : ''].filter(Boolean).join(' · ')}
           control={<Button size="sm" variant="ghost" label={t('web.access.revoke')} onClick={() => { action.clear(); setRevoking(i); }} />} />
@@ -150,7 +150,7 @@ export function AccountDevices({accountId}: {/** Absent: everyone's devices, mos
       {read.error ? <SettingsNote><Notice tone={read.data ? 'warning' : 'error'} compact action={{label: t('action.tryAgain'), onClick: read.reload}}>{read.error}</Notice></SettingsNote> : null}
       {action.error && !blocking ? <SettingsNote><Notice tone="error" compact>{action.error}</Notice></SettingsNote> : null}
       {action.notice ? <SettingsNote><Notice tone="success" compact>{action.notice}</Notice></SettingsNote> : null}
-      {!mine && read.loading ? <SettingsLoading label={t('devices.title')} /> : null}
+      {!mine && read.loading ? <SettingsLoading thing={t('server.thing.devices')} /> : null}
       {mine?.map(d => (
         <SettingsRow key={d.id} icon={d.platform === 'tvos' || d.platform === 'androidtv' ? 'tvDevice' : d.platform === 'web' ? 'browser' : d.platform === 'api' ? 'lock' : 'phone'} label={d.name} help={deviceFacts(t, d, {showOwner: !accountId, relative: iso => i18n.relativeTime(iso)})}
           state={<Status tone={d.trust === 'approved' ? 'healthy' : d.trust === 'blocked' ? 'danger' : 'warning'}>{d.trust === 'approved' ? t('web.access.trustApproved') : d.trust === 'blocked' ? t('web.access.trustBlocked') : t('web.access.trustWaiting')}</Status>}

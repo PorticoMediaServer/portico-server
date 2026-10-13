@@ -50,7 +50,7 @@ export function WebhooksPanel() {
       {read.error ? <SettingsNote><Notice tone={list ? 'warning' : 'error'} compact action={{label: t('action.tryAgain'), onClick: read.reload}}>{read.error}</Notice></SettingsNote> : null}
       {action.error && !editing && !removing && !rotating ? <SettingsNote><Notice tone="error" compact>{action.error}</Notice></SettingsNote> : null}
       {action.notice ? <SettingsNote><Notice tone="success" compact>{action.notice}</Notice></SettingsNote> : null}
-      {!list && read.loading ? <SettingsLoading label={t('api.webhooks.title')} /> : null}
+      {!list && read.loading ? <SettingsLoading thing={t('server.thing.webhooks')} /> : null}
       {list?.items.map(w => {
         const trouble = webhookTrouble(t, w);
         return (

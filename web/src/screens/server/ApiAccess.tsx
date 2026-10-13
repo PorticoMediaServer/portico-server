@@ -71,7 +71,7 @@ export function CredentialList({kind, title, description, read, create, revoke, 
     <SettingsGroup title={title} description={description} action={create ? <Button size="sm" variant="secondary" icon="plus" label={words.create} disabled={kind === 'token' && !!options && !options.tokensAllowed} onClick={() => { action.clear(); setAdding(true); }} /> : undefined}>
       {read.error ? <SettingsNote><Notice tone={read.data ? 'warning' : 'error'} compact action={{label: t('action.tryAgain'), onClick: read.reload}}>{read.error}</Notice></SettingsNote> : null}
       {action.notice ? <SettingsNote><Notice tone="success" compact>{action.notice}</Notice></SettingsNote> : null}
-      {!read.data && read.loading ? <SettingsLoading label={title ?? t(kind === 'key' ? 'web.access.apiKeys' : 'api.tokens.title')} /> : null}
+      {!read.data && read.loading ? <SettingsLoading thing={t(kind === 'key' ? 'server.thing.apiKeys' : 'server.thing.tokens')} /> : null}
       {working.map(row)}
       {read.data && !working.length ? <SettingsEmpty title={words.none} /> : null}
       {showEnded ? ended.map(row) : null}
