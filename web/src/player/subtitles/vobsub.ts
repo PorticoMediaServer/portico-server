@@ -25,7 +25,7 @@ export function parseVobSubIndex(text: string): VobSubIndex {
   let custom: VobSubIndex['custom'] = null;
   let wanted: number | null = null, current = -1;
   const tracks = new Map<number, {timeMs: number; position: number}[]>();
-  const rgb = (hex: string): [number, number, number] => { const n = parseInt(hex, 16) || 0; return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
+  const colourOf = (hex: string): [number, number, number] => { const n = parseInt(hex, 16) || 0; return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
   for (const raw of text.slice(0, 8 * 1024 * 1024).split(/\r?\n/)) {
     const line = raw.trim();
     if (!line || line.startsWith('#')) continue;
@@ -35,10 +35,10 @@ export function parseVobSubIndex(text: string): VobSubIndex {
     if (key === 'size') { const m = /^(\d{1,5})\s*x\s*(\d{1,5})/i.exec(value); if (m) { width = Number(m[1]); height = Number(m[2]); } }
     else if (key === 'org') { const m = /^(-?\d{1,5})\s*,\s*(-?\d{1,5})/.exec(value); if (m) { originX = Number(m[1]); originY = Number(m[2]); } }
     else if (key === 'alpha') { const m = /^(\d{1,3})\s*%/.exec(value); if (m) alpha = Math.min(100, Number(m[1])) / 100; }
-    else if (key === 'palette') palette = value.split(',').slice(0, 16).map(part => rgb(part.trim()));
+    else if (key === 'palette') palette = value.split(',').slice(0, 16).map(part => colourOf(part.trim()));
     else if (key === 'custom colors') {
       const m = /^(on|off)\s*,\s*tridx\s*:\s*([01]{4})\s*,\s*colors\s*:\s*(.+)$/i.exec(value);
-      if (m && m[1]!.toLowerCase() === 'on') custom = {transparent: [...m[2]!].map(c => c === '1'), colours: m[3]!.split(',').slice(0, 4).map(part => rgb(part.trim()))};
+      if (m && m[1]!.toLowerCase() === 'on') custom = {transparent: [...m[2]!].map(c => c === '1'), colours: m[3]!.split(',').slice(0, 4).map(part => colourOf(part.trim()))};
     }
     else if (key === 'langidx') { const n = Number(value); if (Number.isInteger(n) && n >= 0 && n < 32) wanted = n; }
     else if (key === 'id') { const m = /index\s*:\s*(\d{1,2})/i.exec(value); current = m ? Number(m[1]) : current + 1; offset = 0; if (current >= 0 && current < 32 && !tracks.has(current)) tracks.set(current, []); }

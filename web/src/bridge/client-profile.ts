@@ -1,5 +1,6 @@
 import {browserConfigCheck, probeAudioDecode} from './audio/capabilities';
 import {ClientProfilePublisher, probeWebProfile, type ClientProfile, type DecodingAnswer, type WebProbeEnvironment} from '@core/client-profile.ts';
+import {declareSubtitleRendering} from '../player/subtitles/declaration';
 
 /*
  * The real browser behind the shared probe. Each answer has a safe "no": a browser that cannot
@@ -56,7 +57,8 @@ let asked: Promise<ClientProfile> | undefined;
  * the §18.8 fixtures on this engine and that `AudioDecoder` confirms here. */
 export function browserClientProfile(fresh = false): Promise<ClientProfile> {
   if (fresh || !asked) asked = Promise.all([probeWebProfile(environment()), probeAudioDecode(browserConfigCheck()).catch(() => [])])
-    .then(([profile, audioDecode]): ClientProfile => ({...profile, audioDecode: audioDecode.map(({sampleRates, containers, ...a}) => ({...a, containers: [...containers], ...(sampleRates ? {sampleRates: [...sampleRates]} : {})}))}));
+    // What the player draws itself (styled and image subtitles) is declared in one place: `player/subtitles/declaration.ts`.
+    .then(([profile, audioDecode]): ClientProfile => declareSubtitleRendering({...profile, audioDecode: audioDecode.map(({sampleRates, containers, ...a}) => ({...a, containers: [...containers], ...(sampleRates ? {sampleRates: [...sampleRates]} : {})}))}));
   return asked;
 }
 

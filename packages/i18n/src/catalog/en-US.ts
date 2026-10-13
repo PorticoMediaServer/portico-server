@@ -14,6 +14,7 @@ import {channelMessages} from './en-US/channels.ts';
 import {preferenceMessages} from './en-US/preferences.ts';
 import {settingsMessages} from './en-US/settings.ts';
 import {channelBuilderMessages} from './en-US/channel-builder.ts';
+import {drawnSubtitleMessages} from './en-US/subtitles.ts';
 
 export const enUS = {
   'lyrics.skippedLines': 'Some lyric lines could not be read and were skipped.',
@@ -1864,6 +1865,8 @@ export const enUS = {
   ...settingsMessages,
   // ── Library Channels builder (builder.*): catalog/en-US/channel-builder.ts ──
   ...channelBuilderMessages,
+  // ── Drawn subtitles and up next during credits: catalog/en-US/subtitles.ts ──
+  ...drawnSubtitleMessages,
 } as const satisfies Record<string, string>;
 
 export type MessageId = keyof typeof enUS;
