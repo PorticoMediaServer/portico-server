@@ -63,7 +63,7 @@ func (t ConversionTarget) Normalized() (ConversionTarget, error) {
 	}
 	if t.Packaging == "" {
 		t.Packaging = "mpegts_hls"
-		if t.VideoCodec != "h264" || t.AudioCodec == "flac" || t.AudioCodec == "opus" || t.AudioCodec == "truehd" {
+		if (t.VideoCodec != "h264" && t.VideoCodec != "hevc" && t.VideoCodec != "mpeg2video") || t.AudioCodec == "flac" || t.AudioCodec == "opus" || t.AudioCodec == "truehd" {
 			t.Packaging = "fmp4_hls"
 		}
 	}
@@ -79,7 +79,7 @@ func (t ConversionTarget) Normalized() (ConversionTarget, error) {
 	if t.AudioCodec == "flac" && t.AudioBitrateBPS > 0 {
 		return t, ErrInvalidConfiguration
 	}
-	if t.VideoCodec != "h264" && t.VideoCodec != "hevc" && t.VideoCodec != "av1" {
+	if t.VideoCodec != "h264" && t.VideoCodec != "hevc" && t.VideoCodec != "av1" && t.VideoCodec != "mpeg2video" && t.VideoCodec != "vp9" {
 		return t, ErrInvalidConfiguration
 	}
 	if t.BitDepth != 8 && t.BitDepth != 10 || t.VideoCodec == "h264" && t.BitDepth != 8 {
@@ -113,7 +113,7 @@ func (t ConversionTarget) Normalized() (ConversionTarget, error) {
 		return t, ErrInvalidConfiguration
 	}
 	switch t.AudioCodec {
-	case "aac", "ac3", "eac3", "opus", "flac", "dts", "dts_hd", "truehd", "mp3", "mp2":
+	case "aac", "ac3", "eac3", "opus", "flac", "dts", "dts_hd", "truehd", "mp3", "mp2", "alac":
 	default:
 		return t, ErrInvalidConfiguration
 	}
@@ -129,7 +129,7 @@ func (t ConversionTarget) Normalized() (ConversionTarget, error) {
 	if t.Packaging != "mpegts_hls" && t.Packaging != "fmp4_hls" {
 		return t, ErrInvalidConfiguration
 	}
-	if t.Packaging == "mpegts_hls" && (t.VideoCodec != "h264" || t.AudioCodec == "flac" || t.AudioCodec == "opus" || t.AudioCodec == "truehd") {
+	if t.Packaging == "mpegts_hls" && ((t.VideoCodec != "h264" && t.VideoCodec != "hevc" && t.VideoCodec != "mpeg2video") || t.AudioCodec == "flac" || t.AudioCodec == "opus" || t.AudioCodec == "truehd") {
 		return t, errors.New("codec_requires_fragmented_mp4")
 	}
 	if t.MasterDisplay != "" && !masteringDisplayPattern.MatchString(t.MasterDisplay) || t.MaxCLL != "" && !maxCLLPattern.MatchString(t.MaxCLL) {

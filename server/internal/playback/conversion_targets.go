@@ -1,55 +1,21 @@
 package playback
 
 import (
+	"sort"
 	"strings"
 	"sync/atomic"
 
 	"portico.local/server/internal/assets"
+	"portico.local/server/internal/decoder"
 )
 
-// ConversionVideoOutput is one picture format this server's converter can
-// produce. Ranges are the dynamic ranges it can write: "sdr" (a standard
-// picture, tone-mapped from an HDR source) and any HDR range it keeps.
-type ConversionVideoOutput struct {
-	Codec    string   `json:"codec"`
-	BitDepth int      `json:"bitDepth"`
-	Ranges   []string `json:"ranges"`
-	// Transports are the HLS containers the converted picture can be written
-	// into, in order of preference.
-	Transports []string `json:"transports"`
-}
+// Planner and producer share one output inventory.
+type ConversionVideoOutput = decoder.ConversionVideoOutput
+type ConversionAudioOutput = decoder.ConversionAudioOutput
+type ConversionOutputs = decoder.ConversionOutputs
 
-// ConversionAudioOutput is one audio format this server's converter can
-// produce, with the channel counts it can write and the rate for each.
-type ConversionAudioOutput struct {
-	Codec    string `json:"codec"`
-	Lossless bool   `json:"lossless,omitempty"`
-	// Bitrates maps a channel count to the rate it is encoded at when no
-	// ceiling applies; a lossless output maps each count to zero.
-	Bitrates   map[int]int `json:"bitrates"`
-	Transports []string    `json:"transports"`
-}
-
-// ConversionOutputs is everything the converter can be asked for. The planner
-// chooses among these against the device's capability document; it never plans
-// an output that is not listed. Video is in the server's order of preference.
-type ConversionOutputs struct {
-	Video []ConversionVideoOutput `json:"video"`
-	Audio []ConversionAudioOutput `json:"audio"`
-}
-
-// DefaultConversionOutputs is what the converter produces today: an 8-bit
-// standard-range H.264 picture, AAC in stereo or 5.1, and AC-3 or E-AC-3 in 5.1.
 func DefaultConversionOutputs() ConversionOutputs {
-	hls := []string{TransportHLSTS, TransportHLSFMP4}
-	return ConversionOutputs{
-		Video: []ConversionVideoOutput{{Codec: "h264", BitDepth: 8, Ranges: []string{assets.RangeSDR}, Transports: hls}},
-		Audio: []ConversionAudioOutput{
-			{Codec: "aac", Bitrates: map[int]int{2: 192_000, 6: 384_000}, Transports: hls},
-			{Codec: "eac3", Bitrates: map[int]int{6: 640_000}, Transports: hls},
-			{Codec: "ac3", Bitrates: map[int]int{6: 640_000}, Transports: hls},
-		},
-	}
+	return decoder.AvailableConversionOutputs(decoder.CurrentToolchain())
 }
 
 var conversionOutputs atomic.Pointer[ConversionOutputs]
@@ -69,15 +35,6 @@ func currentConversionOutputs() ConversionOutputs {
 		return *o
 	}
 	return DefaultConversionOutputs()
-}
-
-func (o ConversionOutputs) audio(codec string) *ConversionAudioOutput {
-	for i := range o.Audio {
-		if o.Audio[i].Codec == codec {
-			return &o.Audio[i]
-		}
-	}
-	return nil
 }
 
 // videoOutput is the picture a conversion is planned to produce.
@@ -113,16 +70,38 @@ func keptRange(v *SourceVideo, client ClientProfile, codec *ClientVideoCodec) st
 // transports, keeping the source's HDR where both sides can. ok is false when
 // no output of this server reaches the device.
 func chooseVideoOutput(v *SourceVideo, client ClientProfile, transports []ClientTransport, allowHDR bool, outputs ConversionOutputs) (videoOutput, bool) {
-	for _, o := range outputs.Video {
+	preferredDepth := 8
+	if v != nil && v.BitDepth >= 10 {
+		preferredDepth = 10
+	}
+	ordered := append([]ConversionVideoOutput{}, outputs.Video...)
+	// Retain source depth before reducing it, without promoting an 8-bit source.
+	sort.SliceStable(ordered, func(i, j int) bool {
+		return ordered[i].BitDepth == preferredDepth && ordered[j].BitDepth != preferredDepth
+	})
+	for _, o := range ordered {
 		codec := client.videoCodec(o.Codec)
 		if codec == nil || (len(codec.BitDepths) > 0 && !containsInt(codec.BitDepths, o.BitDepth)) {
+			continue
+		}
+		profile := "high"
+		if o.Codec == "hevc" {
+			profile = "main"
+			if o.BitDepth == 10 {
+				profile = "main 10"
+			}
+		}
+		if o.Codec == "av1" {
+			profile = "main"
+		}
+		if len(codec.Profiles) > 0 && !convertedProfileAllowed(profile, codec.Profiles) {
 			continue
 		}
 		ranges := []string{}
 		if kept := keptRange(v, client, codec); kept != "" && allowHDR && containsString(o.Ranges, kept) && o.BitDepth >= 10 {
 			ranges = append(ranges, kept)
 		}
-		if containsString(o.Ranges, assets.RangeSDR) {
+		if containsString(o.Ranges, assets.RangeSDR) && (len(codec.DynamicRanges) == 0 || containsString(codec.DynamicRanges, assets.RangeSDR)) {
 			ranges = append(ranges, assets.RangeSDR)
 		}
 		for _, r := range ranges {
@@ -150,6 +129,15 @@ func losslessAudio(a *SourceAudio) bool {
 	case "dts":
 		profile := strings.ToLower(a.Profile)
 		return strings.Contains(profile, "ma") && strings.Contains(profile, "hd")
+	}
+	return false
+}
+
+func convertedProfileAllowed(profile string, profiles []string) bool {
+	for _, p := range profiles {
+		if profileName(p) == profileName(profile) {
+			return true
+		}
 	}
 	return false
 }

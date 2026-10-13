@@ -689,6 +689,13 @@ func (s *Service) present(ctx context.Context, c Caller, t presentationTarget) (
 	}
 	choice.SubtitleKind = subtitleWeight(chosen, subtitle)
 	choice.SubtitleBesideStream = false
+	if chosen != nil {
+		for _, delivery := range chosen.Deliveries {
+			if subtitleKindOf(delivery.Format) == choice.SubtitleKind {
+				choice.SubtitleBesideStream = true
+			}
+		}
+	}
 
 	// Quality against the connection the client measured.
 	if t.throughputKbps > 0 && video && asset != "" {

@@ -357,7 +357,7 @@ var (
 	tsCopyVideo   = []string{"h264", "hevc", "mpeg2video"}
 	tsCopyAudio   = []string{"aac", "mp3", "mp2", "ac3", "eac3"}
 	fmp4CopyVideo = []string{"h264", "hevc", "av1", "vp9"}
-	fmp4CopyAudio = []string{"aac", "mp3", "ac3", "eac3", "flac", "opus", "alac"}
+	fmp4CopyAudio = []string{"aac", "mp3", "ac3", "eac3", "flac", "opus", "alac", "truehd", "dts", "dts_hd"}
 )
 
 // hlsTransports lists the device's HLS transports this server can produce, in
@@ -421,7 +421,7 @@ var convertedAudioRates = map[string][]int{
 	"aac":  {48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000},
 	"ac3":  {48000, 44100, 32000},
 	"eac3": {48000, 44100, 32000},
-	"flac": {48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000},
+	"flac": {192000, 176400, 96000, 88200, 64000, 48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000},
 	"opus": {48000},
 }
 
@@ -439,6 +439,9 @@ func convertedSampleRate(a *SourceAudio, codec string, output *ClientAudioCodec)
 		return 48000, true
 	}
 	limit := 48000
+	if codec == "flac" {
+		limit = 192000
+	}
 	if output != nil && output.MaxSampleRate > 0 && output.MaxSampleRate < limit {
 		limit = output.MaxSampleRate
 	}
@@ -487,40 +490,34 @@ func audioOutputFor(a *SourceAudio, client ClientProfile, target QualityTarget, 
 	if source >= 6 {
 		layouts = append(layouts, 6)
 	}
+	if source < 2 {
+		layouts = append(layouts, 1)
+	} else {
+		layouts = append(layouts, 2)
+	}
 	type candidate struct {
 		codec    string
 		channels int
 	}
 	var candidates []candidate
-	if lossless {
+	// Keep the widest audible layout first. Within it, keep lossless samples,
+	// then receiver-friendly Dolby, Opus and AAC, before dropping channels.
+	for _, n := range layouts {
 		for _, o := range outputs.Audio {
-			if !o.Lossless {
-				continue
-			}
-			for _, n := range append(append([]int{}, layouts...), 2) {
+			if o.Lossless && lossless {
 				candidates = append(candidates, candidate{o.Codec, n})
 			}
 		}
-	}
-	dolby := func() {
-		for _, n := range layouts {
-			candidates = append(candidates, candidate{"eac3", n}, candidate{"ac3", n})
+		order := []string{"eac3", "ac3", "opus", "aac"}
+		if !lossless {
+			order = []string{"aac", "eac3", "ac3", "opus"}
 		}
-	}
-	aac := func() {
-		for _, n := range layouts {
-			candidates = append(candidates, candidate{"aac", n})
+		for _, codec := range order {
+			candidates = append(candidates, candidate{codec, n})
 		}
-	}
-	if lossless {
-		dolby()
-		aac()
-	} else {
-		aac()
-		dolby()
 	}
 	for _, c := range candidates {
-		output := outputs.audio(c.codec)
+		output := outputs.AudioOutput(c.codec)
 		if output == nil {
 			continue
 		}
@@ -534,7 +531,7 @@ func audioOutputFor(a *SourceAudio, client ClientProfile, target QualityTarget, 
 		// What the device does with it: decodes it to the channels its output
 		// has, or hands it to a receiver.
 		decoder := client.audioCodec(c.codec)
-		decoded := decoder != nil && decoder.MaxChannels >= c.channels && (c.channels <= 2 || client.AudioOutput.MaxChannels >= c.channels)
+		decoded := decoder != nil && (decoder.MaxChannels == 0 || decoder.MaxChannels >= c.channels) && (c.channels <= 2 || (client.AudioOutput.MaxChannels == 0 || client.AudioOutput.MaxChannels >= c.channels))
 		passed := false
 		if p := client.passthroughCodec(c.codec); p != nil && (p.MaxChannels == 0 || p.MaxChannels >= c.channels) {
 			passed = true
@@ -549,8 +546,8 @@ func audioOutputFor(a *SourceAudio, client ClientProfile, target QualityTarget, 
 			if ceiling > 0 {
 				continue
 			}
-		case c.codec == "aac":
-			if ceiling > 0 && ceiling < 256_000 {
+		case c.codec == "aac" || c.codec == "opus":
+			if c.channels > 2 && ceiling > 0 && ceiling < 256_000 {
 				continue
 			}
 			if ceiling > 0 && ceiling < rate {
@@ -574,9 +571,8 @@ func audioOutputFor(a *SourceAudio, client ClientProfile, target QualityTarget, 
 		out.SampleRate = resample
 		return out
 	}
-	floor.Downmix = source > floor.Channels
-	rate, ok := convertedSampleRate(a, floor.Codec, client.audioCodec(floor.Codec))
-	floor.SampleRate, floor.NoRate = rate, !ok
+	// No invented AAC floor when that codec/layout cannot reach this engine.
+	floor.NoRate = true
 	return floor
 }
 
