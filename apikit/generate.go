@@ -436,6 +436,15 @@ func usesAny(s map[string]any) bool {
 	if len(s) == 0 {
 		return true
 	}
+	for _, key := range []string{"anyOf", "oneOf"} {
+		if alternatives, ok := s[key].([]any); ok {
+			for _, alternative := range alternatives {
+				if usesAny(alternative.(map[string]any)) {
+					return true
+				}
+			}
+		}
+	}
 	if items, ok := s["items"].(map[string]any); ok && usesAny(items) {
 		return true
 	}
@@ -456,6 +465,15 @@ func usesAny(s map[string]any) bool {
 func usesNullable(s map[string]any) bool {
 	if s["nullable"] == true {
 		return true
+	}
+	for _, key := range []string{"anyOf", "oneOf"} {
+		if alternatives, ok := s[key].([]any); ok {
+			for _, alternative := range alternatives {
+				if usesNullable(alternative.(map[string]any)) {
+					return true
+				}
+			}
+		}
 	}
 	if items, ok := s["items"].(map[string]any); ok && usesNullable(items) {
 		return true
@@ -514,7 +532,21 @@ func tsType(s map[string]any) string {
 		}
 		return tsType(plain) + " | null"
 	}
+	for _, key := range []string{"anyOf", "oneOf"} {
+		if alternatives, ok := s[key].([]any); ok {
+			types := make([]string, 0, len(alternatives))
+			for _, alternative := range alternatives {
+				types = append(types, tsType(alternative.(map[string]any)))
+			}
+			if len(types) == 0 {
+				return "never"
+			}
+			return strings.Join(types, " | ")
+		}
+	}
 	switch s["type"] {
+	case "null":
+		return "null"
 	case nil:
 		return "unknown"
 	case "string":

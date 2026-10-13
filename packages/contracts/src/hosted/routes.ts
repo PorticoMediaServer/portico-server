@@ -1279,13 +1279,13 @@ export type RoutePath<I extends RouteId = RouteId> = string & {readonly [routeCo
 const byId: ReadonlyMap<string, string> = new Map(Object.entries(routePaths));
 /** Parameters are supplied unescaped. Query strings stay with the caller. */
 export function routePath<I extends RouteId>(id: I, ...args: keyof RouteParameters<I> extends never ? [parameters?: RouteParameters<I>] : [parameters: RouteParameters<I>]): RoutePath<I> {
-  return buildPath(id, args[0], encodeURIComponent);
+  return buildPath(id, args[0], false);
 }
 /** Retains an existing caller's parameter encoding during a migration. */
 export function encodedRoutePath<I extends RouteId>(id: I, ...args: keyof RouteParameters<I> extends never ? [parameters?: RouteParameters<I>] : [parameters: RouteParameters<I>]): RoutePath<I> {
-  return buildPath(id, args[0], value => value);
+  return buildPath(id, args[0], true);
 }
-function buildPath<I extends RouteId>(id: I, supplied: RouteParameters<I> | undefined, encode: (value: string) => string): RoutePath<I> {
+function buildPath<I extends RouteId>(id: I, supplied: RouteParameters<I> | undefined, encoded: boolean): RoutePath<I> {
   const route = byId.get(id);
   if (!route) throw new Error('Unknown API operation');
   const parameters = supplied as Record<string, string | number> | undefined;
@@ -1294,7 +1294,11 @@ function buildPath<I extends RouteId>(id: I, supplied: RouteParameters<I> | unde
   return route.replace(/\{([^}]+)\}/g, (_, key: string) => {
     const value = parameters?.[key];
     if (value === undefined || value === null || String(value).length === 0) throw new Error('Missing route parameter');
-    return encode(String(value));
+    const supplied = String(value);
+    if (encoded && /[/?#\\\x00-\x20\x7f]/.test(supplied)) throw new Error('Invalid encoded route parameter');
+    const segment = encoded ? decodeURIComponent(supplied) : supplied;
+    if (segment === '.' || segment === '..') throw new Error('Invalid route parameter');
+    return encoded ? supplied : encodeURIComponent(supplied);
   }) as RoutePath<I>;
 }
 /** Typed payloads are still parsed by the service's existing tolerant boundary. */

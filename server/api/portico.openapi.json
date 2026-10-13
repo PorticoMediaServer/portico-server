@@ -82345,55 +82345,70 @@
         "type": "object"
       },
       "PostItemsIdAnalysisJobsJobControlResponse": {
-        "properties": {
-          "analyzed": {
-            "maximum": 9007199254740991,
-            "minimum": -9007199254740991,
-            "type": "integer"
-          },
-          "error": {
-            "type": "string"
-          },
-          "id": {
-            "type": "string"
-          },
-          "jobs": {
-            "items": {
-              "type": "string"
+        "anyOf": [
+          {
+            "properties": {
+              "analyzed": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "error": {
+                "type": "string"
+              },
+              "id": {
+                "type": "string"
+              },
+              "jobs": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "phase": {
+                "type": "string"
+              },
+              "processed": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "scanMode": {
+                "type": "string"
+              },
+              "sourceId": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string"
+              },
+              "warnings": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
             },
-            "type": "array"
+            "required": [
+              "id",
+              "status",
+              "processed",
+              "analyzed",
+              "warnings"
+            ],
+            "type": "object"
           },
-          "phase": {
-            "type": "string"
-          },
-          "processed": {
-            "maximum": 9007199254740991,
-            "minimum": -9007199254740991,
-            "type": "integer"
-          },
-          "scanMode": {
-            "type": "string"
-          },
-          "sourceId": {
-            "type": "string"
-          },
-          "status": {
-            "type": "string"
-          },
-          "warnings": {
-            "maximum": 9007199254740991,
-            "minimum": -9007199254740991,
-            "type": "integer"
+          {
+            "properties": {
+              "status": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "status"
+            ],
+            "type": "object"
           }
-        },
-        "required": [
-          "id",
-          "status",
-          "processed",
-          "analyzed",
-          "warnings"
-        ],
-        "type": "object"
+        ]
       },
       "PostItemsIdAnalysisJobsRequest": {
         "properties": {
@@ -190811,6 +190826,54 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "sourceId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sourceRevision",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "mappingRevision",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sessionId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "generation",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "positionUS",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -191211,6 +191274,54 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "sourceId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sourceRevision",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "mappingRevision",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sessionId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "generation",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "positionUS",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -191406,7 +191517,7 @@
           "required": true
         },
         "responses": {
-          "200": {
+          "202": {
             "content": {
               "application/json": {
                 "schema": {
@@ -191496,7 +191607,7 @@
           }
         },
         "summary": "Run title analysis jobs",
-        "x-access": "device",
+        "x-access": "owner",
         "x-admission": "browsing",
         "x-cost": "constant",
         "x-error-codes": [
@@ -191577,55 +191688,143 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "properties": {
-                    "analyzed": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "error": {
-                      "type": "string"
-                    },
-                    "id": {
-                      "type": "string"
-                    },
-                    "jobs": {
-                      "items": {
-                        "type": "string"
+                  "anyOf": [
+                    {
+                      "properties": {
+                        "analyzed": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "error": {
+                          "type": "string"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "jobs": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "phase": {
+                          "type": "string"
+                        },
+                        "processed": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "scanMode": {
+                          "type": "string"
+                        },
+                        "sourceId": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "string"
+                        },
+                        "warnings": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
                       },
-                      "type": "array"
+                      "required": [
+                        "id",
+                        "status",
+                        "processed",
+                        "analyzed",
+                        "warnings"
+                      ],
+                      "type": "object"
                     },
-                    "phase": {
-                      "type": "string"
-                    },
-                    "processed": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "scanMode": {
-                      "type": "string"
-                    },
-                    "sourceId": {
-                      "type": "string"
-                    },
-                    "status": {
-                      "type": "string"
-                    },
-                    "warnings": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
+                    {
+                      "properties": {
+                        "status": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "status"
+                      ],
+                      "type": "object"
                     }
-                  },
-                  "required": [
-                    "id",
-                    "status",
-                    "processed",
-                    "analyzed",
-                    "warnings"
-                  ],
-                  "type": "object"
+                  ]
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "properties": {
+                        "analyzed": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "error": {
+                          "type": "string"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "jobs": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "phase": {
+                          "type": "string"
+                        },
+                        "processed": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "scanMode": {
+                          "type": "string"
+                        },
+                        "sourceId": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "string"
+                        },
+                        "warnings": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "status",
+                        "processed",
+                        "analyzed",
+                        "warnings"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "properties": {
+                        "status": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "status"
+                      ],
+                      "type": "object"
+                    }
+                  ]
                 }
               }
             },
@@ -191663,7 +191862,7 @@
           }
         },
         "summary": "Run title analysis jobs control",
-        "x-access": "device",
+        "x-access": "owner",
         "x-admission": "browsing",
         "x-cost": "constant",
         "x-error-codes": [
@@ -191818,7 +192017,7 @@
           }
         },
         "summary": "Run title analysis markers",
-        "x-access": "device",
+        "x-access": "owner",
         "x-admission": "browsing",
         "x-cost": "constant",
         "x-error-codes": [
@@ -192015,7 +192214,7 @@
           }
         },
         "summary": "Save title analysis policy",
-        "x-access": "device",
+        "x-access": "owner",
         "x-admission": "browsing",
         "x-cost": "constant",
         "x-error-codes": [
@@ -195778,30 +195977,6 @@
             "schema": {
               "type": "string"
             }
-          },
-          {
-            "in": "query",
-            "name": "sessionId",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "sourceId",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "sourceVersion",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
           }
         ],
         "requestBody": {
@@ -196071,30 +196246,6 @@
             "schema": {
               "type": "string"
             }
-          },
-          {
-            "in": "query",
-            "name": "sessionId",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "sourceId",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "sourceVersion",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
           }
         ],
         "requestBody": {
@@ -196273,30 +196424,6 @@
             "in": "path",
             "name": "id",
             "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "sessionId",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "sourceId",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "sourceVersion",
-            "required": false,
             "schema": {
               "type": "string"
             }
@@ -196560,30 +196687,6 @@
             "in": "path",
             "name": "resource",
             "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "sessionId",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "sourceId",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "sourceVersion",
-            "required": false,
             "schema": {
               "type": "string"
             }
@@ -196861,30 +196964,6 @@
             "in": "path",
             "name": "resource",
             "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "sessionId",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "sourceId",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "sourceVersion",
-            "required": false,
             "schema": {
               "type": "string"
             }
@@ -215339,7 +215418,7 @@
           "required": true
         },
         "responses": {
-          "200": {
+          "202": {
             "content": {
               "application/json": {
                 "schema": {
@@ -215478,7 +215557,7 @@
           "internal"
         ],
         "x-lane": "browsing",
-        "x-max-body-bytes": 65536,
+        "x-max-body-bytes": 2097152,
         "x-scope": "library"
       }
     },
@@ -220605,7 +220684,7 @@
           "internal"
         ],
         "x-lane": "browsing",
-        "x-max-body-bytes": 65536,
+        "x-max-body-bytes": 2097152,
         "x-scope": "admin"
       }
     },
@@ -250986,6 +251065,28 @@
         "operationId": "get_readiness",
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "ready": {
+                      "type": "boolean"
+                    },
+                    "status": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "ready",
+                    "status"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "503": {
             "content": {
               "application/json": {
                 "schema": {
