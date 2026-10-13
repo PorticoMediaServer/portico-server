@@ -189,12 +189,36 @@ func TestABacklogDrainsAtABoundedRate(t *testing.T) {
 	}
 }
 
+// A signer that lapses between taking a job and signing it gives the job back.
 func TestExpiredSignerDoesNotDeliverAndReleasesWakeLease(t *testing.T) {
 	keys := testKeys(t)
 	keys.Certificate.NotAfter = time.Now().Add(-time.Minute)
-	repo := &recordingRepo{job: Work{ServerID: "srv_1", Kind: "policy", BaseURL: "https://outside.example", Revision: 4}}
-	worked, e := (&Worker{Repo: repo, Keys: keys}).Once(context.Background())
+	repo := &recordingRepo{}
+	worked, e := (&Worker{Repo: repo, Keys: keys}).deliver(context.Background(), Work{ServerID: "srv_1", Kind: "policy", BaseURL: "https://outside.example", Revision: 4})
 	if !worked || e == nil || repo.finished.Load() != 1 || repo.status.Load() != 0 {
 		t.Fatal(worked, e, repo.finished.Load())
+	}
+}
+
+// A process that cannot sign takes no wake work at all. Taking a job spends
+// one of its attempts and pushes its next try back, which would delay the
+// process that can sign, during a key change above all.
+func TestUnusableSignerTakesNoWakeWork(t *testing.T) {
+	keys := testKeys(t)
+	keys.Certificate.NotAfter = time.Now().Add(-time.Minute)
+	repo := &recordingRepo{repeat: true, hasDue: true, due: time.Now().Add(-time.Second), job: Work{ServerID: "srv_1", Kind: "policy", BaseURL: "https://outside.example", Revision: 4}}
+	worker := &Worker{Repo: repo, Keys: keys, SafetyInterval: time.Hour}
+	if worked, e := worker.Once(context.Background()); worked || e == nil {
+		t.Fatal("took a job it could not sign", worked, e)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
+	defer cancel()
+	worker.Run(ctx)
+	if repo.claims.Load() != 0 || repo.finished.Load() != 0 {
+		t.Fatalf("claimed %d and pushed back %d jobs", repo.claims.Load(), repo.finished.Load())
+	}
+	// It waits for the safety interval rather than spinning on work that is due.
+	if repo.dueCalls.Load() != 0 {
+		t.Fatalf("asked for the next deadline %d times", repo.dueCalls.Load())
 	}
 }

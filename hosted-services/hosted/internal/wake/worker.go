@@ -90,7 +90,14 @@ func (w *Worker) Run(ctx context.Context) {
 	for {
 		delivered := 0
 		var jobs sync.WaitGroup
+		// A process whose signer is expired or revoked takes no work: claiming a
+		// job spends an attempt and pushes its next try back, which would delay
+		// the process that can sign. It looks again at the safety interval.
+		usable := w.Keys.ValidateSigner(time.Now()) == nil
 		for range wakeBatch {
+			if !usable {
+				break
+			}
 			job, ok, e := w.Repo.Claim(ctx, security.RandomID("lease_"), time.Now().UTC())
 			if e != nil || !ok {
 				break
@@ -101,7 +108,9 @@ func (w *Worker) Run(ctx context.Context) {
 		}
 		jobs.Wait()
 		wait := safety
-		if delivered == wakeBatch {
+		if !usable {
+			// Nothing can be sent; do not wake for deadlines that cannot be met.
+		} else if delivered == wakeBatch {
 			// Still busy. Pause between batches so the backlog drains at a bounded rate
 			// rather than as fast as the pool and the network allow.
 			wait = drain
@@ -127,6 +136,9 @@ func (w *Worker) Run(ctx context.Context) {
 	}
 }
 func (w *Worker) Once(ctx context.Context) (bool, error) {
+	if e := w.Keys.ValidateSigner(time.Now()); e != nil {
+		return false, e
+	}
 	job, ok, e := w.Repo.Claim(ctx, security.RandomID("lease_"), time.Now().UTC())
 	if e != nil || !ok {
 		return ok, e
