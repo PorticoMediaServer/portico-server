@@ -1,8 +1,8 @@
 /**
  * The device queue on Playback Protocol v1 (Plan — Client Playback Migration, core step): the
  * same `QueueController` surface as the /v2 `QueuePlayer`, over v1 queues (§8) and sessions (§5).
- * Playback runs through the existing `PlaybackService` and engines (`legacy-bridge.ts`), so an
- * app switches per server and media kind without screen changes.
+ * Playback runs through `PlaybackService`; sessions are started, adopted and ended through a
+ * `QueueSessionTransport` (the web's session controller path, or the native apps' bridge).
  *
  * The server queue is the truth: the player holds its header and a window of at most 200
  * entries around the current one (Up Next), never the whole queue. Play and Shuffle are one
