@@ -240,9 +240,6 @@ func (s *Service) CheckRecoveryRoute(ctx context.Context, p Principal, private b
 	defer gated3.Rollback()
 	return s.recoveryAllowedTx(ctx, tx, p.AccountID, familyForTokenTx(ctx, tx, p.Hash), private)
 }
-func (s *Service) LoginFrom(ctx context.Context, user, password string, private bool) (Envelope, error) {
-	return s.loginFrom(ctx, user, password, private)
-}
 
 func (s *Service) Onboarding(ctx context.Context, p Principal) (OnboardingState, error) {
 	if p.Authority != "local" || p.Role != "owner" {

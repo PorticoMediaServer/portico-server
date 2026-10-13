@@ -85,6 +85,7 @@ export const serverCodes: Readonly<Record<string, Answer>> = {
   profile_changed: E('web.signIn.error.profilesChanged'), profile_selection_required: E('web.signIn.error.profilesChanged'),
   primary_profile: E('web.signIn.error.profilesChanged'), restrictions_changed: E('web.signIn.error.profilesChanged'),
   remote_sign_in_not_allowed: E('web.signIn.error.remoteNotAllowed'),
+  outside_allowed_hours: E('web.signIn.error.outsideHours'),
   feature_restricted: E('web.signIn.error.forbidden'), owner_required: E('web.signIn.error.forbidden'), forbidden: E('web.signIn.error.forbidden'),
   permission_denied: E('web.signIn.error.forbidden'), access_limit: E('web.signIn.error.forbidden'), access_revoked: E('web.portico.noAccess'),
   origin_not_allowed: E('web.signIn.error.origin'),

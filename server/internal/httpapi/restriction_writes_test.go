@@ -523,7 +523,6 @@ func restrictionWriteRoutes() map[string]writeRoute {
 		"POST /v1/diagnostics/client-logs":        writeExempt(reasonOwnSession),
 
 		// Sessions, devices, identity.
-		"POST /v1/sessions":                                 writeExempt(reasonSignIn),
 		"DELETE /v1/sessions/current":                       writeExempt(reasonOwnSession),
 		"POST /v1/auth/refresh":                             writeExempt(reasonSignIn),
 		"POST /v1/auth/register":                            writeExempt(reasonSignIn),

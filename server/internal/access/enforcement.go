@@ -72,7 +72,13 @@ func (e *Enforcer) limits(ctx context.Context, tx *sql.Tx, account string) (Limi
 // AdmitSession is the sign-in side: the access schedule. There is no session
 // count: how many devices a member has signed in never blocks anyone.
 func (e *Enforcer) AdmitSession(ctx context.Context, tx *sql.Tx, p identity.Principal) error {
-	limits, err := e.limits(ctx, tx, p.AccountID)
+	return e.AdmitAccount(ctx, tx, p.AccountID)
+}
+
+// AdmitAccount is AdmitSession for a caller that knows only the account: the
+// identity service applies it to every session it creates or renews.
+func (e *Enforcer) AdmitAccount(ctx context.Context, tx *sql.Tx, account string) error {
+	limits, err := e.limits(ctx, tx, account)
 	if err != nil {
 		return err
 	}

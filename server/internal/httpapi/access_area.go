@@ -145,8 +145,9 @@ func accessFailure(w http.ResponseWriter, e error) {
 		status, code, message = 429, "client_log_budget", "The daily client log limit has been reached."
 	case errors.Is(e, servicelog.ErrClientUploadDevice):
 		status, code, message = 403, "device_session_required", "Sign in on this device to upload logs."
-	case errors.Is(e, access.ErrStreamLimit), errors.Is(e, access.ErrSchedule),
-		errors.Is(e, access.ErrDeviceTrust):
+	case errors.Is(e, access.ErrSchedule):
+		status, code, message = 403, "outside_allowed_hours", publicErrorMessage("outside_allowed_hours")
+	case errors.Is(e, access.ErrStreamLimit), errors.Is(e, access.ErrDeviceTrust):
 		status, code, message = 403, "access_limit", publicErrorMessage("access_limit")
 	case errors.Is(e, ErrRemoteSignIn):
 		status, code, message = 403, "remote_sign_in_not_allowed", publicErrorMessage("remote_sign_in_not_allowed")

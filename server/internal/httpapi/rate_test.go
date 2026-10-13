@@ -75,7 +75,7 @@ func TestProxyClientsHaveIndependentRateBuckets(t *testing.T) {
 // the server. The table must now be a bound on memory and nothing else.
 func TestAFloodOfAddressesNeverRefusesAnHonestClient(t *testing.T) {
 	limiter := limiter{}
-	honest := httptest.NewRequest("POST", "/v1/sessions", nil)
+	honest := httptest.NewRequest("POST", "/v1/direct/sign-in", nil)
 	honest.RemoteAddr = "192.168.1.40:5000"
 	if !limiter.allow(honest) {
 		t.Fatal("the first request of all was refused")
@@ -83,7 +83,7 @@ func TestAFloodOfAddressesNeverRefusesAnHonestClient(t *testing.T) {
 	// Far more distinct addresses than either table holds, spread over many
 	// networks so that neither bound is reached by accident.
 	for i := 0; i < rateAddressEntries*3; i++ {
-		flood := httptest.NewRequest("POST", "/v1/sessions", nil)
+		flood := httptest.NewRequest("POST", "/v1/direct/sign-in", nil)
 		flood.RemoteAddr = fmt.Sprintf("[2001:db8:%x:%x::%x]:5000", i/256, i%256, i)
 		limiter.allow(flood)
 	}
@@ -104,7 +104,7 @@ func TestAFloodOfAddressesNeverRefusesAnHonestClient(t *testing.T) {
 // not change: twenty attempts a minute, then a 429.
 func TestThePerAddressCeilingIsUnchanged(t *testing.T) {
 	limiter := limiter{}
-	r := httptest.NewRequest("POST", "/v1/sessions", nil)
+	r := httptest.NewRequest("POST", "/v1/direct/sign-in", nil)
 	r.RemoteAddr = "203.0.113.9:5000"
 	for i := 0; i < rateAttemptsPerAddress; i++ {
 		if !limiter.allow(r) {
@@ -128,7 +128,7 @@ func TestThePerAddressCeilingIsUnchanged(t *testing.T) {
 func TestAHouseholdSigningInTogetherIsNotRateLimited(t *testing.T) {
 	limiter := limiter{}
 	for device := 0; device < 200; device++ {
-		r := httptest.NewRequest("POST", "/v1/sessions", nil)
+		r := httptest.NewRequest("POST", "/v1/direct/sign-in", nil)
 		r.RemoteAddr = fmt.Sprintf("192.168.1.%d:5000", device%254+1)
 		for attempt := 0; attempt < 2; attempt++ {
 			if !limiter.allow(r) {
@@ -144,7 +144,7 @@ func TestAddressRotationInsideOneNetworkIsStillCounted(t *testing.T) {
 	limiter := limiter{}
 	allowed := 0
 	for i := 0; i < rateAttemptsPerNetwork*2; i++ {
-		r := httptest.NewRequest("POST", "/v1/sessions", nil)
+		r := httptest.NewRequest("POST", "/v1/direct/sign-in", nil)
 		r.RemoteAddr = fmt.Sprintf("[2001:db8:1:1::%x]:5000", i)
 		if limiter.allow(r) {
 			allowed++

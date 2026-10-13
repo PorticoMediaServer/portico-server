@@ -225,11 +225,21 @@ test('a 403 that is not this server ending the sign-in keeps the stored credenti
   assert.equal(server.rotations, 1);
 });
 
-test('a renewal the server revokes for an access limit ends the sign-in', async t => {
+test('a renewal refused outside the account’s allowed hours keeps the sign-in and renews when the hours return', async t => {
   const {server, store, env} = setup(t);
-  server.refreshAnswers.push(() => new Response(JSON.stringify({error: {code: 'access_limit', message: 'Not available right now.', retryable: false}}), {status: 403, headers: {'Content-Type': 'application/json'}}));
-  await assert.rejects(refreshDirectly(env, server), (e: unknown) => (e as {signOut?: boolean}).signOut === true && (e as {code?: string}).code === 'refresh_refused');
-  assert.equal(store.peek(), undefined, 'stored sign-in removed');
+  server.refreshAnswers.push(() => new Response(JSON.stringify({error: {code: 'outside_allowed_hours', message: 'This account cannot be used at this time of day.', retryable: false}}), {status: 403, headers: {'Content-Type': 'application/json'}}));
+  await assert.rejects(refreshDirectly(env, server), (e: unknown) => (e as {signOut?: boolean}).signOut === false && (e as {code?: string}).code === 'outside_allowed_hours' && (e as {status?: number}).status === 403);
+  assert.equal(store.peek()!.session.refreshToken, 'refresh_000000000001', 'credential kept');
+  const next = await refreshDirectly(env, server);
+  assert.equal(next.accessToken, 'access_2', 'the kept credential renews once the server allows it');
+  assert.equal(server.rotations, 1);
+});
+
+test('no 403 ends a sign-in, whatever its code', async t => {
+  const {server, store, env} = setup(t);
+  server.refreshAnswers.push(() => new Response(JSON.stringify({error: {code: 'access_limit', message: 'Not permitted.', retryable: false}}), {status: 403, headers: {'Content-Type': 'application/json'}}));
+  await assert.rejects(refreshDirectly(env, server), kept);
+  assert.equal(store.peek()!.session.refreshToken, 'refresh_000000000001', 'credential kept');
 });
 
 test('a protected store that cannot be read right now keeps the sign-in and renews once it can', async t => {

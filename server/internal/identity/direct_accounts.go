@@ -193,6 +193,9 @@ func (s *Service) DirectLogin(ctx context.Context, user, password string) (Direc
 	return s.DirectLoginFrom(ctx, user, password, true)
 }
 func (s *Service) DirectLoginFrom(ctx context.Context, user, password string, private bool) (DirectSignIn, error) {
+	if RemoteSignInClosed(ctx) {
+		return DirectSignIn{}, ErrRemoteSignIn
+	}
 	for attempt := 0; attempt < 2; attempt++ {
 		out, stale, err := s.directLoginOnce(ctx, user, password, private)
 		if !stale {

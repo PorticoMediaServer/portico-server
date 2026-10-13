@@ -357,6 +357,9 @@ func (s *Service) CompleteSignInChallenge(ctx context.Context, token, code strin
 	if len(token) != 43 || len(code) > 64 {
 		return DirectSignIn{}, ErrUnauthorized
 	}
+	if RemoteSignInClosed(ctx) {
+		return DirectSignIn{}, ErrRemoteSignIn
+	}
 	gated5, e := dbwork.Begin(ctx, s.db, dbwork.ClassSecurityFence)
 	if e != nil {
 		return DirectSignIn{}, e

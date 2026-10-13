@@ -376,7 +376,9 @@ func (s *Service) SelectDirectProfileFrom(ctx context.Context, bearer, id string
 	if e = s.recoveryAllowedTx(ctx, tx, c.account.ID, c.familyID, private); e != nil {
 		return out, e
 	}
-	out.Session, e = s.IssueTx(withExistingDevice(ctx, c.deviceID), tx, c.account.ID, id, "local", role, c.epoch, time.Time{})
+	// Choosing a profile continues the sign-in this device already holds; the
+	// remote sign-in policy judged that sign-in when it was made.
+	out.Session, e = s.IssueTx(withExistingDevice(continuedSignIn(ctx), c.deviceID), tx, c.account.ID, id, "local", role, c.epoch, time.Time{})
 	if e != nil {
 		return out, e
 	}

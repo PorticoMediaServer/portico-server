@@ -60,9 +60,9 @@ func tokenWorks(t *testing.T, f *v1Fixture, token string, want int) {
 	}
 }
 
-// A sign-in outside the member's hours is refused and its session revoked: the
-// account holds no live session family afterwards. Inside the hours the same
-// credentials sign in.
+// A sign-in outside the member's hours is refused before a session exists: the
+// account holds no more live session families afterwards than before. Inside
+// the hours the same credentials sign in.
 func TestMemberLimitsScheduleAtDirectSignIn(t *testing.T) {
 	f := memberLimitsFixture(t, 0)
 	passwordAccount(t, f, "schedmember", "Testing1!")
@@ -78,7 +78,7 @@ func TestMemberLimitsScheduleAtDirectSignIn(t *testing.T) {
 	}
 	pinLimitsTime(f, mondayOutside())
 	code, v1code, _ := directSignIn(t, f, "schedmember", "Testing1!")
-	if code != 403 || v1code != "access_limit" {
+	if code != 403 || v1code != "outside_allowed_hours" {
 		t.Fatalf("sign-in outside the hours: %d %s", code, v1code)
 	}
 	if n := liveFamilies(t, f, "schedmember"); n != 1 {
@@ -86,9 +86,9 @@ func TestMemberLimitsScheduleAtDirectSignIn(t *testing.T) {
 	}
 }
 
-// A refresh outside the member's hours is refused and the session family dies
-// with it: the old access token stops working and the refresh credential cannot
-// be reused. Inside the hours the rotation succeeds.
+// A refresh outside the member's hours is refused without ending anything: the
+// device keeps its sign-in, the same refresh credential works again once the
+// hours return, and nothing was rotated in between.
 func TestMemberLimitsScheduleAtRefresh(t *testing.T) {
 	f := memberLimitsFixture(t, 0)
 	passwordAccount(t, f, "schedrefresh", "Testing1!")
@@ -112,26 +112,53 @@ func TestMemberLimitsScheduleAtRefresh(t *testing.T) {
 		return w.Code, v1Code(w), out
 	}
 	pinLimitsTime(f, mondayOutside())
-	code, v1code, _ := refresh(*signed.Session, 1)
-	if code != 403 || v1code != "access_limit" {
-		t.Fatalf("refresh outside the hours: %d %s", code, v1code)
+	for attempt := 1; attempt <= 2; attempt++ {
+		code, v1code, _ := refresh(*signed.Session, attempt)
+		if code != 403 || v1code != "outside_allowed_hours" {
+			t.Fatalf("refresh %d outside the hours: %d %s", attempt, code, v1code)
+		}
 	}
-	tokenWorks(t, f, signed.Session.AccessToken, 401)
-	if code, _, _ := refresh(*signed.Session, 2); code != 401 {
-		t.Fatalf("refresh credential survived its refusal: %d", code)
+	if n := liveFamilies(t, f, "schedrefresh"); n != 1 {
+		t.Fatalf("a refusal outside the hours ended the sign-in: %d live families", n)
+	}
+	var generation int
+	if err := f.db.QueryRow(`SELECT current_generation FROM authorization_session_families WHERE id=?`, signed.Session.SessionFamilyID).Scan(&generation); err != nil || generation != 1 {
+		t.Fatalf("a refused renewal rotated the session: generation %d %v", generation, err)
 	}
 	pinLimitsTime(f, mondayInside())
-	_, _, signed2 := directSignIn(t, f, "schedrefresh", "Testing1!")
-	if signed2.Session == nil {
-		t.Fatal("no second session to refresh")
+	code, _, rotated := refresh(*signed.Session, 3)
+	if code != 200 || rotated.AccessToken == "" || rotated.RefreshToken == signed.Session.RefreshToken {
+		t.Fatalf("the same credential inside the hours: %d %+v", code, rotated)
 	}
-	code, _, rotated := refresh(*signed2.Session, 3)
-	if code != 200 || rotated.AccessToken == "" || rotated.RefreshToken == signed2.Session.RefreshToken {
-		t.Fatalf("refresh inside the hours: %d %+v", code, rotated)
+	tokenWorks(t, f, rotated.AccessToken, 200)
+}
+
+// Choosing a profile outside the hours is refused too, and leaves the account
+// session it was asked from in place.
+func TestMemberLimitsScheduleAtProfileChoice(t *testing.T) {
+	f := memberLimitsFixture(t, 0)
+	passwordAccount(t, f, "schedchoice", "Testing1!")
+	setAccountLimits(t, f, "schedchoice", `{"schedule":`+mondayWindow+`}`)
+	pinLimitsTime(f, mondayInside())
+	_, _, signed := directSignIn(t, f, "schedchoice", "Testing1!")
+	if signed.Session == nil {
+		t.Fatal("no session")
+	}
+	pinLimitsTime(f, mondayOutside())
+	w := f.raw("POST", "/v1/direct/profiles/"+signed.Account.PrimaryProfileID+"/select", signed.Session.AccessToken, nil, map[string]any{})
+	if w.Code != 403 || v1Code(w) != "outside_allowed_hours" {
+		t.Fatalf("profile choice outside the hours: %d %s", w.Code, w.Body.String())
+	}
+	if n := liveFamilies(t, f, "schedchoice"); n != 1 {
+		t.Fatalf("live families after a refused choice: %d", n)
+	}
+	pinLimitsTime(f, mondayInside())
+	if w = f.raw("POST", "/v1/direct/profiles/"+signed.Account.PrimaryProfileID+"/select", signed.Session.AccessToken, nil, map[string]any{}); w.Code != 200 {
+		t.Fatalf("profile choice inside the hours: %d %s", w.Code, w.Body.String())
 	}
 }
 
-// Self-registration signs the new account in through the same admitSession
+// Self-registration signs the new account in through the same schedule
 // check. A new account can hold no limits envelope yet, so the schedule can
 // only allow here; the assertion is that the session is issued live and the
 // path runs the check (a stored envelope would be enforced like any other).
@@ -212,7 +239,7 @@ func TestMemberLimitsScheduleAtTwoFactorChallenge(t *testing.T) {
 	pinLimitsTime(f, mondayOutside())
 	before := liveFamilies(t, f, "twofadeny")
 	code, v1code, _ := complete("twofadeny", denySecret)
-	if code != 403 || v1code != "access_limit" {
+	if code != 403 || v1code != "outside_allowed_hours" {
 		t.Fatalf("challenge completion outside the hours: %d %s", code, v1code)
 	}
 	if n := liveFamilies(t, f, "twofadeny"); n != before {

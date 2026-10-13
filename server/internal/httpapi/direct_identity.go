@@ -98,16 +98,9 @@ func (d Dependencies) directIdentityRoutes(mux *http.ServeMux) {
 			failure(w, e)
 			return
 		}
-		// The access schedule, like POST /v1/sessions: a denied session is
-		// revoked before it is returned, so the caller never holds a usable
-		// token it was not entitled to. A pending second factor holds no
-		// session yet; its schedule is checked when the challenge completes.
-		if out.Session != nil {
-			if e = d.admitSession(r, *out.Session); e != nil {
-				accessFailure(w, e)
-				return
-			}
-		}
+		// The remote sign-in policy and the member's access schedule are applied
+		// where the session is created (identity.IssueTx, through the request
+		// context the router prepares), not here.
 		writeAuth(w, r, 200, out)
 	})
 	mux.HandleFunc("POST /v1/direct/profiles", func(w http.ResponseWriter, r *http.Request) {

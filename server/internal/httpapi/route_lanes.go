@@ -401,7 +401,6 @@ var routeLanes = map[string]string{
 	"POST /v1/quick-connect/":                                         laneDefault,
 	"POST /v1/quick-connect/decision":                                 laneDefault,
 	"POST /v1/quick-connect/review":                                   laneDefault,
-	"POST /v1/sessions":                                               laneAuth,
 	"POST /v1/setup":                                                  laneAuth,
 	"POST /v1/setup/":                                                 laneDefault,
 	"POST /v1/setup/browser":                                          laneDefault,

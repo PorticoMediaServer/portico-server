@@ -13,7 +13,9 @@ func publicErrorMessage(code string) string {
 	case "access_limit", "administration_denied", "downloads_not_allowed":
 		return "This action is not permitted."
 	case "remote_sign_in_not_allowed":
-		return "This server does not allow remote sign-in."
+		return "This server does not allow sign-in from outside its home network."
+	case "outside_allowed_hours":
+		return "This account cannot be used at this time of day."
 	case "invitation_expired", "console_expired", "playback_operation_expired", "storage_operation_expired":
 		return "This request expired. Start again."
 	case "administration_conflict", "console_conflict", "playback_command_conflict", "library_configuration_conflict", "pin_order_conflict", "download_conflict", "manual_metadata_conflict", "library_channel_changed", "lyrics_conflict", "lyrics_source_changed", "analysis_conflict", "storage_command_conflict", "stale_continuation":

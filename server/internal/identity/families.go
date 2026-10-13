@@ -117,6 +117,14 @@ func (s *Service) IssueTx(ctx context.Context, tx *sql.Tx, aid, pid, authority, 
 	if err := s.checkFamilyPrincipalTx(ctx, tx, p); err != nil {
 		return Envelope{}, err
 	}
+	// The owner's remote sign-in policy is applied here, at the one place a
+	// session is created, rather than on each route that leads here.
+	if err := s.admitSignInTx(ctx, tx, aid); err != nil {
+		return Envelope{}, err
+	}
+	if err := admitAccountTx(ctx, tx, aid); err != nil {
+		return Envelope{}, err
+	}
 	switch authority {
 	case "local":
 		if !verifiedHostedHorizon.IsZero() {

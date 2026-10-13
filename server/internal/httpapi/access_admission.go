@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -43,7 +44,8 @@ func controlItemID(raw []byte) string {
 
 // This file is the one place the per-member limits meet a running request.
 //
-//	access schedule       — admitSession, admitPlayback and admitChannel.
+//	access schedule       — withSessionAdmission (every session created or
+//	                        renewed), admitPlayback and admitChannel.
 //	max streams           — admitPlayback, before a playback lease is created,
 //	                        counting legacy sessions and live v1 sessions.
 //	maximum content rating— admitPlayback, and catalog visibility through
@@ -54,66 +56,46 @@ func controlItemID(raw []byte) string {
 //	                        (canonical v1 ids), with the schedule.
 //	device trust          — admitPlayback, when the server requires approval.
 
-// admitSession applies the access schedule to a session that has just been
-// issued. Checking after issuance keeps the identity service
-// untouched; a denied session is revoked in the same request, so the caller
-// never holds a usable token it was not entitled to.
-func (d Dependencies) admitSession(r *http.Request, envelope identity.Envelope) error {
-	if d.Access.Access == nil || d.DB == nil || envelope.AccessToken == "" {
-		return nil
-	}
-	p := identity.Principal{Viewer: envelope.Viewer}
-	gated, err := dbwork.Begin(r.Context(), d.DB, dbwork.ClassFrom(r.Context(), dbwork.ClassInteractive))
-	if err != nil {
-		return err
-	}
-	tx := gated.Tx()
-	defer gated.Rollback()
-	if err = d.enforcer(false).AdmitSession(r.Context(), tx, p); err == nil {
-		return nil
-	}
-	denial := err
-	if e := identity.RevokeFamiliesMatchingTx(r.Context(), tx, identity.RevokedAdminRevoke, `id IN (SELECT family_id FROM authorization_family_tokens WHERE token_hash=?)`, identity.Digest(envelope.AccessToken)); e != nil {
-		return e
-	}
-	if e := gated.Commit(); e != nil {
-		return e
-	}
-	return denial
-}
-
-// ErrRemoteSignIn is the connectivity policy's refusal. It is separate from a
-// bad password: the credentials were right, the origin was not.
-var ErrRemoteSignIn = errors.New("This server does not accept sign-in from outside its own network.")
-
-// admitRemoteSignIn applies the server-wide remote sign-in policy to a session
-// that has just been issued. "owner-only" admits the owner tier and refuses the
-// rest; "off" refuses every remote sign-in. Sessions already signed in are not
-// disturbed, which is what the setting's description promises.
-func (d Dependencies) admitRemoteSignIn(r *http.Request, envelope identity.Envelope) error {
-	if d.Console == nil || envelope.AccessToken == "" {
-		return nil
-	}
-	document, err := d.settingsDocument(r.Context())
-	if err != nil {
-		return err
-	}
-	policy := document.Effective.RemoteSignInPolicy
-	if policy == "" || policy == "allow" || !d.requestIsRemote(r) {
-		return nil
-	}
-	if policy == "owner-only" && identity.Grants(envelope.Viewer.Role, identity.TierOwner) {
-		return nil
-	}
-	if d.DB != nil {
-		if e := dbwork.WithWriteTx(r.Context(), d.DB, dbwork.ClassFrom(r.Context(), dbwork.ClassInteractive), func(tx *sql.Tx) error {
-			return identity.RevokeFamiliesMatchingTx(r.Context(), tx, identity.RevokedAdminRevoke, `id IN (SELECT family_id FROM authorization_family_tokens WHERE token_hash=?)`, identity.Digest(envelope.AccessToken))
-		}); e != nil {
-			return e
+// withSessionAdmission prepares the two rules every session this request
+// creates or renews must pass, and hands them to the identity service through
+// the request context. The identity service applies them at the single place
+// a session is created (IssueTx) and at renewal, so no route decides for
+// itself whether the rules apply to it.
+//
+//   - The owner's remote sign-in choice. Locality and the setting are read
+//     here, before any transaction exists: the server runs SQLite on one
+//     connection, and a settings read inside the issuing transaction would
+//     wait on the transaction holding it.
+//   - The member's access schedule, read inside the issuing transaction.
+func (d Dependencies) withSessionAdmission(r *http.Request) context.Context {
+	ctx := r.Context()
+	admission := identity.SignInAdmission{Policy: identity.RemoteSignInAllow}
+	if d.Console != nil {
+		setting, err := d.connectionSetting(ctx)
+		switch {
+		case err != nil:
+			// The setting cannot be read: nobody is admitted from outside
+			// until it can.
+			admission.Policy = identity.RemoteSignInOff
+		case setting != nil:
+			admission.Policy = setting.remoteSignIn
+		}
+		if admission.Policy != identity.RemoteSignInAllow {
+			admission.Remote = d.requestIsRemote(r)
 		}
 	}
-	return ErrRemoteSignIn
+	ctx = identity.WithSignInAdmission(ctx, admission)
+	if d.Access.Access != nil {
+		enforcer := d.enforcer(false)
+		ctx = identity.WithAccountAdmitter(ctx, func(ctx context.Context, tx *sql.Tx, account string) error {
+			return enforcer.AdmitAccount(ctx, tx, account)
+		})
+	}
+	return ctx
 }
+
+// ErrRemoteSignIn is the connectivity policy's refusal (identity.ErrRemoteSignIn).
+var ErrRemoteSignIn = identity.ErrRemoteSignIn
 
 // admitPlayback applies the playback-side limits and returns the clamps a
 // permitted request still has to respect.

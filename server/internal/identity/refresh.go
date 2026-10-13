@@ -77,6 +77,11 @@ func (s *Service) RefreshSession(ctx context.Context, secret, installation, requ
 	if err = s.checkFamilyPrincipalTx(ctx, tx, p); err != nil {
 		return Envelope{}, err
 	}
+	// Outside the member's allowed hours the renewal is refused before anything
+	// rotates: the refresh credential stays valid and works again later.
+	if err = admitAccountTx(ctx, tx, p.AccountID); err != nil {
+		return Envelope{}, err
+	}
 	horizon := now.Add(LocalSignInWindow)
 	if p.Authority == "hosted" {
 		if verify == nil {
@@ -180,6 +185,9 @@ func (s *Service) replayRefreshTx(ctx context.Context, tx *sql.Tx, predecessor, 
 		return Envelope{}, "", ErrUnauthorized
 	}
 	if err = s.checkFamilyPrincipalTx(ctx, tx, p); err != nil {
+		return Envelope{}, "", err
+	}
+	if err = admitAccountTx(ctx, tx, p.AccountID); err != nil {
 		return Envelope{}, "", err
 	}
 	if p.Authority == "hosted" {

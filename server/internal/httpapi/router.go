@@ -400,6 +400,15 @@ func failure(w http.ResponseWriter, e error) {
 	if errors.Is(e, identity.ErrConflict) {
 		status, code = 409, "conflict"
 	}
+	// The owner's remote sign-in choice and a member's allowed hours. Both are
+	// refusals of someone whose credentials are fine, so neither is a 401, and
+	// neither ends a sign-in a device already holds.
+	if errors.Is(e, identity.ErrRemoteSignIn) {
+		status, code = 403, "remote_sign_in_not_allowed"
+	}
+	if errors.Is(e, access.ErrSchedule) {
+		status, code = 403, "outside_allowed_hours"
+	}
 	if errors.Is(e, playback.ErrIncompatible) {
 		status, code = 422, "unsupported_source"
 	}
@@ -432,6 +441,9 @@ func failure(w http.ResponseWriter, e error) {
 		message = publicErrorMessage("unauthorized")
 	} else if status == 403 && errors.Is(e, identity.ErrForbidden) {
 		message = identity.ErrForbidden.Error()
+	}
+	if code == "remote_sign_in_not_allowed" || code == "outside_allowed_hours" {
+		message = publicErrorMessage(code)
 	}
 	retryable := false
 	if errors.Is(e, playback.ErrSegmentPreparing) {
@@ -832,36 +844,6 @@ func New(d Dependencies) http.Handler {
 			return
 		}
 		writeAuth(w, r, 201, result)
-	})
-	mux.HandleFunc("POST /v1/sessions", func(w http.ResponseWriter, r *http.Request) {
-		var body struct {
-			Username string `json:"username"`
-			Password string `json:"password"`
-		}
-		if e := decode(w, r, &body); e != nil {
-			failure(w, e)
-			return
-		}
-		if e := d.Identity.SetupLimit(r.Context(), setupPeerSubject(r), "login", 20); e != nil {
-			setupFailure(w, e)
-			return
-		}
-		result, e := d.Identity.LoginFrom(r.Context(), body.Username, body.Password, d.privateSetupPeer(r))
-		if e != nil {
-			failure(w, e)
-			return
-		}
-		// Remote sign-in policy and per-member session limits. See
-		// access_admission.go; a denied session is revoked before it is returned.
-		if e = d.admitRemoteSignIn(r, result); e != nil {
-			accessFailure(w, e)
-			return
-		}
-		if e = d.admitSession(r, result); e != nil {
-			accessFailure(w, e)
-			return
-		}
-		writeAuth(w, r, 200, result)
 	})
 	mux.HandleFunc("GET /v1/me", func(w http.ResponseWriter, r *http.Request) {
 		p, e := d.principal(r)
@@ -1280,6 +1262,7 @@ func New(d Dependencies) http.Handler {
 			return
 		}
 		r = r.WithContext(identity.WithSignInSource(r.Context(), d.signInPeer(r)))
+		r = r.WithContext(d.withSessionAdmission(r))
 		if installation := r.Header.Get("X-Portico-Installation-Id"); installation != "" {
 			claim := identity.DeviceRegistration{
 				InstallationID: installation,
@@ -1295,7 +1278,7 @@ func New(d Dependencies) http.Handler {
 			}
 			r = r.WithContext(ctx)
 		}
-		if r.Method == "POST" && (strings.HasPrefix(r.URL.Path, "/v1/direct/") || strings.HasPrefix(r.URL.Path, "/v1/auth/") || r.URL.Path == "/v1/sessions" || r.URL.Path == "/v1/setup" || r.URL.Path == "/v1/cast/redeem" || r.URL.Path == "/v1/cast/reconnect") {
+		if r.Method == "POST" && (strings.HasPrefix(r.URL.Path, "/v1/direct/") || strings.HasPrefix(r.URL.Path, "/v1/auth/") || r.URL.Path == "/v1/setup" || r.URL.Path == "/v1/cast/redeem" || r.URL.Path == "/v1/cast/reconnect") {
 			if !authRate.allow(r) {
 				w.Header().Set("Retry-After", "60")
 				write(w, 429, map[string]any{"error": map[string]any{"code": "rate_limited", "message": "Too many authentication attempts. Try again shortly.", "retryable": true}})

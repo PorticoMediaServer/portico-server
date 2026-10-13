@@ -28,6 +28,9 @@ type securePolicyCache struct {
 type secureSetting struct {
 	required bool
 	locality localityPolicy
+	// remoteSignIn is the owner's "who may sign in from outside" choice, kept
+	// with the locality it is judged against so both change together.
+	remoteSignIn string
 }
 type secureRoute struct {
 	checked  time.Time
@@ -37,7 +40,7 @@ type secureRoute struct {
 
 func (c *securePolicyCache) set(document operations.SettingsDocument) {
 	c.routeMu.Lock()
-	c.setting.Store(&secureSetting{required: document.Effective.SecureConnectionsPolicy == "required", locality: newLocalityPolicy(document.Effective)})
+	c.setting.Store(&secureSetting{required: document.Effective.SecureConnectionsPolicy == "required", locality: newLocalityPolicy(document.Effective), remoteSignIn: document.Effective.RemoteSignInPolicy})
 	c.route.Store(nil)
 	c.routeMu.Unlock()
 }

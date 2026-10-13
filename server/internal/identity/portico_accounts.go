@@ -48,6 +48,9 @@ func (s *Service) PorticoSignIn(ctx context.Context, who PorticoIdentity) (Direc
 	if !validHostedAccountID(who.AccountID) {
 		return DirectSignIn{}, ErrUnauthorized
 	}
+	if RemoteSignInClosed(ctx) {
+		return DirectSignIn{}, ErrRemoteSignIn
+	}
 	gated, e := dbwork.Begin(ctx, s.db, dbwork.ClassSecurityFence)
 	if e != nil {
 		return DirectSignIn{}, e

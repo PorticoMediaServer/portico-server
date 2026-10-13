@@ -225,12 +225,6 @@ func (d Dependencies) identityAuthRoutes(mux *http.ServeMux) {
 			failure(w, e)
 			return
 		}
-		// The access schedule: a renewed session outside the member's hours is
-		// revoked before it is returned (403 access_limit).
-		if e = d.admitSession(r, out); e != nil {
-			accessFailure(w, e)
-			return
-		}
 		w.Header().Set("Cache-Control", "no-store")
 		write(w, 200, out)
 	})
@@ -244,13 +238,6 @@ func (d Dependencies) identityAuthRoutes(mux *http.ServeMux) {
 		if e != nil {
 			failure(w, e)
 			return
-		}
-		// The access schedule, like every other sign-in.
-		if out.Session != nil {
-			if e = d.admitSession(r, *out.Session); e != nil {
-				accessFailure(w, e)
-				return
-			}
 		}
 		w.Header().Set("Cache-Control", "no-store")
 		writeAuth(w, r, 201, out)
@@ -268,14 +255,6 @@ func (d Dependencies) identityAuthRoutes(mux *http.ServeMux) {
 		if e != nil {
 			failure(w, e)
 			return
-		}
-		// The access schedule is checked at completion, when the session is
-		// issued — not at the password step, which issues only a challenge.
-		if out.Session != nil {
-			if e = d.admitSession(r, *out.Session); e != nil {
-				accessFailure(w, e)
-				return
-			}
 		}
 		w.Header().Set("Cache-Control", "no-store")
 		writeAuth(w, r, 200, out)

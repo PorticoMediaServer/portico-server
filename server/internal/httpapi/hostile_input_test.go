@@ -225,7 +225,7 @@ func TestTheParsedRoutesSurviveEveryHostileBody(t *testing.T) {
 	handler, token := hostileFixture(t)
 	routes := []struct{ method, path string }{
 		{"POST", "/v1/libraries"},
-		{"POST", "/v1/sessions"},
+		{"POST", "/v1/direct/sign-in"},
 		{"POST", "/v1/setup"},
 		{"GET", "/v1/search"},
 		{"GET", "/v1/items"},

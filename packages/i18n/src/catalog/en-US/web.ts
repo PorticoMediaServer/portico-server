@@ -855,6 +855,7 @@ export const webMessages = {
   'web.signIn.error.serverOld': '{server} needs an update before this sign-in works. Ask its owner to update it.',
   'web.signIn.error.forbidden': '{server} isn’t letting this account in. Ask its owner to check your access under Server › Access.',
   'web.signIn.error.remoteNotAllowed': '{server} only lets this account sign in from its home network.',
+  'web.signIn.error.outsideHours': '{server} doesn’t let this account in at this time of day. Try again later.',
   'web.signIn.error.changed': '{server} changed while you were signing in. Try again.',
   'web.signIn.error.serverFault': '{server} ran into a problem while signing you in. Try again; if it keeps happening, its owner can check the server’s log.',
   'web.signIn.error.serverFull': '{server} has run out of disk space, so it can’t sign anyone in. Ask its owner to free some space.',

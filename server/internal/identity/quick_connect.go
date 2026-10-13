@@ -131,6 +131,11 @@ func (s *Service) SetupLimit(ctx context.Context, subject, kind string, limit in
 	return nil
 }
 func (s *Service) StartQuick(ctx context.Context, q QuickStart, private bool) (QuickAuthorization, error) {
+	// A device that could never be signed in from where it is gets told now,
+	// not after someone has approved its code.
+	if RemoteSignInClosed(ctx) {
+		return QuickAuthorization{}, ErrRemoteSignIn
+	}
 	if !setupUUID.MatchString(q.RequestID) || !setupLabel(q.DeviceName, 100) || !setupLabel(q.Platform, 32) || !setupLabel(q.AppVersion, 40) {
 		return QuickAuthorization{}, &SetupProtocolError{Code: "invalid_request"}
 	}

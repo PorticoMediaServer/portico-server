@@ -133,6 +133,9 @@ func (s *Service) Register(ctx context.Context, q SelfRegistrationRequest, priva
 	if mode == SelfRegistrationOff || s.SetupRequired() {
 		return DirectSignIn{}, ErrRegistrationClosed
 	}
+	if RemoteSignInClosed(ctx) {
+		return DirectSignIn{}, ErrRemoteSignIn
+	}
 	username := strings.ToLower(strings.TrimSpace(q.Username))
 	if username == "" || len(username) > 64 || !directName(username) || strings.ContainsAny(username, " /\\:@") {
 		return DirectSignIn{}, ErrDirectInput
