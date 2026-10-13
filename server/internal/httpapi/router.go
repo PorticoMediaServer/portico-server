@@ -1219,7 +1219,9 @@ func New(d Dependencies) http.Handler {
 		r = detachCanceledConnection(w, r)
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("X-Frame-Options", "DENY")
-		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' https://www.gstatic.com; style-src 'self'; connect-src 'self' https://*.direct.getportico.tv https://web.getportico.tv; img-src 'self' blob: data: https://*.direct.getportico.tv; media-src 'self' blob:; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'none'; object-src 'none'")
+		// 'wasm-unsafe-eval' lets the page compile WebAssembly (the subtitle renderer the web player
+		// loads from this origin). It does not allow eval or any other way of running text as script.
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'wasm-unsafe-eval' https://www.gstatic.com; style-src 'self'; connect-src 'self' https://*.direct.getportico.tv https://web.getportico.tv; img-src 'self' blob: data: https://*.direct.getportico.tv; media-src 'self' blob:; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'none'; object-src 'none'")
 		if r.TLS != nil {
 			w.Header().Set("Strict-Transport-Security", "max-age=31536000")
 		}
