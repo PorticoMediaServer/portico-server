@@ -22,8 +22,9 @@ session id to keep: every request stands alone.
    scopes the assistant should have (`07-keys-tokens-and-scopes.md`). `read` is
    enough to look things up; add `playback`, `library` or `admin` only for what
    you want it to be able to change.
-2. Give the assistant the address and the key. Most clients take a URL and a
-   header:
+2. Give the assistant the address and the key. A desktop client that supports remote Streamable HTTP needs a URL and a
+   bearer header. Client configuration syntax differs; this is a generic shape,
+   not a promise that every desktop application accepts it:
 
 ```json
 {
@@ -39,6 +40,24 @@ session id to keep: every request stands alone.
 
 A signed-in app session is not accepted here: use a key or token, so that what
 the assistant may do is something you chose.
+
+After adding the remote server in your desktop assistant, let it initialize
+and list tools before asking it to act. Keep the credential in that application's
+private secret settings. An assistant on another machine needs a route that
+reaches this origin; `127.0.0.1` always means that assistant's own machine.
+A client supporting only local stdio needs a remote-HTTP bridge of its own;
+Portico does not install a desktop bridge.
+
+You can check the protocol with `curl` (replace `$KEY` with the scoped credential):
+
+```bash
+curl -fsS "$BASE/v1/mcp" -H "Authorization: Bearer $KEY" \
+  -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
+  --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"Desktop assistant","version":"1.0"}}}'
+curl -fsS "$BASE/v1/mcp" -H "Authorization: Bearer $KEY" \
+  -H 'Content-Type: application/json' \
+  --data '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}'
+```
 
 ## What the assistant can do
 
@@ -57,7 +76,7 @@ apply exactly as they do to a direct request.
 | `mark_watched`, `control_playback`, `schedule_recording`, `cancel_recording` | `playback` (and `read` where it looks something up first) | anyone | The member's own watch state, playback and recordings. |
 | `now_playing`, `stop_playback` | `playback` | administrator | What everyone is playing; stop a session. |
 | `start_library_scan`, `report_changed_paths` | `library` | owner | Scan a library, or only the folders that changed. |
-| `list_scan_jobs`, `list_unmatched_files`, `get_match`, `search_match_candidates`, `fix_match` | `library` | owner | Scan history, files that could not be matched, fixing a match. |
+| `list_scan_jobs`, `list_unmatched_files`, `list_needs_attention`, `library_needs_attention`, `count_needs_attention`, `get_match`, `search_match_candidates`, `fix_match` | `library` | owner | Scan history, files that could not be matched, fixing a match. |
 | `list_members`, `play_history`, `read_logs` | `admin` | administrator | People, what was played, the server log. |
 | `server_health`, `storage_usage`, `get_settings`, `change_settings`, `list_backups`, `run_backup` | `admin` | owner | Health and free space, settings, backups. |
 | `list_webhooks`, `create_webhook`, `update_webhook`, `delete_webhook`, `test_webhook`, `list_webhook_deliveries` | `admin` | owner | Webhooks. |

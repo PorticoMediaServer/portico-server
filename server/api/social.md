@@ -4,7 +4,8 @@ Companion to `portico.openapi.json`. That document is the schema; this one is th
 behaviour you cannot read off a schema: how the group timeline works, what the
 handoff state machine guarantees, and what this server deliberately does not do.
 
-Everything here is normative for a third-party client. Nothing here requires a
+The behaviour here describes the current handlers; confirm request schemas
+against the source-registered routes when integrating. Nothing here requires a
 first-party app: a group can be driven, a receiver can be paired and a handoff
 can be completed with nothing but the documented endpoints.
 
@@ -381,7 +382,7 @@ actually is.
 
 ### Worked exchange
 
-```json
+```text
 POST /v1/handoffs
 {"protocolVersion":"1.0","requestId":"handoff-7f2","receiverId":"rcv_a1",
  "grantId":"grt_b2","sourcePlaybackId":"pb_c3","startPositionUs":"184320000",

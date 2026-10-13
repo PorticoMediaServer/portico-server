@@ -2,17 +2,17 @@
 
 These are the owner administration surfaces: deleting media, configuring a
 library, configuring a live source, DVR defaults, library channel presets and
-server maintenance. The machine-readable contract is
-`admin-libraries.openapi.yaml`; this document explains the decisions behind it.
+server maintenance. Use `portico.openapi.json` for source-registered operations and the current
+handlers for routes not yet reflected there. The hand-written YAML is historical.
 
 Everything here is owner-only except `GET /v1/library-channels/{id}/logo`,
 because a channel logo is part of what a viewer sees. A Hosted account carrying
 the owner role is not this server's owner: administration always resolves through
 the locally managed owner and the server's installed membership policy.
 
-## The shape every page shares
+## Configuration document conventions
 
-- One response envelope: `{protocolVersion, serverId, result}`.
+- The older configuration document family uses the response envelope: `{protocolVersion, serverId, result}`.
 - One document per page, carrying a `revision` and a `digest`.
 - One write envelope: `{expectedRevision, operationId, settings}`. A write whose
   `expectedRevision` does not match the stored revision is refused with
@@ -21,8 +21,8 @@ the locally managed owner and the server's installed membership policy.
   same body returns the first result rather than applying the change twice;
   replaying it with a different body is refused. Identifiers are 8–128 characters
   of `[A-Za-z0-9-_.]`.
-- Every list pages by an opaque `cursor` with `limit` between 1 and 200
-  (default 40). A cursor is fenced to the listing that minted it, so replaying
+- Configuration lists page by an opaque `cursor`. Limits are per operation;
+  many default to 40, with a published maximum. A cursor is fenced to the listing that minted it, so replaying
   one against a different listing is refused with `409 stale_continuation`.
 - Owner authority is checked before the work starts, again inside the same
   transaction as the write, and again before the response is written. A session
@@ -59,9 +59,8 @@ A delete is three steps, because it is the one page action that destroys data.
    with `{deleteFiles, confirmation, expectedRevision, operationId}`.
 
 `expectedRevision` is the deletion fence: the sum of the `library_revisions`
-revisions of every library the targets sit in. Anything that changes a targeted
-library moves it, so a delete cannot be applied against a library that has
-changed since the preview.
+revisions used by the deletion preview. Send exactly the preview revision;
+a changed deletion fence refuses the operation.
 
 `allowMediaDeletion` is off on a fresh library. Until an owner turns it on, every
 delete against that library is `403 administration_denied`, and a bulk delete
@@ -90,8 +89,8 @@ and confirmation, 200 titles at a time.
 
 ## Missing titles
 
-A file that is no longer on disk is marked missing the first time a complete
-scan of its folder does not find it. It is no longer offered or played. A title
+A file absent from a complete scan is judged by the scanner’s missing-file
+observations and safety rules. It is no longer offered or played. A title
 left with no file stays in the library, shown as unavailable, with
 `missingSince` on its detail; a file that is the same title (the same provider
 identity, or read as the same title) brings it back with its id, metadata and
@@ -143,12 +142,13 @@ Volume Information`, `Recovery`) and the kernel trees (`/proc`, `/sys`, `/dev`,
 the wrong question on a network share. Files appear only with
 `includeFiles=true`, for the pickers that choose a file rather than a folder.
 
-**Providers** — per media kind, a library chooses a provider, optionally an API
-key override, and a language and region. `GET /v1/admin/metadata-providers`
-publishes which providers serve which kinds, which accept a key and which accept
-a locale; a selection outside that is refused. A key is write-only: reads return
-`apiKey: ""` with `apiKeySet: true`, and an empty `apiKey` on a write keeps the
-stored one, so a client that never receives a key can still save the form.
+**Providers** — choose a provider and language per library, or local metadata
+only. `GET /v1/library-kinds/{kind}/metadata-agents` publishes the curated provider registry.
+TMDB is the default for video; TheTVDB and AniList are additional choices where
+the registry permits them. Music uses MusicBrainz and audiobooks use local data.
+Credentials are server-wide Metadata settings (`tmdbReadToken`, `tvdbProjectKey`),
+not per-library API-key overrides; a nonempty per-library key is refused.
+See [library guidance](../../docs/libraries.md).
 
 **The analysis matrix** — `GET /v1/admin/analysis-operations` publishes every
 operation the server knows, grouped by what it costs:
@@ -264,24 +264,24 @@ the criteria matched nothing.
 
 ## Maintenance
 
-**Backups.** A backup is a plain folder `<state>/backups/<UTC timestamp>/`
-holding `portico.db` — a consistent copy of the database made with SQLite's
-online backup while the server runs — the state files needed to come back as
-the same server, and `manifest.json` with integrity hashes. Nothing is
-encrypted; the folder permissions protect it. `GET /v1/admin/backups` lists
-them with the running backup's progress and the last restore's outcome.
-`POST /v1/admin/backups {operationId}` starts one (idempotent per operation
-id) and `DELETE /v1/admin/backups/{id}` removes one. The nightly window runs
-one automatically; `backupKeepCount` keeps the newest scheduled and manual
-backups, plus the newest three pre-restore copies.
+**Backups.** The default destination is `<state>/backups`; `PORTICO_BACKUP_DIR`
+can move ordinary backups. A finished directory contains a consistent database,
+selected non-rebuildable state and a checksum manifest. Media, recordings,
+generated artwork and conversion caches are excluded. Manual backups are kept
+until deleted; `backupKeepCount` prunes scheduled copies. The three retained
+pre-migration database copies and pre-restore rollback state stay beside the live
+database. Backups are not encrypted. Live sign-in secrets are scrubbed, with
+API keys/tokens deliberately retained.
 
-`POST /v1/admin/backups/restore {operationId, source}` stages one of the
-listed backups or a server path — a backup folder or a bare `.db` file that
-is a Portico database — and answers `{staged, restartRequired, validation}`.
-The server then restarts, and the next start moves the current state into a
-pre-restore backup, moves the staged copy into place, and runs the ordinary
-migrations; a failure moves the pre-restore copy back automatically and
-records it. A bare `.db` replaces only the database.
+`POST /v1/admin/backups {operationId}` answers 202 with `jobId`. Poll
+`GET /v1/admin/backups` for `running`, finished `backups`, `restore` and
+`lastRestore`. `POST /v1/admin/backups/restore {operationId, source}` also answers
+202 with a job, rather than running copying in the request. Source identifies
+`backupId` or an absolute server `path`. Validation and staging run in the
+background, followed by restart. Restore needs the single-instance lock and
+refuses incompatible prerelease/newer schemas. Startup preserves rollback
+state and refuses unresolved partial restores. See
+[installation and recovery](../../INSTALLING.md) for owner steps.
 
 **Storage care.** `GET /v1/admin/storage-usage` measures the state directory by
 category: artwork, trickplay, prepared media, conversion working files,
@@ -311,7 +311,7 @@ should be able to keep them effectively forever. Backups are kept by count
 (`backupKeepCount`), not by age.
 
 **Moving a server.** Stop Portico, copy the whole state folder to the new
-machine, point Portico at it (`PORTICO_STATE_DIR`), and start: it just works.
+machine, point Portico at it (`PORTICO_STATE_DIR`), and start the same build first. Verify the resulting library and network state.
 Portico's own files are stored absolute and rebased to the new folder on first
 start. Media library paths are absolute too and still point at the old
 machine's mounts, so change them in the console when the new machine mounts
@@ -331,8 +331,10 @@ client omits them.
 
 Scans accept `?mode=full` or `?mode=integrity` on the existing scan endpoints.
 Without an explicit mode, a new source uses first-import mode; subsequent scans
-reuse unchanged directory fingerprints. Known subdirectories are still checked
-individually. At least once every seven days, an automatic scan uses integrity
-mode to detect replacements that did not change their parent directory mtime.
-Full and integrity scans enumerate every directory. All modes retain the existing
-root-identity, cancellation, and two-observation missing-file safeguards.
+use bounded source traversal. Local scans read file facts every time, because
+directory timestamps do not prove that files were unchanged. Managed adapters
+use their own paged listing protocol. Full/integrity modes retain their
+explicit source checks. All modes retain the existing
+root-identity, cancellation, and stable-coverage missing-file safeguards. Missing is immediate after a
+complete admitted scan; an inaccessible root or protected subtree does not
+authorize absence.
